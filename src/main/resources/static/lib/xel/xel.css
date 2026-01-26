@@ -1,0 +1,196 @@
+/* Xel 核心组件样式 - 适配 Windows 环境，无需构建，直接使用 */
+:root {
+    --xel-color-primary: #3b82f6;
+    --xel-color-primary-hover: #2563eb;
+    --xel-color-background: #ffffff;
+    --xel-color-text: #333333;
+    --xel-color-border: #e5e7eb;
+    --xel-icon-path: url('./icons/');
+}
+
+/* 按钮组件 */
+bx-button {
+    display: inline-block;
+    margin: 0 4px;
+}
+
+bx-button::part(button) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    background-color: var(--xel-color-primary);
+    color: #ffffff;
+    cursor: pointer;
+    font-size: 14px;
+    gap: 8px;
+    transition: background-color 0.2s ease;
+}
+
+bx-button::part(button):hover {
+    background-color: var(--xel-color-primary-hover);
+}
+
+bx-button[size="small"]::part(button) {
+    padding: 4px 8px;
+    font-size: 12px;
+}
+
+bx-button[type="default"]::part(button) {
+    background-color: var(--xel-color-background);
+    color: var(--xel-color-text);
+    border: 1px solid var(--xel-color-border);
+}
+
+bx-button[type="default"]::part(button):hover {
+    background-color: #f9fafb;
+}
+
+/* 树形控件 */
+bx-tree {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow-y: auto;
+    font-size: 14px;
+    color: var(--xel-color-text);
+}
+
+bx-tree-item {
+    display: block;
+    padding: 6px 12px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+bx-tree-item:hover {
+    background-color: #f3f4f6;
+}
+
+bx-tree-item[expanded] {
+    font-weight: 500;
+}
+
+/* 表格控件 */
+bx-data-grid {
+    display: block;
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+
+bx-data-grid::part(grid) {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+bx-data-grid-column {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--xel-color-border);
+}
+
+bx-data-grid-column::part(header) {
+    font-weight: 500;
+    background-color: #f9fafb;
+    border-bottom: 1px solid var(--xel-color-border);
+}
+
+bx-data-grid-column::part(cell) {
+    padding: 12px;
+    border-bottom: 1px solid var(--xel-color-border);
+}
+
+/* 弹窗控件 */
+bx-dialog {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+}
+
+bx-dialog[hidden="false"] {
+    display: flex;
+}
+
+bx-dialog::part(content) {
+    width: 480px;
+    background-color: var(--xel-color-background);
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+bx-dialog::part(title) {
+    padding: 16px;
+    font-size: 18px;
+    font-weight: 600;
+    border-bottom: 1px solid var(--xel-color-border);
+}
+
+bx-dialog::part(body) {
+    padding: 16px;
+}
+
+bx-dialog::part(footer) {
+    padding: 16px;
+    text-align: right;
+    border-top: 1px solid var(--xel-color-border);
+}
+
+/* 下拉选择器 */
+bx-select {
+    display: block;
+    margin: 8px 0;
+    font-size: 14px;
+}
+
+bx-select::part(trigger) {
+    padding: 8px 16px;
+    border: 1px solid var(--xel-color-border);
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+bx-select::part(options) {
+    position: absolute;
+    margin-top: 4px;
+    padding: 8px 0;
+    border: 1px solid var(--xel-color-border);
+    border-radius: 4px;
+    background-color: var(--xel-color-background);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    z-index: 999;
+}
+
+bx-select-item {
+    display: block;
+    padding: 8px 16px;
+    cursor: pointer;
+}
+
+bx-select-item:hover {
+    background-color: #f3f4f6;
+}
+
+/* 图标样式 */
+bx-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+}

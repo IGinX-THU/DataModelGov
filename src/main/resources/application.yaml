@@ -1,0 +1,31 @@
+spring:
+  application:
+    name: 数据与模型一体化管理软件
+#  resources:
+#    static-locations: classpath:/static/  # 前端静态资源映射
+
+server:
+  port: 8080
+  servlet:
+    context-path: /
+
+# IGinX连接配置（根据实际部署修改）
+iginx:
+  ip: 127.0.0.1
+  port: 6667
+  username: root
+  password: root
+  timeout: 30000
+
+# 离线缓存配置
+offline:
+  enabled: true
+  cache-path: ./offline-cache
+
+# 日志配置
+logging:
+  level:
+    com.tsinghua: INFO
+    cn.edu.tsinghua.iginx: WARN
+  file:
+    name: ./logs/app.log
