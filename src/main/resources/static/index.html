@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" class="light-mode">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="./css/main.css">
 </head>
 <body>
-<!-- 顶部导航栏（原型右上角图标） -->
+<!-- 顶部导航栏（修复下拉标签嵌套，确保点击区域完整） -->
 <header class="top-nav">
     <div class="nav-tabs">
         <span class="tab active">主页</span>
@@ -17,66 +17,104 @@
         <span class="tab">模型</span>
         <span class="tab">关联</span>
         <span class="tab">分析</span>
-        <span class="tab">工具</span>
-        <span class="tab">视图</span>
-        <span class="tab">帮助</span>
+        <!-- 修复下拉标签：确保span包裹完整，点击区域无遗漏 -->
+        <span class="tab dropdown" id="toolDropdown">
+                <span class="dropdown-trigger">工具</span>
+                <ul class="dropdown-menu">
+                    <li>数据传输...</li>
+                    <li>数据生成...</li>
+                    <li>数据字典...</li>
+                    <li>数据同步...</li>
+                    <li>结构同步...</li>
+                    <li>命令列界面...</li>
+                    <li>服务器监控 ▶</li>
+                    <li>在数据库或模式中查找...</li>
+                    <li>历史日志... <span class="shortcut">Ctrl+L</span></li>
+                    <li>选项...</li>
+                </ul>
+            </span>
+        <span class="tab dropdown" id="windowDropdown">
+                <span class="dropdown-trigger">窗口</span>
+                <ul class="dropdown-menu">
+                    <li>新建窗口</li>
+                    <li>切换窗口 ▶</li>
+                    <li>关闭窗口</li>
+                    <li>关闭所有窗口</li>
+                </ul>
+            </span>
+        <span class="tab dropdown" id="helpDropdown">
+                <span class="dropdown-trigger">帮助</span>
+                <ul class="dropdown-menu">
+                    <li>文档</li>
+                    <li>在线帮助</li>
+                    <li>关于</li>
+                </ul>
+            </span>
     </div>
     <div class="user-bar">
         <span class="username">LUDNS</span>
         <i class="icon user-avatar-icon"></i>
-        <i class="icon theme-icon"></i>
+        <i class="icon theme-icon" id="themeToggle"></i>
         <i class="icon setting-icon"></i>
         <i class="icon logout-icon"></i>
     </div>
 </header>
 
-<!-- 功能大图标栏（原型二级菜单） -->
-<div class="func-bar">
+<!-- 二级选项卡 -->
+<div class="sub-tab-bar">
+    <span class="sub-tab active">数据资源</span>
+    <span class="sub-tab">模型资产</span>
+    <span class="sub-tab">关系模型</span>
+    <span class="sub-tab">可视化分析</span>
+</div>
+
+<!-- 功能按钮栏 -->
+<div class="func-btn-bar">
     <button class="func-btn">
         <i class="icon db-import-icon"></i>
-        <span>数据资源<br>导入</span>
+        <span>导入</span>
     </button>
     <button class="func-btn">
-        <i class="icon file-import-icon"></i>
-        <span>文件<br>上传</span>
+        <i class="icon file-upload-icon"></i>
+        <span>上传</span>
     </button>
     <button class="func-btn">
         <i class="icon data-map-icon"></i>
-        <span>数据<br>映射</span>
+        <span>映射</span>
     </button>
     <button class="func-btn">
         <i class="icon data-view-icon"></i>
-        <span>数据<br>查看</span>
+        <span>查看</span>
     </button>
     <button class="func-btn">
         <i class="icon model-gen-icon"></i>
-        <span>模型<br>生成</span>
+        <span>生成</span>
     </button>
     <button class="func-btn">
         <i class="icon sql-gen-icon"></i>
-        <span>SQL<br>生成</span>
+        <span>SQL生成</span>
     </button>
     <button class="func-btn">
         <i class="icon tool-icon"></i>
-        <span>工具<br>切图</span>
+        <span>切图</span>
     </button>
     <button class="func-btn">
         <i class="icon model-export-icon"></i>
-        <span>模型资产<br>导出</span>
+        <span>导出</span>
     </button>
     <button class="func-btn">
-        <i class="icon relation-map-icon"></i>
-        <span>关系模型<br>查看</span>
+        <i class="icon relation-view-icon"></i>
+        <span>查看</span>
     </button>
     <button class="func-btn">
         <i class="icon visual-icon"></i>
-        <span>可视化<br>分析</span>
+        <span>分析</span>
     </button>
 </div>
 
-<!-- 主内容区（三栏+标准树形结构） -->
+<!-- 主内容区 -->
 <div class="main-container">
-    <!-- 左侧：数据资源库（多级树形结构） -->
+    <!-- 左侧数据资源库 -->
     <div class="sidebar left-sidebar">
         <div class="sidebar-title">数据资源库</div>
         <div class="tree">
@@ -135,13 +173,13 @@
         </div>
     </div>
 
-    <!-- 中间：工作区 -->
+    <!-- 中间工作区 -->
     <div class="workspace">
         <div class="workspace-title">工作区</div>
         <div class="workspace-content"></div>
     </div>
 
-    <!-- 右侧：模型资产库（多级树形结构） -->
+    <!-- 右侧模型资产库 -->
     <div class="sidebar right-sidebar">
         <div class="sidebar-title">模型资产库</div>
         <div class="search-box">

@@ -1,139 +1,342 @@
 /* 顶部导航栏 */
 .top-nav {
-    height: 24px;
-    background-color: #003366;
+    height: 30px;
+    background-color: #2c5aa0;
     color: #fff;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0 5px;
+    padding: 0 10px;
+    user-select: none;
+    position: relative;
+    z-index: 9999;
 }
+
+.nav-tabs {
+    display: flex;
+    gap: 15px;
+}
+
 .nav-tabs .tab {
-    margin-right: 10px;
+    padding: 0 5px;
+    height: 30px;
+    line-height: 30px;
     cursor: pointer;
-    padding: 2px 4px;
+    font-size: 12px;
+    position: relative;
 }
+
 .nav-tabs .tab.active {
     background-color: #fff;
-    color: #003366;
-    border-radius: 2px;
+    color: #2c5aa0;
+    font-weight: bold;
 }
+
 .user-bar {
     display: flex;
     align-items: center;
-    gap: 5px;
-}
-.username {
-    margin-right: 3px;
+    gap: 10px;
 }
 
-/* 二级子菜单 */
-.sub-nav {
-    height: 20px;
-    background-color: #004488;
-    color: #fff;
+.user-bar .username {
+    margin-right: 5px;
+}
+
+.user-bar .icon {
+    cursor: pointer;
+    position: relative;
+    z-index: 10000;
+}
+
+/* 二级选项卡 */
+.sub-tab-bar {
+    height: 28px;
+    background-color: #e8f0fe;
+    border-bottom: 1px solid #2c5aa0;
     display: flex;
     align-items: center;
+    padding-left: 10px;
+    gap: 10px;
+}
+
+.sub-tab-bar .sub-tab {
     padding: 0 10px;
-    gap: 15px;
+    height: 28px;
+    line-height: 28px;
+    cursor: pointer;
+    border-right: 1px solid #ccc;
+    font-size: 12px;
 }
-.sub-nav-group {
+
+.sub-tab-bar .sub-tab.active {
+    background-color: #2c5aa0;
+    color: #fff;
+    font-weight: bold;
+}
+
+/* 功能按钮栏 */
+.func-btn-bar {
+    height: 36px;
+    background-color: #f5f8fa;
+    border-bottom: 1px solid #ccc;
     display: flex;
     align-items: center;
-    gap: 5px;
+    padding-left: 10px;
+    gap: 8px;
 }
-.sub-nav-title {
-    font-weight: bold;
-    margin-right: 3px;
+
+.func-btn {
+    display: flex;
+    align-items: center;
+    padding: 4px 8px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    background-color: #fff;
+    color: #003366;
+    transition: all 0.2s;
 }
-.sub-nav-btn {
-    color: #fff;
-    padding: 0 3px;
-}
-.sub-nav-btn:hover {
-    text-decoration: underline;
+
+.func-btn:hover {
+    background-color: #e8f0fe;
+    border-color: #2c5aa0;
 }
 
 /* 主内容区 */
 .main-container {
     display: flex;
-    height: calc(100vh - 44px);
+    height: calc(100vh - 30px - 28px - 36px);
 }
+
+/* 侧边栏通用样式 */
 .sidebar {
-    width: 180px;
-    background-color: #f0f0f0;
+    width: 250px;
     border-right: 1px solid #ccc;
     display: flex;
     flex-direction: column;
 }
+
 .left-sidebar {
     border-right: 1px solid #ccc;
 }
+
 .right-sidebar {
     border-left: 1px solid #ccc;
 }
+
 .sidebar-title {
-    height: 22px;
-    line-height: 22px;
-    background-color: #e0e0e0;
-    padding: 0 5px;
+    height: 28px;
+    line-height: 28px;
+    background-color: #e8f0fe;
+    padding-left: 10px;
     font-weight: bold;
     border-bottom: 1px solid #ccc;
 }
-.workspace {
-    flex: 1;
-    background-color: #fff;
-    border-left: 1px solid #ccc;
-    border-right: 1px solid #ccc;
-}
-.workspace-title {
-    height: 22px;
-    line-height: 22px;
-    background-color: #f0f0f0;
-    padding: 0 5px;
+
+/* 搜索框 */
+.search-box {
+    padding: 5px;
+    display: flex;
+    align-items: center;
     border-bottom: 1px solid #ccc;
 }
-.workspace-content {
-    height: calc(100% - 22px);
-    overflow: auto;
+
+.search-box input {
+    flex: 1;
+    height: 22px;
+}
+
+.search-box .icon {
+    margin-left: 5px;
+    cursor: pointer;
 }
 
 /* 树形结构 */
 .tree {
-    padding: 3px 0;
     flex: 1;
     overflow-y: auto;
+    padding: 5px;
 }
+
 .tree-node {
-    padding: 2px 5px;
-    display: flex;
-    align-items: center;
-    gap: 4px;
+    padding: 2px 0;
     cursor: pointer;
+    line-height: 1.5;
 }
-.tree-node:hover {
-    background-color: #e8e8e8;
-}
-.tree-children {
-    padding-left: 15px;
-}
-.tree-node.expanded .tree-children {
+
+.tree-node .tree-children {
+    margin-left: 18px;
     display: block;
 }
-.tree-node .tree-children {
+
+.tree-node:not(.expanded) .tree-children {
     display: none;
 }
 
-/* 右侧搜索框 */
-.search-box {
-    padding: 3px 5px;
-    display: flex;
-    align-items: center;
-    gap: 3px;
-}
-.search-box input {
-    width: 100%;
-    height: 20px;
-    padding: 0 3px;
+.tree-node.active {
+    background-color: #2c5aa0;
+    color: #fff;
+    padding-left: 5px;
     border-radius: 2px;
 }
+
+.tree-node.active .icon {
+    filter: invert(1);
+}
+
+/* 工作区 */
+.workspace {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.workspace-title {
+    height: 28px;
+    line-height: 28px;
+    background-color: #e8f0fe;
+    padding-left: 10px;
+    font-weight: bold;
+    border-bottom: 1px solid #ccc;
+}
+
+.workspace-content {
+    flex: 1;
+    background-color: #fff;
+    overflow-y: auto;
+    padding: 10px;
+}
+
+/* 下拉菜单核心修复 */
+.dropdown {
+    position: relative;
+    z-index: 1001;
+}
+.dropdown-menu {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    background-color: #fff;
+    border: 1px solid #ccc;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    min-width: 180px;
+    z-index: 1000;
+    margin-top: 0;
+}
+.dropdown-menu li {
+    padding: 4px 12px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.dropdown-menu li:hover {
+    background-color: #e8f0fe;
+}
+.dropdown-menu .shortcut {
+    float: right;
+    color: #999;
+}
+.dropdown.active .dropdown-menu {
+    display: block !important;
+}
+
+/* 全局暗黑模式 */
+.dark-mode {
+    background-color: #0E0E10 !important;
+    color: #FFFFFF !important;
+}
+.dark-mode .top-nav {
+    background-color: #0E0E10 !important;
+    border-bottom: 1px solid #2D2D30;
+}
+.dark-mode .nav-tabs .tab {
+    color: #FFFFFF !important;
+}
+.dark-mode .nav-tabs .tab.active {
+    background-color: #1E1E20 !important;
+    color: #FFFFFF !important;
+}
+.dark-mode .sub-tab-bar {
+    background-color: #1E1E20 !important;
+    border-bottom: 1px solid #2D2D30;
+}
+.dark-mode .sub-tab-bar .sub-tab {
+    color: #FFFFFF !important;
+    border-right-color: #2D2D30;
+}
+.dark-mode .sub-tab-bar .sub-tab.active {
+    background-color: #2D2D30 !important;
+    color: #FFFFFF !important;
+}
+.dark-mode .func-btn-bar {
+    background-color: #1E1E20 !important;
+    border-bottom: 1px solid #2D2D30;
+}
+.dark-mode .func-btn {
+    background-color: #1E1E20 !important;
+    border-color: #2D2D30 !important;
+    color: #FFFFFF !important;
+}
+.dark-mode .func-btn:hover {
+    background-color: #2D2D30 !important;
+}
+.dark-mode .sidebar {
+    background-color: #0E0E10 !important;
+    border-right-color: #2D2D30 !important;
+    color: #FFFFFF !important;
+}
+.dark-mode .sidebar-title {
+    background-color: #1E1E20 !important;
+    border-bottom-color: #2D2D30 !important;
+    color: #FFFFFF !important;
+}
+.dark-mode .tree-node {
+    color: #FFFFFF !important;
+}
+.dark-mode .tree-node.active {
+    background-color: #1E1E20 !important;
+    color: #FFFFFF !important;
+}
+.dark-mode .search-box {
+    border-bottom-color: #2D2D30 !important;
+}
+.dark-mode .search-box input {
+    background-color: #1E1E20 !important;
+    border-color: #2D2D30 !important;
+    color: #FFFFFF !important;
+}
+.dark-mode .workspace {
+    background-color: #0E0E10 !important;
+}
+.dark-mode .workspace-title {
+    background-color: #1E1E20 !important;
+    border-bottom: 1px solid #2D2D30;
+    color: #FFFFFF !important;
+}
+.dark-mode .workspace-content {
+    background-color: #0E0E10 !important;
+    color: #FFFFFF !important;
+}
+.dark-mode .dropdown-menu {
+    background-color: #0E0E10 !important;
+    border-color: #2D2D30 !important;
+    color: #FFFFFF !important;
+}
+.dark-mode .dropdown-menu li:hover {
+    background-color: #1E1E20 !important;
+}
+.dark-mode .dropdown-menu .shortcut {
+    color: #999 !important;
+}
+.dark-mode * {
+    color: #FFFFFF !important;
+}
+.dark-mode .icon {
+    filter: invert(1) !important;
+}
+.dark-mode .dropdown-menu {
+    z-index: 9999 !important;
+}
+.dark-mode .user-bar .icon {
+    filter: invert(1) !important;
+}
+
