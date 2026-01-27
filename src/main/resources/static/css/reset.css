@@ -1,0 +1,30 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: "Microsoft Yahei", "SimSun", sans-serif;
+    font-size: 12px;
+}
+
+body {
+    background-color: #fff;
+    color: #000;
+    overflow: hidden;
+}
+
+ul, ol {
+    list-style: none;
+}
+
+button {
+    background: transparent;
+    border: none;
+    outline: none;
+    cursor: pointer;
+}
+
+input {
+    border: 1px solid #ccc;
+    outline: none;
+    background: #fff;
+}

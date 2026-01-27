@@ -3,92 +3,194 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>数据与模型一体化管理软件</title>
-    <!-- 引入依赖 -->
-    <link rel="stylesheet" href="lib/xel/xel.css">
-    <script src="lib/echarts/echarts.min.js"></script>
-    <link rel="stylesheet" href="css/main.css">
+    <title>数据与模型一体化管理平台</title>
+    <link rel="stylesheet" href="./css/reset.css">
+    <link rel="stylesheet" href="./css/icons.css">
+    <link rel="stylesheet" href="./css/main.css">
 </head>
 <body>
-<!-- 顶部导航栏 -->
-<header class="app-header">
-    <div class="logo">数据与模型一体化管理平台</div>
-    <nav class="nav-menu">
-        <a href="#data" class="nav-item active">数据资源管理</a>
-        <a href="#model" class="nav-item">模型资产管理</a>
-        <a href="#association" class="nav-item">关联调度引擎</a>
-        <a href="#analysis" class="nav-item">可视化分析</a>
-    </nav>
+<!-- 顶部导航栏（原型右上角图标） -->
+<header class="top-nav">
+    <div class="nav-tabs">
+        <span class="tab active">主页</span>
+        <span class="tab">数据</span>
+        <span class="tab">模型</span>
+        <span class="tab">关联</span>
+        <span class="tab">分析</span>
+        <span class="tab">工具</span>
+        <span class="tab">视图</span>
+        <span class="tab">帮助</span>
+    </div>
+    <div class="user-bar">
+        <span class="username">LUDNS</span>
+        <i class="icon user-avatar-icon"></i>
+        <i class="icon theme-icon"></i>
+        <i class="icon setting-icon"></i>
+        <i class="icon logout-icon"></i>
+    </div>
 </header>
 
-<!-- 主内容区 -->
-<main class="app-main">
-    <!-- 数据资源管理页面 -->
-    <section id="data" class="page-section active">
-        <div class="page-header">
-            <h2>数据资源管理</h2>
-            <button id="addDataSourceBtn">新增数据源</button>
-            <button id="importDataBtn">导入数据</button>
-        </div>
-        <div class="page-content">
-            <div class="left-panel">
-                <div class="panel-title">数据源列表</div>
-                <div id="dataSourceList" class="panel-content">
-                    <!-- 数据源列表动态加载 -->
+<!-- 功能大图标栏（原型二级菜单） -->
+<div class="func-bar">
+    <button class="func-btn">
+        <i class="icon db-import-icon"></i>
+        <span>数据资源<br>导入</span>
+    </button>
+    <button class="func-btn">
+        <i class="icon file-import-icon"></i>
+        <span>文件<br>上传</span>
+    </button>
+    <button class="func-btn">
+        <i class="icon data-map-icon"></i>
+        <span>数据<br>映射</span>
+    </button>
+    <button class="func-btn">
+        <i class="icon data-view-icon"></i>
+        <span>数据<br>查看</span>
+    </button>
+    <button class="func-btn">
+        <i class="icon model-gen-icon"></i>
+        <span>模型<br>生成</span>
+    </button>
+    <button class="func-btn">
+        <i class="icon sql-gen-icon"></i>
+        <span>SQL<br>生成</span>
+    </button>
+    <button class="func-btn">
+        <i class="icon tool-icon"></i>
+        <span>工具<br>切图</span>
+    </button>
+    <button class="func-btn">
+        <i class="icon model-export-icon"></i>
+        <span>模型资产<br>导出</span>
+    </button>
+    <button class="func-btn">
+        <i class="icon relation-map-icon"></i>
+        <span>关系模型<br>查看</span>
+    </button>
+    <button class="func-btn">
+        <i class="icon visual-icon"></i>
+        <span>可视化<br>分析</span>
+    </button>
+</div>
+
+<!-- 主内容区（三栏+标准树形结构） -->
+<div class="main-container">
+    <!-- 左侧：数据资源库（多级树形结构） -->
+    <div class="sidebar left-sidebar">
+        <div class="sidebar-title">数据资源库</div>
+        <div class="tree">
+            <div class="tree-node">
+                <i class="icon folder-icon"></i>
+                <span>X022-CQ-1</span>
+            </div>
+            <div class="tree-node">
+                <i class="icon folder-icon"></i>
+                <span>X022-CQ-2</span>
+            </div>
+            <div class="tree-node expanded">
+                <i class="icon folder-open-icon"></i>
+                <span>X022-CQ-3</span>
+                <div class="tree-children">
+                    <div class="tree-node">
+                        <i class="icon table-icon"></i>
+                        <span>table1</span>
+                    </div>
                 </div>
             </div>
-            <div class="right-panel">
-                <div id="dataSourceForm" class="form-container hidden">
-                    <h3>新增数据源</h3>
-                    <form id="sourceForm">
-                        <div class="form-item">
-                            <label>别名：</label>
-                            <input type="text" name="alias" placeholder="输入数据源别名（唯一）" required>
+            <div class="tree-node">
+                <i class="icon folder-icon"></i>
+                <span>X022-CQ-4</span>
+            </div>
+            <div class="tree-node">
+                <i class="icon db-icon"></i>
+                <span>pg_meta</span>
+            </div>
+            <div class="tree-node expanded">
+                <i class="icon db-icon"></i>
+                <span>influx_local</span>
+                <div class="tree-children">
+                    <div class="tree-node">
+                        <i class="icon folder-icon"></i>
+                        <span>root</span>
+                        <div class="tree-children">
+                            <div class="tree-node">
+                                <i class="icon folder-icon"></i>
+                                <span>car</span>
+                                <div class="tree-children">
+                                    <div class="tree-node">
+                                        <i class="icon table-icon"></i>
+                                        <span>s1</span>
+                                    </div>
+                                    <div class="tree-node">
+                                        <i class="icon table-icon"></i>
+                                        <span>g1</span>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                        <div class="form-item">
-                            <label>类型：</label>
-                            <select name="type" required>
-                                <option value="">选择数据源类型</option>
-                                <option value="iotdb12">IoTDB</option>
-                                <option value="postgresql">PostgreSQL</option>
-                                <option value="mongodb">MongoDB</option>
-                                <option value="filesystem">文件系统</option>
-                            </select>
-                        </div>
-                        <div class="form-item">
-                            <label>IP地址：</label>
-                            <input type="text" name="ip" placeholder="输入数据源IP" required>
-                        </div>
-                        <div class="form-item">
-                            <label>端口：</label>
-                            <input type="number" name="port" placeholder="输入端口号" required>
-                        </div>
-                        <div class="form-item">
-                            <label>用户名：</label>
-                            <input type="text" name="username" placeholder="输入登录用户名">
-                        </div>
-                        <div class="form-item">
-                            <label>密码：</label>
-                            <input type="password" name="password" placeholder="输入登录密码">
-                        </div>
-                        <div class="form-btn">
-                            <button type="submit">提交注册</button>
-                            <button type="button" id="cancelForm">取消</button>
-                        </div>
-                    </form>
+                    </div>
                 </div>
             </div>
         </div>
-    </section>
+    </div>
 
-    <!-- 其他模块页面（占位） -->
-    <section id="model" class="page-section hidden">模型资产管理</section>
-    <section id="association" class="page-section hidden">关联调度引擎</section>
-    <section id="analysis" class="page-section hidden">可视化分析</section>
-</main>
+    <!-- 中间：工作区 -->
+    <div class="workspace">
+        <div class="workspace-title">工作区</div>
+        <div class="workspace-content"></div>
+    </div>
 
-<!-- 引入前端脚本 -->
-<script src="js/api.js"></script>
-<script src="js/app.js"></script>
+    <!-- 右侧：模型资产库（多级树形结构） -->
+    <div class="sidebar right-sidebar">
+        <div class="sidebar-title">模型资产库</div>
+        <div class="search-box">
+            <input type="text" placeholder="搜索">
+            <i class="icon search-icon"></i>
+        </div>
+        <div class="tree">
+            <div class="tree-node expanded">
+                <i class="icon cube-icon"></i>
+                <span>Timer</span>
+                <div class="tree-children">
+                    <div class="tree-node">
+                        <i class="icon cube-icon"></i>
+                        <span>Timer2022</span>
+                    </div>
+                    <div class="tree-node">
+                        <i class="icon cube-icon"></i>
+                        <span>Timer0812</span>
+                    </div>
+                    <div class="tree-node">
+                        <i class="icon cube-icon"></i>
+                        <span>Timer-XL</span>
+                    </div>
+                    <div class="tree-node expanded">
+                        <i class="icon cube-icon"></i>
+                        <span>Timer-Sundial</span>
+                        <div class="tree-children">
+                            <div class="tree-node active">
+                                <i class="icon cube-icon"></i>
+                                <span>PID控制算法</span>
+                                <div class="tree-children">
+                                    <div class="tree-node">
+                                        <i class="icon version-icon"></i>
+                                        <span>v1.0.0</span>
+                                    </div>
+                                    <div class="tree-node">
+                                        <i class="icon version-icon"></i>
+                                        <span>v1.0.1</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="./js/main.js"></script>
 </body>
 </html>
