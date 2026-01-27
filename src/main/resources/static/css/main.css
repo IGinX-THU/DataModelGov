@@ -1,7 +1,7 @@
 /* 顶部导航栏 */
 .top-nav {
     height: 30px;
-    background-color: #2c5aa0;
+    background-color: #23365D; /* 改为目标背景色 */
     color: #fff;
     display: flex;
     justify-content: space-between;
@@ -43,6 +43,12 @@
 }
 
 .user-bar .icon {
+    cursor: pointer;
+    position: relative;
+    z-index: 10000;
+}
+
+.user-bar .top-icon {
     cursor: pointer;
     position: relative;
     z-index: 10000;
@@ -244,10 +250,12 @@
     background-color: #0E0E10 !important;
     color: #FFFFFF !important;
 }
+/* ========== 关键修改：删除/修改暗黑模式下对top-nav的背景色覆盖 ========== */
 .dark-mode .top-nav {
-    background-color: #0E0E10 !important;
-    border-bottom: 1px solid #2D2D30;
+    /* 移除原有的 background-color: #0E0E10 !important; 不再覆盖默认背景色 */
+    border-bottom: none; /* 同时移除边框，避免顶部导航栏多出一条线（保持和默认样式一致） */
 }
+/* 保留tab文字颜色，避免文字看不清，但不改变导航栏背景 */
 .dark-mode .nav-tabs .tab {
     color: #FFFFFF !important;
 }
@@ -255,6 +263,7 @@
     background-color: #1E1E20 !important;
     color: #FFFFFF !important;
 }
+/* ========== 其余暗黑模式样式保持你的原代码不变 ========== */
 .dark-mode .sub-tab-bar {
     background-color: #1E1E20 !important;
     border-bottom: 1px solid #2D2D30;
@@ -339,4 +348,3 @@
 .dark-mode .user-bar .icon {
     filter: invert(1) !important;
 }
-

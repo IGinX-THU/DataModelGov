@@ -6,6 +6,13 @@
     vertical-align: middle;
 }
 
+.top-icon {
+    display: inline-block;
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    vertical-align: middle;
+}
+
 /* 功能按钮图标 - 24px */
 .func-btn .icon {
     width: 24px;
@@ -14,7 +21,7 @@
 }
 
 /* 树形/顶部小图标 - 16px */
-.tree-node .icon, .user-bar .icon, .search-box .icon {
+.tree-node .icon, .user-bar .icon, .user-bar .top-icon, .search-box .icon {
     width: 16px;
     height: 16px;
     margin-right: 4px;
