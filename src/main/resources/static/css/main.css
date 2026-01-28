@@ -54,24 +54,41 @@
     z-index: 10000;
 }
 
-/* 二级选项卡 */
+/* 二级选项卡 - 新的分组布局 */
 .sub-tab-bar {
-    height: 28px;
-    background-color: #e8f0fe;
-    border-bottom: 1px solid #2c5aa0;
+    background-color: #f8f9fa;
     display: flex;
-    align-items: center;
-    padding-left: 10px;
-    gap: 10px;
+    align-items: flex-start;
+    padding: 5px 10px 8px 10px;
+    gap: 20px;
+    overflow-x: auto;
 }
 
-.sub-tab-bar .sub-tab {
-    padding: 0 10px;
-    height: 28px;
-    line-height: 28px;
-    /*cursor: pointer;*/
-    border-right: 1px solid #ccc;
+.sub-tab-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: fit-content;
+}
+
+.sub-tab-section .sub-tab {
+    padding: 4px 10px;
+    height: 24px;
+    line-height: 16px;
     font-size: 12px;
+    font-weight: bold;
+    color: #495057;
+    border-top: 2px solid #007bff;
+    margin-top: 5px;
+    white-space: nowrap;
+}
+
+/* 功能按钮组 */
+.func-btn-group {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    justify-content: center;
 }
 
 /*.sub-tab-bar .sub-tab.active {*/
@@ -80,37 +97,74 @@
 /*    font-weight: bold;*/
 /*}*/
 
-/* 功能按钮栏 */
-.func-btn-bar {
-    height: 36px;
-    background-color: #f5f8fa;
-    border-bottom: 1px solid #ccc;
-    display: flex;
-    align-items: center;
-    padding-left: 10px;
-    gap: 8px;
+/* 功能按钮栏和标签栏合并容器 */
+.func-tab-container {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
 }
 
-.func-btn {
+/* 功能按钮栏 */
+.func-btn-bar {
+    height: 40px;
+    background-color: #f8f9fa;
     display: flex;
     align-items: center;
-    padding: 4px 8px;
-    border: 1px solid #ccc;
-    border-radius: 3px;
-    background-color: #fff;
-    color: #003366;
-    transition: all 0.2s;
+    padding: 0 15px;
+    gap: 0;
+    overflow-x: auto;
+}
+
+/* 功能按钮 - 适应新布局 */
+.func-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-width: 50px;
+    height: 32px;
+    padding: 3px 6px;
+    border: 1px solid transparent;
+    background-color: transparent;
+    color: #495057;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+    white-space: nowrap;
 }
 
 .func-btn:hover {
-    background-color: #e8f0fe;
-    border-color: #2c5aa0;
+    background-color: #e9ecef;
+    border-color: #ced4da;
+    color: #212529;
+}
+
+.func-btn:active {
+    background-color: #dee2e6;
+    transform: translateY(1px);
+}
+
+.btn-icon {
+    width: 14px;
+    height: 14px;
+    margin-bottom: 1px;
+    fill: #495057;
+}
+
+.func-btn:hover .btn-icon {
+    fill: #212529;
+}
+
+.func-btn span {
+    font-size: 10px;
+    line-height: 1;
+    margin-top: 1px;
 }
 
 /* 主内容区 */
 .main-container {
     display: flex;
-    height: calc(100vh - 30px - 28px - 36px);
+    height: calc(100vh - 30px - 68px);
 }
 
 /* 侧边栏通用样式 */
@@ -266,27 +320,32 @@
 /* ========== 其余暗黑模式样式保持你的原代码不变 ========== */
 .dark-mode .sub-tab-bar {
     background-color: #1E1E20 !important;
+}
+.dark-mode .sub-tab-section .sub-tab {
+    color: #FFFFFF !important;
+    border-top-color: #007bff !important;
+}
+.dark-mode .func-tab-container {
+    background-color: #1E1E20 !important;
     border-bottom: 1px solid #2D2D30;
-}
-.dark-mode .sub-tab-bar .sub-tab {
-    color: #FFFFFF !important;
-    border-right-color: #2D2D30;
-}
-.dark-mode .sub-tab-bar .sub-tab.active {
-    background-color: #2D2D30 !important;
-    color: #FFFFFF !important;
 }
 .dark-mode .func-btn-bar {
     background-color: #1E1E20 !important;
-    border-bottom: 1px solid #2D2D30;
 }
 .dark-mode .func-btn {
-    background-color: #1E1E20 !important;
-    border-color: #2D2D30 !important;
+    background-color: transparent !important;
+    border-color: transparent !important;
     color: #FFFFFF !important;
 }
 .dark-mode .func-btn:hover {
     background-color: #2D2D30 !important;
+    border-color: #404040 !important;
+}
+.dark-mode .btn-icon {
+    fill: #FFFFFF !important;
+}
+.dark-mode .func-btn:hover .btn-icon {
+    fill: #FFFFFF !important;
 }
 .dark-mode .sidebar {
     background-color: #0E0E10 !important;
@@ -348,3 +407,4 @@
 .dark-mode .user-bar .icon {
     filter: invert(1) !important;
 }
+
