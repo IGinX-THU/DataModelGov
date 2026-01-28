@@ -75,7 +75,7 @@
     padding: 4px 10px;
     height: 24px;
     line-height: 16px;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: normal;
     color: #495057;
     border-top: 2px solid #007bff;
@@ -192,25 +192,47 @@
     border-bottom: 1px solid #ccc;
 }
 
-/* 搜索框 */
+/* 搜索框 - 优化版本 */
 .search-box {
-    padding: 5px;
+    padding: 8px 10px;
     display: flex;
     align-items: center;
-    border-bottom: 1px solid #ccc;
+    border-bottom: 1px solid #e0e0e0;
+    background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
 }
 
 .search-box input {
     flex: 1;
-    height: 22px;
+    height: 28px;
+    padding: 6px 12px;
+    border: 1px solid #e0e0e0;
+    border-radius: 16px;
+    outline: none;
+    font-size: 13px;
+    transition: all 0.3s ease;
+    background: #fff;
+}
+
+.search-box input:focus {
+    border-color: #2196F3;
+    box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.1);
+}
+
+.search-box input::placeholder {
+    color: #9e9e9e;
 }
 
 .search-box .icon {
-    margin-left: 5px;
+    margin-left: 8px;
     cursor: pointer;
+    transition: all 0.2s ease;
 }
 
-/* 树形结构 */
+.search-box .icon:hover {
+    transform: scale(1.1);
+}
+
+/* 树形结构 - 简洁版本 */
 .tree {
     flex: 1;
     overflow-y: auto;
@@ -218,13 +240,20 @@
 }
 
 .tree-node {
-    padding: 2px 0;
+    padding: 4px 8px;
     cursor: pointer;
-    line-height: 1.5;
+    line-height: 1.4;
+    font-size: 13px;
+    position: relative;
+    user-select: none;
+}
+
+.tree-node:hover {
+    background-color: #f5f5f5;
 }
 
 .tree-node .tree-children {
-    margin-left: 18px;
+    margin-left: 16px;
     display: block;
 }
 
@@ -233,14 +262,37 @@
 }
 
 .tree-node.active {
-    background-color: #2c5aa0;
-    color: #fff;
-    padding-left: 5px;
+    background-color: #e3f2fd;
+    color: #1976d2;
+    font-weight: 500;
     border-radius: 2px;
+    margin: 1px 0;
 }
 
-.tree-node.active .icon {
-    filter: invert(1);
+/* 简洁的展开/折叠指示器 */
+.tree-node.expanded > span::before,
+.tree-node:not(.expanded) > span::before {
+    content: '▼';
+    display: inline-block;
+    width: 12px;
+    margin-right: 4px;
+    font-size: 10px;
+    color: #666;
+    transition: transform 0.2s ease;
+}
+
+.tree-node:not(.expanded) > span::before {
+    transform: rotate(-90deg);
+}
+
+.tree-node.expanded.active > span::before,
+.tree-node:not(.expanded).active > span::before {
+    color: #1976d2;
+}
+
+/* 子目录不显示图标 */
+.tree-children .icon {
+    display: none;
 }
 
 /* 工作区 */
@@ -366,6 +418,45 @@
 }
 .dark-mode .search-box {
     border-bottom-color: #2D2D30 !important;
+    background: linear-gradient(135deg, #1E1E20 0%, #0E0E10 100%) !important;
+}
+
+.dark-mode .search-box input {
+    background-color: #2D2D30 !important;
+    border-color: #404040 !important;
+    color: #FFFFFF !important;
+}
+
+.dark-mode .search-box input:focus {
+    border-color: #2196F3 !important;
+    box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.2) !important;
+}
+
+.dark-mode .search-box input::placeholder {
+    color: #9e9e9e !important;
+}
+
+.dark-mode .tree-node {
+    color: #FFFFFF !important;
+}
+
+.dark-mode .tree-node:hover {
+    background-color: #2D2D30 !important;
+}
+
+.dark-mode .tree-node.active {
+    background-color: #1e3a5f !important;
+    color: #64b5f6 !important;
+}
+
+.dark-mode .tree-node.expanded > span::before,
+.dark-mode .tree-node:not(.expanded) > span::before {
+    color: #9e9e9e !important;
+}
+
+.dark-mode .tree-node.expanded.active > span::before,
+.dark-mode .tree-node:not(.expanded).active > span::before {
+    color: #64b5f6 !important;
 }
 .dark-mode .search-box input {
     background-color: #1E1E20 !important;
