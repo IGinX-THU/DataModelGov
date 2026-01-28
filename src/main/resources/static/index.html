@@ -89,40 +89,55 @@
 <header class="top-nav">
     <div class="nav-tabs">
         <span class="tab active">主页</span>
-        <span class="tab">数据</span>
-        <span class="tab">模型</span>
-        <span class="tab">关联</span>
-        <span class="tab">分析</span>
+        <span class="tab dropdown" id="dataDropdown">
+                <span class="dropdown-trigger">数据</span>
+                <ul class="dropdown-menu">
+                    <li>注册异构数据源</li>
+                    <li>移除异构数据源</li>
+                    <li>导入数据</li>
+                    <li>导出数据</li>
+                </ul>
+            </span>
+        <span class="tab dropdown" id="modelDropdown">
+                <span class="dropdown-trigger">模型</span>
+                <ul class="dropdown-menu">
+                    <li>上传模型文件</li>
+                    <li>下载模型文件</li>
+                    <li>移除模型资产</li>
+                    <li>编辑元模型档案</li>
+                    <li>配置解析规则</li>
+                </ul>
+            </span>
+        <span class="tab dropdown" id="scheduleDropdown">
+                <span class="dropdown-trigger">关联</span>
+                <ul class="dropdown-menu">
+                    <li>关联规则配置</li>
+                    <li>仿真任务执行</li>
+                </ul>
+            </span>
+        <span class="tab dropdown" id="analysisDropdown">
+                <span class="dropdown-trigger">分析</span>
+                <ul class="dropdown-menu">
+                    <li>数值与曲线分析</li>
+                </ul>
+            </span>
         <!-- 修复下拉标签：确保span包裹完整，点击区域无遗漏 -->
         <span class="tab dropdown" id="toolDropdown">
                 <span class="dropdown-trigger">工具</span>
                 <ul class="dropdown-menu">
-                    <li>数据传输...</li>
-                    <li>数据生成...</li>
-                    <li>数据字典...</li>
-                    <li>数据同步...</li>
-                    <li>结构同步...</li>
-                    <li>命令列界面...</li>
-                    <li>服务器监控 ▶</li>
-                    <li>在数据库或模式中查找...</li>
-                    <li>历史日志... <span class="shortcut">Ctrl+L</span></li>
-                    <li>选项...</li>
+                    <li>用户选项</li>
                 </ul>
             </span>
         <span class="tab dropdown" id="windowDropdown">
                 <span class="dropdown-trigger">窗口</span>
                 <ul class="dropdown-menu">
-                    <li>新建窗口</li>
-                    <li>切换窗口 ▶</li>
-                    <li>关闭窗口</li>
-                    <li>关闭所有窗口</li>
+                    <li>明亮模式</li>
+                    <li>暗黑模式</li>
                 </ul>
             </span>
         <span class="tab dropdown" id="helpDropdown">
                 <span class="dropdown-trigger">帮助</span>
                 <ul class="dropdown-menu">
-                    <li>文档</li>
-                    <li>在线帮助</li>
                     <li>关于</li>
                 </ul>
             </span>

@@ -52,12 +52,64 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // 5. 下拉菜单
+    const dataDropdown = document.getElementById('dataDropdown');
+    const modelDropdown = document.getElementById('modelDropdown');
+    const scheduleDropdown = document.getElementById('scheduleDropdown');
+    const analysisDropdown = document.getElementById('analysisDropdown');
     const toolDropdown = document.getElementById('toolDropdown');
     const windowDropdown = document.getElementById('windowDropdown');
     const helpDropdown = document.getElementById('helpDropdown');
 
+    dataDropdown.addEventListener('click', function(e) {
+        e.stopPropagation();
+        modelDropdown.classList.remove('active');
+        scheduleDropdown.classList.remove('active');
+        analysisDropdown.classList.remove('active');
+        toolDropdown.classList.remove('active');
+        windowDropdown.classList.remove('active');
+        helpDropdown.classList.remove('active');
+        this.classList.toggle('active');
+    });
+
+    modelDropdown.addEventListener('click', function(e) {
+        e.stopPropagation();
+        dataDropdown.classList.remove('active');
+        scheduleDropdown.classList.remove('active');
+        analysisDropdown.classList.remove('active');
+        toolDropdown.classList.remove('active');
+        windowDropdown.classList.remove('active');
+        helpDropdown.classList.remove('active');
+        this.classList.toggle('active');
+    });
+
+    scheduleDropdown.addEventListener('click', function(e) {
+        e.stopPropagation();
+        dataDropdown.classList.remove('active');
+        modelDropdown.classList.remove('active');
+        analysisDropdown.classList.remove('active');
+        toolDropdown.classList.remove('active');
+        windowDropdown.classList.remove('active');
+        helpDropdown.classList.remove('active');
+        this.classList.toggle('active');
+    });
+
+    analysisDropdown.addEventListener('click', function(e) {
+        e.stopPropagation();
+        dataDropdown.classList.remove('active');
+        modelDropdown.classList.remove('active');
+        scheduleDropdown.classList.remove('active');
+        toolDropdown.classList.remove('active');
+        windowDropdown.classList.remove('active');
+        helpDropdown.classList.remove('active');
+        this.classList.toggle('active');
+    });
+
     toolDropdown.addEventListener('click', function(e) {
         e.stopPropagation();
+        dataDropdown.classList.remove('active');
+        modelDropdown.classList.remove('active');
+        scheduleDropdown.classList.remove('active');
+        analysisDropdown.classList.remove('active');
         windowDropdown.classList.remove('active');
         helpDropdown.classList.remove('active');
         this.classList.toggle('active');
@@ -65,6 +117,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     windowDropdown.addEventListener('click', function(e) {
         e.stopPropagation();
+        dataDropdown.classList.remove('active');
+        modelDropdown.classList.remove('active');
+        scheduleDropdown.classList.remove('active');
+        analysisDropdown.classList.remove('active');
         toolDropdown.classList.remove('active');
         helpDropdown.classList.remove('active');
         this.classList.toggle('active');
@@ -72,12 +128,20 @@ document.addEventListener('DOMContentLoaded', function() {
 
     helpDropdown.addEventListener('click', function(e) {
         e.stopPropagation();
+        dataDropdown.classList.remove('active');
+        modelDropdown.classList.remove('active');
+        scheduleDropdown.classList.remove('active');
+        analysisDropdown.classList.remove('active');
         toolDropdown.classList.remove('active');
         windowDropdown.classList.remove('active');
         this.classList.toggle('active');
     });
 
     document.addEventListener('click', function() {
+        dataDropdown.classList.remove('active');
+        modelDropdown.classList.remove('active');
+        scheduleDropdown.classList.remove('active');
+        analysisDropdown.classList.remove('active');
         toolDropdown.classList.remove('active');
         windowDropdown.classList.remove('active');
         helpDropdown.classList.remove('active');
