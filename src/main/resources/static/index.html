@@ -288,7 +288,10 @@
     <!-- 中间工作区 -->
     <div class="workspace">
         <div class="workspace-title">工作区</div>
-        <div class="workspace-content"></div>
+        <div class="workspace-content">
+            <!-- 注册异构数据源内嵌页面组件 -->
+            <register-data-resource-embedded id="registerEmbedded"></register-data-resource-embedded>
+        </div>
     </div>
 
     <!-- 右侧模型资产库 -->
@@ -337,6 +340,8 @@
     </div>
 </div>
 
+<script src="./config/app-config.js"></script>
+<script src="./components/data-resource/register-embedded.js"></script>
 <script src="./js/main.js"></script>
 </body>
 </html>

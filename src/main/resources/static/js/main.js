@@ -151,6 +151,64 @@ document.addEventListener('DOMContentLoaded', function() {
     menuItems.forEach(item => {
         item.addEventListener('click', function(e) {
             e.stopPropagation();
+            
+            // 检查是否点击了"注册异构数据源"
+            if (this.textContent.trim() === '注册异构数据源') {
+                const embedded = document.getElementById('registerEmbedded');
+                if (embedded) {
+                    embedded.show();
+                }
+            }
         });
     });
+
+    // 6. 新增按钮点击事件 - 打开注册内嵌页面
+    const addBtns = document.querySelectorAll('.func-btn');
+    addBtns.forEach(btn => {
+        const btnText = btn.querySelector('span')?.textContent?.trim();
+        if (btnText === '新增') {
+            btn.addEventListener('click', function() {
+                const embedded = document.getElementById('registerEmbedded');
+                if (embedded) {
+                    embedded.show();
+                }
+            });
+        }
+    });
+
+    // 7. 监听内嵌页面提交事件
+    const embedded = document.getElementById('registerEmbedded');
+    if (embedded) {
+        embedded.addEventListener('submit-success', function(e) {
+            console.log('数据源注册成功:', e.detail);
+            
+            // 在工作区显示成功消息
+            const workspaceContent = document.querySelector('.workspace-content');
+            if (workspaceContent) {
+                const successMsg = document.createElement('div');
+                successMsg.style.cssText = `
+                    padding: 20px;
+                    background: #f0f9ff;
+                    border: 1px solid #bfdbfe;
+                    border-radius: 6px;
+                    color: #1e40af;
+                    margin: 20px;
+                    text-align: center;
+                `;
+                successMsg.innerHTML = `
+                    <h4 style="margin: 0 0 8px 0;">✅ 数据源注册成功</h4>
+                    <p style="margin: 0; color: #64748b;">数据源 "${e.detail.formData.alias}" 已成功注册</p>
+                `;
+                
+                workspaceContent.innerHTML = '';
+                workspaceContent.appendChild(successMsg);
+                
+                setTimeout(() => {
+                    if (successMsg.parentNode) {
+                        successMsg.remove();
+                    }
+                }, 5000);
+            }
+        });
+    }
 });

@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.*;
  * 数据源管理接口
  */
 @RestController
-@RequestMapping("/api/v1/data/source")
+@RequestMapping("/api/datasource")
 public class DataSourceController {
 
     @Autowired
