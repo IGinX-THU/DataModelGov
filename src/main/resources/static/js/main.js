@@ -154,9 +154,14 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // 检查是否点击了"注册异构数据源"
             if (this.textContent.trim() === '注册异构数据源') {
+                console.log('注册异构数据源菜单被点击');
                 const embedded = document.getElementById('registerEmbedded');
+                console.log('找到组件:', embedded);
                 if (embedded) {
+                    console.log('调用show方法');
                     embedded.show();
+                } else {
+                    console.error('未找到registerEmbedded组件');
                 }
             }
         });
@@ -168,9 +173,14 @@ document.addEventListener('DOMContentLoaded', function() {
         const btnText = btn.querySelector('span')?.textContent?.trim();
         if (btnText === '新增') {
             btn.addEventListener('click', function() {
+                console.log('新增按钮被点击');
                 const embedded = document.getElementById('registerEmbedded');
+                console.log('找到组件:', embedded);
                 if (embedded) {
+                    console.log('调用show方法');
                     embedded.show();
+                } else {
+                    console.error('未找到registerEmbedded组件');
                 }
             });
         }
@@ -182,7 +192,7 @@ document.addEventListener('DOMContentLoaded', function() {
         embedded.addEventListener('submit-success', function(e) {
             console.log('数据源注册成功:', e.detail);
             
-            // 在工作区显示成功消息
+            // 在工作区显示成功消息，但保留组件
             const workspaceContent = document.querySelector('.workspace-content');
             if (workspaceContent) {
                 const successMsg = document.createElement('div');
@@ -200,8 +210,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     <p style="margin: 0; color: #64748b;">数据源 "${e.detail.formData.alias}" 已成功注册</p>
                 `;
                 
-                workspaceContent.innerHTML = '';
-                workspaceContent.appendChild(successMsg);
+                // 在工作区开头插入成功消息，不清空整个工作区
+                workspaceContent.insertBefore(successMsg, workspaceContent.firstChild);
                 
                 setTimeout(() => {
                     if (successMsg.parentNode) {

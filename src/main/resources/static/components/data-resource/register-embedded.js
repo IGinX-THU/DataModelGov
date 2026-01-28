@@ -483,39 +483,45 @@ class RegisterDataResourceEmbedded extends HTMLElement {
     }
 
     show() {
+        console.log('显示表单组件');
         this.setAttribute('show', '');
+        // 立即重置表单，不使用setTimeout
         this.resetForm();
+        this.clearValidationErrors();
+        console.log('表单重置完成');
     }
 
     hide() {
+        console.log('隐藏表单组件');
         this.removeAttribute('show');
+        // 隐藏时也清除验证错误
+        this.clearValidationErrors();
+        console.log('表单隐藏完成');
     }
 
     resetForm() {
-        setTimeout(() => {
-            const nameInput = this.shadowRoot.getElementById('dataSourceName');
-            const typeSelect = this.shadowRoot.getElementById('dataSourceType');
-            const descInput = this.shadowRoot.getElementById('description');
-            const hostInput = this.shadowRoot.getElementById('host');
-            const portInput = this.shadowRoot.getElementById('port');
-            const userInput = this.shadowRoot.getElementById('username');
-            const passInput = this.shadowRoot.getElementById('password');
-            const dbInput = this.shadowRoot.getElementById('database');
-            const dynamicFields = this.shadowRoot.getElementById('dynamicFields');
+        const nameInput = this.shadowRoot.getElementById('dataSourceName');
+        const typeSelect = this.shadowRoot.getElementById('dataSourceType');
+        const descInput = this.shadowRoot.getElementById('description');
+        const hostInput = this.shadowRoot.getElementById('host');
+        const portInput = this.shadowRoot.getElementById('port');
+        const userInput = this.shadowRoot.getElementById('username');
+        const passInput = this.shadowRoot.getElementById('password');
+        const dbInput = this.shadowRoot.getElementById('database');
+        const dynamicFields = this.shadowRoot.getElementById('dynamicFields');
 
-            if (nameInput) nameInput.value = '';
-            if (typeSelect) typeSelect.value = '';
-            if (descInput) descInput.value = '';
-            if (hostInput) hostInput.value = '';
-            if (portInput) portInput.value = '';
-            if (userInput) userInput.value = '';
-            if (passInput) passInput.value = '';
-            if (dbInput) dbInput.value = '';
-            if (dynamicFields) {
-                dynamicFields.style.display = 'none';
-                dynamicFields.innerHTML = '';
-            }
-        }, 0);
+        if (nameInput) nameInput.value = '';
+        if (typeSelect) typeSelect.value = '';
+        if (descInput) descInput.value = '';
+        if (hostInput) hostInput.value = '';
+        if (portInput) portInput.value = '';
+        if (userInput) userInput.value = '';
+        if (passInput) passInput.value = '';
+        if (dbInput) dbInput.value = '';
+        if (dynamicFields) {
+            dynamicFields.style.display = 'none';
+            dynamicFields.innerHTML = '';
+        }
     }
 
     async submit() {
