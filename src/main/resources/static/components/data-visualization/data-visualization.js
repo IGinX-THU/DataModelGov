@@ -857,6 +857,11 @@ class DataVisualization extends HTMLElement {
     initChart() {
         const chartContainer = this.shadowRoot.getElementById('chartContainer');
         if (chartContainer && window.echarts) {
+            // 如果容器显示的是空状态，清空它
+            if (chartContainer.querySelector('div[style*="📊"]')) {
+                chartContainer.innerHTML = '';
+            }
+            
             // 清除加载提示
             const loadingEl = chartContainer.querySelector('.loading');
             if (loadingEl) {
@@ -912,7 +917,10 @@ class DataVisualization extends HTMLElement {
         this.setAttribute('show', '');
         this.dataSource = dataSource;
         this.availablePoints = points;
-        this.selectedPoints = new Set(points); // 直接使用传入的测点
+        // 如果是新的显示，使用传入的测点；如果是已存在的组件，保持当前选中的测点
+        if (!this.selectedPoints || this.selectedPoints.size === 0) {
+            this.selectedPoints = new Set(points);
+        }
         this.allData = [];
         this.displayData = [];
         this.currentPage = 1;
@@ -999,6 +1007,7 @@ class DataVisualization extends HTMLElement {
     }
 
     removeSelectedPoint(point) {
+        console.log('移除测点:', point);
         this.selectedPoints.delete(point);
         
         // 更新全局选中的测点
@@ -1009,8 +1018,14 @@ class DataVisualization extends HTMLElement {
         // 更新显示
         this.updateSelectedPointsList();
         
-        // 重新加载数据
-        this.loadData();
+        // 如果没有选中的测点了，显示空状态
+        if (this.selectedPoints.size === 0) {
+            console.log('没有选中的测点了，显示空状态');
+            this.showEmptyState();
+        } else {
+            // 重新加载数据
+            this.loadData();
+        }
     }
 
     bindQueryEvents() {
@@ -1290,6 +1305,12 @@ class DataVisualization extends HTMLElement {
     }
 
     showEmptyState() {
+        // 清理ECharts实例
+        if (this.chart) {
+            this.chart.dispose();
+            this.chart = null;
+        }
+        
         const chartContainer = this.shadowRoot.getElementById('chartContainer');
         if (chartContainer) {
             chartContainer.innerHTML = `
@@ -1537,7 +1558,7 @@ class DataVisualization extends HTMLElement {
                     width: 2
                 },
                 itemStyle: {
-                    color: this.getColorForIndex(index)
+                    color: this.getColorForPoint(point)
                 }
             });
         });
@@ -1622,7 +1643,7 @@ class DataVisualization extends HTMLElement {
             series: series
         };
 
-        this.chart.setOption(option);
+        this.chart.setOption(option, true); // 第二个参数true表示不合并，完全替换
     }
 
     updateTable() {
@@ -1746,6 +1767,22 @@ class DataVisualization extends HTMLElement {
         if (nextBtn) {
             nextBtn.disabled = this.totalPages === 0 || this.currentPage >= this.totalPages;
         }
+    }
+
+    getColorForPoint(pointName) {
+        // 为每个测点名称生成固定的颜色
+        const colors = [
+            '#3370ff', '#00b42a', '#ff7d00', '#f53f3f', '#722ed1',
+            '#13c2c2', '#eb2f96', '#faad14', '#a0d911', '#f5222d'
+        ];
+        
+        // 使用测点名称的哈希值来确保颜色一致性
+        let hash = 0;
+        for (let i = 0; i < pointName.length; i++) {
+            hash = pointName.charCodeAt(i) + ((hash << 5) - hash);
+        }
+        
+        return colors[Math.abs(hash) % colors.length];
     }
 
     getColorForIndex(index) {

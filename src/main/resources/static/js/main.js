@@ -612,6 +612,11 @@ window.selectedDataPoints = new Set();
         
         console.log('准备显示可视化组件，当前选中的测点:', Array.from(window.selectedDataPoints));
         
+        // 如果组件已存在，同步其选中的测点
+        if (dataViz.selectedPoints) {
+            dataViz.selectedPoints = new Set(window.selectedDataPoints);
+        }
+        
         // 显示数据可视化
         dataViz.show(dataSource, Array.from(window.selectedDataPoints));
     }
