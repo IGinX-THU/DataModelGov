@@ -332,7 +332,7 @@ class DatabaseTable extends HTMLElement {
 }
 
 .modal {
-    width: 420px;
+    width: 640px;
     background: #fff;
     border-radius: 8px;
     box-shadow: 0 12px 32px rgba(15, 23, 42, 0.2);
@@ -355,13 +355,13 @@ class DatabaseTable extends HTMLElement {
 }
 
 .modal-body {
-    padding: 16px;
+    padding: 24px 24px 16px;
     font-size: 13px;
     color: #4b5563;
 }
 
 .modal-footer {
-    padding: 12px 16px 16px;
+    padding: 12px 24px 24px;
     display: flex;
     justify-content: flex-end;
     gap: 8px;
@@ -381,6 +381,66 @@ class DatabaseTable extends HTMLElement {
     color: #fff;
     border-color: #4c89ff;
 }
+
+.modal-form {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    align-items: center;
+}
+
+.modal-form-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    width: 100%;
+    justify-content: center;
+}
+
+.modal-label {
+    width: 120px;
+    text-align: right;
+    color: #6b7280;
+    font-size: 12px;
+}
+
+.modal-input {
+    width: 260px;
+    border: 1px solid #e2e6ef;
+    border-radius: 4px;
+    padding: 8px 10px;
+    font-size: 12px;
+    background: #fafbff;
+}
+
+.modal-hint {
+    font-size: 12px;
+    color: #9aa1ac;
+    text-align: center;
+}
+
+.modal-upload {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.upload-btn {
+    padding: 6px 14px;
+    border: 1px solid #d5dbe7;
+    background: #fff;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.radio-group {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    font-size: 12px;
+    color: #6b7280;
+}
 `;
     
     buildFilterRow(fieldValue = '', operatorValue = '', valueValue = '') {
@@ -399,6 +459,62 @@ class DatabaseTable extends HTMLElement {
                     <input class="filter-input" type="text" value="${valueValue}" placeholder="请输入" />
                 </div>
                 <button class="filter-remove" type="button">⊖</button>
+            </div>
+        `;
+    }
+
+    getFormModalBody(defaults = {}) {
+        const values = {
+            name: defaults.name || 'XXXXXXXX',
+            device: defaults.device || 'XXXXXXXX',
+            temperature: defaults.temperature || '3145',
+            humidity: defaults.humidity || '3145'
+        };
+        return `
+            <div class="modal-form">
+                <div class="modal-form-row">
+                    <span class="modal-label">name :</span>
+                    <input class="modal-input" type="text" value="${values.name}" />
+                </div>
+                <div class="modal-form-row">
+                    <span class="modal-label">device :</span>
+                    <input class="modal-input" type="text" value="${values.device}" />
+                </div>
+                <div class="modal-form-row">
+                    <span class="modal-label">temperature :</span>
+                    <input class="modal-input" type="text" value="${values.temperature}" />
+                </div>
+                <div class="modal-form-row">
+                    <span class="modal-label">humidity :</span>
+                    <input class="modal-input" type="text" value="${values.humidity}" />
+                </div>
+            </div>
+        `;
+    }
+
+    getImportModalBody() {
+        return `
+            <div class="modal-form">
+                <div class="modal-form-row">
+                    <span class="modal-label">文件 :</span>
+                    <div class="modal-upload">
+                        <button class="upload-btn" type="button">上传文件</button>
+                        <span class="modal-hint">支持扩展名：xlsx, xls, sql...</span>
+                    </div>
+                </div>
+                <div class="modal-form-row">
+                    <span class="modal-label">主键冲突策略 :</span>
+                    <div class="radio-group">
+                        <label><input type="radio" name="importStrategy" checked> 覆盖 (Update)</label>
+                        <label><input type="radio" name="importStrategy"> 跳过 (Skip)</label>
+                        <label><input type="radio" name="importStrategy"> 报错 (Error)</label>
+                    </div>
+                </div>
+                <div class="modal-form-row">
+                    <span class="modal-label">Sheet 页 :</span>
+                    <input class="modal-input" type="text" placeholder="请输入" />
+                </div>
+                <div class="modal-hint">请填写正确的Sheet序号并且Excel表头与数据库字段一致</div>
             </div>
         `;
     }
@@ -511,15 +627,15 @@ class DatabaseTable extends HTMLElement {
             this.renderTable();
         });
 
-        addRowBtn.addEventListener('click', () => this.openModal('新增', '这里是新增表单示例', ['取消', '确定']));
-        importBtn.addEventListener('click', () => this.openModal('导入', '这里是导入弹窗示例', ['取消', '确定']));
-        exportBtn.addEventListener('click', () => this.openModal('导出', '这里是导出弹窗示例', ['取消', '确定']));
+        addRowBtn.addEventListener('click', () => this.openModal('新增', this.getFormModalBody(), ['取消', '保存']));
+        importBtn.addEventListener('click', () => this.openModal('导入', this.getImportModalBody(), ['取消', '保存']));
+        exportBtn.addEventListener('click', () => this.openModal('导出', '导出当前表格数据。', ['取消', '保存']));
 
         this.shadowRoot.addEventListener('click', (event) => {
             const editBtn = event.target.closest('.edit-btn');
             const deleteBtn = event.target.closest('.delete-btn');
             if (editBtn) {
-                this.openModal('编辑', `编辑记录 ID: ${editBtn.dataset.id}`, ['取消', '保存']);
+                this.openModal('编辑', this.getFormModalBody(), ['取消', '保存']);
             }
             if (deleteBtn) {
                 this.openModal('删除', `确认删除记录 ID: ${deleteBtn.dataset.id}？`, ['取消', '确认删除']);
@@ -546,7 +662,7 @@ class DatabaseTable extends HTMLElement {
         const modalBody = this.shadowRoot.getElementById('modalBody');
         const modalFooter = this.shadowRoot.getElementById('modalFooter');
         modalTitle.textContent = title;
-        modalBody.textContent = bodyText;
+        modalBody.innerHTML = bodyText;
         modalFooter.innerHTML = actions
             .map((label, index) => `<button class="modal-btn ${index === actions.length - 1 ? 'primary' : ''}">${label}</button>`)
             .join('');
