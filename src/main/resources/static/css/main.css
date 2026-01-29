@@ -314,8 +314,12 @@
 .workspace-content {
     flex: 1;
     background-color: #fff;
-    overflow-y: auto;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
     padding: 10px;
+    height: 100%;
 }
 
 /* 下拉菜单核心修复 */

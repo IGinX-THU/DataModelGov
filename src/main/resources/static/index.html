@@ -236,15 +236,15 @@
         <div class="sidebar-title">数据资源库</div>
         <div class="tree">
             <div class="tree-node">
-                <i class="icon folder-icon"></i>
+                <i class="icon db-icon"></i>
                 <span>X022-CQ-1</span>
             </div>
             <div class="tree-node">
-                <i class="icon folder-icon"></i>
+                <i class="icon db-icon"></i>
                 <span>X022-CQ-2</span>
             </div>
             <div class="tree-node expanded">
-                <i class="icon folder-open-icon"></i>
+                <i class="icon db-icon"></i>
                 <span>X022-CQ-3</span>
                 <div class="tree-children">
                     <div class="tree-node">
@@ -253,15 +253,15 @@
                 </div>
             </div>
             <div class="tree-node">
-                <i class="icon folder-icon"></i>
+                <i class="icon db-icon"></i>
                 <span>X022-CQ-4</span>
             </div>
             <div class="tree-node">
-                <i class="icon db-icon"></i>
+                <i class="icon folder-icon"></i>
                 <span>pg_meta</span>
             </div>
             <div class="tree-node expanded">
-                <i class="icon db-icon"></i>
+                <i class="icon folder-icon"></i>
                 <span>influx_local</span>
                 <div class="tree-children">
                     <div class="tree-node expanded">
@@ -291,6 +291,8 @@
         <div class="workspace-content">
             <!-- 注册异构数据源内嵌页面组件 -->
             <register-data-resource-embedded id="registerEmbedded"></register-data-resource-embedded>
+            <!-- 数据可视化组件 -->
+            <data-visualization id="dataVisualization"></data-visualization>
         </div>
     </div>
 
@@ -342,6 +344,7 @@
 
 <script src="./config/app-config.js"></script>
 <script src="./components/data-resource/register-embedded.js"></script>
+<script src="./components/data-visualization/data-visualization.js"></script>
 <script src="./js/main.js"></script>
 </body>
 </html>

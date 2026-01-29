@@ -31,9 +31,53 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // 更新选中的数据源（仅限左侧数据资源库）
                 const nodeText = this.querySelector('span')?.textContent?.trim();
+                const nodeIcon = this.querySelector('i');
                 if (nodeText) {
                     selectedDataSource = nodeText;
                     console.log('选中的数据源:', selectedDataSource);
+                    
+                    // 检查是否为最后一级节点（没有子节点）
+                    const hasChildren = this.querySelector('.tree-children');
+                    
+                    // 检查是否属于文件夹图标类数据源
+                    let isFromFolderDataSource = false;
+                    
+                    // 向上查找最近的父节点，检查是否有文件夹图标
+                    let currentParent = this.parentElement;
+                    while (currentParent) {
+                        if (currentParent.classList.contains('tree-children')) {
+                            // 跳过tree-children，继续向上找tree-node
+                            currentParent = currentParent.parentElement;
+                        } else if (currentParent.classList.contains('tree-node')) {
+                            // 找到tree-node，检查图标
+                            const parentIcon = currentParent.querySelector('i');
+                            const parentText = currentParent.querySelector('span')?.textContent?.trim();
+                            
+                            console.log('检查父节点:', parentText, '图标:', parentIcon?.className);
+                            
+                            if (parentIcon && (parentIcon.classList.contains('folder-icon') || parentIcon.classList.contains('folder-open-icon'))) {
+                                isFromFolderDataSource = true;
+                                console.log('找到文件夹图标父节点:', parentText);
+                                break;
+                            }
+                            currentParent = currentParent.parentElement;
+                        } else {
+                            break;
+                        }
+                    }
+                    
+                    console.log('节点检查:', {
+                        nodeText: selectedDataSource,
+                        hasChildren: !!hasChildren,
+                        isFromFolderDataSource: isFromFolderDataSource,
+                        shouldShow: !hasChildren && isFromFolderDataSource
+                    });
+                    
+                    // 只有点击文件夹图标类数据源的最后一级节点才显示可视化
+                    if (!hasChildren && isFromFolderDataSource) {
+                        console.log('点击了文件夹图标类数据源的最后一级节点，显示数据可视化');
+                        showDataVisualization(selectedDataSource);
+                    }
                 }
                 
                 // 展开收起（如果有子节点）
@@ -531,5 +575,92 @@ document.addEventListener('DOMContentLoaded', function() {
                 }, 300);
             }
         }, duration);
+    }
+
+    // 全局变量存储选中的测点
+window.selectedDataPoints = new Set();
+
+// 显示数据可视化
+    function showDataVisualization(dataSource) {
+        console.log('显示数据可视化:', dataSource);
+        
+        // 隐藏其他组件
+        const registerEmbedded = document.getElementById('registerEmbedded');
+        if (registerEmbedded) {
+            registerEmbedded.hide();
+        }
+        
+        // 获取或创建数据可视化组件
+        let dataViz = document.getElementById('dataVisualization');
+        if (!dataViz) {
+            dataViz = document.createElement('data-visualization');
+            dataViz.id = 'dataVisualization';
+            const workspaceContent = document.querySelector('.workspace-content');
+            if (workspaceContent) {
+                workspaceContent.appendChild(dataViz);
+                console.log('创建了新的数据可视化组件');
+            } else {
+                console.error('找不到workspace-content容器');
+                return;
+            }
+        } else {
+            console.log('使用现有的数据可视化组件');
+        }
+        
+        // 将当前数据源添加到已选测点
+        window.selectedDataPoints.add(dataSource);
+        
+        console.log('准备显示可视化组件，当前选中的测点:', Array.from(window.selectedDataPoints));
+        
+        // 显示数据可视化
+        dataViz.show(dataSource, Array.from(window.selectedDataPoints));
+    }
+
+    // 从树中获取所有可用的测点
+    function getAvailablePointsFromTree() {
+        const points = [];
+        const leftSidebarTree = document.querySelector('.left-sidebar .tree');
+        if (!leftSidebarTree) return points;
+        
+        // 查找所有最后一级节点
+        const allNodes = leftSidebarTree.querySelectorAll('.tree-node');
+        allNodes.forEach(node => {
+            const hasChildren = node.querySelector('.tree-children');
+            const nodeText = node.querySelector('span')?.textContent?.trim();
+            
+            // 只添加最后一级节点
+            if (!hasChildren && nodeText) {
+                points.push(nodeText);
+            }
+        });
+        
+        console.log('从树中获取到的测点:', points);
+        return points;
+    }
+
+    // 根据数据源获取模拟测点数据
+    function getMockPointsForDataSource(dataSource) {
+        const pointMap = {
+            'X022-CQ-1': ['speed', 'rpm', 'temperature', 'pressure'],
+            'X022-CQ-2': ['voltage', 'current', 'power', 'frequency'],
+            'X022-CQ-4': ['position_x', 'position_y', 'velocity', 'acceleration'],
+            'table1': ['flow_rate', 'level', 'density', 'viscosity'],
+            's1': ['speed', 'fuel_consumption', 'engine_temp', 'tire_pressure'],
+            'g1': ['longitude', 'latitude', 'altitude', 'heading'],
+            'root': ['humidity', 'air_pressure', 'wind_speed', 'temperature'],
+            'car': ['throttle', 'brake', 'steering', 'gear'],
+            'pg_meta': ['connections', 'query_time', 'cache_hit_rate', 'cpu_usage'],
+            'influx_local': ['write_rate', 'read_rate', 'disk_usage', 'memory_usage']
+        };
+        
+        // 如果是s1或g1，返回它们自己作为测点
+        if (dataSource === 's1') {
+            return ['s1_speed', 's1_temp', 's1_pressure', 's1_flow'];
+        }
+        if (dataSource === 'g1') {
+            return ['g1_x', 'g1_y', 'g1_z', 'g1_angle'];
+        }
+        
+        return pointMap[dataSource] || ['value1', 'value2', 'value3'];
     }
 });
