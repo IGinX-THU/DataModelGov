@@ -1,0 +1,101 @@
+<div class="db-table">
+    <div class="db-filter-card">
+        <div class="filter-header">筛选</div>
+        <div class="filter-rows" id="filterRows">
+            <div class="filter-row">
+                <div class="filter-field">
+                    <span class="filter-label">字段</span>
+                    <input class="filter-input" type="text" value="temperature" />
+                </div>
+                <div class="filter-field">
+                    <span class="filter-label">运算符</span>
+                    <input class="filter-input" type="text" value="=" />
+                </div>
+                <div class="filter-field">
+                    <span class="filter-label">值</span>
+                    <input class="filter-input" type="text" value="3145" />
+                </div>
+                <button class="filter-remove" type="button">⊖</button>
+            </div>
+            <div class="filter-row">
+                <div class="filter-field">
+                    <span class="filter-label">字段</span>
+                    <input class="filter-input" type="text" value="humidity" />
+                </div>
+                <div class="filter-field">
+                    <span class="filter-label">运算符</span>
+                    <input class="filter-input" type="text" value="=" />
+                </div>
+                <div class="filter-field">
+                    <span class="filter-label">值</span>
+                    <input class="filter-input" type="text" value="3145" />
+                </div>
+                <button class="filter-remove" type="button">⊖</button>
+            </div>
+            <div class="filter-row">
+                <div class="filter-field">
+                    <span class="filter-label">字段</span>
+                    <input class="filter-input" type="text" value="时间戳" />
+                </div>
+                <div class="filter-field">
+                    <span class="filter-label">运算符</span>
+                    <input class="filter-input" type="text" value="包含" />
+                </div>
+                <div class="filter-field">
+                    <span class="filter-label">值</span>
+                    <input class="filter-input" type="text" placeholder="请输入" />
+                </div>
+                <button class="filter-remove" type="button">⊖</button>
+            </div>
+        </div>
+        <div class="filter-actions">
+            <button class="filter-add" type="button" id="addFilter">⊕</button>
+            <div class="filter-spacer"></div>
+            <button class="filter-btn outline" type="button" id="resetFilters">重置</button>
+            <button class="filter-btn solid" type="button" id="applyFilters">查询</button>
+        </div>
+    </div>
+
+    <div class="db-table-card">
+        <div class="table-toolbar">
+            <button class="toolbar-btn green" type="button" id="addRowBtn">新增</button>
+            <button class="toolbar-btn orange" type="button" id="importBtn">导入</button>
+            <button class="toolbar-btn blue" type="button" id="exportBtn">导出</button>
+        </div>
+        <div class="table-wrapper">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>id</th>
+                        <th>temperature</th>
+                        <th>humidity</th>
+                        <th>name</th>
+                        <th>device</th>
+                        <th>type</th>
+                        <th>status</th>
+                        <th>createtime</th>
+                        <th>updatetime</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody"></tbody>
+            </table>
+        </div>
+        <div class="pagination">
+            <button class="page-btn" id="prevPage">&lt;</button>
+            <div class="page-list" id="pageList"></div>
+            <button class="page-btn" id="nextPage">&gt;</button>
+        </div>
+    </div>
+</div>
+
+<div class="modal-mask" id="modalMask" hidden>
+    <div class="modal">
+        <div class="modal-header">
+            <span id="modalTitle">提示</span>
+            <button class="modal-close" id="modalClose">×</button>
+        </div>
+        <div class="modal-body" id="modalBody"></div>
+        <div class="modal-footer" id="modalFooter"></div>
+    </div>
+</div>

@@ -39,8 +39,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     // 检查是否为最后一级节点（没有子节点）
                     const hasChildren = this.querySelector('.tree-children');
                     
-                    // 检查是否属于文件夹图标类数据源
+                    // 检查是否属于文件夹/数据库图标类数据源
                     let isFromFolderDataSource = false;
+                    let isFromDatabaseSource = false;
                     
                     // 向上查找最近的父节点，检查是否有文件夹图标
                     let currentParent = this.parentElement;
@@ -60,6 +61,11 @@ document.addEventListener('DOMContentLoaded', function() {
                                 console.log('找到文件夹图标父节点:', parentText);
                                 break;
                             }
+                            if (parentIcon && parentIcon.classList.contains('db-icon')) {
+                                isFromDatabaseSource = true;
+                                console.log('找到数据库图标父节点:', parentText);
+                                break;
+                            }
                             currentParent = currentParent.parentElement;
                         } else {
                             break;
@@ -70,13 +76,19 @@ document.addEventListener('DOMContentLoaded', function() {
                         nodeText: selectedDataSource,
                         hasChildren: !!hasChildren,
                         isFromFolderDataSource: isFromFolderDataSource,
-                        shouldShow: !hasChildren && isFromFolderDataSource
+                        isFromDatabaseSource: isFromDatabaseSource,
+                        shouldShow: !hasChildren && (isFromFolderDataSource || isFromDatabaseSource)
                     });
                     
                     // 只有点击文件夹图标类数据源的最后一级节点才显示可视化
                     if (!hasChildren && isFromFolderDataSource) {
                         console.log('点击了文件夹图标类数据源的最后一级节点，显示数据可视化');
                         showDataVisualization(selectedDataSource);
+                    }
+
+                    if (!hasChildren && isFromDatabaseSource) {
+                        console.log('点击了数据库图标类数据源的最后一级节点，显示数据库表格');
+                        showDatabaseTable(selectedDataSource);
                     }
                 }
                 
@@ -589,6 +601,10 @@ window.selectedDataPoints = new Set();
         if (registerEmbedded) {
             registerEmbedded.hide();
         }
+        const databaseTable = document.getElementById('databaseTable');
+        if (databaseTable) {
+            databaseTable.hide();
+        }
         
         // 获取或创建数据可视化组件
         let dataViz = document.getElementById('dataVisualization');
@@ -619,6 +635,22 @@ window.selectedDataPoints = new Set();
         
         // 显示数据可视化
         dataViz.show(dataSource, Array.from(window.selectedDataPoints));
+    }
+
+    function showDatabaseTable(tableName) {
+        console.log('显示数据库表格:', tableName);
+        const registerEmbedded = document.getElementById('registerEmbedded');
+        if (registerEmbedded) {
+            registerEmbedded.hide();
+        }
+        const dataViz = document.getElementById('dataVisualization');
+        if (dataViz) {
+            dataViz.hide();
+        }
+        const databaseTable = document.getElementById('databaseTable');
+        if (databaseTable) {
+            databaseTable.show(tableName);
+        }
     }
 
     // 从树中获取所有可用的测点

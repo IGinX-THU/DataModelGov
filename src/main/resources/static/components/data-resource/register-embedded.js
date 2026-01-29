@@ -29,6 +29,11 @@ class RegisterDataResourceEmbedded extends HTMLElement {
             console.error('Failed to load CSS:', error);
         }
 
+        if (window.location.protocol === 'file:') {
+            this.htmlTemplate = this.getInlineHTML();
+            return;
+        }
+
         // 加载HTML模板
         try {
             const response = await fetch('./components/data-resource/register-embedded.html');

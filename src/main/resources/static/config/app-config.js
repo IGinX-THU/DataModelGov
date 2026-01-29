@@ -137,7 +137,7 @@ window.AppConfig = {
             this.endpoints = { ...this.endpoints, ...config.endpoints };
         }
         
-        console.log('应用配置初始化完成:', this);
+        // 初始化日志已静默
     }
 };
 
