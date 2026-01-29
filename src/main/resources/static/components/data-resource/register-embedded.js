@@ -577,9 +577,6 @@ class RegisterDataResourceEmbedded extends HTMLElement {
             
             if (response.code === 200) {
                 console.log('注册成功');
-                // 显示后端返回的成功消息
-                const successMessage = response.message || '数据源注册成功！';
-                this.showMessage(successMessage, 'success');
                 
                 // 延迟关闭窗口，让用户看到响应信息
                 setTimeout(() => {
@@ -590,16 +587,26 @@ class RegisterDataResourceEmbedded extends HTMLElement {
                         bubbles: true,
                         composed: true
                     }));
-                }, 2000); // 2秒后关闭
+                }, 1000); // 1秒后关闭，让main.js处理成功消息
             } else {
                 console.log('注册失败:', response.message);
-                // 显示后端返回的错误消息
+                // 显示后端返回的错误消息 - 使用工作区消息
                 const errorMessage = response.message || '注册失败';
-                this.showMessage(errorMessage, 'error');
+                this.showWorkspaceMessage(errorMessage, 'error');
+                
+                // 延迟关闭窗口，让用户看到错误信息
+                setTimeout(() => {
+                    this.hide();
+                }, 1000); // 1秒后关闭
             }
         } catch (error) {
             console.error('注册数据源失败:', error);
-            this.showMessage('注册失败，请稍后重试', 'error');
+            this.showWorkspaceMessage('注册失败，请稍后重试', 'error');
+            
+            // 延迟关闭窗口，让用户看到错误信息
+            setTimeout(() => {
+                this.hide();
+            }, 1000); // 1秒后关闭
         }
     }
 
@@ -807,6 +814,101 @@ class RegisterDataResourceEmbedded extends HTMLElement {
             if (messageEl.parentNode) {
                 messageEl.style.opacity = '0';
                 messageEl.style.transform = 'translate(-50%, -50%) scale(0.9)';
+                setTimeout(() => {
+                    if (messageEl.parentNode) {
+                        messageEl.remove();
+                    }
+                }, 300);
+            }
+        }, duration);
+    }
+
+    // 在工作区显示消息提示（与main.js保持一致）
+    showWorkspaceMessage(message, type = 'info') {
+        const workspaceContent = document.querySelector('.workspace-content');
+        if (!workspaceContent) {
+            console.error('未找到工作区容器');
+            return;
+        }
+
+        // 移除已存在的消息
+        const existingMessage = workspaceContent.querySelector('.workspace-message');
+        if (existingMessage) {
+            existingMessage.remove();
+        }
+
+        const messageEl = document.createElement('div');
+        messageEl.className = 'workspace-message';
+        
+        // 根据消息类型设置样式和图标
+        let bgColor, borderColor, textColor, icon;
+        switch (type) {
+            case 'success':
+                bgColor = '#f0f9ff';
+                borderColor = '#bfdbfe';
+                textColor = '#1e40af';
+                icon = '✅';
+                break;
+            case 'error':
+                bgColor = '#fef2f2';
+                borderColor = '#fecaca';
+                textColor = '#dc2626';
+                icon = '❌';
+                break;
+            case 'warning':
+                bgColor = '#fffbeb';
+                borderColor = '#fed7aa';
+                textColor = '#ea580c';
+                icon = '⚠️';
+                break;
+            default:
+                bgColor = '#f0f9ff';
+                borderColor = '#bfdbfe';
+                textColor = '#1e40af';
+                icon = 'ℹ️';
+        }
+
+        messageEl.style.cssText = `
+            padding: 20px;
+            background: ${bgColor};
+            border: 1px solid ${borderColor};
+            border-radius: 6px;
+            color: ${textColor};
+            margin: 20px;
+            text-align: center;
+            animation: slideIn 0.3s ease;
+        `;
+
+        let titleText = '';
+        switch (type) {
+            case 'success':
+                titleText = '操作成功';
+                break;
+            case 'error':
+                titleText = '操作失败';
+                break;
+            case 'warning':
+                titleText = '警告';
+                break;
+            default:
+                titleText = '提示';
+        }
+
+        messageEl.innerHTML = `
+            <h4 style="margin: 0 0 8px 0;">${icon} ${titleText}</h4>
+            <p style="margin: 0; color: ${type === 'success' ? '#64748b' : textColor};">${message}</p>
+        `;
+
+        // 在工作区开头插入消息
+        workspaceContent.insertBefore(messageEl, workspaceContent.firstChild);
+
+        // 根据消息类型设置不同的显示时间
+        const duration = type === 'success' ? 5000 : 3000;
+
+        setTimeout(() => {
+            if (messageEl.parentNode) {
+                messageEl.style.opacity = '0';
+                messageEl.style.transform = 'translateY(-10px)';
                 setTimeout(() => {
                     if (messageEl.parentNode) {
                         messageEl.remove();
