@@ -1,0 +1,111 @@
+<div class="visualization-container">
+    <div class="visualization-header">
+        <h3 class="visualization-title" id="dataSourceName">时序数据查询</h3>
+        <button class="close-btn" id="closeBtn">×</button>
+    </div>
+    
+    <div class="content-area">
+        <div class="chart-section">
+            <div class="chart-header">
+                <h4 class="chart-title">趋势图</h4>
+            </div>
+            <div class="chart-container" id="chartContainer">
+                <!-- ECharts图表将在这里渲染 -->
+            </div>
+        </div>
+        
+        <div class="operations-section">
+            <div class="operations-header">
+                <h4 class="operations-title">操作</h4>
+                <div class="operations-actions">
+                    <button class="action-btn" id="dataCleanBtn">数据清理</button>
+                    <button class="action-btn" id="importBtn">导入数据</button>
+                    <button class="action-btn" id="exportBtn">导出数据</button>
+                </div>
+            </div>
+            <div class="operations-content">
+                <div class="query-controls">
+                    <div class="query-row">
+                        <div class="query-item">
+                            <label class="query-label">开始时间</label>
+                            <input type="datetime-local" class="query-input" id="startTime">
+                        </div>
+                        <div class="query-item">
+                            <label class="query-label">结束时间</label>
+                            <input type="datetime-local" class="query-input" id="endTime">
+                        </div>
+                        <div class="query-item">
+                            <label class="query-label">聚合函数</label>
+                            <select class="query-select" id="aggregationFunction">
+                                <option value="raw">原始数据</option>
+                                <option value="avg">平均值</option>
+                                <option value="max">最大值</option>
+                                <option value="min">最小值</option>
+                                <option value="sum">求和</option>
+                                <option value="count">计数</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="query-row">
+                        <div class="query-item">
+                            <label class="query-label">快速选择</label>
+                            <div class="quick-time-buttons">
+                                <button class="quick-time-btn" data-range="1h">最近1小时</button>
+                                <button class="quick-time-btn" data-range="6h">最近6小时</button>
+                                <button class="quick-time-btn" data-range="24h">最近24小时</button>
+                                <button class="quick-time-btn" data-range="7d">最近7天</button>
+                            </div>
+                        </div>
+                        <div class="query-actions">
+                            <button class="query-btn" id="queryBtn">查询数据</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-section">
+            <div class="table-header">
+                <span class="table-title">数据列表</span>
+                <div class="selected-points-in-header">
+                    <span class="selected-points-label">已选测点:</span>
+                    <div class="selected-points-compact" id="selectedPointsList">
+                        <!-- 动态生成已选测点列表 -->
+                    </div>
+                </div>
+            </div>
+            <div class="table-wrapper">
+                <table id="dataTable">
+                    <thead>
+                        <tr>
+                            <th>时间</th>
+                            <!-- 动态生成测点列头 -->
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody">
+                        <!-- 动态生成表格数据 -->
+                    </tbody>
+                </table>
+                <div class="pagination">
+                    <div class="pagination-left">
+                        <div class="page-size-selector">
+                            <span>每页显示</span>
+                            <select class="page-size-select" id="pageSizeSelect">
+                                <option value="10">10条</option>
+                                <option value="20" selected>20条</option>
+                                <option value="50">50条</option>
+                                <option value="100">100条</option>
+                            </select>
+                        </div>
+                        <span class="page-info" id="pageInfo">第 1 页 / 共 1 页</span>
+                    </div>
+                    <div class="pagination-right">
+                        <button id="prevBtn">上一页</button>
+                        <button id="nextBtn">下一页</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
