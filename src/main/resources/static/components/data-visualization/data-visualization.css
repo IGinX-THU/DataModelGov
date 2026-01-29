@@ -1,0 +1,62 @@
+/* 数据可视化组件样式 */
+@keyframes slideIn {
+    from { 
+        opacity: 0; 
+        transform: translateY(-10px); 
+    }
+    to { 
+        opacity: 1; 
+        transform: translateY(0); 
+    }
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* 滚动条样式 */
+.table-wrapper::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+.table-wrapper::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 3px;
+}
+
+.table-wrapper::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 3px;
+}
+
+.table-wrapper::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    .controls-panel {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .point-selector {
+        max-width: 100%;
+    }
+    
+    .chart-container {
+        min-height: 300px;
+        padding: 10px;
+    }
+    
+    .table-container {
+        max-height: 200px;
+    }
+    
+    th, td {
+        padding: 6px 8px;
+        font-size: 12px;
+    }
+}
