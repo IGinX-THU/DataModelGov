@@ -42,7 +42,6 @@ class RegisterDataResourceEmbedded extends HTMLElement {
             }
             const htmlContent = await response.text();
             this.htmlTemplate = htmlContent;
-            console.log('HTML模板加载成功');
         } catch (error) {
             console.error('Failed to load HTML template:', error);
             // 如果外部文件加载失败，使用内联模板
@@ -337,42 +336,32 @@ class RegisterDataResourceEmbedded extends HTMLElement {
                 this.shadowRoot.appendChild(existingCSS);
             }
             this.shadowRoot.innerHTML += this.htmlTemplate;
-            console.log('模板渲染完成');
         } else {
             console.error('没有可用的HTML模板');
         }
     }
 
     bindEvents() {
-        console.log('开始绑定事件...');
-        console.log('Shadow DOM内容:', this.shadowRoot.innerHTML);
-        
         // 关闭按钮
         const closeBtn = this.shadowRoot.getElementById('closeBtn');
-        console.log('关闭按钮:', closeBtn);
         if (closeBtn) {
             closeBtn.addEventListener('click', () => {
-                console.log('点击关闭按钮');
                 this.hide();
             });
         }
 
         // 取消按钮
         const cancelBtn = this.shadowRoot.getElementById('cancelBtn');
-        console.log('取消按钮:', cancelBtn);
         if (cancelBtn) {
             cancelBtn.addEventListener('click', () => {
-                console.log('点击取消按钮');
                 this.hide();
             });
         }
 
         // 提交按钮
         const submitBtn = this.shadowRoot.getElementById('submitBtn');
-        console.log('提交按钮:', submitBtn);
         if (submitBtn) {
             submitBtn.addEventListener('click', (e) => {
-                console.log('点击提交按钮');
                 e.preventDefault();
                 this.submit();
             });
@@ -380,10 +369,8 @@ class RegisterDataResourceEmbedded extends HTMLElement {
 
         // 数据源类型变化事件
         const dataSourceType = this.shadowRoot.getElementById('dataSourceType');
-        console.log('数据源类型选择框:', dataSourceType);
         if (dataSourceType) {
             dataSourceType.addEventListener('change', () => {
-                console.log('数据源类型变化');
                 this.clearFieldError('dataSourceType');
                 this.updateDynamicFields();
             });
@@ -403,8 +390,6 @@ class RegisterDataResourceEmbedded extends HTMLElement {
                 this.hide();
             }
         });
-        
-        console.log('事件绑定完成');
     }
 
     updateDynamicFields() {
@@ -488,20 +473,16 @@ class RegisterDataResourceEmbedded extends HTMLElement {
     }
 
     show() {
-        console.log('显示表单组件');
         this.setAttribute('show', '');
         // 立即重置表单，不使用setTimeout
         this.resetForm();
         this.clearValidationErrors();
-        console.log('表单重置完成');
     }
 
     hide() {
-        console.log('隐藏表单组件');
         this.removeAttribute('show');
         // 隐藏时也清除验证错误
         this.clearValidationErrors();
-        console.log('表单隐藏完成');
     }
 
     resetForm() {
@@ -530,13 +511,10 @@ class RegisterDataResourceEmbedded extends HTMLElement {
     }
 
     async submit() {
-        console.log('submit方法被调用');
-        
         // 清除之前的错误状态
         this.clearValidationErrors();
         
         const formData = this.getFormData();
-        console.log('前端表单数据:', formData);
         
         let hasError = false;
         
@@ -565,24 +543,17 @@ class RegisterDataResourceEmbedded extends HTMLElement {
         }
         
         if (hasError) {
-            console.log('验证失败: 缺少必要字段');
             this.showMessage('请填写必填字段', 'error');
             return;
         }
 
         try {
-            console.log('开始API调用...');
-            
             // 转换为后端格式
             const backendData = window.AppConfig.transformFormData(formData, 'datasource');
-            console.log('转换后的后端数据:', backendData);
             
             const response = await this.apiCall(window.AppConfig.getApiUrl('datasource', 'register'), 'POST', backendData);
-            console.log('API响应:', response);
             
             if (response.code === 200) {
-                console.log('注册成功');
-                
                 // 延迟关闭窗口，让用户看到响应信息
                 setTimeout(() => {
                     this.hide();
@@ -594,7 +565,6 @@ class RegisterDataResourceEmbedded extends HTMLElement {
                     }));
                 }, 1000); // 1秒后关闭，让main.js处理成功消息
             } else {
-                console.log('注册失败:', response.message);
                 // 显示后端返回的错误消息 - 使用工作区消息
                 const errorMessage = response.message || '注册失败';
                 this.showWorkspaceMessage(errorMessage, 'error');
@@ -660,8 +630,6 @@ class RegisterDataResourceEmbedded extends HTMLElement {
     }
 
     getFormData() {
-        console.log('开始收集表单数据...');
-        
         const nameInput = this.shadowRoot.getElementById('dataSourceName');
         const typeSelect = this.shadowRoot.getElementById('dataSourceType');
         const descInput = this.shadowRoot.getElementById('description');
@@ -670,17 +638,6 @@ class RegisterDataResourceEmbedded extends HTMLElement {
         const userInput = this.shadowRoot.getElementById('username');
         const passInput = this.shadowRoot.getElementById('password');
         const dbInput = this.shadowRoot.getElementById('database');
-        
-        console.log('表单元素:', {
-            nameInput,
-            typeSelect,
-            descInput,
-            hostInput,
-            portInput,
-            userInput,
-            passInput,
-            dbInput
-        });
         
         const dataSourceType = typeSelect?.value || '';
         const baseData = {
@@ -720,7 +677,6 @@ class RegisterDataResourceEmbedded extends HTMLElement {
                 break;
         }
 
-        console.log('最终表单数据:', baseData);
         return baseData;
     }
 
@@ -734,8 +690,6 @@ class RegisterDataResourceEmbedded extends HTMLElement {
             options.body = JSON.stringify(data);
         }
 
-        console.log(`API调用: ${method} ${url}`, data);
-        
         const response = await fetch(url, options);
         
         if (!response.ok) {
@@ -743,7 +697,6 @@ class RegisterDataResourceEmbedded extends HTMLElement {
         }
         
         const result = await response.json();
-        console.log('API响应:', result);
         return result;
     }
 
