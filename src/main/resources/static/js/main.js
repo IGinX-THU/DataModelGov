@@ -235,6 +235,19 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             }
             
+            // 检查是否点击了"上传模型文件"
+            if (menuItemText === '上传模型文件') {
+                console.log('上传模型文件菜单被点击');
+                const modelUpload = document.getElementById('modelUpload');
+                console.log('找到组件:', modelUpload);
+                if (modelUpload) {
+                    console.log('调用show方法');
+                    modelUpload.show();
+                } else {
+                    console.error('未找到modelUpload组件');
+                }
+            }
+            
             // 检查是否点击了"移除异构数据源"
             if (menuItemText === '移除异构数据源') {
                 console.log('移除异构数据源菜单被点击');
@@ -259,6 +272,21 @@ document.addEventListener('DOMContentLoaded', function() {
                     embedded.show();
                 } else {
                     console.error('未找到registerEmbedded组件');
+                }
+            });
+        }
+        
+        // 上传按钮
+        if (btnText === '上传') {
+            btn.addEventListener('click', function() {
+                console.log('上传按钮被点击');
+                const modelUpload = document.getElementById('modelUpload');
+                console.log('找到组件:', modelUpload);
+                if (modelUpload) {
+                    console.log('调用show方法');
+                    modelUpload.show();
+                } else {
+                    console.error('未找到modelUpload组件');
                 }
             });
         }
@@ -297,6 +325,42 @@ document.addEventListener('DOMContentLoaded', function() {
                 `;
                 
                 // 在工作区开头插入成功消息，不清空整个工作区
+                workspaceContent.insertBefore(successMsg, workspaceContent.firstChild);
+                
+                setTimeout(() => {
+                    if (successMsg.parentNode) {
+                        successMsg.remove();
+                    }
+                }, 5000);
+            }
+        });
+    }
+
+    // 监听模型上传成功事件
+    const modelUpload = document.getElementById('modelUpload');
+    if (modelUpload) {
+        modelUpload.addEventListener('upload-success', function(e) {
+            console.log('模型上传成功:', e.detail);
+            
+            // 在工作区显示成功消息
+            const workspaceContent = document.querySelector('.workspace-content');
+            if (workspaceContent) {
+                const successMsg = document.createElement('div');
+                successMsg.style.cssText = `
+                    padding: 20px;
+                    background: #f0f9ff;
+                    border: 1px solid #bfdbfe;
+                    border-radius: 6px;
+                    color: #1e40af;
+                    margin: 20px;
+                    text-align: center;
+                `;
+                successMsg.innerHTML = `
+                    <h4 style="margin: 0 0 8px 0;">✅ 模型上传成功</h4>
+                    <p style="margin: 0; color: #64748b;">模型 "${e.detail.formData.name}" 已成功上传</p>
+                `;
+                
+                // 在工作区开头插入成功消息
                 workspaceContent.insertBefore(successMsg, workspaceContent.firstChild);
                 
                 setTimeout(() => {

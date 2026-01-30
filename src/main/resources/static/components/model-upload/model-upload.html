@@ -1,0 +1,59 @@
+<div class="upload-container">
+    <div class="upload-header">
+        <h3 class="upload-title">上传模型文件</h3>
+        <button class="close-btn" id="closeBtn">&times;</button>
+    </div>
+    
+    <form id="uploadForm">
+        <div class="form-group">
+            <label class="form-label required">模型文件</label>
+            <div class="file-upload-area" id="fileUploadArea">
+                <div class="upload-content">
+                    <div class="upload-icon">📁</div>
+                    <p class="upload-text">点击选择文件或拖拽文件到此处</p>
+                    <p class="upload-hint">支持 .pkl, .joblib, .h5, .pt, .pth, .onnx, .pb 格式</p>
+                    <input type="file" class="file-input" id="modelFile" accept=".pkl,.joblib,.h5,.pt,.pth,.onnx,.pb" required>
+                </div>
+            </div>
+            <div class="file-info" id="fileInfo" style="display: none;">
+                <div class="file-details">
+                    <span class="file-name" id="fileName"></span>
+                    <span class="file-size" id="fileSize"></span>
+                </div>
+                <button type="button" class="remove-file-btn" id="removeFileBtn">&times;</button>
+            </div>
+            <div class="error-message" id="modelFileError">请选择模型文件</div>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label required">是否关联已有模型</label>
+            <select class="form-control form-select" id="isRelatedModel" required>
+                <option value="">请选择</option>
+                <option value="yes">是</option>
+                <option value="no">否</option>
+            </select>
+            <div class="error-message" id="isRelatedModelError">请选择是否关联已有模型</div>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label required">名称</label>
+            <input type="text" class="form-control" id="modelName" placeholder="请输入模型名称" required>
+            <div class="error-message" id="modelNameError">请输入模型名称</div>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label required">版本号</label>
+            <input type="text" class="form-control" id="modelVersion" placeholder="请输入版本号" required>
+            <div class="error-message" id="modelVersionError">请输入版本号</div>
+        </div>
+
+        <div class="form-actions">
+            <button type="button" class="btn btn-secondary" id="cancelBtn">
+                取消
+            </button>
+            <button type="button" class="btn btn-primary" id="uploadBtn">
+                确认上传
+            </button>
+        </div>
+    </form>
+</div>
