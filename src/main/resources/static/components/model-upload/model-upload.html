@@ -27,18 +27,31 @@
 
         <div class="form-group">
             <label class="form-label required">是否关联已有模型</label>
-            <select class="form-control form-select" id="isRelatedModel" required>
-                <option value="">请选择</option>
-                <option value="yes">是</option>
-                <option value="no">否</option>
-            </select>
+            <div class="radio-group-horizontal">
+                <div class="radio-item-horizontal">
+                    <input type="radio" id="isRelatedModelYes" name="isRelatedModel" value="yes" required>
+                    <label for="isRelatedModelYes">是</label>
+                </div>
+                <div class="radio-item-horizontal">
+                    <input type="radio" id="isRelatedModelNo" name="isRelatedModel" value="no" checked required>
+                    <label for="isRelatedModelNo">否</label>
+                </div>
+            </div>
             <div class="error-message" id="isRelatedModelError">请选择是否关联已有模型</div>
         </div>
 
         <div class="form-group">
             <label class="form-label required">名称</label>
-            <input type="text" class="form-control" id="modelName" placeholder="请输入模型名称" required>
-            <div class="error-message" id="modelNameError">请输入模型名称</div>
+            <div id="modelNameInputContainer">
+                <input type="text" class="form-control" id="modelName" placeholder="请输入模型名称" required>
+                <div class="error-message" id="modelNameError">请输入模型名称</div>
+            </div>
+            <div id="modelNameSelectContainer" style="display: none;">
+                <select class="form-control form-select" id="modelNameSelect" required>
+                    <option value="">请选择模型名称</option>
+                </select>
+                <div class="error-message" id="modelNameError">请选择模型名称</div>
+            </div>
         </div>
 
         <div class="form-group">

@@ -287,6 +287,66 @@
     background: #e5e6eb;
 }
 
+/* 水平单选框组样式 */
+.radio-group-horizontal {
+    display: flex;
+    gap: 16px;
+}
+
+.radio-item-horizontal {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+}
+
+.radio-item-horizontal input[type="radio"] {
+    margin-right: 6px;
+}
+
+.radio-item-horizontal label {
+    cursor: pointer;
+    font-size: 14px;
+    color: #1f2329;
+}
+
+/* 单选框组样式 */
+.radio-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.radio-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    border: 1px solid #c9cdd4;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.radio-item:hover {
+    border-color: #3370ff;
+    background: #f0f5ff;
+}
+
+.radio-item.selected {
+    border-color: #3370ff;
+    background: #f0f5ff;
+}
+
+.radio-item input[type="radio"] {
+    margin-right: 8px;
+}
+
+.radio-item label {
+    cursor: pointer;
+    margin: 0;
+    font-size: 14px;
+    color: #1f2329;
+}
+
 /* 消息提示样式 */
 .message {
     position: fixed;

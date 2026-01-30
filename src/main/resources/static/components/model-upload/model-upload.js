@@ -79,16 +79,28 @@ class ModelUpload extends HTMLElement {
 
                     <div class="form-group">
                         <label class="form-label required">是否关联已有模型</label>
-                        <select class="form-control form-select" id="isRelatedModel" required>
-                            <option value="">请选择</option>
-                            <option value="yes">是</option>
-                            <option value="no">否</option>
-                        </select>
+                        <div class="radio-group-horizontal">
+                            <div class="radio-item-horizontal">
+                                <input type="radio" id="isRelatedModelYes" name="isRelatedModel" value="yes" required>
+                                <label for="isRelatedModelYes">是</label>
+                            </div>
+                            <div class="radio-item-horizontal">
+                                <input type="radio" id="isRelatedModelNo" name="isRelatedModel" value="no" checked required>
+                                <label for="isRelatedModelNo">否</label>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="form-group">
                         <label class="form-label required">名称</label>
-                        <input type="text" class="form-control" id="modelName" placeholder="请输入模型名称" required>
+                        <div id="modelNameInputContainer">
+                            <input type="text" class="form-control" id="modelName" placeholder="请输入模型名称" required>
+                        </div>
+                        <div id="modelNameSelectContainer" style="display: none;">
+                            <select class="form-control form-select" id="modelNameSelect" required>
+                                <option value="">请选择模型名称</option>
+                            </select>
+                        </div>
                     </div>
 
                     <div class="form-group">
@@ -189,11 +201,101 @@ class ModelUpload extends HTMLElement {
             });
         }
 
+        // 是否关联已有模型变化事件
+        const isRelatedModelYes = this.shadowRoot.getElementById('isRelatedModelYes');
+        const isRelatedModelNo = this.shadowRoot.getElementById('isRelatedModelNo');
+        
+        if (isRelatedModelYes) {
+            isRelatedModelYes.addEventListener('change', () => {
+                this.handleRelatedModelChange();
+            });
+        }
+        
+        if (isRelatedModelNo) {
+            isRelatedModelNo.addEventListener('change', () => {
+                this.handleRelatedModelChange();
+            });
+        }
+
         // ESC键关闭
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && this.hasAttribute('show')) {
                 this.hide();
             }
+        });
+    }
+
+    handleRelatedModelChange() {
+        const isRelatedModelYes = this.shadowRoot.getElementById('isRelatedModelYes');
+        const isRelatedModelNo = this.shadowRoot.getElementById('isRelatedModelNo');
+        
+        if (!isRelatedModelYes || !isRelatedModelNo) {
+            console.warn('handleRelatedModelChange: 单选框元素未找到');
+            return;
+        }
+        
+        const selectedValue = isRelatedModelYes.checked ? 'yes' : (isRelatedModelNo.checked ? 'no' : '');
+        console.log('handleRelatedModelChange: 选择值', selectedValue);
+        
+        if (selectedValue === 'yes') {
+            console.log('选择了关联已有模型，切换到下拉选择框');
+            this.showModelSelect();
+        } else {
+            console.log('选择了不关联已有模型，切换到输入框');
+            this.showModelInput();
+        }
+    }
+
+    showModelSelect() {
+        const inputContainer = this.shadowRoot.getElementById('modelNameInputContainer');
+        const selectContainer = this.shadowRoot.getElementById('modelNameSelectContainer');
+        const modelNameSelect = this.shadowRoot.getElementById('modelNameSelect');
+        
+        if (inputContainer) inputContainer.style.display = 'none';
+        if (selectContainer) {
+            selectContainer.style.display = 'block';
+            this.loadModelNames();
+        }
+    }
+
+    showModelInput() {
+        const inputContainer = this.shadowRoot.getElementById('modelNameInputContainer');
+        const selectContainer = this.shadowRoot.getElementById('modelNameSelectContainer');
+        
+        if (inputContainer) inputContainer.style.display = 'block';
+        if (selectContainer) selectContainer.style.display = 'none';
+    }
+
+    loadModelNames() {
+        const modelNameSelect = this.shadowRoot.getElementById('modelNameSelect');
+        if (!modelNameSelect) return;
+        
+        // 获取右侧模型资产库的根节点
+        const rightSidebarTree = document.querySelector('.right-sidebar .tree');
+        if (!rightSidebarTree) {
+            console.warn('未找到右侧模型资产库');
+            return;
+        }
+        
+        const rootNodes = rightSidebarTree.querySelectorAll('.tree-node');
+        const modelNames = [];
+        
+        rootNodes.forEach(node => {
+            const span = node.querySelector('span');
+            if (span) {
+                modelNames.push(span.textContent.trim());
+            }
+        });
+        
+        // 清空现有选项
+        modelNameSelect.innerHTML = '<option value="">请选择模型名称</option>';
+        
+        // 添加模型名称选项
+        modelNames.forEach(name => {
+            const option = document.createElement('option');
+            option.value = name;
+            option.textContent = name;
+            modelNameSelect.appendChild(option);
         });
     }
 
@@ -264,12 +366,24 @@ class ModelUpload extends HTMLElement {
 
     resetForm() {
         const modelName = this.shadowRoot.getElementById('modelName');
+        const modelNameSelect = this.shadowRoot.getElementById('modelNameSelect');
         const modelVersion = this.shadowRoot.getElementById('modelVersion');
-        const isRelatedModel = this.shadowRoot.getElementById('isRelatedModel');
+        const isRelatedModelYes = this.shadowRoot.getElementById('isRelatedModelYes');
+        const isRelatedModelNo = this.shadowRoot.getElementById('isRelatedModelNo');
 
+        // 重置是否关联已有模型单选框（默认选中"否"）
+        if (isRelatedModelYes) isRelatedModelYes.checked = false;
+        if (isRelatedModelNo) isRelatedModelNo.checked = true;
+        
+        // 显示输入框，隐藏下拉选择框
+        this.showModelInput();
+        
+        // 重置名称字段
         if (modelName) modelName.value = '';
+        if (modelNameSelect) modelNameSelect.value = '';
+        
+        // 重置版本号
         if (modelVersion) modelVersion.value = '';
-        if (isRelatedModel) isRelatedModel.value = '';
 
         this.removeFile();
     }
@@ -283,14 +397,21 @@ class ModelUpload extends HTMLElement {
         let hasError = false;
         
         // 验证是否关联已有模型
-        if (!formData.isRelatedModel) {
+        const isRelatedModelYes = this.shadowRoot.getElementById('isRelatedModelYes');
+        const isRelatedModelNo = this.shadowRoot.getElementById('isRelatedModelNo');
+        
+        if (!isRelatedModelYes?.checked && !isRelatedModelNo?.checked) {
             this.showFieldError('isRelatedModel', '请选择是否关联已有模型');
             hasError = true;
         }
         
         // 验证模型名称
         if (!formData.name) {
-            this.showFieldError('modelName', '请输入模型名称');
+            if (formData.isRelatedModel === 'yes') {
+                this.showFieldError('modelNameSelect', '请选择模型名称');
+            } else {
+                this.showFieldError('modelName', '请输入模型名称');
+            }
             hasError = true;
         }
         
@@ -347,14 +468,30 @@ class ModelUpload extends HTMLElement {
 
     getFormData() {
         const modelName = this.shadowRoot.getElementById('modelName');
+        const modelNameSelect = this.shadowRoot.getElementById('modelNameSelect');
         const modelVersion = this.shadowRoot.getElementById('modelVersion');
-        const isRelatedModel = this.shadowRoot.getElementById('isRelatedModel');
+        const isRelatedModelYes = this.shadowRoot.getElementById('isRelatedModelYes');
+        const isRelatedModelNo = this.shadowRoot.getElementById('isRelatedModelNo');
+        
+        const isRelatedModel = isRelatedModelYes && isRelatedModelYes.checked ? 'yes' : 
+                              (isRelatedModelNo && isRelatedModelNo.checked ? 'no' : '');
+        
+        let nameValue = '';
+        
+        // 根据关联模型选择获取名称值
+        if (isRelatedModel === 'yes') {
+            // 从下拉选择框获取值
+            nameValue = modelNameSelect ? modelNameSelect.value : '';
+        } else {
+            // 从输入框获取值
+            nameValue = modelName ? modelName.value : '';
+        }
         
         return {
             file: this.selectedFile,
-            isRelatedModel: isRelatedModel?.value || '',
-            name: modelName?.value || '',
-            version: modelVersion?.value || ''
+            isRelatedModel: isRelatedModel,
+            name: nameValue,
+            version: modelVersion ? modelVersion.value : ''
         };
     }
 

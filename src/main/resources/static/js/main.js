@@ -23,8 +23,13 @@ document.addEventListener('DOMContentLoaded', function() {
             node.addEventListener('click', function(e) {
                 e.stopPropagation();
                 
-                // 先清除所有选中状态
-                treeNodes.forEach(n => n.classList.remove('active'));
+                // 确保只处理左侧的节点
+                if (!this.closest('.left-sidebar')) {
+                    return;
+                }
+                
+                // 先清除所有选中状态（仅限左侧）
+                leftSidebarTree.querySelectorAll('.tree-node.active').forEach(n => n.classList.remove('active'));
                 
                 // 设置当前选中
                 this.classList.add('active');
@@ -91,6 +96,33 @@ document.addEventListener('DOMContentLoaded', function() {
                         showDatabaseTable(selectedDataSource);
                     }
                 }
+                
+                // 展开收起（如果有子节点）
+                if (this.querySelector('.tree-children')) {
+                    this.classList.toggle('expanded');
+                }
+            });
+        });
+    }
+
+    // 2.5. 右侧模型资产库树形节点点击事件
+    const rightSidebarTree = document.querySelector('.right-sidebar .tree');
+    if (rightSidebarTree) {
+        const rightTreeNodes = rightSidebarTree.querySelectorAll('.tree-node');
+        rightTreeNodes.forEach(node => {
+            node.addEventListener('click', function(e) {
+                e.stopPropagation();
+                
+                // 确保只处理右侧的节点
+                if (!this.closest('.right-sidebar')) {
+                    return;
+                }
+                
+                // 先清除所有选中状态（仅限右侧）
+                rightSidebarTree.querySelectorAll('.tree-node.active').forEach(n => n.classList.remove('active'));
+                
+                // 设置当前选中
+                this.classList.add('active');
                 
                 // 展开收起（如果有子节点）
                 if (this.querySelector('.tree-children')) {
@@ -544,10 +576,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 showWorkspaceMessage(`数据源 "${alias}" 删除成功`, 'success');
                 // 清除选中状态（仅限左侧数据资源库）
                 selectedDataSource = null;
-                const leftSidebarTree = document.querySelector('.left-sidebar .tree');
                 if (leftSidebarTree) {
-                    const activeNodes = leftSidebarTree.querySelectorAll('.tree-node.active');
-                    activeNodes.forEach(node => node.classList.remove('active'));
+                    leftSidebarTree.querySelectorAll('.tree-node.active').forEach(node => node.classList.remove('active'));
                 }
             } else {
                 showWorkspaceMessage(result.message || '删除失败', 'error');
