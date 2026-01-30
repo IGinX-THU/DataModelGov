@@ -295,6 +295,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             }
             
+            // 检查是否点击了"移除模型资产"
+            if (menuItemText === '移除模型资产') {
+                console.log('移除模型资产菜单被点击');
+                const selectedModel = getSelectedModel();
+                if (selectedModel) {
+                    showDeleteConfirmDialog(selectedModel);
+                } else {
+                    showWorkspaceMessage('请先选择要移除的模型资产', 'warning');
+                }
+            }
+            
             // 检查是否点击了"移除异构数据源"
             if (menuItemText === '移除异构数据源') {
                 console.log('移除异构数据源菜单被点击');
@@ -333,8 +344,16 @@ document.addEventListener('DOMContentLoaded', function() {
         } else {
             // 如果是模型名称节点，查找第一个版本号
             const childrenContainer = activeNode.querySelector('.tree-children');
-            if (childrenContainer) {
-                const firstVersion = childrenContainer.querySelector('.tree-node span');
+            if (childrenContainer && childrenContainer.children.length > 0) {
+                // 如果有子节点，返回模型名称（表示删除所有版本，不显示版本号）
+                console.log('找到模型名称（有子节点）:', nodeName, '将删除所有版本');
+                return {
+                    name: nodeName,
+                    version: null // null表示删除所有版本
+                };
+            } else {
+                // 如果没有子节点，查找第一个版本号（用于下载功能）
+                const firstVersion = childrenContainer?.querySelector('.tree-node span');
                 if (firstVersion) {
                     const versionText = firstVersion.textContent.trim();
                     if (versionText.match(/^v\d+\.\d+\.\d+$/)) {
@@ -348,7 +367,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
             // 如果没有版本号，只返回模型名称
-            console.log('只找到模型名称:', nodeName);
+            console.log('只找到模型名称（无子节点）:', nodeName);
             return {
                 name: nodeName,
                 version: null
@@ -361,8 +380,21 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // 6. 功能按钮点击事件
     const addBtns = document.querySelectorAll('.func-btn');
-    addBtns.forEach(btn => {
-        const btnText = btn.querySelector('span')?.textContent?.trim();
+    console.log('找到的功能按钮数量:', addBtns.length);
+    
+    addBtns.forEach((btn, index) => {
+        // 获取按钮文字，排除图标
+        const spans = btn.querySelectorAll('span');
+        let btnText = '';
+        for (let span of spans) {
+            const text = span.textContent.trim();
+            // 跳过图标（单个字符或符号）
+            if (text.length > 1) {
+                btnText = text;
+                break;
+            }
+        }
+        console.log(`按钮 ${index}: "${btnText}"`);
         
         // 新增按钮
         if (btnText === '新增') {
@@ -407,6 +439,25 @@ document.addEventListener('DOMContentLoaded', function() {
                     modelDownload.show(selectedModel);
                 } else {
                     console.error('未找到modelDownload组件');
+                }
+            });
+        }
+        
+        // 删除按钮
+        if (btnText === '删除') {
+            console.log('绑定删除按钮事件');
+            btn.addEventListener('click', function() {
+                console.log('删除按钮被点击');
+                try {
+                    const selectedModel = getSelectedModel();
+                    console.log('选中的模型:', selectedModel);
+                    if (selectedModel) {
+                        showDeleteConfirmDialog(selectedModel);
+                    } else {
+                        showWorkspaceMessage('请先选择要删除的模型资产', 'warning');
+                    }
+                } catch (error) {
+                    console.error('删除按钮点击出错:', error);
                 }
             });
         }
@@ -526,6 +577,168 @@ document.addEventListener('DOMContentLoaded', function() {
                         successMsg.remove();
                     }
                 }, 5000);
+            }
+        });
+    }
+
+    // 显示删除确认对话框
+    function showDeleteConfirmDialog(selectedModel) {
+        // 创建对话框HTML
+        const dialogHtml = `
+            <div class="delete-confirm-dialog" style="
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0, 0, 0, 0.5);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 2000;
+            ">
+                <div class="dialog-content" style="
+                    background: white;
+                    border-radius: 8px;
+                    padding: 24px;
+                    max-width: 400px;
+                    width: 90%;
+                    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+                ">
+                    <h3 style="margin: 0 0 16px 0; font-size: 18px; color: #1f2329;">确认删除</h3>
+                    <p style="margin: 0 0 24px 0; color: #646a73; line-height: 1.5;">
+                        ${selectedModel.version ? 
+                            `确定要删除模型资产 <strong>${selectedModel.name}</strong> (版本: ${selectedModel.version}) 吗？` :
+                            `确定要删除模型资产 <strong>${selectedModel.name}</strong> 及其所有版本吗？`
+                        }<br><br>
+                        <span style="color: #f5222d;">此操作不可恢复！</span>
+                    </p>
+                    <div class="dialog-actions" style="display: flex; gap: 12px; justify-content: flex-end;">
+                        <button class="cancel-btn" style="
+                            padding: 8px 16px;
+                            border: 1px solid #c9cdd4;
+                            border-radius: 4px;
+                            background: white;
+                            color: #1f2329;
+                            cursor: pointer;
+                            font-size: 14px;
+                        ">取消</button>
+                        <button class="confirm-btn" style="
+                            padding: 8px 16px;
+                            border: 1px solid #f5222d;
+                            border-radius: 4px;
+                            background: #f5222d;
+                            color: white;
+                            cursor: pointer;
+                            font-size: 14px;
+                        ">确认删除</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // 创建对话框元素
+        const dialog = document.createElement('div');
+        dialog.innerHTML = dialogHtml;
+        document.body.appendChild(dialog);
+        
+        // 绑定事件
+        const cancelBtn = dialog.querySelector('.cancel-btn');
+        const confirmBtn = dialog.querySelector('.confirm-btn');
+        
+        const closeDialog = () => {
+            document.body.removeChild(dialog);
+        };
+        
+        cancelBtn.addEventListener('click', closeDialog);
+        
+        confirmBtn.addEventListener('click', () => {
+            closeDialog();
+            deleteModelAsset(selectedModel);
+        });
+        
+        // 点击遮罩关闭
+        dialog.addEventListener('click', (e) => {
+            if (e.target === dialog) {
+                closeDialog();
+            }
+        });
+        
+        // ESC键关闭
+        const handleEsc = (e) => {
+            if (e.key === 'Escape') {
+                closeDialog();
+                document.removeEventListener('keydown', handleEsc);
+            }
+        };
+        document.addEventListener('keydown', handleEsc);
+    }
+
+    // 删除模型资产
+    async function deleteModelAsset(selectedModel) {
+        try {
+            console.log('删除模型资产:', selectedModel);
+            
+            // 调用删除API
+            const response = await fetch('/api/models/delete', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    modelName: selectedModel.name,
+                    version: selectedModel.version || null // null表示删除所有版本
+                })
+            });
+            
+            if (response.ok) {
+                const result = await response.json();
+                console.log('删除响应:', result);
+                
+                if (result.code === 200) {
+                    showWorkspaceMessage(`模型资产 "${selectedModel.name}" 删除成功`, 'success');
+                    
+                    // 从右侧树中移除该节点
+                    removeModelFromTree(selectedModel);
+                    
+                    // 清除选中状态
+                    const rightSidebarTree = document.querySelector('.right-sidebar .tree');
+                    if (rightSidebarTree) {
+                        const activeNodes = rightSidebarTree.querySelectorAll('.tree-node.active');
+                        activeNodes.forEach(node => node.classList.remove('active'));
+                    }
+                } else {
+                    showWorkspaceMessage(result.message || '删除失败', 'error');
+                }
+            } else {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+        } catch (error) {
+            console.error('删除模型资产失败:', error);
+            showWorkspaceMessage('删除失败，请稍后重试', 'error');
+        }
+    }
+
+    // 从树中移除模型节点
+    function removeModelFromTree(selectedModel) {
+        const rightSidebarTree = document.querySelector('.right-sidebar .tree');
+        if (!rightSidebarTree) return;
+        
+        const allNodes = rightSidebarTree.querySelectorAll('.tree-node');
+        
+        allNodes.forEach(node => {
+            const span = node.querySelector('span');
+            if (span) {
+                const nodeName = span.textContent.trim();
+                
+                // 如果匹配要删除的模型名称，删除整个模型（包括所有版本）
+                if (nodeName === selectedModel.name) {
+                    node.remove();
+                }
+                // 如果只匹配版本号，只删除该版本节点
+                else if (selectedModel.version && nodeName === selectedModel.version) {
+                    node.remove();
+                }
             }
         });
     }
