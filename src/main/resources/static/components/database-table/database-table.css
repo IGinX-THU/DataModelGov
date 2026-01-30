@@ -224,6 +224,10 @@
     z-index: 2000;
 }
 
+.modal-mask[hidden] {
+    display: none;
+}
+
 .modal {
     width: 420px;
     background: #fff;
