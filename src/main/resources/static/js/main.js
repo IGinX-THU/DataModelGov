@@ -306,6 +306,22 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             }
             
+            // 检查是否点击了"编辑元模型档案"
+            if (menuItemText === '编辑元模型档案') {
+                console.log('编辑元模型档案菜单被点击');
+                const selectedModel = getSelectedModel();
+                if (selectedModel && selectedModel.version) {
+                    const modelEdit = document.getElementById('modelEdit');
+                    if (modelEdit) {
+                        modelEdit.show(selectedModel);
+                    } else {
+                        console.error('未找到modelEdit组件');
+                    }
+                } else {
+                    showWorkspaceMessage('请先选择要编辑的模型版本', 'warning');
+                }
+            }
+            
             // 检查是否点击了"移除异构数据源"
             if (menuItemText === '移除异构数据源') {
                 console.log('移除异构数据源菜单被点击');
@@ -487,6 +503,29 @@ document.addEventListener('DOMContentLoaded', function() {
             btn.addEventListener('click', function() {
                 console.log('卸载按钮被点击');
                 handleRemoveDataSource();
+            });
+        }
+        
+        // 编辑按钮
+        if (btnText === '编辑') {
+            btn.addEventListener('click', function() {
+                console.log('编辑按钮被点击');
+                try {
+                    const selectedModel = getSelectedModel();
+                    console.log('选中的模型:', selectedModel);
+                    if (selectedModel && selectedModel.version) {
+                        const modelEdit = document.getElementById('modelEdit');
+                        if (modelEdit) {
+                            modelEdit.show(selectedModel);
+                        } else {
+                            console.error('未找到modelEdit组件');
+                        }
+                    } else {
+                        showWorkspaceMessage('请先选择要编辑的模型版本', 'warning');
+                    }
+                } catch (error) {
+                    console.error('编辑按钮点击出错:', error);
+                }
             });
         }
     });

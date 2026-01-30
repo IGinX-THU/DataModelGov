@@ -185,8 +185,18 @@ class ModelDetail extends HTMLElement {
     }
 
     edit() {
-        console.log('编辑模型:', this.currentModel);
-        // 调用编辑功能
+        if (!this.currentModel) {
+            console.warn('没有选中的模型');
+            return;
+        }
+        
+        // 显示编辑对话框
+        const modelEdit = document.getElementById('modelEdit');
+        if (modelEdit) {
+            modelEdit.show(this.currentModel);
+        } else {
+            console.error('未找到modelEdit组件');
+        }
     }
 
     deleteModel() {
