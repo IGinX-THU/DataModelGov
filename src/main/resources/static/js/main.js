@@ -280,6 +280,21 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             }
             
+            // 检查是否点击了"下载模型文件"
+            if (menuItemText === '下载模型文件') {
+                console.log('下载模型文件菜单被点击');
+                const modelDownload = document.getElementById('modelDownload');
+                console.log('找到组件:', modelDownload);
+                if (modelDownload) {
+                    console.log('调用show方法');
+                    // 获取当前选中的模型
+                    const selectedModel = getSelectedModel();
+                    modelDownload.show(selectedModel);
+                } else {
+                    console.error('未找到modelDownload组件');
+                }
+            }
+            
             // 检查是否点击了"移除异构数据源"
             if (menuItemText === '移除异构数据源') {
                 console.log('移除异构数据源菜单被点击');
@@ -287,6 +302,62 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     });
+
+    // 获取当前选中的模型
+    function getSelectedModel() {
+        const rightSidebarTree = document.querySelector('.right-sidebar .tree');
+        if (!rightSidebarTree) return null;
+        
+        const activeNode = rightSidebarTree.querySelector('.tree-node.active');
+        if (!activeNode) return null;
+        
+        const span = activeNode.querySelector('span');
+        if (!span) return null;
+        
+        const nodeName = span.textContent.trim();
+        console.log('选中的节点名称:', nodeName);
+        
+        // 检查是否是版本号节点
+        if (nodeName.match(/^v\d+\.\d+\.\d+$/)) {
+            // 如果是版本号节点，获取父节点的模型名称
+            const parentNode = activeNode.closest('.tree-children')?.parentElement;
+            const parentSpan = parentNode?.querySelector('span');
+            if (parentSpan) {
+                const modelName = parentSpan.textContent.trim();
+                console.log('找到模型名称:', modelName, '版本号:', nodeName);
+                return {
+                    name: modelName,
+                    version: nodeName
+                };
+            }
+        } else {
+            // 如果是模型名称节点，查找第一个版本号
+            const childrenContainer = activeNode.querySelector('.tree-children');
+            if (childrenContainer) {
+                const firstVersion = childrenContainer.querySelector('.tree-node span');
+                if (firstVersion) {
+                    const versionText = firstVersion.textContent.trim();
+                    if (versionText.match(/^v\d+\.\d+\.\d+$/)) {
+                        console.log('找到模型名称:', nodeName, '版本号:', versionText);
+                        return {
+                            name: nodeName,
+                            version: versionText
+                        };
+                    }
+                }
+            }
+            
+            // 如果没有版本号，只返回模型名称
+            console.log('只找到模型名称:', nodeName);
+            return {
+                name: nodeName,
+                version: null
+            };
+        }
+        
+        console.log('未找到有效的模型信息');
+        return null;
+    }
 
     // 6. 功能按钮点击事件
     const addBtns = document.querySelectorAll('.func-btn');
@@ -319,6 +390,23 @@ document.addEventListener('DOMContentLoaded', function() {
                     modelUpload.show();
                 } else {
                     console.error('未找到modelUpload组件');
+                }
+            });
+        }
+        
+        // 下载按钮
+        if (btnText === '下载') {
+            btn.addEventListener('click', function() {
+                console.log('下载按钮被点击');
+                const modelDownload = document.getElementById('modelDownload');
+                console.log('找到组件:', modelDownload);
+                if (modelDownload) {
+                    console.log('调用show方法');
+                    // 获取当前选中的模型
+                    const selectedModel = getSelectedModel();
+                    modelDownload.show(selectedModel);
+                } else {
+                    console.error('未找到modelDownload组件');
                 }
             });
         }
@@ -385,14 +473,15 @@ document.addEventListener('DOMContentLoaded', function() {
                     border-radius: 6px;
                     color: #1e40af;
                     margin: 20px;
-                    text-align: center;
+                    font-size: 14px;
                 `;
                 successMsg.innerHTML = `
-                    <h4 style="margin: 0 0 8px 0;">✅ 模型上传成功</h4>
-                    <p style="margin: 0; color: #64748b;">模型 "${e.detail.formData.name}" 已成功上传</p>
+                    <strong>模型上传成功！</strong><br>
+                    模型名称: ${e.detail.modelName}<br>
+                    版本号: ${e.detail.version}
                 `;
                 
-                // 在工作区开头插入成功消息
+                // 在工作区开头插入成功消息，不清空整个工作区
                 workspaceContent.insertBefore(successMsg, workspaceContent.firstChild);
                 
                 setTimeout(() => {
@@ -403,6 +492,45 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
+
+    // 监听模型下载成功事件
+    const modelDownload = document.getElementById('modelDownload');
+    if (modelDownload) {
+        modelDownload.addEventListener('download-success', function(e) {
+            console.log('模型下载成功:', e.detail);
+            
+            // 在工作区显示成功消息
+            const workspaceContent = document.querySelector('.workspace-content');
+            if (workspaceContent) {
+                const successMsg = document.createElement('div');
+                successMsg.style.cssText = `
+                    padding: 20px;
+                    background: #f0fdf4;
+                    border: 1px solid #bbf7d0;
+                    border-radius: 6px;
+                    color: #166534;
+                    margin: 20px;
+                    font-size: 14px;
+                `;
+                successMsg.innerHTML = `
+                    <strong>模型下载成功！</strong><br>
+                    模型名称: ${e.detail.modelName}<br>
+                    版本号: ${e.detail.modelVersion}
+                `;
+                
+                // 在工作区开头插入成功消息，不清空整个工作区
+                workspaceContent.insertBefore(successMsg, workspaceContent.firstChild);
+                
+                setTimeout(() => {
+                    if (successMsg.parentNode) {
+                        successMsg.remove();
+                    }
+                }, 5000);
+            }
+        });
+    }
+
+    // 其他功能函数...
 
     // 删除数据源的处理函数
     function handleRemoveDataSource() {
