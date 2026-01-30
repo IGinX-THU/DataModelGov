@@ -378,6 +378,26 @@ document.addEventListener('DOMContentLoaded', function() {
         return null;
     }
 
+    // 5. 右侧树节点单击事件 - 显示模型详情
+    document.querySelectorAll('.right-sidebar .tree-node').forEach(node => {
+        node.addEventListener('click', function() {
+            console.log('单击节点:', this);
+            const selectedModel = getSelectedModel();
+            if (selectedModel && selectedModel.version) {
+                // 只有当有版本信息时才显示详情页面
+                console.log('显示模型详情:', selectedModel);
+                const modelDetail = document.getElementById('modelDetail');
+                if (modelDetail) {
+                    modelDetail.show(selectedModel);
+                } else {
+                    console.error('未找到modelDetail组件');
+                }
+            } else {
+                console.log('未获取到版本信息或点击的是父节点，不显示详情页面');
+            }
+        });
+    });
+
     // 6. 功能按钮点击事件
     const addBtns = document.querySelectorAll('.func-btn');
     console.log('找到的功能按钮数量:', addBtns.length);
@@ -675,7 +695,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // 删除模型资产
-    async function deleteModelAsset(selectedModel) {
+    window.deleteModelAsset = async function(selectedModel) {
         try {
             console.log('删除模型资产:', selectedModel);
             
