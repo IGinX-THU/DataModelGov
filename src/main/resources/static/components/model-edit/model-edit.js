@@ -11,6 +11,7 @@ class ModelEdit extends HTMLElement {
         await this.loadResources();
         this.render();
         this.bindEvents();
+        this.loadParsingRules();
         this.hide(); // 默认隐藏
     }
 
@@ -398,26 +399,421 @@ class ModelEdit extends HTMLElement {
     }
 
     autoParseFromCode() {
-        // 模拟从代码解析参数
-        const mockCodeAnalysis = {
-            inputs: [
-                { name: 'ambient_temp', type: 'Double', unit: '°C', desc: '环境温度传感器读数' },
-                { name: 'system_pressure', type: 'Double', unit: 'kPa', desc: '系统压力监测' },
-                { name: 'flow_velocity', type: 'Double', unit: 'm/s', desc: '流体速度' },
-                { name: 'valve_position', type: 'Double', unit: '%', desc: '阀门开度' }
-            ],
-            outputs: [
-                { name: 'pump_speed', type: 'Double', unit: 'rpm', desc: '泵转速控制' },
-                { name: 'heating_power', type: 'Double', unit: 'kW', desc: '加热功率' },
-                { name: 'system_status', type: 'Int32', unit: '-', desc: '系统运行状态' },
-                { name: 'efficiency_ratio', type: 'Double', unit: '%', desc: '能效比' }
-            ]
-        };
-
-        this.inputs = mockCodeAnalysis.inputs;
-        this.outputs = mockCodeAnalysis.outputs;
+        // 获取当前选择的配置
+        const parseRulesSelect = this.shadowRoot.getElementById('parseRulesSelect');
+        const sourceFileSelect = this.shadowRoot.getElementById('sourceFileSelect');
+        const forceOverrideCheck = this.shadowRoot.getElementById('forceOverrideCheck');
+        
+        const selectedRule = parseRulesSelect?.value || 'default';
+        const selectedFile = sourceFileSelect?.value || '';
+        const forceOverride = forceOverrideCheck?.checked || false;
+        
+        if (!selectedFile) {
+            this.showErrorMessage('请先选择源文件');
+            return;
+        }
+        
+        // 获取解析规则配置
+        const parsingRule = this.getParsingRuleConfig(selectedRule);
+        
+        // 模拟根据选择的解析规则和源文件进行解析
+        const codeAnalysis = this.performCodeAnalysis(selectedFile, parsingRule);
+        
+        if (!codeAnalysis || (!codeAnalysis.inputs && !codeAnalysis.outputs)) {
+            this.showErrorMessage('解析失败，请检查解析规则和源文件');
+            return;
+        }
+        
+        // 处理强制覆盖逻辑
+        if (forceOverride) {
+            // 强制覆盖：完全替换现有参数
+            this.inputs = codeAnalysis.inputs || [];
+            this.outputs = codeAnalysis.outputs || [];
+            this.showSuccessMessage(`已强制覆盖解析结果（${this.inputs.length}个输入，${this.outputs.length}个输出）`);
+        } else {
+            // 非强制覆盖：只填充未输入的内容
+            this.mergeParameters(codeAnalysis);
+            this.showSuccessMessage(`已智能合并解析结果（保留已有内容，填充空白项）`);
+        }
+        
         this.renderParams();
-        this.showSuccessMessage('已从代码自动解析参数');
+    }
+    
+    getParsingRuleConfig(ruleType) {
+        // 从解析规则组件获取配置
+        const parsingRules = document.querySelector('parsing-rules');
+        if (parsingRules && parsingRules.data) {
+            const rule = parsingRules.data.find(r => r.name === ruleType || r.id === parseInt(ruleType));
+            if (rule) {
+                return {
+                    type: rule.parsingType || 'regex',
+                    pattern: rule.regex || '',
+                    pythonModule: rule.pythonModule || '',
+                    pythonFunction: rule.pythonFunction || ''
+                };
+            }
+        }
+        
+        // 注释解析规则配置
+        const commentRules = {
+            'Python标准': {
+                type: 'regex',
+                pattern: '#\\s*@(Input|Output)\\s*:\\s*(\\w+)\\s*\\(([^)]+)\\)\\s*-\\s*([^\\n]+)',
+                pythonModule: '',
+                pythonFunction: ''
+            },
+            'MATLAB标准': {
+                type: 'regex',
+                pattern: '%\\s*@(Input|Output)\\s*:\\s*(\\w+)\\s*\\(([^)]+)\\)\\s*-\\s*([^\\n]+)',
+                pythonModule: '',
+                pythonFunction: ''
+            },
+            'C++ Doxygen': {
+                type: 'regex',
+                pattern: '\\/\\*\\*\\s*@(?:param|return|in|out)\\s+(\\w+)\\s+([^\\n]+)\\s*(?:\\*\\s*Type:\\s*([^\\n]+))?',
+                pythonModule: '',
+                pythonFunction: ''
+            },
+            'JavaDoc': {
+                type: 'regex',
+                pattern: '\\/\\*\\*\\s*@(?:param|return)\\s+(\\w+)\\s+([^\\n]+)\\s*(?:\\{[^}]*\\}\\s*([^\\n]+))?',
+                pythonModule: '',
+                pythonFunction: ''
+            },
+            '通用注释': {
+                type: 'regex',
+                pattern: '[\\/\\#]\\s*@(Input|Output|Param|Return)\\s*[:=]\\s*(\\w+)\\s*\\[?([^\\]]*)\\]?\\s*-\\s*([^\\n]+)',
+                pythonModule: '',
+                pythonFunction: ''
+            }
+        };
+        
+        return commentRules[ruleType] || commentRules['Python标准'];
+    }
+    
+    performCodeAnalysis(sourceFile, parsingRule) {
+        // 模拟从源文件扫描注释并解析Input/Output元数据
+        const fileExt = sourceFile.substring(sourceFile.lastIndexOf('.'));
+        
+        // 模拟文件内容（实际应用中需要读取真实文件）
+        const mockFileContents = {
+            'model.py': `# @Input: speed (float) - 车速
+# @Input: gear (int) - 档位
+# @Input: temperature (float) - 发动机温度
+# @Output: power (float) - 功率
+# @Output: torque (float) - 扭矩
+# @Output: efficiency (float) - 效率
+
+def calculate_engine_performance():
+    pass`,
+            
+            'control.m': `% @Input: reference (double) - 参考值
+% @Input: feedback (double) - 反馈值
+% @Input: gain (double) - 增益
+% @Output: control_signal (double) - 控制信号
+% @Output: error (double) - 误差
+
+function control_signal = pid_controller(reference, feedback, gain)
+    % Implementation here`,
+            
+            'processor.cpp': `/**
+ * @param input_data (vector<double>) - 输入数据向量
+ * @param threshold (double) - 阈值参数
+ * @param mode (int) - 处理模式
+ * @return result (bool) - 处理结果
+ * @return processed (vector<double>) - 处理后数据
+ */
+bool processData() {
+    // Implementation here`,
+            
+            'algorithm.java': `/**
+ * @param values (double[]) - 输入数值数组
+ * @param weights (double[]) - 权重数组
+ * @return result (double) - 计算结果
+ */
+public double calculateWeightedAverage() {
+    // Implementation here`,
+            
+            'generic.txt': `# @Input: data1 (string) - 第一个数据
+# @Input: data2 (string) - 第二个数据
+# @Output: result (string) - 处理结果
+# @Output: status (int) - 状态码
+
+Generic processing function`
+        };
+        
+        // 获取文件内容（模拟）
+        const fileContent = mockFileContents[sourceFile] || mockFileContents['model.py'];
+        
+        // 使用正则表达式解析注释中的Input/Output信息
+        const results = { inputs: [], outputs: [] };
+        
+        if (parsingRule.type === 'regex' && parsingRule.pattern) {
+            try {
+                const regex = new RegExp(parsingRule.pattern, 'gm');
+                let match;
+                
+                while ((match = regex.exec(fileContent)) !== null) {
+                    const [, type, name, dataType, description] = match;
+                    
+                    const param = {
+                        name: name.trim(),
+                        type: dataType.trim(),
+                        unit: this.inferUnit(dataType.trim(), description.trim()),
+                        desc: description.trim()
+                    };
+                    
+                    if (type.toLowerCase().includes('input') || type.toLowerCase().includes('param')) {
+                        results.inputs.push(param);
+                    } else if (type.toLowerCase().includes('output') || type.toLowerCase().includes('return')) {
+                        results.outputs.push(param);
+                    }
+                }
+            } catch (e) {
+                console.error('Regex parsing error:', e);
+                // 返回默认结果
+                return this.getDefaultResults(parsingRule.pattern);
+            }
+        }
+        
+        // 如果没有找到匹配项，返回默认结果
+        if (results.inputs.length === 0 && results.outputs.length === 0) {
+            // 如果是Python反射类型，尝试反射分析
+            if (parsingRule.type === 'python' && parsingRule.pythonModule && parsingRule.pythonFunction) {
+                return this.performPythonReflection(parsingRule.pythonModule, parsingRule.pythonFunction);
+            }
+            return this.getDefaultResults(parsingRule.pattern);
+        }
+        
+        return results;
+    }
+    
+    performPythonReflection(moduleName, functionName) {
+        // 模拟Python inspect模块的反射分析
+        const standardModules = {
+            'math': {
+                'sqrt': {
+                    inputs: [
+                        { name: 'x', type: 'float', unit: '-', desc: '要计算平方根的数字' }
+                    ],
+                    outputs: [
+                        { name: 'result', type: 'float', unit: '-', desc: 'x的平方根' }
+                    ]
+                },
+                'sin': {
+                    inputs: [
+                        { name: 'x', type: 'float', unit: 'rad', desc: '角度（弧度）' }
+                    ],
+                    outputs: [
+                        { name: 'result', type: 'float', unit: '-', desc: 'x的正弦值' }
+                    ]
+                },
+                'log': {
+                    inputs: [
+                        { name: 'x', type: 'float', unit: '-', desc: '要计算对数的数字' },
+                        { name: 'base', type: 'float', unit: '-', desc: '对数的底数（可选）' }
+                    ],
+                    outputs: [
+                        { name: 'result', type: 'float', unit: '-', desc: 'x的对数' }
+                    ]
+                }
+            },
+            'datetime': {
+                'datetime': {
+                    inputs: [
+                        { name: 'year', type: 'int', unit: '-', desc: '年份' },
+                        { name: 'month', type: 'int', unit: '-', desc: '月份 (1-12)' },
+                        { name: 'day', type: 'int', unit: '-', desc: '日期 (1-31)' },
+                        { name: 'hour', type: 'int', unit: '-', desc: '小时 (0-23)' },
+                        { name: 'minute', type: 'int', unit: '-', desc: '分钟 (0-59)' },
+                        { name: 'second', type: 'int', unit: '-', desc: '秒 (0-59)' },
+                        { name: 'microsecond', type: 'int', unit: '-', desc: '微秒 (0-999999)' },
+                        { name: 'tzinfo', type: 'tzinfo', unit: '-', desc: '时区信息' }
+                    ],
+                    outputs: [
+                        { name: 'datetime_obj', type: 'datetime', unit: '-', desc: 'datetime对象' }
+                    ]
+                }
+            },
+            're': {
+                'match': {
+                    inputs: [
+                        { name: 'pattern', type: 'str', unit: '-', desc: '正则表达式模式' },
+                        { name: 'string', type: 'str', unit: '-', desc: '要搜索的字符串' },
+                        { name: 'flags', type: 'int', unit: '-', desc: '匹配标志' }
+                    ],
+                    outputs: [
+                        { name: 'match_obj', type: 'MatchObject', unit: '-', desc: '匹配对象或None' }
+                    ]
+                },
+                'search': {
+                    inputs: [
+                        { name: 'pattern', type: 'str', unit: '-', desc: '正则表达式模式' },
+                        { name: 'string', type: 'str', unit: '-', desc: '要搜索的字符串' },
+                        { name: 'flags', type: 'int', unit: '-', desc: '匹配标志' }
+                    ],
+                    outputs: [
+                        { name: 'match_obj', type: 'MatchObject', unit: '-', desc: '匹配对象或None' }
+                    ]
+                }
+            }
+        };
+        
+        // 检查模块是否存在
+        const module = standardModules[moduleName];
+        if (!module) {
+            return {
+                inputs: [],
+                outputs: [],
+                error: `模块 '${moduleName}' 不存在或无法导入`
+            };
+        }
+        
+        // 检查函数是否存在
+        const func = module[functionName];
+        if (!func) {
+            return {
+                inputs: [],
+                outputs: [],
+                error: `函数 '${functionName}' 在模块 '${moduleName}' 中不存在`
+            };
+        }
+        
+        return func;
+    }
+    
+    inferUnit(dataType, description) {
+        // 根据数据类型和描述推断物理单位
+        const unitMap = {
+            'float': '°C',
+            'double': 'V',
+            'int': 'rpm',
+            'string': '-',
+            'bool': '-',
+            'vector<double>': '-',
+            'double[]': '-'
+        };
+        
+        // 从描述中查找单位关键词
+        const descLower = description.toLowerCase();
+        if (descLower.includes('温度') || descLower.includes('temperature')) return '°C';
+        if (descLower.includes('压力') || descLower.includes('pressure')) return 'Pa';
+        if (descLower.includes('速度') || descLower.includes('speed')) return 'km/h';
+        if (descLower.includes('转速') || descLower.includes('rpm')) return 'rpm';
+        if (descLower.includes('功率') || descLower.includes('power')) return 'kW';
+        if (descLower.includes('扭矩') || descLower.includes('torque')) return 'Nm';
+        if (descLower.includes('电压') || descLower.includes('voltage')) return 'V';
+        if (descLower.includes('电流') || descLower.includes('current')) return 'A';
+        
+        return unitMap[dataType] || '-';
+    }
+    
+    getDefaultResults(pattern) {
+        // 根据规则类型返回默认结果
+        if (pattern.includes('#')) {
+            // Python风格
+            return {
+                inputs: [
+                    { name: 'input_param', type: 'float', unit: '°C', desc: '输入参数' }
+                ],
+                outputs: [
+                    { name: 'output_result', type: 'float', unit: '-', desc: '输出结果' }
+                ]
+            };
+        } else if (pattern.includes('%')) {
+            // MATLAB风格
+            return {
+                inputs: [
+                    { name: 'input_signal', type: 'double', unit: 'V', desc: '输入信号' }
+                ],
+                outputs: [
+                    { name: 'output_signal', type: 'double', unit: 'V', desc: '输出信号' }
+                ]
+            };
+        } else if (pattern.includes('/\\*\\*')) {
+            // C++/Java风格
+            return {
+                inputs: [
+                    { name: 'param', type: 'double', unit: '-', desc: '参数描述' }
+                ],
+                outputs: [
+                    { name: 'result', type: 'bool', unit: '-', desc: '返回结果' }
+                ]
+            };
+        }
+        
+        return { inputs: [], outputs: [] };
+    }
+    
+    mergeParameters(codeAnalysis) {
+        const mergeArray = (existing, parsed) => {
+            const result = [...existing];
+            
+            parsed.forEach((parsedParam, index) => {
+                // 查找是否已存在同名参数
+                const existingIndex = result.findIndex(p => p.name === parsedParam.name);
+                
+                if (existingIndex >= 0) {
+                    // 存在同名参数，检查是否需要更新
+                    const existingParam = result[existingIndex];
+                    let needsUpdate = false;
+                    
+                    // 检查每个字段是否为空，如果为空则填充
+                    ['type', 'unit', 'desc'].forEach(field => {
+                        if (!existingParam[field] || existingParam[field].trim() === '') {
+                            existingParam[field] = parsedParam[field];
+                            needsUpdate = true;
+                        }
+                    });
+                    
+                    // 如果所有字段都已填写，可以选择跳过或提示
+                    if (!needsUpdate) {
+                        console.log(`参数 ${parsedParam.name} 已完整填写，跳过更新`);
+                    }
+                } else {
+                    // 不存在同名参数，直接添加
+                    result.push(parsedParam);
+                }
+            });
+            
+            return result;
+        };
+        
+        this.inputs = mergeArray(this.inputs, codeAnalysis.inputs || []);
+        this.outputs = mergeArray(this.outputs, codeAnalysis.outputs || []);
+    }
+    
+    loadParsingRules() {
+        const parseRulesSelect = this.shadowRoot.getElementById('parseRulesSelect');
+        if (!parseRulesSelect) return;
+        
+        // 清空现有选项（保留默认选项）
+        parseRulesSelect.innerHTML = '<option value="default">默认规则</option>';
+        
+        // 从解析规则组件获取规则列表
+        const parsingRules = document.querySelector('parsing-rules');
+        if (parsingRules && parsingRules.data) {
+            parsingRules.data.forEach(rule => {
+                const option = document.createElement('option');
+                option.value = rule.id;
+                option.textContent = rule.name;
+                parseRulesSelect.appendChild(option);
+            });
+        }
+        
+        // 添加一些内置规则选项
+        const builtinRules = [
+            { value: 'strict', text: '严格规则' },
+            { value: 'python_reflect', text: 'Python反射规则' },
+            { value: 'custom', text: '自定义规则' }
+        ];
+        
+        builtinRules.forEach(rule => {
+            const option = document.createElement('option');
+            option.value = rule.value;
+            option.textContent = rule.text;
+            parseRulesSelect.appendChild(option);
+        });
     }
 
     onParseRulesChange(value) {

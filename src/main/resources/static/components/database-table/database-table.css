@@ -168,9 +168,27 @@
     color: #4b5563;
 }
 
-.data-table td.action {
-    color: #ff6b6b;
+.data-table span.action {
+    color: #ff4d4f;
     cursor: pointer;
+    font-weight: 500;
+}
+
+.data-table span.action:hover {
+    color: #ff7875;
+    text-decoration: underline;
+}
+
+.data-table span.edit {
+    color: #1890ff;
+    cursor: pointer;
+    margin-right: 8px;
+    font-weight: 500;
+}
+
+.data-table span.edit:hover {
+    color: #40a9ff;
+    text-decoration: underline;
 }
 
 .pagination {

@@ -213,7 +213,10 @@ class DatabaseTable extends HTMLElement {
                 <td>${row.status}</td>
                 <td>${row.createtime}</td>
                 <td>${row.updatetime}</td>
-                <td class="action" data-id="${row.id}">删除</td>
+                <td>
+                    <span class="edit" data-id="${row.id}">编辑</span>
+                    <span class="action" data-id="${row.id}">删除</span>
+                </td>
             </tr>
         `).join('');
 
@@ -369,6 +372,15 @@ class DatabaseTable extends HTMLElement {
                         { text: '取消', class: 'modal-btn secondary', action: 'close' },
                         { text: '删除', class: 'modal-btn primary', action: 'delete', id }
                     ]);
+                } else if (event.target.classList.contains('edit')) {
+                    const id = event.target.dataset.id;
+                    const row = this.data.find(r => r.id == id);
+                    if (row) {
+                        this.showModal('编辑记录', this.getFormModalBody(row), [
+                            { text: '取消', class: 'modal-btn secondary', action: 'close' },
+                            { text: '保存', class: 'modal-btn primary', action: 'edit', id }
+                        ]);
+                    }
                 }
             });
         }
@@ -407,6 +419,27 @@ class DatabaseTable extends HTMLElement {
                     this.showModal('成功', '记录已添加');
                 } else if (action === 'import') {
                     this.showModal('成功', '数据导入完成');
+                } else if (action === 'edit' && id) {
+                    const name = modalBody.querySelector('.modal-input:nth-child(2)').value.trim();
+                    const device = modalBody.querySelector('.modal-input:nth-child(4)').value.trim();
+                    const temperature = modalBody.querySelector('.modal-input:nth-child(6)').value.trim();
+                    const humidity = modalBody.querySelector('.modal-input:nth-child(8)').value.trim();
+                    
+                    if (!name || !device || !temperature || !humidity) {
+                        this.showModal('错误', '请填写完整的字段信息');
+                        return;
+                    }
+                    
+                    const row = this.data.find(r => r.id == id);
+                    if (row) {
+                        row.name = name;
+                        row.device = device;
+                        row.temperature = temperature;
+                        row.humidity = humidity;
+                        row.updatetime = new Date().toISOString().split('T')[0];
+                        this.renderTable();
+                        this.showModal('成功', '记录已更新');
+                    }
                 } else if (action === 'delete' && id) {
                     this.data = this.data.filter(row => row.id != id);
                     this.renderTable();

@@ -327,6 +327,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 console.log('移除异构数据源菜单被点击');
                 handleRemoveDataSource();
             }
+            
+            // 检查是否点击了"配置解析规则"
+            if (menuItemText === '配置解析规则') {
+                console.log('配置解析规则菜单被点击');
+                const parsingRules = document.getElementById('parsingRules');
+                if (parsingRules) {
+                    parsingRules.show();
+                } else {
+                    console.error('未找到parsingRules组件');
+                }
+            }
         });
     });
 
@@ -525,6 +536,19 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                 } catch (error) {
                     console.error('编辑按钮点击出错:', error);
+                }
+            });
+        }
+        
+        // 解析按钮
+        if (btnText === '解析') {
+            btn.addEventListener('click', function() {
+                console.log('解析按钮被点击');
+                const parsingRules = document.getElementById('parsingRules');
+                if (parsingRules) {
+                    parsingRules.show();
+                } else {
+                    console.error('未找到parsingRules组件');
                 }
             });
         }
