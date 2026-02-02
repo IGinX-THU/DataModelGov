@@ -1,0 +1,59 @@
+<div class="parsing-rules">
+    <div class="parsing-filter-card">
+        <div class="filter-header">筛选</div>
+        <div class="filter-rows" id="filterRows">
+            <div class="filter-row">
+                <div class="filter-field">
+                    <span class="filter-label">名称</span>
+                    <input class="filter-input" type="text" placeholder="请输入规则名称" />
+                </div>
+                <div class="filter-field">
+                    <span class="filter-label">正则</span>
+                    <input class="filter-input" type="text" placeholder="请输入正则表达式" />
+                </div>
+            </div>
+        </div>
+        <div class="filter-actions">
+            <div class="filter-spacer"></div>
+            <button class="filter-btn outline" type="button" id="resetFilters">重置</button>
+            <button class="filter-btn solid" type="button" id="applyFilters">查询</button>
+        </div>
+    </div>
+
+    <div class="parsing-table-card">
+        <div class="table-toolbar">
+            <button class="toolbar-btn green" type="button" id="addRuleBtn">新增</button>
+        </div>
+        <div class="table-wrapper">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>id</th>
+                        <th>名称</th>
+                        <th>正则表达式</th>
+                        <th>创建时间</th>
+                        <th>更新时间</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody"></tbody>
+            </table>
+        </div>
+        <div class="pagination">
+            <button class="page-btn" id="prevPage">&lt;</button>
+            <div class="page-list" id="pageList"></div>
+            <button class="page-btn" id="nextPage">&gt;</button>
+        </div>
+    </div>
+</div>
+
+<div class="modal-mask" id="modalMask" hidden>
+    <div class="modal">
+        <div class="modal-header">
+            <span id="modalTitle">提示</span>
+            <button class="modal-close" id="modalClose">×</button>
+        </div>
+        <div class="modal-body" id="modalBody"></div>
+        <div class="modal-footer" id="modalFooter"></div>
+    </div>
+</div>
