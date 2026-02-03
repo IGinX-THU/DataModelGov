@@ -54,10 +54,68 @@
 <div class="modal-mask" id="modalMask" hidden>
     <div class="modal">
         <div class="modal-header">
-            <span id="modalTitle">提示</span>
+            <span id="modalTitle">新增关联规则</span>
             <button class="modal-close" id="modalClose">×</button>
         </div>
-        <div class="modal-body" id="modalBody"></div>
-        <div class="modal-footer" id="modalFooter"></div>
+        <div class="modal-body" id="modalBody">
+            <form id="ruleForm" class="rule-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="ruleName">规则名称</label>
+                        <input type="text" id="ruleName" name="ruleName" required placeholder="请输入规则名称">
+                    </div>
+                    <div class="form-group">
+                        <label for="ruleDesc">规则描述</label>
+                        <input type="text" id="ruleDesc" name="ruleDesc" placeholder="请输入规则描述">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="targetModel">关联模型</label>
+                        <select id="targetModel" name="targetModel" required>
+                            <option value="">请选择关联模型</option>
+                            <option value="model1">环境监测模型</option>
+                            <option value="model2">设备监控模型</option>
+                            <option value="model3">管道监测模型</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="version">版本</label>
+                        <input type="text" id="version" name="version" required value="v1.0.0">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>状态</label>
+                        <div class="radio-group">
+                            <label class="radio-label">
+                                <input type="radio" name="status" value="active" checked>
+                                <span class="radio-custom"></span>
+                                <span>启用</span>
+                            </label>
+                            <label class="radio-label">
+                                <input type="radio" name="status" value="inactive">
+                                <span class="radio-custom"></span>
+                                <span>禁用</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="form-group full-width">
+                    <label for="ruleConfig">规则配置</label>
+                    <div class="code-editor">
+                        <div class="code-toolbar">
+                            <button type="button" class="code-btn" id="formatJson">格式化</button>
+                            <button type="button" class="code-btn" id="clearJson">清空</button>
+                        </div>
+                        <textarea id="ruleConfig" name="ruleConfig" class="code-textarea" placeholder="请输入JSON格式的规则配置"></textarea>
+                    </div>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-cancel" id="cancelBtn">取消</button>
+            <button type="button" class="btn btn-confirm" id="saveBtn">确定</button>
+        </div>
     </div>
 </div>

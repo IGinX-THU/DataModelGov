@@ -188,8 +188,27 @@ class AssociationRules extends HTMLElement {
 
         // 模态框事件
         this.shadowRoot.getElementById('modalClose')?.addEventListener('click', () => this.hideModal());
+        this.shadowRoot.getElementById('cancelBtn')?.addEventListener('click', () => this.hideModal());
+        this.shadowRoot.getElementById('saveBtn')?.addEventListener('click', () => this.saveRule());
+        this.shadowRoot.getElementById('formatJson')?.addEventListener('click', () => this.formatJson());
+        this.shadowRoot.getElementById('clearJson')?.addEventListener('click', () => {
+            const ruleConfig = this.shadowRoot.getElementById('ruleConfig');
+            if (ruleConfig && confirm('确定要清空规则配置吗？')) {
+                ruleConfig.value = '';
+            }
+        });
+        
+        // Close modal when clicking on the mask
         this.shadowRoot.getElementById('modalMask')?.addEventListener('click', (e) => {
-            if (e.target.id === 'modalMask') this.hideModal();
+            if (e.target === this.shadowRoot.getElementById('modalMask')) {
+                this.hideModal();
+            }
+        });
+        
+        // Handle form submission
+        this.shadowRoot.getElementById('ruleForm')?.addEventListener('submit', (e) => {
+            e.preventDefault();
+            this.saveRule();
         });
 
         // 处理操作按钮点击事件
@@ -375,55 +394,147 @@ class AssociationRules extends HTMLElement {
     }
 
     showAddModal() {
-        this.showModal('新增解析规则', this.getRuleModalBody(), [
-            { text: '取消', class: 'modal-btn secondary', action: 'close' },
-            { text: '保存', class: 'modal-btn primary', action: 'save' }
-        ]);
+        const modal = this.shadowRoot.getElementById('modalMask');
+        const title = this.shadowRoot.getElementById('modalTitle');
+        const form = this.shadowRoot.getElementById('ruleForm');
+        
+        if (modal && title && form) {
+            title.textContent = '新增关联规则';
+            form.reset();
+            modal.hidden = false;
+            modal.style.display = 'flex';
+            this.shadowRoot.getElementById('version').value = 'v1.0.0';
+            this.shadowRoot.querySelector('input[name="status"][value="active"]').checked = true;
+            this.currentAction = 'add';
+        }
     }
 
-    getRuleModalBody() {
-        return `
-            <div class="form-group">
-                <label class="form-label">规则名称</label>
-                <input class="form-input" id="ruleName" type="text" placeholder="请输入规则名称" />
-            </div>
-            <div class="form-group">
-                <label class="form-label">正则表达式</label>
-                <input class="form-input" id="ruleRegex" type="text" placeholder="请输入正则表达式" />
-            </div>
-        `;
+    showEditModal(rule) {
+        const modal = this.shadowRoot.getElementById('modalMask');
+        const title = this.shadowRoot.getElementById('modalTitle');
+        const form = this.shadowRoot.getElementById('ruleForm');
+        
+        if (modal && title && form && rule) {
+            title.textContent = '编辑关联规则';
+            form.reset();
+            
+            // Fill the form with rule data
+            this.shadowRoot.getElementById('ruleName').value = rule.ruleName || rule.name || '';
+            this.shadowRoot.getElementById('ruleDesc').value = rule.ruleDesc || '';
+            this.shadowRoot.getElementById('targetModel').value = rule.targetModel || '';
+            this.shadowRoot.getElementById('version').value = rule.version || 'v1.0.0';
+            
+            // Set status radio button
+            const statusValue = rule.status || 'active';
+            this.shadowRoot.querySelector(`input[name="status"][value="${statusValue}"]`).checked = true;
+            
+            // Set rule config (pretty print JSON if it's an object)
+            try {
+                const config = typeof rule.config === 'string' ? rule.config : 
+                              rule.config ? JSON.stringify(rule.config, null, 2) : '';
+                this.shadowRoot.getElementById('ruleConfig').value = config;
+            } catch (e) {
+                console.error('Error formatting rule config:', e);
+                this.shadowRoot.getElementById('ruleConfig').value = '';
+            }
+            
+            // Store the rule ID for update
+            form.dataset.ruleId = rule.id;
+            this.currentAction = 'edit';
+            
+            modal.hidden = false;
+            modal.style.display = 'flex';
+        }
+    }
+
+    hideModal() {
+        const modal = this.shadowRoot.getElementById('modalMask');
+        if (modal) {
+            modal.hidden = true;
+            modal.style.display = 'none';
+        }
     }
 
     saveRule() {
-        const modalBody = this.shadowRoot.getElementById('modalBody');
-        const newRule = {
-            id: this.data.length + 1,
-            name: modalBody.querySelector('#ruleName')?.value.trim(),
-            regex: modalBody.querySelector('#ruleRegex')?.value.trim(),
-            createTime: new Date().toLocaleString('zh-CN'),
-            updateTime: new Date().toLocaleString('zh-CN')
+        const form = this.shadowRoot.getElementById('ruleForm');
+        if (!form) return;
+
+        const ruleId = form.dataset.ruleId;
+        const ruleName = this.shadowRoot.getElementById('ruleName').value.trim();
+        const ruleDesc = this.shadowRoot.getElementById('ruleDesc').value.trim();
+        const targetModel = this.shadowRoot.getElementById('targetModel').value;
+        const version = this.shadowRoot.getElementById('version').value.trim();
+        const status = this.shadowRoot.querySelector('input[name="status"]:checked')?.value || 'active';
+        const ruleConfig = this.shadowRoot.getElementById('ruleConfig').value.trim();
+
+        // Basic validation
+        if (!ruleName) {
+            alert('请输入规则名称');
+            return;
+        }
+
+        if (!targetModel) {
+            alert('请选择关联模型');
+            return;
+        }
+
+        // Parse and validate JSON config
+        let parsedConfig;
+        if (ruleConfig) {
+            try {
+                parsedConfig = JSON.parse(ruleConfig);
+            } catch (e) {
+                alert('规则配置必须是有效的JSON格式');
+                return;
+            }
+        }
+
+        const ruleData = {
+            id: ruleId || Date.now(),
+            ruleName,
+            ruleDesc,
+            targetModel,
+            version,
+            status,
+            config: parsedConfig || null,
+            updateTime: new Date().toISOString()
         };
 
-        this.data.push(newRule);
+        if (this.currentAction === 'edit' && ruleId) {
+            // Update existing rule
+            const index = this.data.findIndex(r => r.id === ruleId);
+            if (index !== -1) {
+                this.data[index] = { ...this.data[index], ...ruleData };
+            }
+        } else {
+            // Add new rule
+            ruleData.id = this.data.length > 0 ? Math.max(...this.data.map(r => r.id)) + 1 : 1;
+            this.data.unshift(ruleData);
+        }
+
+        // Update the UI
         this.renderTable();
-        this.showModal('成功', '规则已添加');
+        this.hideModal();
+        alert(`规则已${ruleId ? '更新' : '添加'}成功`);
+    }
+
+    formatJson() {
+        const textarea = this.shadowRoot.getElementById('ruleConfig');
+        if (!textarea) return;
+
+        try {
+            const parsed = JSON.parse(textarea.value);
+            textarea.value = JSON.stringify(parsed, null, 2);
+        } catch (e) {
+            alert('无效的JSON格式');
+        }
     }
 
     editRule(id) {
         const rule = this.data.find(item => item.id === id);
         if (!rule) return;
-
-        this.showModal('编辑解析规则', this.getRuleModalBody(), [
-            { text: '取消', class: 'modal-btn secondary', action: 'close' },
-            { text: '更新', class: 'modal-btn primary', action: 'update', id }
-        ]);
-
-        // 填充表单数据
-        setTimeout(() => {
-            const modalBody = this.shadowRoot.getElementById('modalBody');
-            modalBody.querySelector('#ruleName').value = rule.name;
-            modalBody.querySelector('#ruleRegex').value = rule.regex;
-        }, 0);
+        
+        this.showEditModal(rule);
     }
 
     updateRule(id) {
