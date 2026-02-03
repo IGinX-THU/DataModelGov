@@ -338,6 +338,17 @@ document.addEventListener('DOMContentLoaded', function() {
                     console.error('未找到parsingRules组件');
                 }
             }
+            
+            // 检查是否点击了"关联规则配置"
+            if (menuItemText === '关联规则配置') {
+                console.log('关联规则配置菜单被点击');
+                const associationRules = document.getElementById('associationRules');
+                if (associationRules) {
+                    associationRules.show();
+                } else {
+                    console.error('未找到associationRules组件');
+                }
+            }
         });
     });
 
@@ -549,6 +560,19 @@ document.addEventListener('DOMContentLoaded', function() {
                     parsingRules.show();
                 } else {
                     console.error('未找到parsingRules组件');
+                }
+            });
+        }
+        
+        // 关联按钮
+        if (btnText === '关联') {
+            btn.addEventListener('click', function() {
+                console.log('关联按钮被点击');
+                const associationRules = document.getElementById('associationRules');
+                if (associationRules) {
+                    associationRules.show();
+                } else {
+                    console.error('未找到associationRules组件');
                 }
             });
         }

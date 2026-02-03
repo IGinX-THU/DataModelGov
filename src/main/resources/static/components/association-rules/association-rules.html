@@ -1,0 +1,63 @@
+<div class="parsing-rules">
+    <div class="parsing-filter-card">
+        <div class="filter-header">筛选</div>
+        <div class="filter-rows" id="filterRows">
+            <div class="filter-row">
+                <div class="filter-field">
+                    <span class="filter-label">规则名</span>
+                    <input class="filter-input" type="text" placeholder="请输入规则名称" />
+                </div>
+                <div class="filter-field">
+                    <span class="filter-label">状态</span>
+                    <select class="filter-input">
+                        <option value="">全部</option>
+                        <option value="active">启用</option>
+                        <option value="inactive">禁用</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+        <div class="filter-actions">
+            <div class="filter-spacer"></div>
+            <button class="filter-btn outline" type="button" id="resetFilters">重置</button>
+            <button class="filter-btn solid" type="button" id="applyFilters">查询</button>
+        </div>
+    </div>
+
+    <div class="parsing-table-card">
+        <div class="table-toolbar">
+            <button class="toolbar-btn green" type="button" id="addRuleBtn">新增</button>
+        </div>
+        <div class="table-wrapper">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>规则名称</th>
+                        <th>关联模型</th>
+                        <th>版本</th>
+                        <th>状态</th>
+                        <th>最后修改时间</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody"></tbody>
+            </table>
+        </div>
+        <div class="pagination">
+            <button class="page-btn" id="prevPage">&lt;</button>
+            <div class="page-list" id="pageList"></div>
+            <button class="page-btn" id="nextPage">&gt;</button>
+        </div>
+    </div>
+</div>
+
+<div class="modal-mask" id="modalMask" hidden>
+    <div class="modal">
+        <div class="modal-header">
+            <span id="modalTitle">提示</span>
+            <button class="modal-close" id="modalClose">×</button>
+        </div>
+        <div class="modal-body" id="modalBody"></div>
+        <div class="modal-footer" id="modalFooter"></div>
+    </div>
+</div>

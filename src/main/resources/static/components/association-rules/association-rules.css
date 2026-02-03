@@ -1,0 +1,462 @@
+:host {
+    display: none;
+    width: 100%;
+    height: 100%;
+}
+
+:host([show]) {
+    display: block;
+}
+
+.parsing-rules {
+    padding: 16px 24px 24px;
+    font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    color: #2b2f36;
+}
+
+.parsing-filter-card {
+    background: #fff;
+    border-radius: 6px;
+    border: 1px solid #edf0f5;
+    padding: 16px 20px 12px;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+}
+
+.filter-header {
+    font-size: 13px;
+    color: #6b7280;
+    margin-bottom: 10px;
+}
+
+.filter-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.filter-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 32px;
+    gap: 16px;
+    align-items: center;
+}
+
+.filter-field {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.filter-label {
+    font-size: 12px;
+    color: #6b7280;
+    font-weight: 500;
+    min-width: 60px;
+}
+
+.filter-input {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    font-size: 12px;
+    background: #fff;
+    color: #2b2f36;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.filter-input:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+.filter-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 12px;
+}
+
+.filter-spacer {
+    flex: 1;
+}
+
+.filter-btn {
+    padding: 6px 12px;
+    border: 1px solid #e2e6ef;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: #fff;
+    color: #6b7280;
+}
+
+.filter-btn.solid {
+    background: #3b82f6;
+    border-color: #3b82f6;
+    color: white;
+}
+
+.filter-btn.solid:hover {
+    background: #2563eb;
+}
+
+.filter-btn.outline:hover {
+    border-color: #3b82f6;
+    color: #3b82f6;
+}
+
+.parsing-table-card {
+    background: #fff;
+    border-radius: 6px;
+    border: 1px solid #edf0f5;
+    margin-top: 16px;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+}
+
+.table-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 16px 20px;
+    border-bottom: 1px solid #edf0f5;
+}
+
+.toolbar-btn {
+    padding: 6px 12px;
+    border: none;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    color: white;
+}
+
+.toolbar-btn.green {
+    background: #10b981;
+}
+
+.toolbar-btn.green:hover {
+    background: #059669;
+}
+
+.toolbar-btn.orange {
+    background: #f59e0b;
+}
+
+.toolbar-btn.orange:hover {
+    background: #d97706;
+}
+
+.toolbar-btn.blue {
+    background: #3b82f6;
+}
+
+.toolbar-btn.blue:hover {
+    background: #2563eb;
+}
+
+.table-wrapper {
+    overflow-x: auto;
+}
+
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.data-table th {
+    background: #f8fafc;
+    padding: 12px 16px;
+    text-align: left;
+    font-weight: 600;
+    color: #374151;
+    border-bottom: 1px solid #edf0f5;
+    white-space: nowrap;
+}
+
+.data-table td {
+    padding: 12px 16px;
+    border-bottom: 1px solid #f3f4f6;
+    color: #2b2f36;
+    white-space: nowrap;
+}
+
+.data-table tr:hover {
+    background: #f8fafc;
+}
+
+.action-buttons {
+    display: flex;
+    gap: 8px;
+}
+
+.action-btn {
+    padding: 4px 8px;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: #fff;
+    color: #6b7280;
+}
+
+/* 运行 (Run) - Green */
+.action-btn.run {
+    color: #7666EB;
+    border-color: #7666EB;
+}
+
+.action-btn.run:hover {
+    background: #7666EB;
+    color: white;
+}
+
+/* 复制 (Copy) - Blue */
+.action-btn.copy {
+    color: #10b981;
+    border-color: #10b981;
+}
+
+.action-btn.copy:hover {
+    background: #10b981;
+    color: white;
+}
+
+/* 启用/禁用 (Enable/Disable) - Red for 禁用, Green for 启用 */
+.action-btn.toggle {
+    color: #ef4444;
+    border-color: #ef4444;
+}
+
+.action-btn.toggle:hover {
+    background: #ef4444;
+    color: white;
+}
+
+/* Special case for when button shows 启用 - Green */
+.action-btn.toggle[data-status="inactive"] {
+    color: #FF8D1A;
+    border-color: #FF8D1A;
+}
+
+.action-btn.toggle[data-status="inactive"]:hover {
+    background: #FF8D1A;
+    color: white;
+}
+
+/* 编辑 (Edit) - Blue */
+.action-btn.edit {
+    color: #3b82f6;
+    border-color: #3b82f6;
+}
+
+.action-btn.edit:hover {
+    background: #3b82f6;
+    color: white;
+}
+
+/* 删除 (Delete) - Red */
+.action-btn.delete {
+    color: #ef4444;
+    border-color: #ef4444;
+}
+
+.action-btn.delete:hover {
+    background: #ef4444;
+    color: white;
+}
+
+.pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 16px;
+}
+
+.page-btn {
+    width: 28px;
+    height: 28px;
+    border: 1px solid #e2e6ef;
+    background: #fff;
+    border-radius: 4px;
+    color: #6b7280;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.page-btn:hover:not(:disabled) {
+    border-color: #3b82f6;
+    color: #3b82f6;
+}
+
+.page-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.page-list {
+    display: flex;
+    gap: 4px;
+}
+
+.page-number {
+    width: 28px;
+    height: 28px;
+    border: 1px solid #e2e6ef;
+    background: #fff;
+    border-radius: 4px;
+    color: #6b7280;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.page-number:hover {
+    border-color: #3b82f6;
+    color: #3b82f6;
+}
+
+.page-number.active {
+    background: #3b82f6;
+    border-color: #3b82f6;
+    color: white;
+}
+
+.modal-mask {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.modal-mask[hidden] {
+    display: none !important;
+}
+
+.modal {
+    background: #fff;
+    border-radius: 8px;
+    width: 90%;
+    max-width: 500px;
+    max-height: 80vh;
+    overflow: hidden;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+}
+
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid #edf0f5;
+    font-weight: 600;
+    color: #2b2f36;
+}
+
+.modal-close {
+    width: 24px;
+    height: 24px;
+    border: none;
+    background: none;
+    color: #6b7280;
+    font-size: 18px;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.modal-close:hover {
+    background: #f3f4f6;
+    color: #374151;
+}
+
+.modal-body {
+    padding: 20px;
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+.modal-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 16px 20px;
+    border-top: 1px solid #edf0f5;
+}
+
+.modal-btn {
+    padding: 8px 16px;
+    border: 1px solid #e2e6ef;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: #fff;
+    color: #6b7280;
+}
+
+.modal-btn.primary {
+    background: #3b82f6;
+    border-color: #3b82f6;
+    color: white;
+}
+
+.modal-btn.primary:hover {
+    background: #2563eb;
+    border-color: #2563eb;
+}
+
+.modal-btn:hover {
+    border-color: #3b82f6;
+    color: #3b82f6;
+}
+
+.form-group {
+    margin-bottom: 16px;
+}
+
+.form-label {
+    display: block;
+    font-size: 12px;
+    font-weight: 500;
+    color: #374151;
+    margin-bottom: 6px;
+}
+
+.form-input {
+    width: 100%;
+    height: 32px;
+    border: 1px solid #e2e6ef;
+    border-radius: 4px;
+    padding: 0 8px;
+    font-size: 12px;
+    background: #fff;
+    color: #2b2f36;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.form-input:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
