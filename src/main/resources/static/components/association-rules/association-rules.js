@@ -187,9 +187,9 @@ class AssociationRules extends HTMLElement {
         this.shadowRoot.getElementById('nextPage')?.addEventListener('click', () => this.changePage(1));
 
         // 模态框事件
-        this.shadowRoot.getElementById('modalClose')?.addEventListener('click', () => this.closeModal());
+        this.shadowRoot.getElementById('modalClose')?.addEventListener('click', () => this.hideModal());
         this.shadowRoot.getElementById('modalMask')?.addEventListener('click', (e) => {
-            if (e.target.id === 'modalMask') this.closeModal();
+            if (e.target.id === 'modalMask') this.hideModal();
         });
 
         // 处理操作按钮点击事件
@@ -215,24 +215,6 @@ class AssociationRules extends HTMLElement {
                         break;
                     case 'delete':
                         this.deleteRule(id);
-                        break;
-                }
-            }
-            
-            // 处理模态框按钮点击事件
-            if (e.target.classList.contains('modal-btn')) {
-                const action = e.target.dataset.action;
-                const id = e.target.dataset.id ? parseInt(e.target.dataset.id) : null;
-                
-                switch (action) {
-                    case 'cancel':
-                        this.closeModal();
-                        break;
-                    case 'save':
-                        this.saveRule();
-                        break;
-                    case 'update':
-                        this.updateRule(id);
                         break;
                 }
             }
@@ -393,18 +375,10 @@ class AssociationRules extends HTMLElement {
     }
 
     showAddModal() {
-        const modalBody = this.shadowRoot.getElementById('modalBody');
-        const modalFooter = this.shadowRoot.getElementById('modalFooter');
-        const modalTitle = this.shadowRoot.getElementById('modalTitle');
-
-        modalTitle.textContent = '新增解析规则';
-        modalBody.innerHTML = this.getRuleModalBody();
-        modalFooter.innerHTML = `
-            <button class="modal-btn" data-action="cancel">取消</button>
-            <button class="modal-btn primary" data-action="save">保存</button>
-        `;
-
-        this.shadowRoot.getElementById('modalMask').hidden = false;
+        this.showModal('新增解析规则', this.getRuleModalBody(), [
+            { text: '取消', class: 'modal-btn secondary', action: 'close' },
+            { text: '保存', class: 'modal-btn primary', action: 'save' }
+        ]);
     }
 
     getRuleModalBody() {
@@ -421,59 +395,116 @@ class AssociationRules extends HTMLElement {
     }
 
     saveRule() {
+        const modalBody = this.shadowRoot.getElementById('modalBody');
         const newRule = {
             id: this.data.length + 1,
-            name: this.shadowRoot.getElementById('ruleName')?.value.trim(),
-            regex: this.shadowRoot.getElementById('ruleRegex')?.value.trim(),
+            name: modalBody.querySelector('#ruleName')?.value.trim(),
+            regex: modalBody.querySelector('#ruleRegex')?.value.trim(),
             createTime: new Date().toLocaleString('zh-CN'),
             updateTime: new Date().toLocaleString('zh-CN')
         };
 
         this.data.push(newRule);
         this.renderTable();
-        this.closeModal();
+        this.showModal('成功', '规则已添加');
     }
 
     editRule(id) {
         const rule = this.data.find(item => item.id === id);
         if (!rule) return;
 
-        const modalBody = this.shadowRoot.getElementById('modalBody');
-        const modalFooter = this.shadowRoot.getElementById('modalFooter');
-        const modalTitle = this.shadowRoot.getElementById('modalTitle');
-
-        modalTitle.textContent = '编辑解析规则';
-        modalBody.innerHTML = this.getRuleModalBody();
-        modalFooter.innerHTML = `
-            <button class="modal-btn" data-action="cancel">取消</button>
-            <button class="modal-btn primary" data-action="update" data-id="${id}">更新</button>
-        `;
+        this.showModal('编辑解析规则', this.getRuleModalBody(), [
+            { text: '取消', class: 'modal-btn secondary', action: 'close' },
+            { text: '更新', class: 'modal-btn primary', action: 'update', id }
+        ]);
 
         // 填充表单数据
         setTimeout(() => {
-            this.shadowRoot.getElementById('ruleName').value = rule.name;
-            this.shadowRoot.getElementById('ruleRegex').value = rule.regex;
+            const modalBody = this.shadowRoot.getElementById('modalBody');
+            modalBody.querySelector('#ruleName').value = rule.name;
+            modalBody.querySelector('#ruleRegex').value = rule.regex;
         }, 0);
-
-        this.shadowRoot.getElementById('modalMask').hidden = false;
     }
 
     updateRule(id) {
+        const modalBody = this.shadowRoot.getElementById('modalBody');
         const rule = this.data.find(item => item.id === id);
         if (!rule) return;
 
-        rule.name = this.shadowRoot.getElementById('ruleName')?.value.trim();
-        rule.regex = this.shadowRoot.getElementById('ruleRegex')?.value.trim();
+        rule.name = modalBody.querySelector('#ruleName')?.value.trim();
+        rule.regex = modalBody.querySelector('#ruleRegex')?.value.trim();
         rule.updateTime = new Date().toLocaleString('zh-CN');
 
         this.renderTable();
-        this.closeModal();
+        this.showModal('成功', '规则已更新');
     }
 
     deleteRule(id) {
-        if (confirm('确定要删除这条规则吗？')) {
-            this.data = this.data.filter(item => item.id !== id);
-            this.renderTable();
+        this.showModal('删除确认', `确定要删除这条规则吗？`, [
+            { text: '取消', class: 'modal-btn secondary', action: 'close' },
+            { text: '删除', class: 'modal-btn primary', action: 'delete', id }
+        ]);
+    }
+
+    showModal(title, content, buttons = []) {
+        const modalMask = this.shadowRoot.getElementById('modalMask');
+        const modalTitle = this.shadowRoot.getElementById('modalTitle');
+        const modalBody = this.shadowRoot.getElementById('modalBody');
+        const modalFooter = this.shadowRoot.getElementById('modalFooter');
+
+        if (!modalMask || !modalTitle || !modalBody || !modalFooter) {
+            console.error('Modal elements not found');
+            return;
+        }
+
+        modalTitle.textContent = title;
+        modalBody.innerHTML = content;
+
+        if (buttons.length > 0) {
+            modalFooter.innerHTML = buttons.map(btn => 
+                `<button class="${btn.class}" data-action="${btn.action}" ${btn.id ? `data-id="${btn.id}"` : ''}>${btn.text}</button>`
+            ).join('');
+
+            // 移除旧的事件监听器并添加新的
+            modalFooter.replaceWith(modalFooter.cloneNode(true));
+            const newModalFooter = this.shadowRoot.getElementById('modalFooter');
+            
+            newModalFooter.addEventListener('click', (event) => {
+                const action = event.target.dataset.action;
+                const id = event.target.dataset.id;
+
+                if (action === 'close') {
+                    this.hideModal();
+                } else if (action === 'delete' && id) {
+                    this.data = this.data.filter(item => item.id != id);
+                    this.renderTable();
+                    this.showModal('成功', '规则已删除');
+                } else if (action === 'save') {
+                    this.saveRule();
+                } else if (action === 'update' && id) {
+                    this.updateRule(id);
+                }
+            });
+        } else {
+            modalFooter.innerHTML = '';
+        }
+
+        this.showModalMask();
+    }
+
+    showModalMask() {
+        const modalMask = this.shadowRoot.getElementById('modalMask');
+        if (modalMask) {
+            modalMask.hidden = false;
+            modalMask.style.display = 'flex';
+        }
+    }
+
+    hideModal() {
+        const modalMask = this.shadowRoot.getElementById('modalMask');
+        if (modalMask) {
+            modalMask.hidden = true;
+            modalMask.style.display = 'none';
         }
     }
 
@@ -483,10 +514,6 @@ class AssociationRules extends HTMLElement {
 
     exportRules() {
         alert('导出功能待实现');
-    }
-
-    closeModal() {
-        this.shadowRoot.getElementById('modalMask').hidden = true;
     }
     
     show() {
