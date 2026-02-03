@@ -508,13 +508,7 @@ class AssociationRules extends HTMLElement {
             }
         }
 
-        // Validate result mappings
-        for (const mapping of resultMappings) {
-            if (mapping.conversionType !== 'none' && !mapping.formula) {
-                alert(`回写映射 ${mapping.modelOutput} → ${mapping.resultTarget} 的转换公式不能为空`);
-                return;
-            }
-        }
+        // No validation needed for result mappings since they don't have conversion
 
         const ruleData = {
             id: ruleId || Date.now(),
@@ -813,24 +807,6 @@ class AssociationRules extends HTMLElement {
             </select>
         `;
 
-        // Conversion section (middle)
-        const conversion = document.createElement('div');
-        conversion.className = 'mapping-conversion';
-        conversion.innerHTML = `
-            <div class="mapping-field conversion-type">
-                <label>转换类型</label>
-                <select class="conversion-select">
-                    <option value="none">无转换</option>
-                    <option value="formula">公式转换</option>
-                    <option value="unit">单位转换</option>
-                </select>
-            </div>
-            <div class="mapping-field conversion-formula">
-                <label>转换公式</label>
-                <input type="text" class="formula-input" placeholder="如: value * 1000">
-            </div>
-        `;
-
         // Remove button
         const removeBtn = document.createElement('button');
         removeBtn.type = 'button';
@@ -840,9 +816,8 @@ class AssociationRules extends HTMLElement {
             row.remove();
         });
 
-        // Assemble the row with conversion in the middle
+        // Assemble the row without conversion
         row.appendChild(modelField);
-        row.appendChild(conversion);
         row.appendChild(arrow);
         row.appendChild(resultField);
         row.appendChild(removeBtn);
@@ -857,29 +832,10 @@ class AssociationRules extends HTMLElement {
         if (mappingData) {
             const modelSelect = modelField.querySelector('.model-output-select');
             const resultSelect = resultField.querySelector('.result-target-select');
-            const conversionSelect = conversion.querySelector('.conversion-select');
-            const formulaInput = conversion.querySelector('.formula-input');
             
             if (mappingData.modelOutput) modelSelect.value = mappingData.modelOutput;
             if (mappingData.resultTarget) resultSelect.value = mappingData.resultTarget;
-            if (mappingData.conversionType) conversionSelect.value = mappingData.conversionType;
-            if (mappingData.formula) formulaInput.value = mappingData.formula;
         }
-
-        // Add event listener for conversion type change
-        const conversionSelect = conversion.querySelector('.conversion-select');
-        const formulaInput = conversion.querySelector('.formula-input');
-        conversionSelect.addEventListener('change', () => {
-            if (conversionSelect.value === 'none') {
-                formulaInput.value = '';
-                formulaInput.disabled = true;
-            } else {
-                formulaInput.disabled = false;
-                if (conversionSelect.value === 'unit') {
-                    formulaInput.placeholder = '如: value * 1000 (W → kW)';
-                }
-            }
-        });
     }
 
     /**
@@ -918,15 +874,11 @@ class AssociationRules extends HTMLElement {
         resultMappingRows.forEach(row => {
             const modelOutput = row.querySelector('.model-output-select')?.value;
             const resultTarget = row.querySelector('.result-target-select')?.value;
-            const conversionType = row.querySelector('.conversion-select')?.value;
-            const formula = row.querySelector('.formula-input')?.value;
             
             if (modelOutput && resultTarget) {
                 resultMappings.push({ 
                     modelOutput, 
-                    resultTarget, 
-                    conversionType: conversionType || 'none',
-                    formula: formula || ''
+                    resultTarget
                 });
             }
         });
