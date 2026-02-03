@@ -12,6 +12,10 @@ class AssociationRules extends HTMLElement {
         this.seedData();
         this.renderTable();
         
+        // Store references to external trees
+        this.selectedDataSource = null;
+        this.selectedModel = null;
+        
         setTimeout(() => {
             const modalMask = this.shadowRoot.getElementById('modalMask');
             if (modalMask) {
@@ -19,6 +23,7 @@ class AssociationRules extends HTMLElement {
                 modalMask.style.display = 'none';
             }
             this.bindEvents();
+            this.setupTreeInteraction();
         }, 100);
     }
 
@@ -411,6 +416,9 @@ class AssociationRules extends HTMLElement {
             this.shadowRoot.querySelector('input[name="status"][value="active"]').checked = true;
             this.currentAction = 'add';
             
+            // Highlight external trees
+            document.body.classList.add('association-rules-modal-open');
+            
             // Initialize empty mappings list
             this.initializeMappings();
             this.initializeResultMappings();
@@ -450,6 +458,9 @@ class AssociationRules extends HTMLElement {
             form.dataset.ruleId = rule.id;
             this.currentAction = 'edit';
             
+            // Highlight external trees
+            document.body.classList.add('association-rules-modal-open');
+            
             modal.hidden = false;
             modal.style.display = 'flex';
         }
@@ -460,6 +471,17 @@ class AssociationRules extends HTMLElement {
         if (modal) {
             modal.hidden = true;
             modal.style.display = 'none';
+            
+            // Remove highlight from external trees
+            document.body.classList.remove('association-rules-modal-open');
+            
+            // Clear selections
+            document.querySelectorAll('.left-sidebar .tree-node.selected, .right-sidebar .tree-node.selected').forEach(node => {
+                node.classList.remove('selected');
+            });
+            
+            this.selectedDataSource = null;
+            this.selectedModel = null;
         }
     }
 
@@ -1063,6 +1085,148 @@ class AssociationRules extends HTMLElement {
         ];
         
         return mockData;
+    }
+
+    /**
+     * Setup interaction with external trees
+     */
+    setupTreeInteraction() {
+        // Get reference to external trees
+        const leftSidebar = document.querySelector('.left-sidebar');
+        const rightSidebar = document.querySelector('.right-sidebar');
+        
+        if (leftSidebar) {
+            // Add click listeners to data source tree nodes
+            const dataTreeNodes = leftSidebar.querySelectorAll('.tree-node');
+            dataTreeNodes.forEach(node => {
+                node.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.handleDataSourceSelection(node);
+                });
+            });
+        }
+        
+        if (rightSidebar) {
+            // Add click listeners to model tree nodes
+            const modelTreeNodes = rightSidebar.querySelectorAll('.tree-node');
+            modelTreeNodes.forEach(node => {
+                node.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.handleModelSelection(node);
+                });
+            });
+        }
+    }
+
+    /**
+     * Handle data source tree node selection
+     */
+    handleDataSourceSelection(node) {
+        // Remove previous selection
+        document.querySelectorAll('.left-sidebar .tree-node').forEach(n => {
+            n.classList.remove('selected');
+        });
+        
+        // Add selection to current node
+        node.classList.add('selected');
+        
+        // Get the full path of the selected node
+        const path = this.getTreePath(node);
+        this.selectedDataSource = path;
+        
+        // Update modal if it's open
+        this.updateModalDataSource(path);
+    }
+
+    /**
+     * Handle model tree node selection
+     */
+    handleModelSelection(node) {
+        // Remove previous selection
+        document.querySelectorAll('.right-sidebar .tree-node').forEach(n => {
+            n.classList.remove('selected');
+        });
+        
+        // Add selection to current node
+        node.classList.add('selected');
+        
+        // Get the full path of the selected node
+        const path = this.getTreePath(node);
+        this.selectedModel = path;
+        
+        // Update modal if it's open
+        this.updateModalModel(path);
+    }
+
+    /**
+     * Get the full path of a tree node
+     */
+    getTreePath(node) {
+        const path = [];
+        let current = node;
+        
+        while (current && current.classList.contains('tree-node')) {
+            const text = current.querySelector('span')?.textContent || current.textContent;
+            path.unshift(text);
+            current = current.parentElement.closest('.tree-node');
+        }
+        
+        return path.join('.');
+    }
+
+    /**
+     * Update modal with selected data source
+     */
+    updateModalDataSource(path) {
+        const dataSourceSelect = this.shadowRoot.getElementById('dataSource');
+        if (dataSourceSelect && this.isModalOpen()) {
+            // Try to match with existing options or add custom option
+            let option = Array.from(dataSourceSelect.options).find(opt => 
+                opt.textContent.includes(path) || opt.value === path
+            );
+            
+            if (!option) {
+                option = document.createElement('option');
+                option.value = path;
+                option.textContent = path;
+                dataSourceSelect.appendChild(option);
+            }
+            
+            dataSourceSelect.value = path;
+            this.updateMappingFieldOptions();
+        }
+    }
+
+    /**
+     * Update modal with selected model
+     */
+    updateModalModel(path) {
+        const targetModelSelect = this.shadowRoot.getElementById('targetModel');
+        if (targetModelSelect && this.isModalOpen()) {
+            // Try to match with existing options or add custom option
+            let option = Array.from(targetModelSelect.options).find(opt => 
+                opt.textContent.includes(path) || opt.value === path
+            );
+            
+            if (!option) {
+                option = document.createElement('option');
+                option.value = path;
+                option.textContent = path;
+                targetModelSelect.appendChild(option);
+            }
+            
+            targetModelSelect.value = path;
+            this.updateMappingFieldOptions();
+            this.updateResultMappingFieldOptions();
+        }
+    }
+
+    /**
+     * Check if modal is open
+     */
+    isModalOpen() {
+        const modal = this.shadowRoot.getElementById('modalMask');
+        return modal && !modal.hidden && modal.style.display !== 'none';
     }
 
     importRules() {

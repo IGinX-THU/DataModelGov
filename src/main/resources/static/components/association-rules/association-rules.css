@@ -461,6 +461,31 @@
     box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
 }
 
+.version-select {
+    width: 100%;
+    height: 32px;
+    border: 1px solid #e2e6ef;
+    border-radius: 4px;
+    padding: 0 12px;
+    font-size: 14px;
+    color: #1f2937;
+    background: white;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    background-size: 12px;
+    cursor: pointer;
+    transition: border-color 0.2s;
+}
+
+.version-select:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
 /* Modal Styles */
 .modal {
     background: white;
@@ -687,8 +712,13 @@
     flex: 1;
 }
 
+.mapping-version {
+    flex: 0.8;
+}
+
 .mapping-source label,
-.mapping-target label {
+.mapping-target label,
+.mapping-version label {
     display: block;
     font-size: 14px;
     font-weight: 500;
@@ -697,7 +727,8 @@
 }
 
 .data-source-select,
-.target-model-select {
+.target-model-select,
+.mapping-version .version-select {
     width: 100%;
     padding: 10px 14px;
     border: 1px solid #d1d5db;
@@ -716,7 +747,8 @@
 }
 
 .data-source-select:focus,
-.target-model-select:focus {
+.target-model-select:focus,
+.mapping-version .version-select:focus {
     outline: none;
     border-color: #3b82f6;
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
@@ -872,6 +904,27 @@
     background: #dbeafe;
     border-color: #3b82f6;
     color: #1e40af;
+}
+
+/* Tree Node Selection Styles */
+.left-sidebar .tree-node.selected,
+.right-sidebar .tree-node.selected {
+    background: #dbeafe;
+    border-color: #3b82f6;
+    color: #1e40af;
+    font-weight: 500;
+}
+
+.left-sidebar .tree-node.selected:hover,
+.right-sidebar .tree-node.selected:hover {
+    background: #bfdbfe;
+}
+
+/* Highlight trees when modal is open */
+.association-rules-modal-open .left-sidebar,
+.association-rules-modal-open .right-sidebar {
+    box-shadow: 0 0 0 2px #3b82f6;
+    border-radius: 4px;
 }
 
 /* Code Editor Styles */
