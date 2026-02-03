@@ -107,18 +107,21 @@ class AssociationRules extends HTMLElement {
 </div>`;
     }
 
-    buildFilterRow(name = '', regex = '') {
+    buildFilterRow(name = '', status = '') {
         return `
             <div class="filter-row">
                 <div class="filter-field">
-                    <span class="filter-label">名称</span>
+                    <span class="filter-label">规则名</span>
                     <input class="filter-input" type="text" placeholder="请输入规则名称" value="${name}" />
                 </div>
                 <div class="filter-field">
-                    <span class="filter-label">正则</span>
-                    <input class="filter-input" type="text" placeholder="请输入正则表达式" value="${regex}" />
+                    <span class="filter-label">状态</span>
+                    <select class="filter-input">
+                        <option value="">全部</option>
+                        <option value="active" ${status === 'active' ? 'selected' : ''}>启用</option>
+                        <option value="inactive" ${status === 'inactive' ? 'selected' : ''}>禁用</option>
+                    </select>
                 </div>
-                <button class="filter-remove" type="button" onclick="this.parentElement.remove()">×</button>
             </div>
         `;
     }
@@ -253,11 +256,11 @@ class AssociationRules extends HTMLElement {
         const filterInputs = this.shadowRoot.querySelectorAll('.filter-input');
         const filters = Array.from(filterInputs).map(input => input.value.trim());
         
-        const [nameFilter, regexFilter] = filters;
+        const [nameFilter, statusFilter] = filters;
         
         let filteredData = this.data.filter(item => {
-            if (nameFilter && !item.name.includes(nameFilter)) return false;
-            if (regexFilter && !item.regex.includes(regexFilter)) return false;
+            if (nameFilter && !item.ruleName.includes(nameFilter)) return false;
+            if (statusFilter && item.status !== statusFilter) return false;
             return true;
         });
 
