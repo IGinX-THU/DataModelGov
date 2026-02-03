@@ -641,6 +641,235 @@
     transform: translate(-50%, -50%) scale(1);
 }
 
+/* Modal Mask */
+.modal-mask {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+/* Form Section Styles */
+.form-section {
+    margin: 20px 0;
+}
+
+.section-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1f2937;
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+/* Mapping Configuration Styles */
+.mapping-config {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.mapping-header {
+    display: flex;
+    gap: 24px;
+    margin-bottom: 20px;
+}
+
+.mapping-source,
+.mapping-target {
+    flex: 1;
+}
+
+.mapping-source label,
+.mapping-target label {
+    display: block;
+    font-size: 14px;
+    font-weight: 500;
+    color: #374151;
+    margin-bottom: 8px;
+}
+
+.data-source-select,
+.target-model-select {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 14px;
+    color: #1f2937;
+    background: white;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+    background-size: 12px;
+    cursor: pointer;
+}
+
+.data-source-select:focus,
+.target-model-select:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.mapping-section {
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 20px;
+}
+
+.mapping-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1f2937;
+    margin-bottom: 16px;
+}
+
+.mappings-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.mapping-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    background: #fafafa;
+}
+
+.mapping-field {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.mapping-field label {
+    font-size: 12px;
+    color: #6b7280;
+    font-weight: 500;
+}
+
+.mapping-field select,
+.mapping-field input {
+    padding: 6px 10px;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    font-size: 13px;
+    color: #1f2937;
+    background: white;
+}
+
+.mapping-field select:focus,
+.mapping-field input:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+.mapping-arrow {
+    display: flex;
+    align-items: center;
+    color: #6b7280;
+    font-size: 16px;
+    margin: 0 8px;
+}
+
+.mapping-conversion {
+    flex: 1.5;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.conversion-type {
+    flex: 1;
+}
+
+.conversion-formula {
+    flex: 2;
+}
+
+.remove-mapping {
+    background: #ef4444;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+    transition: all 0.2s;
+}
+
+.remove-mapping:hover {
+    background: #dc2626;
+}
+
+.add-mapping-btn {
+    background: #3b82f6;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 16px;
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    transition: all 0.2s;
+    align-self: flex-start;
+}
+
+.add-mapping-btn:hover {
+    background: #2563eb;
+}
+
+/* Attribute Tag Styles */
+.attribute-tag {
+    display: inline-block;
+    padding: 4px 8px;
+    background: #f3f4f6;
+    border: 1px solid #e5e7eb;
+    border-radius: 4px;
+    font-size: 12px;
+    color: #374151;
+    margin: 2px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.attribute-tag:hover {
+    background: #e5e7eb;
+    border-color: #d1d5db;
+}
+
+.attribute-tag.selected {
+    background: #dbeafe;
+    border-color: #3b82f6;
+    color: #1e40af;
+}
+
 /* Code Editor Styles */
 .code-editor {
     border: 1px solid #d1d5db;

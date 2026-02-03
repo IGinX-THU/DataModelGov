@@ -54,7 +54,7 @@
 <div class="modal-mask" id="modalMask" hidden>
     <div class="modal">
         <div class="modal-header">
-            <span id="modalTitle">新增关联规则</span>
+            <span id="modalTitle">关联规则配置</span>
             <button class="modal-close" id="modalClose">×</button>
         </div>
         <div class="modal-body" id="modalBody">
@@ -69,22 +69,46 @@
                         <input type="text" id="ruleDesc" name="ruleDesc" placeholder="请输入规则描述">
                     </div>
                 </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="targetModel">关联模型</label>
-                        <select id="targetModel" name="targetModel" required>
-                            <option value="">请选择关联模型</option>
-                            <option value="model1">环境监测模型</option>
-                            <option value="model2">设备监控模型</option>
-                            <option value="model3">管道监测模型</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="version">版本</label>
-                        <input type="text" id="version" name="version" required value="v1.0.0">
+                
+                <div class="form-section">
+                    <div class="section-title">数据映射配置</div>
+                    <div class="mapping-config">
+                        <div class="mapping-header">
+                            <div class="mapping-source">
+                                <label>数据源</label>
+                                <select id="dataSource" class="data-source-select">
+                                    <option value="">请选择数据源</option>
+                                    <option value="car">车辆数据</option>
+                                    <option value="environment">环境数据</option>
+                                    <option value="device">设备数据</option>
+                                </select>
+                            </div>
+                            <div class="mapping-target">
+                                <label>目标模型</label>
+                                <select id="targetModel" class="target-model-select">
+                                    <option value="">请选择目标模型</option>
+                                    <option value="speedModel">速度模型</option>
+                                    <option value="tempModel">温度模型</option>
+                                    <option value="pressureModel">压力模型</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="mapping-section">
+                            <div class="mapping-title">字段映射关系</div>
+                            <div class="mappings-list" id="mappingsList">
+                                <!-- 动态添加映射行 -->
+                            </div>
+                            <button type="button" class="add-mapping-btn" id="addMapping">+ 添加映射</button>
+                        </div>
                     </div>
                 </div>
+                
                 <div class="form-row">
+                    <div class="form-group">
+                        <label for="version">版本</label>
+                        <input type="text" id="version" name="version" value="v1.0.0" readonly>
+                    </div>
                     <div class="form-group">
                         <label>状态</label>
                         <div class="radio-group">
@@ -99,16 +123,6 @@
                                 <span>禁用</span>
                             </label>
                         </div>
-                    </div>
-                </div>
-                <div class="form-group full-width">
-                    <label for="ruleConfig">规则配置</label>
-                    <div class="code-editor">
-                        <div class="code-toolbar">
-                            <button type="button" class="code-btn" id="formatJson">格式化</button>
-                            <button type="button" class="code-btn" id="clearJson">清空</button>
-                        </div>
-                        <textarea id="ruleConfig" name="ruleConfig" class="code-textarea" placeholder="请输入JSON格式的规则配置"></textarea>
                     </div>
                 </div>
             </form>
