@@ -786,15 +786,19 @@
     display: flex;
     align-items: center;
     color: #6b7280;
-    font-size: 16px;
-    margin: 0 8px;
+    font-size: 20px;
+    margin: 0 12px;
+    font-weight: bold;
 }
 
 .mapping-conversion {
     flex: 1.5;
     display: flex;
-    align-items: center;
+    flex-direction: column;
     gap: 8px;
+    padding: 0 12px;
+    border-left: 1px dashed #d1d5db;
+    border-right: 1px dashed #d1d5db;
 }
 
 .conversion-type {
@@ -802,7 +806,7 @@
 }
 
 .conversion-formula {
-    flex: 2;
+    flex: 1;
 }
 
 .remove-mapping {

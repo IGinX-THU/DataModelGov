@@ -193,10 +193,14 @@ class AssociationRules extends HTMLElement {
         
         // 添加映射按钮
         this.shadowRoot.getElementById('addMapping')?.addEventListener('click', () => this.addMapping());
+        this.shadowRoot.getElementById('addResultMapping')?.addEventListener('click', () => this.addResultMapping());
         
         // 数据源和目标模型变化事件
         this.shadowRoot.getElementById('dataSource')?.addEventListener('change', () => this.updateMappingFieldOptions());
-        this.shadowRoot.getElementById('targetModel')?.addEventListener('change', () => this.updateMappingFieldOptions());
+        this.shadowRoot.getElementById('targetModel')?.addEventListener('change', () => {
+            this.updateMappingFieldOptions();
+            this.updateResultMappingFieldOptions();
+        });
         
         // Close modal when clicking on the mask
         this.shadowRoot.getElementById('modalMask')?.addEventListener('click', (e) => {
@@ -409,6 +413,7 @@ class AssociationRules extends HTMLElement {
             
             // Initialize empty mappings list
             this.initializeMappings();
+            this.initializeResultMappings();
         }
     }
 
@@ -472,6 +477,7 @@ class AssociationRules extends HTMLElement {
         
         // Get mappings
         const mappings = this.getMappings();
+        const resultMappings = this.getResultMappings();
 
         // Basic validation
         if (!ruleName) {
@@ -490,14 +496,22 @@ class AssociationRules extends HTMLElement {
         }
 
         if (mappings.length === 0) {
-            alert('请至少添加一个映射关系');
+            alert('请至少添加一个输入映射关系');
             return;
         }
 
-        // Validate mappings
+        // Validate input mappings
         for (const mapping of mappings) {
             if (mapping.conversionType !== 'none' && !mapping.formula) {
-                alert(`映射 ${mapping.sourceField} → ${mapping.targetField} 的转换公式不能为空`);
+                alert(`输入映射 ${mapping.sourceField} → ${mapping.targetField} 的转换公式不能为空`);
+                return;
+            }
+        }
+
+        // Validate result mappings
+        for (const mapping of resultMappings) {
+            if (mapping.conversionType !== 'none' && !mapping.formula) {
+                alert(`回写映射 ${mapping.modelOutput} → ${mapping.resultTarget} 的转换公式不能为空`);
                 return;
             }
         }
@@ -511,6 +525,7 @@ class AssociationRules extends HTMLElement {
             version,
             status,
             mappings,
+            resultMappings,
             updateTime: new Date().toISOString()
         };
 
@@ -645,6 +660,17 @@ class AssociationRules extends HTMLElement {
     }
 
     /**
+     * Initialize result mappings list with one empty row
+     */
+    initializeResultMappings() {
+        const resultMappingsList = this.shadowRoot.getElementById('resultMappingsList');
+        if (resultMappingsList) {
+            resultMappingsList.innerHTML = '';
+            this.addResultMapping();
+        }
+    }
+
+    /**
      * Add a mapping row to the mappings list
      */
     addMapping(mappingData = null) {
@@ -679,7 +705,7 @@ class AssociationRules extends HTMLElement {
             </select>
         `;
 
-        // Conversion section
+ // Conversion section (middle)
         const conversion = document.createElement('div');
         conversion.className = 'mapping-conversion';
         conversion.innerHTML = `
@@ -706,11 +732,11 @@ class AssociationRules extends HTMLElement {
             row.remove();
         });
 
-        // Assemble the row
+        // Assemble the row with conversion in the middle
         row.appendChild(sourceField);
+        row.appendChild(conversion);
         row.appendChild(arrow);
         row.appendChild(targetField);
-        row.appendChild(conversion);
         row.appendChild(removeBtn);
 
         // Add to the list
@@ -753,11 +779,115 @@ class AssociationRules extends HTMLElement {
     }
 
     /**
+     * Add a result mapping row to the result mappings list
+     */
+    addResultMapping(mappingData = null) {
+        const resultMappingsList = this.shadowRoot.getElementById('resultMappingsList');
+        if (!resultMappingsList) return;
+
+        const row = document.createElement('div');
+        row.className = 'mapping-row';
+
+        // Model output field
+        const modelField = document.createElement('div');
+        modelField.className = 'mapping-field';
+        modelField.innerHTML = `
+            <label>模型输出</label>
+            <select class="model-output-select">
+                <option value="">请选择输出</option>
+            </select>
+        `;
+
+        // Arrow
+        const arrow = document.createElement('div');
+        arrow.className = 'mapping-arrow';
+        arrow.textContent = '→';
+
+        // Result target field
+        const resultField = document.createElement('div');
+        resultField.className = 'mapping-field';
+        resultField.innerHTML = `
+            <label>回写目标</label>
+            <select class="result-target-select">
+                <option value="">请选择目标</option>
+            </select>
+        `;
+
+        // Conversion section (middle)
+        const conversion = document.createElement('div');
+        conversion.className = 'mapping-conversion';
+        conversion.innerHTML = `
+            <div class="mapping-field conversion-type">
+                <label>转换类型</label>
+                <select class="conversion-select">
+                    <option value="none">无转换</option>
+                    <option value="formula">公式转换</option>
+                    <option value="unit">单位转换</option>
+                </select>
+            </div>
+            <div class="mapping-field conversion-formula">
+                <label>转换公式</label>
+                <input type="text" class="formula-input" placeholder="如: value * 1000">
+            </div>
+        `;
+
+        // Remove button
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'remove-mapping';
+        removeBtn.textContent = '×';
+        removeBtn.addEventListener('click', () => {
+            row.remove();
+        });
+
+        // Assemble the row with conversion in the middle
+        row.appendChild(modelField);
+        row.appendChild(conversion);
+        row.appendChild(arrow);
+        row.appendChild(resultField);
+        row.appendChild(removeBtn);
+
+        // Add to the list
+        resultMappingsList.appendChild(row);
+
+        // Update field options based on current selections
+        this.updateResultMappingFieldOptions();
+
+        // If mapping data is provided, populate the fields
+        if (mappingData) {
+            const modelSelect = modelField.querySelector('.model-output-select');
+            const resultSelect = resultField.querySelector('.result-target-select');
+            const conversionSelect = conversion.querySelector('.conversion-select');
+            const formulaInput = conversion.querySelector('.formula-input');
+            
+            if (mappingData.modelOutput) modelSelect.value = mappingData.modelOutput;
+            if (mappingData.resultTarget) resultSelect.value = mappingData.resultTarget;
+            if (mappingData.conversionType) conversionSelect.value = mappingData.conversionType;
+            if (mappingData.formula) formulaInput.value = mappingData.formula;
+        }
+
+        // Add event listener for conversion type change
+        const conversionSelect = conversion.querySelector('.conversion-select');
+        const formulaInput = conversion.querySelector('.formula-input');
+        conversionSelect.addEventListener('change', () => {
+            if (conversionSelect.value === 'none') {
+                formulaInput.value = '';
+                formulaInput.disabled = true;
+            } else {
+                formulaInput.disabled = false;
+                if (conversionSelect.value === 'unit') {
+                    formulaInput.placeholder = '如: value * 1000 (W → kW)';
+                }
+            }
+        });
+    }
+
+    /**
      * Get all mappings from the mappings list
      */
     getMappings() {
         const mappings = [];
-        const mappingRows = this.shadowRoot.querySelectorAll('.mapping-row');
+        const mappingRows = this.shadowRoot.querySelectorAll('#mappingsList .mapping-row');
         
         mappingRows.forEach(row => {
             const sourceField = row.querySelector('.data-field-select')?.value;
@@ -776,6 +906,32 @@ class AssociationRules extends HTMLElement {
         });
         
         return mappings;
+    }
+
+    /**
+     * Get all result mappings from the result mappings list
+     */
+    getResultMappings() {
+        const resultMappings = [];
+        const resultMappingRows = this.shadowRoot.querySelectorAll('#resultMappingsList .mapping-row');
+        
+        resultMappingRows.forEach(row => {
+            const modelOutput = row.querySelector('.model-output-select')?.value;
+            const resultTarget = row.querySelector('.result-target-select')?.value;
+            const conversionType = row.querySelector('.conversion-select')?.value;
+            const formula = row.querySelector('.formula-input')?.value;
+            
+            if (modelOutput && resultTarget) {
+                resultMappings.push({ 
+                    modelOutput, 
+                    resultTarget, 
+                    conversionType: conversionType || 'none',
+                    formula: formula || ''
+                });
+            }
+        });
+        
+        return resultMappings;
     }
 
     /**
@@ -827,6 +983,53 @@ class AssociationRules extends HTMLElement {
     }
 
     /**
+     * Update result mapping field options based on selected target model
+     */
+    updateResultMappingFieldOptions() {
+        const targetModel = this.shadowRoot.getElementById('targetModel')?.value;
+        
+        const modelOutputs = this.getModelOutputs(targetModel);
+        const resultTargets = this.getResultTargets();
+        
+        // Update all result mapping rows
+        const resultMappingRows = this.shadowRoot.querySelectorAll('#resultMappingsList .mapping-row');
+        resultMappingRows.forEach(row => {
+            const modelSelect = row.querySelector('.model-output-select');
+            const resultSelect = row.querySelector('.result-target-select');
+            
+            // Update model output options
+            if (modelSelect) {
+                const currentValue = modelSelect.value;
+                modelSelect.innerHTML = '<option value="">请选择输出</option>';
+                modelOutputs.forEach(output => {
+                    const option = document.createElement('option');
+                    option.value = output.id;
+                    option.textContent = output.name;
+                    if (output.id === currentValue) {
+                        option.selected = true;
+                    }
+                    modelSelect.appendChild(option);
+                });
+            }
+            
+            // Update result target options
+            if (resultSelect) {
+                const currentValue = resultSelect.value;
+                resultSelect.innerHTML = '<option value="">请选择目标</option>';
+                resultTargets.forEach(target => {
+                    const option = document.createElement('option');
+                    option.value = target.id;
+                    option.textContent = target.name;
+                    if (target.id === currentValue) {
+                        option.selected = true;
+                    }
+                    resultSelect.appendChild(option);
+                });
+            }
+        });
+    }
+
+    /**
      * Get data source fields
      */
     getDataSourceFields(dataSource) {
@@ -871,6 +1074,43 @@ class AssociationRules extends HTMLElement {
         };
         
         return mockData[targetModel] || [];
+    }
+
+    /**
+     * Get model outputs for result mapping
+     */
+    getModelOutputs(targetModel) {
+        const mockData = {
+            'speedModel': [
+                { id: 'Model.speed', name: 'Model.speed (计算速度 m/s)' },
+                { id: 'Model.power', name: 'Model.power (计算功率 W)' }
+            ],
+            'tempModel': [
+                { id: 'Model.temperature', name: 'Model.temperature (计算温度 K)' },
+                { id: 'Model.heatIndex', name: 'Model.heatIndex (热指数)' }
+            ],
+            'pressureModel': [
+                { id: 'Model.pressure', name: 'Model.pressure (计算压力 bar)' },
+                { id: 'Model.flowRate', name: 'Model.flowRate (计算流量 L/min)' }
+            ]
+        };
+        
+        return mockData[targetModel] || [];
+    }
+
+    /**
+     * Get result targets for writing back
+     */
+    getResultTargets() {
+        const mockData = [
+            { id: 'root.result.job01.power', name: 'root.result.job01.power' },
+            { id: 'root.result.job01.speed', name: 'root.result.job01.speed' },
+            { id: 'root.result.job01.temperature', name: 'root.result.job01.temperature' },
+            { id: 'root.result.job02.power', name: 'root.result.job02.power' },
+            { id: 'root.result.job02.status', name: 'root.result.job02.status' }
+        ];
+        
+        return mockData;
     }
 
     importRules() {

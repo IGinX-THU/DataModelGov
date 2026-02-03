@@ -95,11 +95,19 @@
                         </div>
                         
                         <div class="mapping-section">
-                            <div class="mapping-title">字段映射关系</div>
+                            <div class="mapping-title">输入映射关系（数据源 → 模型）</div>
                             <div class="mappings-list" id="mappingsList">
                                 <!-- 动态添加映射行 -->
                             </div>
                             <button type="button" class="add-mapping-btn" id="addMapping">+ 添加映射</button>
+                        </div>
+                        
+                        <div class="mapping-section">
+                            <div class="mapping-title">结果回写映射（模型 → 数据源）</div>
+                            <div class="mappings-list" id="resultMappingsList">
+                                <!-- 动态添加结果映射行 -->
+                            </div>
+                            <button type="button" class="add-mapping-btn" id="addResultMapping">+ 添加回写映射</button>
                         </div>
                     </div>
                 </div>
