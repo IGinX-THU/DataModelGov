@@ -39,11 +39,20 @@
                         </select>
                         <label for="nameSearch">名称搜索:</label>
                         <input type="text" id="nameSearch" class="search-input" placeholder="搜索任务名称">
-                        <label for="timeSearch">时间搜索:</label>
-                        <input type="text" id="timeSearch" class="search-input" placeholder="搜索时间">
+                        
+                        <!-- Time Range Selection -->
+                        <div class="time-range-container">
+                            <span class="time-range-label">时间范围:</span>
+                            <input type="datetime-local" id="startTime" class="datetime-input" aria-label="开始时间">
+                            <span class="time-range-separator">至</span>
+                            <input type="datetime-local" id="endTime" class="datetime-input" aria-label="结束时间">
+                        </div>
+                        <button class="toolbar-btn blue" id="searchBtn" title="搜索">
+                            <i class="search-icon">🔍</i> 搜索
+                        </button>
                     </div>
                     <div class="table-actions">
-                        <button class="toolbar-btn blue" id="compareBtn" title="对比选中任务">
+                        <button class="toolbar-btn poor" id="compareBtn" title="对比选中任务">
                             对比
                         </button>
                     </div>

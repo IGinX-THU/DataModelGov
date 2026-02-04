@@ -222,12 +222,32 @@ class VisualAnalysis extends HTMLElement {
             });
         }
 
-        // 时间搜索输入框
-        const timeSearch = this.shadowRoot.getElementById('timeSearch');
-        if (timeSearch) {
-            timeSearch.addEventListener('input', (e) => {
-                this.handleTimeSearch(e.target.value);
-            });
+        // 初始化日期范围选择器
+        const dateRangePicker = this.shadowRoot.getElementById('dateRangePicker');
+        if (dateRangePicker && window.flatpickr) {
+            try {
+                // 使用flatpickr初始化日期范围选择器
+                this.flatpickrInstance = flatpickr(dateRangePicker, {
+                    mode: 'range',
+                    dateFormat: 'Y-m-d',
+                    locale: 'zh',
+                    allowInput: true,
+                    onClose: (selectedDates, dateStr) => {
+                        if (selectedDates.length === 2) {
+                            const startDate = selectedDates[0];
+                            const endDate = new Date(selectedDates[1]);
+                            endDate.setHours(23, 59, 59, 999); // 设置为当天的最后一毫秒
+                            this.handleTimeSearch({ start: startDate, end: endDate });
+                        } else if (selectedDates.length === 0) {
+                            this.handleTimeSearch(null);
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error('Failed to initialize date range picker:', error);
+            }
+        } else if (!window.flatpickr) {
+            console.error('Flatpickr is not loaded. Please make sure the flatpickr library is included.');
         }
 
         // 分页按钮
@@ -1053,9 +1073,9 @@ class VisualAnalysis extends HTMLElement {
         this.applyFilters();
     }
 
-    // 处理时间搜索
-    handleTimeSearch(searchValue) {
-        this.currentFilter.time = searchValue.toLowerCase();
+    // 处理时间范围搜索
+    handleTimeSearch(dateRange) {
+        this.currentFilter.time = dateRange;
         this.applyFilters();
     }
 
@@ -1078,11 +1098,13 @@ class VisualAnalysis extends HTMLElement {
             );
         }
         
-        // 应用时间搜索
-        if (this.currentFilter.time) {
+        // 应用时间范围筛选
+        if (this.currentFilter.time && this.currentFilter.time.start && this.currentFilter.time.end) {
             filteredData = filteredData.filter(record => {
-                const timeString = new Date(record.timestamp).toLocaleString();
-                return timeString.toLowerCase().includes(this.currentFilter.time);
+                if (!record.timestamp) return false;
+                const recordDate = new Date(record.timestamp);
+                return recordDate >= this.currentFilter.time.start && 
+                       recordDate <= this.currentFilter.time.end;
             });
         }
         
