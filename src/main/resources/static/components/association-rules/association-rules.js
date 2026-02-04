@@ -408,6 +408,9 @@ class AssociationRules extends HTMLElement {
         const form = this.shadowRoot.getElementById('ruleForm');
         
         if (modal && title && form) {
+            // Restore form content if it was replaced by showModal
+            this.restoreFormContent();
+            
             title.textContent = '新增关联规则';
             form.reset();
             modal.hidden = false;
@@ -415,6 +418,9 @@ class AssociationRules extends HTMLElement {
             this.shadowRoot.getElementById('version').value = 'v1.0.0';
             this.shadowRoot.querySelector('input[name="status"][value="active"]').checked = true;
             this.currentAction = 'add';
+            
+            // Restore form footer buttons
+            this.restoreFormFooter();
             
             // Highlight external trees
             document.body.classList.add('association-rules-modal-open');
@@ -431,12 +437,16 @@ class AssociationRules extends HTMLElement {
         const form = this.shadowRoot.getElementById('ruleForm');
         
         if (modal && title && form && rule) {
+            // Restore form content if it was replaced by showModal
+            this.restoreFormContent();
+            
             title.textContent = '编辑关联规则';
             form.reset();
             
             // Fill the form with rule data
             this.shadowRoot.getElementById('ruleName').value = rule.ruleName || rule.name || '';
             this.shadowRoot.getElementById('ruleDesc').value = rule.ruleDesc || '';
+            this.shadowRoot.getElementById('dataSource').value = rule.dataSource || '';
             this.shadowRoot.getElementById('targetModel').value = rule.targetModel || '';
             this.shadowRoot.getElementById('version').value = rule.version || 'v1.0.0';
             
@@ -444,22 +454,41 @@ class AssociationRules extends HTMLElement {
             const statusValue = rule.status || 'active';
             this.shadowRoot.querySelector(`input[name="status"][value="${statusValue}"]`).checked = true;
             
-            // Set rule config (pretty print JSON if it's an object)
-            try {
-                const config = typeof rule.config === 'string' ? rule.config : 
-                              rule.config ? JSON.stringify(rule.config, null, 2) : '';
-                this.shadowRoot.getElementById('ruleConfig').value = config;
-            } catch (e) {
-                console.error('Error formatting rule config:', e);
-                this.shadowRoot.getElementById('ruleConfig').value = '';
-            }
-            
             // Store the rule ID for update
             form.dataset.ruleId = rule.id;
             this.currentAction = 'edit';
             
+            // Restore form footer buttons
+            this.restoreFormFooter();
+            
             // Highlight external trees
             document.body.classList.add('association-rules-modal-open');
+            
+            // Initialize mappings with existing data if available
+            if (rule.mappings && rule.mappings.length > 0) {
+                this.initializeMappings();
+                // Clear existing mappings and add existing ones
+                const mappingsList = this.shadowRoot.getElementById('mappingsList');
+                mappingsList.innerHTML = '';
+                rule.mappings.forEach(mapping => {
+                    this.addMapping(mapping);
+                });
+            } else {
+                this.initializeMappings();
+            }
+            
+            // Initialize result mappings with existing data if available
+            if (rule.resultMappings && rule.resultMappings.length > 0) {
+                this.initializeResultMappings();
+                // Clear existing result mappings and add existing ones
+                const resultMappingsList = this.shadowRoot.getElementById('resultMappingsList');
+                resultMappingsList.innerHTML = '';
+                rule.resultMappings.forEach(mapping => {
+                    this.addResultMapping(mapping);
+                });
+            } else {
+                this.initializeResultMappings();
+            }
             
             modal.hidden = false;
             modal.style.display = 'flex';
@@ -503,29 +532,29 @@ class AssociationRules extends HTMLElement {
 
         // Basic validation
         if (!ruleName) {
-            alert('请输入规则名称');
+            this.showToast('请输入规则名称', 'error');
             return;
         }
 
         if (!dataSource) {
-            alert('请选择数据源');
+            this.showToast('请选择数据源', 'error');
             return;
         }
 
         if (!targetModel) {
-            alert('请选择目标模型');
+            this.showToast('请选择目标模型', 'error');
             return;
         }
 
         if (mappings.length === 0) {
-            alert('请至少添加一个输入映射关系');
+            this.showToast('请至少添加一个输入映射关系', 'error');
             return;
         }
 
         // Validate input mappings
         for (const mapping of mappings) {
             if (mapping.conversionType !== 'none' && !mapping.formula) {
-                alert(`输入映射 ${mapping.sourceField} → ${mapping.targetField} 的转换公式不能为空`);
+                this.showToast(`输入映射 ${mapping.sourceField} → ${mapping.targetField} 的转换公式不能为空`, 'error');
                 return;
             }
         }
@@ -560,7 +589,7 @@ class AssociationRules extends HTMLElement {
         // Update the UI
         this.renderTable();
         this.hideModal();
-        alert(`规则已${ruleId ? '更新' : '添加'}成功`);
+        this.showToast(`规则已${ruleId ? '更新' : '添加'}成功`);
     }
 
     formatJson() {
@@ -613,34 +642,54 @@ class AssociationRules extends HTMLElement {
             return;
         }
 
+        // Store the current state
+        const previousState = {
+            title: modalTitle.textContent,
+            body: modalBody.innerHTML,
+            footer: modalFooter.innerHTML
+        };
+
+        // Update modal content
         modalTitle.textContent = title;
         modalBody.innerHTML = content;
 
+        // Handle buttons
         if (buttons.length > 0) {
             modalFooter.innerHTML = buttons.map(btn => 
                 `<button class="${btn.class}" data-action="${btn.action}" ${btn.id ? `data-id="${btn.id}"` : ''}>${btn.text}</button>`
             ).join('');
 
-            // 移除旧的事件监听器并添加新的
-            modalFooter.replaceWith(modalFooter.cloneNode(true));
-            const newModalFooter = this.shadowRoot.getElementById('modalFooter');
-            
-            newModalFooter.addEventListener('click', (event) => {
+            // Add new event listener
+            const handleFooterClick = (event) => {
                 const action = event.target.dataset.action;
                 const id = event.target.dataset.id;
 
                 if (action === 'close') {
                     this.hideModal();
+                    // Restore previous state
+                    modalTitle.textContent = previousState.title;
+                    modalBody.innerHTML = previousState.body;
+                    modalFooter.innerHTML = previousState.footer;
                 } else if (action === 'delete' && id) {
                     this.data = this.data.filter(item => item.id != id);
                     this.renderTable();
-                    this.showModal('成功', '规则已删除');
+                    this.hideModal();
+                    this.showToast('规则已删除');
+                    // Restore previous state
+                    modalTitle.textContent = previousState.title;
+                    modalBody.innerHTML = previousState.body;
+                    modalFooter.innerHTML = previousState.footer;
                 } else if (action === 'save') {
                     this.saveRule();
                 } else if (action === 'update' && id) {
                     this.updateRule(id);
                 }
-            });
+            };
+
+            // Remove any existing event listeners
+            const newFooter = modalFooter.cloneNode(true);
+            modalFooter.parentNode.replaceChild(newFooter, modalFooter);
+            newFooter.addEventListener('click', handleFooterClick);
         } else {
             modalFooter.innerHTML = '';
         }
@@ -1235,6 +1284,430 @@ class AssociationRules extends HTMLElement {
 
     exportRules() {
         alert('导出功能待实现');
+    }
+    
+    copyRule(id) {
+        const rule = this.data.find(item => item.id === id);
+        if (!rule) return;
+        
+        // Show add modal with copied data
+        this.showCopyModal(rule);
+    }
+    
+    showCopyModal(rule) {
+        const modal = this.shadowRoot.getElementById('modalMask');
+        const title = this.shadowRoot.getElementById('modalTitle');
+        const form = this.shadowRoot.getElementById('ruleForm');
+        
+        if (modal && title && form && rule) {
+            // Restore form content if it was replaced by showModal
+            this.restoreFormContent();
+            
+            title.textContent = '新增关联规则';
+            form.reset();
+            
+            // Fill the form with copied rule data
+            this.shadowRoot.getElementById('ruleName').value = rule.ruleName + ' - 副本';
+            this.shadowRoot.getElementById('ruleDesc').value = rule.ruleDesc || '';
+            this.shadowRoot.getElementById('dataSource').value = rule.dataSource || '';
+            this.shadowRoot.getElementById('targetModel').value = rule.targetModel || '';
+            this.shadowRoot.getElementById('version').value = rule.version || 'v1.0.0';
+            
+            // Set status radio button to active by default for new copy
+            this.shadowRoot.querySelector('input[name="status"][value="active"]').checked = true;
+            
+            // Clear any rule ID to ensure this creates a new rule
+            delete form.dataset.ruleId;
+            this.currentAction = 'add';
+            
+            // Restore form footer buttons
+            this.restoreFormFooter();
+            
+            // Highlight external trees
+            document.body.classList.add('association-rules-modal-open');
+            
+            // Initialize mappings with copied data if available
+            if (rule.mappings && rule.mappings.length > 0) {
+                this.initializeMappings();
+                // Clear existing mappings and add copied ones
+                const mappingsList = this.shadowRoot.getElementById('mappingsList');
+                mappingsList.innerHTML = '';
+                rule.mappings.forEach(mapping => {
+                    this.addMapping(mapping);
+                });
+            } else {
+                this.initializeMappings();
+            }
+            
+            // Initialize result mappings with copied data if available
+            if (rule.resultMappings && rule.resultMappings.length > 0) {
+                this.initializeResultMappings();
+                // Clear existing result mappings and add copied ones
+                const resultMappingsList = this.shadowRoot.getElementById('resultMappingsList');
+                resultMappingsList.innerHTML = '';
+                rule.resultMappings.forEach(mapping => {
+                    this.addResultMapping(mapping);
+                });
+            } else {
+                this.initializeResultMappings();
+            }
+            
+            modal.hidden = false;
+            modal.style.display = 'flex';
+        }
+    }
+    
+    restoreFormContent() {
+        const modalBody = this.shadowRoot.getElementById('modalBody');
+        if (!modalBody) return;
+        
+        // Check if form content exists, if not, restore it
+        const existingForm = modalBody.querySelector('#ruleForm');
+        if (!existingForm) {
+            // Restore the original form content
+            modalBody.innerHTML = `
+                <form id="ruleForm" class="rule-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="ruleName">规则名称</label>
+                            <input type="text" id="ruleName" name="ruleName" required placeholder="请输入规则名称">
+                        </div>
+                        <div class="form-group">
+                            <label for="ruleDesc">规则描述</label>
+                            <input type="text" id="ruleDesc" name="ruleDesc" placeholder="请输入规则描述">
+                        </div>
+                    </div>
+                    
+                    <div class="form-section">
+                        <div class="section-title">数据映射配置</div>
+                        <div class="mapping-config">
+                            <div class="mapping-header">
+                                <div class="mapping-source">
+                                    <label>数据源</label>
+                                    <select id="dataSource" class="data-source-select">
+                                        <option value="">请选择数据源</option>
+                                        <option value="car">车辆数据</option>
+                                        <option value="environment">环境数据</option>
+                                        <option value="device">设备数据</option>
+                                    </select>
+                                </div>
+                                <div class="mapping-target">
+                                    <label>目标模型</label>
+                                    <select id="targetModel" class="target-model-select">
+                                        <option value="">请选择目标模型</option>
+                                        <option value="speedModel">速度模型</option>
+                                        <option value="tempModel">温度模型</option>
+                                        <option value="pressureModel">压力模型</option>
+                                    </select>
+                                </div>
+                                <div class="mapping-version">
+                                    <label for="version">版本</label>
+                                    <select id="version" name="version" class="version-select">
+                                        <option value="v1.0.0">v1.0.0</option>
+                                        <option value="v1.1.0">v1.1.0</option>
+                                        <option value="v2.0.0">v2.0.0</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <div class="mapping-section">
+                                <div class="mapping-title">输入映射关系（数据源 → 模型）</div>
+                                <div class="mappings-list" id="mappingsList">
+                                    <!-- 动态添加映射行 -->
+                                </div>
+                                <button type="button" class="add-mapping-btn" id="addMapping">+ 添加映射</button>
+                            </div>
+                            
+                            <div class="mapping-section">
+                                <div class="mapping-title">结果回写映射（模型 → 数据源）</div>
+                                <div class="mappings-list" id="resultMappingsList">
+                                    <!-- 动态添加结果映射行 -->
+                                </div>
+                                <button type="button" class="add-mapping-btn" id="addResultMapping">+ 添加回写映射</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>状态</label>
+                            <div class="radio-group">
+                                <label class="radio-label">
+                                    <input type="radio" name="status" value="active" checked>
+                                    <span class="radio-custom"></span>
+                                    <span>启用</span>
+                                </label>
+                                <label class="radio-label">
+                                    <input type="radio" name="status" value="inactive">
+                                    <span class="radio-custom"></span>
+                                    <span>禁用</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            `;
+            
+            // Re-bind form events after restoring content
+            this.bindFormEvents();
+        }
+    }
+    
+    restoreFormFooter() {
+        const modalFooter = this.shadowRoot.getElementById('modalFooter');
+        if (modalFooter) {
+            modalFooter.innerHTML = `
+                <button type="button" class="btn btn-cancel" id="cancelBtn">取消</button>
+                <button type="button" class="btn btn-confirm" id="saveBtn">确定</button>
+            `;
+            
+            // Re-bind footer events
+            this.bindFooterEvents();
+        }
+    }
+    
+    bindFormEvents() {
+        // Re-bind form-specific events
+        this.shadowRoot.getElementById('addMapping')?.addEventListener('click', () => this.addMapping());
+        this.shadowRoot.getElementById('addResultMapping')?.addEventListener('click', () => this.addResultMapping());
+        
+        // Data source and target model change events
+        this.shadowRoot.getElementById('dataSource')?.addEventListener('change', () => this.updateMappingFieldOptions());
+        this.shadowRoot.getElementById('targetModel')?.addEventListener('change', () => {
+            this.updateMappingFieldOptions();
+            this.updateResultMappingFieldOptions();
+        });
+        
+        // Form submission
+        this.shadowRoot.getElementById('ruleForm')?.addEventListener('submit', (e) => {
+            e.preventDefault();
+            this.saveRule();
+        });
+    }
+    
+    bindFooterEvents() {
+        // Re-bind footer button events
+        this.shadowRoot.getElementById('cancelBtn')?.addEventListener('click', () => this.hideModal());
+        this.shadowRoot.getElementById('saveBtn')?.addEventListener('click', () => this.saveRule());
+    }
+    
+    runRule(id) {
+        const rule = this.data.find(item => item.id === id);
+        if (!rule) return;
+        
+        this.showRunModal(rule);
+    }
+    
+    showRunModal(rule) {
+        const modal = this.shadowRoot.getElementById('modalMask');
+        const title = this.shadowRoot.getElementById('modalTitle');
+        const modalBody = this.shadowRoot.getElementById('modalBody');
+        const modalFooter = this.shadowRoot.getElementById('modalFooter');
+        
+        if (modal && title && modalBody && modalFooter) {
+            title.textContent = '运行关联规则';
+            
+            // Create run form HTML
+            modalBody.innerHTML = `
+                <form id="runForm" class="run-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="runName">名称</label>
+                            <input type="text" id="runName" name="runName" required placeholder="请输入运行名称" value="${rule.ruleName || ''}">
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="startTime">开始时间</label>
+                            <input type="date" id="startTime" name="startTime" required value="${new Date().toISOString().split('T')[0]}">
+                        </div>
+                        <div class="form-group">
+                            <label for="endTime">结束时间</label>
+                            <input type="date" id="endTime" name="endTime" required value="${new Date().toISOString().split('T')[0]}">
+                        </div>
+                    </div>
+                </form>
+            `;
+            
+            // Set footer buttons for run modal
+            modalFooter.innerHTML = `
+                <button type="button" class="btn btn-cancel" id="runCancelBtn">取消</button>
+                <button type="button" class="btn btn-confirm" id="runExecuteBtn">立即运行</button>
+            `;
+            
+            // Store the rule ID for execution
+            this.currentRunRuleId = rule.id;
+            
+            // Re-bind events for run modal
+            this.bindRunModalEvents();
+            
+            modal.hidden = false;
+            modal.style.display = 'flex';
+        }
+    }
+    
+    bindRunModalEvents() {
+        // Cancel button
+        this.shadowRoot.getElementById('runCancelBtn')?.addEventListener('click', () => {
+            this.hideModal();
+        });
+        
+        // Execute button
+        this.shadowRoot.getElementById('runExecuteBtn')?.addEventListener('click', () => {
+            this.executeRule();
+        });
+        
+        // Form submission
+        this.shadowRoot.getElementById('runForm')?.addEventListener('submit', (e) => {
+            e.preventDefault();
+            this.executeRule();
+        });
+    }
+    
+    executeRule() {
+        const runName = this.shadowRoot.getElementById('runName')?.value.trim();
+        const startTime = this.shadowRoot.getElementById('startTime')?.value;
+        const endTime = this.shadowRoot.getElementById('endTime')?.value;
+        
+        if (!runName) {
+            this.showToast('请输入运行名称', 'error');
+            return;
+        }
+        
+        if (!startTime || !endTime) {
+            this.showToast('请选择开始时间和结束时间', 'error');
+            return;
+        }
+        
+        if (new Date(startTime) > new Date(endTime)) {
+            this.showToast('开始时间不能晚于结束时间', 'error');
+            return;
+        }
+        
+        const rule = this.data.find(item => item.id === this.currentRunRuleId);
+        if (rule) {
+            this.showToast(`正在运行规则: ${runName}\n规则: ${rule.ruleName}\n时间范围: ${startTime} 至 ${endTime}`);
+            // TODO: Implement actual rule execution logic
+        }
+        
+        this.hideModal();
+    }
+    
+    toggleRuleStatus(id) {
+        const rule = this.data.find(item => item.id === id);
+        if (!rule) return;
+        
+        rule.status = rule.status === 'active' ? 'inactive' : 'active';
+        rule.updateTime = new Date().toLocaleString('zh-CN');
+        
+        this.renderTable();
+        this.showToast(`规则 "${rule.ruleName}" 已${rule.status === 'active' ? '启用' : '禁用'}`);
+    }
+    
+    showToast(message, type = 'success') {
+        // Find the workspace-content container
+        const workspaceContent = document.querySelector('.workspace-content');
+        if (!workspaceContent) {
+            console.warn('workspace-content element not found');
+            return;
+        }
+
+        // Make sure workspace content has relative positioning and proper z-index
+        workspaceContent.style.position = 'relative';
+        workspaceContent.style.overflow = 'visible';
+        workspaceContent.style.zIndex = '1';
+
+        // Create toast container if it doesn't exist
+        let toastContainer = workspaceContent.querySelector('.toast-container');
+        if (!toastContainer) {
+            toastContainer = document.createElement('div');
+            toastContainer.className = 'toast-container';
+            toastContainer.style.cssText = `
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                z-index: 9999;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                padding: 20px 0;
+                pointer-events: none;
+                background: transparent;
+            `;
+            // Insert at the beginning of workspace content
+            if (workspaceContent.firstChild) {
+                workspaceContent.insertBefore(toastContainer, workspaceContent.firstChild);
+            } else {
+                workspaceContent.appendChild(toastContainer);
+            }
+        }
+
+        // Create toast element
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${type}`;
+        toast.textContent = message;
+        
+        // Style the toast
+        toast.style.cssText = `
+            background: ${type === 'success' ? '#52c41a' : '#ff4d4f'};
+            color: white;
+            padding: 12px 24px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            font-size: 14px;
+            text-align: center;
+            animation: slideInDown 0.3s ease-out;
+            pointer-events: auto;
+        `;
+
+        // Add toast to container
+        toastContainer.appendChild(toast);
+        
+        // Add animation keyframes if not already added
+        if (!document.querySelector('#toast-animations')) {
+            const style = document.createElement('style');
+            style.id = 'toast-animations';
+            style.textContent = `
+                @keyframes slideInDown {
+                    from {
+                        transform: translateY(-20px);
+                        opacity: 0;
+                    }
+                    to {
+                        transform: translateY(0);
+                        opacity: 1;
+                    }
+                }
+                @keyframes slideOutUp {
+                    from {
+                        transform: translateY(0);
+                        opacity: 1;
+                    }
+                    to {
+                        transform: translateY(-20px);
+                        opacity: 0;
+                    }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+        
+        // Remove after 3 seconds
+        setTimeout(() => {
+            toast.style.animation = 'slideOutUp 0.3s ease-out';
+            setTimeout(() => {
+                if (toast.parentNode) {
+                    toast.parentNode.removeChild(toast);
+                }
+                // Remove container if empty
+                if (toastContainer && toastContainer.children.length === 0) {
+                    toastContainer.parentNode.removeChild(toastContainer);
+                }
+            }, 300);
+        }, 3000);
     }
     
     show() {
