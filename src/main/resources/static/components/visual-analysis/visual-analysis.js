@@ -10,7 +10,7 @@ class VisualAnalysis extends HTMLElement {
         this.allData = [];
         this.displayData = [];
         this.currentPage = 1;
-        this.pageSize = 20;
+        this.pageSize = 10; // 减少每页显示数量以便测试滚动
         this.totalPages = 0;
         this.analysisType = 'trend';
         this.dataSource = '';
@@ -104,7 +104,7 @@ class VisualAnalysis extends HTMLElement {
         this.allData = [];
         this.displayData = [];
         this.currentPage = 1;
-        this.pageSize = 20;
+        this.pageSize = 10; // 减少每页显示数量以便测试滚动
         
         setTimeout(() => {
             this.initializeComponent();
@@ -151,14 +151,19 @@ class VisualAnalysis extends HTMLElement {
             });
         }
 
-        // 分页大小选择
-        const pageSizeSelect = this.shadowRoot.getElementById('pageSizeSelect');
-        if (pageSizeSelect) {
-            pageSizeSelect.value = this.pageSize;
-            pageSizeSelect.addEventListener('change', (e) => {
-                this.pageSize = parseInt(e.target.value);
-                this.currentPage = 1;
-                this.updateTable();
+        // 全选复选框
+        const selectAll = this.shadowRoot.getElementById('selectAll');
+        if (selectAll) {
+            selectAll.addEventListener('change', (e) => {
+                this.handleSelectAll(e.target.checked);
+            });
+        }
+
+        // 导出数据按钮
+        const exportDataBtn = this.shadowRoot.getElementById('exportDataBtn');
+        if (exportDataBtn) {
+            exportDataBtn.addEventListener('click', () => {
+                this.handleExportSelected();
             });
         }
 
@@ -195,51 +200,52 @@ class VisualAnalysis extends HTMLElement {
     generateMultiTaskData() {
         const data = [];
         const now = Date.now();
-        const dataPoints = 200; // 生成200个数据点
+        const dataPoints = 100; // 生成100个数据点以便测试滚动
         
-        // 生成多个任务的数据
-        const tasks = ['任务A', '任务B', '任务C'];
+        // 生成分析任务数据
+        const taskNames = [
+            '数据质量分析',
+            '性能监控分析', 
+            '用户行为分析',
+            '系统健康度分析',
+            '业务指标分析',
+            '安全风险评估',
+            '资源使用分析',
+            '网络流量分析',
+            '数据库性能分析',
+            'API调用分析',
+            '错误日志分析',
+            '用户访问分析'
+        ];
         
         for (let i = 0; i < dataPoints; i++) {
             const timestamp = now - (dataPoints - i) * 60000; // 每分钟一个数据点
+            const taskName = taskNames[i % taskNames.length];
             
-            tasks.forEach(task => {
-                let value = 100;
-                let status = 'normal';
-                let trend = 'stable';
-                
-                // 为不同任务生成不同特征的数据
-                switch (task) {
-                    case '任务A':
-                        value = 100 + Math.sin(i * 0.05) * 30 + Math.random() * 10;
-                        break;
-                    case '任务B':
-                        value = 90 + Math.cos(i * 0.03) * 25 + Math.random() * 15;
-                        break;
-                    case '任务C':
-                        value = 110 + Math.sin(i * 0.04) * 20 + Math.random() * 8;
-                        // 随机生成异常值
-                        if (Math.random() < 0.03) {
-                            value += (Math.random() - 0.5) * 80;
-                            status = 'abnormal';
-                        }
-                        break;
+            // 随机生成运行状态
+            const statuses = ['running', 'stopped', 'pending'];
+            const statusWeights = [0.6, 0.3, 0.1]; // 运行中60%，停止30%，等待10%
+            const random = Math.random();
+            let status = 'running';
+            let cumulativeWeight = 0;
+            
+            for (let j = 0; j < statuses.length; j++) {
+                cumulativeWeight += statusWeights[j];
+                if (random < cumulativeWeight) {
+                    status = statuses[j];
+                    break;
                 }
-                
-                trend = i > 0 && data.length > 0 ? 
-                    (value > data[data.length - 1]?.value || value ? 'up' : 'down') : 'stable';
-                
-                const record = {
-                    timestamp,
-                    task,
-                    value: parseFloat(value.toFixed(2)),
-                    status,
-                    trend,
-                    remark: status === 'abnormal' ? '异常数据点' : (trend === 'up' ? '上升趋势' : trend === 'down' ? '下降趋势' : '平稳')
-                };
-                
-                data.push(record);
-            });
+            }
+            
+            const record = {
+                id: `TASK-${String(i + 1).padStart(4, '0')}`,
+                name: taskName,
+                status: status,
+                timestamp: timestamp,
+                value: parseFloat((100 + Math.random() * 50).toFixed(2))
+            };
+            
+            data.push(record);
         }
         
         return data;
@@ -826,41 +832,76 @@ class VisualAnalysis extends HTMLElement {
         pageData.forEach((record, index) => {
             const tr = document.createElement('tr');
             
-            // 任务列
-            const taskTd = document.createElement('td');
-            taskTd.textContent = record.task || '-';
-            tr.appendChild(taskTd);
+            // 复选框列
+            const checkboxTd = document.createElement('td');
+            checkboxTd.style.textAlign = 'center';
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.className = 'checkbox-item';
+            checkbox.dataset.id = record.id;
+            checkboxTd.appendChild(checkbox);
+            tr.appendChild(checkboxTd);
+            
+            // ID列
+            const idTd = document.createElement('td');
+            idTd.textContent = record.id || '-';
+            tr.appendChild(idTd);
+            
+            // 名称列
+            const nameTd = document.createElement('td');
+            nameTd.textContent = record.name || '-';
+            tr.appendChild(nameTd);
+            
+            // 运行状态列
+            const statusTd = document.createElement('td');
+            const statusBadge = document.createElement('span');
+            statusBadge.className = `status-badge ${record.status}`;
+            statusBadge.textContent = this.getStatusText(record.status);
+            statusTd.appendChild(statusBadge);
+            tr.appendChild(statusTd);
             
             // 时间列
             const timeTd = document.createElement('td');
             timeTd.textContent = new Date(record.timestamp).toLocaleString();
             tr.appendChild(timeTd);
             
-            // 数值列
-            const valueTd = document.createElement('td');
-            valueTd.textContent = record.value.toFixed(2);
-            tr.appendChild(valueTd);
+            // 操作列
+            const actionTd = document.createElement('td');
+            const actionButtons = document.createElement('div');
+            actionButtons.className = 'action-buttons';
             
-            // 状态列
-            const statusTd = document.createElement('td');
-            const statusBadge = document.createElement('span');
-            statusBadge.className = `status-badge ${record.status}`;
-            statusBadge.textContent = record.status === 'normal' ? '正常' : '异常';
-            statusTd.appendChild(statusBadge);
-            tr.appendChild(statusTd);
+            // 分析按钮
+            const analyzeBtn = document.createElement('button');
+            analyzeBtn.className = 'action-btn analyze';
+            analyzeBtn.textContent = '分析';
+            analyzeBtn.onclick = () => this.handleAnalyze(record);
+            actionButtons.appendChild(analyzeBtn);
             
-            // 趋势列
-            const trendTd = document.createElement('td');
-            const trendBadge = document.createElement('span');
-            trendBadge.className = `trend-badge ${record.trend}`;
-            trendBadge.textContent = record.trend === 'up' ? '↑ 上升' : record.trend === 'down' ? '↓ 下降' : '→ 平稳';
-            trendTd.appendChild(trendBadge);
-            tr.appendChild(trendTd);
+            // 生成报告按钮
+            const reportBtn = document.createElement('button');
+            reportBtn.className = 'action-btn report';
+            reportBtn.textContent = '生成报告';
+            reportBtn.onclick = () => this.handleGenerateReport(record);
+            actionButtons.appendChild(reportBtn);
             
-            // 备注列
-            const remarkTd = document.createElement('td');
-            remarkTd.textContent = record.remark || '-';
-            tr.appendChild(remarkTd);
+            // 导出按钮
+            const exportBtn = document.createElement('button');
+            exportBtn.className = 'action-btn export';
+            exportBtn.textContent = '导出';
+            exportBtn.onclick = () => this.handleExport(record);
+            actionButtons.appendChild(exportBtn);
+            
+            // 停止按钮（仅在运行中状态显示）
+            if (record.status === 'running') {
+                const stopBtn = document.createElement('button');
+                stopBtn.className = 'action-btn stop';
+                stopBtn.textContent = '停止';
+                stopBtn.onclick = () => this.handleStop(record);
+                actionButtons.appendChild(stopBtn);
+            }
+            
+            actionTd.appendChild(actionButtons);
+            tr.appendChild(actionTd);
             
             tbody.appendChild(tr);
         });
@@ -872,7 +913,6 @@ class VisualAnalysis extends HTMLElement {
         const pageList = this.shadowRoot.getElementById('pageList');
         const prevBtn = this.shadowRoot.getElementById('prevBtn');
         const nextBtn = this.shadowRoot.getElementById('nextBtn');
-        const pageInfo = this.shadowRoot.getElementById('pageInfo');
 
         if (!pageList) return;
 
@@ -881,9 +921,6 @@ class VisualAnalysis extends HTMLElement {
         if (this.totalPages <= 1) {
             prevBtn.disabled = true;
             nextBtn.disabled = true;
-            if (pageInfo) {
-                pageInfo.textContent = `第 1 页 / 共 1 页`;
-            }
             return;
         }
         
@@ -897,15 +934,69 @@ class VisualAnalysis extends HTMLElement {
 
         prevBtn.disabled = this.currentPage === 1;
         nextBtn.disabled = this.currentPage === this.totalPages;
-        
-        if (pageInfo) {
-            pageInfo.textContent = `第 ${this.currentPage} 页 / 共 ${this.totalPages} 页`;
-        }
     }
 
     goToPage(page) {
         this.currentPage = page;
         this.updateTable();
+    }
+
+    // 获取状态文本
+    getStatusText(status) {
+        const statusMap = {
+            'running': '运行中',
+            'stopped': '已停止',
+            'pending': '等待中'
+        };
+        return statusMap[status] || status;
+    }
+
+    // 处理全选
+    handleSelectAll(checked) {
+        const checkboxes = this.shadowRoot.querySelectorAll('.checkbox-item');
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = checked;
+        });
+    }
+
+    // 处理分析操作
+    handleAnalyze(record) {
+        this.showToast(`开始分析任务: ${record.name}`, 'info');
+        console.log('分析任务:', record);
+    }
+
+    // 处理生成报告操作
+    handleGenerateReport(record) {
+        this.showToast(`正在生成任务报告: ${record.name}`, 'info');
+        console.log('生成报告:', record);
+    }
+
+    // 处理导出操作
+    handleExport(record) {
+        this.showToast(`正在导出任务数据: ${record.name}`, 'info');
+        console.log('导出任务:', record);
+    }
+
+    // 处理停止操作
+    handleStop(record) {
+        this.showToast(`正在停止任务: ${record.name}`, 'warning');
+        // 更新状态为停止
+        record.status = 'stopped';
+        this.updateTable();
+        console.log('停止任务:', record);
+    }
+
+    // 处理批量导出选中项
+    handleExportSelected() {
+        const selectedCheckboxes = this.shadowRoot.querySelectorAll('.checkbox-item:checked');
+        if (selectedCheckboxes.length === 0) {
+            this.showToast('请先选择要导出的任务', 'warning');
+            return;
+        }
+        
+        const selectedIds = Array.from(selectedCheckboxes).map(cb => cb.dataset.id);
+        this.showToast(`正在导出 ${selectedIds.length} 个选中的任务`, 'success');
+        console.log('批量导出选中项:', selectedIds);
     }
 
     resetAnalysis() {
@@ -927,49 +1018,107 @@ class VisualAnalysis extends HTMLElement {
         // 显示空状态
         this.showEmptyState();
         
-        this.showMessage('已重置分析参数', 'info');
+        this.showToast('已重置分析参数', 'info');
     }
 
-    showMessage(message, type = 'info') {
-        // 创建消息提示
-        const messageDiv = document.createElement('div');
-        messageDiv.className = `message-toast ${type}`;
-        messageDiv.textContent = message;
-        messageDiv.style.cssText = `
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            padding: 12px 20px;
-            border-radius: 4px;
-            color: white;
-            font-size: 14px;
-            z-index: 10000;
-            transition: all 0.3s;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-        `;
+    showToast(message, type = 'success') {
+        // Find the workspace-content container
+        const workspaceContent = document.querySelector('.workspace-content');
+        if (!workspaceContent) {
+            console.warn('workspace-content element not found');
+            return;
+        }
+
+        // Make sure workspace content has relative positioning and proper z-index
+        workspaceContent.style.position = 'relative';
+        workspaceContent.style.overflow = 'visible';
+        workspaceContent.style.zIndex = '1';
+
+        // Create toast container if it doesn't exist
+        let toastContainer = workspaceContent.querySelector('.toast-container');
+        if (!toastContainer) {
+            toastContainer = document.createElement('div');
+            toastContainer.className = 'toast-container';
+            toastContainer.style.cssText = `
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                z-index: 9999;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                padding: 20px 0;
+                pointer-events: none;
+                background: transparent;
+            `;
+            // Insert at the beginning of workspace content
+            if (workspaceContent.firstChild) {
+                workspaceContent.insertBefore(toastContainer, workspaceContent.firstChild);
+            } else {
+                workspaceContent.appendChild(toastContainer);
+            }
+        }
+
+        // Create toast element
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${type}`;
+        toast.textContent = message;
         
-        // 设置背景色
-        switch (type) {
-            case 'success':
-                messageDiv.style.backgroundColor = '#52c41a';
-                break;
-            case 'warning':
-                messageDiv.style.backgroundColor = '#faad14';
-                break;
-            case 'error':
-                messageDiv.style.backgroundColor = '#ff4d4f';
-                break;
-            default:
-                messageDiv.style.backgroundColor = '#1890ff';
+        // Style the toast
+        toast.style.cssText = `
+            background: ${type === 'success' ? '#52c41a' : type === 'warning' ? '#faad14' : type === 'error' ? '#ff4d4f' : '#3b82f6'};
+            color: white;
+            padding: 12px 24px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            font-size: 14px;
+            text-align: center;
+            animation: slideInDown 0.3s ease-out;
+            pointer-events: auto;
+        `;
+
+        // Add toast to container
+        toastContainer.appendChild(toast);
+        
+        // Add animation keyframes if not already added
+        if (!document.querySelector('#toast-animations')) {
+            const style = document.createElement('style');
+            style.id = 'toast-animations';
+            style.textContent = `
+                @keyframes slideInDown {
+                    from {
+                        transform: translateY(-20px);
+                        opacity: 0;
+                    }
+                    to {
+                        transform: translateY(0);
+                        opacity: 1;
+                    }
+                }
+                @keyframes slideOutUp {
+                    from {
+                        transform: translateY(0);
+                        opacity: 1;
+                    }
+                    to {
+                        transform: translateY(-20px);
+                        opacity: 0;
+                    }
+                }
+            `;
+            document.head.appendChild(style);
         }
         
-        document.body.appendChild(messageDiv);
-        
-        // 3秒后自动移除
+        // Remove toast after 3 seconds
         setTimeout(() => {
-            if (messageDiv.parentNode) {
-                messageDiv.parentNode.removeChild(messageDiv);
-            }
+            toast.style.animation = 'slideOutUp 0.3s ease-out';
+            setTimeout(() => {
+                if (toast.parentNode) {
+                    toast.parentNode.removeChild(toast);
+                }
+            }, 300);
         }, 3000);
     }
 }

@@ -28,8 +28,8 @@
             <div class="table-header">
                 <h4 class="table-title">分析数据</h4>
                 <div class="table-actions">
-                    <button class="table-action-btn" id="exportDataBtn" title="导出数据">
-                        <span>📥</span> 导出
+                    <button class="toolbar-btn blue" id="exportDataBtn" title="导出数据">
+                        导出
                     </button>
                 </div>
             </div>
@@ -37,12 +37,14 @@
                 <table class="data-table">
                     <thead>
                         <tr>
-                            <th>任务</th>
+                            <th style="width: 40px; text-align: center;">
+                                <input type="checkbox" id="selectAll" class="checkbox-all">
+                            </th>
+                            <th>ID</th>
+                            <th>名称</th>
+                            <th>运行状态</th>
                             <th>时间</th>
-                            <th>数值</th>
-                            <th>状态</th>
-                            <th>趋势</th>
-                            <th>备注</th>
+                            <th>操作</th>
                         </tr>
                     </thead>
                     <tbody id="tableBody">
@@ -51,23 +53,9 @@
                 </table>
             </div>
             <div class="pagination">
-                <div class="pagination-left">
-                    <div class="page-size-selector">
-                        <span>每页显示</span>
-                        <select class="page-size-select" id="pageSizeSelect">
-                            <option value="10">10条</option>
-                            <option value="20" selected>20条</option>
-                            <option value="50">50条</option>
-                            <option value="100">100条</option>
-                        </select>
-                    </div>
-                    <span class="page-info" id="pageInfo">第 1 页 / 共 1 页</span>
-                </div>
-                <div class="pagination-right">
-                    <button class="page-btn" id="prevBtn">上一页</button>
-                    <div class="page-list" id="pageList"></div>
-                    <button class="page-btn" id="nextBtn">下一页</button>
-                </div>
+                <button class="page-btn" id="prevBtn">&lt;</button>
+                <div class="page-list" id="pageList"></div>
+                <button class="page-btn" id="nextBtn">&gt;</button>
             </div>
         </div>
     </div>
