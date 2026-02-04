@@ -1,0 +1,74 @@
+<div class="visual-analysis-container">
+    <div class="analysis-header">
+        <h3 class="analysis-title" id="analysisTitle">多任务对比分析</h3>
+        <button class="close-btn" id="closeBtn">×</button>
+    </div>
+    
+    <div class="analysis-content">
+        <!-- 图表区域 -->
+        <div class="chart-section">
+            <div class="chart-header">
+                <h4 class="chart-title">分析图表</h4>
+                <div class="chart-actions">
+                    <button class="chart-action-btn" id="exportChartBtn" title="导出图表">
+                        <span>📊</span> 导出
+                    </button>
+                    <button class="chart-action-btn" id="refreshChartBtn" title="刷新图表">
+                        <span>🔄</span> 刷新
+                    </button>
+                </div>
+            </div>
+            <div class="chart-container" id="analysisChart">
+                <!-- ECharts图表将在这里渲染 -->
+            </div>
+        </div>
+        
+        <!-- 数据表格区域 -->
+        <div class="table-section">
+            <div class="table-header">
+                <h4 class="table-title">分析数据</h4>
+                <div class="table-actions">
+                    <button class="table-action-btn" id="exportDataBtn" title="导出数据">
+                        <span>📥</span> 导出
+                    </button>
+                </div>
+            </div>
+            <div class="table-wrapper">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>任务</th>
+                            <th>时间</th>
+                            <th>数值</th>
+                            <th>状态</th>
+                            <th>趋势</th>
+                            <th>备注</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody">
+                        <!-- 动态生成表格数据 -->
+                    </tbody>
+                </table>
+            </div>
+            <div class="pagination">
+                <div class="pagination-left">
+                    <div class="page-size-selector">
+                        <span>每页显示</span>
+                        <select class="page-size-select" id="pageSizeSelect">
+                            <option value="10">10条</option>
+                            <option value="20" selected>20条</option>
+                            <option value="50">50条</option>
+                            <option value="100">100条</option>
+                        </select>
+                    </div>
+                    <span class="page-info" id="pageInfo">第 1 页 / 共 1 页</span>
+                </div>
+                <div class="pagination-right">
+                    <button class="page-btn" id="prevBtn">上一页</button>
+                    <div class="page-list" id="pageList"></div>
+                    <button class="page-btn" id="nextBtn">下一页</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

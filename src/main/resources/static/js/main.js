@@ -349,6 +349,14 @@ document.addEventListener('DOMContentLoaded', function() {
                     console.error('未找到associationRules组件');
                 }
             }
+
+            // 数值与曲线分析 - 新增
+            if (menuItemText === '数值与曲线分析') {
+                console.log('✅ 数值与曲线分析菜单被点击');
+                showVisualAnalysis();
+                return;
+            }
+
         });
     });
 
@@ -453,6 +461,15 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
         console.log(`按钮 ${index}: "${btnText}"`);
+        
+        // 分析按钮 - 新增
+        if (btnText === '分析') {
+            console.log('✅ 找到分析按钮，绑定事件');
+            btn.addEventListener('click', function() {
+                console.log('分析按钮被点击');
+                showVisualAnalysis();
+            });
+        }
         
         // 新增按钮
         if (btnText === '新增') {
@@ -576,7 +593,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
         }
-    });
+
+        });
 
     // 7. 监听内嵌页面提交事件
     const embedded = document.getElementById('registerEmbedded');
@@ -1133,6 +1151,43 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // 全局变量存储选中的测点
 window.selectedDataPoints = new Set();
+
+// 显示数值与曲线分析
+function showVisualAnalysis() {
+    console.log('🚀 showVisualAnalysis() 函数被调用');
+    
+    // 清除工作区
+    const workspace = document.querySelector('.workspace-content');
+    console.log('找到工作区:', workspace);
+    if (!workspace) {
+        console.error('❌ 未找到工作区元素');
+        return;
+    }
+    
+    // 清空工作区
+    workspace.innerHTML = '';
+    console.log('工作区已清空');
+    
+    // 创建并添加visual-analysis组件
+    const visualAnalysis = document.createElement('visual-analysis');
+    console.log('创建visual-analysis组件:', visualAnalysis);
+    workspace.appendChild(visualAnalysis);
+    console.log('组件已添加到工作区');
+    
+    // 显示组件
+    setTimeout(() => {
+        console.log('调用visual-analysis.show()');
+        visualAnalysis.show();
+    }, 100);
+    
+    // 添加关闭事件监听
+    visualAnalysis.addEventListener('close', () => {
+        workspace.removeChild(visualAnalysis);
+    });
+    
+    // 滚动到工作区
+    workspace.scrollIntoView({ behavior: 'smooth' });
+}
 
 // 显示数据可视化
     function showDataVisualization(dataSource) {
