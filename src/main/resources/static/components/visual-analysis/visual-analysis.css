@@ -34,16 +34,17 @@ html, body {
     color: #2b2f36;
 }
 
-.analysis-header {
+.visualization-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 16px 24px;
-    background-color: #f5f7fa;
-    border-bottom: 1px solid #e8e8e8;
+    padding: 16px 20px;
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #e0e6ed;
+    position: relative;
 }
 
-.analysis-title {
+.visualization-title {
     margin: 0;
     font-size: 16px;
     font-weight: 600;
@@ -55,16 +56,19 @@ html, body {
     border: none;
     font-size: 20px;
     cursor: pointer;
-    color: #999;
-    padding: 4px;
-    line-height: 1;
+    color: #646a73;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     border-radius: 4px;
     transition: all 0.2s;
 }
 
 .close-btn:hover {
     background: rgba(0, 0, 0, 0.05);
-    color: #666;
+    color: #1f2329;
 }
 
 .analysis-content {
@@ -95,9 +99,11 @@ html, body {
     justify-content: space-between;
     align-items: center;
     padding: 12px 16px;
-    background-color: #fafafa;
-    border-bottom: 1px solid #f0f0f0;
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #e0e6ed;
     flex-shrink: 0;
+    height: 48px;
+    box-sizing: border-box;
 }
 
 .chart-title {
