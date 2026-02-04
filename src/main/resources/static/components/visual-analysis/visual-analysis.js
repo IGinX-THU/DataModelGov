@@ -10,10 +10,25 @@ class VisualAnalysis extends HTMLElement {
         this.allData = [];
         this.displayData = [];
         this.currentPage = 1;
-        this.pageSize = 10; // 减少每页显示数量以便测试滚动
+        this.pageSize = 10;
         this.totalPages = 0;
         this.analysisType = 'trend';
         this.dataSource = '';
+        // 添加曲线可见性状态管理
+        this.curveVisibility = {
+            input: true,
+            output: true
+        };
+        // 当前分析模式：'comparison' 或 'single'
+        this.currentAnalysisMode = 'comparison';
+        // 当前筛选状态
+        this.currentFilter = {
+            status: '',
+            name: '',
+            time: ''
+        };
+        // 当前图表数据缓存
+        this.currentChartData = null;
     }
 
     async connectedCallback() {
@@ -121,8 +136,16 @@ class VisualAnalysis extends HTMLElement {
     }
 
     initializeComponent() {
-        // 直接显示多任务对比分析
-        this.showMultiTaskAnalysis();
+        // 生成数据并显示表格，但图表显示空状态
+        const mockData = this.generateMultiTaskData();
+        this.allData = mockData;
+        this.displayData = mockData;
+        
+        // 更新表格显示数据
+        this.updateTable();
+        
+        // 图表显示空状态
+        this.showEmptyState();
     }
 
     showMultiTaskAnalysis() {
@@ -159,11 +182,51 @@ class VisualAnalysis extends HTMLElement {
             });
         }
 
-        // 导出数据按钮
-        const exportDataBtn = this.shadowRoot.getElementById('exportDataBtn');
-        if (exportDataBtn) {
-            exportDataBtn.addEventListener('click', () => {
-                this.handleExportSelected();
+        // 对比按钮
+        const compareBtn = this.shadowRoot.getElementById('compareBtn');
+        if (compareBtn) {
+            compareBtn.addEventListener('click', () => {
+                this.handleCompareSelected();
+            });
+        }
+
+        // 输入数据切换按钮
+        const toggleInputBtn = this.shadowRoot.getElementById('toggleInputBtn');
+        if (toggleInputBtn) {
+            toggleInputBtn.addEventListener('click', () => {
+                this.toggleInputData();
+            });
+        }
+
+        // 输出数据切换按钮
+        const toggleOutputBtn = this.shadowRoot.getElementById('toggleOutputBtn');
+        if (toggleOutputBtn) {
+            toggleOutputBtn.addEventListener('click', () => {
+                this.toggleOutputData();
+            });
+        }
+
+        // 状态筛选下拉框
+        const statusFilter = this.shadowRoot.getElementById('statusFilter');
+        if (statusFilter) {
+            statusFilter.addEventListener('change', (e) => {
+                this.handleStatusFilter(e.target.value);
+            });
+        }
+
+        // 名称搜索输入框
+        const nameSearch = this.shadowRoot.getElementById('nameSearch');
+        if (nameSearch) {
+            nameSearch.addEventListener('input', (e) => {
+                this.handleNameSearch(e.target.value);
+            });
+        }
+
+        // 时间搜索输入框
+        const timeSearch = this.shadowRoot.getElementById('timeSearch');
+        if (timeSearch) {
+            timeSearch.addEventListener('input', (e) => {
+                this.handleTimeSearch(e.target.value);
             });
         }
 
@@ -223,8 +286,8 @@ class VisualAnalysis extends HTMLElement {
             const taskName = taskNames[i % taskNames.length];
             
             // 随机生成运行状态
-            const statuses = ['running', 'stopped', 'pending'];
-            const statusWeights = [0.6, 0.3, 0.1]; // 运行中60%，停止30%，等待10%
+            const statuses = ['running', 'stopped', 'pending', 'success', 'failed'];
+            const statusWeights = [0.3, 0.25, 0.1, 0.25, 0.1]; // 运行中30%，停止25%，等待10%，成功25%，失败10%
             const random = Math.random();
             let status = 'running';
             let cumulativeWeight = 0;
@@ -416,7 +479,12 @@ class VisualAnalysis extends HTMLElement {
                 right: 20,
                 feature: {
                     restore: {},
-                    saveAsImage: {}
+                    saveAsImage: {},
+                    dataView: {
+                        readOnly: true,
+                        title: '数据视图',
+                        lang: ['数据视图', '关闭', '刷新']
+                    }
                 }
             },
             series: series
@@ -484,7 +552,12 @@ class VisualAnalysis extends HTMLElement {
                 right: 20,
                 feature: {
                     restore: {},
-                    saveAsImage: {}
+                    saveAsImage: {},
+                    dataView: {
+                        readOnly: true,
+                        title: '数据视图',
+                        lang: ['数据视图', '关闭', '刷新']
+                    }
                 }
             },
             series: [{
@@ -564,7 +637,12 @@ class VisualAnalysis extends HTMLElement {
                 right: 20,
                 feature: {
                     restore: {},
-                    saveAsImage: {}
+                    saveAsImage: {},
+                    dataView: {
+                        readOnly: true,
+                        title: '数据视图',
+                        lang: ['数据视图', '关闭', '刷新']
+                    }
                 }
             },
             series: [{
@@ -658,7 +736,12 @@ class VisualAnalysis extends HTMLElement {
                 right: 20,
                 feature: {
                     restore: {},
-                    saveAsImage: {}
+                    saveAsImage: {},
+                    dataView: {
+                        readOnly: true,
+                        title: '数据视图',
+                        lang: ['数据视图', '关闭', '刷新']
+                    }
                 }
             },
             series: [
@@ -766,7 +849,12 @@ class VisualAnalysis extends HTMLElement {
                 right: 20,
                 feature: {
                     restore: {},
-                    saveAsImage: {}
+                    saveAsImage: {},
+                    dataView: {
+                        readOnly: true,
+                        title: '数据视图',
+                        lang: ['数据视图', '关闭', '刷新']
+                    }
                 }
             },
             series: [
@@ -946,9 +1034,61 @@ class VisualAnalysis extends HTMLElement {
         const statusMap = {
             'running': '运行中',
             'stopped': '已停止',
-            'pending': '等待中'
+            'pending': '等待中',
+            'success': '成功',
+            'failed': '失败'
         };
         return statusMap[status] || status;
+    }
+
+    // 处理状态筛选
+    handleStatusFilter(filterValue) {
+        this.currentFilter.status = filterValue;
+        this.applyFilters();
+    }
+
+    // 处理名称搜索
+    handleNameSearch(searchValue) {
+        this.currentFilter.name = searchValue.toLowerCase();
+        this.applyFilters();
+    }
+
+    // 处理时间搜索
+    handleTimeSearch(searchValue) {
+        this.currentFilter.time = searchValue.toLowerCase();
+        this.applyFilters();
+    }
+
+    // 应用所有筛选条件
+    applyFilters() {
+        this.currentPage = 1; // 重置到第一页
+        
+        // 从所有数据开始筛选
+        let filteredData = [...this.allData];
+        
+        // 应用状态筛选
+        if (this.currentFilter.status) {
+            filteredData = filteredData.filter(record => record.status === this.currentFilter.status);
+        }
+        
+        // 应用名称搜索
+        if (this.currentFilter.name) {
+            filteredData = filteredData.filter(record => 
+                record.name.toLowerCase().includes(this.currentFilter.name)
+            );
+        }
+        
+        // 应用时间搜索
+        if (this.currentFilter.time) {
+            filteredData = filteredData.filter(record => {
+                const timeString = new Date(record.timestamp).toLocaleString();
+                return timeString.toLowerCase().includes(this.currentFilter.time);
+            });
+        }
+        
+        // 更新显示数据
+        this.displayData = filteredData;
+        this.updateTable();
     }
 
     // 处理全选
@@ -961,8 +1101,244 @@ class VisualAnalysis extends HTMLElement {
 
     // 处理分析操作
     handleAnalyze(record) {
-        this.showToast(`开始分析任务: ${record.name}`, 'info');
-        console.log('分析任务:', record);
+        if (record.status !== 'success' && record.status !== 'stopped') {
+            this.showToast('只能分析成功或已完成的任务', 'warning');
+            return;
+        }
+        
+        this.showToast(`正在分析单个任务: ${record.name}`, 'info');
+        console.log('分析单个任务:', record);
+        
+        // 显示单个任务分析
+        this.showSingleTaskAnalysis(record);
+    }
+
+    // 显示单个任务分析
+    showSingleTaskAnalysis(task) {
+        this.currentAnalysisMode = 'single';
+        
+        if (!this.chart) {
+            this.initChart();
+        }
+        
+        // 生成单个任务的数据并缓存
+        const singleTaskData = this.generateSingleTaskData(task);
+        this.currentChartData = {
+            type: 'single',
+            data: singleTaskData,
+            task: task
+        };
+        
+        this.updateSingleTaskChart(singleTaskData);
+    }
+
+    // 生成单个任务的数据
+    generateSingleTaskData(task) {
+        const taskData = {
+            id: task.id,
+            name: task.name,
+            inputData: [],
+            calculationResult: [],
+            timePoints: []
+        };
+
+        // 生成单个任务的输入数据和计算结果数据
+        const timePoints = 50;
+        for (let i = 0; i < timePoints; i++) {
+            const relativeTime = i * 10; // 每10秒一个数据点
+            
+            // 输入数据曲线
+            const inputBaseValue = 100;
+            const inputNoise = (Math.random() - 0.5) * 30;
+            const inputValue = inputBaseValue + inputNoise + Math.sin(i * 0.2) * 15;
+            
+            // 计算结果曲线
+            const resultBaseValue = inputValue * 1.2;
+            const resultNoise = (Math.random() - 0.5) * 20;
+            const resultValue = resultBaseValue + resultNoise + Math.cos(i * 0.15) * 10;
+            
+            taskData.inputData.push([relativeTime, parseFloat(inputValue.toFixed(2))]);
+            taskData.calculationResult.push([relativeTime, parseFloat(resultValue.toFixed(2))]);
+            taskData.timePoints.push(relativeTime);
+        }
+
+        return taskData;
+    }
+
+    // 更新单个任务图表
+    updateSingleTaskChart(taskData) {
+        if (!this.chart) return;
+
+        const series = [];
+        
+        // 输入数据曲线（虚线）
+        if (this.curveVisibility.input) {
+            series.push({
+                name: '输入数据',
+                type: 'line',
+                data: taskData.inputData,
+                smooth: true,
+                symbol: 'circle',
+                symbolSize: 4,
+                lineStyle: {
+                    width: 2,
+                    color: '#1890ff',
+                    type: 'dashed'
+                },
+                itemStyle: {
+                    color: '#1890ff'
+                }
+            });
+        }
+
+        // 计算结果曲线（实线）
+        if (this.curveVisibility.output) {
+            series.push({
+                name: '计算结果',
+                type: 'line',
+                data: taskData.calculationResult,
+                smooth: true,
+                symbol: 'diamond',
+                symbolSize: 4,
+                lineStyle: {
+                    width: 2,
+                    color: '#52c41a',
+                    type: 'solid'
+                },
+                itemStyle: {
+                    color: '#52c41a'
+                }
+            });
+        }
+
+        const option = {
+            title: {
+                text: `单个任务分析 - ${taskData.name}`,
+                left: 'center',
+                top: 10,
+                textStyle: {
+                    fontSize: 14,
+                    fontWeight: 'bold'
+                }
+            },
+            tooltip: {
+                trigger: 'axis',
+                formatter: function(params) {
+                    if (!params || params.length === 0) return '';
+                    const time = params[0].value[0];
+                    let result = `相对时间: ${time}s<br/>`;
+                    params.forEach(param => {
+                        result += `${param.seriesName}: ${param.value[1].toFixed(2)}<br/>`;
+                    });
+                    return result;
+                }
+            },
+            legend: {
+                data: series.map(s => s.name),
+                top: 40,
+                left: 'center',
+                itemWidth: 25,
+                itemHeight: 14
+            },
+            grid: {
+                left: '8%',
+                right: '8%',
+                bottom: '20%',
+                top: '25%'
+            },
+            xAxis: {
+                type: 'value',
+                name: '相对时间 (秒)',
+                nameLocation: 'middle',
+                nameGap: 30,
+                axisLabel: {
+                    formatter: function(value) {
+                        return value + 's';
+                    }
+                },
+                min: 0,
+                max: Math.max(...taskData.timePoints)
+            },
+            yAxis: {
+                type: 'value',
+                name: '数值',
+                nameLocation: 'middle',
+                nameGap: 50,
+                axisLabel: {
+                    formatter: function(value) {
+                        return value.toFixed(1);
+                    }
+                }
+            },
+            dataZoom: [
+                {
+                    type: 'inside',
+                    start: 0,
+                    end: 100
+                },
+                {
+                    start: 0,
+                    end: 100,
+                    handleStyle: {
+                        backgroundColor: '#1890ff'
+                    }
+                }
+            ],
+            toolbox: {
+                right: 20,
+                feature: {
+                    restore: {},
+                    saveAsImage: {},
+                    dataView: {
+                        readOnly: true,
+                        title: '数据视图',
+                        lang: ['数据视图', '关闭', '刷新']
+                    }
+                }
+            },
+            series: series
+        };
+
+        this.chart.setOption(option, true);
+    }
+
+    // 切换输入数据显示
+    toggleInputData() {
+        this.curveVisibility.input = !this.curveVisibility.input;
+        this.updateToggleButtonState('toggleInputBtn', this.curveVisibility.input);
+        this.refreshCurrentChart();
+    }
+
+    // 切换输出数据显示
+    toggleOutputData() {
+        this.curveVisibility.output = !this.curveVisibility.output;
+        this.updateToggleButtonState('toggleOutputBtn', this.curveVisibility.output);
+        this.refreshCurrentChart();
+    }
+
+    // 更新切换按钮状态
+    updateToggleButtonState(buttonId, isActive) {
+        const button = this.shadowRoot.getElementById(buttonId);
+        if (button) {
+            if (isActive) {
+                button.classList.remove('inactive');
+            } else {
+                button.classList.add('inactive');
+            }
+        }
+    }
+
+    // 刷新当前图表
+    refreshCurrentChart() {
+        if (!this.currentChartData || !this.chart) return;
+        
+        if (this.currentChartData.type === 'comparison') {
+            // 重新渲染对比图表，使用缓存的数据
+            this.updateComparisonChart(this.currentChartData.data);
+        } else if (this.currentChartData.type === 'single') {
+            // 重新渲染单个任务图表，使用缓存的数据
+            this.updateSingleTaskChart(this.currentChartData.data);
+        }
     }
 
     // 处理生成报告操作
@@ -986,17 +1362,368 @@ class VisualAnalysis extends HTMLElement {
         console.log('停止任务:', record);
     }
 
-    // 处理批量导出选中项
-    handleExportSelected() {
+    // 处理批量对比选中项
+    handleCompareSelected() {
         const selectedCheckboxes = this.shadowRoot.querySelectorAll('.checkbox-item:checked');
         if (selectedCheckboxes.length === 0) {
-            this.showToast('请先选择要导出的任务', 'warning');
+            this.showToast('请先选择要对比的任务', 'warning');
+            return;
+        }
+        
+        if (selectedCheckboxes.length < 2) {
+            this.showToast('请至少选择2个任务进行对比', 'warning');
+            return;
+        }
+        
+        if (selectedCheckboxes.length > 5) {
+            this.showToast('对比任务数量不能超过5个，请重新选择', 'warning');
             return;
         }
         
         const selectedIds = Array.from(selectedCheckboxes).map(cb => cb.dataset.id);
-        this.showToast(`正在导出 ${selectedIds.length} 个选中的任务`, 'success');
-        console.log('批量导出选中项:', selectedIds);
+        this.showToast(`正在对比 ${selectedIds.length} 个选中的任务`, 'success');
+        console.log('批量对比选中项:', selectedIds);
+        
+        // 显示对比图表
+        this.showComparisonChart(selectedIds);
+    }
+
+    // 显示对比图表
+    showComparisonChart(selectedIds) {
+        // 筛选选中的任务数据
+        const selectedTasks = this.allData.filter(record => selectedIds.includes(record.id));
+        
+        if (!this.chart) {
+            this.initChart();
+        }
+        
+        // 生成对比图表数据并缓存
+        const comparisonData = this.generateComparisonData(selectedTasks);
+        this.currentChartData = {
+            type: 'comparison',
+            data: comparisonData,
+            selectedIds: selectedIds
+        };
+        
+        this.updateComparisonChart(comparisonData);
+    }
+
+    // 生成对比数据（包含输入数据曲线和计算结果曲线）
+    generateComparisonData(selectedTasks) {
+        const comparisonData = {
+            tasks: [],
+            timePoints: [],
+            frequencyInconsistent: false,
+            targetFrequency: 10 // 默认目标频率：每10秒一个点
+        };
+
+        // 为每个任务生成不同采样频率的数据
+        const taskFrequencies = [];
+        selectedTasks.forEach((task, index) => {
+            // 模拟不同的采样频率：5秒、10秒、15秒、20秒间隔
+            const frequencies = [5, 10, 15, 20, 8]; // 不同的采样间隔（秒）
+            const samplingInterval = frequencies[index % frequencies.length];
+            taskFrequencies.push(samplingInterval);
+            
+            const taskData = {
+                id: task.id,
+                name: task.name,
+                samplingInterval: samplingInterval,
+                inputData: [],
+                calculationResult: []
+            };
+
+            // 根据采样间隔生成数据点
+            const maxTime = 490; // 最大时间490秒
+            const numPoints = Math.floor(maxTime / samplingInterval) + 1;
+            
+            for (let i = 0; i < numPoints; i++) {
+                const relativeTime = i * samplingInterval;
+                
+                // 输入数据曲线（模拟原始输入数据）
+                const inputBaseValue = 100 + index * 20;
+                const inputNoise = (Math.random() - 0.5) * 30;
+                const inputValue = inputBaseValue + inputNoise + Math.sin(relativeTime * 0.02) * 15;
+                
+                // 计算结果曲线（模拟处理后的结果）
+                const resultBaseValue = inputValue * 1.2 + index * 10;
+                const resultNoise = (Math.random() - 0.5) * 20;
+                const resultValue = resultBaseValue + resultNoise + Math.cos(relativeTime * 0.015) * 10;
+                
+                taskData.inputData.push([relativeTime, parseFloat(inputValue.toFixed(2))]);
+                taskData.calculationResult.push([relativeTime, parseFloat(resultValue.toFixed(2))]);
+            }
+
+            comparisonData.tasks.push(taskData);
+        });
+
+        // 检查采样频率是否一致
+        const uniqueFrequencies = [...new Set(taskFrequencies)];
+        if (uniqueFrequencies.length > 1) {
+            comparisonData.frequencyInconsistent = true;
+            // 使用最低频率作为目标频率（降采样）
+            comparisonData.targetFrequency = Math.max(...taskFrequencies);
+            this.showToast('检测到采样频率不一致，系统将自动进行数据对齐处理', 'info');
+        }
+
+        // 频率对齐处理
+        comparisonData.tasks = this.alignDataFrequency(comparisonData.tasks, comparisonData.targetFrequency);
+
+        // 生成统一的时间点用于X轴
+        const maxTime = 490;
+        for (let i = 0; i <= maxTime; i += comparisonData.targetFrequency) {
+            comparisonData.timePoints.push(i);
+        }
+
+        return comparisonData;
+    }
+
+    // 数据频率对齐处理
+    alignDataFrequency(tasks, targetInterval) {
+        return tasks.map(task => {
+            const alignedTask = {
+                ...task,
+                originalInterval: task.samplingInterval,
+                inputData: this.alignDataSeries(task.inputData, targetInterval),
+                calculationResult: this.alignDataSeries(task.calculationResult, targetInterval)
+            };
+            alignedTask.samplingInterval = targetInterval;
+            return alignedTask;
+        });
+    }
+
+    // 对齐单个数据系列
+    alignDataSeries(data, targetInterval) {
+        if (data.length === 0) return [];
+        
+        const currentInterval = data[1] ? data[1][0] - data[0][0] : targetInterval;
+        
+        // 如果频率一致，直接返回
+        if (Math.abs(currentInterval - targetInterval) < 0.1) {
+            return data;
+        }
+        
+        // 如果当前频率高于目标频率，进行降采样
+        if (currentInterval < targetInterval) {
+            return this.downsampleData(data, targetInterval);
+        }
+        // 如果当前频率低于目标频率，进行插值
+        else {
+            return this.interpolateData(data, targetInterval);
+        }
+    }
+
+    // 线性插值处理
+    interpolateData(data, targetInterval) {
+        if (data.length < 2) return data;
+        
+        const interpolatedData = [];
+        const maxTime = 490;
+        
+        for (let time = 0; time <= maxTime; time += targetInterval) {
+            // 找到时间点前后的数据点
+            let leftPoint = null;
+            let rightPoint = null;
+            
+            for (let i = 0; i < data.length - 1; i++) {
+                if (data[i][0] <= time && data[i + 1][0] >= time) {
+                    leftPoint = data[i];
+                    rightPoint = data[i + 1];
+                    break;
+                }
+            }
+            
+            if (leftPoint && rightPoint) {
+                // 线性插值计算
+                const ratio = (time - leftPoint[0]) / (rightPoint[0] - leftPoint[0]);
+                const interpolatedValue = leftPoint[1] + ratio * (rightPoint[1] - leftPoint[1]);
+                interpolatedData.push([time, parseFloat(interpolatedValue.toFixed(2))]);
+            } else if (leftPoint && leftPoint[0] === time) {
+                // 精确匹配的时间点
+                interpolatedData.push([time, leftPoint[1]]);
+            }
+        }
+        
+        return interpolatedData;
+    }
+
+    // 降采样处理
+    downsampleData(data, targetInterval) {
+        const downsampledData = [];
+        const maxTime = 490;
+        
+        for (let time = 0; time <= maxTime; time += targetInterval) {
+            // 找到最接近目标时间的数据点
+            let closestPoint = null;
+            let minDistance = Infinity;
+            
+            data.forEach(point => {
+                const distance = Math.abs(point[0] - time);
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    closestPoint = point;
+                }
+            });
+            
+            if (closestPoint && minDistance <= targetInterval / 2) {
+                downsampledData.push([time, closestPoint[1]]);
+            }
+        }
+        
+        return downsampledData;
+    }
+
+    // 更新对比图表
+    updateComparisonChart(comparisonData) {
+        if (!this.chart) return;
+
+        const series = [];
+        const colors = ['#1890ff', '#52c41a', '#faad14', '#f5222d', '#722ed1', '#13c2c2'];
+        let colorIndex = 0;
+
+        // 为每个任务生成两条曲线：输入数据曲线和计算结果曲线
+        comparisonData.tasks.forEach(task => {
+            const taskColor = colors[colorIndex % colors.length];
+            
+            // 输入数据曲线（虚线）
+            if (this.curveVisibility.input) {
+                series.push({
+                    name: `${task.name} - 输入数据`,
+                    type: 'line',
+                    data: task.inputData,
+                    smooth: true,
+                    symbol: 'circle',
+                    symbolSize: 3,
+                    lineStyle: {
+                        width: 2,
+                        color: taskColor,
+                        type: 'dashed'
+                    },
+                    itemStyle: {
+                        color: taskColor
+                    }
+                });
+            }
+
+            // 计算结果曲线（实线）
+            if (this.curveVisibility.output) {
+                series.push({
+                    name: `${task.name} - 计算结果`,
+                    type: 'line',
+                    data: task.calculationResult,
+                    smooth: true,
+                    symbol: 'diamond',
+                    symbolSize: 3,
+                    lineStyle: {
+                        width: 2,
+                        color: taskColor,
+                        type: 'solid'
+                    },
+                    itemStyle: {
+                        color: taskColor
+                    }
+                });
+            }
+
+            colorIndex++;
+        });
+
+        const option = {
+            title: {
+                text: '多任务对比分析 - 相对时间',
+                left: 'center',
+                top: 10,
+                textStyle: {
+                    fontSize: 14,
+                    fontWeight: 'bold'
+                }
+            },
+            tooltip: {
+                trigger: 'axis',
+                formatter: function(params) {
+                    if (!params || params.length === 0) return '';
+                    const time = params[0].value[0];
+                    let result = `相对时间: ${time}s<br/>`;
+                    params.forEach(param => {
+                        result += `${param.seriesName}: ${param.value[1].toFixed(2)}<br/>`;
+                    });
+                    return result;
+                }
+            },
+            legend: {
+                data: series.map(s => s.name),
+                top: 40,
+                left: 'center',
+                type: 'scroll',
+                itemWidth: 25,
+                itemHeight: 14,
+                itemGap: 20,
+                padding: [5, 10],
+                textStyle: {
+                    fontSize: 12,
+                    padding: [3, 0]
+                }
+            },
+            grid: {
+                left: '8%',
+                right: '8%',
+                bottom: '20%',
+                top: '25%'
+            },
+            xAxis: {
+                type: 'value',
+                name: '相对时间 (秒)',
+                nameLocation: 'middle',
+                nameGap: 30,
+                axisLabel: {
+                    formatter: function(value) {
+                        return value + 's';
+                    }
+                },
+                min: 0,
+                max: Math.max(...comparisonData.timePoints)
+            },
+            yAxis: {
+                type: 'value',
+                name: '数值',
+                nameLocation: 'middle',
+                nameGap: 50,
+                axisLabel: {
+                    formatter: function(value) {
+                        return value.toFixed(1);
+                    }
+                }
+            },
+            dataZoom: [
+                {
+                    type: 'inside',
+                    start: 0,
+                    end: 100
+                },
+                {
+                    start: 0,
+                    end: 100,
+                    handleStyle: {
+                        backgroundColor: '#1890ff'
+                    }
+                }
+            ],
+            toolbox: {
+                right: 20,
+                feature: {
+                    restore: {},
+                    saveAsImage: {},
+                    dataView: {
+                        readOnly: true,
+                        title: '数据视图',
+                        lang: ['数据视图', '关闭', '刷新']
+                    }
+                }
+            },
+            series: series
+        };
+
+        this.chart.setOption(option, true);
     }
 
     resetAnalysis() {

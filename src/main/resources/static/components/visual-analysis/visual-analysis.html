@@ -9,11 +9,11 @@
             <div class="chart-header">
                 <h4 class="chart-title">分析图表</h4>
                 <div class="chart-actions">
-                    <button class="action-btn" id="exportChartBtn" title="导出图表">
-                        导出
+                    <button class="toggle-btn" id="toggleInputBtn" title="切换输入数据显示">
+                        输入数据
                     </button>
-                    <button class="action-btn" id="refreshChartBtn" title="刷新图表">
-                        刷新
+                    <button class="toggle-btn" id="toggleOutputBtn" title="切换输出数据显示">
+                        输出数据
                     </button>
                 </div>
             </div>
@@ -26,10 +26,27 @@
         <div class="table-section">
             <div class="table-header">
                 <h4 class="table-title">分析数据</h4>
-                <div class="table-actions">
-                    <button class="toolbar-btn blue" id="exportDataBtn" title="导出数据">
-                        导出
-                    </button>
+                <div class="table-controls">
+                    <div class="filter-controls">
+                        <label for="statusFilter">状态筛选:</label>
+                        <select id="statusFilter" class="filter-select">
+                            <option value="">全部</option>
+                            <option value="running">运行中</option>
+                            <option value="stopped">已停止</option>
+                            <option value="pending">等待中</option>
+                            <option value="success">成功</option>
+                            <option value="failed">失败</option>
+                        </select>
+                        <label for="nameSearch">名称搜索:</label>
+                        <input type="text" id="nameSearch" class="search-input" placeholder="搜索任务名称">
+                        <label for="timeSearch">时间搜索:</label>
+                        <input type="text" id="timeSearch" class="search-input" placeholder="搜索时间">
+                    </div>
+                    <div class="table-actions">
+                        <button class="toolbar-btn blue" id="compareBtn" title="对比选中任务">
+                            对比
+                        </button>
+                    </div>
                 </div>
             </div>
             <div class="table-wrapper">
