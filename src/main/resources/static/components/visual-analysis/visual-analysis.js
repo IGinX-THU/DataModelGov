@@ -35,8 +35,8 @@ class VisualAnalysis extends HTMLElement {
         await this.loadResources();
         setTimeout(() => {
             this.bindEvents();
-            this.initializeComponent();
             this.initPagination();
+            this.initializeComponent();
         }, 100);
     }
 
@@ -111,31 +111,86 @@ class VisualAnalysis extends HTMLElement {
 
     getFallbackHTML() {
         return `
-        <div class="visual-analysis-container">
-            <div class="analysis-header">
-                <h3 class="analysis-title">数值与曲线分析</h3>
+        <div class="visualization-container">
+            <div class="visualization-header">
+                <h3 class="visualization-title" id="analysisTitle">多任务对比分析</h3>
                 <button class="close-btn" id="closeBtn">×</button>
             </div>
-            <div class="analysis-content">
-                <div class="control-panel">
-                    <div class="panel-section">
-                        <h4 class="section-title">分析配置</h4>
-                        <div class="control-actions">
-                            <button class="action-btn primary" id="analyzeBtn">开始分析</button>
+            
+            <div class="content-area">
+                <div class="chart-section">
+                    <div class="chart-header">
+                        <h4 class="chart-title">分析图表</h4>
+                        <div class="chart-actions">
+                            <button class="toggle-btn" id="toggleInputBtn" title="切换输入数据显示">
+                                输入数据
+                            </button>
+                            <button class="toggle-btn" id="toggleOutputBtn" title="切换输出数据显示">
+                                输出数据
+                            </button>
                         </div>
+                    </div>
+                    <div class="chart-container" id="analysisChart">
+                        <!-- ECharts图表将在这里渲染 -->
                     </div>
                 </div>
-                <div class="main-content">
-                    <div class="chart-section">
-                        <div class="chart-container" id="analysisChart"></div>
-                    </div>
-                    <div class="table-section">
-                        <div class="table-wrapper">
-                            <table class="data-table">
-                                <tbody id="tableBody"></tbody>
-                            </table>
+                
+                <!-- 数据表格区域 -->
+                <div class="table-section">
+                    <div class="table-header">
+                        <h4 class="table-title">分析数据</h4>
+                        <div class="table-controls">
+                            <div class="filter-controls">
+                                <label for="statusFilter">状态筛选:</label>
+                                <select id="statusFilter" class="filter-select">
+                                    <option value="">全部</option>
+                                    <option value="running">运行中</option>
+                                    <option value="stopped">已停止</option>
+                                    <option value="pending">等待中</option>
+                                    <option value="success">成功</option>
+                                    <option value="failed">失败</option>
+                                </select>
+                                <label for="nameSearch">名称搜索:</label>
+                                <input type="text" id="nameSearch" class="search-input" placeholder="搜索任务名称">
+                                
+                                <!-- Time Range Selection -->
+                                <div class="time-range-container">
+                                    <span class="time-range-label">时间范围:</span>
+                                    <input type="datetime-local" id="startTime" class="datetime-input" aria-label="开始时间">
+                                    <span class="time-range-separator">至</span>
+                                    <input type="datetime-local" id="endTime" class="datetime-input" aria-label="结束时间">
+                                </div>
+                                <button class="toolbar-btn blue" id="searchBtn" title="搜索">
+                                    <i class="search-icon">🔍</i> 搜索
+                                </button>
+                            </div>
+                            <div class="table-actions">
+                                <button class="toolbar-btn poor" id="compareBtn" title="对比选中任务">
+                                    对比
+                                </button>
+                            </div>
                         </div>
                     </div>
+                    <div class="table-wrapper">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 40px; text-align: center;">
+                                        <input type="checkbox" id="selectAll" class="checkbox-all">
+                                    </th>
+                                    <th>ID</th>
+                                    <th>名称</th>
+                                    <th>运行状态</th>
+                                    <th>时间</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tableBody">
+                                <!-- 动态生成表格数据 -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <common-pagination id="pagination"></common-pagination>
                 </div>
             </div>
         </div>`;
@@ -150,6 +205,7 @@ class VisualAnalysis extends HTMLElement {
         this.pageSize = 10; // 减少每页显示数量以便测试滚动
         
         setTimeout(() => {
+            this.initPagination();
             this.initializeComponent();
         }, 50);
     }
@@ -2765,8 +2821,13 @@ class LocalPDFGenerator {
             };
         });
     }
+}
 
-    initPagination() {
+// 将 initPagination 和 updatePagination 方法添加回 VisualAnalysis 类
+// 注意：这些方法原本应该在 VisualAnalysis 类中
+
+// 临时解决方案：直接修改原型
+VisualAnalysis.prototype.initPagination = function() {
         const pagination = this.shadowRoot.getElementById('pagination');
         if (pagination) {
             // 监听分页变化事件
@@ -2780,15 +2841,14 @@ class LocalPDFGenerator {
             // 初始化分页
             this.updatePagination();
         }
-    }
+    };
 
-    updatePagination() {
+VisualAnalysis.prototype.updatePagination = function() {
         const pagination = this.shadowRoot.getElementById('pagination');
         if (pagination) {
             pagination.setPagination(this.currentPage, this.pageSize, this.displayData.length);
         }
-    }
-}
+    };
 
 // 注册组件
 if (!customElements.get('visual-analysis')) {

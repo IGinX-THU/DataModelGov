@@ -416,7 +416,7 @@
     font-size: var(--font-size-xs);
     display: block;
     text-align: center;
-    line-height: 14px;
+    line-height: var(--spacing-lg);
 }
 
 /* 运行状态徽章 */

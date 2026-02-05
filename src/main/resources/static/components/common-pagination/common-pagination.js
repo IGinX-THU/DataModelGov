@@ -101,7 +101,8 @@ class CommonPagination extends HTMLElement {
         const totalPages = Math.ceil(this.totalRecords / this.pageSize);
         pageNumbersContainer.innerHTML = '';
 
-        if (totalPages <= 1) return;
+        // 即使只有1页也要显示当前页码
+        if (totalPages < 1) return;
 
         const pageNumbers = this.calculateVisiblePages(totalPages);
         
