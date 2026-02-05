@@ -12,6 +12,9 @@ class AssociationRules extends HTMLElement {
         this.seedData();
         this.renderTable();
         
+        // 初始化分页组件
+        this.initPagination();
+        
         // Store references to external trees
         this.selectedDataSource = null;
         this.selectedModel = null;
@@ -187,10 +190,6 @@ class AssociationRules extends HTMLElement {
         this.shadowRoot.getElementById('importBtn')?.addEventListener('click', () => this.importRules());
         this.shadowRoot.getElementById('exportBtn')?.addEventListener('click', () => this.exportRules());
 
-        // 分页事件
-        this.shadowRoot.getElementById('prevPage')?.addEventListener('click', () => this.changePage(-1));
-        this.shadowRoot.getElementById('nextPage')?.addEventListener('click', () => this.changePage(1));
-
         // 模态框事件
         this.shadowRoot.getElementById('modalClose')?.addEventListener('click', () => this.hideModal());
         this.shadowRoot.getElementById('cancelBtn')?.addEventListener('click', () => this.hideModal());
@@ -363,43 +362,7 @@ class AssociationRules extends HTMLElement {
             </tr>
         `).join('');
 
-        this.renderPagination();
-    }
-
-    renderPagination() {
-        const totalPages = Math.ceil(this.data.length / this.pageSize);
-        const pageList = this.shadowRoot.getElementById('pageList');
-        const prevBtn = this.shadowRoot.getElementById('prevPage');
-        const nextBtn = this.shadowRoot.getElementById('nextPage');
-
-        if (!pageList) return;
-
-        pageList.innerHTML = '';
-        for (let i = 1; i <= totalPages; i++) {
-            const pageBtn = document.createElement('button');
-            pageBtn.className = `page-number ${i === this.currentPage ? 'active' : ''}`;
-            pageBtn.textContent = i;
-            pageBtn.onclick = () => this.goToPage(i);
-            pageList.appendChild(pageBtn);
-        }
-
-        prevBtn.disabled = this.currentPage === 1;
-        nextBtn.disabled = this.currentPage === totalPages;
-    }
-
-    changePage(direction) {
-        const totalPages = Math.ceil(this.data.length / this.pageSize);
-        const newPage = this.currentPage + direction;
-        
-        if (newPage >= 1 && newPage <= totalPages) {
-            this.currentPage = newPage;
-            this.renderTable();
-        }
-    }
-
-    goToPage(page) {
-        this.currentPage = page;
-        this.renderTable();
+        this.updatePagination();
     }
 
     showAddModal() {
@@ -1720,6 +1683,29 @@ class AssociationRules extends HTMLElement {
         console.log('AssociationRules: style.display set to:', this.style.display);
     }
     
+    initPagination() {
+        const pagination = this.shadowRoot.getElementById('pagination');
+        if (pagination) {
+            // 监听分页变化事件
+            pagination.addEventListener('pagination-change', (event) => {
+                const { currentPage, pageSize } = event.detail;
+                this.currentPage = currentPage;
+                this.pageSize = pageSize;
+                this.renderTable();
+            });
+            
+            // 初始化分页
+            this.updatePagination();
+        }
+    }
+
+    updatePagination() {
+        const pagination = this.shadowRoot.getElementById('pagination');
+        if (pagination) {
+            pagination.setPagination(this.currentPage, this.pageSize, this.data.length);
+        }
+    }
+
     hide() {
         console.log('AssociationRules.hide() called');
         this.removeAttribute('show');

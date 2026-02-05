@@ -1,3 +1,7 @@
+/* Model Detail Component - Using Common Styles */
+@import url('../../css/variables.css');
+@import url('../../css/base-components.css');
+
 :host {
     display: none;
     width: 100%;
@@ -9,40 +13,40 @@
 }
 
 .model-detail {
-    padding: 16px 24px 24px;
-    font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-    color: #2b2f36;
+    padding: var(--spacing-xl) var(--spacing-3xl) var(--spacing-3xl);
+    font-family: var(--font-family-primary);
+    color: var(--text-primary);
 }
 
 .model-info-card,
 .model-structure-card {
-    background: #fff;
-    border-radius: 6px;
-    border: 1px solid #edf0f5;
-    padding: 16px 20px 12px;
-    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
-    margin-bottom: 16px;
+    background: var(--bg-primary);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-tertiary);
+    padding: var(--spacing-xl) var(--spacing-2xl) var(--spacing-lg);
+    box-shadow: var(--shadow-sm);
+    margin-bottom: var(--spacing-lg);
 }
 
 .info-header,
 .structure-header {
-    font-size: 13px;
-    color: #6b7280;
-    margin-bottom: 10px;
+    font-size: var(--font-size-md);
+    color: var(--text-secondary);
+    margin-bottom: var(--spacing-lg);
 }
 
 /* 第一个card的上下两部分 */
 .basic-info-section {
-    margin-bottom: 20px;
-    padding-bottom: 20px;
-    border-bottom: 1px solid #edf0f5;
+    margin-bottom: var(--spacing-xl);
+    padding-bottom: var(--spacing-xl);
+    border-bottom: 1px solid var(--border-tertiary);
 }
 
 .section-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 12px;
+    margin-bottom: var(--spacing-lg);
 }
 
 .section-title-with-name {
@@ -372,36 +376,4 @@
     margin-top: 16px;
 }
 
-.action-btn {
-    padding: 8px 16px;
-    border: 1px solid #d1d5db;
-    border-radius: 4px;
-    background: white;
-    color: #374151;
-    font-size: 13px;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-.action-btn:hover {
-    background: #f8fafc;
-    border-color: #9ca3af;
-}
-
-.download-btn:hover {
-    background: #dbeafe;
-    border-color: #3b82f6;
-    color: #3b82f6;
-}
-
-.edit-btn:hover {
-    background: #dcfce7;
-    border-color: #22c55e;
-    color: #22c55e;
-}
-
-.delete-btn:hover {
-    background: #fee2e2;
-    border-color: #ef4444;
-    color: #ef4444;
-}
+/* 移除重复的action-btn样式，使用base-components.css中的通用样式 */

@@ -12,6 +12,9 @@ class DatabaseTable extends HTMLElement {
         this.seedData();
         this.renderTable();
         
+        // 初始化分页组件
+        this.initPagination();
+        
         // 确保模态框初始状态是隐藏的，并且移除任何可能的事件监听器
         setTimeout(() => {
             const modalMask = this.shadowRoot.getElementById('modalMask');
@@ -25,6 +28,17 @@ class DatabaseTable extends HTMLElement {
     }
 
     async loadResources() {
+        // 加载通用工具
+        if (!window.CommonUtils) {
+            const script = document.createElement('script');
+            script.src = './js/common-utils.js';
+            document.head.appendChild(script);
+            // 等待脚本加载
+            await new Promise(resolve => {
+                script.onload = resolve;
+            });
+        }
+
         // 加载CSS
         try {
             const cssLink = document.createElement('link');
@@ -214,42 +228,15 @@ class DatabaseTable extends HTMLElement {
                 <td>${row.createtime}</td>
                 <td>${row.updatetime}</td>
                 <td>
-                    <span class="edit" data-id="${row.id}">编辑</span>
-                    <span class="action" data-id="${row.id}">删除</span>
+                    <div class="action-buttons">
+                        <button class="action-btn edit" data-id="${row.id}">编辑</button>
+                        <button class="action-btn delete" data-id="${row.id}">删除</button>
+                    </div>
                 </td>
             </tr>
         `).join('');
 
-        this.renderPagination();
-    }
-
-    renderPagination() {
-        const totalPages = Math.ceil(this.data.length / this.pageSize);
-        const pageList = this.shadowRoot.getElementById('pageList');
-        const prevBtn = this.shadowRoot.getElementById('prevPage');
-        const nextBtn = this.shadowRoot.getElementById('nextPage');
-
-        if (!pageList || !prevBtn || !nextBtn) return;
-
-        // 渲染页码
-        let pages = [];
-        const maxVisible = 5;
-        let start = Math.max(1, this.currentPage - Math.floor(maxVisible / 2));
-        let end = Math.min(totalPages, start + maxVisible - 1);
-
-        if (end - start + 1 < maxVisible) {
-            start = Math.max(1, end - maxVisible + 1);
-        }
-
-        for (let i = start; i <= end; i++) {
-            pages.push(`<div class="page-item ${i === this.currentPage ? 'active' : ''}" data-page="${i}">${i}</div>`);
-        }
-
-        pageList.innerHTML = pages.join('');
-
-        // 更新按钮状态
-        prevBtn.disabled = this.currentPage === 1;
-        nextBtn.disabled = this.currentPage === totalPages;
+        this.updatePagination();
     }
 
     bindEvents() {
@@ -329,57 +316,26 @@ class DatabaseTable extends HTMLElement {
             });
         }
 
-        // 分页事件
-        const pageList = this.shadowRoot.getElementById('pageList');
-        const prevBtn = this.shadowRoot.getElementById('prevPage');
-        const nextBtn = this.shadowRoot.getElementById('nextPage');
-
-        if (pageList) {
-            pageList.addEventListener('click', (event) => {
-                if (event.target.classList.contains('page-item')) {
-                    this.currentPage = parseInt(event.target.dataset.page);
-                    this.renderTable();
-                }
-            });
-        }
-
-        if (prevBtn) {
-            prevBtn.addEventListener('click', () => {
-                if (this.currentPage > 1) {
-                    this.currentPage--;
-                    this.renderTable();
-                }
-            });
-        }
-
-        if (nextBtn) {
-            nextBtn.addEventListener('click', () => {
-                const totalPages = Math.ceil(this.data.length / this.pageSize);
-                if (this.currentPage < totalPages) {
-                    this.currentPage++;
-                    this.renderTable();
-                }
-            });
-        }
-
         // 表格行操作
         const tbody = this.shadowRoot.getElementById('tableBody');
         if (tbody) {
             tbody.addEventListener('click', (event) => {
-                if (event.target.classList.contains('action')) {
+                if (event.target.classList.contains('action-btn')) {
                     const id = event.target.dataset.id;
-                    this.showModal('删除确认', `确定要删除 ID 为 ${id} 的记录吗？`, [
-                        { text: '取消', class: 'modal-btn secondary', action: 'close' },
-                        { text: '删除', class: 'modal-btn primary', action: 'delete', id }
-                    ]);
-                } else if (event.target.classList.contains('edit')) {
-                    const id = event.target.dataset.id;
-                    const row = this.data.find(r => r.id == id);
-                    if (row) {
-                        this.showModal('编辑记录', this.getFormModalBody(row), [
+                    if (event.target.classList.contains('delete')) {
+                        this.showModal('删除确认', `确定要删除 ID 为 ${id} 的记录吗？`, [
                             { text: '取消', class: 'modal-btn secondary', action: 'close' },
-                            { text: '保存', class: 'modal-btn primary', action: 'edit', id }
+                            { text: '删除', class: 'modal-btn primary', action: 'delete', id }
                         ]);
+                    } else if (event.target.classList.contains('edit')) {
+                        const id = event.target.dataset.id;
+                        const row = this.data.find(r => r.id == id);
+                        if (row) {
+                            this.showModal('编辑记录', this.getFormModalBody(row), [
+                                { text: '取消', class: 'modal-btn secondary', action: 'close' },
+                                { text: '保存', class: 'modal-btn primary', action: 'edit', id }
+                            ]);
+                        }
                     }
                 }
             });
@@ -443,7 +399,13 @@ class DatabaseTable extends HTMLElement {
                 } else if (action === 'delete' && id) {
                     this.data = this.data.filter(row => row.id != id);
                     this.renderTable();
-                    this.showModal('成功', '记录已删除');
+                    this.hideModal();
+                    // 使用通用消息系统
+                    if (window.CommonUtils) {
+                        window.CommonUtils.showSuccess('删除成功');
+                    } else {
+                        console.log('记录已删除');
+                    }
                 }
             });
         } else {
@@ -469,8 +431,36 @@ class DatabaseTable extends HTMLElement {
         }
     }
 
-    show() {
+    show(tableName = null) {
+        // 如果提供了tableName，可以在这里处理
+        if (tableName) {
+            console.log('显示数据库表格:', tableName);
+            // 可以根据tableName加载不同的数据或设置标题
+        }
         this.setAttribute('show', '');
+    }
+
+    initPagination() {
+        const pagination = this.shadowRoot.getElementById('pagination');
+        if (pagination) {
+            // 监听分页变化事件
+            pagination.addEventListener('pagination-change', (event) => {
+                const { currentPage, pageSize } = event.detail;
+                this.currentPage = currentPage;
+                this.pageSize = pageSize;
+                this.renderTable();
+            });
+            
+            // 初始化分页
+            this.updatePagination();
+        }
+    }
+
+    updatePagination() {
+        const pagination = this.shadowRoot.getElementById('pagination');
+        if (pagination) {
+            pagination.setPagination(this.currentPage, this.pageSize, this.data.length);
+        }
     }
 
     hide() {

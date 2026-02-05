@@ -1,4 +1,7 @@
-/* 数据可视化组件样式 */
+/* Data Visualization Component - Using Common Variables */
+@import url('../../css/variables.css');
+@import url('../../css/base-components.css');
+
 @keyframes slideIn {
     from { 
         opacity: 0; 
@@ -22,17 +25,17 @@
 }
 
 .table-wrapper::-webkit-scrollbar-track {
-    background: #f1f1f1;
+    background: var(--bg-secondary);
     border-radius: 3px;
 }
 
 .table-wrapper::-webkit-scrollbar-thumb {
-    background: #c1c1c1;
+    background: var(--border-primary);
     border-radius: 3px;
 }
 
 .table-wrapper::-webkit-scrollbar-thumb:hover {
-    background: #a8a8a8;
+    background: var(--text-tertiary);
 }
 
 /* 主容器样式 */
@@ -40,7 +43,7 @@
     display: none;
     width: 100%;
     height: 100%;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: var(--font-family-primary);
     flex: 1;
     min-width: 0;
     min-height: 1200px;
@@ -55,9 +58,9 @@
 }
 
 .visualization-container {
-    background: white;
-    border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    background: var(--bg-primary);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
     width: 100%;
     min-height: 1200px;
     overflow: visible;
@@ -73,38 +76,38 @@
 }
 
 .visualization-header {
-    padding: 16px 20px;
-    border-bottom: 1px solid #e0e6ed;
+    padding: var(--spacing-xl) var(--spacing-2xl);
+    border-bottom: 1px solid var(--border-secondary);
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: #f8f9fa;
+    background: var(--bg-secondary);
 }
 
 .visualization-title {
-    font-size: 16px;
-    font-weight: 600;
-    color: #1f2329;
+    font-size: var(--font-size-xl);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-primary);
     margin: 0;
 }
 
 .close-btn {
     background: none;
     border: none;
-    font-size: 20px;
+    font-size: var(--font-size-2xl);
     cursor: pointer;
-    color: #646a73;
-    width: 24px;
-    height: 24px;
+    color: var(--text-secondary);
+    width: var(--spacing-3xl);
+    height: var(--spacing-3xl);
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 2px;
-    transition: all 0.2s;
+    border-radius: var(--radius-sm);
+    transition: all var(--transition-normal);
 }
 
 .close-btn:hover {
-    background: #f0f0f0;
+    background: var(--bg-tertiary);
 }
 
 /* 图表区域 */
@@ -138,21 +141,7 @@
     gap: 8px;
 }
 
-.operations-actions .action-btn {
-    padding: 6px 12px;
-    border: 1px solid #d9d9d9;
-    background: white;
-    border-radius: 4px;
-    font-size: 12px;
-    cursor: pointer;
-    transition: all 0.2s;
-    color: #646a73;
-}
-
-.operations-actions .action-btn:hover {
-    border-color: #3370ff;
-    color: #3370ff;
-}
+/* 移除重复的action-btn样式，使用base-components.css中的通用样式 */
 
 .chart-container {
     flex: 1;

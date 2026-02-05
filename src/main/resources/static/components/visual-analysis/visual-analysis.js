@@ -36,6 +36,7 @@ class VisualAnalysis extends HTMLElement {
         setTimeout(() => {
             this.bindEvents();
             this.initializeComponent();
+            this.initPagination();
         }, 100);
     }
 
@@ -275,28 +276,6 @@ class VisualAnalysis extends HTMLElement {
             }
         } else if (!window.flatpickr) {
             console.warn('Flatpickr is not available. Date picker functionality will be limited.');
-        }
-
-        // 分页按钮
-        const prevBtn = this.shadowRoot.getElementById('prevBtn');
-        const nextBtn = this.shadowRoot.getElementById('nextBtn');
-        
-        if (prevBtn) {
-            prevBtn.addEventListener('click', () => {
-                if (this.currentPage > 1) {
-                    this.currentPage--;
-                    this.updateTable();
-                }
-            });
-        }
-
-        if (nextBtn) {
-            nextBtn.addEventListener('click', () => {
-                if (this.currentPage < this.totalPages) {
-                    this.currentPage++;
-                    this.updateTable();
-                }
-            });
         }
 
         // ESC键关闭
@@ -1042,33 +1021,6 @@ class VisualAnalysis extends HTMLElement {
         });
         
         this.updatePagination();
-    }
-
-    updatePagination() {
-        const pageList = this.shadowRoot.getElementById('pageList');
-        const prevBtn = this.shadowRoot.getElementById('prevBtn');
-        const nextBtn = this.shadowRoot.getElementById('nextBtn');
-
-        if (!pageList) return;
-
-        pageList.innerHTML = '';
-        
-        if (this.totalPages <= 1) {
-            prevBtn.disabled = true;
-            nextBtn.disabled = true;
-            return;
-        }
-        
-        for (let i = 1; i <= this.totalPages; i++) {
-            const pageBtn = document.createElement('button');
-            pageBtn.className = `page-number ${i === this.currentPage ? 'active' : ''}`;
-            pageBtn.textContent = i;
-            pageBtn.onclick = () => this.goToPage(i);
-            pageList.appendChild(pageBtn);
-        }
-
-        prevBtn.disabled = this.currentPage === 1;
-        nextBtn.disabled = this.currentPage === this.totalPages;
     }
 
     goToPage(page) {
@@ -2812,6 +2764,29 @@ class LocalPDFGenerator {
                 resolve(htmlBlob);
             };
         });
+    }
+
+    initPagination() {
+        const pagination = this.shadowRoot.getElementById('pagination');
+        if (pagination) {
+            // 监听分页变化事件
+            pagination.addEventListener('pagination-change', (event) => {
+                const { currentPage, pageSize } = event.detail;
+                this.currentPage = currentPage;
+                this.pageSize = pageSize;
+                this.updateTable();
+            });
+            
+            // 初始化分页
+            this.updatePagination();
+        }
+    }
+
+    updatePagination() {
+        const pagination = this.shadowRoot.getElementById('pagination');
+        if (pagination) {
+            pagination.setPagination(this.currentPage, this.pageSize, this.displayData.length);
+        }
     }
 }
 

@@ -12,6 +12,9 @@ class ParsingRules extends HTMLElement {
         this.seedData();
         this.renderTable();
         
+        // 初始化分页组件
+        this.initPagination();
+        
         setTimeout(() => {
             const modalMask = this.shadowRoot.getElementById('modalMask');
             if (modalMask) {
@@ -259,40 +262,15 @@ class ParsingRules extends HTMLElement {
                 <td>${row.createtime}</td>
                 <td>${row.updatetime}</td>
                 <td>
-                    <span class="edit" data-id="${row.id}">编辑</span>
-                    <span class="action" data-id="${row.id}">删除</span>
+                    <div class="action-buttons">
+                        <button class="action-btn edit" data-id="${row.id}">编辑</button>
+                        <button class="action-btn delete" data-id="${row.id}">删除</button>
+                    </div>
                 </td>
             </tr>
         `).join('');
 
-        this.renderPagination();
-    }
-
-    renderPagination() {
-        const totalPages = Math.ceil(this.data.length / this.pageSize);
-        const pageList = this.shadowRoot.getElementById('pageList');
-        const prevBtn = this.shadowRoot.getElementById('prevPage');
-        const nextBtn = this.shadowRoot.getElementById('nextPage');
-
-        if (!pageList || !prevBtn || !nextBtn) return;
-
-        let pages = [];
-        const maxVisible = 5;
-        let start = Math.max(1, this.currentPage - Math.floor(maxVisible / 2));
-        let end = Math.min(totalPages, start + maxVisible - 1);
-
-        if (end - start + 1 < maxVisible) {
-            start = Math.max(1, end - maxVisible + 1);
-        }
-
-        for (let i = start; i <= end; i++) {
-            pages.push(`<div class="page-item ${i === this.currentPage ? 'active' : ''}" data-page="${i}">${i}</div>`);
-        }
-
-        pageList.innerHTML = pages.join('');
-
-        prevBtn.disabled = this.currentPage === 1;
-        nextBtn.disabled = this.currentPage === totalPages;
+        this.updatePagination();
     }
 
     bindEvents() {
@@ -338,55 +316,25 @@ class ParsingRules extends HTMLElement {
             });
         }
 
-        const pageList = this.shadowRoot.getElementById('pageList');
-        const prevBtn = this.shadowRoot.getElementById('prevPage');
-        const nextBtn = this.shadowRoot.getElementById('nextPage');
-
-        if (pageList) {
-            pageList.addEventListener('click', (event) => {
-                if (event.target.classList.contains('page-item')) {
-                    this.currentPage = parseInt(event.target.dataset.page);
-                    this.renderTable();
-                }
-            });
-        }
-
-        if (prevBtn) {
-            prevBtn.addEventListener('click', () => {
-                if (this.currentPage > 1) {
-                    this.currentPage--;
-                    this.renderTable();
-                }
-            });
-        }
-
-        if (nextBtn) {
-            nextBtn.addEventListener('click', () => {
-                const totalPages = Math.ceil(this.data.length / this.pageSize);
-                if (this.currentPage < totalPages) {
-                    this.currentPage++;
-                    this.renderTable();
-                }
-            });
-        }
-
         const tbody = this.shadowRoot.getElementById('tableBody');
         if (tbody) {
             tbody.addEventListener('click', (event) => {
-                if (event.target.classList.contains('action')) {
+                if (event.target.classList.contains('action-btn')) {
                     const id = event.target.dataset.id;
-                    this.showModal('删除确认', `确定要删除 ID 为 ${id} 的解析规则吗？`, [
-                        { text: '取消', class: 'modal-btn secondary', action: 'close' },
-                        { text: '删除', class: 'modal-btn primary', action: 'delete', id }
-                    ]);
-                } else if (event.target.classList.contains('edit')) {
-                    const id = event.target.dataset.id;
-                    const rule = this.data.find(r => r.id == id);
-                    if (rule) {
-                        this.showModal('编辑解析规则', this.getFormModalBody(rule), [
+                    if (event.target.classList.contains('delete')) {
+                        this.showModal('删除确认', `确定要删除 ID 为 ${id} 的解析规则吗？`, [
                             { text: '取消', class: 'modal-btn secondary', action: 'close' },
-                            { text: '保存', class: 'modal-btn primary', action: 'edit', id }
+                            { text: '删除', class: 'modal-btn primary', action: 'delete', id }
                         ]);
+                    } else if (event.target.classList.contains('edit')) {
+                        const id = event.target.dataset.id;
+                        const rule = this.data.find(r => r.id == id);
+                        if (rule) {
+                            this.showModal('编辑解析规则', this.getFormModalBody(rule), [
+                                { text: '取消', class: 'modal-btn secondary', action: 'close' },
+                                { text: '保存', class: 'modal-btn primary', action: 'edit', id }
+                            ]);
+                        }
                     }
                 }
             });
@@ -851,6 +799,29 @@ class ParsingRules extends HTMLElement {
 
     show() {
         this.setAttribute('show', '');
+    }
+
+    initPagination() {
+        const pagination = this.shadowRoot.getElementById('pagination');
+        if (pagination) {
+            // 监听分页变化事件
+            pagination.addEventListener('pagination-change', (event) => {
+                const { currentPage, pageSize } = event.detail;
+                this.currentPage = currentPage;
+                this.pageSize = pageSize;
+                this.renderTable();
+            });
+            
+            // 初始化分页
+            this.updatePagination();
+        }
+    }
+
+    updatePagination() {
+        const pagination = this.shadowRoot.getElementById('pagination');
+        if (pagination) {
+            pagination.setPagination(this.currentPage, this.pageSize, this.data.length);
+        }
     }
 
     hide() {

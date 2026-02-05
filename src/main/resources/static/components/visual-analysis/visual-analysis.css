@@ -1,15 +1,23 @@
 /**
- * 数值与曲线分析组件样式
- * 参考association-rules的表格样式和data-visualization的布局
+ * 数值与曲线分析组件样式 - Using Common Variables
  */
+@import url('../../css/variables.css');
+@import url('../../css/base-components.css');
 
-/* 确保html和body元素正确填充视口 */
-html, body {
-    margin: 0;
-    padding: 0;
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
+@keyframes slideIn {
+    from { 
+        opacity: 0; 
+        transform: translateY(-10px); 
+    }
+    to { 
+        opacity: 1; 
+        transform: translateY(0); 
+    }
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
 }
 
 :host {
@@ -26,49 +34,49 @@ html, body {
     display: flex;
     flex-direction: column;
     height: 100%;
-    background-color: #fff;
-    border-radius: 8px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    background-color: var(--bg-primary);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
     overflow: hidden;
-    font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-    color: #2b2f36;
+    font-family: var(--font-family-primary);
+    color: var(--text-primary);
 }
 
 .visualization-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 16px 20px;
-    background-color: #f8f9fa;
-    border-bottom: 1px solid #e0e6ed;
+    padding: var(--spacing-xl) var(--spacing-2xl);
+    background-color: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-secondary);
     position: relative;
 }
 
 .visualization-title {
     margin: 0;
-    font-size: 16px;
-    font-weight: 600;
-    color: #333;
+    font-size: var(--font-size-xl);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-primary);
 }
 
 .close-btn {
     background: none;
     border: none;
-    font-size: 20px;
+    font-size: var(--font-size-2xl);
     cursor: pointer;
-    color: #646a73;
-    width: 24px;
-    height: 24px;
+    color: var(--text-secondary);
+    width: var(--spacing-3xl);
+    height: var(--spacing-3xl);
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 4px;
-    transition: all 0.2s;
+    border-radius: var(--radius-md);
+    transition: all var(--transition-normal);
 }
 
 .close-btn:hover {
-    background: rgba(0, 0, 0, 0.05);
-    color: #1f2329;
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
 }
 
 .analysis-content {
@@ -76,8 +84,8 @@ html, body {
     flex-direction: column;
     flex: 1;
     min-height: 0;
-    gap: 16px;
-    padding: 16px;
+    gap: var(--spacing-xl);
+    padding: var(--spacing-xl);
     overflow-y: auto;
 }
 
@@ -85,10 +93,10 @@ html, body {
 .chart-section {
     flex: 1;
     min-height: 300px;
-    background: #fff;
-    border-radius: 6px;
-    border: 1px solid #edf0f5;
-    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+    background: var(--bg-primary);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-tertiary);
+    box-shadow: var(--shadow-sm);
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -98,9 +106,9 @@ html, body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 12px 16px;
-    background-color: #f8f9fa;
-    border-bottom: 1px solid #e0e6ed;
+    padding: var(--spacing-lg) var(--spacing-xl);
+    background-color: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-secondary);
     flex-shrink: 0;
     height: 48px;
     box-sizing: border-box;
@@ -108,83 +116,83 @@ html, body {
 
 .chart-title {
     margin: 0;
-    font-size: 14px;
-    font-weight: 600;
-    color: #374151;
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-primary);
 }
 
 .chart-actions {
     display: flex;
-    gap: 6px;
+    gap: var(--spacing-xs);
 }
 
 .chart-action-btn,
 .table-action-btn {
     display: flex;
     align-items: center;
-    gap: 4px;
-    padding: 4px 8px;
-    background: #fff;
-    border: 1px solid #dcdfe6;
-    border-radius: 4px;
-    font-size: 11px;
+    gap: var(--spacing-xs);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    background: var(--bg-primary);
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-xs);
     cursor: pointer;
-    transition: all 0.2s;
-    color: #606266;
+    transition: all var(--transition-normal);
+    color: var(--text-secondary);
 }
 
 .chart-action-btn:hover,
 .table-action-btn:hover {
-    background: #f5f7fa;
-    border-color: #409eff;
-    color: #409eff;
+    background: var(--bg-secondary);
+    border-color: var(--color-primary);
+    color: var(--color-primary);
 }
 
 .toggle-btn {
     display: flex;
     align-items: center;
-    gap: 4px;
-    padding: 4px 8px;
-    background: #1890ff;
-    border: 1px solid #1890ff;
-    border-radius: 4px;
-    font-size: 11px;
+    gap: var(--spacing-xs);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    background: var(--color-info);
+    border: 1px solid var(--color-info);
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-xs);
     cursor: pointer;
-    transition: all 0.2s;
-    color: white;
+    transition: all var(--transition-normal);
+    color: var(--text-inverse);
 }
 
 .toggle-btn:hover {
-    background: #409eff;
-    border-color: #409eff;
+    background: var(--color-primary);
+    border-color: var(--color-primary);
 }
 
 .toggle-btn.inactive {
-    background: #f5f7fa;
-    border-color: #dcdfe6;
-    color: #909399;
+    background: var(--bg-disabled);
+    border-color: var(--border-primary);
+    color: var(--text-tertiary);
 }
 
 .toggle-btn.inactive:hover {
-    background: #e6e8eb;
-    border-color: #c0c4cc;
-    color: #606266;
+    background: var(--border-secondary);
+    border-color: var(--border-tertiary);
+    color: var(--text-secondary);
 }
 
 .chart-container {
     flex: 1;
     min-height: 280px;
-    padding: 12px;
+    padding: var(--spacing-lg);
 }
 
 /* 表格区域 */
 .table-section {
     flex: 0 0 auto;
-    background: #fff;
-    border-radius: 6px;
-    border: 1px solid #edf0f5;
-    margin-top: 16px;
-    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+    background: var(--bg-primary);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-tertiary);
+    margin-top: var(--spacing-xl);
+    box-shadow: var(--shadow-sm);
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -193,127 +201,127 @@ html, body {
 .table-header {
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    padding: 16px 20px;
-    border-bottom: 1px solid #edf0f5;
-    background-color: #f8fafc;
+    gap: var(--spacing-lg);
+    padding: var(--spacing-xl) var(--spacing-2xl);
+    border-bottom: 1px solid var(--border-tertiary);
+    background-color: var(--bg-secondary);
     flex-shrink: 0;
 }
 
 .table-title {
     margin: 0;
-    font-size: 13px;
-    font-weight: 600;
-    color: #374151;
+    font-size: var(--font-size-md);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-primary);
 }
 
 .table-controls {
     width: 100%;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: var(--spacing-lg);
 }
 
 .filter-row {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 12px;
+    gap: var(--spacing-lg);
     width: 100%;
 }
 
 .filter-group {
     display: flex;
     align-items: center;
-    gap: 8px;
-    background: white;
-    padding: 6px 12px;
-    border-radius: 6px;
-    border: 1px solid #e2e8f0;
-    transition: all 0.2s;
+    gap: var(--spacing-sm);
+    background: var(--bg-primary);
+    padding: var(--spacing-sm) var(--spacing-lg);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-primary);
+    transition: all var(--transition-normal);
 }
 
 .filter-group:focus-within {
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 1px #3b82f6;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 1px var(--color-primary);
 }
 
 .filter-group label {
-    font-size: 13px;
-    color: #4b5563;
+    font-size: var(--font-size-md);
+    color: var(--text-secondary);
     white-space: nowrap;
 }
 
 .time-range-container {
     display: flex;
     align-items: center;
-    gap: 8px;
-    background: white;
-    padding: 6px 12px;
-    border-radius: 6px;
-    border: 1px solid #e2e8f0;
-    transition: all 0.2s;
+    gap: var(--spacing-sm);
+    background: var(--bg-primary);
+    padding: var(--spacing-sm) var(--spacing-lg);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-primary);
+    transition: all var(--transition-normal);
 }
 
 .time-range-container:focus-within {
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 1px #3b82f6;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 1px var(--color-primary);
 }
 
 .time-range-label {
-    font-size: 13px;
-    color: #4b5563;
+    font-size: var(--font-size-md);
+    color: var(--text-secondary);
     white-space: nowrap;
 }
 
 .time-range-separator {
-    color: #6b7280;
-    font-size: 13px;
-    padding: 0 4px;
+    color: var(--text-secondary);
+    font-size: var(--font-size-md);
+    padding: 0 var(--spacing-xs);
 }
 
 .filter-select {
-    padding: 4px 8px;
-    border: 1px solid #d1d5db;
-    border-radius: 4px;
-    font-size: 12px;
-    background: #fff;
-    color: #374151;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-xs);
+    background: var(--bg-primary);
+    color: var(--text-primary);
     min-width: 80px;
 }
 
 .filter-select:focus {
     outline: none;
-    border-color: #3b82f6;
+    border-color: var(--color-primary);
     box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
 }
 
 .search-input {
-    padding: 4px 8px;
-    border: 1px solid #d1d5db;
-    border-radius: 4px;
-    font-size: 12px;
-    background: #fff;
-    color: #374151;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-xs);
+    background: var(--bg-primary);
+    color: var(--text-primary);
     width: 120px;
     min-width: 100px;
 }
 
 .search-input:focus {
     outline: none;
-    border-color: #3b82f6;
+    border-color: var(--color-primary);
     box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
 }
 
 .search-input::placeholder {
-    color: #9ca3af;
-    font-size: 11px;
+    color: var(--text-tertiary);
+    font-size: var(--font-size-xs);
 }
 
 /* Search button in table actions */
 .table-actions .search-icon {
-    margin-right: 4px;
-    font-size: 14px;
+    margin-right: var(--spacing-xs);
+    font-size: var(--font-size-base);
 }
 
 /* Moved and enhanced .table-actions styles above */
@@ -321,32 +329,32 @@ html, body {
 /* Date Range Picker Styles */
 .date-range-picker {
     width: 250px !important;
-    background-color: #fff;
+    background-color: var(--bg-primary);
     cursor: pointer;
 }
 
 .flatpickr-calendar {
-    font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    border-radius: 6px;
+    font-family: var(--font-family-primary);
+    box-shadow: var(--shadow-lg);
+    border-radius: var(--radius-lg);
 }
 
 .flatpickr-day.selected, .flatpickr-day.startRange, .flatpickr-day.endRange, .flatpickr-day.selected.inRange, .flatpickr-day.startRange.inRange, .flatpickr-day.endRange.inRange, .flatpickr-day.selected:focus, .flatpickr-day.startRange:focus, .flatpickr-day.endRange:focus, .flatpickr-day.selected:hover, .flatpickr-day.startRange:hover, .flatpickr-day.endRange:hover, .flatpickr-day.selected.prevMonthDay, .flatpickr-day.startRange.prevMonthDay, .flatpickr-day.endRange.prevMonthDay, .flatpickr-day.selected.nextMonthDay, .flatpickr-day.startRange.nextMonthDay, .flatpickr-day.endRange.nextMonthDay {
-    background: #1890ff;
-    border-color: #1890ff;
+    background: var(--color-info);
+    border-color: var(--color-info);
 }
 
 .flatpickr-day.inRange {
-    background: #e6f7ff;
-    border-color: #91d5ff;
-    box-shadow: -5px 0 0 #e6f7ff, 5px 0 0 #e6f7ff;
+    background: var(--color-info-light);
+    border-color: var(--color-info);
+    box-shadow: -5px 0 0 var(--color-info-light), 5px 0 0 var(--color-info-light);
 }
 
 /* Adjust the filter controls to accommodate the date range picker */
 .filter-controls {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: var(--spacing-sm);
     align-items: center;
 }
 
@@ -355,84 +363,57 @@ html, body {
 }
 
 .toolbar-btn {
-    padding: 6px 12px;
+    padding: var(--spacing-sm) var(--spacing-lg);
     border: none;
-    border-radius: 4px;
-    font-size: 12px;
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-xs);
     cursor: pointer;
-    transition: all 0.2s;
-    color: white;
+    transition: all var(--transition-normal);
+    color: var(--text-inverse);
+    min-height: var(--button-height-sm);
 }
 
 .toolbar-btn.poor {
-    background: #7666EB;
+    background: var(--color-primary);
 }
 
 .toolbar-btn.poor:hover {
-    background: #AC33C1;
+    background: var(--color-primary-hover);
 }
 
 .toolbar-btn.blue {
-    background: #3b82f6;
+    background: var(--color-primary);
 }
 
 .toolbar-btn.blue:hover {
-    background: #2563eb;
+    background: var(--color-primary-hover);
 }
 
-.table-wrapper {
-    overflow-x: auto;
-}
-
-.data-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 12px;
-}
-
-.data-table th {
-    background: #f8fafc;
-    padding: 12px 16px;
-    text-align: left;
-    font-weight: 600;
-    color: #374151;
-    border-bottom: 1px solid #edf0f5;
-    white-space: nowrap;
-}
-
-.data-table td {
-    padding: 12px 16px;
-    border-bottom: 1px solid #f3f4f6;
-    color: #2b2f36;
-    white-space: nowrap;
-}
-
-.data-table tr:hover {
-    background: #f8fafc;
-}
+/* 移除重复的表格样式，使用base-components.css中的通用样式 */
+/* 保留visual-analysis特有的样式 */
 
 /* 复选框样式 */
 .checkbox-all,
 .checkbox-item {
-    width: 16px;
-    height: 16px;
-    border: 1px solid #d1d5db;
-    border-radius: 3px;
+    width: var(--spacing-lg);
+    height: var(--spacing-lg);
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-sm);
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all var(--transition-normal);
 }
 
 .checkbox-all:checked,
 .checkbox-item:checked {
-    background: #3b82f6;
-    border-color: #3b82f6;
+    background: var(--color-primary);
+    border-color: var(--color-primary);
 }
 
 .checkbox-all:checked::after,
 .checkbox-item:checked::after {
     content: '✓';
-    color: white;
-    font-size: 10px;
+    color: var(--text-inverse);
+    font-size: var(--font-size-xs);
     display: block;
     text-align: center;
     line-height: 14px;
@@ -440,104 +421,104 @@ html, body {
 
 /* 运行状态徽章 */
 .status-badge {
-    padding: 2px 8px;
-    border-radius: 12px;
-    font-size: 10px;
-    font-weight: 500;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border-radius: var(--radius-full);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
     line-height: 1.2;
     display: inline-block;
 }
 
 .status-badge.running {
-    background: #dcfce7;
-    color: #166534;
-    border: 1px solid #bbf7d0;
+    background: var(--color-success-light);
+    color: var(--color-success);
+    border: 1px solid var(--color-success);
 }
 
 .status-badge.stopped {
-    background: #fee2e2;
-    color: #991b1b;
-    border: 1px solid #fecaca;
+    background: var(--color-danger-light);
+    color: var(--color-danger);
+    border: 1px solid var(--color-danger);
 }
 
 .status-badge.pending {
-    background: #fef3c7;
-    color: #92400e;
-    border: 1px solid #fde68a;
+    background: var(--color-warning-light);
+    color: var(--color-warning);
+    border: 1px solid var(--color-warning);
 }
 
 .status-badge.success {
-    background: #d1fae5;
-    color: #065f46;
-    border: 1px solid #a7f3d0;
+    background: var(--color-success-light);
+    color: var(--color-success);
+    border: 1px solid var(--color-success);
 }
 
 .status-badge.failed {
-    background: #fee2e2;
-    color: #991b1b;
-    border: 1px solid #fca5a5;
+    background: var(--color-danger-light);
+    color: var(--color-danger);
+    border: 1px solid var(--color-danger);
 }
 
 /* 操作按钮样式 */
 .action-buttons {
     display: flex;
-    gap: 6px;
+    gap: var(--spacing-xs);
     flex-wrap: wrap;
 }
 
 .action-btn {
-    padding: 4px 8px;
-    border: 1px solid #d1d5db;
-    border-radius: 4px;
-    font-size: 11px;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-xs);
     cursor: pointer;
-    transition: all 0.2s;
-    background: #fff;
-    color: #6b7280;
+    transition: all var(--transition-normal);
+    background: var(--bg-primary);
+    color: var(--text-secondary);
 }
 
 /* 分析按钮 - 紫色 */
 .action-btn.analyze {
-    color: #7666EB;
-    border-color: #7666EB;
+    color: var(--color-primary);
+    border-color: var(--color-primary);
 }
 
 .action-btn.analyze:hover {
-    background: #7666EB;
-    color: white;
+    background: var(--color-primary);
+    color: var(--text-inverse);
 }
 
 /* 生成报告按钮 - 绿色 */
 .action-btn.report {
-    color: #10b981;
-    border-color: #10b981;
+    color: var(--color-success);
+    border-color: var(--color-success);
 }
 
 .action-btn.report:hover {
-    background: #10b981;
-    color: white;
+    background: var(--color-success);
+    color: var(--text-inverse);
 }
 
 /* 导出按钮 - 蓝色 */
 .action-btn.export {
-    color: #3b82f6;
-    border-color: #3b82f6;
+    color: var(--color-primary);
+    border-color: var(--color-primary);
 }
 
 .action-btn.export:hover {
-    background: #3b82f6;
-    color: white;
+    background: var(--color-primary);
+    color: var(--text-inverse);
 }
 
 /* 停止按钮 - 红色 */
 .action-btn.stop {
-    color: #ef4444;
-    border-color: #ef4444;
+    color: var(--color-danger);
+    border-color: var(--color-danger);
 }
 
 .action-btn.stop:hover {
-    background: #ef4444;
-    color: white;
+    background: var(--color-danger);
+    color: var(--text-inverse);
 }
 
 /* 分页样式 */
@@ -545,28 +526,28 @@ html, body {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
-    padding: 16px;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-xl);
 }
 
 .page-btn {
-    width: 28px;
-    height: 28px;
-    border: 1px solid #e2e6ef;
-    background: #fff;
-    border-radius: 4px;
-    color: #6b7280;
+    width: var(--button-height-md);
+    height: var(--button-height-md);
+    border: 1px solid var(--border-primary);
+    background: var(--bg-primary);
+    border-radius: var(--radius-md);
+    color: var(--text-secondary);
     cursor: pointer;
-    transition: all 0.2s;
-    font-size: 12px;
+    transition: all var(--transition-normal);
+    font-size: var(--font-size-base);
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
 .page-btn:hover:not(:disabled) {
-    border-color: #3b82f6;
-    color: #3b82f6;
+    border-color: var(--color-primary);
+    color: var(--color-primary);
 }
 
 .page-btn:disabled {
@@ -576,33 +557,33 @@ html, body {
 
 .page-list {
     display: flex;
-    gap: 4px;
+    gap: var(--spacing-xs);
 }
 
 .page-number {
-    width: 28px;
-    height: 28px;
-    border: 1px solid #e2e6ef;
-    background: #fff;
-    border-radius: 4px;
-    color: #6b7280;
+    width: var(--button-height-md);
+    height: var(--button-height-md);
+    border: 1px solid var(--border-primary);
+    background: var(--bg-primary);
+    border-radius: var(--radius-md);
+    color: var(--text-secondary);
     cursor: pointer;
-    transition: all 0.2s;
-    font-size: 12px;
+    transition: all var(--transition-normal);
+    font-size: var(--font-size-base);
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
 .page-number:hover {
-    border-color: #3b82f6;
-    color: #3b82f6;
+    border-color: var(--color-primary);
+    color: var(--color-primary);
 }
 
 .page-number.active {
-    background: #3b82f6;
-    border-color: #3b82f6;
-    color: white;
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    color: var(--text-inverse);
 }
 
 
@@ -612,19 +593,19 @@ html, body {
     align-items: center;
     justify-content: center;
     height: 100%;
-    color: #999;
-    font-size: 14px;
+    color: var(--text-tertiary);
+    font-size: var(--font-size-base);
 }
 
 .loading::before {
     content: "";
-    width: 20px;
-    height: 20px;
-    border: 2px solid #f3f3f3;
-    border-top: 2px solid #409eff;
-    border-radius: 50%;
+    width: var(--spacing-3xl);
+    height: var(--spacing-3xl);
+    border: 2px solid var(--border-secondary);
+    border-top: 2px solid var(--color-primary);
+    border-radius: var(--radius-full);
     animation: spin 1s linear infinite;
-    margin-right: 8px;
+    margin-right: var(--spacing-sm);
 }
 
 @keyframes spin {
@@ -638,15 +619,15 @@ html, body {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 60px 20px;
-    color: #999;
-    font-size: 14px;
+    padding: 60px var(--spacing-xl);
+    color: var(--text-tertiary);
+    font-size: var(--font-size-base);
     text-align: center;
 }
 
 .empty-state .icon {
     font-size: 48px;
-    margin-bottom: 16px;
+    margin-bottom: var(--spacing-xl);
     opacity: 0.5;
 }
 
@@ -657,18 +638,18 @@ html, body {
 }
 
 .visual-analysis-container::-webkit-scrollbar-track {
-    background: #f1f1f1;
+    background: var(--bg-secondary);
     border-radius: 3px;
 }
 
 .visual-analysis-container::-webkit-scrollbar-thumb {
-    background: #c1c1c1;
+    background: var(--border-primary);
     border-radius: 3px;
-    transition: background 0.2s;
+    transition: background var(--transition-normal);
 }
 
 .visual-analysis-container::-webkit-scrollbar-thumb:hover {
-    background: #a8a8a8;
+    background: var(--text-tertiary);
 }
 
 /* 表格区域滚动条样式（保持原有的） */
@@ -678,15 +659,15 @@ html, body {
 }
 
 .table-wrapper::-webkit-scrollbar-track {
-    background: #f1f1f1;
+    background: var(--bg-secondary);
     border-radius: 2px;
 }
 
 .table-wrapper::-webkit-scrollbar-thumb {
-    background: #c1c1c1;
+    background: var(--border-primary);
     border-radius: 2px;
 }
 
 .table-wrapper::-webkit-scrollbar-thumb:hover {
-    background: #a8a8a8;
+    background: var(--text-tertiary);
 }

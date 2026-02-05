@@ -1,3 +1,7 @@
+/* Association Rules Component - Using Common Variables */
+@import url('../../css/variables.css');
+@import url('../../css/base-components.css');
+
 :host {
     display: none;
     width: 100%;
@@ -9,73 +13,73 @@
 }
 
 .parsing-rules {
-    padding: 16px 24px 24px;
-    font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-    color: #2b2f36;
+    padding: var(--spacing-xl) var(--spacing-3xl) var(--spacing-3xl);
+    font-family: var(--font-family-primary);
+    color: var(--text-primary);
 }
 
 .parsing-filter-card {
-    background: #fff;
-    border-radius: 6px;
-    border: 1px solid #edf0f5;
-    padding: 16px 20px 12px;
-    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+    background: var(--bg-primary);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-tertiary);
+    padding: var(--spacing-xl) var(--spacing-2xl) var(--spacing-lg);
+    box-shadow: var(--shadow-sm);
 }
 
 .filter-header {
-    font-size: 13px;
-    color: #6b7280;
-    margin-bottom: 10px;
+    font-size: var(--font-size-md);
+    color: var(--text-secondary);
+    margin-bottom: var(--spacing-lg);
 }
 
 .filter-rows {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: var(--spacing-lg);
 }
 
 .filter-row {
     display: grid;
     grid-template-columns: 1fr 1fr 32px;
-    gap: 16px;
+    gap: var(--spacing-xl);
     align-items: center;
 }
 
 .filter-field {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: var(--spacing-lg);
 }
 
 .filter-label {
-    font-size: 12px;
-    color: #6b7280;
-    font-weight: 500;
+    font-size: var(--font-size-base);
+    color: var(--text-secondary);
+    font-weight: var(--font-weight-medium);
     min-width: 60px;
 }
 
 .filter-input {
     flex: 1;
-    padding: 8px 12px;
-    border: 1px solid #d1d5db;
-    border-radius: 4px;
-    font-size: 12px;
-    background: #fff;
-    color: #2b2f36;
+    padding: var(--spacing-sm) var(--spacing-lg);
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-base);
+    background: var(--bg-primary);
+    color: var(--text-primary);
     outline: none;
-    transition: border-color 0.2s;
+    transition: all var(--transition-normal);
 }
 
 .filter-input:focus {
-    border-color: #3b82f6;
+    border-color: var(--color-primary);
     box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
 }
 
 .filter-actions {
     display: flex;
     align-items: center;
-    gap: 12px;
-    margin-top: 12px;
+    gap: var(--spacing-lg);
+    margin-top: var(--spacing-lg);
 }
 
 .filter-spacer {
@@ -83,20 +87,20 @@
 }
 
 .filter-btn {
-    padding: 6px 12px;
-    border: 1px solid #e2e6ef;
-    border-radius: 4px;
-    font-size: 12px;
+    padding: var(--spacing-sm) var(--spacing-lg);
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-base);
     cursor: pointer;
-    transition: all 0.2s;
-    background: #fff;
-    color: #6b7280;
+    transition: all var(--transition-normal);
+    background: var(--bg-primary);
+    color: var(--text-secondary);
 }
 
 .filter-btn.solid {
-    background: #3b82f6;
-    border-color: #3b82f6;
-    color: white;
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    color: var(--text-inverse);
 }
 
 .filter-btn.solid:hover {
