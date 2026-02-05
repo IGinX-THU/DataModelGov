@@ -1392,6 +1392,21 @@ class VisualAnalysis extends HTMLElement {
 
     // 处理生成报告操作
     async handleGenerateReport(record) {
+        // 先自动执行分析
+        this.showToast('正在执行分析，请稍候...', 'info');
+
+        // 执行分析
+        await this.handleAnalyze(record);
+
+        // 等待分析完成
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        // 如果分析后仍然没有数据，显示错误
+        if (!this.currentChartData) {
+            this.showToast('分析失败，无法生成报告', 'error');
+            return;
+        }
+
         // 创建加载提示（参考previewFile的Loading.service）
         const loadingOverlay = document.createElement('div');
         loadingOverlay.style.cssText = `
@@ -1411,11 +1426,17 @@ class VisualAnalysis extends HTMLElement {
         `;
         loadingOverlay.innerHTML = `
             <div style="font-size: 24px; margin-bottom: 10px;">⏳</div>
-            <div style="font-size: 16px;">正在加载预览文件数据，请稍候</div>
+            <div style="font-size: 16px;">正在生成报告，请稍候...</div>
         `;
         document.body.appendChild(loadingOverlay);
 
         try {
+            // 确保图表完全渲染
+            if (this.chart) {
+                this.chart.resize();
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+            
             // 创建PDF生成器实例
             const pdfGenerator = new LocalPDFGenerator();
             
@@ -1500,28 +1521,9 @@ class VisualAnalysis extends HTMLElement {
                 pdfGenerator.addText(`• ${conclusion}`, 12);
             });
             
-            // 生成PDF blob
-            const pdfBlob = await pdfGenerator.generatePDFBlob();
-            
-            // 创建下载链接（参考previewFile的blob处理）
-            const href = URL.createObjectURL(pdfBlob);
-            
-            // 在新窗口中预览PDF
-            window.open(href, 'reportWindow');
-            
-            // 同时提供下载功能
-            const downloadLink = document.createElement('a');
-            downloadLink.href = href;
-            downloadLink.download = `数据点分析报告_${record.name}_${new Date().getTime()}.html`;
-            downloadLink.style.display = 'none';
-            document.body.appendChild(downloadLink);
-            downloadLink.click();
-            document.body.removeChild(downloadLink);
-            
-            // 清理URL对象
-            setTimeout(() => {
-                URL.revokeObjectURL(href);
-            }, 1000);
+            // 生成并下载PDF
+            const fileName = `数据点分析报告_${record.name}_${new Date().getTime()}.pdf`;
+            pdfGenerator.generateAndDownload(fileName);
             
             this.showToast('报告生成成功！', 'success');
             
@@ -2751,15 +2753,34 @@ class LocalPDFGenerator {
 
     // 生成并下载PDF（通过打印对话框）
     generateAndDownload(title = '实验报告') {
+        // 生成HTML内容
         const htmlContent = this.generateHTML();
-        const newWindow = window.open('', '_blank');
-        newWindow.document.write(htmlContent);
-        newWindow.document.close();
         
-        // 延迟触发打印对话框
-        setTimeout(() => {
-            newWindow.print();
-        }, 500);
+        // 创建新窗口
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write(htmlContent);
+        printWindow.document.close();
+        
+        // 等待内容加载完成后触发打印
+        printWindow.onload = () => {
+            // 显示提示信息
+            alert('请在打印对话框中选择"保存为PDF"来下载报告');
+            
+            // 触发打印对话框，用户可以选择"保存为PDF"
+            printWindow.print();
+            
+            // 打印完成后关闭窗口
+            printWindow.onafterprint = () => {
+                printWindow.close();
+            };
+            
+            // 备用关闭方案（如果用户取消打印）
+            setTimeout(() => {
+                if (!printWindow.closed) {
+                    printWindow.close();
+                }
+            }, 1000);
+        };
     }
     
     // 生成PDF Blob（用于预览和下载）
