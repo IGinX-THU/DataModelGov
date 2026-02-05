@@ -1392,111 +1392,377 @@ class VisualAnalysis extends HTMLElement {
 
     // 处理生成报告操作
     async handleGenerateReport(record) {
-        this.showToast('正在生成实验报告...', 'info');
-        
+        // 创建加载提示（参考previewFile的Loading.service）
+        const loadingOverlay = document.createElement('div');
+        loadingOverlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            font-family: Arial, sans-serif;
+        `;
+        loadingOverlay.innerHTML = `
+            <div style="font-size: 24px; margin-bottom: 10px;">⏳</div>
+            <div style="font-size: 16px;">正在加载预览文件数据，请稍候</div>
+        `;
+        document.body.appendChild(loadingOverlay);
+
         try {
             // 创建PDF生成器实例
             const pdfGenerator = new LocalPDFGenerator();
             
             // 1. 添加报告标题
-            pdfGenerator.addTitle('数据分析实验报告');
-            pdfGenerator.addText(`任务名称: ${record.name}`, 12);
+            pdfGenerator.addTitle('数据点分析报告');
+            pdfGenerator.addText(`数据点名称: ${record.name}`, 12);
             pdfGenerator.addText(`生成时间: ${new Date().toLocaleString()}`, 12);
             pdfGenerator.addSeparator();
             
-            // 2. 任务详情部分
-            pdfGenerator.addSubtitle('一、任务详情');
-            pdfGenerator.addText(`任务ID: ${record.id}`, 12);
-            pdfGenerator.addText(`任务名称: ${record.name}`, 12);
-            pdfGenerator.addText(`运行状态: ${this.getStatusText(record.status)}`, 12);
-            pdfGenerator.addText(`创建时间: ${record.createTime || '2024-01-01 10:00:00'}`, 12);
-            pdfGenerator.addText(`更新时间: ${record.updateTime || '2024-01-01 10:30:00'}`, 12);
-            pdfGenerator.addText(`任务描述: ${record.description || '这是一个数据分析任务，用于处理和分析相关数据。'}`, 12);
+            // 2. 数据点详情部分
+            pdfGenerator.addSubtitle('一、数据点详情');
+            pdfGenerator.addText(`数据点ID: ${record.id}`, 12);
+            pdfGenerator.addText(`数据点名称: ${record.name}`, 12);
+            pdfGenerator.addText(`当前状态: ${this.getStatusText(record.status)}`, 12);
+            pdfGenerator.addText(`数值: ${record.value || 'N/A'}`, 12);
+            pdfGenerator.addText(`时间戳: ${new Date(record.timestamp).toLocaleString()}`, 12);
             
-            // 3. 模型信息部分
-            pdfGenerator.addSubtitle('二、模型信息');
-            const modelInfo = this.getModelInfo(record);
-            pdfGenerator.addText(`模型类型: ${modelInfo.type}`, 12);
-            pdfGenerator.addText(`模型版本: ${modelInfo.version}`, 12);
-            pdfGenerator.addText(`算法名称: ${modelInfo.algorithm}`, 12);
-            pdfGenerator.addText(`参数配置: ${modelInfo.parameters}`, 12);
-            pdfGenerator.addText(`训练数据集: ${modelInfo.dataset}`, 12);
-            pdfGenerator.addText(`准确率: ${modelInfo.accuracy}`, 12);
-            
-            // 4. 添加实际图表
-            pdfGenerator.addSubtitle('三、分析图表');
-            
-            // 捕获当前图表
+            // 3. 添加当前曲线图
+            pdfGenerator.addSubtitle('二、曲线图分析');
             const chartElement = this.shadowRoot.getElementById('analysisChart');
             if (chartElement && this.chart) {
-                await pdfGenerator.addImage(chartElement, '分析图表', '当前任务的数据分析图表');
+                const chartImage = this.chart.getDataURL({
+                    type: 'png',
+                    pixelRatio: 2,
+                    backgroundColor: '#fff'
+                });
+                await pdfGenerator.addChartImage(chartImage, '数据点曲线图', `${record.name}的趋势分析图表`);
             } else {
-                pdfGenerator.addImagePlaceholder('分析图表', '当前任务的数据分析图表');
+                pdfGenerator.addImagePlaceholder('曲线图', '当前数据点的趋势分析图表');
             }
             
-            // 5. 添加数据表格
-            pdfGenerator.addSubtitle('四、数据表格');
+            // 4. 输入数据视图
+            pdfGenerator.addSubtitle('三、输入数据视图');
+            const inputData = this.getInputData(record);
+            if (inputData.length > 0) {
+                const inputHeaders = ['时间', '原始数值', '数据源', '质量状态'];
+                const inputRows = inputData.map(item => [
+                    new Date(item.timestamp).toLocaleString(),
+                    item.rawValue ? item.rawValue.toFixed(2) : 'N/A',
+                    item.dataSource || '未知',
+                    this.getQualityStatus(item.quality)
+                ]);
+                pdfGenerator.addTable(inputHeaders, inputRows);
+            } else {
+                pdfGenerator.addText('暂无输入数据', 12);
+            }
             
-            // 直接使用表格数据生成PDF表格
-            const tableHeaders = ['ID', '名称', '状态', '时间'];
-            const tableData = this.displayData.slice(0, 10).map(item => [
-                item.id,
-                item.name,
-                this.getStatusText(item.status),
-                item.time || '2024-01-01 10:00:00'
-            ]);
-            pdfGenerator.addTable(tableHeaders, tableData);
+            // 5. 计算结果数据视图
+            pdfGenerator.addSubtitle('四、计算结果数据视图');
+            const resultData = this.getCalculationResults(record);
+            if (resultData.length > 0) {
+                const resultHeaders = ['时间', '计算值', '算法', '精度', '处理时间'];
+                const resultRows = resultData.map(item => [
+                    new Date(item.timestamp).toLocaleString(),
+                    item.calculatedValue ? item.calculatedValue.toFixed(4) : 'N/A',
+                    item.algorithm || '标准算法',
+                    item.precision ? (item.precision * 100).toFixed(2) + '%' : 'N/A',
+                    item.processingTime + 'ms'
+                ]);
+                pdfGenerator.addTable(resultHeaders, resultRows);
+            } else {
+                pdfGenerator.addText('暂无计算结果', 12);
+            }
             
-            // 6. 统计指标部分
-            pdfGenerator.addSubtitle('五、统计指标');
-            const statistics = this.getStatistics(record);
-            const statsHeaders = ['指标名称', '数值', '单位', '说明'];
+            // 6. 统计分析
+            pdfGenerator.addSubtitle('五、统计分析');
+            const statistics = this.calculateDataStatistics(this.displayData);
+            const statsHeaders = ['统计指标', '输入数据', '计算结果', '说明'];
             const statsData = [
-                ['数据总量', statistics.totalData, '条', '处理的数据记录总数'],
-                ['处理时间', statistics.processTime, '秒', '任务执行总时间'],
-                ['内存使用', statistics.memoryUsage, 'MB', '峰值内存使用量'],
-                ['CPU使用率', statistics.cpuUsage, '%', '平均CPU使用率'],
-                ['准确率', statistics.accuracy, '%', '模型预测准确率'],
-                ['召回率', statistics.recall, '%', '模型召回率'],
-                ['F1分数', statistics.f1Score, '', '综合评价指标'],
-                ['数据质量', statistics.dataQuality, '分', '数据质量评分']
+                ['数据点数量', statistics.inputCount, statistics.resultCount, '有效数据点个数'],
+                ['平均值', statistics.inputMean, statistics.resultMean, '数据平均值'],
+                ['标准差', statistics.inputStdDev, statistics.resultStdDev, '数据标准差'],
+                ['准确率', statistics.accuracy, 'N/A', '计算准确率'],
+                ['效率', 'N/A', statistics.efficiency, '处理效率']
             ];
             pdfGenerator.addTable(statsHeaders, statsData);
             
-            // 7. 结论和建议
-            pdfGenerator.addSubtitle('六、结论和建议');
-            const conclusions = this.getConclusions(record);
+            // 7. 分析结论
+            pdfGenerator.addSubtitle('六、分析结论');
+            const conclusions = this.generateDataConclusions(record, statistics);
             conclusions.forEach(conclusion => {
                 pdfGenerator.addText(`• ${conclusion}`, 12);
             });
             
-            pdfGenerator.addSeparator();
-            pdfGenerator.addSubtitle('七、建议');
-            const recommendations = this.getRecommendations(record);
-            recommendations.forEach(recommendation => {
-                pdfGenerator.addText(`• ${recommendation}`, 12);
-            });
+            // 生成PDF blob
+            const pdfBlob = await pdfGenerator.generatePDFBlob();
             
-            // 8. 附录信息
-            pdfGenerator.addSubtitle('八、附录');
-            pdfGenerator.addText(`报告生成人: 系统自动生成`, 12);
-            pdfGenerator.addText(`审核状态: 待审核`, 12);
-            pdfGenerator.addText(`报告版本: v1.0`, 12);
-            pdfGenerator.addText(`数据来源: 当前分析任务`, 12);
-            pdfGenerator.addText(`图表类型: ${this.currentChartData?.type || 'trend'}`, 12);
+            // 创建下载链接（参考previewFile的blob处理）
+            const href = URL.createObjectURL(pdfBlob);
             
-            // 生成并下载报告
-            const reportTitle = `实验报告_${record.name}_${new Date().getTime()}`;
-            pdfGenerator.generateAndDownload(reportTitle);
+            // 在新窗口中预览PDF
+            window.open(href, 'reportWindow');
             
-            this.showToast('实验报告生成成功！', 'success');
+            // 同时提供下载功能
+            const downloadLink = document.createElement('a');
+            downloadLink.href = href;
+            downloadLink.download = `数据点分析报告_${record.name}_${new Date().getTime()}.html`;
+            downloadLink.style.display = 'none';
+            document.body.appendChild(downloadLink);
+            downloadLink.click();
+            document.body.removeChild(downloadLink);
+            
+            // 清理URL对象
+            setTimeout(() => {
+                URL.revokeObjectURL(href);
+            }, 1000);
+            
+            this.showToast('报告生成成功！', 'success');
             
         } catch (error) {
             console.error('生成报告失败:', error);
-            this.showToast('生成报告失败，请稍后重试', 'error');
+            this.showToast('生成报告出现错误，请联系管理员！', 'error');
+        } finally {
+            // 移除加载提示（参考previewFile的previewLoadingInstance.close()）
+            if (loadingOverlay.parentNode) {
+                loadingOverlay.remove();
+            }
         }
     }
     
+    // 获取输入数据
+    getInputData(record) {
+        // 模拟输入数据，实际应该从数据源获取
+        const inputData = [];
+        const now = Date.now();
+        
+        for (let i = 0; i < 10; i++) {
+            const timestamp = now - (10 - i) * 60000; // 最近10个数据点
+            inputData.push({
+                id: `INPUT-${String(i + 1).padStart(3, '0')}`,
+                timestamp: timestamp,
+                rawValue: 100 + Math.random() * 20 - 10, // 90-110范围
+                dataSource: this.dataSource || 'X022-CQ-1',
+                quality: Math.random() > 0.2 ? 'good' : 'fair' // 80%好质量
+            });
+        }
+        
+        return inputData;
+    }
+
+    // 获取计算结果
+    getCalculationResults(record) {
+        // 模拟计算结果数据，实际应该从计算引擎获取
+        const resultData = [];
+        const now = Date.now();
+        const algorithms = ['标准算法', '优化算法', '机器学习', '深度学习'];
+        
+        for (let i = 0; i < 8; i++) {
+            const timestamp = now - (8 - i) * 60000; // 最近8个结果
+            const algorithm = algorithms[Math.floor(Math.random() * algorithms.length)];
+            const baseValue = 100 + Math.random() * 20 - 10;
+            
+            resultData.push({
+                id: `RESULT-${String(i + 1).padStart(3, '0')}`,
+                timestamp: timestamp,
+                calculatedValue: baseValue * (1 + (Math.random() - 0.5) * 0.1), // ±5%计算误差
+                algorithm: algorithm,
+                precision: 0.95 + Math.random() * 0.04, // 95%-99%精度
+                processingTime: Math.floor(10 + Math.random() * 50) // 10-60ms处理时间
+            });
+        }
+        
+        return resultData;
+    }
+
+    // 获取质量状态文本
+    getQualityStatus(quality) {
+        const statusMap = {
+            'excellent': '优秀',
+            'good': '良好',
+            'fair': '一般',
+            'poor': '较差'
+        };
+        return statusMap[quality] || '未知';
+    }
+
+    // 计算变化率
+    calculateChangeRate(currentItem, previousItem = null) {
+        if (!currentItem.value) return 'N/A';
+        
+        if (!previousItem) {
+            // 查找前一个数据点
+            const currentIndex = this.displayData.findIndex(item => item.id === currentItem.id);
+            if (currentIndex > 0) {
+                previousItem = this.displayData[currentIndex - 1];
+            }
+        }
+        
+        if (!previousItem || !previousItem.value) return 'N/A';
+        
+        const changeRate = ((currentItem.value - previousItem.value) / previousItem.value * 100);
+        return `${changeRate >= 0 ? '+' : ''}${changeRate.toFixed(2)}%`;
+    }
+
+    // 计算数据统计
+    calculateDataStatistics(data) {
+        const inputData = this.getInputData({ id: 'current' });
+        const resultData = this.getCalculationResults({ id: 'current' });
+        
+        // 计算输入数据统计
+        const inputStats = this.calculateBasicStatistics(inputData.map(item => item.rawValue));
+        
+        // 计算结果数据统计
+        const resultStats = this.calculateBasicStatistics(resultData.map(item => item.calculatedValue));
+        
+        // 计算准确率
+        let accuracy = 'N/A';
+        if (inputData.length > 0 && resultData.length > 0) {
+            const inputValues = inputData.map(item => item.rawValue);
+            const resultValues = resultData.map(item => item.calculatedValue);
+            const minLength = Math.min(inputValues.length, resultValues.length);
+            
+            let totalError = 0;
+            for (let i = 0; i < minLength; i++) {
+                if (inputValues[i] !== null && resultValues[i] !== null) {
+                    const error = Math.abs(inputValues[i] - resultValues[i]) / inputValues[i];
+                    totalError += error;
+                }
+            }
+            
+            if (minLength > 0) {
+                accuracy = ((1 - totalError / minLength) * 100).toFixed(2) + '%';
+            }
+        }
+        
+        // 计算效率
+        let efficiency = 'N/A';
+        if (resultData.length > 0) {
+            const avgProcessingTime = resultData.reduce((sum, item) => sum + item.processingTime, 0) / resultData.length;
+            efficiency = (1000 / avgProcessingTime).toFixed(2) + ' ops/s';
+        }
+        
+        return {
+            inputCount: inputStats.count,
+            resultCount: resultStats.count,
+            inputMean: inputStats.mean,
+            resultMean: resultStats.mean,
+            inputStdDev: inputStats.stdDev,
+            resultStdDev: resultStats.stdDev,
+            accuracy: accuracy,
+            efficiency: efficiency,
+            trend: this.calculateTrend(data)
+        };
+    }
+    
+    // 计算基础统计信息
+    calculateBasicStatistics(values) {
+        const validValues = values.filter(val => val !== undefined && val !== null);
+        
+        if (validValues.length === 0) {
+            return {
+                count: 0,
+                mean: 'N/A',
+                stdDev: 'N/A'
+            };
+        }
+        
+        const count = validValues.length;
+        const sum = validValues.reduce((acc, val) => acc + val, 0);
+        const mean = sum / count;
+        
+        // 计算标准差
+        const squaredDiffs = validValues.map(val => Math.pow(val - mean, 2));
+        const avgSquaredDiff = squaredDiffs.reduce((acc, val) => acc + val, 0) / count;
+        const stdDev = Math.sqrt(avgSquaredDiff);
+        
+        return {
+            count,
+            mean: mean.toFixed(2),
+            stdDev: stdDev.toFixed(2)
+        };
+    }
+    
+    // 计算趋势
+    calculateTrend(data) {
+        if (!data || data.length < 2) return '数据不足';
+        
+        const values = data.filter(item => item.value !== undefined && item.value !== null)
+                          .map(item => item.value);
+        
+        if (values.length < 2) return '数据不足';
+        
+        const firstHalf = values.slice(0, Math.floor(values.length / 2));
+        const secondHalf = values.slice(Math.floor(values.length / 2));
+        
+        const firstMean = firstHalf.reduce((acc, val) => acc + val, 0) / firstHalf.length;
+        const secondMean = secondHalf.reduce((acc, val) => acc + val, 0) / secondHalf.length;
+        
+        const change = (secondMean - firstMean) / firstMean * 100;
+        
+        if (change > 5) {
+            return '上升';
+        } else if (change < -5) {
+            return '下降';
+        } else {
+            return '稳定';
+        }
+    }
+
+    // 生成数据结论
+    generateDataConclusions(record, statistics) {
+        const conclusions = [];
+        
+        // 基于状态的结论
+        if (record.status === 'success') {
+            conclusions.push('数据点状态正常，运行良好');
+        } else if (record.status === 'failed') {
+            conclusions.push('数据点状态异常，需要关注');
+        } else if (record.status === 'running') {
+            conclusions.push('数据点正在运行中，状态正常');
+        } else {
+            conclusions.push('数据点状态待确认');
+        }
+        
+        // 基于数值的结论
+        if (record.value !== undefined && record.value !== null) {
+            if (statistics.mean !== 'N/A') {
+                const deviation = Math.abs(record.value - parseFloat(statistics.mean));
+                const stdDev = parseFloat(statistics.stdDev);
+                
+                if (deviation > 2 * stdDev) {
+                    conclusions.push('当前数值偏离平均值较大，可能存在异常');
+                } else if (deviation > stdDev) {
+                    conclusions.push('当前数值略有偏离，但在正常范围内');
+                } else {
+                    conclusions.push('当前数值处于正常波动范围');
+                }
+            }
+        }
+        
+        // 基于趋势的结论
+        if (statistics.trend === '上升') {
+            conclusions.push('数据呈现上升趋势，建议持续关注');
+        } else if (statistics.trend === '下降') {
+            conclusions.push('数据呈现下降趋势，建议分析原因');
+        } else {
+            conclusions.push('数据趋势相对稳定');
+        }
+        
+        // 基于数据质量的结论
+        if (statistics.count > 0) {
+            conclusions.push(`数据完整性良好，共分析${statistics.count}个数据点`);
+        }
+        
+        return conclusions;
+    }
+
     // 获取模型信息
     getModelInfo(record) {
         // 模拟返回模型信息，实际应该从后端获取
@@ -2121,6 +2387,41 @@ class LocalPDFGenerator {
         }
     }
     
+    // 添加图表图片（通过ECharts base64）
+    async addChartImage(chartBase64, title, description) {
+        try {
+            this.addText(title, 12, true);
+            this.addText(description, 10);
+            
+            // 创建图片元素
+            const img = new Image();
+            img.src = chartBase64;
+            
+            // 等待图片加载
+            await new Promise((resolve, reject) => {
+                img.onload = resolve;
+                img.onerror = reject;
+            });
+            
+            // 添加到内容数组
+            this.content.push({
+                type: 'image',
+                imageData: chartBase64,
+                title: title,
+                description: description,
+                width: img.width,
+                height: img.height
+            });
+            
+            this.addText(' ', 8); // 添加间距
+            
+        } catch (error) {
+            console.error('添加图表图片失败:', error);
+            // 如果添加失败，使用占位符
+            this.addImagePlaceholder(title, description);
+        }
+    }
+    
     // 捕获表格内容
     async captureTable() {
         const tableElement = this.shadowRoot.querySelector('.data-table');
@@ -2459,6 +2760,37 @@ class LocalPDFGenerator {
         setTimeout(() => {
             newWindow.print();
         }, 500);
+    }
+    
+    // 生成PDF Blob（用于预览和下载）
+    generatePDFBlob() {
+        const htmlContent = this.generateHTML();
+        
+        // 创建一个隐藏的iframe来生成PDF
+        const iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        document.body.appendChild(iframe);
+        
+        const iframeDoc = iframe.contentDocument;
+        iframeDoc.open();
+        iframeDoc.write(htmlContent);
+        iframeDoc.close();
+        
+        // 等待内容加载完成
+        return new Promise((resolve) => {
+            iframe.onload = () => {
+                // 使用浏览器的打印功能生成PDF
+                // 注意：这里我们创建一个包含HTML内容的Blob
+                // 实际的PDF转换需要服务器端支持或使用专门的库
+                const htmlBlob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+                
+                // 清理iframe
+                document.body.removeChild(iframe);
+                
+                // 返回HTML Blob，浏览器会将其识别为可打印的内容
+                resolve(htmlBlob);
+            };
+        });
     }
 }
 
