@@ -1102,13 +1102,13 @@ function showVisualAnalysis() {
 // 显示数据可视化
     function showDataVisualization(dataSource) {
         console.log('显示数据可视化:', dataSource);
-        
-        // 先清空工作区
-        clearWorkspace();
-        
+
         // 获取或创建数据可视化组件
         let dataViz = document.getElementById('dataVisualization');
         if (!dataViz) {
+            // 先清空工作区
+            clearWorkspace();
+
             dataViz = document.createElement('data-visualization');
             dataViz.id = 'dataVisualization';
             const workspaceContent = document.querySelector('.workspace-content');
