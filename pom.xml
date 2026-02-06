@@ -122,7 +122,96 @@
                     </resources>
                 </configuration>
             </plugin>
+
+            <!-- 创建JRE和复制依赖 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>3.1.0</version>
+                <executions>
+                    <execution>
+                        <id>prepare-jre-and-libs</id>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <!-- 创建JRE目录 -->
+                                <mkdir dir="${project.build.directory}/jre"/>
+                                
+                                <!-- 复制JRE -->
+                                <copy todir="${project.build.directory}/jre">
+                                    <fileset dir="${java.home}">
+                                        <exclude name="**/src/**"/>
+                                        <exclude name="**/demo/**"/>
+                                        <exclude name="**/sample/**"/>
+                                        <exclude name="**/man/**"/>
+                                    </fileset>
+                                </copy>
+                            </target>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- 复制依赖 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <version>3.7.0</version>
+                <executions>
+                    <execution>
+                        <id>copy-dependencies</id>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>copy-dependencies</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${project.build.directory}/lib</outputDirectory>
+                            <excludeScope>provided</excludeScope>
+                            <excludeTypes>sources,javadoc</excludeTypes>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- 创建完整发布包 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <version>3.6.0</version>
+                <configuration>
+                    <descriptors>
+                        <descriptor>src/assembly/distribution.xml</descriptor>
+                    </descriptors>
+                    <tarLongFileMode>posix</tarLongFileMode>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>make-assembly</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
+
+    <!-- 离线打包配置 -->
+    <profiles>
+        <profile>
+            <id>offline</id>
+            <repositories>
+                <repository>
+                    <id>local-lib</id>
+                    <name>Local Library Repository</name>
+                    <url>file://${project.basedir}/lib/maven</url>
+                </repository>
+            </repositories>
+        </profile>
+    </profiles>
 
 </project>
