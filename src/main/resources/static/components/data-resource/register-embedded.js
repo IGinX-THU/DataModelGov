@@ -346,7 +346,11 @@ class RegisterDataResourceEmbedded extends HTMLElement {
         const closeBtn = this.shadowRoot.getElementById('closeBtn');
         if (closeBtn) {
             closeBtn.addEventListener('click', () => {
-                this.hide();
+                if (this._closeDialog) {
+                    this._closeDialog();
+                } else {
+                    this.hide();
+                }
             });
         }
 
@@ -354,7 +358,11 @@ class RegisterDataResourceEmbedded extends HTMLElement {
         const cancelBtn = this.shadowRoot.getElementById('cancelBtn');
         if (cancelBtn) {
             cancelBtn.addEventListener('click', () => {
-                this.hide();
+                if (this._closeDialog) {
+                    this._closeDialog();
+                } else {
+                    this.hide();
+                }
             });
         }
 
@@ -473,16 +481,65 @@ class RegisterDataResourceEmbedded extends HTMLElement {
     }
 
     show() {
-        this.setAttribute('show', '');
-        // 立即重置表单，不使用setTimeout
-        this.resetForm();
-        this.clearValidationErrors();
+        console.log('🔍 register-embedded show() 被调用');
+        
+        // 使用通用弹窗管理器
+        const modal = window.modalManager.show(this, {
+            maxWidth: '800px'
+        });
+        
+        // 绑定组件内部事件
+        this.bindModalEvents(modal);
+        
+        console.log('🔍 show() 方法执行完成');
     }
 
     hide() {
-        this.removeAttribute('show');
+        console.log('🔍 register-embedded hide() 被调用');
+        window.modalManager.hide();
         // 隐藏时也清除验证错误
         this.clearValidationErrors();
+    }
+
+    bindModalEvents(modal) {
+        // 等待DOM更新后绑定事件
+        setTimeout(() => {
+            const modalElement = modal.modal;
+            
+            // 绑定关闭按钮
+            const closeBtn = modalElement.querySelector('#closeBtn');
+            if (closeBtn) {
+                closeBtn.addEventListener('click', () => {
+                    this.hide();
+                });
+            }
+            
+            // 绑定取消按钮
+            const cancelBtn = modalElement.querySelector('#cancelBtn');
+            if (cancelBtn) {
+                cancelBtn.addEventListener('click', () => {
+                    this.hide();
+                });
+            }
+            
+            // 绑定提交按钮
+            const submitBtn = modalElement.querySelector('#submitBtn');
+            if (submitBtn) {
+                submitBtn.addEventListener('click', () => {
+                    this.handleSubmit();
+                });
+            }
+            
+            // 绑定数据源类型变化事件
+            const dataSourceType = modalElement.querySelector('#dataSourceType');
+            if (dataSourceType) {
+                dataSourceType.addEventListener('change', () => {
+                    this.handleDataSourceTypeChange();
+                });
+            }
+            
+            console.log('🔍 事件绑定完成');
+        }, 100);
     }
 
     resetForm() {
@@ -556,7 +613,11 @@ class RegisterDataResourceEmbedded extends HTMLElement {
             if (response.code === 200) {
                 // 延迟关闭窗口，让用户看到响应信息
                 setTimeout(() => {
-                    this.hide();
+                    if (this._closeDialog) {
+                        this._closeDialog();
+                    } else {
+                        this.hide();
+                    }
                     
                     this.dispatchEvent(new CustomEvent('submit-success', {
                         detail: { formData: backendData, response },

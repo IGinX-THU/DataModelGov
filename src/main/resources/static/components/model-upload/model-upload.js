@@ -140,7 +140,11 @@ class ModelUpload extends HTMLElement {
         const closeBtn = this.shadowRoot.getElementById('closeBtn');
         if (closeBtn) {
             closeBtn.addEventListener('click', () => {
-                this.hide();
+                if (this._closeDialog) {
+                    this._closeDialog();
+                } else {
+                    this.hide();
+                }
             });
         }
 
@@ -148,7 +152,11 @@ class ModelUpload extends HTMLElement {
         const cancelBtn = this.shadowRoot.getElementById('cancelBtn');
         if (cancelBtn) {
             cancelBtn.addEventListener('click', () => {
-                this.hide();
+                if (this._closeDialog) {
+                    this._closeDialog();
+                } else {
+                    this.hide();
+                }
             });
         }
 
@@ -354,14 +362,125 @@ class ModelUpload extends HTMLElement {
     }
 
     show() {
-        this.setAttribute('show', '');
+        console.log('🔍 model-upload show() 被调用');
+        
+        // 使用通用弹窗管理器
+        const modal = window.modalManager.show(this, {
+            maxWidth: '600px'
+        });
+        
+        // 绑定组件内部事件
+        this.bindModalEvents(modal);
+        
+        // 重置表单
         this.resetForm();
         this.clearValidationErrors();
+        
+        console.log('🔍 show() 方法执行完成');
     }
 
     hide() {
-        this.removeAttribute('show');
+        console.log('🔍 model-upload hide() 被调用');
+        window.modalManager.hide();
+        // 隐藏时也清除验证错误
         this.clearValidationErrors();
+    }
+
+    bindModalEvents(modal) {
+        // 等待DOM更新后绑定事件
+        setTimeout(() => {
+            const modalElement = modal.modal;
+            
+            // 绑定关闭按钮
+            const closeBtn = modalElement.querySelector('#closeBtn');
+            if (closeBtn) {
+                closeBtn.addEventListener('click', () => {
+                    this.hide();
+                });
+            }
+            
+            // 绑定取消按钮
+            const cancelBtn = modalElement.querySelector('#cancelBtn');
+            if (cancelBtn) {
+                cancelBtn.addEventListener('click', () => {
+                    this.hide();
+                });
+            }
+            
+            // 绑定上传按钮
+            const uploadBtn = modalElement.querySelector('#uploadBtn');
+            if (uploadBtn) {
+                uploadBtn.addEventListener('click', () => {
+                    this.handleUpload();
+                });
+            }
+            
+            // 绑定文件选择相关事件
+            this.bindFileEvents(modalElement);
+            
+            // 绑定单选按钮事件
+            this.bindRadioEvents(modalElement);
+            
+            console.log('🔍 事件绑定完成');
+        }, 100);
+    }
+
+    bindFileEvents(modalElement) {
+        const fileUploadArea = modalElement.querySelector('#fileUploadArea');
+        const fileInput = modalElement.querySelector('#modelFile');
+        
+        if (fileUploadArea && fileInput) {
+            // 点击上传区域
+            fileUploadArea.addEventListener('click', () => {
+                fileInput.click();
+            });
+            
+            // 文件选择
+            fileInput.addEventListener('change', (e) => {
+                this.handleFileSelect(e.target.files[0]);
+            });
+            
+            // 拖拽事件
+            fileUploadArea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                fileUploadArea.classList.add('dragover');
+            });
+            
+            fileUploadArea.addEventListener('dragleave', () => {
+                fileUploadArea.classList.remove('dragover');
+            });
+            
+            fileUploadArea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                fileUploadArea.classList.remove('dragover');
+                const file = e.dataTransfer.files[0];
+                if (file) {
+                    this.handleFileSelect(file);
+                }
+            });
+        }
+    }
+
+    bindRadioEvents(modalElement) {
+        const yesRadio = modalElement.querySelector('#isRelatedModelYes');
+        const noRadio = modalElement.querySelector('#isRelatedModelNo');
+        const inputContainer = modalElement.querySelector('#modelNameInputContainer');
+        const selectContainer = modalElement.querySelector('#modelNameSelectContainer');
+        
+        if (yesRadio && noRadio && inputContainer && selectContainer) {
+            const handleRadioChange = () => {
+                if (yesRadio.checked) {
+                    inputContainer.style.display = 'none';
+                    selectContainer.style.display = 'block';
+                } else {
+                    inputContainer.style.display = 'block';
+                    selectContainer.style.display = 'none';
+                }
+            };
+            
+            yesRadio.addEventListener('change', handleRadioChange);
+            noRadio.addEventListener('change', handleRadioChange);
+        }
     }
 
     resetForm() {
@@ -448,7 +567,11 @@ class ModelUpload extends HTMLElement {
                 
                 // 延迟关闭窗口
                 setTimeout(() => {
-                    this.hide();
+                    if (this._closeDialog) {
+                        this._closeDialog();
+                    } else {
+                        this.hide();
+                    }
                     
                     this.dispatchEvent(new CustomEvent('upload-success', {
                         detail: { formData, response },

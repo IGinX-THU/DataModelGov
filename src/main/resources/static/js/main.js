@@ -357,6 +357,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
 
+            // 清空工作区 - 新增
+            if (menuItemText === '清空工作区') {
+                console.log('✅ 清空工作区菜单被点击');
+                clearWorkspace();
+                return;
+            }
+
         });
     });
 
@@ -1151,6 +1158,45 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // 全局变量存储选中的测点
 window.selectedDataPoints = new Set();
+
+// 清空工作区
+    function clearWorkspace() {
+        console.log('🧹 清空工作区');
+        
+        const workspace = document.querySelector('.workspace-content');
+        if (!workspace) {
+            console.error('❌ 未找到工作区元素');
+            return;
+        }
+        
+        // 清空工作区内容
+        workspace.innerHTML = '';
+        
+        // 清除选中的测点
+        if (window.selectedDataPoints) {
+            window.selectedDataPoints.clear();
+        }
+        
+        // 清除选中状态
+        const leftSidebarTree = document.querySelector('.left-sidebar .tree');
+        const rightSidebarTree = document.querySelector('.right-sidebar .tree');
+        
+        if (leftSidebarTree) {
+            leftSidebarTree.querySelectorAll('.tree-node.active').forEach(node => node.classList.remove('active'));
+        }
+        
+        if (rightSidebarTree) {
+            rightSidebarTree.querySelectorAll('.tree-node.active').forEach(node => node.classList.remove('active'));
+        }
+        
+        // 重置选中的数据源
+        selectedDataSource = null;
+        
+        console.log('✅ 工作区已清空');
+        
+        // 显示清空成功消息
+        showWorkspaceMessage('工作区已清空', 'success');
+    }
 
 // 显示数值与曲线分析
 function showVisualAnalysis() {
