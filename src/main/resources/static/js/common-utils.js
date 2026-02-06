@@ -4,6 +4,133 @@
  */
 
 /**
+ * 显示Toast消息（在工作区顶部显示）
+ * @param {string} message - 消息内容
+ * @param {string} type - 消息类型: 'success'（绿色）, 'error'（红色）, 'warning'（黄色）, 'info'（蓝色）
+ * @param {number} duration - 显示时长（毫秒），默认3000
+ */
+function showToast(message, type = 'success', duration = 3000) {
+    // Find workspace-content container
+    const workspaceContent = document.querySelector('.workspace-content');
+    if (!workspaceContent) {
+        console.warn('workspace-content element not found');
+        return;
+    }
+
+    // Make sure workspace content has relative positioning and proper z-index
+    workspaceContent.style.position = 'relative';
+    workspaceContent.style.overflow = 'visible';
+    workspaceContent.style.zIndex = '1';
+
+    // Create toast container if it doesn't exist
+    let toastContainer = workspaceContent.querySelector('.toast-container');
+    if (!toastContainer) {
+        toastContainer = document.createElement('div');
+        toastContainer.className = 'toast-container';
+        toastContainer.style.cssText = `
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px 0;
+            pointer-events: none;
+            background: transparent;
+        `;
+        // Insert at the beginning of workspace content
+        if (workspaceContent.firstChild) {
+            workspaceContent.insertBefore(toastContainer, workspaceContent.firstChild);
+        } else {
+            workspaceContent.appendChild(toastContainer);
+        }
+    }
+
+    // Create toast element
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.textContent = message;
+    
+    // Style toast with correct colors
+    let backgroundColor;
+    switch (type) {
+        case 'success':
+            backgroundColor = '#52c41a'; // 绿色
+            break;
+        case 'error':
+            backgroundColor = '#ff4d4f'; // 红色
+            break;
+        case 'warning':
+            backgroundColor = '#faad14'; // 黄色
+            break;
+        case 'info':
+        default:
+            backgroundColor = '#3b82f6'; // 蓝色
+    }
+    
+    toast.style.cssText = `
+        background: ${backgroundColor};
+        color: white;
+        padding: 12px 24px;
+        margin-bottom: 10px;
+        border-radius: 4px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        font-size: 14px;
+        text-align: center;
+        animation: slideInDown 0.3s ease-out;
+        pointer-events: auto;
+    `;
+
+    // Add toast to container
+    toastContainer.appendChild(toast);
+    
+    // Add animation keyframes if not already added
+    if (!document.querySelector('#toast-animations')) {
+        const style = document.createElement('style');
+        style.id = 'toast-animations';
+        style.textContent = `
+            @keyframes slideInDown {
+                from {
+                    transform: translateY(-20px);
+                    opacity: 0;
+                }
+                to {
+                    transform: translateY(0);
+                    opacity: 1;
+                }
+            }
+            @keyframes slideOutUp {
+                from {
+                    transform: translateY(0);
+                    opacity: 1;
+                }
+                to {
+                    transform: translateY(-20px);
+                    opacity: 0;
+                }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+    
+    // Remove after specified duration
+    setTimeout(() => {
+        toast.style.animation = 'slideOutUp 0.3s ease-out';
+        setTimeout(() => {
+            if (toast.parentNode) {
+                toast.parentNode.removeChild(toast);
+            }
+            // Remove container if empty
+            if (toastContainer && toastContainer.children.length === 0) {
+                toastContainer.parentNode.removeChild(toastContainer);
+            }
+        }, 300);
+    }, duration);
+}
+
+/**
  * 显示消息提示
  * @param {string} message - 消息内容
  * @param {string} type - 消息类型: 'success', 'error', 'info', 'warning'
@@ -227,6 +354,7 @@ function generateId(prefix = 'id') {
 // 导出到全局对象
 window.CommonUtils = {
     showMessage,
+    showToast,
     showSuccess,
     showError,
     showInfo,

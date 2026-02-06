@@ -992,97 +992,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // 在工作区显示消息提示
     function showWorkspaceMessage(message, type = 'info') {
-        const workspaceContent = document.querySelector('.workspace-content');
-        if (!workspaceContent) {
-            console.error('未找到工作区容器');
-            return;
+        if (window.CommonUtils && window.CommonUtils.showToast) {
+            // 使用统一的 showToast
+            window.CommonUtils.showToast(message, type);
+        } else {
+            // 回退实现
+            console.warn(`[${type}] ${message}`);
         }
-
-        // 移除已存在的消息
-        const existingMessage = workspaceContent.querySelector('.workspace-message');
-        if (existingMessage) {
-            existingMessage.remove();
-        }
-
-        const messageEl = document.createElement('div');
-        messageEl.className = 'workspace-message';
-        
-        // 根据消息类型设置样式和图标
-        let bgColor, borderColor, textColor, icon;
-        switch (type) {
-            case 'success':
-                bgColor = '#f0f9ff';
-                borderColor = '#bfdbfe';
-                textColor = '#1e40af';
-                icon = '✅';
-                break;
-            case 'error':
-                bgColor = '#fef2f2';
-                borderColor = '#fecaca';
-                textColor = '#dc2626';
-                icon = '❌';
-                break;
-            case 'warning':
-                bgColor = '#fffbeb';
-                borderColor = '#fed7aa';
-                textColor = '#ea580c';
-                icon = '⚠️';
-                break;
-            default:
-                bgColor = '#f0f9ff';
-                borderColor = '#bfdbfe';
-                textColor = '#1e40af';
-                icon = 'ℹ️';
-        }
-
-        messageEl.style.cssText = `
-            padding: 20px;
-            background: ${bgColor};
-            border: 1px solid ${borderColor};
-            border-radius: 6px;
-            color: ${textColor};
-            margin: 20px;
-            text-align: center;
-            animation: slideIn 0.3s ease;
-        `;
-
-        let titleText = '';
-        switch (type) {
-            case 'success':
-                titleText = '操作成功';
-                break;
-            case 'error':
-                titleText = '操作失败';
-                break;
-            case 'warning':
-                titleText = '警告';
-                break;
-            default:
-                titleText = '提示';
-        }
-
-        messageEl.innerHTML = `
-            <h4 style="margin: 0 0 8px 0;">${icon} ${titleText}</h4>
-            <p style="margin: 0; color: ${type === 'success' ? '#64748b' : textColor};">${message}</p>
-        `;
-
-        // 在工作区开头插入消息
-        workspaceContent.insertBefore(messageEl, workspaceContent.firstChild);
-
-        // 根据消息类型设置不同的显示时间
-        const duration = type === 'success' ? 5000 : 3000;
-
-        setTimeout(() => {
-            if (messageEl.parentNode) {
-                messageEl.style.opacity = '0';
-                messageEl.style.transform = 'translateY(-10px)';
-                setTimeout(() => {
-                    if (messageEl.parentNode) {
-                        messageEl.remove();
-                    }
-                }, 300);
-            }
-        }, duration);
     }
 
     // 全局变量存储选中的测点

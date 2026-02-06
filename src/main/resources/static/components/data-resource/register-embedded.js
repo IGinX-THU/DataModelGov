@@ -895,179 +895,24 @@ class RegisterDataResourceEmbedded extends HTMLElement {
     }
 
     showMessage(message, type = 'info') {
-        const existingMessage = document.querySelector('.message');
-        if (existingMessage) {
-            existingMessage.remove();
-        }
-
-        const messageEl = document.createElement('div');
-        messageEl.className = `message ${type}`;
-        messageEl.textContent = message;
-        
-        // 添加样式 - 居中显示
-        messageEl.style.cssText = `
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            padding: 16px 24px;
-            border-radius: 6px;
-            color: white;
-            font-size: 14px;
-            font-weight: 500;
-            z-index: 1000;
-            max-width: 400px;
-            word-wrap: break-word;
-            text-align: center;
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
-            opacity: 0;
-            transition: opacity 0.3s ease, transform 0.3s ease;
-        `;
-        
-        // 根据类型设置背景色
-        switch (type) {
-            case 'success':
-                messageEl.style.backgroundColor = '#00b42a'; // 绿色
-                break;
-            case 'error':
-                messageEl.style.backgroundColor = '#f53f3f';
-                break;
-            case 'warning':
-                messageEl.style.backgroundColor = '#ff7d00';
-                break;
-            default:
-                messageEl.style.backgroundColor = '#3370ff';
-        }
-        
-        // 找到工作区容器
-        const workspaceContent = document.querySelector('.workspace-content');
-        if (workspaceContent) {
-            // 设置工作区相对定位
-            if (workspaceContent.style.position !== 'relative') {
-                workspaceContent.style.position = 'relative';
-            }
-            workspaceContent.appendChild(messageEl);
+        if (window.CommonUtils && window.CommonUtils.showToast) {
+            // 直接使用统一的 showToast
+            window.CommonUtils.showToast(message, type);
         } else {
-            // 如果找不到工作区，回退到body并居中
-            messageEl.style.position = 'fixed';
-            document.body.appendChild(messageEl);
+            // 简单的回退实现
+            console.warn(`[${type}] ${message}`);
         }
-        
-        // 动画显示
-        setTimeout(() => {
-            messageEl.style.opacity = '1';
-            messageEl.style.transform = 'translate(-50%, -50%) scale(1)';
-        }, 10);
-        
-        // 根据消息类型设置不同的显示时间
-        const duration = type === 'success' ? 5000 : 3000; // 成功消息显示5秒
-        
-        setTimeout(() => {
-            if (messageEl.parentNode) {
-                messageEl.style.opacity = '0';
-                messageEl.style.transform = 'translate(-50%, -50%) scale(0.9)';
-                setTimeout(() => {
-                    if (messageEl.parentNode) {
-                        messageEl.remove();
-                    }
-                }, 300);
-            }
-        }, duration);
     }
 
     // 在工作区显示消息提示（与main.js保持一致）
     showWorkspaceMessage(message, type = 'info') {
-        const workspaceContent = document.querySelector('.workspace-content');
-        if (!workspaceContent) {
-            console.error('未找到工作区容器');
-            return;
+        if (window.CommonUtils && window.CommonUtils.showToast) {
+            // 直接使用统一的 showToast
+            window.CommonUtils.showToast(message, type);
+        } else {
+            // 简单的回退实现
+            console.warn(`[${type}] ${message}`);
         }
-
-        // 移除已存在的消息
-        const existingMessage = workspaceContent.querySelector('.workspace-message');
-        if (existingMessage) {
-            existingMessage.remove();
-        }
-
-        const messageEl = document.createElement('div');
-        messageEl.className = 'workspace-message';
-        
-        // 根据消息类型设置样式和图标
-        let bgColor, borderColor, textColor, icon;
-        switch (type) {
-            case 'success':
-                bgColor = '#f0f9ff';
-                borderColor = '#bfdbfe';
-                textColor = '#1e40af';
-                icon = '✅';
-                break;
-            case 'error':
-                bgColor = '#fef2f2';
-                borderColor = '#fecaca';
-                textColor = '#dc2626';
-                icon = '❌';
-                break;
-            case 'warning':
-                bgColor = '#fffbeb';
-                borderColor = '#fed7aa';
-                textColor = '#ea580c';
-                icon = '⚠️';
-                break;
-            default:
-                bgColor = '#f0f9ff';
-                borderColor = '#bfdbfe';
-                textColor = '#1e40af';
-                icon = 'ℹ️';
-        }
-
-        messageEl.style.cssText = `
-            padding: 20px;
-            background: ${bgColor};
-            border: 1px solid ${borderColor};
-            border-radius: 6px;
-            color: ${textColor};
-            margin: 20px;
-            text-align: center;
-            animation: slideIn 0.3s ease;
-        `;
-
-        let titleText = '';
-        switch (type) {
-            case 'success':
-                titleText = '操作成功';
-                break;
-            case 'error':
-                titleText = '操作失败';
-                break;
-            case 'warning':
-                titleText = '警告';
-                break;
-            default:
-                titleText = '提示';
-        }
-
-        messageEl.innerHTML = `
-            <h4 style="margin: 0 0 8px 0;">${icon} ${titleText}</h4>
-            <p style="margin: 0; color: ${type === 'success' ? '#64748b' : textColor};">${message}</p>
-        `;
-
-        // 在工作区开头插入消息
-        workspaceContent.insertBefore(messageEl, workspaceContent.firstChild);
-
-        // 根据消息类型设置不同的显示时间
-        const duration = type === 'success' ? 5000 : 3000;
-
-        setTimeout(() => {
-            if (messageEl.parentNode) {
-                messageEl.style.opacity = '0';
-                messageEl.style.transform = 'translateY(-10px)';
-                setTimeout(() => {
-                    if (messageEl.parentNode) {
-                        messageEl.remove();
-                    }
-                }, 300);
-            }
-        }, duration);
     }
 }
 

@@ -992,53 +992,63 @@ Generic processing function`
     }
 
     showSuccessMessage(message) {
-        const messageHtml = `
-            <div class="workspace-message success" style="
-                position: fixed;
-                top: 20px;
-                right: 20px;
-                background: #10b981;
-                color: white;
-                padding: 12px 20px;
-                border-radius: 4px;
-                box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
-                z-index: 10001;
-            ">
-                ${message}
-            </div>
-        `;
-        
-        document.body.insertAdjacentHTML('beforeend', messageHtml);
-        
-        const messageEl = document.querySelector('.workspace-message.success');
-        setTimeout(() => {
-            if (messageEl) messageEl.remove();
-        }, 3000);
+        if (window.CommonUtils && window.CommonUtils.showToast) {
+            window.CommonUtils.showToast(message, 'success');
+        } else {
+            // 回退到原有的实现
+            const messageHtml = `
+                <div class="workspace-message success" style="
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    background: #10b981;
+                    color: white;
+                    padding: 12px 20px;
+                    border-radius: 4px;
+                    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+                    z-index: 10001;
+                ">
+                    ${message}
+                </div>
+            `;
+            
+            document.body.insertAdjacentHTML('beforeend', messageHtml);
+            
+            const messageEl = document.querySelector('.workspace-message.success');
+            setTimeout(() => {
+                if (messageEl) messageEl.remove();
+            }, 3000);
+        }
     }
 
     showErrorMessage(message) {
-        const messageHtml = `
-            <div class="workspace-message error" style="
-                position: fixed;
-                top: 20px;
-                right: 20px;
-                background: #ef4444;
-                color: white;
-                padding: 12px 20px;
-                border-radius: 4px;
-                box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
-                z-index: 10001;
-            ">
-                ${message}
-            </div>
-        `;
-        
-        document.body.insertAdjacentHTML('beforeend', messageHtml);
-        
-        const messageEl = document.querySelector('.workspace-message.error');
-        setTimeout(() => {
-            if (messageEl) messageEl.remove();
-        }, 3000);
+        if (window.CommonUtils && window.CommonUtils.showToast) {
+            window.CommonUtils.showToast(message, 'error');
+        } else {
+            // 回退到原有的实现
+            const messageHtml = `
+                <div class="workspace-message error" style="
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    background: #ef4444;
+                    color: white;
+                    padding: 12px 20px;
+                    border-radius: 4px;
+                    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+                    z-index: 10001;
+                ">
+                    ${message}
+                </div>
+            `;
+            
+            document.body.insertAdjacentHTML('beforeend', messageHtml);
+            
+            const messageEl = document.querySelector('.workspace-message.error');
+            setTimeout(() => {
+                if (messageEl) messageEl.remove();
+            }, 3000);
+        }
     }
 }
 

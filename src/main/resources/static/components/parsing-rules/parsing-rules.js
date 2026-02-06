@@ -740,7 +740,13 @@ class ParsingRules extends HTMLElement {
                     
                     this.data.unshift(newRule);
                     this.renderTable();
-                    this.showModal('成功', '解析规则已添加');
+                    this.hideModal();
+                    // 使用统一的消息系统
+                    if (window.CommonUtils && window.CommonUtils.showToast) {
+                        window.CommonUtils.showToast('解析规则已添加', 'success');
+                    } else {
+                        this.showModal('成功', '解析规则已添加');
+                    }
                 } else if (action === 'edit' && id) {
                     const name = modalBody.querySelector('#ruleName')?.value.trim();
                     const regex = modalBody.querySelector('#ruleRegex')?.value.trim();
@@ -764,14 +770,26 @@ class ParsingRules extends HTMLElement {
                         rule.regex = regex;
                         rule.updatetime = new Date().toISOString().split('T')[0];
                         this.renderTable();
-                        this.showModal('成功', '解析规则已更新');
+                        this.hideModal();
+                        // 使用统一的消息系统
+                        if (window.CommonUtils && window.CommonUtils.showToast) {
+                            window.CommonUtils.showToast('解析规则已更新', 'success');
+                        } else {
+                            this.showModal('成功', '解析规则已更新');
+                        }
                     }
                 } else if (action === 'import') {
                     this.showModal('成功', '解析规则导入完成');
                 } else if (action === 'delete' && id) {
                     this.data = this.data.filter(row => row.id != id);
                     this.renderTable();
-                    this.showModal('成功', '解析规则已删除');
+                    this.hideModal();
+                    // 使用统一的消息系统
+                    if (window.CommonUtils && window.CommonUtils.showToast) {
+                        window.CommonUtils.showToast('解析规则已删除', 'success');
+                    } else {
+                        this.showModal('成功', '解析规则已删除');
+                    }
                 }
             });
         } else {

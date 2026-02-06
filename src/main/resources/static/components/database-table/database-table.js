@@ -274,7 +274,12 @@ class DatabaseTable extends HTMLElement {
 
         if (applyFilters) {
             applyFilters.addEventListener('click', () => {
-                this.showModal('查询结果', `找到 ${this.data.length} 条符合条件的记录`);
+                // 使用统一的 toast 消息系统
+                if (window.CommonUtils && window.CommonUtils.showToast) {
+                    window.CommonUtils.showToast(`找到 ${this.data.length} 条符合条件的记录`, 'info');
+                } else {
+                    this.showModal('查询结果', `找到 ${this.data.length} 条符合条件的记录`);
+                }
             });
         }
 
@@ -298,7 +303,12 @@ class DatabaseTable extends HTMLElement {
 
         if (exportBtn) {
             exportBtn.addEventListener('click', () => {
-                this.showModal('导出成功', `已导出 ${this.data.length} 条记录`);
+                // 使用统一的 toast 消息系统
+                if (window.CommonUtils && window.CommonUtils.showToast) {
+                    window.CommonUtils.showToast(`已导出 ${this.data.length} 条记录`, 'success');
+                } else {
+                    this.showModal('导出成功', `已导出 ${this.data.length} 条记录`);
+                }
             });
         }
 
@@ -372,9 +382,21 @@ class DatabaseTable extends HTMLElement {
                 if (action === 'close') {
                     this.hideModal();
                 } else if (action === 'submit') {
-                    this.showModal('成功', '记录已添加');
+                    this.hideModal();
+                    // 使用统一的 toast 消息系统
+                    if (window.CommonUtils && window.CommonUtils.showToast) {
+                        window.CommonUtils.showToast('记录已添加', 'success');
+                    } else {
+                        this.showModal('成功', '记录已添加');
+                    }
                 } else if (action === 'import') {
-                    this.showModal('成功', '数据导入完成');
+                    this.hideModal();
+                    // 使用统一的 toast 消息系统
+                    if (window.CommonUtils && window.CommonUtils.showToast) {
+                        window.CommonUtils.showToast('数据导入完成', 'success');
+                    } else {
+                        this.showModal('成功', '数据导入完成');
+                    }
                 } else if (action === 'edit' && id) {
                     const name = modalBody.querySelector('.modal-input:nth-child(2)').value.trim();
                     const device = modalBody.querySelector('.modal-input:nth-child(4)').value.trim();
@@ -394,15 +416,21 @@ class DatabaseTable extends HTMLElement {
                         row.humidity = humidity;
                         row.updatetime = new Date().toISOString().split('T')[0];
                         this.renderTable();
-                        this.showModal('成功', '记录已更新');
+                        this.hideModal();
+                        // 使用统一的 toast 消息系统
+                        if (window.CommonUtils && window.CommonUtils.showToast) {
+                            window.CommonUtils.showToast('记录已更新', 'success');
+                        } else {
+                            this.showModal('成功', '记录已更新');
+                        }
                     }
                 } else if (action === 'delete' && id) {
                     this.data = this.data.filter(row => row.id != id);
                     this.renderTable();
                     this.hideModal();
-                    // 使用通用消息系统
-                    if (window.CommonUtils) {
-                        window.CommonUtils.showSuccess('删除成功');
+                    // 使用统一的 toast 消息系统
+                    if (window.CommonUtils && window.CommonUtils.showToast) {
+                        window.CommonUtils.showToast('删除成功', 'success');
                     } else {
                         console.log('记录已删除');
                     }

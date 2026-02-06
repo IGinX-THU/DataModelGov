@@ -1569,108 +1569,12 @@ class AssociationRules extends HTMLElement {
     }
     
     showToast(message, type = 'success') {
-        // Find the workspace-content container
-        const workspaceContent = document.querySelector('.workspace-content');
-        if (!workspaceContent) {
-            console.warn('workspace-content element not found');
-            return;
+        if (window.CommonUtils && window.CommonUtils.showToast) {
+            window.CommonUtils.showToast(message, type);
+        } else {
+            console.warn('CommonUtils.showToast not available, falling back to console.log');
+            console[type === 'error' ? 'error' : type === 'warning' ? 'warn' : 'log'](`[${type}] ${message}`);
         }
-
-        // Make sure workspace content has relative positioning and proper z-index
-        workspaceContent.style.position = 'relative';
-        workspaceContent.style.overflow = 'visible';
-        workspaceContent.style.zIndex = '1';
-
-        // Create toast container if it doesn't exist
-        let toastContainer = workspaceContent.querySelector('.toast-container');
-        if (!toastContainer) {
-            toastContainer = document.createElement('div');
-            toastContainer.className = 'toast-container';
-            toastContainer.style.cssText = `
-                position: absolute;
-                top: 0;
-                left: 0;
-                right: 0;
-                z-index: 9999;
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                padding: 20px 0;
-                pointer-events: none;
-                background: transparent;
-            `;
-            // Insert at the beginning of workspace content
-            if (workspaceContent.firstChild) {
-                workspaceContent.insertBefore(toastContainer, workspaceContent.firstChild);
-            } else {
-                workspaceContent.appendChild(toastContainer);
-            }
-        }
-
-        // Create toast element
-        const toast = document.createElement('div');
-        toast.className = `toast toast-${type}`;
-        toast.textContent = message;
-        
-        // Style the toast
-        toast.style.cssText = `
-            background: ${type === 'success' ? '#52c41a' : '#ff4d4f'};
-            color: white;
-            padding: 12px 24px;
-            margin-bottom: 10px;
-            border-radius: 4px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-            font-size: 14px;
-            text-align: center;
-            animation: slideInDown 0.3s ease-out;
-            pointer-events: auto;
-        `;
-
-        // Add toast to container
-        toastContainer.appendChild(toast);
-        
-        // Add animation keyframes if not already added
-        if (!document.querySelector('#toast-animations')) {
-            const style = document.createElement('style');
-            style.id = 'toast-animations';
-            style.textContent = `
-                @keyframes slideInDown {
-                    from {
-                        transform: translateY(-20px);
-                        opacity: 0;
-                    }
-                    to {
-                        transform: translateY(0);
-                        opacity: 1;
-                    }
-                }
-                @keyframes slideOutUp {
-                    from {
-                        transform: translateY(0);
-                        opacity: 1;
-                    }
-                    to {
-                        transform: translateY(-20px);
-                        opacity: 0;
-                    }
-                }
-            `;
-            document.head.appendChild(style);
-        }
-        
-        // Remove after 3 seconds
-        setTimeout(() => {
-            toast.style.animation = 'slideOutUp 0.3s ease-out';
-            setTimeout(() => {
-                if (toast.parentNode) {
-                    toast.parentNode.removeChild(toast);
-                }
-                // Remove container if empty
-                if (toastContainer && toastContainer.children.length === 0) {
-                    toastContainer.parentNode.removeChild(toastContainer);
-                }
-            }, 300);
-        }, 3000);
     }
     
     show() {

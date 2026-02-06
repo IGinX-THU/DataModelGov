@@ -728,28 +728,33 @@ class ModelUpload extends HTMLElement {
     }
 
     showMessage(message, type = 'info') {
-        // 移除已存在的消息
-        const existingMessage = document.querySelector('.message');
-        if (existingMessage) {
-            existingMessage.remove();
-        }
-
-        const messageEl = document.createElement('div');
-        messageEl.className = `message ${type}`;
-        messageEl.textContent = message;
-        
-        // 添加到body，确保是全屏居中的弹窗
-        document.body.appendChild(messageEl);
-        
-        // 根据消息类型设置不同的显示时间
-        const duration = type === 'success' ? 5000 : 3000; // 成功消息显示5秒
-        
-        // 自动消失
-        setTimeout(() => {
-            if (messageEl.parentNode) {
-                messageEl.remove();
+        if (window.CommonUtils && window.CommonUtils.showToast) {
+            // 使用 showToast 来显示消息，保持与工作区一致的样式
+            window.CommonUtils.showToast(message, type);
+        } else {
+            // 回退到原有的 showMessage 实现
+            const existingMessage = document.querySelector('.message');
+            if (existingMessage) {
+                existingMessage.remove();
             }
-        }, duration);
+
+            const messageEl = document.createElement('div');
+            messageEl.className = `message ${type}`;
+            messageEl.textContent = message;
+            
+            // 添加到body，确保是全屏居中的弹窗
+            document.body.appendChild(messageEl);
+            
+            // 根据消息类型设置不同的显示时间
+            const duration = type === 'success' ? 5000 : 3000;
+            
+            // 自动消失
+            setTimeout(() => {
+                if (messageEl.parentNode) {
+                    messageEl.remove();
+                }
+            }, duration);
+        }
     }
 }
 
