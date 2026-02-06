@@ -425,6 +425,47 @@ class ModelUpload extends HTMLElement {
         }, 100);
     }
 
+    handleUpload() {
+        console.log('🔍 handleUpload 被调用');
+        // 这里添加文件上传逻辑
+        const fileInput = this.shadowRoot.getElementById('modelFile');
+        const modelName = this.shadowRoot.getElementById('modelName');
+        const modelNameSelect = this.shadowRoot.getElementById('modelNameSelect');
+        const modelVersion = this.shadowRoot.getElementById('modelVersion');
+        const isRelatedModelYes = this.shadowRoot.getElementById('isRelatedModelYes');
+        
+        const formData = {
+            file: fileInput?.files[0] || null,
+            modelName: modelName?.value || '',
+            modelNameSelect: modelNameSelect?.value || '',
+            modelVersion: modelVersion?.value || '',
+            isRelatedModel: isRelatedModelYes?.checked || false
+        };
+
+        console.log('🔍 上传数据:', formData);
+        
+        // 这里可以添加文件上传API调用
+        // 上传成功后关闭弹窗
+        this.hide();
+    }
+
+    handleFileSelect(file) {
+        console.log('🔍 handleFileSelect 被调用，文件:', file);
+        const fileUploadArea = this.shadowRoot.getElementById('fileUploadArea');
+        const fileName = this.shadowRoot.getElementById('fileName');
+        const fileSize = this.shadowRoot.getElementById('fileSize');
+        
+        if (file) {
+            fileName.textContent = file.name;
+            fileSize.textContent = this.formatFileSize(file.size);
+            fileUploadArea.classList.add('has-file');
+        } else {
+            fileName.textContent = '';
+            fileSize.textContent = '';
+            fileUploadArea.classList.remove('has-file');
+        }
+    }
+
     bindFileEvents(modalElement) {
         const fileUploadArea = modalElement.querySelector('#fileUploadArea');
         const fileInput = modalElement.querySelector('#modelFile');

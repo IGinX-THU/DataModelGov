@@ -542,6 +542,125 @@ class RegisterDataResourceEmbedded extends HTMLElement {
         }, 100);
     }
 
+    handleSubmit() {
+        console.log('🔍 handleSubmit 被调用');
+        // 清除之前的错误状态
+        this.clearValidationErrors();
+        
+        // 获取表单元素
+        const nameInput = this.shadowRoot.getElementById('dataSourceName');
+        const typeSelect = this.shadowRoot.getElementById('dataSourceType');
+        const hostInput = this.shadowRoot.getElementById('host');
+        const portInput = this.shadowRoot.getElementById('port');
+        const usernameInput = this.shadowRoot.getElementById('username');
+        const passwordInput = this.shadowRoot.getElementById('password');
+        
+        let hasError = false;
+        
+        // 验证必填字段
+        if (!nameInput?.value?.trim()) {
+            this.showFieldError('dataSourceName', '请输入数据源名称');
+            hasError = true;
+        }
+        
+        if (!typeSelect?.value) {
+            this.showFieldError('dataSourceType', '请选择数据源类型');
+            hasError = true;
+        }
+        
+        if (!hostInput?.value?.trim()) {
+            this.showFieldError('host', '请输入主机地址');
+            hasError = true;
+        }
+        
+        if (!portInput?.value) {
+            this.showFieldError('port', '请输入端口号');
+            hasError = true;
+        }
+
+        if (!usernameInput?.value?.trim()) {
+            this.showFieldError('username', '请输入用户名');
+            hasError = true;
+        }
+
+        if (!passwordInput?.value) {
+            this.showFieldError('password', '请输入密码');
+            hasError = true;
+        }
+        
+        // 如果有验证错误，不继续提交
+        if (hasError) {
+            // 滚动到第一个错误位置
+            const firstErrorField = this.shadowRoot.querySelector('.form-group.error');
+            if (firstErrorField) {
+                firstErrorField.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+            return;
+        }
+        
+        // 调用submit方法进行API调用
+        this.submit();
+    }
+
+    handleDataSourceTypeChange() {
+        console.log('🔍 handleDataSourceTypeChange 被调用');
+        // 这里添加数据源类型变化逻辑
+        const typeSelect = this.shadowRoot.getElementById('dataSourceType');
+        const selectedType = typeSelect?.value;
+        console.log('🔍 选择的数据源类型:', selectedType);
+        
+        // 根据不同类型显示不同的字段
+        this.showDynamicFields(selectedType);
+    }
+
+    showDynamicFields(dataSourceType) {
+        console.log('🔍 showDynamicFields 被调用，类型:', dataSourceType);
+        const dynamicFields = this.shadowRoot.getElementById('dynamicFields');
+        
+        if (!dynamicFields) return;
+        
+        // 清空现有字段
+        dynamicFields.innerHTML = '';
+        
+        // 根据数据源类型添加特定字段
+        switch(dataSourceType) {
+            case 'api':
+                dynamicFields.innerHTML = `
+                    <div class="form-group">
+                        <label class="form-label">API URL</label>
+                        <input type="url" class="form-control" id="apiUrl" placeholder="请输入API地址">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">API Key</label>
+                        <input type="text" class="form-control" id="apiKey" placeholder="请输入API Key">
+                    </div>
+                `;
+                break;
+            case 'file':
+                dynamicFields.innerHTML = `
+                    <div class="form-group">
+                        <label class="form-label">文件路径</label>
+                        <input type="text" class="form-control" id="filePath" placeholder="请输入文件路径">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">文件格式</label>
+                        <select class="form-control" id="fileFormat">
+                            <option value="csv">CSV</option>
+                            <option value="json">JSON</option>
+                            <option value="xml">XML</option>
+                            <option value="excel">Excel</option>
+                        </select>
+                    </div>
+                `;
+                break;
+            default:
+                // 其他类型可能需要特定字段
+                break;
+        }
+        
+        dynamicFields.style.display = 'block';
+    }
+
     resetForm() {
         const nameInput = this.shadowRoot.getElementById('dataSourceName');
         const typeSelect = this.shadowRoot.getElementById('dataSourceType');
@@ -648,16 +767,27 @@ class RegisterDataResourceEmbedded extends HTMLElement {
 
     showFieldError(fieldId, message) {
         const field = this.shadowRoot.getElementById(fieldId);
-        const errorElement = this.shadowRoot.getElementById(fieldId + 'Error');
+        let errorElement = this.shadowRoot.getElementById(`${fieldId}Error`);
         const formGroup = field?.closest('.form-group');
+        
+        // 如果错误元素不存在，创建一个
+        if (!errorElement && formGroup) {
+            errorElement = document.createElement('div');
+            errorElement.id = `${fieldId}Error`;
+            errorElement.className = 'error-message';
+            formGroup.appendChild(errorElement);
+        }
         
         if (field) {
             field.classList.add('error');
         }
+        
         if (errorElement) {
             errorElement.textContent = message;
+            errorElement.style.display = 'block';
             errorElement.classList.add('show');
         }
+        
         if (formGroup) {
             formGroup.classList.add('error');
         }
@@ -682,11 +812,14 @@ class RegisterDataResourceEmbedded extends HTMLElement {
     clearValidationErrors() {
         // 清除所有错误状态
         const errorFields = this.shadowRoot.querySelectorAll('.form-control.error');
-        const errorMessages = this.shadowRoot.querySelectorAll('.error-message.show');
+        const errorMessages = this.shadowRoot.querySelectorAll('.error-message');
         const errorGroups = this.shadowRoot.querySelectorAll('.form-group.error');
         
         errorFields.forEach(field => field.classList.remove('error'));
-        errorMessages.forEach(msg => msg.classList.remove('show'));
+        errorMessages.forEach(msg => {
+            msg.classList.remove('show');
+            msg.style.display = 'none';
+        });
         errorGroups.forEach(group => group.classList.remove('error'));
     }
 
