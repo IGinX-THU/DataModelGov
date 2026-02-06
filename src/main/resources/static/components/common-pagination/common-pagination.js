@@ -8,7 +8,41 @@ class CommonPagination extends HTMLElement {
         this.maxVisiblePages = 7; // 最大显示页码数
     }
 
+    static get observedAttributes() {
+        return ['current-page', 'page-size', 'total-records'];
+    }
+
+    attributeChangedCallback(name, oldValue, newValue) {
+        if (oldValue === newValue) return;
+        
+        switch (name) {
+            case 'current-page':
+                this.currentPage = parseInt(newValue) || 1;
+                break;
+            case 'page-size':
+                this.pageSize = parseInt(newValue) || 10;
+                break;
+            case 'total-records':
+                this.totalRecords = parseInt(newValue) || 0;
+                break;
+        }
+        
+        // 如果组件已经连接，重新渲染
+        if (this.isConnected) {
+            this.render();
+        }
+    }
+
     async connectedCallback() {
+        // 从属性中获取初始值
+        const currentPage = this.getAttribute('current-page');
+        const pageSize = this.getAttribute('page-size');
+        const totalRecords = this.getAttribute('total-records');
+        
+        if (currentPage) this.currentPage = parseInt(currentPage);
+        if (pageSize) this.pageSize = parseInt(pageSize);
+        if (totalRecords) this.totalRecords = parseInt(totalRecords);
+        
         await this.loadResources();
         this.render();
         this.bindEvents();

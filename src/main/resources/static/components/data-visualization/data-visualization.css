@@ -410,75 +410,7 @@ tr:hover {
     background: #f8f9fa;
 }
 
-/* 分页 */
-.pagination {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 12px 20px;
-    background: #f8f9fa;
-    border-top: 1px solid #e0e6ed;
-}
-
-.pagination-left {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-}
-
-.pagination-right {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.page-size-selector {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 13px;
-    color: #646a73;
-}
-
-.page-size-select {
-    padding: 4px 8px;
-    border: 1px solid #d9d9d9;
-    border-radius: 4px;
-    font-size: 12px;
-    outline: none;
-    background: white;
-}
-
-.page-size-select:focus {
-    border-color: #3370ff;
-    box-shadow: 0 0 0 2px rgba(51, 112, 255, 0.1);
-}
-
-.page-info {
-    font-size: 13px;
-    color: #646a73;
-    min-width: 120px;
-}
-
-.pagination button {
-    padding: 4px 8px;
-    border: 1px solid #d9d9d9;
-    background: white;
-    cursor: pointer;
-    border-radius: 4px;
-    font-size: 12px;
-    transition: all 0.2s;
-}
-
-.pagination button:hover:not(:disabled) {
-    border-color: #3370ff;
-    color: #3370ff;
-}
-
-.pagination button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
+/* 分页样式已移至common-pagination组件 */
 
 /* 模态框样式 */
 .modal-overlay {

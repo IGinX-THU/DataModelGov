@@ -18,9 +18,9 @@
             <div class="operations-header">
                 <h4 class="operations-title">操作</h4>
                 <div class="operations-actions">
-                    <button class="action-btn" id="dataCleanBtn">数据清理</button>
-                    <button class="action-btn" id="importBtn">导入数据</button>
-                    <button class="action-btn" id="exportBtn">导出数据</button>
+                    <button class="action-btn delete" id="dataCleanBtn">数据清理</button>
+                    <button class="action-btn copy" id="importBtn">导入数据</button>
+                    <button class="action-btn edit" id="exportBtn">导出数据</button>
                 </div>
             </div>
             <div class="operations-content">
@@ -76,7 +76,7 @@
                 </div>
             </div>
             <div class="table-wrapper">
-                <table id="dataTable">
+                <table class="table" id="dataTable">
                     <thead>
                         <tr>
                             <th>时间</th>
@@ -87,24 +87,7 @@
                         <!-- 动态生成表格数据 -->
                     </tbody>
                 </table>
-                <div class="pagination">
-                    <div class="pagination-left">
-                        <div class="page-size-selector">
-                            <span>每页显示</span>
-                            <select class="page-size-select" id="pageSizeSelect">
-                                <option value="10">10条</option>
-                                <option value="20" selected>20条</option>
-                                <option value="50">50条</option>
-                                <option value="100">100条</option>
-                            </select>
-                        </div>
-                        <span class="page-info" id="pageInfo">第 1 页 / 共 1 页</span>
-                    </div>
-                    <div class="pagination-right">
-                        <button id="prevBtn">上一页</button>
-                        <button id="nextBtn">下一页</button>
-                    </div>
-                </div>
+                <common-pagination id="tablePagination"></common-pagination>
             </div>
         </div>
     </div>
