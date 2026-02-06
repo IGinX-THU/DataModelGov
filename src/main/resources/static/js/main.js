@@ -257,42 +257,20 @@ document.addEventListener('DOMContentLoaded', function() {
             // 检查是否点击了"注册异构数据源"
             if (menuItemText === '注册异构数据源') {
                 console.log('注册异构数据源菜单被点击');
-                const embedded = document.getElementById('registerEmbedded');
-                console.log('找到组件:', embedded);
-                if (embedded) {
-                    console.log('调用show方法');
-                    embedded.show();
-                } else {
-                    console.error('未找到registerEmbedded组件');
-                }
+                showComponent('registerEmbedded');
             }
             
             // 检查是否点击了"上传模型文件"
             if (menuItemText === '上传模型文件') {
                 console.log('上传模型文件菜单被点击');
-                const modelUpload = document.getElementById('modelUpload');
-                console.log('找到组件:', modelUpload);
-                if (modelUpload) {
-                    console.log('调用show方法');
-                    modelUpload.show();
-                } else {
-                    console.error('未找到modelUpload组件');
-                }
+                showComponent('modelUpload');
             }
             
             // 检查是否点击了"下载模型文件"
             if (menuItemText === '下载模型文件') {
                 console.log('下载模型文件菜单被点击');
-                const modelDownload = document.getElementById('modelDownload');
-                console.log('找到组件:', modelDownload);
-                if (modelDownload) {
-                    console.log('调用show方法');
-                    // 获取当前选中的模型
-                    const selectedModel = getSelectedModel();
-                    modelDownload.show(selectedModel);
-                } else {
-                    console.error('未找到modelDownload组件');
-                }
+                const selectedModel = getSelectedModel();
+                showComponent('modelDownload', selectedModel);
             }
             
             // 检查是否点击了"移除模型资产"
@@ -311,12 +289,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 console.log('编辑元模型档案菜单被点击');
                 const selectedModel = getSelectedModel();
                 if (selectedModel && selectedModel.version) {
-                    const modelEdit = document.getElementById('modelEdit');
-                    if (modelEdit) {
-                        modelEdit.show(selectedModel);
-                    } else {
-                        console.error('未找到modelEdit组件');
-                    }
+                    showComponent('modelEdit', selectedModel);
                 } else {
                     showWorkspaceMessage('请先选择要编辑的模型版本', 'warning');
                 }
@@ -331,28 +304,22 @@ document.addEventListener('DOMContentLoaded', function() {
             // 检查是否点击了"配置解析规则"
             if (menuItemText === '配置解析规则') {
                 console.log('配置解析规则菜单被点击');
-                const parsingRules = document.getElementById('parsingRules');
-                if (parsingRules) {
-                    parsingRules.show();
-                } else {
-                    console.error('未找到parsingRules组件');
-                }
+                showComponent('parsingRules');
             }
             
             // 检查是否点击了"关联规则配置"
             if (menuItemText === '关联规则配置') {
                 console.log('关联规则配置菜单被点击');
-                const associationRules = document.getElementById('associationRules');
-                if (associationRules) {
-                    associationRules.show();
-                } else {
-                    console.error('未找到associationRules组件');
-                }
+                showComponent('associationRules');
             }
 
             // 数值与曲线分析 - 新增
             if (menuItemText === '数值与曲线分析') {
                 console.log('✅ 数值与曲线分析菜单被点击');
+                
+                // 先清空工作区
+                clearWorkspace();
+                
                 showVisualAnalysis();
                 return;
             }
@@ -439,12 +406,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (selectedModel && selectedModel.version) {
                 // 只有当有版本信息时才显示详情页面
                 console.log('显示模型详情:', selectedModel);
-                const modelDetail = document.getElementById('modelDetail');
-                if (modelDetail) {
-                    modelDetail.show(selectedModel);
-                } else {
-                    console.error('未找到modelDetail组件');
-                }
+                showComponent('modelDetail', selectedModel);
             } else {
                 console.log('未获取到版本信息或点击的是父节点，不显示详情页面');
             }
@@ -474,6 +436,10 @@ document.addEventListener('DOMContentLoaded', function() {
             console.log('✅ 找到分析按钮，绑定事件');
             btn.addEventListener('click', function() {
                 console.log('分析按钮被点击');
+                
+                // 先清空工作区
+                clearWorkspace();
+                
                 showVisualAnalysis();
             });
         }
@@ -482,14 +448,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (btnText === '新增') {
             btn.addEventListener('click', function() {
                 console.log('新增按钮被点击');
-                const embedded = document.getElementById('registerEmbedded');
-                console.log('找到组件:', embedded);
-                if (embedded) {
-                    console.log('调用show方法');
-                    embedded.show();
-                } else {
-                    console.error('未找到registerEmbedded组件');
-                }
+                showComponent('registerEmbedded');
             });
         }
         
@@ -497,14 +456,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (btnText === '上传') {
             btn.addEventListener('click', function() {
                 console.log('上传按钮被点击');
-                const modelUpload = document.getElementById('modelUpload');
-                console.log('找到组件:', modelUpload);
-                if (modelUpload) {
-                    console.log('调用show方法');
-                    modelUpload.show();
-                } else {
-                    console.error('未找到modelUpload组件');
-                }
+                showComponent('modelUpload');
             });
         }
         
@@ -512,16 +464,8 @@ document.addEventListener('DOMContentLoaded', function() {
         if (btnText === '下载') {
             btn.addEventListener('click', function() {
                 console.log('下载按钮被点击');
-                const modelDownload = document.getElementById('modelDownload');
-                console.log('找到组件:', modelDownload);
-                if (modelDownload) {
-                    console.log('调用show方法');
-                    // 获取当前选中的模型
-                    const selectedModel = getSelectedModel();
-                    modelDownload.show(selectedModel);
-                } else {
-                    console.error('未找到modelDownload组件');
-                }
+                const selectedModel = getSelectedModel();
+                showComponent('modelDownload', selectedModel);
             });
         }
         
@@ -560,12 +504,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     const selectedModel = getSelectedModel();
                     console.log('选中的模型:', selectedModel);
                     if (selectedModel && selectedModel.version) {
-                        const modelEdit = document.getElementById('modelEdit');
-                        if (modelEdit) {
-                            modelEdit.show(selectedModel);
-                        } else {
-                            console.error('未找到modelEdit组件');
-                        }
+                        showComponent('modelEdit', selectedModel);
                     } else {
                         showWorkspaceMessage('请先选择要编辑的模型版本', 'warning');
                     }
@@ -579,12 +518,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (btnText === '解析') {
             btn.addEventListener('click', function() {
                 console.log('解析按钮被点击');
-                const parsingRules = document.getElementById('parsingRules');
-                if (parsingRules) {
-                    parsingRules.show();
-                } else {
-                    console.error('未找到parsingRules组件');
-                }
+                showComponent('parsingRules');
             });
         }
         
@@ -592,12 +526,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (btnText === '关联') {
             btn.addEventListener('click', function() {
                 console.log('关联按钮被点击');
-                const associationRules = document.getElementById('associationRules');
-                if (associationRules) {
-                    associationRules.show();
-                } else {
-                    console.error('未找到associationRules组件');
-                }
+                showComponent('associationRules');
             });
         }
 
@@ -1159,66 +1088,85 @@ document.addEventListener('DOMContentLoaded', function() {
     // 全局变量存储选中的测点
 window.selectedDataPoints = new Set();
 
+// 隐藏所有组件
+function hideAllComponents() {
+    console.log('🔄 隐藏所有组件');
+    
+    // 隐藏所有可能的组件
+    const components = [
+        'registerEmbedded',
+        'modelUpload', 
+        'modelDownload',
+        'modelEdit',
+        'parsingRules',
+        'associationRules',
+        'databaseTable',
+        'dataVisualization',
+        'modelDetail'
+    ];
+    
+    components.forEach(componentId => {
+        const component = document.getElementById(componentId);
+        if (component) {
+            // 只调用组件的hide方法，让组件自己管理隐藏逻辑
+            if (typeof component.hide === 'function') {
+                component.hide();
+                console.log(`✅ 已隐藏组件: ${componentId}`);
+            } else {
+                // 如果没有hide方法，使用基本的隐藏方式
+                component.removeAttribute('show');
+                component.setAttribute('hidden', '');
+                console.log(`✅ 已隐藏组件(基本方式): ${componentId}`);
+            }
+        }
+    });
+    
+    // 额外清理：移除所有可能残留的动态创建的组件
+    const workspace = document.querySelector('.workspace-content');
+    if (workspace) {
+        // 查找所有动态创建的组件并移除
+        const dynamicComponents = workspace.querySelectorAll('visual-analysis, data-visualization');
+        dynamicComponents.forEach(comp => {
+            console.log(`🗑️ 移除动态组件: ${comp.tagName}`);
+            comp.remove();
+        });
+    }
+}
+
 // 清空工作区
     function clearWorkspace() {
         console.log('🧹 清空工作区');
         
-        const workspace = document.querySelector('.workspace-content');
-        if (!workspace) {
-            console.error('❌ 未找到工作区元素');
-            return;
-        }
-        
-        // 清空工作区内容
-        workspace.innerHTML = '';
+        // 隐藏所有可能显示的组件
+        hideAllComponents();
         
         // 清除选中的测点
         if (window.selectedDataPoints) {
             window.selectedDataPoints.clear();
         }
         
-        // 清除选中状态
-        const leftSidebarTree = document.querySelector('.left-sidebar .tree');
-        const rightSidebarTree = document.querySelector('.right-sidebar .tree');
-        
-        if (leftSidebarTree) {
-            leftSidebarTree.querySelectorAll('.tree-node.active').forEach(node => node.classList.remove('active'));
-        }
-        
-        if (rightSidebarTree) {
-            rightSidebarTree.querySelectorAll('.tree-node.active').forEach(node => node.classList.remove('active'));
-        }
-        
-        // 重置选中的数据源
-        selectedDataSource = null;
+        // 不清除导航树选中状态，只重置工作区相关的数据源
+        // selectedDataSource = null; // 注释掉，保留数据源选择
         
         console.log('✅ 工作区已清空');
-        
-        // 显示清空成功消息
-        showWorkspaceMessage('工作区已清空', 'success');
     }
 
 // 显示数值与曲线分析
 function showVisualAnalysis() {
     console.log('🚀 showVisualAnalysis() 函数被调用');
     
-    // 清除工作区
-    const workspace = document.querySelector('.workspace-content');
-    console.log('找到工作区:', workspace);
-    if (!workspace) {
-        console.error('❌ 未找到工作区元素');
-        return;
-    }
-    
-    // 清空工作区
-    workspace.innerHTML = '';
-    console.log('工作区已清空');
-    
     // 创建并添加visual-analysis组件
     const visualAnalysis = document.createElement('visual-analysis');
     console.log('创建visual-analysis组件:', visualAnalysis);
-    workspace.appendChild(visualAnalysis);
-    console.log('组件已添加到工作区');
+    
+    const workspace = document.querySelector('.workspace-content');
+    if (workspace) {
+        workspace.appendChild(visualAnalysis);
+        console.log('组件已添加到工作区');
+    } else {
+        console.error('❌ 未找到工作区元素');
+        return;
+    }
     
     // 显示组件
     setTimeout(() => {
@@ -1239,15 +1187,8 @@ function showVisualAnalysis() {
     function showDataVisualization(dataSource) {
         console.log('显示数据可视化:', dataSource);
         
-        // 隐藏其他组件
-        const registerEmbedded = document.getElementById('registerEmbedded');
-        if (registerEmbedded) {
-            registerEmbedded.hide();
-        }
-        const databaseTable = document.getElementById('databaseTable');
-        if (databaseTable) {
-            databaseTable.hide();
-        }
+        // 先清空工作区
+        clearWorkspace();
         
         // 获取或创建数据可视化组件
         let dataViz = document.getElementById('dataVisualization');
@@ -1280,20 +1221,33 @@ function showVisualAnalysis() {
         dataViz.show(dataSource, Array.from(window.selectedDataPoints));
     }
 
+// 通用显示组件函数
+    function showComponent(componentId, ...args) {
+        console.log(`显示组件: ${componentId}`, args);
+        
+        // 先清空工作区
+        clearWorkspace();
+        
+        const component = document.getElementById(componentId);
+        if (component) {
+            // 确保组件可见：清除所有可能的隐藏属性和样式
+            component.removeAttribute('hidden');
+            component.style.display = '';
+            component.style.visibility = '';
+            
+            // 调用组件的show方法
+            if (typeof component.show === 'function') {
+                component.show(...args);
+            }
+            
+            console.log(`✅ 组件 ${componentId} 已显示`);
+        } else {
+            console.error(`❌ 未找到组件: ${componentId}`);
+        }
+    }
+
     function showDatabaseTable(tableName) {
-        console.log('显示数据库表格:', tableName);
-        const registerEmbedded = document.getElementById('registerEmbedded');
-        if (registerEmbedded) {
-            registerEmbedded.hide();
-        }
-        const dataViz = document.getElementById('dataVisualization');
-        if (dataViz) {
-            dataViz.hide();
-        }
-        const databaseTable = document.getElementById('databaseTable');
-        if (databaseTable) {
-            databaseTable.show(tableName);
-        }
+        showComponent('databaseTable', tableName);
     }
 
     // 从树中获取所有可用的测点
