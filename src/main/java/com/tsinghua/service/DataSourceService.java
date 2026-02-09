@@ -1,7 +1,10 @@
 package com.tsinghua.service;
 
+import cn.edu.tsinghua.iginx.session_v2.ClusterClient;
 import cn.edu.tsinghua.iginx.session_v2.IginXClient;
+import cn.edu.tsinghua.iginx.session_v2.domain.Storage;
 import com.tsinghua.dto.DataSourceDTO;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -9,6 +12,7 @@ import org.springframework.stereotype.Service;
 /**
  * 数据源管理服务
  */
+@Slf4j
 @Service
 public class DataSourceService {
 
@@ -18,19 +22,21 @@ public class DataSourceService {
     /**
      * 注册异构数据源
      */
-    public boolean registerDataSource(DataSourceDTO dto) {
+    public boolean registerDataSource(Storage storage) {
         try {
             // 1. 构建IGinX存储引擎添加命令
-            String extraParams = buildExtraParams(dto);
-            String sql = String.format(
-                    "ADD STORAGEENGINE (\"%s\", %d, \"%s\", \"%s\")",
-                    dto.getIp(), dto.getPort(), dto.getType(), extraParams
-            );
+//            String extraParams = buildExtraParams(dto);
+//            String sql = String.format(
+//                    "ADD STORAGEENGINE (\"%s\", %d, \"%s\", \"%s\")",
+//                    dto.getIp(), dto.getPort(), dto.getType(), extraParams
+//            );
             // 2. 执行SQL注册
 //            iginxClient.executeSql(sql);
+            ClusterClient clusterClient = iginxClient.getClusterClient();
+            clusterClient.scaleOutStorage(storage);
             return true;
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("注册异构数据源失败", e);
             return false;
         }
     }

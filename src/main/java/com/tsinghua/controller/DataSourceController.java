@@ -1,5 +1,6 @@
 package com.tsinghua.controller;
 
+import cn.edu.tsinghua.iginx.session_v2.domain.Storage;
 import com.tsinghua.dto.DataSourceDTO;
 import com.tsinghua.service.DataSourceService;
 import com.tsinghua.util.Result;
@@ -21,8 +22,8 @@ public class DataSourceController {
      * 注册数据源
      */
     @PostMapping("/register")
-    public Result register(@Validated @RequestBody DataSourceDTO dto) {
-        boolean success = dataSourceService.registerDataSource(dto);
+    public Result register(@Validated @RequestBody Storage storage) {
+        boolean success = dataSourceService.registerDataSource(storage);
         return success ? Result.success("数据源注册成功") : Result.error("注册失败，请检查配置");
     }
 
