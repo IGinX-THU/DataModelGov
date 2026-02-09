@@ -2,31 +2,8 @@
 
 ## 🎯 使用方式
 
-### 方式1：一键启动（推荐）
-将以下文件放在同一目录，直接运行启动脚本：
+### 手动解压启动
 
-```
-deployment-directory/
-├── data-model-gov-1.0.0-standalone.zip  # 部署包
-├── config/                               # 配置文件目录（可选）
-│   ├── application.yml                  # 主配置文件
-│   └── iginx-config.properties          # IGinX配置文件
-├── start.bat                            # Windows启动脚本
-├── start.sh                             # Linux/macOS启动脚本
-├── stop.bat                             # Windows停止脚本
-└── stop.sh                              # Linux/macOS停止脚本
-```
-
-**使用方法**：
-- Windows: 双击 `start.bat` 或命令行运行
-- Linux/macOS: `./start.sh`
-
-脚本会自动：
-1. 检测并解压部署包到 `deployment/` 目录
-2. 优先使用外部 `config/` 目录的配置文件
-3. 启动应用
-
-### 方式2：手动解压
 手动解压部署包到任意目录，然后运行脚本：
 
 ```
@@ -79,13 +56,11 @@ chmod +x stop.sh
 ## ⚙️ 配置文件
 
 ### 配置文件优先级
-1. **外部配置**：`../config/application.yml` + `../config/config/iginx-config.properties` （方式1）
-2. **内部配置**：`config/application.yml` + `config/iginx-config.properties` （方式2）
-3. **默认配置**：JAR包内置配置
+1. **配置文件**：`config/application.yml` + `config/iginx-config.properties`
+2. **默认配置**：JAR包内置配置
 
 ### 修改配置
-- **方式1**：直接修改 `config/` 目录下的配置文件
-- **方式2**：修改解压后目录的 `config/` 目录下的配置文件
+修改解压后目录的 `config/` 目录下的配置文件
 
 #### 主配置文件 (application.yml)
 ```yaml
@@ -131,16 +106,16 @@ storageEngineList=127.0.0.1#6668#filesystem#dir=./data/iginx#iginx_port=8080#has
 - **bin/**: 启动停止脚本
 
 ### 脚本特性
-- **自动解压**: 检测ZIP包并自动解压
-- **智能配置**: 优先使用外部配置文件
+- **手动解压**: 适用于已解压的部署包
+- **智能配置**: 自动检测配置文件
 - **跨平台**: Windows和Linux/macOS通用
 - **环境检测**: 自动检测Java环境
 
 ## 🔧 故障排除
 
 ### 启动失败
-1. 检查ZIP包是否存在且完整
-2. 确保有足够的磁盘空间解压
+1. 确认已正确解压部署包
+2. 检查 `app/data-model-gov-1.0.0.jar` 文件是否存在
 3. 检查Java环境（如果未使用内嵌JRE）
 4. 查看控制台错误信息
 
@@ -155,7 +130,7 @@ storageEngineList=127.0.0.1#6668#filesystem#dir=./data/iginx#iginx_port=8080#has
 
 ## 💡 最佳实践
 
-1. **生产环境**：使用方式1，便于配置管理和版本升级
-2. **开发测试**：使用方式2，便于调试和修改
-3. **配置管理**：将配置文件放在外部目录，便于修改
+1. **生产环境**：使用手动解压方式，便于配置管理
+2. **开发测试**：使用手动解压方式，便于调试和修改
+3. **配置管理**：直接修改 `config/` 目录下的配置文件
 4. **日志监控**：定期检查 `logs/` 目录的日志文件
