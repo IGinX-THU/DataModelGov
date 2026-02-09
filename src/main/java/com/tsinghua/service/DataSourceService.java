@@ -16,7 +16,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class DataSourceService {
 
-    @Autowired
+//    @Autowired
     private IginXClient iginxClient;
 
     /**
