@@ -75,19 +75,14 @@ logging:
     root: INFO           # 日志级别
   file:
     name: logs/app.log   # 日志文件
-```
 
-#### IGinX配置文件 (iginx-config.properties)
-```properties
-# IGinX连接配置
-iginx.ip=127.0.0.1
-iginx.port=6667
-iginx.username=root
-iginx.password=root
-iginx.timeout=30000
-
-# 存储引擎配置
-storageEngineList=127.0.0.1#6668#filesystem#dir=./data/iginx#iginx_port=8080#has_data=false#is_read_only=false
+# IGinX连接配置（根据实际部署修改）
+iginx:
+  ip: 127.0.0.1
+  port: 6888
+  username: root
+  password: root
+  timeout: 30000
 ```
 
 ## 🌐 访问地址

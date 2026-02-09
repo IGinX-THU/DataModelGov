@@ -16,7 +16,7 @@ server:
 # IGinX连接配置（根据实际部署修改）
 iginx:
   ip: 127.0.0.1
-  port: 6667
+  port: 6888
   username: root
   password: root
   timeout: 30000
