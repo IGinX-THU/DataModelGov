@@ -238,54 +238,9 @@
     <!-- 左侧数据资源库 -->
     <div class="sidebar left-sidebar">
         <div class="sidebar-title">数据资源库</div>
-        <div class="tree">
-            <div class="tree-node">
-                <i class="icon db-icon"></i>
-                <span>X022-CQ-1</span>
-            </div>
-            <div class="tree-node">
-                <i class="icon db-icon"></i>
-                <span>X022-CQ-2</span>
-            </div>
-            <div class="tree-node expanded">
-                <i class="icon db-icon"></i>
-                <span>X022-CQ-3</span>
-                <div class="tree-children">
-                    <div class="tree-node">
-                        <span>table1</span>
-                    </div>
-                </div>
-            </div>
-            <div class="tree-node">
-                <i class="icon db-icon"></i>
-                <span>X022-CQ-4</span>
-            </div>
-            <div class="tree-node">
-                <i class="icon folder-icon"></i>
-                <span>pg_meta</span>
-            </div>
-            <div class="tree-node expanded">
-                <i class="icon folder-icon"></i>
-                <span>influx_local</span>
-                <div class="tree-children">
-                    <div class="tree-node expanded">
-                        <span>root</span>
-                        <div class="tree-children">
-                            <div class="tree-node expanded">
-                                <span>car</span>
-                                <div class="tree-children">
-                                    <div class="tree-node">
-                                        <span>s1</span>
-                                    </div>
-                                    <div class="tree-node">
-                                        <span>g1</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+        <div class="tree" id="dataSourceTree">
+            <!-- 数据源树将通过JavaScript动态加载 -->
+            <div class="loading-placeholder">正在加载数据源...</div>
         </div>
     </div>
 

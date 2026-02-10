@@ -1,6 +1,10 @@
 document.addEventListener('DOMContentLoaded', function() {
     // 全局变量：跟踪当前选中的数据源
     let selectedDataSource = null;
+    
+    // 0. 动态加载数据源树
+    loadDataSourceTree();
+    
     // 1. 明暗模式切换
     const themeToggle = document.getElementById('themeToggle');
     const html = document.documentElement;
@@ -14,96 +18,6 @@ document.addEventListener('DOMContentLoaded', function() {
             html.classList.add('light-mode');
         }
     });
-
-    // 2. 树形节点点击事件（仅限左侧数据资源库）
-    const leftSidebarTree = document.querySelector('.left-sidebar .tree');
-    if (leftSidebarTree) {
-        const treeNodes = leftSidebarTree.querySelectorAll('.tree-node');
-        treeNodes.forEach(node => {
-            node.addEventListener('click', function(e) {
-                e.stopPropagation();
-                
-                // 确保只处理左侧的节点
-                if (!this.closest('.left-sidebar')) {
-                    return;
-                }
-                
-                // 先清除所有选中状态（仅限左侧）
-                leftSidebarTree.querySelectorAll('.tree-node.active').forEach(n => n.classList.remove('active'));
-                
-                // 设置当前选中
-                this.classList.add('active');
-                
-                // 更新选中的数据源（仅限左侧数据资源库）
-                const nodeText = this.querySelector('span')?.textContent?.trim();
-                const nodeIcon = this.querySelector('i');
-                if (nodeText) {
-                    selectedDataSource = nodeText;
-                    console.log('选中的数据源:', selectedDataSource);
-                    
-                    // 检查是否为最后一级节点（没有子节点）
-                    const hasChildren = this.querySelector('.tree-children');
-                    
-                    // 检查是否属于文件夹/数据库图标类数据源
-                    let isFromFolderDataSource = false;
-                    let isFromDatabaseSource = false;
-                    
-                    // 向上查找最近的父节点，检查是否有文件夹图标
-                    let currentParent = this.parentElement;
-                    while (currentParent) {
-                        if (currentParent.classList.contains('tree-children')) {
-                            // 跳过tree-children，继续向上找tree-node
-                            currentParent = currentParent.parentElement;
-                        } else if (currentParent.classList.contains('tree-node')) {
-                            // 找到tree-node，检查图标
-                            const parentIcon = currentParent.querySelector('i');
-                            const parentText = currentParent.querySelector('span')?.textContent?.trim();
-                            
-                            console.log('检查父节点:', parentText, '图标:', parentIcon?.className);
-                            
-                            if (parentIcon && (parentIcon.classList.contains('folder-icon') || parentIcon.classList.contains('folder-open-icon'))) {
-                                isFromFolderDataSource = true;
-                                console.log('找到文件夹图标父节点:', parentText);
-                                break;
-                            }
-                            if (parentIcon && parentIcon.classList.contains('db-icon')) {
-                                isFromDatabaseSource = true;
-                                console.log('找到数据库图标父节点:', parentText);
-                                break;
-                            }
-                            currentParent = currentParent.parentElement;
-                        } else {
-                            break;
-                        }
-                    }
-                    
-                    console.log('节点检查:', {
-                        nodeText: selectedDataSource,
-                        hasChildren: !!hasChildren,
-                        isFromFolderDataSource: isFromFolderDataSource,
-                        isFromDatabaseSource: isFromDatabaseSource,
-                        shouldShow: !hasChildren && (isFromFolderDataSource || isFromDatabaseSource)
-                    });
-                    
-                    // 只有点击文件夹图标类数据源的最后一级节点才显示可视化
-                    if (!hasChildren && isFromFolderDataSource) {
-                        console.log('点击了文件夹图标类数据源的最后一级节点，显示数据可视化');
-                        showDataVisualization(selectedDataSource);
-                    }
-
-                    if (!hasChildren && isFromDatabaseSource) {
-                        console.log('点击了数据库图标类数据源的最后一级节点，显示数据库表格');
-                        showDatabaseTable(selectedDataSource);
-                    }
-                }
-                
-                // 展开收起（如果有子节点）
-                if (this.querySelector('.tree-children')) {
-                    this.classList.toggle('expanded');
-                }
-            });
-        });
-    }
 
     // 2.5. 右侧模型资产库树形节点点击事件
     const rightSidebarTree = document.querySelector('.right-sidebar .tree');
@@ -1212,5 +1126,209 @@ function showVisualAnalysis() {
         }
         
         return pointMap[dataSource] || ['value1', 'value2', 'value3'];
+    }
+    
+    // 动态加载数据源树
+    async function loadDataSourceTree() {
+        try {
+            const response = await fetch(window.AppConfig.getApiUrl('datasource', 'list'));
+            const result = await response.json();
+            
+            if (result.code === 200 && result.data) {
+                renderDataSourceTree(result.data);
+            } else {
+                console.error('加载数据源列表失败:', result.message);
+                document.getElementById('dataSourceTree').innerHTML = '<div class="error-placeholder">加载数据源失败</div>';
+            }
+        } catch (error) {
+            console.error('加载数据源列表异常:', error);
+            document.getElementById('dataSourceTree').innerHTML = '<div class="error-placeholder">网络错误，无法加载数据源</div>';
+        }
+    }
+    
+    // 渲染数据源树
+    function renderDataSourceTree(dataSources) {
+        const treeContainer = document.getElementById('dataSourceTree');
+        if (!dataSources || dataSources.length === 0) {
+            treeContainer.innerHTML = '<div class="empty-placeholder">暂无数据源</div>';
+            return;
+        }
+        
+        let treeHTML = '';
+        dataSources.forEach(dataSource => {
+            const iconClass = getStorageEngineIcon(dataSource.type);
+            const displayName = `${dataSource.ip}:${dataSource.port}`;
+            
+            console.log('🔍 渲染数据源:', {
+                id: dataSource.id,
+                ip: dataSource.ip,
+                port: dataSource.port,
+                type: dataSource.type,
+                iconClass: iconClass,
+                displayName: displayName
+            });
+            
+            // 根据数据源类型决定是否包含子结构
+            if (dataSource.type === 4) { // 关系型数据库 - 包含表结构
+                treeHTML += `
+                    <div class="tree-node expanded" data-id="${dataSource.id}" data-ip="${dataSource.ip}" data-port="${dataSource.port}" data-type="${dataSource.type}">
+                        <span style="margin-right: 6px;">${iconClass}</span>
+                        <span>${displayName}</span>
+                        <div class="tree-children">
+                            <div class="tree-node">
+                                <span>table1</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } else if (dataSource.type === 1) { // IoTDB - 包含文件夹结构
+                treeHTML += `
+                    <div class="tree-node expanded" data-id="${dataSource.id}" data-ip="${dataSource.ip}" data-port="${dataSource.port}" data-type="${dataSource.type}">
+                        <span style="margin-right: 6px;">${iconClass}</span>
+                        <span>${displayName}</span>
+                        <div class="tree-children">
+                            <div class="tree-node expanded">
+                                <span>root</span>
+                                <div class="tree-children">
+                                    <div class="tree-node expanded">
+                                        <span>car</span>
+                                        <div class="tree-children">
+                                            <div class="tree-node">
+                                                <span>s1</span>
+                                            </div>
+                                            <div class="tree-node">
+                                                <span>g1</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } else if (dataSource.type === 2) { // InfluxDB - 包含层级结构
+                treeHTML += `
+                    <div class="tree-node expanded" data-id="${dataSource.id}" data-ip="${dataSource.ip}" data-port="${dataSource.port}" data-type="${dataSource.type}">
+                        <span style="margin-right: 6px;">${iconClass}</span>
+                        <span>${displayName}</span>
+                        <div class="tree-children">
+                            <div class="tree-node expanded">
+                                <span>root</span>
+                                <div class="tree-children">
+                                    <div class="tree-node expanded">
+                                        <span>car</span>
+                                        <div class="tree-children">
+                                            <div class="tree-node">
+                                                <span>s1</span>
+                                            </div>
+                                            <div class="tree-node">
+                                                <span>g1</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } else { // 其他类型 - 无子结构
+                treeHTML += `
+                    <div class="tree-node" data-id="${dataSource.id}" data-ip="${dataSource.ip}" data-port="${dataSource.port}" data-type="${dataSource.type}">
+                        <span style="margin-right: 6px;">${iconClass}</span>
+                        <span>${displayName}</span>
+                    </div>
+                `;
+            }
+        });
+        
+        treeContainer.innerHTML = treeHTML;
+        
+        // 重新绑定树节点点击事件
+        bindTreeEvents();
+    }
+    
+    // 根据存储引擎类型获取图标
+    function getStorageEngineIcon(type) {
+        // 返回文字标识而不是图标，更明显
+        const textMap = {
+            0: '🔌',      // unknown
+            1: '📊',       // iotdb12
+            2: '📈',      // influxdb
+            3: '📁',        // filesystem
+            4: '🗄️',          // relational (MySQL, PostgreSQL等)
+            5: '🍃',       // mongodb
+            6: '⚡'        // redis
+        };
+        const icon = textMap[type] || '🗄️';
+        console.log(`🔍 getStorageEngineIcon(${type}) = ${icon}`);
+        return icon;
+    }
+    
+    // 重新绑定树节点事件
+    function bindTreeEvents() {
+        const leftSidebarTree = document.querySelector('.left-sidebar .tree');
+        if (leftSidebarTree) {
+            const treeNodes = leftSidebarTree.querySelectorAll('.tree-node');
+            treeNodes.forEach(node => {
+                node.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    
+                    // 确保只处理左侧的节点
+                    if (!this.closest('.left-sidebar')) {
+                        return;
+                    }
+                    
+                    // 先清除所有选中状态（仅限左侧）
+                    leftSidebarTree.querySelectorAll('.tree-node.active').forEach(n => n.classList.remove('active'));
+                    
+                    // 设置当前选中
+                    this.classList.add('active');
+                    
+                    // 更新选中的数据源（仅限左侧数据资源库）
+                    const nodeText = this.querySelector('span')?.textContent?.trim();
+                    const nodeIcon = this.querySelector('i');
+                    if (nodeText) {
+                        selectedDataSource = nodeText;
+                        console.log('选中的数据源:', selectedDataSource);
+                        
+                        // 检查是否为最后一级节点（没有子节点）
+                        const hasChildren = this.querySelector('.tree-children');
+                        
+                        // 检查是否属于文件夹/数据库图标类数据源
+                        let isFromFolderDataSource = false;
+                        let isFromDatabaseSource = false;
+                        
+                        if (nodeIcon) {
+                            isFromFolderDataSource = nodeIcon.classList.contains('folder-icon');
+                            isFromDatabaseSource = nodeIcon.classList.contains('db-icon');
+                        }
+                        
+                        // 如果是最后一级节点且不是文件夹/数据库图标类数据源，则显示“选择数据源”按钮
+                        if (!hasChildren && !isFromFolderDataSource && !isFromDatabaseSource) {
+                            console.log('点击了数据源节点，显示数据源选择');
+                            // 这里可以添加数据源选择相关的逻辑
+                            // 暂时显示数据可视化
+                            showDataVisualization(selectedDataSource);
+                        }
+                        
+                        // 只有点击文件夹图标类数据源的最后一级节点才显示可视化
+                        if (!hasChildren && isFromFolderDataSource) {
+                            console.log('点击了文件夹图标类数据源的最后一级节点，显示数据可视化');
+                            showDataVisualization(selectedDataSource);
+                        }
+
+                        if (!hasChildren && isFromDatabaseSource) {
+                            console.log('点击了数据库图标类数据源的最后一级节点，显示数据库表格');
+                            showDatabaseTable(selectedDataSource);
+                        }
+                    }
+                    
+                    // 展开收起（如果有子节点）
+                    if (this.querySelector('.tree-children')) {
+                        this.classList.toggle('expanded');
+                    }
+                });
+            });
+        }
     }
 });
