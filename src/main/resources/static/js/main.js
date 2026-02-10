@@ -876,9 +876,34 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             console.log('开始删除数据源:', alias);
             
-            const response = await fetch(window.AppConfig.getApiUrl('datasource', 'remove') + '/' + encodeURIComponent(alias), {
+            // 获取当前选中的数据源节点信息
+            const leftSidebarTree = document.querySelector('.left-sidebar .tree');
+            const activeNode = leftSidebarTree?.querySelector('.tree-node.active');
+            
+            if (!activeNode) {
+                showWorkspaceMessage('请先选择要删除的数据源', 'warning');
+                return;
+            }
+            
+            // 构建请求体数据
+            const dataSourceInfo = {
+                id: activeNode.dataset.id || 0,
+                ip: activeNode.dataset.ip || '',
+                port: parseInt(activeNode.dataset.port) || 0,
+                type: parseInt(activeNode.dataset.type) || 0,
+                schemaPrefix: null,
+                dataPrefix: null
+            };
+            
+            console.log('发送删除请求:', dataSourceInfo);
+            
+            const response = await fetch(window.AppConfig.getApiUrl('datasource', 'remove'), {
                 method: 'DELETE',
-                headers: window.AppConfig.getAuthHeaders()
+                headers: {
+                    ...window.AppConfig.getAuthHeaders(),
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(dataSourceInfo)
             });
 
             if (!response.ok) {
@@ -890,7 +915,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
             if (result.code === 200) {
                 showWorkspaceMessage(`数据源 "${alias}" 删除成功`, 'success');
-                // 清除选中状态（仅限左侧数据资源库）
+                // 重新加载数据源树
+                loadDataSourceTree();
+                // 清除选中状态
                 selectedDataSource = null;
                 if (leftSidebarTree) {
                     leftSidebarTree.querySelectorAll('.tree-node.active').forEach(node => node.classList.remove('active'));
@@ -1037,8 +1064,17 @@ function showVisualAnalysis() {
             console.log('使用现有的数据可视化组件');
         }
         
-        // 将当前数据源添加到已选测点
-        window.selectedDataPoints.add(dataSource);
+        // 只有真正的测点才添加到已选测点列表
+        console.log('检查节点是否为测点:', dataSource);
+        const isDataPoint = isActualDataPoint(dataSource);
+        console.log('是否为测点:', isDataPoint);
+        
+        if (isDataPoint) {
+            window.selectedDataPoints.add(dataSource);
+            console.log('添加测点到已选列表:', dataSource);
+        } else {
+            console.log('跳过非测点节点:', dataSource);
+        }
         
         console.log('准备显示可视化组件，当前选中的测点:', Array.from(window.selectedDataPoints));
         
@@ -1086,20 +1122,80 @@ function showVisualAnalysis() {
         const leftSidebarTree = document.querySelector('.left-sidebar .tree');
         if (!leftSidebarTree) return points;
         
-        // 查找所有最后一级节点
-        const allNodes = leftSidebarTree.querySelectorAll('.tree-node');
-        allNodes.forEach(node => {
+        // 获取当前选中的数据源节点
+        const activeDataSourceNode = leftSidebarTree.querySelector('.tree-node.active');
+        if (!activeDataSourceNode) {
+            console.log('没有选中的数据源');
+            return points;
+        }
+        
+        // 只在当前选中的数据源节点内查找测点
+        const dataSourceChildren = activeDataSourceNode.querySelectorAll('.tree-node');
+        dataSourceChildren.forEach(node => {
             const hasChildren = node.querySelector('.tree-children');
             const nodeText = node.querySelector('span')?.textContent?.trim();
             
-            // 只添加最后一级节点
-            if (!hasChildren && nodeText) {
+            // 只添加最后一级节点且是真正的测点
+            if (!hasChildren && isActualDataPoint(nodeText)) {
                 points.push(nodeText);
+                console.log('添加测点:', nodeText);
+            } else {
+                console.log('跳过节点:', {
+                    nodeText,
+                    hasChildren: !!hasChildren,
+                    isDataPoint: isActualDataPoint(nodeText)
+                });
             }
         });
         
-        console.log('从树中获取到的测点:', points);
+        console.log('从当前选中数据源获取到的测点:', points);
         return points;
+    }
+    
+    // 判断节点是否为真正的测点
+    function isActualDataPoint(nodeText) {
+        console.log('isActualDataPoint 检查:', nodeText);
+        
+        if (!nodeText) {
+            console.log('-> 空字符串，返回 false');
+            return false;
+        }
+        
+        // 排除IP:port格式的数据源节点
+        if (nodeText.includes(':')) {
+            console.log('-> 包含冒号，返回 false');
+            return false;
+        }
+        
+        // 排除emoji图标（这些是数据源父节点的图标）
+        const emojis = ['🔌', '📊', '📈', '📁', '🗄', '🍃', '⚡'];
+        if (emojis.includes(nodeText)) {
+            console.log('-> 是emoji图标，返回 false');
+            return false;
+        }
+        
+        // 排除常见的父节点名称
+        const parentNodes = ['root', 'car', 'database', 'table', 'schema'];
+        if (parentNodes.includes(nodeText.toLowerCase())) {
+            console.log('-> 是父节点名称，返回 false');
+            return false;
+        }
+        
+        // 排除空字符串和纯数字
+        if (!nodeText.trim() || /^\d+$/.test(nodeText.trim())) {
+            console.log('-> 是空字符串或纯数字，返回 false');
+            return false;
+        }
+        
+        console.log('-> 通过所有检查，返回 true');
+        return true;
+    }
+    
+    // 判断节点是否为数据源父节点（有data-type属性的节点）
+    function isDataSourceParentNode(node) {
+        return node.hasAttribute('data-type') || 
+               node.parentElement?.hasAttribute('data-type') ||
+               node.closest('[data-type]') !== null;
     }
 
     // 根据数据源获取模拟测点数据
