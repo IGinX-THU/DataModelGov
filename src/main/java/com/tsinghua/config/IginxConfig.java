@@ -21,7 +21,7 @@ public class IginxConfig {
     @Value("${iginx.password}")
     private String password;
 
-//    @Bean
+    @Bean
     public IginXClient iginxClient() {
         // 创建IGinX客户端连接
         return IginXClientFactory.create(ip, port, username, password);
