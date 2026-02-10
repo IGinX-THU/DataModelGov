@@ -7,6 +7,7 @@ class RegisterDataResourceEmbedded extends HTMLElement {
     constructor() {
         super();
         this.attachShadow({ mode: 'open' });
+        this.currentModal = null; // 存储当前modal引用
     }
 
     async connectedCallback() {
@@ -262,18 +263,28 @@ class RegisterDataResourceEmbedded extends HTMLElement {
                         <label class="form-label required">数据源类型</label>
                         <select class="form-control form-select" id="dataSourceType" required>
                             <option value="">请选择数据源类型</option>
-                            <option value="mysql">MySQL</option>
-                            <option value="postgresql">PostgreSQL</option>
-                            <option value="oracle">Oracle</option>
-                            <option value="sqlserver">SQL Server</option>
-                            <option value="influxdb">InfluxDB</option>
-                            <option value="mongodb">MongoDB</option>
-                            <option value="elasticsearch">Elasticsearch</option>
-                            <option value="redis">Redis</option>
-                            <option value="dameng">达梦数据库</option>
-                            <option value="iotdb">IoTDB</option>
-                            <option value="api">REST API</option>
-                            <option value="file">文件数据源</option>
+                            <optgroup label="关系型数据库">
+                                <option value="mysql">MySQL</option>
+                                <option value="postgresql">PostgreSQL</option>
+                                <option value="oracle">Oracle</option>
+                                <option value="sqlserver">SQL Server</option>
+                                <option value="dameng">达梦数据库</option>
+                            </optgroup>
+                            <optgroup label="时序数据库">
+                                <option value="influxdb">InfluxDB</option>
+                                <option value="iotdb">IoTDB</option>
+                            </optgroup>
+                            <optgroup label="NoSQL数据库">
+                                <option value="mongodb">MongoDB</option>
+                                <option value="redis">Redis</option>
+                            </optgroup>
+                            <optgroup label="文件系统">
+                                <option value="file">文件数据源</option>
+                            </optgroup>
+                            <optgroup label="其他（实验性支持）">
+                                <option value="elasticsearch">Elasticsearch (未知类型)</option>
+                                <option value="api">REST API (未知类型)</option>
+                            </optgroup>
                         </select>
                     </div>
 
@@ -286,10 +297,12 @@ class RegisterDataResourceEmbedded extends HTMLElement {
                         <div class="form-group">
                             <label class="form-label required">主机地址</label>
                             <input type="text" class="form-control" id="host" placeholder="localhost" required>
+                            <div class="error-message" id="hostError">请输入主机地址</div>
                         </div>
                         <div class="form-group">
                             <label class="form-label required">端口</label>
                             <input type="number" class="form-control" id="port" placeholder="3306" required>
+                            <div class="error-message" id="portError">请输入端口号</div>
                         </div>
                     </div>
 
@@ -297,10 +310,12 @@ class RegisterDataResourceEmbedded extends HTMLElement {
                         <div class="form-group">
                             <label class="form-label required">用户名</label>
                             <input type="text" class="form-control" id="username" placeholder="请输入用户名" required>
+                            <div class="error-message" id="usernameError">请输入用户名</div>
                         </div>
                         <div class="form-group">
                             <label class="form-label required">密码</label>
                             <input type="password" class="form-control" id="password" placeholder="请输入密码" required>
+                            <div class="error-message" id="passwordError">请输入密码</div>
                         </div>
                     </div>
 
@@ -401,8 +416,8 @@ class RegisterDataResourceEmbedded extends HTMLElement {
     }
 
     updateDynamicFields() {
-        const dataSourceType = this.shadowRoot.getElementById('dataSourceType').value;
-        const dynamicFieldsContainer = this.shadowRoot.getElementById('dynamicFields');
+        const dataSourceType = this.getElementById('dataSourceType').value;
+        const dynamicFieldsContainer = this.getElementById('dynamicFields');
         
         if (!dataSourceType) {
             dynamicFieldsContainer.style.display = 'none';
@@ -488,6 +503,9 @@ class RegisterDataResourceEmbedded extends HTMLElement {
             maxWidth: '800px'
         });
         
+        // 保存modal引用
+        this.currentModal = modal;
+        
         // 绑定组件内部事件
         this.bindModalEvents(modal);
         
@@ -497,8 +515,28 @@ class RegisterDataResourceEmbedded extends HTMLElement {
     hide() {
         console.log('🔍 register-embedded hide() 被调用');
         window.modalManager.hide();
+        this.currentModal = null; // 清除modal引用
         // 隐藏时也清除验证错误
         this.clearValidationErrors();
+    }
+
+    // 获取当前DOM上下文（modal或shadowRoot）
+    getCurrentDOMContext() {
+        return this.currentModal ? this.currentModal.modal : this.shadowRoot;
+    }
+
+    // 获取指定ID的元素（优先从modal中获取）
+    getElementById(id) {
+        const context = this.getCurrentDOMContext();
+        // 使用querySelector而不是getElementById，因为modal可能不是document元素
+        const element = context.querySelector(`#${id}`);
+        console.log(`🔍 getElementById(${id}):`, {
+            context: context,
+            element: element,
+            found: !!element,
+            value: element?.value
+        });
+        return element;
     }
 
     bindModalEvents(modal) {
@@ -547,51 +585,73 @@ class RegisterDataResourceEmbedded extends HTMLElement {
         // 清除之前的错误状态
         this.clearValidationErrors();
         
-        // 获取表单元素
-        const nameInput = this.shadowRoot.getElementById('dataSourceName');
-        const typeSelect = this.shadowRoot.getElementById('dataSourceType');
-        const hostInput = this.shadowRoot.getElementById('host');
-        const portInput = this.shadowRoot.getElementById('port');
-        const usernameInput = this.shadowRoot.getElementById('username');
-        const passwordInput = this.shadowRoot.getElementById('password');
+        // 获取表单元素（从当前DOM上下文）
+        const nameInput = this.getElementById('dataSourceName');
+        const typeSelect = this.getElementById('dataSourceType');
+        const hostInput = this.getElementById('host');
+        const portInput = this.getElementById('port');
+        const usernameInput = this.getElementById('username');
+        const passwordInput = this.getElementById('password');
+        
+        // 调试信息
+        console.log('🔍 表单元素获取结果:', {
+            nameInput: nameInput,
+            nameValue: nameInput?.value,
+            typeSelect: typeSelect,
+            typeValue: typeSelect?.value,
+            hostInput: hostInput,
+            hostValue: hostInput?.value,
+            portInput: portInput,
+            portValue: portInput?.value,
+            currentModal: this.currentModal
+        });
         
         let hasError = false;
         
         // 验证必填字段
         if (!nameInput?.value?.trim()) {
+            console.log('🔍 数据源名称验证失败');
             this.showFieldError('dataSourceName', '请输入数据源名称');
             hasError = true;
         }
         
         if (!typeSelect?.value) {
+            console.log('🔍 数据源类型验证失败');
             this.showFieldError('dataSourceType', '请选择数据源类型');
             hasError = true;
         }
         
         if (!hostInput?.value?.trim()) {
+            console.log('🔍 主机地址验证失败');
             this.showFieldError('host', '请输入主机地址');
             hasError = true;
         }
         
         if (!portInput?.value) {
+            console.log('🔍 端口号验证失败');
             this.showFieldError('port', '请输入端口号');
             hasError = true;
         }
 
         if (!usernameInput?.value?.trim()) {
+            console.log('🔍 用户名验证失败');
             this.showFieldError('username', '请输入用户名');
             hasError = true;
         }
 
         if (!passwordInput?.value) {
+            console.log('🔍 密码验证失败');
             this.showFieldError('password', '请输入密码');
             hasError = true;
         }
         
+        console.log('🔍 验证结果，hasError:', hasError);
+        
         // 如果有验证错误，不继续提交
         if (hasError) {
             // 滚动到第一个错误位置
-            const firstErrorField = this.shadowRoot.querySelector('.form-group.error');
+            const context = this.getCurrentDOMContext();
+            const firstErrorField = context.querySelector('.form-group.error');
             if (firstErrorField) {
                 firstErrorField.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }
@@ -605,7 +665,7 @@ class RegisterDataResourceEmbedded extends HTMLElement {
     handleDataSourceTypeChange() {
         console.log('🔍 handleDataSourceTypeChange 被调用');
         // 这里添加数据源类型变化逻辑
-        const typeSelect = this.shadowRoot.getElementById('dataSourceType');
+        const typeSelect = this.getElementById('dataSourceType');
         const selectedType = typeSelect?.value;
         console.log('🔍 选择的数据源类型:', selectedType);
         
@@ -615,7 +675,7 @@ class RegisterDataResourceEmbedded extends HTMLElement {
 
     showDynamicFields(dataSourceType) {
         console.log('🔍 showDynamicFields 被调用，类型:', dataSourceType);
-        const dynamicFields = this.shadowRoot.getElementById('dynamicFields');
+        const dynamicFields = this.getElementById('dynamicFields');
         
         if (!dynamicFields) return;
         
@@ -700,14 +760,8 @@ class RegisterDataResourceEmbedded extends HTMLElement {
             hasError = true;
         }
         
-        // 验证数据源类型
-        if (!formData.type) {
-            this.showFieldError('dataSourceType', '请选择数据源类型');
-            hasError = true;
-        }
-        
-        // 验证主机地址
-        if (!formData.host) {
+        // 验证主机地址 - 修复字段名
+        if (!formData.ip) {
             this.showFieldError('host', '请输入主机地址');
             hasError = true;
         }
@@ -718,16 +772,20 @@ class RegisterDataResourceEmbedded extends HTMLElement {
             hasError = true;
         }
         
+        // 验证存储引擎类型
+        if (!formData.storageEngineType) {
+            this.showFieldError('dataSourceType', '请选择数据源类型');
+            hasError = true;
+        }
+        
         if (hasError) {
             this.showMessage('请填写必填字段', 'error');
             return;
         }
 
         try {
-            // 转换为后端格式
-            const backendData = window.AppConfig.transformFormData(formData, 'datasource');
-            
-            const response = await this.apiCall(window.AppConfig.getApiUrl('datasource', 'register'), 'POST', backendData);
+            // 直接发送IGinX Storage格式的数据
+            const response = await this.apiCall(window.AppConfig.getApiUrl('datasource', 'register'), 'POST', formData);
             
             if (response.code === 200) {
                 // 延迟关闭窗口，让用户看到响应信息
@@ -739,7 +797,7 @@ class RegisterDataResourceEmbedded extends HTMLElement {
                     }
                     
                     this.dispatchEvent(new CustomEvent('submit-success', {
-                        detail: { formData: backendData, response },
+                        detail: { formData: formData, response },
                         bubbles: true,
                         composed: true
                     }));
@@ -766,8 +824,8 @@ class RegisterDataResourceEmbedded extends HTMLElement {
     }
 
     showFieldError(fieldId, message) {
-        const field = this.shadowRoot.getElementById(fieldId);
-        let errorElement = this.shadowRoot.getElementById(`${fieldId}Error`);
+        const field = this.getElementById(fieldId);
+        let errorElement = this.getElementById(`${fieldId}Error`);
         const formGroup = field?.closest('.form-group');
         
         // 如果错误元素不存在，创建一个
@@ -794,8 +852,8 @@ class RegisterDataResourceEmbedded extends HTMLElement {
     }
 
     clearFieldError(fieldId) {
-        const field = this.shadowRoot.getElementById(fieldId);
-        const errorElement = this.shadowRoot.getElementById(fieldId + 'Error');
+        const field = this.getElementById(fieldId);
+        const errorElement = this.getElementById(fieldId + 'Error');
         const formGroup = field?.closest('.form-group');
         
         if (field) {
@@ -811,9 +869,10 @@ class RegisterDataResourceEmbedded extends HTMLElement {
 
     clearValidationErrors() {
         // 清除所有错误状态
-        const errorFields = this.shadowRoot.querySelectorAll('.form-control.error');
-        const errorMessages = this.shadowRoot.querySelectorAll('.error-message');
-        const errorGroups = this.shadowRoot.querySelectorAll('.form-group.error');
+        const context = this.getCurrentDOMContext();
+        const errorFields = context.querySelectorAll('.form-control.error');
+        const errorMessages = context.querySelectorAll('.error-message');
+        const errorGroups = context.querySelectorAll('.form-group.error');
         
         errorFields.forEach(field => field.classList.remove('error'));
         errorMessages.forEach(msg => {
@@ -824,54 +883,112 @@ class RegisterDataResourceEmbedded extends HTMLElement {
     }
 
     getFormData() {
-        const nameInput = this.shadowRoot.getElementById('dataSourceName');
-        const typeSelect = this.shadowRoot.getElementById('dataSourceType');
-        const descInput = this.shadowRoot.getElementById('description');
-        const hostInput = this.shadowRoot.getElementById('host');
-        const portInput = this.shadowRoot.getElementById('port');
-        const userInput = this.shadowRoot.getElementById('username');
-        const passInput = this.shadowRoot.getElementById('password');
-        const dbInput = this.shadowRoot.getElementById('database');
+        const nameInput = this.getElementById('dataSourceName');
+        const typeSelect = this.getElementById('dataSourceType');
+        const descInput = this.getElementById('description');
+        const hostInput = this.getElementById('host');
+        const portInput = this.getElementById('port');
+        const userInput = this.getElementById('username');
+        const passInput = this.getElementById('password');
+        const dbInput = this.getElementById('database');
         
         const dataSourceType = typeSelect?.value || '';
-        const baseData = {
+        
+        // 构建符合DataSourceRequest的数据结构
+        const requestData = {
             alias: nameInput?.value || '',
-            type: dataSourceType,
-            description: descInput?.value || '',
-            host: hostInput?.value || '',
+            ip: hostInput?.value || '',
             port: parseInt(portInput?.value) || 3306,
+            storageEngineType: this.getStorageEngineType(dataSourceType),
+            description: descInput?.value || '',
             username: userInput?.value || '',
             password: passInput?.value || '',
-            database: dbInput?.value || ''
+            database: dbInput?.value || '',
+            extraParams: this.buildExtraParams(dataSourceType)
         };
         
-        console.log('基础表单数据:', baseData);
+        console.log('DataSourceRequest数据:', requestData);
+        return requestData;
+    }
 
-        // 添加动态字段数据
+    // 将前端数据源类型转换为IGinX StorageEngineType枚举数值
+    getStorageEngineType(frontendType) {
+        // 根据IGinX的StorageEngineType枚举数值映射
+        // unknown=0, iotdb12=1, influxdb=2, filesystem=3, relational=4, mongodb=5, redis=6
+        const typeMapping = {
+            'mysql': 4,              // relational
+            'postgresql': 4,         // relational
+            'oracle': 4,             // relational
+            'sqlserver': 4,          // relational
+            'influxdb': 2,           // influxdb
+            'mongodb': 5,            // mongodb
+            'redis': 6,              // redis
+            'iotdb': 1,              // iotdb12
+            'dameng': 4,             // relational
+            'elasticsearch': 0,     // unknown
+            'api': 0,               // unknown
+            'file': 3               // filesystem
+        };
+        
+        return typeMapping[frontendType] || 4; // 默认返回relational(4)
+    }
+
+    // 构建额外参数Map
+    buildExtraParams(dataSourceType) {
+        const extraParams = {};
+        
+        // 根据数据源类型添加特定参数
         switch (dataSourceType) {
             case 'dameng':
-                baseData.damengDatabase = this.shadowRoot.getElementById('damengDatabase')?.value || '';
-                baseData.damengSchema = this.shadowRoot.getElementById('damengSchema')?.value || '';
+                const damengDb = this.getElementById('damengDatabase')?.value;
+                const damengSchema = this.getElementById('damengSchema')?.value;
+                if (damengDb) extraParams['damengDatabase'] = damengDb;
+                if (damengSchema) extraParams['damengSchema'] = damengSchema;
                 break;
+                
             case 'iotdb':
-                baseData.storageGroup = this.shadowRoot.getElementById('iotdbStorageGroup')?.value || '';
+                const storageGroup = this.getElementById('iotdbStorageGroup')?.value;
+                if (storageGroup) extraParams['storageGroup'] = storageGroup;
                 break;
+                
             case 'mongodb':
-                baseData.authDatabase = this.shadowRoot.getElementById('mongoAuthDatabase')?.value || 'admin';
+                const mongoAuthDb = this.getElementById('mongoAuthDatabase')?.value;
+                if (mongoAuthDb) extraParams['authDatabase'] = mongoAuthDb;
                 break;
+                
             case 'elasticsearch':
-                baseData.indexPattern = this.shadowRoot.getElementById('esIndexPattern')?.value || '';
+                const esIndexPattern = this.getElementById('esIndexPattern')?.value;
+                if (esIndexPattern) extraParams['indexPattern'] = esIndexPattern;
                 break;
+                
             case 'influxdb':
-                baseData.organization = this.shadowRoot.getElementById('influxOrg')?.value || '';
-                baseData.bucket = this.shadowRoot.getElementById('influxBucket')?.value || '';
+                const influxOrg = this.getElementById('influxOrg')?.value;
+                const influxBucket = this.getElementById('influxBucket')?.value;
+                if (influxOrg) extraParams['organization'] = influxOrg;
+                if (influxBucket) extraParams['bucket'] = influxBucket;
                 break;
+                
             case 'redis':
-                baseData.redisDatabase = parseInt(this.shadowRoot.getElementById('redisDatabase')?.value) || 0;
+                const redisDb = this.getElementById('redisDatabase')?.value;
+                if (redisDb) extraParams['redisDatabase'] = redisDb;
+                break;
+                
+            case 'api':
+                const apiUrl = this.getElementById('apiUrl')?.value;
+                const apiKey = this.getElementById('apiKey')?.value;
+                if (apiUrl) extraParams['apiUrl'] = apiUrl;
+                if (apiKey) extraParams['apiKey'] = apiKey;
+                break;
+                
+            case 'file':
+                const filePath = this.getElementById('filePath')?.value;
+                const fileFormat = this.getElementById('fileFormat')?.value;
+                if (filePath) extraParams['filePath'] = filePath;
+                if (fileFormat) extraParams['fileFormat'] = fileFormat;
                 break;
         }
-
-        return baseData;
+        
+        return extraParams;
     }
 
     async apiCall(url, method = 'GET', data = null) {

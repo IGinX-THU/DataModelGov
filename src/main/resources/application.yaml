@@ -27,9 +27,9 @@ spring:
 #启用Swagger文档
 springfox:
   documentation:
-    enabled: false
+    enabled: true
     swagger-ui:
-      enabled: false
+      enabled: true
 knife4j:
   enable: false
   production: true

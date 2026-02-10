@@ -15,18 +15,28 @@
             <label class="form-label required">数据源类型</label>
             <select class="form-control form-select" id="dataSourceType" required>
                 <option value="">请选择数据源类型</option>
-                <option value="mysql">MySQL</option>
-                <option value="postgresql">PostgreSQL</option>
-                <option value="oracle">Oracle</option>
-                <option value="sqlserver">SQL Server</option>
-                <option value="influxdb">InfluxDB</option>
-                <option value="mongodb">MongoDB</option>
-                <option value="elasticsearch">Elasticsearch</option>
-                <option value="redis">Redis</option>
-                <option value="dameng">达梦数据库</option>
-                <option value="iotdb">IoTDB</option>
-                <option value="api">REST API</option>
-                <option value="file">文件数据源</option>
+                <optgroup label="关系型数据库">
+                    <option value="mysql">MySQL</option>
+                    <option value="postgresql">PostgreSQL</option>
+                    <option value="oracle">Oracle</option>
+                    <option value="sqlserver">SQL Server</option>
+                    <option value="dameng">达梦数据库</option>
+                </optgroup>
+                <optgroup label="时序数据库">
+                    <option value="influxdb">InfluxDB</option>
+                    <option value="iotdb">IoTDB</option>
+                </optgroup>
+                <optgroup label="NoSQL数据库">
+                    <option value="mongodb">MongoDB</option>
+                    <option value="redis">Redis</option>
+                </optgroup>
+                <optgroup label="文件系统">
+                    <option value="file">文件数据源</option>
+                </optgroup>
+                <optgroup label="其他（实验性支持）">
+                    <option value="elasticsearch">Elasticsearch (未知类型)</option>
+                    <option value="api">REST API (未知类型)</option>
+                </optgroup>
             </select>
             <div class="error-message" id="dataSourceTypeError">请选择数据源类型</div>
         </div>

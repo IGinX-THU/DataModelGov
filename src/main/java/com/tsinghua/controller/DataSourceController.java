@@ -1,7 +1,7 @@
 package com.tsinghua.controller;
 
-import cn.edu.tsinghua.iginx.session_v2.domain.Storage;
-import com.tsinghua.dto.DataSourceDTO;
+import com.tsinghua.dto.DataSourceRequest;
+import com.tsinghua.dto.StorageEngineInfoDto;
 import com.tsinghua.service.DataSourceService;
 import com.tsinghua.util.Result;
 import io.swagger.annotations.Api;
@@ -26,8 +26,8 @@ public class DataSourceController {
      */
     @ApiOperation("注册异构数据源")
     @PostMapping("/register")
-    public Result register(@Validated @RequestBody Storage storage) {
-        boolean success = dataSourceService.registerDataSource(storage);
+    public Result register(@Validated @RequestBody DataSourceRequest request) {
+        boolean success = dataSourceService.registerDataSource(request);
         return success ? Result.success("数据源注册成功") : Result.error("注册失败，请检查配置");
     }
 
@@ -35,19 +35,18 @@ public class DataSourceController {
      * 移除异构数据源 (Remove Heterogeneous Data Source)
      */
     @ApiOperation("移除异构数据源")
-    @DeleteMapping("/remove/{alias}")
-    public Result remove(@PathVariable String alias) {
-        boolean success = dataSourceService.removeDataSource(alias);
+    @DeleteMapping("/remove")
+    public Result remove(@Validated @RequestBody StorageEngineInfoDto removedStorageEngineInfo) {
+        boolean success = dataSourceService.removeDataSource(removedStorageEngineInfo);
         return success ? Result.success("数据源移除成功") : Result.error("移除失败，数据源可能被关联规则占用");
     }
 
     /**
-     * 管理存储结构 (Manage Storage Structure)
+     * 数据资源列表
      */
-    @ApiOperation("管理存储结构")
-    @GetMapping("/structure")
-    public Result structure() {
-        //todo 实际项目需查询IGinX获取数据源列表
-        return Result.success("暂未实现，实际项目需对接IGinX查询");
+    @ApiOperation("数据资源列表")
+    @GetMapping("/list")
+    public Result list() throws Exception {
+        return Result.success(dataSourceService.dataSourceList());
     }
 }

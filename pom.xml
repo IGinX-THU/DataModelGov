@@ -57,6 +57,11 @@
             <artifactId>iginx-session</artifactId>
             <version>${iginx.version}</version>
         </dependency>
+        <dependency>
+            <groupId>cn.edu.tsinghua</groupId>
+            <artifactId>iginx-core</artifactId>
+            <version>${iginx.version}</version>
+        </dependency>
 
         <!-- 工具依赖 -->
         <dependency>
