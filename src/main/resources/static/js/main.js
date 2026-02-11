@@ -407,12 +407,19 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
         }
-        
+
         // 卸载按钮
         if (btnText === '卸载') {
             btn.addEventListener('click', function() {
                 console.log('卸载按钮被点击');
                 handleRemoveDataSource();
+            });
+        }
+
+        if (btnText === '管理') {
+            btn.addEventListener('click', function() {
+                console.log('卸载按钮被点击');
+                showComponent('dataSourceList');
             });
         }
         
