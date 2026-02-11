@@ -77,11 +77,12 @@ public class DataSourceService {
         return storageEngineInfoDtos;
     }
 
-    public List<Column> showColumns() throws Exception {
+    public List<String> dataSourceTree() throws Exception {
         iginxSession.openSession();
         List<Column> columnList = iginxSession.showColumns();
+        List<String> tree = columnList.stream().map(Column::getPath).sorted().collect(Collectors.toList());
         iginxSession.closeSession();
-        return columnList;
+        return tree;
     }
 
 }

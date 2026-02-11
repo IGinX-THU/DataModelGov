@@ -1241,19 +1241,69 @@ function showVisualAnalysis() {
     // 动态加载数据源树
     async function loadDataSourceTree() {
         try {
-            const response = await fetch(window.AppConfig.getApiUrl('datasource', 'list'));
+            const response = await fetch(window.AppConfig.getApiUrl('datasource', 'tree'));
             const result = await response.json();
             
             if (result.code === 200 && result.data) {
                 renderDataSourceTree(result.data);
             } else {
-                console.error('加载数据源列表失败:', result.message);
+                console.error('加载数据源树失败:', result.message);
                 document.getElementById('dataSourceTree').innerHTML = '<div class="error-placeholder">加载数据源失败</div>';
             }
         } catch (error) {
-            console.error('加载数据源列表异常:', error);
+            console.error('加载数据源树异常:', error);
             document.getElementById('dataSourceTree').innerHTML = '<div class="error-placeholder">网络错误，无法加载数据源</div>';
         }
+    }
+    
+    // 将字符串数组转换为树结构
+    function buildTreeFromStringArray(stringArray) {
+        const tree = {};
+        
+        stringArray.forEach(path => {
+            const parts = path.split('.');
+            let current = tree;
+            
+            parts.forEach((part, index) => {
+                if (!current[part]) {
+                    current[part] = {
+                        name: part,
+                        children: {},
+                        fullPath: parts.slice(0, index + 1).join('.'),
+                        isLeaf: index === parts.length - 1
+                    };
+                }
+                current = current[part].children;
+            });
+        });
+        
+        return tree;
+    }
+    
+    // 渲染树节点HTML
+    function renderTreeNodes(treeData, level = 0) {
+        let html = '';
+        
+        Object.values(treeData).forEach(node => {
+            const hasChildren = Object.keys(node.children).length > 0;
+            const expandedClass = level < 2 ? 'expanded' : '';
+            const nodeClass = `tree-node ${expandedClass}`;
+            
+            html += `
+                <div class="${nodeClass}" data-full-path="${node.fullPath}" data-is-leaf="${node.isLeaf}">
+                    <span>${node.name}</span>
+            `;
+            
+            if (hasChildren) {
+                html += '<div class="tree-children">';
+                html += renderTreeNodes(node.children, level + 1);
+                html += '</div>';
+            }
+            
+            html += '</div>';
+        });
+        
+        return html;
     }
     
     // 渲染数据源树
@@ -1264,92 +1314,11 @@ function showVisualAnalysis() {
             return;
         }
         
-        let treeHTML = '';
-        dataSources.forEach(dataSource => {
-            const iconClass = getStorageEngineIcon(dataSource.type);
-            const displayName = `${dataSource.ip}:${dataSource.port}`;
-            
-            console.log('🔍 渲染数据源:', {
-                id: dataSource.id,
-                ip: dataSource.ip,
-                port: dataSource.port,
-                type: dataSource.type,
-                iconClass: iconClass,
-                displayName: displayName
-            });
-            
-            // 根据数据源类型决定是否包含子结构
-            if (dataSource.type === 4) { // 关系型数据库 - 包含表结构
-                treeHTML += `
-                    <div class="tree-node expanded" data-id="${dataSource.id}" data-ip="${dataSource.ip}" data-port="${dataSource.port}" data-type="${dataSource.type}">
-                        <span style="margin-right: 6px;">${iconClass}</span>
-                        <span>${displayName}</span>
-                        <div class="tree-children">
-                            <div class="tree-node">
-                                <span>table1</span>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            } else if (dataSource.type === 1) { // IoTDB - 包含文件夹结构
-                treeHTML += `
-                    <div class="tree-node expanded" data-id="${dataSource.id}" data-ip="${dataSource.ip}" data-port="${dataSource.port}" data-type="${dataSource.type}">
-                        <span style="margin-right: 6px;">${iconClass}</span>
-                        <span>${displayName}</span>
-                        <div class="tree-children">
-                            <div class="tree-node expanded">
-                                <span>root</span>
-                                <div class="tree-children">
-                                    <div class="tree-node expanded">
-                                        <span>car</span>
-                                        <div class="tree-children">
-                                            <div class="tree-node">
-                                                <span>s1</span>
-                                            </div>
-                                            <div class="tree-node">
-                                                <span>g1</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            } else if (dataSource.type === 2) { // InfluxDB - 包含层级结构
-                treeHTML += `
-                    <div class="tree-node expanded" data-id="${dataSource.id}" data-ip="${dataSource.ip}" data-port="${dataSource.port}" data-type="${dataSource.type}">
-                        <span style="margin-right: 6px;">${iconClass}</span>
-                        <span>${displayName}</span>
-                        <div class="tree-children">
-                            <div class="tree-node expanded">
-                                <span>root</span>
-                                <div class="tree-children">
-                                    <div class="tree-node expanded">
-                                        <span>car</span>
-                                        <div class="tree-children">
-                                            <div class="tree-node">
-                                                <span>s1</span>
-                                            </div>
-                                            <div class="tree-node">
-                                                <span>g1</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            } else { // 其他类型 - 无子结构
-                treeHTML += `
-                    <div class="tree-node" data-id="${dataSource.id}" data-ip="${dataSource.ip}" data-port="${dataSource.port}" data-type="${dataSource.type}">
-                        <span style="margin-right: 6px;">${iconClass}</span>
-                        <span>${displayName}</span>
-                    </div>
-                `;
-            }
-        });
+        // 将字符串数组转换为树结构
+        const treeData = buildTreeFromStringArray(dataSources);
+        
+        // 渲染树HTML
+        const treeHTML = renderTreeNodes(treeData);
         
         treeContainer.innerHTML = treeHTML;
         
@@ -1394,44 +1363,22 @@ function showVisualAnalysis() {
                     // 设置当前选中
                     this.classList.add('active');
                     
-                    // 更新选中的数据源（仅限左侧数据资源库）
-                    const nodeText = this.querySelector('span')?.textContent?.trim();
-                    const nodeIcon = this.querySelector('i');
-                    if (nodeText) {
-                        selectedDataSource = nodeText;
-                        console.log('选中的数据源:', selectedDataSource);
+                    // 获取节点的完整路径
+                    const fullPath = this.getAttribute('data-full-path');
+                    const isLeaf = this.getAttribute('data-is-leaf') === 'true';
+                    if (fullPath && isLeaf) {
+                        console.log('点击了叶子节点:', fullPath);
+                        selectedDataSource = fullPath;
                         
-                        // 检查是否为最后一级节点（没有子节点）
-                        const hasChildren = this.querySelector('.tree-children');
+                        // 使用 dataSource.type === 1 的逻辑跳转到 data-visualization 页面
+                        showDataVisualization(fullPath);
                         
-                        // 检查是否属于文件夹/数据库图标类数据源
-                        let isFromFolderDataSource = false;
-                        let isFromDatabaseSource = false;
-                        
-                        if (nodeIcon) {
-                            isFromFolderDataSource = nodeIcon.classList.contains('folder-icon');
-                            isFromDatabaseSource = nodeIcon.classList.contains('db-icon');
-                        }
-                        
+                                                                        
+                                                
                         // 如果是最后一级节点且不是文件夹/数据库图标类数据源，则显示“选择数据源”按钮
-                        if (!hasChildren && !isFromFolderDataSource && !isFromDatabaseSource) {
-                            console.log('点击了数据源节点，显示数据源选择');
-                            // 这里可以添加数据源选择相关的逻辑
-                            // 暂时显示数据可视化
-                            showDataVisualization(selectedDataSource);
-                        }
+                                                
                         
-                        // 只有点击文件夹图标类数据源的最后一级节点才显示可视化
-                        if (!hasChildren && isFromFolderDataSource) {
-                            console.log('点击了文件夹图标类数据源的最后一级节点，显示数据可视化');
-                            showDataVisualization(selectedDataSource);
-                        }
-
-                        if (!hasChildren && isFromDatabaseSource) {
-                            console.log('点击了数据库图标类数据源的最后一级节点，显示数据库表格');
-                            showDatabaseTable(selectedDataSource);
-                        }
-                    }
+                                            }
                     
                     // 展开收起（如果有子节点）
                     if (this.querySelector('.tree-children')) {

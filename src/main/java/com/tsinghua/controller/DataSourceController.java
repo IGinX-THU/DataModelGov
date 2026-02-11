@@ -51,4 +51,14 @@ public class DataSourceController {
     public Result<List<StorageEngineInfoDto>> list() throws Exception {
         return Result.success(dataSourceService.dataSourceList());
     }
+
+    /**
+     * 数据资源树
+     */
+    @ApiOperation("数据资源树")
+    @GetMapping("/tree")
+    public Result<List<String>> tree() throws Exception {
+        return Result.success(dataSourceService.dataSourceTree());
+    }
+
 }

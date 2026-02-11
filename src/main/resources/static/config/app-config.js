@@ -26,7 +26,8 @@ window.AppConfig = {
             register: '/api/datasource/register',
             list: '/api/datasource/list',
             remove: '/api/datasource/remove',
-            test: '/api/datasource/test'
+            test: '/api/datasource/test',
+            tree: '/api/datasource/tree'
         },
         // 其他模块可以继续添加
         user: {
