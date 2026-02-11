@@ -1,0 +1,76 @@
+<div class="register-container">
+    <div class="register-header">
+        <h3 class="register-title">注册异构数据源</h3>
+        <button class="close-btn" id="closeBtn">&times;</button>
+    </div>
+    
+    <div class="register-body">
+        <form id="registerForm">
+            <div class="form-group">
+                <label class="form-label required">数据源名称</label>
+                <input type="text" class="form-control" id="dataSourceName" placeholder="请输入数据源名称" required>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label required">数据源类型</label>
+                <select class="form-control form-select" id="dataSourceType" required>
+                    <option value="">请选择数据源类型</option>
+                    <option value="0">unknown(0)</option>
+                    <option value="1">iotdb12(1)</option>
+                    <option value="2">influxdb(2)</option>
+                    <option value="3">filesystem(3)</option>
+                    <option value="4">relational(4)</option>
+                    <option value="5">mongodb(5)</option>
+                    <option value="6">redis(6)</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">描述</label>
+                <textarea class="form-control" id="description" rows="3" placeholder="请输入数据源描述"></textarea>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label required">主机地址</label>
+                <input type="text" class="form-control" id="host" placeholder="请输入主机地址" required>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label required">端口</label>
+                <input type="number" class="form-control" id="port" placeholder="请输入端口号" required>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">用户名</label>
+                <input type="text" class="form-control" id="username" placeholder="请输入用户名">
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">密码</label>
+                <input type="password" class="form-control" id="password" placeholder="请输入密码">
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">数据库名</label>
+                <input type="text" class="form-control" id="database" placeholder="请输入数据库名">
+            </div>
+            
+            <div id="engineField" class="form-group" style="display: none;">
+                <label class="form-label">数据库引擎</label>
+                <select class="form-control form-select" id="engine">
+                    <option value="">请选择数据库引擎</option>
+                    <option value="MySQL">MySQL</option>
+                    <option value="PostgreSQL">PostgreSQL</option>
+                    <option value="Oracle">Oracle</option>
+                    <option value="SQL Server">SQL Server</option>
+                    <option value="Dameng">Dameng</option>
+                </select>
+            </div>
+        </form>
+    </div>
+    
+    <div class="register-footer">
+        <button type="button" class="btn btn-cancel" id="cancelBtn">取消</button>
+        <button type="button" class="btn btn-primary" id="submitBtn">确认注册</button>
+    </div>
+</div>

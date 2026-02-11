@@ -28,7 +28,7 @@ public class DataSourceRequest {
 
     @NotNull(message = "存储引擎类型不能为空")
     private Integer storageEngineType;
-
+    private String engine;
     private String description;
     private String username;
     private String password;
@@ -46,11 +46,11 @@ public class DataSourceRequest {
         }
         
         // 添加基本参数
-        if (alias != null) extraParams.put("alias", alias);
-        if (description != null) extraParams.put("description", description);
+//        if (alias != null) extraParams.put("alias", alias);
+//        if (description != null) extraParams.put("description", description);
         if (username != null) extraParams.put("username", username);
         if (password != null) extraParams.put("password", password);
-        if (database != null) extraParams.put("database", database);
+        if (engine != null) extraParams.put("engine", engine);
         
         return extraParams;
     }
