@@ -48,11 +48,11 @@ public class IoTDBSessionExample {
   private static final int INTERVAL = 10;
   private static Session session;
 
-  public static void main(String[] args) {
-      iginxClient();
+  public static void main(String[] args) throws SessionException {
+    mainSession();
   }
 
-    public static void iginxClient() {
+    public static void mainClient() {
         // 创建IGinX客户端连接
         IginXClient iginxClient= IginXClientFactory.create("127.0.0.1", 6888, "root", "root");
         cn.edu.tsinghua.iginx.session_v2.domain.ClusterInfo clusterInfo = iginxClient.getClusterClient().getClusterInfo();
@@ -67,30 +67,43 @@ public class IoTDBSessionExample {
     // 打开 Session
     session.openSession();
 
+    System.out.println("列式插入对齐数据");
     // 列式插入对齐数据
     insertColumnRecords();
+    System.out.println("列式插入非对齐数据");
     // 列式插入非对齐数据
     insertNonAlignedColumnRecords();
+    System.out.println("行式插入对齐数据");
     // 行式插入对齐数据
     insertRowRecords();
+    System.out.println("行式插入非对齐数据");
     // 行式插入非对齐数据
     insertNonAlignedRowRecords();
+    System.out.println("查询序列");
     // 查询序列
     showColumns();
+    System.out.println("查询数据");
     // 查询数据
     queryData();
+    System.out.println("聚合查询");
     // 聚合查询
     aggregateQuery();
+    System.out.println("Last 查询");
     // Last 查询
     lastQuery();
+    System.out.println("降采样聚合查询");
     // 降采样聚合查询
     downsampleQuery();
+    System.out.println("曲线匹配");
     // 曲线匹配
     curveMatch();
+    System.out.println("删除数据");
     // 删除数据
     deleteDataInColumns();
+    System.out.println("再次查询数据");
     // 再次查询数据
     queryData();
+    System.out.println("查看集群信息");
     // 查看集群信息
     showClusterInfo();
 
