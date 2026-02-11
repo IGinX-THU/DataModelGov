@@ -31,15 +31,24 @@
 
 /* 操作按钮样式 */
 .action-btn {
-    border: none;
-    background: transparent;
+    border: 1px solid var(--color-danger);
+    background: var(--color-danger);
+    color: white;
     cursor: pointer;
     padding: 4px 8px;
     border-radius: var(--radius-sm);
     transition: all var(--transition-normal);
     font-size: 14px;
+    pointer-events: auto;
+    z-index: 10;
+    position: relative;
 }
 
 .action-btn:hover {
-    background: var(--color-danger-light);
+    background: var(--color-danger-dark);
+    border-color: var(--color-danger-dark);
+}
+
+.action-btn:active {
+    transform: scale(0.95);
 }

@@ -104,12 +104,18 @@ class DataSourceList extends HTMLElement {
 
     renderTable() {
         const tbody = this.querySelector('#tableBody');
+        if (!tbody) return;
+
+        // 清除之前的事件监听器
+        const newTbody = tbody.cloneNode(true);
+        tbody.parentNode.replaceChild(newTbody, tbody);
+
         const start = (this.currentPage - 1) * this.pageSize;
         const end = start + this.pageSize;
         const pageData = this.dataSources.slice(start, end);
 
         if (pageData.length === 0) {
-            tbody.innerHTML = `
+            newTbody.innerHTML = `
                 <tr>
                     <td colspan="7" style="text-align: center; padding: 40px; color: var(--text-secondary);">
                         暂无数据源
@@ -119,7 +125,7 @@ class DataSourceList extends HTMLElement {
             return;
         }
 
-        tbody.innerHTML = pageData.map(dataSource => `
+        newTbody.innerHTML = pageData.map(dataSource => `
             <tr data-id="${dataSource.id}">
                 <td>${dataSource.id}</td>
                 <td>${dataSource.ip || '-'}</td>
@@ -128,10 +134,20 @@ class DataSourceList extends HTMLElement {
                 <td>${dataSource.schemaPrefix || '-'}</td>
                 <td>${dataSource.dataPrefix || '-'}</td>
                 <td>
-                    <button class="action-btn delete" title="移除" onclick="this.closest('data-source-list').removeDataSource(${dataSource.id})">卸载</button>
+                    <button class="action-btn delete" title="移除" data-id="${dataSource.id}">卸载</button>
                 </td>
             </tr>
         `).join('');
+
+        // 添加事件委托
+        newTbody.addEventListener('click', (e) => {
+            console.log('Click event on tbody:', e.target);
+            if (e.target.classList.contains('delete')) {
+                console.log('Delete button clicked, id:', e.target.getAttribute('data-id'));
+                const id = parseInt(e.target.getAttribute('data-id'));
+                this.removeDataSource(id);
+            }
+        });
     }
 
     getTypeText(type) {
@@ -176,6 +192,7 @@ class DataSourceList extends HTMLElement {
 
     showDeleteConfirmDialog(dataSource) {
         const dialogHtml = `
+            <div style="
                 position: fixed;
                 top: 0;
                 left: 0;
@@ -287,53 +304,11 @@ class DataSourceList extends HTMLElement {
 
     showMessage(message, type = 'success') {
         // 使用系统一致的消息提示
-        try {
-            if (typeof showWorkspaceMessage === 'function') {
-                showWorkspaceMessage(message, type);
-            } else if (window.parent && typeof window.parent.showWorkspaceMessage === 'function') {
-                window.parent.showWorkspaceMessage(message, type);
-            } else {
-                // 降级到内联提示
-                console.log(`${type}: ${message}`);
-                const notification = document.createElement('div');
-                notification.style.cssText = `
-                    position: fixed;
-                    top: 20px;
-                    right: 20px;
-                    padding: 12px 20px;
-                    border-radius: 4px;
-                    color: white;
-                    font-size: 14px;
-                    z-index: 10000;
-                    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-                    transition: all 0.3s ease;
-                    max-width: 300px;
-                `;
-                
-                const colors = {
-                    success: '#52c41a',
-                    error: '#ff4d4f',
-                    warning: '#faad14',
-                    info: '#1890ff'
-                };
-                notification.style.backgroundColor = colors[type] || colors.info;
-                notification.textContent = message;
-                
-                document.body.appendChild(notification);
-                
-                setTimeout(() => {
-                    if (notification.parentNode) {
-                        notification.style.opacity = '0';
-                        setTimeout(() => {
-                            if (notification.parentNode) {
-                                document.body.removeChild(notification);
-                            }
-                        }, 300);
-                    }
-                }, 3000);
-            }
-        } catch (error) {
-            console.error('显示消息失败:', error);
+        if (window.CommonUtils && window.CommonUtils.showToast) {
+            window.CommonUtils.showToast(message, type);
+        } else {
+            console.warn('CommonUtils.showToast not available');
+            // 降级到内联提示
             console.log(`${type}: ${message}`);
         }
     }
