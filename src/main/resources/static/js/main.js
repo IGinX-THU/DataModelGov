@@ -168,6 +168,12 @@ document.addEventListener('DOMContentLoaded', function() {
             
             const menuItemText = this.textContent.trim();
             
+            // 检查是否点击了"数据源管理"
+            if (menuItemText === '数据源管理') {
+                console.log('数据源管理菜单被点击');
+                showComponent('dataSourceList');
+            }
+            
             // 检查是否点击了"注册异构数据源"
             if (menuItemText === '注册异构数据源') {
                 console.log('注册异构数据源菜单被点击');
@@ -959,7 +965,8 @@ function hideAllComponents() {
         'associationRules',
         'databaseTable',
         'dataVisualization',
-        'modelDetail'
+        'modelDetail',
+        'dataSourceList'
     ];
     
     components.forEach(componentId => {

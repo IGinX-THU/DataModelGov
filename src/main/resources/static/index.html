@@ -92,6 +92,7 @@
         <span class="tab dropdown" id="dataDropdown">
                 <span class="dropdown-trigger">数据</span>
                 <ul class="dropdown-menu">
+                    <li onclick="console.log('数据源管理被点击')">数据源管理</li>
                     <li>注册异构数据源</li>
                     <li>移除异构数据源</li>
                     <li>导入数据</li>
@@ -262,6 +263,8 @@
             <data-visualization id="dataVisualization"></data-visualization>
             <!-- 数据库表格组件 -->
             <database-table id="databaseTable"></database-table>
+            <!-- 数据源管理组件 -->
+            <data-source-list id="dataSourceList"></data-source-list>
             <!-- 解析规则配置组件 -->
             <parsing-rules id="parsingRules"></parsing-rules>
             <!-- 关联规则配置组件 -->
@@ -317,6 +320,7 @@
 <script src="./js/modal-manager.js"></script>
 <script src="./js/common-utils.js"></script>
 <script src="./components/data-resource/register-embedded.js"></script>
+<script src="./components/data-resource/data-source-list.js"></script>
 <script src="./components/model-upload/model-upload.js"></script>
 <script src="./components/model-download/model-download.js"></script>
 <script src="./components/model-detail/model-detail.js"></script>

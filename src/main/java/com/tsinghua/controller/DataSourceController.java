@@ -35,7 +35,7 @@ public class DataSourceController {
      * 移除异构数据源 (Remove Heterogeneous Data Source)
      */
     @ApiOperation("移除异构数据源")
-    @DeleteMapping("/remove")
+    @PostMapping("/remove")
     public Result remove(@Validated @RequestBody StorageEngineInfoDto removedStorageEngineInfo) {
         boolean success = dataSourceService.removeDataSource(removedStorageEngineInfo);
         return success ? Result.success("数据源移除成功") : Result.error("移除失败，数据源可能被关联规则占用");
