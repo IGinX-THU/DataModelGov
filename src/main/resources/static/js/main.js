@@ -1289,8 +1289,12 @@ function showVisualAnalysis() {
             const expandedClass = level < 2 ? 'expanded' : '';
             const nodeClass = `tree-node ${expandedClass}`;
             
+            // 根据节点类型选择图标
+            const iconClass = node.isLeaf ? '📈' : '📁';
+            
             html += `
                 <div class="${nodeClass}" data-full-path="${node.fullPath}" data-is-leaf="${node.isLeaf}">
+                    <i class="folder-icon">${iconClass}</i>
                     <span>${node.name}</span>
             `;
             
