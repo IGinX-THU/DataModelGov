@@ -1,5 +1,6 @@
 package com.tsinghua.controller;
 
+import com.tsinghua.dto.ColumnDto;
 import com.tsinghua.dto.DataSourceRequest;
 import com.tsinghua.dto.StorageEngineInfoDto;
 import com.tsinghua.service.DataSourceService;
@@ -57,7 +58,7 @@ public class DataSourceController {
      */
     @ApiOperation("数据资源树")
     @GetMapping("/tree")
-    public Result<List<String>> tree() throws Exception {
+    public Result<List<ColumnDto>> tree() throws Exception {
         return Result.success(dataSourceService.dataSourceTree());
     }
 

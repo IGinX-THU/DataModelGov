@@ -8,6 +8,7 @@ import cn.edu.tsinghua.iginx.session_v2.IginXClient;
 import cn.edu.tsinghua.iginx.thrift.RemovedStorageEngineInfo;
 import cn.edu.tsinghua.iginx.thrift.StorageEngineInfo;
 import cn.edu.tsinghua.iginx.thrift.StorageEngineType;
+import com.tsinghua.dto.ColumnDto;
 import com.tsinghua.dto.DataSourceRequest;
 import com.tsinghua.dto.StorageEngineInfoDto;
 import lombok.extern.slf4j.Slf4j;
@@ -77,10 +78,10 @@ public class DataSourceService {
         return storageEngineInfoDtos;
     }
 
-    public List<String> dataSourceTree() throws Exception {
+    public List<ColumnDto> dataSourceTree() throws Exception {
         iginxSession.openSession();
         List<Column> columnList = iginxSession.showColumns();
-        List<String> tree = columnList.stream().map(Column::getPath).sorted().collect(Collectors.toList());
+        List<ColumnDto> tree = columnList.stream().map(column -> new ColumnDto(column.getPath(), column.getDataType().getValue())).collect(Collectors.toList());
         iginxSession.closeSession();
         return tree;
     }

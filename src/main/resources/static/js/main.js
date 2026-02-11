@@ -1256,11 +1256,15 @@ function showVisualAnalysis() {
         }
     }
     
-    // 将字符串数组转换为树结构
-    function buildTreeFromStringArray(stringArray) {
+    // 将字符串数组或对象数组转换为树结构
+    function buildTreeFromStringArray(data) {
         const tree = {};
         
-        stringArray.forEach(path => {
+        // 判断数据格式：如果是对象数组，使用path和dataType字段；如果是字符串数组，使用字符串本身
+        data.forEach(item => {
+            const path = typeof item === 'string' ? item : item.path;
+            const dataType = typeof item === 'string' ? null : item.dataType;
+            
             const parts = path.split('.');
             let current = tree;
             
@@ -1270,7 +1274,8 @@ function showVisualAnalysis() {
                         name: part,
                         children: {},
                         fullPath: parts.slice(0, index + 1).join('.'),
-                        isLeaf: index === parts.length - 1
+                        isLeaf: index === parts.length - 1,
+                        dataType: index === parts.length - 1 ? dataType : null
                     };
                 }
                 current = current[part].children;
@@ -1290,11 +1295,15 @@ function showVisualAnalysis() {
             const nodeClass = `tree-node ${expandedClass}`;
             
             // 根据节点类型选择图标
-            const iconClass = node.isLeaf ? '📈' : '📁';
+            let iconHtml = '';
+            if (hasChildren && level === 0) {
+                // 只有根节点显示文件夹图标
+                iconHtml = `<i class="icon folder-icon"></i>`;
+            }
             
             html += `
-                <div class="${nodeClass}" data-full-path="${node.fullPath}" data-is-leaf="${node.isLeaf}">
-                    <i class="folder-icon">${iconClass}</i>
+                <div class="${nodeClass}" data-full-path="${node.fullPath}" data-is-leaf="${node.isLeaf}" data-type="${node.dataType || ''}">
+                    ${iconHtml}
                     <span>${node.name}</span>
             `;
             
