@@ -1110,6 +1110,8 @@ function showVisualAnalysis() {
 
         // 获取或创建数据可视化组件
         let dataViz = document.getElementById('dataVisualization');
+        let isFirstLoad = false;
+        
         if (!dataViz) {
             // 先清空工作区
             clearWorkspace();
@@ -1120,6 +1122,7 @@ function showVisualAnalysis() {
             if (workspaceContent) {
                 workspaceContent.appendChild(dataViz);
                 console.log('创建了新的数据可视化组件');
+                isFirstLoad = true;
             } else {
                 console.error('找不到workspace-content容器');
                 return;
@@ -1149,8 +1152,8 @@ function showVisualAnalysis() {
         
         // 先显示组件，等待组件完全加载后再调用查询接口
         setTimeout(() => {
-            console.log('调用dataViz.show()');
-            dataViz.show(dataSource, Array.from(window.selectedDataPoints));
+            console.log('调用dataViz.show()，是否第一次加载:', isFirstLoad);
+            dataViz.show(dataSource, Array.from(window.selectedDataPoints), null, !isFirstLoad);
             // 不在这里调用queryAndDisplayData，让组件自己处理数据加载
         }, 100); // 等待100ms确保组件已添加到DOM
     }
