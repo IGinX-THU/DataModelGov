@@ -1296,9 +1296,21 @@ function showVisualAnalysis() {
             
             // 根据节点类型选择图标
             let iconHtml = '';
-            if (hasChildren && level === 0) {
-                // 只有根节点显示文件夹图标
+            if (hasChildren) {
+                // 有子节点：显示文件夹图标
                 iconHtml = `<i class="icon folder-icon"></i>`;
+            } else {
+                // 没有子节点的叶子节点：根据数据类型显示图标
+                const dataTypeIcons = {
+                    0: '🔘',      // BOOLEAN(0) - 开关
+                    1: '📈',      // INTEGER(1) - 曲线图
+                    2: '📈',      // LONG(2) - 曲线图
+                    3: '📈',      // FLOAT(3) - 曲线图
+                    4: '📈',      // DOUBLE(4) - 曲线图
+                    5: '📦'       // BINARY(5) - 包裹
+                };
+                const icon = dataTypeIcons[node.dataType] || '📈';
+                iconHtml = `<i class="folder-icon">${icon}</i>`;
             }
             
             html += `
