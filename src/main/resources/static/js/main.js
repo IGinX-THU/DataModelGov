@@ -1165,9 +1165,23 @@ function showVisualAnalysis() {
             console.log('  - keepQueryConditions:', keepQueryConditions);
             console.log('  - dataSource:', dataSource);
             console.log('  - selectedPoints:', Array.from(window.selectedDataPoints));
-            dataViz.show(dataSource, Array.from(window.selectedDataPoints), null, keepQueryConditions);
+            
+            // 检查组件是否已完全加载
+            if (typeof dataViz.show === 'function') {
+                dataViz.show(dataSource, Array.from(window.selectedDataPoints), null, keepQueryConditions);
+            } else {
+                console.error('dataViz.show 方法不存在，组件可能未完全加载');
+                // 等待更长时间后重试
+                setTimeout(() => {
+                    if (typeof dataViz.show === 'function') {
+                        dataViz.show(dataSource, Array.from(window.selectedDataPoints), null, keepQueryConditions);
+                    } else {
+                        console.error('重试后仍然无法找到 dataViz.show 方法');
+                    }
+                }, 500);
+            }
             // 不在这里调用queryAndDisplayData，让组件自己处理数据加载
-        }, 100); // 等待100ms确保组件已添加到DOM
+        }, 200); // 增加等待时间到200ms
     }
 
     // 查询并显示数据
