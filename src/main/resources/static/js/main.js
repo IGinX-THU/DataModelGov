@@ -1123,12 +1123,19 @@ function showVisualAnalysis() {
                 workspaceContent.appendChild(dataViz);
                 console.log('创建了新的数据可视化组件');
                 isFirstLoad = true;
+                console.log('🚀 第一次加载，isFirstLoad设置为:', isFirstLoad);
             } else {
                 console.error('找不到workspace-content容器');
                 return;
             }
         } else {
             console.log('使用现有的数据可视化组件');
+            // 检查是否是清空工作区后的第一次操作（没有选中的测点）
+            if (window.selectedDataPoints.size === 0) {
+                console.log('🎯 检测到清空工作区后的第一次操作，设置为首次加载');
+                isFirstLoad = true;
+            }
+            console.log('🔄 后续切换，isFirstLoad保持为:', isFirstLoad);
         }
         
         // 只有真正的测点才添加到已选测点列表
@@ -1152,8 +1159,13 @@ function showVisualAnalysis() {
         
         // 先显示组件，等待组件完全加载后再调用查询接口
         setTimeout(() => {
-            console.log('调用dataViz.show()，是否第一次加载:', isFirstLoad);
-            dataViz.show(dataSource, Array.from(window.selectedDataPoints), null, !isFirstLoad);
+            const keepQueryConditions = !isFirstLoad;
+            console.log('调用dataViz.show()，参数详情:');
+            console.log('  - isFirstLoad:', isFirstLoad);
+            console.log('  - keepQueryConditions:', keepQueryConditions);
+            console.log('  - dataSource:', dataSource);
+            console.log('  - selectedPoints:', Array.from(window.selectedDataPoints));
+            dataViz.show(dataSource, Array.from(window.selectedDataPoints), null, keepQueryConditions);
             // 不在这里调用queryAndDisplayData，让组件自己处理数据加载
         }, 100); // 等待100ms确保组件已添加到DOM
     }
