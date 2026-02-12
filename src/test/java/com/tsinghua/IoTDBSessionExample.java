@@ -23,13 +23,15 @@ import cn.edu.tsinghua.iginx.exception.SessionException;
 import cn.edu.tsinghua.iginx.session.*;
 import cn.edu.tsinghua.iginx.session_v2.IginXClient;
 import cn.edu.tsinghua.iginx.session_v2.IginXClientFactory;
+import cn.edu.tsinghua.iginx.session_v2.QueryClient;
+import cn.edu.tsinghua.iginx.session_v2.query.*;
 import cn.edu.tsinghua.iginx.thrift.AggregateType;
 import cn.edu.tsinghua.iginx.thrift.DataType;
 import cn.edu.tsinghua.iginx.thrift.TimePrecision;
 import org.apache.commons.lang3.RandomStringUtils;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
+import java.util.stream.Collectors;
 
 public class IoTDBSessionExample {
 
@@ -49,7 +51,7 @@ public class IoTDBSessionExample {
   private static Session session;
 
   public static void main(String[] args) throws SessionException {
-    mainSession();
+    mainClient();
   }
 
     public static void mainClient() {
@@ -60,6 +62,52 @@ public class IoTDBSessionExample {
         System.out.println(clusterInfo.getStorageEngineInfos());
         System.out.println(clusterInfo.getMetaStorageInfos());
         System.out.println(clusterInfo.getLocalMetaStorageInfo());
+
+      Set<String> paths = new HashSet<>();
+      paths.add(S1);
+      paths.add(S2);
+
+      long startKey = COLUMN_END_KEY - 100L;
+      long endKey = NON_ALIGNED_ROW_START_KEY + 100L;
+
+      startKey = 0L;
+      endKey = Long.MAX_VALUE;
+
+      QueryClient queryClient = iginxClient.getQueryClient();
+      IginXTable table = queryClient.query( // 查询 a.a.a 序列最近一秒内的数据
+              SimpleQuery.builder()
+                      .addMeasurements(paths)
+                      .startKey(startKey)
+                      .endKey(endKey)
+                      .build()
+      );
+//      AggregateQuery aggregateQuery = AggregateQuery.builder()
+//              .addMeasurements(paths.stream().collect(Collectors.toSet()))
+//              .startKey(startKey)
+//              .endKey(endKey)
+//              .aggregate(AggregateType.MAX)
+//              .build();
+//      IginXTable table = queryClient.query(aggregateQuery);
+      IginXHeader header = table.getHeader();
+      if (header.hasTimestamp()) {
+        System.out.print("Time\t");
+      }
+      for (IginXColumn column: header.getColumns()) {
+        System.out.print(column.getName() + "\t");
+      }
+      System.out.println();
+      List<IginXRecord> records = table.getRecords();
+      for (IginXRecord record: records) {
+        if (header.hasTimestamp()) {
+          System.out.print(record.getKey() + "\t");
+        }
+        for (IginXColumn column: header.getColumns()) {
+          System.out.print(record.getValue(column.getName()));
+          System.out.print("\t");
+        }
+        System.out.println();
+      }
+
     }
 
   public static void mainSession() throws SessionException {
@@ -69,16 +117,16 @@ public class IoTDBSessionExample {
 
     System.out.println("列式插入对齐数据");
     // 列式插入对齐数据
-    insertColumnRecords();
+//    insertColumnRecords();
     System.out.println("列式插入非对齐数据");
     // 列式插入非对齐数据
-    insertNonAlignedColumnRecords();
+//    insertNonAlignedColumnRecords();
     System.out.println("行式插入对齐数据");
     // 行式插入对齐数据
-    insertRowRecords();
+//    insertRowRecords();
     System.out.println("行式插入非对齐数据");
     // 行式插入非对齐数据
-    insertNonAlignedRowRecords();
+//    insertNonAlignedRowRecords();
     System.out.println("查询序列");
     // 查询序列
     showColumns();

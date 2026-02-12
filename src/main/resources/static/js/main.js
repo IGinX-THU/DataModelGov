@@ -1097,8 +1097,44 @@ function showVisualAnalysis() {
             dataViz.selectedPoints = new Set(window.selectedDataPoints);
         }
         
-        // 显示数据可视化
-        dataViz.show(dataSource, Array.from(window.selectedDataPoints));
+        // 调用数据查询接口并传递给组件
+        queryAndDisplayData(dataSource, Array.from(window.selectedDataPoints), dataViz);
+    }
+
+    // 查询并显示数据
+    async function queryAndDisplayData(currentPath, selectedPoints, dataViz) {
+        try {
+            console.log('开始查询数据，当前路径:', currentPath, '选中测点:', selectedPoints);
+            
+            // 调用新的数据查询接口
+            const response = await fetch(window.AppConfig.getApiUrl('data', 'query'), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    paths: selectedPoints,
+                    startTime: null, // 可以根据需要设置时间范围
+                    endTime: null,
+                    aggregateType: null // 可以根据需要设置聚合类型
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (result.code === 200 && result.data) {
+                console.log('数据查询成功:', result.data);
+                
+                // 显示数据可视化组件，传递查询结果
+                dataViz.show(currentPath, selectedPoints, result.data);
+            } else {
+                console.error('数据查询失败:', result.message);
+                dataViz.showError('数据查询失败: ' + (result.message || '未知错误'));
+            }
+        } catch (error) {
+            console.error('查询数据异常:', error);
+            dataViz.showError('网络错误，无法查询数据');
+        }
     }
 
 // 通用显示组件函数

@@ -29,6 +29,10 @@ window.AppConfig = {
             test: '/api/datasource/test',
             tree: '/api/datasource/tree'
         },
+        // 数据查询相关
+        data: {
+            query: '/api/data/query'
+        },
         // 其他模块可以继续添加
         user: {
             login: '/api/auth/login',

@@ -26,6 +26,15 @@ public class DataSourceRequest {
     @Max(value = 65535, message = "端口号不能超过65535")
     private Integer port;
 
+    /**
+     *     unknown(0),
+     *     iotdb12(1),
+     *     influxdb(2),
+     *     filesystem(3),
+     *     relational(4),
+     *     mongodb(5),
+     *     redis(6);
+     */
     @NotNull(message = "存储引擎类型不能为空")
     private Integer storageEngineType;
     private String engine;

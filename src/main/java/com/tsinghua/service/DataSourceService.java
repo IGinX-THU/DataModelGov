@@ -1,10 +1,8 @@
 package com.tsinghua.service;
 
-import cn.edu.tsinghua.iginx.exception.SessionException;
 import cn.edu.tsinghua.iginx.session.ClusterInfo;
 import cn.edu.tsinghua.iginx.session.Column;
 import cn.edu.tsinghua.iginx.session.Session;
-import cn.edu.tsinghua.iginx.session_v2.IginXClient;
 import cn.edu.tsinghua.iginx.thrift.RemovedStorageEngineInfo;
 import cn.edu.tsinghua.iginx.thrift.StorageEngineInfo;
 import cn.edu.tsinghua.iginx.thrift.StorageEngineType;
@@ -26,9 +24,6 @@ import java.util.stream.Collectors;
 @Slf4j
 @Service
 public class DataSourceService {
-
-    @Autowired
-    private IginXClient iginxClient;
 
     @Autowired
     private Session iginxSession;

@@ -14,6 +14,15 @@ public class StorageEngineInfoDto {
     @Nullable
     private String ip;
     private int port;
+    /**
+     *     unknown(0),
+     *     iotdb12(1),
+     *     influxdb(2),
+     *     filesystem(3),
+     *     relational(4),
+     *     mongodb(5),
+     *     redis(6);
+     */
     @Nullable
     private int type;
     @Nullable
