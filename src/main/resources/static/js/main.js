@@ -2,6 +2,56 @@ document.addEventListener('DOMContentLoaded', function() {
     // 全局变量：跟踪当前选中的数据源
     let selectedDataSource = null;
     
+    // 全局Loading功能
+    window.showGlobalLoading = function(message = '正在加载...') {
+        console.log('显示全局loading:', message);
+        
+        // 获取工作区容器
+        const workspaceContent = document.querySelector('.workspace-content');
+        if (!workspaceContent) {
+            console.error('找不到workspace-content容器');
+            return;
+        }
+        
+        // 确保工作区容器有相对定位
+        if (getComputedStyle(workspaceContent).position === 'static') {
+            workspaceContent.style.position = 'relative';
+        }
+        
+        // 检查是否已存在loading元素
+        let loadingEl = workspaceContent.querySelector('.global-loading-overlay');
+        if (!loadingEl) {
+            loadingEl = document.createElement('div');
+            loadingEl.className = 'global-loading-overlay';
+            loadingEl.innerHTML = `
+                <div class="global-loading-spinner">
+                    <div class="global-spinner"></div>
+                    <div class="global-loading-text">${message}</div>
+                </div>
+            `;
+            workspaceContent.appendChild(loadingEl);
+        } else {
+            // 更新loading文字
+            const textEl = loadingEl.querySelector('.global-loading-text');
+            if (textEl) {
+                textEl.textContent = message;
+            }
+        }
+    };
+    
+    window.hideGlobalLoading = function() {
+        console.log('隐藏全局loading');
+        
+        // 从工作区容器中移除loading元素
+        const workspaceContent = document.querySelector('.workspace-content');
+        if (workspaceContent) {
+            const loadingEl = workspaceContent.querySelector('.global-loading-overlay');
+            if (loadingEl) {
+                loadingEl.remove();
+            }
+        }
+    };
+    
     // 0. 动态加载数据源树
     loadDataSourceTree();
     
@@ -1097,8 +1147,12 @@ function showVisualAnalysis() {
             dataViz.selectedPoints = new Set(window.selectedDataPoints);
         }
         
-        // 调用数据查询接口并传递给组件
-        queryAndDisplayData(dataSource, Array.from(window.selectedDataPoints), dataViz);
+        // 先显示组件，等待组件完全加载后再调用查询接口
+        setTimeout(() => {
+            console.log('调用dataViz.show()');
+            dataViz.show(dataSource, Array.from(window.selectedDataPoints));
+            // 不在这里调用queryAndDisplayData，让组件自己处理数据加载
+        }, 100); // 等待100ms确保组件已添加到DOM
     }
 
     // 查询并显示数据
@@ -1106,18 +1160,96 @@ function showVisualAnalysis() {
         try {
             console.log('开始查询数据，当前路径:', currentPath, '选中测点:', selectedPoints);
             
-            // 调用新的数据查询接口
+            // 显示全局loading
+            window.showGlobalLoading('正在查询数据...');
+            
+            // 从data-visualization组件中获取筛选参数
+            let startTime = null;
+            let endTime = null;
+            let aggregateType = null;
+            let precision = null;
+            let timePrecision = 7; // 默认毫秒
+            
+            const startTimeInput = dataViz.shadowRoot.getElementById('startTime');
+            const endTimeInput = dataViz.shadowRoot.getElementById('endTime');
+            const aggregationSelect = dataViz.shadowRoot.getElementById('aggregationFunction');
+            const precisionInput = dataViz.shadowRoot.getElementById('precision');
+            const timePrecisionSelect = dataViz.shadowRoot.getElementById('timePrecision');
+            
+            // 处理时间参数
+            if (startTimeInput && startTimeInput.value) {
+                startTime = new Date(startTimeInput.value).getTime();
+            }
+            if (endTimeInput && endTimeInput.value) {
+                endTime = new Date(endTimeInput.value).getTime();
+            }
+            
+            // 如果没有设置时间，但有快速选择的时间，使用快速选择的时间
+            if (startTime === null && endTime === null) {
+                const activeQuickBtn = dataViz.shadowRoot.querySelector('.quick-time-btn.active');
+                if (activeQuickBtn) {
+                    const range = activeQuickBtn.dataset.range;
+                    const endTimeDate = new Date();
+                    const startTimeDate = new Date();
+                    
+                    switch (range) {
+                        case '1h':
+                            startTimeDate.setHours(startTimeDate.getHours() - 1);
+                            break;
+                        case '6h':
+                            startTimeDate.setHours(startTimeDate.getHours() - 6);
+                            break;
+                        case '24h':
+                            startTimeDate.setHours(startTimeDate.getHours() - 24);
+                            break;
+                        case '7d':
+                            startTimeDate.setDate(startTimeDate.getDate() - 7);
+                            break;
+                    }
+                    
+                    startTime = startTimeDate.getTime();
+                    endTime = endTimeDate.getTime();
+                }
+            }
+            
+            // 处理聚合函数参数
+            if (aggregationSelect && aggregationSelect.value) {
+                aggregateType = parseInt(aggregationSelect.value);
+            }
+            
+            // 处理时间间隔参数
+            if (precisionInput && precisionInput.value) {
+                precision = parseInt(precisionInput.value);
+            }
+            
+            // 处理时间单位参数
+            if (timePrecisionSelect && timePrecisionSelect.value) {
+                timePrecision = parseInt(timePrecisionSelect.value);
+            }
+            
+            // 构建请求体
+            const requestBody = {
+                paths: selectedPoints,
+                startTime: startTime,
+                endTime: endTime,
+                aggregateType: aggregateType,
+                timePrecision: timePrecision
+            };
+            
+            // 只有当precision不为null时才添加precision参数
+            if (precision !== null) {
+                requestBody.precision = precision;
+            }
+            
+            console.log('从筛选框获取的查询参数:', requestBody);
+            
+            // 调用数据查询接口
             const response = await fetch(window.AppConfig.getApiUrl('data', 'query'), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({
-                    paths: selectedPoints,
-                    startTime: null, // 可以根据需要设置时间范围
-                    endTime: null,
-                    aggregateType: null // 可以根据需要设置聚合类型
-                })
+                body: JSON.stringify(requestBody)
             });
             
             const result = await response.json();
@@ -1127,13 +1259,21 @@ function showVisualAnalysis() {
                 
                 // 显示数据可视化组件，传递查询结果
                 dataViz.show(currentPath, selectedPoints, result.data);
+            } else if (result.code === 200 && (!result.data || !result.data.records || result.data.records.length === 0)) {
+                // 接口成功但没有数据
+                console.log('查询成功但没有数据');
+                dataViz.show(currentPath, selectedPoints, null);
             } else {
+                // 接口返回错误
                 console.error('数据查询失败:', result.message);
                 dataViz.showError('数据查询失败: ' + (result.message || '未知错误'));
             }
         } catch (error) {
-            console.error('查询数据异常:', error);
+            console.error('查询数据时发生错误:', error);
             dataViz.showError('网络错误，无法查询数据');
+        } finally {
+            // 隐藏全局loading
+            window.hideGlobalLoading();
         }
     }
 
@@ -1277,6 +1417,9 @@ function showVisualAnalysis() {
     // 动态加载数据源树
     async function loadDataSourceTree() {
         try {
+            // 显示全局loading
+            window.showGlobalLoading('正在加载数据源...');
+            
             const response = await fetch(window.AppConfig.getApiUrl('datasource', 'tree'));
             const result = await response.json();
             
@@ -1289,6 +1432,9 @@ function showVisualAnalysis() {
         } catch (error) {
             console.error('加载数据源树异常:', error);
             document.getElementById('dataSourceTree').innerHTML = '<div class="error-placeholder">网络错误，无法加载数据源</div>';
+        } finally {
+            // 隐藏全局loading
+            window.hideGlobalLoading();
         }
     }
     

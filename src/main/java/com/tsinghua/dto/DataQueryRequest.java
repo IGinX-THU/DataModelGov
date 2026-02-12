@@ -27,4 +27,20 @@ public class DataQueryRequest {
      */
     @ApiModelProperty(value = "聚合函数")
     private Integer aggregateType;
+    @ApiModelProperty(value = "时间间隔")
+    private long precision;
+    /**
+     *     YEAR(0),
+     *     MONTH(1),
+     *     WEEK(2),
+     *     DAY(3),
+     *     HOUR(4),
+     *     MIN(5),
+     *     S(6),
+     *     MS(7),
+     *     US(8),
+     *     NS(9);
+     */
+    @ApiModelProperty(value = "时间单位")
+    private Integer timePrecision;
 }

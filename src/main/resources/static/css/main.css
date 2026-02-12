@@ -551,3 +551,58 @@
     color: #ba68c8;
 }
 
+/* 全局Loading效果 */
+.global-loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+}
+
+.dark-mode .global-loading-overlay {
+    background: rgba(0, 0, 0, 0.8);
+}
+
+.global-loading-spinner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.global-spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #3370ff;
+    border-radius: 50%;
+    animation: globalSpin 1s linear infinite;
+    margin-bottom: 16px;
+}
+
+.dark-mode .global-spinner {
+    border: 4px solid #444;
+    border-top: 4px solid #3370ff;
+}
+
+@keyframes globalSpin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.global-loading-text {
+    font-size: 16px;
+    color: #666;
+    font-weight: 500;
+}
+
+.dark-mode .global-loading-text {
+    color: #ccc;
+}
+

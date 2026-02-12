@@ -27,6 +27,18 @@
                 <div class="query-controls">
                     <div class="query-row">
                         <div class="query-item">
+                            <label class="query-label">快速选择</label>
+                            <div class="quick-time-buttons">
+                                <button class="quick-time-btn" data-range="1h">最近1小时</button>
+                                <button class="quick-time-btn" data-range="6h">最近6小时</button>
+                                <button class="quick-time-btn" data-range="24h">最近24小时</button>
+                                <button class="quick-time-btn" data-range="7d">最近7天</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="query-row">
+                        <div class="query-item">
                             <label class="query-label">开始时间</label>
                             <input type="datetime-local" class="query-input" id="startTime">
                         </div>
@@ -49,19 +61,27 @@
                                 <option value="8">最后一个</option>
                             </select>
                         </div>
-                    </div>
-                    
-                    <div class="query-row">
                         <div class="query-item">
-                            <label class="query-label">快速选择</label>
-                            <div class="quick-time-buttons">
-                                <button class="quick-time-btn" data-range="1h">最近1小时</button>
-                                <button class="quick-time-btn" data-range="6h">最近6小时</button>
-                                <button class="quick-time-btn" data-range="24h">最近24小时</button>
-                                <button class="quick-time-btn" data-range="7d">最近7天</button>
-                            </div>
+                            <label class="query-label">时间间隔</label>
+                            <input type="number" class="query-input" id="precision" min="1" placeholder="间隔数值">
+                        </div>
+                        <div class="query-item">
+                            <label class="query-label">时间单位</label>
+                            <select class="query-select" id="timePrecision">
+                                <option value="0">年</option>
+                                <option value="1">月</option>
+                                <option value="2">周</option>
+                                <option value="3">日</option>
+                                <option value="4">小时</option>
+                                <option value="5">分钟</option>
+                                <option value="6">秒</option>
+                                <option value="7" selected>毫秒</option>
+                                <option value="8">微秒</option>
+                                <option value="9">纳秒</option>
+                            </select>
                         </div>
                         <div class="query-actions">
+                            <button class="reset-btn" id="resetBtn">重置</button>
                             <button class="query-btn" id="queryBtn">查询数据</button>
                         </div>
                     </div>

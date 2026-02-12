@@ -6,10 +6,7 @@ import cn.edu.tsinghua.iginx.session.Session;
 import cn.edu.tsinghua.iginx.session_v2.IginXClient;
 import cn.edu.tsinghua.iginx.session_v2.QueryClient;
 import cn.edu.tsinghua.iginx.session_v2.query.*;
-import cn.edu.tsinghua.iginx.thrift.AggregateType;
-import cn.edu.tsinghua.iginx.thrift.RemovedStorageEngineInfo;
-import cn.edu.tsinghua.iginx.thrift.StorageEngineInfo;
-import cn.edu.tsinghua.iginx.thrift.StorageEngineType;
+import cn.edu.tsinghua.iginx.thrift.*;
 import com.tsinghua.dto.*;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -30,51 +27,71 @@ public class DataTableService {
     private IginXClient iginxClient;
 
     public TableDto dataQuery(DataQueryRequest request) {
-        QueryClient queryClient = iginxClient.getQueryClient();
-
-        Set<String> paths = new HashSet<>(request.getPaths());
-        long startKey = Optional.ofNullable(request.getStartTime()).orElse(0L);
-        long endKey = Optional.ofNullable(request.getEndTime()).orElse(Long.MAX_VALUE);
-
-        IginXTable table;
-        if (request.getAggregateType() == null || AggregateType.findByValue(request.getAggregateType()) == null) {
-            table = queryClient.query( // 查询 a.a.a 序列最近一秒内的数据
-                    SimpleQuery.builder()
-                            .addMeasurements(paths)
-                            .startKey(startKey)
-                            .endKey(endKey)
-                            .build()
-            );
-        } else {
-            table = queryClient.query(AggregateQuery.builder()
-                    .addMeasurements(paths)
-                    .startKey(startKey)
-                    .endKey(endKey)
-                    .aggregate(AggregateType.findByValue(request.getAggregateType()))
-                    .build());
-        }
-
         List<String> columns = new ArrayList<>();
-        IginXHeader header = table.getHeader();
-        if (header.hasTimestamp()) {
-            log.info("Time\t");
-            columns.add("Time");
-        }
-        for (IginXColumn column: header.getColumns()) {
-            log.info(column.getName() + "\t");
-            columns.add(column.getName());
-        }
         List<Map<String, Object>> resultSet = new ArrayList<>();
-        List<IginXRecord> records = table.getRecords();
-        for (IginXRecord record: records) {
-            Map<String, Object> recordMap = new LinkedHashMap<>();
-            if (header.hasTimestamp()) {
-//                log.info(record.getKey() + "\t");
-                recordMap.put("Time", record.getKey());
+
+        try {
+            QueryClient queryClient = iginxClient.getQueryClient();
+
+            Set<String> paths = new HashSet<>(request.getPaths());
+            long startKey = Optional.ofNullable(request.getStartTime()).orElse(0L);
+            long endKey = Optional.ofNullable(request.getEndTime()).orElse(Long.MAX_VALUE);
+
+            long precision = request.getPrecision();
+            if (precision <= 0L) {
+                precision = 1000L;
             }
-            recordMap.putAll(record.getValues());
-            resultSet.add(recordMap);
+            TimePrecision timePrecision;
+            if (request.getTimePrecision() == null || TimePrecision.findByValue(request.getTimePrecision()) == null) {
+                timePrecision = TimePrecision.MS;
+            } else {
+                timePrecision = TimePrecision.findByValue(request.getTimePrecision());
+            }
+
+            IginXTable table;
+            if (request.getAggregateType() == null || AggregateType.findByValue(request.getAggregateType()) == null) {
+                table = queryClient.query(
+                        SimpleQuery.builder()
+                                .addMeasurements(paths)
+                                .startKey(startKey)
+                                .endKey(endKey)
+                                .build()
+                );
+            } else {
+                table = queryClient.query(DownsampleQuery.builder()
+                        .addMeasurements(paths)
+                        .startKey(startKey)
+                        .endKey(endKey)
+                        .aggregate(AggregateType.findByValue(request.getAggregateType()))
+                        .precision(precision)
+                        .timePrecision(timePrecision.name())
+                        .build());
+            }
+
+            IginXHeader header = table.getHeader();
+            if (header.hasTimestamp()) {
+                log.info("Time\t");
+                columns.add("Time");
+            }
+            for (IginXColumn column : header.getColumns()) {
+                log.info(column.getName() + "\t");
+                columns.add(column.getName());
+            }
+
+            List<IginXRecord> records = table.getRecords();
+            for (IginXRecord record : records) {
+                Map<String, Object> recordMap = new LinkedHashMap<>();
+                if (header.hasTimestamp()) {
+//                log.info(record.getKey() + "\t");
+                    recordMap.put("Time", record.getKey());
+                }
+                recordMap.putAll(record.getValues());
+                resultSet.add(recordMap);
+            }
+        } catch (Exception e) {
+            log.error("数据查询失败", e);
         }
+
         return new TableDto(columns, resultSet);
     }
 
