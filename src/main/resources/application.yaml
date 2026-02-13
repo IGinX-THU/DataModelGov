@@ -2,6 +2,9 @@ server:
   port: 8080
   servlet:
     context-path: /
+    # 针对 Tomcat 服务器的最大请求大小设置
+  tomcat:
+    max-swallow-size: 2GB
 
 # IGinX连接配置（根据实际部署修改）
 iginx:
@@ -16,8 +19,12 @@ spring:
     name: 数据与模型一体化管理软件
   servlet:
     multipart:
-      max-file-size: 100MB
-      max-request-size: 100MB
+      # 设置单个文件的最大大小，例如 2GB
+      max-file-size: 2GB
+      # 设置整个请求的最大大小（可用于多文件上传），例如 2GB
+      max-request-size: 2GB
+      # 设置阈值，当文件大于 100MB 时，就写入磁盘临时文件
+      file-size-threshold: 100MB
   devtools:
     restart:
       enabled: true
