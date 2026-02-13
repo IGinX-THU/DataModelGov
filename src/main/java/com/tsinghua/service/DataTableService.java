@@ -14,9 +14,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.File;
 import java.io.IOException;
+import java.io.RandomAccessFile;
+import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -27,6 +31,8 @@ import java.util.stream.Collectors;
 @Slf4j
 @Service
 public class DataTableService {
+
+    private static final int CHUNK_SIZE = 1024 * 1024; // 1MB，与源码一致
 
     @Autowired
     private Session iginxSession;
@@ -103,53 +109,65 @@ public class DataTableService {
         return new TableDto(columns, resultSet);
     }
 
-    public Long importData(MultipartFile file, DataImportRequest importConfig) {
+    public Result<Void> importData(MultipartFile file, DataImportRequest importConfig) {
         Path tempFilePath = null;
+
         try {
-            // 保存为临时文件
-            tempFilePath = Files.createTempFile("iginx_import_", ".csv");
-            file.transferTo(tempFilePath.toFile());
-            log.info("CSV文件已暂存至：{}", tempFilePath);
-
-            // 打开会话
             iginxSession.openSession();
+            String uploadedFileName = System.currentTimeMillis() + ".csv";
+            // 1. 保存上传文件到临时位置
+            tempFilePath = Files.createTempFile("iginx_upload_", ".csv");
+            file.transferTo(tempFilePath.toFile());
 
-            // 核心：构建正确的 LOAD DATA 语句（注意末尾的分号）
-            String loadStatement = String.format(
-                    "LOAD DATA FROM INFILE '%s' AS CSV SKIPPING HEADER INTO %s;",
-                    file.getOriginalFilename(),
-                    importConfig.getTargetPath().trim()
-            );
+            // 2. 构建LOAD DATA SQL语句
+            // 注意：此处的路径是一个“约定”或“任务标识”，最终文件通过uploadFileChunk上传
+            String sql = String.format("LOAD DATA FROM INFILE '%s' AS CSV INTO %s;",
+                    uploadedFileName, // 使用一个约定的文件名
+                    importConfig.getTargetPath());
 
-            log.info("执行LOAD语句: {}", loadStatement);
+            // 3. 执行SQL，解析命令并获取服务端准备的状态/路径（如果需要）
+            // 根据源码，此处可能会返回一个服务端期望的路径，但uploadFileChunk似乎更直接。
+            // 实际流程可能需要先调用一个接口获取上传令牌或路径。这里假设直接上传。
 
-            // 执行导入
-            Pair<List<String>, Long> resp = iginxSession.executeLoadCSV(loadStatement, tempFilePath.toAbsolutePath().toString());
+            // 4. 分块读取临时文件并上传
+            try (RandomAccessFile raf = new RandomAccessFile(tempFilePath.toFile(), "r")) {
+                long offset = 0;
+                byte[] buffer = new byte[CHUNK_SIZE];
+                int bytesRead;
+                while ((bytesRead = raf.read(buffer)) != -1) {
+                    byte[] dataToSend;
+                    if (bytesRead < CHUNK_SIZE) {
+                        dataToSend = new byte[bytesRead];
+                        System.arraycopy(buffer, 0, dataToSend, 0, bytesRead);
+                    } else {
+                        dataToSend = buffer;
+                    }
+                    ByteBuffer data = ByteBuffer.wrap(dataToSend);
+                    FileChunk chunk = new FileChunk(uploadedFileName, offset, data, bytesRead);
+                    iginxSession.uploadFileChunk(chunk); // 关键步骤：上传文件块
+                    offset += bytesRead;
+                }
+            }
 
-            return resp.v;
+            // 5. 所有块上传完成后，执行导入
+            Pair<List<String>, Long> result = iginxSession.executeLoadCSV(sql, uploadedFileName);
+            long recordsNum = result.v;
+            return Result.success(String.format("数据导入成功，导入记录数: %d", recordsNum));
 
-        } catch (IOException e) {
-            log.error("文件处理失败", e);
-            return 0L;
         } catch (Exception e) {
-            log.error("调用IGinX导入数据失败", e);
-            return 0L;
+            log.error("数据导入失败", e);
+            return Result.error("数据导入失败");
         } finally {
-            // 资源清理
-            if (iginxSession != null) {
-                try {
-                    iginxSession.closeSession();
-                } catch (Exception e) {
-                    log.warn("关闭IGinX会话异常", e);
-                }
-            }
-            if (tempFilePath != null) {
-                try {
+            try {
+                // 清理临时文件
+                if (tempFilePath != null) {
                     Files.deleteIfExists(tempFilePath);
-                } catch (IOException e) {
-                    log.error("删除临时文件失败: {}", tempFilePath, e);
                 }
+                iginxSession.closeSession();
+            } catch (Exception e) {
+                log.error("finally Exception", e);
             }
+
         }
     }
 

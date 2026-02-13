@@ -43,16 +43,7 @@ public class DataTableController {
     public Result<Void> importData(// 使用 @RequestPart 接收JSON格式的配置参数
                                    @RequestPart("config") @Valid DataImportRequest config,
                                    @ApiParam(value = "数据文件", required = true) @RequestPart("file") MultipartFile file) {
-        // 基础校验
-        if (file.isEmpty()) {
-            return Result.error("上传的文件不能为空");
-        }
-        String originalFilename = file.getOriginalFilename();
-        if (originalFilename == null || !originalFilename.toLowerCase().endsWith(".csv")) {
-            return Result.error("仅支持CSV格式文件");
-        }
-        Long rows = dataTableService.importData(file, config);
-        return Result.success("成功导入数据条数："+rows);
+        return dataTableService.importData(file, config);
     }
 
 }
