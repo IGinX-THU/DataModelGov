@@ -7,11 +7,16 @@ import cn.edu.tsinghua.iginx.session_v2.IginXClient;
 import cn.edu.tsinghua.iginx.session_v2.QueryClient;
 import cn.edu.tsinghua.iginx.session_v2.query.*;
 import cn.edu.tsinghua.iginx.thrift.*;
+import cn.edu.tsinghua.iginx.utils.Pair;
 import com.tsinghua.dto.*;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -22,6 +27,9 @@ import java.util.stream.Collectors;
 @Slf4j
 @Service
 public class DataTableService {
+
+    @Autowired
+    private Session iginxSession;
 
     @Autowired
     private IginXClient iginxClient;
@@ -93,6 +101,58 @@ public class DataTableService {
         }
 
         return new TableDto(columns, resultSet);
+    }
+
+    public Long importData(MultipartFile file, DataImportRequest importConfig) {
+        Path tempFilePath = null;
+        Session session = null;
+        try {
+            // 保存为临时文件
+            tempFilePath = Files.createTempFile("iginx_import_", ".csv");
+            file.transferTo(tempFilePath.toFile());
+
+            // 获取会话
+            session.openSession();
+
+            String originalFilename = file.getOriginalFilename();
+
+            // **核心：固定生成包含 SKIPPING HEADER 的语句**
+            String loadStatement = String.format(
+                    "LOAD DATA FROM INFILE \"%s\" AS CSV SKIPPING HEADER INTO %s",
+            originalFilename,
+                    importConfig.getTargetPath()
+            );
+
+            log.info("执行LOAD语句: {}", loadStatement);
+
+            // 执行导入
+            Pair<List<String>, Long> resp = session.executeLoadCSV(loadStatement, tempFilePath.toAbsolutePath().toString());
+
+            return resp.v;
+
+        } catch (IOException e) {
+            log.error("文件处理失败", e);
+            return 0L;
+        } catch (Exception e) {
+            log.error("调用IGinX导入数据失败", e);
+            return 0L;
+        } finally {
+            // 资源清理
+            if (session != null) {
+                try {
+                    session.closeSession();
+                } catch (Exception e) {
+                    log.warn("关闭IGinX会话异常", e);
+                }
+            }
+            if (tempFilePath != null) {
+                try {
+                    Files.deleteIfExists(tempFilePath);
+                } catch (IOException e) {
+                    log.error("删除临时文件失败: {}", tempFilePath, e);
+                }
+            }
+        }
     }
 
 }

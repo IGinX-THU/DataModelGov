@@ -14,8 +14,10 @@ iginx:
 spring:
   application:
     name: 数据与模型一体化管理软件
-#  resources:
-#    static-locations: classpath:/static/  # 前端静态资源映射
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 100MB
   devtools:
     restart:
       enabled: true
