@@ -24,6 +24,7 @@ public class DataQueryRequest {
      *     FIRST_VALUE(5),
      *     LAST_VALUE(6),
      *     FIRST(7),
+     *     LAST(8);
      */
     @ApiModelProperty(value = "聚合函数")
     private Integer aggregateType;
@@ -41,6 +42,6 @@ public class DataQueryRequest {
      *     US(8),
      *     NS(9);
      */
-    @ApiModelProperty(value = "时间单位")
+    @ApiModelProperty(value = "")
     private Integer timePrecision;
 }

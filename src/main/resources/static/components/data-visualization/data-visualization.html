@@ -50,15 +50,15 @@
                             <label class="query-label">聚合函数</label>
                             <select class="query-select" id="aggregationFunction">
                                 <option value="">原始数据</option>
-                                <option value="0">最大值</option>
-                                <option value="1">最小值</option>
-                                <option value="2">求和</option>
-                                <option value="3">计数</option>
-                                <option value="4">平均值</option>
-                                <option value="5">首值</option>
-                                <option value="6">末值</option>
-                                <option value="7">第一个</option>
-                                <option value="8">最后一个</option>
+                                <option value="0">MAX</option>
+                                <option value="1">MIN</option>
+                                <option value="2">SUM</option>
+                                <option value="3">COUNT</option>
+                                <option value="4">AVG</option>
+                                <option value="5">FIRST_VALUE</option>
+                                <option value="6">LAST_VALUE</option>
+                                <option value="7">FIRST</option>
+                                <option value="8">LAST</option>
                             </select>
                         </div>
                         <div class="query-item">
@@ -68,16 +68,16 @@
                         <div class="query-item">
                             <label class="query-label">时间单位</label>
                             <select class="query-select" id="timePrecision">
-                                <option value="0">年</option>
-                                <option value="1">月</option>
-                                <option value="2">周</option>
-                                <option value="3">日</option>
-                                <option value="4">小时</option>
-                                <option value="5">分钟</option>
-                                <option value="6">秒</option>
-                                <option value="7" selected>毫秒</option>
-                                <option value="8">微秒</option>
-                                <option value="9">纳秒</option>
+                                <option value="0">YEAR</option>
+                                <option value="1">MONTH</option>
+                                <option value="2">WEEK</option>
+                                <option value="3">DAY</option>
+                                <option value="4">HOUR</option>
+                                <option value="5">MIN</option>
+                                <option value="6">S</option>
+                                <option value="7" selected>MS</option>
+                                <option value="8">US</option>
+                                <option value="9">NS</option>
                             </select>
                         </div>
                         <div class="query-actions">
