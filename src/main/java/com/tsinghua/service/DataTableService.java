@@ -105,28 +105,26 @@ public class DataTableService {
 
     public Long importData(MultipartFile file, DataImportRequest importConfig) {
         Path tempFilePath = null;
-        Session session = null;
         try {
             // 保存为临时文件
             tempFilePath = Files.createTempFile("iginx_import_", ".csv");
             file.transferTo(tempFilePath.toFile());
+            log.info("CSV文件已暂存至：{}", tempFilePath);
 
-            // 获取会话
-            session.openSession();
+            // 打开会话
+            iginxSession.openSession();
 
-            String originalFilename = file.getOriginalFilename();
-
-            // **核心：固定生成包含 SKIPPING HEADER 的语句**
+            // 核心：构建正确的 LOAD DATA 语句（注意末尾的分号）
             String loadStatement = String.format(
-                    "LOAD DATA FROM INFILE \"%s\" AS CSV SKIPPING HEADER INTO %s",
-            originalFilename,
-                    importConfig.getTargetPath()
+                    "LOAD DATA FROM INFILE '%s' AS CSV SKIPPING HEADER INTO %s;",
+                    file.getOriginalFilename(),
+                    importConfig.getTargetPath().trim()
             );
 
             log.info("执行LOAD语句: {}", loadStatement);
 
             // 执行导入
-            Pair<List<String>, Long> resp = session.executeLoadCSV(loadStatement, tempFilePath.toAbsolutePath().toString());
+            Pair<List<String>, Long> resp = iginxSession.executeLoadCSV(loadStatement, tempFilePath.toAbsolutePath().toString());
 
             return resp.v;
 
@@ -138,9 +136,9 @@ public class DataTableService {
             return 0L;
         } finally {
             // 资源清理
-            if (session != null) {
+            if (iginxSession != null) {
                 try {
-                    session.closeSession();
+                    iginxSession.closeSession();
                 } catch (Exception e) {
                     log.warn("关闭IGinX会话异常", e);
                 }
