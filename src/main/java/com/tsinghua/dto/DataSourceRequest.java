@@ -15,8 +15,6 @@ import java.util.Map;
 @Data
 public class DataSourceRequest {
 
-    @NotBlank(message = "数据源名称不能为空")
-    private String alias;
 
     @NotBlank(message = "主机地址不能为空")
     private String ip;
@@ -38,10 +36,8 @@ public class DataSourceRequest {
     @NotNull(message = "存储引擎类型不能为空")
     private Integer storageEngineType;
     private String engine;
-    private String description;
     private String username;
     private String password;
-    private String database;
     
     // 扩展参数，用于接收特定数据源类型的额外参数
     private Map<String, String> extraParams;
@@ -55,8 +51,6 @@ public class DataSourceRequest {
         }
         
         // 添加基本参数
-//        if (alias != null) extraParams.put("alias", alias);
-//        if (description != null) extraParams.put("description", description);
         if (username != null) extraParams.put("username", username);
         if (password != null) extraParams.put("password", password);
         if (engine != null) extraParams.put("engine", engine);

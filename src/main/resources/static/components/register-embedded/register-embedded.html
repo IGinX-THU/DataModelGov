@@ -7,11 +7,6 @@
     <div class="register-body">
         <form id="registerForm">
             <div class="form-group">
-                <label class="form-label required">数据源名称</label>
-                <input type="text" class="form-control" id="dataSourceName" placeholder="请输入数据源名称" required>
-            </div>
-            
-            <div class="form-group">
                 <label class="form-label required">数据源类型</label>
                 <select class="form-control form-select" id="dataSourceType" required>
                     <option value="">请选择数据源类型</option>
@@ -23,11 +18,6 @@
                     <option value="5">mongodb</option>
                     <option value="6">redis</option>
                 </select>
-            </div>
-            
-            <div class="form-group">
-                <label class="form-label">描述</label>
-                <textarea class="form-control" id="description" rows="3" placeholder="请输入数据源描述"></textarea>
             </div>
             
             <div class="form-group">
@@ -48,11 +38,6 @@
             <div class="form-group">
                 <label class="form-label">密码</label>
                 <input type="password" class="form-control" id="password" placeholder="请输入密码">
-            </div>
-            
-            <div class="form-group">
-                <label class="form-label">数据库名</label>
-                <input type="text" class="form-control" id="database" placeholder="请输入数据库名">
             </div>
             
             <div id="engineField" class="form-group" style="display: none;">

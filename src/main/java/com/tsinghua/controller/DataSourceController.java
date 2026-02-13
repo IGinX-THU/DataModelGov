@@ -29,7 +29,7 @@ public class DataSourceController {
      */
     @ApiOperation("注册异构数据源")
     @PostMapping("/register")
-    public Result<Void> register(@Validated @RequestBody DataSourceRequest request) {
+    public Result<Void> register(@Validated @RequestBody DataSourceRequest request) throws Exception {
         boolean success = dataSourceService.registerDataSource(request);
         return success ? Result.success("数据源注册成功") : Result.error("注册失败，请检查配置");
     }
@@ -39,7 +39,7 @@ public class DataSourceController {
      */
     @ApiOperation("移除异构数据源")
     @PostMapping("/remove")
-    public Result<Void> remove(@Validated @RequestBody StorageEngineInfoDto removedStorageEngineInfo) {
+    public Result<Void> remove(@Validated @RequestBody StorageEngineInfoDto removedStorageEngineInfo) throws Exception {
         boolean success = dataSourceService.removeDataSource(removedStorageEngineInfo);
         return success ? Result.success("数据源移除成功") : Result.error("移除失败，数据源可能被关联规则占用");
     }

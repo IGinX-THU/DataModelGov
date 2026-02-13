@@ -1,5 +1,6 @@
 package com.tsinghua.service;
 
+import cn.edu.tsinghua.iginx.exception.SessionException;
 import cn.edu.tsinghua.iginx.session.ClusterInfo;
 import cn.edu.tsinghua.iginx.session.Column;
 import cn.edu.tsinghua.iginx.session.Session;
@@ -31,37 +32,27 @@ public class DataSourceService {
     /**
      * 注册异构数据源
      */
-    public boolean registerDataSource(DataSourceRequest request) {
-        try {
-            iginxSession.openSession();
-            iginxSession.addStorageEngine(request.getIp(),
-                    request.getPort(),
-                    StorageEngineType.findByValue(request.getStorageEngineType()),
-                    request.buildExtraParams());
-            iginxSession.closeSession();
-            log.info("成功注册数据源: {}", request.getAlias());
-            return true;
-        } catch (Exception e) {
-            log.error("注册数据源失败: {}", request.getAlias(), e);
-            return false;
-        }
+    public boolean registerDataSource(DataSourceRequest request) throws Exception {
+        iginxSession.openSession();
+        iginxSession.addStorageEngine(request.getIp(),
+                request.getPort(),
+                StorageEngineType.findByValue(request.getStorageEngineType()),
+                request.buildExtraParams());
+        iginxSession.closeSession();
+        log.info("成功注册数据源: {}", request);
+        return true;
     }
 
     /**
      * 移除异构数据源
      */
-    public boolean removeDataSource(StorageEngineInfoDto storageEngineInfoDto) {
-        try {
-            iginxSession.openSession();
-            RemovedStorageEngineInfo removedStorageEngineInfo = new RemovedStorageEngineInfo(storageEngineInfoDto.getIp(), storageEngineInfoDto.getPort(), storageEngineInfoDto.getSchemaPrefix(), storageEngineInfoDto.getDataPrefix());
-            List<RemovedStorageEngineInfo> removedStorageEngineList = Collections.singletonList(removedStorageEngineInfo);
-            iginxSession.removeStorageEngine(removedStorageEngineList);
-            iginxSession.closeSession();
-            return true;
-        } catch (Exception e) {
-            log.error("移除数据源失败: {}", storageEngineInfoDto, e);
-            return false;
-        }
+    public boolean removeDataSource(StorageEngineInfoDto storageEngineInfoDto) throws Exception {
+        iginxSession.openSession();
+        RemovedStorageEngineInfo removedStorageEngineInfo = new RemovedStorageEngineInfo(storageEngineInfoDto.getIp(), storageEngineInfoDto.getPort(), storageEngineInfoDto.getSchemaPrefix(), storageEngineInfoDto.getDataPrefix());
+        List<RemovedStorageEngineInfo> removedStorageEngineList = Collections.singletonList(removedStorageEngineInfo);
+        iginxSession.removeStorageEngine(removedStorageEngineList);
+        iginxSession.closeSession();
+        return true;
     }
 
     public List<StorageEngineInfoDto> dataSourceList() throws Exception {

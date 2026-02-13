@@ -113,14 +113,11 @@ class RegisterDataResourceEmbedded extends HTMLElement {
 
     async submit() {
         // 获取表单数据
-        const name = this.shadowRoot.getElementById('dataSourceName')?.value;
         const type = this.shadowRoot.getElementById('dataSourceType')?.value;
-        const description = this.shadowRoot.getElementById('description')?.value;
         const host = this.shadowRoot.getElementById('host')?.value;
         const port = this.shadowRoot.getElementById('port')?.value;
         const username = this.shadowRoot.getElementById('username')?.value;
         const password = this.shadowRoot.getElementById('password')?.value;
-        const database = this.shadowRoot.getElementById('database')?.value;
         const engine = this.shadowRoot.getElementById('engine')?.value;
         
         // 类型映射
@@ -135,13 +132,11 @@ class RegisterDataResourceEmbedded extends HTMLElement {
         };
         
         const data = {
-            alias: name,
             storageEngineType: typeMapping[type] || 0,
             ip: host,
             port: parseInt(port),
             username: username,
-            password: password,
-            database: database
+            password: password
         };
         
         // 当storageEngineType为4（关系型数据库）时，添加engine字段
@@ -150,7 +145,7 @@ class RegisterDataResourceEmbedded extends HTMLElement {
         }
         
         // 简单验证
-        if (!data.alias || !data.ip || !data.port || data.storageEngineType === 0) {
+        if (!data.ip || !data.port || data.storageEngineType === 0) {
             this.showMessage('请填写必填字段并选择有效的数据源类型', 'error');
             return;
         }
