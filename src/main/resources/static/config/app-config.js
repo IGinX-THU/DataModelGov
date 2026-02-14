@@ -32,7 +32,8 @@ window.AppConfig = {
         // 数据查询相关
         data: {
             query: '/api/data/query',
-            import: '/api/data/import'
+            import: '/api/data/import',
+            export: '/api/data/export'
         },
         // 其他模块可以继续添加
         user: {

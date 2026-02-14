@@ -1,7 +1,5 @@
 package com.tsinghua.service;
 
-import cn.edu.tsinghua.iginx.session.ClusterInfo;
-import cn.edu.tsinghua.iginx.session.Column;
 import cn.edu.tsinghua.iginx.session.Session;
 import cn.edu.tsinghua.iginx.session_v2.IginXClient;
 import cn.edu.tsinghua.iginx.session_v2.QueryClient;
@@ -11,18 +9,18 @@ import cn.edu.tsinghua.iginx.utils.Pair;
 import com.tsinghua.dto.*;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.File;
+import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.*;
-import java.util.stream.Collectors;
 
 
 /**
@@ -47,42 +45,7 @@ public class DataTableService {
         List<Map<String, Object>> resultSet = new ArrayList<>();
 
         try {
-            QueryClient queryClient = iginxClient.getQueryClient();
-
-            Set<String> paths = new HashSet<>(request.getPaths());
-            long startKey = Optional.ofNullable(request.getStartTime()).orElse(0L);
-            long endKey = Optional.ofNullable(request.getEndTime()).orElse(Long.MAX_VALUE);
-
-            long precision = request.getPrecision();
-            if (precision <= 0L) {
-                precision = 1000L;
-            }
-            TimePrecision timePrecision;
-            if (request.getTimePrecision() == null || TimePrecision.findByValue(request.getTimePrecision()) == null) {
-                timePrecision = TimePrecision.MS;
-            } else {
-                timePrecision = TimePrecision.findByValue(request.getTimePrecision());
-            }
-
-            IginXTable table;
-            if (request.getAggregateType() == null || AggregateType.findByValue(request.getAggregateType()) == null) {
-                table = queryClient.query(
-                        SimpleQuery.builder()
-                                .addMeasurements(paths)
-                                .startKey(startKey)
-                                .endKey(endKey)
-                                .build()
-                );
-            } else {
-                table = queryClient.query(DownsampleQuery.builder()
-                        .addMeasurements(paths)
-                        .startKey(startKey)
-                        .endKey(endKey)
-                        .aggregate(AggregateType.findByValue(request.getAggregateType()))
-                        .precision(precision)
-                        .timePrecision(timePrecision.name())
-                        .build());
-            }
+            IginXTable table = queryIginXTable(request);
 
             IginXHeader header = table.getHeader();
             if (header.hasTimestamp()) {
@@ -171,6 +134,86 @@ public class DataTableService {
             }
 
         }
+    }
+
+    public void exportData(DataQueryRequest request, HttpServletResponse response) {
+        try {
+            IginXTable table = queryIginXTable(request);;
+            String fileName = "export_" + System.currentTimeMillis() + ".csv";
+            // 设置响应头
+            response.setContentType("text/csv");
+            response.setCharacterEncoding("UTF-8");
+            response.setHeader(HttpHeaders.CONTENT_DISPOSITION,
+                "attachment; filename=\"" + fileName + "\"");
+            PrintWriter writer = response.getWriter();
+
+            // 直接一行一行写入表头和数据
+            IginXHeader header = table.getHeader();
+            if (header.hasTimestamp()) {
+                writer.print("key,");
+            }
+            for (IginXColumn column: header.getColumns()) {
+                writer.print(column.getName() + ",");
+            }
+            writer.println();
+            writer.flush();
+            List<IginXRecord> records = table.getRecords();
+            for (IginXRecord record: records) {
+                if (header.hasTimestamp()) {
+                    writer.print(record.getKey() + ",");
+                }
+                for (IginXColumn column: header.getColumns()) {
+                    writer.print(record.getValue(column.getName()));
+                    writer.print(",");
+                }
+                writer.println();
+                writer.flush();
+            }
+
+        } catch (IOException e) {
+            // 忽略客户端中断
+            log.error("客户端中断", e);
+        }
+    }
+
+    private IginXTable queryIginXTable(DataQueryRequest request) {
+        QueryClient queryClient = iginxClient.getQueryClient();
+
+        Set<String> paths = new HashSet<>(request.getPaths());
+        long startKey = Optional.ofNullable(request.getStartTime()).orElse(0L);
+        long endKey = Optional.ofNullable(request.getEndTime()).orElse(Long.MAX_VALUE);
+
+        long precision = request.getPrecision();
+        if (precision <= 0L) {
+            precision = 1000L;
+        }
+        TimePrecision timePrecision;
+        if (request.getTimePrecision() == null || TimePrecision.findByValue(request.getTimePrecision()) == null) {
+            timePrecision = TimePrecision.MS;
+        } else {
+            timePrecision = TimePrecision.findByValue(request.getTimePrecision());
+        }
+
+        IginXTable table;
+        if (request.getAggregateType() == null || AggregateType.findByValue(request.getAggregateType()) == null) {
+            table = queryClient.query(
+                    SimpleQuery.builder()
+                            .addMeasurements(paths)
+                            .startKey(startKey)
+                            .endKey(endKey)
+                            .build()
+            );
+        } else {
+            table = queryClient.query(DownsampleQuery.builder()
+                    .addMeasurements(paths)
+                    .startKey(startKey)
+                    .endKey(endKey)
+                    .aggregate(AggregateType.findByValue(request.getAggregateType()))
+                    .precision(precision)
+                    .timePrecision(timePrecision.name())
+                    .build());
+        }
+        return table;
     }
 
 }

@@ -7,11 +7,13 @@ import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiParam;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 import java.util.List;
 
@@ -44,6 +46,15 @@ public class DataTableController {
                                    @RequestPart("config") @Valid DataImportRequest config,
                                    @ApiParam(value = "数据文件", required = true) @RequestPart("file") MultipartFile file) {
         return dataTableService.importData(file, config);
+    }
+
+    /**
+     * 导出数据
+     */
+    @ApiOperation("导出数据")
+    @PostMapping("/export")
+    public void exportData(@Validated @RequestBody DataQueryRequest request, HttpServletResponse response) {
+        dataTableService.exportData(request, response);
     }
 
 }
