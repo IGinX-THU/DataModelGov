@@ -1,6 +1,7 @@
 package com.tsinghua.service;
 
 import cn.edu.tsinghua.iginx.session.Session;
+import cn.edu.tsinghua.iginx.session_v2.DeleteClient;
 import cn.edu.tsinghua.iginx.session_v2.IginXClient;
 import cn.edu.tsinghua.iginx.session_v2.QueryClient;
 import cn.edu.tsinghua.iginx.session_v2.query.*;
@@ -40,7 +41,7 @@ public class DataTableService {
     @Autowired
     private IginXClient iginxClient;
 
-    public TableDto dataQuery(DataQueryRequest request) {
+    public TableDto queryData(DataQueryRequest request) {
         List<String> columns = new ArrayList<>();
         List<Map<String, Object>> resultSet = new ArrayList<>();
 
@@ -214,6 +215,12 @@ public class DataTableService {
                     .build());
         }
         return table;
+    }
+
+    public void deleteData(DataQueryRequest request) {
+        DeleteClient deleteClient = iginxClient.getDeleteClient();
+        // 删除多个时间序列在 [startTime, endTime) 这段时间上的数据
+        deleteClient.deleteMeasurementsData(request.getPaths(), request.getStartTime(), request.getEndTime());
     }
 
 }

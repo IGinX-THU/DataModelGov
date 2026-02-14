@@ -34,7 +34,7 @@ public class DataTableController {
     @ApiOperation("数据查询")
     @PostMapping("/query")
     public Result<TableDto> queryData(@Validated @RequestBody DataQueryRequest request) {
-        return Result.success(dataTableService.dataQuery(request));
+        return Result.success(dataTableService.queryData(request));
     }
 
     /**
@@ -55,6 +55,16 @@ public class DataTableController {
     @PostMapping("/export")
     public void exportData(@Validated @RequestBody DataQueryRequest request, HttpServletResponse response) {
         dataTableService.exportData(request, response);
+    }
+
+    /**
+     * 数据删除
+     */
+    @ApiOperation("数据删除")
+    @PostMapping("/delete")
+    public Result<Void> deleteData(@Validated @RequestBody DataQueryRequest request) {
+        dataTableService.deleteData(request);
+        return Result.success("删除成功");
     }
 
 }

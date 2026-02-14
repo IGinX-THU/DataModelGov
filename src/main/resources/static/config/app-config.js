@@ -33,7 +33,8 @@ window.AppConfig = {
         data: {
             query: '/api/data/query',
             import: '/api/data/import',
-            export: '/api/data/export'
+            export: '/api/data/export',
+            delete: '/api/data/delete'
         },
         // 其他模块可以继续添加
         user: {
