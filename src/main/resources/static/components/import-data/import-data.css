@@ -1,0 +1,327 @@
+/* Import Data Component Styles - Modal Style like register-embedded */
+@import url('../../css/variables.css');
+@import url('../../css/base-components.css');
+
+/* 如果CSS变量未定义，使用默认值 */
+:root {
+    --bg-overlay: rgba(0, 0, 0, 0.5);
+    --bg-primary: #ffffff;
+    --bg-input: #ffffff;
+    --bg-input-focus: #ffffff;
+    --bg-hover: #f5f5f5;
+    --text-primary: #1f2329;
+    --text-secondary: #646a73;
+    --border-light: #d9d9d9;
+    --color-primary: #3370ff;
+    --color-primary-hover: #2b5ce6;
+    --color-danger: #f53f3f;
+    --radius-sm: 4px;
+    --radius-lg: 8px;
+    --z-modal: 2000;
+    --shadow-lg: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+:host {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: var(--bg-overlay);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: var(--z-modal);
+    backdrop-filter: blur(4px);
+}
+
+:host([hidden]) {
+    display: none;
+}
+
+.import-container {
+    background: var(--bg-primary);
+    border-radius: var(--radius-lg);
+    width: 95%;
+    max-width: 600px;
+    max-height: 90vh;
+    overflow: hidden;
+    box-shadow: var(--shadow-lg);
+    display: flex;
+    flex-direction: column;
+}
+
+.import-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid var(--border-light);
+    background: linear-gradient(135deg, #fafafa 0%, #f5f5f5 100%);
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+
+.import-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+    display: flex;
+    align-items: center;
+}
+
+.close-btn {
+    background: none;
+    border: none;
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--text-secondary);
+    transition: all 0.2s ease;
+}
+
+.close-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.import-body {
+    padding: 24px;
+    flex: 1;
+    overflow-y: auto;
+}
+
+.form-group {
+    margin-bottom: 24px;
+}
+
+.form-label {
+    display: block;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+}
+
+.form-label.required::after {
+    content: ' *';
+    color: var(--color-danger);
+}
+
+.input-wrapper {
+    position: relative;
+}
+
+.form-control {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border-primary);
+    border-radius: 8px;
+    font-size: 14px;
+    transition: all 0.2s ease;
+    outline: none;
+    box-sizing: border-box;
+    background: var(--bg-input);
+    color: var(--text-primary);
+}
+
+.form-control:focus {
+    border-color: var(--border-focus);
+    box-shadow: 0 0 0 2px rgba(51, 112, 255, 0.1);
+}
+
+.file-upload-wrapper {
+    position: relative;
+}
+
+.file-input {
+    display: none;
+}
+
+.file-upload-label {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    border: 2px dashed var(--border-primary);
+    border-radius: 8px;
+    background: var(--bg-tertiary);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    color: var(--text-secondary);
+    font-size: 14px;
+    min-height: 120px;
+}
+
+.file-upload-label:hover {
+    border-color: var(--border-focus);
+    background: var(--color-primary-light);
+}
+
+.file-upload-label.dragover {
+    border-color: var(--border-focus);
+    background: var(--color-primary-light);
+}
+
+.form-hint {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 6px;
+    display: flex;
+    align-items: center;
+}
+
+.import-footer {
+    padding: 16px 24px 20px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    border-top: 1px solid var(--border-light);
+    background: var(--bg-hover);
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+
+.btn {
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: 1px solid transparent;
+    display: flex;
+    align-items: center;
+    min-width: 80px;
+    justify-content: center;
+}
+
+.btn-secondary {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    border-color: var(--border-light);
+}
+
+.btn-secondary:hover {
+    color: var(--text-primary);
+    border-color: var(--color-primary);
+    background: #f0f8ff;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-hover) 100%);
+    color: white;
+    box-shadow: 0 2px 4px rgba(51, 112, 255, 0.3);
+}
+
+.btn-primary:hover {
+    background: linear-gradient(135deg, #40a9ff 0%, var(--color-primary) 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(51, 112, 255, 0.4);
+}
+
+.btn:active {
+    transform: translateY(0);
+}
+
+.btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.error-message {
+    color: var(--color-danger);
+    font-size: 12px;
+    margin-top: 6px;
+    display: none;
+}
+
+.error-message.show {
+    display: block;
+}
+
+/* 暗黑模式适配 */
+:host(.dark-mode) {
+    --bg-overlay: rgba(0, 0, 0, 0.7);
+    --bg-primary: #1f1f1f;
+    --bg-input: #262626;
+    --bg-hover: #262626;
+    --text-primary: #ffffff;
+    --text-secondary: #8c8c8c;
+    --border-light: #434343;
+}
+
+:host(.dark-mode) .import-container {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+}
+
+:host(.dark-mode) .import-header {
+    background: linear-gradient(135deg, #262626 0%, #1f1f1f 100%);
+    border-bottom-color: var(--border-light);
+}
+
+:host(.dark-mode) .import-title {
+    color: var(--text-primary);
+}
+
+:host(.dark-mode) .form-control {
+    background: var(--bg-input);
+    border-color: var(--border-light);
+    color: var(--text-primary);
+}
+
+:host(.dark-mode) .form-control:focus {
+    border-color: var(--color-primary);
+}
+
+:host(.dark-mode) .file-upload-label {
+    background: var(--bg-hover);
+    border-color: var(--border-light);
+    color: var(--text-secondary);
+}
+
+:host(.dark-mode) .file-upload-label:hover {
+    border-color: var(--color-primary);
+    background: #1a3a52;
+    color: var(--color-primary);
+}
+
+:host(.dark-mode) .import-footer {
+    background: var(--bg-hover);
+    border-top-color: var(--border-light);
+}
+
+:host(.dark-mode) .btn-secondary {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+    border-color: var(--border-light);
+}
+
+:host(.dark-mode) .btn-secondary:hover {
+    border-color: var(--color-primary);
+    background: #1a3a52;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    .import-container {
+        width: 95%;
+        max-height: 90vh;
+    }
+    
+    .import-header,
+    .import-body,
+    .import-footer {
+        padding: 16px;
+    }
+    
+    .form-group {
+        margin-bottom: 20px;
+    }
+}

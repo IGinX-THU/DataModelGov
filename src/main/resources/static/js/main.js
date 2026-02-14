@@ -230,6 +230,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 showComponent('registerEmbedded');
             }
             
+            // 检查是否点击了"导入数据"
+            if (menuItemText === '导入数据') {
+                console.log('导入数据菜单被点击');
+                showComponent('importData');
+            }
+            
             // 检查是否点击了"上传模型文件"
             if (menuItemText === '上传模型文件') {
                 console.log('上传模型文件菜单被点击');
@@ -427,6 +433,14 @@ document.addEventListener('DOMContentLoaded', function() {
             btn.addEventListener('click', function() {
                 console.log('上传按钮被点击');
                 showComponent('modelUpload');
+            });
+        }
+        
+        // 导入按钮
+        if (btnText === '导入') {
+            btn.addEventListener('click', function() {
+                console.log('导入按钮被点击');
+                showComponent('importData');
             });
         }
         
@@ -1023,7 +1037,8 @@ function hideAllComponents() {
         'databaseTable',
         'dataVisualization',
         'modelDetail',
-        'dataSourceList'
+        'dataSourceList',
+        'importData'
     ];
     
     components.forEach(componentId => {
@@ -1310,26 +1325,24 @@ function showVisualAnalysis() {
     function showComponent(componentId, ...args) {
         console.log(`显示组件: ${componentId}`, args);
         
-        // 先清空工作区
-        clearWorkspace();
+        // 弹窗组件不需要清空工作区
+        const modalComponents = ['registerEmbedded', 'importData'];
+        if (!modalComponents.includes(componentId)) {
+            // 先清空工作区
+            clearWorkspace();
+        }
         
         const component = document.getElementById(componentId);
-        if (component) {
-            // 确保组件可见：清除所有可能的隐藏属性和样式
-            component.removeAttribute('hidden');
-            component.style.display = '';
-            component.style.visibility = '';
-            
-            // 调用组件的show方法
-            if (typeof component.show === 'function') {
-                component.show(...args);
-            }
-            
+        if (component && typeof component.show === 'function') {
+            component.show(...args);
             console.log(`✅ 组件 ${componentId} 已显示`);
         } else {
-            console.error(`❌ 未找到组件: ${componentId}`);
+            console.error(`❌ 未找到组件或show方法: ${componentId}`);
         }
     }
+
+    // 将showComponent暴露到全局作用域
+    window.showComponent = showComponent;
 
     function showDatabaseTable(tableName) {
         showComponent('databaseTable', tableName);
