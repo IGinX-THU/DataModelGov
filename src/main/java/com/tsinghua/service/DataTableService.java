@@ -34,6 +34,8 @@ public class DataTableService {
 
     private static final int CHUNK_SIZE = 1024 * 1024; // 1MB，与源码一致
 
+    private static final String KEY = "key";
+
     @Autowired
     private Session iginxSession;
 
@@ -84,8 +86,8 @@ public class DataTableService {
 
             IginXHeader header = table.getHeader();
             if (header.hasTimestamp()) {
-                log.info("Time\t");
-                columns.add("Time");
+                log.info(KEY+"\t");
+                columns.add(KEY);
             }
             for (IginXColumn column : header.getColumns()) {
                 log.info(column.getName() + "\t");
@@ -97,7 +99,7 @@ public class DataTableService {
                 Map<String, Object> recordMap = new LinkedHashMap<>();
                 if (header.hasTimestamp()) {
 //                log.info(record.getKey() + "\t");
-                    recordMap.put("Time", record.getKey());
+                    recordMap.put(KEY, record.getKey());
                 }
                 recordMap.putAll(record.getValues());
                 resultSet.add(recordMap);

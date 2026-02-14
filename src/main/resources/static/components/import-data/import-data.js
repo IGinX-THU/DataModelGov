@@ -280,7 +280,7 @@ class ImportDataComponent extends HTMLElement {
             fileUploadLabel.innerHTML = `
                 <div style="font-size: 48px; margin-bottom: 12px;">📁</div>
                 <div style="font-weight: 500; margin-bottom: 8px;">点击选择CSV文件或拖拽文件到此处</div>
-                <div class="form-hint">仅支持CSV格式文件，文件大小不超过1GB</div>
+                <div class="form-hint">CSV文件header的第一个字段名称为“key”，数值类型，默认为时间戳。</div>
             `;
             // 重新添加input元素
             if (existingInput) {
