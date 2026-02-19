@@ -15,14 +15,14 @@ import java.util.Map;
 @ApiModel(description = "IoTDB 12.x 存储引擎注册请求")
 public class Iotdb12StorageRequest extends StorageEngineRegisterWrapper {
 
-    @ApiModelProperty(value = "IoTDB用户名", example = "root", required = true)
-    private String username = "root";
+    @ApiModelProperty(value = "IoTDB用户名", example = "root")
+    private String username;
 
-    @ApiModelProperty(value = "IoTDB密码", example = "root", required = true)
-    private String password = "root";
+    @ApiModelProperty(value = "IoTDB密码", example = "root")
+    private String password;
 
     @Min(value = 1, message = "会话池大小必须大于0")
-    @ApiModelProperty(value = "会话池大小", example = "130", required = true)
+    @ApiModelProperty(value = "会话池大小", example = "130")
     private Integer sessionPoolSize;
 
     @Override

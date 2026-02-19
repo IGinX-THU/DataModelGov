@@ -4,6 +4,8 @@ import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+
+import javax.validation.constraints.NotBlank;
 import java.util.Map;
 
 @Data
@@ -11,33 +13,27 @@ import java.util.Map;
 @ApiModel(description = "MongoDB 存储引擎注册请求")
 public class MongodbStorageRequest extends BaseStorageEngineRequest {
 
-    @ApiModelProperty(value = "MongoDB用户名")
-    private String username;
+    @ApiModelProperty(value = "Mongodb 连接字符串", example = "http://localhost:8086/")
+    private String uri;
 
-    @ApiModelProperty(value = "MongoDB密码")
-    private String password;
+    @ApiModelProperty(value = "每次采样的文档数量", example = "1000")
+    private Integer schemaSampleSize;
 
-    @ApiModelProperty(value = "认证数据库", example = "admin")
-    private String authDatabase = "admin";
-
-    @ApiModelProperty(value = "目标数据库名称")
-    private String database;
+    @ApiModelProperty(value = "每次采样的文档", example = "0")
+    private Integer dummySampleSize;
 
     @Override
     public Map<String, String> buildExtraParams() {
         Map<String, String> params = buildCommonParams();
 
-        if (username != null && !username.trim().isEmpty()) {
-            params.put("username", username);
+        if (uri != null && !uri.trim().isEmpty()) {
+            params.put("uri", uri);
         }
-        if (password != null && !password.trim().isEmpty()) {
-            params.put("password", password);
+        if (schemaSampleSize != null) {
+            params.put("schema.sample.size", String.valueOf(schemaSampleSize));
         }
-        if (authDatabase != null && !authDatabase.trim().isEmpty()) {
-            params.put("authDatabase", authDatabase);
-        }
-        if (database != null && !database.trim().isEmpty()) {
-            params.put("database", database);
+        if (dummySampleSize != null) {
+            params.put("dummy.sample.size", String.valueOf(dummySampleSize));
         }
 
         return params;
