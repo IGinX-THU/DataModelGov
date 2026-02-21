@@ -10,6 +10,7 @@ import cn.edu.tsinghua.iginx.thrift.StorageEngineType;
 import com.tsinghua.dto.ColumnDto;
 import com.tsinghua.dto.DataSourceRequest;
 import com.tsinghua.dto.StorageEngineInfoDto;
+import com.tsinghua.dto.request.BaseStorageEngineRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -32,7 +33,7 @@ public class DataSourceService {
     /**
      * 注册异构数据源
      */
-    public boolean registerDataSource(DataSourceRequest request) throws Exception {
+    public boolean registerDataSource(BaseStorageEngineRequest request) throws Exception {
         iginxSession.openSession();
         iginxSession.addStorageEngine(request.getIp(),
                 request.getPort(),

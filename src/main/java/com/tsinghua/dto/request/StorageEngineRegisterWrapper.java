@@ -1,32 +1,34 @@
 package com.tsinghua.dto.request;
 
-import com.fasterxml.jackson.annotation.JsonSubTypes;
-import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
+import javax.validation.constraints.*;
 import java.util.Map;
 
 /**
  * 存储引擎注册请求包装器
- * 使用Jackson多态反序列化
- * 这个类实现了buildExtraParams()，但会委托给具体的子类实现
+ * 手动处理多态反序列化
  */
 @Data
+@EqualsAndHashCode(callSuper = true)
 @ApiModel(description = "存储引擎注册请求包装器")
-@JsonTypeInfo(
-        use = JsonTypeInfo.Id.NAME,
-        include = JsonTypeInfo.As.PROPERTY,
-        property = "storageEngineType"
-)
-@JsonSubTypes({
-        @JsonSubTypes.Type(value = Iotdb12StorageRequest.class, name = "1"),
-        @JsonSubTypes.Type(value = InfluxdbStorageRequest.class, name = "2"),
-        @JsonSubTypes.Type(value = FilesystemStorageRequest.class, name = "3"),
-        @JsonSubTypes.Type(value = RelationalStorageRequest.class, name = "4"),
-        @JsonSubTypes.Type(value = MongodbStorageRequest.class, name = "5"),
-        @JsonSubTypes.Type(value = RedisStorageRequest.class, name = "6")
-})
 public class StorageEngineRegisterWrapper extends BaseStorageEngineRequest {
+
+    /**
+     * 存储引擎类型 (数字代码)
+     * 0: unknown, 1: iotdb12, 2: influxdb, 3: filesystem, 4: relational, 5: mongodb, 6: redis
+     */
+    @NotNull(message = "存储引擎类型不能为空")
+    @Min(value = 1, message = "存储引擎类型代码无效")
+    @Max(value = 6, message = "存储引擎类型代码无效")
+    @ApiModelProperty(
+            value = "存储引擎类型代码: 1-iotdb12, 2-influxdb, 3-filesystem, 4-relational, 5-mongodb, 6-redis",
+            example = "1",
+            required = true
+    )
+    private Integer storageEngineType;
 
     /**
      * 构建额外参数字典

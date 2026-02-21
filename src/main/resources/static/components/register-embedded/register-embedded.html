@@ -30,25 +30,152 @@
                 <input type="number" class="form-control" id="port" placeholder="请输入端口号" required>
             </div>
             
+            <!-- 通用配置字段 -->
             <div class="form-group">
-                <label class="form-label">用户名</label>
-                <input type="text" class="form-control" id="username" placeholder="请输入用户名">
+                <label class="form-label">
+                    <input type="checkbox" id="hasData" value="false">
+                    是否读取原有数据
+                </label>
             </div>
             
             <div class="form-group">
-                <label class="form-label">密码</label>
-                <input type="password" class="form-control" id="password" placeholder="请输入密码">
+                <label class="form-label">
+                    <input type="checkbox" id="isReadOnly" value="false">
+                    是否只读
+                </label>
             </div>
             
-            <div id="engineField" class="form-group" style="display: none;">
-                <label class="form-label">数据库引擎</label>
-                <select class="form-control form-select" id="engine">
-                    <option value="mysql">MySQL</option>
-                    <option value="postgresql">PostgreSQL</option>
-                    <option value="oracle">Oracle</option>
-                    <option value="sql server">SQL Server</option>
-                    <option value="dameng">Dameng</option>
-                </select>
+            <div class="form-group">
+                <label class="form-label">数据前缀</label>
+                <input type="text" class="form-control" id="dataPrefix" placeholder="请输入数据前缀（可选）">
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">模式前缀</label>
+                <input type="text" class="form-control" id="schemaPrefix" placeholder="请输入模式前缀（可选）">
+            </div>
+            
+            <!-- 认证字段容器 -->
+            <div id="authFields">
+                <div class="form-group">
+                    <label class="form-label">用户名</label>
+                    <input type="text" class="form-control" id="username" placeholder="请输入用户名">
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">密码</label>
+                    <input type="password" class="form-control" id="password" placeholder="请输入密码">
+                </div>
+            </div>
+            
+            <!-- IoTDB 1.2 specific fields -->
+            <div id="iotdbFields" class="storage-specific-fields" style="display: none;">
+                <div class="form-group">
+                    <label class="form-label">会话池大小</label>
+                    <input type="number" class="form-control" id="sessionPoolSize" placeholder="请输入会话池大小" min="1">
+                </div>
+            </div>
+            
+            <!-- InfluxDB specific fields -->
+            <div id="influxdbFields" class="storage-specific-fields" style="display: none;">
+                <div class="form-group">
+                    <label class="form-label required">InfluxDB URL</label>
+                    <input type="url" class="form-control" id="influxdbUrl" placeholder="http://localhost:8086/">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">访问令牌</label>
+                    <input type="text" class="form-control" id="influxdbToken" placeholder="请输入访问令牌">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">组织名称</label>
+                    <input type="text" class="form-control" id="influxdbOrganization" placeholder="请输入组织名称">
+                </div>
+            </div>
+            
+            <!-- Filesystem specific fields -->
+            <div id="filesystemFields" class="storage-specific-fields" style="display: none;">
+                <div class="form-group">
+                    <label class="form-label required">IGinX节点端口</label>
+                    <input type="number" class="form-control" id="iginxPort" placeholder="请输入IGinX节点端口" min="1" max="65535">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">IGinX数据存储目录</label>
+                    <input type="text" class="form-control" id="dataDir" placeholder="请输入IGinX数据存储目录">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">历史数据文件读取目录</label>
+                    <input type="text" class="form-control" id="dummyDir" placeholder="请输入历史数据文件读取目录">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">历史数据的数据路径前缀</label>
+                    <input type="text" class="form-control" id="embeddedPrefix" placeholder="请输入历史数据的数据路径前缀">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">数据写入方式</label>
+                    <input type="text" class="form-control" id="dataStruct" placeholder="LegacyParquet">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">历史数据读取方式</label>
+                    <input type="text" class="form-control" id="dummyStruct" placeholder="LegacyFilesystem">
+                </div>
+            </div>
+            
+            <!-- Relational Database specific fields -->
+            <div id="relationalFields" class="storage-specific-fields" style="display: none;">
+                <div class="form-group">
+                    <label class="form-label required">数据库引擎</label>
+                    <select class="form-control form-select" id="engine">
+                        <option value="mysql">MySQL</option>
+                        <option value="postgresql">PostgreSQL</option>
+                        <option value="oracle">Oracle</option>
+                        <option value="sql server">SQL Server</option>
+                        <option value="dameng">Dameng</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">元数据配置文件路径（仅MySQL需要）</label>
+                    <input type="text" class="form-control" id="metaPropertiesPath" placeholder="resources/mysql-meta-template.properties">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">连接超时时间（毫秒）</label>
+                    <input type="number" class="form-control" id="connectionTimeout" placeholder="30000">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">空闲连接超时时间（毫秒）</label>
+                    <input type="number" class="form-control" id="idleTimeout" placeholder="10000">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">连接池最大连接数</label>
+                    <input type="number" class="form-control" id="maximumPoolSize" placeholder="20" min="1">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">连接池最小空闲连接数</label>
+                    <input type="number" class="form-control" id="minimumIdle" placeholder="1" min="0">
+                </div>
+            </div>
+            
+            <!-- MongoDB specific fields -->
+            <div id="mongodbFields" class="storage-specific-fields" style="display: none;">
+                <div class="form-group">
+                    <label class="form-label">MongoDB连接字符串</label>
+                    <input type="text" class="form-control" id="mongodbUri" placeholder="mongodb://localhost:27017">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">每次采样的文档数量</label>
+                    <input type="number" class="form-control" id="schemaSampleSize" placeholder="1000" min="1">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">每次采样的文档</label>
+                    <input type="number" class="form-control" id="dummySampleSize" placeholder="0" min="0">
+                </div>
+            </div>
+            
+            <!-- Redis specific fields -->
+            <div id="redisFields" class="storage-specific-fields" style="display: none;">
+                <div class="form-group">
+                    <label class="form-label">Redis客户端请求超时时间（毫秒）</label>
+                    <input type="number" class="form-control" id="redisTimeout" placeholder="2000" min="1">
+                </div>
             </div>
         </form>
     </div>

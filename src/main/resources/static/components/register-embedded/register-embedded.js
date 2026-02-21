@@ -99,15 +99,52 @@ class RegisterDataResourceEmbedded extends HTMLElement {
 
     toggleEngineField() {
         const dataSourceType = this.shadowRoot.getElementById('dataSourceType');
-        const engineField = this.shadowRoot.getElementById('engineField');
         
-        if (dataSourceType && engineField) {
-            // 只有选择relational(4)时才显示engine字段
-            if (dataSourceType.value === '4') {
-                engineField.style.display = 'block';
-            } else {
-                engineField.style.display = 'none';
+        // Hide all storage-specific fields first
+        const allFieldGroups = this.shadowRoot.querySelectorAll('.storage-specific-fields');
+        allFieldGroups.forEach(group => group.style.display = 'none');
+        
+        // Hide auth fields by default
+        const authFields = this.shadowRoot.getElementById('authFields');
+        if (authFields) {
+            authFields.style.display = 'none';
+        }
+        
+        if (dataSourceType) {
+            // Show relevant fields based on storage engine type
+            switch(dataSourceType.value) {
+                case '1': // IoTDB 1.2
+                    this.showFieldGroup('iotdbFields');
+                    authFields.style.display = 'block';
+                    break;
+                case '2': // InfluxDB
+                    this.showFieldGroup('influxdbFields');
+                    authFields.style.display = 'block';
+                    break;
+                case '3': // Filesystem
+                    this.showFieldGroup('filesystemFields');
+                    // authFields remains hidden
+                    break;
+                case '4': // Relational
+                    this.showFieldGroup('relationalFields');
+                    authFields.style.display = 'block';
+                    break;
+                case '5': // MongoDB
+                    this.showFieldGroup('mongodbFields');
+                    // authFields remains hidden
+                    break;
+                case '6': // Redis
+                    this.showFieldGroup('redisFields');
+                    authFields.style.display = 'block';
+                    break;
             }
+        }
+    }
+    
+    showFieldGroup(groupId) {
+        const fieldGroup = this.shadowRoot.getElementById(groupId);
+        if (fieldGroup) {
+            fieldGroup.style.display = 'block';
         }
     }
 
@@ -116,9 +153,20 @@ class RegisterDataResourceEmbedded extends HTMLElement {
         const type = this.shadowRoot.getElementById('dataSourceType')?.value;
         const host = this.shadowRoot.getElementById('host')?.value;
         const port = this.shadowRoot.getElementById('port')?.value;
-        const username = this.shadowRoot.getElementById('username')?.value;
-        const password = this.shadowRoot.getElementById('password')?.value;
-        const engine = this.shadowRoot.getElementById('engine')?.value;
+        
+        // 获取通用配置字段
+        const hasData = this.shadowRoot.getElementById('hasData')?.checked || false;
+        const isReadOnly = this.shadowRoot.getElementById('isReadOnly')?.checked || false;
+        const dataPrefix = this.shadowRoot.getElementById('dataPrefix')?.value;
+        const schemaPrefix = this.shadowRoot.getElementById('schemaPrefix')?.value;
+        
+        // 只对需要认证的存储引擎类型获取用户名密码
+        let username = null;
+        let password = null;
+        if (type === '1' || type === '2' || type === '4' || type === '6') {
+            username = this.shadowRoot.getElementById('username')?.value;
+            password = this.shadowRoot.getElementById('password')?.value;
+        }
         
         // 类型映射
         const typeMapping = {
@@ -135,20 +183,55 @@ class RegisterDataResourceEmbedded extends HTMLElement {
             storageEngineType: typeMapping[type] || 0,
             ip: host,
             port: parseInt(port),
-            username: username,
-            password: password
+            hasData: hasData,
+            isReadOnly: isReadOnly
         };
         
-        // 当storageEngineType为4（关系型数据库）时，添加engine字段
-        if (data.storageEngineType === 4 && engine) {
-            data.engine = engine;
+        // 添加可选字段（如果不为空）
+        if (dataPrefix && dataPrefix.trim()) {
+            data.dataPrefix = dataPrefix.trim();
+        }
+        if (schemaPrefix && schemaPrefix.trim()) {
+            data.schemaPrefix = schemaPrefix.trim();
         }
         
-        // 简单验证
-        if (!data.ip || !data.port || data.storageEngineType === 0) {
-            this.showMessage('请填写必填字段并选择有效的数据源类型', 'error');
+        // 只对需要用户名密码的存储引擎类型添加这些字段
+        if (username && (data.storageEngineType === 1 || data.storageEngineType === 2 || data.storageEngineType === 4 || data.storageEngineType === 6)) {
+            data.username = username;
+        }
+        if (password && (data.storageEngineType === 1 || data.storageEngineType === 2 || data.storageEngineType === 4 || data.storageEngineType === 6)) {
+            data.password = password;
+        }
+        
+        // 根据存储引擎类型添加特定字段
+        switch(data.storageEngineType) {
+            case 1: // IoTDB 1.2
+                this.addIotdbFields(data);
+                break;
+            case 2: // InfluxDB
+                this.addInfluxdbFields(data);
+                break;
+            case 3: // Filesystem
+                this.addFilesystemFields(data);
+                break;
+            case 4: // Relational
+                this.addRelationalFields(data);
+                break;
+            case 5: // MongoDB
+                this.addMongodbFields(data);
+                break;
+            case 6: // Redis
+                this.addRedisFields(data);
+                break;
+        }
+        
+        // 验证必填字段
+        if (!this.validateForm(data)) {
             return;
         }
+        
+        // 调试：打印发送的JSON数据
+        console.log('Sending JSON data:', JSON.stringify(data, null, 2));
         
         try {
             const response = await fetch('/api/datasource/register', {
@@ -182,6 +265,109 @@ class RegisterDataResourceEmbedded extends HTMLElement {
             // 异常情况下也要关闭弹窗
             this.hide();
         }
+    }
+    
+    addIotdbFields(data) {
+        const sessionPoolSize = this.shadowRoot.getElementById('sessionPoolSize')?.value;
+        if (sessionPoolSize) {
+            data.sessionPoolSize = parseInt(sessionPoolSize);
+        }
+    }
+    
+    addInfluxdbFields(data) {
+        const url = this.shadowRoot.getElementById('influxdbUrl')?.value;
+        const token = this.shadowRoot.getElementById('influxdbToken')?.value;
+        const organization = this.shadowRoot.getElementById('influxdbOrganization')?.value;
+        
+        if (url) data.url = url;
+        if (token) data.token = token;
+        if (organization) data.organization = organization;
+    }
+    
+    addFilesystemFields(data) {
+        const iginxPort = this.shadowRoot.getElementById('iginxPort')?.value;
+        const dir = this.shadowRoot.getElementById('dataDir')?.value;
+        const dummyDir = this.shadowRoot.getElementById('dummyDir')?.value;
+        const embeddedPrefix = this.shadowRoot.getElementById('embeddedPrefix')?.value;
+        const dataStruct = this.shadowRoot.getElementById('dataStruct')?.value;
+        const dummyStruct = this.shadowRoot.getElementById('dummyStruct')?.value;
+        
+        if (iginxPort) data.iginxPort = parseInt(iginxPort);
+        if (dir) data.dir = dir;
+        if (dummyDir) data.dummyDir = dummyDir;
+        if (embeddedPrefix) data.embeddedPrefix = embeddedPrefix;
+        if (dataStruct) data.dataStruct = dataStruct;
+        if (dummyStruct) data.dummyStruct = dummyStruct;
+    }
+    
+    addRelationalFields(data) {
+        const engine = this.shadowRoot.getElementById('engine')?.value;
+        const metaPropertiesPath = this.shadowRoot.getElementById('metaPropertiesPath')?.value;
+        const connectionTimeout = this.shadowRoot.getElementById('connectionTimeout')?.value;
+        const idleTimeout = this.shadowRoot.getElementById('idleTimeout')?.value;
+        const maximumPoolSize = this.shadowRoot.getElementById('maximumPoolSize')?.value;
+        const minimumIdle = this.shadowRoot.getElementById('minimumIdle')?.value;
+        
+        if (engine) data.engine = engine;
+        if (metaPropertiesPath) data.metaPropertiesPath = metaPropertiesPath;
+        if (connectionTimeout) data.connectionTimeout = parseInt(connectionTimeout);
+        if (idleTimeout) data.idleTimeout = parseInt(idleTimeout);
+        if (maximumPoolSize) data.maximumPoolSize = parseInt(maximumPoolSize);
+        if (minimumIdle) data.minimumIdle = parseInt(minimumIdle);
+    }
+    
+    addMongodbFields(data) {
+        const uri = this.shadowRoot.getElementById('mongodbUri')?.value;
+        const schemaSampleSize = this.shadowRoot.getElementById('schemaSampleSize')?.value;
+        const dummySampleSize = this.shadowRoot.getElementById('dummySampleSize')?.value;
+        
+        if (uri) data.uri = uri;
+        if (schemaSampleSize) data.schemaSampleSize = parseInt(schemaSampleSize);
+        if (dummySampleSize) data.dummySampleSize = parseInt(dummySampleSize);
+    }
+    
+    addRedisFields(data) {
+        const timeout = this.shadowRoot.getElementById('redisTimeout')?.value;
+        if (timeout) {
+            data.timeout = parseInt(timeout);
+        }
+    }
+    
+    validateForm(data) {
+        // 基础验证
+        if (!data.ip || !data.port || data.storageEngineType === 0) {
+            this.showMessage('请填写必填字段并选择有效的数据源类型', 'error');
+            return false;
+        }
+        
+        // 特定类型验证
+        switch(data.storageEngineType) {
+            case 2: // InfluxDB - URL必填
+                if (!data.url) {
+                    this.showMessage('InfluxDB URL为必填项', 'error');
+                    return false;
+                }
+                break;
+            case 3: // Filesystem - iginxPort必填
+                if (!data.iginxPort) {
+                    this.showMessage('IGinX节点端口为必填项', 'error');
+                    return false;
+                }
+                break;
+            case 4: // Relational - engine必填
+                if (!data.engine) {
+                    this.showMessage('数据库引擎为必填项', 'error');
+                    return false;
+                }
+                // MySQL需要metaPropertiesPath
+                if (data.engine === 'mysql' && !data.metaPropertiesPath) {
+                    this.showMessage('MySQL存储引擎必须提供元数据配置文件路径', 'error');
+                    return false;
+                }
+                break;
+        }
+        
+        return true;
     }
 
     showMessage(message, type = 'info') {
