@@ -27,7 +27,7 @@ import java.util.*;
 public class ModelFileService {
 
     private static final int CHUNK_SIZE = 65536; // 64KB
-    private static final String STORAGE_PREFIX = "fs/models";
+    private static final String STORAGE_PREFIX = "fs.models";
 
     @Autowired
     private IginXClient iginxClient;
