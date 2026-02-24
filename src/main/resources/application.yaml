@@ -4,7 +4,7 @@ server:
     context-path: /
     # 针对 Tomcat 服务器的最大请求大小设置
   tomcat:
-    max-swallow-size: 2GB
+    max-swallow-size: -1  # 禁用上传大小限制
 
 # IGinX连接配置（根据实际部署修改）
 iginx:
@@ -25,6 +25,7 @@ spring:
       max-request-size: 2GB
       # 设置阈值，当文件大于 100MB 时，就写入磁盘临时文件
       file-size-threshold: 100MB
+      enabled: true
   devtools:
     restart:
       enabled: true
@@ -55,3 +56,6 @@ logging:
     cn.edu.tsinghua.iginx: WARN
   file:
     name: ./logs/app.log
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"

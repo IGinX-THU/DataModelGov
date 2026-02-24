@@ -15,16 +15,19 @@
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
 
-    <repositories>
-        <repository>
-            <id>iginx</id>
-            <name>IGinX GitHub repository</name>
-            <url>https://iginx-thu.github.io/IGinX/maven-repo</url>
-        </repository>
-    </repositories>
+<!--    <repositories>-->
+<!--        <repository>-->
+<!--            <id>iginx</id>-->
+<!--            <name>IGinX GitHub repository</name>-->
+<!--            <url>https://iginx-thu.github.io/IGinX/maven-repo</url>-->
+<!--        </repository>-->
+<!--    </repositories>-->
 
     <properties>
         <java.version>1.8</java.version>
+        <maven.compiler.source>1.8</maven.compiler.source>
+        <maven.compiler.target>1.8</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <iginx.version>0.8.0</iginx.version>
     </properties>
 
@@ -57,11 +60,11 @@
             <artifactId>iginx-session</artifactId>
             <version>${iginx.version}</version>
         </dependency>
-        <dependency>
-            <groupId>cn.edu.tsinghua</groupId>
-            <artifactId>iginx-core</artifactId>
-            <version>${iginx.version}</version>
-        </dependency>
+<!--        <dependency>-->
+<!--            <groupId>cn.edu.tsinghua</groupId>-->
+<!--            <artifactId>iginx-core</artifactId>-->
+<!--            <version>${iginx.version}</version>-->
+<!--        </dependency>-->
 
         <!-- 工具依赖 -->
         <dependency>

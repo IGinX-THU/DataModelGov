@@ -1326,18 +1326,31 @@ function showVisualAnalysis() {
         console.log(`显示组件: ${componentId}`, args);
         
         // 弹窗组件不需要清空工作区
-        const modalComponents = ['registerEmbedded', 'importData'];
+        const modalComponents = ['registerEmbedded', 'importData', 'modelUpload', 'modelDownload', 'modelEdit', 'modelDetail'];
         if (!modalComponents.includes(componentId)) {
             // 先清空工作区
             clearWorkspace();
         }
         
+        console.log(`🔍 尝试获取组件: ${componentId}`);
         const component = document.getElementById(componentId);
+        console.log(`🔍 获取到的组件:`, component);
+        console.log(`🔍 组件类型:`, component ? component.constructor.name : 'null');
+        console.log(`🔍 组件是否有show方法:`, component ? typeof component.show : 'null');
+        
         if (component && typeof component.show === 'function') {
             component.show(...args);
             console.log(`✅ 组件 ${componentId} 已显示`);
         } else {
             console.error(`❌ 未找到组件或show方法: ${componentId}`);
+            console.error(`❌ 详细信息:`, {
+                componentId,
+                componentExists: !!component,
+                componentType: component ? component.constructor.name : 'null',
+                hasShowMethod: component ? typeof component.show : 'null',
+                allElements: document.querySelectorAll('model-upload'),
+                allCustomElements: window.customElements ? Array.from(window.customElements) : 'customElements not available'
+            });
         }
     }
 

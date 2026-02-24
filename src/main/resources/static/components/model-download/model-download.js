@@ -470,30 +470,55 @@ class ModelDownload extends HTMLElement {
         if (hasError) return;
         
         try {
-            // 调用下载API
-            const result = await this.apiCall('/api/models/download', {
-                modelName: formData.modelName,
-                version: formData.modelVersion
+            // 调用下载API - 使用POST方法，参数通过FormData传递
+            const downloadUrl = `/api/model/download`;
+            
+            // 创建一个隐藏的表单来触发文件下载
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = downloadUrl;
+            form.style.display = 'none';
+            
+            // 添加参数
+            const nameInput = document.createElement('input');
+            nameInput.type = 'hidden';
+            nameInput.name = 'name';
+            nameInput.value = formData.modelName;
+            form.appendChild(nameInput);
+            
+            const versionInput = document.createElement('input');
+            versionInput.type = 'hidden';
+            versionInput.name = 'version';
+            versionInput.value = formData.modelVersion;
+            form.appendChild(versionInput);
+            
+            const fileNameInput = document.createElement('input');
+            fileNameInput.type = 'hidden';
+            fileNameInput.name = 'fileName';
+            fileNameInput.value = `${formData.modelName}_${formData.modelVersion}.zip`;
+            form.appendChild(fileNameInput);
+            
+            document.body.appendChild(form);
+            
+            // 监听表单提交的错误
+            form.addEventListener('error', (e) => {
+                console.error('表单提交错误:', e);
+                this.showMessage('下载失败，请稍后重试', 'error');
             });
             
-            if (result.code === 200) {
-                this.showMessage('下载成功', 'success');
-                this.hide();
-                
-                // 触发下载成功事件
-                this.dispatchEvent(new CustomEvent('download-success', {
-                    detail: {
-                        modelName: formData.modelName,
-                        version: formData.modelVersion,
-                        downloadUrl: result.data.downloadUrl
-                    }
-                }));
-            } else {
-                this.showMessage(result.message || '下载失败', 'error');
-            }
+            form.submit();
+            document.body.removeChild(form);
+            
+            this.showMessage('下载开始，请稍候...', 'success');
+            this.hide();
+            
         } catch (error) {
             console.error('下载模型文件失败:', error);
-            this.showMessage('下载失败，请稍后重试', 'error');
+            if (error.name === 'TypeError' && error.message.includes('fetch')) {
+                this.showMessage('网络连接失败，请检查网络连接', 'error');
+            } else {
+                this.showMessage('下载失败，请稍后重试', 'error');
+            }
         }
     }
 
@@ -540,21 +565,7 @@ class ModelDownload extends HTMLElement {
         this.clearFieldError('modelVersion');
     }
 
-    async apiCall(url, data) {
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(data)
-        });
-
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        return await response.json();
-    }
+    // 移除apiCall方法，因为下载使用表单提交方式
 
     showMessage(message, type = 'info') {
         const messageDiv = document.createElement('div');
