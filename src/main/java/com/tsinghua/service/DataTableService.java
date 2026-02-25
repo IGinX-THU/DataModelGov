@@ -8,6 +8,7 @@ import cn.edu.tsinghua.iginx.session_v2.query.*;
 import cn.edu.tsinghua.iginx.thrift.*;
 import cn.edu.tsinghua.iginx.utils.Pair;
 import com.tsinghua.dto.*;
+import com.tsinghua.util.ConvertUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
@@ -65,7 +66,15 @@ public class DataTableService {
 //                log.info(record.getKey() + "\t");
                     recordMap.put(KEY, record.getKey());
                 }
-                recordMap.putAll(record.getValues());
+//                recordMap.putAll(record.getValues());
+                for (IginXColumn column: header.getColumns()) {
+                    Object value = record.getValue(column.getName());
+                    if (value instanceof byte[]) {
+                        recordMap.put(column.getName(), ConvertUtil.bytesToString((byte[]) value));
+                    } else {
+                        recordMap.put(column.getName(), value);
+                    }
+                }
                 resultSet.add(recordMap);
             }
         } catch (Exception e) {
@@ -164,7 +173,11 @@ public class DataTableService {
                     writer.print(record.getKey() + ",");
                 }
                 for (IginXColumn column: header.getColumns()) {
-                    writer.print(record.getValue(column.getName()));
+                    if (record.getValue(column.getName()) instanceof byte[]) {
+                        writer.print(ConvertUtil.bytesToString((byte[]) record.getValue(column.getName())));
+                    } else {
+                        writer.print(record.getValue(column.getName()));
+                    }
                     writer.print(",");
                 }
                 writer.println();

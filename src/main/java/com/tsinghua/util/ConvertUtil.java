@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.BeanUtils;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -48,6 +49,29 @@ public class ConvertUtil {
         }
         return targetList;
     }
+
+
+    /**
+     * 将字符串转换为 UTF-8 编码的字节数组
+     * 这是最通用、兼容性最好的编码
+     */
+    public static byte[] stringToBytes(String str) {
+        if (str == null) {
+            return new byte[0]; // 或 return null，根据您的业务逻辑
+        }
+        return str.getBytes(StandardCharsets.UTF_8);
+    }
+
+    /**
+     * 将字节数组解码为 UTF-8 字符串
+     */
+    public static String bytesToString(byte[] bytes) {
+        if (bytes == null || bytes.length == 0) {
+            return ""; // 或 return null
+        }
+        return new String(bytes, StandardCharsets.UTF_8);
+    }
+
 }
 
 
