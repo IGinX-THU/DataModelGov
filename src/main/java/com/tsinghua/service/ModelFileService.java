@@ -1,7 +1,9 @@
 package com.tsinghua.service;
 
+import cn.edu.tsinghua.iginx.exception.SessionException;
 import cn.edu.tsinghua.iginx.session.QueryDataSet;
 import cn.edu.tsinghua.iginx.session.Session;
+import cn.edu.tsinghua.iginx.session.SessionExecuteSqlResult;
 import cn.edu.tsinghua.iginx.session_v2.IginXClient;
 import cn.edu.tsinghua.iginx.session_v2.QueryClient;
 import cn.edu.tsinghua.iginx.session_v2.WriteClient;
@@ -15,6 +17,7 @@ import com.tsinghua.dto.UploadResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.PostConstruct;
@@ -120,7 +123,13 @@ public class ModelFileService {
                                    String fileMd5, String author, String scene,
                                    String inputs, String outputs) throws Exception {
         List<Point> metaPoints = new ArrayList<>();
-        long timestamp = System.currentTimeMillis();
+        ModelMetaDto queryMeta = queryMeta(name, version);
+        long timestamp;
+        if (queryMeta != null && queryMeta.getTimestamp() != null) {
+            timestamp = queryMeta.getTimestamp();
+        } else {
+            timestamp = System.currentTimeMillis();
+        }
         String safeVersion = version.replace('.', '_');
         String metaBasePath = String.format("%s.%s", META_PREFIX, "meta");
 
@@ -183,14 +192,125 @@ public class ModelFileService {
         return builder.build();
     }
 
-    public ModelMetaDto queryMeta(String name, String version) throws Exception {
-        String sql = "select * from %s where name = '%s' and version='%s' limit 1;";
+    public ModelMetaDto queryMeta(String name, String version) {
+        try {
+            String sql = "select * from %s where name = '%s' and version='%s';";
         String metaBasePath = String.format("%s.%s", META_PREFIX, "meta");
         String safeVersion = version.replace('.', '_');
         iginxSession.openSession();
         QueryDataSet res =  iginxSession.executeQuery(String.format(sql, metaBasePath, name, safeVersion));
+        List<String> head = res.getColumnList();
+        Object[] row = res.nextRow();
+        Map<String, Object> rs = new LinkedHashMap<>();
+        for (int i=0; i<=head.size() -1; i++){
+            rs.put(head.get(i), row[i]);
+        }
         iginxSession.closeSession();
-        return null;
+
+        ModelMetaDto dto = new ModelMetaDto();
+        // 根据控制台输出的列名进行映射
+        rs.forEach((k,v) -> setDtoField(dto, k, v));
+        return dto;
+        } catch (Exception e) {
+            log.error("查询失败", e);
+            return null;
+        }
+    }
+
+    /**
+     * 根据字段名设置DTO属性
+     */
+    private void setDtoField(ModelMetaDto dto, String fieldName, Object value) {
+        try {
+            switch (fieldName) {
+                case "relational.models.meta.name":
+                    if (value instanceof byte[]) {
+                        dto.setName(new String((byte[]) value, StandardCharsets.UTF_8));
+                    } else if (value instanceof String) {
+                        dto.setName((String) value);
+                    }
+                    break;
+                case "relational.models.meta.version":
+                    if (value instanceof byte[]) {
+                        dto.setVersion(new String((byte[]) value, StandardCharsets.UTF_8));
+                    } else if (value instanceof String) {
+                        dto.setVersion((String) value);
+                    }
+                    break;
+                case "relational.models.meta.fileName":
+                    if (value instanceof byte[]) {
+                        dto.setFileName(new String((byte[]) value, StandardCharsets.UTF_8));
+                    } else if (value instanceof String) {
+                        dto.setFileName((String) value);
+                    }
+                    break;
+                case "relational.models.meta.fileSize":
+                    if (value instanceof Long) {
+                        dto.setFileSize((Long) value);
+                    } else if (value instanceof Integer) {
+                        dto.setFileSize(((Integer) value).longValue());
+                    }
+                    break;
+                case "relational.models.meta.chunkCount":
+                    if (value instanceof Long) {
+                        dto.setChunkCount(((Long) value).intValue());
+                    } else if (value instanceof Integer) {
+                        dto.setChunkCount((Integer) value);
+                    }
+                    break;
+                case "relational.models.meta.storagePath":
+                    if (value instanceof byte[]) {
+                        dto.setStoragePath(new String((byte[]) value, StandardCharsets.UTF_8));
+                    } else if (value instanceof String) {
+                        dto.setStoragePath((String) value);
+                    }
+                    break;
+                case "relational.models.meta.fileMd5":
+                    if (value instanceof byte[]) {
+                        dto.setFileMd5(new String((byte[]) value, StandardCharsets.UTF_8));
+                    } else if (value instanceof String) {
+                        dto.setFileMd5((String) value);
+                    }
+                    break;
+                case "relational.models.meta.author":
+                    if (value instanceof byte[]) {
+                        dto.setAuthor(new String((byte[]) value, StandardCharsets.UTF_8));
+                    } else if (value instanceof String) {
+                        dto.setAuthor((String) value);
+                    }
+                    break;
+                case "relational.models.meta.scene":
+                    if (value instanceof byte[]) {
+                        dto.setScene(new String((byte[]) value, StandardCharsets.UTF_8));
+                    } else if (value instanceof String) {
+                        dto.setScene((String) value);
+                    }
+                    break;
+                case "relational.models.meta.inputs":
+                    if (value instanceof byte[]) {
+                        dto.setInputs(new String((byte[]) value, StandardCharsets.UTF_8));
+                    } else if (value instanceof String) {
+                        dto.setInputs((String) value);
+                    }
+                    break;
+                case "relational.models.meta.outputs":
+                    if (value instanceof byte[]) {
+                        dto.setOutputs(new String((byte[]) value, StandardCharsets.UTF_8));
+                    } else if (value instanceof String) {
+                        dto.setOutputs((String) value);
+                    }
+                    break;
+                case "relational.models.meta.timestamp":
+                    if (value instanceof Long) {
+                        dto.setTimestamp((Long) value);
+                    }
+                    break;
+                default:
+                    log.debug("忽略未知字段: {}", fieldName);
+            }
+        } catch (Exception e) {
+            log.warn("设置字段 {} 失败: {}", fieldName, e.getMessage());
+        }
     }
 
     /**

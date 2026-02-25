@@ -11,8 +11,8 @@ public class ModelMetaDto {
     private String version;
     @ApiModelProperty(value = "文件名")
     private String fileName;
-    private long fileSize;
-    private int chunkCount;
+    private Long fileSize;
+    private Integer chunkCount;
     private String storagePath;
     private String fileMd5;
 
@@ -20,5 +20,7 @@ public class ModelMetaDto {
     private String scene;
     private String inputs;
     private String outputs;
+
+    private Long timestamp;
 
 }
