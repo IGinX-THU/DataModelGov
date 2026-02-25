@@ -7,8 +7,6 @@ import lombok.NoArgsConstructor;
 import org.apache.thrift.annotation.Nullable;
 
 @Data
-@NoArgsConstructor
-@AllArgsConstructor
 public class StorageEngineInfoDto {
     private long id;
     @Nullable
@@ -29,4 +27,17 @@ public class StorageEngineInfoDto {
     private String schemaPrefix;
     @Nullable
     private String dataPrefix;
+
+    public StorageEngineInfoDto() {
+    }
+
+    public StorageEngineInfoDto(long id, String ip, int port, int type, String schemaPrefix, String dataPrefix) {
+        this.id = id;
+        this.ip = ip;
+        this.port = port;
+        this.type = type;
+        this.schemaPrefix = "null".equalsIgnoreCase(schemaPrefix) ? "" : schemaPrefix;
+        this.dataPrefix = "null".equalsIgnoreCase(dataPrefix) ? "" : dataPrefix;
+    }
+
 }

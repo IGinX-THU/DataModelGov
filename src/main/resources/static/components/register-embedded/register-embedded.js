@@ -360,10 +360,10 @@ class RegisterDataResourceEmbedded extends HTMLElement {
                     return false;
                 }
                 // MySQL需要metaPropertiesPath
-                if (data.engine === 'mysql' && !data.metaPropertiesPath) {
-                    this.showMessage('MySQL存储引擎必须提供元数据配置文件路径', 'error');
-                    return false;
-                }
+                // if (data.engine === 'mysql' && !data.metaPropertiesPath) {
+                //     this.showMessage('MySQL存储引擎必须提供元数据配置文件路径', 'error');
+                //     return false;
+                // }
                 break;
         }
         

@@ -61,12 +61,8 @@ public class RelationalStorageRequest extends StorageEngineRegisterWrapper {
             params.put("password", password);
         }
 
-        if ("mysql".equalsIgnoreCase(engine)) {
-            if (metaPropertiesPath == null || metaPropertiesPath.trim().isEmpty()) {
-                throw new IllegalArgumentException("MySQL存储引擎必须提供meta_properties_path参数");
-            } else {
-                params.put("meta_properties_path", metaPropertiesPath);
-            }
+        if (metaPropertiesPath != null && !metaPropertiesPath.trim().isEmpty()) {
+            params.put("meta_properties_path", metaPropertiesPath);
         }
 
         if (connectionTimeout != null) {
