@@ -1,5 +1,6 @@
 package com.tsinghua.controller;
 
+import com.tsinghua.dto.ModelMetaDto;
 import com.tsinghua.dto.Result;
 import com.tsinghua.dto.UploadResult;
 import com.tsinghua.service.ModelFileService;
@@ -53,6 +54,14 @@ public class ModelFileController {
         // 写入响应流
         response.getOutputStream().write(fileData);
         response.flushBuffer();
+    }
+
+    @GetMapping( "/metas")
+    public Result<ModelMetaDto> queryMeta(
+            @RequestParam("name") String name,
+            @RequestParam("version") String version) throws Exception {
+        ModelMetaDto result = modelFileService.queryMeta(name, version);
+        return Result.success(result);
     }
 
 }

@@ -1,5 +1,7 @@
 package com.tsinghua.service;
 
+import cn.edu.tsinghua.iginx.session.QueryDataSet;
+import cn.edu.tsinghua.iginx.session.Session;
 import cn.edu.tsinghua.iginx.session_v2.IginXClient;
 import cn.edu.tsinghua.iginx.session_v2.QueryClient;
 import cn.edu.tsinghua.iginx.session_v2.WriteClient;
@@ -7,6 +9,8 @@ import cn.edu.tsinghua.iginx.session_v2.query.IginXRecord;
 import cn.edu.tsinghua.iginx.session_v2.query.IginXTable;
 import cn.edu.tsinghua.iginx.session_v2.query.SimpleQuery;
 import cn.edu.tsinghua.iginx.session_v2.write.Point;
+import cn.edu.tsinghua.iginx.thrift.DataType;
+import com.tsinghua.dto.ModelMetaDto;
 import com.tsinghua.dto.UploadResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,6 +28,10 @@ public class ModelFileService {
 
     private static final int CHUNK_SIZE = 65536; // 64KB
     private static final String STORAGE_PREFIX = "filesystem.models";
+    private static final String META_PREFIX = "relational.models";
+
+    @Autowired
+    private Session iginxSession;
 
     @Autowired
     private IginXClient iginxClient;
@@ -92,8 +100,97 @@ public class ModelFileService {
         log.info("模型文件上传成功。名称: {}, 版本: {}, 块数: {}, MD5: {}",
                 name, version, totalChunks, fileMd5);
 
+        // 2. 保存模型元数据 (行式对齐存储)
+        saveModelMetadata(name, version, file.getOriginalFilename(), file.getSize(),
+                totalChunks, storagePath, fileMd5, null, null, null, null);
+
+        log.info("模型文件上传成功。名称: {}, 版本: {}, 块数: {}, MD5: {}",
+                name, version, totalChunks, fileMd5);
+
         return new UploadResult(name, version, file.getOriginalFilename(),
                 file.getSize(), totalChunks, storagePath, fileMd5);
+    }
+
+    /**
+     * 保存模型元数据 (行式对齐存储)
+     * 每个字段作为独立的时序序列存储，使用相同的时间戳对齐
+     */
+    private void saveModelMetadata(String name, String version, String fileName,
+                                   long fileSize, int chunkCount, String storagePath,
+                                   String fileMd5, String author, String scene,
+                                   String inputs, String outputs) throws Exception {
+        List<Point> metaPoints = new ArrayList<>();
+        long timestamp = System.currentTimeMillis();
+        String safeVersion = version.replace('.', '_');
+        String metaBasePath = String.format("%s.%s", META_PREFIX, "meta");
+
+        // 创建各个字段的数据点
+        metaPoints.add(createFieldPoint(metaBasePath, "name", name, timestamp));
+        metaPoints.add(createFieldPoint(metaBasePath, "version", safeVersion, timestamp));
+        metaPoints.add(createFieldPoint(metaBasePath, "fileName", fileName, timestamp));
+        metaPoints.add(createFieldPoint(metaBasePath, "fileSize", fileSize, timestamp));
+        metaPoints.add(createFieldPoint(metaBasePath, "chunkCount", chunkCount, timestamp));
+        metaPoints.add(createFieldPoint(metaBasePath, "storagePath", storagePath, timestamp));
+        metaPoints.add(createFieldPoint(metaBasePath, "fileMd5", fileMd5, timestamp));
+        metaPoints.add(createFieldPoint(metaBasePath, "author", author, timestamp));
+        metaPoints.add(createFieldPoint(metaBasePath, "scene", scene, timestamp));
+        metaPoints.add(createFieldPoint(metaBasePath, "inputs", inputs, timestamp));
+        metaPoints.add(createFieldPoint(metaBasePath, "outputs", outputs, timestamp));
+        metaPoints.add(createFieldPoint(metaBasePath, "timestamp", timestamp, timestamp));
+
+        // 批量写入元数据
+        writeClient.writePoints(metaPoints);
+        log.info("模型元数据已保存。名称: {}, 版本: {}, 时间戳: {}", name, version, timestamp);
+    }
+
+    /**
+     * 创建字段数据点
+     */
+    private Point createFieldPoint(String basePath, String fieldName, Object value, long timestamp) {
+        String measurement = String.format("%s.%s", basePath, fieldName);
+
+        Point.Builder builder = Point.builder()
+                .measurement(measurement)
+                .key(timestamp);
+
+        // 根据值的类型设置对应的值类型
+        if (value == null) {
+            // 将字符串转换为字节数组存储
+            byte[] bytes = "".getBytes(StandardCharsets.UTF_8);
+            builder.binaryValue(bytes)
+                    .dataType(DataType.BINARY);
+        } else if (value instanceof Boolean) {
+            builder.booleanValue((Boolean) value)
+                    .dataType(DataType.BOOLEAN);
+        } else if (value instanceof Integer) {
+            builder.intValue(((Integer) value))
+                    .dataType(DataType.INTEGER);
+        } else if (value instanceof Long) {
+            builder.longValue((Long) value)
+                    .dataType(DataType.LONG);
+        } else if (value instanceof Float) {
+            builder.floatValue(((Float) value))
+                    .dataType(DataType.FLOAT);
+        } else if (value instanceof Double) {
+            builder.doubleValue(((Double) value))
+                    .dataType(DataType.DOUBLE);
+        } else {
+            // 默认转换为字节数组存储
+            builder.binaryValue(value.toString().getBytes(StandardCharsets.UTF_8))
+                    .dataType(DataType.BINARY);
+        }
+
+        return builder.build();
+    }
+
+    public ModelMetaDto queryMeta(String name, String version) throws Exception {
+        String sql = "select * from %s where name = '%s' and version='%s' limit 1;";
+        String metaBasePath = String.format("%s.%s", META_PREFIX, "meta");
+        String safeVersion = version.replace('.', '_');
+        iginxSession.openSession();
+        QueryDataSet res =  iginxSession.executeQuery(String.format(sql, metaBasePath, name, safeVersion));
+        iginxSession.closeSession();
+        return null;
     }
 
     /**
