@@ -324,9 +324,10 @@ document.addEventListener('DOMContentLoaded', function() {
         const nodeName = span.textContent.trim();
         console.log('选中的节点名称:', nodeName);
         
-        // 检查是否是版本号节点
-        if (nodeName.match(/^v\d+\.\d+\.\d+$/)) {
-            // 如果是版本号节点，获取父节点的模型名称
+        // 检查是否是叶子节点
+        const isLeaf = activeNode.getAttribute('data-is-leaf') === 'true';
+        if (isLeaf) {
+            // 如果是叶子节点，获取父节点的模型名称
             const parentNode = activeNode.closest('.tree-children')?.parentElement;
             const parentSpan = parentNode?.querySelector('span');
             if (parentSpan) {
@@ -1475,11 +1476,19 @@ function showVisualAnalysis() {
             // 显示全局loading
             window.showGlobalLoading('正在加载数据源...');
             
+            // 同时显示右侧loading
+            const rightSidebarTree = document.querySelector('.right-sidebar .tree');
+            if (rightSidebarTree) {
+                rightSidebarTree.innerHTML = '<div class="loading-placeholder">正在同步模型资产...</div>';
+            }
+            
             const response = await fetch(window.AppConfig.getApiUrl('datasource', 'tree'));
             const result = await response.json();
             
             if (result.code === 200 && result.data) {
                 renderDataSourceTree(result.data);
+                // 同步filesystem数据到右侧模型资产库
+                syncFilesystemToModelAssets(result.data);
             } else {
                 console.error('加载数据源树失败:', result.message);
                 document.getElementById('dataSourceTree').innerHTML = '<div class="error-placeholder">加载数据源失败</div>';
@@ -1648,6 +1657,134 @@ function showVisualAnalysis() {
                     }
                 });
             });
+        }
+    }
+    
+    // 同步filesystem数据到右侧模型资产库
+    function syncFilesystemToModelAssets(allData) {
+        try {
+            // 过滤出以"filesystem"开头的路径数据
+            const filesystemData = allData.filter(item => {
+                const path = typeof item === 'string' ? item : item.path;
+                return path && path.startsWith('filesystem');
+            });
+            
+            console.log('过滤出的filesystem数据:', filesystemData);
+            
+            if (filesystemData.length > 0) {
+                // 获取右侧树容器
+                const rightSidebarTree = document.querySelector('.right-sidebar .tree');
+                if (!rightSidebarTree) return;
+                
+                // 构建树结构
+                const treeMap = {};
+                filesystemData.forEach(item => {
+                    const path = typeof item === 'string' ? item : item.path;
+                    const parts = path.split('.');
+                    
+                    let current = treeMap;
+                    for (let i = 0; i < parts.length; i++) {
+                        const part = parts[i];
+                        if (!current[part]) {
+                            current[part] = {
+                                name: part,
+                                children: {},
+                                fullPath: parts.slice(0, i + 1).join('.'),
+                                isLeaf: i === parts.length - 1,
+                                level: i
+                            };
+                        }
+                        current = current[part].children;
+                    }
+                });
+                
+                // 递归创建DOM树节点
+                function createTreeNodes(nodes, container, level = 0) {
+                    Object.values(nodes).forEach(node => {
+                        const hasChildren = Object.keys(node.children).length > 0;
+                        
+                        // 创建树节点
+                        const treeNode = document.createElement('div');
+                        treeNode.className = hasChildren ? 'tree-node expanded' : 'tree-node';
+                        treeNode.setAttribute('data-full-path', node.fullPath);
+                        treeNode.setAttribute('data-is-leaf', node.isLeaf.toString());
+                        
+                        // 只有父节点（有子节点的）才有图标，子节点（版本号）没有图标
+                        if (hasChildren) {
+                            const icon = document.createElement('i');
+                            icon.className = 'icon cube-icon';
+                            treeNode.appendChild(icon);
+                        }
+                        
+                        // 添加节点名称
+                        const span = document.createElement('span');
+                        span.textContent = node.name;
+                        treeNode.appendChild(span);
+                        
+                        // 如果有子节点，创建子容器并递归
+                        if (hasChildren) {
+                            const childrenContainer = document.createElement('div');
+                            childrenContainer.className = 'tree-children';
+                            createTreeNodes(node.children, childrenContainer, level + 1);
+                            treeNode.appendChild(childrenContainer);
+                        }
+                        
+                        // 添加到容器
+                        container.appendChild(treeNode);
+                    });
+                }
+                
+                // 清空容器并创建新树
+                rightSidebarTree.innerHTML = '';
+                createTreeNodes(treeMap, rightSidebarTree);
+                
+                // 重新绑定右侧树节点事件（保持原有逻辑）
+                const rightTreeNodes = rightSidebarTree.querySelectorAll('.tree-node');
+                rightTreeNodes.forEach(node => {
+                    node.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        
+                        // 确保只处理右侧的节点
+                        if (!this.closest('.right-sidebar')) {
+                            return;
+                        }
+                        
+                        // 先清除所有选中状态（仅限右侧）
+                        rightSidebarTree.querySelectorAll('.tree-node.active').forEach(n => n.classList.remove('active'));
+                        
+                        // 设置当前选中
+                        this.classList.add('active');
+                        
+                        // 展开收起（如果有子节点）
+                        if (this.querySelector('.tree-children')) {
+                            this.classList.toggle('expanded');
+                        }
+                        
+                        // 调用原有的模型详情显示逻辑
+                        const selectedModel = getSelectedModel();
+                        if (selectedModel && selectedModel.version) {
+                            console.log('显示模型详情:', selectedModel);
+                            showComponent('modelDetail', selectedModel);
+                        } else {
+                            console.log('未获取到版本信息或点击的是父节点，不显示详情页面');
+                        }
+                    });
+                });
+                
+            } else {
+                // 如果没有filesystem数据，显示空状态
+                const rightSidebarTree = document.querySelector('.right-sidebar .tree');
+                if (rightSidebarTree) {
+                    rightSidebarTree.innerHTML = '<div class="empty-placeholder">暂无文件系统模型</div>';
+                }
+            }
+            
+        } catch (error) {
+            console.error('同步filesystem数据到模型资产库失败:', error);
+            const rightSidebarTree = document.querySelector('.right-sidebar .tree');
+            if (rightSidebarTree) {
+                rightSidebarTree.innerHTML = '<div class="error-placeholder">同步模型资产失败</div>';
+            }
         }
     }
 });

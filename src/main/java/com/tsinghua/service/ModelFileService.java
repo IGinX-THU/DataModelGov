@@ -5,20 +5,16 @@ import cn.edu.tsinghua.iginx.session_v2.QueryClient;
 import cn.edu.tsinghua.iginx.session_v2.WriteClient;
 import cn.edu.tsinghua.iginx.session_v2.query.IginXRecord;
 import cn.edu.tsinghua.iginx.session_v2.query.IginXTable;
-import cn.edu.tsinghua.iginx.session_v2.query.Query;
 import cn.edu.tsinghua.iginx.session_v2.query.SimpleQuery;
 import cn.edu.tsinghua.iginx.session_v2.write.Point;
 import com.tsinghua.dto.UploadResult;
-import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.PostConstruct;
-import javax.annotation.PreDestroy;
 import java.io.ByteArrayOutputStream;
-import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 
@@ -27,7 +23,7 @@ import java.util.*;
 public class ModelFileService {
 
     private static final int CHUNK_SIZE = 65536; // 64KB
-    private static final String STORAGE_PREFIX = "fs.models";
+    private static final String STORAGE_PREFIX = "filesystem.models";
 
     @Autowired
     private IginXClient iginxClient;
