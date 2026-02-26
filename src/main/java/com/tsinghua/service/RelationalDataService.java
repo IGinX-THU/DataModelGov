@@ -71,6 +71,14 @@ public class RelationalDataService {
             }
         }
         
+        // 添加ORDER BY排序条件
+        if (StringUtils.hasText(request.getSortField())) {
+            sql.append(" ORDER BY ").append(request.getSortField());
+            if (StringUtils.hasText(request.getSortDirection())) {
+                sql.append(" ").append(request.getSortDirection());
+            }
+        }
+        
         return sql.toString();
     }
 
@@ -180,6 +188,7 @@ public class RelationalDataService {
             }
         }
         
+        // COUNT查询不需要排序，直接返回
         return sql.append(";").toString();
     }
 }
