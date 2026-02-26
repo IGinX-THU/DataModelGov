@@ -1675,10 +1675,10 @@ function showVisualAnalysis() {
             // 过滤出以"filesystem"开头的路径数据
             const filesystemData = allData.filter(item => {
                 const path = typeof item === 'string' ? item : item.path;
-                return path && path.startsWith('filesystem');
+                return path && path.startsWith('models_file');
             });
             
-            console.log('过滤出的filesystem数据:', filesystemData);
+            console.log('过滤出的models_file数据:', filesystemData);
             
             if (filesystemData.length > 0) {
                 // 获取右侧树容器

@@ -350,7 +350,7 @@ class ModelDownload extends HTMLElement {
                 const nodeName = span.textContent.trim();
                 
                 // 排除明显的路径节点
-                if (nodeName === 'filesystem' || nodeName === 'models') {
+                if (nodeName === 'models_file') {
                     return;
                 }
                 
@@ -416,7 +416,7 @@ class ModelDownload extends HTMLElement {
                 const nodeName = span.textContent.trim();
                 
                 // 排除明显的路径节点
-                if (nodeName === 'filesystem' || nodeName === 'models') {
+                if (nodeName === 'models_file') {
                     return;
                 }
                 

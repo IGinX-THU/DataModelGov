@@ -1,9 +1,7 @@
 package com.tsinghua.service;
 
-import cn.edu.tsinghua.iginx.exception.SessionException;
 import cn.edu.tsinghua.iginx.session.QueryDataSet;
 import cn.edu.tsinghua.iginx.session.Session;
-import cn.edu.tsinghua.iginx.session.SessionExecuteSqlResult;
 import cn.edu.tsinghua.iginx.session_v2.IginXClient;
 import cn.edu.tsinghua.iginx.session_v2.QueryClient;
 import cn.edu.tsinghua.iginx.session_v2.WriteClient;
@@ -17,7 +15,6 @@ import com.tsinghua.dto.UploadResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.PostConstruct;
@@ -30,8 +27,8 @@ import java.util.*;
 public class ModelFileService {
 
     private static final int CHUNK_SIZE = 65536; // 64KB
-    private static final String STORAGE_PREFIX = "filesystem.models";
-    private static final String META_PREFIX = "relational.models";
+    private static final String STORAGE_PREFIX = "models_file";
+    private static final String META_PREFIX = "models_meta";
 
     @Autowired
     private Session iginxSession;
@@ -131,7 +128,7 @@ public class ModelFileService {
             timestamp = System.currentTimeMillis();
         }
         String safeVersion = version.replace('.', '_');
-        String metaBasePath = String.format("%s.%s", META_PREFIX, "meta");
+        String metaBasePath = META_PREFIX;
 
         // 创建各个字段的数据点
         metaPoints.add(createFieldPoint(metaBasePath, "name", name, timestamp));
@@ -195,7 +192,7 @@ public class ModelFileService {
     public ModelMetaDto queryMeta(String name, String version) {
         try {
             String sql = "select * from %s where name = '%s' and version='%s';";
-        String metaBasePath = String.format("%s.%s", META_PREFIX, "meta");
+        String metaBasePath = META_PREFIX;
         String safeVersion = version.replace('.', '_');
         iginxSession.openSession();
         QueryDataSet res =  iginxSession.executeQuery(String.format(sql, metaBasePath, name, safeVersion));
@@ -223,84 +220,84 @@ public class ModelFileService {
     private void setDtoField(ModelMetaDto dto, String fieldName, Object value) {
         try {
             switch (fieldName) {
-                case "relational.models.meta.name":
+                case META_PREFIX+"."+"name":
                     if (value instanceof byte[]) {
                         dto.setName(new String((byte[]) value, StandardCharsets.UTF_8));
                     } else if (value instanceof String) {
                         dto.setName((String) value);
                     }
                     break;
-                case "relational.models.meta.version":
+                case META_PREFIX+"."+"version":
                     if (value instanceof byte[]) {
                         dto.setVersion(new String((byte[]) value, StandardCharsets.UTF_8));
                     } else if (value instanceof String) {
                         dto.setVersion((String) value);
                     }
                     break;
-                case "relational.models.meta.fileName":
+                case META_PREFIX+"."+"fileName":
                     if (value instanceof byte[]) {
                         dto.setFileName(new String((byte[]) value, StandardCharsets.UTF_8));
                     } else if (value instanceof String) {
                         dto.setFileName((String) value);
                     }
                     break;
-                case "relational.models.meta.fileSize":
+                case META_PREFIX+"."+"fileSize":
                     if (value instanceof Long) {
                         dto.setFileSize((Long) value);
                     } else if (value instanceof Integer) {
                         dto.setFileSize(((Integer) value).longValue());
                     }
                     break;
-                case "relational.models.meta.chunkCount":
+                case META_PREFIX+"."+"chunkCount":
                     if (value instanceof Long) {
                         dto.setChunkCount(((Long) value).intValue());
                     } else if (value instanceof Integer) {
                         dto.setChunkCount((Integer) value);
                     }
                     break;
-                case "relational.models.meta.storagePath":
+                case META_PREFIX+"."+"storagePath":
                     if (value instanceof byte[]) {
                         dto.setStoragePath(new String((byte[]) value, StandardCharsets.UTF_8));
                     } else if (value instanceof String) {
                         dto.setStoragePath((String) value);
                     }
                     break;
-                case "relational.models.meta.fileMd5":
+                case META_PREFIX+"."+"fileMd5":
                     if (value instanceof byte[]) {
                         dto.setFileMd5(new String((byte[]) value, StandardCharsets.UTF_8));
                     } else if (value instanceof String) {
                         dto.setFileMd5((String) value);
                     }
                     break;
-                case "relational.models.meta.author":
+                case META_PREFIX+"."+"author":
                     if (value instanceof byte[]) {
                         dto.setAuthor(new String((byte[]) value, StandardCharsets.UTF_8));
                     } else if (value instanceof String) {
                         dto.setAuthor((String) value);
                     }
                     break;
-                case "relational.models.meta.scene":
+                case META_PREFIX+"."+"scene":
                     if (value instanceof byte[]) {
                         dto.setScene(new String((byte[]) value, StandardCharsets.UTF_8));
                     } else if (value instanceof String) {
                         dto.setScene((String) value);
                     }
                     break;
-                case "relational.models.meta.inputs":
+                case META_PREFIX+"."+"inputs":
                     if (value instanceof byte[]) {
                         dto.setInputs(new String((byte[]) value, StandardCharsets.UTF_8));
                     } else if (value instanceof String) {
                         dto.setInputs((String) value);
                     }
                     break;
-                case "relational.models.meta.outputs":
+                case META_PREFIX+"."+"outputs":
                     if (value instanceof byte[]) {
                         dto.setOutputs(new String((byte[]) value, StandardCharsets.UTF_8));
                     } else if (value instanceof String) {
                         dto.setOutputs((String) value);
                     }
                     break;
-                case "relational.models.meta.timestamp":
+                case META_PREFIX+"."+"timestamp":
                     if (value instanceof Long) {
                         dto.setTimestamp((Long) value);
                     }
