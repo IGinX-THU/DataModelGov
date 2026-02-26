@@ -3,14 +3,21 @@ class DatabaseTable extends HTMLElement {
         super();
         this.attachShadow({ mode: 'open' });
         this.data = [];
-        this.pageSize = 6;
+        this.pageSize = 10;
         this.currentPage = 1;
+        this.tableName = null;
+        this.totalCount = 0;
     }
 
     async connectedCallback() {
         await this.loadResources();
-        this.seedData();
-        this.renderTable();
+        
+        // 只有在没有tableName时才使用seedData
+        if (!this.tableName) {
+            this.seedData();
+            this.totalCount = this.data.length;
+            this.renderTable();
+        }
         
         // 初始化分页组件
         this.initPagination();
@@ -212,29 +219,29 @@ class DatabaseTable extends HTMLElement {
         const tbody = this.shadowRoot.getElementById('tableBody');
         if (!tbody) return;
 
-        const start = (this.currentPage - 1) * this.pageSize;
-        const end = start + this.pageSize;
-        const pageData = this.data.slice(start, end);
+        if (!this.data || this.data.length === 0) {
+            this.showEmptyState();
+            return;
+        }
 
-        tbody.innerHTML = pageData.map(row => `
-            <tr>
-                <td>${row.id}</td>
-                <td>${row.temperature}</td>
-                <td>${row.humidity}</td>
-                <td>${row.name}</td>
-                <td>${row.device}</td>
-                <td>${row.type}</td>
-                <td>${row.status}</td>
-                <td>${row.createtime}</td>
-                <td>${row.updatetime}</td>
+        tbody.innerHTML = this.data.map((row, index) => {
+            // 生成行数据
+            const rowCells = Object.values(row).map(value => 
+                `<td>${value !== null && value !== undefined ? value : ''}</td>`
+            ).join('');
+            
+            // 添加操作列
+            const actionCell = `
                 <td>
                     <div class="action-buttons">
-                        <button class="action-btn edit" data-id="${row.id}">编辑</button>
-                        <button class="action-btn delete" data-id="${row.id}">删除</button>
+                        <button class="action-btn edit" data-index="${index}">编辑</button>
+                        <button class="action-btn delete" data-index="${index}">删除</button>
                     </div>
                 </td>
-            </tr>
-        `).join('');
+            `;
+            
+            return `<tr>${rowCells}${actionCell}</tr>`;
+        }).join('');
 
         this.updatePagination();
     }
@@ -460,10 +467,11 @@ class DatabaseTable extends HTMLElement {
     }
 
     show(tableName = null) {
-        // 如果提供了tableName，可以在这里处理
+        // 如果提供了tableName，加载关系数据
         if (tableName) {
             console.log('显示数据库表格:', tableName);
-            // 可以根据tableName加载不同的数据或设置标题
+            this.tableName = tableName;
+            this.loadRelationalData();
         }
         this.setAttribute('show', '');
     }
@@ -471,23 +479,194 @@ class DatabaseTable extends HTMLElement {
     initPagination() {
         const pagination = this.shadowRoot.getElementById('pagination');
         if (pagination) {
+            // 初始化分页设置
+            pagination.setPagination(this.currentPage, this.pageSize, this.totalCount);
+            
             // 监听分页变化事件
             pagination.addEventListener('pagination-change', (event) => {
                 const { currentPage, pageSize } = event.detail;
                 this.currentPage = currentPage;
                 this.pageSize = pageSize;
-                this.renderTable();
+                
+                console.log('分页变化:', { currentPage, pageSize });
+                
+                // 如果有tableName，重新加载数据
+                if (this.tableName) {
+                    this.loadRelationalData();
+                } else {
+                    // 否则使用本地数据分页
+                    this.renderTable();
+                }
             });
-            
-            // 初始化分页
-            this.updatePagination();
         }
     }
 
     updatePagination() {
         const pagination = this.shadowRoot.getElementById('pagination');
         if (pagination) {
-            pagination.setPagination(this.currentPage, this.pageSize, this.data.length);
+            // 使用totalCount设置分页
+            console.log('更新分页: currentPage=', this.currentPage, ', pageSize=', this.pageSize, ', totalCount=', this.totalCount);
+            pagination.setPagination(this.currentPage, this.pageSize, this.totalCount);
+        }
+    }
+
+    async loadRelationalData() {
+        try {
+            console.log('开始加载关系数据:', this.tableName);
+            
+            // 显示全局loading
+            if (window.showGlobalLoading) {
+                window.showGlobalLoading('正在查询数据...');
+            }
+            
+            // 首先获取数据总量
+            await this.loadTotalCount();
+            
+            // 构建请求体
+            const requestBody = {
+                tableName: this.tableName,
+                pageNum: this.currentPage,
+                pageSize: this.pageSize
+            };
+            
+            console.log('查询参数:', requestBody);
+            
+            // 调用关系数据查询接口
+            const response = await fetch(window.AppConfig.getApiUrl('data', 'relational/query'), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestBody)
+            });
+            
+            const result = await response.json();
+            
+            console.log('API响应结果:', result);
+            
+            if (result.code === 200 && result.data) {
+                console.log('关系数据查询成功:', result.data);
+                
+                // 处理查询结果
+                this.processTableData(result.data);
+            } else if (result.code === 200 && (!result.data || !result.data.records || result.data.records.length === 0)) {
+                // 接口成功但没有数据
+                console.log('查询成功但没有数据');
+                this.showEmptyState();
+            } else {
+                // 接口返回错误
+                console.error('关系数据查询失败:', result.message);
+                this.showError('数据查询失败: ' + (result.message || '未知错误'));
+            }
+            
+        } catch (error) {
+            console.error('加载关系数据失败:', error);
+            this.showError('网络错误，无法查询数据');
+        } finally {
+            // 无论成功还是失败，都隐藏全局loading
+            if (window.hideGlobalLoading) {
+                window.hideGlobalLoading();
+            }
+        }
+    }
+
+    async loadTotalCount() {
+        try {
+            const requestBody = {
+                tableName: this.tableName
+            };
+            
+            console.log('查询总量参数:', requestBody);
+            
+            const response = await fetch(window.AppConfig.getApiUrl('data', 'relational/count'), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestBody)
+            });
+            
+            const result = await response.json();
+            console.log('总量查询结果:', result);
+            
+            if (result.code === 200 && result.data !== undefined) {
+                this.totalCount = result.data;
+                console.log('数据总量:', this.totalCount);
+            } else {
+                console.warn('获取数据总量失败，使用当前数据量');
+                this.totalCount = this.data.length;
+            }
+        } catch (error) {
+            console.error('获取数据总量失败:', error);
+            this.totalCount = this.data.length;
+        }
+    }
+
+    // 处理表格数据（参考data-visualization的processTableData）
+    processTableData(tableData) {
+        console.log('处理表格数据:', tableData);
+        
+        // 检查数据格式，支持header或paths
+        if (!tableData || (!tableData.header && !tableData.paths) || !tableData.records) {
+            console.error('无效的表格数据格式');
+            this.showEmptyState();
+            return;
+        }
+        
+        // 使用header或paths作为表头
+        const header = tableData.header || tableData.paths;
+        
+        // 设置表头
+        this.updateTableHeader(header);
+        
+        // 保存数据
+        this.data = tableData.records;
+        // totalCount已经在loadTotalCount中设置了
+        
+        console.log('处理后的数据:', this.data.length, '条记录');
+        console.log('表头:', header);
+        console.log('数据总量:', this.totalCount);
+        
+        // 更新表格
+        this.renderTable();
+        
+        // 更新分页
+        this.updatePagination();
+    }
+
+    // 更新表头（参考data-visualization的updateTableHeader）
+    updateTableHeader(header) {
+        const table = this.shadowRoot.querySelector('.data-table');
+        const tableHead = table ? table.querySelector('thead tr') : null;
+        if (tableHead) {
+            // 清空现有表头
+            tableHead.innerHTML = '';
+            
+            // 添加所有列头
+            header.forEach(columnName => {
+                const th = document.createElement('th');
+                th.textContent = columnName;
+                tableHead.appendChild(th);
+            });
+            
+            // 添加操作列
+            const actionTh = document.createElement('th');
+            actionTh.textContent = '操作';
+            tableHead.appendChild(actionTh);
+        }
+    }
+
+    showEmptyState() {
+        const tbody = this.shadowRoot.getElementById('tableBody');
+        if (tbody) {
+            tbody.innerHTML = '<tr><td colspan="100%" style="text-align: center; padding: 20px; color: #666;">暂无数据</td></tr>';
+        }
+    }
+
+    showError(message) {
+        const tbody = this.shadowRoot.getElementById('tableBody');
+        if (tbody) {
+            tbody.innerHTML = `<tr><td colspan="100%" style="text-align: center; padding: 20px; color: #f44336;">${message}</td></tr>`;
         }
     }
 

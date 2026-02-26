@@ -32,6 +32,8 @@ window.AppConfig = {
         // 数据查询相关
         data: {
             query: '/api/data/query',
+            'relational/query': '/api/data/relational/query',
+            'relational/count': '/api/data/relational/count',
             import: '/api/data/import',
             export: '/api/data/export',
             delete: '/api/data/delete'

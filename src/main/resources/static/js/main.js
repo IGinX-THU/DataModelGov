@@ -1656,7 +1656,10 @@ function showVisualAnalysis() {
                         
                         // 检查是否为relational或models_meta开头的路径，如果是则使用data-table跳转逻辑
                         if (fullPath.startsWith('relational') || fullPath.startsWith('models_meta')) {
-                            showDatabaseTable(fullPath);
+                            // 获取父节点路径作为tableName
+                            const pathParts = fullPath.split('.');
+                            const parentPath = pathParts.slice(0, -1).join('.');
+                            showDatabaseTable(parentPath);
                         } else {
                             // 使用 dataSource.type === 1 的逻辑跳转到 data-visualization 页面
                             showDataVisualization(fullPath);

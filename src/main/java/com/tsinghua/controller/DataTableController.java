@@ -80,4 +80,13 @@ public class DataTableController {
         return Result.success(relationalDataService.queryData(request));
     }
 
+    /**
+     * 关系数据总量查询
+     */
+    @ApiOperation("关系数据总量查询")
+    @PostMapping("/relational/count")
+    public Result<Object> countData(@Validated @RequestBody RelationalQueryRequest request) {
+        return Result.success(relationalDataService.countData(request));
+    }
+
 }

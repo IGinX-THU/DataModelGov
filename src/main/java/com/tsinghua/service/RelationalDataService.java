@@ -25,11 +25,20 @@ public class RelationalDataService {
     public TableDto queryData(RelationalQueryRequest request) {
         try {
             String sql = "SELECT * FROM %s LIMIT %s OFFSET %s;";
+            // 修复分页计算：OFFSET应该是(pageNum - 1) * pageSize
+            int offset = (request.getPageNum() - 1) * request.getPageSize();
+            log.info("执行SQL: {}, tableName: {}, pageSize: {}, offset: {}", 
+                    sql, request.getTableName(), request.getPageSize(), offset);
+            
             iginxSession.openSession();
-            SessionExecuteSqlResult res =  iginxSession.executeSql(String.format(sql, request.getTableName(), request.getPageSize(), request.getPageNum()));
+            SessionExecuteSqlResult res = iginxSession.executeSql(String.format(sql, request.getTableName(), request.getPageSize(), offset));
             List<Map<String, Object>> records = getRecords(res);
             iginxSession.closeSession();
-            return new TableDto(res.getPaths(), records);
+            
+            TableDto result = new TableDto(res.getPaths(), records);
+            log.info("查询结果: paths={}, records={}", res.getPaths(), records.size());
+            
+            return result;
         } catch (Exception e) {
             log.error("查询失败", e);
             return null;
@@ -56,4 +65,16 @@ public class RelationalDataService {
         return records;
     }
 
+    public Object countData(RelationalQueryRequest request) {
+        try {
+            String sql = "SELECT COUNT(1) FROM %s;";
+            iginxSession.openSession();
+            SessionExecuteSqlResult res = iginxSession.executeSql(String.format(sql, request.getTableName()));
+            iginxSession.closeSession();
+            return res.getValues().get(0).get(0);
+        } catch (Exception e) {
+            log.error("查询失败", e);
+            return 0;
+        }
+    }
 }
