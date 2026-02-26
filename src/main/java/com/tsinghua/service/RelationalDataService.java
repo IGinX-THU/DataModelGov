@@ -52,6 +52,49 @@ public class RelationalDataService {
     }
 
     /**
+     * 构建WHERE子句，支持AND和OR逻辑以及括号分组
+     */
+    private String buildWhereClause(List<RelationalQueryRequest.FilterCondition> filters) {
+        if (filters == null || filters.isEmpty()) {
+            return "";
+        }
+        
+        StringBuilder whereClause = new StringBuilder();
+        
+        for (int i = 0; i < filters.size(); i++) {
+            RelationalQueryRequest.FilterCondition filter = filters.get(i);
+            
+            // 验证筛选条件
+            if (!StringUtils.hasText(filter.getField()) || 
+                !StringUtils.hasText(filter.getOperator()) || 
+                !StringUtils.hasText(filter.getValue())) {
+                continue;
+            }
+            
+            // 添加开始括号
+            if (Boolean.TRUE.equals(filter.getStartGroup())) {
+                whereClause.append("(");
+            }
+            
+            // 添加逻辑操作符（除了第一个条件）
+            if (i > 0 && StringUtils.hasText(filter.getLogicOperator())) {
+                whereClause.append(" ").append(filter.getLogicOperator()).append(" ");
+            }
+            
+            // 添加筛选条件
+            String condition = buildCondition(filter);
+            whereClause.append(condition);
+            
+            // 添加结束括号
+            if (Boolean.TRUE.equals(filter.getEndGroup())) {
+                whereClause.append(")");
+            }
+        }
+        
+        return whereClause.toString();
+    }
+
+    /**
      * 构建查询SQL语句
      */
     private String buildQuerySql(RelationalQueryRequest request) {
@@ -59,15 +102,9 @@ public class RelationalDataService {
         
         // 添加WHERE条件
         if (request.getFilters() != null && !request.getFilters().isEmpty()) {
-            List<String> conditions = request.getFilters().stream()
-                    .filter(filter -> StringUtils.hasText(filter.getField()) && 
-                                   StringUtils.hasText(filter.getOperator()) && 
-                                   StringUtils.hasText(filter.getValue()))
-                    .map(this::buildCondition)
-                    .collect(Collectors.toList());
-            
-            if (!conditions.isEmpty()) {
-                sql.append(" WHERE ").append(String.join(" AND ", conditions));
+            String whereClause = buildWhereClause(request.getFilters());
+            if (StringUtils.hasText(whereClause)) {
+                sql.append(" WHERE ").append(whereClause);
             }
         }
         
@@ -176,15 +213,9 @@ public class RelationalDataService {
         
         // 添加WHERE条件（与查询相同的逻辑）
         if (request.getFilters() != null && !request.getFilters().isEmpty()) {
-            List<String> conditions = request.getFilters().stream()
-                    .filter(filter -> StringUtils.hasText(filter.getField()) && 
-                                   StringUtils.hasText(filter.getOperator()) && 
-                                   StringUtils.hasText(filter.getValue()))
-                    .map(this::buildCondition)
-                    .collect(Collectors.toList());
-            
-            if (!conditions.isEmpty()) {
-                sql.append(" WHERE ").append(String.join(" AND ", conditions));
+            String whereClause = buildWhereClause(request.getFilters());
+            if (StringUtils.hasText(whereClause)) {
+                sql.append(" WHERE ").append(whereClause);
             }
         }
         

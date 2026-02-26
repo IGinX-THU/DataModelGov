@@ -17,14 +17,19 @@
     font-family: var(--font-family-primary);
     color: var(--text-primary);
     width: 100%;
+    min-width: 0; /* 防止溢出 */
+    overflow-x: auto; /* 允许横向滚动 */
 }
 
 .db-filter-card {
     background: var(--bg-primary);
     border-radius: var(--radius-lg);
     border: 1px solid var(--border-tertiary);
-    padding: var(--spacing-xl) var(--spacing-2xl) var(--spacing-lg);
+    padding: var(--spacing-xl) var(--spacing-lg) var(--spacing-lg);
     box-shadow: var(--shadow-sm);
+    min-width: 0; /* 防止溢出 */
+    overflow-x: auto; /* 允许横向滚动 */
+    width: 100%; /* 与db-table-card保持一致 */
 }
 
 .filter-header {
@@ -37,19 +42,89 @@
     display: flex;
     flex-direction: column;
     gap: var(--spacing-lg);
+    min-width: 0; /* 防止溢出 */
 }
 
 .filter-row {
     display: grid;
-    grid-template-columns: 1fr 1fr 1fr 32px;
-    gap: var(--spacing-xl);
+    grid-template-columns: 60px 80px 1fr 1fr 1fr 80px 32px;
+    gap: 12px;
     align-items: center;
+    min-width: 0; /* 防止网格项溢出 */
+}
+
+.filter-logic {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.filter-logic select {
+    width: 70px;
+    padding: 6px 8px;
+    border: 1px solid #d9d9d9;
+    border-radius: 6px;
+    font-size: 12px;
+    background: #ffffff;
+    color: #333333;
+}
+
+.filter-logic-empty {
+    width: 80px;
+}
+
+.filter-group-controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.filter-group-start select,
+.filter-group-end select {
+    width: 75px;
+    padding: 4px 6px;
+    border: 1px solid #d9d9d9;
+    border-radius: 4px;
+    font-size: 11px;
+    background: #ffffff;
+    color: #333333;
+    min-width: 0; /* 防止溢出 */
 }
 
 .filter-field {
     display: flex;
     align-items: center;
     gap: var(--spacing-lg);
+    min-width: 0; /* 防止溢出 */
+}
+
+.filter-field select {
+    min-width: 0; /* 防止溢出 */
+    flex: 1;
+}
+
+.filter-operator {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-lg);
+    min-width: 0; /* 防止溢出 */
+}
+
+.filter-operator select {
+    min-width: 0; /* 防止溢出 */
+    flex: 1;
+}
+
+.filter-value {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-lg);
+    min-width: 0; /* 防止溢出 */
+}
+
+.filter-value input {
+    min-width: 0; /* 防止溢出 */
+    flex: 1;
 }
 
 .filter-label {

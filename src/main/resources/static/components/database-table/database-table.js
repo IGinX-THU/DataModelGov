@@ -152,9 +152,25 @@ class DatabaseTable extends HTMLElement {
         `;
     }
 
-    buildFilterRow(fieldValue = '', operatorValue = '=', valueValue = '') {
+    buildFilterRow(fieldValue = '', operatorValue = '=', valueValue = '', logicOperator = 'AND', isFirstRow = false, startGroup = false, endGroup = false) {
         return `
             <div class="filter-row">
+                ${!isFirstRow ? `
+                <div class="filter-logic">
+                    <select class="filter-input">
+                        <option value="AND" ${logicOperator === 'AND' ? 'selected' : ''}>AND</option>
+                        <option value="OR" ${logicOperator === 'OR' ? 'selected' : ''}>OR</option>
+                    </select>
+                </div>
+                ` : '<div class="filter-logic-empty"></div>'}
+                <div class="filter-group-controls">
+                    ${!isFirstRow ? `
+                    <select class="filter-group-start">
+                        <option value="" ${!startGroup ? 'selected' : ''}>无</option>
+                        <option value="(" ${startGroup ? 'selected' : ''}>( 开始分组</option>
+                    </select>
+                    ` : ''}
+                </div>
                 <div class="filter-field">
                     <span class="filter-label">字段</span>
                     <select class="filter-input">
@@ -182,6 +198,12 @@ class DatabaseTable extends HTMLElement {
                 <div class="filter-value">
                     <span class="filter-label">值</span>
                     <input class="filter-input" type="text" value="${valueValue}" placeholder="筛选值" />
+                </div>
+                <div class="filter-group-controls">
+                    <select class="filter-group-end">
+                        <option value="" ${!endGroup ? 'selected' : ''}>无</option>
+                        <option value=")" ${endGroup ? 'selected' : ''}>) 结束分组</option>
+                    </select>
                 </div>
                 <button class="filter-remove" type="button">⊖</button>
             </div>
@@ -287,7 +309,8 @@ class DatabaseTable extends HTMLElement {
 
         if (addFilter && filterRows) {
             addFilter.addEventListener('click', () => {
-                filterRows.insertAdjacentHTML('beforeend', this.buildFilterRow('', '', ''));
+                const existingRows = filterRows.querySelectorAll('.filter-row').length;
+                filterRows.insertAdjacentHTML('beforeend', this.buildFilterRow('', '', '', 'AND', existingRows === 0));
             });
         }
 
@@ -689,7 +712,12 @@ class DatabaseTable extends HTMLElement {
         
         // 保存数据
         this.data = tableData.records;
-        // totalCount已经在loadTotalCount中设置了
+        
+        // 修正totalCount：如果count返回0但有数据，说明count有问题，使用实际数据量
+        if (this.totalCount === 0 && this.data.length > 0) {
+            console.warn('count返回0但实际有数据，修正totalCount从', this.totalCount, '到至少', this.data.length);
+            this.totalCount = this.data.length;
+        }
         
         console.log('处理后的数据:', this.data.length, '条记录');
         console.log('表头:', header);
@@ -1102,10 +1130,13 @@ class DatabaseTable extends HTMLElement {
             const filterRows = this.shadowRoot.querySelectorAll('.filter-row');
             this.filters = [];
             
-            filterRows.forEach(row => {
+            filterRows.forEach((row, index) => {
+                const logicSelect = row.querySelector('.filter-logic select');
+                const groupStartSelect = row.querySelector('.filter-group-start select');
                 const fieldSelect = row.querySelector('.filter-field select');
                 const operatorSelect = row.querySelector('.filter-operator select');
                 const valueInput = row.querySelector('.filter-value input');
+                const groupEndSelect = row.querySelector('.filter-group-end select');
                 
                 if (fieldSelect && operatorSelect && valueInput) {
                     const field = fieldSelect.value.trim();
@@ -1113,11 +1144,29 @@ class DatabaseTable extends HTMLElement {
                     const value = valueInput.value.trim();
                     
                     if (field && operator && value) {
-                        this.filters.push({
+                        const filterCondition = {
                             field: field,
                             operator: operator,
                             value: value
-                        });
+                        };
+                        
+                        // 添加逻辑操作符（第一行不需要）
+                        if (index > 0 && logicSelect) {
+                            filterCondition.logicOperator = logicSelect.value;
+                        } else {
+                            filterCondition.logicOperator = null; // 第一行没有逻辑操作符
+                        }
+                        
+                        // 添加分组控制
+                        if (groupStartSelect) {
+                            filterCondition.startGroup = groupStartSelect.value === '(';
+                        }
+                        
+                        if (groupEndSelect) {
+                            filterCondition.endGroup = groupEndSelect.value === ')';
+                        }
+                        
+                        this.filters.push(filterCondition);
                     }
                 }
             });

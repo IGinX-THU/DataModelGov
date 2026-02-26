@@ -23,7 +23,7 @@ public class RelationalQueryRequest {
     private String sortDirection;
     
     @Data
-    public static class FilterCondition {
+public static class FilterCondition {
         @ApiModelProperty(value = "字段名")
         private String field;
         
@@ -32,5 +32,14 @@ public class RelationalQueryRequest {
         
         @ApiModelProperty(value = "字段值")
         private String value;
+        
+        @ApiModelProperty(value = "逻辑操作符: AND, OR（第一行不需要）")
+        private String logicOperator;
+        
+        @ApiModelProperty(value = "是否开始分组")
+        private Boolean startGroup;
+        
+        @ApiModelProperty(value = "是否结束分组")
+        private Boolean endGroup;
     }
 }
