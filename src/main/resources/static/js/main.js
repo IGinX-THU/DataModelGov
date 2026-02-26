@@ -1552,8 +1552,12 @@ function showVisualAnalysis() {
             // 根据节点类型选择图标
             let iconHtml = '';
             if (hasChildren) {
-                // 有子节点：显示文件夹图标
-                iconHtml = `<i class="icon folder-icon"></i>`;
+                // 有子节点：检查是否为relational或models_meta开头的根节点，显示数据库图标，否则显示文件夹图标
+                if (level === 0 && (node.name.startsWith('relational') || node.name.startsWith('models_meta'))) {
+                    iconHtml = `<i class="icon db-icon"></i>`;
+                } else {
+                    iconHtml = `<i class="icon folder-icon"></i>`;
+                }
             } else {
                 // 没有子节点的叶子节点：根据数据类型显示图标
                 const dataTypeIcons = {
@@ -1650,8 +1654,13 @@ function showVisualAnalysis() {
                         console.log('点击了叶子节点:', fullPath);
                         selectedDataSource = fullPath;
                         
-                        // 使用 dataSource.type === 1 的逻辑跳转到 data-visualization 页面
-                        showDataVisualization(fullPath);
+                        // 检查是否为relational或models_meta开头的路径，如果是则使用data-table跳转逻辑
+                        if (fullPath.startsWith('relational') || fullPath.startsWith('models_meta')) {
+                            showDatabaseTable(fullPath);
+                        } else {
+                            // 使用 dataSource.type === 1 的逻辑跳转到 data-visualization 页面
+                            showDataVisualization(fullPath);
+                        }
                         
                                                                         
                                                 
@@ -1672,7 +1681,7 @@ function showVisualAnalysis() {
     // 同步filesystem数据到右侧模型资产库
     function syncFilesystemToModelAssets(allData) {
         try {
-            // 过滤出以"filesystem"开头的路径数据
+            // 过滤出以"models_file"开头的路径数据
             const filesystemData = allData.filter(item => {
                 const path = typeof item === 'string' ? item : item.path;
                 return path && path.startsWith('models_file');
