@@ -115,7 +115,7 @@ public class ModelFileService {
      * 保存模型元数据 (行式对齐存储)
      * 每个字段作为独立的时序序列存储，使用相同的时间戳对齐
      */
-    private void saveModelMetadata(String name, String version, String fileName,
+    public void saveModelMetadata(String name, String version, String fileName,
                                    long fileSize, int chunkCount, String storagePath,
                                    String fileMd5, String author, String scene,
                                    String inputs, String outputs) throws Exception {

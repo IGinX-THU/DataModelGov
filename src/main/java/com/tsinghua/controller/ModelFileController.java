@@ -68,4 +68,22 @@ public class ModelFileController {
         return Result.success(result);
     }
 
+    @PostMapping("/metas")
+    public Result<?> saveMeta(@RequestBody ModelMetaDto modelMetaDto) throws Exception {
+        modelFileService.saveModelMetadata(
+            modelMetaDto.getName(),
+            modelMetaDto.getVersion(),
+            modelMetaDto.getFileName(),
+            modelMetaDto.getFileSize(),
+            modelMetaDto.getChunkCount(),
+            modelMetaDto.getStoragePath(),
+            modelMetaDto.getFileMd5(),
+            modelMetaDto.getAuthor(),
+            modelMetaDto.getScene(),
+            modelMetaDto.getInputs(),
+            modelMetaDto.getOutputs()
+        );
+        return Result.success("元数据保存成功");
+    }
+
 }

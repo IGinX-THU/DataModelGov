@@ -763,3 +763,13 @@
     transform: translateY(-1px);
     box-shadow: 0 8px 12px -2px rgba(59, 130, 246, 0.4);
 }
+
+.empty-params {
+    padding: 20px;
+    text-align: center;
+    color: #9ca3af;
+    font-style: italic;
+    background: #f9fafb;
+    border-radius: 8px;
+    border: 1px dashed #e5e7eb;
+}

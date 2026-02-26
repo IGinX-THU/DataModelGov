@@ -308,6 +308,17 @@
     background: #f9fafb;
 }
 
+.uml-diagram-vertical .param-row.empty-row {
+    justify-content: center;
+    padding: 20px 0;
+    color: #9ca3af;
+    font-style: italic;
+}
+
+.uml-diagram-vertical .param-row.empty-row:hover {
+    background: transparent;
+}
+
 .uml-diagram-vertical .param-col {
     padding: 6px;
     font-size: 11px;

@@ -107,7 +107,35 @@ class ModelDetail extends HTMLElement {
     show(modelInfo) {
         this.currentModel = modelInfo;
         this.setAttribute('show', '');
-        this.updateContent(modelInfo);
+        // 调用接口获取模型元数据
+        this.loadModelData(modelInfo);
+    }
+
+    async loadModelData(modelInfo) {
+        try {
+            // 调用接口获取元数据
+            const response = await fetch(`/api/model/metas?name=${encodeURIComponent(modelInfo.name)}&version=${encodeURIComponent(modelInfo.version)}`);
+            
+            if (response.ok) {
+                const result = await response.json();
+                if (result.code === 200 && result.data) {
+                    const meta = result.data;
+                    console.log('获取模型元数据成功:', meta);
+                    // 保存完整的接口数据
+                    this.currentModelMeta = meta;
+                    this.updateContent(meta);
+                } else {
+                    console.error('获取元数据失败:', result.message);
+                    this.showErrorMessage('获取模型信息失败');
+                }
+            } else {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+        } catch (error) {
+            console.error('加载模型数据失败:', error);
+            // 如果接口失败，使用默认值
+            this.updateContent(modelInfo);
+        }
     }
 
     hide() {
@@ -115,19 +143,33 @@ class ModelDetail extends HTMLElement {
     }
 
     updateContent(modelInfo) {
+        // 渲染基本信息到basic-info-section，完全使用接口数据
         const modelName = this.shadowRoot.getElementById('modelName');
         const modelVersion = this.shadowRoot.getElementById('modelVersion');
         const developer = this.shadowRoot.getElementById('developer');
         const scene = this.shadowRoot.getElementById('scene');
         const createTime = this.shadowRoot.getElementById('createTime');
-        const modelDiagramName = this.shadowRoot.getElementById('modelDiagramName');
         
         if (modelName) modelName.textContent = modelInfo.name || '-';
         if (modelVersion) modelVersion.textContent = modelInfo.version || '-';
-        if (developer) developer.textContent = '张三'; // 默认开发者
-        if (scene) scene.textContent = '工业控制'; // 默认场景
-        if (createTime) createTime.textContent = '2024-01-15 10:30:00'; // 默认创建时间
-        if (modelDiagramName) modelDiagramName.textContent = modelInfo.name || 'Timer';
+        if (developer) developer.textContent = modelInfo.author || '-';
+        if (scene) scene.textContent = modelInfo.scene || '-';
+        if (createTime) {
+            if (modelInfo.timestamp) {
+                // 将时间戳转换为日期格式
+                const date = new Date(modelInfo.timestamp);
+                createTime.textContent = date.toLocaleString('zh-CN', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit'
+                });
+            } else {
+                createTime.textContent = '-';
+            }
+        }
         
         // 更新版本历史
         this.updateVersionHistory(modelInfo);
@@ -175,8 +217,57 @@ class ModelDetail extends HTMLElement {
         if (modelDiagramName) modelDiagramName.textContent = modelInfo.name || 'Timer';
         if (modelDiagramVersion) modelDiagramVersion.textContent = modelInfo.version || 'v1.0.1';
         
-        // 这里可以根据实际模型类型动态设置Inputs和Outputs的参数列表
-        // 目前使用静态数据
+        // 动态渲染inputs参数表格
+        this.renderParamsTable('inputs', modelInfo.inputs);
+        
+        // 动态渲染outputs参数表格
+        this.renderParamsTable('outputs', modelInfo.outputs);
+    }
+
+    renderParamsTable(type, paramsData) {
+        // 找到对应的params-table
+        const container = this.shadowRoot.querySelector(`.${type}-container`);
+        if (!container) return;
+        
+        const paramsBody = container.querySelector('.params-body');
+        if (!paramsBody) return;
+        
+        // 清空现有内容
+        paramsBody.innerHTML = '';
+        
+        // 解析参数数据
+        let params = [];
+        if (paramsData) {
+            try {
+                params = typeof paramsData === 'string' ? JSON.parse(paramsData) : paramsData;
+            } catch (error) {
+                console.error(`解析${type}参数数据失败:`, error);
+                return;
+            }
+        }
+        
+        // 如果没有参数，显示空提示
+        if (!params || params.length === 0) {
+            paramsBody.innerHTML = `
+                <div class="param-row empty-row">
+                    <div class="param-col param-name" colspan="4">暂无${type === 'inputs' ? '输入' : '输出'}参数</div>
+                </div>
+            `;
+            return;
+        }
+        
+        // 渲染参数行
+        params.forEach(param => {
+            const row = document.createElement('div');
+            row.className = 'param-row';
+            row.innerHTML = `
+                <div class="param-col param-name">${param.name || '-'}</div>
+                <div class="param-col param-type">${param.type || '-'}</div>
+                <div class="param-col param-unit">${param.unit || '-'}</div>
+                <div class="param-col param-desc">${param.desc || '-'}</div>
+            `;
+            paramsBody.appendChild(row);
+        });
     }
 
     download() {
@@ -190,12 +281,12 @@ class ModelDetail extends HTMLElement {
             return;
         }
         
-        // 显示编辑对话框
+        // 显示编辑对话框，传递当前模型数据和完整的接口数据
         const modelEdit = document.getElementById('modelEdit');
-        if (modelEdit) {
-            modelEdit.show(this.currentModel);
+        if (modelEdit && modelEdit.showWithModelData) {
+            modelEdit.showWithModelData(this.currentModel, this.currentModelMeta || this.currentModel);
         } else {
-            console.error('未找到modelEdit组件');
+            console.error('未找到modelEdit组件或showWithModelData方法');
         }
     }
 
