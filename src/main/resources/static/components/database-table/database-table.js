@@ -1068,33 +1068,33 @@ class DatabaseTable extends HTMLElement {
                 return;
             }
             
-            // 如果没有缓存，先查询一页数据获取表头
-            const requestBody = {
-                tableName: this.tableName,
-                pageNum: 1,
-                pageSize: 1
-            };
-            
-            const response = await fetch(window.AppConfig.getApiUrl('data', 'relational/query'), {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(requestBody)
-            });
-            
-            const result = await response.json();
-            
-            if (result.code === 200 && result.data) {
-                const fullPaths = result.data.header || result.data.paths || [];
-                // 只取叶子节点的值（最后一个点之后的部分）
-                this.availableFields = fullPaths.map(path => {
-                    const parts = path.split('.');
-                    return parts[parts.length - 1];
-                });
-                console.log('获取字段列表:', this.availableFields);
-                this.updateFilterFields();
-            }
+            // // 如果没有缓存，先查询一页数据获取表头
+            // const requestBody = {
+            //     tableName: this.tableName,
+            //     pageNum: 1,
+            //     pageSize: 1
+            // };
+            //
+            // const response = await fetch(window.AppConfig.getApiUrl('data', 'relational/query'), {
+            //     method: 'POST',
+            //     headers: {
+            //         'Content-Type': 'application/json'
+            //     },
+            //     body: JSON.stringify(requestBody)
+            // });
+            //
+            // const result = await response.json();
+            //
+            // if (result.code === 200 && result.data) {
+            //     const fullPaths = result.data.header || result.data.paths || [];
+            //     // 只取叶子节点的值（最后一个点之后的部分）
+            //     this.availableFields = fullPaths.map(path => {
+            //         const parts = path.split('.');
+            //         return parts[parts.length - 1];
+            //     });
+            //     console.log('获取字段列表:', this.availableFields);
+            //     this.updateFilterFields();
+            // }
         } catch (error) {
             console.error('获取字段列表失败:', error);
             this.availableFields = [];
