@@ -4,6 +4,7 @@ import com.tsinghua.dto.ModelMetaDto;
 import com.tsinghua.dto.Result;
 import com.tsinghua.dto.UploadResult;
 import com.tsinghua.service.ModelFileService;
+import io.swagger.annotations.Api;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
@@ -12,6 +13,7 @@ import javax.servlet.http.HttpServletResponse;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 
+@Api(tags = "模型资产管理")
 @RestController
 @RequestMapping("/api/model")
 public class ModelFileController {

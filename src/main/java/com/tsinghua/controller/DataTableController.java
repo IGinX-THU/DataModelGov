@@ -3,6 +3,7 @@ package com.tsinghua.controller;
 import com.tsinghua.dto.*;
 import com.tsinghua.service.DataSourceService;
 import com.tsinghua.service.DataTableService;
+import com.tsinghua.service.RelationalDataService;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiParam;
@@ -24,6 +25,9 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/data")
 public class DataTableController {
+
+    @Autowired
+    private RelationalDataService relationalDataService;
 
     @Autowired
     private DataTableService dataTableService;
@@ -65,6 +69,15 @@ public class DataTableController {
     public Result<Void> deleteData(@Validated @RequestBody DataQueryRequest request) {
         dataTableService.deleteData(request);
         return Result.success("删除成功");
+    }
+
+    /**
+     * 关系数据查询
+     */
+    @ApiOperation("关系数据查询")
+    @PostMapping("/relational/query")
+    public Result<TableDto> queryData(@Validated @RequestBody RelationalQueryRequest request) {
+        return Result.success(relationalDataService.queryData(request));
     }
 
 }
