@@ -8,6 +8,10 @@ class DatabaseTable extends HTMLElement {
         this.tableName = null;
         this.totalCount = 0;
         
+        // 排序相关
+        this.sortField = '';
+        this.sortDirection = 'ASC'; // ASC 或 DESC
+        
         // 数据缓存
         this.dataCache = new Map(); // 格式: Map<tableName, {data: [], totalCount: number, header: []}>
         
@@ -491,6 +495,8 @@ class DatabaseTable extends HTMLElement {
             // 重置到第一页并使用缓存
             this.currentPage = 1;
             this.filters = []; // 重置筛选条件
+            this.sortField = ''; // 重置排序条件
+            this.sortDirection = 'ASC'; // 重置排序方向
             this.loadRelationalData(true);
             // 加载可用字段列表
             this.loadAvailableFields();
@@ -563,7 +569,9 @@ class DatabaseTable extends HTMLElement {
                 tableName: this.tableName,
                 pageNum: this.currentPage,
                 pageSize: this.pageSize,
-                filters: this.filters.length > 0 ? this.filters : null
+                filters: this.filters.length > 0 ? this.filters : null,
+                sortField: this.sortField || null,
+                sortDirection: this.sortField ? this.sortDirection : null
             };
             
             console.log('查询参数:', requestBody);
@@ -623,7 +631,9 @@ class DatabaseTable extends HTMLElement {
         try {
             const requestBody = {
                 tableName: this.tableName,
-                filters: this.filters.length > 0 ? this.filters : null
+                filters: this.filters.length > 0 ? this.filters : null,
+                sortField: this.sortField || null,
+                sortDirection: this.sortField ? this.sortDirection : null
             };
             
             console.log('查询总量参数:', requestBody);
@@ -703,10 +713,57 @@ class DatabaseTable extends HTMLElement {
             // 添加所有列头
             header.forEach(columnName => {
                 const th = document.createElement('th');
-                th.textContent = columnName;
                 th.style.minWidth = '120px'; // 设置合理的最小宽度
                 th.style.whiteSpace = 'nowrap';
                 th.style.padding = '8px 12px';
+                th.style.cursor = 'pointer';
+                th.style.position = 'relative';
+                
+                // 创建表头内容容器
+                const headerContent = document.createElement('div');
+                headerContent.style.display = 'flex';
+                headerContent.style.alignItems = 'center';
+                headerContent.style.justifyContent = 'space-between';
+                
+                // 列名
+                const columnNameSpan = document.createElement('span');
+                columnNameSpan.textContent = columnName;
+                
+                // 排序指示器
+                const sortIndicator = document.createElement('span');
+                sortIndicator.style.marginLeft = '8px';
+                sortIndicator.style.fontSize = '12px';
+                sortIndicator.style.color = '#999';
+                
+                // 提取叶子节点字段名用于排序
+                const leafField = columnName.split('.').pop();
+                
+                // 检查当前列是否是排序列
+                if (this.sortField === leafField) {
+                    sortIndicator.textContent = this.sortDirection === 'ASC' ? '↑' : '↓';
+                    sortIndicator.style.color = '#007bff';
+                } else {
+                    sortIndicator.textContent = '⇅';
+                }
+                
+                headerContent.appendChild(columnNameSpan);
+                headerContent.appendChild(sortIndicator);
+                th.appendChild(headerContent);
+                
+                // 添加点击事件
+                th.addEventListener('click', () => {
+                    this.handleSort(leafField);
+                });
+                
+                // 添加悬停效果
+                th.addEventListener('mouseenter', () => {
+                    th.style.backgroundColor = '#f5f5f5';
+                });
+                
+                th.addEventListener('mouseleave', () => {
+                    th.style.backgroundColor = '';
+                });
+                
                 tableHead.appendChild(th);
             });
             
@@ -716,12 +773,49 @@ class DatabaseTable extends HTMLElement {
             actionTh.style.minWidth = '120px';
             actionTh.style.whiteSpace = 'nowrap';
             actionTh.style.padding = '8px 12px';
+            actionTh.style.cursor = 'default';
+            actionTh.style.backgroundColor = '#f8f9fa';
             tableHead.appendChild(actionTh);
             
             // 让表格自然撑开，由workspace-content处理滚动
             setTimeout(() => {
                 this.enableTableNaturalWidth();
             }, 100);
+        }
+    }
+
+    // 处理排序
+    handleSort(field) {
+        try {
+            if (this.sortField === field) {
+                // 如果是同一个字段，切换排序方向
+                this.sortDirection = this.sortDirection === 'ASC' ? 'DESC' : 'ASC';
+            } else {
+                // 如果是不同字段，设置新字段并默认升序
+                this.sortField = field;
+                this.sortDirection = 'ASC';
+            }
+            
+            console.log('排序条件:', { field: this.sortField, direction: this.sortDirection });
+            
+            // 重置到第一页并重新加载数据
+            this.currentPage = 1;
+            this.loadRelationalData(false); // 不使用缓存
+            
+            // 更新表头显示
+            this.updateTableHeader(this.availableFields);
+            
+            // 显示排序提示
+            if (window.CommonUtils && window.CommonUtils.showToast) {
+                const directionText = this.sortDirection === 'ASC' ? '升序' : '降序';
+                window.CommonUtils.showToast(`按 ${field} ${directionText}排序`, 'info');
+            }
+            
+        } catch (error) {
+            console.error('排序失败:', error);
+            if (window.CommonUtils && window.CommonUtils.showToast) {
+                window.CommonUtils.showToast('排序失败', 'error');
+            }
         }
     }
 
@@ -1052,6 +1146,10 @@ class DatabaseTable extends HTMLElement {
         try {
             // 清空筛选条件
             this.filters = [];
+            
+            // 重置排序条件
+            this.sortField = '';
+            this.sortDirection = 'ASC';
             
             // 重置筛选表单（清空所有筛选行）
             const filterRows = this.shadowRoot.getElementById('filterRows');

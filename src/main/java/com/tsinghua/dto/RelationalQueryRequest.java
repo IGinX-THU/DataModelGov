@@ -16,6 +16,12 @@ public class RelationalQueryRequest {
     @ApiModelProperty(value = "筛选条件列表")
     private List<FilterCondition> filters;
     
+    @ApiModelProperty(value = "排序字段")
+    private String sortField;
+    
+    @ApiModelProperty(value = "排序方向: ASC, DESC")
+    private String sortDirection;
+    
     @Data
     public static class FilterCondition {
         @ApiModelProperty(value = "字段名")
