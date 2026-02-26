@@ -340,31 +340,50 @@ class ModelDownload extends HTMLElement {
             return;
         }
         
-        // 只获取直接子节点（根节点），不包含嵌套的子节点
-        const rootNodes = Array.from(rightSidebarTree.children).filter(child => 
-            child.classList.contains('tree-node')
-        );
+        // 获取所有节点，包括嵌套的子节点
+        const allNodes = rightSidebarTree.querySelectorAll('.tree-node');
+        const modelNames = new Set(); // 使用Set避免重复
         
-        const modelNames = [];
-        
-        rootNodes.forEach(node => {
+        allNodes.forEach(node => {
             const span = node.querySelector('span');
             if (span) {
                 const nodeName = span.textContent.trim();
-                // 只添加不是版本号的节点（版本号格式为 v1.0.0）
-                if (!nodeName.match(/^v\d+\.\d+\.\d+$/)) {
-                    modelNames.push(nodeName);
+                
+                // 排除明显的路径节点
+                if (nodeName === 'filesystem' || nodeName === 'models') {
+                    return;
+                }
+                
+                // 检查是否是父节点（有子节点的节点）
+                const childrenContainer = node.querySelector('.tree-children');
+                if (childrenContainer && childrenContainer.children.length > 0) {
+                    // 检查子节点是否为叶子节点（没有子节点的节点）
+                    const childNodes = childrenContainer.querySelectorAll('.tree-node');
+                    let hasLeafChild = false;
+                    
+                    childNodes.forEach(childNode => {
+                        const childChildrenContainer = childNode.querySelector('.tree-children');
+                        // 如果子节点没有子节点，则是叶子节点
+                        if (!childChildrenContainer || childChildrenContainer.children.length === 0) {
+                            hasLeafChild = true;
+                        }
+                    });
+                    
+                    // 只有当子节点包含叶子节点时，才将父节点作为模型名称
+                    if (hasLeafChild) {
+                        modelNames.add(nodeName);
+                    }
                 }
             }
         });
         
-        console.log('获取到的模型名称:', modelNames);
+        console.log('获取到的模型名称（最后一级叶子节点的父节点）:', Array.from(modelNames));
         
         // 清空现有选项
         modelName.innerHTML = '<option value="">请选择模型名称</option>';
         
         // 添加模型名称选项
-        modelNames.forEach(name => {
+        Array.from(modelNames).forEach(name => {
             const option = document.createElement('option');
             option.value = name;
             option.textContent = name;
@@ -384,26 +403,34 @@ class ModelDownload extends HTMLElement {
             return;
         }
         
-        // 获取选中模型的版本号
+        // 获取右侧模型资产库的所有节点
         const rightSidebarTree = document.querySelector('.right-sidebar .tree');
         if (!rightSidebarTree) return;
         
-        const rootNodes = rightSidebarTree.querySelectorAll('.tree-node');
-        let versions = [];
+        const allNodes = rightSidebarTree.querySelectorAll('.tree-node');
+        const versions = [];
         
-        rootNodes.forEach(node => {
+        allNodes.forEach(node => {
             const span = node.querySelector('span');
-            if (span && span.textContent.trim() === selectedModelName) {
-                // 查找子节点中的版本号
+            if (span) {
+                const nodeName = span.textContent.trim();
+                
+                // 排除明显的路径节点
+                if (nodeName === 'filesystem' || nodeName === 'models') {
+                    return;
+                }
+                
+                // 检查是否是最后一级叶子节点（没有子节点的节点）
                 const childrenContainer = node.querySelector('.tree-children');
-                if (childrenContainer) {
-                    const versionNodes = childrenContainer.querySelectorAll('.tree-node span');
-                    versionNodes.forEach(versionSpan => {
-                        const versionText = versionSpan.textContent.trim();
-                        if (versionText.match(/^v\d+\.\d+\.\d+$/)) {
-                            versions.push(versionText);
+                if (!childrenContainer || childrenContainer.children.length === 0) {
+                    // 这是最后一级叶子节点，获取其直接父节点
+                    const parentNode = node.closest('.tree-children')?.parentElement;
+                    if (parentNode) {
+                        const parentSpan = parentNode.querySelector('span');
+                        if (parentSpan && parentSpan.textContent.trim() === selectedModelName) {
+                            versions.push(nodeName);
                         }
-                    });
+                    }
                 }
             }
         });
@@ -418,6 +445,8 @@ class ModelDownload extends HTMLElement {
             option.textContent = version;
             modelVersion.appendChild(option);
         });
+        
+        console.log('获取到的版本号（最后一级叶子节点）:', versions);
     }
 
     setSelectedModel(selectedModel) {

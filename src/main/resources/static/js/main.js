@@ -324,51 +324,60 @@ document.addEventListener('DOMContentLoaded', function() {
         const nodeName = span.textContent.trim();
         console.log('选中的节点名称:', nodeName);
         
-        // 检查是否是叶子节点
-        const isLeaf = activeNode.getAttribute('data-is-leaf') === 'true';
-        if (isLeaf) {
-            // 如果是叶子节点，获取父节点的模型名称
+        // 排除明显的路径节点
+        if (nodeName === 'filesystem' || nodeName === 'models') {
+            console.log('选中的是路径节点，不是有效的模型节点');
+            return null;
+        }
+        
+        // 检查是否是最后一级叶子节点（没有子节点的节点）
+        const childrenContainer = activeNode.querySelector('.tree-children');
+        if (!childrenContainer || childrenContainer.children.length === 0) {
+            // 如果是最后一级叶子节点，获取其直接父节点的模型名称
             const parentNode = activeNode.closest('.tree-children')?.parentElement;
             const parentSpan = parentNode?.querySelector('span');
             if (parentSpan) {
                 const modelName = parentSpan.textContent.trim();
-                console.log('找到模型名称:', modelName, '版本号:', nodeName);
-                return {
-                    name: modelName,
-                    version: nodeName
-                };
-            }
-        } else {
-            // 如果是模型名称节点，查找第一个版本号
-            const childrenContainer = activeNode.querySelector('.tree-children');
-            if (childrenContainer && childrenContainer.children.length > 0) {
-                // 如果有子节点，返回模型名称（表示删除所有版本，不显示版本号）
-                console.log('找到模型名称（有子节点）:', nodeName, '将删除所有版本');
-                return {
-                    name: nodeName,
-                    version: null // null表示删除所有版本
-                };
-            } else {
-                // 如果没有子节点，查找第一个版本号（用于下载功能）
-                const firstVersion = childrenContainer?.querySelector('.tree-node span');
-                if (firstVersion) {
-                    const versionText = firstVersion.textContent.trim();
-                    if (versionText.match(/^v\d+\.\d+\.\d+$/)) {
-                        console.log('找到模型名称:', nodeName, '版本号:', versionText);
-                        return {
-                            name: nodeName,
-                            version: versionText
-                        };
-                    }
+                // 再次检查父节点也不是路径节点
+                if (modelName !== 'filesystem' && modelName !== 'models') {
+                    console.log('找到模型名称（最后一级叶子节点的父节点）:', modelName, '版本号（最后一级叶子节点）:', nodeName);
+                    return {
+                        name: modelName,
+                        version: nodeName
+                    };
                 }
             }
-            
-            // 如果没有版本号，只返回模型名称
-            console.log('只找到模型名称（无子节点）:', nodeName);
-            return {
-                name: nodeName,
-                version: null
-            };
+        } else {
+            // 如果是模型名称节点，检查是否有最后一级叶子节点子节点
+            if (childrenContainer && childrenContainer.children.length > 0) {
+                // 检查子节点是否包含最后一级叶子节点
+                const childNodes = childrenContainer.querySelectorAll('.tree-node');
+                let hasLeafChild = false;
+                
+                childNodes.forEach(childNode => {
+                    const childChildrenContainer = childNode.querySelector('.tree-children');
+                    if (!childChildrenContainer || childChildrenContainer.children.length === 0) {
+                        hasLeafChild = true;
+                    }
+                });
+                
+                if (hasLeafChild) {
+                    // 如果有最后一级叶子节点子节点，返回模型名称（表示删除所有版本，不显示版本号）
+                    console.log('找到模型名称（有最后一级叶子节点子节点）:', nodeName, '将删除所有版本');
+                    return {
+                        name: nodeName,
+                        version: null // null表示删除所有版本
+                    };
+                } else {
+                    // 如果没有最后一级叶子节点子节点，不返回有效信息
+                    console.log('找到模型名称但无最后一级叶子节点子节点:', nodeName, '不是有效的模型结构');
+                    return null;
+                }
+            } else {
+                // 如果没有子节点，不返回有效信息
+                console.log('找到模型名称但无子节点:', nodeName, '不是有效的模型结构');
+                return null;
+            }
         }
         
         console.log('未找到有效的模型信息');

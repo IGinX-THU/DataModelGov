@@ -41,6 +41,8 @@ public class ModelFileController {
             HttpServletResponse response) throws Exception {
 
         byte[] fileData = modelFileService.downloadModel(name, version);
+        ModelMetaDto queryMeta = modelFileService.queryMeta(name, version);
+        fileName = queryMeta.getFileName();
 
         // 设置响应头
         String encodedFilename = URLEncoder.encode(fileName, StandardCharsets.UTF_8.name())
