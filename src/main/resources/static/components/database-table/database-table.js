@@ -13,6 +13,10 @@ class DatabaseTable extends HTMLElement {
         
         // 表格最大宽度限制
         this.maxTableWidth = 1000; // 可以根据需要调整这个值
+        
+        // 筛选条件
+        this.filters = []; // 存储筛选条件
+        this.availableFields = []; // 存储可用字段列表
     }
 
     async connectedCallback() {
@@ -88,9 +92,7 @@ class DatabaseTable extends HTMLElement {
     <div class="db-filter-card">
         <div class="filter-header">筛选</div>
         <div class="filter-rows" id="filterRows">
-            ${this.buildFilterRow('temperature', '=', '3145')}
-            ${this.buildFilterRow('humidity', '=', '3145')}
-            ${this.buildFilterRow('时间戳', '包含', '')}
+            <!-- 初始为空，只通过加号添加 -->
         </div>
         <div class="filter-actions">
             <button class="filter-add" type="button" id="addFilter">⊕</button>
@@ -146,20 +148,36 @@ class DatabaseTable extends HTMLElement {
         `;
     }
 
-    buildFilterRow(fieldValue = '', operatorValue = '', valueValue = '') {
+    buildFilterRow(fieldValue = '', operatorValue = '=', valueValue = '') {
         return `
             <div class="filter-row">
                 <div class="filter-field">
                     <span class="filter-label">字段</span>
-                    <input class="filter-input" type="text" value="${fieldValue}" />
+                    <select class="filter-input">
+                        <option value="">请选择字段</option>
+                        ${this.availableFields.map(field => 
+                            `<option value="${field}" ${field === fieldValue ? 'selected' : ''}>${field}</option>`
+                        ).join('')}
+                    </select>
                 </div>
-                <div class="filter-field">
+                <div class="filter-operator">
                     <span class="filter-label">运算符</span>
-                    <input class="filter-input" type="text" value="${operatorValue}" />
+                    <select class="filter-input">
+                        <option value="=" ${operatorValue === '=' ? 'selected' : ''}>=</option>
+                        <option value="!=" ${operatorValue === '!=' ? 'selected' : ''}>!=</option>
+                        <option value=">" ${operatorValue === '>' ? 'selected' : ''}>></option>
+                        <option value="<" ${operatorValue === '<' ? 'selected' : ''}><</option>
+                        <option value=">=" ${operatorValue === '>=' ? 'selected' : ''}>>=</option>
+                        <option value="<=" ${operatorValue === '<=' ? 'selected' : ''}>=</option>
+                        <option value="IN" ${operatorValue === 'IN' ? 'selected' : ''}>IN</option>
+                        <option value="NOT IN" ${operatorValue === 'NOT IN' ? 'selected' : ''}>NOT IN</option>
+                        <option value="LIKE" ${operatorValue === 'LIKE' ? 'selected' : ''}>LIKE</option>
+                        <option value="包含" ${operatorValue === '包含' ? 'selected' : ''}>包含</option>
+                    </select>
                 </div>
-                <div class="filter-field">
+                <div class="filter-value">
                     <span class="filter-label">值</span>
-                    <input class="filter-input" type="text" value="${valueValue}" placeholder="请输入" />
+                    <input class="filter-input" type="text" value="${valueValue}" placeholder="筛选值" />
                 </div>
                 <button class="filter-remove" type="button">⊖</button>
             </div>
@@ -279,20 +297,13 @@ class DatabaseTable extends HTMLElement {
 
         if (resetFilters && filterRows) {
             resetFilters.addEventListener('click', () => {
-                filterRows.innerHTML = this.buildFilterRow('temperature', '=', '3145') + 
-                                     this.buildFilterRow('humidity', '=', '3145') + 
-                                     this.buildFilterRow('时间戳', '包含', '');
+                this.resetFilters();
             });
         }
 
         if (applyFilters) {
             applyFilters.addEventListener('click', () => {
-                // 使用统一的 toast 消息系统
-                if (window.CommonUtils && window.CommonUtils.showToast) {
-                    window.CommonUtils.showToast(`找到 ${this.data.length} 条符合条件的记录`, 'info');
-                } else {
-                    this.showModal('查询结果', `找到 ${this.data.length} 条符合条件的记录`);
-                }
+                this.applyFilters();
             });
         }
 
@@ -479,7 +490,10 @@ class DatabaseTable extends HTMLElement {
             this.tableName = tableName;
             // 重置到第一页并使用缓存
             this.currentPage = 1;
+            this.filters = []; // 重置筛选条件
             this.loadRelationalData(true);
+            // 加载可用字段列表
+            this.loadAvailableFields();
         }
         this.setAttribute('show', '');
     }
@@ -522,8 +536,8 @@ class DatabaseTable extends HTMLElement {
         try {
             console.log('开始加载关系数据:', this.tableName);
             
-            // 检查缓存（仅在允许使用缓存且是第一页时）
-            if (useCache && this.currentPage === 1 && this.dataCache.has(this.tableName)) {
+            // 检查缓存（仅在允许使用缓存且是第一页且无筛选条件时）
+            if (useCache && this.currentPage === 1 && this.dataCache.has(this.tableName) && this.filters.length === 0) {
                 console.log('使用缓存数据:', this.tableName);
                 const cachedData = this.dataCache.get(this.tableName);
                 this.data = cachedData.data;
@@ -540,7 +554,7 @@ class DatabaseTable extends HTMLElement {
             }
             
             // 首先获取数据总量（仅在第一页或没有缓存时）
-            if (this.currentPage === 1 || !this.dataCache.has(this.tableName)) {
+            if (this.currentPage === 1 || !this.dataCache.has(this.tableName) || this.filters.length > 0) {
                 await this.loadTotalCount();
             }
             
@@ -548,7 +562,8 @@ class DatabaseTable extends HTMLElement {
             const requestBody = {
                 tableName: this.tableName,
                 pageNum: this.currentPage,
-                pageSize: this.pageSize
+                pageSize: this.pageSize,
+                filters: this.filters.length > 0 ? this.filters : null
             };
             
             console.log('查询参数:', requestBody);
@@ -572,8 +587,8 @@ class DatabaseTable extends HTMLElement {
                 // 处理查询结果
                 this.processTableData(result.data);
                 
-                // 只缓存第一页的数据和表头
-                if (this.currentPage === 1) {
+                // 只缓存第一页的无筛选条件的数据和表头
+                if (this.currentPage === 1 && this.filters.length === 0) {
                     const header = result.data.header || result.data.paths;
                     this.dataCache.set(this.tableName, {
                         data: result.data.records,
@@ -607,7 +622,8 @@ class DatabaseTable extends HTMLElement {
     async loadTotalCount() {
         try {
             const requestBody = {
-                tableName: this.tableName
+                tableName: this.tableName,
+                filters: this.filters.length > 0 ? this.filters : null
             };
             
             console.log('查询总量参数:', requestBody);
@@ -649,6 +665,14 @@ class DatabaseTable extends HTMLElement {
         
         // 使用header或paths作为表头
         const header = tableData.header || tableData.paths;
+        
+        // 更新可用字段列表（只取叶子节点）
+        this.availableFields = header.map(path => {
+            const parts = path.split('.');
+            return parts[parts.length - 1];
+        });
+        console.log('更新字段列表:', this.availableFields);
+        this.updateFilterFields();
         
         // 设置表头
         this.updateTableHeader(header);
@@ -905,12 +929,147 @@ class DatabaseTable extends HTMLElement {
         }
     }
 
-    // 获取缓存信息
-    getCacheInfo() {
-        return {
-            size: this.dataCache.size,
-            keys: Array.from(this.dataCache.keys())
-        };
+    // 获取可用字段列表
+    async loadAvailableFields() {
+        try {
+            // 从当前表格的表头获取字段列表
+            if (this.dataCache.has(this.tableName)) {
+                const cachedData = this.dataCache.get(this.tableName);
+                const fullPaths = cachedData.header || [];
+                // 只取叶子节点的值（最后一个点之后的部分）
+                this.availableFields = fullPaths.map(path => {
+                    const parts = path.split('.');
+                    return parts[parts.length - 1];
+                });
+                console.log('从缓存获取字段列表:', this.availableFields);
+                this.updateFilterFields();
+                return;
+            }
+            
+            // 如果没有缓存，先查询一页数据获取表头
+            const requestBody = {
+                tableName: this.tableName,
+                pageNum: 1,
+                pageSize: 1
+            };
+            
+            const response = await fetch(window.AppConfig.getApiUrl('data', 'relational/query'), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestBody)
+            });
+            
+            const result = await response.json();
+            
+            if (result.code === 200 && result.data) {
+                const fullPaths = result.data.header || result.data.paths || [];
+                // 只取叶子节点的值（最后一个点之后的部分）
+                this.availableFields = fullPaths.map(path => {
+                    const parts = path.split('.');
+                    return parts[parts.length - 1];
+                });
+                console.log('获取字段列表:', this.availableFields);
+                this.updateFilterFields();
+            }
+        } catch (error) {
+            console.error('获取字段列表失败:', error);
+            this.availableFields = [];
+        }
+    }
+
+    // 更新筛选字段下拉框
+    updateFilterFields() {
+        const filterRows = this.shadowRoot.querySelectorAll('.filter-row');
+        filterRows.forEach(row => {
+            const fieldSelect = row.querySelector('.filter-field select');
+            if (fieldSelect) {
+                const currentValue = fieldSelect.value;
+                fieldSelect.innerHTML = '<option value="">请选择字段</option>';
+                
+                this.availableFields.forEach(field => {
+                    const option = document.createElement('option');
+                    option.value = field;
+                    option.textContent = field;
+                    if (field === currentValue) {
+                        option.selected = true;
+                    }
+                    fieldSelect.appendChild(option);
+                });
+            }
+        });
+    }
+
+    // 应用筛选条件
+    applyFilters() {
+        try {
+            // 收集筛选条件
+            const filterRows = this.shadowRoot.querySelectorAll('.filter-row');
+            this.filters = [];
+            
+            filterRows.forEach(row => {
+                const fieldSelect = row.querySelector('.filter-field select');
+                const operatorSelect = row.querySelector('.filter-operator select');
+                const valueInput = row.querySelector('.filter-value input');
+                
+                if (fieldSelect && operatorSelect && valueInput) {
+                    const field = fieldSelect.value.trim();
+                    const operator = operatorSelect.value;
+                    const value = valueInput.value.trim();
+                    
+                    if (field && operator && value) {
+                        this.filters.push({
+                            field: field,
+                            operator: operator,
+                            value: value
+                        });
+                    }
+                }
+            });
+            
+            console.log('筛选条件:', this.filters);
+            
+            // 重置到第一页并重新加载数据
+            this.currentPage = 1;
+            this.loadRelationalData(false); // 不使用缓存
+            
+            // 显示筛选结果
+            if (window.CommonUtils && window.CommonUtils.showToast) {
+                window.CommonUtils.showToast('正在应用筛选条件...', 'info');
+            }
+            
+        } catch (error) {
+            console.error('应用筛选条件失败:', error);
+            if (window.CommonUtils && window.CommonUtils.showToast) {
+                window.CommonUtils.showToast('筛选失败', 'error');
+            }
+        }
+    }
+
+    // 重置筛选条件
+    resetFilters() {
+        try {
+            // 清空筛选条件
+            this.filters = [];
+            
+            // 重置筛选表单（清空所有筛选行）
+            const filterRows = this.shadowRoot.getElementById('filterRows');
+            if (filterRows) {
+                filterRows.innerHTML = ''; // 清空所有筛选行
+            }
+            
+            // 重置到第一页并重新加载数据
+            this.currentPage = 1;
+            this.loadRelationalData(true); // 使用缓存
+            
+            if (window.CommonUtils && window.CommonUtils.showToast) {
+                window.CommonUtils.showToast('筛选条件已重置', 'success');
+            }
+            
+        } catch (error) {
+            console.error('重置筛选条件失败:', error);
+        }
     }
 }
 

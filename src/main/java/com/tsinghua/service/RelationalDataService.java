@@ -8,12 +8,14 @@ import lombok.extern.slf4j.Slf4j;
 import org.checkerframework.checker.nullness.compatqual.NonNullDecl;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -24,14 +26,18 @@ public class RelationalDataService {
 
     public TableDto queryData(RelationalQueryRequest request) {
         try {
-            String sql = "SELECT * FROM %s LIMIT %s OFFSET %s;";
+            // 构建SQL查询语句
+            String sql = buildQuerySql(request);
+            
             // 修复分页计算：OFFSET应该是(pageNum - 1) * pageSize
             int offset = (request.getPageNum() - 1) * request.getPageSize();
+            String finalSql = sql + String.format(" LIMIT %s OFFSET %s;", request.getPageSize(), offset);
+            
             log.info("执行SQL: {}, tableName: {}, pageSize: {}, offset: {}", 
-                    sql, request.getTableName(), request.getPageSize(), offset);
+                    finalSql, request.getTableName(), request.getPageSize(), offset);
             
             iginxSession.openSession();
-            SessionExecuteSqlResult res = iginxSession.executeSql(String.format(sql, request.getTableName(), request.getPageSize(), offset));
+            SessionExecuteSqlResult res = iginxSession.executeSql(finalSql);
             List<Map<String, Object>> records = getRecords(res);
             iginxSession.closeSession();
             
@@ -42,6 +48,77 @@ public class RelationalDataService {
         } catch (Exception e) {
             log.error("查询失败", e);
             return null;
+        }
+    }
+
+    /**
+     * 构建查询SQL语句
+     */
+    private String buildQuerySql(RelationalQueryRequest request) {
+        StringBuilder sql = new StringBuilder("SELECT * FROM ").append(request.getTableName());
+        
+        // 添加WHERE条件
+        if (request.getFilters() != null && !request.getFilters().isEmpty()) {
+            List<String> conditions = request.getFilters().stream()
+                    .filter(filter -> StringUtils.hasText(filter.getField()) && 
+                                   StringUtils.hasText(filter.getOperator()) && 
+                                   StringUtils.hasText(filter.getValue()))
+                    .map(this::buildCondition)
+                    .collect(Collectors.toList());
+            
+            if (!conditions.isEmpty()) {
+                sql.append(" WHERE ").append(String.join(" AND ", conditions));
+            }
+        }
+        
+        return sql.toString();
+    }
+
+    /**
+     * 构建单个筛选条件
+     */
+    private String buildCondition(RelationalQueryRequest.FilterCondition filter) {
+        String field = filter.getField();
+        String operator = filter.getOperator();
+        String value = filter.getValue();
+        
+        switch (operator.toUpperCase()) {
+            case "=":
+            case "==":
+                return field + " = '" + value + "'";
+            case "!=":
+                return field + " != '" + value + "'";
+            case ">":
+                return field + " > '" + value + "'";
+            case "<":
+                return field + " < '" + value + "'";
+            case ">=":
+                return field + " >= '" + value + "'";
+            case "<=":
+                return field + " <= '" + value + "'";
+            case "IN":
+                // 处理IN条件，支持逗号分隔的值
+                String[] inValues = value.split(",");
+                String inClause = String.join(",", java.util.Arrays.stream(inValues)
+                    .map(v -> "'" + v.trim() + "'")
+                    .toArray(String[]::new));
+                return field + " IN (" + inClause + ")";
+            case "NOT IN":
+                // 处理NOT IN条件
+                String[] notInValues = value.split(",");
+                String notInClause = String.join(",", java.util.Arrays.stream(notInValues)
+                    .map(v -> "'" + v.trim() + "'")
+                    .toArray(String[]::new));
+                return field + " NOT IN (" + notInClause + ")";
+            case "LIKE":
+                // 处理LIKE条件，支持正则表达式
+                return field + " LIKE '" + value + "'";
+            case "包含":
+                // 转换为正则表达式的包含
+                return field + " LIKE '^.*" + value + ".*'";
+            default:
+                // 默认使用等于
+                return field + " = '" + value + "'";
         }
     }
 
@@ -67,14 +144,42 @@ public class RelationalDataService {
 
     public Object countData(RelationalQueryRequest request) {
         try {
-            String sql = "SELECT COUNT(1) FROM %s;";
+            // 构建COUNT查询SQL
+            String sql = buildCountSql(request);
+            
+            log.info("执行COUNT SQL: {}", sql);
+            
             iginxSession.openSession();
-            SessionExecuteSqlResult res = iginxSession.executeSql(String.format(sql, request.getTableName()));
+            SessionExecuteSqlResult res = iginxSession.executeSql(sql);
             iginxSession.closeSession();
+            
             return res.getValues().get(0).get(0);
         } catch (Exception e) {
             log.error("查询失败", e);
             return 0;
         }
+    }
+
+    /**
+     * 构建COUNT查询SQL语句
+     */
+    private String buildCountSql(RelationalQueryRequest request) {
+        StringBuilder sql = new StringBuilder("SELECT COUNT(1) FROM ").append(request.getTableName());
+        
+        // 添加WHERE条件（与查询相同的逻辑）
+        if (request.getFilters() != null && !request.getFilters().isEmpty()) {
+            List<String> conditions = request.getFilters().stream()
+                    .filter(filter -> StringUtils.hasText(filter.getField()) && 
+                                   StringUtils.hasText(filter.getOperator()) && 
+                                   StringUtils.hasText(filter.getValue()))
+                    .map(this::buildCondition)
+                    .collect(Collectors.toList());
+            
+            if (!conditions.isEmpty()) {
+                sql.append(" WHERE ").append(String.join(" AND ", conditions));
+            }
+        }
+        
+        return sql.append(";").toString();
     }
 }
