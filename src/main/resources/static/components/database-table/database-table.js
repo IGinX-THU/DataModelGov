@@ -7,6 +7,12 @@ class DatabaseTable extends HTMLElement {
         this.currentPage = 1;
         this.tableName = null;
         this.totalCount = 0;
+        
+        // 数据缓存
+        this.dataCache = new Map(); // 格式: Map<tableName, {data: [], totalCount: number, header: []}>
+        
+        // 表格最大宽度限制
+        this.maxTableWidth = 1000; // 可以根据需要调整这个值
     }
 
     async connectedCallback() {
@@ -471,7 +477,9 @@ class DatabaseTable extends HTMLElement {
         if (tableName) {
             console.log('显示数据库表格:', tableName);
             this.tableName = tableName;
-            this.loadRelationalData();
+            // 重置到第一页并使用缓存
+            this.currentPage = 1;
+            this.loadRelationalData(true);
         }
         this.setAttribute('show', '');
     }
@@ -490,9 +498,9 @@ class DatabaseTable extends HTMLElement {
                 
                 console.log('分页变化:', { currentPage, pageSize });
                 
-                // 如果有tableName，重新加载数据
+                // 如果有tableName，重新加载数据（不使用缓存，因为需要查询不同页）
                 if (this.tableName) {
-                    this.loadRelationalData();
+                    this.loadRelationalData(false);
                 } else {
                     // 否则使用本地数据分页
                     this.renderTable();
@@ -510,17 +518,31 @@ class DatabaseTable extends HTMLElement {
         }
     }
 
-    async loadRelationalData() {
+    async loadRelationalData(useCache = true) {
         try {
             console.log('开始加载关系数据:', this.tableName);
+            
+            // 检查缓存（仅在允许使用缓存且是第一页时）
+            if (useCache && this.currentPage === 1 && this.dataCache.has(this.tableName)) {
+                console.log('使用缓存数据:', this.tableName);
+                const cachedData = this.dataCache.get(this.tableName);
+                this.data = cachedData.data;
+                this.totalCount = cachedData.totalCount;
+                this.updateTableHeader(cachedData.header);
+                this.renderTable();
+                this.updatePagination();
+                return;
+            }
             
             // 显示全局loading
             if (window.showGlobalLoading) {
                 window.showGlobalLoading('正在查询数据...');
             }
             
-            // 首先获取数据总量
-            await this.loadTotalCount();
+            // 首先获取数据总量（仅在第一页或没有缓存时）
+            if (this.currentPage === 1 || !this.dataCache.has(this.tableName)) {
+                await this.loadTotalCount();
+            }
             
             // 构建请求体
             const requestBody = {
@@ -549,6 +571,18 @@ class DatabaseTable extends HTMLElement {
                 
                 // 处理查询结果
                 this.processTableData(result.data);
+                
+                // 只缓存第一页的数据和表头
+                if (this.currentPage === 1) {
+                    const header = result.data.header || result.data.paths;
+                    this.dataCache.set(this.tableName, {
+                        data: result.data.records,
+                        totalCount: this.totalCount,
+                        header: header
+                    });
+                    console.log('数据已缓存:', this.tableName);
+                }
+                
             } else if (result.code === 200 && (!result.data || !result.data.records || result.data.records.length === 0)) {
                 // 接口成功但没有数据
                 console.log('查询成功但没有数据');
@@ -646,13 +680,199 @@ class DatabaseTable extends HTMLElement {
             header.forEach(columnName => {
                 const th = document.createElement('th');
                 th.textContent = columnName;
+                th.style.minWidth = '120px'; // 设置合理的最小宽度
+                th.style.whiteSpace = 'nowrap';
+                th.style.padding = '8px 12px';
                 tableHead.appendChild(th);
             });
             
             // 添加操作列
             const actionTh = document.createElement('th');
             actionTh.textContent = '操作';
+            actionTh.style.minWidth = '120px';
+            actionTh.style.whiteSpace = 'nowrap';
+            actionTh.style.padding = '8px 12px';
             tableHead.appendChild(actionTh);
+            
+            // 让表格自然撑开，由workspace-content处理滚动
+            setTimeout(() => {
+                this.enableTableNaturalWidth();
+            }, 100);
+        }
+    }
+
+    // 让表格自然撑开
+    enableTableNaturalWidth() {
+        const table = this.shadowRoot.querySelector('.data-table');
+        if (table) {
+            // 计算表格所需宽度
+            const headers = table.querySelectorAll('th');
+            let totalWidth = 0;
+            headers.forEach(th => {
+                totalWidth += th.offsetWidth;
+            });
+            
+            // 设置表格宽度，让它自然撑开
+            table.style.width = totalWidth + 'px';
+            table.style.minWidth = totalWidth + 'px';
+            
+            console.log('表格自然宽度:', totalWidth + 'px');
+        }
+    }
+
+    // 检查布局平衡
+    checkLayoutBalance() {
+        // 获取布局相关的关键元素
+        const topNav = document.querySelector('.top-nav');
+        const leftSidebar = document.querySelector('.left-sidebar');
+        const rightSidebar = document.querySelector('.right-sidebar');
+        const workspace = document.querySelector('.workspace');
+        
+        // 打印布局宽度信息
+        console.log('=== 网页布局宽度调试信息 ===');
+        console.log('top-nav宽度:', topNav ? topNav.offsetWidth + 'px' : '未找到');
+        console.log('left-sidebar宽度:', leftSidebar ? leftSidebar.offsetWidth + 'px' : '未找到');
+        console.log('right-sidebar宽度:', rightSidebar ? rightSidebar.offsetWidth + 'px' : '未找到');
+        console.log('workspace宽度:', workspace ? workspace.offsetWidth + 'px' : '未找到');
+        
+        if (topNav && leftSidebar && rightSidebar) {
+            const sidebarPlusWorkspace = leftSidebar.offsetWidth + workspace.offsetWidth + rightSidebar.offsetWidth;
+            console.log('left-sidebar + workspace + right-sidebar =', sidebarPlusWorkspace + 'px');
+            
+            // 计算理想workspace宽度
+            const idealWorkspaceWidth = topNav.offsetWidth - leftSidebar.offsetWidth - rightSidebar.offsetWidth;
+            console.log('计算的理想workspace宽度:', idealWorkspaceWidth + 'px');
+            console.log('计算公式: top-nav - left-sidebar - right-sidebar =', 
+                topNav.offsetWidth + ' - ' + leftSidebar.offsetWidth + ' - ' + rightSidebar.offsetWidth + ' = ' + idealWorkspaceWidth);
+            
+            if (topNav) {
+                const diff = sidebarPlusWorkspace - topNav.offsetWidth;
+                console.log('与top-nav宽度差异:', diff + 'px');
+                if (Math.abs(diff) > 5) {
+                    console.warn('⚠️ 布局不平衡！差异超过5px');
+                } else {
+                    console.log('✅ 布局平衡');
+                }
+            }
+            
+            // 动态设置组件宽度
+            this.setComponentWidth(workspace.offsetWidth);
+        }
+        console.log('========================');
+    }
+
+    // 动态设置组件宽度
+    setComponentWidth(currentWorkspaceWidth) {
+        const host = this.shadowRoot.host;
+        const dbTable = this.shadowRoot.querySelector('.db-table');
+        
+        // 计算workspace的理想宽度
+        const topNav = document.querySelector('.top-nav');
+        const leftSidebar = document.querySelector('.left-sidebar');
+        const rightSidebar = document.querySelector('.right-sidebar');
+        
+        if (topNav && leftSidebar && rightSidebar) {
+            const idealWorkspaceWidth = topNav.offsetWidth - leftSidebar.offsetWidth - rightSidebar.offsetWidth;
+            console.log('当前workspace宽度:', currentWorkspaceWidth + 'px');
+            console.log('理想workspace宽度:', idealWorkspaceWidth + 'px');
+            
+            if (host && dbTable) {
+                // 设置database-table组件宽度等于理想workspace宽度
+                host.style.maxWidth = idealWorkspaceWidth + 'px';
+                dbTable.style.maxWidth = idealWorkspaceWidth + 'px';
+                console.log('设置database-table组件宽度为:', idealWorkspaceWidth + 'px');
+            }
+            
+            // 同时设置data-visualization组件的宽度
+            const dataViz = document.querySelector('data-visualization');
+            if (dataViz) {
+                dataViz.style.maxWidth = idealWorkspaceWidth + 'px';
+                console.log('设置data-visualization组件宽度为:', idealWorkspaceWidth + 'px');
+            }
+            
+            // 强制限制workspace的宽度
+            const workspace = document.querySelector('.workspace');
+            if (workspace) {
+                workspace.style.maxWidth = idealWorkspaceWidth + 'px';
+                console.log('强制限制workspace宽度为:', idealWorkspaceWidth + 'px');
+            }
+        }
+    }
+
+    // 设置表格宽度
+    setTableWidth() {
+        const table = this.shadowRoot.querySelector('.data-table');
+        
+        // 获取布局相关的关键元素
+        const topNav = document.querySelector('.top-nav');
+        const leftSidebar = document.querySelector('.left-sidebar');
+        const rightSidebar = document.querySelector('.right-sidebar');
+        const workspace = document.querySelector('.workspace');
+        const mainContainer = document.querySelector('.main-container');
+        
+        if (table) {
+            // 计算表格所需宽度
+            const headers = table.querySelectorAll('th');
+            let totalWidth = 0;
+            headers.forEach(th => {
+                totalWidth += th.offsetWidth;
+            });
+            
+            // 设置表格宽度，让它能够撑开workspace-content
+            table.style.width = totalWidth + 'px';
+            table.style.minWidth = totalWidth + 'px';
+            
+            // 打印布局宽度信息
+            console.log('=== 网页布局宽度调试信息 ===');
+            console.log('top-nav宽度:', topNav ? topNav.offsetWidth + 'px' : '未找到');
+            console.log('left-sidebar宽度:', leftSidebar ? leftSidebar.offsetWidth + 'px' : '未找到');
+            console.log('workspace宽度:', workspace ? workspace.offsetWidth + 'px' : '未找到');
+            console.log('right-sidebar宽度:', rightSidebar ? rightSidebar.offsetWidth + 'px' : '未找到');
+            
+            if (leftSidebar && workspace && rightSidebar) {
+                const sidebarPlusWorkspace = leftSidebar.offsetWidth + workspace.offsetWidth + rightSidebar.offsetWidth;
+                console.log('left-sidebar + workspace + right-sidebar =', sidebarPlusWorkspace + 'px');
+                
+                if (topNav) {
+                    const diff = sidebarPlusWorkspace - topNav.offsetWidth;
+                    console.log('与top-nav宽度差异:', diff + 'px');
+                    if (Math.abs(diff) > 5) {
+                        console.warn('⚠️ 布局不平衡！差异超过5px');
+                    } else {
+                        console.log('✅ 布局平衡');
+                    }
+                }
+            }
+            
+            console.log('表格计算宽度:', totalWidth + 'px');
+            console.log('========================');
+        }
+    }
+
+    // 强制设置表格宽度
+    forceTableWidth() {
+        const table = this.shadowRoot.querySelector('.data-table');
+        const tableCard = this.shadowRoot.querySelector('.db-table-card');
+        
+        if (table && tableCard) {
+            // 使用配置的最大宽度
+            const reasonableWidth = this.maxTableWidth;
+            
+            // 计算表格所需的最小宽度
+            const headers = table.querySelectorAll('th');
+            let totalWidth = 0;
+            headers.forEach(th => {
+                totalWidth += th.offsetWidth;
+            });
+            
+            // 如果表格宽度超过合理宽度，使用合理宽度；否则使用计算出的宽度
+            const finalWidth = Math.min(totalWidth + 40, reasonableWidth);
+            
+            // 设置表格宽度
+            table.style.width = finalWidth + 'px';
+            table.style.minWidth = finalWidth + 'px';
+            
+            console.log('表格宽度计算 - 需要宽度:', totalWidth + 40 + 'px, 最大宽度:', reasonableWidth + 'px, 最终宽度:', finalWidth + 'px');
         }
     }
 
@@ -672,6 +892,25 @@ class DatabaseTable extends HTMLElement {
 
     hide() {
         this.removeAttribute('show');
+    }
+
+    // 清除缓存
+    clearCache(tableName = null) {
+        if (tableName) {
+            this.dataCache.delete(tableName);
+            console.log('已清除缓存:', tableName);
+        } else {
+            this.dataCache.clear();
+            console.log('已清除所有缓存');
+        }
+    }
+
+    // 获取缓存信息
+    getCacheInfo() {
+        return {
+            size: this.dataCache.size,
+            keys: Array.from(this.dataCache.keys())
+        };
     }
 }
 

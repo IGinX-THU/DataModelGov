@@ -47,6 +47,7 @@
     flex: 1;
     min-width: 0;
     min-height: 1200px;
+    overflow-x: auto; /* 添加横向滚动条 */
 }
 
 :host([show]) {
@@ -450,7 +451,7 @@
 }
 
 .table-wrapper {
-    overflow: visible;
+    overflow-x: auto; /* 表格容器添加横向滚动条 */
     position: relative;
 }
 

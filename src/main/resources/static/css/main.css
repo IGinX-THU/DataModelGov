@@ -300,6 +300,8 @@
     flex: 1;
     display: flex;
     flex-direction: column;
+    width: calc(100vw - 478px); /* 固定workspace宽度: top-nav(1494) - left-sidebar(250) - right-sidebar(228) = 1016 */
+    overflow-x: auto; /* 内容超出时显示横向滚动条 */
 }
 
 .workspace-title {
