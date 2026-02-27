@@ -179,34 +179,79 @@ class ModelDetail extends HTMLElement {
     }
     
     updateVersionHistory(modelInfo) {
+        // 调用接口获取版本历史数据
+        this.loadVersionHistory(modelInfo);
+    }
+
+    async loadVersionHistory(modelInfo) {
+        try {
+            // 调用接口获取版本历史
+            const response = await fetch(`/api/model/history?name=${encodeURIComponent(modelInfo.name)}`);
+            
+            if (response.ok) {
+                const result = await response.json();
+                if (result.code === 200 && result.data) {
+                    const historyData = result.data;
+                    console.log('获取版本历史成功:', historyData);
+                    this.renderVersionHistory(historyData);
+                } else {
+                    console.error('获取版本历史失败:', result.message);
+                    this.renderVersionHistory([]);
+                }
+            } else {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+        } catch (error) {
+            console.error('加载版本历史失败:', error);
+            // 如果接口失败，显示空的历史
+            this.renderVersionHistory([]);
+        }
+    }
+
+    renderVersionHistory(historyData) {
         const timeline = this.shadowRoot.querySelector('.horizontal-timeline');
-        if (timeline) {
+        if (!timeline) return;
+        
+        // 如果没有历史数据，显示空提示
+        if (!historyData || historyData.length === 0) {
             timeline.innerHTML = `
-                <div class="timeline-item">
-                    <div class="timeline-dot"></div>
+                <div class="timeline-item empty-history">
                     <div class="timeline-content">
-                        <div class="timeline-version">v0.9.0</div>
-                        <div class="timeline-developer">李四</div>
-                        <div class="timeline-date">2024-01-10</div>
-                    </div>
-                </div>
-                <div class="timeline-item">
-                    <div class="timeline-dot"></div>
-                    <div class="timeline-content">
-                        <div class="timeline-version">v1.0.0</div>
-                        <div class="timeline-developer">张三</div>
-                        <div class="timeline-date">2024-01-15</div>
-                    </div>
-                </div>
-                <div class="timeline-item">
-                    <div class="timeline-dot"></div>
-                    <div class="timeline-content">
-                        <div class="timeline-version">${modelInfo.version || 'v1.0.1'}</div>
-                        <div class="timeline-developer">张三</div>
-                        <div class="timeline-date">2024-01-20</div>
+                        <div class="empty-message">暂无版本历史</div>
                     </div>
                 </div>
             `;
+            return;
+        }
+        
+        // 渲染版本历史
+        timeline.innerHTML = historyData.map(item => `
+            <div class="timeline-item">
+                <div class="timeline-dot"></div>
+                <div class="timeline-content">
+                    <div class="timeline-version">${item.version || '-'}</div>
+                    <div class="timeline-developer">${item.author || '-'}</div>
+                    <div class="timeline-date">${this.formatDate(item.timestamp)}</div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    formatDate(timestamp) {
+        if (!timestamp) return '-';
+        try {
+            const date = new Date(timestamp);
+            return date.toLocaleString('zh-CN', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+        } catch (error) {
+            console.error('日期格式化失败:', error);
+            return '-';
         }
     }
     
