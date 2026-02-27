@@ -265,12 +265,12 @@ class ModelUpload extends HTMLElement {
     showModelSelect() {
         const inputContainer = this.shadowRoot.getElementById('modelNameInputContainer');
         const selectContainer = this.shadowRoot.getElementById('modelNameSelectContainer');
-        const modelNameSelect = this.shadowRoot.getElementById('modelNameSelect');
         
         if (inputContainer) inputContainer.style.display = 'none';
         if (selectContainer) {
             selectContainer.style.display = 'block';
-            this.loadModelNames();
+            // 数据已经在弹窗初始化时预加载，不需要重复加载
+            console.log('🔍 显示模型选择下拉框，数据已预加载');
         }
     }
 
@@ -283,8 +283,26 @@ class ModelUpload extends HTMLElement {
     }
 
     loadModelNames() {
-        const modelNameSelect = this.shadowRoot.getElementById('modelNameSelect');
-        if (!modelNameSelect) return;
+        // 由于使用了弹窗管理器，需要从弹窗中查找实际显示的元素
+        let modelNameSelect = null;
+        
+        // 首先尝试从弹窗中查找元素（这是实际显示的元素）
+        const modalOverlay = document.querySelector('.modal-overlay');
+        if (modalOverlay) {
+            modelNameSelect = modalOverlay.querySelector('#modelNameSelect');
+            console.log('🔍 loadModelNames: 从弹窗中查找modelNameSelect元素', modelNameSelect);
+        }
+        
+        // 如果弹窗中没有找到，尝试从Shadow DOM中查找（备用方案）
+        if (!modelNameSelect) {
+            modelNameSelect = this.shadowRoot.getElementById('modelNameSelect');
+            console.log('🔍 loadModelNames: 从Shadow DOM中查找modelNameSelect元素', modelNameSelect);
+        }
+        
+        if (!modelNameSelect) {
+            console.error('❌ 未找到modelNameSelect元素');
+            return;
+        }
         
         // 获取右侧模型资产库的根节点
         const rightSidebarTree = document.querySelector('.right-sidebar .tree');
@@ -293,26 +311,60 @@ class ModelUpload extends HTMLElement {
             return;
         }
         
-        const rootNodes = rightSidebarTree.querySelectorAll('.tree-node');
-        const modelNames = [];
+        // 获取所有节点，包括嵌套的子节点
+        const allNodes = rightSidebarTree.querySelectorAll('.tree-node');
+        const modelNames = new Set(); // 使用Set避免重复
         
-        rootNodes.forEach(node => {
+        allNodes.forEach(node => {
             const span = node.querySelector('span');
             if (span) {
-                modelNames.push(span.textContent.trim());
+                const nodeName = span.textContent.trim();
+                
+                // 排除明显的路径节点
+                if (nodeName === 'models_file') {
+                    return;
+                }
+                
+                // 检查是否是父节点（有子节点的节点）
+                const childrenContainer = node.querySelector('.tree-children');
+                if (childrenContainer && childrenContainer.children.length > 0) {
+                    // 检查子节点是否为叶子节点（没有子节点的节点）
+                    const childNodes = childrenContainer.querySelectorAll('.tree-node');
+                    let hasLeafChild = false;
+                    
+                    childNodes.forEach(childNode => {
+                        const childChildrenContainer = childNode.querySelector('.tree-children');
+                        // 如果子节点没有子节点，则是叶子节点
+                        if (!childChildrenContainer || childChildrenContainer.children.length === 0) {
+                            hasLeafChild = true;
+                        }
+                    });
+                    
+                    // 只有当子节点包含叶子节点时，才将父节点作为模型名称
+                    if (hasLeafChild) {
+                        modelNames.add(nodeName);
+                    }
+                }
             }
         });
         
+        console.log('获取到的模型名称（最后一级叶子节点的父节点）:', Array.from(modelNames));
+        
         // 清空现有选项
         modelNameSelect.innerHTML = '<option value="">请选择模型名称</option>';
+        console.log('🔍 已清空下拉选框，当前选项数量:', modelNameSelect.options.length);
         
         // 添加模型名称选项
-        modelNames.forEach(name => {
+        Array.from(modelNames).forEach(name => {
             const option = document.createElement('option');
             option.value = name;
             option.textContent = name;
             modelNameSelect.appendChild(option);
         });
+        
+        console.log('🔍 已添加模型名称选项，最终选项数量:', modelNameSelect.options.length);
+        console.log('🔍 下拉选框HTML:', modelNameSelect.outerHTML);
+        console.log('🔍 操作的元素来源:', modelNameSelect.closest('.modal-overlay') ? '弹窗中的元素' : 'Shadow DOM中的元素');
     }
 
     handleFileSelect(file) {
@@ -515,6 +567,9 @@ class ModelUpload extends HTMLElement {
             
             // 绑定单选按钮事件
             this.bindRadioEvents(modalElement);
+            
+            // 在DOM完全准备好后预加载模型名称数据
+            this.loadModelNames();
             
             console.log('🔍 事件绑定完成');
         }, 100);

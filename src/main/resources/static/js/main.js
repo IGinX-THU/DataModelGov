@@ -575,34 +575,8 @@ document.addEventListener('DOMContentLoaded', function() {
         modelUpload.addEventListener('upload-success', function(e) {
             console.log('模型上传成功:', e.detail);
             
-            // 在工作区显示成功消息
-            const workspaceContent = document.querySelector('.workspace-content');
-            if (workspaceContent) {
-                const successMsg = document.createElement('div');
-                successMsg.style.cssText = `
-                    padding: 20px;
-                    background: #f0f9ff;
-                    border: 1px solid #bfdbfe;
-                    border-radius: 6px;
-                    color: #1e40af;
-                    margin: 20px;
-                    font-size: 14px;
-                `;
-                successMsg.innerHTML = `
-                    <strong>模型上传成功！</strong><br>
-                    模型名称: ${e.detail.modelName}<br>
-                    版本号: ${e.detail.version}
-                `;
-                
-                // 在工作区开头插入成功消息，不清空整个工作区
-                workspaceContent.insertBefore(successMsg, workspaceContent.firstChild);
-                
-                setTimeout(() => {
-                    if (successMsg.parentNode) {
-                        successMsg.remove();
-                    }
-                }, 5000);
-            }
+            // 只使用公共的toast提示，不在工作区显示HTML提示
+            // 上传组件内部已经调用了showMessage，这里不需要重复显示
         });
     }
 
@@ -1336,7 +1310,7 @@ function showVisualAnalysis() {
         console.log(`显示组件: ${componentId}`, args);
         
         // 弹窗组件不需要清空工作区
-        const modalComponents = ['registerEmbedded', 'importData', 'modelUpload', 'modelDownload', 'modelEdit', 'modelDetail'];
+        const modalComponents = ['registerEmbedded', 'importData', 'modelUpload', 'modelDownload', 'modelEdit'];
         if (!modalComponents.includes(componentId)) {
             // 先清空工作区
             clearWorkspace();
