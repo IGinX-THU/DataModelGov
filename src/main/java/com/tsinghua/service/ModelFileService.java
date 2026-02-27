@@ -125,6 +125,96 @@ public class ModelFileService {
     }
 
     /**
+     * 下载模型文件 (优化版)
+     * 1. 先查询元数据验证模型信息
+     * 2. 按chunkCount精确获取文件块
+     * 3. 校验MD5确保文件完整性
+     */
+    public byte[] downloadModel(String name, String version) throws Exception {
+        log.info("开始下载模型: {} v{}", name, version);
+
+        // 1. 先查询元数据验证模型信息
+        ModelMetaDto modelMeta = queryMeta(name, version);
+        if (modelMeta == null) {
+            throw new Exception("未找到指定的模型元数据: " + name + " v" + version);
+        }
+
+        // 验证元数据完整性
+        if (modelMeta.getChunkCount() == null || modelMeta.getChunkCount() <= 0) {
+            throw new Exception("模型元数据不完整: chunkCount无效");
+        }
+
+        if (modelMeta.getFileMd5() == null || modelMeta.getFileMd5().isEmpty()) {
+            throw new Exception("模型元数据不完整: fileMd5无效");
+        }
+
+        log.info("元数据验证通过 - 文件名: {}, 块数: {}, 存储路径: {}, MD5: {}",
+                modelMeta.getFileName(), modelMeta.getChunkCount(), modelMeta.getStoragePath(), modelMeta.getFileMd5());
+
+        // 2. 按chunkCount精确获取文件块
+        String storagePath = buildStoragePath(name, version);
+        TreeMap<Integer, byte[]> chunkMap = new TreeMap<>();
+
+        // 构建查询 - 只查询指定数量的块
+        SimpleQuery query = SimpleQuery.builder()
+                .addMeasurement(storagePath)
+                .endKey(Long.MAX_VALUE)
+                .build();
+
+        IginXTable table = queryClient.query(query);
+
+        if (table == null || table.getRecords() == null || table.getRecords().isEmpty()) {
+            throw new Exception("未找到指定的模型文件数据: " + name + " v" + version);
+        }
+
+        // 按块序号组织数据
+        for (IginXRecord record : table.getRecords()) {
+            Long timestamp = record.getKey();
+            Map<String, Object> valuesMap = record.getValues();
+            Object value = valuesMap.get(storagePath);
+
+            if (value instanceof byte[]) {
+                byte[] chunkData = (byte[]) value;
+                // 使用时间戳作为块序号（与上传时保持一致）
+                int chunkIndex = timestamp.intValue();
+                chunkMap.put(chunkIndex, chunkData);
+            } else if (value != null) {
+                log.warn("路径 {} 的值类型为 {}，尝试转换为字节数组",
+                        storagePath, value.getClass().getSimpleName());
+                byte[] chunkData = value.toString().getBytes(StandardCharsets.UTF_8);
+                int chunkIndex = timestamp.intValue();
+                chunkMap.put(chunkIndex, chunkData);
+            }
+        }
+
+        // 3. 按序合并所有块
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        for (int i = 0; i < modelMeta.getChunkCount(); i++) {
+            byte[] chunk = chunkMap.get(i);
+            if (chunk == null) {
+                log.error("缺少第 {} 个文件块", i);
+                throw new Exception("文件数据不完整，缺少第 " + i + " 个文件块");
+            }
+            baos.write(chunk);
+        }
+
+        byte[] fileBytes = baos.toByteArray();
+
+        // 4. 校验MD5确保文件完整性
+        String actualMd5 = calculateMD5(fileBytes);
+        if (!actualMd5.equals(modelMeta.getFileMd5())) {
+            log.error("MD5校验失败! 期望: {}, 实际: {}", modelMeta.getFileMd5(), actualMd5);
+            throw new Exception(String.format("文件完整性校验失败! MD5不匹配 - 期望: %s, 实际: %s",
+                    modelMeta.getFileMd5(), actualMd5));
+        }
+
+        log.info("模型文件下载成功 - 名称: {}, 版本: {}, 文件名: {}, 大小: {} bytes, 块数: {}, MD5: {}",
+                name, version, modelMeta.getFileName(), fileBytes.length, chunkMap.size(), actualMd5);
+
+        return fileBytes;
+    }
+
+    /**
      * 保存模型元数据 (行式对齐存储)
      * 每个字段作为独立的时序序列存储，使用相同的时间戳对齐
      */
@@ -339,100 +429,6 @@ public class ModelFileService {
             log.error("查询失败", e);
             return null;
         }
-    }
-
-    /**
-     * 下载模型文件 (Java 17+ 优化版)
-     * 从 IGinX 直接读取二进制数据并合并
-     */
-    public byte[] downloadModel(String name, String version) throws Exception {
-        String storagePath = buildStoragePath(name, version);
-        log.info("开始下载模型: {} v{}, 存储路径: {}", name, version, storagePath);
-
-        // 构建查询 - 使用 SimpleQuery (官方示例方式)
-        SimpleQuery query = SimpleQuery.builder()
-                .addMeasurement(storagePath)   // 添加要查询的 measurement
-                .endKey(Long.MAX_VALUE)        // 设置查询结束时间戳
-                .build();
-
-        // 执行查询
-        IginXTable table = queryClient.query(query);
-
-        if (table == null || table.getRecords() == null || table.getRecords().isEmpty()) {
-            throw new Exception("未找到指定的模型文件: " + name + " v" + version);
-        }
-
-        // 按时间戳排序并合并数据
-        TreeMap<Long, byte[]> chunkMap = new TreeMap<>();
-
-        for (IginXRecord record : table.getRecords()) {
-            Long timestamp = record.getKey();
-
-            // 注意: getValues() 返回 Map<String, Object>
-            Map<String, Object> valuesMap = record.getValues();
-
-            // 从 Map 中获取对应路径的值
-            Object value = valuesMap.get(storagePath);
-            if (value instanceof byte[]) {
-                // 直接获取二进制数据
-                byte[] chunkData = (byte[]) value;
-                chunkMap.put(timestamp, chunkData);
-            } else if (value != null) {
-                // 如果值不是 byte[]，尝试按字符串处理（兼容性回退）
-                log.warn("路径 {} 的值类型为 {}，尝试转换为字节数组",
-                        storagePath, value.getClass().getSimpleName());
-                byte[] chunkData = value.toString().getBytes(StandardCharsets.UTF_8);
-                chunkMap.put(timestamp, chunkData);
-            }
-        }
-
-        // 合并所有块
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        for (byte[] chunk : chunkMap.values()) {
-            baos.write(chunk);
-        }
-
-        byte[] fileBytes = baos.toByteArray();
-        log.info("模型文件下载成功。名称: {}, 版本: {}, 总大小: {} bytes, 块数: {}",
-                name, version, fileBytes.length, chunkMap.size());
-
-        return fileBytes;
-    }
-
-    /**
-     * 检查模型文件是否存在
-     */
-    public boolean checkModelExists(String name, String version) {
-        try {
-            String storagePath = buildStoragePath(name, version);
-
-            SimpleQuery query = SimpleQuery.builder()
-                    .addMeasurement(storagePath)
-                    .endKey(1L)  // 只检查第一个时间戳
-                    .build();
-
-            IginXTable table = queryClient.query(query);
-            return table != null && table.getRecords() != null && !table.getRecords().isEmpty();
-
-        } catch (Exception e) {
-            log.warn("检查模型存在性时发生异常", e);
-            return false;
-        }
-    }
-
-    /**
-     * 获取模型的块数信息
-     */
-    public int getChunkCount(String name, String version) throws Exception {
-        String storagePath = buildStoragePath(name, version);
-
-        SimpleQuery query = SimpleQuery.builder()
-                .addMeasurement(storagePath)
-                .endKey(Long.MAX_VALUE)
-                .build();
-
-        IginXTable table = queryClient.query(query);
-        return table != null && table.getRecords() != null ? table.getRecords().size() : 0;
     }
 
     /**
