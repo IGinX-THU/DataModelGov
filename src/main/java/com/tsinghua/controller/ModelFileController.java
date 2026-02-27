@@ -87,4 +87,13 @@ public class ModelFileController {
         return Result.success(modelFileService.queryMetaList(name));
     }
 
+    @ApiOperation("移除模型资产")
+    @DeleteMapping( "/delete")
+    public Result<Void> handleDelete(
+            @RequestParam("name") String name,
+            @RequestParam(value = "version", required = false) String version) throws Exception {
+        modelFileService.deleteModel(name, version);
+        return Result.success("操作成功");
+    }
+
 }

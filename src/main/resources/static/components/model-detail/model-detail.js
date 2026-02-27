@@ -458,16 +458,23 @@ class ModelDetail extends HTMLElement {
             const versionElement = this.shadowRoot.getElementById('modelVersion');
             const version = versionElement ? versionElement.textContent.trim() : null;
             
-            // 调用删除API，只删除当前版本
-            const response = await fetch('/api/models/delete', {
-                method: 'POST',
+            if (!version) {
+                this.showErrorMessage('无法获取模型版本信息');
+                return;
+            }
+            
+            // 构建查询参数
+            const params = new URLSearchParams({
+                name: this.currentModel.name,
+                version: version
+            });
+            
+            // 调用删除API - 使用DELETE方法和正确的参数格式
+            const response = await fetch(`/api/model/delete?${params.toString()}`, {
+                method: 'DELETE',
                 headers: {
                     'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    modelName: this.currentModel.name,
-                    version: version // 使用页面中的版本信息
-                })
+                }
             });
             
             if (response.ok) {

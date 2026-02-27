@@ -715,16 +715,22 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             console.log('删除模型资产:', selectedModel);
             
-            // 调用删除API
-            const response = await fetch('/api/models/delete', {
-                method: 'POST',
+            // 构建查询参数
+            const params = new URLSearchParams({
+                name: selectedModel.name
+            });
+            
+            // 如果有版本号，添加版本参数
+            if (selectedModel.version) {
+                params.append('version', selectedModel.version);
+            }
+            
+            // 调用删除API - 使用DELETE方法和正确的参数格式
+            const response = await fetch(`/api/model/delete?${params.toString()}`, {
+                method: 'DELETE',
                 headers: {
                     'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    modelName: selectedModel.name,
-                    version: selectedModel.version || null // null表示删除所有版本
-                })
+                }
             });
             
             if (response.ok) {

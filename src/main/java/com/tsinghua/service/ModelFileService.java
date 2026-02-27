@@ -3,6 +3,7 @@ package com.tsinghua.service;
 import cn.edu.tsinghua.iginx.session.QueryDataSet;
 import cn.edu.tsinghua.iginx.session.Session;
 import cn.edu.tsinghua.iginx.session.SessionExecuteSqlResult;
+import cn.edu.tsinghua.iginx.session_v2.DeleteClient;
 import cn.edu.tsinghua.iginx.session_v2.IginXClient;
 import cn.edu.tsinghua.iginx.session_v2.QueryClient;
 import cn.edu.tsinghua.iginx.session_v2.WriteClient;
@@ -16,11 +17,13 @@ import com.tsinghua.dto.UploadResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.PostConstruct;
 import javax.annotation.Resource;
 import java.io.ByteArrayOutputStream;
+import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -44,6 +47,7 @@ public class ModelFileService {
 
     private WriteClient writeClient;
     private QueryClient queryClient;
+    private DeleteClient deleteClient;
 
     /**
      * 初始化 IGinX 客户端连接
@@ -55,7 +59,7 @@ public class ModelFileService {
             // 获取写入和查询客户端
             writeClient = iginxClient.getWriteClient();
             queryClient = iginxClient.getQueryClient();
-
+            deleteClient = iginxClient.getDeleteClient();
             log.info("IGinX 客户端 (WriteClient/QueryClient) 初始化成功。");
 
         } catch (Exception e) {
@@ -429,6 +433,55 @@ public class ModelFileService {
             log.error("查询失败", e);
             return null;
         }
+    }
+
+    /**
+     * 移除模型资产
+     */
+    public void deleteModel(String name, String version) {
+        try {
+            List<String> measurements = Arrays.stream(ModelMetaDto.class.getDeclaredFields())
+                    .map(field -> String.format("%s.%s", META_PREFIX, field.getName()))
+                    .collect(Collectors.toList());
+            if (StringUtils.hasText(version)) {
+                String storagePath = buildStoragePath(name, version);
+                deleteClient.deleteMeasurement(storagePath);
+                ModelMetaDto queryMeta = queryMeta(name, version);
+                if (queryMeta != null && queryMeta.getTimestamp() != null) {
+                    long timestamp = queryMeta.getTimestamp();
+                    deleteClient.deleteMeasurementsData(measurements, timestamp-1, timestamp+1);
+                }
+            } else {
+                List<ModelMetaDto> queryMetas = queryMetaList(name);
+                List<String> storagePaths = queryMetas.stream()
+                        .map(meta ->
+                                buildStoragePath(meta.getName(), meta.getVersion())
+                        )
+                        .collect(Collectors.toList());
+                deleteClient.deleteMeasurements(storagePaths);
+                queryMetas.stream()
+                        .map(ModelMetaDto::getTimestamp)
+                        .forEach(timestamp ->
+                                deleteClient.deleteMeasurementsData(measurements, timestamp-1, timestamp+1)
+                        );
+            }
+        } catch (Exception e) {
+            log.error("移除模型资产失败", e);
+        }
+    }
+
+    /**
+     * 获取到所有字段
+     */
+    public static List<String> getAllFieldNames() {
+        List<String> fieldNames = new ArrayList<>();
+        Field[] fields = ModelMetaDto.class.getDeclaredFields();
+
+        for (Field field : fields) {
+            fieldNames.add(String.format("%s.%s", META_PREFIX, field.getName()));
+        }
+
+        return fieldNames;
     }
 
     /**
