@@ -110,6 +110,9 @@ class RegisterDataResourceEmbedded extends HTMLElement {
             authFields.style.display = 'none';
         }
         
+        // 先清除relational的自动填充设置
+        this.clearRelationalSettings();
+        
         if (dataSourceType) {
             // Show relevant fields based on storage engine type
             switch(dataSourceType.value) {
@@ -128,6 +131,8 @@ class RegisterDataResourceEmbedded extends HTMLElement {
                 case '4': // Relational
                     this.showFieldGroup('relationalFields');
                     authFields.style.display = 'block';
+                    // 自动填充模式前缀为"relational"并勾选只读
+                    this.autoFillRelationalSettings();
                     break;
                 case '5': // MongoDB
                     this.showFieldGroup('mongodbFields');
@@ -145,6 +150,41 @@ class RegisterDataResourceEmbedded extends HTMLElement {
         const fieldGroup = this.shadowRoot.getElementById(groupId);
         if (fieldGroup) {
             fieldGroup.style.display = 'block';
+        }
+    }
+
+    autoFillRelationalSettings() {
+        // 自动填充模式前缀为"relational"
+        const schemaPrefixInput = this.shadowRoot.getElementById('schemaPrefix');
+        if (schemaPrefixInput) {
+            // 只有当输入框为空时才自动填充，避免覆盖用户手动输入的内容
+            if (!schemaPrefixInput.value || schemaPrefixInput.value.trim() === '') {
+                schemaPrefixInput.value = 'relational';
+                console.log('自动填充模式前缀为: relational');
+            }
+        }
+
+        // 自动勾选"是否只读"
+        const isReadOnlyCheckbox = this.shadowRoot.getElementById('isReadOnly');
+        if (isReadOnlyCheckbox) {
+            isReadOnlyCheckbox.checked = true;
+            console.log('自动勾选"是否只读"');
+        }
+    }
+
+    clearRelationalSettings() {
+        // 清除模式前缀（仅当值为"relational"时清除）
+        const schemaPrefixInput = this.shadowRoot.getElementById('schemaPrefix');
+        if (schemaPrefixInput && schemaPrefixInput.value === 'relational') {
+            schemaPrefixInput.value = '';
+            console.log('清除自动填充的模式前缀');
+        }
+
+        // 取消勾选"是否只读"（仅当是自动勾选时取消）
+        const isReadOnlyCheckbox = this.shadowRoot.getElementById('isReadOnly');
+        if (isReadOnlyCheckbox && isReadOnlyCheckbox.checked) {
+            isReadOnlyCheckbox.checked = false;
+            console.log('取消勾选"是否只读"');
         }
     }
 
