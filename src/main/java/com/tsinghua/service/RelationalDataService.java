@@ -5,11 +5,17 @@ import cn.edu.tsinghua.iginx.session.SessionExecuteSqlResult;
 import com.tsinghua.dto.RelationalQueryRequest;
 import com.tsinghua.dto.TableDto;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.streaming.SXSSFWorkbook;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.checkerframework.checker.nullness.compatqual.NonNullDecl;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -48,6 +54,250 @@ public class RelationalDataService {
         } catch (Exception e) {
             log.error("查询失败", e);
             return null;
+        }
+    }
+
+    /**
+     * Excel导出关系数据
+     */
+    public byte[] exportDataToExcel(RelationalQueryRequest request) {
+        try {
+            // 构建导出SQL查询语句（不包含分页，查询所有数据）
+            String sql = buildExportSql(request);
+            
+            log.info("执行导出SQL: {}", sql);
+            
+            iginxSession.openSession();
+            SessionExecuteSqlResult res = iginxSession.executeSql(sql);
+            List<Map<String, Object>> records = getRecords(res);
+            iginxSession.closeSession();
+            
+            if (records.isEmpty()) {
+                log.warn("没有数据可导出");
+                return new byte[0];
+            }
+            
+            // 创建Excel工作簿
+            Workbook workbook = new XSSFWorkbook();
+            Sheet sheet = workbook.createSheet(request.getTableName());
+            
+            // 创建表头样式
+            CellStyle headerStyle = workbook.createCellStyle();
+            Font headerFont = workbook.createFont();
+            headerFont.setBold(true);
+            headerFont.setFontHeightInPoints((short) 12);
+            headerStyle.setFont(headerFont);
+            headerStyle.setFillForegroundColor(IndexedColors.GREY_25_PERCENT.getIndex());
+            headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+            headerStyle.setBorderTop(BorderStyle.THIN);
+            headerStyle.setBorderBottom(BorderStyle.THIN);
+            headerStyle.setBorderLeft(BorderStyle.THIN);
+            headerStyle.setBorderRight(BorderStyle.THIN);
+            
+            // 创建数据样式
+            CellStyle dataStyle = workbook.createCellStyle();
+            dataStyle.setBorderTop(BorderStyle.THIN);
+            dataStyle.setBorderBottom(BorderStyle.THIN);
+            dataStyle.setBorderLeft(BorderStyle.THIN);
+            dataStyle.setBorderRight(BorderStyle.THIN);
+            
+            // 写入表头
+            List<String> headers = res.getPaths();
+            Row headerRow = sheet.createRow(0);
+            for (int i = 0; i < headers.size(); i++) {
+                Cell cell = headerRow.createCell(i);
+                cell.setCellValue(headers.get(i));
+                cell.setCellStyle(headerStyle);
+            }
+            
+            // 写入数据
+            for (int i = 0; i < records.size(); i++) {
+                Row row = sheet.createRow(i + 1);
+                Map<String, Object> record = records.get(i);
+                
+                for (int j = 0; j < headers.size(); j++) {
+                    String header = headers.get(j);
+                    Object value = record.get(header);
+                    
+                    Cell cell = row.createCell(j);
+                    if (value != null) {
+                        if (value instanceof Number) {
+                            cell.setCellValue(((Number) value).doubleValue());
+                        } else {
+                            cell.setCellValue(value.toString());
+                        }
+                    } else {
+                        cell.setCellValue("");
+                    }
+                    cell.setCellStyle(dataStyle);
+                }
+            }
+            
+            // 自动调整列宽
+            for (int i = 0; i < headers.size(); i++) {
+                sheet.autoSizeColumn(i);
+                // 设置最小列宽
+                if (sheet.getColumnWidth(i) < 2000) {
+                    sheet.setColumnWidth(i, 2000);
+                }
+                // 设置最大列宽
+                if (sheet.getColumnWidth(i) > 8000) {
+                    sheet.setColumnWidth(i, 8000);
+                }
+            }
+            
+            // 写入字节数组
+            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+            workbook.write(outputStream);
+            workbook.close();
+            
+            byte[] result = outputStream.toByteArray();
+            outputStream.close();
+            
+            log.info("Excel导出成功，数据条数: {}, 文件大小: {} bytes", records.size(), result.length);
+            return result;
+            
+        } catch (Exception e) {
+            log.error("Excel导出失败", e);
+            throw new RuntimeException("Excel导出失败: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 流式Excel导出关系数据（支持大数据量）
+     */
+    public void exportDataToExcelStream(RelationalQueryRequest request, OutputStream outputStream) {
+        SXSSFWorkbook workbook = null;
+        try {
+            // 构建基础SQL查询语句（不包含分页）
+            String baseSql = buildQuerySql(request);
+            
+            log.info("开始流式导出SQL: {}", baseSql);
+            
+            // 创建流式Excel工作簿，设置行访问窗口为100
+            workbook = new SXSSFWorkbook(100);
+            Sheet sheet = workbook.createSheet(request.getTableName());
+            
+            // 创建表头样式
+            CellStyle headerStyle = workbook.createCellStyle();
+            Font headerFont = workbook.createFont();
+            headerFont.setBold(true);
+            headerFont.setFontHeightInPoints((short) 12);
+            headerStyle.setFont(headerFont);
+            headerStyle.setFillForegroundColor(IndexedColors.GREY_25_PERCENT.getIndex());
+            headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+            headerStyle.setBorderTop(BorderStyle.THIN);
+            headerStyle.setBorderBottom(BorderStyle.THIN);
+            headerStyle.setBorderLeft(BorderStyle.THIN);
+            headerStyle.setBorderRight(BorderStyle.THIN);
+            
+            // 创建数据样式
+            CellStyle dataStyle = workbook.createCellStyle();
+            dataStyle.setBorderTop(BorderStyle.THIN);
+            dataStyle.setBorderBottom(BorderStyle.THIN);
+            dataStyle.setBorderLeft(BorderStyle.THIN);
+            dataStyle.setBorderRight(BorderStyle.THIN);
+            
+            // 先查询一次获取表头
+            iginxSession.openSession();
+            SessionExecuteSqlResult headerRes = iginxSession.executeSql(baseSql + " LIMIT 1;");
+            List<String> headers = headerRes.getPaths();
+            iginxSession.closeSession();
+            
+            if (headers.isEmpty()) {
+                log.warn("没有表头信息");
+                return;
+            }
+            
+            // 写入表头
+            Row headerRow = sheet.createRow(0);
+            for (int i = 0; i < headers.size(); i++) {
+                Cell cell = headerRow.createCell(i);
+                cell.setCellValue(headers.get(i));
+                cell.setCellStyle(headerStyle);
+            }
+            
+            // 分批查询和写入数据
+            final int batchSize = 1000;
+            int offset = 0;
+            int totalProcessed = 0;
+            boolean hasMoreData = true;
+            
+            log.info("开始分批查询和写入数据，批次大小: {}", batchSize);
+            
+            while (hasMoreData) {
+                // 构建分页查询SQL
+                String batchSql = baseSql + String.format(" LIMIT %s OFFSET %s;", batchSize, offset);
+                
+                iginxSession.openSession();
+                SessionExecuteSqlResult batchRes = iginxSession.executeSql(batchSql);
+                List<Map<String, Object>> records = getRecords(batchRes);
+                iginxSession.closeSession();
+                
+                if (records.isEmpty()) {
+                    hasMoreData = false;
+                    break;
+                }
+                
+                // 写入当前批次数据
+                for (int i = 0; i < records.size(); i++) {
+                    Row row = sheet.createRow(totalProcessed + i + 1);
+                    Map<String, Object> record = records.get(i);
+                    
+                    for (int j = 0; j < headers.size(); j++) {
+                        String header = headers.get(j);
+                        Object value = record.get(header);
+                        
+                        Cell cell = row.createCell(j);
+                        if (value != null) {
+                            if (value instanceof Number) {
+                                cell.setCellValue(((Number) value).doubleValue());
+                            } else {
+                                cell.setCellValue(value.toString());
+                            }
+                        } else {
+                            cell.setCellValue("");
+                        }
+                        cell.setCellStyle(dataStyle);
+                    }
+                }
+                
+                totalProcessed += records.size();
+                offset += batchSize;
+                
+                log.info("已处理 {} 条记录，当前批次: {}", totalProcessed, records.size());
+                
+                // 如果返回的记录数小于批次大小，说明没有更多数据了
+                if (records.size() < batchSize) {
+                    hasMoreData = false;
+                }
+            }
+            
+            // 设置固定列宽（SXSSFWorkbook不支持autoSizeColumn）
+            for (int i = 0; i < headers.size(); i++) {
+                sheet.setColumnWidth(i, 4000); // 设置固定列宽约30个字符
+            }
+            
+            // 直接写入到输出流
+            workbook.write(outputStream);
+            outputStream.flush();
+            
+            log.info("流式Excel导出成功，总数据条数: {}", totalProcessed);
+            
+        } catch (Exception e) {
+            log.error("流式Excel导出失败", e);
+            throw new RuntimeException("Excel导出失败: " + e.getMessage(), e);
+        } finally {
+            try {
+                if (workbook != null) {
+                    // 清理临时文件
+                    ((SXSSFWorkbook) workbook).dispose();
+                    workbook.close();
+                }
+                outputStream.close();
+            } catch (IOException e) {
+                log.error("关闭流失败", e);
+            }
         }
     }
 
@@ -117,6 +367,13 @@ public class RelationalDataService {
         }
         
         return sql.toString();
+    }
+
+    /**
+     * 构建导出SQL语句（带分号）
+     */
+    private String buildExportSql(RelationalQueryRequest request) {
+        return buildQuerySql(request) + ";";
     }
 
     /**

@@ -108,7 +108,7 @@ class DatabaseTable extends HTMLElement {
 
     <div class="db-table-card">
         <div class="table-toolbar">
-            <button class="toolbar-btn green" type="button" id="addRowBtn">新增</button>
+            <!-- <button class="toolbar-btn green" type="button" id="addRowBtn">新增</button> -->
             <button class="toolbar-btn orange" type="button" id="importBtn">导入</button>
             <button class="toolbar-btn blue" type="button" id="exportBtn">导出</button>
         </div>
@@ -125,7 +125,7 @@ class DatabaseTable extends HTMLElement {
                         <th>status</th>
                         <th>createtime</th>
                         <th>updatetime</th>
-                        <th>操作</th>
+                        <!-- <th>操作</th> -->
                     </tr>
                 </thead>
                 <tbody id="tableBody"></tbody>
@@ -280,17 +280,17 @@ class DatabaseTable extends HTMLElement {
                 `<td>${value !== null && value !== undefined ? value : ''}</td>`
             ).join('');
             
-            // 添加操作列
-            const actionCell = `
-                <td>
-                    <div class="action-buttons">
-                        <button class="action-btn edit" data-index="${index}">编辑</button>
-                        <button class="action-btn delete" data-index="${index}">删除</button>
-                    </div>
-                </td>
-            `;
+            // 注释掉操作列
+            // const actionCell = `
+            //     <td>
+            //         <div class="action-buttons">
+            //             <button class="action-btn edit" data-index="${index}">编辑</button>
+            //             <button class="action-btn delete" data-index="${index}">删除</button>
+            //         </div>
+            //     </td>
+            // `;
             
-            return `<tr>${rowCells}${actionCell}</tr>`;
+            return `<tr>${rowCells}</tr>`;
         }).join('');
 
         this.updatePagination();
@@ -301,7 +301,7 @@ class DatabaseTable extends HTMLElement {
         const addFilter = this.shadowRoot.getElementById('addFilter');
         const resetFilters = this.shadowRoot.getElementById('resetFilters');
         const applyFilters = this.shadowRoot.getElementById('applyFilters');
-        const addRowBtn = this.shadowRoot.getElementById('addRowBtn');
+        // const addRowBtn = this.shadowRoot.getElementById('addRowBtn'); // 注释掉新增按钮
         const importBtn = this.shadowRoot.getElementById('importBtn');
         const exportBtn = this.shadowRoot.getElementById('exportBtn');
         const modalMask = this.shadowRoot.getElementById('modalMask');
@@ -334,32 +334,36 @@ class DatabaseTable extends HTMLElement {
             });
         }
 
-        if (addRowBtn) {
-            addRowBtn.addEventListener('click', () => {
-                this.showModal('新增记录', this.getFormModalBody(), [
-                    { text: '取消', class: 'modal-btn secondary', action: 'close' },
-                    { text: '确认', class: 'modal-btn primary', action: 'submit' }
-                ]);
-            });
-        }
+        // 注释掉新增按钮事件
+        // if (addRowBtn) {
+        //     addRowBtn.addEventListener('click', () => {
+        //         this.showModal('新增记录', this.getFormModalBody(), [
+        //             { text: '取消', class: 'modal-btn secondary', action: 'close' },
+        //             { text: '确认', class: 'modal-btn primary', action: 'submit' }
+        //         ]);
+        //     });
+        // }
 
         if (importBtn) {
             importBtn.addEventListener('click', () => {
-                this.showModal('导入数据', this.getImportModalBody(), [
-                    { text: '取消', class: 'modal-btn secondary', action: 'close' },
-                    { text: '导入', class: 'modal-btn primary', action: 'import' }
-                ]);
+                // 使用data-visualization的导入功能
+                if (typeof window.showComponent === 'function') {
+                    window.showComponent('importData');
+                } else {
+                    console.error('window.showComponent函数未找到');
+                    // 降级处理：显示原有模态框
+                    this.showModal('导入数据', this.getImportModalBody(), [
+                        { text: '取消', class: 'modal-btn secondary', action: 'close' },
+                        { text: '导入', class: 'modal-btn primary', action: 'import' }
+                    ]);
+                }
             });
         }
 
         if (exportBtn) {
             exportBtn.addEventListener('click', () => {
-                // 使用统一的 toast 消息系统
-                if (window.CommonUtils && window.CommonUtils.showToast) {
-                    window.CommonUtils.showToast(`已导出 ${this.data.length} 条记录`, 'success');
-                } else {
-                    this.showModal('导出成功', `已导出 ${this.data.length} 条记录`);
-                }
+                // 使用data-visualization的导出功能
+                this.exportData();
             });
         }
 
@@ -377,30 +381,30 @@ class DatabaseTable extends HTMLElement {
             });
         }
 
-        // 表格行操作
-        const tbody = this.shadowRoot.getElementById('tableBody');
-        if (tbody) {
-            tbody.addEventListener('click', (event) => {
-                if (event.target.classList.contains('action-btn')) {
-                    const id = event.target.dataset.id;
-                    if (event.target.classList.contains('delete')) {
-                        this.showModal('删除确认', `确定要删除 ID 为 ${id} 的记录吗？`, [
-                            { text: '取消', class: 'modal-btn secondary', action: 'close' },
-                            { text: '删除', class: 'modal-btn primary', action: 'delete', id }
-                        ]);
-                    } else if (event.target.classList.contains('edit')) {
-                        const id = event.target.dataset.id;
-                        const row = this.data.find(r => r.id == id);
-                        if (row) {
-                            this.showModal('编辑记录', this.getFormModalBody(row), [
-                                { text: '取消', class: 'modal-btn secondary', action: 'close' },
-                                { text: '保存', class: 'modal-btn primary', action: 'edit', id }
-                            ]);
-                        }
-                    }
-                }
-            });
-        }
+        // 注释掉表格行操作事件
+        // const tbody = this.shadowRoot.getElementById('tableBody');
+        // if (tbody) {
+        //     tbody.addEventListener('click', (event) => {
+        //         if (event.target.classList.contains('action-btn')) {
+        //             const id = event.target.dataset.id;
+        //             if (event.target.classList.contains('delete')) {
+        //                 this.showModal('删除确认', `确定要删除 ID 为 ${id} 的记录吗？`, [
+        //                     { text: '取消', class: 'modal-btn secondary', action: 'close' },
+        //                     { text: '删除', class: 'modal-btn primary', action: 'delete', id }
+        //                 ]);
+        //             } else if (event.target.classList.contains('edit')) {
+        //                 const id = event.target.dataset.id;
+        //                 const row = this.data.find(r => r.id == id);
+        //                 if (row) {
+        //                     this.showModal('编辑记录', this.getFormModalBody(row), [
+        //                         { text: '取消', class: 'modal-btn secondary', action: 'close' },
+        //                         { text: '保存', class: 'modal-btn primary', action: 'edit', id }
+        //                     ]);
+        //                 }
+        //             }
+        //         }
+        //     });
+        // }
     }
 
     showModal(title, content, buttons = []) {
@@ -795,15 +799,15 @@ class DatabaseTable extends HTMLElement {
                 tableHead.appendChild(th);
             });
             
-            // 添加操作列
-            const actionTh = document.createElement('th');
-            actionTh.textContent = '操作';
-            actionTh.style.minWidth = '120px';
-            actionTh.style.whiteSpace = 'nowrap';
-            actionTh.style.padding = '8px 12px';
-            actionTh.style.cursor = 'default';
-            actionTh.style.backgroundColor = '#f8f9fa';
-            tableHead.appendChild(actionTh);
+            // 注释掉添加操作列
+            // const actionTh = document.createElement('th');
+            // actionTh.textContent = '操作';
+            // actionTh.style.minWidth = '120px';
+            // actionTh.style.whiteSpace = 'nowrap';
+            // actionTh.style.padding = '8px 12px';
+            // actionTh.style.cursor = 'default';
+            // actionTh.style.backgroundColor = '#f8f9fa';
+            // tableHead.appendChild(actionTh);
             
             // 让表格自然撑开，由workspace-content处理滚动
             setTimeout(() => {
@@ -1216,6 +1220,87 @@ class DatabaseTable extends HTMLElement {
             
         } catch (error) {
             console.error('重置筛选条件失败:', error);
+        }
+    }
+
+    // 导出数据功能（后端Excel导出）
+    async exportData() {
+        try {
+            console.log('开始导出数据表:', this.tableName);
+            
+            if (!this.tableName) {
+                this.showMessage('没有可导出的数据表', 'warning');
+                return;
+            }
+            
+            // 显示全局loading
+            if (window.showGlobalLoading) {
+                window.showGlobalLoading('正在导出Excel...');
+            }
+            
+            // 构建请求体（传递当前的筛选和排序条件，不使用分页）
+            const requestBody = {
+                tableName: this.tableName,
+                filters: this.filters.length > 0 ? this.filters : null,
+                sortField: this.sortField || null,
+                sortDirection: this.sortField ? this.sortDirection : null
+            };
+            
+            console.log('导出参数:', requestBody);
+            
+            // 调用关系数据Excel导出接口
+            const response = await fetch(window.AppConfig.getApiUrl('data', 'relational/export'), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestBody)
+            });
+            
+            if (response.ok) {
+                // 获取文件名
+                const contentDisposition = response.headers.get('Content-Disposition');
+                let filename = `${this.tableName}_export.xlsx`;
+                if (contentDisposition) {
+                    const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+                    if (filenameMatch) {
+                        filename = filenameMatch[1];
+                    }
+                }
+                
+                // 下载Excel文件
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+                
+                this.showMessage(`Excel文件 "${filename}" 导出成功`, 'success');
+            } else {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+        } catch (error) {
+            console.error('导出Excel失败:', error);
+            this.showMessage('导出失败，请稍后重试', 'error');
+        } finally {
+            // 隐藏全局loading
+            if (window.hideGlobalLoading) {
+                window.hideGlobalLoading();
+            }
+        }
+    }
+
+    // 显示消息的统一方法
+    showMessage(message, type = 'info') {
+        if (window.CommonUtils && window.CommonUtils.showToast) {
+            window.CommonUtils.showToast(message, type);
+        } else {
+            console.warn(`[${type}] ${message}`);
         }
     }
 }
