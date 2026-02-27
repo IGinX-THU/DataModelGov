@@ -2,6 +2,7 @@ package com.tsinghua.service;
 
 import cn.edu.tsinghua.iginx.session.QueryDataSet;
 import cn.edu.tsinghua.iginx.session.Session;
+import cn.edu.tsinghua.iginx.session.SessionExecuteSqlResult;
 import cn.edu.tsinghua.iginx.session_v2.IginXClient;
 import cn.edu.tsinghua.iginx.session_v2.QueryClient;
 import cn.edu.tsinghua.iginx.session_v2.WriteClient;
@@ -18,9 +19,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.PostConstruct;
+import javax.annotation.Resource;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -29,6 +32,9 @@ public class ModelFileService {
     private static final int CHUNK_SIZE = 65536; // 64KB
     private static final String STORAGE_PREFIX = "models_file";
     private static final String META_PREFIX = "models_meta";
+
+    @Resource
+    private RelationalDataService relationalDataService;
 
     @Autowired
     private Session iginxSession;
@@ -101,8 +107,15 @@ public class ModelFileService {
                 name, version, totalChunks, fileMd5);
 
         // 2. 保存模型元数据 (行式对齐存储)
-        saveModelMetadata(name, version, file.getOriginalFilename(), file.getSize(),
-                totalChunks, storagePath, fileMd5, null, null, null, null);
+        ModelMetaDto modelMetaDto = new ModelMetaDto();
+        modelMetaDto.setName(name);
+        modelMetaDto.setVersion(version);
+        modelMetaDto.setFileName(file.getOriginalFilename());
+        modelMetaDto.setFileSize(file.getSize());
+        modelMetaDto.setChunkCount(totalChunks);
+        modelMetaDto.setStoragePath(storagePath);
+        modelMetaDto.setFileMd5(fileMd5);
+        saveModelMetadata(modelMetaDto);
 
         log.info("模型文件上传成功。名称: {}, 版本: {}, 块数: {}, MD5: {}",
                 name, version, totalChunks, fileMd5);
@@ -115,38 +128,35 @@ public class ModelFileService {
      * 保存模型元数据 (行式对齐存储)
      * 每个字段作为独立的时序序列存储，使用相同的时间戳对齐
      */
-    public void saveModelMetadata(String name, String version, String fileName,
-                                   long fileSize, int chunkCount, String storagePath,
-                                   String fileMd5, String author, String scene,
-                                   String inputs, String outputs) throws Exception {
+    public void saveModelMetadata(ModelMetaDto modelMetaDto) throws Exception {
         List<Point> metaPoints = new ArrayList<>();
-        ModelMetaDto queryMeta = queryMeta(name, version);
+        ModelMetaDto queryMeta = queryMeta(modelMetaDto.getName(), modelMetaDto.getVersion());
         long timestamp;
         if (queryMeta != null && queryMeta.getTimestamp() != null) {
             timestamp = queryMeta.getTimestamp();
         } else {
             timestamp = System.currentTimeMillis();
         }
-        String safeVersion = version.replace('.', '_');
+        String safeVersion = modelMetaDto.getVersion().replace('.', '_');
         String metaBasePath = META_PREFIX;
 
         // 创建各个字段的数据点
-        metaPoints.add(createFieldPoint(metaBasePath, "name", name, timestamp));
+        metaPoints.add(createFieldPoint(metaBasePath, "name", modelMetaDto.getName(), timestamp));
         metaPoints.add(createFieldPoint(metaBasePath, "version", safeVersion, timestamp));
-        metaPoints.add(createFieldPoint(metaBasePath, "fileName", fileName, timestamp));
-        metaPoints.add(createFieldPoint(metaBasePath, "fileSize", fileSize, timestamp));
-        metaPoints.add(createFieldPoint(metaBasePath, "chunkCount", chunkCount, timestamp));
-        metaPoints.add(createFieldPoint(metaBasePath, "storagePath", storagePath, timestamp));
-        metaPoints.add(createFieldPoint(metaBasePath, "fileMd5", fileMd5, timestamp));
-        metaPoints.add(createFieldPoint(metaBasePath, "author", author, timestamp));
-        metaPoints.add(createFieldPoint(metaBasePath, "scene", scene, timestamp));
-        metaPoints.add(createFieldPoint(metaBasePath, "inputs", inputs, timestamp));
-        metaPoints.add(createFieldPoint(metaBasePath, "outputs", outputs, timestamp));
+        metaPoints.add(createFieldPoint(metaBasePath, "fileName", modelMetaDto.getFileName(), timestamp));
+        metaPoints.add(createFieldPoint(metaBasePath, "fileSize", modelMetaDto.getFileSize(), timestamp));
+        metaPoints.add(createFieldPoint(metaBasePath, "chunkCount", modelMetaDto.getChunkCount(), timestamp));
+        metaPoints.add(createFieldPoint(metaBasePath, "storagePath", modelMetaDto.getStoragePath(), timestamp));
+        metaPoints.add(createFieldPoint(metaBasePath, "fileMd5", modelMetaDto.getFileMd5(), timestamp));
+        metaPoints.add(createFieldPoint(metaBasePath, "author", modelMetaDto.getAuthor(), timestamp));
+        metaPoints.add(createFieldPoint(metaBasePath, "scene", modelMetaDto.getScene(), timestamp));
+        metaPoints.add(createFieldPoint(metaBasePath, "inputs", modelMetaDto.getInputs(), timestamp));
+        metaPoints.add(createFieldPoint(metaBasePath, "outputs", modelMetaDto.getOutputs(), timestamp));
         metaPoints.add(createFieldPoint(metaBasePath, "timestamp", timestamp, timestamp));
 
         // 批量写入元数据
         writeClient.writePoints(metaPoints);
-        log.info("模型元数据已保存。名称: {}, 版本: {}, 时间戳: {}", name, version, timestamp);
+        log.info("模型元数据已保存。名称: {}, 版本: {}, 时间戳: {}", modelMetaDto.getName(), modelMetaDto.getVersion(), timestamp);
     }
 
     /**
@@ -307,6 +317,27 @@ public class ModelFileService {
             }
         } catch (Exception e) {
             log.warn("设置字段 {} 失败: {}", fieldName, e.getMessage());
+        }
+    }
+
+    public List<ModelMetaDto> queryMetaList(String name) {
+        try {
+            String sql = "select * from %s where name = '%s' ORDER BY timestamp ;";
+            iginxSession.openSession();
+            SessionExecuteSqlResult res =  iginxSession.executeSql(String.format(sql, META_PREFIX, name));
+            List<Map<String, Object>> records = relationalDataService.getRecords(res);
+            iginxSession.closeSession();
+
+            return records.stream()
+                    .map(rs -> {
+                        ModelMetaDto dto = new ModelMetaDto();
+                        // 根据控制台输出的列名进行映射
+                        rs.forEach((k,v) -> setDtoField(dto, k, v));
+                        return dto;
+                    }).collect(Collectors.toList());
+        } catch (Exception e) {
+            log.error("查询失败", e);
+            return null;
         }
     }
 

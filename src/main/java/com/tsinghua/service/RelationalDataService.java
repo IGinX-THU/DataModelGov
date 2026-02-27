@@ -168,7 +168,7 @@ public class RelationalDataService {
     }
 
     @NonNullDecl
-    private static List<Map<String, Object>> getRecords(SessionExecuteSqlResult res) {
+    public List<Map<String, Object>> getRecords(SessionExecuteSqlResult res) {
         List<String> header = res.getPaths();
         List<Map<String, Object>> records = new ArrayList<>();
         List<List<Object>>  rows = res.getValues();
