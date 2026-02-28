@@ -287,6 +287,16 @@ class RegisterDataResourceEmbedded extends HTMLElement {
             if (result.code === 200) {
                 this.showMessage('数据源注册成功', 'success');
                 console.log('Registration successful, closing modal...');
+                
+                // 重新加载左侧数据资源库
+                console.log('🔄 数据源注册成功，准备调用 loadDataSourceTree');
+                if (window.loadDataSourceTree) {
+                    console.log('🔄 调用 window.loadDataSourceTree');
+                    window.loadDataSourceTree();
+                } else {
+                    console.error('❌ window.loadDataSourceTree 不存在');
+                }
+                
                 // 刷新数据源列表
                 const dataSourceList = document.getElementById('dataSourceList');
                 if (dataSourceList && typeof dataSourceList.loadDataSources === 'function') {

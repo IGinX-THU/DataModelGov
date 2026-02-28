@@ -288,6 +288,16 @@ class DataSourceList extends HTMLElement {
                 
                 if (result.code === 200) {
                     this.showMessage('数据源删除成功', 'success');
+                    
+                    // 重新加载左侧数据资源库
+                    console.log('🔄 数据源删除成功，准备调用 loadDataSourceTree');
+                    if (window.loadDataSourceTree) {
+                        console.log('🔄 调用 window.loadDataSourceTree');
+                        window.loadDataSourceTree();
+                    } else {
+                        console.error('❌ window.loadDataSourceTree 不存在');
+                    }
+                    
                     // 重新加载数据
                     this.loadDataSources();
                 } else {

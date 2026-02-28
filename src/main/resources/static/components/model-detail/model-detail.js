@@ -102,6 +102,17 @@ class ModelDetail extends HTMLElement {
         if (deleteButton) {
             deleteButton.addEventListener('click', () => this.deleteModel());
         }
+        
+        // 监听模型更新事件
+        document.addEventListener('model-updated', (e) => {
+            if (this.currentModel && 
+                e.detail.modelName === this.currentModel.name && 
+                e.detail.version === this.currentModel.version) {
+                // 刷新当前模型详情数据
+                console.log('模型详情页面收到更新事件，刷新数据');
+                this.loadModelData(this.currentModel);
+            }
+        });
     }
 
     show(modelInfo) {
@@ -484,6 +495,15 @@ class ModelDetail extends HTMLElement {
                 if (result.code === 200) {
                     // 显示成功消息
                     this.showSuccessMessage(`模型版本 "${version}" 删除成功`);
+                    
+                    // 重新加载右侧模型资产库
+                    console.log('🔄 模型删除成功，准备调用 loadDataSourceTree');
+                    if (window.loadDataSourceTree) {
+                        console.log('🔄 调用 window.loadDataSourceTree');
+                        window.loadDataSourceTree();
+                    } else {
+                        console.error('❌ window.loadDataSourceTree 不存在');
+                    }
                     
                     // 从右侧树中移除该版本节点
                     this.removeVersionFromTree({ ...this.currentModel, version });

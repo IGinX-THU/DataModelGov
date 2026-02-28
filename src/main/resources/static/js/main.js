@@ -1788,4 +1788,44 @@ function showVisualAnalysis() {
             }
         }
     }
+    
+    // 将loadDataSourceTree函数暴露到全局作用域，供其他组件调用
+    window.loadDataSourceTree = loadDataSourceTree;
 });
+
+// 确保函数在全局作用域可用
+window.loadDataSourceTree = async function() {
+    console.log('🔄 loadDataSourceTree 被调用，开始重新加载数据源树...');
+    try {
+        // 显示全局loading
+        window.showGlobalLoading('正在加载数据源...');
+        
+        // 同时显示右侧loading
+        const rightSidebarTree = document.querySelector('.right-sidebar .tree');
+        if (rightSidebarTree) {
+            rightSidebarTree.innerHTML = '<div class="loading-placeholder">正在同步模型资产...</div>';
+        }
+        
+        console.log('🔄 调用接口:', window.AppConfig.getApiUrl('datasource', 'tree'));
+        const response = await fetch(window.AppConfig.getApiUrl('datasource', 'tree'));
+        const result = await response.json();
+        
+        console.log('🔄 接口响应:', result);
+        
+        if (result.code === 200 && result.data) {
+            renderDataSourceTree(result.data);
+            // 同步filesystem数据到右侧模型资产库
+            syncFilesystemToModelAssets(result.data);
+            console.log('🔄 数据源树重新加载完成');
+        } else {
+            console.error('加载数据源树失败:', result.message);
+            document.getElementById('dataSourceTree').innerHTML = '<div class="error-placeholder">加载数据源失败</div>';
+        }
+    } catch (error) {
+        console.error('加载数据源树异常:', error);
+        document.getElementById('dataSourceTree').innerHTML = '<div class="error-placeholder">网络错误，无法加载数据源</div>';
+    } finally {
+        // 隐藏全局loading
+        window.hideGlobalLoading();
+    }
+};

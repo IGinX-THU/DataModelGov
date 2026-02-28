@@ -1051,6 +1051,26 @@ Generic processing function`
                     this.showSuccessMessage('元数据保存成功');
                     this.hide();
                     
+                    // 重新加载右侧模型资产库
+                    console.log('🔄 模型编辑成功，准备调用 loadDataSourceTree');
+                    if (window.loadDataSourceTree) {
+                        console.log('🔄 调用 window.loadDataSourceTree');
+                        window.loadDataSourceTree();
+                    } else {
+                        console.error('❌ window.loadDataSourceTree 不存在');
+                    }
+                    
+                    // 通知模型详情页面刷新数据
+                    this.dispatchEvent(new CustomEvent('model-updated', {
+                        detail: { 
+                            modelName: formData.name,
+                            version: formData.version,
+                            formData: formData
+                        },
+                        bubbles: true,
+                        composed: true
+                    }));
+                    
                     // 刷新右侧树（如果需要）
                     this.refreshModelTree();
                 } else {

@@ -720,6 +720,15 @@ class ModelUpload extends HTMLElement {
             if (response.code === 200) {
                 this.showMessage('模型文件上传成功', 'success');
                 
+                // 重新加载右侧模型资产库
+                console.log('🔄 模型上传成功，准备调用 loadDataSourceTree');
+                if (window.loadDataSourceTree) {
+                    console.log('🔄 调用 window.loadDataSourceTree');
+                    window.loadDataSourceTree();
+                } else {
+                    console.error('❌ window.loadDataSourceTree 不存在');
+                }
+                
                 // 延迟关闭窗口
                 setTimeout(() => {
                     if (this._closeDialog) {
