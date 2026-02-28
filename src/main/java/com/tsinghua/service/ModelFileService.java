@@ -33,8 +33,8 @@ import java.util.stream.Collectors;
 public class ModelFileService {
 
     private static final int CHUNK_SIZE = 65536; // 64KB
-    private static final String STORAGE_PREFIX = "models_file";
-    private static final String META_PREFIX = "models_meta";
+    private static final String STORAGE_PREFIX = "models_system";
+    private static final String META_PREFIX = "relational_system.models_meta";
 
     @Resource
     private RelationalDataService relationalDataService;

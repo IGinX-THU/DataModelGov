@@ -1532,8 +1532,8 @@ function showVisualAnalysis() {
             // 根据节点类型选择图标
             let iconHtml = '';
             if (hasChildren) {
-                // 有子节点：检查是否为relational或models_meta开头的根节点，显示数据库图标，否则显示文件夹图标
-                if (level === 0 && (node.name.startsWith('relational') || node.name.startsWith('models_meta'))) {
+                // 有子节点：检查是否为relational开头的根节点，显示数据库图标，否则显示文件夹图标
+                if (level === 0 && (node.name.startsWith('relational'))) {
                     iconHtml = `<i class="icon db-icon"></i>`;
                 } else {
                     iconHtml = `<i class="icon folder-icon"></i>`;
@@ -1634,8 +1634,8 @@ function showVisualAnalysis() {
                         console.log('点击了叶子节点:', fullPath);
                         selectedDataSource = fullPath;
                         
-                        // 检查是否为relational或models_meta开头的路径，如果是则使用data-table跳转逻辑
-                        if (fullPath.startsWith('relational') || fullPath.startsWith('models_meta')) {
+                        // 检查是否为relational开头的路径，如果是则使用data-table跳转逻辑
+                        if (fullPath.startsWith('relational')) {
                             // 获取父节点路径作为tableName
                             const pathParts = fullPath.split('.');
                             const parentPath = pathParts.slice(0, -1).join('.');
@@ -1664,13 +1664,13 @@ function showVisualAnalysis() {
     // 同步filesystem数据到右侧模型资产库
     function syncFilesystemToModelAssets(allData) {
         try {
-            // 过滤出以"models_file"开头的路径数据
+            // 过滤出以"models_system"开头的路径数据
             const filesystemData = allData.filter(item => {
                 const path = typeof item === 'string' ? item : item.path;
-                return path && path.startsWith('models_file');
+                return path && path.startsWith('models_system');
             });
             
-            console.log('过滤出的models_file数据:', filesystemData);
+            console.log('过滤出的models_system数据:', filesystemData);
             
             if (filesystemData.length > 0) {
                 // 获取右侧树容器
