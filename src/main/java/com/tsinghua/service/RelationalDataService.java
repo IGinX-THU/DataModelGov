@@ -304,7 +304,7 @@ public class RelationalDataService {
     /**
      * 构建WHERE子句，支持AND和OR逻辑以及括号分组
      */
-    private String buildWhereClause(List<RelationalQueryRequest.FilterCondition> filters) {
+    public String buildWhereClause(List<RelationalQueryRequest.FilterCondition> filters) {
         if (filters == null || filters.isEmpty()) {
             return "";
         }

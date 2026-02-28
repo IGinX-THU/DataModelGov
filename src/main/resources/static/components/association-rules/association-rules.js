@@ -3,14 +3,132 @@ class AssociationRules extends HTMLElement {
         super();
         this.attachShadow({ mode: 'open' });
         this.data = [];
-        this.pageSize = 6;
+        this.pageSize = 10;
         this.currentPage = 1;
+    }
+
+    async loadRulesFromAPI() {
+        try {
+            // 获取筛选条件
+            const nameFilter = this.shadowRoot.querySelector('.filter-input[type="text"]')?.value.trim();
+            const statusFilter = this.shadowRoot.querySelector('.filter-input[type="text"] + select')?.value;
+            
+            // 构建请求对象
+            const requestBody = {
+                pageNum: this.currentPage || 1,
+                pageSize: this.pageSize || 6,
+                name: nameFilter || null,
+                status: statusFilter || null
+            };
+            
+            console.log('查询参数:', requestBody);
+            
+            // 调用查询接口
+            const response = await fetch(window.AppConfig.api.baseURL + window.AppConfig.endpoints.data['association/rules/query'], {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestBody)
+            });
+            
+            const result = await response.json();
+            console.log('查询结果:', result);
+            
+            if (result.code === 200 && result.data) {
+                // 后端直接返回List<AssociationRulesEntity>，转换为前端所需格式
+                this.data = result.data.map(rule => ({
+                    id: rule.createTime, // 使用createTime作为唯一标识
+                    ruleName: rule.name,
+                    ruleDesc: rule.description,
+                    dataSource: rule.tableName,
+                    targetModel: rule.modelName,
+                    version: rule.modelVersion,
+                    status: rule.status ? 'active' : 'inactive',
+                    mappings: rule.inputsBind ? JSON.parse(rule.inputsBind) : [],
+                    resultMappings: rule.outputsBind ? JSON.parse(rule.outputsBind) : [],
+                    updateTime: new Date(rule.updateTime).toLocaleString('zh-CN'),
+                    createTime: rule.createTime
+                }));
+                
+                // 同时获取总数用于分页
+                await this.loadRulesCount(nameFilter, statusFilter);
+                
+                console.log('加载的规则数据:', this.data);
+            } else {
+                console.error('加载规则失败:', result.message);
+                this.showToast('加载规则失败', 'error');
+            }
+        } catch (error) {
+            console.error('加载规则失败:', error);
+            this.showToast('网络错误，无法加载规则', 'error');
+        }
+    }
+
+    async loadRulesCount(name, status) {
+        try {
+            // 构建请求对象
+            const requestBody = {
+                name: name || null,
+                status: status || null
+            };
+            
+            console.log('查询总量参数:', requestBody);
+            
+            const response = await fetch(window.AppConfig.api.baseURL + window.AppConfig.endpoints.data['association/rules/count'], {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestBody)
+            });
+            
+            const result = await response.json();
+            console.log('总量查询结果:', result);
+            
+            if (result.code === 200 && result.data !== undefined) {
+                this.totalCount = result.data;
+                this.updatePagination();
+            } else {
+                console.warn('获取数据总量失败，使用当前数据量');
+                this.totalCount = this.data.length;
+            }
+        } catch (error) {
+            console.error('获取数据总量失败:', error);
+            this.totalCount = this.data.length;
+        }
+    }
+
+    
+    async deleteRuleFromAPI(createTime) {
+        try {
+            const response = await fetch(window.AppConfig.api.baseURL + window.AppConfig.endpoints.data['association/rules/delete'] + `?createTime=${createTime}`, {
+                method: 'DELETE'
+            });
+            
+            const result = await response.json();
+            
+            if (result.code === 200) {
+                await this.loadRulesFromAPI();
+                this.renderTable();
+                this.hideModal(); // 直接关闭弹窗，不恢复新增弹窗
+                this.showToast('规则已删除');
+            } else {
+                this.showToast(result.message || '删除失败', 'error');
+            }
+        } catch (error) {
+            console.error('删除规则失败:', error);
+            this.showToast('网络错误，删除失败', 'error');
+        }
+    }
+
+    getRuleNameByCreateTime(createTime) {
+        const rule = this.data.find(r => r.createTime === createTime);
+        return rule ? rule.ruleName : '';
     }
 
     async connectedCallback() {
         await this.loadResources();
-        this.seedData();
-        this.renderTable();
         
         // 初始化分页组件
         this.initPagination();
@@ -28,6 +146,15 @@ class AssociationRules extends HTMLElement {
             this.bindEvents();
             this.setupTreeInteraction();
         }, 100);
+    }
+
+    // 添加show方法供main.js调用 - 参考数据源管理的实现
+    async show(...args) {
+        console.log('AssociationRules show() 被调用', args);
+        this.style.display = 'block';
+        // 每次显示时刷新数据
+        await this.loadRulesFromAPI();
+        this.renderTable();
     }
 
     async loadResources() {
@@ -261,19 +388,11 @@ class AssociationRules extends HTMLElement {
         this.renderTable();
     }
 
-    applyFilters() {
-        const filterInputs = this.shadowRoot.querySelectorAll('.filter-input');
-        const filters = Array.from(filterInputs).map(input => input.value.trim());
-        
-        const [nameFilter, statusFilter] = filters;
-        
-        let filteredData = this.data.filter(item => {
-            if (nameFilter && !item.ruleName.includes(nameFilter)) return false;
-            if (statusFilter && item.status !== statusFilter) return false;
-            return true;
-        });
-
-        this.renderFilteredTable(filteredData);
+    async applyFilters() {
+        console.log('点击查询按钮');
+        this.currentPage = 1; // 重置到第一页
+        await this.loadRulesFromAPI();
+        this.renderTable();
     }
 
     renderFilteredTable(filteredData) {
@@ -378,7 +497,8 @@ class AssociationRules extends HTMLElement {
             form.reset();
             modal.hidden = false;
             modal.style.display = 'flex';
-            this.shadowRoot.getElementById('version').value = 'v1.0.0';
+            // 移除静态版本值，等待模型选择后加载
+            this.shadowRoot.getElementById('version').innerHTML = '<option value="">请选择版本</option>';
             this.shadowRoot.querySelector('input[name="status"][value="active"]').checked = true;
             this.currentAction = 'add';
             
@@ -388,13 +508,17 @@ class AssociationRules extends HTMLElement {
             // Highlight external trees
             document.body.classList.add('association-rules-modal-open');
             
+            // 初始化动态数据源和目标模型
+            this.loadDataSourceOptions();
+            this.loadTargetModelOptions();
+            
             // Initialize empty mappings list
             this.initializeMappings();
             this.initializeResultMappings();
         }
     }
 
-    showEditModal(rule) {
+        showEditModal(rule) {
         const modal = this.shadowRoot.getElementById('modalMask');
         const title = this.shadowRoot.getElementById('modalTitle');
         const form = this.shadowRoot.getElementById('ruleForm');
@@ -406,19 +530,20 @@ class AssociationRules extends HTMLElement {
             title.textContent = '编辑关联规则';
             form.reset();
             
-            // Fill the form with rule data
+            // 完全参考model-edit.js的showWithModelData方法，将所有字段带过去
+            // Fill the form with rule data - 参考模型元数据的字段映射
             this.shadowRoot.getElementById('ruleName').value = rule.ruleName || rule.name || '';
-            this.shadowRoot.getElementById('ruleDesc').value = rule.ruleDesc || '';
-            this.shadowRoot.getElementById('dataSource').value = rule.dataSource || '';
-            this.shadowRoot.getElementById('targetModel').value = rule.targetModel || '';
-            this.shadowRoot.getElementById('version').value = rule.version || 'v1.0.0';
+            this.shadowRoot.getElementById('ruleDesc').value = rule.ruleDesc || rule.description || '';
+            this.shadowRoot.getElementById('dataSource').value = rule.dataSource || rule.tableName || '';
+            this.shadowRoot.getElementById('targetModel').value = rule.targetModel || rule.modelName || '';
+            this.shadowRoot.getElementById('version').value = rule.version || rule.modelVersion || 'v1.0.0';
             
-            // Set status radio button
-            const statusValue = rule.status || 'active';
+            // Set status radio button - 参考模型元数据的status处理
+            const statusValue = rule.status === 'active' || rule.status === true ? 'active' : 'inactive';
             this.shadowRoot.querySelector(`input[name="status"][value="${statusValue}"]`).checked = true;
             
-            // Store the rule ID for update
-            form.dataset.ruleId = rule.id;
+            // Store the rule createTime for update - 参考模型元数据的timestamp
+            form.dataset.ruleId = rule.createTime;
             this.currentAction = 'edit';
             
             // Restore form footer buttons
@@ -427,7 +552,8 @@ class AssociationRules extends HTMLElement {
             // Highlight external trees
             document.body.classList.add('association-rules-modal-open');
             
-            // Initialize mappings with existing data if available
+            // 完全参考model-edit.js的loadInterfaceParamsFromData方法
+            // Initialize mappings with existing data if available - 参考inputs/outputs处理
             if (rule.mappings && rule.mappings.length > 0) {
                 this.initializeMappings();
                 // Clear existing mappings and add existing ones
@@ -477,11 +603,74 @@ class AssociationRules extends HTMLElement {
         }
     }
 
-    saveRule() {
-        const form = this.shadowRoot.getElementById('ruleForm');
-        if (!form) return;
+    async saveRule() {
+        try {
+            const formData = this.collectFormData();
+            
+            // 验证必填字段 - 参考model-edit.js的验证逻辑
+            if (!formData.name) {
+                this.showToast('请输入规则名称', 'error');
+                return;
+            }
+            
+            if (!formData.tableName) {
+                this.showToast('请选择数据源', 'error');
+                return;
+            }
+            
+            if (!formData.modelName) {
+                this.showToast('请选择目标模型', 'error');
+                return;
+            }
 
-        const ruleId = form.dataset.ruleId;
+            console.log('保存关联规则数据:', formData);
+
+            // 调用保存API - 参考model-edit.js的保存逻辑
+            const response = await fetch(window.AppConfig.api.baseURL + window.AppConfig.endpoints.data['association/rules/save'], {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(formData)
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+                console.log('保存响应:', result);
+                
+                if (result.code === 200) {
+                    this.showToast(`规则已${this.currentAction === 'edit' ? '更新' : '添加'}成功`);
+                    this.hideModal();
+                    
+                    // 重新加载规则列表 - 参考model-edit.js的刷新逻辑
+                    await this.loadRulesFromAPI();
+                    this.renderTable();
+                    
+                    // 通知其他组件刷新 - 参考model-edit.js的事件通知
+                    this.dispatchEvent(new CustomEvent('rule-updated', {
+                        detail: { 
+                            ruleName: formData.name,
+                            createTime: formData.createTime,
+                            formData: formData
+                        },
+                        bubbles: true,
+                        composed: true
+                    }));
+                } else {
+                    this.showToast(result.message || '保存失败', 'error');
+                }
+            } else {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+        } catch (error) {
+            console.error('保存规则失败:', error);
+            this.showToast('保存失败，请稍后重试', 'error');
+        }
+    }
+
+    collectFormData() {
+        // 完全参考model-edit.js的collectFormData方法，收集所有字段
+        // 收集基本信息
         const ruleName = this.shadowRoot.getElementById('ruleName').value.trim();
         const ruleDesc = this.shadowRoot.getElementById('ruleDesc').value.trim();
         const dataSource = this.shadowRoot.getElementById('dataSource').value;
@@ -489,70 +678,27 @@ class AssociationRules extends HTMLElement {
         const version = this.shadowRoot.getElementById('version').value.trim();
         const status = this.shadowRoot.querySelector('input[name="status"]:checked')?.value || 'active';
         
-        // Get mappings
+        // 收集映射关系 - 参考model-edit.js的inputs/outputs收集逻辑
         const mappings = this.getMappings();
         const resultMappings = this.getResultMappings();
-
-        // Basic validation
-        if (!ruleName) {
-            this.showToast('请输入规则名称', 'error');
-            return;
-        }
-
-        if (!dataSource) {
-            this.showToast('请选择数据源', 'error');
-            return;
-        }
-
-        if (!targetModel) {
-            this.showToast('请选择目标模型', 'error');
-            return;
-        }
-
-        if (mappings.length === 0) {
-            this.showToast('请至少添加一个输入映射关系', 'error');
-            return;
-        }
-
-        // Validate input mappings
-        for (const mapping of mappings) {
-            if (mapping.conversionType !== 'none' && !mapping.formula) {
-                this.showToast(`输入映射 ${mapping.sourceField} → ${mapping.targetField} 的转换公式不能为空`, 'error');
-                return;
-            }
-        }
-
-        // No validation needed for result mappings since they don't have conversion
-
-        const ruleData = {
-            id: ruleId || Date.now(),
-            ruleName,
-            ruleDesc,
-            dataSource,
-            targetModel,
-            version,
-            status,
-            mappings,
-            resultMappings,
-            updateTime: new Date().toISOString()
+        
+        // 构建完整的表单数据对象，包含AssociationRulesEntity需要的所有字段
+        // 参考model-edit.js的formData构建方式
+        const formData = {
+            name: ruleName,
+            description: ruleDesc,
+            tableName: dataSource,  // 前端dataSource映射到后端tableName
+            modelName: targetModel, // 前端targetModel映射到后端modelName
+            modelVersion: version,   // 前端version映射到后端modelVersion
+            status: status === 'active', // 转换为boolean类型
+            createTime: this.currentAction === 'edit' && this.shadowRoot.getElementById('ruleForm').dataset.ruleId 
+                ? parseInt(this.shadowRoot.getElementById('ruleForm').dataset.ruleId) 
+                : null,
+            inputsBind: JSON.stringify(mappings),    // 输入映射关系转为JSON - 参考inputs字段
+            outputsBind: JSON.stringify(resultMappings) // 输出映射关系转为JSON - 参考outputs字段
         };
 
-        if (this.currentAction === 'edit' && ruleId) {
-            // Update existing rule
-            const index = this.data.findIndex(r => r.id === ruleId);
-            if (index !== -1) {
-                this.data[index] = { ...this.data[index], ...ruleData };
-            }
-        } else {
-            // Add new rule
-            ruleData.id = this.data.length > 0 ? Math.max(...this.data.map(r => r.id)) + 1 : 1;
-            this.data.unshift(ruleData);
-        }
-
-        // Update the UI
-        this.renderTable();
-        this.hideModal();
-        this.showToast(`规则已${ruleId ? '更新' : '添加'}成功`);
+        return formData;
     }
 
     formatJson() {
@@ -634,10 +780,7 @@ class AssociationRules extends HTMLElement {
                     modalBody.innerHTML = previousState.body;
                     modalFooter.innerHTML = previousState.footer;
                 } else if (action === 'delete' && id) {
-                    this.data = this.data.filter(item => item.id != id);
-                    this.renderTable();
-                    this.hideModal();
-                    this.showToast('规则已删除');
+                    this.deleteRuleFromAPI(id);
                     // Restore previous state
                     modalTitle.textContent = previousState.title;
                     modalBody.innerHTML = previousState.body;
@@ -728,7 +871,7 @@ class AssociationRules extends HTMLElement {
         targetField.className = 'mapping-field';
         targetField.innerHTML = `
             <label>模型参数</label>
-            <select class="model-field-select">
+            <select class="mapping-target-field">
                 <option value="">请选择参数</option>
             </select>
         `;
@@ -821,7 +964,7 @@ class AssociationRules extends HTMLElement {
         modelField.className = 'mapping-field';
         modelField.innerHTML = `
             <label>模型输出</label>
-            <select class="model-output-select">
+            <select class="result-mapping-source-field">
                 <option value="">请选择输出</option>
             </select>
         `;
@@ -836,9 +979,7 @@ class AssociationRules extends HTMLElement {
         resultField.className = 'mapping-field';
         resultField.innerHTML = `
             <label>回写目标</label>
-            <select class="result-target-select">
-                <option value="">请选择目标</option>
-            </select>
+            <input type="text" class="result-target-input" placeholder="请输入回写目标字段名">
         `;
 
         // Remove button
@@ -864,11 +1005,11 @@ class AssociationRules extends HTMLElement {
 
         // If mapping data is provided, populate the fields
         if (mappingData) {
-            const modelSelect = modelField.querySelector('.model-output-select');
-            const resultSelect = resultField.querySelector('.result-target-select');
+            const modelSelect = modelField.querySelector('.result-mapping-source-field');
+            const resultInput = resultField.querySelector('.result-target-input');
             
             if (mappingData.modelOutput) modelSelect.value = mappingData.modelOutput;
-            if (mappingData.resultTarget) resultSelect.value = mappingData.resultTarget;
+            if (mappingData.resultTarget) resultInput.value = mappingData.resultTarget;
         }
     }
 
@@ -906,8 +1047,8 @@ class AssociationRules extends HTMLElement {
         const resultMappingRows = this.shadowRoot.querySelectorAll('#resultMappingsList .mapping-row');
         
         resultMappingRows.forEach(row => {
-            const modelOutput = row.querySelector('.model-output-select')?.value;
-            const resultTarget = row.querySelector('.result-target-select')?.value;
+            const modelOutput = row.querySelector('.result-mapping-source-field')?.value;
+            const resultTarget = row.querySelector('.result-target-input')?.value;
             
             if (modelOutput && resultTarget) {
                 resultMappings.push({ 
@@ -980,8 +1121,7 @@ class AssociationRules extends HTMLElement {
         // Update all result mapping rows
         const resultMappingRows = this.shadowRoot.querySelectorAll('#resultMappingsList .mapping-row');
         resultMappingRows.forEach(row => {
-            const modelSelect = row.querySelector('.model-output-select');
-            const resultSelect = row.querySelector('.result-target-select');
+            const modelSelect = row.querySelector('.result-mapping-source-field');
             
             // Update model output options
             if (modelSelect) {
@@ -998,20 +1138,7 @@ class AssociationRules extends HTMLElement {
                 });
             }
             
-            // Update result target options
-            if (resultSelect) {
-                const currentValue = resultSelect.value;
-                resultSelect.innerHTML = '<option value="">请选择目标</option>';
-                resultTargets.forEach(target => {
-                    const option = document.createElement('option');
-                    option.value = target.id;
-                    option.textContent = target.name;
-                    if (target.id === currentValue) {
-                        option.selected = true;
-                    }
-                    resultSelect.appendChild(option);
-                });
-            }
+            // Note: 回写目标是输入框，不需要更新选项
         });
     }
 
@@ -1568,6 +1695,408 @@ class AssociationRules extends HTMLElement {
         this.showToast(`规则 "${rule.ruleName}" 已${rule.status === 'active' ? '启用' : '禁用'}`);
     }
     
+    // 动态加载数据源选项 - 参考database-table.js的表名获取
+    loadDataSourceOptions() {
+        const dataSourceSelect = this.shadowRoot.getElementById('dataSource');
+        if (!dataSourceSelect) return;
+        
+        // 获取左侧关系查询的表名 - 参考 database-table.js 的表名获取方式
+        const leftSidebarTree = document.querySelector('.left-sidebar .tree');
+        if (!leftSidebarTree) {
+            console.warn('未找到左侧关系查询树');
+            return;
+        }
+        
+        const allNodes = leftSidebarTree.querySelectorAll('.tree-node');
+        const tableNames = new Set();
+        
+        allNodes.forEach(node => {
+            const span = node.querySelector('span');
+            if (span) {
+                const nodeName = span.textContent.trim();
+                
+                // 排除根节点
+                if (nodeName === 'relational_system') {
+                    return;
+                }
+                
+                // 判断是否为字段（最后一级叶子节点）
+                const isField = !node.querySelector('.tree-children');
+                if (isField) {
+                    // 字段节点，获取其父节点（表名）
+                    const parentNode = node.parentElement?.parentElement;
+                    if (parentNode && parentNode.classList.contains('tree-node')) {
+                        const tablePath = this.getFullTablePath(parentNode);
+                        tableNames.add(tablePath);
+                    }
+                }
+            }
+        });
+        
+        console.log('获取到的数据源表名:', Array.from(tableNames));
+        
+        // 清空现有选项
+        dataSourceSelect.innerHTML = '<option value="">请选择数据源</option>';
+        
+        // 添加表名选项
+        Array.from(tableNames).forEach(tableName => {
+            const option = document.createElement('option');
+            option.value = tableName;
+            option.textContent = tableName;
+            dataSourceSelect.appendChild(option);
+        });
+        
+        // 监听数据源变化，加载字段
+        dataSourceSelect.addEventListener('change', () => {
+            this.loadDataSourceFields(dataSourceSelect.value);
+        });
+    }
+
+    // 获取表的完整路径
+    getFullTablePath(node) {
+        const parts = [];
+        let current = node;
+        let foundRoot = false;
+        
+        while (current && current.classList.contains('tree-node')) {
+            const span = current.querySelector('span');
+            if (span) {
+                const nodeName = span.textContent.trim();
+                // 包含relational_system根路径
+                if (nodeName === 'relational_system') {
+                    foundRoot = true;
+                }
+                parts.unshift(nodeName);
+            }
+            current = current.parentElement?.parentElement;
+        }
+        
+        // 确保包含根路径
+        if (!foundRoot && parts.length > 0) {
+            parts.unshift('relational_system');
+        }
+        
+        return parts.join('.');
+    }
+    
+    // 动态加载数据源字段
+    loadDataSourceFields(tableName) {
+        if (!tableName) return;
+        
+        console.log('加载表字段:', tableName);
+        
+        // 从左侧树中获取该表的字段（最后一级叶子节点）
+        const leftSidebarTree = document.querySelector('.left-sidebar .tree');
+        if (!leftSidebarTree) return;
+        
+        const allNodes = leftSidebarTree.querySelectorAll('.tree-node');
+        const fields = new Set();
+        
+        allNodes.forEach(node => {
+            const span = node.querySelector('span');
+            if (span) {
+                const nodeName = span.textContent.trim();
+                
+                // 判断是否为字段（最后一级叶子节点）
+                const isField = !node.querySelector('.tree-children');
+                if (isField) {
+                    // 获取父节点的完整路径
+                    const parentNode = node.parentElement?.parentElement;
+                    if (parentNode && parentNode.classList.contains('tree-node')) {
+                        const parentPath = this.getFullTablePath(parentNode);
+                        if (parentPath === tableName) {
+                            fields.add(nodeName);
+                        }
+                    }
+                }
+            }
+        });
+        
+        console.log('获取到的字段:', Array.from(fields));
+        
+        // 更新所有映射行中的数据源字段选项
+        const mappingRows = this.shadowRoot.querySelectorAll('.mapping-row');
+        mappingRows.forEach(row => {
+            const sourceSelect = row.querySelector('.data-field-select');
+            if (sourceSelect) {
+                const currentValue = sourceSelect.value;
+                sourceSelect.innerHTML = '<option value="">请选择字段</option>';
+                
+                // 添加字段选项
+                Array.from(fields).forEach(field => {
+                    const option = document.createElement('option');
+                    option.value = field;
+                    option.textContent = field;
+                    sourceSelect.appendChild(option);
+                });
+                
+                // 恢复之前选择的值
+                if (currentValue) {
+                    sourceSelect.value = currentValue;
+                }
+            }
+        });
+    }
+    
+    // 动态加载目标模型选项 - 参考model-download.js的模型获取
+    loadTargetModelOptions() {
+        const targetModelSelect = this.shadowRoot.getElementById('targetModel');
+        if (!targetModelSelect) return;
+        
+        // 获取右侧模型资产库的根节点 - 参考 model-download.js 的模型获取方式
+        const rightSidebarTree = document.querySelector('.right-sidebar .tree');
+        if (!rightSidebarTree) {
+            console.warn('未找到右侧模型资产库树');
+            return;
+        }
+        
+        const allNodes = rightSidebarTree.querySelectorAll('.tree-node');
+        const modelNames = new Set(); // 使用Set避免重复
+        
+        allNodes.forEach(node => {
+            const span = node.querySelector('span');
+            if (span) {
+                const nodeName = span.textContent.trim();
+                
+                // 排除明显的路径节点
+                if (nodeName === 'models_system') {
+                    return;
+                }
+                
+                // 检查是否为父节点（有子节点）
+                const hasChildren = node.querySelector('.tree-children');
+                if (hasChildren) {
+                    // 检查子节点中是否有叶子节点
+                    const childNodes = node.querySelectorAll('.tree-node .tree-node');
+                    const hasLeafChild = Array.from(childNodes).some(child => !child.querySelector('.tree-children'));
+                    
+                    // 只有当子节点包含叶子节点时，才将父节点作为模型名称
+                    if (hasLeafChild) {
+                        modelNames.add(nodeName);
+                    }
+                }
+            }
+        });
+        
+        console.log('获取到的目标模型名称:', Array.from(modelNames));
+        
+        // 清空现有选项
+        targetModelSelect.innerHTML = '<option value="">请选择目标模型</option>';
+        
+        // 添加模型名称选项
+        Array.from(modelNames).forEach(name => {
+            const option = document.createElement('option');
+            option.value = name;
+            option.textContent = name;
+            targetModelSelect.appendChild(option);
+        });
+        
+        // 监听目标模型变化，加载版本
+        targetModelSelect.addEventListener('change', () => {
+            console.log('目标模型变化，加载版本');
+            this.loadModelVersions(targetModelSelect.value);
+            // 不在这里加载字段，等版本选择后再加载
+        });
+        
+        // 监听版本变化，加载模型字段 - 使用更可靠的方式
+        const versionSelect = this.shadowRoot.getElementById('version');
+        if (versionSelect) {
+            // 使用事件委托方式监听
+            const handleVersionChange = (event) => {
+                console.log('版本change事件触发:', event);
+                console.log('版本select当前值:', versionSelect.value);
+                
+                // 重新获取目标模型select元素
+                const currentTargetModelSelect = this.shadowRoot.getElementById('targetModel');
+                console.log('目标模型select元素:', currentTargetModelSelect);
+                console.log('目标模型当前值:', currentTargetModelSelect.value);
+                
+                const selectedModel = currentTargetModelSelect.value;
+                if (selectedModel && versionSelect.value) {
+                    console.log('版本变化，加载模型字段:', selectedModel, versionSelect.value);
+                    this.loadModelFields(selectedModel);
+                } else {
+                    console.log('条件不满足 - selectedModel:', selectedModel, 'version:', versionSelect.value);
+                }
+            };
+            
+            // 移除所有可能的监听器
+            versionSelect.removeEventListener('change', handleVersionChange);
+            versionSelect.removeEventListener('blur', handleVersionChange);
+            
+            // 添加新的监听器
+            versionSelect.addEventListener('change', handleVersionChange);
+            versionSelect.addEventListener('blur', handleVersionChange);
+        }
+    }
+    
+    // 动态加载模型版本 - 参考model-download.js的版本获取
+    loadModelVersions(modelName) {
+        const versionSelect = this.shadowRoot.getElementById('version');
+        if (!versionSelect) return;
+        
+        console.log('加载模型版本:', modelName);
+        
+        // 如果没有选择模型，清空版本下拉
+        if (!modelName) {
+            versionSelect.innerHTML = '<option value="">请选择版本</option>';
+            return;
+        }
+        
+        // 获取右侧模型资产库的版本信息
+        const rightSidebarTree = document.querySelector('.right-sidebar .tree');
+        if (!rightSidebarTree) return;
+        
+        const allNodes = rightSidebarTree.querySelectorAll('.tree-node');
+        const versions = [];
+        
+        allNodes.forEach(node => {
+            const span = node.querySelector('span');
+            if (span) {
+                const nodeName = span.textContent.trim();
+                
+                // 排除明显的路径节点
+                if (nodeName === 'models_system') {
+                    return;
+                }
+                
+                // 检查是否为叶子节点（版本）
+                const isLeaf = !node.querySelector('.tree-children');
+                if (isLeaf) {
+                    const parentNode = node.closest('.tree-children')?.parentElement;
+                    if (parentNode) {
+                        const parentSpan = parentNode.querySelector('span');
+                        if (parentSpan && parentSpan.textContent.trim() === modelName) {
+                            versions.push(nodeName);
+                        }
+                    }
+                }
+            }
+        });
+        
+        console.log('获取到的模型版本:', versions);
+        
+        // 保存当前值
+        const currentValue = versionSelect.value;
+        
+        // 清空现有选项
+        versionSelect.innerHTML = '';
+        
+        // 添加版本选项
+        versions.forEach(version => {
+            const option = document.createElement('option');
+            option.value = version;
+            option.textContent = version;
+            versionSelect.appendChild(option);
+            console.log('添加版本选项:', version);
+        });
+        
+        console.log('版本下拉框当前选项数量:', versionSelect.options.length);
+        
+        // 尝试恢复之前的选择
+        if (currentValue && versions.includes(currentValue)) {
+            versionSelect.value = currentValue;
+        }
+        
+        // 手动触发change事件（如果版本已选择）
+        if (versionSelect.value && versions.includes(versionSelect.value)) {
+            console.log('手动触发版本change事件');
+            const changeEvent = new Event('change', { bubbles: true });
+            versionSelect.dispatchEvent(changeEvent);
+        }
+    }
+    
+    // 动态加载模型字段 - 参考model-detail.js的inputs/outputs解析
+    loadModelFields(modelName) {
+        if (!modelName) return;
+        
+        console.log('加载模型字段:', modelName);
+        // 获取当前选择的版本
+        const versionSelect = this.shadowRoot.getElementById('version');
+        const selectedVersion = versionSelect.value;
+        
+        if (!selectedVersion) {
+            console.warn('请先选择模型版本');
+            return;
+        }
+        
+        // 这里需要调用模型详情接口获取inputs和outputs
+        // 参考 model-detail.js 的 renderParamsTable 方法
+        
+        // 示例：调用模型详情接口
+        fetch(window.AppConfig.api.baseURL + '/api/model/metas?name=' + encodeURIComponent(modelName) + '&version=' + encodeURIComponent(selectedVersion))
+            .then(response => response.json())
+            .then(result => {
+                if (result.code === 200 && result.data) {
+                    const modelData = result.data;
+                    
+                    // 解析inputs字段
+                    let inputs = [];
+                    if (modelData.inputs) {
+                        try {
+                            inputs = typeof modelData.inputs === 'string' ? JSON.parse(modelData.inputs) : modelData.inputs;
+                        } catch (error) {
+                            console.error('解析inputs参数数据失败:', error);
+                        }
+                    }
+                    
+                    // 解析outputs字段
+                    let outputs = [];
+                    if (modelData.outputs) {
+                        try {
+                            outputs = typeof modelData.outputs === 'string' ? JSON.parse(modelData.outputs) : modelData.outputs;
+                        } catch (error) {
+                            console.error('解析outputs参数数据失败:', error);
+                        }
+                    }
+                    
+                    console.log('模型字段:', { inputs, outputs });
+                    
+                    // 更新映射字段的下拉选项
+                    this.updateMappingFieldOptions(inputs, outputs);
+                }
+            })
+            .catch(error => {
+                console.error('获取模型详情失败:', error);
+            });
+    }
+    
+    // 更新映射字段的下拉选项
+    updateMappingFieldOptions(inputs, outputs) {
+        // 如果没有传入inputs/outputs，则不更新
+        if (!inputs || !outputs) {
+            return;
+        }
+        
+        // 更新输入映射的目标字段选项（模型参数）
+        const mappingTargetFields = this.shadowRoot.querySelectorAll('.mapping-target-field');
+        mappingTargetFields.forEach(select => {
+            const currentValue = select.value;
+            select.innerHTML = '<option value="">请选择参数</option>';
+            inputs.forEach(input => {
+                const option = document.createElement('option');
+                option.value = input.name || input;
+                option.textContent = `${input.name || input} (${input.type || 'string'})`;
+                select.appendChild(option);
+            });
+            if (currentValue) select.value = currentValue;
+        });
+        
+        // 更新输出映射的源字段选项（模型输出）
+        const resultMappingSourceFields = this.shadowRoot.querySelectorAll('.result-mapping-source-field');
+        resultMappingSourceFields.forEach(select => {
+            const currentValue = select.value;
+            select.innerHTML = '<option value="">请选择字段</option>';
+            outputs.forEach(output => {
+                const option = document.createElement('option');
+                option.value = output.name || output;
+                option.textContent = `${output.name || output} (${output.type || 'string'})`;
+                select.appendChild(option);
+            });
+            if (currentValue) select.value = currentValue;
+        });
+    }
+
     showToast(message, type = 'success') {
         if (window.CommonUtils && window.CommonUtils.showToast) {
             window.CommonUtils.showToast(message, type);
@@ -1577,16 +2106,7 @@ class AssociationRules extends HTMLElement {
         }
     }
     
-    show() {
-        console.log('AssociationRules.show() called');
-        this.setAttribute('show', '');
-        console.log('AssociationRules: show attribute set');
         
-        // 直接设置样式作为备用方案
-        this.style.display = 'block';
-        console.log('AssociationRules: style.display set to:', this.style.display);
-    }
-    
     initPagination() {
         const pagination = this.shadowRoot.getElementById('pagination');
         if (pagination) {
