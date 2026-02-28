@@ -34,12 +34,12 @@ public class DataSourceService {
      * 注册异构数据源
      */
     public boolean registerDataSource(BaseStorageEngineRequest request) throws Exception {
-        iginxSession.openSession();
+        // iginxSession.openSession();
         iginxSession.addStorageEngine(request.getIp(),
                 request.getPort(),
                 StorageEngineType.findByValue(request.getStorageEngineType()),
                 request.buildExtraParams());
-        iginxSession.closeSession();
+        // iginxSession.closeSession();
         log.info("成功注册数据源: {}", request);
         return true;
     }
@@ -48,29 +48,29 @@ public class DataSourceService {
      * 移除异构数据源
      */
     public boolean removeDataSource(StorageEngineInfoDto storageEngineInfoDto) throws Exception {
-        iginxSession.openSession();
+        // iginxSession.openSession();
         RemovedStorageEngineInfo removedStorageEngineInfo = new RemovedStorageEngineInfo(storageEngineInfoDto.getIp(), storageEngineInfoDto.getPort(), storageEngineInfoDto.getSchemaPrefix(), storageEngineInfoDto.getDataPrefix());
         List<RemovedStorageEngineInfo> removedStorageEngineList = Collections.singletonList(removedStorageEngineInfo);
         iginxSession.removeStorageEngine(removedStorageEngineList);
-        iginxSession.closeSession();
+        // iginxSession.closeSession();
         return true;
     }
 
     public List<StorageEngineInfoDto> dataSourceList() throws Exception {
-        iginxSession.openSession();
+        // iginxSession.openSession();
         ClusterInfo clusterInfo = iginxSession.getClusterInfo();
         List<StorageEngineInfo> storageEngineInfos = clusterInfo.getStorageEngineInfos();
         List<StorageEngineInfoDto> storageEngineInfoDtos = storageEngineInfos.stream().map(s -> new StorageEngineInfoDto(s.id, s.ip, s.port, s.type.getValue(), s.schemaPrefix, s.dataPrefix)).collect(Collectors.toList());
-        iginxSession.closeSession();
+        // iginxSession.closeSession();
         return storageEngineInfoDtos;
     }
 
     public List<ColumnDto> dataSourceTree() throws Exception {
-        iginxSession.openSession();
+        // iginxSession.openSession();
         List<Column> columnList = iginxSession.showColumns();
         columnList.forEach(column -> System.out.println(column.toString()));
         List<ColumnDto> tree = columnList.stream().map(column -> new ColumnDto(column.getPath(), column.getDataType().getValue())).collect(Collectors.toList());
-        iginxSession.closeSession();
+        // iginxSession.closeSession();
         return tree;
     }
 

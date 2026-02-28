@@ -42,10 +42,10 @@ public class RelationalDataService {
             log.info("执行SQL: {}, tableName: {}, pageSize: {}, offset: {}", 
                     finalSql, request.getTableName(), request.getPageSize(), offset);
             
-            iginxSession.openSession();
+            // iginxSession.openSession();
             SessionExecuteSqlResult res = iginxSession.executeSql(finalSql);
             List<Map<String, Object>> records = getRecords(res);
-            iginxSession.closeSession();
+            // iginxSession.closeSession();
             
             TableDto result = new TableDto(res.getPaths(), records);
             log.info("查询结果: paths={}, records={}", res.getPaths(), records.size());
@@ -67,10 +67,10 @@ public class RelationalDataService {
             
             log.info("执行导出SQL: {}", sql);
             
-            iginxSession.openSession();
+            // iginxSession.openSession();
             SessionExecuteSqlResult res = iginxSession.executeSql(sql);
             List<Map<String, Object>> records = getRecords(res);
-            iginxSession.closeSession();
+            // iginxSession.closeSession();
             
             if (records.isEmpty()) {
                 log.warn("没有数据可导出");
@@ -199,10 +199,10 @@ public class RelationalDataService {
             dataStyle.setBorderRight(BorderStyle.THIN);
             
             // 先查询一次获取表头
-            iginxSession.openSession();
+            // iginxSession.openSession();
             SessionExecuteSqlResult headerRes = iginxSession.executeSql(baseSql + " LIMIT 1;");
             List<String> headers = headerRes.getPaths();
-            iginxSession.closeSession();
+            // iginxSession.closeSession();
             
             if (headers.isEmpty()) {
                 log.warn("没有表头信息");
@@ -229,10 +229,10 @@ public class RelationalDataService {
                 // 构建分页查询SQL
                 String batchSql = baseSql + String.format(" LIMIT %s OFFSET %s;", batchSize, offset);
                 
-                iginxSession.openSession();
+                // iginxSession.openSession();
                 SessionExecuteSqlResult batchRes = iginxSession.executeSql(batchSql);
                 List<Map<String, Object>> records = getRecords(batchRes);
-                iginxSession.closeSession();
+                // iginxSession.closeSession();
                 
                 if (records.isEmpty()) {
                     hasMoreData = false;
@@ -451,9 +451,9 @@ public class RelationalDataService {
             
             log.info("执行COUNT SQL: {}", sql);
             
-            iginxSession.openSession();
+            // iginxSession.openSession();
             SessionExecuteSqlResult res = iginxSession.executeSql(sql);
-            iginxSession.closeSession();
+            // iginxSession.closeSession();
             
             return res.getValues().get(0).get(0);
         } catch (Exception e) {

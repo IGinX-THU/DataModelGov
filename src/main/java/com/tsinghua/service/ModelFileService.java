@@ -298,7 +298,7 @@ public class ModelFileService {
             String sql = "select * from %s where name = '%s' and version='%s';";
         String metaBasePath = META_PREFIX;
         String safeVersion = version.replace('.', '_');
-        iginxSession.openSession();
+        // iginxSession.openSession();
         QueryDataSet res =  iginxSession.executeQuery(String.format(sql, metaBasePath, name, safeVersion));
         List<String> head = res.getColumnList();
         Object[] row = res.nextRow();
@@ -306,7 +306,7 @@ public class ModelFileService {
         for (int i=0; i<=head.size() -1; i++){
             rs.put(head.get(i), row[i]);
         }
-        iginxSession.closeSession();
+        // iginxSession.closeSession();
 
         ModelMetaDto dto = new ModelMetaDto();
         // 根据控制台输出的列名进行映射
@@ -417,10 +417,10 @@ public class ModelFileService {
     public List<ModelMetaDto> queryMetaList(String name) {
         try {
             String sql = "select * from %s where name = '%s' ORDER BY timestamp ;";
-            iginxSession.openSession();
+            // iginxSession.openSession();
             SessionExecuteSqlResult res =  iginxSession.executeSql(String.format(sql, META_PREFIX, name));
             List<Map<String, Object>> records = relationalDataService.getRecords(res);
-            iginxSession.closeSession();
+            // iginxSession.closeSession();
 
             return records.stream()
                     .map(rs -> {

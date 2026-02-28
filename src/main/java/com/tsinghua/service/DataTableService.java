@@ -88,7 +88,7 @@ public class DataTableService {
         Path tempFilePath = null;
 
         try {
-            iginxSession.openSession();
+            // iginxSession.openSession();
             String uploadedFileName = System.currentTimeMillis() + ".csv";
             // 1. 保存上传文件到临时位置
             tempFilePath = Files.createTempFile("iginx_upload_", ".csv");
@@ -138,7 +138,7 @@ public class DataTableService {
                 if (tempFilePath != null) {
                     Files.deleteIfExists(tempFilePath);
                 }
-                iginxSession.closeSession();
+                // iginxSession.closeSession();
             } catch (Exception e) {
                 log.error("finally Exception", e);
             }
