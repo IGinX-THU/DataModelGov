@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.BeanUtils;
 
+import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -70,6 +71,20 @@ public class ConvertUtil {
             return ""; // 或 return null
         }
         return new String(bytes, StandardCharsets.UTF_8);
+    }
+
+    /**
+     * 获取到所有字段
+     */
+    public static List<String> iginxFieldNamesConvert(Class<?> clazz, String prefix) {
+        List<String> fieldNames = new ArrayList<>();
+        Field[] fields = clazz.getDeclaredFields();
+
+        for (Field field : fields) {
+            fieldNames.add(String.format("%s.%s", prefix, field.getName()));
+        }
+
+        return fieldNames;
     }
 
 }

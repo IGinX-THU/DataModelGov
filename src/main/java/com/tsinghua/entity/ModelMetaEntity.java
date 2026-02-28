@@ -1,10 +1,10 @@
-package com.tsinghua.dto;
+package com.tsinghua.entity;
 
 import io.swagger.annotations.ApiModelProperty;
 import lombok.Data;
 
 @Data
-public class ModelMetaDto {
+public class ModelMetaEntity {
     @ApiModelProperty(value = "名称")
     private String name;
     @ApiModelProperty(value = "版本号")

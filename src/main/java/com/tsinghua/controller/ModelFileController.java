@@ -1,6 +1,6 @@
 package com.tsinghua.controller;
 
-import com.tsinghua.dto.ModelMetaDto;
+import com.tsinghua.entity.ModelMetaEntity;
 import com.tsinghua.dto.Result;
 import com.tsinghua.dto.UploadResult;
 import com.tsinghua.service.ModelFileService;
@@ -47,7 +47,7 @@ public class ModelFileController {
             HttpServletResponse response) throws Exception {
 
         byte[] fileData = modelFileService.downloadModel(name, version);
-        ModelMetaDto queryMeta = modelFileService.queryMeta(name, version);
+        ModelMetaEntity queryMeta = modelFileService.queryMeta(name, version);
         fileName = queryMeta.getFileName();
 
         // 设置响应头
@@ -66,23 +66,23 @@ public class ModelFileController {
 
     @ApiOperation("模型元数据详情")
     @GetMapping( "/metas")
-    public Result<ModelMetaDto> queryMeta(
+    public Result<ModelMetaEntity> queryMeta(
             @RequestParam("name") String name,
             @RequestParam("version") String version) throws Exception {
-        ModelMetaDto result = modelFileService.queryMeta(name, version);
+        ModelMetaEntity result = modelFileService.queryMeta(name, version);
         return Result.success(result);
     }
 
     @ApiOperation("保存模型元数据")
     @PostMapping("/metas")
-    public Result<?> saveMeta(@RequestBody ModelMetaDto modelMetaDto) throws Exception {
+    public Result<Void> saveMeta(@RequestBody ModelMetaEntity modelMetaDto) throws Exception {
         modelFileService.saveModelMetadata(modelMetaDto);
         return Result.success("元数据保存成功");
     }
 
     @ApiOperation("模型元数据历史")
     @GetMapping( "/history")
-    public Result<List<ModelMetaDto>> queryMetaList(
+    public Result<List<ModelMetaEntity>> queryMetaList(
             @RequestParam("name") String name) {
         return Result.success(modelFileService.queryMetaList(name));
     }

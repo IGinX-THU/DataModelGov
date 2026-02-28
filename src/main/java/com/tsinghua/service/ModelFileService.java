@@ -12,8 +12,9 @@ import cn.edu.tsinghua.iginx.session_v2.query.IginXTable;
 import cn.edu.tsinghua.iginx.session_v2.query.SimpleQuery;
 import cn.edu.tsinghua.iginx.session_v2.write.Point;
 import cn.edu.tsinghua.iginx.thrift.DataType;
-import com.tsinghua.dto.ModelMetaDto;
+import com.tsinghua.entity.ModelMetaEntity;
 import com.tsinghua.dto.UploadResult;
+import com.tsinghua.util.ConvertUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -111,7 +112,7 @@ public class ModelFileService {
                 name, version, totalChunks, fileMd5);
 
         // 2. 保存模型元数据 (行式对齐存储)
-        ModelMetaDto modelMetaDto = new ModelMetaDto();
+        ModelMetaEntity modelMetaDto = new ModelMetaEntity();
         modelMetaDto.setName(name);
         modelMetaDto.setVersion(version);
         modelMetaDto.setFileName(file.getOriginalFilename());
@@ -138,7 +139,7 @@ public class ModelFileService {
         log.info("开始下载模型: {} v{}", name, version);
 
         // 1. 先查询元数据验证模型信息
-        ModelMetaDto modelMeta = queryMeta(name, version);
+        ModelMetaEntity modelMeta = queryMeta(name, version);
         if (modelMeta == null) {
             throw new Exception("未找到指定的模型元数据: " + name + " v" + version);
         }
@@ -222,9 +223,9 @@ public class ModelFileService {
      * 保存模型元数据 (行式对齐存储)
      * 每个字段作为独立的时序序列存储，使用相同的时间戳对齐
      */
-    public void saveModelMetadata(ModelMetaDto modelMetaDto) throws Exception {
+    public void saveModelMetadata(ModelMetaEntity modelMetaDto) throws Exception {
         List<Point> metaPoints = new ArrayList<>();
-        ModelMetaDto queryMeta = queryMeta(modelMetaDto.getName(), modelMetaDto.getVersion());
+        ModelMetaEntity queryMeta = queryMeta(modelMetaDto.getName(), modelMetaDto.getVersion());
         long timestamp;
         if (queryMeta != null && queryMeta.getTimestamp() != null) {
             timestamp = queryMeta.getTimestamp();
@@ -293,7 +294,7 @@ public class ModelFileService {
         return builder.build();
     }
 
-    public ModelMetaDto queryMeta(String name, String version) {
+    public ModelMetaEntity queryMeta(String name, String version) {
         try {
             String sql = "select * from %s where name = '%s' and version='%s';";
         String metaBasePath = META_PREFIX;
@@ -308,7 +309,7 @@ public class ModelFileService {
         }
         // iginxSession.closeSession();
 
-        ModelMetaDto dto = new ModelMetaDto();
+            ModelMetaEntity dto = new ModelMetaEntity();
         // 根据控制台输出的列名进行映射
         rs.forEach((k,v) -> setDtoField(dto, k, v));
         return dto;
@@ -321,7 +322,7 @@ public class ModelFileService {
     /**
      * 根据字段名设置DTO属性
      */
-    private void setDtoField(ModelMetaDto dto, String fieldName, Object value) {
+    private void setDtoField(ModelMetaEntity dto, String fieldName, Object value) {
         try {
             switch (fieldName) {
                 case META_PREFIX+"."+"name":
@@ -414,7 +415,7 @@ public class ModelFileService {
         }
     }
 
-    public List<ModelMetaDto> queryMetaList(String name) {
+    public List<ModelMetaEntity> queryMetaList(String name) {
         try {
             String sql = "select * from %s where name = '%s' ORDER BY timestamp ;";
             // iginxSession.openSession();
@@ -424,7 +425,7 @@ public class ModelFileService {
 
             return records.stream()
                     .map(rs -> {
-                        ModelMetaDto dto = new ModelMetaDto();
+                        ModelMetaEntity dto = new ModelMetaEntity();
                         // 根据控制台输出的列名进行映射
                         rs.forEach((k,v) -> setDtoField(dto, k, v));
                         return dto;
@@ -440,19 +441,17 @@ public class ModelFileService {
      */
     public void deleteModel(String name, String version) {
         try {
-            List<String> measurements = Arrays.stream(ModelMetaDto.class.getDeclaredFields())
-                    .map(field -> String.format("%s.%s", META_PREFIX, field.getName()))
-                    .collect(Collectors.toList());
+            List<String> measurements = ConvertUtil.iginxFieldNamesConvert(ModelMetaEntity.class, META_PREFIX);
             if (StringUtils.hasText(version)) {
                 String storagePath = buildStoragePath(name, version);
                 deleteClient.deleteMeasurement(storagePath);
-                ModelMetaDto queryMeta = queryMeta(name, version);
+                ModelMetaEntity queryMeta = queryMeta(name, version);
                 if (queryMeta != null && queryMeta.getTimestamp() != null) {
                     long timestamp = queryMeta.getTimestamp();
                     deleteClient.deleteMeasurementsData(measurements, timestamp-1, timestamp+1);
                 }
             } else {
-                List<ModelMetaDto> queryMetas = queryMetaList(name);
+                List<ModelMetaEntity> queryMetas = queryMetaList(name);
                 List<String> storagePaths = queryMetas.stream()
                         .map(meta ->
                                 buildStoragePath(meta.getName(), meta.getVersion())
@@ -460,7 +459,7 @@ public class ModelFileService {
                         .collect(Collectors.toList());
                 deleteClient.deleteMeasurements(storagePaths);
                 queryMetas.stream()
-                        .map(ModelMetaDto::getTimestamp)
+                        .map(ModelMetaEntity::getTimestamp)
                         .forEach(timestamp ->
                                 deleteClient.deleteMeasurementsData(measurements, timestamp-1, timestamp+1)
                         );
@@ -468,20 +467,6 @@ public class ModelFileService {
         } catch (Exception e) {
             log.error("移除模型资产失败", e);
         }
-    }
-
-    /**
-     * 获取到所有字段
-     */
-    public static List<String> getAllFieldNames() {
-        List<String> fieldNames = new ArrayList<>();
-        Field[] fields = ModelMetaDto.class.getDeclaredFields();
-
-        for (Field field : fields) {
-            fieldNames.add(String.format("%s.%s", META_PREFIX, field.getName()));
-        }
-
-        return fieldNames;
     }
 
     /**
