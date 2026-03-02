@@ -24,6 +24,9 @@ public class Result<T> {
     public static <T> Result<T> success(T data) {
         return new Result<>(200, "操作成功", data);
     }
+    public static <T> Result<T> success(String message, T data) {
+        return new Result<>(200, message, data);
+    }
 
     // 错误响应
     public static Result<Void> error(String message) {
@@ -33,5 +36,9 @@ public class Result<T> {
     // 参数错误响应
     public static Result<Void> paramError(String message) {
         return new Result<>(400, message, null);
+    }
+
+    public boolean getSuccess() {
+        return this.code == 200;
     }
 }

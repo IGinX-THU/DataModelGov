@@ -133,6 +133,13 @@
             <version>5.2.4</version>
         </dependency>
 
+        <!-- Thrift dependencies -->
+        <dependency>
+            <groupId>org.apache.thrift</groupId>
+            <artifactId>libthrift</artifactId>
+            <version>0.22.0</version>
+        </dependency>
+
     </dependencies>
 
     <build>
@@ -248,6 +255,33 @@
                     </execution>
                 </executions>
             </plugin>
+        <!-- Thrift Maven Plugin using exec -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.1.0</version>
+                <executions>
+                    <execution>
+                        <id>generate-thrift-java</id>
+                        <phase>generate-sources</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>thrift</executable>
+                            <arguments>
+                                <argument>--gen</argument>
+                                <argument>java</argument>
+                                <argument>-out</argument>
+                                <argument>${project.build.directory}/generated-sources/thrift</argument>
+                                <argument>src/main/resources/thrift/api.thrift</argument>
+                            </arguments>
+                            <workingDirectory>${project.basedir}</workingDirectory>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
         </plugins>
     </build>
 
