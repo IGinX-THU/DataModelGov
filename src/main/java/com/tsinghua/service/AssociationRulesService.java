@@ -25,7 +25,7 @@ import java.util.stream.Collectors;
 @Service
 public class AssociationRulesService {
 
-    private static final String META_PREFIX = "relational_system.association_rules";
+    private static final String DATA_PREFIX = "relational_system.association_rules";
 
     @Autowired
     private Session iginxSession;
@@ -69,7 +69,7 @@ public class AssociationRulesService {
             associationRulesEntity.setCreateTime(timestamp);
         }
         associationRulesEntity.setUpdateTime(System.currentTimeMillis());
-        String metaBasePath = META_PREFIX;
+        String metaBasePath = DATA_PREFIX;
 
         // 完全参考ModelFileService.saveModelMetadata的字段创建方式
         // 创建各个字段的数据点
@@ -122,8 +122,8 @@ public class AssociationRulesService {
                 AssociationRulesEntity entity = new AssociationRulesEntity();
                 // 使用ConvertUtil的通用方法设置字段值 - 参考ModelFileService.queryMeta
                 record.forEach((k, v) -> {
-                    String fieldName = k.replace(META_PREFIX + ".", "");
-                    ConvertUtil.setEntityField(entity, META_PREFIX, fieldName, v);
+                    String fieldName = k.replace(DATA_PREFIX + ".", "");
+                    ConvertUtil.setEntityField(entity, DATA_PREFIX, fieldName, v);
                 });
                 return entity;
             }).collect(Collectors.toList());
@@ -172,7 +172,7 @@ public class AssociationRulesService {
     public AssociationRulesEntity queryRule(Long createTime) {
         try {
             String sql = "select * from %s where createTime = %s;";
-            String metaBasePath = META_PREFIX;
+            String metaBasePath = DATA_PREFIX;
             SessionExecuteSqlResult res = iginxSession.executeSql(String.format(sql, metaBasePath, createTime));
             List<Map<String, Object>> records = relationalDataService.getRecords(res);
 
@@ -184,8 +184,8 @@ public class AssociationRulesService {
             Map<String, Object> rs = records.get(0);
             // 使用ConvertUtil的通用方法设置字段值
             rs.forEach((k, v) -> {
-                String fieldName = k.replace(META_PREFIX + ".", "");
-                ConvertUtil.setEntityField(entity, META_PREFIX, fieldName, v);
+                String fieldName = k.replace(DATA_PREFIX + ".", "");
+                ConvertUtil.setEntityField(entity, DATA_PREFIX, fieldName, v);
             });
             return entity;
         } catch (Exception e) {
@@ -200,7 +200,7 @@ public class AssociationRulesService {
      */
     public void deleteRule(Long createTime) {
         try {
-            List<String> measurements = ConvertUtil.iginxFieldNamesConvert(AssociationRulesEntity.class, META_PREFIX);
+            List<String> measurements = ConvertUtil.iginxFieldNamesConvert(AssociationRulesEntity.class, DATA_PREFIX);
             // 删除指定时间戳的数据
             deleteClient.deleteMeasurementsData(measurements, createTime - 1, createTime + 1);
             log.info("已删除关联规则: createTime: {}", createTime);
