@@ -914,7 +914,7 @@ class AssociationRules extends HTMLElement {
         mappingsList.appendChild(row);
 
         // Update field options based on current selections
-        this.updateMappingFieldOptions();
+        this.updateMappingFieldOptionsForNewRow(sourceField, targetField);
 
         // If mapping data is provided, populate the fields
         if (mappingData) {
@@ -1001,7 +1001,7 @@ class AssociationRules extends HTMLElement {
         resultMappingsList.appendChild(row);
 
         // Update field options based on current selections
-        this.updateResultMappingFieldOptions();
+        this.updateResultMappingFieldOptionsForNewRow(modelField);
 
         // If mapping data is provided, populate the fields
         if (mappingData) {
@@ -2095,6 +2095,121 @@ class AssociationRules extends HTMLElement {
             });
             if (currentValue) select.value = currentValue;
         });
+    }
+    
+    // 为新添加的映射行更新字段选项
+    updateMappingFieldOptionsForNewRow(sourceField, targetField) {
+        // 更新数据源字段选项
+        const dataSource = this.shadowRoot.getElementById('dataSource')?.value;
+        if (dataSource) {
+            const sourceSelect = sourceField.querySelector('.data-field-select');
+            if (sourceSelect) {
+                sourceSelect.innerHTML = '<option value="">请选择字段</option>';
+                
+                // 从左侧树中获取该表的字段
+                const leftSidebarTree = document.querySelector('.left-sidebar .tree');
+                if (leftSidebarTree) {
+                    const allNodes = leftSidebarTree.querySelectorAll('.tree-node');
+                    const fields = new Set();
+                    
+                    allNodes.forEach(node => {
+                        const span = node.querySelector('span');
+                        if (span) {
+                            const nodeName = span.textContent.trim();
+                            const isField = !node.querySelector('.tree-children');
+                            if (isField) {
+                                const parentNode = node.parentElement?.parentElement;
+                                if (parentNode && parentNode.classList.contains('tree-node')) {
+                                    const parentPath = this.getFullTablePath(parentNode);
+                                    if (parentPath === dataSource) {
+                                        fields.add(nodeName);
+                                    }
+                                }
+                            }
+                        }
+                    });
+                    
+                    // 添加字段选项
+                    Array.from(fields).forEach(field => {
+                        const option = document.createElement('option');
+                        option.value = field;
+                        option.textContent = field;
+                        sourceSelect.appendChild(option);
+                    });
+                }
+            }
+        }
+        
+        // 更新模型参数选项
+        const targetModel = this.shadowRoot.getElementById('targetModel')?.value;
+        const version = this.shadowRoot.getElementById('version')?.value;
+        if (targetModel && version) {
+            const targetSelect = targetField.querySelector('.mapping-target-field');
+            if (targetSelect) {
+                targetSelect.innerHTML = '<option value="">请选择参数</option>';
+                
+                // 调用API获取模型参数
+                fetch(window.AppConfig.api.baseURL + '/api/model/metas?name=' + encodeURIComponent(targetModel) + '&version=' + encodeURIComponent(version))
+                    .then(response => response.json())
+                    .then(result => {
+                        if (result.code === 200 && result.data) {
+                            const modelData = result.data;
+                            let inputs = [];
+                            if (modelData.inputs) {
+                                inputs = typeof modelData.inputs === 'string' ? JSON.parse(modelData.inputs) : modelData.inputs;
+                            }
+                            
+                            // 添加模型参数选项
+                            inputs.forEach(input => {
+                                const option = document.createElement('option');
+                                option.value = input.name || input;
+                                option.textContent = `${input.name || input} (${input.type || 'string'})`;
+                                targetSelect.appendChild(option);
+                            });
+                        }
+                    })
+                    .catch(error => {
+                        console.error('获取模型参数失败:', error);
+                    });
+            }
+        }
+    }
+
+    // 为新添加的回写映射行更新字段选项
+    updateResultMappingFieldOptionsForNewRow(modelField) {
+        // 更新模型输出选项
+        const targetModel = this.shadowRoot.getElementById('targetModel')?.value;
+        const version = this.shadowRoot.getElementById('version')?.value;
+        if (targetModel && version) {
+            const modelSelect = modelField.querySelector('.result-mapping-source-field');
+            if (modelSelect) {
+                modelSelect.innerHTML = '<option value="">请选择输出</option>';
+                
+                // 调用API获取模型输出
+                fetch(window.AppConfig.api.baseURL + '/api/model/metas?name=' + encodeURIComponent(targetModel) + '&version=' + encodeURIComponent(version))
+                    .then(response => response.json())
+                    .then(result => {
+                        if (result.code === 200 && result.data) {
+                            const modelData = result.data;
+                            let outputs = [];
+                            if (modelData.outputs) {
+                                outputs = typeof modelData.outputs === 'string' ? JSON.parse(modelData.outputs) : modelData.outputs;
+                            }
+                            
+                            // 添加模型输出选项
+                            outputs.forEach(output => {
+                                const option = document.createElement('option');
+                                option.value = output.name || output;
+                                option.textContent = `${output.name || output} (${output.type || 'string'})`;
+                                modelSelect.appendChild(option);
+                            });
+                        }
+                    })
+                    .catch(error => {
+                        console.error('获取模型输出失败:', error);
+                    });
+            }
+        }
     }
 
     showToast(message, type = 'success') {
