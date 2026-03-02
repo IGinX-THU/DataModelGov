@@ -949,17 +949,29 @@ class AssociationRules extends HTMLElement {
         const conversion = document.createElement('div');
         conversion.className = 'mapping-conversion';
         conversion.innerHTML = `
-            <div class="mapping-field conversion-type">
-                <label>转换类型</label>
-                <select class="conversion-select">
-                    <option value="none">无转换</option>
-                    <option value="formula">公式转换</option>
-                    <option value="unit">单位转换</option>
-                </select>
-            </div>
-            <div class="mapping-field conversion-formula">
-                <label>转换公式</label>
-                <input type="text" class="formula-input" placeholder="如: value * 1000 / 3600">
+            <div class="mapping-field conversion-ops">
+                <label>单位换算</label>
+                <div class="conversion-formula">
+                    <select class="conversion-operator">
+                        <option value="none">无换算</option>
+                        <option value="multiply">乘以</option>
+                        <option value="divide">除以</option>
+                    </select>
+                    <select class="conversion-value" style="display: none;">
+                        <option value="">选择数值</option>
+                        <option value="1000">1000 (kg→t, m→km)</option>
+                        <option value="3600">3600 (h→s)</option>
+                        <option value="3.6">3.6 (km/h→m/s)</option>
+                        <option value="0.2777777777777778">0.2778 (m/s→km/h)</option>
+                        <option value="100">100 (cm→m, %→倍数)</option>
+                        <option value="0.01">0.01 (m→cm)</option>
+                        <option value="273.15">273.15 (°C→K)</option>
+                        <option value="9/5">9/5 (°C→°F系数)</option>
+                        <option value="32">32 (°C→°F偏移)</option>
+                        <option value="custom">自定义数值</option>
+                    </select>
+                    <input type="number" class="conversion-custom-value" placeholder="自定义数值" step="any" style="display: none;">
+                </div>
             </div>
         `;
 
@@ -982,40 +994,72 @@ class AssociationRules extends HTMLElement {
         // Add to the list
         mappingsList.appendChild(row);
 
+        // 添加转换类型变更事件处理
+        const operatorSelect = conversion.querySelector('.conversion-operator');
+        const valueSelect = conversion.querySelector('.conversion-value');
+        const customValueInput = conversion.querySelector('.conversion-custom-value');
+        
+        operatorSelect.addEventListener('change', () => {
+            const operator = operatorSelect.value;
+            
+            if (operator === 'none') {
+                valueSelect.style.display = 'none';
+                customValueInput.style.display = 'none';
+                valueSelect.value = '';
+                customValueInput.value = '';
+            } else {
+                valueSelect.style.display = 'inline-block';
+                valueSelect.focus();
+            }
+        });
+        
+        valueSelect.addEventListener('change', () => {
+            const selectedValue = valueSelect.value;
+            
+            if (selectedValue === 'custom') {
+                customValueInput.style.display = 'inline-block';
+                customValueInput.focus();
+            } else {
+                customValueInput.style.display = 'none';
+                customValueInput.value = '';
+            }
+        });
+
         // Update field options based on current selections
         this.updateMappingFieldOptionsForNewRow(sourceField, targetField);
 
         // If mapping data is provided, populate the fields
         if (mappingData) {
             const sourceSelect = sourceField.querySelector('.data-field-select');
-            const targetSelect = targetField.querySelector('.mapping-target-field'); // 修正类名
-            const conversionSelect = conversion.querySelector('.conversion-select');
-            const formulaInput = conversion.querySelector('.formula-input');
+            const targetSelect = targetField.querySelector('.mapping-target-field');
+            const operatorSelect = conversion.querySelector('.conversion-operator');
+            const valueSelect = conversion.querySelector('.conversion-value');
+            const customValueInput = conversion.querySelector('.conversion-custom-value');
             
             if (mappingData.sourceField) sourceSelect.value = mappingData.sourceField;
             if (mappingData.targetField) targetSelect.value = mappingData.targetField;
-            if (mappingData.conversionType) conversionSelect.value = mappingData.conversionType;
-            if (mappingData.formula) formulaInput.value = mappingData.formula;
-        }
-
-        // Add event listener for conversion type change
-        const conversionSelect = conversion.querySelector('.conversion-select');
-        const formulaInput = conversion.querySelector('.formula-input');
-        conversionSelect.addEventListener('change', () => {
-            if (conversionSelect.value === 'none') {
-                formulaInput.value = '';
-                formulaInput.disabled = true;
-            } else {
-                formulaInput.disabled = false;
-                if (conversionSelect.value === 'unit') {
-                    // Pre-fill common unit conversion formulas
-                    const dataSource = this.shadowRoot.getElementById('dataSource')?.value;
-                    if (dataSource === 'car') {
-                        formulaInput.placeholder = '如: value * 1000 / 3600 (km/h → m/s)';
-                    }
+            if (mappingData.operator) operatorSelect.value = mappingData.operator;
+            
+            // 处理转换值
+            if (mappingData.conversionValue) {
+                // 检查是否是预设值
+                const presetValues = ['1000', '3600', '3.6', '0.2777777777777778', '100', '0.01', '273.15', '9/5', '32'];
+                if (presetValues.includes(mappingData.conversionValue)) {
+                    valueSelect.value = mappingData.conversionValue;
+                    customValueInput.style.display = 'none';
+                } else {
+                    valueSelect.value = 'custom';
+                    customValueInput.value = mappingData.conversionValue;
+                    customValueInput.style.display = 'inline-block';
                 }
+                valueSelect.style.display = 'inline-block';
             }
-        });
+            
+            // 触发operator change事件来显示/隐藏value选择框
+            if (mappingData.operator && mappingData.operator !== 'none') {
+                valueSelect.style.display = 'inline-block';
+            }
+        }
     }
 
     /**
@@ -1091,16 +1135,27 @@ class AssociationRules extends HTMLElement {
         
         mappingRows.forEach(row => {
             const sourceField = row.querySelector('.data-field-select')?.value;
-            const targetField = row.querySelector('.mapping-target-field')?.value; // 修正类名
-            const conversionType = row.querySelector('.conversion-select')?.value;
-            const formula = row.querySelector('.formula-input')?.value;
+            const targetField = row.querySelector('.mapping-target-field')?.value;
+            const operator = row.querySelector('.conversion-operator')?.value;
+            const valueSelect = row.querySelector('.conversion-value')?.value;
+            const customValueInput = row.querySelector('.conversion-custom-value')?.value;
             
             if (sourceField && targetField) {
+                // 确定最终的转换值
+                let conversionValue = '';
+                if (operator !== 'none') {
+                    if (valueSelect === 'custom') {
+                        conversionValue = customValueInput || '';
+                    } else {
+                        conversionValue = valueSelect || '';
+                    }
+                }
+                
                 mappings.push({ 
                     sourceField, 
                     targetField, 
-                    conversionType: conversionType || 'none',
-                    formula: formula || ''
+                    operator: operator || 'none',
+                    conversionValue: conversionValue
                 });
             }
         });

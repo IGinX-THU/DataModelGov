@@ -230,6 +230,171 @@ public class ConvertUtil {
         }
     }
 
+    /**
+     * 单位换算处理
+     * 根据运算符和换算值对原始数据进行单位转换
+     * 
+     * @param value 原始值
+     * @param operator 运算符 (multiply, divide, add, subtract)
+     * @param conversionValue 换算值
+     * @return 转换后的值
+     */
+    public static Object convertValue(Object value, String operator, String conversionValue) {
+        if (value == null || operator == null || conversionValue == null || 
+            "none".equals(operator) || conversionValue.trim().isEmpty()) {
+            return value;
+        }
+        
+        try {
+            double numericValue = ((Number) value).doubleValue();
+            double factor = parseConversionValue(conversionValue);
+            
+            switch (operator.toLowerCase()) {
+                case "multiply":
+                    return numericValue * factor;
+                case "divide":
+                    if (factor == 0) {
+                        logger.warn("除数不能为0，跳过单位转换");
+                        return value;
+                    }
+                    return numericValue / factor;
+                case "add":
+                    return numericValue + factor;
+                case "subtract":
+                    return numericValue - factor;
+                default:
+                    logger.warn("未知的运算符: {}，跳过单位转换", operator);
+                    return value;
+            }
+        } catch (Exception e) {
+            logger.error("单位转换失败: value={}, operator={}, conversionValue={}, error={}", 
+                        value, operator, conversionValue, e.getMessage());
+            return value;
+        }
+    }
+    
+    /**
+     * 解析换算值
+     * 支持小数、整数和分数格式（如 9/5）
+     * 
+     * @param value 换算值字符串
+     * @return 解析后的数值
+     */
+    private static double parseConversionValue(String value) {
+        if (value == null || value.trim().isEmpty()) {
+            return 1.0;
+        }
+        
+        value = value.trim();
+        
+        // 处理分数格式 (如 9/5)
+        if (value.contains("/")) {
+            String[] parts = value.split("/");
+            if (parts.length == 2) {
+                try {
+                    double numerator = Double.parseDouble(parts[0].trim());
+                    double denominator = Double.parseDouble(parts[1].trim());
+                    if (denominator != 0) {
+                        return numerator / denominator;
+                    }
+                } catch (NumberFormatException e) {
+                    logger.warn("分数格式解析失败: {}", value);
+                }
+            }
+        }
+        
+        // 处理普通数值
+        try {
+            return Double.parseDouble(value);
+        } catch (NumberFormatException e) {
+            logger.warn("数值格式解析失败: {}", value);
+            return 1.0;
+        }
+    }
+    
+    /**
+     * 批量单位换算
+     * 对映射关系中的所有字段进行单位转换
+     * 
+     * @param mappings 映射关系列表
+     * @param data 原始数据
+     * @return 转换后的数据
+     */
+    public static java.util.Map<String, Object> batchConvertValue(
+            java.util.List<java.util.Map<String, Object>> mappings, 
+            java.util.Map<String, Object> data) {
+        
+        java.util.Map<String, Object> result = new java.util.HashMap<>(data);
+        
+        for (java.util.Map<String, Object> mapping : mappings) {
+            String sourceField = (String) mapping.get("sourceField");
+            String targetField = (String) mapping.get("targetField");
+            String operator = (String) mapping.get("operator");
+            String conversionValue = (String) mapping.get("conversionValue");
+            
+            if (sourceField != null && targetField != null && data.containsKey(sourceField)) {
+                Object originalValue = data.get(sourceField);
+                Object convertedValue = convertValue(originalValue, operator, conversionValue);
+                result.put(targetField, convertedValue);
+                
+                logger.debug("单位转换: {} {} {} = {} -> {}", 
+                           sourceField, originalValue, getConversionDescription(operator, conversionValue), 
+                           convertedValue, targetField);
+            }
+        }
+        
+        return result;
+    }
+    
+    /**
+     * 获取转换描述
+     * 用于日志显示转换过程
+     */
+    private static String getConversionDescription(String operator, String conversionValue) {
+        if ("none".equals(operator) || conversionValue == null || conversionValue.trim().isEmpty()) {
+            return "无转换";
+        }
+        
+        String opSymbol;
+        switch (operator.toLowerCase()) {
+            case "multiply": opSymbol = "×"; break;
+            case "divide": opSymbol = "÷"; break;
+            case "add": opSymbol = "+"; break;
+            case "subtract": opSymbol = "-"; break;
+            default: opSymbol = operator; break;
+        }
+        
+        return String.format("%s %s %s", operator, opSymbol, conversionValue);
+    }
+    
+    /**
+     * 验证转换参数
+     * 检查运算符和换算值是否有效
+     */
+    public static boolean validateConversionParams(String operator, String conversionValue) {
+        if (operator == null || conversionValue == null) {
+            return false;
+        }
+        
+        // 检查运算符
+        if (!java.util.Arrays.asList("none", "multiply", "divide", "add", "subtract").contains(operator.toLowerCase())) {
+            return false;
+        }
+        
+        // 如果不是无转换，检查换算值
+        if (!"none".equals(operator) && conversionValue.trim().isEmpty()) {
+            return false;
+        }
+        
+        // 尝试解析换算值
+        try {
+            parseConversionValue(conversionValue);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
 }
 
 
