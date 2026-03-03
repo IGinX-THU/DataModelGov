@@ -28,18 +28,40 @@ public class ApiGenerationService {
      */
     public Result<?> generateJavaCode() {
         try {
-            String outputDir = OUTPUT_BASE_DIR + "/java";
-            createOutputDirectory(outputDir);
+            String serverOutputDir = OUTPUT_BASE_DIR + "/java/server";
+            String clientOutputDir = OUTPUT_BASE_DIR + "/java/client";
             
-            // 使用ThriftCodeGenerator工具类
-            ThriftCodeGenerator.GenerationResult result = ThriftCodeGenerator.generateCode(
-                "java", THRIFT_FILE_PATH, outputDir
+            // 先创建父目录，再创建子目录
+            createOutputDirectory(OUTPUT_BASE_DIR + "/java");
+            createOutputDirectory(serverOutputDir);
+            createOutputDirectory(clientOutputDir);
+            
+            // 生成Server端代码
+            ThriftCodeGenerator.GenerationResult serverResult = ThriftCodeGenerator.generateJavaServer(
+                THRIFT_FILE_PATH, serverOutputDir
             );
             
-            if (result.isSuccess()) {
-                return Result.success("Java代码生成成功，输出目录: " + outputDir, outputDir);
+            // 生成Client端代码
+            ThriftCodeGenerator.GenerationResult clientResult = ThriftCodeGenerator.generateJavaClient(
+                THRIFT_FILE_PATH, clientOutputDir
+            );
+            
+            // 生成Server端实现
+            if (serverResult.isSuccess()) {
+                generateJavaServerImplementation(serverOutputDir);
+            }
+            
+            // 生成Client端示例
+            if (clientResult.isSuccess()) {
+                generateJavaClientExample(clientOutputDir);
+            }
+            
+            if (serverResult.isSuccess() && clientResult.isSuccess()) {
+                return Result.success("Java代码生成成功，Server端: " + serverOutputDir + ", Client端: " + clientOutputDir);
             } else {
-                return Result.error("Java代码生成失败: " + result.getMessage());
+                return Result.error("Java代码生成失败: " + 
+                    (serverResult.isSuccess() ? "" : serverResult.getMessage() + "; ") +
+                    (clientResult.isSuccess() ? "" : clientResult.getMessage()));
             }
         } catch (Exception e) {
             log.error("生成Java代码失败", e);
@@ -52,20 +74,41 @@ public class ApiGenerationService {
      */
     public Result<?> generateGoCode() {
         try {
-            String outputDir = OUTPUT_BASE_DIR + "/go";
-            createOutputDirectory(outputDir);
+            String serverOutputDir = OUTPUT_BASE_DIR + "/go/server";
+            String clientOutputDir = OUTPUT_BASE_DIR + "/go/client";
             
-            // 使用ThriftCodeGenerator工具类
-            ThriftCodeGenerator.GenerationResult result = ThriftCodeGenerator.generateCode(
-                "go", THRIFT_FILE_PATH, outputDir
+            // 先创建父目录，再创建子目录
+            createOutputDirectory(OUTPUT_BASE_DIR + "/go");
+            createOutputDirectory(serverOutputDir);
+            createOutputDirectory(clientOutputDir);
+            
+            // 生成Server端代码
+            ThriftCodeGenerator.GenerationResult serverResult = ThriftCodeGenerator.generateGoServer(
+                THRIFT_FILE_PATH, serverOutputDir
             );
             
-            if (result.isSuccess()) {
-                // 生成Go模块文件
-                generateGoModFile(outputDir);
-                return Result.success("Go代码生成成功，输出目录: " + outputDir, outputDir);
+            // 生成Client端代码
+            ThriftCodeGenerator.GenerationResult clientResult = ThriftCodeGenerator.generateGoClient(
+                THRIFT_FILE_PATH, clientOutputDir
+            );
+            
+            // 生成Go模块文件
+            if (serverResult.isSuccess()) {
+                generateGoModFile(serverOutputDir);
+                generateGoServerImplementation(serverOutputDir);
+            }
+            
+            if (clientResult.isSuccess()) {
+                generateGoModFile(clientOutputDir);
+                generateGoClientExample(clientOutputDir);
+            }
+            
+            if (serverResult.isSuccess() && clientResult.isSuccess()) {
+                return Result.success("Go代码生成成功，Server端: " + serverOutputDir + ", Client端: " + clientOutputDir);
             } else {
-                return Result.error("Go代码生成失败: " + result.getMessage());
+                return Result.error("Go代码生成失败: " + 
+                    (serverResult.isSuccess() ? "" : serverResult.getMessage() + "; ") +
+                    (clientResult.isSuccess() ? "" : clientResult.getMessage()));
             }
         } catch (Exception e) {
             log.error("生成Go代码失败", e);
@@ -78,20 +121,41 @@ public class ApiGenerationService {
      */
     public Result<?> generatePythonCode() {
         try {
-            String outputDir = OUTPUT_BASE_DIR + "/python";
-            createOutputDirectory(outputDir);
+            String serverOutputDir = OUTPUT_BASE_DIR + "/python/server";
+            String clientOutputDir = OUTPUT_BASE_DIR + "/python/client";
             
-            // 使用ThriftCodeGenerator工具类
-            ThriftCodeGenerator.GenerationResult result = ThriftCodeGenerator.generateCode(
-                "py", THRIFT_FILE_PATH, outputDir
+            // 先创建父目录，再创建子目录
+            createOutputDirectory(OUTPUT_BASE_DIR + "/python");
+            createOutputDirectory(serverOutputDir);
+            createOutputDirectory(clientOutputDir);
+            
+            // 生成Server端代码
+            ThriftCodeGenerator.GenerationResult serverResult = ThriftCodeGenerator.generatePythonServer(
+                THRIFT_FILE_PATH, serverOutputDir
             );
             
-            if (result.isSuccess()) {
-                // 生成Python requirements文件
-                generatePythonRequirements(outputDir);
-                return Result.success("Python代码生成成功，输出目录: " + outputDir, outputDir);
+            // 生成Client端代码
+            ThriftCodeGenerator.GenerationResult clientResult = ThriftCodeGenerator.generatePythonClient(
+                THRIFT_FILE_PATH, clientOutputDir
+            );
+            
+            // 生成Python requirements文件
+            if (serverResult.isSuccess()) {
+                generatePythonRequirements(serverOutputDir);
+                generatePythonServerImplementation(serverOutputDir);
+            }
+            
+            if (clientResult.isSuccess()) {
+                generatePythonRequirements(clientOutputDir);
+                generatePythonClientExample(clientOutputDir);
+            }
+            
+            if (serverResult.isSuccess() && clientResult.isSuccess()) {
+                return Result.success("Python代码生成成功，Server端: " + serverOutputDir + ", Client端: " + clientOutputDir);
             } else {
-                return Result.error("Python代码生成失败: " + result.getMessage());
+                return Result.error("Python代码生成失败: " + 
+                    (serverResult.isSuccess() ? "" : serverResult.getMessage() + "; ") +
+                    (clientResult.isSuccess() ? "" : clientResult.getMessage()));
             }
         } catch (Exception e) {
             log.error("生成Python代码失败", e);
@@ -146,12 +210,514 @@ public class ApiGenerationService {
         Path path = Paths.get(dirPath);
         if (!Files.exists(path)) {
             Files.createDirectories(path);
+            log.info("创建目录: {}", dirPath);
         }
     }
 
     /**
-     * 生成Go模块文件
+     * 生成Java Server端实现
      */
+    private void generateJavaServerImplementation(String outputDir) throws IOException {
+        String serverContent = "package com.tsinghua.thrift.server;\n\n" +
+            "import com.tsinghua.thrift.api.*;\n" +
+            "import org.apache.thrift.TException;\n\n" +
+            "/**\n" +
+            " * Thrift服务实现类\n" +
+            " */\n" +
+            "public class ApiServiceHandler implements ApiService.Iface {\n\n" +
+            "    @Override\n" +
+            "    public Result saveAssociationRule(AssociationRule rule) throws TException {\n" +
+            "        // 实现关联规则保存逻辑\n" +
+            "        return new Result(true, \"关联规则保存成功\", null);\n" +
+            "    }\n\n" +
+            "    @Override\n" +
+            "    public Result listAssociationRules(AssociationRulesQueryRequest request) throws TException {\n" +
+            "        // 实现关联规则查询逻辑\n" +
+            "        return new Result(true, \"查询成功\", null);\n" +
+            "    }\n\n" +
+            "    @Override\n" +
+            "    public Result getAssociationRule(long createTime) throws TException {\n" +
+            "        // 实现关联规则详情查询逻辑\n" +
+            "        return new Result(true, \"查询成功\", null);\n" +
+            "    }\n\n" +
+            "    @Override\n" +
+            "    public Result deleteAssociationRule(long createTime) throws TException {\n" +
+            "        // 实现关联规则删除逻辑\n" +
+            "        return new Result(true, \"删除成功\", null);\n" +
+            "    }\n\n" +
+            "    @Override\n" +
+            "    public Result countAssociationRules(AssociationRulesQueryRequest request) throws TException {\n" +
+            "        // 实现关联规则计数逻辑\n" +
+            "        return new Result(true, \"计数成功\", null);\n" +
+            "    }\n\n" +
+            "    @Override\n" +
+            "    public Result saveDataSource(DataSource dataSource) throws TException {\n" +
+            "        // 实现数据源保存逻辑\n" +
+            "        return new Result(true, \"数据源保存成功\", null);\n" +
+            "    }\n\n" +
+            "    @Override\n" +
+            "    public Result listDataSources(DataSourceQueryRequest request) throws TException {\n" +
+            "        // 实现数据源查询逻辑\n" +
+            "        return new Result(true, \"查询成功\", null);\n" +
+            "    }\n\n" +
+            "    @Override\n" +
+            "    public Result getDataSource(String name) throws TException {\n" +
+            "        // 实现数据源详情查询逻辑\n" +
+            "        return new Result(true, \"查询成功\", null);\n" +
+            "    }\n\n" +
+            "    @Override\n" +
+            "    public Result deleteDataSource(String name) throws TException {\n" +
+            "        // 实现数据源删除逻辑\n" +
+            "        return new Result(true, \"删除成功\", null);\n" +
+            "    }\n\n" +
+            "    @Override\n" +
+            "    public Result testConnection(DataSource dataSource) throws TException {\n" +
+            "        // 实现连接测试逻辑\n" +
+            "        return new Result(true, \"连接测试成功\", null);\n" +
+            "    }\n\n" +
+            "    @Override\n" +
+            "    public Result listTables(TableQueryRequest request) throws TException {\n" +
+            "        // 实现数据表查询逻辑\n" +
+            "        return new Result(true, \"查询成功\", null);\n" +
+            "    }\n\n" +
+            "    @Override\n" +
+            "    public Result getTableInfo(String database, String tableName) throws TException {\n" +
+            "        // 实现数据表详情查询逻辑\n" +
+            "        return new Result(true, \"查询成功\", null);\n" +
+            "    }\n\n" +
+            "    @Override\n" +
+            "    public Result getTableData(String database, String tableName, PageInfo pageInfo) throws TException {\n" +
+            "        // 实现数据表数据查询逻辑\n" +
+            "        return new Result(true, \"查询成功\", null);\n" +
+            "    }\n\n" +
+            "    @Override\n" +
+            "    public Result saveModelFile(ModelFile modelFile) throws TException {\n" +
+            "        // 实现模型文件保存逻辑\n" +
+            "        return new Result(true, \"模型文件保存成功\", null);\n" +
+            "    }\n\n" +
+            "    @Override\n" +
+            "    public Result listModelFiles(ModelFileQueryRequest request) throws TException {\n" +
+            "        // 实现模型文件查询逻辑\n" +
+            "        return new Result(true, \"查询成功\", null);\n" +
+            "    }\n\n" +
+            "    @Override\n" +
+            "    public Result getModelFile(String name) throws TException {\n" +
+            "        // 实现模型文件详情查询逻辑\n" +
+            "        return new Result(true, \"查询成功\", null);\n" +
+            "    }\n\n" +
+            "    @Override\n" +
+            "    public Result deleteModelFile(String name) throws TException {\n" +
+            "        // 实现模型文件删除逻辑\n" +
+            "        return new Result(true, \"删除成功\", null);\n" +
+            "    }\n\n" +
+            "    @Override\n" +
+            "    public Result updateModelFile(ModelFile modelFile) throws TException {\n" +
+            "        // 实现模型文件更新逻辑\n" +
+            "        return new Result(true, \"更新成功\", null);\n" +
+            "    }\n" +
+            "}\n";
+        
+        Files.write(Paths.get(outputDir, "ApiServiceHandler.java"), serverContent.getBytes());
+        
+        // 生成Server启动类
+        String serverMainContent = "package com.tsinghua.thrift.server;\n\n" +
+            "import com.tsinghua.thrift.api.ApiService;\n" +
+            "import org.apache.thrift.server.TServer;\n" +
+            "import org.apache.thrift.server.TSimpleServer;\n" +
+            "import org.apache.thrift.transport.TServerSocket;\n" +
+            "import org.apache.thrift.transport.TTransportException;\n\n" +
+            "/**\n" +
+            " * Thrift服务器启动类\n" +
+            " */\n" +
+            "public class ApiServer {\n" +
+            "    public static void main(String[] args) {\n" +
+            "        try {\n" +
+            "            ApiService.Processor processor = new ApiService.Processor(new ApiServiceHandler());\n" +
+            "            TServerSocket serverTransport = new TServerSocket(9090);\n" +
+            "            TServer server = new TSimpleServer(new TServer.Args(serverTransport).processor(processor));\n" +
+            "            \n" +
+            "            System.out.println(\"Starting the Thrift server on port 9090...\");\n" +
+            "            server.serve();\n" +
+            "        } catch (TTransportException e) {\n" +
+            "            e.printStackTrace();\n" +
+            "        }\n" +
+            "    }\n" +
+            "}\n";
+        
+        Files.write(Paths.get(outputDir, "ApiServer.java"), serverMainContent.getBytes());
+    }
+
+    /**
+     * 生成Java Client端示例
+     */
+    private void generateJavaClientExample(String outputDir) throws IOException {
+        String clientContent = "package com.tsinghua.thrift.client;\n\n" +
+            "import com.tsinghua.thrift.api.*;\n" +
+            "import org.apache.thrift.TException;\n" +
+            "import org.apache.thrift.protocol.TBinaryProtocol;\n" +
+            "import org.apache.thrift.transport.TSocket;\n" +
+            "import org.apache.thrift.transport.TTransport;\n\n" +
+            "/**\n" +
+            " * Thrift客户端示例\n" +
+            " */\n" +
+            "public class ApiClient {\n" +
+            "    public static void main(String[] args) {\n" +
+            "        try {\n" +
+            "            TTransport transport = new TSocket(\"localhost\", 9090);\n" +
+            "            transport.open();\n" +
+            "            \n" +
+            "            TBinaryProtocol protocol = new TBinaryProtocol(transport);\n" +
+            "            ApiService.Client client = new ApiService.Client(protocol);\n" +
+            "            \n" +
+            "            // 测试关联规则保存\n" +
+            "            AssociationRule rule = new AssociationRule();\n" +
+            "            rule.setCreateTime(System.currentTimeMillis());\n" +
+            "            rule.setRuleName(\"测试规则\");\n" +
+            "            rule.setRuleDescription(\"测试关联规则\");\n" +
+            "            rule.setSourceTable(\"table1\");\n" +
+            "            rule.setTargetTable(\"table2\");\n" +
+            "            rule.setJoinCondition(\"table1.id = table2.id\");\n" +
+            "            rule.setRuleType(\"INNER_JOIN\");\n" +
+            "            rule.setEnabled(true);\n" +
+            "            \n" +
+            "            Result result = client.saveAssociationRule(rule);\n" +
+            "            System.out.println(\"Save result: \" + result.isSuccess() + \", message: \" + result.getMessage());\n" +
+            "            \n" +
+            "            // 测试关联规则查询\n" +
+            "            AssociationRulesQueryRequest request = new AssociationRulesQueryRequest();\n" +
+            "            PageInfo pageInfo = new PageInfo();\n" +
+            "            pageInfo.setPage(1);\n" +
+            "            pageInfo.setSize(10);\n" +
+            "            request.setPageInfo(pageInfo);\n" +
+            "            \n" +
+            "            Result listResult = client.listAssociationRules(request);\n" +
+            "            System.out.println(\"List result: \" + listResult.isSuccess() + \", message: \" + listResult.getMessage());\n" +
+            "            \n" +
+            "            transport.close();\n" +
+            "        } catch (TException e) {\n" +
+            "            e.printStackTrace();\n" +
+            "        }\n" +
+            "    }\n" +
+            "}\n";
+        
+        Files.write(Paths.get(outputDir, "ApiClient.java"), clientContent.getBytes());
+    }
+
+    /**
+     * 生成Go Server端实现
+     */
+    private void generateGoServerImplementation(String outputDir) throws IOException {
+        String serverContent = "package main\n\n" +
+            "import (\n" +
+            "    \"context\"\n" +
+            "    \"fmt\"\n" +
+            "    \"net\"\n" +
+            "    \"tsinghua/api\"\n" +
+            ")\n\n" +
+            "// ApiServiceHandler 实现Thrift服务接口\n" +
+            "type ApiServiceHandler struct{}\n\n" +
+            "func (h *ApiServiceHandler) SaveAssociationRule(ctx context.Context, rule *api.AssociationRule) (*api.Result, error) {\n" +
+            "    // 实现关联规则保存逻辑\n" +
+            "    return &api.Result{Success: true, Message: \"关联规则保存成功\"}, nil\n" +
+            "}\n\n" +
+            "func (h *ApiServiceHandler) ListAssociationRules(ctx context.Context, request *api.AssociationRulesQueryRequest) (*api.Result, error) {\n" +
+            "    // 实现关联规则查询逻辑\n" +
+            "    return &api.Result{Success: true, Message: \"查询成功\"}, nil\n" +
+            "}\n\n" +
+            "func (h *ApiServiceHandler) GetAssociationRule(ctx context.Context, createTime int64) (*api.Result, error) {\n" +
+            "    // 实现关联规则详情查询逻辑\n" +
+            "    return &api.Result{Success: true, Message: \"查询成功\"}, nil\n" +
+            "}\n\n" +
+            "func (h *ApiServiceHandler) DeleteAssociationRule(ctx context.Context, createTime int64) (*api.Result, error) {\n" +
+            "    // 实现关联规则删除逻辑\n" +
+            "    return &api.Result{Success: true, Message: \"删除成功\"}, nil\n" +
+            "}\n\n" +
+            "func (h *ApiServiceHandler) CountAssociationRules(ctx context.Context, request *api.AssociationRulesQueryRequest) (*api.Result, error) {\n" +
+            "    // 实现关联规则计数逻辑\n" +
+            "    return &api.Result{Success: true, Message: \"计数成功\"}, nil\n" +
+            "}\n\n" +
+            "func (h *ApiServiceHandler) SaveDataSource(ctx context.Context, dataSource *api.DataSource) (*api.Result, error) {\n" +
+            "    // 实现数据源保存逻辑\n" +
+            "    return &api.Result{Success: true, Message: \"数据源保存成功\"}, nil\n" +
+            "}\n\n" +
+            "func (h *ApiServiceHandler) ListDataSources(ctx context.Context, request *api.DataSourceQueryRequest) (*api.Result, error) {\n" +
+            "    // 实现数据源查询逻辑\n" +
+            "    return &api.Result{Success: true, Message: \"查询成功\"}, nil\n" +
+            "}\n\n" +
+            "func (h *ApiServiceHandler) GetDataSource(ctx context.Context, name string) (*api.Result, error) {\n" +
+            "    // 实现数据源详情查询逻辑\n" +
+            "    return &api.Result{Success: true, Message: \"查询成功\"}, nil\n" +
+            "}\n\n" +
+            "func (h *ApiServiceHandler) DeleteDataSource(ctx context.Context, name string) (*api.Result, error) {\n" +
+            "    // 实现数据源删除逻辑\n" +
+            "    return &api.Result{Success: true, Message: \"删除成功\"}, nil\n" +
+            "}\n\n" +
+            "func (h *ApiServiceHandler) TestConnection(ctx context.Context, dataSource *api.DataSource) (*api.Result, error) {\n" +
+            "    // 实现连接测试逻辑\n" +
+            "    return &api.Result{Success: true, Message: \"连接测试成功\"}, nil\n" +
+            "}\n\n" +
+            "func (h *ApiServiceHandler) ListTables(ctx context.Context, request *api.TableQueryRequest) (*api.Result, error) {\n" +
+            "    // 实现数据表查询逻辑\n" +
+            "    return &api.Result{Success: true, Message: \"查询成功\"}, nil\n" +
+            "}\n\n" +
+            "func (h *ApiServiceHandler) GetTableInfo(ctx context.Context, database string, tableName string) (*api.Result, error) {\n" +
+            "    // 实现数据表详情查询逻辑\n" +
+            "    return &api.Result{Success: true, Message: \"查询成功\"}, nil\n" +
+            "}\n\n" +
+            "func (h *ApiServiceHandler) GetTableData(ctx context.Context, database string, tableName string, pageInfo *api.PageInfo) (*api.Result, error) {\n" +
+            "    // 实现数据表数据查询逻辑\n" +
+            "    return &api.Result{Success: true, Message: \"查询成功\"}, nil\n" +
+            "}\n\n" +
+            "func (h *ApiServiceHandler) SaveModelFile(ctx context.Context, modelFile *api.ModelFile) (*api.Result, error) {\n" +
+            "    // 实现模型文件保存逻辑\n" +
+            "    return &api.Result{Success: true, Message: \"模型文件保存成功\"}, nil\n" +
+            "}\n\n" +
+            "func (h *ApiServiceHandler) ListModelFiles(ctx context.Context, request *api.ModelFileQueryRequest) (*api.Result, error) {\n" +
+            "    // 实现模型文件查询逻辑\n" +
+            "    return &api.Result{Success: true, Message: \"查询成功\"}, nil\n" +
+            "}\n\n" +
+            "func (h *ApiServiceHandler) GetModelFile(ctx context.Context, name string) (*api.Result, error) {\n" +
+            "    // 实现模型文件详情查询逻辑\n" +
+            "    return &api.Result{Success: true, Message: \"查询成功\"}, nil\n" +
+            "}\n\n" +
+            "func (h *ApiServiceHandler) DeleteModelFile(ctx context.Context, name string) (*api.Result, error) {\n" +
+            "    // 实现模型文件删除逻辑\n" +
+            "    return &api.Result{Success: true, Message: \"删除成功\"}, nil\n" +
+            "}\n\n" +
+            "func (h *ApiServiceHandler) UpdateModelFile(ctx context.Context, modelFile *api.ModelFile) (*api.Result, error) {\n" +
+            "    // 实现模型文件更新逻辑\n" +
+            "    return &api.Result{Success: true, Message: \"更新成功\"}, nil\n" +
+            "}\n\n" +
+            "func main() {\n" +
+            "    handler := &ApiServiceHandler{}\n" +
+            "    processor := api.NewApiServiceProcessor(handler)\n" +
+            "    \n" +
+            "    listener, err := net.Listen(\"tcp\", \":9090\")\n" +
+            "    if err != nil {\n" +
+            "        fmt.Println(\"Error listening:\", err)\n" +
+            "        return\n" +
+            "    }\n" +
+            "    \n" +
+            "    fmt.Println(\"Starting the Thrift server on port 9090...\")\n" +
+            "    // 这里需要根据具体的Go Thrift库来实现服务器逻辑\n" +
+            "    for {\n" +
+            "        conn, err := listener.Accept()\n" +
+            "        if err != nil {\n" +
+            "            fmt.Println(\"Error accepting:\", err)\n" +
+            "            continue\n" +
+            "        }\n" +
+            "        go handleConnection(conn, processor)\n" +
+            "    }\n" +
+            "}\n\n" +
+            "func handleConnection(conn net.Conn, processor *api.ApiServiceProcessor) {\n" +
+            "    defer conn.Close()\n" +
+            "    // 处理连接逻辑\n" +
+            "    fmt.Println(\"New connection established\")\n" +
+            "}\n";
+        
+        Files.write(Paths.get(outputDir, "server.go"), serverContent.getBytes());
+    }
+
+    /**
+     * 生成Go Client端示例
+     */
+    private void generateGoClientExample(String outputDir) throws IOException {
+        String clientContent = "package main\n\n" +
+            "import (\n" +
+            "    \"context\"\n" +
+            "    \"fmt\"\n" +
+            "    \"time\"\n" +
+            "    \"tsinghua/api\"\n" +
+            ")\n\n" +
+            "func main() {\n" +
+            "    // 创建客户端连接\n" +
+            "    // 这里需要根据具体的Go Thrift库来实现客户端逻辑\n" +
+            "    \n" +
+            "    // 测试关联规则保存\n" +
+            "    rule := &api.AssociationRule{\n" +
+            "        CreateTime:     time.Now().Unix(),\n" +
+            "        RuleName:       \"测试规则\",\n" +
+            "        RuleDescription: \"测试关联规则\",\n" +
+            "        SourceTable:    \"table1\",\n" +
+            "        TargetTable:    \"table2\",\n" +
+            "        JoinCondition:  \"table1.id = table2.id\",\n" +
+            "        RuleType:       \"INNER_JOIN\",\n" +
+            "        Enabled:        true,\n" +
+            "    }\n" +
+            "    \n" +
+            "    // 调用服务（需要实际的客户端实现）\n" +
+            "    fmt.Println(\"Creating association rule:\", rule.RuleName)\n" +
+            "    \n" +
+            "    // 测试关联规则查询\n" +
+            "    request := &api.AssociationRulesQueryRequest{\n" +
+            "        PageInfo: &api.PageInfo{\n" +
+            "            Page: 1,\n" +
+            "            Size: 10,\n" +
+            "        },\n" +
+            "    }\n" +
+            "    \n" +
+            "    fmt.Println(\"Querying association rules...\")\n" +
+            "}\n";
+        
+        Files.write(Paths.get(outputDir, "client.go"), clientContent.getBytes());
+    }
+
+    /**
+     * 生成Python Server端实现
+     */
+    private void generatePythonServerImplementation(String outputDir) throws IOException {
+        String serverContent = "from api import ApiService\n" +
+            "from thrift.transport import TSocket\n" +
+            "from thrift.transport import TTransport\n" +
+            "from thrift.protocol import TBinaryProtocol\n" +
+            "from thrift.server import TServer\n" +
+            "from thrift.server.TServer import TSimpleServer\n" +
+            "import socket\n\n" +
+            "class ApiServiceHandler:\n" +
+            "    def saveAssociationRule(self, rule):\n" +
+            "        # 实现关联规则保存逻辑\n" +
+            "        return {'success': True, 'message': '关联规则保存成功', 'data': None}\n" +
+            "    \n" +
+            "    def listAssociationRules(self, request):\n" +
+            "        # 实现关联规则查询逻辑\n" +
+            "        return {'success': True, 'message': '查询成功', 'data': None}\n" +
+            "    \n" +
+            "    def getAssociationRule(self, createTime):\n" +
+            "        # 实现关联规则详情查询逻辑\n" +
+            "        return {'success': True, 'message': '查询成功', 'data': None}\n" +
+            "    \n" +
+            "    def deleteAssociationRule(self, createTime):\n" +
+            "        # 实现关联规则删除逻辑\n" +
+            "        return {'success': True, 'message': '删除成功', 'data': None}\n" +
+            "    \n" +
+            "    def countAssociationRules(self, request):\n" +
+            "        # 实现关联规则计数逻辑\n" +
+            "        return {'success': True, 'message': '计数成功', 'data': None}\n" +
+            "    \n" +
+            "    def saveDataSource(self, dataSource):\n" +
+            "        # 实现数据源保存逻辑\n" +
+            "        return {'success': True, 'message': '数据源保存成功', 'data': None}\n" +
+            "    \n" +
+            "    def listDataSources(self, request):\n" +
+            "        # 实现数据源查询逻辑\n" +
+            "        return {'success': True, 'message': '查询成功', 'data': None}\n" +
+            "    \n" +
+            "    def getDataSource(self, name):\n" +
+            "        # 实现数据源详情查询逻辑\n" +
+            "        return {'success': True, 'message': '查询成功', 'data': None}\n" +
+            "    \n" +
+            "    def deleteDataSource(self, name):\n" +
+            "        # 实现数据源删除逻辑\n" +
+            "        return {'success': True, 'message': '删除成功', 'data': None}\n" +
+            "    \n" +
+            "    def testConnection(self, dataSource):\n" +
+            "        # 实现连接测试逻辑\n" +
+            "        return {'success': True, 'message': '连接测试成功', 'data': None}\n" +
+            "    \n" +
+            "    def listTables(self, request):\n" +
+            "        # 实现数据表查询逻辑\n" +
+            "        return {'success': True, 'message': '查询成功', 'data': None}\n" +
+            "    \n" +
+            "    def getTableInfo(self, database, tableName):\n" +
+            "        # 实现数据表详情查询逻辑\n" +
+            "        return {'success': True, 'message': '查询成功', 'data': None}\n" +
+            "    \n" +
+            "    def getTableData(self, database, tableName, pageInfo):\n" +
+            "        # 实现数据表数据查询逻辑\n" +
+            "        return {'success': True, 'message': '查询成功', 'data': None}\n" +
+            "    \n" +
+            "    def saveModelFile(self, modelFile):\n" +
+            "        # 实现模型文件保存逻辑\n" +
+            "        return {'success': True, 'message': '模型文件保存成功', 'data': None}\n" +
+            "    \n" +
+            "    def listModelFiles(self, request):\n" +
+            "        # 实现模型文件查询逻辑\n" +
+            "        return {'success': True, 'message': '查询成功', 'data': None}\n" +
+            "    \n" +
+            "    def getModelFile(self, name):\n" +
+            "        # 实现模型文件详情查询逻辑\n" +
+            "        return {'success': True, 'message': '查询成功', 'data': None}\n" +
+            "    \n" +
+            "    def deleteModelFile(self, name):\n" +
+            "        # 实现模型文件删除逻辑\n" +
+            "        return {'success': True, 'message': '删除成功', 'data': None}\n" +
+            "    \n" +
+            "    def updateModelFile(self, modelFile):\n" +
+            "        # 实现模型文件更新逻辑\n" +
+            "        return {'success': True, 'message': '更新成功', 'data': None}\n\n" +
+            "def main():\n" +
+            "    handler = ApiServiceHandler()\n" +
+            "    processor = ApiService.Processor(handler)\n" +
+            "    \n" +
+            "    transport = TSocket.TServerSocket(host='localhost', port=9090)\n" +
+            "    tfactory = TTransport.TBufferedTransportFactory()\n" +
+            "    pfactory = TBinaryProtocol.TBinaryProtocolFactory()\n" +
+            "    \n" +
+            "    server = TSimpleServer(processor, transport, tfactory, pfactory)\n" +
+            "    \n" +
+            "    print('Starting the Thrift server on port 9090...')\n" +
+            "    server.serve()\n\n" +
+            "if __name__ == '__main__':\n" +
+            "    main()\n";
+        
+        Files.write(Paths.get(outputDir, "server.py"), serverContent.getBytes());
+    }
+
+    /**
+     * 生成Python Client端示例
+     */
+    private void generatePythonClientExample(String outputDir) throws IOException {
+        String clientContent = "from api import ApiService\n" +
+            "from thrift.transport import TSocket\n" +
+            "from thrift.transport import TTransport\n" +
+            "from thrift.protocol import TBinaryProtocol\n" +
+            "import time\n\n" +
+            "def main():\n" +
+            "    # 创建连接\n" +
+            "    transport = TSocket.TSocket('localhost', 9090)\n" +
+            "    transport = TTransport.TBufferedTransport(transport)\n" +
+            "    protocol = TBinaryProtocol.TBinaryProtocol(transport)\n" +
+            "    client = ApiService.Client(protocol)\n" +
+            "    \n" +
+            "    # 打开连接\n" +
+            "    transport.open()\n" +
+            "    \n" +
+            "    try:\n" +
+            "        # 测试关联规则保存\n" +
+            "        rule = {\n" +
+            "            'createTime': int(time.time()),\n" +
+            "            'ruleName': '测试规则',\n" +
+            "            'ruleDescription': '测试关联规则',\n" +
+            "            'sourceTable': 'table1',\n" +
+            "            'targetTable': 'table2',\n" +
+            "            'joinCondition': 'table1.id = table2.id',\n" +
+            "            'ruleType': 'INNER_JOIN',\n" +
+            "            'enabled': True\n" +
+            "        }\n" +
+            "        \n" +
+            "        result = client.saveAssociationRule(rule)\n" +
+            "        print(f'Save result: {result}')\n" +
+            "        \n" +
+            "        # 测试关联规则查询\n" +
+            "        request = {\n" +
+            "            'pageInfo': {\n" +
+            "                'page': 1,\n" +
+            "                'size': 10,\n" +
+            "                'total': 0\n" +
+            "            }\n" +
+            "        }\n" +
+            "        \n" +
+            "        list_result = client.listAssociationRules(request)\n" +
+            "        print(f'List result: {list_result}')\n" +
+            "        \n" +
+            "    finally:\n" +
+            "        # 关闭连接\n" +
+            "        transport.close()\n\n" +
+            "if __name__ == '__main__':\n" +
+            "    main()\n";
+        
+        Files.write(Paths.get(outputDir, "client.py"), clientContent.getBytes());
+    }
     private void generateGoModFile(String outputDir) throws IOException {
         String goModContent = "module tsinghua-api\n\n" +
             "go 1.19\n\n" +

@@ -32,6 +32,54 @@ public class ThriftCodeGenerator {
     }
 
     /**
+     * 生成Java Server端代码
+     */
+    public static GenerationResult generateJavaServer(String thriftFile, String outputDir) {
+        List<String> command = buildThriftCommand("java", thriftFile, outputDir);
+        return executeCommand(command, outputDir);
+    }
+
+    /**
+     * 生成Java Client端代码
+     */
+    public static GenerationResult generateJavaClient(String thriftFile, String outputDir) {
+        List<String> command = buildThriftCommand("java", thriftFile, outputDir);
+        return executeCommand(command, outputDir);
+    }
+
+    /**
+     * 生成Go Server端代码
+     */
+    public static GenerationResult generateGoServer(String thriftFile, String outputDir) {
+        List<String> command = buildThriftCommand("go", thriftFile, outputDir);
+        return executeCommand(command, outputDir);
+    }
+
+    /**
+     * 生成Go Client端代码
+     */
+    public static GenerationResult generateGoClient(String thriftFile, String outputDir) {
+        List<String> command = buildThriftCommand("go", thriftFile, outputDir);
+        return executeCommand(command, outputDir);
+    }
+
+    /**
+     * 生成Python Server端代码
+     */
+    public static GenerationResult generatePythonServer(String thriftFile, String outputDir) {
+        List<String> command = buildThriftCommand("py", thriftFile, outputDir);
+        return executeCommand(command, outputDir);
+    }
+
+    /**
+     * 生成Python Client端代码
+     */
+    public static GenerationResult generatePythonClient(String thriftFile, String outputDir) {
+        List<String> command = buildThriftCommand("py", thriftFile, outputDir);
+        return executeCommand(command, outputDir);
+    }
+
+    /**
      * 构建Thrift命令
      * @param generator 生成器类型
      * @param thriftFile Thrift文件路径
