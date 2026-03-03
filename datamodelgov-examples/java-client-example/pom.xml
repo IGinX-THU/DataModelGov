@@ -7,7 +7,7 @@
 
     <parent>
         <groupId>com.tsinghua</groupId>
-        <artifactId>datamodelgov-parent</artifactId>
+        <artifactId>datamodelgov-examples</artifactId>
         <version>1.0.0</version>
     </parent>
 
@@ -15,7 +15,7 @@
     <packaging>jar</packaging>
 
     <name>DataModelGov Java Client Example</name>
-    <description>DataModelGov Java 客户端使用示例</description>
+    <description>DataModelGov Java 客户端使用示例 - 独立模块</description>
 
     <dependencies>
         <!-- 只依赖Java SDK -->

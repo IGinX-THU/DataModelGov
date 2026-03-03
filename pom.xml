@@ -226,31 +226,125 @@
         
         <profile>
             <id>with-sdks</id>
-            <modules>
-                <module>datamodelgov-core</module>
-                <module>datamodelgov-sdk-java</module>
-                <module>datamodelgov-sdk-go</module>
-                <module>datamodelgov-sdk-python</module>
-                <module>datamodelgov-server</module>
-            </modules>
             <properties>
                 <env>dev</env>
                 <skip.go.build>false</skip.go.build>
                 <skip.python.build>false</skip.python.build>
                 <skip.java.sdk>false</skip.java.sdk>
             </properties>
+            <build>
+                <plugins>
+                    <!-- 单独构建SDK模块 -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-invoker-plugin</artifactId>
+                        <version>3.6.0</version>
+                        <executions>
+                            <execution>
+                                <id>build-sdks</id>
+                                <phase>validate</phase>
+                                <goals>
+                                    <goal>run</goal>
+                                </goals>
+                                <configuration>
+                                    <projectsDirectory>${basedir}</projectsDirectory>
+                                    <pomIncludes>
+                                        <pomInclude>datamodelgov-sdk-java/pom.xml</pomInclude>
+                                        <pomInclude>datamodelgov-sdk-go/pom.xml</pomInclude>
+                                        <pomInclude>datamodelgov-sdk-python/pom.xml</pomInclude>
+                                    </pomIncludes>
+                                    <goals>
+                                        <goal>install</goal>
+                                    </goals>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+        
+        <profile>
+            <id>with-examples</id>
+            <properties>
+                <env>dev</env>
+                <skip.java.sdk>false</skip.java.sdk>
+            </properties>
+            <build>
+                <plugins>
+                    <!-- 单独构建Examples模块 -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-invoker-plugin</artifactId>
+                        <version>3.6.0</version>
+                        <executions>
+                            <execution>
+                                <id>build-examples</id>
+                                <phase>validate</phase>
+                                <goals>
+                                    <goal>run</goal>
+                                </goals>
+                                <configuration>
+                                    <projectsDirectory>${basedir}</projectsDirectory>
+                                    <pomIncludes>
+                                        <pomInclude>datamodelgov-examples/pom.xml</pomInclude>
+                                    </pomIncludes>
+                                    <goals>
+                                        <goal>install</goal>
+                                    </goals>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
         </profile>
         
         <profile>
             <id>java-sdk-only</id>
-            <modules>
-                <module>datamodelgov-core</module>
-                <module>datamodelgov-sdk-java</module>
-                <module>datamodelgov-server</module>
-            </modules>
             <properties>
                 <env>dev</env>
                 <skip.java.sdk>false</skip.java.sdk>
+            </properties>
+            <build>
+                <plugins>
+                    <!-- 单独构建Java SDK模块 -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-invoker-plugin</artifactId>
+                        <version>3.6.0</version>
+                        <executions>
+                            <execution>
+                                <id>build-java-sdk</id>
+                                <phase>validate</phase>
+                                <goals>
+                                    <goal>run</goal>
+                                </goals>
+                                <configuration>
+                                    <projectsDirectory>${basedir}</projectsDirectory>
+                                    <pomIncludes>
+                                        <pomInclude>datamodelgov-sdk-java/pom.xml</pomInclude>
+                                    </pomIncludes>
+                                    <goals>
+                                        <goal>install</goal>
+                                    </goals>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+        
+        <profile>
+            <id>production</id>
+            <activation>
+                <property>
+                    <name>!skipProduction</name>
+                </property>
+            </activation>
+            <properties>
+                <env>prod</env>
             </properties>
         </profile>
         

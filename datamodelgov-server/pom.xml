@@ -43,6 +43,20 @@
         </dependency>
     </dependencies>
 
+    <profiles>
+        <!-- 开发环境：可选包含SDK依赖 -->
+        <profile>
+            <id>dev-with-sdk</id>
+            <dependencies>
+                <dependency>
+                    <groupId>com.tsinghua</groupId>
+                    <artifactId>datamodelgov-sdk-java</artifactId>
+                    <version>${project.version}</version>
+                </dependency>
+            </dependencies>
+        </profile>
+    </profiles>
+
     <build>
         <plugins>
             <!-- Spring Boot Maven Plugin -->
