@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.tsinghua</groupId>
+        <artifactId>datamodelgov-parent</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>datamodelgov-sdk-go</artifactId>
+    <packaging>pom</packaging>
+
+    <name>DataModelGov Go SDK</name>
+    <description>DataModelGov Thrift RPC Client SDK for Go</description>
+
+    <properties>
+        <go.version>1.19</go.version>
+        <skip.go.build>false</skip.go.build>
+    </properties>
+
+    <profiles>
+        <profile>
+            <id>skip-go</id>
+            <activation>
+                <property>
+                    <name>skip.go.build</name>
+                    <value>true</value>
+                </property>
+            </activation>
+            <properties>
+                <maven.test.skip>true</maven.test.skip>
+                <maven.main.skip>true</maven.main.skip>
+            </properties>
+        </profile>
+    </profiles>
+
+    <build>
+        <plugins>
+            <!-- Go Build Plugin -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.1.0</version>
+                <configuration>
+                    <skip>${skip.go.build}</skip>
+                </configuration>
+                <executions>
+                    <!-- Generate Thrift Go Code -->
+                    <execution>
+                        <id>generate-thrift-go</id>
+                        <phase>generate-sources</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>thrift</executable>
+                            <arguments>
+                                <argument>--gen</argument>
+                                <argument>go</argument>
+                                <argument>-out</argument>
+                                <argument>src</argument>
+                                <argument>../datamodelgov-server/src/main/resources/thrift/api.thrift</argument>
+                            </arguments>
+                            <workingDirectory>${project.basedir}</workingDirectory>
+                        </configuration>
+                    </execution>
+                    
+                    <!-- Go Mod Init -->
+                    <execution>
+                        <id>go-mod-init</id>
+                        <phase>initialize</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>go</executable>
+                            <arguments>
+                                <argument>mod</argument>
+                                <argument>init</argument>
+                                <argument>github.com/tsinghua/datamodelgov-sdk-go</argument>
+                            </arguments>
+                            <workingDirectory>${project.basedir}</workingDirectory>
+                        </configuration>
+                    </execution>
+                    
+                    <!-- Go Mod Tidy -->
+                    <execution>
+                        <id>go-mod-tidy</id>
+                        <phase>generate-sources</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>go</executable>
+                            <arguments>
+                                <argument>mod</argument>
+                                <argument>tidy</argument>
+                            </arguments>
+                            <workingDirectory>${project.basedir}</workingDirectory>
+                        </configuration>
+                    </execution>
+                    
+                    <!-- Go Build -->
+                    <execution>
+                        <id>go-build</id>
+                        <phase>compile</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>go</executable>
+                            <arguments>
+                                <argument>build</argument>
+                                <argument>-o</argument>
+                                <argument>target/datamodelgov-sdk-go.a</argument>
+                                <argument>./src</argument>
+                            </arguments>
+                            <workingDirectory>${project.basedir}</workingDirectory>
+                        </configuration>
+                    </execution>
+                    
+                    <!-- Go Test -->
+                    <execution>
+                        <id>go-test</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>go</executable>
+                            <arguments>
+                                <argument>test</argument>
+                                <argument>-v</argument>
+                                <argument>./src</argument>
+                            </arguments>
+                            <workingDirectory>${project.basedir}</workingDirectory>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            
+            <!-- Clean Plugin -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-clean-plugin</artifactId>
+                <version>3.3.1</version>
+                <configuration>
+                    <filesets>
+                        <fileset>
+                            <directory>src</directory>
+                            <includes>
+                                <include>**/*.a</include>
+                            </includes>
+                        </fileset>
+                    </filesets>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
