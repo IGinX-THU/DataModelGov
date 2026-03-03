@@ -10,11 +10,11 @@ import org.apache.thrift.transport.TSocket;
 import org.apache.thrift.transport.TTransport;
 import org.apache.thrift.protocol.TBinaryProtocol;
 import org.apache.thrift.protocol.TProtocol;
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * DataModelGov Java 客户端简单示例
  * 演示如何使用Thrift生成的SDK类进行实际API调用
+ * 不依赖Jackson，使用Thrift原生功能
  */
 public class SimpleJavaClientExample {
 
@@ -45,6 +45,12 @@ public class SimpleJavaClientExample {
             modelMeta.setInputs("{\"age\": \"int\", \"income\": \"double\"}");
             modelMeta.setOutputs("{\"risk_score\": \"double\", \"category\": \"string\"}");
             modelMeta.setTimestamp(System.currentTimeMillis());
+            
+            System.out.println("模型元数据创建成功");
+            System.out.println("名称: " + modelMeta.getName());
+            System.out.println("版本: " + modelMeta.getVersion());
+            System.out.println("作者: " + modelMeta.getAuthor());
+            System.out.println();
             
             // 3. 调用保存模型元数据API
             System.out.println("3. 调用saveModelMeta API");
@@ -77,21 +83,43 @@ public class SimpleJavaClientExample {
             System.out.println("  路径: " + queryRequest.getPaths());
             System.out.println("  开始时间: " + queryRequest.getStartTime());
             System.out.println("  结束时间: " + queryRequest.getEndTime());
-            Result result = client.queryData(queryRequest);
-            // 6. 演示JSON序列化
-            System.out.println("6. JSON序列化演示");
-            ObjectMapper mapper = new ObjectMapper();
-            String modelJson = mapper.writeValueAsString(result);
-            String queryJson = mapper.writeValueAsString(queryRequest);
-            System.out.println("result JSON: " + modelJson);
-            System.out.println("QueryRequest JSON: " + queryJson);
+            
+            // 6. 调用数据查询API
+            System.out.println("6. 调用queryData API");
+            Result queryResult = client.queryData(queryRequest);
+            System.out.println("查询结果: " + (queryResult != null ? queryResult.getData() : "null"));
             System.out.println();
             
-            // 7. 演示其他API调用（注释掉，避免服务端不支持时出错）
-            System.out.println("7. 其他API调用示例");
+            // 7. 演示其他数据对象创建
+            System.out.println("7. 演示其他数据对象");
+            AssociationRulesQueryRequest rulesQuery = new AssociationRulesQueryRequest();
+            rulesQuery.setPageNum(1);
+            rulesQuery.setPageSize(10);
+            rulesQuery.setName("用户行为规则");
+            
+            StorageEngineInfo storageInfo = new StorageEngineInfo();
+            storageInfo.setId(1L);
+            storageInfo.setIp("127.0.0.1");
+            storageInfo.setPort(6667);
+            storageInfo.setType(1); // IoTDB
+            storageInfo.setSchemaPrefix("root");
+            storageInfo.setDataPrefix("data");
+            
+            System.out.println("关联规则查询: " + rulesQuery.toString());
+            System.out.println("存储引擎信息: " + storageInfo.toString());
+            System.out.println();
+            
+            // 8. 演示SDK类的字段枚举
+            System.out.println("8. SDK类字段枚举");
+            System.out.println("ModelMeta字段:");
+            for (ModelMeta._Fields field : ModelMeta._Fields.values()) {
+                System.out.println("  - " + field.getFieldName() + " (thriftId: " + field.getThriftFieldId() + ")");
+            }
+            System.out.println();
+            
+            System.out.println("9. 其他API调用示例");
             System.out.println("// 保存关联规则: client.saveAssociationRule(associationRule)");
             System.out.println("// 查询关联规则: client.queryAssociationRules(queryRequest)");
-            System.out.println("// 数据查询: client.dataQuery(queryRequest)");
             System.out.println("// 注册数据源: client.registerDataSource(storageRequest)");
             System.out.println("// 查询数据源: client.getDataSourceList()");
             System.out.println();
@@ -102,7 +130,7 @@ public class SimpleJavaClientExample {
             System.err.println("❌ 操作失败: " + e.getMessage());
             e.printStackTrace();
         } finally {
-            // 8. 确保连接关闭
+            // 10. 确保连接关闭
             if (transport != null) {
                 try {
                     if (transport.isOpen()) {

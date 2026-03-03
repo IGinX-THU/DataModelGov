@@ -17,27 +17,8 @@
         <maven.compiler.target>1.8</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <thrift.version>0.22.0</thrift.version>
-        <jackson.version>2.15.2</jackson.version>
-        <slf4j.version>1.7.36</slf4j.version>
-        <logback.version>1.2.12</logback.version>
-        <skip.java.sdk>false</skip.java.sdk>
+        <slf4j.version>2.0.9</slf4j.version>
     </properties>
-
-    <profiles>
-        <profile>
-            <id>skip-java-sdk</id>
-            <activation>
-                <property>
-                    <name>skip.java.sdk</name>
-                    <value>true</value>
-                </property>
-            </activation>
-            <properties>
-                <maven.test.skip>true</maven.test.skip>
-                <maven.main.skip>true</maven.main.skip>
-            </properties>
-        </profile>
-    </profiles>
 
     <dependencies>
         <!-- Apache Thrift -->
@@ -47,26 +28,11 @@
             <version>${thrift.version}</version>
         </dependency>
         
-        <!-- Jackson for JSON processing -->
-        <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId>
-            <artifactId>jackson-databind</artifactId>
-            <version>${jackson.version}</version>
-        </dependency>
-        
         <!-- SLF4J for logging -->
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
             <version>${slf4j.version}</version>
-        </dependency>
-        
-        <!-- Logback for logging implementation (optional) -->
-        <dependency>
-            <groupId>ch.qos.logback</groupId>
-            <artifactId>logback-classic</artifactId>
-            <version>${logback.version}</version>
-            <scope>provided</scope>
         </dependency>
     </dependencies>
 
@@ -81,7 +47,6 @@
                     <source>${maven.compiler.source}</source>
                     <target>${maven.compiler.target}</target>
                     <encoding>${project.build.sourceEncoding}</encoding>
-                    <skip>${skip.java.sdk}</skip>
                 </configuration>
             </plugin>
 
@@ -90,9 +55,6 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-source-plugin</artifactId>
                 <version>3.3.0</version>
-                <configuration>
-                    <skip>${skip.java.sdk}</skip>
-                </configuration>
                 <executions>
                     <execution>
                         <id>attach-sources</id>
@@ -109,7 +71,6 @@
                 <artifactId>maven-javadoc-plugin</artifactId>
                 <version>3.5.0</version>
                 <configuration>
-                    <skip>${skip.java.sdk}</skip>
                     <encoding>${project.build.sourceEncoding}</encoding>
                     <charset>${project.build.sourceEncoding}</charset>
                     <docencoding>${project.build.sourceEncoding}</docencoding>
@@ -134,7 +95,6 @@
                     <thriftSourceRoot>../datamodelgov-server/src/main/resources/thrift</thriftSourceRoot>
                     <outputDirectory>src/main/java</outputDirectory>
                     <generator>java</generator>
-                    <skip>${skip.java.sdk}</skip>
                 </configuration>
                 <executions>
                     <execution>
