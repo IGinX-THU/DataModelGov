@@ -1,0 +1,28 @@
+<div class="download-container">
+    <div class="download-header">
+        <h3 class="download-title">下载模型文件</h3>
+        <button class="close-btn" id="closeBtn">&times;</button>
+    </div>
+    <form id="downloadForm">
+        <div class="form-group">
+            <label class="form-label required">模型名称</label>
+            <select class="form-control form-select" id="modelName" required>
+                <option value="">请选择模型名称</option>
+            </select>
+            <div class="error-message" id="modelNameError">请选择模型名称</div>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label required">版本号</label>
+            <select class="form-control form-select" id="modelVersion" required>
+                <option value="">请选择版本号</option>
+            </select>
+            <div class="error-message" id="modelVersionError">请选择版本号</div>
+        </div>
+
+        <div class="form-actions">
+            <button type="button" class="btn btn-secondary" id="cancelBtn">取消</button>
+            <button type="button" class="btn btn-primary" id="downloadBtn">确认下载</button>
+        </div>
+    </form>
+</div>

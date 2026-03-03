@@ -1,0 +1,11 @@
+/* 新功能按钮 SVG 图标 */
+.btn-icon {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    fill: #495057;
+}
+
+.btn-icon use {
+    fill: inherit;
+}
