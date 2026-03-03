@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>数据与模型一体化管理平台</title>
+    <link rel="icon" type="image/x-icon" href="./favicon.ico">
     <link rel="stylesheet" href="./css/reset.css">
     <link rel="stylesheet" href="./css/icons.css">
     <link rel="stylesheet" href="./css/main.css">
@@ -92,10 +93,11 @@
         <span class="tab dropdown" id="dataDropdown">
                 <span class="dropdown-trigger">数据</span>
                 <ul class="dropdown-menu">
+                    <li onclick="console.log('数据源管理被点击')">数据源管理</li>
                     <li>注册异构数据源</li>
-                    <li>移除异构数据源</li>
+<!--                    <li>移除异构数据源</li>-->
                     <li>导入数据</li>
-                    <li>导出数据</li>
+<!--                    <li>导出数据</li>-->
                 </ul>
             </span>
         <span class="tab dropdown" id="modelDropdown">
@@ -163,16 +165,16 @@
                 </button>
                 <button class="func-btn">
                     <svg class="btn-icon"><use href="#icon-unload"></use></svg>
-                    <span>卸载</span>
+                    <span>管理</span>
                 </button>
                 <button class="func-btn">
                     <svg class="btn-icon"><use href="#icon-import"></use></svg>
                     <span>导入</span>
                 </button>
-                <button class="func-btn">
-                    <svg class="btn-icon"><use href="#icon-export"></use></svg>
-                    <span>导出</span>
-                </button>
+<!--                <button class="func-btn">-->
+<!--                    <svg class="btn-icon"><use href="#icon-export"></use></svg>-->
+<!--                    <span>导出</span>-->
+<!--                </button>-->
             </div>
             <span class="sub-tab">数据资源管理</span>
         </div>
@@ -238,54 +240,9 @@
     <!-- 左侧数据资源库 -->
     <div class="sidebar left-sidebar">
         <div class="sidebar-title">数据资源库</div>
-        <div class="tree">
-            <div class="tree-node">
-                <i class="icon db-icon"></i>
-                <span>X022-CQ-1</span>
-            </div>
-            <div class="tree-node">
-                <i class="icon db-icon"></i>
-                <span>X022-CQ-2</span>
-            </div>
-            <div class="tree-node expanded">
-                <i class="icon db-icon"></i>
-                <span>X022-CQ-3</span>
-                <div class="tree-children">
-                    <div class="tree-node">
-                        <span>table1</span>
-                    </div>
-                </div>
-            </div>
-            <div class="tree-node">
-                <i class="icon db-icon"></i>
-                <span>X022-CQ-4</span>
-            </div>
-            <div class="tree-node">
-                <i class="icon folder-icon"></i>
-                <span>pg_meta</span>
-            </div>
-            <div class="tree-node expanded">
-                <i class="icon folder-icon"></i>
-                <span>influx_local</span>
-                <div class="tree-children">
-                    <div class="tree-node expanded">
-                        <span>root</span>
-                        <div class="tree-children">
-                            <div class="tree-node expanded">
-                                <span>car</span>
-                                <div class="tree-children">
-                                    <div class="tree-node">
-                                        <span>s1</span>
-                                    </div>
-                                    <div class="tree-node">
-                                        <span>g1</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+        <div class="tree" id="dataSourceTree">
+            <!-- 数据源树将通过JavaScript动态加载 -->
+            <div class="loading-placeholder">正在加载数据源...</div>
         </div>
     </div>
 
@@ -295,6 +252,8 @@
         <div class="workspace-content">
             <!-- 注册异构数据源内嵌页面组件 -->
             <register-data-resource-embedded id="registerEmbedded"></register-data-resource-embedded>
+            <!-- 导入数据组件 -->
+            <import-data id="importData"></import-data>
             <!-- 上传模型文件组件 -->
             <model-upload id="modelUpload"></model-upload>
             <!-- 下载模型文件组件 -->
@@ -307,6 +266,8 @@
             <data-visualization id="dataVisualization"></data-visualization>
             <!-- 数据库表格组件 -->
             <database-table id="databaseTable"></database-table>
+            <!-- 数据源管理组件 -->
+            <data-source-list id="dataSourceList"></data-source-list>
             <!-- 解析规则配置组件 -->
             <parsing-rules id="parsingRules"></parsing-rules>
             <!-- 关联规则配置组件 -->
@@ -361,13 +322,15 @@
 <script src="./config/app-config.js"></script>
 <script src="./js/modal-manager.js"></script>
 <script src="./js/common-utils.js"></script>
-<script src="./components/data-resource/register-embedded.js"></script>
+<script src="./components/register-embedded/register-embedded.js"></script>
+<script src="./components/data-resource/data-source-list.js"></script>
 <script src="./components/model-upload/model-upload.js"></script>
 <script src="./components/model-download/model-download.js"></script>
 <script src="./components/model-detail/model-detail.js"></script>
 <script src="./components/model-edit/model-edit.js"></script>
 <script src="./components/data-visualization/data-visualization.min.js"></script>
 <script src="./components/common-pagination/common-pagination.js"></script>
+<script src="./components/import-data/import-data.js"></script>
 <script src="./components/database-table/database-table.js"></script>
 <script src="./components/parsing-rules/parsing-rules.js"></script>
 <script src="./components/association-rules/association-rules.js"></script>

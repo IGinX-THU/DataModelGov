@@ -102,12 +102,51 @@ class ModelDetail extends HTMLElement {
         if (deleteButton) {
             deleteButton.addEventListener('click', () => this.deleteModel());
         }
+        
+        // 监听模型更新事件
+        document.addEventListener('model-updated', (e) => {
+            if (this.currentModel && 
+                e.detail.modelName === this.currentModel.name && 
+                e.detail.version === this.currentModel.version) {
+                // 刷新当前模型详情数据
+                console.log('模型详情页面收到更新事件，刷新数据');
+                this.loadModelData(this.currentModel);
+            }
+        });
     }
 
     show(modelInfo) {
         this.currentModel = modelInfo;
         this.setAttribute('show', '');
-        this.updateContent(modelInfo);
+        // 调用接口获取模型元数据
+        this.loadModelData(modelInfo);
+    }
+
+    async loadModelData(modelInfo) {
+        try {
+            // 调用接口获取元数据
+            const response = await fetch(`/api/model/metas?name=${encodeURIComponent(modelInfo.name)}&version=${encodeURIComponent(modelInfo.version)}`);
+            
+            if (response.ok) {
+                const result = await response.json();
+                if (result.code === 200 && result.data) {
+                    const meta = result.data;
+                    console.log('获取模型元数据成功:', meta);
+                    // 保存完整的接口数据
+                    this.currentModelMeta = meta;
+                    this.updateContent(meta);
+                } else {
+                    console.error('获取元数据失败:', result.message);
+                    this.showErrorMessage('获取模型信息失败');
+                }
+            } else {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+        } catch (error) {
+            console.error('加载模型数据失败:', error);
+            // 如果接口失败，使用默认值
+            this.updateContent(modelInfo);
+        }
     }
 
     hide() {
@@ -115,19 +154,33 @@ class ModelDetail extends HTMLElement {
     }
 
     updateContent(modelInfo) {
+        // 渲染基本信息到basic-info-section，完全使用接口数据
         const modelName = this.shadowRoot.getElementById('modelName');
         const modelVersion = this.shadowRoot.getElementById('modelVersion');
         const developer = this.shadowRoot.getElementById('developer');
         const scene = this.shadowRoot.getElementById('scene');
         const createTime = this.shadowRoot.getElementById('createTime');
-        const modelDiagramName = this.shadowRoot.getElementById('modelDiagramName');
         
         if (modelName) modelName.textContent = modelInfo.name || '-';
         if (modelVersion) modelVersion.textContent = modelInfo.version || '-';
-        if (developer) developer.textContent = '张三'; // 默认开发者
-        if (scene) scene.textContent = '工业控制'; // 默认场景
-        if (createTime) createTime.textContent = '2024-01-15 10:30:00'; // 默认创建时间
-        if (modelDiagramName) modelDiagramName.textContent = modelInfo.name || 'Timer';
+        if (developer) developer.textContent = modelInfo.author || '-';
+        if (scene) scene.textContent = modelInfo.scene || '-';
+        if (createTime) {
+            if (modelInfo.timestamp) {
+                // 将时间戳转换为日期格式
+                const date = new Date(modelInfo.timestamp);
+                createTime.textContent = date.toLocaleString('zh-CN', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit'
+                });
+            } else {
+                createTime.textContent = '-';
+            }
+        }
         
         // 更新版本历史
         this.updateVersionHistory(modelInfo);
@@ -137,34 +190,79 @@ class ModelDetail extends HTMLElement {
     }
     
     updateVersionHistory(modelInfo) {
+        // 调用接口获取版本历史数据
+        this.loadVersionHistory(modelInfo);
+    }
+
+    async loadVersionHistory(modelInfo) {
+        try {
+            // 调用接口获取版本历史
+            const response = await fetch(`/api/model/history?name=${encodeURIComponent(modelInfo.name)}`);
+            
+            if (response.ok) {
+                const result = await response.json();
+                if (result.code === 200 && result.data) {
+                    const historyData = result.data;
+                    console.log('获取版本历史成功:', historyData);
+                    this.renderVersionHistory(historyData);
+                } else {
+                    console.error('获取版本历史失败:', result.message);
+                    this.renderVersionHistory([]);
+                }
+            } else {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+        } catch (error) {
+            console.error('加载版本历史失败:', error);
+            // 如果接口失败，显示空的历史
+            this.renderVersionHistory([]);
+        }
+    }
+
+    renderVersionHistory(historyData) {
         const timeline = this.shadowRoot.querySelector('.horizontal-timeline');
-        if (timeline) {
+        if (!timeline) return;
+        
+        // 如果没有历史数据，显示空提示
+        if (!historyData || historyData.length === 0) {
             timeline.innerHTML = `
-                <div class="timeline-item">
-                    <div class="timeline-dot"></div>
+                <div class="timeline-item empty-history">
                     <div class="timeline-content">
-                        <div class="timeline-version">v0.9.0</div>
-                        <div class="timeline-developer">李四</div>
-                        <div class="timeline-date">2024-01-10</div>
-                    </div>
-                </div>
-                <div class="timeline-item">
-                    <div class="timeline-dot"></div>
-                    <div class="timeline-content">
-                        <div class="timeline-version">v1.0.0</div>
-                        <div class="timeline-developer">张三</div>
-                        <div class="timeline-date">2024-01-15</div>
-                    </div>
-                </div>
-                <div class="timeline-item">
-                    <div class="timeline-dot"></div>
-                    <div class="timeline-content">
-                        <div class="timeline-version">${modelInfo.version || 'v1.0.1'}</div>
-                        <div class="timeline-developer">张三</div>
-                        <div class="timeline-date">2024-01-20</div>
+                        <div class="empty-message">暂无版本历史</div>
                     </div>
                 </div>
             `;
+            return;
+        }
+        
+        // 渲染版本历史
+        timeline.innerHTML = historyData.map(item => `
+            <div class="timeline-item">
+                <div class="timeline-dot"></div>
+                <div class="timeline-content">
+                    <div class="timeline-version">${item.version || '-'}</div>
+                    <div class="timeline-developer">${item.author || '-'}</div>
+                    <div class="timeline-date">${this.formatDate(item.timestamp)}</div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    formatDate(timestamp) {
+        if (!timestamp) return '-';
+        try {
+            const date = new Date(timestamp);
+            return date.toLocaleString('zh-CN', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+        } catch (error) {
+            console.error('日期格式化失败:', error);
+            return '-';
         }
     }
     
@@ -175,8 +273,57 @@ class ModelDetail extends HTMLElement {
         if (modelDiagramName) modelDiagramName.textContent = modelInfo.name || 'Timer';
         if (modelDiagramVersion) modelDiagramVersion.textContent = modelInfo.version || 'v1.0.1';
         
-        // 这里可以根据实际模型类型动态设置Inputs和Outputs的参数列表
-        // 目前使用静态数据
+        // 动态渲染inputs参数表格
+        this.renderParamsTable('inputs', modelInfo.inputs);
+        
+        // 动态渲染outputs参数表格
+        this.renderParamsTable('outputs', modelInfo.outputs);
+    }
+
+    renderParamsTable(type, paramsData) {
+        // 找到对应的params-table
+        const container = this.shadowRoot.querySelector(`.${type}-container`);
+        if (!container) return;
+        
+        const paramsBody = container.querySelector('.params-body');
+        if (!paramsBody) return;
+        
+        // 清空现有内容
+        paramsBody.innerHTML = '';
+        
+        // 解析参数数据
+        let params = [];
+        if (paramsData) {
+            try {
+                params = typeof paramsData === 'string' ? JSON.parse(paramsData) : paramsData;
+            } catch (error) {
+                console.error(`解析${type}参数数据失败:`, error);
+                return;
+            }
+        }
+        
+        // 如果没有参数，显示空提示
+        if (!params || params.length === 0) {
+            paramsBody.innerHTML = `
+                <div class="param-row empty-row">
+                    <div class="param-col param-name" colspan="4">暂无${type === 'inputs' ? '输入' : '输出'}参数</div>
+                </div>
+            `;
+            return;
+        }
+        
+        // 渲染参数行
+        params.forEach(param => {
+            const row = document.createElement('div');
+            row.className = 'param-row';
+            row.innerHTML = `
+                <div class="param-col param-name">${param.name || '-'}</div>
+                <div class="param-col param-type">${param.type || '-'}</div>
+                <div class="param-col param-unit">${param.unit || '-'}</div>
+                <div class="param-col param-desc">${param.desc || '-'}</div>
+            `;
+            paramsBody.appendChild(row);
+        });
     }
 
     download() {
@@ -190,12 +337,12 @@ class ModelDetail extends HTMLElement {
             return;
         }
         
-        // 显示编辑对话框
+        // 显示编辑对话框，传递当前模型数据和完整的接口数据
         const modelEdit = document.getElementById('modelEdit');
-        if (modelEdit) {
-            modelEdit.show(this.currentModel);
+        if (modelEdit && modelEdit.showWithModelData) {
+            modelEdit.showWithModelData(this.currentModel, this.currentModelMeta || this.currentModel);
         } else {
-            console.error('未找到modelEdit组件');
+            console.error('未找到modelEdit组件或showWithModelData方法');
         }
     }
 
@@ -322,16 +469,23 @@ class ModelDetail extends HTMLElement {
             const versionElement = this.shadowRoot.getElementById('modelVersion');
             const version = versionElement ? versionElement.textContent.trim() : null;
             
-            // 调用删除API，只删除当前版本
-            const response = await fetch('/api/models/delete', {
-                method: 'POST',
+            if (!version) {
+                this.showErrorMessage('无法获取模型版本信息');
+                return;
+            }
+            
+            // 构建查询参数
+            const params = new URLSearchParams({
+                name: this.currentModel.name,
+                version: version
+            });
+            
+            // 调用删除API - 使用DELETE方法和正确的参数格式
+            const response = await fetch(`/api/model/delete?${params.toString()}`, {
+                method: 'DELETE',
                 headers: {
                     'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    modelName: this.currentModel.name,
-                    version: version // 使用页面中的版本信息
-                })
+                }
             });
             
             if (response.ok) {
@@ -341,6 +495,15 @@ class ModelDetail extends HTMLElement {
                 if (result.code === 200) {
                     // 显示成功消息
                     this.showSuccessMessage(`模型版本 "${version}" 删除成功`);
+                    
+                    // 重新加载右侧模型资产库
+                    console.log('🔄 模型删除成功，准备调用 loadDataSourceTree');
+                    if (window.loadDataSourceTree) {
+                        console.log('🔄 调用 window.loadDataSourceTree');
+                        window.loadDataSourceTree();
+                    } else {
+                        console.error('❌ window.loadDataSourceTree 不存在');
+                    }
                     
                     // 从右侧树中移除该版本节点
                     this.removeVersionFromTree({ ...this.currentModel, version });

@@ -308,6 +308,38 @@
     background: #f9fafb;
 }
 
+.uml-diagram-vertical .param-row.empty-row {
+    justify-content: center;
+    padding: 20px 0;
+    color: #9ca3af;
+    font-style: italic;
+}
+
+.uml-diagram-vertical .param-row.empty-row:hover {
+    background: transparent;
+}
+
+.empty-history {
+    justify-content: center;
+    text-align: center;
+}
+
+.empty-history .timeline-content {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+}
+
+.empty-message {
+    color: #9ca3af;
+    font-style: italic;
+    padding: 20px;
+    background: #f9fafb;
+    border-radius: 8px;
+    border: 1px dashed #e5e7eb;
+}
+
 .uml-diagram-vertical .param-col {
     padding: 6px;
     font-size: 11px;

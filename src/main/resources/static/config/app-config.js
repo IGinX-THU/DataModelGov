@@ -26,7 +26,23 @@ window.AppConfig = {
             register: '/api/datasource/register',
             list: '/api/datasource/list',
             remove: '/api/datasource/remove',
-            test: '/api/datasource/test'
+            test: '/api/datasource/test',
+            tree: '/api/datasource/tree'
+        },
+        // 数据查询相关
+        data: {
+            query: '/api/data/query',
+            'relational/query': '/api/data/relational/query',
+            'relational/count': '/api/data/relational/count',
+            'relational/export': '/api/data/relational/export',
+            'association/rules/query': '/api/association/rules/query',
+            'association/rules/count': '/api/association/rules/count',
+            'association/rules/detail': '/api/association/rules/detail',
+            'association/rules/delete': '/api/association/rules/delete',
+            'association/rules/save': '/api/association/rules/save',
+            import: '/api/data/import',
+            export: '/api/data/export',
+            delete: '/api/data/delete'
         },
         // 其他模块可以继续添加
         user: {

@@ -47,6 +47,7 @@
     flex: 1;
     min-width: 0;
     min-height: 1200px;
+    overflow-x: auto; /* 添加横向滚动条 */
 }
 
 :host([show]) {
@@ -298,6 +299,73 @@
     cursor: not-allowed;
 }
 
+.reset-btn {
+    padding: 10px 24px;
+    background: #f5f5f5;
+    color: #333;
+    border: 1px solid #d9d9d9;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    margin-right: 8px;
+}
+
+.reset-btn:hover {
+    background: #e6f7ff;
+    border-color: #3370ff;
+    color: #3370ff;
+}
+
+.reset-btn:disabled {
+    background: #f9f9f9;
+    color: #999;
+    cursor: not-allowed;
+}
+
+/* Loading效果 */
+.loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    border-radius: 4px;
+}
+
+.loading-spinner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid #3370ff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 12px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.loading-text {
+    font-size: 14px;
+    color: #666;
+    font-weight: 500;
+}
+
 /* 表格区域 */
 .table-section {
     display: flex;
@@ -383,7 +451,7 @@
 }
 
 .table-wrapper {
-    overflow: visible;
+    overflow-x: auto; /* 表格容器添加横向滚动条 */
     position: relative;
 }
 

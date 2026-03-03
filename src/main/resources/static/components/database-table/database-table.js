@@ -3,14 +3,35 @@ class DatabaseTable extends HTMLElement {
         super();
         this.attachShadow({ mode: 'open' });
         this.data = [];
-        this.pageSize = 6;
+        this.pageSize = 10;
         this.currentPage = 1;
+        this.tableName = null;
+        this.totalCount = 0;
+        
+        // 排序相关
+        this.sortField = '';
+        this.sortDirection = 'ASC'; // ASC 或 DESC
+        
+        // 数据缓存
+        this.dataCache = new Map(); // 格式: Map<tableName, {data: [], totalCount: number, header: []}>
+        
+        // 表格最大宽度限制
+        this.maxTableWidth = 1000; // 可以根据需要调整这个值
+        
+        // 筛选条件
+        this.filters = []; // 存储筛选条件
+        this.availableFields = []; // 存储可用字段列表
     }
 
     async connectedCallback() {
         await this.loadResources();
-        this.seedData();
-        this.renderTable();
+        
+        // 只有在没有tableName时才使用seedData
+        if (!this.tableName) {
+            this.seedData();
+            this.totalCount = this.data.length;
+            this.renderTable();
+        }
         
         // 初始化分页组件
         this.initPagination();
@@ -75,9 +96,7 @@ class DatabaseTable extends HTMLElement {
     <div class="db-filter-card">
         <div class="filter-header">筛选</div>
         <div class="filter-rows" id="filterRows">
-            ${this.buildFilterRow('temperature', '=', '3145')}
-            ${this.buildFilterRow('humidity', '=', '3145')}
-            ${this.buildFilterRow('时间戳', '包含', '')}
+            <!-- 初始为空，只通过加号添加 -->
         </div>
         <div class="filter-actions">
             <button class="filter-add" type="button" id="addFilter">⊕</button>
@@ -89,7 +108,7 @@ class DatabaseTable extends HTMLElement {
 
     <div class="db-table-card">
         <div class="table-toolbar">
-            <button class="toolbar-btn green" type="button" id="addRowBtn">新增</button>
+            <!-- <button class="toolbar-btn green" type="button" id="addRowBtn">新增</button> -->
             <button class="toolbar-btn orange" type="button" id="importBtn">导入</button>
             <button class="toolbar-btn blue" type="button" id="exportBtn">导出</button>
         </div>
@@ -106,7 +125,7 @@ class DatabaseTable extends HTMLElement {
                         <th>status</th>
                         <th>createtime</th>
                         <th>updatetime</th>
-                        <th>操作</th>
+                        <!-- <th>操作</th> -->
                     </tr>
                 </thead>
                 <tbody id="tableBody"></tbody>
@@ -133,20 +152,58 @@ class DatabaseTable extends HTMLElement {
         `;
     }
 
-    buildFilterRow(fieldValue = '', operatorValue = '', valueValue = '') {
+    buildFilterRow(fieldValue = '', operatorValue = '=', valueValue = '', logicOperator = 'AND', isFirstRow = false, startGroup = false, endGroup = false) {
         return `
             <div class="filter-row">
+                ${!isFirstRow ? `
+                <div class="filter-logic">
+                    <select class="filter-input">
+                        <option value="AND" ${logicOperator === 'AND' ? 'selected' : ''}>AND</option>
+                        <option value="OR" ${logicOperator === 'OR' ? 'selected' : ''}>OR</option>
+                    </select>
+                </div>
+                ` : '<div class="filter-logic-empty"></div>'}
+                <div class="filter-group-controls">
+                    ${!isFirstRow ? `
+                    <select class="filter-group-start">
+                        <option value="" ${!startGroup ? 'selected' : ''}>无</option>
+                        <option value="(" ${startGroup ? 'selected' : ''}>( 开始分组</option>
+                    </select>
+                    ` : ''}
+                </div>
                 <div class="filter-field">
                     <span class="filter-label">字段</span>
-                    <input class="filter-input" type="text" value="${fieldValue}" />
+                    <select class="filter-input">
+                        <option value="">请选择字段</option>
+                        ${this.availableFields.map(field => 
+                            `<option value="${field}" ${field === fieldValue ? 'selected' : ''}>${field}</option>`
+                        ).join('')}
+                    </select>
                 </div>
-                <div class="filter-field">
+                <div class="filter-operator">
                     <span class="filter-label">运算符</span>
-                    <input class="filter-input" type="text" value="${operatorValue}" />
+                    <select class="filter-input">
+                        <option value="=" ${operatorValue === '=' ? 'selected' : ''}>=</option>
+                        <option value="!=" ${operatorValue === '!=' ? 'selected' : ''}>!=</option>
+                        <option value=">" ${operatorValue === '>' ? 'selected' : ''}>></option>
+                        <option value="<" ${operatorValue === '<' ? 'selected' : ''}><</option>
+                        <option value=">=" ${operatorValue === '>=' ? 'selected' : ''}>>=</option>
+                        <option value="<=" ${operatorValue === '<=' ? 'selected' : ''}>=</option>
+                        <option value="IN" ${operatorValue === 'IN' ? 'selected' : ''}>IN</option>
+                        <option value="NOT IN" ${operatorValue === 'NOT IN' ? 'selected' : ''}>NOT IN</option>
+                        <option value="LIKE" ${operatorValue === 'LIKE' ? 'selected' : ''}>LIKE</option>
+                        <option value="包含" ${operatorValue === '包含' ? 'selected' : ''}>包含</option>
+                    </select>
                 </div>
-                <div class="filter-field">
+                <div class="filter-value">
                     <span class="filter-label">值</span>
-                    <input class="filter-input" type="text" value="${valueValue}" placeholder="请输入" />
+                    <input class="filter-input" type="text" value="${valueValue}" placeholder="筛选值" />
+                </div>
+                <div class="filter-group-controls">
+                    <select class="filter-group-end">
+                        <option value="" ${!endGroup ? 'selected' : ''}>无</option>
+                        <option value=")" ${endGroup ? 'selected' : ''}>) 结束分组</option>
+                    </select>
                 </div>
                 <button class="filter-remove" type="button">⊖</button>
             </div>
@@ -212,29 +269,29 @@ class DatabaseTable extends HTMLElement {
         const tbody = this.shadowRoot.getElementById('tableBody');
         if (!tbody) return;
 
-        const start = (this.currentPage - 1) * this.pageSize;
-        const end = start + this.pageSize;
-        const pageData = this.data.slice(start, end);
+        if (!this.data || this.data.length === 0) {
+            this.showEmptyState();
+            return;
+        }
 
-        tbody.innerHTML = pageData.map(row => `
-            <tr>
-                <td>${row.id}</td>
-                <td>${row.temperature}</td>
-                <td>${row.humidity}</td>
-                <td>${row.name}</td>
-                <td>${row.device}</td>
-                <td>${row.type}</td>
-                <td>${row.status}</td>
-                <td>${row.createtime}</td>
-                <td>${row.updatetime}</td>
-                <td>
-                    <div class="action-buttons">
-                        <button class="action-btn edit" data-id="${row.id}">编辑</button>
-                        <button class="action-btn delete" data-id="${row.id}">删除</button>
-                    </div>
-                </td>
-            </tr>
-        `).join('');
+        tbody.innerHTML = this.data.map((row, index) => {
+            // 生成行数据
+            const rowCells = Object.values(row).map(value => 
+                `<td>${value !== null && value !== undefined ? value : ''}</td>`
+            ).join('');
+            
+            // 注释掉操作列
+            // const actionCell = `
+            //     <td>
+            //         <div class="action-buttons">
+            //             <button class="action-btn edit" data-index="${index}">编辑</button>
+            //             <button class="action-btn delete" data-index="${index}">删除</button>
+            //         </div>
+            //     </td>
+            // `;
+            
+            return `<tr>${rowCells}</tr>`;
+        }).join('');
 
         this.updatePagination();
     }
@@ -244,7 +301,7 @@ class DatabaseTable extends HTMLElement {
         const addFilter = this.shadowRoot.getElementById('addFilter');
         const resetFilters = this.shadowRoot.getElementById('resetFilters');
         const applyFilters = this.shadowRoot.getElementById('applyFilters');
-        const addRowBtn = this.shadowRoot.getElementById('addRowBtn');
+        // const addRowBtn = this.shadowRoot.getElementById('addRowBtn'); // 注释掉新增按钮
         const importBtn = this.shadowRoot.getElementById('importBtn');
         const exportBtn = this.shadowRoot.getElementById('exportBtn');
         const modalMask = this.shadowRoot.getElementById('modalMask');
@@ -252,7 +309,8 @@ class DatabaseTable extends HTMLElement {
 
         if (addFilter && filterRows) {
             addFilter.addEventListener('click', () => {
-                filterRows.insertAdjacentHTML('beforeend', this.buildFilterRow('', '', ''));
+                const existingRows = filterRows.querySelectorAll('.filter-row').length;
+                filterRows.insertAdjacentHTML('beforeend', this.buildFilterRow('', '', '', 'AND', existingRows === 0));
             });
         }
 
@@ -266,49 +324,46 @@ class DatabaseTable extends HTMLElement {
 
         if (resetFilters && filterRows) {
             resetFilters.addEventListener('click', () => {
-                filterRows.innerHTML = this.buildFilterRow('temperature', '=', '3145') + 
-                                     this.buildFilterRow('humidity', '=', '3145') + 
-                                     this.buildFilterRow('时间戳', '包含', '');
+                this.resetFilters();
             });
         }
 
         if (applyFilters) {
             applyFilters.addEventListener('click', () => {
-                // 使用统一的 toast 消息系统
-                if (window.CommonUtils && window.CommonUtils.showToast) {
-                    window.CommonUtils.showToast(`找到 ${this.data.length} 条符合条件的记录`, 'info');
-                } else {
-                    this.showModal('查询结果', `找到 ${this.data.length} 条符合条件的记录`);
-                }
+                this.applyFilters();
             });
         }
 
-        if (addRowBtn) {
-            addRowBtn.addEventListener('click', () => {
-                this.showModal('新增记录', this.getFormModalBody(), [
-                    { text: '取消', class: 'modal-btn secondary', action: 'close' },
-                    { text: '确认', class: 'modal-btn primary', action: 'submit' }
-                ]);
-            });
-        }
+        // 注释掉新增按钮事件
+        // if (addRowBtn) {
+        //     addRowBtn.addEventListener('click', () => {
+        //         this.showModal('新增记录', this.getFormModalBody(), [
+        //             { text: '取消', class: 'modal-btn secondary', action: 'close' },
+        //             { text: '确认', class: 'modal-btn primary', action: 'submit' }
+        //         ]);
+        //     });
+        // }
 
         if (importBtn) {
             importBtn.addEventListener('click', () => {
-                this.showModal('导入数据', this.getImportModalBody(), [
-                    { text: '取消', class: 'modal-btn secondary', action: 'close' },
-                    { text: '导入', class: 'modal-btn primary', action: 'import' }
-                ]);
+                // 使用data-visualization的导入功能
+                if (typeof window.showComponent === 'function') {
+                    window.showComponent('importData');
+                } else {
+                    console.error('window.showComponent函数未找到');
+                    // 降级处理：显示原有模态框
+                    this.showModal('导入数据', this.getImportModalBody(), [
+                        { text: '取消', class: 'modal-btn secondary', action: 'close' },
+                        { text: '导入', class: 'modal-btn primary', action: 'import' }
+                    ]);
+                }
             });
         }
 
         if (exportBtn) {
             exportBtn.addEventListener('click', () => {
-                // 使用统一的 toast 消息系统
-                if (window.CommonUtils && window.CommonUtils.showToast) {
-                    window.CommonUtils.showToast(`已导出 ${this.data.length} 条记录`, 'success');
-                } else {
-                    this.showModal('导出成功', `已导出 ${this.data.length} 条记录`);
-                }
+                // 使用data-visualization的导出功能
+                this.exportData();
             });
         }
 
@@ -326,30 +381,30 @@ class DatabaseTable extends HTMLElement {
             });
         }
 
-        // 表格行操作
-        const tbody = this.shadowRoot.getElementById('tableBody');
-        if (tbody) {
-            tbody.addEventListener('click', (event) => {
-                if (event.target.classList.contains('action-btn')) {
-                    const id = event.target.dataset.id;
-                    if (event.target.classList.contains('delete')) {
-                        this.showModal('删除确认', `确定要删除 ID 为 ${id} 的记录吗？`, [
-                            { text: '取消', class: 'modal-btn secondary', action: 'close' },
-                            { text: '删除', class: 'modal-btn primary', action: 'delete', id }
-                        ]);
-                    } else if (event.target.classList.contains('edit')) {
-                        const id = event.target.dataset.id;
-                        const row = this.data.find(r => r.id == id);
-                        if (row) {
-                            this.showModal('编辑记录', this.getFormModalBody(row), [
-                                { text: '取消', class: 'modal-btn secondary', action: 'close' },
-                                { text: '保存', class: 'modal-btn primary', action: 'edit', id }
-                            ]);
-                        }
-                    }
-                }
-            });
-        }
+        // 注释掉表格行操作事件
+        // const tbody = this.shadowRoot.getElementById('tableBody');
+        // if (tbody) {
+        //     tbody.addEventListener('click', (event) => {
+        //         if (event.target.classList.contains('action-btn')) {
+        //             const id = event.target.dataset.id;
+        //             if (event.target.classList.contains('delete')) {
+        //                 this.showModal('删除确认', `确定要删除 ID 为 ${id} 的记录吗？`, [
+        //                     { text: '取消', class: 'modal-btn secondary', action: 'close' },
+        //                     { text: '删除', class: 'modal-btn primary', action: 'delete', id }
+        //                 ]);
+        //             } else if (event.target.classList.contains('edit')) {
+        //                 const id = event.target.dataset.id;
+        //                 const row = this.data.find(r => r.id == id);
+        //                 if (row) {
+        //                     this.showModal('编辑记录', this.getFormModalBody(row), [
+        //                         { text: '取消', class: 'modal-btn secondary', action: 'close' },
+        //                         { text: '保存', class: 'modal-btn primary', action: 'edit', id }
+        //                     ]);
+        //                 }
+        //             }
+        //         }
+        //     });
+        // }
     }
 
     showModal(title, content, buttons = []) {
@@ -460,10 +515,18 @@ class DatabaseTable extends HTMLElement {
     }
 
     show(tableName = null) {
-        // 如果提供了tableName，可以在这里处理
+        // 如果提供了tableName，加载关系数据
         if (tableName) {
             console.log('显示数据库表格:', tableName);
-            // 可以根据tableName加载不同的数据或设置标题
+            this.tableName = tableName;
+            // 重置到第一页并使用缓存
+            this.currentPage = 1;
+            this.filters = []; // 重置筛选条件
+            this.sortField = ''; // 重置排序条件
+            this.sortDirection = 'ASC'; // 重置排序方向
+            this.loadRelationalData(true);
+            // 加载可用字段列表
+            this.loadAvailableFields();
         }
         this.setAttribute('show', '');
     }
@@ -471,28 +534,774 @@ class DatabaseTable extends HTMLElement {
     initPagination() {
         const pagination = this.shadowRoot.getElementById('pagination');
         if (pagination) {
+            // 初始化分页设置
+            pagination.setPagination(this.currentPage, this.pageSize, this.totalCount);
+            
             // 监听分页变化事件
             pagination.addEventListener('pagination-change', (event) => {
                 const { currentPage, pageSize } = event.detail;
                 this.currentPage = currentPage;
                 this.pageSize = pageSize;
-                this.renderTable();
+                
+                console.log('分页变化:', { currentPage, pageSize });
+                
+                // 如果有tableName，重新加载数据（不使用缓存，因为需要查询不同页）
+                if (this.tableName) {
+                    this.loadRelationalData(false);
+                } else {
+                    // 否则使用本地数据分页
+                    this.renderTable();
+                }
             });
-            
-            // 初始化分页
-            this.updatePagination();
         }
     }
 
     updatePagination() {
         const pagination = this.shadowRoot.getElementById('pagination');
         if (pagination) {
-            pagination.setPagination(this.currentPage, this.pageSize, this.data.length);
+            // 使用totalCount设置分页
+            console.log('更新分页: currentPage=', this.currentPage, ', pageSize=', this.pageSize, ', totalCount=', this.totalCount);
+            pagination.setPagination(this.currentPage, this.pageSize, this.totalCount);
+        }
+    }
+
+    async loadRelationalData(useCache = true) {
+        try {
+            console.log('开始加载关系数据:', this.tableName);
+            
+            // 检查缓存（仅在允许使用缓存且是第一页且无筛选条件时）
+            if (useCache && this.currentPage === 1 && this.dataCache.has(this.tableName) && this.filters.length === 0) {
+                console.log('使用缓存数据:', this.tableName);
+                const cachedData = this.dataCache.get(this.tableName);
+                this.data = cachedData.data;
+                this.totalCount = cachedData.totalCount;
+                this.updateTableHeader(cachedData.header);
+                this.renderTable();
+                this.updatePagination();
+                return;
+            }
+            
+            // 显示全局loading
+            if (window.showGlobalLoading) {
+                window.showGlobalLoading('正在查询数据...');
+            }
+            
+            // 首先获取数据总量（仅在第一页或没有缓存时）
+            if (this.currentPage === 1 || !this.dataCache.has(this.tableName) || this.filters.length > 0) {
+                await this.loadTotalCount();
+            }
+            
+            // 构建请求体
+            const requestBody = {
+                tableName: this.tableName,
+                pageNum: this.currentPage,
+                pageSize: this.pageSize,
+                filters: this.filters.length > 0 ? this.filters : null,
+                sortField: this.sortField || null,
+                sortDirection: this.sortField ? this.sortDirection : null
+            };
+            
+            console.log('查询参数:', requestBody);
+            
+            // 调用关系数据查询接口
+            const response = await fetch(window.AppConfig.getApiUrl('data', 'relational/query'), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestBody)
+            });
+            
+            const result = await response.json();
+            
+            console.log('API响应结果:', result);
+            
+            if (result.code === 200 && result.data) {
+                console.log('关系数据查询成功:', result.data);
+                
+                // 处理查询结果
+                this.processTableData(result.data);
+                
+                // 只缓存第一页的无筛选条件的数据和表头
+                if (this.currentPage === 1 && this.filters.length === 0) {
+                    const header = result.data.header || result.data.paths;
+                    this.dataCache.set(this.tableName, {
+                        data: result.data.records,
+                        totalCount: this.totalCount,
+                        header: header
+                    });
+                    console.log('数据已缓存:', this.tableName);
+                }
+                
+            } else if (result.code === 200 && (!result.data || !result.data.records || result.data.records.length === 0)) {
+                // 接口成功但没有数据
+                console.log('查询成功但没有数据');
+                this.showEmptyState();
+            } else {
+                // 接口返回错误
+                console.error('关系数据查询失败:', result.message);
+                this.showError('数据查询失败: ' + (result.message || '未知错误'));
+            }
+            
+        } catch (error) {
+            console.error('加载关系数据失败:', error);
+            this.showError('网络错误，无法查询数据');
+        } finally {
+            // 无论成功还是失败，都隐藏全局loading
+            if (window.hideGlobalLoading) {
+                window.hideGlobalLoading();
+            }
+        }
+    }
+
+    async loadTotalCount() {
+        try {
+            const requestBody = {
+                tableName: this.tableName,
+                filters: this.filters.length > 0 ? this.filters : null,
+                sortField: this.sortField || null,
+                sortDirection: this.sortField ? this.sortDirection : null
+            };
+            
+            console.log('查询总量参数:', requestBody);
+            
+            const response = await fetch(window.AppConfig.getApiUrl('data', 'relational/count'), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestBody)
+            });
+            
+            const result = await response.json();
+            console.log('总量查询结果:', result);
+            
+            if (result.code === 200 && result.data !== undefined) {
+                this.totalCount = result.data;
+                console.log('数据总量:', this.totalCount);
+            } else {
+                console.warn('获取数据总量失败，使用当前数据量');
+                this.totalCount = this.data.length;
+            }
+        } catch (error) {
+            console.error('获取数据总量失败:', error);
+            this.totalCount = this.data.length;
+        }
+    }
+
+    // 处理表格数据（参考data-visualization的processTableData）
+    processTableData(tableData) {
+        console.log('处理表格数据:', tableData);
+        
+        // 检查数据格式，支持header或paths
+        if (!tableData || (!tableData.header && !tableData.paths) || !tableData.records) {
+            console.error('无效的表格数据格式');
+            this.showEmptyState();
+            return;
+        }
+        
+        // 使用header或paths作为表头
+        const header = tableData.header || tableData.paths;
+        
+        // 更新可用字段列表（只取叶子节点）
+        this.availableFields = header.map(path => {
+            const parts = path.split('.');
+            return parts[parts.length - 1];
+        });
+        console.log('更新字段列表:', this.availableFields);
+        this.updateFilterFields();
+        
+        // 设置表头
+        this.updateTableHeader(header);
+        
+        // 保存数据
+        this.data = tableData.records;
+        
+        // 修正totalCount：如果count返回0但有数据，说明count有问题，使用实际数据量
+        if (this.totalCount === 0 && this.data.length > 0) {
+            console.warn('count返回0但实际有数据，修正totalCount从', this.totalCount, '到至少', this.data.length);
+            this.totalCount = this.data.length;
+        }
+        
+        console.log('处理后的数据:', this.data.length, '条记录');
+        console.log('表头:', header);
+        console.log('数据总量:', this.totalCount);
+        
+        // 更新表格
+        this.renderTable();
+        
+        // 更新分页
+        this.updatePagination();
+    }
+
+    // 更新表头（参考data-visualization的updateTableHeader）
+    updateTableHeader(header) {
+        const table = this.shadowRoot.querySelector('.data-table');
+        const tableHead = table ? table.querySelector('thead tr') : null;
+        if (tableHead) {
+            // 清空现有表头
+            tableHead.innerHTML = '';
+            
+            // 添加所有列头
+            header.forEach(columnName => {
+                const th = document.createElement('th');
+                th.style.minWidth = '120px'; // 设置合理的最小宽度
+                th.style.whiteSpace = 'nowrap';
+                th.style.padding = '8px 12px';
+                th.style.cursor = 'pointer';
+                th.style.position = 'relative';
+                
+                // 创建表头内容容器
+                const headerContent = document.createElement('div');
+                headerContent.style.display = 'flex';
+                headerContent.style.alignItems = 'center';
+                headerContent.style.justifyContent = 'space-between';
+                
+                // 列名
+                const columnNameSpan = document.createElement('span');
+                columnNameSpan.textContent = columnName;
+                
+                // 排序指示器
+                const sortIndicator = document.createElement('span');
+                sortIndicator.style.marginLeft = '8px';
+                sortIndicator.style.fontSize = '12px';
+                sortIndicator.style.color = '#999';
+                
+                // 提取叶子节点字段名用于排序
+                const leafField = columnName.split('.').pop();
+                
+                // 检查当前列是否是排序列
+                if (this.sortField === leafField) {
+                    sortIndicator.textContent = this.sortDirection === 'ASC' ? '↑' : '↓';
+                    sortIndicator.style.color = '#007bff';
+                } else {
+                    sortIndicator.textContent = '⇅';
+                }
+                
+                headerContent.appendChild(columnNameSpan);
+                headerContent.appendChild(sortIndicator);
+                th.appendChild(headerContent);
+                
+                // 添加点击事件
+                th.addEventListener('click', () => {
+                    this.handleSort(leafField);
+                });
+                
+                // 添加悬停效果
+                th.addEventListener('mouseenter', () => {
+                    th.style.backgroundColor = '#f5f5f5';
+                });
+                
+                th.addEventListener('mouseleave', () => {
+                    th.style.backgroundColor = '';
+                });
+                
+                tableHead.appendChild(th);
+            });
+            
+            // 注释掉添加操作列
+            // const actionTh = document.createElement('th');
+            // actionTh.textContent = '操作';
+            // actionTh.style.minWidth = '120px';
+            // actionTh.style.whiteSpace = 'nowrap';
+            // actionTh.style.padding = '8px 12px';
+            // actionTh.style.cursor = 'default';
+            // actionTh.style.backgroundColor = '#f8f9fa';
+            // tableHead.appendChild(actionTh);
+            
+            // 让表格自然撑开，由workspace-content处理滚动
+            setTimeout(() => {
+                this.enableTableNaturalWidth();
+            }, 100);
+        }
+    }
+
+    // 处理排序
+    handleSort(field) {
+        try {
+            if (this.sortField === field) {
+                // 如果是同一个字段，切换排序方向
+                this.sortDirection = this.sortDirection === 'ASC' ? 'DESC' : 'ASC';
+            } else {
+                // 如果是不同字段，设置新字段并默认升序
+                this.sortField = field;
+                this.sortDirection = 'ASC';
+            }
+            
+            console.log('排序条件:', { field: this.sortField, direction: this.sortDirection });
+            
+            // 重置到第一页并重新加载数据
+            this.currentPage = 1;
+            this.loadRelationalData(false); // 不使用缓存
+            
+            // 更新表头显示
+            this.updateTableHeader(this.availableFields);
+            
+            // 显示排序提示
+            if (window.CommonUtils && window.CommonUtils.showToast) {
+                const directionText = this.sortDirection === 'ASC' ? '升序' : '降序';
+                window.CommonUtils.showToast(`按 ${field} ${directionText}排序`, 'info');
+            }
+            
+        } catch (error) {
+            console.error('排序失败:', error);
+            if (window.CommonUtils && window.CommonUtils.showToast) {
+                window.CommonUtils.showToast('排序失败', 'error');
+            }
+        }
+    }
+
+    // 让表格自然撑开
+    enableTableNaturalWidth() {
+        const table = this.shadowRoot.querySelector('.data-table');
+        if (table) {
+            // 计算表格所需宽度
+            const headers = table.querySelectorAll('th');
+            let totalWidth = 0;
+            headers.forEach(th => {
+                totalWidth += th.offsetWidth;
+            });
+            
+            // 设置表格宽度，让它自然撑开
+            table.style.width = totalWidth + 'px';
+            table.style.minWidth = totalWidth + 'px';
+            
+            console.log('表格自然宽度:', totalWidth + 'px');
+        }
+    }
+
+    // 检查布局平衡
+    checkLayoutBalance() {
+        // 获取布局相关的关键元素
+        const topNav = document.querySelector('.top-nav');
+        const leftSidebar = document.querySelector('.left-sidebar');
+        const rightSidebar = document.querySelector('.right-sidebar');
+        const workspace = document.querySelector('.workspace');
+        
+        // 打印布局宽度信息
+        console.log('=== 网页布局宽度调试信息 ===');
+        console.log('top-nav宽度:', topNav ? topNav.offsetWidth + 'px' : '未找到');
+        console.log('left-sidebar宽度:', leftSidebar ? leftSidebar.offsetWidth + 'px' : '未找到');
+        console.log('right-sidebar宽度:', rightSidebar ? rightSidebar.offsetWidth + 'px' : '未找到');
+        console.log('workspace宽度:', workspace ? workspace.offsetWidth + 'px' : '未找到');
+        
+        if (topNav && leftSidebar && rightSidebar) {
+            const sidebarPlusWorkspace = leftSidebar.offsetWidth + workspace.offsetWidth + rightSidebar.offsetWidth;
+            console.log('left-sidebar + workspace + right-sidebar =', sidebarPlusWorkspace + 'px');
+            
+            // 计算理想workspace宽度
+            const idealWorkspaceWidth = topNav.offsetWidth - leftSidebar.offsetWidth - rightSidebar.offsetWidth;
+            console.log('计算的理想workspace宽度:', idealWorkspaceWidth + 'px');
+            console.log('计算公式: top-nav - left-sidebar - right-sidebar =', 
+                topNav.offsetWidth + ' - ' + leftSidebar.offsetWidth + ' - ' + rightSidebar.offsetWidth + ' = ' + idealWorkspaceWidth);
+            
+            if (topNav) {
+                const diff = sidebarPlusWorkspace - topNav.offsetWidth;
+                console.log('与top-nav宽度差异:', diff + 'px');
+                if (Math.abs(diff) > 5) {
+                    console.warn('⚠️ 布局不平衡！差异超过5px');
+                } else {
+                    console.log('✅ 布局平衡');
+                }
+            }
+            
+            // 动态设置组件宽度
+            this.setComponentWidth(workspace.offsetWidth);
+        }
+        console.log('========================');
+    }
+
+    // 动态设置组件宽度
+    setComponentWidth(currentWorkspaceWidth) {
+        const host = this.shadowRoot.host;
+        const dbTable = this.shadowRoot.querySelector('.db-table');
+        
+        // 计算workspace的理想宽度
+        const topNav = document.querySelector('.top-nav');
+        const leftSidebar = document.querySelector('.left-sidebar');
+        const rightSidebar = document.querySelector('.right-sidebar');
+        
+        if (topNav && leftSidebar && rightSidebar) {
+            const idealWorkspaceWidth = topNav.offsetWidth - leftSidebar.offsetWidth - rightSidebar.offsetWidth;
+            console.log('当前workspace宽度:', currentWorkspaceWidth + 'px');
+            console.log('理想workspace宽度:', idealWorkspaceWidth + 'px');
+            
+            if (host && dbTable) {
+                // 设置database-table组件宽度等于理想workspace宽度
+                host.style.maxWidth = idealWorkspaceWidth + 'px';
+                dbTable.style.maxWidth = idealWorkspaceWidth + 'px';
+                console.log('设置database-table组件宽度为:', idealWorkspaceWidth + 'px');
+            }
+            
+            // 同时设置data-visualization组件的宽度
+            const dataViz = document.querySelector('data-visualization');
+            if (dataViz) {
+                dataViz.style.maxWidth = idealWorkspaceWidth + 'px';
+                console.log('设置data-visualization组件宽度为:', idealWorkspaceWidth + 'px');
+            }
+            
+            // 强制限制workspace的宽度
+            const workspace = document.querySelector('.workspace');
+            if (workspace) {
+                workspace.style.maxWidth = idealWorkspaceWidth + 'px';
+                console.log('强制限制workspace宽度为:', idealWorkspaceWidth + 'px');
+            }
+        }
+    }
+
+    // 设置表格宽度
+    setTableWidth() {
+        const table = this.shadowRoot.querySelector('.data-table');
+        
+        // 获取布局相关的关键元素
+        const topNav = document.querySelector('.top-nav');
+        const leftSidebar = document.querySelector('.left-sidebar');
+        const rightSidebar = document.querySelector('.right-sidebar');
+        const workspace = document.querySelector('.workspace');
+        const mainContainer = document.querySelector('.main-container');
+        
+        if (table) {
+            // 计算表格所需宽度
+            const headers = table.querySelectorAll('th');
+            let totalWidth = 0;
+            headers.forEach(th => {
+                totalWidth += th.offsetWidth;
+            });
+            
+            // 设置表格宽度，让它能够撑开workspace-content
+            table.style.width = totalWidth + 'px';
+            table.style.minWidth = totalWidth + 'px';
+            
+            // 打印布局宽度信息
+            console.log('=== 网页布局宽度调试信息 ===');
+            console.log('top-nav宽度:', topNav ? topNav.offsetWidth + 'px' : '未找到');
+            console.log('left-sidebar宽度:', leftSidebar ? leftSidebar.offsetWidth + 'px' : '未找到');
+            console.log('workspace宽度:', workspace ? workspace.offsetWidth + 'px' : '未找到');
+            console.log('right-sidebar宽度:', rightSidebar ? rightSidebar.offsetWidth + 'px' : '未找到');
+            
+            if (leftSidebar && workspace && rightSidebar) {
+                const sidebarPlusWorkspace = leftSidebar.offsetWidth + workspace.offsetWidth + rightSidebar.offsetWidth;
+                console.log('left-sidebar + workspace + right-sidebar =', sidebarPlusWorkspace + 'px');
+                
+                if (topNav) {
+                    const diff = sidebarPlusWorkspace - topNav.offsetWidth;
+                    console.log('与top-nav宽度差异:', diff + 'px');
+                    if (Math.abs(diff) > 5) {
+                        console.warn('⚠️ 布局不平衡！差异超过5px');
+                    } else {
+                        console.log('✅ 布局平衡');
+                    }
+                }
+            }
+            
+            console.log('表格计算宽度:', totalWidth + 'px');
+            console.log('========================');
+        }
+    }
+
+    // 强制设置表格宽度
+    forceTableWidth() {
+        const table = this.shadowRoot.querySelector('.data-table');
+        const tableCard = this.shadowRoot.querySelector('.db-table-card');
+        
+        if (table && tableCard) {
+            // 使用配置的最大宽度
+            const reasonableWidth = this.maxTableWidth;
+            
+            // 计算表格所需的最小宽度
+            const headers = table.querySelectorAll('th');
+            let totalWidth = 0;
+            headers.forEach(th => {
+                totalWidth += th.offsetWidth;
+            });
+            
+            // 如果表格宽度超过合理宽度，使用合理宽度；否则使用计算出的宽度
+            const finalWidth = Math.min(totalWidth + 40, reasonableWidth);
+            
+            // 设置表格宽度
+            table.style.width = finalWidth + 'px';
+            table.style.minWidth = finalWidth + 'px';
+            
+            console.log('表格宽度计算 - 需要宽度:', totalWidth + 40 + 'px, 最大宽度:', reasonableWidth + 'px, 最终宽度:', finalWidth + 'px');
+        }
+    }
+
+    showEmptyState() {
+        const tbody = this.shadowRoot.getElementById('tableBody');
+        if (tbody) {
+            tbody.innerHTML = '<tr><td colspan="100%" style="text-align: center; padding: 20px; color: #666;">暂无数据</td></tr>';
+        }
+    }
+
+    showError(message) {
+        const tbody = this.shadowRoot.getElementById('tableBody');
+        if (tbody) {
+            tbody.innerHTML = `<tr><td colspan="100%" style="text-align: center; padding: 20px; color: #f44336;">${message}</td></tr>`;
         }
     }
 
     hide() {
         this.removeAttribute('show');
+    }
+
+    // 清除缓存
+    clearCache(tableName = null) {
+        if (tableName) {
+            this.dataCache.delete(tableName);
+            console.log('已清除缓存:', tableName);
+        } else {
+            this.dataCache.clear();
+            console.log('已清除所有缓存');
+        }
+    }
+
+    // 获取可用字段列表
+    async loadAvailableFields() {
+        try {
+            // 从当前表格的表头获取字段列表
+            if (this.dataCache.has(this.tableName)) {
+                const cachedData = this.dataCache.get(this.tableName);
+                const fullPaths = cachedData.header || [];
+                // 只取叶子节点的值（最后一个点之后的部分）
+                this.availableFields = fullPaths.map(path => {
+                    const parts = path.split('.');
+                    return parts[parts.length - 1];
+                });
+                console.log('从缓存获取字段列表:', this.availableFields);
+                this.updateFilterFields();
+                return;
+            }
+            
+            // // 如果没有缓存，先查询一页数据获取表头
+            // const requestBody = {
+            //     tableName: this.tableName,
+            //     pageNum: 1,
+            //     pageSize: 1
+            // };
+            //
+            // const response = await fetch(window.AppConfig.getApiUrl('data', 'relational/query'), {
+            //     method: 'POST',
+            //     headers: {
+            //         'Content-Type': 'application/json'
+            //     },
+            //     body: JSON.stringify(requestBody)
+            // });
+            //
+            // const result = await response.json();
+            //
+            // if (result.code === 200 && result.data) {
+            //     const fullPaths = result.data.header || result.data.paths || [];
+            //     // 只取叶子节点的值（最后一个点之后的部分）
+            //     this.availableFields = fullPaths.map(path => {
+            //         const parts = path.split('.');
+            //         return parts[parts.length - 1];
+            //     });
+            //     console.log('获取字段列表:', this.availableFields);
+            //     this.updateFilterFields();
+            // }
+        } catch (error) {
+            console.error('获取字段列表失败:', error);
+            this.availableFields = [];
+        }
+    }
+
+    // 更新筛选字段下拉框
+    updateFilterFields() {
+        const filterRows = this.shadowRoot.querySelectorAll('.filter-row');
+        filterRows.forEach(row => {
+            const fieldSelect = row.querySelector('.filter-field select');
+            if (fieldSelect) {
+                const currentValue = fieldSelect.value;
+                fieldSelect.innerHTML = '<option value="">请选择字段</option>';
+                
+                this.availableFields.forEach(field => {
+                    const option = document.createElement('option');
+                    option.value = field;
+                    option.textContent = field;
+                    if (field === currentValue) {
+                        option.selected = true;
+                    }
+                    fieldSelect.appendChild(option);
+                });
+            }
+        });
+    }
+
+    // 应用筛选条件
+    applyFilters() {
+        try {
+            // 收集筛选条件
+            const filterRows = this.shadowRoot.querySelectorAll('.filter-row');
+            this.filters = [];
+            
+            filterRows.forEach((row, index) => {
+                const logicSelect = row.querySelector('.filter-logic select');
+                const groupStartSelect = row.querySelector('.filter-group-start select');
+                const fieldSelect = row.querySelector('.filter-field select');
+                const operatorSelect = row.querySelector('.filter-operator select');
+                const valueInput = row.querySelector('.filter-value input');
+                const groupEndSelect = row.querySelector('.filter-group-end select');
+                
+                if (fieldSelect && operatorSelect && valueInput) {
+                    const field = fieldSelect.value.trim();
+                    const operator = operatorSelect.value;
+                    const value = valueInput.value.trim();
+                    
+                    if (field && operator && value) {
+                        const filterCondition = {
+                            field: field,
+                            operator: operator,
+                            value: value
+                        };
+                        
+                        // 添加逻辑操作符（第一行不需要）
+                        if (index > 0 && logicSelect) {
+                            filterCondition.logicOperator = logicSelect.value;
+                        } else {
+                            filterCondition.logicOperator = null; // 第一行没有逻辑操作符
+                        }
+                        
+                        // 添加分组控制
+                        if (groupStartSelect) {
+                            filterCondition.startGroup = groupStartSelect.value === '(';
+                        }
+                        
+                        if (groupEndSelect) {
+                            filterCondition.endGroup = groupEndSelect.value === ')';
+                        }
+                        
+                        this.filters.push(filterCondition);
+                    }
+                }
+            });
+            
+            console.log('筛选条件:', this.filters);
+            
+            // 重置到第一页并重新加载数据
+            this.currentPage = 1;
+            this.loadRelationalData(false); // 不使用缓存
+            
+            // 显示筛选结果
+            if (window.CommonUtils && window.CommonUtils.showToast) {
+                window.CommonUtils.showToast('正在应用筛选条件...', 'info');
+            }
+            
+        } catch (error) {
+            console.error('应用筛选条件失败:', error);
+            if (window.CommonUtils && window.CommonUtils.showToast) {
+                window.CommonUtils.showToast('筛选失败', 'error');
+            }
+        }
+    }
+
+    // 重置筛选条件
+    resetFilters() {
+        try {
+            // 清空筛选条件
+            this.filters = [];
+            
+            // 重置排序条件
+            this.sortField = '';
+            this.sortDirection = 'ASC';
+            
+            // 重置筛选表单（清空所有筛选行）
+            const filterRows = this.shadowRoot.getElementById('filterRows');
+            if (filterRows) {
+                filterRows.innerHTML = ''; // 清空所有筛选行
+            }
+            
+            // 重置到第一页并重新加载数据
+            this.currentPage = 1;
+            this.loadRelationalData(true); // 使用缓存
+            
+            if (window.CommonUtils && window.CommonUtils.showToast) {
+                window.CommonUtils.showToast('筛选条件已重置', 'success');
+            }
+            
+        } catch (error) {
+            console.error('重置筛选条件失败:', error);
+        }
+    }
+
+    // 导出数据功能（后端Excel导出）
+    async exportData() {
+        try {
+            console.log('开始导出数据表:', this.tableName);
+            
+            if (!this.tableName) {
+                this.showMessage('没有可导出的数据表', 'warning');
+                return;
+            }
+            
+            // 显示全局loading
+            if (window.showGlobalLoading) {
+                window.showGlobalLoading('正在导出Excel...');
+            }
+            
+            // 构建请求体（传递当前的筛选和排序条件，不使用分页）
+            const requestBody = {
+                tableName: this.tableName,
+                filters: this.filters.length > 0 ? this.filters : null,
+                sortField: this.sortField || null,
+                sortDirection: this.sortField ? this.sortDirection : null
+            };
+            
+            console.log('导出参数:', requestBody);
+            
+            // 调用关系数据Excel导出接口
+            const response = await fetch(window.AppConfig.getApiUrl('data', 'relational/export'), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestBody)
+            });
+            
+            if (response.ok) {
+                // 获取文件名
+                const contentDisposition = response.headers.get('Content-Disposition');
+                let filename = `${this.tableName}_export.xlsx`;
+                if (contentDisposition) {
+                    const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+                    if (filenameMatch) {
+                        filename = filenameMatch[1];
+                    }
+                }
+                
+                // 下载Excel文件
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+                
+                this.showMessage(`Excel文件 "${filename}" 导出成功`, 'success');
+            } else {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+        } catch (error) {
+            console.error('导出Excel失败:', error);
+            this.showMessage('导出失败，请稍后重试', 'error');
+        } finally {
+            // 隐藏全局loading
+            if (window.hideGlobalLoading) {
+                window.hideGlobalLoading();
+            }
+        }
+    }
+
+    // 显示消息的统一方法
+    showMessage(message, type = 'info') {
+        if (window.CommonUtils && window.CommonUtils.showToast) {
+            window.CommonUtils.showToast(message, type);
+        } else {
+            console.warn(`[${type}] ${message}`);
+        }
     }
 }
 

@@ -27,6 +27,18 @@
                 <div class="query-controls">
                     <div class="query-row">
                         <div class="query-item">
+                            <label class="query-label">快速选择</label>
+                            <div class="quick-time-buttons">
+                                <button class="quick-time-btn" data-range="1h">最近1小时</button>
+                                <button class="quick-time-btn" data-range="6h">最近6小时</button>
+                                <button class="quick-time-btn" data-range="24h">最近24小时</button>
+                                <button class="quick-time-btn" data-range="7d">最近7天</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="query-row">
+                        <div class="query-item">
                             <label class="query-label">开始时间</label>
                             <input type="datetime-local" class="query-input" id="startTime">
                         </div>
@@ -37,27 +49,39 @@
                         <div class="query-item">
                             <label class="query-label">聚合函数</label>
                             <select class="query-select" id="aggregationFunction">
-                                <option value="raw">原始数据</option>
-                                <option value="avg">平均值</option>
-                                <option value="max">最大值</option>
-                                <option value="min">最小值</option>
-                                <option value="sum">求和</option>
-                                <option value="count">计数</option>
+                                <option value="">原始数据</option>
+                                <option value="0">MAX</option>
+                                <option value="1">MIN</option>
+                                <option value="2">SUM</option>
+                                <option value="3">COUNT</option>
+                                <option value="4">AVG</option>
+                                <option value="5">FIRST_VALUE</option>
+                                <option value="6">LAST_VALUE</option>
+                                <option value="7">FIRST</option>
+                                <option value="8">LAST</option>
                             </select>
                         </div>
-                    </div>
-                    
-                    <div class="query-row">
                         <div class="query-item">
-                            <label class="query-label">快速选择</label>
-                            <div class="quick-time-buttons">
-                                <button class="quick-time-btn" data-range="1h">最近1小时</button>
-                                <button class="quick-time-btn" data-range="6h">最近6小时</button>
-                                <button class="quick-time-btn" data-range="24h">最近24小时</button>
-                                <button class="quick-time-btn" data-range="7d">最近7天</button>
-                            </div>
+                            <label class="query-label">时间间隔</label>
+                            <input type="number" class="query-input" id="precision" min="1" placeholder="间隔数值">
+                        </div>
+                        <div class="query-item">
+                            <label class="query-label">时间单位</label>
+                            <select class="query-select" id="timePrecision">
+                                <option value="0">YEAR</option>
+                                <option value="1">MONTH</option>
+                                <option value="2">WEEK</option>
+                                <option value="3">DAY</option>
+                                <option value="4">HOUR</option>
+                                <option value="5">MIN</option>
+                                <option value="6">S</option>
+                                <option value="7" selected>MS</option>
+                                <option value="8">US</option>
+                                <option value="9">NS</option>
+                            </select>
                         </div>
                         <div class="query-actions">
+                            <button class="reset-btn" id="resetBtn">重置</button>
                             <button class="query-btn" id="queryBtn">查询数据</button>
                         </div>
                     </div>

@@ -1,6 +1,60 @@
 document.addEventListener('DOMContentLoaded', function() {
     // 全局变量：跟踪当前选中的数据源
     let selectedDataSource = null;
+    
+    // 全局Loading功能
+    window.showGlobalLoading = function(message = '正在加载...') {
+        console.log('显示全局loading:', message);
+        
+        // 获取工作区容器
+        const workspaceContent = document.querySelector('.workspace-content');
+        if (!workspaceContent) {
+            console.error('找不到workspace-content容器');
+            return;
+        }
+        
+        // 确保工作区容器有相对定位
+        if (getComputedStyle(workspaceContent).position === 'static') {
+            workspaceContent.style.position = 'relative';
+        }
+        
+        // 检查是否已存在loading元素
+        let loadingEl = workspaceContent.querySelector('.global-loading-overlay');
+        if (!loadingEl) {
+            loadingEl = document.createElement('div');
+            loadingEl.className = 'global-loading-overlay';
+            loadingEl.innerHTML = `
+                <div class="global-loading-spinner">
+                    <div class="global-spinner"></div>
+                    <div class="global-loading-text">${message}</div>
+                </div>
+            `;
+            workspaceContent.appendChild(loadingEl);
+        } else {
+            // 更新loading文字
+            const textEl = loadingEl.querySelector('.global-loading-text');
+            if (textEl) {
+                textEl.textContent = message;
+            }
+        }
+    };
+    
+    window.hideGlobalLoading = function() {
+        console.log('隐藏全局loading');
+        
+        // 从工作区容器中移除loading元素
+        const workspaceContent = document.querySelector('.workspace-content');
+        if (workspaceContent) {
+            const loadingEl = workspaceContent.querySelector('.global-loading-overlay');
+            if (loadingEl) {
+                loadingEl.remove();
+            }
+        }
+    };
+    
+    // 0. 动态加载数据源树
+    loadDataSourceTree();
+    
     // 1. 明暗模式切换
     const themeToggle = document.getElementById('themeToggle');
     const html = document.documentElement;
@@ -14,96 +68,6 @@ document.addEventListener('DOMContentLoaded', function() {
             html.classList.add('light-mode');
         }
     });
-
-    // 2. 树形节点点击事件（仅限左侧数据资源库）
-    const leftSidebarTree = document.querySelector('.left-sidebar .tree');
-    if (leftSidebarTree) {
-        const treeNodes = leftSidebarTree.querySelectorAll('.tree-node');
-        treeNodes.forEach(node => {
-            node.addEventListener('click', function(e) {
-                e.stopPropagation();
-                
-                // 确保只处理左侧的节点
-                if (!this.closest('.left-sidebar')) {
-                    return;
-                }
-                
-                // 先清除所有选中状态（仅限左侧）
-                leftSidebarTree.querySelectorAll('.tree-node.active').forEach(n => n.classList.remove('active'));
-                
-                // 设置当前选中
-                this.classList.add('active');
-                
-                // 更新选中的数据源（仅限左侧数据资源库）
-                const nodeText = this.querySelector('span')?.textContent?.trim();
-                const nodeIcon = this.querySelector('i');
-                if (nodeText) {
-                    selectedDataSource = nodeText;
-                    console.log('选中的数据源:', selectedDataSource);
-                    
-                    // 检查是否为最后一级节点（没有子节点）
-                    const hasChildren = this.querySelector('.tree-children');
-                    
-                    // 检查是否属于文件夹/数据库图标类数据源
-                    let isFromFolderDataSource = false;
-                    let isFromDatabaseSource = false;
-                    
-                    // 向上查找最近的父节点，检查是否有文件夹图标
-                    let currentParent = this.parentElement;
-                    while (currentParent) {
-                        if (currentParent.classList.contains('tree-children')) {
-                            // 跳过tree-children，继续向上找tree-node
-                            currentParent = currentParent.parentElement;
-                        } else if (currentParent.classList.contains('tree-node')) {
-                            // 找到tree-node，检查图标
-                            const parentIcon = currentParent.querySelector('i');
-                            const parentText = currentParent.querySelector('span')?.textContent?.trim();
-                            
-                            console.log('检查父节点:', parentText, '图标:', parentIcon?.className);
-                            
-                            if (parentIcon && (parentIcon.classList.contains('folder-icon') || parentIcon.classList.contains('folder-open-icon'))) {
-                                isFromFolderDataSource = true;
-                                console.log('找到文件夹图标父节点:', parentText);
-                                break;
-                            }
-                            if (parentIcon && parentIcon.classList.contains('db-icon')) {
-                                isFromDatabaseSource = true;
-                                console.log('找到数据库图标父节点:', parentText);
-                                break;
-                            }
-                            currentParent = currentParent.parentElement;
-                        } else {
-                            break;
-                        }
-                    }
-                    
-                    console.log('节点检查:', {
-                        nodeText: selectedDataSource,
-                        hasChildren: !!hasChildren,
-                        isFromFolderDataSource: isFromFolderDataSource,
-                        isFromDatabaseSource: isFromDatabaseSource,
-                        shouldShow: !hasChildren && (isFromFolderDataSource || isFromDatabaseSource)
-                    });
-                    
-                    // 只有点击文件夹图标类数据源的最后一级节点才显示可视化
-                    if (!hasChildren && isFromFolderDataSource) {
-                        console.log('点击了文件夹图标类数据源的最后一级节点，显示数据可视化');
-                        showDataVisualization(selectedDataSource);
-                    }
-
-                    if (!hasChildren && isFromDatabaseSource) {
-                        console.log('点击了数据库图标类数据源的最后一级节点，显示数据库表格');
-                        showDatabaseTable(selectedDataSource);
-                    }
-                }
-                
-                // 展开收起（如果有子节点）
-                if (this.querySelector('.tree-children')) {
-                    this.classList.toggle('expanded');
-                }
-            });
-        });
-    }
 
     // 2.5. 右侧模型资产库树形节点点击事件
     const rightSidebarTree = document.querySelector('.right-sidebar .tree');
@@ -254,10 +218,22 @@ document.addEventListener('DOMContentLoaded', function() {
             
             const menuItemText = this.textContent.trim();
             
+            // 检查是否点击了"数据源管理"
+            if (menuItemText === '数据源管理') {
+                console.log('数据源管理菜单被点击');
+                showComponent('dataSourceList');
+            }
+            
             // 检查是否点击了"注册异构数据源"
             if (menuItemText === '注册异构数据源') {
                 console.log('注册异构数据源菜单被点击');
                 showComponent('registerEmbedded');
+            }
+            
+            // 检查是否点击了"导入数据"
+            if (menuItemText === '导入数据') {
+                console.log('导入数据菜单被点击');
+                showComponent('importData');
             }
             
             // 检查是否点击了"上传模型文件"
@@ -348,50 +324,60 @@ document.addEventListener('DOMContentLoaded', function() {
         const nodeName = span.textContent.trim();
         console.log('选中的节点名称:', nodeName);
         
-        // 检查是否是版本号节点
-        if (nodeName.match(/^v\d+\.\d+\.\d+$/)) {
-            // 如果是版本号节点，获取父节点的模型名称
+        // 排除明显的路径节点
+        if (nodeName === 'filesystem' || nodeName === 'models') {
+            console.log('选中的是路径节点，不是有效的模型节点');
+            return null;
+        }
+        
+        // 检查是否是最后一级叶子节点（没有子节点的节点）
+        const childrenContainer = activeNode.querySelector('.tree-children');
+        if (!childrenContainer || childrenContainer.children.length === 0) {
+            // 如果是最后一级叶子节点，获取其直接父节点的模型名称
             const parentNode = activeNode.closest('.tree-children')?.parentElement;
             const parentSpan = parentNode?.querySelector('span');
             if (parentSpan) {
                 const modelName = parentSpan.textContent.trim();
-                console.log('找到模型名称:', modelName, '版本号:', nodeName);
-                return {
-                    name: modelName,
-                    version: nodeName
-                };
-            }
-        } else {
-            // 如果是模型名称节点，查找第一个版本号
-            const childrenContainer = activeNode.querySelector('.tree-children');
-            if (childrenContainer && childrenContainer.children.length > 0) {
-                // 如果有子节点，返回模型名称（表示删除所有版本，不显示版本号）
-                console.log('找到模型名称（有子节点）:', nodeName, '将删除所有版本');
-                return {
-                    name: nodeName,
-                    version: null // null表示删除所有版本
-                };
-            } else {
-                // 如果没有子节点，查找第一个版本号（用于下载功能）
-                const firstVersion = childrenContainer?.querySelector('.tree-node span');
-                if (firstVersion) {
-                    const versionText = firstVersion.textContent.trim();
-                    if (versionText.match(/^v\d+\.\d+\.\d+$/)) {
-                        console.log('找到模型名称:', nodeName, '版本号:', versionText);
-                        return {
-                            name: nodeName,
-                            version: versionText
-                        };
-                    }
+                // 再次检查父节点也不是路径节点
+                if (modelName !== 'filesystem' && modelName !== 'models') {
+                    console.log('找到模型名称（最后一级叶子节点的父节点）:', modelName, '版本号（最后一级叶子节点）:', nodeName);
+                    return {
+                        name: modelName,
+                        version: nodeName
+                    };
                 }
             }
-            
-            // 如果没有版本号，只返回模型名称
-            console.log('只找到模型名称（无子节点）:', nodeName);
-            return {
-                name: nodeName,
-                version: null
-            };
+        } else {
+            // 如果是模型名称节点，检查是否有最后一级叶子节点子节点
+            if (childrenContainer && childrenContainer.children.length > 0) {
+                // 检查子节点是否包含最后一级叶子节点
+                const childNodes = childrenContainer.querySelectorAll('.tree-node');
+                let hasLeafChild = false;
+                
+                childNodes.forEach(childNode => {
+                    const childChildrenContainer = childNode.querySelector('.tree-children');
+                    if (!childChildrenContainer || childChildrenContainer.children.length === 0) {
+                        hasLeafChild = true;
+                    }
+                });
+                
+                if (hasLeafChild) {
+                    // 如果有最后一级叶子节点子节点，返回模型名称（表示删除所有版本，不显示版本号）
+                    console.log('找到模型名称（有最后一级叶子节点子节点）:', nodeName, '将删除所有版本');
+                    return {
+                        name: nodeName,
+                        version: null // null表示删除所有版本
+                    };
+                } else {
+                    // 如果没有最后一级叶子节点子节点，不返回有效信息
+                    console.log('找到模型名称但无最后一级叶子节点子节点:', nodeName, '不是有效的模型结构');
+                    return null;
+                }
+            } else {
+                // 如果没有子节点，不返回有效信息
+                console.log('找到模型名称但无子节点:', nodeName, '不是有效的模型结构');
+                return null;
+            }
         }
         
         console.log('未找到有效的模型信息');
@@ -460,6 +446,14 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
         
+        // 导入按钮
+        if (btnText === '导入') {
+            btn.addEventListener('click', function() {
+                console.log('导入按钮被点击');
+                showComponent('importData');
+            });
+        }
+        
         // 下载按钮
         if (btnText === '下载') {
             btn.addEventListener('click', function() {
@@ -487,12 +481,19 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
         }
-        
+
         // 卸载按钮
         if (btnText === '卸载') {
             btn.addEventListener('click', function() {
                 console.log('卸载按钮被点击');
                 handleRemoveDataSource();
+            });
+        }
+
+        if (btnText === '管理') {
+            btn.addEventListener('click', function() {
+                console.log('卸载按钮被点击');
+                showComponent('dataSourceList');
             });
         }
         
@@ -574,34 +575,8 @@ document.addEventListener('DOMContentLoaded', function() {
         modelUpload.addEventListener('upload-success', function(e) {
             console.log('模型上传成功:', e.detail);
             
-            // 在工作区显示成功消息
-            const workspaceContent = document.querySelector('.workspace-content');
-            if (workspaceContent) {
-                const successMsg = document.createElement('div');
-                successMsg.style.cssText = `
-                    padding: 20px;
-                    background: #f0f9ff;
-                    border: 1px solid #bfdbfe;
-                    border-radius: 6px;
-                    color: #1e40af;
-                    margin: 20px;
-                    font-size: 14px;
-                `;
-                successMsg.innerHTML = `
-                    <strong>模型上传成功！</strong><br>
-                    模型名称: ${e.detail.modelName}<br>
-                    版本号: ${e.detail.version}
-                `;
-                
-                // 在工作区开头插入成功消息，不清空整个工作区
-                workspaceContent.insertBefore(successMsg, workspaceContent.firstChild);
-                
-                setTimeout(() => {
-                    if (successMsg.parentNode) {
-                        successMsg.remove();
-                    }
-                }, 5000);
-            }
+            // 只使用公共的toast提示，不在工作区显示HTML提示
+            // 上传组件内部已经调用了showMessage，这里不需要重复显示
         });
     }
 
@@ -740,16 +715,22 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             console.log('删除模型资产:', selectedModel);
             
-            // 调用删除API
-            const response = await fetch('/api/models/delete', {
-                method: 'POST',
+            // 构建查询参数
+            const params = new URLSearchParams({
+                name: selectedModel.name
+            });
+            
+            // 如果有版本号，添加版本参数
+            if (selectedModel.version) {
+                params.append('version', selectedModel.version);
+            }
+            
+            // 调用删除API - 使用DELETE方法和正确的参数格式
+            const response = await fetch(`/api/model/delete?${params.toString()}`, {
+                method: 'DELETE',
                 headers: {
                     'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    modelName: selectedModel.name,
-                    version: selectedModel.version || null // null表示删除所有版本
-                })
+                }
             });
             
             if (response.ok) {
@@ -962,9 +943,34 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             console.log('开始删除数据源:', alias);
             
-            const response = await fetch(window.AppConfig.getApiUrl('datasource', 'remove') + '/' + encodeURIComponent(alias), {
+            // 获取当前选中的数据源节点信息
+            const leftSidebarTree = document.querySelector('.left-sidebar .tree');
+            const activeNode = leftSidebarTree?.querySelector('.tree-node.active');
+            
+            if (!activeNode) {
+                showWorkspaceMessage('请先选择要删除的数据源', 'warning');
+                return;
+            }
+            
+            // 构建请求体数据
+            const dataSourceInfo = {
+                id: activeNode.dataset.id || 0,
+                ip: activeNode.dataset.ip || '',
+                port: parseInt(activeNode.dataset.port) || 0,
+                type: parseInt(activeNode.dataset.type) || 0,
+                schemaPrefix: null,
+                dataPrefix: null
+            };
+            
+            console.log('发送删除请求:', dataSourceInfo);
+            
+            const response = await fetch(window.AppConfig.getApiUrl('datasource', 'remove'), {
                 method: 'DELETE',
-                headers: window.AppConfig.getAuthHeaders()
+                headers: {
+                    ...window.AppConfig.getAuthHeaders(),
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(dataSourceInfo)
             });
 
             if (!response.ok) {
@@ -976,7 +982,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
             if (result.code === 200) {
                 showWorkspaceMessage(`数据源 "${alias}" 删除成功`, 'success');
-                // 清除选中状态（仅限左侧数据资源库）
+                // 重新加载数据源树
+                loadDataSourceTree();
+                // 清除选中状态
                 selectedDataSource = null;
                 if (leftSidebarTree) {
                     leftSidebarTree.querySelectorAll('.tree-node.active').forEach(node => node.classList.remove('active'));
@@ -1018,7 +1026,9 @@ function hideAllComponents() {
         'associationRules',
         'databaseTable',
         'dataVisualization',
-        'modelDetail'
+        'modelDetail',
+        'dataSourceList',
+        'importData'
     ];
     
     components.forEach(componentId => {
@@ -1105,6 +1115,8 @@ function showVisualAnalysis() {
 
         // 获取或创建数据可视化组件
         let dataViz = document.getElementById('dataVisualization');
+        let isFirstLoad = false;
+        
         if (!dataViz) {
             // 先清空工作区
             clearWorkspace();
@@ -1115,16 +1127,33 @@ function showVisualAnalysis() {
             if (workspaceContent) {
                 workspaceContent.appendChild(dataViz);
                 console.log('创建了新的数据可视化组件');
+                isFirstLoad = true;
+                console.log('🚀 第一次加载，isFirstLoad设置为:', isFirstLoad);
             } else {
                 console.error('找不到workspace-content容器');
                 return;
             }
         } else {
             console.log('使用现有的数据可视化组件');
+            // 检查是否是清空工作区后的第一次操作（没有选中的测点）
+            if (window.selectedDataPoints.size === 0) {
+                console.log('🎯 检测到清空工作区后的第一次操作，设置为首次加载');
+                isFirstLoad = true;
+            }
+            console.log('🔄 后续切换，isFirstLoad保持为:', isFirstLoad);
         }
         
-        // 将当前数据源添加到已选测点
-        window.selectedDataPoints.add(dataSource);
+        // 只有真正的测点才添加到已选测点列表
+        console.log('检查节点是否为测点:', dataSource);
+        const isDataPoint = isActualDataPoint(dataSource);
+        console.log('是否为测点:', isDataPoint);
+        
+        if (isDataPoint) {
+            window.selectedDataPoints.add(dataSource);
+            console.log('添加测点到已选列表:', dataSource);
+        } else {
+            console.log('跳过非测点节点:', dataSource);
+        }
         
         console.log('准备显示可视化组件，当前选中的测点:', Array.from(window.selectedDataPoints));
         
@@ -1133,34 +1162,190 @@ function showVisualAnalysis() {
             dataViz.selectedPoints = new Set(window.selectedDataPoints);
         }
         
-        // 显示数据可视化
-        dataViz.show(dataSource, Array.from(window.selectedDataPoints));
+        // 先显示组件，等待组件完全加载后再调用查询接口
+        setTimeout(() => {
+            const keepQueryConditions = !isFirstLoad;
+            console.log('调用dataViz.show()，参数详情:');
+            console.log('  - isFirstLoad:', isFirstLoad);
+            console.log('  - keepQueryConditions:', keepQueryConditions);
+            console.log('  - dataSource:', dataSource);
+            console.log('  - selectedPoints:', Array.from(window.selectedDataPoints));
+            
+            // 检查组件是否已完全加载
+            if (typeof dataViz.show === 'function') {
+                dataViz.show(dataSource, Array.from(window.selectedDataPoints), null, keepQueryConditions);
+            } else {
+                console.error('dataViz.show 方法不存在，组件可能未完全加载');
+                // 等待更长时间后重试
+                setTimeout(() => {
+                    if (typeof dataViz.show === 'function') {
+                        dataViz.show(dataSource, Array.from(window.selectedDataPoints), null, keepQueryConditions);
+                    } else {
+                        console.error('重试后仍然无法找到 dataViz.show 方法');
+                    }
+                }, 500);
+            }
+            // 不在这里调用queryAndDisplayData，让组件自己处理数据加载
+        }, 200); // 增加等待时间到200ms
+    }
+
+    // 查询并显示数据
+    async function queryAndDisplayData(currentPath, selectedPoints, dataViz) {
+        try {
+            console.log('开始查询数据，当前路径:', currentPath, '选中测点:', selectedPoints);
+            
+            // 显示全局loading
+            window.showGlobalLoading('正在查询数据...');
+            
+            // 从data-visualization组件中获取筛选参数
+            let startTime = null;
+            let endTime = null;
+            let aggregateType = null;
+            let precision = null;
+            let timePrecision = 7; // 默认毫秒
+            
+            const startTimeInput = dataViz.shadowRoot.getElementById('startTime');
+            const endTimeInput = dataViz.shadowRoot.getElementById('endTime');
+            const aggregationSelect = dataViz.shadowRoot.getElementById('aggregationFunction');
+            const precisionInput = dataViz.shadowRoot.getElementById('precision');
+            const timePrecisionSelect = dataViz.shadowRoot.getElementById('timePrecision');
+            
+            // 处理时间参数
+            if (startTimeInput && startTimeInput.value) {
+                startTime = new Date(startTimeInput.value).getTime();
+            }
+            if (endTimeInput && endTimeInput.value) {
+                endTime = new Date(endTimeInput.value).getTime();
+            }
+            
+            // 如果没有设置时间，但有快速选择的时间，使用快速选择的时间
+            if (startTime === null && endTime === null) {
+                const activeQuickBtn = dataViz.shadowRoot.querySelector('.quick-time-btn.active');
+                if (activeQuickBtn) {
+                    const range = activeQuickBtn.dataset.range;
+                    const endTimeDate = new Date();
+                    const startTimeDate = new Date();
+                    
+                    switch (range) {
+                        case '1h':
+                            startTimeDate.setHours(startTimeDate.getHours() - 1);
+                            break;
+                        case '6h':
+                            startTimeDate.setHours(startTimeDate.getHours() - 6);
+                            break;
+                        case '24h':
+                            startTimeDate.setHours(startTimeDate.getHours() - 24);
+                            break;
+                        case '7d':
+                            startTimeDate.setDate(startTimeDate.getDate() - 7);
+                            break;
+                    }
+                    
+                    startTime = startTimeDate.getTime();
+                    endTime = endTimeDate.getTime();
+                }
+            }
+            
+            // 处理聚合函数参数
+            if (aggregationSelect && aggregationSelect.value) {
+                aggregateType = parseInt(aggregationSelect.value);
+            }
+            
+            // 处理时间间隔参数
+            if (precisionInput && precisionInput.value) {
+                precision = parseInt(precisionInput.value);
+            }
+            
+            // 处理时间单位参数
+            if (timePrecisionSelect && timePrecisionSelect.value) {
+                timePrecision = parseInt(timePrecisionSelect.value);
+            }
+            
+            // 构建请求体
+            const requestBody = {
+                paths: selectedPoints,
+                startTime: startTime,
+                endTime: endTime,
+                aggregateType: aggregateType,
+                timePrecision: timePrecision
+            };
+            
+            // 只有当precision不为null时才添加precision参数
+            if (precision !== null) {
+                requestBody.precision = precision;
+            }
+            
+            console.log('从筛选框获取的查询参数:', requestBody);
+            
+            // 调用数据查询接口
+            const response = await fetch(window.AppConfig.getApiUrl('data', 'query'), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestBody)
+            });
+            
+            const result = await response.json();
+            
+            if (result.code === 200 && result.data) {
+                console.log('数据查询成功:', result.data);
+                
+                // 显示数据可视化组件，传递查询结果
+                dataViz.show(currentPath, selectedPoints, result.data);
+            } else if (result.code === 200 && (!result.data || !result.data.records || result.data.records.length === 0)) {
+                // 接口成功但没有数据
+                console.log('查询成功但没有数据');
+                dataViz.show(currentPath, selectedPoints, null);
+            } else {
+                // 接口返回错误
+                console.error('数据查询失败:', result.message);
+                dataViz.showError('数据查询失败: ' + (result.message || '未知错误'));
+            }
+        } catch (error) {
+            console.error('查询数据时发生错误:', error);
+            dataViz.showError('网络错误，无法查询数据');
+        } finally {
+            // 隐藏全局loading
+            window.hideGlobalLoading();
+        }
     }
 
 // 通用显示组件函数
     function showComponent(componentId, ...args) {
         console.log(`显示组件: ${componentId}`, args);
         
-        // 先清空工作区
-        clearWorkspace();
+        // 弹窗组件不需要清空工作区
+        const modalComponents = ['registerEmbedded', 'importData', 'modelUpload', 'modelDownload', 'modelEdit'];
+        if (!modalComponents.includes(componentId)) {
+            // 先清空工作区
+            clearWorkspace();
+        }
         
+        console.log(`🔍 尝试获取组件: ${componentId}`);
         const component = document.getElementById(componentId);
-        if (component) {
-            // 确保组件可见：清除所有可能的隐藏属性和样式
-            component.removeAttribute('hidden');
-            component.style.display = '';
-            component.style.visibility = '';
-            
-            // 调用组件的show方法
-            if (typeof component.show === 'function') {
-                component.show(...args);
-            }
-            
+        console.log(`🔍 获取到的组件:`, component);
+        console.log(`🔍 组件类型:`, component ? component.constructor.name : 'null');
+        console.log(`🔍 组件是否有show方法:`, component ? typeof component.show : 'null');
+        
+        if (component && typeof component.show === 'function') {
+            component.show(...args);
             console.log(`✅ 组件 ${componentId} 已显示`);
         } else {
-            console.error(`❌ 未找到组件: ${componentId}`);
+            console.error(`❌ 未找到组件或show方法: ${componentId}`);
+            console.error(`❌ 详细信息:`, {
+                componentId,
+                componentExists: !!component,
+                componentType: component ? component.constructor.name : 'null',
+                hasShowMethod: component ? typeof component.show : 'null',
+                allElements: document.querySelectorAll('model-upload'),
+                allCustomElements: window.customElements ? Array.from(window.customElements) : 'customElements not available'
+            });
         }
     }
+
+    // 将showComponent暴露到全局作用域
+    window.showComponent = showComponent;
 
     function showDatabaseTable(tableName) {
         showComponent('databaseTable', tableName);
@@ -1172,20 +1357,80 @@ function showVisualAnalysis() {
         const leftSidebarTree = document.querySelector('.left-sidebar .tree');
         if (!leftSidebarTree) return points;
         
-        // 查找所有最后一级节点
-        const allNodes = leftSidebarTree.querySelectorAll('.tree-node');
-        allNodes.forEach(node => {
+        // 获取当前选中的数据源节点
+        const activeDataSourceNode = leftSidebarTree.querySelector('.tree-node.active');
+        if (!activeDataSourceNode) {
+            console.log('没有选中的数据源');
+            return points;
+        }
+        
+        // 只在当前选中的数据源节点内查找测点
+        const dataSourceChildren = activeDataSourceNode.querySelectorAll('.tree-node');
+        dataSourceChildren.forEach(node => {
             const hasChildren = node.querySelector('.tree-children');
             const nodeText = node.querySelector('span')?.textContent?.trim();
             
-            // 只添加最后一级节点
-            if (!hasChildren && nodeText) {
+            // 只添加最后一级节点且是真正的测点
+            if (!hasChildren && isActualDataPoint(nodeText)) {
                 points.push(nodeText);
+                console.log('添加测点:', nodeText);
+            } else {
+                console.log('跳过节点:', {
+                    nodeText,
+                    hasChildren: !!hasChildren,
+                    isDataPoint: isActualDataPoint(nodeText)
+                });
             }
         });
         
-        console.log('从树中获取到的测点:', points);
+        console.log('从当前选中数据源获取到的测点:', points);
         return points;
+    }
+    
+    // 判断节点是否为真正的测点
+    function isActualDataPoint(nodeText) {
+        console.log('isActualDataPoint 检查:', nodeText);
+        
+        if (!nodeText) {
+            console.log('-> 空字符串，返回 false');
+            return false;
+        }
+        
+        // 排除IP:port格式的数据源节点
+        if (nodeText.includes(':')) {
+            console.log('-> 包含冒号，返回 false');
+            return false;
+        }
+        
+        // 排除emoji图标（这些是数据源父节点的图标）
+        const emojis = ['🔌', '📊', '📈', '📁', '🗄', '🍃', '⚡'];
+        if (emojis.includes(nodeText)) {
+            console.log('-> 是emoji图标，返回 false');
+            return false;
+        }
+        
+        // 排除常见的父节点名称
+        const parentNodes = ['root', 'car', 'database', 'table', 'schema'];
+        if (parentNodes.includes(nodeText.toLowerCase())) {
+            console.log('-> 是父节点名称，返回 false');
+            return false;
+        }
+        
+        // 排除空字符串和纯数字
+        if (!nodeText.trim() || /^\d+$/.test(nodeText.trim())) {
+            console.log('-> 是空字符串或纯数字，返回 false');
+            return false;
+        }
+        
+        console.log('-> 通过所有检查，返回 true');
+        return true;
+    }
+    
+    // 判断节点是否为数据源父节点（有data-type属性的节点）
+    function isDataSourceParentNode(node) {
+        return node.hasAttribute('data-type') || 
+               node.parentElement?.hasAttribute('data-type') ||
+               node.closest('[data-type]') !== null;
     }
 
     // 根据数据源获取模拟测点数据
@@ -1213,4 +1458,374 @@ function showVisualAnalysis() {
         
         return pointMap[dataSource] || ['value1', 'value2', 'value3'];
     }
+    
+    // 动态加载数据源树
+    async function loadDataSourceTree() {
+        try {
+            // 显示全局loading
+            window.showGlobalLoading('正在加载数据源...');
+            
+            // 同时显示右侧loading
+            const rightSidebarTree = document.querySelector('.right-sidebar .tree');
+            if (rightSidebarTree) {
+                rightSidebarTree.innerHTML = '<div class="loading-placeholder">正在同步模型资产...</div>';
+            }
+            
+            const response = await fetch(window.AppConfig.getApiUrl('datasource', 'tree'));
+            const result = await response.json();
+            
+            if (result.code === 200 && result.data) {
+                renderDataSourceTree(result.data);
+                // 同步filesystem数据到右侧模型资产库
+                syncFilesystemToModelAssets(result.data);
+            } else {
+                console.error('加载数据源树失败:', result.message);
+                document.getElementById('dataSourceTree').innerHTML = '<div class="error-placeholder">加载数据源失败</div>';
+            }
+        } catch (error) {
+            console.error('加载数据源树异常:', error);
+            document.getElementById('dataSourceTree').innerHTML = '<div class="error-placeholder">网络错误，无法加载数据源</div>';
+        } finally {
+            // 隐藏全局loading
+            window.hideGlobalLoading();
+        }
+    }
+    
+    // 将字符串数组或对象数组转换为树结构
+    function buildTreeFromStringArray(data) {
+        const tree = {};
+        
+        // 判断数据格式：如果是对象数组，使用path和dataType字段；如果是字符串数组，使用字符串本身
+        data.forEach(item => {
+            const path = typeof item === 'string' ? item : item.path;
+            const dataType = typeof item === 'string' ? null : item.dataType;
+            
+            const parts = path.split('.');
+            let current = tree;
+            
+            parts.forEach((part, index) => {
+                if (!current[part]) {
+                    current[part] = {
+                        name: part,
+                        children: {},
+                        fullPath: parts.slice(0, index + 1).join('.'),
+                        isLeaf: index === parts.length - 1,
+                        dataType: index === parts.length - 1 ? dataType : null
+                    };
+                }
+                current = current[part].children;
+            });
+        });
+        
+        return tree;
+    }
+    
+    // 渲染树节点HTML
+    function renderTreeNodes(treeData, level = 0) {
+        let html = '';
+        
+        Object.values(treeData).forEach(node => {
+            const hasChildren = Object.keys(node.children).length > 0;
+            const expandedClass = level < 2 ? 'expanded' : '';
+            const nodeClass = `tree-node ${expandedClass}`;
+            
+            // 根据节点类型选择图标
+            let iconHtml = '';
+            if (hasChildren) {
+                // 有子节点：检查是否为relational开头的根节点，显示数据库图标，否则显示文件夹图标
+                if (level === 0 && (node.name.startsWith('relational'))) {
+                    iconHtml = `<i class="icon db-icon"></i>`;
+                } else {
+                    iconHtml = `<i class="icon folder-icon"></i>`;
+                }
+            } else {
+                // 没有子节点的叶子节点：根据数据类型显示图标
+                const dataTypeIcons = {
+                    0: '🔘',      // BOOLEAN(0) - 开关
+                    1: '📈',      // INTEGER(1) - 曲线图
+                    2: '📈',      // LONG(2) - 曲线图
+                    3: '📈',      // FLOAT(3) - 曲线图
+                    4: '📈',      // DOUBLE(4) - 曲线图
+                    5: '📦'       // BINARY(5) - 包裹
+                };
+                const icon = dataTypeIcons[node.dataType] || '📈';
+                iconHtml = `<i class="folder-icon">${icon}</i>`;
+            }
+            
+            html += `
+                <div class="${nodeClass}" data-full-path="${node.fullPath}" data-is-leaf="${node.isLeaf}" data-type="${node.dataType || ''}">
+                    ${iconHtml}
+                    <span>${node.name}</span>
+            `;
+            
+            if (hasChildren) {
+                html += '<div class="tree-children">';
+                html += renderTreeNodes(node.children, level + 1);
+                html += '</div>';
+            }
+            
+            html += '</div>';
+        });
+        
+        return html;
+    }
+    
+    // 渲染数据源树
+    function renderDataSourceTree(dataSources) {
+        const treeContainer = document.getElementById('dataSourceTree');
+        if (!dataSources || dataSources.length === 0) {
+            treeContainer.innerHTML = '<div class="empty-placeholder">暂无数据源</div>';
+            return;
+        }
+        
+        // 将字符串数组转换为树结构
+        const treeData = buildTreeFromStringArray(dataSources);
+        
+        // 渲染树HTML
+        const treeHTML = renderTreeNodes(treeData);
+        
+        treeContainer.innerHTML = treeHTML;
+        
+        // 重新绑定树节点点击事件
+        bindTreeEvents();
+    }
+    
+    // 根据存储引擎类型获取图标
+    function getStorageEngineIcon(type) {
+        // 返回文字标识而不是图标，更明显
+        const textMap = {
+            0: '🔌',      // unknown
+            1: '📊',       // iotdb12
+            2: '📈',      // influxdb
+            3: '📁',        // filesystem
+            4: '🗄️',          // relational (MySQL, PostgreSQL等)
+            5: '🍃',       // mongodb
+            6: '⚡'        // redis
+        };
+        const icon = textMap[type] || '🗄️';
+        console.log(`🔍 getStorageEngineIcon(${type}) = ${icon}`);
+        return icon;
+    }
+    
+    // 重新绑定树节点事件
+    function bindTreeEvents() {
+        const leftSidebarTree = document.querySelector('.left-sidebar .tree');
+        if (leftSidebarTree) {
+            const treeNodes = leftSidebarTree.querySelectorAll('.tree-node');
+            treeNodes.forEach(node => {
+                node.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    
+                    // 确保只处理左侧的节点
+                    if (!this.closest('.left-sidebar')) {
+                        return;
+                    }
+                    
+                    // 先清除所有选中状态（仅限左侧）
+                    leftSidebarTree.querySelectorAll('.tree-node.active').forEach(n => n.classList.remove('active'));
+                    
+                    // 设置当前选中
+                    this.classList.add('active');
+                    
+                    // 获取节点的完整路径
+                    const fullPath = this.getAttribute('data-full-path');
+                    const isLeaf = this.getAttribute('data-is-leaf') === 'true';
+                    if (fullPath && isLeaf) {
+                        console.log('点击了叶子节点:', fullPath);
+                        selectedDataSource = fullPath;
+                        
+                        // 检查是否为relational开头的路径，如果是则使用data-table跳转逻辑
+                        if (fullPath.startsWith('relational')) {
+                            // 获取父节点路径作为tableName
+                            const pathParts = fullPath.split('.');
+                            const parentPath = pathParts.slice(0, -1).join('.');
+                            showDatabaseTable(parentPath);
+                        } else {
+                            // 使用 dataSource.type === 1 的逻辑跳转到 data-visualization 页面
+                            showDataVisualization(fullPath);
+                        }
+                        
+                                                                        
+                                                
+                        // 如果是最后一级节点且不是文件夹/数据库图标类数据源，则显示“选择数据源”按钮
+                                                
+                        
+                                            }
+                    
+                    // 展开收起（如果有子节点）
+                    if (this.querySelector('.tree-children')) {
+                        this.classList.toggle('expanded');
+                    }
+                });
+            });
+        }
+    }
+    
+    // 同步filesystem数据到右侧模型资产库
+    function syncFilesystemToModelAssets(allData) {
+        try {
+            // 过滤出以"models_system"开头的路径数据
+            const filesystemData = allData.filter(item => {
+                const path = typeof item === 'string' ? item : item.path;
+                return path && path.startsWith('models_system');
+            });
+            
+            console.log('过滤出的models_system数据:', filesystemData);
+            
+            if (filesystemData.length > 0) {
+                // 获取右侧树容器
+                const rightSidebarTree = document.querySelector('.right-sidebar .tree');
+                if (!rightSidebarTree) return;
+                
+                // 构建树结构
+                const treeMap = {};
+                filesystemData.forEach(item => {
+                    const path = typeof item === 'string' ? item : item.path;
+                    const parts = path.split('.');
+                    
+                    let current = treeMap;
+                    for (let i = 0; i < parts.length; i++) {
+                        const part = parts[i];
+                        if (!current[part]) {
+                            current[part] = {
+                                name: part,
+                                children: {},
+                                fullPath: parts.slice(0, i + 1).join('.'),
+                                isLeaf: i === parts.length - 1,
+                                level: i
+                            };
+                        }
+                        current = current[part].children;
+                    }
+                });
+                
+                // 递归创建DOM树节点
+                function createTreeNodes(nodes, container, level = 0) {
+                    Object.values(nodes).forEach(node => {
+                        const hasChildren = Object.keys(node.children).length > 0;
+                        
+                        // 创建树节点
+                        const treeNode = document.createElement('div');
+                        treeNode.className = hasChildren ? 'tree-node expanded' : 'tree-node';
+                        treeNode.setAttribute('data-full-path', node.fullPath);
+                        treeNode.setAttribute('data-is-leaf', node.isLeaf.toString());
+                        
+                        // 只有父节点（有子节点的）才有图标，子节点（版本号）没有图标
+                        if (hasChildren) {
+                            const icon = document.createElement('i');
+                            icon.className = 'icon cube-icon';
+                            treeNode.appendChild(icon);
+                        }
+                        
+                        // 添加节点名称
+                        const span = document.createElement('span');
+                        span.textContent = node.name;
+                        treeNode.appendChild(span);
+                        
+                        // 如果有子节点，创建子容器并递归
+                        if (hasChildren) {
+                            const childrenContainer = document.createElement('div');
+                            childrenContainer.className = 'tree-children';
+                            createTreeNodes(node.children, childrenContainer, level + 1);
+                            treeNode.appendChild(childrenContainer);
+                        }
+                        
+                        // 添加到容器
+                        container.appendChild(treeNode);
+                    });
+                }
+                
+                // 清空容器并创建新树
+                rightSidebarTree.innerHTML = '';
+                createTreeNodes(treeMap, rightSidebarTree);
+                
+                // 重新绑定右侧树节点事件（保持原有逻辑）
+                const rightTreeNodes = rightSidebarTree.querySelectorAll('.tree-node');
+                rightTreeNodes.forEach(node => {
+                    node.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        
+                        // 确保只处理右侧的节点
+                        if (!this.closest('.right-sidebar')) {
+                            return;
+                        }
+                        
+                        // 先清除所有选中状态（仅限右侧）
+                        rightSidebarTree.querySelectorAll('.tree-node.active').forEach(n => n.classList.remove('active'));
+                        
+                        // 设置当前选中
+                        this.classList.add('active');
+                        
+                        // 展开收起（如果有子节点）
+                        if (this.querySelector('.tree-children')) {
+                            this.classList.toggle('expanded');
+                        }
+                        
+                        // 调用原有的模型详情显示逻辑
+                        const selectedModel = getSelectedModel();
+                        if (selectedModel && selectedModel.version) {
+                            console.log('显示模型详情:', selectedModel);
+                            showComponent('modelDetail', selectedModel);
+                        } else {
+                            console.log('未获取到版本信息或点击的是父节点，不显示详情页面');
+                        }
+                    });
+                });
+                
+            } else {
+                // 如果没有filesystem数据，显示空状态
+                const rightSidebarTree = document.querySelector('.right-sidebar .tree');
+                if (rightSidebarTree) {
+                    rightSidebarTree.innerHTML = '<div class="empty-placeholder">暂无文件系统模型</div>';
+                }
+            }
+            
+        } catch (error) {
+            console.error('同步filesystem数据到模型资产库失败:', error);
+            const rightSidebarTree = document.querySelector('.right-sidebar .tree');
+            if (rightSidebarTree) {
+                rightSidebarTree.innerHTML = '<div class="error-placeholder">同步模型资产失败</div>';
+            }
+        }
+    }
+    
+    // 将loadDataSourceTree函数暴露到全局作用域，供其他组件调用
+    window.loadDataSourceTree = loadDataSourceTree;
 });
+
+// 确保函数在全局作用域可用
+window.loadDataSourceTree = async function() {
+    console.log('🔄 loadDataSourceTree 被调用，开始重新加载数据源树...');
+    try {
+        // 显示全局loading
+        window.showGlobalLoading('正在加载数据源...');
+        
+        // 同时显示右侧loading
+        const rightSidebarTree = document.querySelector('.right-sidebar .tree');
+        if (rightSidebarTree) {
+            rightSidebarTree.innerHTML = '<div class="loading-placeholder">正在同步模型资产...</div>';
+        }
+        
+        console.log('🔄 调用接口:', window.AppConfig.getApiUrl('datasource', 'tree'));
+        const response = await fetch(window.AppConfig.getApiUrl('datasource', 'tree'));
+        const result = await response.json();
+        
+        console.log('🔄 接口响应:', result);
+        
+        if (result.code === 200 && result.data) {
+            renderDataSourceTree(result.data);
+            // 同步filesystem数据到右侧模型资产库
+            syncFilesystemToModelAssets(result.data);
+            console.log('🔄 数据源树重新加载完成');
+        } else {
+            console.error('加载数据源树失败:', result.message);
+            document.getElementById('dataSourceTree').innerHTML = '<div class="error-placeholder">加载数据源失败</div>';
+        }
+    } catch (error) {
+        console.error('加载数据源树异常:', error);
+        document.getElementById('dataSourceTree').innerHTML = '<div class="error-placeholder">网络错误，无法加载数据源</div>';
+    } finally {
+        // 隐藏全局loading
+        window.hideGlobalLoading();
+    }
+};

@@ -157,24 +157,83 @@ class ModelEdit extends HTMLElement {
         this.loadModelData(modelInfo);
     }
 
+    // 新增方法：直接接收model-detail的数据，不重复调用接口
+    showWithModelData(modelInfo, modelDetailData) {
+        this.currentModel = modelInfo;
+        this.currentModelMeta = modelDetailData;
+        this.removeAttribute('hidden');
+        
+        // 直接使用model-detail的数据填充表单，完全使用接口数据
+        const modelNameInput = this.shadowRoot.getElementById('modelName');
+        const developerInput = this.shadowRoot.getElementById('developer');
+        const versionInput = this.shadowRoot.getElementById('version');
+        const sceneInput = this.shadowRoot.getElementById('scene');
+
+        if (modelNameInput) modelNameInput.value = modelDetailData.name || '';
+        if (developerInput) developerInput.value = modelDetailData.author || '';
+        if (versionInput) versionInput.value = modelDetailData.version || '';
+        if (sceneInput) sceneInput.value = modelDetailData.scene || '';
+
+        // 使用接口返回的inputs和outputs数据
+        this.loadInterfaceParamsFromData(modelDetailData.inputs, modelDetailData.outputs);
+    }
+
     hide() {
         this.setAttribute('hidden', '');
     }
 
     loadModelData(modelInfo) {
-        // 加载基本信息
+        // 加载基本信息，完全使用接口数据
         const modelNameInput = this.shadowRoot.getElementById('modelName');
         const developerInput = this.shadowRoot.getElementById('developer');
         const versionInput = this.shadowRoot.getElementById('version');
         const sceneInput = this.shadowRoot.getElementById('scene');
 
         if (modelNameInput) modelNameInput.value = modelInfo.name || '';
-        if (developerInput) developerInput.value = '张三'; // 默认开发者
+        if (developerInput) developerInput.value = modelInfo.author || '';
         if (versionInput) versionInput.value = modelInfo.version || '';
-        if (sceneInput) sceneInput.value = '工业控制'; // 默认场景
+        if (sceneInput) sceneInput.value = modelInfo.scene || '';
 
         // 加载接口参数（使用静态数据）
         this.loadInterfaceParams();
+    }
+
+    loadInterfaceParamsFromData(inputsData, outputsData) {
+        console.log('loadInterfaceParamsFromData - inputsData:', inputsData);
+        console.log('loadInterfaceParamsFromData - outputsData:', outputsData);
+        
+        // 解析inputs数据
+        let inputs = [];
+        if (inputsData) {
+            try {
+                inputs = typeof inputsData === 'string' ? JSON.parse(inputsData) : inputsData;
+                console.log('解析后的inputs:', inputs);
+            } catch (error) {
+                console.error('解析inputs参数数据失败:', error);
+                inputs = [];
+            }
+        }
+        
+        // 解析outputs数据
+        let outputs = [];
+        if (outputsData) {
+            try {
+                outputs = typeof outputsData === 'string' ? JSON.parse(outputsData) : outputsData;
+                console.log('解析后的outputs:', outputs);
+            } catch (error) {
+                console.error('解析outputs参数数据失败:', error);
+                outputs = [];
+            }
+        }
+        
+        // 如果没有数据，使用空数组
+        this.inputs = inputs || [];
+        this.outputs = outputs || [];
+        
+        console.log('设置后的this.inputs:', this.inputs);
+        console.log('设置后的this.outputs:', this.outputs);
+        
+        this.renderParams();
     }
 
     loadInterfaceParams() {
@@ -196,6 +255,9 @@ class ModelEdit extends HTMLElement {
     }
 
     renderParams() {
+        console.log('renderParams - this.inputs:', this.inputs);
+        console.log('renderParams - this.outputs:', this.outputs);
+        
         // 数据类型选项
         const dataTypes = ['Double', 'Int32', 'String', 'Boolean', 'Float', 'Int64'];
         
@@ -212,65 +274,73 @@ class ModelEdit extends HTMLElement {
         // 渲染输入参数
         const inputsBody = this.shadowRoot.getElementById('inputsBody');
         if (inputsBody) {
-            inputsBody.innerHTML = this.inputs.map((input, index) => `
-                <div class="param-row" data-index="${index}">
-                    <div class="col-name">
-                        <input type="text" value="${input.name}" data-field="name" data-type="input" placeholder="参数名">
+            if (!this.inputs || this.inputs.length === 0) {
+                inputsBody.innerHTML = '<div class="empty-params">暂无输入参数</div>';
+            } else {
+                inputsBody.innerHTML = this.inputs.map((input, index) => `
+                    <div class="param-row" data-index="${index}">
+                        <div class="col-name">
+                            <input type="text" value="${input.name || ''}" data-field="name" data-type="input" placeholder="参数名">
+                        </div>
+                        <div class="col-type">
+                            <select data-field="type" data-type="input">
+                                ${dataTypes.map(type => 
+                                    `<option value="${type}" ${input.type === type ? 'selected' : ''}>${type}</option>`
+                                ).join('')}
+                            </select>
+                        </div>
+                        <div class="col-unit">
+                            <select data-field="unit" data-type="input">
+                                ${commonUnits.map(unit => 
+                                    `<option value="${unit}" ${input.unit === unit ? 'selected' : ''}>${unit}</option>`
+                                ).join('')}
+                            </select>
+                        </div>
+                        <div class="col-desc">
+                            <input type="text" value="${input.desc || ''}" data-field="desc" data-type="input" placeholder="说明">
+                        </div>
+                        <div class="col-action">
+                            <button class="delete-btn" data-index="${index}" data-type="input">删除</button>
+                        </div>
                     </div>
-                    <div class="col-type">
-                        <select data-field="type" data-type="input">
-                            ${dataTypes.map(type => 
-                                `<option value="${type}" ${input.type === type ? 'selected' : ''}>${type}</option>`
-                            ).join('')}
-                        </select>
-                    </div>
-                    <div class="col-unit">
-                        <select data-field="unit" data-type="input">
-                            ${commonUnits.map(unit => 
-                                `<option value="${unit}" ${input.unit === unit ? 'selected' : ''}>${unit}</option>`
-                            ).join('')}
-                        </select>
-                    </div>
-                    <div class="col-desc">
-                        <input type="text" value="${input.desc}" data-field="desc" data-type="input" placeholder="说明">
-                    </div>
-                    <div class="col-action">
-                        <button class="delete-btn" data-index="${index}" data-type="input">删除</button>
-                    </div>
-                </div>
-            `).join('');
+                `).join('');
+            }
         }
 
         // 渲染输出参数
         const outputsBody = this.shadowRoot.getElementById('outputsBody');
         if (outputsBody) {
-            outputsBody.innerHTML = this.outputs.map((output, index) => `
-                <div class="param-row" data-index="${index}">
-                    <div class="col-name">
-                        <input type="text" value="${output.name}" data-field="name" data-type="output" placeholder="参数名">
+            if (!this.outputs || this.outputs.length === 0) {
+                outputsBody.innerHTML = '<div class="empty-params">暂无输出参数</div>';
+            } else {
+                outputsBody.innerHTML = this.outputs.map((output, index) => `
+                    <div class="param-row" data-index="${index}">
+                        <div class="col-name">
+                            <input type="text" value="${output.name || ''}" data-field="name" data-type="output" placeholder="参数名">
+                        </div>
+                        <div class="col-type">
+                            <select data-field="type" data-type="output">
+                                ${dataTypes.map(type => 
+                                    `<option value="${type}" ${output.type === type ? 'selected' : ''}>${type}</option>`
+                                ).join('')}
+                            </select>
+                        </div>
+                        <div class="col-unit">
+                            <select data-field="unit" data-type="output">
+                                ${commonUnits.map(unit => 
+                                    `<option value="${unit}" ${output.unit === unit ? 'selected' : ''}>${unit}</option>`
+                                ).join('')}
+                            </select>
+                        </div>
+                        <div class="col-desc">
+                            <input type="text" value="${output.desc || ''}" data-field="desc" data-type="output" placeholder="说明">
+                        </div>
+                        <div class="col-action">
+                            <button class="delete-btn" data-index="${index}" data-type="output">删除</button>
+                        </div>
                     </div>
-                    <div class="col-type">
-                        <select data-field="type" data-type="output">
-                            ${dataTypes.map(type => 
-                                `<option value="${type}" ${output.type === type ? 'selected' : ''}>${type}</option>`
-                            ).join('')}
-                        </select>
-                    </div>
-                    <div class="col-unit">
-                        <select data-field="unit" data-type="output">
-                            ${commonUnits.map(unit => 
-                                `<option value="${unit}" ${output.unit === unit ? 'selected' : ''}>${unit}</option>`
-                            ).join('')}
-                        </select>
-                    </div>
-                    <div class="col-desc">
-                        <input type="text" value="${output.desc}" data-field="desc" data-type="output" placeholder="说明">
-                    </div>
-                    <div class="col-action">
-                        <button class="delete-btn" data-index="${index}" data-type="output">删除</button>
-                    </div>
-                </div>
-            `).join('');
+                `).join('');
+            }
         }
 
         // 绑定删除按钮事件
@@ -928,14 +998,23 @@ Generic processing function`
             outputsData.push({...currentOutput});
         }
 
-        return {
+        // 构建完整的表单数据对象，包含ModelFileService.saveModelMetadata需要的所有字段
+        const formData = {
             name: modelName,
-            developer: developer,
             version: version,
+            fileName: this.currentModelMeta?.fileName || '',
+            fileSize: this.currentModelMeta?.fileSize || 0,
+            chunkCount: this.currentModelMeta?.chunkCount || 0,
+            storagePath: this.currentModelMeta?.storagePath || '',
+            fileMd5: this.currentModelMeta?.fileMd5 || '',
+            author: developer,
             scene: scene,
-            inputs: inputsData,
-            outputs: outputsData
+            inputs: JSON.stringify(inputsData),
+            outputs: JSON.stringify(outputsData),
+            timestamp: this.currentModelMeta?.timestamp || Date.now()
         };
+
+        return formData;
     }
 
     async save() {
@@ -955,8 +1034,8 @@ Generic processing function`
 
             console.log('保存模型数据:', formData);
 
-            // 调用保存API
-            const response = await fetch('/api/models/update', {
+            // 调用保存元数据API
+            const response = await fetch('/api/model/metas', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -969,8 +1048,28 @@ Generic processing function`
                 console.log('保存响应:', result);
                 
                 if (result.code === 200) {
-                    this.showSuccessMessage('模型保存成功');
+                    this.showSuccessMessage('元数据保存成功');
                     this.hide();
+                    
+                    // 重新加载右侧模型资产库
+                    console.log('🔄 模型编辑成功，准备调用 loadDataSourceTree');
+                    if (window.loadDataSourceTree) {
+                        console.log('🔄 调用 window.loadDataSourceTree');
+                        window.loadDataSourceTree();
+                    } else {
+                        console.error('❌ window.loadDataSourceTree 不存在');
+                    }
+                    
+                    // 通知模型详情页面刷新数据
+                    this.dispatchEvent(new CustomEvent('model-updated', {
+                        detail: { 
+                            modelName: formData.name,
+                            version: formData.version,
+                            formData: formData
+                        },
+                        bubbles: true,
+                        composed: true
+                    }));
                     
                     // 刷新右侧树（如果需要）
                     this.refreshModelTree();
@@ -981,7 +1080,7 @@ Generic processing function`
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
         } catch (error) {
-            console.error('保存模型失败:', error);
+            console.error('保存元数据失败:', error);
             this.showErrorMessage('保存失败，请稍后重试');
         }
     }

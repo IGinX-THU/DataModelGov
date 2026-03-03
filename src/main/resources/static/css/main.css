@@ -300,6 +300,8 @@
     flex: 1;
     display: flex;
     flex-direction: column;
+    width: calc(100vw - 478px); /* 固定workspace宽度: top-nav(1494) - left-sidebar(250) - right-sidebar(228) = 1016 */
+    overflow-x: auto; /* 内容超出时显示横向滚动条 */
 }
 
 .workspace-title {
@@ -501,5 +503,108 @@
 }
 .dark-mode .user-bar .icon {
     filter: invert(1) !important;
+}
+
+/* 数据源树占位符样式 */
+.loading-placeholder,
+.error-placeholder,
+.empty-placeholder {
+    padding: 20px;
+    text-align: center;
+    color: #666;
+    font-size: 14px;
+    border-radius: 4px;
+    margin: 10px 0;
+}
+
+.loading-placeholder {
+    background-color: #f5f5f5;
+    border: 1px solid #e0e0e0;
+    color: #666;
+}
+
+.error-placeholder {
+    background-color: #ffebee;
+    border: 1px solid #f44336;
+    color: #d32f2f;
+}
+
+.empty-placeholder {
+    background-color: #f3e5f5;
+    border: 1px solid #9c27b0;
+    color: #7b1fa2;
+}
+
+.dark-mode .loading-placeholder {
+    background-color: #2a2a2a;
+    border: 1px solid #444;
+    color: #ccc;
+}
+
+.dark-mode .error-placeholder {
+    background-color: #3d1a1a;
+    border: 1px solid #d32f2f;
+    color: #ff6b6b;
+}
+
+.dark-mode .empty-placeholder {
+    background-color: #2a1a2a;
+    border: 1px solid #9c27b0;
+    color: #ba68c8;
+}
+
+/* 全局Loading效果 */
+.global-loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+}
+
+.dark-mode .global-loading-overlay {
+    background: rgba(0, 0, 0, 0.8);
+}
+
+.global-loading-spinner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.global-spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #3370ff;
+    border-radius: 50%;
+    animation: globalSpin 1s linear infinite;
+    margin-bottom: 16px;
+}
+
+.dark-mode .global-spinner {
+    border: 4px solid #444;
+    border-top: 4px solid #3370ff;
+}
+
+@keyframes globalSpin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.global-loading-text {
+    font-size: 16px;
+    color: #666;
+    font-weight: 500;
+}
+
+.dark-mode .global-loading-text {
+    color: #ccc;
 }
 
