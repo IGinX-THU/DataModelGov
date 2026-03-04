@@ -38,6 +38,11 @@ public class Result<T> {
         return new Result<>(400, message, null);
     }
 
+    // 参数错误响应
+    public static Result<Void> authError(String message) {
+        return new Result<>(401, message, null);
+    }
+
     public boolean getSuccess() {
         return this.code == 200;
     }
