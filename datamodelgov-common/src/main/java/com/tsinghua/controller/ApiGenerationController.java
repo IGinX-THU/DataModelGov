@@ -1,6 +1,6 @@
 package com.tsinghua.controller;
 
-import com.tsinghua.dto.Result;
+import com.tsinghua.model.Result;
 import com.tsinghua.service.ApiGenerationService;
 import com.tsinghua.util.ThriftCodeGenerator;
 import io.swagger.annotations.Api;

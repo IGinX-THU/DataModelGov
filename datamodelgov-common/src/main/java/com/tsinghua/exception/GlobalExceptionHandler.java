@@ -1,6 +1,6 @@
 package com.tsinghua.exception;
 
-import com.tsinghua.dto.Result;
+import com.tsinghua.model.Result;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.validation.BindException;
 import org.springframework.validation.FieldError;

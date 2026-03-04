@@ -1,7 +1,7 @@
 package com.tsinghua.controller;
 
 import com.tsinghua.entity.ModelMetaEntity;
-import com.tsinghua.dto.Result;
+import com.tsinghua.model.Result;
 import com.tsinghua.dto.UploadResult;
 import com.tsinghua.service.ModelFileService;
 import io.swagger.annotations.Api;

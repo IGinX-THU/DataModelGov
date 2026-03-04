@@ -1,4 +1,4 @@
-package com.tsinghua.dto;
+package com.tsinghua.model;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;

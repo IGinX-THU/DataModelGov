@@ -10,15 +10,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 
@@ -42,8 +39,8 @@ public class DataTableController {
      */
     @ApiOperation("数据查询")
     @PostMapping("/query")
-    public Result<TableDto> queryData(@Validated @RequestBody DataQueryRequest request) {
-        return Result.success(dataTableService.queryData(request));
+    public com.tsinghua.model.Result<TableDto> queryData(@Validated @RequestBody DataQueryRequest request) {
+        return com.tsinghua.model.Result.success(dataTableService.queryData(request));
     }
 
     /**
@@ -51,9 +48,9 @@ public class DataTableController {
      */
     @ApiOperation("导入数据")
     @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public Result<Void> importData(// 使用 @RequestPart 接收JSON格式的配置参数
-                                   @RequestPart("config") @Valid DataImportRequest config,
-                                   @ApiParam(value = "数据文件", required = true) @RequestPart("file") MultipartFile file) {
+    public com.tsinghua.model.Result<Void> importData(// 使用 @RequestPart 接收JSON格式的配置参数
+                                                      @RequestPart("config") @Valid DataImportRequest config,
+                                                      @ApiParam(value = "数据文件", required = true) @RequestPart("file") MultipartFile file) {
         return dataTableService.importData(file, config);
     }
 
@@ -71,9 +68,9 @@ public class DataTableController {
      */
     @ApiOperation("数据删除")
     @PostMapping("/delete")
-    public Result<Void> deleteData(@Validated @RequestBody DataQueryRequest request) {
+    public com.tsinghua.model.Result<Void> deleteData(@Validated @RequestBody DataQueryRequest request) {
         dataTableService.deleteData(request);
-        return Result.success("删除成功");
+        return com.tsinghua.model.Result.success("删除成功");
     }
 
     /**
@@ -81,8 +78,8 @@ public class DataTableController {
      */
     @ApiOperation("关系数据查询")
     @PostMapping("/relational/query")
-    public Result<TableDto> queryData(@Validated @RequestBody RelationalQueryRequest request) {
-        return Result.success(relationalDataService.queryData(request));
+    public com.tsinghua.model.Result<TableDto> queryData(@Validated @RequestBody RelationalQueryRequest request) {
+        return com.tsinghua.model.Result.success(relationalDataService.queryData(request));
     }
 
     /**
@@ -90,8 +87,8 @@ public class DataTableController {
      */
     @ApiOperation("关系数据总量查询")
     @PostMapping("/relational/count")
-    public Result<Object> countData(@Validated @RequestBody RelationalQueryRequest request) {
-        return Result.success(relationalDataService.countData(request));
+    public com.tsinghua.model.Result<Object> countData(@Validated @RequestBody RelationalQueryRequest request) {
+        return com.tsinghua.model.Result.success(relationalDataService.countData(request));
     }
 
     /**

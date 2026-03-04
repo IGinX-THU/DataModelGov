@@ -84,7 +84,7 @@ public class DataTableService {
         return new TableDto(columns, resultSet);
     }
 
-    public Result<Void> importData(MultipartFile file, DataImportRequest importConfig) {
+    public com.tsinghua.model.Result<Void> importData(MultipartFile file, DataImportRequest importConfig) {
         Path tempFilePath = null;
 
         try {
@@ -127,11 +127,11 @@ public class DataTableService {
             // 5. 所有块上传完成后，执行导入
             Pair<List<String>, Long> result = iginxSession.executeLoadCSV(sql, uploadedFileName);
             long recordsNum = result.v;
-            return Result.success(String.format("数据导入成功，导入记录数: %d", recordsNum));
+            return com.tsinghua.model.Result.success(String.format("数据导入成功，导入记录数: %d", recordsNum));
 
         } catch (Exception e) {
             log.error("数据导入失败", e);
-            return Result.error("数据导入失败");
+            return com.tsinghua.model.Result.error("数据导入失败");
         } finally {
             try {
                 // 清理临时文件

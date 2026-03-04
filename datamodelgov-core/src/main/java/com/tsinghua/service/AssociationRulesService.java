@@ -10,7 +10,6 @@ import cn.edu.tsinghua.iginx.session_v2.write.Point;
 import com.tsinghua.dto.AssociationRulesQueryRequest;
 import com.tsinghua.entity.AssociationRulesEntity;
 import com.tsinghua.dto.RelationalQueryRequest;
-import com.tsinghua.dto.TableDto;
 import com.tsinghua.util.ConvertUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;

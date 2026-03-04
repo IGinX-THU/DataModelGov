@@ -1,15 +1,12 @@
 package com.tsinghua.controller;
 
 import com.tsinghua.dto.AssociationRulesQueryRequest;
-import com.tsinghua.dto.RelationalQueryRequest;
 import com.tsinghua.entity.AssociationRulesEntity;
-import com.tsinghua.dto.Result;
-import com.tsinghua.dto.TableDto;
+import com.tsinghua.model.Result;
 import com.tsinghua.service.AssociationRulesService;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;

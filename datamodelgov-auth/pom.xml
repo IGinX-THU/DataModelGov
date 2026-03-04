@@ -16,29 +16,17 @@
     <description>DataModelGov 认证授权模块</description>
 
     <dependencies>
-        <!-- Spring Boot Starter Web -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-web</artifactId>
-        </dependency>
-
-        <!-- Spring Boot Starter Security -->
+        <!-- Spring Boot Starter Security (认证授权) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-security</artifactId>
         </dependency>
 
-        <!-- Lombok -->
+        <!-- DataModelGov Common Module (公共模块，包含Web、Validation、Jackson等) -->
         <dependency>
-            <groupId>org.projectlombok</groupId>
-            <artifactId>lombok</artifactId>
-        </dependency>
-
-        <!-- Spring Boot Test -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-test</artifactId>
-            <scope>test</scope>
+            <groupId>com.tsinghua</groupId>
+            <artifactId>datamodelgov-common</artifactId>
+            <version>${project.version}</version>
         </dependency>
     </dependencies>
 

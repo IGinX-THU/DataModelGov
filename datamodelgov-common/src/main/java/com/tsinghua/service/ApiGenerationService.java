@@ -1,6 +1,6 @@
 package com.tsinghua.service;
 
-import com.tsinghua.dto.Result;
+import com.tsinghua.model.Result;
 import com.tsinghua.util.ThriftCodeGenerator;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
