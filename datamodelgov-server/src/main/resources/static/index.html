@@ -328,7 +328,7 @@
 <script src="./components/model-download/model-download.js"></script>
 <script src="./components/model-detail/model-detail.js"></script>
 <script src="./components/model-edit/model-edit.js"></script>
-<script src="./components/data-visualization/data-visualization.min.js"></script>
+<script src="./components/data-visualization/data-visualization.js"></script>
 <script src="./components/common-pagination/common-pagination.js"></script>
 <script src="./components/import-data/import-data.js"></script>
 <script src="./components/database-table/database-table.js"></script>
@@ -336,6 +336,37 @@
 <script src="./components/association-rules/association-rules.js"></script>
 <script src="./components/visual-analysis/visual-analysis.js"></script>
 <script src="./js/main.js"></script>
+
+<script>
+    // 检查登录状态
+    function checkLoginStatus() {
+        if (window.AppConfig.isLoggedIn()) {
+            const username = window.AppConfig.getUsername();
+            document.getElementById('username').textContent = username || '已登录';
+            document.getElementById('loginBtn').style.display = 'none';
+            document.getElementById('logoutBtn').style.display = 'inline-block';
+        } else {
+            // 未登录，跳转到登录页
+            window.location.href = '/login.html';
+        }
+    }
+
+    // 登出功能
+    function logout() {
+        window.AppConfig.logout();
+    }
+
+    // 页面加载时检查登录状态
+    window.addEventListener('DOMContentLoaded', function() {
+        checkLoginStatus();
+    });
+
+    // 绑定登出按钮
+    document.getElementById('logoutBtn').addEventListener('click', function(e) {
+        e.preventDefault();
+        logout();
+    });
+</script>
 </body>
 </html>
 

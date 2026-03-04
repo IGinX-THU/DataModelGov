@@ -24,18 +24,10 @@ class AssociationRules extends HTMLElement {
             console.log('查询参数:', requestBody);
             
             // 调用查询接口
-            const response = await fetch(window.AppConfig.api.baseURL + window.AppConfig.endpoints.data['association/rules/query'], {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(requestBody)
-            });
-            
-            const result = await response.json();
+            const result = await window.AppConfig.post('data', 'association/rules/query', requestBody);
             console.log('查询结果:', result);
             
-            if (result.code === 200 && result.data) {
+            if (result.success && result.data) {
                 // 后端直接返回List<AssociationRulesEntity>，转换为前端所需格式
                 this.data = result.data.map(rule => ({
                     id: rule.createTime, // 使用createTime作为唯一标识
@@ -81,18 +73,11 @@ class AssociationRules extends HTMLElement {
             
             console.log('查询总量参数:', requestBody);
             
-            const response = await fetch(window.AppConfig.api.baseURL + window.AppConfig.endpoints.data['association/rules/count'], {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(requestBody)
-            });
-            
-            const result = await response.json();
+            // 使用新的API配置
+            const result = await window.AppConfig.post('data', 'association/rules/count', requestBody);
             console.log('总量查询结果:', result);
             
-            if (result.code === 200 && result.data !== undefined) {
+            if (result.success && result.data !== undefined) {
                 this.totalCount = result.data;
                 this.updatePagination();
             } else {
@@ -108,13 +93,10 @@ class AssociationRules extends HTMLElement {
     
     async deleteRuleFromAPI(createTime) {
         try {
-            const response = await fetch(window.AppConfig.api.baseURL + window.AppConfig.endpoints.data['association/rules/delete'] + `?createTime=${createTime}`, {
-                method: 'DELETE'
-            });
+            // 使用新的API配置
+            const result = await window.AppConfig.delete('data', 'association/rules/delete', { createTime });
             
-            const result = await response.json();
-            
-            if (result.code === 200) {
+            if (result.success) {
                 await this.loadRulesFromAPI();
                 this.renderTable();
                 this.hideModal(); // 直接关闭弹窗，不恢复新增弹窗
@@ -340,8 +322,8 @@ class AssociationRules extends HTMLElement {
         this.shadowRoot.getElementById('saveBtn')?.addEventListener('click', () => this.saveRule());
         
         // 添加映射按钮
-        this.shadowRoot.getElementById('addMapping')?.addEventListener('click', () => this.addMapping());
-        this.shadowRoot.getElementById('addResultMapping')?.addEventListener('click', () => this.addResultMapping());
+        this.shadowRoot.getElementById('addMapping')?.addEventListener('click', async () => this.addMapping());
+        this.shadowRoot.getElementById('addResultMapping')?.addEventListener('click', async () => this.addResultMapping());
         
         // 数据源和目标模型变化事件
         this.shadowRoot.getElementById('dataSource')?.addEventListener('change', () => this.updateMappingFieldOptions());
@@ -534,7 +516,7 @@ class AssociationRules extends HTMLElement {
         }
     }
 
-        showEditModal(rule) {
+    async showEditModal(rule) {
         const modal = this.shadowRoot.getElementById('modalMask');
         const title = this.shadowRoot.getElementById('modalTitle');
         const form = this.shadowRoot.getElementById('ruleForm');
@@ -695,41 +677,29 @@ class AssociationRules extends HTMLElement {
             console.log('保存关联规则数据:', formData);
 
             // 调用保存API - 参考model-edit.js的保存逻辑
-            const response = await fetch(window.AppConfig.api.baseURL + window.AppConfig.endpoints.data['association/rules/save'], {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(formData)
-            });
-
-            if (response.ok) {
-                const result = await response.json();
-                console.log('保存响应:', result);
+            const result = await window.AppConfig.post('data', 'association/rules/save', formData);
+            console.log('保存响应:', result);
+            
+            if (result.success) {
+                this.showToast(`规则已${this.currentAction === 'edit' ? '更新' : '添加'}成功`);
+                this.hideModal();
                 
-                if (result.code === 200) {
-                    this.showToast(`规则已${this.currentAction === 'edit' ? '更新' : '添加'}成功`);
-                    this.hideModal();
-                    
-                    // 重新加载规则列表 - 参考model-edit.js的刷新逻辑
-                    await this.loadRulesFromAPI();
-                    this.renderTable();
-                    
-                    // 通知其他组件刷新 - 参考model-edit.js的事件通知
-                    this.dispatchEvent(new CustomEvent('rule-updated', {
-                        detail: { 
-                            ruleName: formData.name,
-                            createTime: formData.createTime,
-                            formData: formData
-                        },
-                        bubbles: true,
-                        composed: true
-                    }));
-                } else {
-                    this.showToast(result.message || '保存失败', 'error');
-                }
+                // 重新加载规则列表 - 参考model-edit.js的刷新逻辑
+                await this.loadRulesFromAPI();
+                this.renderTable();
+                
+                // 通知其他组件刷新 - 参考model-edit.js的事件通知
+                this.dispatchEvent(new CustomEvent('rule-updated', {
+                    detail: { 
+                        ruleName: formData.name,
+                        createTime: formData.createTime,
+                        formData: formData
+                    },
+                    bubbles: true,
+                    composed: true
+                }));
             } else {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                this.showToast(result.message || '保存失败', 'error');
             }
         } catch (error) {
             console.error('保存规则失败:', error);
@@ -891,7 +861,7 @@ class AssociationRules extends HTMLElement {
     /**
      * Initialize mappings list with one empty row
      */
-    initializeMappings() {
+    async initializeMappings() {
         const mappingsList = this.shadowRoot.getElementById('mappingsList');
         if (mappingsList) {
             mappingsList.innerHTML = '';
@@ -902,7 +872,7 @@ class AssociationRules extends HTMLElement {
     /**
      * Initialize result mappings list with one empty row
      */
-    initializeResultMappings() {
+    async initializeResultMappings() {
         const resultMappingsList = this.shadowRoot.getElementById('resultMappingsList');
         if (resultMappingsList) {
             resultMappingsList.innerHTML = '';
@@ -913,7 +883,7 @@ class AssociationRules extends HTMLElement {
     /**
      * Add a mapping row to the mappings list
      */
-    addMapping(mappingData = null) {
+    async addMapping(mappingData = null) {
         const mappingsList = this.shadowRoot.getElementById('mappingsList');
         if (!mappingsList) return;
 
@@ -1065,7 +1035,7 @@ class AssociationRules extends HTMLElement {
     /**
      * Add a result mapping row to the result mappings list
      */
-    addResultMapping(mappingData = null) {
+    async addResultMapping(mappingData = null) {
         const resultMappingsList = this.shadowRoot.getElementById('resultMappingsList');
         if (!resultMappingsList) return;
 
@@ -1532,26 +1502,16 @@ class AssociationRules extends HTMLElement {
         try {
             console.log('保存复制规则:', ruleData);
             
-            const response = await fetch(window.AppConfig.api.baseURL + '/api/association/rules/save', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(ruleData)
-            });
+            // 使用新的API配置
+            const result = await window.AppConfig.post('data', 'association/rules/save', ruleData);
             
-            if (response.ok) {
-                const result = await response.json();
-                if (result.code === 200) {
-                    this.showToast('规则复制成功');
-                    // 重新加载规则列表
-                    await this.loadRulesFromAPI();
-                    this.renderTable();
-                } else {
-                    this.showToast('规则复制失败: ' + (result.message || '未知错误'), 'error');
-                }
+            if (result.success) {
+                this.showToast('规则复制成功');
+                // 重新加载规则列表
+                await this.loadRulesFromAPI();
+                this.renderTable();
             } else {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                this.showToast('规则复制失败: ' + (result.message || '未知错误'), 'error');
             }
         } catch (error) {
             console.error('保存复制规则失败:', error);
@@ -1559,7 +1519,7 @@ class AssociationRules extends HTMLElement {
         }
     }
     
-    showCopyModal(rule) {
+    async showCopyModal(rule) {
         const modal = this.shadowRoot.getElementById('modalMask');
         const title = this.shadowRoot.getElementById('modalTitle');
         const form = this.shadowRoot.getElementById('ruleForm');
@@ -1783,8 +1743,8 @@ class AssociationRules extends HTMLElement {
     
     bindFormEvents() {
         // Re-bind form-specific events
-        this.shadowRoot.getElementById('addMapping')?.addEventListener('click', () => this.addMapping());
-        this.shadowRoot.getElementById('addResultMapping')?.addEventListener('click', () => this.addResultMapping());
+        this.shadowRoot.getElementById('addMapping')?.addEventListener('click', async () => this.addMapping());
+        this.shadowRoot.getElementById('addResultMapping')?.addEventListener('click', async () => this.addResultMapping());
         
         // Data source and target model change events
         this.shadowRoot.getElementById('dataSource')?.addEventListener('change', () => this.updateMappingFieldOptions());
@@ -1953,47 +1913,37 @@ class AssociationRules extends HTMLElement {
         try {
             console.log('保存规则状态:', formData);
             
-            const response = await fetch(window.AppConfig.api.baseURL + '/api/association/rules/save', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(formData)
-            });
+            // 使用新的API配置
+            const result = await window.AppConfig.post('data', 'association/rules/save', formData);
             
-            if (response.ok) {
-                const result = await response.json();
-                if (result.code === 200) {
-                    // 更新本地数据
-                    const rule = this.data.find(item => item.createTime === formData.createTime);
-                    if (rule) {
-                        rule.status = formData.status ? 'active' : 'inactive'; // 转换为字符串格式
-                        rule.updateTime = new Date().toLocaleString('zh-CN');
-                        console.log('更新本地规则状态:', rule.status);
-                    }
-                    
-                    // 重新渲染表格（这会刷新按钮和状态）
-                    this.renderTable();
-                    
-                    // 显示成功消息
-                    const statusText = formData.status ? '启用' : '禁用';
-                    this.showToast(`规则 "${formData.name}" 已${statusText}`);
-                    
-                    // 通知其他组件刷新
-                    this.dispatchEvent(new CustomEvent('rule-updated', {
-                        detail: { 
-                            ruleName: formData.name,
-                            createTime: formData.createTime,
-                            formData: formData
-                        },
-                        bubbles: true,
-                        composed: true
-                    }));
-                } else {
-                    this.showToast(result.message || '状态更新失败', 'error');
+            if (result.success) {
+                // 更新本地数据
+                const rule = this.data.find(item => item.createTime === formData.createTime);
+                if (rule) {
+                    rule.status = formData.status ? 'active' : 'inactive'; // 转换为字符串格式
+                    rule.updateTime = new Date().toLocaleString('zh-CN');
+                    console.log('更新本地规则状态:', rule.status);
                 }
+                
+                // 重新渲染表格（这会刷新按钮和状态）
+                this.renderTable();
+                
+                // 显示成功消息
+                const statusText = formData.status ? '启用' : '禁用';
+                this.showToast(`规则 "${formData.name}" 已${statusText}`);
+                
+                // 通知其他组件刷新
+                this.dispatchEvent(new CustomEvent('rule-updated', {
+                    detail: { 
+                        ruleName: formData.name,
+                        createTime: formData.createTime,
+                        formData: formData
+                    },
+                    bubbles: true,
+                    composed: true
+                }));
             } else {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                this.showToast(result.message || '状态更新失败', 'error');
             }
         } catch (error) {
             console.error('保存规则状态失败:', error);
@@ -2461,7 +2411,7 @@ class AssociationRules extends HTMLElement {
     }
     
     // 动态加载模型字段 - 参考model-detail.js的inputs/outputs解析
-    loadModelFields(modelName) {
+    async loadModelFields(modelName) {
         if (!modelName) return;
         
         console.log('加载模型字段:', modelName);
@@ -2478,45 +2428,44 @@ class AssociationRules extends HTMLElement {
         // 参考 model-detail.js 的 renderParamsTable 方法
         
         // 示例：调用模型详情接口
-        fetch(window.AppConfig.api.baseURL + '/api/model/metas?name=' + encodeURIComponent(modelName) + '&version=' + encodeURIComponent(selectedVersion))
-            .then(response => response.json())
-            .then(result => {
-                if (result.code === 200 && result.data) {
-                    const modelData = result.data;
-                    
-                    // 解析inputs字段
-                    let inputs = [];
-                    if (modelData.inputs) {
-                        try {
-                            inputs = typeof modelData.inputs === 'string' ? JSON.parse(modelData.inputs) : modelData.inputs;
-                        } catch (error) {
-                            console.error('解析inputs参数数据失败:', error);
-                        }
+        try {
+            const result = await window.AppConfig.get('model', 'metas', { name: modelName, version: selectedVersion });
+            
+            if (result.success && result.data) {
+                const modelData = result.data;
+                
+                // 解析inputs字段
+                let inputs = [];
+                if (modelData.inputs) {
+                    try {
+                        inputs = typeof modelData.inputs === 'string' ? JSON.parse(modelData.inputs) : modelData.inputs;
+                    } catch (error) {
+                        console.error('解析inputs参数数据失败:', error);
                     }
-                    
-                    // 解析outputs字段
-                    let outputs = [];
-                    if (modelData.outputs) {
-                        try {
-                            outputs = typeof modelData.outputs === 'string' ? JSON.parse(modelData.outputs) : modelData.outputs;
-                        } catch (error) {
-                            console.error('解析outputs参数数据失败:', error);
-                        }
-                    }
-                    
-                    console.log('模型字段:', { inputs, outputs });
-                    
-                    // 缓存模型数据供后续使用
-                    this.cachedModelData = modelData;
-                    console.log('loadModelFields缓存模型数据:', modelData);
-                    
-                    // 更新映射字段的下拉选项
-                    this.updateMappingFieldOptions(inputs, outputs);
                 }
-            })
-            .catch(error => {
-                console.error('获取模型详情失败:', error);
-            });
+                
+                // 解析outputs字段
+                let outputs = [];
+                if (modelData.outputs) {
+                    try {
+                        outputs = typeof modelData.outputs === 'string' ? JSON.parse(modelData.outputs) : modelData.outputs;
+                    } catch (error) {
+                        console.error('解析outputs参数数据失败:', error);
+                    }
+                }
+                
+                console.log('模型字段:', { inputs, outputs });
+                
+                // 缓存模型数据供后续使用
+                this.cachedModelData = modelData;
+                console.log('loadModelFields缓存模型数据:', modelData);
+                
+                // 更新映射字段的下拉选项
+                this.updateMappingFieldOptions(inputs, outputs);
+            }
+        } catch (error) {
+            console.error('获取模型详情失败:', error);
+        }
     }
     
     // 更新映射字段的下拉选项
@@ -2556,7 +2505,7 @@ class AssociationRules extends HTMLElement {
     }
     
     // 为新添加的映射行更新字段选项
-    updateMappingFieldOptionsForNewRow(sourceField, targetField) {
+    async updateMappingFieldOptionsForNewRow(sourceField, targetField) {
         // 更新数据源字段选项
         const dataSource = this.shadowRoot.getElementById('dataSource')?.value;
         if (dataSource) {
@@ -2624,39 +2573,38 @@ class AssociationRules extends HTMLElement {
                 } else {
                     console.log('缓存数据不存在，调用API获取模型参数');
                     // 调用API获取模型参数
-                    fetch(window.AppConfig.api.baseURL + '/api/model/metas?name=' + encodeURIComponent(targetModel) + '&version=' + encodeURIComponent(version))
-                        .then(response => response.json())
-                        .then(result => {
-                            if (result.code === 200 && result.data) {
-                                const modelData = result.data;
-                                // 缓存模型数据供后续使用
-                                this.cachedModelData = modelData;
-                                console.log('获取并缓存模型数据:', modelData);
-                                
-                                let inputs = [];
-                                if (modelData.inputs) {
-                                    inputs = typeof modelData.inputs === 'string' ? JSON.parse(modelData.inputs) : modelData.inputs;
-                                }
-                                
-                                // 添加模型参数选项
-                                inputs.forEach(input => {
-                                    const option = document.createElement('option');
-                                    option.value = input.name || input;
-                                    option.textContent = `${input.name || input} (${input.type || 'string'})`;
-                                    targetSelect.appendChild(option);
-                                });
+                    try {
+                        const result = await window.AppConfig.get('model', 'metas', { name: targetModel, version: version });
+                        
+                        if (result.success && result.data) {
+                            const modelData = result.data;
+                            // 缓存模型数据供后续使用
+                            this.cachedModelData = modelData;
+                            console.log('获取并缓存模型数据:', modelData);
+                            
+                            let inputs = [];
+                            if (modelData.inputs) {
+                                inputs = typeof modelData.inputs === 'string' ? JSON.parse(modelData.inputs) : modelData.inputs;
                             }
-                        })
-                        .catch(error => {
-                            console.error('获取模型参数失败:', error);
-                        });
+                            
+                            // 添加模型参数选项
+                            inputs.forEach(input => {
+                                const option = document.createElement('option');
+                                option.value = input.name || input;
+                                option.textContent = `${input.name || input} (${input.type || 'string'})`;
+                                targetSelect.appendChild(option);
+                            });
+                        }
+                    } catch (error) {
+                        console.error('获取模型参数失败:', error);
+                    }
                 }
             }
         }
     }
 
     // 为新添加的回写映射行更新字段选项
-    updateResultMappingFieldOptionsForNewRow(modelField) {
+    async updateResultMappingFieldOptionsForNewRow(modelField) {
         // 更新模型输出选项
         const targetModel = this.shadowRoot.getElementById('targetModel')?.value;
         const version = this.shadowRoot.getElementById('version')?.value;
@@ -2683,34 +2631,33 @@ class AssociationRules extends HTMLElement {
                 } else {
                     console.log('缓存数据不存在，调用API获取模型输出');
                     // 调用API获取模型输出
-                    fetch(window.AppConfig.api.baseURL + '/api/model/metas?name=' + encodeURIComponent(targetModel) + '&version=' + encodeURIComponent(version))
-                        .then(response => response.json())
-                        .then(result => {
-                            if (result.code === 200 && result.data) {
-                                const modelData = result.data;
-                                // 缓存模型数据供后续使用
-                                if (!this.cachedModelData) {
-                                    this.cachedModelData = modelData;
-                                }
-                                console.log('获取并缓存模型数据:', modelData);
-                                
-                                let outputs = [];
-                                if (modelData.outputs) {
-                                    outputs = typeof modelData.outputs === 'string' ? JSON.parse(modelData.outputs) : modelData.outputs;
-                                }
-                                
-                                // 添加模型输出选项
-                                outputs.forEach(output => {
-                                    const option = document.createElement('option');
-                                    option.value = output.name || output;
-                                    option.textContent = `${output.name || output} (${output.type || 'string'})`;
-                                    modelSelect.appendChild(option);
-                                });
+                    try {
+                        const result = await window.AppConfig.get('model', 'metas', { name: targetModel, version: version });
+                        
+                        if (result.success && result.data) {
+                            const modelData = result.data;
+                            // 缓存模型数据供后续使用
+                            if (!this.cachedModelData) {
+                                this.cachedModelData = modelData;
                             }
-                        })
-                        .catch(error => {
-                            console.error('获取模型输出失败:', error);
-                        });
+                            console.log('获取并缓存模型数据:', modelData);
+                            
+                            let outputs = [];
+                            if (modelData.outputs) {
+                                outputs = typeof modelData.outputs === 'string' ? JSON.parse(modelData.outputs) : modelData.outputs;
+                            }
+                            
+                            // 添加模型输出选项
+                            outputs.forEach(output => {
+                                const option = document.createElement('option');
+                                option.value = output.name || output;
+                                option.textContent = `${output.name || output} (${output.type || 'string'})`;
+                                modelSelect.appendChild(option);
+                            });
+                        }
+                    } catch (error) {
+                        console.error('获取模型输出失败:', error);
+                    }
                 }
             }
         }

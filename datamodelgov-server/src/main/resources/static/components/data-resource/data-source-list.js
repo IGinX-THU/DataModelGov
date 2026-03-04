@@ -45,11 +45,10 @@ class DataSourceList extends HTMLElement {
 
     async loadDataSources() {
         try {
-            // 使用与左侧数据源树相同的接口
-            const response = await fetch(window.AppConfig.getApiUrl('datasource', 'list'));
-            const result = await response.json();
+            // 使用新的API配置
+            const result = await window.AppConfig.get('datasource', 'list');
             
-            if (result.code === 200 && result.data) {
+            if (result.success && result.data) {
                 this.dataSources = result.data;
             } else {
                 console.error('获取数据源列表失败:', result.message);
@@ -273,38 +272,25 @@ class DataSourceList extends HTMLElement {
         try {
             console.log('删除数据源:', dataSource);
             
-            // 调用删除API
-            const response = await fetch('/api/datasource/remove', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(dataSource)
-            });
+            // 使用新的API配置
+            const result = await window.AppConfig.delete('datasource', 'remove', { id: dataSource.id });
             
-            if (response.ok) {
-                const result = await response.json();
-                console.log('删除响应:', result);
+            if (result.success) {
+                this.showMessage('数据源删除成功', 'success');
                 
-                if (result.code === 200) {
-                    this.showMessage('数据源删除成功', 'success');
-                    
-                    // 重新加载左侧数据资源库
-                    console.log('🔄 数据源删除成功，准备调用 loadDataSourceTree');
-                    if (window.loadDataSourceTree) {
-                        console.log('🔄 调用 window.loadDataSourceTree');
-                        window.loadDataSourceTree();
-                    } else {
-                        console.error('❌ window.loadDataSourceTree 不存在');
-                    }
-                    
-                    // 重新加载数据
-                    this.loadDataSources();
+                // 重新加载左侧数据资源库
+                console.log('🔄 数据源删除成功，准备调用 loadDataSourceTree');
+                if (window.loadDataSourceTree) {
+                    console.log('🔄 调用 window.loadDataSourceTree');
+                    window.loadDataSourceTree();
                 } else {
-                    this.showMessage(result.message || '删除失败', 'error');
+                    console.error('❌ window.loadDataSourceTree 不存在');
                 }
+                
+                // 重新加载数据
+                this.loadDataSources();
             } else {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                this.showMessage(result.message || '删除失败', 'error');
             }
         } catch (error) {
             console.error('删除数据源失败:', error);

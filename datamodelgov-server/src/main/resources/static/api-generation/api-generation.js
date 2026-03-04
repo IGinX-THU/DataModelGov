@@ -41,20 +41,13 @@ function generateCode(type, buttonElement) {
     addLog('开始生成' + getTypeDisplayName(type) + '代码');
     addLog('使用Thrift版本: 0.22.0');
     
-    // 发送API请求
-    var apiUrl = '/api/generation/' + type;
-    
-    fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        }
-    })
+    // 使用新的API配置
+    window.AppConfig.post('generation', type, {})
     .then(function(response) {
-        if (!response.ok) {
-            throw new Error('HTTP ' + response.status);
+        if (!response.success) {
+            throw new Error(response.message || '生成失败');
         }
-        return response.json();
+        return response;
     })
     .then(function(response) {
         updateProgress(100, '代码生成完成');
@@ -108,14 +101,13 @@ function checkStatus(buttonElement) {
     // 添加日志
     addLog('检查系统状态和Thrift编译器...');
     
-    fetch('/api/generation/status', {
-        method: 'GET'
-    })
+    // 使用新的API配置
+    window.AppConfig.get('generation', 'status')
     .then(function(response) {
-        if (!response.ok) {
-            throw new Error('HTTP ' + response.status);
+        if (!response.success) {
+            throw new Error(response.message || '状态检查失败');
         }
-        return response.json();
+        return response;
     })
     .then(function(response) {
         if (response.success) {
@@ -147,14 +139,13 @@ function checkStatus(buttonElement) {
 function validateThriftFile() {
     addLog('验证Thrift文件语法...');
     
-    fetch('/api/generation/validate', {
-        method: 'GET'
-    })
+    // 使用新的API配置
+    window.AppConfig.get('generation', 'validate')
     .then(function(response) {
-        if (!response.ok) {
-            throw new Error('HTTP ' + response.status);
+        if (!response.success) {
+            throw new Error(response.message || '验证失败');
         }
-        return response.json();
+        return response;
     })
     .then(function(response) {
         if (response.success) {

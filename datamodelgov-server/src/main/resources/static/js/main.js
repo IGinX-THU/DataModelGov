@@ -2,6 +2,60 @@ document.addEventListener('DOMContentLoaded', function() {
     // 全局变量：跟踪当前选中的数据源
     let selectedDataSource = null;
     
+    // 隐藏所有组件的函数
+    function hideAllComponents() {
+        console.log('🔄 隐藏所有组件');
+        
+        // 隐藏所有可能的组件
+        const components = [
+            'registerEmbedded',
+            'modelUpload', 
+            'modelDownload',
+            'modelEdit',
+            'parsingRules',
+            'associationRules',
+            'databaseTable',
+            'dataVisualization',
+            'modelDetail',
+            'dataSourceList',
+            'importData'
+        ];
+        
+        components.forEach(componentId => {
+            const component = document.getElementById(componentId);
+            if (component) {
+                // 只调用组件的hide方法，让组件自己管理隐藏逻辑
+                if (typeof component.hide === 'function') {
+                    component.hide();
+                    console.log(`✅ 已隐藏组件: ${componentId}`);
+                } else {
+                    // 如果没有hide方法，使用基本的隐藏方式
+                    component.removeAttribute('show');
+                    component.setAttribute('hidden', '');
+                    console.log(`✅ 已隐藏组件(基本方式): ${componentId}`);
+                }
+            }
+        });
+        
+        // 额外清理：移除所有可能残留的动态创建的组件
+        const workspace = document.querySelector('.workspace-content');
+        if (workspace) {
+            // 查找所有动态创建的组件并移除
+            const dynamicComponents = workspace.querySelectorAll('visual-analysis, data-visualization');
+            dynamicComponents.forEach(comp => {
+                console.log(`🗑️ 移除动态组件: ${comp.tagName}`);
+                comp.remove();
+            });
+        }
+    }
+    
+    // 初始化时隐藏所有组件
+    console.log('🏁 页面加载完成，初始化组件状态');
+    hideAllComponents();
+    
+    // 将hideAllComponents暴露到全局作用域
+    window.hideAllComponents = hideAllComponents;
+    
     // 全局Loading功能
     window.showGlobalLoading = function(message = '正在加载...') {
         console.log('显示全局loading:', message);
@@ -725,35 +779,28 @@ document.addEventListener('DOMContentLoaded', function() {
                 params.append('version', selectedModel.version);
             }
             
-            // 调用删除API - 使用DELETE方法和正确的参数格式
-            const response = await fetch(`/api/model/delete?${params.toString()}`, {
-                method: 'DELETE',
-                headers: {
-                    'Content-Type': 'application/json'
-                }
+            // 使用新的API配置
+            const result = await window.AppConfig.delete('model', 'delete', {
+                name: selectedModel.name,
+                version: selectedModel.version
             });
             
-            if (response.ok) {
-                const result = await response.json();
-                console.log('删除响应:', result);
+            console.log('删除响应:', result);
+            
+            if (result.success) {
+                showWorkspaceMessage(`模型资产 "${selectedModel.name}" 删除成功`, 'success');
                 
-                if (result.code === 200) {
-                    showWorkspaceMessage(`模型资产 "${selectedModel.name}" 删除成功`, 'success');
-                    
-                    // 从右侧树中移除该节点
-                    removeModelFromTree(selectedModel);
-                    
-                    // 清除选中状态
-                    const rightSidebarTree = document.querySelector('.right-sidebar .tree');
-                    if (rightSidebarTree) {
-                        const activeNodes = rightSidebarTree.querySelectorAll('.tree-node.active');
-                        activeNodes.forEach(node => node.classList.remove('active'));
-                    }
-                } else {
-                    showWorkspaceMessage(result.message || '删除失败', 'error');
+                // 从右侧树中移除该节点
+                removeModelFromTree(selectedModel);
+                
+                // 清除选中状态
+                const rightSidebarTree = document.querySelector('.right-sidebar .tree');
+                if (rightSidebarTree) {
+                    const activeNodes = rightSidebarTree.querySelectorAll('.tree-node.active');
+                    activeNodes.forEach(node => node.classList.remove('active'));
                 }
             } else {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                showWorkspaceMessage(result.message || '删除失败', 'error');
             }
         } catch (error) {
             console.error('删除模型资产失败:', error);
@@ -964,23 +1011,12 @@ document.addEventListener('DOMContentLoaded', function() {
             
             console.log('发送删除请求:', dataSourceInfo);
             
-            const response = await fetch(window.AppConfig.getApiUrl('datasource', 'remove'), {
-                method: 'DELETE',
-                headers: {
-                    ...window.AppConfig.getAuthHeaders(),
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(dataSourceInfo)
-            });
-
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-
-            const result = await response.json();
+            // 使用新的API配置
+            const result = await window.AppConfig.delete('datasource', 'remove', dataSourceInfo);
+            
             console.log('删除响应:', result);
 
-            if (result.code === 200) {
+            if (result.success) {
                 showWorkspaceMessage(`数据源 "${alias}" 删除成功`, 'success');
                 // 重新加载数据源树
                 loadDataSourceTree();
@@ -1011,53 +1047,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // 全局变量存储选中的测点
 window.selectedDataPoints = new Set();
-
-// 隐藏所有组件
-function hideAllComponents() {
-    console.log('🔄 隐藏所有组件');
-    
-    // 隐藏所有可能的组件
-    const components = [
-        'registerEmbedded',
-        'modelUpload', 
-        'modelDownload',
-        'modelEdit',
-        'parsingRules',
-        'associationRules',
-        'databaseTable',
-        'dataVisualization',
-        'modelDetail',
-        'dataSourceList',
-        'importData'
-    ];
-    
-    components.forEach(componentId => {
-        const component = document.getElementById(componentId);
-        if (component) {
-            // 只调用组件的hide方法，让组件自己管理隐藏逻辑
-            if (typeof component.hide === 'function') {
-                component.hide();
-                console.log(`✅ 已隐藏组件: ${componentId}`);
-            } else {
-                // 如果没有hide方法，使用基本的隐藏方式
-                component.removeAttribute('show');
-                component.setAttribute('hidden', '');
-                console.log(`✅ 已隐藏组件(基本方式): ${componentId}`);
-            }
-        }
-    });
-    
-    // 额外清理：移除所有可能残留的动态创建的组件
-    const workspace = document.querySelector('.workspace-content');
-    if (workspace) {
-        // 查找所有动态创建的组件并移除
-        const dynamicComponents = workspace.querySelectorAll('visual-analysis, data-visualization');
-        dynamicComponents.forEach(comp => {
-            console.log(`🗑️ 移除动态组件: ${comp.tagName}`);
-            comp.remove();
-        });
-    }
-}
 
 // 清空工作区
     function clearWorkspace() {
@@ -1277,23 +1266,15 @@ function showVisualAnalysis() {
             
             console.log('从筛选框获取的查询参数:', requestBody);
             
-            // 调用数据查询接口
-            const response = await fetch(window.AppConfig.getApiUrl('data', 'query'), {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(requestBody)
-            });
+            // 使用新的API配置
+            const result = await window.AppConfig.post('data', 'query', requestBody);
             
-            const result = await response.json();
-            
-            if (result.code === 200 && result.data) {
+            if (result.success && result.data) {
                 console.log('数据查询成功:', result.data);
                 
                 // 显示数据可视化组件，传递查询结果
                 dataViz.show(currentPath, selectedPoints, result.data);
-            } else if (result.code === 200 && (!result.data || !result.data.records || result.data.records.length === 0)) {
+            } else if (result.success && (!result.data || !result.data.records || result.data.records.length === 0)) {
                 // 接口成功但没有数据
                 console.log('查询成功但没有数据');
                 dataViz.show(currentPath, selectedPoints, null);
@@ -1471,10 +1452,10 @@ function showVisualAnalysis() {
                 rightSidebarTree.innerHTML = '<div class="loading-placeholder">正在同步模型资产...</div>';
             }
             
-            const response = await fetch(window.AppConfig.getApiUrl('datasource', 'tree'));
-            const result = await response.json();
+            // 使用新的API配置
+            const result = await window.AppConfig.get('datasource', 'tree');
             
-            if (result.code === 200 && result.data) {
+            if (result.success && result.data) {
                 renderDataSourceTree(result.data);
                 // 同步filesystem数据到右侧模型资产库
                 syncFilesystemToModelAssets(result.data);
@@ -1807,12 +1788,11 @@ window.loadDataSourceTree = async function() {
         }
         
         console.log('🔄 调用接口:', window.AppConfig.getApiUrl('datasource', 'tree'));
-        const response = await fetch(window.AppConfig.getApiUrl('datasource', 'tree'));
-        const result = await response.json();
+        const result = await window.AppConfig.get('datasource', 'tree');
         
         console.log('🔄 接口响应:', result);
         
-        if (result.code === 200 && result.data) {
+        if (result.success && result.data) {
             renderDataSourceTree(result.data);
             // 同步filesystem数据到右侧模型资产库
             syncFilesystemToModelAssets(result.data);

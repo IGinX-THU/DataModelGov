@@ -124,23 +124,21 @@ class ModelDetail extends HTMLElement {
 
     async loadModelData(modelInfo) {
         try {
-            // 调用接口获取元数据
-            const response = await fetch(`/api/model/metas?name=${encodeURIComponent(modelInfo.name)}&version=${encodeURIComponent(modelInfo.version)}`);
+            // 使用新的API配置
+            const result = await window.AppConfig.get('model', 'metas', {
+                name: modelInfo.name,
+                version: modelInfo.version
+            });
             
-            if (response.ok) {
-                const result = await response.json();
-                if (result.code === 200 && result.data) {
-                    const meta = result.data;
-                    console.log('获取模型元数据成功:', meta);
-                    // 保存完整的接口数据
-                    this.currentModelMeta = meta;
-                    this.updateContent(meta);
-                } else {
-                    console.error('获取元数据失败:', result.message);
-                    this.showErrorMessage('获取模型信息失败');
-                }
+            if (result.success && result.data) {
+                const meta = result.data;
+                console.log('获取模型元数据成功:', meta);
+                // 保存完整的接口数据
+                this.currentModelMeta = meta;
+                this.updateContent(meta);
             } else {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                console.error('获取元数据失败:', result.message);
+                this.showErrorMessage('获取模型信息失败');
             }
         } catch (error) {
             console.error('加载模型数据失败:', error);
@@ -196,21 +194,16 @@ class ModelDetail extends HTMLElement {
 
     async loadVersionHistory(modelInfo) {
         try {
-            // 调用接口获取版本历史
-            const response = await fetch(`/api/model/history?name=${encodeURIComponent(modelInfo.name)}`);
+            // 使用新的API配置
+            const result = await window.AppConfig.get('model', 'history', { name: modelInfo.name });
             
-            if (response.ok) {
-                const result = await response.json();
-                if (result.code === 200 && result.data) {
-                    const historyData = result.data;
-                    console.log('获取版本历史成功:', historyData);
-                    this.renderVersionHistory(historyData);
-                } else {
-                    console.error('获取版本历史失败:', result.message);
-                    this.renderVersionHistory([]);
-                }
+            if (result.success && result.data) {
+                const historyData = result.data;
+                console.log('获取版本历史成功:', historyData);
+                this.renderVersionHistory(historyData);
             } else {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                console.error('获取版本历史失败:', result.message);
+                this.renderVersionHistory([]);
             }
         } catch (error) {
             console.error('加载版本历史失败:', error);
@@ -480,41 +473,34 @@ class ModelDetail extends HTMLElement {
                 version: version
             });
             
-            // 调用删除API - 使用DELETE方法和正确的参数格式
-            const response = await fetch(`/api/model/delete?${params.toString()}`, {
-                method: 'DELETE',
-                headers: {
-                    'Content-Type': 'application/json'
-                }
+            // 使用新的API配置
+            const result = await window.AppConfig.delete('model', 'delete', {
+                name: this.currentModel.name,
+                version: version
             });
             
-            if (response.ok) {
-                const result = await response.json();
-                console.log('删除响应:', result);
+            console.log('删除响应:', result);
+            
+            if (result.success) {
+                // 显示成功消息
+                this.showSuccessMessage(`模型版本 "${version}" 删除成功`);
                 
-                if (result.code === 200) {
-                    // 显示成功消息
-                    this.showSuccessMessage(`模型版本 "${version}" 删除成功`);
-                    
-                    // 重新加载右侧模型资产库
-                    console.log('🔄 模型删除成功，准备调用 loadDataSourceTree');
-                    if (window.loadDataSourceTree) {
-                        console.log('🔄 调用 window.loadDataSourceTree');
-                        window.loadDataSourceTree();
-                    } else {
-                        console.error('❌ window.loadDataSourceTree 不存在');
-                    }
-                    
-                    // 从右侧树中移除该版本节点
-                    this.removeVersionFromTree({ ...this.currentModel, version });
-                    
-                    // 隐藏模型详情
-                    this.hide();
+                // 重新加载右侧模型资产库
+                console.log('🔄 模型删除成功，准备调用 loadDataSourceTree');
+                if (window.loadDataSourceTree) {
+                    console.log('🔄 调用 window.loadDataSourceTree');
+                    window.loadDataSourceTree();
                 } else {
-                    this.showErrorMessage(result.message || '删除失败');
+                    console.error('❌ window.loadDataSourceTree 不存在');
                 }
+                
+                // 从右侧树中移除该版本节点
+                this.removeVersionFromTree({ ...this.currentModel, version });
+                
+                // 隐藏模型详情
+                this.hide();
             } else {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                this.showErrorMessage(result.message || '删除失败');
             }
         } catch (error) {
             console.error('删除模型版本失败:', error);

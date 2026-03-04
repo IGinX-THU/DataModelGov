@@ -16,6 +16,12 @@
     <description>DataModelGov 服务端模块 - 包含REST API和Thrift RPC服务</description>
 
     <dependencies>
+        <!-- 认证模块 -->
+        <dependency>
+            <groupId>com.tsinghua</groupId>
+            <artifactId>datamodelgov-auth</artifactId>
+        </dependency>
+
         <!-- 核心业务模块 -->
         <dependency>
             <groupId>com.tsinghua</groupId>

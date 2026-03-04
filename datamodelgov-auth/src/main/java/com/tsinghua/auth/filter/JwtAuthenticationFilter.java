@@ -4,6 +4,9 @@ import com.tsinghua.auth.util.JwtUtil;
 import com.tsinghua.model.Result;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.BeansException;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.ApplicationContextAware;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.User;
@@ -25,14 +28,19 @@ import java.util.ArrayList;
  */
 @Slf4j
 @Component
-public class JwtAuthenticationFilter extends OncePerRequestFilter {
+public class JwtAuthenticationFilter extends OncePerRequestFilter implements ApplicationContextAware {
 
-    private final JwtUtil jwtUtil;
+    private JwtUtil jwtUtil;
     private final ObjectMapper objectMapper;
+    private ApplicationContext applicationContext;
 
-    public JwtAuthenticationFilter(JwtUtil jwtUtil, ObjectMapper objectMapper) {
-        this.jwtUtil = jwtUtil;
-        this.objectMapper = objectMapper;
+    public JwtAuthenticationFilter() {
+        this.objectMapper = new ObjectMapper();
+    }
+
+    @Override
+    public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
+        this.applicationContext = applicationContext;
     }
 
     @Override
@@ -41,11 +49,24 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                 FilterChain filterChain) throws ServletException, IOException {
         
         try {
+            // 懒加载JwtUtil
+            if (jwtUtil == null) {
+                if (applicationContext == null) {
+                    log.warn("ApplicationContext尚未初始化，跳过JWT验证");
+                    filterChain.doFilter(request, response);
+                    return;
+                }
+                jwtUtil = applicationContext.getBean(JwtUtil.class);
+            }
+
             // 获取请求路径
             String requestURI = request.getRequestURI();
             
+            log.debug("处理请求: {}", requestURI);
+            
             // 放行登录和静态资源请求
             if (isPublicPath(requestURI)) {
+                log.debug("放行公共路径: {}", requestURI);
                 filterChain.doFilter(request, response);
                 return;
             }
@@ -113,14 +134,31 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
      * 判断是否为公共路径
      */
     private boolean isPublicPath(String requestURI) {
-        return requestURI.equals("/api/auth/login") ||
-               requestURI.equals("/api/auth/refresh") ||
+        boolean isPublic = requestURI.equals("/") ||
+               requestURI.equals("/index.html") ||
                requestURI.equals("/login.html") ||
+               requestURI.equals("/login") ||
+               requestURI.equals("/error") ||
+               requestURI.equals("/favicon.ico") ||
                requestURI.startsWith("/static/") ||
                requestURI.startsWith("/css/") ||
                requestURI.startsWith("/js/") ||
                requestURI.startsWith("/images/") ||
-               requestURI.equals("/favicon.ico");
+               requestURI.startsWith("/lib/") ||
+               requestURI.startsWith("/components/") ||
+               requestURI.startsWith("/config/") ||
+               requestURI.startsWith("/api/auth/") ||
+               requestURI.equals("/api/test/public") ||
+               requestURI.startsWith("/doc.html") ||
+               requestURI.startsWith("/swagger-ui/") ||
+               requestURI.startsWith("/v3/api-docs/") ||
+               requestURI.startsWith("/v2/api-docs") ||
+               requestURI.startsWith("/swagger-resources/") ||
+               requestURI.startsWith("/webjars/") ||
+               requestURI.startsWith("/actuator/");
+        
+        log.debug("路径 {} 是否为公共路径: {}", requestURI, isPublic);
+        return isPublic;
     }
 
     /**

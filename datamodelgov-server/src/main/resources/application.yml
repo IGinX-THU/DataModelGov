@@ -1,6 +1,6 @@
 # JWT配置
 jwt:
-  secret: mySecretKeyForDataModelGov2024
+  secret: mySecretKeyForDataModelGov2024MySecretKeyForDataModelGov2024MySecretKeyForDataModelGov2024
   expiration: 86400000  # 24小时 (毫秒)
   refresh-expiration: 604800000  # 7天 (毫秒)
 

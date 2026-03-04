@@ -1034,51 +1034,40 @@ Generic processing function`
 
             console.log('保存模型数据:', formData);
 
-            // 调用保存元数据API
-            const response = await fetch('/api/model/metas', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(formData)
-            });
-
-            if (response.ok) {
-                const result = await response.json();
-                console.log('保存响应:', result);
+            // 使用新的API配置
+            const result = await window.AppConfig.post('model', 'metas', formData);
+            
+            console.log('保存响应:', result);
+            
+            if (result.success) {
+                this.showSuccessMessage('元数据保存成功');
+                this.hide();
                 
-                if (result.code === 200) {
-                    this.showSuccessMessage('元数据保存成功');
-                    this.hide();
-                    
-                    // 重新加载右侧模型资产库
-                    console.log('🔄 模型编辑成功，准备调用 loadDataSourceTree');
-                    if (window.loadDataSourceTree) {
-                        console.log('🔄 调用 window.loadDataSourceTree');
-                        window.loadDataSourceTree();
-                    } else {
-                        console.error('❌ window.loadDataSourceTree 不存在');
-                    }
-                    
-                    // 通知模型详情页面刷新数据
-                    this.dispatchEvent(new CustomEvent('model-updated', {
-                        detail: { 
-                            modelName: formData.name,
-                            version: formData.version,
-                            formData: formData
-                        },
-                        bubbles: true,
-                        composed: true
-                    }));
-                    
-                    // 刷新右侧树（如果需要）
-                    this.refreshModelTree();
+                // 重新加载右侧模型资产库
+                console.log('🔄 模型编辑成功，准备调用 loadDataSourceTree');
+                if (window.loadDataSourceTree) {
+                    console.log('🔄 调用 window.loadDataSourceTree');
+                    window.loadDataSourceTree();
                 } else {
-                    this.showErrorMessage(result.message || '保存失败');
+                    console.error('❌ window.loadDataSourceTree 不存在');
                 }
+                
+                // 通知模型详情页面刷新数据
+                this.dispatchEvent(new CustomEvent('model-updated', {
+                    detail: { 
+                        modelName: formData.name,
+                        version: formData.version,
+                        formData: formData
+                    },
+                    bubbles: true,
+                    composed: true
+                }));
+                
+                // 刷新右侧树（如果需要）
+                this.refreshModelTree();
             } else {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
+                this.showErrorMessage(result.message || '保存失败');
+                }
         } catch (error) {
             console.error('保存元数据失败:', error);
             this.showErrorMessage('保存失败，请稍后重试');

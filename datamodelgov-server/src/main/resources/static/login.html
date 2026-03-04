@@ -157,13 +157,14 @@
         </div>
     </div>
 
+    <script src="./config/app-config.js"></script>
     <script>
         // 检查是否已有token，如果有则跳转到首页
         window.addEventListener('DOMContentLoaded', function() {
-            const token = localStorage.getItem('jwtToken');
+            const token = window.AppConfig.getToken();
             if (token) {
                 // 验证token是否有效
-                verifyToken(token);
+                verifyToken();
             }
         });
 
@@ -183,59 +184,39 @@
             hideError();
 
             try {
-                const response = await fetch('/api/auth/login', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        username: username,
-                        password: password
-                    })
-                });
-
-                const result = await response.json();
-
-                if (result.success && result.data && result.data.token) {
-                    // 保存token到localStorage
-                    localStorage.setItem('jwtToken', result.data.token);
-                    localStorage.setItem('username', username);
-                    
-                    // 跳转到首页
+                const result = await window.AppConfig.login(username, password);
+                
+                if (result.success) {
+                    // 登录成功，跳转到首页
                     window.location.href = '/';
                 } else {
                     showError(result.message || '登录失败，请检查用户名和密码');
                 }
             } catch (error) {
-                console.error('登录请求失败:', error);
-                showError('登录请求失败，请稍后重试');
+                console.error('登录失败:', error);
+                showError(error.message || '登录请求失败，请稍后重试');
             } finally {
                 showLoading(false);
             }
         });
 
         // 验证token有效性
-        async function verifyToken(token) {
+        async function verifyToken() {
             try {
-                const response = await fetch('/api/auth/verify', {
-                    method: 'GET',
-                    headers: {
-                        'Authorization': 'Bearer ' + token
-                    }
-                });
-
-                if (response.ok) {
+                const isValid = await window.AppConfig.validateToken();
+                
+                if (isValid) {
                     // token有效，跳转到首页
                     window.location.href = '/';
                 } else {
                     // token无效，清除并继续显示登录页
-                    localStorage.removeItem('jwtToken');
-                    localStorage.removeItem('username');
+                    window.AppConfig.clearToken();
+                    window.AppConfig.clearUsername();
                 }
             } catch (error) {
                 console.error('Token验证失败:', error);
-                localStorage.removeItem('jwtToken');
-                localStorage.removeItem('username');
+                window.AppConfig.clearToken();
+                window.AppConfig.clearUsername();
             }
         }
 

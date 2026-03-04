@@ -603,20 +603,12 @@ class DatabaseTable extends HTMLElement {
             
             console.log('查询参数:', requestBody);
             
-            // 调用关系数据查询接口
-            const response = await fetch(window.AppConfig.getApiUrl('data', 'relational/query'), {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(requestBody)
-            });
-            
-            const result = await response.json();
+            // 使用新的API配置
+            const result = await window.AppConfig.post('data', 'relational/query', requestBody);
             
             console.log('API响应结果:', result);
             
-            if (result.code === 200 && result.data) {
+            if (result.success && result.data) {
                 console.log('关系数据查询成功:', result.data);
                 
                 // 处理查询结果
@@ -665,18 +657,12 @@ class DatabaseTable extends HTMLElement {
             
             console.log('查询总量参数:', requestBody);
             
-            const response = await fetch(window.AppConfig.getApiUrl('data', 'relational/count'), {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(requestBody)
-            });
+            // 使用新的API配置
+            const result = await window.AppConfig.post('data', 'relational/count', requestBody);
             
-            const result = await response.json();
             console.log('总量查询结果:', result);
             
-            if (result.code === 200 && result.data !== undefined) {
+            if (result.success && result.data !== undefined) {
                 this.totalCount = result.data;
                 console.log('数据总量:', this.totalCount);
             } else {
@@ -1248,41 +1234,11 @@ class DatabaseTable extends HTMLElement {
             
             console.log('导出参数:', requestBody);
             
-            // 调用关系数据Excel导出接口
-            const response = await fetch(window.AppConfig.getApiUrl('data', 'relational/export'), {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(requestBody)
-            });
+            // 使用新的API配置进行文件下载
+            const result = await window.AppConfig.download('data', 'relational/export', requestBody, `${this.tableName}_export.xlsx`);
             
-            if (response.ok) {
-                // 获取文件名
-                const contentDisposition = response.headers.get('Content-Disposition');
-                let filename = `${this.tableName}_export.xlsx`;
-                if (contentDisposition) {
-                    const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
-                    if (filenameMatch) {
-                        filename = filenameMatch[1];
-                    }
-                }
-                
-                // 下载Excel文件
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = filename;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                window.URL.revokeObjectURL(url);
-                
-                this.showMessage(`Excel文件 "${filename}" 导出成功`, 'success');
-            } else {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
+            console.log('导出结果:', result);
+            this.showMessage(`Excel文件 "${result.filename}" 导出成功`, 'success');
             
         } catch (error) {
             console.error('导出Excel失败:', error);

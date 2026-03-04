@@ -274,17 +274,11 @@ class RegisterDataResourceEmbedded extends HTMLElement {
         console.log('Sending JSON data:', JSON.stringify(data, null, 2));
         
         try {
-            const response = await fetch('/api/datasource/register', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(data)
-            });
+            // 使用新的API配置和字段转换
+            const backendData = window.AppConfig.transformFormData(data, 'datasource');
+            const result = await window.AppConfig.post('datasource', 'register', backendData);
             
-            const result = await response.json();
-            
-            if (result.code === 200) {
+            if (result.success) {
                 this.showMessage('数据源注册成功', 'success');
                 console.log('Registration successful, closing modal...');
                 

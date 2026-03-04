@@ -1081,37 +1081,42 @@ class ModelUpload extends HTMLElement {
     }
 
     async apiCall(url, method = 'GET', data = null, isFormData = false) {
-        const options = {
-            method: method,
-            headers: {},
-        };
-
-        // 如果是FormData，不要设置Content-Type，让浏览器自动设置
-        if (!isFormData && data && method !== 'GET') {
-            options.headers['Content-Type'] = 'application/json';
-            options.body = JSON.stringify(data);
-        } else if (data) {
-            options.body = data;
-        }
-
         try {
-            const response = await fetch(url, options);
+            let result;
             
-            if (!response.ok) {
-                // 尝试解析错误响应
-                let errorMessage = `HTTP error! status: ${response.status}`;
-                try {
-                    const errorData = await response.json();
-                    if (errorData.message) {
-                        errorMessage = errorData.message;
+            if (isFormData) {
+                // 文件上传使用AppConfig.upload
+                result = await window.AppConfig.upload('data', 'import', data);
+            } else {
+                // 普通API调用使用AppConfig
+                if (method === 'GET') {
+                    // 从URL中提取模块和端点
+                    const urlPath = new URL(url, window.AppConfig.api.baseURL).pathname;
+                    // 简单的URL解析，假设格式为 /api/module/endpoint
+                    const pathParts = urlPath.split('/').filter(p => p);
+                    if (pathParts.length >= 3 && pathParts[1] === 'api') {
+                        const module = pathParts[2];
+                        const endpoint = pathParts.slice(3).join('/');
+                        const params = data ? { ...data } : {};
+                        result = await window.AppConfig.get(module, endpoint, params);
+                    } else {
+                        throw new Error('无法解析API URL: ' + url);
                     }
-                } catch (e) {
-                    // 如果无法解析JSON，使用默认错误消息
+                } else if (method === 'POST') {
+                    const urlPath = new URL(url, window.AppConfig.api.baseURL).pathname;
+                    const pathParts = urlPath.split('/').filter(p => p);
+                    if (pathParts.length >= 3 && pathParts[1] === 'api') {
+                        const module = pathParts[2];
+                        const endpoint = pathParts.slice(3).join('/');
+                        result = await window.AppConfig.post(module, endpoint, data);
+                    } else {
+                        throw new Error('无法解析API URL: ' + url);
+                    }
+                } else {
+                    throw new Error('不支持的HTTP方法: ' + method);
                 }
-                throw new Error(errorMessage);
             }
             
-            const result = await response.json();
             return result;
         } catch (error) {
             if (error.name === 'TypeError' && error.message.includes('fetch')) {

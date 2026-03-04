@@ -221,14 +221,9 @@ class ImportDataComponent extends HTMLElement {
             formData.append('file', file);
 
             // 调用导入接口
-            const response = await fetch(window.AppConfig.getApiUrl('data', 'import'), {
-                method: 'POST',
-                body: formData
-            });
+            const result = await window.AppConfig.upload('data', 'import', formData);
 
-            const result = await response.json();
-
-            if (result.code === 200) {
+            if (result.success) {
                 this.showToast(result.message || '数据导入成功', 'success');
                 this.hide();
                 // 如果data-visualization组件存在且可见，刷新数据

@@ -44,11 +44,6 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
     }
 
     @Bean
-    public ObjectMapper objectMapper() {
-        return new ObjectMapper();
-    }
-
-    @Bean
     public UserDetailsService userDetailsService() {
         // 这里使用内存用户存储，实际项目中应该从数据库读取
         UserDetails admin = User.builder()
@@ -91,6 +86,12 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
                 .antMatchers("/login.html", "/login", "/error", "/favicon.ico").permitAll()
                 // 放行认证相关API
                 .antMatchers("/api/auth/**").permitAll()
+                // 放行公开测试API
+                .antMatchers("/api/test/public").permitAll()
+                // 受保护的测试API需要认证
+                .antMatchers("/api/test/protected").authenticated()
+                // 管理员测试API需要管理员权限
+                .antMatchers("/api/test/admin").hasRole("ADMIN")
                 // 放行API文档相关
                 .antMatchers("/doc.html", "/swagger-ui/**", "/v3/api-docs/**", "/v2/api-docs", "/swagger-resources/**", "/webjars/**").permitAll()
                 // 放行健康检查
