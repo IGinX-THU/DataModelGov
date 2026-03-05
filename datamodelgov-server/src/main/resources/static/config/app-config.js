@@ -77,6 +77,8 @@ window.AppConfig = {
         },
         // 模型相关
         model: {
+            upload: '/api/model/upload',
+            download: '/api/model/download',
             metas: '/api/model/metas',
             history: '/api/model/history',
             delete: '/api/model/delete'
@@ -450,16 +452,28 @@ window.AppConfig = {
     },
 
     // 文件下载请求
-    async download(module, endpoint, data, filename) {
-        const url = this.getApiUrl(module, endpoint);
+    async download(module, endpoint, data, filename, useUrlParams = false) {
+        let url = this.getApiUrl(module, endpoint);
         const headers = this.getAuthHeaders();
 
         try {
-            const response = await fetch(url, {
+            let requestOptions = {
                 method: 'POST',
-                headers: headers,
-                body: JSON.stringify(data)
-            });
+                headers: headers
+            };
+
+            if (useUrlParams) {
+                // 使用URL参数而不是JSON body
+                if (Object.keys(data).length > 0) {
+                    const queryString = new URLSearchParams(data).toString();
+                    url += (url.includes('?') ? '&' : '?') + queryString;
+                }
+            } else {
+                // 使用JSON body
+                requestOptions.body = JSON.stringify(data);
+            }
+
+            const response = await fetch(url, requestOptions);
             
             // 检查认证状态
             if (response.status === 401) {

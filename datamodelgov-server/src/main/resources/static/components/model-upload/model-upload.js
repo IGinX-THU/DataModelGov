@@ -913,7 +913,6 @@ class ModelUpload extends HTMLElement {
             // 创建FormData对象用于文件上传
             const uploadFormData = new FormData();
             uploadFormData.append('file', this.selectedFile);
-            uploadFormData.append('isRelatedModel', formData.isRelatedModel);
             uploadFormData.append('name', formData.name);
             uploadFormData.append('version', formData.version);
 
@@ -1086,7 +1085,7 @@ class ModelUpload extends HTMLElement {
             
             if (isFormData) {
                 // 文件上传使用AppConfig.upload
-                result = await window.AppConfig.upload('data', 'import', data);
+                result = await window.AppConfig.upload('model', 'upload', data);
             } else {
                 // 普通API调用使用AppConfig
                 if (method === 'GET') {

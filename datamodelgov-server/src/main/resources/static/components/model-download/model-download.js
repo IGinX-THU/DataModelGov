@@ -499,47 +499,21 @@ class ModelDownload extends HTMLElement {
         if (hasError) return;
         
         try {
-            // 调用下载API - 使用POST方法，参数通过FormData传递
-            const downloadUrl = `/api/model/download`;
+            // 调用下载API - 使用AppConfig.download方法，携带认证token，使用URL参数
+            const downloadData = {
+                name: formData.modelName,
+                version: formData.modelVersion,
+                fileName: `${formData.modelName}_${formData.modelVersion}.zip`
+            };
             
-            // 创建一个隐藏的表单来触发文件下载
-            const form = document.createElement('form');
-            form.method = 'POST';
-            form.action = downloadUrl;
-            form.style.display = 'none';
+            const result = await window.AppConfig.download('model', 'download', downloadData, null, true);
             
-            // 添加参数
-            const nameInput = document.createElement('input');
-            nameInput.type = 'hidden';
-            nameInput.name = 'name';
-            nameInput.value = formData.modelName;
-            form.appendChild(nameInput);
-            
-            const versionInput = document.createElement('input');
-            versionInput.type = 'hidden';
-            versionInput.name = 'version';
-            versionInput.value = formData.modelVersion;
-            form.appendChild(versionInput);
-            
-            const fileNameInput = document.createElement('input');
-            fileNameInput.type = 'hidden';
-            fileNameInput.name = 'fileName';
-            fileNameInput.value = `${formData.modelName}_${formData.modelVersion}.zip`;
-            form.appendChild(fileNameInput);
-            
-            document.body.appendChild(form);
-            
-            // 监听表单提交的错误
-            form.addEventListener('error', (e) => {
-                console.error('表单提交错误:', e);
-                this.showMessage('下载失败，请稍后重试', 'error');
-            });
-            
-            form.submit();
-            document.body.removeChild(form);
-            
-            this.showMessage('下载开始，请稍候...', 'success');
-            this.hide();
+            if (result.success) {
+                this.showMessage('下载成功', 'success');
+                this.hide();
+            } else {
+                this.showMessage(result.message || '下载失败', 'error');
+            }
             
         } catch (error) {
             console.error('下载模型文件失败:', error);
