@@ -820,10 +820,7 @@ class AssociationRules extends HTMLElement {
                     modalFooter.innerHTML = previousState.footer;
                 } else if (action === 'delete' && id) {
                     this.deleteRuleFromAPI(id);
-                    // Restore previous state
-                    modalTitle.textContent = previousState.title;
-                    modalBody.innerHTML = previousState.body;
-                    modalFooter.innerHTML = previousState.footer;
+                    // 删除操作后不需要恢复之前的状态，直接关闭弹窗
                 } else if (action === 'save') {
                     this.saveRule();
                 } else if (action === 'update' && id) {
@@ -847,14 +844,6 @@ class AssociationRules extends HTMLElement {
         if (modalMask) {
             modalMask.hidden = false;
             modalMask.style.display = 'flex';
-        }
-    }
-
-    hideModal() {
-        const modalMask = this.shadowRoot.getElementById('modalMask');
-        if (modalMask) {
-            modalMask.hidden = true;
-            modalMask.style.display = 'none';
         }
     }
 
