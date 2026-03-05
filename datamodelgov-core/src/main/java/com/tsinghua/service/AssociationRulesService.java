@@ -32,9 +32,6 @@ public class AssociationRulesService {
     @Autowired
     private IginXClient iginxClient;
 
-    @Autowired
-    private RelationalDataService relationalDataService;
-
     private WriteClient writeClient;
     private QueryClient queryClient;
     private DeleteClient deleteClient;
@@ -114,7 +111,7 @@ public class AssociationRulesService {
             log.info("执行SQL: {}", sql);
             
             SessionExecuteSqlResult res = iginxSession.executeSql(sql.toString());
-            List<Map<String, Object>> records = relationalDataService.getRecords(res);
+            List<Map<String, Object>> records = ConvertUtil.getRecords(res);
             
             // 转换为AssociationRulesEntity列表 - 参考ModelFileService的转换方式
             List<AssociationRulesEntity> result = records.stream().map(record -> {
@@ -173,7 +170,7 @@ public class AssociationRulesService {
             String sql = "select * from %s where createTime = %s;";
             String metaBasePath = DATA_PREFIX;
             SessionExecuteSqlResult res = iginxSession.executeSql(String.format(sql, metaBasePath, createTime));
-            List<Map<String, Object>> records = relationalDataService.getRecords(res);
+            List<Map<String, Object>> records = ConvertUtil.getRecords(res);
 
             if (records.isEmpty()) {
                 return null;
@@ -207,51 +204,6 @@ public class AssociationRulesService {
             log.error("删除关联规则失败", e);
             throw new RuntimeException("删除关联规则失败: " + e.getMessage(), e);
         }
-    }
-
-    /**
-     * 构建查询SQL语句
-     * 参考RelationalDataService的buildQuerySql方法
-     */
-    private String buildQuerySql(RelationalQueryRequest request) {
-        StringBuilder sql = new StringBuilder("SELECT * FROM ").append(request.getTableName());
-        
-        // 添加WHERE条件
-        if (request.getFilters() != null && !request.getFilters().isEmpty()) {
-            String whereClause = relationalDataService.buildWhereClause(request.getFilters());
-            if (StringUtils.hasText(whereClause)) {
-                sql.append(" WHERE ").append(whereClause);
-            }
-        }
-        
-        // 添加ORDER BY排序条件
-        if (StringUtils.hasText(request.getSortField())) {
-            sql.append(" ORDER BY ").append(request.getSortField());
-            if (StringUtils.hasText(request.getSortDirection())) {
-                sql.append(" ").append(request.getSortDirection());
-            }
-        }
-        
-        return sql.toString();
-    }
-
-    /**
-     * 构建COUNT查询SQL语句
-     * 参考RelationalDataService的buildCountSql方法
-     */
-    private String buildCountSql(RelationalQueryRequest request) {
-        StringBuilder sql = new StringBuilder("SELECT COUNT(1) FROM ").append(request.getTableName());
-        
-        // 添加WHERE条件（与查询相同的逻辑）
-        if (request.getFilters() != null && !request.getFilters().isEmpty()) {
-            String whereClause = relationalDataService.buildWhereClause(request.getFilters());
-            if (StringUtils.hasText(whereClause)) {
-                sql.append(" WHERE ").append(whereClause);
-            }
-        }
-        
-        // COUNT查询不需要排序，直接返回
-        return sql.append(";").toString();
     }
 
 }

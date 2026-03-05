@@ -419,7 +419,7 @@ public class ModelFileService {
             String sql = "select * from %s where name = '%s' ORDER BY timestamp ;";
             // iginxSession.openSession();
             SessionExecuteSqlResult res =  iginxSession.executeSql(String.format(sql, META_PREFIX, name));
-            List<Map<String, Object>> records = relationalDataService.getRecords(res);
+            List<Map<String, Object>> records = ConvertUtil.getRecords(res);
             // iginxSession.closeSession();
 
             return records.stream()

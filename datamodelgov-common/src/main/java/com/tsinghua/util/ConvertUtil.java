@@ -1,5 +1,6 @@
 package com.tsinghua.util;
 
+import cn.edu.tsinghua.iginx.session.SessionExecuteSqlResult;
 import cn.edu.tsinghua.iginx.thrift.DataType;
 import cn.edu.tsinghua.iginx.session_v2.write.Point;
 import org.slf4j.Logger;
@@ -8,9 +9,7 @@ import org.springframework.beans.BeanUtils;
 
 import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
+import java.util.*;
 
 
 /**
@@ -393,6 +392,29 @@ public class ConvertUtil {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    /**
+     * 获取session结果转换
+     *
+     */
+    public static List<Map<String, Object>> getRecords(SessionExecuteSqlResult res) {
+        List<String> header = res.getPaths();
+        List<Map<String, Object>> records = new ArrayList<>();
+        List<List<Object>>  rows = res.getValues();
+        rows.forEach(row -> {
+            Map<String, Object> rs = new LinkedHashMap<>();
+            for (int i=0; i<=header.size() -1; i++){
+                Object value = row.get(i);
+                if (value instanceof byte[]) {
+                    rs.put(header.get(i), new String((byte[]) value, StandardCharsets.UTF_8));
+                } else {
+                    rs.put(header.get(i), row.get(i));
+                }
+            }
+            records.add(rs);
+        });
+        return records;
     }
 
 }
