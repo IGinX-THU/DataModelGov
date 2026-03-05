@@ -226,6 +226,16 @@ class ImportDataComponent extends HTMLElement {
             if (result.success) {
                 this.showToast(result.message || '数据导入成功', 'success');
                 this.hide();
+                
+                // 重新加载左侧数据资源库tree
+                console.log('🔄 数据导入成功，准备调用 loadDataSourceTree');
+                if (window.loadDataSourceTree) {
+                    console.log('🔄 调用 window.loadDataSourceTree');
+                    window.loadDataSourceTree();
+                } else {
+                    console.error('❌ window.loadDataSourceTree 不存在');
+                }
+                
                 // 如果data-visualization组件存在且可见，刷新数据
                 const dataViz = document.getElementById('dataVisualization');
                 if (dataViz && dataViz.hasAttribute('show') && dataViz.loadData) {
