@@ -274,9 +274,8 @@ class RegisterDataResourceEmbedded extends HTMLElement {
         console.log('Sending JSON data:', JSON.stringify(data, null, 2));
         
         try {
-            // 使用新的API配置和字段转换
-            const backendData = window.AppConfig.transformFormData(data, 'datasource');
-            const result = await window.AppConfig.post('datasource', 'register', backendData);
+            // 直接发送数据，不使用字段转换（前端字段名已与后端匹配）
+            const result = await window.AppConfig.post('datasource', 'register', data);
             
             if (result.success) {
                 this.showMessage('数据源注册成功', 'success');
