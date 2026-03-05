@@ -151,10 +151,10 @@ class ModelEdit extends HTMLElement {
         document.addEventListener('keydown', handleEsc);
     }
 
-    show(modelInfo) {
+    async show(modelInfo) {
         this.currentModel = modelInfo;
         this.removeAttribute('hidden');
-        this.loadModelData(modelInfo);
+        await this.loadModelData(modelInfo);
     }
 
     // 新增方法：直接接收model-detail的数据，不重复调用接口
@@ -182,8 +182,39 @@ class ModelEdit extends HTMLElement {
         this.setAttribute('hidden', '');
     }
 
-    loadModelData(modelInfo) {
-        // 加载基本信息，完全使用接口数据
+    async loadModelData(modelInfo) {
+        try {
+            // 调用API获取完整的模型元数据
+            const result = await window.AppConfig.get('model', 'metas', {
+                name: modelInfo.name,
+                version: modelInfo.version
+            });
+            
+            if (result.success && result.data) {
+                this.currentModelMeta = result.data;
+                console.log('获取到完整模型元数据:', this.currentModelMeta);
+            } else {
+                console.error('获取模型元数据失败:', result.message);
+                // 如果获取失败，至少保存基本信息
+                this.currentModelMeta = {
+                    name: modelInfo.name,
+                    version: modelInfo.version,
+                    author: modelInfo.author,
+                    scene: modelInfo.scene
+                };
+            }
+        } catch (error) {
+            console.error('获取模型元数据异常:', error);
+            // 如果获取失败，至少保存基本信息
+            this.currentModelMeta = {
+                name: modelInfo.name,
+                version: modelInfo.version,
+                author: modelInfo.author,
+                scene: modelInfo.scene
+            };
+        }
+        
+        // 加载基本信息到表单
         const modelNameInput = this.shadowRoot.getElementById('modelName');
         const developerInput = this.shadowRoot.getElementById('developer');
         const versionInput = this.shadowRoot.getElementById('version');
@@ -194,8 +225,13 @@ class ModelEdit extends HTMLElement {
         if (versionInput) versionInput.value = modelInfo.version || '';
         if (sceneInput) sceneInput.value = modelInfo.scene || '';
 
-        // 加载接口参数（使用静态数据）
-        this.loadInterfaceParams();
+        // 加载接口参数（使用从API获取的数据）
+        if (this.currentModelMeta && this.currentModelMeta.inputs) {
+            this.loadInterfaceParamsFromData(this.currentModelMeta.inputs, this.currentModelMeta.outputs);
+        } else {
+            // 如果没有数据，使用默认参数
+            this.loadInterfaceParams();
+        }
     }
 
     loadInterfaceParamsFromData(inputsData, outputsData) {
