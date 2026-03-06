@@ -145,11 +145,11 @@
             </span>
     </div>
     <div class="user-bar">
-        <span class="username">LUDNS</span>
-        <i class="top-icon user-avatar-icon"></i>
-        <i class="top-icon theme-icon" id="themeToggle"></i>
-        <i class="top-icon setting-icon"></i>
-        <i class="top-icon logout-icon"></i>
+        <span class="username" id="username">LUDNS</span>
+        <i class="top-icon user-avatar-icon" title="修改密码"></i>
+        <i class="top-icon theme-icon" id="themeToggle" title="切换主题"></i>
+<!--        <i class="top-icon setting-icon" title="设置"></i>-->
+        <i class="top-icon logout-icon" id="logoutBtn" title="登出"></i>
     </div>
 </header>
 
@@ -337,36 +337,6 @@
 <script src="./components/visual-analysis/visual-analysis.js"></script>
 <script src="./js/main.js"></script>
 
-<script>
-    // 检查登录状态
-    function checkLoginStatus() {
-        if (window.AppConfig.isLoggedIn()) {
-            const username = window.AppConfig.getUsername();
-            document.getElementById('username').textContent = username || '已登录';
-            document.getElementById('loginBtn').style.display = 'none';
-            document.getElementById('logoutBtn').style.display = 'inline-block';
-        } else {
-            // 未登录，跳转到登录页
-            window.location.href = '/login.html';
-        }
-    }
-
-    // 登出功能
-    function logout() {
-        window.AppConfig.logout();
-    }
-
-    // 页面加载时检查登录状态
-    window.addEventListener('DOMContentLoaded', function() {
-        checkLoginStatus();
-    });
-
-    // 绑定登出按钮
-    document.getElementById('logoutBtn').addEventListener('click', function(e) {
-        e.preventDefault();
-        logout();
-    });
-</script>
 </body>
 </html>
 

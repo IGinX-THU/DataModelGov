@@ -1,4 +1,41 @@
 document.addEventListener('DOMContentLoaded', function() {
+    // 0. 用户认证和登录状态管理
+    function checkLoginStatus() {
+        if (window.AppConfig.isLoggedIn()) {
+            const username = window.AppConfig.getUsername();
+            const usernameEl = document.getElementById('username');
+            const logoutBtn = document.getElementById('logoutBtn');
+            
+            if (usernameEl) {
+                usernameEl.textContent = username || '已登录';
+                usernameEl.title = `当前用户: ${username || '已登录'}`;
+            }
+            if (logoutBtn) {
+                logoutBtn.style.display = 'inline-block';
+            }
+        } else {
+            // 未登录，跳转到登录页
+            window.location.href = '/login.html';
+        }
+    }
+
+    // 登出功能
+    function logout() {
+        window.AppConfig.logout();
+    }
+
+    // 页面加载时检查登录状态
+    checkLoginStatus();
+
+    // 绑定登出按钮
+    const logoutBtn = document.getElementById('logoutBtn');
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            logout();
+        });
+    }
+
     // 全局变量：跟踪当前选中的数据源
     let selectedDataSource = null;
     
