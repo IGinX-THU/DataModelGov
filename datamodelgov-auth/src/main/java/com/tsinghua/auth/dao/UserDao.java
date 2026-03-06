@@ -74,6 +74,15 @@ public class UserDao {
             return null;
         }
     }
+
+    /**
+     * 根据用户名获取用户 - Spring Security 用户详情服务使用
+     * @param username 用户名
+     * @return 用户实体，如果不存在返回null
+     */
+    public UserEntity getUserByUsername(String username) {
+        return queryUser(username);
+    }
     
     /**
      * 查询所有用户 - 参考ModelFileService.queryMetaList

@@ -1,7 +1,7 @@
 package com.tsinghua.auth.config;
 
 import com.tsinghua.auth.filter.JwtAuthenticationFilter;
-import com.tsinghua.auth.service.RolePermissionService;
+import com.tsinghua.auth.service.CustomUserDetailsService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
@@ -15,12 +15,12 @@ import org.springframework.security.config.annotation.web.configuration.WebSecur
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 /**
  * Spring Security配置
  * 支持JWT认证和前后端分离
+ * 使用基于DAO层的用户认证
  */
 @Configuration
 @EnableWebSecurity
@@ -31,7 +31,7 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
     private JwtAuthenticationFilter jwtAuthenticationFilter;
     
     @Autowired
-    private RolePermissionService rolePermissionService;
+    private CustomUserDetailsService customUserDetailsService;
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -47,10 +47,8 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
 
     @Bean
     public UserDetailsService userDetailsService() {
-        // 设置密码编码器到RolePermissionService
-        rolePermissionService.setPasswordEncoder(passwordEncoder());
-        // 使用RolePermissionService来获取用户信息，实际项目中应该从数据库读取
-        return new InMemoryUserDetailsManager(rolePermissionService.getAllUsers());
+        // 使用基于DAO层的自定义用户详情服务
+        return customUserDetailsService;
     }
 
     @Override
