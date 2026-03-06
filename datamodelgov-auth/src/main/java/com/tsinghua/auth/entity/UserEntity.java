@@ -16,9 +16,14 @@ public class UserEntity {
     private String password;
     private String role;
     private boolean enabled;
+    private Long timestamp;
     
-    public UserEntity(String username, String password, String role) {
-        this(username, password, role, true);
+    public UserEntity(String username, String password, String role, Long timestamp) {
+        this.username = username;
+        this.password = password;
+        this.role = role;
+        this.enabled = true;
+        this.timestamp = timestamp;
     }
     
     /**

@@ -17,4 +17,6 @@ public class RoleEntity {
     
     private String role;
     private Set<Permission> permissions;
+    private Long timestamp;
+
 }

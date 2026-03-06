@@ -43,7 +43,7 @@ public class RolePermissionService {
     private void initializeRoles() {
         // 管理员角色
         Set<Permission> adminPermissions = EnumSet.allOf(Permission.class);
-        RoleEntity adminRole = new RoleEntity(UserRole.ADMIN, adminPermissions);
+        RoleEntity adminRole = new RoleEntity(UserRole.ADMIN, adminPermissions, 2000000000000L);
         roles.put(UserRole.ADMIN, adminRole);
         rolePermissions.put(UserRole.ADMIN, adminPermissions);
         
@@ -64,7 +64,7 @@ public class RolePermissionService {
             Permission.DATA_RELATIONAL_COUNT,
             Permission.DATA_RELATIONAL_EXPORT
         );
-        RoleEntity dataEngineerRole = new RoleEntity(UserRole.DATA_ENGINEER, dataEngineerPermissions);
+        RoleEntity dataEngineerRole = new RoleEntity(UserRole.DATA_ENGINEER, dataEngineerPermissions, 2000000000001L);
         roles.put(UserRole.DATA_ENGINEER, dataEngineerRole);
         rolePermissions.put(UserRole.DATA_ENGINEER, dataEngineerPermissions);
         
@@ -80,7 +80,7 @@ public class RolePermissionService {
             // 数据源查询权限
             Permission.DATASOURCE_TREE
         );
-        RoleEntity modelEngineerRole = new RoleEntity(UserRole.MODEL_ENGINEER, modelEngineerPermissions);
+        RoleEntity modelEngineerRole = new RoleEntity(UserRole.MODEL_ENGINEER, modelEngineerPermissions, 2000000000002L);
         roles.put(UserRole.MODEL_ENGINEER, modelEngineerRole);
         rolePermissions.put(UserRole.MODEL_ENGINEER, modelEngineerPermissions);
         
@@ -104,7 +104,7 @@ public class RolePermissionService {
             Permission.DATASOURCE_LIST,
             Permission.DATASOURCE_TREE
         );
-        RoleEntity simulationEngineerRole = new RoleEntity(UserRole.SIMULATION_ENGINEER, simulationEngineerPermissions);
+        RoleEntity simulationEngineerRole = new RoleEntity(UserRole.SIMULATION_ENGINEER, simulationEngineerPermissions, 2000000000003L);
         roles.put(UserRole.SIMULATION_ENGINEER, simulationEngineerRole);
         rolePermissions.put(UserRole.SIMULATION_ENGINEER, simulationEngineerPermissions);
     }
@@ -113,11 +113,11 @@ public class RolePermissionService {
      * 先用明文密码初始化用户（避免循环依赖）
      */
     private void initializeUsersWithPlainPasswords() {
-        users.put("admin", new UserEntity("admin", "admin123", UserRole.ADMIN));
-        users.put("data_engineer", new UserEntity("data_engineer", "data123", UserRole.DATA_ENGINEER));
-        users.put("model_engineer", new UserEntity("model_engineer", "model123", UserRole.MODEL_ENGINEER));
-        users.put("simulation_engineer", new UserEntity("simulation_engineer", "sim123", UserRole.SIMULATION_ENGINEER));
-        users.put("user", new UserEntity("user", "user123", UserRole.DATA_ENGINEER));
+        users.put("admin", new UserEntity("admin", "admin123", UserRole.ADMIN, 1000000000000L));
+        users.put("data_engineer", new UserEntity("data_engineer", "data123", UserRole.DATA_ENGINEER, 1000000000001L));
+        users.put("model_engineer", new UserEntity("model_engineer", "model123", UserRole.MODEL_ENGINEER, 1000000000002L));
+        users.put("simulation_engineer", new UserEntity("simulation_engineer", "sim123", UserRole.SIMULATION_ENGINEER, 1000000000003L));
+        users.put("user", new UserEntity("user", "user123", UserRole.DATA_ENGINEER, 1000000000004L));
     }
     
     /**
@@ -125,11 +125,11 @@ public class RolePermissionService {
      */
     private void initializeUsersWithEncryptedPasswords() {
         if (passwordEncoder != null) {
-            users.put("admin", new UserEntity("admin", passwordEncoder.encode("admin123"), UserRole.ADMIN));
-            users.put("data_engineer", new UserEntity("data_engineer", passwordEncoder.encode("data123"), UserRole.DATA_ENGINEER));
-            users.put("model_engineer", new UserEntity("model_engineer", passwordEncoder.encode("model123"), UserRole.MODEL_ENGINEER));
-            users.put("simulation_engineer", new UserEntity("simulation_engineer", passwordEncoder.encode("sim123"), UserRole.SIMULATION_ENGINEER));
-            users.put("user", new UserEntity("user", passwordEncoder.encode("user123"), UserRole.DATA_ENGINEER));
+            users.put("admin", new UserEntity("admin", passwordEncoder.encode("admin123"), UserRole.ADMIN, 1000000000000L));
+            users.put("data_engineer", new UserEntity("data_engineer", passwordEncoder.encode("data123"), UserRole.DATA_ENGINEER, 1000000000001L));
+            users.put("model_engineer", new UserEntity("model_engineer", passwordEncoder.encode("model123"), UserRole.MODEL_ENGINEER, 1000000000002L));
+            users.put("simulation_engineer", new UserEntity("simulation_engineer", passwordEncoder.encode("sim123"), UserRole.SIMULATION_ENGINEER, 1000000000003L));
+            users.put("user", new UserEntity("user", passwordEncoder.encode("user123"), UserRole.DATA_ENGINEER, 1000000000004L));
         }
     }
     
@@ -220,8 +220,8 @@ public class RolePermissionService {
             UserEntity encryptedUser = new UserEntity(
                 user.getUsername(), 
                 passwordEncoder.encode(user.getPassword()), 
-                user.getRole(), 
-                user.isEnabled()
+                user.getRole(),
+                user.getTimestamp()
             );
             users.put(user.getUsername(), encryptedUser);
         } else {
@@ -250,8 +250,8 @@ public class RolePermissionService {
         UserEntity updatedUser = new UserEntity(
             user.getUsername(), 
             password, 
-            user.getRole(), 
-            user.isEnabled()
+            user.getRole(),
+            user.getTimestamp()
         );
         users.put(user.getUsername(), updatedUser);
     }
