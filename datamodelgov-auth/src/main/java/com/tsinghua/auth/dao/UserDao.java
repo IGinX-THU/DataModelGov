@@ -53,12 +53,12 @@ public class UserDao {
      */
     public UserEntity queryUser(String username) {
         try {
-            String sql = "SELECT * FROM %s WHERE username = '%s';";
-            String querySql = String.format(sql, USERS_TABLE, username);
+            // 构建查询SQL - 完全参考AssociationRulesService
+            String querySql = "SELECT * FROM " + USERS_TABLE + " WHERE username = '" + username + "';";
             
             log.info("执行用户查询SQL: {}", querySql);
             
-            // 使用Session.executeSql - 参考ModelFileService和AssociationRulesService
+            // 使用Session.executeSql - 参考AssociationRulesService
             SessionExecuteSqlResult result = iginxSession.executeSql(querySql);
             List<Map<String, Object>> records = ConvertUtil.getRecords(result);
             
@@ -80,8 +80,8 @@ public class UserDao {
      */
     public List<UserEntity> queryAllUsers() {
         try {
-            String sql = "SELECT * FROM %s ORDER BY timestamp;";
-            String querySql = String.format(sql, USERS_TABLE);
+            // 构建查询SQL - 完全参考AssociationRulesService
+            String querySql = "SELECT * FROM " + USERS_TABLE + " ORDER BY timestamp;";
             
             log.info("执行查询所有用户SQL: {}", querySql);
             
@@ -96,6 +96,58 @@ public class UserDao {
             return users;
         } catch (Exception e) {
             log.error("查询所有用户失败: {}", e.getMessage(), e);
+            return new ArrayList<>();
+        }
+    }
+
+    /**
+     * 根据条件查询用户
+     */
+    public List<UserEntity> queryUsers(String username, String role, String enabled, Integer page, Integer pageSize) {
+        try {
+            // 构建查询SQL - 完全参考AssociationRulesService
+            StringBuilder sql = new StringBuilder("SELECT * FROM ").append(USERS_TABLE).append(" WHERE 1=1");
+            
+            // 添加用户名筛选
+            if (username != null && !username.trim().isEmpty()) {
+                sql.append(" AND username LIKE '^.*").append(username.trim()).append(".*'");
+            }
+            
+            // 添加角色筛选
+            if (role != null && !role.trim().isEmpty()) {
+                sql.append(" AND role = '").append(role.trim()).append("'");
+            }
+            
+            // 添加状态筛选
+            if (enabled != null && !enabled.trim().isEmpty()) {
+                boolean enabledValue = "true".equals(enabled);
+                sql.append(" AND enabled = ").append(enabledValue);
+            }
+            
+            // 添加排序和分页
+            sql.append(" ORDER BY timestamp DESC");
+            if (page != null && pageSize != null) {
+                sql.append(" LIMIT ").append(pageSize);
+                sql.append(" OFFSET ").append((page - 1) * pageSize);
+            }
+            sql.append(";");
+            
+            String querySql = sql.toString();
+            
+            log.info("执行筛选查询用户SQL: {}", querySql);
+            
+            // 使用Session.executeSql - 参考AssociationRulesService
+            SessionExecuteSqlResult result = iginxSession.executeSql(querySql);
+            List<Map<String, Object>> records = ConvertUtil.getRecords(result);
+            
+            List<UserEntity> users = new ArrayList<>();
+            for (Map<String, Object> record : records) {
+                users.add(mapToUserEntity(record));
+            }
+            
+            return users;
+        } catch (Exception e) {
+            log.error("筛选查询用户失败: {}", e.getMessage(), e);
             return new ArrayList<>();
         }
     }

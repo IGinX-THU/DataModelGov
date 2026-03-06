@@ -55,7 +55,8 @@ document.addEventListener('DOMContentLoaded', function() {
             'dataVisualization',
             'modelDetail',
             'dataSourceList',
-            'importData'
+            'importData',
+            'userManagement'
         ];
         
         components.forEach(componentId => {
@@ -214,6 +215,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const toolDropdown = document.getElementById('toolDropdown');
     const windowDropdown = document.getElementById('windowDropdown');
     const helpDropdown = document.getElementById('helpDropdown');
+    const userDropdown = document.getElementById('userDropdown');
 
     dataDropdown.addEventListener('click', function(e) {
         e.stopPropagation();
@@ -223,6 +225,7 @@ document.addEventListener('DOMContentLoaded', function() {
         toolDropdown.classList.remove('active');
         windowDropdown.classList.remove('active');
         helpDropdown.classList.remove('active');
+        userDropdown.classList.remove('active');
         this.classList.toggle('active');
     });
 
@@ -234,6 +237,7 @@ document.addEventListener('DOMContentLoaded', function() {
         toolDropdown.classList.remove('active');
         windowDropdown.classList.remove('active');
         helpDropdown.classList.remove('active');
+        userDropdown.classList.remove('active');
         this.classList.toggle('active');
     });
 
@@ -245,6 +249,7 @@ document.addEventListener('DOMContentLoaded', function() {
         toolDropdown.classList.remove('active');
         windowDropdown.classList.remove('active');
         helpDropdown.classList.remove('active');
+        userDropdown.classList.remove('active');
         this.classList.toggle('active');
     });
 
@@ -256,6 +261,7 @@ document.addEventListener('DOMContentLoaded', function() {
         toolDropdown.classList.remove('active');
         windowDropdown.classList.remove('active');
         helpDropdown.classList.remove('active');
+        userDropdown.classList.remove('active');
         this.classList.toggle('active');
     });
 
@@ -267,6 +273,7 @@ document.addEventListener('DOMContentLoaded', function() {
         analysisDropdown.classList.remove('active');
         windowDropdown.classList.remove('active');
         helpDropdown.classList.remove('active');
+        userDropdown.classList.remove('active');
         this.classList.toggle('active');
     });
 
@@ -278,6 +285,7 @@ document.addEventListener('DOMContentLoaded', function() {
         analysisDropdown.classList.remove('active');
         toolDropdown.classList.remove('active');
         helpDropdown.classList.remove('active');
+        userDropdown.classList.remove('active');
         this.classList.toggle('active');
     });
 
@@ -289,6 +297,19 @@ document.addEventListener('DOMContentLoaded', function() {
         analysisDropdown.classList.remove('active');
         toolDropdown.classList.remove('active');
         windowDropdown.classList.remove('active');
+        userDropdown.classList.remove('active');
+        this.classList.toggle('active');
+    });
+
+    userDropdown.addEventListener('click', function(e) {
+        e.stopPropagation();
+        dataDropdown.classList.remove('active');
+        modelDropdown.classList.remove('active');
+        scheduleDropdown.classList.remove('active');
+        analysisDropdown.classList.remove('active');
+        toolDropdown.classList.remove('active');
+        windowDropdown.classList.remove('active');
+        helpDropdown.classList.remove('active');
         this.classList.toggle('active');
     });
 
@@ -300,6 +321,7 @@ document.addEventListener('DOMContentLoaded', function() {
         toolDropdown.classList.remove('active');
         windowDropdown.classList.remove('active');
         helpDropdown.classList.remove('active');
+        userDropdown.classList.remove('active');
     });
 
     const menuItems = document.querySelectorAll('.dropdown-menu li');
@@ -378,6 +400,21 @@ document.addEventListener('DOMContentLoaded', function() {
             if (menuItemText === '关联规则配置') {
                 console.log('关联规则配置菜单被点击');
                 showComponent('associationRules');
+            }
+            
+            // 检查是否点击了"用户管理"
+            if (menuItemText === '用户管理') {
+                console.log('用户管理菜单被点击');
+                showComponent('userManagement');
+            }
+            
+            // 检查是否点击了"修改密码"
+            if (menuItemText === '修改密码') {
+                console.log('修改密码菜单被点击');
+                const changePasswordComponent = document.querySelector('change-password');
+                if (changePasswordComponent) {
+                    changePasswordComponent.showModal();
+                }
             }
 
             // 数值与曲线分析 - 新增
@@ -1846,3 +1883,25 @@ window.loadDataSourceTree = async function() {
         window.hideGlobalLoading();
     }
 };
+
+// 全局函数：显示修改密码弹窗
+window.showChangePasswordModal = function() {
+    const changePasswordComponent = document.querySelector('change-password');
+    if (changePasswordComponent) {
+        changePasswordComponent.showModal();
+    }
+};
+
+// 用户头像点击事件（修改密码）
+document.addEventListener('DOMContentLoaded', function() {
+    const userAvatar = document.querySelector('.user-avatar-icon');
+    if (userAvatar) {
+        userAvatar.addEventListener('click', function() {
+            console.log('用户头像被点击，打开修改密码弹窗');
+            const changePasswordComponent = document.querySelector('change-password');
+            if (changePasswordComponent) {
+                changePasswordComponent.showModal();
+            }
+        });
+    }
+});

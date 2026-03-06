@@ -95,7 +95,7 @@ public class AssociationRulesService {
             
             // 添加筛选条件
             if (request.getName() != null && !request.getName().trim().isEmpty()) {
-                sql.append(" AND name LIKE '%").append(request.getName().trim()).append("%'");
+                sql.append(" AND name LIKE '^.*").append(request.getName().trim()).append(".*'");
             }
             if (request.getStatus() != null && !request.getStatus().trim().isEmpty()) {
                 boolean statusValue = "active".equals(request.getStatus());

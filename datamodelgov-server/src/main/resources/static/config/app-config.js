@@ -75,6 +75,15 @@ window.AppConfig = {
             delete: '/api/association-rules/delete',
             detail: '/api/association-rules/detail'
         },
+        // 用户管理相关
+        userManagement: {
+            query: '/api/user/query',
+            count: '/api/user/count',
+            detail: '/api/user/detail',
+            update: '/api/user/update',
+            save: '/api/user/save',
+            delete: '/api/user/delete'
+        },
         // 模型相关
         model: {
             upload: '/api/model/upload',

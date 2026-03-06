@@ -241,7 +241,10 @@ public class RolePermissionService {
             
             // 数据源查询权限
             Permission.DATASOURCE_LIST,
-            Permission.DATASOURCE_TREE
+            Permission.DATASOURCE_TREE,
+            
+            // 用户管理权限
+            Permission.USER_MANAGE
         );
         RoleEntity simulationEngineerRole = new RoleEntity(UserRole.SIMULATION_ENGINEER, simulationEngineerPermissions, 2000000000003L);
         roleDao.saveRole(simulationEngineerRole);
@@ -383,6 +386,8 @@ public class RolePermissionService {
                 roleId,
                 user.getTimestamp()
             );
+            // 设置 enabled 字段
+            encryptedUser.setEnabled(user.isEnabled());
             userDao.saveUser(encryptedUser);
         } else {
             UserEntity userWithRoleId = new UserEntity(
@@ -392,6 +397,8 @@ public class RolePermissionService {
                 roleId,
                 user.getTimestamp()
             );
+            // 设置 enabled 字段
+            userWithRoleId.setEnabled(user.isEnabled());
             userDao.saveUser(userWithRoleId);
         }
     }
@@ -410,11 +417,26 @@ public class RolePermissionService {
         // 获取角色的timestamp作为roleId
         Long roleId = getRoleTimestamp(user.getRole());
         
-        // 如果密码未加密，则加密后再存储
-        String password = user.getPassword();
-        if (passwordEncoder != null && 
-            !password.startsWith("$2a$") && !password.startsWith("$2b$") && !password.startsWith("$2y$")) {
-            password = passwordEncoder.encode(password);
+        // 查询原用户信息
+        UserEntity originalUser = userDao.queryUser(user.getUsername());
+        if (originalUser == null) {
+            throw new RuntimeException("用户不存在: " + user.getUsername());
+        }
+        
+        // 如果密码为空，则保留原密码；否则加密新密码
+        String password;
+        if (user.getPassword() == null || user.getPassword().trim().isEmpty()) {
+            password = originalUser.getPassword(); // 保留原密码
+        } else {
+            // 加密新密码
+            if (passwordEncoder != null && 
+                !user.getPassword().startsWith("$2a$") && 
+                !user.getPassword().startsWith("$2b$") && 
+                !user.getPassword().startsWith("$2y$")) {
+                password = passwordEncoder.encode(user.getPassword());
+            } else {
+                password = user.getPassword();
+            }
         }
         
         UserEntity updatedUser = new UserEntity(
@@ -424,6 +446,8 @@ public class RolePermissionService {
             roleId,
             user.getTimestamp()
         );
+        // 设置 enabled 字段
+        updatedUser.setEnabled(user.isEnabled());
         userDao.saveUser(updatedUser);
     }
     
@@ -446,5 +470,72 @@ public class RolePermissionService {
      */
     public void updateRole(RoleEntity role) {
         roleDao.saveRole(role);
+    }
+    
+    /**
+     * 获取所有用户列表
+     */
+    public List<UserEntity> getAllUsersList() {
+        return userDao.queryAllUsers();
+    }
+
+    /**
+     * 根据条件查询用户列表
+     */
+    public List<UserEntity> queryUsers(String username, String role, String enabled, Integer page, Integer pageSize) {
+        return userDao.queryUsers(username, role, enabled, page, pageSize);
+    }
+    
+    /**
+     * 获取用户信息
+     */
+    public UserEntity getUser(String username) {
+        return userDao.queryUser(username);
+    }
+    
+    /**
+     * 获取所有角色列表
+     */
+    public List<RoleEntity> getAllRoles() {
+        return roleDao.queryAllRoles();
+    }
+    
+    /**
+     * 修改密码
+     */
+    public boolean changePassword(String username, String oldPassword, String newPassword) {
+        try {
+            UserEntity user = userDao.queryUser(username);
+            if (user == null) {
+                log.warn("用户 {} 不存在", username);
+                return false;
+            }
+            
+            // 验证原密码
+            if (passwordEncoder != null && !passwordEncoder.matches(oldPassword, user.getPassword())) {
+                log.warn("用户 {} 原密码验证失败", username);
+                return false;
+            }
+            
+            // 加密新密码
+            String encryptedNewPassword = passwordEncoder != null ? 
+                passwordEncoder.encode(newPassword) : newPassword;
+            
+            // 更新密码
+            UserEntity updatedUser = new UserEntity(
+                user.getUsername(),
+                encryptedNewPassword,
+                user.getRole(),
+                user.getRoleId(),
+                user.getTimestamp()
+            );
+            userDao.saveUser(updatedUser);
+            
+            log.info("用户 {} 密码修改成功", username);
+            return true;
+        } catch (Exception e) {
+            log.error("修改用户 {} 密码失败: {}", username, e.getMessage(), e);
+            return false;
+        }
     }
 }

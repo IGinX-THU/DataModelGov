@@ -123,6 +123,13 @@
                     <li>数值与曲线分析</li>
                 </ul>
             </span>
+        <span class="tab dropdown" id="userDropdown">
+                <span class="dropdown-trigger">用户</span>
+                <ul class="dropdown-menu">
+                    <li id="userManagementMenuItem">用户管理</li>
+                    <li id="changePasswordMenuItem">修改密码</li>
+                </ul>
+            </span>
         <!-- 修复下拉标签：确保span包裹完整，点击区域无遗漏 -->
         <span class="tab dropdown" id="toolDropdown">
                 <span class="dropdown-trigger">工具</span>
@@ -272,6 +279,8 @@
             <parsing-rules id="parsingRules"></parsing-rules>
             <!-- 关联规则配置组件 -->
             <association-rules id="associationRules"></association-rules>
+            <!-- 用户管理组件 -->
+            <user-management id="userManagement"></user-management>
         </div>
     </div>
 
@@ -335,7 +344,12 @@
 <script src="./components/parsing-rules/parsing-rules.js"></script>
 <script src="./components/association-rules/association-rules.js"></script>
 <script src="./components/visual-analysis/visual-analysis.js"></script>
+<script src="./components/user-management/user-management.js"></script>
+<script src="./components/change-password/change-password.js"></script>
 <script src="./js/main.js"></script>
+
+<!-- 修改密码模态框 -->
+<change-password></change-password>
 
 </body>
 </html>

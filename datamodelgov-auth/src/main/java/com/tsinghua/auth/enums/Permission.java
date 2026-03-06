@@ -32,7 +32,10 @@ public enum Permission {
     ASSOCIATION_RULES_QUERY,
     ASSOCIATION_RULES_COUNT,
     ASSOCIATION_RULES_DETAIL,
-    ASSOCIATION_RULES_DELETE;
+    ASSOCIATION_RULES_DELETE,
+    
+    // 用户管理权限
+    USER_MANAGE;
     
     /**
      * 获取权限描述（用于错误提示）
@@ -61,6 +64,7 @@ public enum Permission {
             case ASSOCIATION_RULES_COUNT: return "查询关联规则总数";
             case ASSOCIATION_RULES_DETAIL: return "关联规则详情";
             case ASSOCIATION_RULES_DELETE: return "删除关联规则";
+            case USER_MANAGE: return "用户管理";
             default: return this.name();
         }
     }
