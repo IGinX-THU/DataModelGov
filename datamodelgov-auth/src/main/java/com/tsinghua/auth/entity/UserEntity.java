@@ -15,6 +15,7 @@ public class UserEntity {
     private String username;
     private String password;
     private String role;
+    private Long roleId; // 角色timestamp，作为角色的唯一标识
     private boolean enabled;
     private Long timestamp;
     
@@ -22,6 +23,16 @@ public class UserEntity {
         this.username = username;
         this.password = password;
         this.role = role;
+        this.roleId = null; // 初始化时为空，需要通过角色名称查询获取
+        this.enabled = true;
+        this.timestamp = timestamp;
+    }
+    
+    public UserEntity(String username, String password, String role, Long roleId, Long timestamp) {
+        this.username = username;
+        this.password = password;
+        this.role = role;
+        this.roleId = roleId; // 直接指定角色timestamp
         this.enabled = true;
         this.timestamp = timestamp;
     }

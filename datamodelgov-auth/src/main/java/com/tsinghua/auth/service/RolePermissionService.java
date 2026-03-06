@@ -251,13 +251,19 @@ public class RolePermissionService {
      * 初始化默认用户
      */
     private void initializeDefaultUsers() {
-        // 创建默认用户 - 确保密码加密
+        // 创建默认用户 - 确保密码加密并设置正确的roleId
         if (passwordEncoder != null) {
-            userDao.saveUser(new UserEntity("admin", passwordEncoder.encode("admin123"), UserRole.ADMIN, 1000000000000L));
-            userDao.saveUser(new UserEntity("data", passwordEncoder.encode("data123"), UserRole.DATA_ENGINEER, 1000000000001L));
-            userDao.saveUser(new UserEntity("model", passwordEncoder.encode("model123"), UserRole.MODEL_ENGINEER, 1000000000002L));
-            userDao.saveUser(new UserEntity("sim", passwordEncoder.encode("sim123"), UserRole.SIMULATION_ENGINEER, 1000000000003L));
-            userDao.saveUser(new UserEntity("user", passwordEncoder.encode("user123"), UserRole.SIMULATION_ENGINEER, 1000000000004L));
+            // 获取角色的timestamp作为roleId
+            Long adminRoleId = getRoleTimestamp(UserRole.ADMIN);
+            Long dataEngineerRoleId = getRoleTimestamp(UserRole.DATA_ENGINEER);
+            Long modelEngineerRoleId = getRoleTimestamp(UserRole.MODEL_ENGINEER);
+            Long simulationEngineerRoleId = getRoleTimestamp(UserRole.SIMULATION_ENGINEER);
+            
+            userDao.saveUser(new UserEntity("admin", passwordEncoder.encode("admin123"), UserRole.ADMIN, adminRoleId, 1000000000000L));
+            userDao.saveUser(new UserEntity("data", passwordEncoder.encode("data123"), UserRole.DATA_ENGINEER, dataEngineerRoleId, 1000000000001L));
+            userDao.saveUser(new UserEntity("model", passwordEncoder.encode("model123"), UserRole.MODEL_ENGINEER, modelEngineerRoleId, 1000000000002L));
+            userDao.saveUser(new UserEntity("sim", passwordEncoder.encode("sim123"), UserRole.SIMULATION_ENGINEER, simulationEngineerRoleId, 1000000000003L));
+            userDao.saveUser(new UserEntity("user", passwordEncoder.encode("user123"), UserRole.SIMULATION_ENGINEER, simulationEngineerRoleId, 1000000000004L));
         } else {
             // 如果密码编码器还未设置，先保存明文密码，稍后更新
             log.warn("密码编码器未设置，使用明文密码保存用户");
@@ -266,6 +272,19 @@ public class RolePermissionService {
             userDao.saveUser(new UserEntity("model", "model123", UserRole.MODEL_ENGINEER, 1000000000002L));
             userDao.saveUser(new UserEntity("sim", "sim123", UserRole.SIMULATION_ENGINEER, 1000000000003L));
             userDao.saveUser(new UserEntity("user", "user123", UserRole.SIMULATION_ENGINEER, 1000000000004L));
+        }
+    }
+    
+    /**
+     * 获取角色的timestamp
+     */
+    private Long getRoleTimestamp(String roleName) {
+        try {
+            RoleEntity role = roleDao.queryRole(roleName);
+            return role != null ? role.getTimestamp() : 0L;
+        } catch (Exception e) {
+            log.warn("无法获取角色 {} 的timestamp: {}", roleName, e.getMessage());
+            return 0L;
         }
     }
     
@@ -352,17 +371,28 @@ public class RolePermissionService {
      * 添加用户
      */
     public void addUser(UserEntity user) {
+        // 获取角色的timestamp作为roleId
+        Long roleId = getRoleTimestamp(user.getRole());
+        
         // 加密密码后再存储
         if (passwordEncoder != null) {
             UserEntity encryptedUser = new UserEntity(
                 user.getUsername(), 
                 passwordEncoder.encode(user.getPassword()), 
                 user.getRole(),
+                roleId,
                 user.getTimestamp()
             );
             userDao.saveUser(encryptedUser);
         } else {
-            userDao.saveUser(user);
+            UserEntity userWithRoleId = new UserEntity(
+                user.getUsername(), 
+                user.getPassword(), 
+                user.getRole(),
+                roleId,
+                user.getTimestamp()
+            );
+            userDao.saveUser(userWithRoleId);
         }
     }
     
@@ -377,6 +407,9 @@ public class RolePermissionService {
      * 更新用户
      */
     public void updateUser(UserEntity user) {
+        // 获取角色的timestamp作为roleId
+        Long roleId = getRoleTimestamp(user.getRole());
+        
         // 如果密码未加密，则加密后再存储
         String password = user.getPassword();
         if (passwordEncoder != null && 
@@ -388,6 +421,7 @@ public class RolePermissionService {
             user.getUsername(), 
             password, 
             user.getRole(),
+            roleId,
             user.getTimestamp()
         );
         userDao.saveUser(updatedUser);

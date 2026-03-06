@@ -5,6 +5,7 @@ import cn.edu.tsinghua.iginx.session.SessionExecuteSqlResult;
 import cn.edu.tsinghua.iginx.session_v2.DeleteClient;
 import cn.edu.tsinghua.iginx.session_v2.IginXClient;
 import cn.edu.tsinghua.iginx.session_v2.write.Point;
+import com.tsinghua.auth.entity.RoleEntity;
 import com.tsinghua.auth.entity.UserEntity;
 import com.tsinghua.util.ConvertUtil;
 import lombok.extern.slf4j.Slf4j;
@@ -27,6 +28,9 @@ public class UserDao {
     
     @Autowired
     private Session iginxSession;
+    
+    @Autowired
+    private RoleDao roleDao;
     
     @Autowired
     private IginXClient iginxClient;
@@ -118,6 +122,26 @@ public class UserDao {
             userPoints.add(ConvertUtil.createFieldPoint(USERS_TABLE, "username", user.getUsername(), timestamp));
             userPoints.add(ConvertUtil.createFieldPoint(USERS_TABLE, "password", user.getPassword(), timestamp));
             userPoints.add(ConvertUtil.createFieldPoint(USERS_TABLE, "role", user.getRole(), timestamp));
+            
+            // 设置roleId - 如果没有指定，则通过角色名称查询
+            Long roleId = user.getRoleId();
+            if (roleId == null && user.getRole() != null) {
+                // 查询角色获取timestamp作为roleId
+                try {
+                    RoleEntity roleEntity = roleDao.queryRole(user.getRole());
+                    if (roleEntity != null) {
+                        roleId = roleEntity.getTimestamp();
+                    } else {
+                        log.warn("角色 {} 不存在，使用默认值", user.getRole());
+                        roleId = 0L;
+                    }
+                } catch (Exception e) {
+                    log.warn("无法查询角色 {} 的timestamp，使用默认值: {}", user.getRole(), e.getMessage());
+                    roleId = 0L;
+                }
+            }
+            
+            userPoints.add(ConvertUtil.createFieldPoint(USERS_TABLE, "roleId", roleId, timestamp));
             userPoints.add(ConvertUtil.createFieldPoint(USERS_TABLE, "enabled", user.isEnabled(), timestamp));
             userPoints.add(ConvertUtil.createFieldPoint(USERS_TABLE, "timestamp", timestamp, timestamp));
             
