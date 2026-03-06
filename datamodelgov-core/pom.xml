@@ -17,6 +17,13 @@
 
     <dependencies>
 
+        <!-- DataModelGov Auth Module -->
+        <dependency>
+            <groupId>com.tsinghua</groupId>
+            <artifactId>datamodelgov-auth</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
         <!-- DataModelGov Common Module -->
         <dependency>
             <groupId>com.tsinghua</groupId>

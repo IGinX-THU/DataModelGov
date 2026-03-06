@@ -167,6 +167,32 @@ window.AppConfig = {
                 throw new Error('认证失败，请重新登录');
             }
             
+            // 检查权限不足状态 (403)
+            if (response.status === 403) {
+                console.log('🚫 收到403响应，权限不足');
+                try {
+                    const errorData = await response.json();
+                    if (errorData && errorData.message) {
+                        // 显示后端返回的详细权限错误信息
+                        if (window.CommonUtils && window.CommonUtils.showError) {
+                            window.CommonUtils.showError(errorData.message, 8000); // 显示8秒
+                        } else {
+                            alert(errorData.message);
+                        }
+                        throw new Error(errorData.message);
+                    }
+                } catch (parseError) {
+                    // 如果无法解析JSON，使用默认错误信息
+                    const errorMsg = '权限不足，无法访问该资源。请联系管理员分配相应权限。';
+                    if (window.CommonUtils && window.CommonUtils.showError) {
+                        window.CommonUtils.showError(errorMsg, 8000);
+                    } else {
+                        alert(errorMsg);
+                    }
+                    throw new Error(errorMsg);
+                }
+            }
+            
             // 检查其他HTTP错误
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -432,6 +458,32 @@ window.AppConfig = {
                 throw new Error('认证失败，请重新登录');
             }
             
+            // 检查权限不足状态 (403)
+            if (response.status === 403) {
+                console.log('🚫 收到403响应，权限不足');
+                try {
+                    const errorData = await response.json();
+                    if (errorData && errorData.message) {
+                        // 显示后端返回的详细权限错误信息
+                        if (window.CommonUtils && window.CommonUtils.showError) {
+                            window.CommonUtils.showError(errorData.message, 8000); // 显示8秒
+                        } else {
+                            alert(errorData.message);
+                        }
+                        throw new Error(errorData.message);
+                    }
+                } catch (parseError) {
+                    // 如果无法解析JSON，使用默认错误信息
+                    const errorMsg = '权限不足，无法访问该资源。请联系管理员分配相应权限。';
+                    if (window.CommonUtils && window.CommonUtils.showError) {
+                        window.CommonUtils.showError(errorMsg, 8000);
+                    } else {
+                        alert(errorMsg);
+                    }
+                    throw new Error(errorMsg);
+                }
+            }
+            
             // 检查其他HTTP错误
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -479,6 +531,32 @@ window.AppConfig = {
             if (response.status === 401) {
                 this.handleAuthFailure();
                 throw new Error('认证失败，请重新登录');
+            }
+            
+            // 检查权限不足状态 (403)
+            if (response.status === 403) {
+                console.log('🚫 收到403响应，权限不足');
+                try {
+                    const errorData = await response.json();
+                    if (errorData && errorData.message) {
+                        // 显示后端返回的详细权限错误信息
+                        if (window.CommonUtils && window.CommonUtils.showError) {
+                            window.CommonUtils.showError(errorData.message, 8000); // 显示8秒
+                        } else {
+                            alert(errorData.message);
+                        }
+                        throw new Error(errorData.message);
+                    }
+                } catch (parseError) {
+                    // 如果无法解析JSON，使用默认错误信息
+                    const errorMsg = '权限不足，无法访问该资源。请联系管理员分配相应权限。';
+                    if (window.CommonUtils && window.CommonUtils.showError) {
+                        window.CommonUtils.showError(errorMsg, 8000);
+                    } else {
+                        alert(errorMsg);
+                    }
+                    throw new Error(errorMsg);
+                }
             }
             
             // 检查其他HTTP错误

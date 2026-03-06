@@ -3,6 +3,8 @@ package com.tsinghua.controller;
 import com.tsinghua.dto.*;
 import com.tsinghua.service.DataTableService;
 import com.tsinghua.service.RelationalDataService;
+import com.tsinghua.auth.annotation.RequirePermission;
+import com.tsinghua.auth.enums.Permission;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiParam;
@@ -39,6 +41,7 @@ public class DataTableController {
      */
     @ApiOperation("数据查询")
     @PostMapping("/query")
+    @RequirePermission(Permission.DATA_QUERY)
     public com.tsinghua.model.Result<TableDto> queryData(@Validated @RequestBody DataQueryRequest request) {
         return com.tsinghua.model.Result.success(dataTableService.queryData(request));
     }
@@ -48,6 +51,7 @@ public class DataTableController {
      */
     @ApiOperation("导入数据")
     @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @RequirePermission(Permission.DATA_IMPORT)
     public com.tsinghua.model.Result<Void> importData(// 使用 @RequestPart 接收JSON格式的配置参数
                                                       @RequestPart("config") @Valid DataImportRequest config,
                                                       @ApiParam(value = "数据文件", required = true) @RequestPart("file") MultipartFile file) {
@@ -59,6 +63,7 @@ public class DataTableController {
      */
     @ApiOperation("导出数据")
     @PostMapping("/export")
+    @RequirePermission(Permission.DATA_EXPORT)
     public void exportData(@Validated @RequestBody DataQueryRequest request, HttpServletResponse response) {
         dataTableService.exportData(request, response);
     }
@@ -68,6 +73,7 @@ public class DataTableController {
      */
     @ApiOperation("数据删除")
     @PostMapping("/delete")
+    @RequirePermission(Permission.DATA_DELETE)
     public com.tsinghua.model.Result<Void> deleteData(@Validated @RequestBody DataQueryRequest request) {
         dataTableService.deleteData(request);
         return com.tsinghua.model.Result.success("删除成功");
@@ -78,6 +84,7 @@ public class DataTableController {
      */
     @ApiOperation("关系数据查询")
     @PostMapping("/relational/query")
+    @RequirePermission(Permission.DATA_RELATIONAL_QUERY)
     public com.tsinghua.model.Result<TableDto> queryData(@Validated @RequestBody RelationalQueryRequest request) {
         return com.tsinghua.model.Result.success(relationalDataService.queryData(request));
     }
@@ -87,6 +94,7 @@ public class DataTableController {
      */
     @ApiOperation("关系数据总量查询")
     @PostMapping("/relational/count")
+    @RequirePermission(Permission.DATA_RELATIONAL_COUNT)
     public com.tsinghua.model.Result<Object> countData(@Validated @RequestBody RelationalQueryRequest request) {
         return com.tsinghua.model.Result.success(relationalDataService.countData(request));
     }
@@ -96,6 +104,7 @@ public class DataTableController {
      */
     @ApiOperation("关系数据Excel导出")
     @PostMapping("/relational/export")
+    @RequirePermission(Permission.DATA_RELATIONAL_EXPORT)
     public void exportRelationalDataToExcel(@Validated @RequestBody RelationalQueryRequest request, 
                                          HttpServletResponse response) {
         try {

@@ -1,6 +1,7 @@
 package com.tsinghua.auth.config;
 
 import com.tsinghua.auth.filter.JwtAuthenticationFilter;
+import com.tsinghua.auth.service.RolePermissionService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
@@ -12,10 +13,7 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.core.userdetails.User;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
@@ -31,10 +29,14 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
 
     @Autowired
     private JwtAuthenticationFilter jwtAuthenticationFilter;
+    
+    @Autowired
+    private RolePermissionService rolePermissionService;
 
     @Bean
     public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
+        // 使用BCryptPasswordEncoder加密密码
+        return new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder();
     }
 
     @Bean
@@ -45,20 +47,10 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
 
     @Bean
     public UserDetailsService userDetailsService() {
-        // 这里使用内存用户存储，实际项目中应该从数据库读取
-        UserDetails admin = User.builder()
-                .username("admin")
-                .password(passwordEncoder().encode("admin123"))
-                .roles("ADMIN", "USER")
-                .build();
-
-        UserDetails user = User.builder()
-                .username("user")
-                .password(passwordEncoder().encode("user123"))
-                .roles("USER")
-                .build();
-
-        return new InMemoryUserDetailsManager(admin, user);
+        // 设置密码编码器到RolePermissionService
+        rolePermissionService.setPasswordEncoder(passwordEncoder());
+        // 使用RolePermissionService来获取用户信息，实际项目中应该从数据库读取
+        return new InMemoryUserDetailsManager(rolePermissionService.getAllUsers());
     }
 
     @Override
@@ -77,7 +69,7 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 .and()
             
-            // 配置授权规则
+            // 配置授权规则 - 只做基础认证控制，所有权限由拦截器处理
             .authorizeRequests()
                 // 放行server模块的静态资源
                 .antMatchers("/", "/index.html").permitAll()
@@ -86,21 +78,17 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
                 .antMatchers("/login.html", "/login", "/error", "/favicon.ico").permitAll()
                 // 放行认证相关API
                 .antMatchers("/api/auth/**").permitAll()
+                // 放行RBAC测试API（用于测试权限系统）
+                .antMatchers("/api/rbac/**").permitAll()
                 // 放行公开测试API
                 .antMatchers("/api/test/public").permitAll()
-                // 受保护的测试API需要认证
-                .antMatchers("/api/test/protected").authenticated()
-                // 管理员测试API需要管理员权限
-                .antMatchers("/api/test/admin").hasRole("ADMIN")
                 // 放行API文档相关
                 .antMatchers("/doc.html", "/swagger-ui/**", "/v3/api-docs/**", "/v2/api-docs", "/swagger-resources/**", "/webjars/**").permitAll()
                 // 放行健康检查
                 .antMatchers("/actuator/health", "/actuator/info").permitAll()
-                // 管理员接口
-                .antMatchers("/api/admin/**", "/admin/**").hasRole("ADMIN")
-                // core模块的API接口需要认证
-                .antMatchers("/api/generation/**", "/api/association-rules/**", "/api/data-sources/**", "/api/data-tables/**", "/api/model-files/**").authenticated()
-                // 其他所有接口都需要认证
+                // 所有业务API都需要认证（具体权限由拦截器控制）
+                .antMatchers("/api/**").authenticated()
+                // 其他所有请求都需要认证
                 .anyRequest().authenticated()
                 .and()
             

@@ -4,6 +4,8 @@ import com.tsinghua.entity.ModelMetaEntity;
 import com.tsinghua.model.Result;
 import com.tsinghua.dto.UploadResult;
 import com.tsinghua.service.ModelFileService;
+import com.tsinghua.auth.annotation.RequirePermission;
+import com.tsinghua.auth.enums.Permission;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,6 +27,7 @@ public class ModelFileController {
 
     @ApiOperation("上传模型")
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @RequirePermission(Permission.MODEL_UPLOAD)
     public Result<?> handleFileUpload(
             @RequestPart("file") MultipartFile file,
             @RequestParam("name") String name,
@@ -40,6 +43,7 @@ public class ModelFileController {
 
     @ApiOperation("下载模型")
     @PostMapping("/download")
+    @RequirePermission(Permission.MODEL_DOWNLOAD)
     public void handleFileDownload(
             @RequestParam String name,
             @RequestParam String version,
@@ -66,6 +70,7 @@ public class ModelFileController {
 
     @ApiOperation("模型元数据详情")
     @GetMapping( "/metas")
+    @RequirePermission(Permission.MODEL_QUERY_META)
     public Result<ModelMetaEntity> queryMeta(
             @RequestParam("name") String name,
             @RequestParam("version") String version) throws Exception {
@@ -75,6 +80,7 @@ public class ModelFileController {
 
     @ApiOperation("保存模型元数据")
     @PostMapping("/metas")
+    @RequirePermission(Permission.MODEL_SAVE_META)
     public Result<Void> saveMeta(@RequestBody ModelMetaEntity modelMetaDto) throws Exception {
         modelFileService.saveModelMetadata(modelMetaDto);
         return Result.success("元数据保存成功");
@@ -82,6 +88,7 @@ public class ModelFileController {
 
     @ApiOperation("模型元数据历史")
     @GetMapping( "/history")
+    @RequirePermission(Permission.MODEL_HISTORY)
     public Result<List<ModelMetaEntity>> queryMetaList(
             @RequestParam("name") String name) {
         return Result.success(modelFileService.queryMetaList(name));
@@ -89,6 +96,7 @@ public class ModelFileController {
 
     @ApiOperation("移除模型资产")
     @DeleteMapping( "/delete")
+    @RequirePermission(Permission.MODEL_DELETE)
     public Result<Void> handleDelete(
             @RequestParam("name") String name,
             @RequestParam(value = "version", required = false) String version) throws Exception {
