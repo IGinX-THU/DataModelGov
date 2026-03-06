@@ -114,10 +114,10 @@ public class RolePermissionService {
      */
     private void initializeUsersWithPlainPasswords() {
         users.put("admin", new UserEntity("admin", "admin123", UserRole.ADMIN, 1000000000000L));
-        users.put("data_engineer", new UserEntity("data_engineer", "data123", UserRole.DATA_ENGINEER, 1000000000001L));
-        users.put("model_engineer", new UserEntity("model_engineer", "model123", UserRole.MODEL_ENGINEER, 1000000000002L));
-        users.put("simulation_engineer", new UserEntity("simulation_engineer", "sim123", UserRole.SIMULATION_ENGINEER, 1000000000003L));
-        users.put("user", new UserEntity("user", "user123", UserRole.DATA_ENGINEER, 1000000000004L));
+        users.put("data", new UserEntity("data", "data123", UserRole.DATA_ENGINEER, 1000000000001L));
+        users.put("model", new UserEntity("model", "model123", UserRole.MODEL_ENGINEER, 1000000000002L));
+        users.put("sim", new UserEntity("sim", "sim123", UserRole.SIMULATION_ENGINEER, 1000000000003L));
+        users.put("user", new UserEntity("user", "user123", UserRole.SIMULATION_ENGINEER, 1000000000004L));
     }
     
     /**
@@ -126,9 +126,9 @@ public class RolePermissionService {
     private void initializeUsersWithEncryptedPasswords() {
         if (passwordEncoder != null) {
             users.put("admin", new UserEntity("admin", passwordEncoder.encode("admin123"), UserRole.ADMIN, 1000000000000L));
-            users.put("data_engineer", new UserEntity("data_engineer", passwordEncoder.encode("data123"), UserRole.DATA_ENGINEER, 1000000000001L));
-            users.put("model_engineer", new UserEntity("model_engineer", passwordEncoder.encode("model123"), UserRole.MODEL_ENGINEER, 1000000000002L));
-            users.put("simulation_engineer", new UserEntity("simulation_engineer", passwordEncoder.encode("sim123"), UserRole.SIMULATION_ENGINEER, 1000000000003L));
+            users.put("data", new UserEntity("data", passwordEncoder.encode("data123"), UserRole.DATA_ENGINEER, 1000000000001L));
+            users.put("model", new UserEntity("model", passwordEncoder.encode("model123"), UserRole.MODEL_ENGINEER, 1000000000002L));
+            users.put("sim", new UserEntity("sim", passwordEncoder.encode("sim123"), UserRole.SIMULATION_ENGINEER, 1000000000003L));
             users.put("user", new UserEntity("user", passwordEncoder.encode("user123"), UserRole.DATA_ENGINEER, 1000000000004L));
         }
     }
