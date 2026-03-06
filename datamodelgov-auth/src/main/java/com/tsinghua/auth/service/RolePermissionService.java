@@ -254,10 +254,10 @@ public class RolePermissionService {
         // 创建默认用户 - 确保密码加密并设置正确的roleId
         if (passwordEncoder != null) {
             // 获取角色的timestamp作为roleId
-            Long adminRoleId = getRoleTimestamp(UserRole.ADMIN);
-            Long dataEngineerRoleId = getRoleTimestamp(UserRole.DATA_ENGINEER);
-            Long modelEngineerRoleId = getRoleTimestamp(UserRole.MODEL_ENGINEER);
-            Long simulationEngineerRoleId = getRoleTimestamp(UserRole.SIMULATION_ENGINEER);
+            Long adminRoleId = 2000000000000L;
+            Long dataEngineerRoleId = 2000000000001L;
+            Long modelEngineerRoleId = 2000000000002L;
+            Long simulationEngineerRoleId = 2000000000003L;
             
             userDao.saveUser(new UserEntity("admin", passwordEncoder.encode("admin123"), UserRole.ADMIN, adminRoleId, 1000000000000L));
             userDao.saveUser(new UserEntity("data", passwordEncoder.encode("data123"), UserRole.DATA_ENGINEER, dataEngineerRoleId, 1000000000001L));
