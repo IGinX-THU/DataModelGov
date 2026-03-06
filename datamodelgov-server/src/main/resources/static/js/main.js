@@ -413,7 +413,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 console.log('修改密码菜单被点击');
                 const changePasswordComponent = document.querySelector('change-password');
                 if (changePasswordComponent) {
-                    changePasswordComponent.showModal();
+                    changePasswordComponent.show(); // 使用 show() 而不是 showModal()
                 }
             }
 
@@ -1888,20 +1888,8 @@ window.loadDataSourceTree = async function() {
 window.showChangePasswordModal = function() {
     const changePasswordComponent = document.querySelector('change-password');
     if (changePasswordComponent) {
-        changePasswordComponent.showModal();
+        changePasswordComponent.show(); // 使用 show() 而不是 showModal()
     }
 };
 
-// 用户头像点击事件（修改密码）
-document.addEventListener('DOMContentLoaded', function() {
-    const userAvatar = document.querySelector('.user-avatar-icon');
-    if (userAvatar) {
-        userAvatar.addEventListener('click', function() {
-            console.log('用户头像被点击，打开修改密码弹窗');
-            const changePasswordComponent = document.querySelector('change-password');
-            if (changePasswordComponent) {
-                changePasswordComponent.showModal();
-            }
-        });
-    }
-});
+// 用户头像点击事件（修改密码）- 已移至 change-password 组件内部处理

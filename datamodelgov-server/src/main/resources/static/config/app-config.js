@@ -82,7 +82,8 @@ window.AppConfig = {
             detail: '/api/user/detail',
             update: '/api/user/update',
             save: '/api/user/save',
-            delete: '/api/user/delete'
+            delete: '/api/user/delete',
+            'change-password': '/api/user/change-password'
         },
         // 模型相关
         model: {
