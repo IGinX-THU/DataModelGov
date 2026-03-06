@@ -1,0 +1,182 @@
+package com.tsinghua.auth.dao;
+
+import cn.edu.tsinghua.iginx.session.Session;
+import cn.edu.tsinghua.iginx.session.SessionExecuteSqlResult;
+import cn.edu.tsinghua.iginx.session_v2.DeleteClient;
+import cn.edu.tsinghua.iginx.session_v2.IginXClient;
+import cn.edu.tsinghua.iginx.session_v2.write.Point;
+import com.tsinghua.auth.entity.UserEntity;
+import com.tsinghua.util.ConvertUtil;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import javax.annotation.PostConstruct;
+import org.springframework.stereotype.Repository;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * 用户数据访问对象 - 完全参考ModelFileService和AssociationRulesService实现方式
+ */
+@Slf4j
+@Repository
+public class UserDao {
+    
+    private static final String USERS_TABLE = "relational_system.users";
+    
+    @Autowired
+    private Session iginxSession;
+    
+    @Autowired
+    private IginXClient iginxClient;
+    
+    private DeleteClient deleteClient;
+    
+    @PostConstruct
+    public void init() {
+        try {
+            deleteClient = iginxClient.getDeleteClient();
+            log.info("用户DAO IGinX 客户端初始化成功");
+        } catch (Exception e) {
+            log.error("初始化用户DAO IGinX 客户端失败", e);
+            throw new RuntimeException("用户DAO IGinX 服务连接失败", e);
+        }
+    }
+    
+    /**
+     * 查询用户 - 参考ModelFileService.queryMeta
+     */
+    public UserEntity queryUser(String username) {
+        try {
+            String sql = "SELECT * FROM %s WHERE username = '%s';";
+            String querySql = String.format(sql, USERS_TABLE, username);
+            
+            log.info("执行用户查询SQL: {}", querySql);
+            
+            // 使用Session.executeSql - 参考ModelFileService和AssociationRulesService
+            SessionExecuteSqlResult result = iginxSession.executeSql(querySql);
+            List<Map<String, Object>> records = ConvertUtil.getRecords(result);
+            
+            if (records.isEmpty()) {
+                return null;
+            }
+            
+            // 转换为UserEntity - 参考ModelFileService的转换方式
+            Map<String, Object> record = records.get(0);
+            return mapToUserEntity(record);
+        } catch (Exception e) {
+            log.error("查询用户失败: {}", e.getMessage(), e);
+            return null;
+        }
+    }
+    
+    /**
+     * 查询所有用户 - 参考ModelFileService.queryMetaList
+     */
+    public List<UserEntity> queryAllUsers() {
+        try {
+            String sql = "SELECT * FROM %s ORDER BY timestamp;";
+            String querySql = String.format(sql, USERS_TABLE);
+            
+            log.info("执行查询所有用户SQL: {}", querySql);
+            
+            SessionExecuteSqlResult result = iginxSession.executeSql(querySql);
+            List<Map<String, Object>> records = ConvertUtil.getRecords(result);
+            
+            List<UserEntity> users = new ArrayList<>();
+            for (Map<String, Object> record : records) {
+                users.add(mapToUserEntity(record));
+            }
+            
+            return users;
+        } catch (Exception e) {
+            log.error("查询所有用户失败: {}", e.getMessage(), e);
+            return new ArrayList<>();
+        }
+    }
+    
+    /**
+     * 保存用户 - 参考ModelFileService.saveModelMetadata
+     */
+    public void saveUser(UserEntity user) {
+        try {
+            // 先查询用户是否存在
+            UserEntity existingUser = queryUser(user.getUsername());
+            
+            long timestamp;
+            if (existingUser != null && existingUser.getTimestamp() != null) {
+                timestamp = existingUser.getTimestamp();
+                log.info("更新现有用户: {}", user.getUsername());
+            } else {
+                timestamp = user.getTimestamp() != null ? user.getTimestamp() : System.currentTimeMillis();
+                log.info("创建新用户: {}", user.getUsername());
+            }
+            
+            // 创建数据点列表 - 完全参考ModelFileService.saveModelMetadata
+            List<Point> userPoints = new ArrayList<>();
+            userPoints.add(ConvertUtil.createFieldPoint(USERS_TABLE, "username", user.getUsername(), timestamp));
+            userPoints.add(ConvertUtil.createFieldPoint(USERS_TABLE, "password", user.getPassword(), timestamp));
+            userPoints.add(ConvertUtil.createFieldPoint(USERS_TABLE, "role", user.getRole(), timestamp));
+            userPoints.add(ConvertUtil.createFieldPoint(USERS_TABLE, "enabled", user.isEnabled(), timestamp));
+            userPoints.add(ConvertUtil.createFieldPoint(USERS_TABLE, "timestamp", timestamp, timestamp));
+            
+            // 使用writeClient写入 - 参考ModelFileService
+            cn.edu.tsinghua.iginx.session_v2.WriteClient writeClient = iginxClient.getWriteClient();
+            writeClient.writePoints(userPoints);
+            
+            log.info("用户已保存: {}, 时间戳: {}", user.getUsername(), timestamp);
+        } catch (Exception e) {
+            log.error("保存用户失败: {}", e.getMessage(), e);
+            throw new RuntimeException("保存用户失败: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * 删除用户 - 参考ModelFileService.deleteModel
+     */
+    public void deleteUser(String username) {
+        try {
+            // 先查询用户获取时间戳
+            UserEntity user = queryUser(username);
+            if (user == null || user.getTimestamp() == null) {
+                log.warn("用户不存在，无法删除: {}", username);
+                return;
+            }
+            
+            // 获取所有字段名 - 参考ModelFileService.deleteModel
+            List<String> measurements = ConvertUtil.iginxFieldNamesConvert(UserEntity.class, USERS_TABLE);
+            
+            // 删除指定时间戳的数据 - 参考ModelFileService
+            long timestamp = user.getTimestamp();
+            deleteClient.deleteMeasurementsData(measurements, timestamp - 1, timestamp + 1);
+            
+            log.info("用户已删除: {}, 时间戳: {}", username, timestamp);
+        } catch (Exception e) {
+            log.error("删除用户失败: {}", e.getMessage(), e);
+            throw new RuntimeException("删除用户失败: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * 检查用户是否存在
+     */
+    public boolean existsUser(String username) {
+        return queryUser(username) != null;
+    }
+    
+    /**
+     * 将记录映射为用户实体 - 参考ModelFileService的转换方式
+     */
+    private UserEntity mapToUserEntity(Map<String, Object> record) {
+        UserEntity user = new UserEntity();
+        
+        // 使用ConvertUtil的通用方法设置字段值 - 参考ModelFileService.queryMeta
+        record.forEach((k, v) -> {
+            String fieldName = k.replace(USERS_TABLE + ".", "");
+            ConvertUtil.setEntityField(user, USERS_TABLE, fieldName, v);
+        });
+        
+        return user;
+    }
+}
