@@ -230,6 +230,12 @@ public class RolePermissionService {
             Permission.ASSOCIATION_RULES_DELETE,
             Permission.ASSOCIATION_TASK_RUN,
             
+            // 运行任务管理权限
+            Permission.RUN_TASK_QUERY,
+            Permission.RUN_TASK_COUNT,
+            Permission.RUN_TASK_DETAIL,
+            Permission.RUN_TASK_DELETE,
+            
             // 数据与模型的查询相关接口权限
             Permission.DATA_QUERY,
             Permission.DATA_RELATIONAL_QUERY,

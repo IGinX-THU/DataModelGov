@@ -421,42 +421,43 @@
 
 /* 运行状态徽章 */
 .status-badge {
-    padding: var(--spacing-xs) var(--spacing-sm);
-    border-radius: var(--radius-full);
-    font-size: var(--font-size-xs);
-    font-weight: var(--font-weight-medium);
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
     line-height: 1.2;
     display: inline-block;
+    min-width: 60px;
 }
 
 .status-badge.running {
-    background: var(--color-success-light);
-    color: var(--color-success);
-    border: 1px solid var(--color-success);
+    background: #f6ffed;
+    color: #52c41a;
+    border: 1px solid #b7eb8f;
 }
 
 .status-badge.stopped {
-    background: var(--color-danger-light);
-    color: var(--color-danger);
-    border: 1px solid var(--color-danger);
+    background: #fff2f0;
+    color: #f5222d;
+    border: 1px solid #ffccc7;
 }
 
 .status-badge.pending {
-    background: var(--color-warning-light);
-    color: var(--color-warning);
-    border: 1px solid var(--color-warning);
+    background: #fffbe6;
+    color: #faad14;
+    border: 1px solid #ffe58f;
 }
 
 .status-badge.success {
-    background: var(--color-success-light);
-    color: var(--color-success);
-    border: 1px solid var(--color-success);
+    background: #f6ffed;
+    color: #52c41a;
+    border: 1px solid #b7eb8f;
 }
 
 .status-badge.failed {
-    background: var(--color-danger-light);
-    color: var(--color-danger);
-    border: 1px solid var(--color-danger);
+    background: #fff2f0;
+    color: #f5222d;
+    border: 1px solid #ffccc7;
 }
 
 /* 操作按钮样式 */

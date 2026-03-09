@@ -95,7 +95,11 @@ window.AppConfig = {
         },
         // 任务相关
         task: {
-            run: '/api/task/run'
+            run: '/api/task/run',
+            query: '/api/task/tasks/query',
+            count: '/api/task/tasks/count',
+            detail: '/api/task/tasks/detail',
+            'delete': '/api/task/tasks/delete'
         }
     },
     

@@ -1,10 +1,10 @@
 package com.tsinghua.enums;
 
 public interface TaskStatus {
-    public static final String WAITING = "WAITING";
-    public static final String RUNNING = "RUNNING";
-    public static final String STOP = "STOP";
-    public static final String SUCCESS = "SUCCESS";
-    public static final String FAIL = "FAIL";
+    public static final String PENDING = "pending";
+    public static final String RUNNING = "running";
+    public static final String STOPPED = "stopped";
+    public static final String SUCCESS = "success";
+    public static final String FAILED = "failed";
 
 }

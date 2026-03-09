@@ -36,7 +36,6 @@ class VisualAnalysis extends HTMLElement {
         setTimeout(() => {
             this.bindEvents();
             this.initPagination();
-            this.initializeComponent();
         }, 100);
     }
 
@@ -80,33 +79,7 @@ class VisualAnalysis extends HTMLElement {
         } catch (error) {
             console.error('Failed to load ECharts:', error);
         }
-        
-        // 加载Flatpickr到全局（如果存在）
-        try {
-            const flatpickrScript = document.createElement('script');
-            flatpickrScript.src = '/static/lib/flatpickr/flatpickr.min.js';
-            flatpickrScript.onerror = () => {
-                console.warn('Flatpickr library not found, date picker will not be available');
-            };
-            document.head.appendChild(flatpickrScript);
-            
-            // 加载Flatpickr CSS（如果存在）
-            const cssLink = document.createElement('link');
-            cssLink.rel = 'stylesheet';
-            cssLink.href = '/static/lib/flatpickr/flatpickr.min.css';
-            cssLink.onerror = () => {
-                console.warn('Flatpickr CSS not found');
-            };
-            document.head.appendChild(cssLink);
-            
-            // 等待Flatpickr加载完成
-            await new Promise((resolve) => {
-                flatpickrScript.onload = resolve;
-                flatpickrScript.onerror = resolve; // 即使失败也继续
-            });
-        } catch (error) {
-            console.warn('Flatpickr loading skipped:', error);
-        }
+
     }
 
     getFallbackHTML() {
@@ -220,13 +193,8 @@ class VisualAnalysis extends HTMLElement {
     }
 
     initializeComponent() {
-        // 生成数据并显示表格，但图表显示空状态
-        const mockData = this.generateMultiTaskData();
-        this.allData = mockData;
-        this.displayData = mockData;
-        
-        // 更新表格显示数据
-        this.updateTable();
+        // 从API加载数据
+        this.loadTasksFromAPI();
         
         // 图表显示空状态
         this.showEmptyState();
@@ -250,6 +218,14 @@ class VisualAnalysis extends HTMLElement {
     }
 
     bindEvents() {
+        // 搜索按钮
+        const searchBtn = this.shadowRoot.getElementById('searchBtn');
+        if (searchBtn) {
+            searchBtn.addEventListener('click', () => {
+                this.currentPage = 1;
+                this.loadTasksFromAPI();
+            });
+        }
         // 关闭按钮
         const closeBtn = this.shadowRoot.getElementById('closeBtn');
         if (closeBtn) {
@@ -299,12 +275,12 @@ class VisualAnalysis extends HTMLElement {
         }
 
         // 名称搜索输入框
-        const nameSearch = this.shadowRoot.getElementById('nameSearch');
-        if (nameSearch) {
-            nameSearch.addEventListener('input', (e) => {
-                this.handleNameSearch(e.target.value);
-            });
-        }
+        // const nameSearch = this.shadowRoot.getElementById('nameSearch');
+        // if (nameSearch) {
+        //     nameSearch.addEventListener('input', (e) => {
+        //         this.handleNameSearch(e.target.value);
+        //     });
+        // }
 
         // 初始化日期范围选择器（如果Flatpickr可用）
         const dateRangePicker = this.shadowRoot.getElementById('dateRangePicker');
@@ -1099,13 +1075,15 @@ class VisualAnalysis extends HTMLElement {
     // 处理状态筛选
     handleStatusFilter(filterValue) {
         this.currentFilter.status = filterValue;
-        this.applyFilters();
+        this.currentPage = 1;
+        this.loadTasksFromAPI();
     }
 
     // 处理名称搜索
     handleNameSearch(searchValue) {
         this.currentFilter.name = searchValue.toLowerCase();
-        this.applyFilters();
+        this.currentPage = 1;
+        this.loadTasksFromAPI();
     }
 
     // 处理时间范围搜索
@@ -2230,6 +2208,90 @@ class VisualAnalysis extends HTMLElement {
             console[type === 'error' ? 'error' : type === 'warning' ? 'warn' : 'log'](`[${type}] ${message}`);
         }
     }
+
+    async loadTasksFromAPI() {
+        try {
+            // 获取筛选条件
+            const nameFilter = this.shadowRoot.getElementById('nameSearch')?.value.trim();
+            const statusFilter = this.shadowRoot.getElementById('statusFilter')?.value;
+            const startTime = this.shadowRoot.getElementById('startTime')?.value;
+            const endTime = this.shadowRoot.getElementById('endTime')?.value;
+
+            // 构建请求对象
+            const requestBody = {
+                pageNum: this.currentPage || 1,
+                pageSize: this.pageSize || 10,
+                name: nameFilter || null,
+                status: statusFilter || null,
+                startTime: startTime ? new Date(startTime).getTime() : null,
+                endTime: endTime ? new Date(endTime).getTime() : null
+            };
+
+            // 调用查询接口
+            const result = await window.AppConfig.post('task', 'query', requestBody);
+
+            if (result.success && result.data) {
+                // 转换为前端所需格式
+                this.displayData = result.data.map(task => ({
+                    id: task.timestamp,
+                    name: task.name,
+                    status: task.status,
+                    timestamp: task.timestamp,
+                    startTime: task.startTime,
+                    endTime: task.endTime,
+                    ruleId: task.ruleId,
+                    inputMeasurements: task.inputMeasurements,
+                    outputMeasurements: task.outputMeasurements,
+                    time: new Date(task.timestamp).toLocaleString('zh-CN')
+                }));
+                
+                // 设置数据
+                this.allData = this.displayData;
+
+                // 获取总数用于分页
+                if (this.currentPage === 1) {
+                    await this.loadTasksCount(nameFilter, statusFilter, startTime, endTime);
+                }
+
+                this.updateTable();
+            } else {
+                // API失败时使用模拟数据
+                const mockData = this.generateMultiTaskData();
+                this.allData = mockData;
+                this.displayData = mockData;
+                this.updateTable();
+            }
+        } catch (error) {
+            // 网络错误时使用模拟数据
+            const mockData = this.generateMultiTaskData();
+            this.allData = mockData;
+            this.displayData = mockData;
+            this.updateTable();
+        }
+    }
+
+    async loadTasksCount(name, status, startTime, endTime) {
+        try {
+            const requestBody = {
+                name: name || null,
+                status: status || null,
+                startTime: startTime ? new Date(startTime).getTime() : null,
+                endTime: endTime ? new Date(endTime).getTime() : null
+            };
+
+            const result = await window.AppConfig.post('task', 'count', requestBody);
+
+            if (result.success && result.data !== undefined) {
+                this.totalCount = result.data;
+                this.updatePagination();
+            } else {
+                this.totalCount = this.displayData.length;
+            }
+        } catch (error) {
+            this.totalCount = this.displayData.length;
+        }
+    }
+
 }
 
 // 本地PDF生成器 - 无外网依赖
