@@ -179,7 +179,7 @@ public class RunTaskService {
         List<Point> metaPoints = new ArrayList<>();
         AssociationRulesEntity associationRulesEntity = associationRulesService.queryRule(runTaskRequest.getRuleId());
         long timestamp = System.currentTimeMillis();
-        RunTaskEntity runTaskEntity = ConvertUtil.entityConvert(associationRulesEntity, RunTaskEntity.class);
+        RunTaskEntity runTaskEntity = ConvertUtil.entityConvert(runTaskRequest, RunTaskEntity.class);
         runTaskEntity.setTimestamp(timestamp);
         runTaskEntity.setStatus(TaskStatus.PENDING);
         List<InputBindDto> inputs = JSONArray.parseArray(associationRulesEntity.getInputsBind(), InputBindDto.class);
@@ -201,6 +201,6 @@ public class RunTaskService {
 
         // 批量写入元数据
         iginxClient.getWriteClient().writePoints(metaPoints);
-        log.info("关联规则已保存。名称: {}, 时间戳: {}", associationRulesEntity.getName(), timestamp);
+        log.info("关联规则已保存。名称: {}, 时间戳: {}", runTaskEntity.getName(), timestamp);
     }
 }

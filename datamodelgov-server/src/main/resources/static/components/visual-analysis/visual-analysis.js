@@ -487,7 +487,7 @@ class VisualAnalysis extends HTMLElement {
                     const time = new Date(params[0].value[0]).toLocaleString();
                     let result = `时间: ${time}<br/>`;
                     params.forEach(param => {
-                        result += `${param.seriesName}: ${param.value[1].toFixed(2)}<br/>`;
+                        result += `${param.seriesName}: ${(param.value[1] || 0).toFixed(2)}<br/>`;
                     });
                     return result;
                 }
@@ -567,7 +567,7 @@ class VisualAnalysis extends HTMLElement {
                 formatter: function(params) {
                     if (!params || params.length === 0) return '';
                     const time = new Date(params[0].value[0]).toLocaleString();
-                    return `时间: ${time}<br/>数值: ${params[0].value[1].toFixed(2)}`;
+                    return `时间: ${time}<br/>数值: ${(params[0].value[1] || 0).toFixed(2)}`;
                 }
             },
             grid: {
@@ -652,7 +652,7 @@ class VisualAnalysis extends HTMLElement {
                 formatter: function(params) {
                     if (!params || params.length === 0) return '';
                     const time = new Date(params[0].value[0]).toLocaleString();
-                    return `时间: ${time}<br/>数值: ${params[0].value[1].toFixed(2)}`;
+                    return `时间: ${time}<br/>数值: ${(params[0].value[1] || 0).toFixed(2)}`;
                 }
             },
             grid: {
@@ -746,7 +746,7 @@ class VisualAnalysis extends HTMLElement {
                 formatter: function(params) {
                     if (!params || params.length === 0) return '';
                     const time = new Date(params[0].value[0]).toLocaleString();
-                    return `时间: ${time}<br/>数值: ${params[0].value[1].toFixed(2)}`;
+                    return `时间: ${time}<br/>数值: ${(params[0].value[1] || 0).toFixed(2)}`;
                 }
             },
             legend: {
@@ -857,7 +857,7 @@ class VisualAnalysis extends HTMLElement {
                     const time = new Date(params[0].value[0]).toLocaleString();
                     let result = `时间: ${time}<br/>`;
                     params.forEach(param => {
-                        result += `${param.seriesName}: ${param.value[1].toFixed(2)}<br/>`;
+                        result += `${param.seriesName}: ${(param.value[1] || 0).toFixed(2)}<br/>`;
                     });
                     return result;
                 }
@@ -1263,7 +1263,7 @@ class VisualAnalysis extends HTMLElement {
                     const time = params[0].value[0];
                     let result = `相对时间: ${time}s<br/>`;
                     params.forEach(param => {
-                        result += `${param.seriesName}: ${param.value[1].toFixed(2)}<br/>`;
+                        result += `${param.seriesName}: ${(param.value[1] || 0).toFixed(2)}<br/>`;
                     });
                     return result;
                 }
@@ -2097,7 +2097,7 @@ class VisualAnalysis extends HTMLElement {
                     const time = params[0].value[0];
                     let result = `相对时间: ${time}s<br/>`;
                     params.forEach(param => {
-                        result += `${param.seriesName}: ${param.value[1].toFixed(2)}<br/>`;
+                        result += `${param.seriesName}: ${(param.value[1] || 0).toFixed(2)}<br/>`;
                     });
                     return result;
                 }
