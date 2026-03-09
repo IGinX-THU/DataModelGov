@@ -2,21 +2,15 @@ package com.tsinghua.service;
 
 import cn.edu.tsinghua.iginx.session.Session;
 import cn.edu.tsinghua.iginx.session.SessionExecuteSqlResult;
-import cn.edu.tsinghua.iginx.session_v2.DeleteClient;
 import cn.edu.tsinghua.iginx.session_v2.IginXClient;
-import cn.edu.tsinghua.iginx.session_v2.QueryClient;
-import cn.edu.tsinghua.iginx.session_v2.WriteClient;
 import cn.edu.tsinghua.iginx.session_v2.write.Point;
 import com.tsinghua.dto.AssociationRulesQueryRequest;
 import com.tsinghua.entity.AssociationRulesEntity;
-import com.tsinghua.dto.RelationalQueryRequest;
 import com.tsinghua.util.ConvertUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
 
-import javax.annotation.PostConstruct;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -31,23 +25,6 @@ public class AssociationRulesService {
 
     @Autowired
     private IginXClient iginxClient;
-
-    private WriteClient writeClient;
-    private QueryClient queryClient;
-    private DeleteClient deleteClient;
-
-    @PostConstruct
-    public void init() {
-        try {
-            writeClient = iginxClient.getWriteClient();
-            queryClient = iginxClient.getQueryClient();
-            deleteClient = iginxClient.getDeleteClient();
-            log.info("IGinX 客户端初始化成功。");
-        } catch (Exception e) {
-            log.error("初始化 IGinX 客户端失败", e);
-            throw new RuntimeException("IGinX 服务连接失败", e);
-        }
-    }
 
     /**
      * 保存关联规则（新增或编辑）
@@ -81,7 +58,7 @@ public class AssociationRulesService {
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "outputsBind", associationRulesEntity.getOutputsBind(), timestamp));
 
         // 批量写入元数据 - 完全参考ModelFileService的写入方式
-        writeClient.writePoints(metaPoints);
+        iginxClient.getWriteClient().writePoints(metaPoints);
         log.info("关联规则已保存。名称: {}, 时间戳: {}", associationRulesEntity.getName(), timestamp);
     }
 
@@ -198,7 +175,7 @@ public class AssociationRulesService {
         try {
             List<String> measurements = ConvertUtil.iginxFieldNamesConvert(AssociationRulesEntity.class, DATA_PREFIX);
             // 删除指定时间戳的数据
-            deleteClient.deleteMeasurementsData(measurements, createTime - 1, createTime + 1);
+            iginxClient.getDeleteClient().deleteMeasurementsData(measurements, createTime - 1, createTime + 1);
             log.info("已删除关联规则: createTime: {}", createTime);
         } catch (Exception e) {
             log.error("删除关联规则失败", e);

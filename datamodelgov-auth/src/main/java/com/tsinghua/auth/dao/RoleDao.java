@@ -32,20 +32,7 @@ public class RoleDao {
     
     @Autowired
     private IginXClient iginxClient;
-    
-    private DeleteClient deleteClient;
-    
-    @PostConstruct
-    public void init() {
-        try {
-            deleteClient = iginxClient.getDeleteClient();
-            log.info("角色DAO IGinX 客户端初始化成功");
-        } catch (Exception e) {
-            log.error("初始化角色DAO IGinX 客户端失败", e);
-            throw new RuntimeException("角色DAO IGinX 服务连接失败", e);
-        }
-    }
-    
+
     /**
      * 查询角色 - 参考ModelFileService.queryMeta
      */
@@ -149,7 +136,7 @@ public class RoleDao {
             
             // 删除指定时间戳的数据 - 参考ModelFileService
             long timestamp = roleEntity.getTimestamp();
-            deleteClient.deleteMeasurementsData(measurements, timestamp - 1, timestamp + 1);
+            iginxClient.getDeleteClient().deleteMeasurementsData(measurements, timestamp - 1, timestamp + 1);
             
             log.info("角色已删除: {}, 时间戳: {}", role, timestamp);
         } catch (Exception e) {

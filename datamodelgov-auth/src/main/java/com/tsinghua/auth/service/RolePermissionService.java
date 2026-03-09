@@ -141,10 +141,7 @@ public class RolePermissionService {
     @PostConstruct
     public void initializeData() {
         try {
-            // 先初始化DAO
-            userDao.init();
-            roleDao.init();
-            
+
             // 先从IGinX查询现有数据
             List<UserEntity> existingUsers = userDao.queryAllUsers();
             List<RoleEntity> existingRoles = roleDao.queryAllRoles();
@@ -231,6 +228,7 @@ public class RolePermissionService {
             Permission.ASSOCIATION_RULES_COUNT,
             Permission.ASSOCIATION_RULES_DETAIL,
             Permission.ASSOCIATION_RULES_DELETE,
+            Permission.ASSOCIATION_TASK_RUN,
             
             // 数据与模型的查询相关接口权限
             Permission.DATA_QUERY,

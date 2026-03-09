@@ -25,5 +25,10 @@ public class ModelMetaEntity {
     private String outputs;
     @ApiModelProperty(value = "创建时间")
     private Long timestamp;
-
+    @ApiModelProperty(value = "运行命令")
+    private String cmd;
+    @ApiModelProperty(value = "输入文件名")
+    private String inputFile;
+    @ApiModelProperty(value = "输出文件名")
+    private String outputFile;
 }

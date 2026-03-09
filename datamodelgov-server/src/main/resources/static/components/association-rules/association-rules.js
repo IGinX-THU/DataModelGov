@@ -1777,7 +1777,7 @@ class AssociationRules extends HTMLElement {
                     <div class="form-row">
                         <div class="form-group">
                             <label for="runName">名称</label>
-                            <input type="text" id="runName" name="runName" required placeholder="请输入运行名称" value="${rule.ruleName || ''}">
+                            <input type="text" id="runName" name="runName" required placeholder="请输入运行名称" value="">
                         </div>
                     </div>
                     
@@ -1829,7 +1829,7 @@ class AssociationRules extends HTMLElement {
         });
     }
     
-    executeRule() {
+    async executeRule() {
         const runName = this.shadowRoot.getElementById('runName')?.value.trim();
         const startTime = this.shadowRoot.getElementById('startTime')?.value;
         const endTime = this.shadowRoot.getElementById('endTime')?.value;
@@ -1851,11 +1851,32 @@ class AssociationRules extends HTMLElement {
         
         const rule = this.data.find(item => item.id === this.currentRunRuleId);
         if (rule) {
-            this.showToast(`正在运行规则: ${runName}\n规则: ${rule.ruleName}\n时间范围: ${startTime} 至 ${endTime}`);
-            // TODO: Implement actual rule execution logic
+            try {
+                // 构建请求参数
+                const requestBody = {
+                    name: runName,
+                    startTime: new Date(startTime).getTime(),
+                    endTime: new Date(endTime).getTime(),
+                    ruleId: rule.createTime // 使用createTime作为ruleId
+                };
+                
+                console.log('运行规则参数:', requestBody);
+                
+                // 调用/api/task/run接口
+                const result = await window.AppConfig.post('task', 'run', requestBody);
+                console.log('运行规则响应:', result);
+                
+                if (result.success) {
+                    this.showToast(`规则运行成功: ${rule.ruleName}`);
+                    this.hideModal();
+                } else {
+                    this.showToast(result.message || '运行失败', 'error');
+                }
+            } catch (error) {
+                console.error('运行规则失败:', error);
+                this.showToast('网络错误，运行失败', 'error');
+            }
         }
-        
-        this.hideModal();
     }
     
     toggleRuleStatus(id) {

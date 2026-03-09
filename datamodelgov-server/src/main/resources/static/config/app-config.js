@@ -92,6 +92,10 @@ window.AppConfig = {
             metas: '/api/model/metas',
             history: '/api/model/history',
             delete: '/api/model/delete'
+        },
+        // 任务相关
+        task: {
+            run: '/api/task/run'
         }
     },
     

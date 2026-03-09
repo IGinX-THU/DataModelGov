@@ -3,10 +3,7 @@ package com.tsinghua.service;
 import cn.edu.tsinghua.iginx.session.QueryDataSet;
 import cn.edu.tsinghua.iginx.session.Session;
 import cn.edu.tsinghua.iginx.session.SessionExecuteSqlResult;
-import cn.edu.tsinghua.iginx.session_v2.DeleteClient;
 import cn.edu.tsinghua.iginx.session_v2.IginXClient;
-import cn.edu.tsinghua.iginx.session_v2.QueryClient;
-import cn.edu.tsinghua.iginx.session_v2.WriteClient;
 import cn.edu.tsinghua.iginx.session_v2.query.IginXRecord;
 import cn.edu.tsinghua.iginx.session_v2.query.IginXTable;
 import cn.edu.tsinghua.iginx.session_v2.query.SimpleQuery;
@@ -21,8 +18,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
-import javax.annotation.PostConstruct;
-import javax.annotation.Resource;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
@@ -36,37 +31,11 @@ public class ModelFileService {
     private static final String STORAGE_PREFIX = "models_system";
     private static final String META_PREFIX = "relational_system.models_meta";
 
-    @Resource
-    private RelationalDataService relationalDataService;
-
     @Autowired
     private Session iginxSession;
 
     @Autowired
     private IginXClient iginxClient;
-
-    private WriteClient writeClient;
-    private QueryClient queryClient;
-    private DeleteClient deleteClient;
-
-    /**
-     * 初始化 IGinX 客户端连接
-     * 在 Java 17 环境下，可以直接使用二进制数据，无需 Base64 编码
-     */
-    @PostConstruct
-    public void init() {
-        try {
-            // 获取写入和查询客户端
-            writeClient = iginxClient.getWriteClient();
-            queryClient = iginxClient.getQueryClient();
-            deleteClient = iginxClient.getDeleteClient();
-            log.info("IGinX 客户端 (WriteClient/QueryClient) 初始化成功。");
-
-        } catch (Exception e) {
-            log.error("初始化 IGinX 客户端失败，请检查服务地址、端口及网络。", e);
-            throw new RuntimeException("IGinX 服务连接失败", e);
-        }
-    }
 
     /**
      * 上传模型文件 (Java 17+ 优化版)
@@ -102,7 +71,7 @@ public class ModelFileService {
 
         // 批量写入数据点
         log.info("开始写入模型文件: {} 版本 {}, 共 {} 个数据块...", name, version, totalChunks);
-        writeClient.writePoints(points);
+        iginxClient.getWriteClient().writePoints(points);
 
         // 计算文件校验信息
         String fileMd5 = calculateMD5(fileBytes);
@@ -165,7 +134,7 @@ public class ModelFileService {
                 .endKey(Long.MAX_VALUE)
                 .build();
 
-        IginXTable table = queryClient.query(query);
+        IginXTable table = iginxClient.getQueryClient().query(query);
 
         if (table == null || table.getRecords() == null || table.getRecords().isEmpty()) {
             throw new Exception("未找到指定的模型文件数据: " + name + " v" + version);
@@ -249,7 +218,7 @@ public class ModelFileService {
         metaPoints.add(createFieldPoint(metaBasePath, "timestamp", timestamp, timestamp));
 
         // 批量写入元数据
-        writeClient.writePoints(metaPoints);
+        iginxClient.getWriteClient().writePoints(metaPoints);
         log.info("模型元数据已保存。名称: {}, 版本: {}, 时间戳: {}", modelMetaDto.getName(), modelMetaDto.getVersion(), timestamp);
     }
 
@@ -443,11 +412,11 @@ public class ModelFileService {
             List<String> measurements = ConvertUtil.iginxFieldNamesConvert(ModelMetaEntity.class, META_PREFIX);
             if (StringUtils.hasText(version)) {
                 String storagePath = buildStoragePath(name, version);
-                deleteClient.deleteMeasurement(storagePath);
+                iginxClient.getDeleteClient().deleteMeasurement(storagePath);
                 ModelMetaEntity queryMeta = queryMeta(name, version);
                 if (queryMeta != null && queryMeta.getTimestamp() != null) {
                     long timestamp = queryMeta.getTimestamp();
-                    deleteClient.deleteMeasurementsData(measurements, timestamp-1, timestamp+1);
+                    iginxClient.getDeleteClient().deleteMeasurementsData(measurements, timestamp-1, timestamp+1);
                 }
             } else {
                 List<ModelMetaEntity> queryMetas = queryMetaList(name);
@@ -456,11 +425,11 @@ public class ModelFileService {
                                 buildStoragePath(meta.getName(), meta.getVersion())
                         )
                         .collect(Collectors.toList());
-                deleteClient.deleteMeasurements(storagePaths);
+                iginxClient.getDeleteClient().deleteMeasurements(storagePaths);
                 queryMetas.stream()
                         .map(ModelMetaEntity::getTimestamp)
                         .forEach(timestamp ->
-                                deleteClient.deleteMeasurementsData(measurements, timestamp-1, timestamp+1)
+                                iginxClient.getDeleteClient().deleteMeasurementsData(measurements, timestamp-1, timestamp+1)
                         );
             }
         } catch (Exception e) {
