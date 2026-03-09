@@ -1304,8 +1304,9 @@ class VisualAnalysis extends HTMLElement {
             // 使用查询到的真实数据
             chartData = this.processChartDataFromQuery(task, queryData);
         } else {
-            // 回退到模拟数据
-            chartData = this.generateSingleTaskData(task);
+            // 没有数据时显示错误信息
+            this.showToast('无法获取任务数据，请重试', 'error');
+            return;
         }
 
         this.currentChartData = {
@@ -1622,7 +1623,7 @@ class VisualAnalysis extends HTMLElement {
                     }
                 },
                 min: 0,
-                max: Math.max(...taskData.timePoints)
+                max: taskData.timePoints ? Math.max(...taskData.timePoints) : 100
             },
             yAxis: {
                 type: 'value',
@@ -1702,7 +1703,7 @@ class VisualAnalysis extends HTMLElement {
             this.updateComparisonChart(this.currentChartData.data);
         } else if (this.currentChartData.type === 'single') {
             // 重新渲染单个任务图表，使用缓存的数据
-            this.updateSingleTaskChart(this.currentChartData.data);
+            this.updateChartWithData(this.currentChartData.data);
         }
     }
 
@@ -1786,42 +1787,72 @@ class VisualAnalysis extends HTMLElement {
             
             // 4. 输入数据视图
             pdfGenerator.addSubtitle('三、输入数据视图');
-            const inputData = this.getInputData(record);
-            if (inputData.length > 0) {
-                const inputHeaders = ['时间', '原始数值', '数据源', '质量状态'];
-                const inputRows = inputData.map(item => [
-                    new Date(item.timestamp).toLocaleString(),
-                    item.rawValue ? item.rawValue.toFixed(2) : 'N/A',
-                    item.dataSource || '未知',
-                    this.getQualityStatus(item.quality)
-                ]);
-                pdfGenerator.addTable(inputHeaders, inputRows);
+            if (this.currentChartData && this.currentChartData.data && this.currentChartData.data.inputData) {
+                const inputHeaders = ['测点路径', '数据点数量', '最新值', '时间范围'];
+                const inputRows = [];
+                
+                Object.keys(this.currentChartData.data.inputData).forEach(path => {
+                    const data = this.currentChartData.data.inputData[path];
+                    if (data && data.length > 0) {
+                        const latestValue = data[data.length - 1].value;
+                        const startTime = new Date(data[0].timestamp).toLocaleString();
+                        const endTime = new Date(data[data.length - 1].timestamp).toLocaleString();
+                        
+                        inputRows.push([
+                            path,
+                            data.length,
+                            latestValue ? latestValue.toFixed(2) : 'N/A',
+                            `${startTime} - ${endTime}`
+                        ]);
+                    }
+                });
+                
+                if (inputRows.length > 0) {
+                    pdfGenerator.addTable(inputHeaders, inputRows);
+                } else {
+                    pdfGenerator.addText('暂无输入数据', 12);
+                }
             } else {
                 pdfGenerator.addText('暂无输入数据', 12);
             }
             
             // 5. 计算结果数据视图
             pdfGenerator.addSubtitle('四、计算结果数据视图');
-            const resultData = this.getCalculationResults(record);
-            if (resultData.length > 0) {
-                const resultHeaders = ['时间', '计算值', '算法', '精度', '处理时间'];
-                const resultRows = resultData.map(item => [
-                    new Date(item.timestamp).toLocaleString(),
-                    item.calculatedValue ? item.calculatedValue.toFixed(4) : 'N/A',
-                    item.algorithm || '标准算法',
-                    item.precision ? (item.precision * 100).toFixed(2) + '%' : 'N/A',
-                    item.processingTime + 'ms'
-                ]);
-                pdfGenerator.addTable(resultHeaders, resultRows);
+            if (this.currentChartData && this.currentChartData.data && this.currentChartData.data.outputData) {
+                const resultHeaders = ['测点路径', '数据点数量', '最新值', '时间范围'];
+                const resultRows = [];
+                
+                Object.keys(this.currentChartData.data.outputData).forEach(path => {
+                    const data = this.currentChartData.data.outputData[path];
+                    if (data && data.length > 0) {
+                        const latestValue = data[data.length - 1].value;
+                        const startTime = new Date(data[0].timestamp).toLocaleString();
+                        const endTime = new Date(data[data.length - 1].timestamp).toLocaleString();
+                        
+                        resultRows.push([
+                            path,
+                            data.length,
+                            latestValue ? latestValue.toFixed(2) : 'N/A',
+                            `${startTime} - ${endTime}`
+                        ]);
+                    }
+                });
+                
+                if (resultRows.length > 0) {
+                    pdfGenerator.addTable(resultHeaders, resultRows);
+                } else {
+                    pdfGenerator.addText('暂无计算结果数据', 12);
+                }
             } else {
-                pdfGenerator.addText('暂无计算结果', 12);
+                pdfGenerator.addText('暂无计算结果数据', 12);
             }
             
             // 6. 统计分析
             pdfGenerator.addSubtitle('五、统计分析');
-            const statistics = this.calculateDataStatistics(this.displayData);
+            const statistics = this.calculateRealDataStatistics(this.currentChartData.data);
             const statsHeaders = ['统计指标', '输入数据', '计算结果', '说明'];
             const statsData = [
+                ['测点数量', statistics.inputPaths, statistics.outputPaths, '测点路径数量'],
                 ['数据点数量', statistics.inputCount, statistics.resultCount, '有效数据点个数'],
                 ['平均值', statistics.inputMean, statistics.resultMean, '数据平均值'],
                 ['标准差', statistics.inputStdDev, statistics.resultStdDev, '数据标准差'],
@@ -1856,47 +1887,45 @@ class VisualAnalysis extends HTMLElement {
     
     // 获取输入数据
     getInputData(record) {
-        // 模拟输入数据，实际应该从数据源获取
-        const inputData = [];
-        const now = Date.now();
-        
-        for (let i = 0; i < 10; i++) {
-            const timestamp = now - (10 - i) * 60000; // 最近10个数据点
-            inputData.push({
-                id: `INPUT-${String(i + 1).padStart(3, '0')}`,
-                timestamp: timestamp,
-                rawValue: 100 + Math.random() * 20 - 10, // 90-110范围
-                dataSource: this.dataSource || 'X022-CQ-1',
-                quality: Math.random() > 0.2 ? 'good' : 'fair' // 80%好质量
+        // 从当前图表数据中获取真实输入数据
+        if (this.currentChartData && this.currentChartData.data && this.currentChartData.data.inputData) {
+            const inputData = [];
+            Object.keys(this.currentChartData.data.inputData).forEach(path => {
+                this.currentChartData.data.inputData[path].forEach(point => {
+                    inputData.push({
+                        id: `INPUT-${path}`,
+                        timestamp: point.timestamp,
+                        rawValue: point.value,
+                        dataSource: path,
+                        quality: 'good'
+                    });
+                });
             });
+            return inputData;
         }
-        
-        return inputData;
+        return [];
     }
 
     // 获取计算结果
     getCalculationResults(record) {
-        // 模拟计算结果数据，实际应该从计算引擎获取
-        const resultData = [];
-        const now = Date.now();
-        const algorithms = ['标准算法', '优化算法', '机器学习', '深度学习'];
-        
-        for (let i = 0; i < 8; i++) {
-            const timestamp = now - (8 - i) * 60000; // 最近8个结果
-            const algorithm = algorithms[Math.floor(Math.random() * algorithms.length)];
-            const baseValue = 100 + Math.random() * 20 - 10;
-            
-            resultData.push({
-                id: `RESULT-${String(i + 1).padStart(3, '0')}`,
-                timestamp: timestamp,
-                calculatedValue: baseValue * (1 + (Math.random() - 0.5) * 0.1), // ±5%计算误差
-                algorithm: algorithm,
-                precision: 0.95 + Math.random() * 0.04, // 95%-99%精度
-                processingTime: Math.floor(10 + Math.random() * 50) // 10-60ms处理时间
+        // 从当前图表数据中获取真实输出数据
+        if (this.currentChartData && this.currentChartData.data && this.currentChartData.data.outputData) {
+            const resultData = [];
+            Object.keys(this.currentChartData.data.outputData).forEach(path => {
+                this.currentChartData.data.outputData[path].forEach(point => {
+                    resultData.push({
+                        id: `OUTPUT-${path}`,
+                        timestamp: point.timestamp,
+                        calculatedValue: point.value,
+                        algorithm: '标准算法',
+                        precision: 0.95,
+                        processingTime: 50
+                    });
+                });
             });
+            return resultData;
         }
-        
-        return resultData;
+        return [];
     }
 
     // 获取质量状态文本
@@ -1926,6 +1955,79 @@ class VisualAnalysis extends HTMLElement {
         
         const changeRate = ((currentItem.value - previousItem.value) / previousItem.value * 100);
         return `${changeRate >= 0 ? '+' : ''}${changeRate.toFixed(2)}%`;
+    }
+
+    // 计算真实数据的统计信息
+    calculateRealDataStatistics(chartData) {
+        const statistics = {
+            inputPaths: 0,
+            outputPaths: 0,
+            inputCount: 0,
+            resultCount: 0,
+            inputMean: 0,
+            resultMean: 0,
+            inputStdDev: 0,
+            resultStdDev: 0,
+            accuracy: 'N/A',
+            efficiency: 'N/A'
+        };
+
+        if (chartData && chartData.inputData) {
+            statistics.inputPaths = Object.keys(chartData.inputData).length;
+            
+            // 计算输入数据统计
+            const allInputValues = [];
+            Object.values(chartData.inputData).forEach(dataArray => {
+                dataArray.forEach(point => {
+                    if (point.value !== null && point.value !== undefined) {
+                        allInputValues.push(point.value);
+                    }
+                });
+            });
+            
+            statistics.inputCount = allInputValues.length;
+            if (allInputValues.length > 0) {
+                const inputStats = this.calculateStatistics(allInputValues);
+                statistics.inputMean = inputStats.mean;
+                statistics.inputStdDev = inputStats.stdDev;
+            }
+        }
+
+        if (chartData && chartData.outputData) {
+            statistics.outputPaths = Object.keys(chartData.outputData).length;
+            
+            // 计算输出数据统计
+            const allOutputValues = [];
+            Object.values(chartData.outputData).forEach(dataArray => {
+                dataArray.forEach(point => {
+                    if (point.value !== null && point.value !== undefined) {
+                        allOutputValues.push(point.value);
+                    }
+                });
+            });
+            
+            statistics.resultCount = allOutputValues.length;
+            if (allOutputValues.length > 0) {
+                const outputStats = this.calculateStatistics(allOutputValues);
+                statistics.resultMean = outputStats.mean;
+                statistics.resultStdDev = outputStats.stdDev;
+            }
+        }
+
+        return statistics;
+    }
+
+    // 计算基本统计信息
+    calculateStatistics(values) {
+        if (values.length === 0) {
+            return { mean: 0, stdDev: 0 };
+        }
+
+        const mean = values.reduce((sum, val) => sum + val, 0) / values.length;
+        const variance = values.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / values.length;
+        const stdDev = Math.sqrt(variance);
+
+        return { mean, stdDev };
     }
 
     // 计算数据统计
@@ -2083,50 +2185,136 @@ class VisualAnalysis extends HTMLElement {
 
     // 获取模型信息
     getModelInfo(record) {
-        // 模拟返回模型信息，实际应该从后端获取
+        // 返回基于任务的真实模型信息
+        if (record && record.name) {
+            return {
+                type: '数据分析模型',
+                version: 'v1.0.0',
+                algorithm: '实时数据处理',
+                parameters: `任务: ${record.name}`,
+                dataset: '实时数据流',
+                accuracy: 'N/A'
+            };
+        }
         return {
-            type: '深度学习模型',
-            version: 'v2.1.0',
-            algorithm: 'LSTM神经网络',
-            parameters: 'hidden_units=128, epochs=100, batch_size=32',
-            dataset: '训练集_2024Q1',
-            accuracy: '95.6%'
+            type: '数据分析模型',
+            version: 'v1.0.0',
+            algorithm: '实时数据处理',
+            parameters: '默认配置',
+            dataset: '实时数据流',
+            accuracy: 'N/A'
         };
     }
     
     // 获取统计指标
     getStatistics(record) {
-        // 模拟返回统计指标，实际应该从分析结果中获取
+        // 基于真实数据计算统计指标
+        if (this.currentChartData && this.currentChartData.data) {
+            const statistics = this.calculateRealDataStatistics(this.currentChartData.data);
+            return {
+                totalData: (statistics.inputCount + statistics.resultCount).toString(),
+                processTime: 'N/A',
+                memoryUsage: 'N/A',
+                cpuUsage: 'N/A',
+                accuracy: 'N/A',
+                recall: 'N/A',
+                f1Score: 'N/A',
+                dataQuality: 'N/A'
+            };
+        }
         return {
-            totalData: '10,000',
-            processTime: '120',
-            memoryUsage: '512',
-            cpuUsage: '75',
-            accuracy: '95.6',
-            recall: '93.2',
-            f1Score: '0.944',
-            dataQuality: '92'
+            totalData: '0',
+            processTime: 'N/A',
+            memoryUsage: 'N/A',
+            cpuUsage: 'N/A',
+            accuracy: 'N/A',
+            recall: 'N/A',
+            f1Score: 'N/A',
+            dataQuality: 'N/A'
         };
     }
     
     // 获取结论
     getConclusions(record) {
-        return [
-            '数据分析任务执行成功，各项指标均达到预期目标',
-            '模型表现良好，准确率和召回率均超过90%',
-            '数据处理效率较高，在合理时间内完成了分析任务',
-            '数据质量整体良好，满足分析要求'
-        ];
+        const conclusions = [];
+        
+        if (this.currentChartData && this.currentChartData.data) {
+            const statistics = this.calculateRealDataStatistics(this.currentChartData.data);
+            
+            // 基于数据点的结论
+            if (statistics.inputCount > 0) {
+                conclusions.push(`成功获取输入数据，共${statistics.inputCount}个数据点`);
+            }
+            
+            if (statistics.resultCount > 0) {
+                conclusions.push(`成功获取输出数据，共${statistics.resultCount}个数据点`);
+            }
+            
+            // 基于测点数量的结论
+            if (statistics.inputPaths > 0) {
+                conclusions.push(`分析了${statistics.inputPaths}个输入测点`);
+            }
+            
+            if (statistics.outputPaths > 0) {
+                conclusions.push(`分析了${statistics.outputPaths}个输出测点`);
+            }
+            
+            // 基于数据质量的结论
+            if (statistics.inputCount > 0 || statistics.resultCount > 0) {
+                conclusions.push('数据分析任务执行成功，数据处理正常');
+            } else {
+                conclusions.push('暂无有效数据，请检查任务配置');
+            }
+        } else {
+            conclusions.push('数据分析任务已完成，但未获取到有效数据');
+        }
+        
+        return conclusions;
     }
     
     // 获取建议
     getRecommendations(record) {
-        return [
-            '建议定期更新模型，以保持预测准确性',
-            '可以进一步优化数据处理流程，提高处理效率',
-            '建议增加数据验证步骤，确保数据质量',
-            '可以考虑引入更多特征，提升模型性能'
-        ];
+        const recommendations = [];
+        
+        if (this.currentChartData && this.currentChartData.data) {
+            const statistics = this.calculateRealDataStatistics(this.currentChartData.data);
+            
+            // 基于数据量的建议
+            if (statistics.inputCount === 0 && statistics.resultCount === 0) {
+                recommendations.push('建议检查任务配置，确保测点路径正确');
+                recommendations.push('建议验证数据源是否可用');
+            } else {
+                if (statistics.inputCount < 10) {
+                    recommendations.push('输入数据点较少，建议检查数据采集频率');
+                }
+                
+                if (statistics.resultCount < 10) {
+                    recommendations.push('输出数据点较少，建议检查计算任务执行情况');
+                }
+                
+                if (statistics.inputCount > 0 && statistics.resultCount > 0) {
+                    recommendations.push('数据分析正常，建议定期监控数据质量');
+                }
+            }
+            
+            // 基于测点配置的建议
+            if (statistics.inputPaths === 0) {
+                recommendations.push('建议配置输入测点以进行完整分析');
+            }
+            
+            if (statistics.outputPaths === 0) {
+                recommendations.push('建议配置输出测点以查看计算结果');
+            }
+        } else {
+            recommendations.push('建议先执行分析操作以获取数据');
+            recommendations.push('确保任务状态为成功或已完成');
+        }
+        
+        // 通用建议
+        recommendations.push('建议定期检查系统运行状态');
+        recommendations.push('如遇问题，请查看系统日志获取详细信息');
+        
+        return recommendations;
     }
 
     // 处理导出操作
@@ -2687,17 +2875,18 @@ class VisualAnalysis extends HTMLElement {
 
                 this.updateTable();
             } else {
-                // API失败时使用模拟数据
-                const mockData = this.generateMultiTaskData();
-                this.allData = mockData;
-                this.displayData = mockData;
+                // API失败时显示错误信息
+                this.showToast('获取任务列表失败，请检查网络连接', 'error');
+                this.allData = [];
+                this.displayData = [];
                 this.updateTable();
             }
         } catch (error) {
-            // 网络错误时使用模拟数据
-            const mockData = this.generateMultiTaskData();
-            this.allData = mockData;
-            this.displayData = mockData;
+            console.error('加载任务数据失败:', error);
+            // 网络错误时显示错误信息
+            this.showToast('网络连接异常，请重试', 'error');
+            this.allData = [];
+            this.displayData = [];
             this.updateTable();
         }
     }
