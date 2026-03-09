@@ -1135,36 +1135,366 @@ class VisualAnalysis extends HTMLElement {
     }
 
     // 处理分析操作
-    handleAnalyze(record) {
+    async handleAnalyze(record) {
         if (record.status !== 'success' && record.status !== 'stopped') {
             this.showToast('只能分析成功或已完成的任务', 'warning');
             return;
         }
-        
+
         this.showToast(`正在分析单个任务: ${record.name}`, 'info');
         console.log('分析单个任务:', record);
-        
-        // 显示单个任务分析
-        this.showSingleTaskAnalysis(record);
+
+        try {
+            // 调用数据查询接口
+            const queryData = await this.queryDataForAnalysis(record);
+
+            if (queryData) {
+                // 显示单个任务分析
+                this.showSingleTaskAnalysis(record, queryData);
+            } else {
+                this.showToast('数据查询失败，无法进行分析', 'error');
+            }
+        } catch (error) {
+            console.error('分析失败:', error);
+            this.showToast('分析出现错误，请重试', 'error');
+        }
+    }
+
+    // 查询分析数据
+    async queryDataForAnalysis(record) {
+        try {
+            // 解析输入和输出测点路径
+            let inputPaths = [];
+            let outputPaths = [];
+
+            try {
+                inputPaths = JSON.parse(record.inputMeasurements || '[]');
+            } catch (e) {
+                console.warn('解析 inputMeasurements 失败:', e);
+            }
+
+            try {
+                outputPaths = JSON.parse(record.outputMeasurements || '[]');
+            } catch (e) {
+                console.warn('解析 outputMeasurements 失败:', e);
+            }
+
+            // 合并所有测点路径
+            const allPaths = [...inputPaths, ...outputPaths];
+
+            if (allPaths.length === 0) {
+                this.showToast('没有可用的测点路径，无法查询数据', 'warning');
+                return null;
+            }
+
+            // 构建请求参数
+            const requestBody = {
+                paths: allPaths,
+                startTime: record.startTime || record.timestamp,
+                endTime: record.endTime || (record.timestamp + 86400000), // 默认24小时
+                aggregateType: null, // 不使用聚合
+                precision: 0, // 不使用时间间隔
+                timePrecision: null // 不使用时间精度
+            };
+
+            console.log('查询数据参数:', requestBody);
+
+            // 调用数据查询接口
+            const result = await window.AppConfig.post('data', 'query', requestBody);
+
+            if (result.success && result.data) {
+                console.log('查询到的数据:', result.data);
+                
+                // 检查数据结构
+                if (result.data.records && Array.isArray(result.data.records)) {
+                    console.log('数据记录数量:', result.data.records.length);
+                    if (result.data.records.length > 0) {
+                        console.log('第一条记录示例:', result.data.records[0]);
+                    }
+                }
+
+                // 处理查询结果，按路径分组并区分输入输出
+                const processedData = this.processQueryData(result.data, inputPaths, outputPaths);
+
+                return processedData;
+            } else {
+                console.error('数据查询失败:', result);
+                return null;
+            }
+        } catch (error) {
+            console.error('数据查询异常:', error);
+            return null;
+        }
+    }
+
+    // 处理查询数据，按路径分组并区分输入输出
+    processQueryData(queryResult, inputPaths, outputPaths) {
+        const pathData = {};
+
+        // 初始化路径数据
+        [...inputPaths, ...outputPaths].forEach(path => {
+            pathData[path] = [];
+        });
+
+        // 处理查询结果 - API返回的数据结构是 {header: Array, records: Array}
+        if (queryResult && queryResult.records && Array.isArray(queryResult.records)) {
+            console.log('处理查询记录:', queryResult.records);
+            
+            queryResult.records.forEach(record => {
+                // 使用 record.key 作为时间戳
+                if (record.key) {
+                    try {
+                        const timestamp = new Date(record.key).getTime();
+                        // 检查时间戳是否有效
+                        if (isNaN(timestamp)) {
+                            console.warn('时间解析失败，跳过数据:', record.key);
+                            return; // 跳过这条数据
+                        }
+
+                        // 遍历所有测点路径
+                        [...inputPaths, ...outputPaths].forEach(path => {
+                            if (record[path] !== null && record[path] !== undefined) {
+                                pathData[path].push({
+                                    timestamp: timestamp,
+                                    value: record[path]
+                                });
+                            }
+                        });
+                    } catch (error) {
+                        console.warn('时间解析异常，跳过数据:', record.key, error);
+                    }
+                }
+            });
+        } else {
+            console.warn('查询结果格式不正确:', queryResult);
+        }
+
+        // 区分输入和输出数据
+        const inputData = {};
+        const outputData = {};
+
+        inputPaths.forEach(path => {
+            inputData[path] = pathData[path] || [];
+        });
+
+        outputPaths.forEach(path => {
+            outputData[path] = pathData[path] || [];
+        });
+
+        console.log('处理后的数据:', {
+            inputData,
+            outputData,
+            pathData
+        });
+
+        return {
+            inputData,
+            outputData,
+            allPathData: pathData
+        };
     }
 
     // 显示单个任务分析
-    showSingleTaskAnalysis(task) {
+    showSingleTaskAnalysis(task, queryData = null) {
         this.currentAnalysisMode = 'single';
-        
-        if (!this.chart) {
-            this.initChart();
+
+        let chartData;
+
+        if (queryData) {
+            // 使用查询到的真实数据
+            chartData = this.processChartDataFromQuery(task, queryData);
+        } else {
+            // 回退到模拟数据
+            chartData = this.generateSingleTaskData(task);
         }
-        
-        // 生成单个任务的数据并缓存
-        const singleTaskData = this.generateSingleTaskData(task);
+
         this.currentChartData = {
             type: 'single',
-            data: singleTaskData,
+            data: chartData,
             task: task
         };
-        
-        this.updateSingleTaskChart(singleTaskData);
+
+        // 确保图表初始化完成后再更新数据
+        if (!this.chart) {
+            this.initChart();
+            // 等待图表初始化完成
+            setTimeout(() => {
+                this.updateChartWithData(chartData);
+            }, 200);
+        } else {
+            this.updateChartWithData(chartData);
+        }
+    }
+
+    // 从查询数据生成图表数据
+    processChartDataFromQuery(task, queryData) {
+        return {
+            id: task.id,
+            name: task.name,
+            inputData: queryData.inputData,
+            outputData: queryData.outputData
+        };
+    }
+
+// 基于查询数据更新图表
+    updateChartWithData(chartData) {
+        if (!this.chart) return;
+
+        const series = [];
+        const colors = ['#1890ff', '#52c41a', '#faad14', '#f5222d', '#722ed1', '#13c2c2'];
+        let colorIndex = 0;
+
+        // 处理输入数据 - 使用虚线
+        if (chartData.inputData && this.curveVisibility.input) {
+            Object.keys(chartData.inputData).forEach(path => {
+                const data = chartData.inputData[path].map(point => [
+                    point.timestamp,
+                    point.value
+                ]);
+
+                const color = colors[colorIndex % colors.length];
+                series.push({
+                    name: `${path} (输入)`,
+                    type: 'line',
+                    data: data,
+                    smooth: true,
+                    symbol: 'circle',
+                    symbolSize: 4,
+                    showSymbol: false,
+                    lineStyle: {
+                        width: 2,
+                        color: color,
+                        type: 'dashed' // 虚线
+                    },
+                    itemStyle: {
+                        color: color
+                    }
+                });
+
+                colorIndex++;
+            });
+        }
+
+        // 处理输出数据 - 使用实线
+        if (chartData.outputData && this.curveVisibility.output) {
+            Object.keys(chartData.outputData).forEach(path => {
+                const data = chartData.outputData[path].map(point => [
+                    point.timestamp,
+                    point.value
+                ]);
+
+                const color = colors[colorIndex % colors.length];
+                series.push({
+                    name: `${path} (输出)`,
+                    type: 'line',
+                    data: data,
+                    smooth: true,
+                    symbol: 'diamond',
+                    symbolSize: 4,
+                    showSymbol: false,
+                    lineStyle: {
+                        width: 2,
+                        color: color,
+                        type: 'solid' // 实线
+                    },
+                    itemStyle: {
+                        color: color
+                    }
+                });
+
+                colorIndex++;
+            });
+        }
+
+        // 基于 data-visualization 的图表配置
+        const option = {
+            title: {
+                text: `数据分析 - ${chartData.name}`,
+                left: 'center',
+                top: 10,
+                textStyle: {
+                    fontSize: 14,
+                    fontWeight: 'bold'
+                }
+            },
+            tooltip: {
+                trigger: 'axis',
+                formatter: function(params) {
+                    if (!params || params.length === 0) return '';
+
+                    const time = new Date(params[0].value[0]).toLocaleString();
+                    let result = `时间: ${time}<br/>`;
+                    params.forEach(param => {
+                        // 检查数据是否存在且有效
+                        if (param.value && param.value[1] !== undefined && param.value[1] !== null && !isNaN(param.value[1])) {
+                            result += `${param.seriesName}: ${param.value[1].toFixed(2)}<br/>`;
+                        } else {
+                            result += `${param.seriesName}: 无数据<br/>`;
+                        }
+                    });
+                    return result;
+                }
+            },
+            legend: {
+                data: series.map(s => s.name),
+                top: 40,
+                left: 'center',
+                textStyle: {
+                    fontSize: 12
+                }
+            },
+            grid: {
+                left: '8%',
+                right: '8%',
+                bottom: '20%',
+                top: '20%'
+            },
+            xAxis: {
+                type: 'time',
+                axisLabel: {
+                    formatter: function(value) {
+                        return new Date(value).toLocaleString();
+                    }
+                }
+            },
+            yAxis: {
+                type: 'value',
+                axisLabel: {
+                    formatter: function(value) {
+                        return value.toFixed(2);
+                    }
+                }
+            },
+            dataZoom: [
+                {
+                    type: 'inside',
+                    start: 0,
+                    end: 100
+                },
+                {
+                    start: 0,
+                    end: 100,
+                    handleStyle: {
+                        backgroundColor: '#1890ff'
+                    }
+                }
+            ],
+            toolbox: {
+                right: 20,
+                feature: {
+                    restore: {},
+                    saveAsImage: {},
+                    dataView: {
+                        readOnly: true,
+                        title: '数据视图',
+                        lang: ['数据视图', '关闭', '刷新']
+                    }
+                }
+            },
+            series: series
+        };
+
+        this.chart.setOption(option, true);
     }
 
     // 生成单个任务的数据
@@ -1815,8 +2145,11 @@ class VisualAnalysis extends HTMLElement {
     }
 
     // 处理批量对比选中项
-    handleCompareSelected() {
+    async handleCompareSelected() {
         const selectedCheckboxes = this.shadowRoot.querySelectorAll('.checkbox-item:checked');
+        console.log('选中的复选框数量:', selectedCheckboxes.length);
+        console.log('所有数据:', this.allData);
+        
         if (selectedCheckboxes.length === 0) {
             this.showToast('请先选择要对比的任务', 'warning');
             return;
@@ -1833,31 +2166,130 @@ class VisualAnalysis extends HTMLElement {
         }
         
         const selectedIds = Array.from(selectedCheckboxes).map(cb => cb.dataset.id);
+        console.log('选中的任务ID:', selectedIds);
         this.showToast(`正在对比 ${selectedIds.length} 个选中的任务`, 'success');
-        console.log('批量对比选中项:', selectedIds);
         
         // 显示对比图表
-        this.showComparisonChart(selectedIds);
+        await this.showComparisonChart(selectedIds);
     }
 
     // 显示对比图表
-    showComparisonChart(selectedIds) {
-        // 筛选选中的任务数据
-        const selectedTasks = this.allData.filter(record => selectedIds.includes(record.id));
+    async showComparisonChart(selectedIds) {
+        // 将字符串ID转换为数字，确保类型匹配
+        const numericSelectedIds = selectedIds.map(id => parseInt(id, 10));
+        console.log('转换后的数字ID:', numericSelectedIds);
         
-        if (!this.chart) {
-            this.initChart();
+        // 筛选选中的任务数据
+        const selectedTasks = this.allData.filter(record => numericSelectedIds.includes(record.id));
+        console.log('筛选出的任务:', selectedTasks);
+        
+        if (selectedTasks.length === 0) {
+            this.showToast('没有找到选中的任务数据', 'error');
+            return;
         }
         
-        // 生成对比图表数据并缓存
-        const comparisonData = this.generateComparisonData(selectedTasks);
-        this.currentChartData = {
-            type: 'comparison',
-            data: comparisonData,
-            selectedIds: selectedIds
+        try {
+            // 为每个任务查询真实数据
+            const tasksData = [];
+            for (const task of selectedTasks) {
+                const queryData = await this.queryDataForAnalysis(task);
+                if (queryData) {
+                    tasksData.push({
+                        id: task.id,
+                        name: task.name,
+                        inputData: queryData.inputData,
+                        outputData: queryData.outputData
+                    });
+                }
+            }
+            
+            if (tasksData.length === 0) {
+                this.showToast('没有获取到任何任务的数据', 'warning');
+                return;
+            }
+            
+            console.log('获取到的真实数据:', tasksData);
+            
+            // 生成对比图表数据
+            const comparisonData = this.generateComparisonDataFromRealData(tasksData);
+            console.log('生成的对比数据:', comparisonData);
+            
+            this.currentChartData = {
+                type: 'comparison',
+                data: comparisonData,
+                selectedIds: selectedIds
+            };
+            
+            // 确保图表初始化完成后再更新数据
+            if (!this.chart) {
+                console.log('图表未初始化，开始初始化...');
+                this.initChart();
+                // 等待图表初始化完成
+                setTimeout(() => {
+                    console.log('图表初始化完成，更新对比图表...');
+                    this.updateComparisonChart(comparisonData);
+                }, 200);
+            } else {
+                console.log('图表已初始化，直接更新对比图表...');
+                this.updateComparisonChart(comparisonData);
+            }
+            
+        } catch (error) {
+            console.error('对比数据查询失败:', error);
+            this.showToast('获取对比数据失败，请重试', 'error');
+        }
+    }
+
+    // 从真实数据生成对比数据
+    generateComparisonDataFromRealData(tasksData) {
+        const comparisonData = {
+            tasks: [],
+            timePoints: [],
+            frequencyInconsistent: false,
+            targetFrequency: 10 // 默认目标频率：每10秒一个点
         };
+
+        // 为每个任务处理真实数据
+        tasksData.forEach((taskData, index) => {
+            const task = {
+                id: taskData.id,
+                name: taskData.name,
+                samplingInterval: 10, // 默认采样间隔
+                inputData: [],
+                calculationResult: []
+            };
+
+            // 处理输入数据
+            if (taskData.inputData) {
+                Object.keys(taskData.inputData).forEach(path => {
+                    taskData.inputData[path].forEach(point => {
+                        task.inputData.push([point.timestamp, point.value]);
+                    });
+                });
+            }
+
+            // 处理输出数据
+            if (taskData.outputData) {
+                Object.keys(taskData.outputData).forEach(path => {
+                    taskData.outputData[path].forEach(point => {
+                        task.calculationResult.push([point.timestamp, point.value]);
+                    });
+                });
+            }
+
+            comparisonData.tasks.push(task);
+        });
+
+        // 生成统一的时间点用于X轴
+        const allTimePoints = new Set();
+        comparisonData.tasks.forEach(task => {
+            task.inputData.forEach(point => allTimePoints.add(point[0]));
+            task.calculationResult.forEach(point => allTimePoints.add(point[0]));
+        });
         
-        this.updateComparisonChart(comparisonData);
+        comparisonData.timePoints = Array.from(allTimePoints).sort((a, b) => a - b);
+
+        return comparisonData;
     }
 
     // 生成对比数据（包含输入数据曲线和计算结果曲线）
