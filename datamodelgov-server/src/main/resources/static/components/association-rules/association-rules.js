@@ -36,6 +36,9 @@ class AssociationRules extends HTMLElement {
                     dataSource: rule.tableName,
                     targetModel: rule.modelName,
                     version: rule.modelVersion,
+                    cmd: rule.cmd,
+                    inputCsvName: rule.inputCsvName,
+                    outputCsvName: rule.outputCsvName,
                     status: rule.status ? 'active' : 'inactive',
                     mappings: rule.inputsBind ? JSON.parse(rule.inputsBind) : [],
                     resultMappings: rule.outputsBind ? JSON.parse(rule.outputsBind) : [],
@@ -546,6 +549,11 @@ class AssociationRules extends HTMLElement {
                 this.shadowRoot.getElementById('dataSource').value = rule.dataSource || rule.tableName || '';
                 this.shadowRoot.getElementById('targetModel').value = rule.targetModel || rule.modelName || '';
                 
+                // Populate the three new fields
+                this.shadowRoot.getElementById('cmd').value = rule.cmd || '';
+                this.shadowRoot.getElementById('inputCsvName').value = rule.inputCsvName || '';
+                this.shadowRoot.getElementById('outputCsvName').value = rule.outputCsvName || '';
+                
                 // 设置版本 - 需要先加载版本选项
                 if (rule.modelName || rule.targetModel) {
                     const modelName = rule.modelName || rule.targetModel;
@@ -715,6 +723,9 @@ class AssociationRules extends HTMLElement {
         const dataSource = this.shadowRoot.getElementById('dataSource').value;
         const targetModel = this.shadowRoot.getElementById('targetModel').value;
         const version = this.shadowRoot.getElementById('version').value.trim();
+        const cmd = this.shadowRoot.getElementById('cmd').value.trim();
+        const inputCsvName = this.shadowRoot.getElementById('inputCsvName').value.trim();
+        const outputCsvName = this.shadowRoot.getElementById('outputCsvName').value.trim();
         const status = this.shadowRoot.querySelector('input[name="status"]:checked')?.value || 'active';
         
         // 收集映射关系 - 参考model-edit.js的inputs/outputs收集逻辑
@@ -729,6 +740,9 @@ class AssociationRules extends HTMLElement {
             tableName: dataSource,  // 前端dataSource映射到后端tableName
             modelName: targetModel, // 前端targetModel映射到后端modelName
             modelVersion: version,   // 前端version映射到后端modelVersion
+            cmd: cmd,               // 运行命令
+            inputCsvName: inputCsvName,   // 输入数据CSV文件名
+            outputCsvName: outputCsvName, // 输出结果CSV文件名
             status: status === 'active', // 转换为boolean类型
             createTime: this.currentAction === 'edit' && this.shadowRoot.getElementById('ruleForm').dataset.ruleId 
                 ? parseInt(this.shadowRoot.getElementById('ruleForm').dataset.ruleId) 

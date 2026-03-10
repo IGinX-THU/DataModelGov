@@ -118,6 +118,24 @@
                 
                 <div class="form-row">
                     <div class="form-group">
+                        <label for="cmd">运行命令</label>
+                        <input type="text" id="cmd" name="cmd" placeholder="python3 model_runner.py   --input-file raw_data.csv   --output-file processed_results.csv">
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="inputCsvName">输入数据CSV文件名</label>
+                        <input type="text" id="inputCsvName" name="inputCsvName" placeholder="raw_data.csv">
+                    </div>
+                    <div class="form-group">
+                        <label for="outputCsvName">输出结果CSV文件名</label>
+                        <input type="text" id="outputCsvName" name="outputCsvName" placeholder="processed_results.csv">
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
                         <label>状态</label>
                         <div class="radio-group">
                             <label class="radio-label">

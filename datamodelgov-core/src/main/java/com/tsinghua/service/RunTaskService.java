@@ -176,7 +176,6 @@ public class RunTaskService {
 
 
     public void runTask(RunTaskRequest runTaskRequest) {
-        List<Point> metaPoints = new ArrayList<>();
         AssociationRulesEntity associationRulesEntity = associationRulesService.queryRule(runTaskRequest.getRuleId());
         long timestamp = System.currentTimeMillis();
         RunTaskEntity runTaskEntity = ConvertUtil.entityConvert(runTaskRequest, RunTaskEntity.class);
@@ -186,6 +185,19 @@ public class RunTaskService {
         runTaskEntity.setInputMeasurements(JSONArray.toJSONString(inputs.stream().map(InputBindDto::getSourceField).collect(Collectors.toList())));
         List<OutputBindDto> outputs = JSONArray.parseArray(associationRulesEntity.getOutputsBind(), OutputBindDto.class);
         runTaskEntity.setOutputMeasurements(JSONArray.toJSONString(outputs.stream().map(OutputBindDto::getResultTarget).collect(Collectors.toList())));
+        saveTask(runTaskEntity);
+
+    }
+
+    public void saveTask(RunTaskEntity runTaskEntity) {
+        List<Point> metaPoints = new ArrayList<>();
+        long timestamp;
+        if (runTaskEntity.getTimestamp() != null) {
+            timestamp = runTaskEntity.getTimestamp();
+        } else {
+            timestamp = System.currentTimeMillis();
+            runTaskEntity.setTimestamp(timestamp);
+        }
 
         String metaBasePath = DATA_PREFIX;
 
@@ -203,4 +215,5 @@ public class RunTaskService {
         iginxClient.getWriteClient().writePoints(metaPoints);
         log.info("关联规则已保存。名称: {}, 时间戳: {}", runTaskEntity.getName(), timestamp);
     }
+
 }
