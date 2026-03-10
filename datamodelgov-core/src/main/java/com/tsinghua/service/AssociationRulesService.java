@@ -56,6 +56,9 @@ public class AssociationRulesService {
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "updateTime", associationRulesEntity.getUpdateTime(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "inputsBind", associationRulesEntity.getInputsBind(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "outputsBind", associationRulesEntity.getOutputsBind(), timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "cmd", associationRulesEntity.getCmd(), timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "inputCsvName", associationRulesEntity.getInputCsvName(), timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "outputCsvName", associationRulesEntity.getOutputCsvName(), timestamp));
 
         // 批量写入元数据 - 完全参考ModelFileService的写入方式
         iginxClient.getWriteClient().writePoints(metaPoints);
