@@ -190,7 +190,7 @@ public class DataTableService {
         }
     }
 
-    private IginXTable queryIginXTable(DataQueryRequest request) {
+    public IginXTable queryIginXTable(DataQueryRequest request) {
         QueryClient queryClient = iginxClient.getQueryClient();
 
         Set<String> paths = new HashSet<>(request.getPaths());

@@ -2130,6 +2130,17 @@ class AssociationRules extends HTMLElement {
                         const tablePath = this.getFullTablePath(parentNode);
                         tableNames.add(tablePath);
                     }
+                } else {
+                    // 对于非叶子节点，检查是否有叶子节点后代
+                    // 如果有叶子节点后代，则此节点也可以作为表名
+                    const hasLeafDescendants = node.querySelector('.tree-node[data-is-leaf="true"]');
+                    if (hasLeafDescendants) {
+                        const tablePath = this.getFullTablePath(node);
+                        // 只添加不是根节点且有多级路径的节点
+                        if (tablePath !== 'relational_system' && tablePath.includes('.')) {
+                            tableNames.add(tablePath);
+                        }
+                    }
                 }
             }
         });
@@ -2180,8 +2191,9 @@ class AssociationRules extends HTMLElement {
             current = current.parentElement?.parentElement;
         }
         
-        // 确保包含根路径
-        if (!foundRoot && parts.length > 0) {
+        // 只有当路径中包含relational_system时才确保包含根路径
+        // 对于test.input、test.output等路径，不要强制添加relational_system前缀
+        if (!foundRoot && parts.length > 0 && parts.some(part => part.includes('relational') || part.includes('association') || part.includes('models') || part.includes('users') || part.includes('roles') || part.includes('parsing'))) {
             parts.unshift('relational_system');
         }
         
