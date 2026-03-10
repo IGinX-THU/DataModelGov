@@ -3,14 +3,239 @@ class ParsingRules extends HTMLElement {
         super();
         this.attachShadow({ mode: 'open' });
         this.data = [];
-        this.pageSize = 6;
+        this.pageSize = 10;
         this.currentPage = 1;
+    }
+
+    async loadRulesFromAPI() {
+        try {
+            // 获取筛选条件
+            const nameFilter = this.shadowRoot.querySelector('.filter-input[type="text"]')?.value.trim();
+            
+            // 构建请求对象
+            const requestBody = {
+                pageNum: this.currentPage || 1,
+                pageSize: this.pageSize || 6,
+                name: nameFilter || null
+            };
+            
+            console.log('查询参数:', requestBody);
+            
+            // 调用查询接口
+            const result = await window.AppConfig.post('data', 'parsing/rules/query', requestBody);
+            console.log('查询结果:', result);
+            
+            if (result.success && result.data) {
+                // 后端直接返回List<ParsingRulesEntity>，转换为前端所需格式
+                this.data = result.data.map(rule => ({
+                    id: rule.createTime, // 使用createTime作为唯一标识
+                    name: rule.name,
+                    regex: rule.regexPattern,
+                    createTime: rule.createTime,
+                    createtime: new Date(rule.createTime).toLocaleString('zh-CN'),
+                    updatetime: new Date(rule.updateTime).toLocaleString('zh-CN')
+                }));
+                
+                // 同时获取总数用于分页（仅在第一页时）
+                if (this.currentPage === 1) {
+                    await this.loadRulesCount(nameFilter);
+                }
+                
+                console.log('加载的规则数据:', this.data);
+                console.log('当前totalCount:', this.totalCount);
+                
+                // 渲染表格
+                this.renderTable();
+            } else {
+                console.error('加载规则失败:', result.message);
+                this.showToast('加载规则失败', 'error');
+            }
+        } catch (error) {
+            console.error('加载规则失败:', error);
+            this.showToast('网络错误，无法加载规则', 'error');
+        }
+    }
+
+    async loadRulesCount(name) {
+        try {
+            // 构建请求对象
+            const requestBody = {
+                name: name || null
+            };
+            
+            console.log('查询总量参数:', requestBody);
+            
+            // 使用新的API配置
+            const result = await window.AppConfig.post('data', 'parsing/rules/count', requestBody);
+            console.log('总量查询结果:', result);
+            
+            if (result.success && result.data !== undefined) {
+                this.totalCount = result.data;
+                this.updatePagination();
+            } else {
+                console.warn('获取数据总量失败，使用当前数据量');
+                this.totalCount = this.data.length;
+            }
+        } catch (error) {
+            console.error('获取数据总量失败:', error);
+            this.totalCount = this.data.length;
+        }
+    }
+
+    
+    async deleteRuleFromAPI(createTime) {
+        try {
+            // 使用新的API配置
+            const result = await window.AppConfig.delete('data', 'parsing/rules/delete', { createTime });
+            
+            if (result.success) {
+                await this.loadRulesFromAPI();
+                this.renderTable();
+                this.hideModal(); // 直接关闭弹窗，不恢复新增弹窗
+                this.showToast('规则已删除');
+            } else {
+                this.showToast(result.message || '删除失败', 'error');
+            }
+        } catch (error) {
+            console.error('删除规则失败:', error);
+            this.showToast('网络错误，删除失败', 'error');
+        }
+    }
+
+    showAddModal() {
+        // 直接调用showModal显示新增表单
+        this.currentAction = 'add';
+        this.showModal('新增解析规则', this.getFormModalBody(), [
+            { text: '取消', class: 'modal-btn secondary', action: 'close' },
+            { text: '确认', class: 'modal-btn primary', action: 'submit' }
+        ]);
+    }
+
+    async editRule(id) {
+        try {
+            // 从API获取规则详情
+            const result = await window.AppConfig.get('data', 'parsing/rules/detail', { createTime: id });
+            
+            if (result.success && result.data) {
+                const rule = result.data;
+                const frontendRule = {
+                    id: rule.createTime,
+                    name: rule.name,
+                    regex: rule.regexPattern
+                };
+                
+                this.showModal('编辑解析规则', this.getFormModalBody(frontendRule), [
+                    { text: '取消', class: 'modal-btn secondary', action: 'close' },
+                    { text: '保存', class: 'modal-btn primary', action: 'edit', id }
+                ]);
+            } else {
+                this.showToast('获取规则详情失败', 'error');
+            }
+        } catch (error) {
+            console.error('获取规则详情失败:', error);
+            this.showToast('网络错误，无法获取规则详情', 'error');
+        }
+    }
+
+    deleteRule(id) {
+        this.showModal('删除确认', `确定要删除 "${this.getRuleNameByCreateTime(id)}" 解析规则吗？`, [
+            { text: '取消', class: 'modal-btn secondary', action: 'close' },
+            { text: '删除', class: 'modal-btn primary', action: 'delete', id }
+        ]);
+    }
+
+    async saveRule() {
+        try {
+            const formData = this.collectFormData();
+            
+            // 验证必填字段
+            if (!formData.name) {
+                this.showToast('请输入规则名称', 'error');
+                return;
+            }
+            
+            if (!formData.regexPattern) {
+                this.showToast('请输入正则表达式', 'error');
+                return;
+            }
+            
+            // 验证正则表达式语法
+            try {
+                new RegExp(formData.regexPattern);
+            } catch (e) {
+                this.showToast('正则表达式无效', 'error');
+                return;
+            }
+
+            console.log('保存解析规则数据:', formData);
+
+            // 调用保存API
+            const result = await window.AppConfig.post('data', 'parsing/rules/save', formData);
+            console.log('保存响应:', result);
+            
+            if (result.success) {
+                this.showToast(`规则已${this.currentAction === 'edit' ? '更新' : '添加'}成功`);
+                this.hideModal();
+                
+                // 重新加载规则列表
+                await this.loadRulesFromAPI();
+                this.renderTable();
+                
+                // 通知其他组件刷新
+                this.dispatchEvent(new CustomEvent('rule-updated', {
+                    detail: { 
+                        ruleName: formData.name,
+                        createTime: formData.createTime,
+                        formData: formData
+                    },
+                    bubbles: true,
+                    composed: true
+                }));
+            } else {
+                this.showToast(result.message || '保存失败', 'error');
+            }
+        } catch (error) {
+            console.error('保存规则失败:', error);
+            this.showToast('保存失败，请稍后重试', 'error');
+        }
+    }
+
+    collectFormData() {
+        // 收集基本信息
+        const ruleName = this.shadowRoot.getElementById('ruleName')?.value.trim() || '';
+        const regexValue = this.shadowRoot.getElementById('ruleRegex')?.value.trim() || '';
+        
+        // 构建完整的表单数据对象，包含ParsingRulesEntity需要的所有字段
+        const formData = {
+            name: ruleName,
+            regexPattern: regexValue,
+            createTime: this.currentAction === 'edit' && this.currentEditId 
+                ? parseInt(this.currentEditId) 
+                : null
+        };
+
+        return formData;
+    }
+
+    // Toast消息提示方法
+    showToast(message, type = 'success') {
+        // 使用统一的消息系统
+        if (window.CommonUtils && window.CommonUtils.showToast) {
+            window.CommonUtils.showToast(message, type);
+        } else {
+            // 降级处理
+            console.log(`[${type.toUpperCase()}] ${message}`);
+            alert(message);
+        }
+    }
+
+    getRuleNameByCreateTime(createTime) {
+        const rule = this.data.find(r => r.id == createTime);
+        return rule ? rule.name : '';
     }
 
     async connectedCallback() {
         await this.loadResources();
-        this.seedData();
-        this.renderTable();
         
         // 初始化分页组件
         this.initPagination();
@@ -22,7 +247,19 @@ class ParsingRules extends HTMLElement {
                 modalMask.style.display = 'none';
             }
             this.bindEvents();
+            
+            // 组件初始化完成后自动加载数据
+            this.loadRulesFromAPI();
         }, 100);
+    }
+
+    // 添加show方法供main.js调用 - 参考数据源管理的实现
+    async show(...args) {
+        console.log('ParsingRules show() 被调用', args);
+        this.style.display = 'block';
+        // 每次显示时刷新数据
+        await this.loadRulesFromAPI();
+        this.renderTable();
     }
 
     async loadResources() {
@@ -59,10 +296,9 @@ class ParsingRules extends HTMLElement {
     <div class="parsing-filter-card">
         <div class="filter-header">筛选</div>
         <div class="filter-rows" id="filterRows">
-            ${this.buildFilterRow('', '')}
+            ${this.buildFilterRow('')}
         </div>
         <div class="filter-actions">
-            <button class="filter-add" type="button" id="addFilter">⊕</button>
             <div class="filter-spacer"></div>
             <button class="filter-btn outline" type="button" id="resetFilters">重置</button>
             <button class="filter-btn solid" type="button" id="applyFilters">查询</button>
@@ -72,8 +308,6 @@ class ParsingRules extends HTMLElement {
     <div class="parsing-table-card">
         <div class="table-toolbar">
             <button class="toolbar-btn green" type="button" id="addRuleBtn">新增</button>
-            <button class="toolbar-btn orange" type="button" id="importBtn">导入</button>
-            <button class="toolbar-btn blue" type="button" id="exportBtn">导出</button>
         </div>
         <div class="table-wrapper">
             <table class="data-table">
@@ -111,16 +345,12 @@ class ParsingRules extends HTMLElement {
         `;
     }
 
-    buildFilterRow(nameValue = '', regexValue = '') {
+    buildFilterRow(nameValue = '') {
         return `
             <div class="filter-row">
                 <div class="filter-field">
                     <span class="filter-label">名称</span>
                     <input class="filter-input" type="text" value="${nameValue}" placeholder="请输入规则名称" />
-                </div>
-                <div class="filter-field">
-                    <span class="filter-label">正则</span>
-                    <input class="filter-input" type="text" value="${regexValue}" placeholder="请输入正则表达式" />
                 </div>
             </div>
         `;
@@ -129,10 +359,7 @@ class ParsingRules extends HTMLElement {
     getFormModalBody(defaults = {}) {
         const values = {
             name: defaults.name || '',
-            regex: defaults.regex || '',
-            parsingType: defaults.parsingType || 'regex',
-            pythonModule: defaults.pythonModule || '',
-            pythonFunction: defaults.pythonFunction || ''
+            regex: defaults.regex || ''
         };
         return `
             <div class="modal-form">
@@ -141,37 +368,10 @@ class ParsingRules extends HTMLElement {
                     <input class="modal-input" id="ruleName" type="text" value="${values.name}" placeholder="请输入规则名称" />
                 </div>
                 
-                <div class="parsing-type-selector">
-                    <div class="parsing-type-option ${values.parsingType === 'regex' ? 'selected' : ''}" data-type="regex">
-                        <input type="radio" name="parsingType" value="regex" id="typeRegex" ${values.parsingType === 'regex' ? 'checked' : ''}>
-                        <label for="typeRegex">正则表达式</label>
-                    </div>
-                    <div class="parsing-type-option ${values.parsingType === 'python' ? 'selected' : ''}" data-type="python">
-                        <input type="radio" name="parsingType" value="python" id="typePython" ${values.parsingType === 'python' ? 'checked' : ''}>
-                        <label for="typePython">Python 反射</label>
-                    </div>
-                </div>
-                
-                <div class="regex-field">
-                    <div class="modal-form-row">
-                        <span class="modal-label">正则表达式 :</span>
-                        <input class="modal-input" id="ruleRegex" type="text" value="${values.regex}" placeholder="请输入正则表达式" />
-                        <div id="regexError" style="color: #ff4d4f; font-size: 12px; margin-top: 4px; display: none;">正则表达式无效</div>
-                    </div>
-                </div>
-                
-                <div class="python-options ${values.parsingType === 'python' ? 'show' : ''}" id="pythonOptions">
-                    <div class="python-option-row">
-                        <span class="modal-label" style="min-width: 80px;">模块名 :</span>
-                        <input class="python-input" id="pythonModule" type="text" value="${values.pythonModule}" placeholder="如: math, re, datetime">
-                    </div>
-                    <div class="python-option-row">
-                        <span class="modal-label" style="min-width: 80px;">函数名 :</span>
-                        <input class="python-input" id="pythonFunction" type="text" value="${values.pythonFunction}" placeholder="如: sqrt, match, datetime">
-                    </div>
-                    <div style="font-size: 11px; color: #6b7280; margin-top: 8px;">
-                        💡 系统将使用 Python inspect 模块读取函数签名和文档
-                    </div>
+                <div class="modal-form-row">
+                    <span class="modal-label">正则表达式 :</span>
+                    <input class="modal-input" id="ruleRegex" type="text" value="${values.regex}" placeholder="请输入正则表达式" />
+                    <div id="regexError" style="color: #ff4d4f; font-size: 12px; margin-top: 4px; display: none;">正则表达式无效</div>
                 </div>
                 
                 <div class="modal-test-area">
@@ -179,7 +379,7 @@ class ParsingRules extends HTMLElement {
                         <span class="test-label">测试区</span>
                         <button class="test-clear-btn" id="clearTest">清空</button>
                     </div>
-                    <textarea class="test-input" id="testInput" placeholder="在此输入测试文本或代码，系统将实时显示匹配结果..."></textarea>
+                    <textarea class="test-input" id="testInput" placeholder="在此输入测试文本，系统将实时显示匹配结果..."></textarea>
                     <div class="test-results" id="testResults">
                         <div class="test-result-header">匹配结果：</div>
                         <div class="test-result-content" id="testResultContent">暂无匹配结果</div>
@@ -189,82 +389,24 @@ class ParsingRules extends HTMLElement {
         `;
     }
 
-    getImportModalBody() {
-        return `
-            <div class="modal-import">
-                <div class="import-area">
-                    <div class="import-icon">📁</div>
-                    <p>点击选择文件或拖拽文件到此处</p>
-                    <input type="file" id="fileInput" accept=".json,.csv,.txt" style="display: none;">
-                </div>
-            </div>
-        `;
-    }
-
-    seedData() {
-        this.data = [
-            {
-                id: 1,
-                name: 'Python标准',
-                regex: '#\\s*@(Input|Output)\\s*:\\s*(\\w+)\\s*\\(([^)]+)\\)\\s*-\\s*([^\\n]+)',
-                parsingType: 'regex',
-                createtime: '2024-01-15',
-                updatetime: '2024-01-20'
-            },
-            {
-                id: 2,
-                name: 'MATLAB标准',
-                regex: '%\\s*@(Input|Output)\\s*:\\s*(\\w+)\\s*\\(([^)]+)\\)\\s*-\\s*([^\\n]+)',
-                parsingType: 'regex',
-                createtime: '2024-01-10',
-                updatetime: '2024-01-18'
-            },
-            {
-                id: 3,
-                name: 'C++ Doxygen',
-                regex: '\\/\\*\\*\\s*@(?:param|return|in|out)\\s+(\\w+)\\s+([^\\n]+)\\s*(?:\\*\\s*Type:\\s*([^\\n]+))?',
-                parsingType: 'regex',
-                createtime: '2024-01-08',
-                updatetime: '2024-01-16'
-            },
-            {
-                id: 4,
-                name: 'JavaDoc',
-                regex: '\\/\\*\\*\\s*@(?:param|return)\\s+(\\w+)\\s+([^\\n]+)\\s*(?:\\{[^}]*\\}\\s*([^\\n]+))?',
-                parsingType: 'regex',
-                createtime: '2024-01-05',
-                updatetime: '2024-01-12'
-            },
-            {
-                id: 5,
-                name: '通用注释',
-                regex: '[\\/\\#]\\s*@(Input|Output|Param|Return)\\s*[:=]\\s*(\\w+)\\s*\\[?([^\\]]*)\\]?\\s*-\\s*([^\\n]+)',
-                parsingType: 'regex',
-                createtime: '2024-01-03',
-                updatetime: '2024-01-10'
-            }
-        ];
-    }
-
     renderTable() {
         const tbody = this.shadowRoot.getElementById('tableBody');
         if (!tbody) return;
 
-        const start = (this.currentPage - 1) * this.pageSize;
-        const end = start + this.pageSize;
-        const pageData = this.data.slice(start, end);
+        // 使用后端分页数据，不再进行本地分页
+        const pageData = this.data; // ✅ 直接使用后端返回的数据
 
-        tbody.innerHTML = pageData.map(row => `
+        tbody.innerHTML = pageData.map(item => `
             <tr>
-                <td>${row.id}</td>
-                <td>${row.name}</td>
-                <td><code style="background: #f5f5f5; padding: 2px 4px; border-radius: 2px; font-size: 11px;">${row.regex}</code></td>
-                <td>${row.createtime}</td>
-                <td>${row.updatetime}</td>
+                <td>${item.id}</td>
+                <td>${item.name}</td>
+                <td><code style="background: #f5f5f5; padding: 2px 4px; border-radius: 2px; font-size: 11px;">${item.regex}</code></td>
+                <td>${item.createtime}</td>
+                <td>${item.updatetime}</td>
                 <td>
                     <div class="action-buttons">
-                        <button class="action-btn edit" data-id="${row.id}">编辑</button>
-                        <button class="action-btn delete" data-id="${row.id}">删除</button>
+                        <button class="action-btn edit" data-action="edit" data-id="${item.id}">编辑</button>
+                        <button class="action-btn delete" data-action="delete" data-id="${item.id}">删除</button>
                     </div>
                 </td>
             </tr>
@@ -283,22 +425,22 @@ class ParsingRules extends HTMLElement {
 
         if (resetFilters && filterRows) {
             resetFilters.addEventListener('click', () => {
-                filterRows.innerHTML = this.buildFilterRow('', '');
+                filterRows.innerHTML = this.buildFilterRow('');
+                this.currentPage = 1;
+                this.loadRulesFromAPI();
             });
         }
 
         if (applyFilters) {
             applyFilters.addEventListener('click', () => {
-                this.showModal('查询结果', `找到 ${this.data.length} 条符合条件的记录`);
+                this.currentPage = 1; // 重置到第一页
+                this.loadRulesFromAPI();
             });
         }
 
         if (addRuleBtn) {
             addRuleBtn.addEventListener('click', () => {
-                this.showModal('新增解析规则', this.getFormModalBody(), [
-                    { text: '取消', class: 'modal-btn secondary', action: 'close' },
-                    { text: '确认', class: 'modal-btn primary', action: 'submit' }
-                ]);
+                this.showAddModal();
             });
         }
 
@@ -322,19 +464,9 @@ class ParsingRules extends HTMLElement {
                 if (event.target.classList.contains('action-btn')) {
                     const id = event.target.dataset.id;
                     if (event.target.classList.contains('delete')) {
-                        this.showModal('删除确认', `确定要删除 ID 为 ${id} 的解析规则吗？`, [
-                            { text: '取消', class: 'modal-btn secondary', action: 'close' },
-                            { text: '删除', class: 'modal-btn primary', action: 'delete', id }
-                        ]);
+                        this.deleteRule(id);
                     } else if (event.target.classList.contains('edit')) {
-                        const id = event.target.dataset.id;
-                        const rule = this.data.find(r => r.id == id);
-                        if (rule) {
-                            this.showModal('编辑解析规则', this.getFormModalBody(rule), [
-                                { text: '取消', class: 'modal-btn secondary', action: 'close' },
-                                { text: '保存', class: 'modal-btn primary', action: 'edit', id }
-                            ]);
-                        }
+                        this.editRule(id);
                     }
                 }
             });
@@ -369,65 +501,13 @@ class ParsingRules extends HTMLElement {
             const testInput = modalBody.querySelector('#testInput');
             const testResultContent = modalBody.querySelector('#testResultContent');
             const clearTestBtn = modalBody.querySelector('#clearTest');
-            const pythonOptions = modalBody.querySelector('#pythonOptions');
-            const regexField = modalBody.querySelector('.regex-field');
-            const pythonModule = modalBody.querySelector('#pythonModule');
-            const pythonFunction = modalBody.querySelector('#pythonFunction');
-            
-            let currentParsingType = 'regex';
-            
-            // 处理解析类型切换
-            const handleParsingTypeChange = () => {
-                const selectedType = modalBody.querySelector('input[name="parsingType"]:checked')?.value || 'regex';
-                currentParsingType = selectedType;
-                
-                // 更新选中状态
-                modalBody.querySelectorAll('.parsing-type-option').forEach(option => {
-                    option.classList.toggle('selected', option.dataset.type === selectedType);
-                });
-                
-                // 显示/隐藏相应字段
-                if (selectedType === 'python') {
-                    regexField.classList.add('hidden');
-                    pythonOptions.classList.add('show');
-                } else {
-                    regexField.classList.remove('hidden');
-                    pythonOptions.classList.remove('show');
-                }
-                
-                // 重新执行测试
-                performTest();
-            };
-            
-            // 绑定解析类型切换事件
-            modalBody.querySelectorAll('.parsing-type-option').forEach(option => {
-                option.addEventListener('click', () => {
-                    const radio = option.querySelector('input[type="radio"]');
-                    radio.checked = true;
-                    handleParsingTypeChange();
-                });
-            });
             
             const performTest = () => {
                 const testText = testInput?.value;
-                
-                if (!testText) {
-                    testResultContent.innerHTML = '<span class="test-no-match">请输入测试文本或代码</span>';
-                    return;
-                }
-                
-                if (currentParsingType === 'regex') {
-                    performRegexTest();
-                } else if (currentParsingType === 'python') {
-                    performPythonTest();
-                }
-            };
-            
-            const performRegexTest = () => {
                 const regexValue = regexInput?.value.trim();
                 
-                if (!regexValue) {
-                    testResultContent.innerHTML = '<span class="test-no-match">请输入正则表达式</span>';
+                if (!testText || !regexValue) {
+                    testResultContent.innerHTML = '<span class="test-no-match">请输入测试文本和正则表达式</span>';
                     return;
                 }
                 
@@ -462,211 +542,6 @@ class ParsingRules extends HTMLElement {
                 }
             };
             
-            const performPythonTest = () => {
-                const moduleName = pythonModule?.value.trim();
-                const functionName = pythonFunction?.value.trim();
-                
-                if (!moduleName || !functionName) {
-                    testResultContent.innerHTML = '<span class="test-no-match">请输入模块名和函数名</span>';
-                    return;
-                }
-                
-                // 模拟Python inspect模块的反射分析
-                const mockInspectResults = this.simulatePythonInspect(moduleName, functionName);
-                
-                if (mockInspectResults.error) {
-                    testResultContent.innerHTML = `<span class="test-no-match">错误: ${mockInspectResults.error}</span>`;
-                    return;
-                }
-                
-                // 显示详细的反射分析结果
-                let resultHTML = `
-                    <div class="test-match-count">Python 反射分析结果：</div>
-                    <div style="margin-bottom: 8px;">
-                        <strong>模块:</strong> ${mockInspectResults.module}<br>
-                        <strong>函数:</strong> ${mockInspectResults.name}
-                    </div>
-                `;
-                
-                // 函数签名
-                resultHTML += `
-                    <div style="background: #f8fafc; padding: 8px; border-radius: 4px; margin-bottom: 8px;">
-                        <div style="color: #059669; font-weight: 600; margin-bottom: 4px;">🔍 函数签名:</div>
-                        <code style="font-family: 'Courier New', monospace; font-size: 11px;">
-                            ${mockInspectResults.signature}
-                        </code>
-                    </div>
-                `;
-                
-                // 参数详情
-                if (mockInspectResults.parameters && mockInspectResults.parameters.length > 0) {
-                    resultHTML += `
-                        <div style="background: #f8fafc; padding: 8px; border-radius: 4px; margin-bottom: 8px;">
-                            <div style="color: #059669; font-weight: 600; margin-bottom: 4px;">⚙️ 参数列表:</div>
-                    `;
-                    
-                    mockInspectResults.parameters.forEach((param, index) => {
-                        const paramType = param.type || 'unknown';
-                        const paramDefault = param.default ? ` = ${param.default}` : '';
-                        const paramDesc = param.description || '无描述';
-                        
-                        resultHTML += `
-                            <div style="margin-left: 16px; margin-top: 2px; font-size: 11px;">
-                                <strong>${param.name}</strong>: ${paramType}${paramDefault}<br>
-                                <span style="color: #6b7280;">${paramDesc}</span>
-                            </div>
-                        `;
-                    });
-                    
-                    resultHTML += '</div>';
-                }
-                
-                // 返回值信息
-                if (mockInspectResults.returns) {
-                    resultHTML += `
-                        <div style="background: #f8fafc; padding: 8px; border-radius: 4px; margin-bottom: 8px;">
-                            <div style="color: #059669; font-weight: 600; margin-bottom: 4px;">↩️ 返回值:</div>
-                            <div style="margin-left: 16px; font-size: 11px;">
-                                <strong>类型:</strong> ${mockInspectResults.returns.type || 'unknown'}<br>
-                                <strong>描述:</strong> ${mockInspectResults.returns.description || '无描述'}
-                            </div>
-                        </div>
-                    `;
-                }
-                
-                // 文档字符串
-                if (mockInspectResults.docstring) {
-                    resultHTML += `
-                        <div style="background: #f8fafc; padding: 8px; border-radius: 4px; margin-bottom: 8px;">
-                            <div style="color: #059669; font-weight: 600; margin-bottom: 4px;">📝 文档字符串:</div>
-                            <div style="margin-left: 16px; font-size: 11px; font-style: italic; color: #374151;">
-                                ${mockInspectResults.docstring}
-                            </div>
-                        </div>
-                    `;
-                }
-                
-                // 源码位置
-                resultHTML += `
-                    <div style="font-size: 11px; color: #6b7280; margin-top: 8px;">
-                        📍 位置: ${mockInspectResults.filename}:${mockInspectResults.lineno}
-                    </div>
-                `;
-                
-                testResultContent.innerHTML = resultHTML;
-            };
-            
-            // 模拟Python inspect模块
-            this.simulatePythonInspect = (moduleName, functionName) => {
-                // 模拟标准库函数的inspect结果
-                const standardModules = {
-                    'math': {
-                        'sqrt': {
-                            name: 'sqrt',
-                            module: 'math',
-                            signature: 'sqrt(x, /)',
-                            parameters: [
-                                { name: 'x', type: 'float', default: '', description: '要计算平方根的数字' }
-                            ],
-                            returns: { type: 'float', description: 'x的平方根' },
-                            docstring: 'Return the square root of x.',
-                            filename: 'mathmodule.c',
-                            lineno: 1234
-                        },
-                        'sin': {
-                            name: 'sin',
-                            module: 'math',
-                            signature: 'sin(x, /)',
-                            parameters: [
-                                { name: 'x', type: 'float', default: '', description: '角度（弧度）' }
-                            ],
-                            returns: { type: 'float', description: 'x的正弦值' },
-                            docstring: 'Return the sine of x (measured in radians).',
-                            filename: 'mathmodule.c',
-                            lineno: 5678
-                        },
-                        'log': {
-                            name: 'log',
-                            module: 'math',
-                            signature: 'log(x, base=None, /)',
-                            parameters: [
-                                { name: 'x', type: 'float', default: '', description: '要计算对数的数字' },
-                                { name: 'base', type: 'float', default: 'None', description: '对数的底数' }
-                            ],
-                            returns: { type: 'float', description: 'x的对数' },
-                            docstring: 'Return the logarithm of x to the given base.',
-                            filename: 'mathmodule.c',
-                            lineno: 9012
-                        }
-                    },
-                    'datetime': {
-                        'datetime': {
-                            name: 'datetime',
-                            module: 'datetime',
-                            signature: 'datetime(year, month, day, hour=0, minute=0, second=0, microsecond=0, tzinfo=None)',
-                            parameters: [
-                                { name: 'year', type: 'int', default: '', description: '年份' },
-                                { name: 'month', type: 'int', default: '', description: '月份 (1-12)' },
-                                { name: 'day', type: 'int', default: '', description: '日期 (1-31)' },
-                                { name: 'hour', type: 'int', default: '0', description: '小时 (0-23)' },
-                                { name: 'minute', type: 'int', default: '0', description: '分钟 (0-59)' },
-                                { name: 'second', type: 'int', default: '0', description: '秒 (0-59)' },
-                                { name: 'microsecond', type: 'int', default: '0', description: '微秒 (0-999999)' },
-                                { name: 'tzinfo', type: 'tzinfo', default: 'None', description: '时区信息' }
-                            ],
-                            returns: { type: 'datetime', description: 'datetime对象' },
-                            docstring: 'datetime(year, month, day[, hour[, minute[, second[, microsecond[, tzinfo]]]]]])',
-                            filename: 'datetime.py',
-                            lineno: 456
-                        }
-                    },
-                    're': {
-                        'match': {
-                            name: 'match',
-                            module: 're',
-                            signature: 'match(pattern, string, flags=0)',
-                            parameters: [
-                                { name: 'pattern', type: 'str', default: '', description: '正则表达式模式' },
-                                { name: 'string', type: 'str', default: '', description: '要搜索的字符串' },
-                                { name: 'flags', type: 'int', default: '0', description: '匹配标志' }
-                            ],
-                            returns: { type: 'MatchObject', description: '匹配对象或None' },
-                            docstring: 'Try to apply the pattern at the start of the string.',
-                            filename: 're.py',
-                            lineno: 789
-                        },
-                        'search': {
-                            name: 'search',
-                            module: 're',
-                            signature: 'search(pattern, string, flags=0)',
-                            parameters: [
-                                { name: 'pattern', type: 'str', default: '', description: '正则表达式模式' },
-                                { name: 'string', type: 'str', default: '', description: '要搜索的字符串' },
-                                { name: 'flags', type: 'int', default: '0', description: '匹配标志' }
-                            ],
-                            returns: { type: 'MatchObject', description: '匹配对象或None' },
-                            docstring: 'Search through string for a match to the pattern.',
-                            filename: 're.py',
-                            lineno: 1011
-                        }
-                    }
-                };
-                
-                // 检查模块是否存在
-                const module = standardModules[moduleName];
-                if (!module) {
-                    return { error: `模块 '${moduleName}' 不存在或无法导入` };
-                }
-                
-                // 检查函数是否存在
-                const func = module[functionName];
-                if (!func) {
-                    return { error: `函数 '${functionName}' 在模块 '${moduleName}' 中不存在` };
-                }
-                
-                return func;
-            };
-            
             if (regexInput && regexError) {
                 const validateRegex = () => {
                     const regexValue = regexInput.value.trim();
@@ -695,11 +570,6 @@ class ParsingRules extends HTMLElement {
                 testInput.addEventListener('input', performTest);
             }
             
-            if (pythonModule || pythonFunction) {
-                pythonModule?.addEventListener('input', performTest);
-                pythonFunction?.addEventListener('input', performTest);
-            }
-            
             if (clearTestBtn) {
                 clearTestBtn.addEventListener('click', () => {
                     testInput.value = '';
@@ -714,82 +584,16 @@ class ParsingRules extends HTMLElement {
                 if (action === 'close') {
                     this.hideModal();
                 } else if (action === 'submit') {
-                    const name = modalBody.querySelector('#ruleName')?.value.trim();
-                    const regex = modalBody.querySelector('#ruleRegex')?.value.trim();
-                    
-                    if (!name || !regex) {
-                        this.showModal('错误', '请填写完整的规则名称和正则表达式');
-                        return;
-                    }
-                    
-                    // 验证正则表达式语法
-                    try {
-                        new RegExp(regex);
-                    } catch (e) {
-                        this.showModal('错误', '正则表达式无效');
-                        return;
-                    }
-                    
-                    const newRule = {
-                        id: this.data.length + 1,
-                        name: name,
-                        regex: regex,
-                        createtime: new Date().toISOString().split('T')[0],
-                        updatetime: new Date().toISOString().split('T')[0]
-                    };
-                    
-                    this.data.unshift(newRule);
-                    this.renderTable();
-                    this.hideModal();
-                    // 使用统一的消息系统
-                    if (window.CommonUtils && window.CommonUtils.showToast) {
-                        window.CommonUtils.showToast('解析规则已添加', 'success');
-                    } else {
-                        this.showModal('成功', '解析规则已添加');
-                    }
+                    this.currentAction = 'add';
+                    this.saveRule();
                 } else if (action === 'edit' && id) {
-                    const name = modalBody.querySelector('#ruleName')?.value.trim();
-                    const regex = modalBody.querySelector('#ruleRegex')?.value.trim();
-                    
-                    if (!name || !regex) {
-                        this.showModal('错误', '请填写完整的规则名称和正则表达式');
-                        return;
-                    }
-                    
-                    // 验证正则表达式语法
-                    try {
-                        new RegExp(regex);
-                    } catch (e) {
-                        this.showModal('错误', '正则表达式无效');
-                        return;
-                    }
-                    
-                    const rule = this.data.find(r => r.id == id);
-                    if (rule) {
-                        rule.name = name;
-                        rule.regex = regex;
-                        rule.updatetime = new Date().toISOString().split('T')[0];
-                        this.renderTable();
-                        this.hideModal();
-                        // 使用统一的消息系统
-                        if (window.CommonUtils && window.CommonUtils.showToast) {
-                            window.CommonUtils.showToast('解析规则已更新', 'success');
-                        } else {
-                            this.showModal('成功', '解析规则已更新');
-                        }
-                    }
+                    this.currentAction = 'edit';
+                    this.currentEditId = id;
+                    this.saveRule();
                 } else if (action === 'import') {
-                    this.showModal('成功', '解析规则导入完成');
+                    this.showToast('导入功能开发中', 'info');
                 } else if (action === 'delete' && id) {
-                    this.data = this.data.filter(row => row.id != id);
-                    this.renderTable();
-                    this.hideModal();
-                    // 使用统一的消息系统
-                    if (window.CommonUtils && window.CommonUtils.showToast) {
-                        window.CommonUtils.showToast('解析规则已删除', 'success');
-                    } else {
-                        this.showModal('成功', '解析规则已删除');
-                    }
+                    this.deleteRuleFromAPI(id);
                 }
             });
         } else {

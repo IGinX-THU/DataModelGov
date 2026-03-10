@@ -215,7 +215,15 @@ public class RolePermissionService {
             Permission.MODEL_DELETE,
 
             // 数据源查询权限
-            Permission.DATASOURCE_TREE
+            Permission.DATASOURCE_TREE,
+
+            // 解析规则管理权限
+            Permission.PARSING_RULES_SAVE,
+            Permission.PARSING_RULES_QUERY,
+            Permission.PARSING_RULES_COUNT,
+            Permission.PARSING_RULES_DETAIL,
+            Permission.PARSING_RULES_DELETE
+
         );
         RoleEntity modelEngineerRole = new RoleEntity(UserRole.MODEL_ENGINEER, modelEngineerPermissions, 2000000000002L);
         roleDao.saveRole(modelEngineerRole);

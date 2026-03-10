@@ -35,6 +35,13 @@ public enum Permission {
     ASSOCIATION_RULES_DELETE,
     ASSOCIATION_TASK_RUN,
 
+    // 解析规则管理权限
+    PARSING_RULES_SAVE,
+    PARSING_RULES_QUERY,
+    PARSING_RULES_COUNT,
+    PARSING_RULES_DETAIL,
+    PARSING_RULES_DELETE,
+
     // 运行任务管理权限
     RUN_TASK_QUERY,
     RUN_TASK_COUNT,
@@ -72,6 +79,11 @@ public enum Permission {
             case ASSOCIATION_RULES_DETAIL: return "关联规则详情";
             case ASSOCIATION_RULES_DELETE: return "删除关联规则";
             case ASSOCIATION_TASK_RUN: return "运行关联规则";
+            case PARSING_RULES_SAVE: return "创建解析规则";
+            case PARSING_RULES_QUERY: return "分页查询解析规则";
+            case PARSING_RULES_COUNT: return "查询解析规则总数";
+            case PARSING_RULES_DETAIL: return "解析规则详情";
+            case PARSING_RULES_DELETE: return "删除解析规则";
             case RUN_TASK_QUERY: return "分页查询运行任务";
             case RUN_TASK_COUNT: return "查询运行任务总数";
             case RUN_TASK_DETAIL: return "运行任务详情";

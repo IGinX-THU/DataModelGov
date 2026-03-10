@@ -50,6 +50,11 @@ window.AppConfig = {
             'association/rules/detail': '/api/association/rules/detail',
             'association/rules/delete': '/api/association/rules/delete',
             'association/rules/save': '/api/association/rules/save',
+            'parsing/rules/query': '/api/parsing/rules/query',
+            'parsing/rules/count': '/api/parsing/rules/count',
+            'parsing/rules/detail': '/api/parsing/rules/detail',
+            'parsing/rules/delete': '/api/parsing/rules/delete',
+            'parsing/rules/save': '/api/parsing/rules/save',
             import: '/api/data/import',
             export: '/api/data/export',
             delete: '/api/data/delete'
