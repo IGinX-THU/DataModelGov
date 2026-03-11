@@ -101,6 +101,8 @@ window.AppConfig = {
         // 任务相关
         task: {
             run: '/api/task/run',
+            'validate-uniqueness': '/api/task/validate-uniqueness',
+            stop: '/api/task/stop',
             query: '/api/task/tasks/query',
             count: '/api/task/tasks/count',
             detail: '/api/task/tasks/detail',

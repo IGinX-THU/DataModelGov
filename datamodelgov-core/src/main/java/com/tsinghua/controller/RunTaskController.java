@@ -30,6 +30,26 @@ public class RunTaskController {
         return Result.success("关联规则保存成功");
     }
 
+    @ApiOperation("校验任务时间段唯一性")
+    @PostMapping("/validate-uniqueness")
+    @RequirePermission(Permission.RUN_TASK_CREATE)
+    public Result<?> validateTaskUniqueness(@RequestBody RunTaskRequest request) {
+        boolean isUnique = runTaskService.validateTaskUniqueness(request);
+        if (isUnique) {
+            return Result.success(true);
+        } else {
+            return Result.paramError("该规则在指定时间段已存在相同的运行任务");
+        }
+    }
+
+    @ApiOperation("停止运行中的任务")
+    @GetMapping("/stop")
+    @RequirePermission(Permission.RUN_TASK_DELETE)
+    public Result<Void> stopTask(@RequestParam("timestamp") Long timestamp) throws Exception {
+        runTaskService.stopTask(timestamp);
+        return Result.success("任务停止成功");
+    }
+
     @ApiOperation("分页查询运行任务")
     @PostMapping("/tasks/query")
     @RequirePermission(Permission.RUN_TASK_READ)

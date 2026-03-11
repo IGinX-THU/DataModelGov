@@ -2252,12 +2252,29 @@ class VisualAnalysis extends HTMLElement {
     }
 
     // 处理停止操作
-    handleStop(record) {
-        this.showToast(`正在停止任务: ${record.name}`, 'warning');
-        // 更新状态为停止
-        record.status = 'stopped';
-        this.updateTable();
-        console.log('停止任务:', record);
+    async handleStop(record) {
+        try {
+            this.showToast(`正在停止任务: ${record.name}`, 'warning');
+            
+            // 调用后端停止接口（使用GET方法传递参数）
+            const result = await window.AppConfig.get('task', 'stop', {
+                timestamp: record.timestamp
+            });
+            
+            console.log('停止任务响应:', result);
+            
+            if (result.success) {
+                this.showToast(`任务 ${record.name} 停止成功`, 'success');
+                // 更新本地状态
+                record.status = 'stopped';
+                this.updateTable();
+            } else {
+                this.showToast(result.message || '停止任务失败', 'error');
+            }
+        } catch (error) {
+            console.error('停止任务失败:', error);
+            this.showToast('网络错误，停止任务失败', 'error');
+        }
     }
 
     // 处理批量对比选中项

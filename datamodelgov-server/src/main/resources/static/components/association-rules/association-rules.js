@@ -1791,18 +1791,18 @@ class AssociationRules extends HTMLElement {
                     <div class="form-row">
                         <div class="form-group">
                             <label for="runName">名称</label>
-                            <input type="text" id="runName" name="runName" required placeholder="请输入运行名称" value="">
+                            <input type="text" id="runName" name="runName" readonly value="${rule.ruleName}">
                         </div>
                     </div>
                     
                     <div class="form-row">
                         <div class="form-group">
                             <label for="startTime">开始时间</label>
-                            <input type="date" id="startTime" name="startTime" required value="${new Date().toISOString().split('T')[0]}">
+                            <input type="datetime-local" id="startTime" name="startTime" required value="${new Date().toISOString().split('T')[0]}" step="1">
                         </div>
                         <div class="form-group">
                             <label for="endTime">结束时间</label>
-                            <input type="date" id="endTime" name="endTime" required value="${new Date().toISOString().split('T')[0]}">
+                            <input type="datetime-local" id="endTime" name="endTime" required value="${new Date().toISOString().split('T')[0]}" step="1">
                         </div>
                     </div>
                 </form>
@@ -1844,14 +1844,8 @@ class AssociationRules extends HTMLElement {
     }
     
     async executeRule() {
-        const runName = this.shadowRoot.getElementById('runName')?.value.trim();
         const startTime = this.shadowRoot.getElementById('startTime')?.value;
         const endTime = this.shadowRoot.getElementById('endTime')?.value;
-        
-        if (!runName) {
-            this.showToast('请输入运行名称', 'error');
-            return;
-        }
         
         if (!startTime || !endTime) {
             this.showToast('请选择开始时间和结束时间', 'error');
@@ -1868,13 +1862,23 @@ class AssociationRules extends HTMLElement {
             try {
                 // 构建请求参数
                 const requestBody = {
-                    name: runName,
+                    name: rule.ruleName, // 使用规则名称而不是用户输入
                     startTime: new Date(startTime).getTime(),
                     endTime: new Date(endTime).getTime(),
                     ruleId: rule.createTime // 使用createTime作为ruleId
                 };
                 
                 console.log('运行规则参数:', requestBody);
+                
+                // 先校验唯一性
+                console.log('开始校验任务时间段唯一性...');
+                const validationResult = await window.AppConfig.post('task', 'validate-uniqueness', requestBody);
+                console.log('唯一性校验结果:', validationResult);
+                
+                if (!validationResult.success || !validationResult.data) {
+                    this.showToast(validationResult.message || '该规则在指定时间段已存在相同的运行任务', 'error');
+                    return;
+                }
                 
                 // 调用/api/task/run接口
                 const result = await window.AppConfig.post('task', 'run', requestBody);

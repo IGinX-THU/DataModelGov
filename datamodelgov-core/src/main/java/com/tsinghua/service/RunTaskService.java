@@ -23,6 +23,7 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 import java.io.*;
+import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -188,8 +189,173 @@ public class RunTaskService {
     }
 
 
+    /**
+     * 校验任务的唯一性
+     * 防止完全相同的任务重复提交
+     */
+    public boolean validateTaskUniqueness(RunTaskRequest request) {
+        try {
+            // 构建查询SQL：检查是否存在完全相同的任务
+            String sql = String.format(
+                "SELECT COUNT(1) FROM %s WHERE ruleId = %d AND startTime = %d AND endTime = %d AND name = '%s';",
+                DATA_PREFIX,
+                request.getRuleId(),
+                request.getStartTime(),
+                request.getEndTime(),
+                request.getName()
+            );
+            
+            log.info("执行唯一性校验SQL: {}", sql);
+            
+            SessionExecuteSqlResult result = iginxSession.executeSql(sql);
+            
+            List<List<Object>> data = result.getValues();
+            if (!data.isEmpty() && !data.get(0).isEmpty()) {
+                Object countObj = data.get(0).get(0);
+                if (countObj instanceof Number) {
+                    int count = ((Number) countObj).intValue();
+                    return count == 0;
+                }
+            }
+            return true; // 如果查询失败，默认允许通过
+        } catch (Exception e) {
+            log.error("校验任务唯一性失败", e);
+            return true; // 查询失败时默认允许通过
+        }
+    }
+
+    /**
+     * 停止运行中的任务
+     * 执行kill命令强制销毁对应的进程
+     */
+    public void stopTask(Long timestamp) throws Exception {
+        try {
+            // 1. 查询任务信息
+            RunTaskEntity task = queryTask(timestamp);
+            if (task == null) {
+                throw new RuntimeException("未找到指定的任务: " + timestamp);
+            }
+            
+            // 2. 检查任务状态
+            if (task.getStatus() != TaskStatus.RUNNING) {
+                throw new RuntimeException("任务不在运行状态，无法停止: " + task.getStatus());
+            }
+            
+            // 3. 获取任务目录
+            Path taskDir = Paths.get("tasks", String.valueOf(timestamp));
+            if (!Files.exists(taskDir)) {
+                throw new RuntimeException("任务目录不存在: " + taskDir);
+            }
+            
+            // 4. 查找并终止相关进程
+            log.info("开始停止任务: timestamp={}, name={}", timestamp, task.getName());
+            
+            // 查找可能的进程类型：java.exe, python.exe, matlab.exe, etc.
+            String[] processNames = {"java.exe", "python.exe", "pythonw.exe", "matlab.exe"};
+            boolean processFound = false;
+            
+            for (String processName : processNames) {
+                ProcessBuilder psBuilder = new ProcessBuilder();
+                psBuilder.command("tasklist", "/fi", "imagename", "eq", processName, "/fo", "list", "/v");
+                Process psProcess = psBuilder.start();
+                
+                BufferedReader reader = new BufferedReader(new InputStreamReader(psProcess.getInputStream()));
+                String line;
+                
+                while ((line = reader.readLine()) != null) {
+                    // 主要通过taskDir匹配，因为每个taskDir都是唯一的
+                    // taskDir格式：tasks/{timestamp}，具有唯一性
+                    if (line.contains(taskDir.toString())) {
+                        
+                        // 提取PID
+                        String[] parts = line.trim().split("\\s+");
+                        if (parts.length > 1) {
+                            String pid = parts[1];
+                            
+                            // 额外验证：确保进程确实在任务目录中运行
+                            if (isProcessRunningInTaskDirectory(pid, taskDir)) {
+                                // 强制终止进程
+                                log.info("发现目标进程 {}，PID: {}, 工作目录: {}, 开始终止...", 
+                                        processName, pid, taskDir);
+                                ProcessBuilder killBuilder = new ProcessBuilder();
+                                killBuilder.command("taskkill", "/f", "/pid", pid);
+                                Process killProcess = killBuilder.start();
+                                killProcess.waitFor();
+                                
+                                log.info("进程 {} (PID: {}) 已被终止", processName, pid);
+                                processFound = true;
+                            } else {
+                                log.info("进程 {} (PID: {}) 不在目标任务目录中，跳过", processName, pid);
+                            }
+                        }
+                    }
+                }
+                
+                psProcess.waitFor();
+                psProcess.destroy();
+            }
+            
+            if (!processFound) {
+                log.warn("未找到相关进程，任务可能已经结束");
+            }
+            
+            // 5. 更新任务状态为STOPPED
+            task.setStatus(TaskStatus.STOPPED);
+            saveTask(task);
+            
+            log.info("任务 {} 停止成功", timestamp);
+            
+        } catch (Exception e) {
+            log.error("停止任务失败: timestamp={}", timestamp, e);
+            throw new RuntimeException("停止任务失败: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 验证进程是否在指定任务目录中运行
+     */
+    private boolean isProcessRunningInTaskDirectory(String pid, Path taskDir) {
+        try {
+            // 使用 wmic 命令获取进程的命令行参数
+            ProcessBuilder wmibuilder = new ProcessBuilder(
+                "wmic", "process", "where", "ProcessId=" + pid, "get", "CommandLine");
+            
+            Process wmiProcess = wmibuilder.start();
+            BufferedReader reader = new BufferedReader(new InputStreamReader(wmiProcess.getInputStream()));
+            
+            String line;
+            boolean foundCommandLine = false;
+            
+            while ((line = reader.readLine()) != null) {
+                if (!line.contains("CommandLine")) {
+                    continue; // 跳过标题行
+                }
+                
+                // 检查命令行是否包含任务目录路径
+                if (line.contains(taskDir.toString())) {
+                    foundCommandLine = true;
+                    break;
+                }
+            }
+            
+            wmiProcess.waitFor();
+            wmiProcess.destroy();
+            
+            return foundCommandLine;
+            
+        } catch (Exception e) {
+            log.warn("验证进程工作目录失败: PID={}, 错误: {}", pid, e.getMessage());
+            return true; // 如果无法验证，默认认为是目标进程
+        }
+    }
+
     public void runTask(RunTaskRequest runTaskRequest) {
         try {
+            // 0. 校验任务时间段的唯一性
+            if (!validateTaskUniqueness(runTaskRequest)) {
+                throw new RuntimeException("该规则在指定时间段已存在运行任务，请选择其他时间段");
+            }
+
             // 1. 查询关联规则信息
             AssociationRulesEntity associationRulesEntity = associationRulesService.queryRule(runTaskRequest.getRuleId());
             if (associationRulesEntity == null) {
@@ -416,6 +582,23 @@ public class RunTaskService {
         log.info("执行命令: {} 在目录: {}", associationRulesEntity.getCmd(), taskDir);
         
         Process process = processBuilder.start();
+        
+        // 记录进程信息用于后续精确停止
+        long processId = 0;
+        try {
+            // 在Windows上获取进程ID
+            Field pidField = process.getClass().getDeclaredField("pid");
+            pidField.setAccessible(true);
+            processId = pidField.getLong(process);
+            log.info("任务进程ID: {}, 任务时间戳: {}", processId, runTaskEntity.getTimestamp());
+            
+            // 将进程ID保存到任务实体中（如果有的话）
+            // runTaskEntity.setProcessId(processId); // 需要在实体中添加这个字段
+            // saveTask(runTaskEntity);
+        } catch (Exception e) {
+            log.warn("无法获取进程ID: {}", e.getMessage());
+        }
+        
         int exitCode = process.waitFor();
         
         if (exitCode == 0) {
