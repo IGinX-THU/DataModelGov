@@ -23,4 +23,8 @@ public class RunTaskEntity {
     private String status;
     @ApiModelProperty(value = "创建时间")
     private Long timestamp;
+    @ApiModelProperty(value = "进程ID")
+    private Long processId;
+    @ApiModelProperty(value = "进程运行日志")
+    private String processLog;
 }

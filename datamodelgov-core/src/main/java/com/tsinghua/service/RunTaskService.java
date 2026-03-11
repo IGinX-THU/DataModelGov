@@ -27,7 +27,9 @@ import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -241,65 +243,57 @@ public class RunTaskService {
                 throw new RuntimeException("任务不在运行状态，无法停止: " + task.getStatus());
             }
             
-            // 3. 获取任务目录
-            Path taskDir = Paths.get("tasks", String.valueOf(timestamp));
-            if (!Files.exists(taskDir)) {
-                throw new RuntimeException("任务目录不存在: " + taskDir);
+            // 3. 检查是否有保存的进程ID
+            if (task.getProcessId() == null || task.getProcessId() == 0) {
+                throw new RuntimeException("任务没有保存的进程ID，无法精确停止");
             }
             
-            // 4. 查找并终止相关进程
-            log.info("开始停止任务: timestamp={}, name={}", timestamp, task.getName());
+            long processId = task.getProcessId();
+            log.info("开始停止任务: timestamp={}, name={}, processId={}", 
+                    timestamp, task.getName(), processId);
             
-            // 查找可能的进程类型：java.exe, python.exe, matlab.exe, etc.
-            String[] processNames = {"java.exe", "python.exe", "pythonw.exe", "matlab.exe"};
-            boolean processFound = false;
-            
-            for (String processName : processNames) {
-                ProcessBuilder psBuilder = new ProcessBuilder();
-                psBuilder.command("tasklist", "/fi", "imagename", "eq", processName, "/fo", "list", "/v");
-                Process psProcess = psBuilder.start();
-                
-                BufferedReader reader = new BufferedReader(new InputStreamReader(psProcess.getInputStream()));
-                String line;
-                
-                while ((line = reader.readLine()) != null) {
-                    // 主要通过taskDir匹配，因为每个taskDir都是唯一的
-                    // taskDir格式：tasks/{timestamp}，具有唯一性
-                    if (line.contains(taskDir.toString())) {
-                        
-                        // 提取PID
-                        String[] parts = line.trim().split("\\s+");
-                        if (parts.length > 1) {
-                            String pid = parts[1];
-                            
-                            // 额外验证：确保进程确实在任务目录中运行
-                            if (isProcessRunningInTaskDirectory(pid, taskDir)) {
-                                // 强制终止进程
-                                log.info("发现目标进程 {}，PID: {}, 工作目录: {}, 开始终止...", 
-                                        processName, pid, taskDir);
-                                ProcessBuilder killBuilder = new ProcessBuilder();
-                                killBuilder.command("taskkill", "/f", "/pid", pid);
-                                Process killProcess = killBuilder.start();
-                                killProcess.waitFor();
-                                
-                                log.info("进程 {} (PID: {}) 已被终止", processName, pid);
-                                processFound = true;
-                            } else {
-                                log.info("进程 {} (PID: {}) 不在目标任务目录中，跳过", processName, pid);
-                            }
-                        }
-                    }
-                }
-                
-                psProcess.waitFor();
-                psProcess.destroy();
+            // 4. 验证进程是否仍在运行
+            if (!isProcessRunning(processId)) {
+                log.warn("进程 {} 不存在或已结束，任务可能已经停止", processId);
+                // 更新任务状态为STOPPED
+                task.setStatus(TaskStatus.STOPPED);
+                saveTask(task);
+                return;
             }
             
-            if (!processFound) {
-                log.warn("未找到相关进程，任务可能已经结束");
+            // 5. 使用进程ID精确终止进程
+            log.info("发现目标进程 PID: {}, 开始精确终止...", processId);
+            
+            ProcessBuilder killBuilder = new ProcessBuilder();
+            killBuilder.command("taskkill", "/f", "/pid", String.valueOf(processId));
+            Process killProcess = killBuilder.start();
+            int killExitCode = killProcess.waitFor();
+            
+            if (killExitCode == 0) {
+                log.info("进程 {} 已被成功终止", processId);
+            } else {
+                log.warn("终止进程 {} 失败，退出码: {}", processId, killExitCode);
+                throw new RuntimeException("终止进程失败，退出码: " + killExitCode);
             }
             
-            // 5. 更新任务状态为STOPPED
+            // 6. 记录停止日志到内存和文件
+            String currentLog = task.getProcessLog() != null ? task.getProcessLog() : "";
+            String stopLog = "\n进程手动终止: PID=" + processId + 
+                           ", 终止时间=" + System.currentTimeMillis() +
+                           ", 退出码=" + killExitCode + "\n";
+            String updatedLog = currentLog + stopLog;
+            task.setProcessLog(updatedLog);
+            
+            // 写入停止日志到文件
+            try {
+                Path taskDir = Paths.get("tasks", String.valueOf(timestamp));
+                Path logFile = taskDir.resolve("task.log");
+                Files.write(logFile, stopLog.getBytes(), StandardOpenOption.APPEND);
+            } catch (IOException e) {
+                log.warn("无法写入停止日志到文件: {}", e.getMessage());
+            }
+            
+            // 7. 更新任务状态为STOPPED
             task.setStatus(TaskStatus.STOPPED);
             saveTask(task);
             
@@ -308,6 +302,37 @@ public class RunTaskService {
         } catch (Exception e) {
             log.error("停止任务失败: timestamp={}", timestamp, e);
             throw new RuntimeException("停止任务失败: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 验证进程是否仍在运行
+     */
+    private boolean isProcessRunning(long pid) {
+        try {
+            ProcessBuilder builder = new ProcessBuilder(
+                "tasklist", "/fi", "PID", "eq", String.valueOf(pid), "/fo", "list");
+            Process process = builder.start();
+            
+            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+            String line;
+            boolean found = false;
+            
+            while ((line = reader.readLine()) != null) {
+                if (line.contains(String.valueOf(pid))) {
+                    found = true;
+                    break;
+                }
+            }
+            
+            process.waitFor();
+            process.destroy();
+            
+            return found;
+            
+        } catch (Exception e) {
+            log.warn("检查进程状态失败: PID={}, 错误: {}", pid, e.getMessage());
+            return false;
         }
     }
 
@@ -583,34 +608,119 @@ public class RunTaskService {
         
         Process process = processBuilder.start();
         
-        // 记录进程信息用于后续精确停止
+        // 记录进程ID和日志
         long processId = 0;
+        StringBuilder processLogBuilder = new StringBuilder();
+        
+        // 创建日志文件
+        Path logFile = taskDir.resolve("task.log");
+        
         try {
-            // 在Windows上获取进程ID
+            // 获取进程ID
             Field pidField = process.getClass().getDeclaredField("pid");
             pidField.setAccessible(true);
             processId = pidField.getLong(process);
-            log.info("任务进程ID: {}, 任务时间戳: {}", processId, runTaskEntity.getTimestamp());
             
-            // 将进程ID保存到任务实体中（如果有的话）
-            // runTaskEntity.setProcessId(processId); // 需要在实体中添加这个字段
-            // saveTask(runTaskEntity);
+            // 保存进程ID到任务实体
+            runTaskEntity.setProcessId(processId);
+            
+            log.info("任务进程ID: {}, 任务时间戳: {}", processId, runTaskEntity.getTimestamp());
+            String startLog = "进程启动: PID=" + processId +
+                           ", 命令=" + associationRulesEntity.getCmd() +
+                           ", 目录=" + taskDir.toString() +
+                           ", 时间=" + System.currentTimeMillis() + "\n";
+            processLogBuilder.append(startLog);
+            
+            // 写入日志文件
+            Files.write(logFile, startLog.getBytes(), 
+                       StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+            
         } catch (Exception e) {
             log.warn("无法获取进程ID: {}", e.getMessage());
+            String warnLog = "警告: 无法获取进程ID\n";
+            processLogBuilder.append(warnLog);
+            try {
+                Files.write(logFile, warnLog.getBytes(), 
+                           StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+            } catch (IOException ioException) {
+                log.warn("无法写入日志文件: {}", ioException.getMessage());
+            }
         }
         
-        int exitCode = process.waitFor();
+        // 异步执行进程监控和日志记录
+        long finalProcessId = processId;
+        CompletableFuture.runAsync(() -> {
+            try {
+                // 读取进程输出和错误流，同时记录到内存和文件
+                try (BufferedReader outputReader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+                     BufferedReader errorReader = new BufferedReader(new InputStreamReader(process.getErrorStream()))) {
+                    
+                    String line;
+                    
+                    // 处理标准输出
+                    while ((line = outputReader.readLine()) != null) {
+                        String outputLine = "[OUT] " + line + "\n";
+                        processLogBuilder.append(outputLine);
+                        
+                        // 实时写入日志文件
+                        try {
+                            Files.write(logFile, outputLine.getBytes(), StandardOpenOption.APPEND);
+                        } catch (IOException e) {
+                            log.warn("无法写入输出日志: {}", e.getMessage());
+                        }
+                    }
+                    
+                    // 处理错误输出
+                    while ((line = errorReader.readLine()) != null) {
+                        String errorLine = "[ERR] " + line + "\n";
+                        processLogBuilder.append(errorLine);
+                        
+                        // 实时写入日志文件
+                        try {
+                            Files.write(logFile, errorLine.getBytes(), StandardOpenOption.APPEND);
+                        } catch (IOException e) {
+                            log.warn("无法写入错误日志: {}", e.getMessage());
+                        }
+                    }
+                }
+                
+                int exitCode = process.waitFor();
+                
+                // 记录退出码和最终状态
+                String endLog = "进程结束: 退出码=" + exitCode + 
+                               ", 时间=" + System.currentTimeMillis() + "\n";
+                processLogBuilder.append(endLog);
+                
+                // 写入最终状态到日志文件
+                try {
+                    Files.write(logFile, endLog.getBytes(), StandardOpenOption.APPEND);
+                } catch (IOException e) {
+                    log.warn("无法写入结束日志: {}", e.getMessage());
+                }
+                
+                // 更新任务状态和日志
+                runTaskEntity.setProcessLog(processLogBuilder.toString());
+                if (exitCode == 0) {
+                    log.info("命令执行成功，退出码: {}", exitCode);
+                    runTaskEntity.setStatus(TaskStatus.SUCCESS);
+                } else {
+                    log.error("命令执行失败，退出码: {}", exitCode);
+                    runTaskEntity.setStatus(TaskStatus.FAILED);
+                }
+                
+                saveTask(runTaskEntity);
+                
+            } catch (Exception e) {
+                log.error("异步进程监控失败: PID={}", finalProcessId, e);
+                // 更新任务状态为失败
+                runTaskEntity.setStatus(TaskStatus.FAILED);
+                String errorLog = "\n进程监控异常: " + e.getMessage() + "\n";
+                runTaskEntity.setProcessLog(processLogBuilder.toString() + errorLog);
+                saveTask(runTaskEntity);
+            }
+        });
         
-        if (exitCode == 0) {
-            log.info("命令执行成功，退出码: {}", exitCode);
-            runTaskEntity.setStatus(TaskStatus.SUCCESS);
-        } else {
-            log.error("命令执行失败，退出码: {}", exitCode);
-            runTaskEntity.setStatus(TaskStatus.FAILED);
-        }
-        
-        // 保存最终状态
-        saveTask(runTaskEntity);
+        log.info("任务已启动，进程监控将在后台异步执行");
     }
 
 }
