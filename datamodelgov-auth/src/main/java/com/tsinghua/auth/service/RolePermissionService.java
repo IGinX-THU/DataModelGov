@@ -162,7 +162,7 @@ public class RolePermissionService implements ApplicationContextAware {
             }
             
             // 如果没有数据，则初始化默认数据
-            if (!existingUsers.isEmpty() || existingRoles.isEmpty()) {
+            if (existingUsers.isEmpty() || existingRoles.isEmpty()) {
                 log.info("IGinX中没有RBAC数据，初始化默认数据");
                 initializeDefaultData();
             }
