@@ -7,12 +7,16 @@ import com.tsinghua.auth.entity.UserEntity;
 import com.tsinghua.auth.enums.Permission;
 import com.tsinghua.auth.enums.UserRole;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.ApplicationContextAware;
+import org.springframework.context.event.ContextRefreshedEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
-import javax.annotation.PostConstruct;
 import java.util.*;
 
 /**
@@ -20,9 +24,10 @@ import java.util.*;
  */
 @Slf4j
 @Service
-public class RolePermissionService {
+public class RolePermissionService implements ApplicationContextAware {
     
     private PasswordEncoder passwordEncoder;
+    private ApplicationContext applicationContext;
     
     @Autowired
     private UserDao userDao;
@@ -34,20 +39,19 @@ public class RolePermissionService {
         // 构造函数不再初始化数据
     }
     
+    @Override
+    public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
+        this.applicationContext = applicationContext;
+    }
+    
     /**
-     * 设置密码编码器（由Spring在初始化后调用）
+     * 延迟获取PasswordEncoder以避免循环依赖
      */
-    public void setPasswordEncoder(PasswordEncoder passwordEncoder) {
-        this.passwordEncoder = passwordEncoder;
-        
-        // 检查是否有明文密码的用户，如果有则清理并重新初始化
-        if (hasPlaintextPasswordUsers()) {
-            log.info("检测到明文密码用户，清理并重新初始化RBAC数据");
-            clearAllData();
+    private PasswordEncoder getPasswordEncoder() {
+        if (passwordEncoder == null && applicationContext != null) {
+            passwordEncoder = applicationContext.getBean(PasswordEncoder.class);
         }
-        
-        // 重新初始化用户数据，使用加密密码
-        initializeData();
+        return passwordEncoder;
     }
     
     /**
@@ -74,7 +78,7 @@ public class RolePermissionService {
      * 更新已存在的明文密码为加密密码
      */
     private void updateExistingPasswordsToEncrypted() {
-        if (passwordEncoder == null) {
+        if (getPasswordEncoder() == null) {
             return;
         }
         
@@ -90,7 +94,7 @@ public class RolePermissionService {
                     
                     // 密码未加密，需要更新
                     log.info("更新用户 {} 的密码为加密格式", user.getUsername());
-                    String newPassword = passwordEncoder.encode(password);
+                    String newPassword = getPasswordEncoder().encode(password);
                     UserEntity updatedUser = new UserEntity(
                         user.getUsername(), 
                         newPassword, 
@@ -137,8 +141,9 @@ public class RolePermissionService {
     
     /**
      * 初始化数据（从IGinX查询，不存在则插入）
+     * 在Spring容器完全初始化后执行
      */
-    @PostConstruct
+    @EventListener(ContextRefreshedEvent.class)
     public void initializeData() {
         try {
 
@@ -148,8 +153,16 @@ public class RolePermissionService {
             
             log.info("从IGinX查询到 {} 个用户，{} 个角色", existingUsers.size(), existingRoles.size());
             
+            // 检查是否有明文密码的用户，如果有则清理并重新初始化
+            if (hasPlaintextPasswordUsers()) {
+                log.info("检测到明文密码用户，清理并重新初始化RBAC数据");
+                clearAllData();
+                existingUsers.clear();
+                existingRoles.clear();
+            }
+            
             // 如果没有数据，则初始化默认数据
-            if (existingUsers.isEmpty() && existingRoles.isEmpty()) {
+            if (!existingUsers.isEmpty() || existingRoles.isEmpty()) {
                 log.info("IGinX中没有RBAC数据，初始化默认数据");
                 initializeDefaultData();
             }
@@ -180,83 +193,71 @@ public class RolePermissionService {
      * 初始化默认角色
      */
     private void initializeDefaultRoles() {
-        // 管理员角色
+        // 管理员角色 - 拥有所有权限
         Set<Permission> adminPermissions = EnumSet.allOf(Permission.class);
         RoleEntity adminRole = new RoleEntity(UserRole.ADMIN, adminPermissions, 2000000000000L);
         roleDao.saveRole(adminRole);
         
-        // 数据工程师角色
+        // 数据工程师角色 - 数据源和数据的完整权限
         Set<Permission> dataEngineerPermissions = EnumSet.of(
             // 数据源管理权限
-            Permission.DATASOURCE_REGISTER,
-            Permission.DATASOURCE_REMOVE,
-            Permission.DATASOURCE_LIST,
-            Permission.DATASOURCE_TREE,
+            Permission.DATASOURCE_CREATE,
+            Permission.DATASOURCE_READ,
+            Permission.DATASOURCE_UPDATE,
+            Permission.DATASOURCE_DELETE,
             
             // 数据表管理权限
-            Permission.DATA_QUERY,
-            Permission.DATA_IMPORT,
-            Permission.DATA_EXPORT,
-            Permission.DATA_DELETE,
-            Permission.DATA_RELATIONAL_QUERY,
-            Permission.DATA_RELATIONAL_COUNT,
-            Permission.DATA_RELATIONAL_EXPORT
+            Permission.DATA_CREATE,
+            Permission.DATA_READ,
+            Permission.DATA_UPDATE,
+            Permission.DATA_DELETE
         );
         RoleEntity dataEngineerRole = new RoleEntity(UserRole.DATA_ENGINEER, dataEngineerPermissions, 2000000000001L);
         roleDao.saveRole(dataEngineerRole);
         
-        // 模型工程师角色
+        // 模型工程师角色 - 模型管理权限和数据查看权限
         Set<Permission> modelEngineerPermissions = EnumSet.of(
-            Permission.MODEL_UPLOAD,
-            Permission.MODEL_DOWNLOAD,
-            Permission.MODEL_QUERY_META,
-            Permission.MODEL_SAVE_META,
-            Permission.MODEL_HISTORY,
+            // 模型文件管理权限
+            Permission.MODEL_CREATE,
+            Permission.MODEL_READ,
+            Permission.MODEL_UPDATE,
             Permission.MODEL_DELETE,
 
-            // 数据源查询权限
-            Permission.DATASOURCE_TREE,
-
+            // 数据源查看权限
+            Permission.DATASOURCE_READ,
+            
             // 解析规则管理权限
-            Permission.PARSING_RULES_SAVE,
-            Permission.PARSING_RULES_QUERY,
-            Permission.PARSING_RULES_COUNT,
-            Permission.PARSING_RULES_DETAIL,
+            Permission.PARSING_RULES_CREATE,
+            Permission.PARSING_RULES_READ,
+            Permission.PARSING_RULES_UPDATE,
             Permission.PARSING_RULES_DELETE
-
         );
         RoleEntity modelEngineerRole = new RoleEntity(UserRole.MODEL_ENGINEER, modelEngineerPermissions, 2000000000002L);
         roleDao.saveRole(modelEngineerRole);
         
-        // 仿真工程师角色
+        // 仿真工程师角色 - 关联规则、运行任务管理权限和相关查看权限
         Set<Permission> simulationEngineerPermissions = EnumSet.of(
             // 关联规则管理权限
-            Permission.ASSOCIATION_RULES_SAVE,
-            Permission.ASSOCIATION_RULES_QUERY,
-            Permission.ASSOCIATION_RULES_COUNT,
-            Permission.ASSOCIATION_RULES_DETAIL,
+            Permission.ASSOCIATION_RULES_CREATE,
+            Permission.ASSOCIATION_RULES_READ,
+            Permission.ASSOCIATION_RULES_UPDATE,
             Permission.ASSOCIATION_RULES_DELETE,
-            Permission.ASSOCIATION_TASK_RUN,
             
             // 运行任务管理权限
-            Permission.RUN_TASK_QUERY,
-            Permission.RUN_TASK_COUNT,
-            Permission.RUN_TASK_DETAIL,
+            Permission.RUN_TASK_CREATE,
+            Permission.RUN_TASK_READ,
+            Permission.RUN_TASK_UPDATE,
             Permission.RUN_TASK_DELETE,
             
-            // 数据与模型的查询相关接口权限
-            Permission.DATA_QUERY,
-            Permission.DATA_RELATIONAL_QUERY,
-            Permission.DATA_RELATIONAL_COUNT,
-            Permission.MODEL_QUERY_META,
-            Permission.MODEL_HISTORY,
+            // 数据与模型的查看权限
+            Permission.DATA_READ,
+            Permission.MODEL_READ,
             
-            // 数据源查询权限
-            Permission.DATASOURCE_LIST,
-            Permission.DATASOURCE_TREE,
+            // 数据源查看权限
+            Permission.DATASOURCE_READ,
             
-            // 用户管理权限
-            Permission.USER_MANAGE
+            // 用户查看权限
+            Permission.USER_READ
         );
         RoleEntity simulationEngineerRole = new RoleEntity(UserRole.SIMULATION_ENGINEER, simulationEngineerPermissions, 2000000000003L);
         roleDao.saveRole(simulationEngineerRole);
@@ -266,28 +267,22 @@ public class RolePermissionService {
      * 初始化默认用户
      */
     private void initializeDefaultUsers() {
-        // 创建默认用户 - 确保密码加密并设置正确的roleId
-        if (passwordEncoder != null) {
-            // 获取角色的timestamp作为roleId
-            Long adminRoleId = 2000000000000L;
-            Long dataEngineerRoleId = 2000000000001L;
-            Long modelEngineerRoleId = 2000000000002L;
-            Long simulationEngineerRoleId = 2000000000003L;
-            
-            userDao.saveUser(new UserEntity("admin", passwordEncoder.encode("admin123"), UserRole.ADMIN, adminRoleId, 1000000000000L));
-            userDao.saveUser(new UserEntity("data", passwordEncoder.encode("data123"), UserRole.DATA_ENGINEER, dataEngineerRoleId, 1000000000001L));
-            userDao.saveUser(new UserEntity("model", passwordEncoder.encode("model123"), UserRole.MODEL_ENGINEER, modelEngineerRoleId, 1000000000002L));
-            userDao.saveUser(new UserEntity("sim", passwordEncoder.encode("sim123"), UserRole.SIMULATION_ENGINEER, simulationEngineerRoleId, 1000000000003L));
-            userDao.saveUser(new UserEntity("user", passwordEncoder.encode("user123"), UserRole.SIMULATION_ENGINEER, simulationEngineerRoleId, 1000000000004L));
-        } else {
-            // 如果密码编码器还未设置，先保存明文密码，稍后更新
-            log.warn("密码编码器未设置，使用明文密码保存用户");
-            userDao.saveUser(new UserEntity("admin", "admin123", UserRole.ADMIN, 1000000000000L));
-            userDao.saveUser(new UserEntity("data", "data123", UserRole.DATA_ENGINEER, 1000000000001L));
-            userDao.saveUser(new UserEntity("model", "model123", UserRole.MODEL_ENGINEER, 1000000000002L));
-            userDao.saveUser(new UserEntity("sim", "sim123", UserRole.SIMULATION_ENGINEER, 1000000000003L));
-            userDao.saveUser(new UserEntity("user", "user123", UserRole.SIMULATION_ENGINEER, 1000000000004L));
-        }
+        // 创建默认用户 - 使用加密密码
+        log.info("使用加密密码初始化默认用户");
+        
+        // 获取角色的timestamp作为roleId
+        Long adminRoleId = 2000000000000L;
+        Long dataEngineerRoleId = 2000000000001L;
+        Long modelEngineerRoleId = 2000000000002L;
+        Long simulationEngineerRoleId = 2000000000003L;
+        
+        userDao.saveUser(new UserEntity("admin", getPasswordEncoder().encode("admin123"), UserRole.ADMIN, adminRoleId, 1000000000000L));
+        userDao.saveUser(new UserEntity("data", getPasswordEncoder().encode("data123"), UserRole.DATA_ENGINEER, dataEngineerRoleId, 1000000000001L));
+        userDao.saveUser(new UserEntity("model", getPasswordEncoder().encode("model123"), UserRole.MODEL_ENGINEER, modelEngineerRoleId, 1000000000002L));
+        userDao.saveUser(new UserEntity("sim", getPasswordEncoder().encode("sim123"), UserRole.SIMULATION_ENGINEER, simulationEngineerRoleId, 1000000000003L));
+        userDao.saveUser(new UserEntity("user", getPasswordEncoder().encode("user123"), UserRole.SIMULATION_ENGINEER, simulationEngineerRoleId, 1000000000004L));
+        
+        log.info("默认用户初始化完成: admin/admin123, data/data123, model/model123, sim/sim123, user/user123");
     }
     
     /**
@@ -390,10 +385,10 @@ public class RolePermissionService {
         Long roleId = getRoleTimestamp(user.getRole());
         
         // 加密密码后再存储
-        if (passwordEncoder != null) {
+        if (getPasswordEncoder() != null) {
             UserEntity encryptedUser = new UserEntity(
                 user.getUsername(), 
-                passwordEncoder.encode(user.getPassword()), 
+                getPasswordEncoder().encode(user.getPassword()), 
                 user.getRole(),
                 roleId,
                 user.getTimestamp()
@@ -441,11 +436,11 @@ public class RolePermissionService {
             password = originalUser.getPassword(); // 保留原密码
         } else {
             // 加密新密码
-            if (passwordEncoder != null && 
+            if (getPasswordEncoder() != null && 
                 !user.getPassword().startsWith("$2a$") && 
                 !user.getPassword().startsWith("$2b$") && 
                 !user.getPassword().startsWith("$2y$")) {
-                password = passwordEncoder.encode(user.getPassword());
+                password = getPasswordEncoder().encode(user.getPassword());
             } else {
                 password = user.getPassword();
             }
@@ -524,14 +519,14 @@ public class RolePermissionService {
             }
             
             // 验证原密码
-            if (passwordEncoder != null && !passwordEncoder.matches(oldPassword, user.getPassword())) {
+            if (getPasswordEncoder() != null && !getPasswordEncoder().matches(oldPassword, user.getPassword())) {
                 log.warn("用户 {} 原密码验证失败", username);
                 return false;
             }
             
             // 加密新密码
-            String encryptedNewPassword = passwordEncoder != null ? 
-                passwordEncoder.encode(newPassword) : newPassword;
+            String encryptedNewPassword = getPasswordEncoder() != null ? 
+                getPasswordEncoder().encode(newPassword) : newPassword;
             
             // 更新密码
             UserEntity updatedUser = new UserEntity(

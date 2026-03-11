@@ -24,7 +24,7 @@ public class RunTaskController {
 
     @ApiOperation("触发任务")
     @PostMapping("/run")
-    @RequirePermission(Permission.ASSOCIATION_TASK_RUN)
+    @RequirePermission(Permission.RUN_TASK_CREATE)
     public Result<Void> runTask(@RequestBody RunTaskRequest runTaskRequest) throws Exception {
         runTaskService.runTask(runTaskRequest);
         return Result.success("关联规则保存成功");
@@ -32,7 +32,7 @@ public class RunTaskController {
 
     @ApiOperation("分页查询运行任务")
     @PostMapping("/tasks/query")
-    @RequirePermission(Permission.RUN_TASK_QUERY)
+    @RequirePermission(Permission.RUN_TASK_READ)
     public Result<List<RunTaskEntity>> queryTasks(@RequestBody RunTaskQueryRequest request) {
         List<RunTaskEntity> result = runTaskService.queryTasks(request);
         return Result.success(result);
@@ -40,7 +40,7 @@ public class RunTaskController {
 
     @ApiOperation("查询运行任务总数")
     @PostMapping("/tasks/count")
-    @RequirePermission(Permission.RUN_TASK_COUNT)
+    @RequirePermission(Permission.RUN_TASK_READ)
     public Result<Object> countTasks(@RequestBody RunTaskQueryRequest request) {
         Object count = runTaskService.countTasks(request);
         return Result.success(count);
@@ -48,7 +48,7 @@ public class RunTaskController {
 
     @ApiOperation("运行任务详情")
     @GetMapping("/tasks/detail")
-    @RequirePermission(Permission.RUN_TASK_DETAIL)
+    @RequirePermission(Permission.RUN_TASK_READ)
     public Result<?> queryTask(
             @RequestParam("timestamp") Long timestamp) {
         RunTaskEntity result = runTaskService.queryTask(timestamp);

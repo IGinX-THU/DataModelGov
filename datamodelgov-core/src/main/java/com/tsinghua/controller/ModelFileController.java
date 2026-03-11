@@ -27,7 +27,7 @@ public class ModelFileController {
 
     @ApiOperation("上传模型")
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @RequirePermission(Permission.MODEL_UPLOAD)
+    @RequirePermission(Permission.MODEL_CREATE)
     public Result<?> handleFileUpload(
             @RequestPart("file") MultipartFile file,
             @RequestParam("name") String name,
@@ -43,7 +43,7 @@ public class ModelFileController {
 
     @ApiOperation("下载模型")
     @PostMapping("/download")
-    @RequirePermission(Permission.MODEL_DOWNLOAD)
+    @RequirePermission(Permission.MODEL_READ)
     public void handleFileDownload(
             @RequestParam String name,
             @RequestParam String version,
@@ -70,7 +70,7 @@ public class ModelFileController {
 
     @ApiOperation("模型元数据详情")
     @GetMapping( "/metas")
-    @RequirePermission(Permission.MODEL_QUERY_META)
+    @RequirePermission(Permission.MODEL_READ)
     public Result<ModelMetaEntity> queryMeta(
             @RequestParam("name") String name,
             @RequestParam("version") String version) throws Exception {
@@ -80,7 +80,7 @@ public class ModelFileController {
 
     @ApiOperation("保存模型元数据")
     @PostMapping("/metas")
-    @RequirePermission(Permission.MODEL_SAVE_META)
+    @RequirePermission(Permission.MODEL_UPDATE)
     public Result<Void> saveMeta(@RequestBody ModelMetaEntity modelMetaDto) throws Exception {
         modelFileService.saveModelMetadata(modelMetaDto);
         return Result.success("元数据保存成功");
@@ -88,7 +88,7 @@ public class ModelFileController {
 
     @ApiOperation("模型元数据历史")
     @GetMapping( "/history")
-    @RequirePermission(Permission.MODEL_HISTORY)
+    @RequirePermission(Permission.MODEL_READ)
     public Result<List<ModelMetaEntity>> queryMetaList(
             @RequestParam("name") String name) {
         return Result.success(modelFileService.queryMetaList(name));

@@ -28,7 +28,7 @@ public class UserController {
 
     @ApiOperation("创建用户")
     @PostMapping("/save")
-    @RequirePermission(Permission.USER_MANAGE)
+    @RequirePermission(Permission.USER_CREATE)
     public Result<Void> saveUser(@RequestBody UserEntity user) throws Exception {
         // 检查用户名是否已存在
         UserEntity existingUser = rolePermissionService.getUser(user.getUsername());
@@ -42,7 +42,7 @@ public class UserController {
 
     @ApiOperation("分页查询用户")
     @PostMapping("/query")
-    @RequirePermission(Permission.USER_MANAGE)
+    @RequirePermission(Permission.USER_READ)
     public Result<List<UserEntity>> queryUsers(@RequestBody UserQueryRequest request) {
         // 调用服务层方法进行筛选查询
         List<UserEntity> users = rolePermissionService.queryUsers(
@@ -57,7 +57,7 @@ public class UserController {
 
     @ApiOperation("查询用户总数")
     @PostMapping("/count")
-    @RequirePermission(Permission.USER_MANAGE)
+    @RequirePermission(Permission.USER_READ)
     public Result<Object> countUsers(@RequestBody UserQueryRequest request) {
         // 调用服务层方法进行筛选查询总数
         List<UserEntity> users = rolePermissionService.queryUsers(
@@ -74,7 +74,7 @@ public class UserController {
 
     @ApiOperation("用户详情")
     @GetMapping("/detail")
-    @RequirePermission(Permission.USER_MANAGE)
+    @RequirePermission(Permission.USER_READ)
     public Result<?> queryUser(@RequestParam("username") String username) {
         UserEntity user = rolePermissionService.getUser(username);
         if (user == null) {
@@ -85,7 +85,7 @@ public class UserController {
 
     @ApiOperation("删除用户")
     @DeleteMapping("/delete")
-    @RequirePermission(Permission.USER_MANAGE)
+    @RequirePermission(Permission.USER_DELETE)
     public Result<Void> deleteUser(@RequestParam("username") String username) throws Exception {
         rolePermissionService.removeUser(username);
         return Result.success("操作成功");
@@ -93,7 +93,7 @@ public class UserController {
 
     @ApiOperation("更新用户")
     @PostMapping("/update")
-    @RequirePermission(Permission.USER_MANAGE)
+    @RequirePermission(Permission.USER_UPDATE)
     public Result<Void> updateUser(@RequestBody UserEntity user) throws Exception {
         rolePermissionService.updateUser(user);
         return Result.success("用户更新成功");
@@ -101,7 +101,7 @@ public class UserController {
 
     @ApiOperation("获取所有角色")
     @GetMapping("/roles")
-    @RequirePermission(Permission.USER_MANAGE)
+    @RequirePermission(Permission.USER_READ)
     public Result<List<RoleEntity>> getRoles() {
         List<RoleEntity> roles = rolePermissionService.getAllRoles();
         return Result.success(roles);

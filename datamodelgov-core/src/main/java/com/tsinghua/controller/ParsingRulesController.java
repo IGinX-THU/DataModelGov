@@ -23,7 +23,7 @@ public class ParsingRulesController {
 
     @ApiOperation("创建解析规则")
     @PostMapping("/rules/save")
-    @RequirePermission(Permission.PARSING_RULES_SAVE)
+    @RequirePermission(Permission.PARSING_RULES_CREATE)
     public Result<Void> saveRules(@RequestBody ParsingRulesEntity parsingRulesEntity) {
         try {
             parsingRulesService.saveRules(parsingRulesEntity);
@@ -35,7 +35,7 @@ public class ParsingRulesController {
 
     @ApiOperation("分页查询解析规则")
     @PostMapping("/rules/query")
-    @RequirePermission(Permission.PARSING_RULES_QUERY)
+    @RequirePermission(Permission.PARSING_RULES_READ)
     public Result<List<ParsingRulesEntity>> queryRules(@RequestBody ParsingRulesQueryRequest request) {
         List<ParsingRulesEntity> result = parsingRulesService.queryRules(request);
         return Result.success(result);
@@ -43,7 +43,7 @@ public class ParsingRulesController {
 
     @ApiOperation("查询解析规则总数")
     @PostMapping("/rules/count")
-    @RequirePermission(Permission.PARSING_RULES_COUNT)
+    @RequirePermission(Permission.PARSING_RULES_READ)
     public Result<Object> countRules(@RequestBody ParsingRulesQueryRequest request) {
         Object count = parsingRulesService.countRules(request);
         return Result.success(count);
@@ -51,7 +51,7 @@ public class ParsingRulesController {
 
     @ApiOperation("解析规则详情")
     @GetMapping("/rules/detail")
-    @RequirePermission(Permission.PARSING_RULES_DETAIL)
+    @RequirePermission(Permission.PARSING_RULES_READ)
     public Result<?> queryRule(
             @RequestParam("createTime") Long createTime) {
         ParsingRulesEntity result = parsingRulesService.queryRule(createTime);

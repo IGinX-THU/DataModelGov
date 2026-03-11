@@ -1,9 +1,12 @@
 package com.tsinghua.auth.interceptor;
 
 import com.tsinghua.auth.annotation.RequirePermission;
+import com.tsinghua.auth.dao.RoleDao;
+import com.tsinghua.auth.dao.UserDao;
+import com.tsinghua.auth.entity.RoleEntity;
+import com.tsinghua.auth.entity.UserEntity;
 import com.tsinghua.auth.enums.Permission;
 import com.tsinghua.auth.enums.UserRole;
-import com.tsinghua.auth.service.RolePermissionService;
 import com.tsinghua.model.Result;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -18,6 +21,8 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.lang.reflect.Method;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.Set;
 
 /**
@@ -28,7 +33,10 @@ import java.util.Set;
 public class PermissionInterceptor implements HandlerInterceptor {
     
     @Autowired
-    private RolePermissionService rolePermissionService;
+    private UserDao userDao;
+    
+    @Autowired
+    private RoleDao roleDao;
     
     private final ObjectMapper objectMapper = new ObjectMapper();
     
@@ -61,10 +69,10 @@ public class PermissionInterceptor implements HandlerInterceptor {
         
         // 检查权限
         Permission[] requiredPermissions = requirePermission.value();
-        boolean hasPermission = rolePermissionService.hasAllPermissions(userRole, requiredPermissions);
+        boolean hasPermission = hasAllPermissions(userRole, requiredPermissions);
         
         if (!hasPermission) {
-            Set<Permission> userPermissions = rolePermissionService.getRolePermissions(userRole);
+            Set<Permission> userPermissions = getRolePermissions(userRole);
             
             // 构建详细的权限错误信息
             StringBuilder missingPermissions = new StringBuilder();
@@ -103,7 +111,43 @@ public class PermissionInterceptor implements HandlerInterceptor {
         }
         
         String username = authentication.getName();
-        return rolePermissionService.getUserRole(username);
+        try {
+            UserEntity user = userDao.queryUser(username);
+            return user != null ? user.getRole() : null;
+        } catch (Exception e) {
+            log.error("查询用户 {} 失败: {}", username, e.getMessage());
+            return null;
+        }
+    }
+    
+    /**
+     * 根据角色获取权限集合
+     */
+    private Set<Permission> getRolePermissions(String role) {
+        try {
+            RoleEntity roleEntity = roleDao.queryRole(role);
+            return roleEntity != null ? roleEntity.getPermissions() : Collections.emptySet();
+        } catch (Exception e) {
+            log.error("查询角色 {} 权限失败: {}", role, e.getMessage());
+            return Collections.emptySet();
+        }
+    }
+    
+    /**
+     * 检查角色是否拥有所有指定权限
+     */
+    private boolean hasAllPermissions(String role, Permission[] permissions) {
+        Set<Permission> rolePermissionSet = getRolePermissions(role);
+        if (rolePermissionSet.isEmpty()) {
+            return false;
+        }
+        
+        for (Permission permission : permissions) {
+            if (!rolePermissionSet.contains(permission)) {
+                return false;
+            }
+        }
+        return true;
     }
     
     /**

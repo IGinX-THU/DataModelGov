@@ -35,7 +35,7 @@ public class DataSourceController {
      */
     @ApiOperation("注册异构数据源")
     @PostMapping("/register")
-    @RequirePermission(Permission.DATASOURCE_REGISTER)
+    @RequirePermission(Permission.DATASOURCE_CREATE)
     public Result<Void> register(@RequestBody String jsonBody) throws Exception {
         log.info("jsonBody:{}", jsonBody);
         ObjectMapper mapper = new ObjectMapper();
@@ -91,7 +91,7 @@ public class DataSourceController {
      */
     @ApiOperation("移除异构数据源")
     @PostMapping("/remove")
-    @RequirePermission(Permission.DATASOURCE_REMOVE)
+    @RequirePermission(Permission.DATASOURCE_DELETE)
     public Result<Void> remove(@Validated @RequestBody StorageEngineInfoDto removedStorageEngineInfo) throws Exception {
         boolean success = dataSourceService.removeDataSource(removedStorageEngineInfo);
         return success ? Result.success("数据源移除成功") : Result.error("移除失败，数据源可能被关联规则占用");
@@ -102,7 +102,7 @@ public class DataSourceController {
      */
     @ApiOperation("数据资源列表")
     @GetMapping("/list")
-    @RequirePermission(Permission.DATASOURCE_LIST)
+    @RequirePermission(Permission.DATASOURCE_READ)
     public Result<List<StorageEngineInfoDto>> list() throws Exception {
         return Result.success(dataSourceService.dataSourceList());
     }
@@ -112,7 +112,7 @@ public class DataSourceController {
      */
     @ApiOperation("数据资源树")
     @GetMapping("/tree")
-    @RequirePermission(Permission.DATASOURCE_TREE)
+    @RequirePermission(Permission.DATASOURCE_READ)
     public Result<List<ColumnDto>> tree() throws Exception {
         return Result.success(dataSourceService.dataSourceTree());
     }

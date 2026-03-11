@@ -23,7 +23,7 @@ public class AssociationRulesController {
 
     @ApiOperation("创建关联规则")
     @PostMapping("/rules/save")
-    @RequirePermission(Permission.ASSOCIATION_RULES_SAVE)
+    @RequirePermission(Permission.ASSOCIATION_RULES_CREATE)
     public Result<Void> saveRules(@RequestBody AssociationRulesEntity associationRulesEntity) throws Exception {
         associationRulesService.saveRules(associationRulesEntity);
         return Result.success("关联规则保存成功");
@@ -31,7 +31,7 @@ public class AssociationRulesController {
 
     @ApiOperation("分页查询关联规则")
     @PostMapping("/rules/query")
-    @RequirePermission(Permission.ASSOCIATION_RULES_QUERY)
+    @RequirePermission(Permission.ASSOCIATION_RULES_READ)
     public Result<List<AssociationRulesEntity>> queryRules(@RequestBody AssociationRulesQueryRequest request) {
         List<AssociationRulesEntity> result = associationRulesService.queryRules(request);
         return Result.success(result);
@@ -39,7 +39,7 @@ public class AssociationRulesController {
 
     @ApiOperation("查询关联规则总数")
     @PostMapping("/rules/count")
-    @RequirePermission(Permission.ASSOCIATION_RULES_COUNT)
+    @RequirePermission(Permission.ASSOCIATION_RULES_READ)
     public Result<Object> countRules(@RequestBody AssociationRulesQueryRequest request) {
         Object count = associationRulesService.countRules(request);
         return Result.success(count);
@@ -47,7 +47,7 @@ public class AssociationRulesController {
 
     @ApiOperation("关联规则详情")
     @GetMapping("/rules/detail")
-    @RequirePermission(Permission.ASSOCIATION_RULES_DETAIL)
+    @RequirePermission(Permission.ASSOCIATION_RULES_READ)
     public Result<?> queryRule(
             @RequestParam("createTime") Long createTime) {
         AssociationRulesEntity result = associationRulesService.queryRule(createTime);

@@ -1,94 +1,98 @@
 package com.tsinghua.auth.enums;
 
 /**
- * 权限枚举 - 精简版
+ * 权限枚举 - 按资源类型分组的CRUD权限
  */
 public enum Permission {
     // 数据源管理权限
-    DATASOURCE_REGISTER,
-    DATASOURCE_REMOVE,
-    DATASOURCE_LIST,
-    DATASOURCE_TREE,
+    DATASOURCE_CREATE,
+    DATASOURCE_READ,
+    DATASOURCE_UPDATE,
+    DATASOURCE_DELETE,
     
     // 数据表管理权限
-    DATA_QUERY,
-    DATA_IMPORT,
-    DATA_EXPORT,
+    DATA_CREATE,
+    DATA_READ,
+    DATA_UPDATE,
     DATA_DELETE,
-    DATA_RELATIONAL_QUERY,
-    DATA_RELATIONAL_COUNT,
-    DATA_RELATIONAL_EXPORT,
     
     // 模型文件管理权限
-    MODEL_UPLOAD,
-    MODEL_DOWNLOAD,
-    MODEL_QUERY_META,
-    MODEL_SAVE_META,
-    MODEL_HISTORY,
+    MODEL_CREATE,
+    MODEL_READ,
+    MODEL_UPDATE,
     MODEL_DELETE,
     
     // 关联规则管理权限
-    ASSOCIATION_RULES_SAVE,
-    ASSOCIATION_RULES_QUERY,
-    ASSOCIATION_RULES_COUNT,
-    ASSOCIATION_RULES_DETAIL,
+    ASSOCIATION_RULES_CREATE,
+    ASSOCIATION_RULES_READ,
+    ASSOCIATION_RULES_UPDATE,
     ASSOCIATION_RULES_DELETE,
-    ASSOCIATION_TASK_RUN,
-
+    
     // 解析规则管理权限
-    PARSING_RULES_SAVE,
-    PARSING_RULES_QUERY,
-    PARSING_RULES_COUNT,
-    PARSING_RULES_DETAIL,
+    PARSING_RULES_CREATE,
+    PARSING_RULES_READ,
+    PARSING_RULES_UPDATE,
     PARSING_RULES_DELETE,
-
+    
     // 运行任务管理权限
-    RUN_TASK_QUERY,
-    RUN_TASK_COUNT,
-    RUN_TASK_DETAIL,
+    RUN_TASK_CREATE,
+    RUN_TASK_READ,
+    RUN_TASK_UPDATE,
     RUN_TASK_DELETE,
-
+    
     // 用户管理权限
-    USER_MANAGE;
+    USER_CREATE,
+    USER_READ,
+    USER_UPDATE,
+    USER_DELETE;
     
     /**
      * 获取权限描述（用于错误提示）
      */
     public String getDescription() {
         switch (this) {
-            case DATASOURCE_REGISTER: return "注册数据源";
-            case DATASOURCE_REMOVE: return "移除数据源";
-            case DATASOURCE_LIST: return "数据源列表";
-            case DATASOURCE_TREE: return "数据源树";
-            case DATA_QUERY: return "数据查询";
-            case DATA_IMPORT: return "数据导入";
-            case DATA_EXPORT: return "数据导出";
-            case DATA_DELETE: return "数据删除";
-            case DATA_RELATIONAL_QUERY: return "关系数据查询";
-            case DATA_RELATIONAL_COUNT: return "关系数据总量查询";
-            case DATA_RELATIONAL_EXPORT: return "关系数据Excel导出";
-            case MODEL_UPLOAD: return "上传模型";
-            case MODEL_DOWNLOAD: return "下载模型";
-            case MODEL_QUERY_META: return "模型元数据详情";
-            case MODEL_SAVE_META: return "保存模型元数据";
-            case MODEL_HISTORY: return "模型元数据历史";
-            case MODEL_DELETE: return "移除模型资产";
-            case ASSOCIATION_RULES_SAVE: return "创建关联规则";
-            case ASSOCIATION_RULES_QUERY: return "分页查询关联规则";
-            case ASSOCIATION_RULES_COUNT: return "查询关联规则总数";
-            case ASSOCIATION_RULES_DETAIL: return "关联规则详情";
+            // 数据源管理权限
+            case DATASOURCE_CREATE: return "创建数据源";
+            case DATASOURCE_READ: return "查看数据源";
+            case DATASOURCE_UPDATE: return "更新数据源";
+            case DATASOURCE_DELETE: return "删除数据源";
+            
+            // 数据表管理权限
+            case DATA_CREATE: return "创建数据";
+            case DATA_READ: return "查看数据";
+            case DATA_UPDATE: return "更新数据";
+            case DATA_DELETE: return "删除数据";
+            
+            // 模型文件管理权限
+            case MODEL_CREATE: return "上传模型";
+            case MODEL_READ: return "查看模型";
+            case MODEL_UPDATE: return "更新模型";
+            case MODEL_DELETE: return "删除模型";
+            
+            // 关联规则管理权限
+            case ASSOCIATION_RULES_CREATE: return "创建关联规则";
+            case ASSOCIATION_RULES_READ: return "查看关联规则";
+            case ASSOCIATION_RULES_UPDATE: return "更新关联规则";
             case ASSOCIATION_RULES_DELETE: return "删除关联规则";
-            case ASSOCIATION_TASK_RUN: return "运行关联规则";
-            case PARSING_RULES_SAVE: return "创建解析规则";
-            case PARSING_RULES_QUERY: return "分页查询解析规则";
-            case PARSING_RULES_COUNT: return "查询解析规则总数";
-            case PARSING_RULES_DETAIL: return "解析规则详情";
+            
+            // 解析规则管理权限
+            case PARSING_RULES_CREATE: return "创建解析规则";
+            case PARSING_RULES_READ: return "查看解析规则";
+            case PARSING_RULES_UPDATE: return "更新解析规则";
             case PARSING_RULES_DELETE: return "删除解析规则";
-            case RUN_TASK_QUERY: return "分页查询运行任务";
-            case RUN_TASK_COUNT: return "查询运行任务总数";
-            case RUN_TASK_DETAIL: return "运行任务详情";
+            
+            // 运行任务管理权限
+            case RUN_TASK_CREATE: return "创建运行任务";
+            case RUN_TASK_READ: return "查看运行任务";
+            case RUN_TASK_UPDATE: return "更新运行任务";
             case RUN_TASK_DELETE: return "删除运行任务";
-            case USER_MANAGE: return "用户管理";
+            
+            // 用户管理权限
+            case USER_CREATE: return "创建用户";
+            case USER_READ: return "查看用户";
+            case USER_UPDATE: return "更新用户";
+            case USER_DELETE: return "删除用户";
+            
             default: return this.name();
         }
     }
