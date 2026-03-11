@@ -519,13 +519,17 @@ public class RunTaskService {
             if (table != null && table.getRecords() != null) {
                 for (IginXRecord record : table.getRecords()) {
                     for (int i = 0; i < inputs.size(); i++) {
-                        String sourceField = String.format("%s.%s", tableName, inputs.get(i).getSourceField());
+                        InputBindDto input = inputs.get(i);
+                        String sourceField = String.format("%s.%s", tableName, input.getSourceField());
                         Object value = record.getValue(sourceField);
                         
-                        if (value instanceof byte[]) {
-                            writer.print(ConvertUtil.bytesToString((byte[]) value));
-                        } else if (value != null) {
-                            writer.print(value.toString());
+                        // 根据operator和conversionValue对数据进行计算
+                        Object convertedValue = ConvertUtil.convertValue(value, input.getOperator(), input.getConversionValue());
+                        
+                        if (convertedValue instanceof byte[]) {
+                            writer.print(ConvertUtil.bytesToString((byte[]) convertedValue));
+                        } else if (convertedValue != null) {
+                            writer.print(convertedValue.toString());
                         } else {
                             writer.print("");
                         }
