@@ -424,8 +424,10 @@ public class RunTaskService {
             List<InputBindDto> inputs = JSONArray.parseArray(associationRulesEntity.getInputsBind(), InputBindDto.class);
             List<OutputBindDto> outputs = JSONArray.parseArray(associationRulesEntity.getOutputsBind(), OutputBindDto.class);
             
-            runTaskEntity.setInputMeasurements(JSONArray.toJSONString(inputs.stream().map(InputBindDto::getSourceField).collect(Collectors.toList())));
-            runTaskEntity.setOutputMeasurements(JSONArray.toJSONString(outputs.stream().map(OutputBindDto::getResultTarget).collect(Collectors.toList())));
+            runTaskEntity.setInputMeasurements(JSONArray.toJSONString(inputs.stream().map(inputBindDto ->
+                    String.format("%s.%s", associationRulesEntity.getTableName(), inputBindDto.getSourceField())).collect(Collectors.toList())));
+            runTaskEntity.setOutputMeasurements(JSONArray.toJSONString(outputs.stream().map(outputBindDto ->
+                    String.format("%s.%s", associationRulesEntity.getTableName(), outputBindDto.getResultTarget())).collect(Collectors.toList())));
             saveTask(runTaskEntity);
 
             // 2. 创建任务目录 (相对于项目根目录的tasks文件夹下)
