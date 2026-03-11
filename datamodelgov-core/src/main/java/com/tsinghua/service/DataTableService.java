@@ -8,6 +8,7 @@ import cn.edu.tsinghua.iginx.session_v2.query.*;
 import cn.edu.tsinghua.iginx.thrift.*;
 import cn.edu.tsinghua.iginx.utils.Pair;
 import com.tsinghua.dto.*;
+import com.tsinghua.model.Result;
 import com.tsinghua.util.ConvertUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -84,7 +85,7 @@ public class DataTableService {
         return new TableDto(columns, resultSet);
     }
 
-    public com.tsinghua.model.Result<Void> importData(MultipartFile file, DataImportRequest importConfig) {
+    public Long importData(MultipartFile file, DataImportRequest importConfig) throws Exception {
         Path tempFilePath = null;
 
         try {
@@ -93,57 +94,60 @@ public class DataTableService {
             // 1. 保存上传文件到临时位置
             tempFilePath = Files.createTempFile("iginx_upload_", ".csv");
             file.transferTo(tempFilePath.toFile());
-
-            // 2. 构建LOAD DATA SQL语句
-            // 注意：此处的路径是一个“约定”或“任务标识”，最终文件通过uploadFileChunk上传
-            String sql = String.format("LOAD DATA FROM INFILE '%s' AS CSV INTO %s;",
-                    uploadedFileName, // 使用一个约定的文件名
-                    importConfig.getTargetPath());
-
-            // 3. 执行SQL，解析命令并获取服务端准备的状态/路径（如果需要）
-            // 根据源码，此处可能会返回一个服务端期望的路径，但uploadFileChunk似乎更直接。
-            // 实际流程可能需要先调用一个接口获取上传令牌或路径。这里假设直接上传。
-
-            // 4. 分块读取临时文件并上传
-            try (RandomAccessFile raf = new RandomAccessFile(tempFilePath.toFile(), "r")) {
-                long offset = 0;
-                byte[] buffer = new byte[CHUNK_SIZE];
-                int bytesRead;
-                while ((bytesRead = raf.read(buffer)) != -1) {
-                    byte[] dataToSend;
-                    if (bytesRead < CHUNK_SIZE) {
-                        dataToSend = new byte[bytesRead];
-                        System.arraycopy(buffer, 0, dataToSend, 0, bytesRead);
-                    } else {
-                        dataToSend = buffer;
-                    }
-                    ByteBuffer data = ByteBuffer.wrap(dataToSend);
-                    FileChunk chunk = new FileChunk(uploadedFileName, offset, data, bytesRead);
-                    iginxSession.uploadFileChunk(chunk); // 关键步骤：上传文件块
-                    offset += bytesRead;
-                }
+            return importCsvFile(tempFilePath, importConfig.getTargetPath(), uploadedFileName);
+        }  finally {
+            // 清理临时文件
+            if (tempFilePath != null) {
+                Files.deleteIfExists(tempFilePath);
             }
-
-            // 5. 所有块上传完成后，执行导入
-            Pair<List<String>, Long> result = iginxSession.executeLoadCSV(sql, uploadedFileName);
-            long recordsNum = result.v;
-            return com.tsinghua.model.Result.success(String.format("数据导入成功，导入记录数: %d", recordsNum));
-
-        } catch (Exception e) {
-            log.error("数据导入失败", e);
-            return com.tsinghua.model.Result.error("数据导入失败");
-        } finally {
-            try {
-                // 清理临时文件
-                if (tempFilePath != null) {
-                    Files.deleteIfExists(tempFilePath);
-                }
-                // iginxSession.closeSession();
-            } catch (Exception e) {
-                log.error("finally Exception", e);
-            }
-
+            // iginxSession.closeSession();
         }
+    }
+    /**
+     * 公用CSV导入方法
+     * 分块上传CSV文件到IGinX并执行LOAD DATA
+     *
+     * @param csvFilePath CSV文件路径
+     * @param targetPath 目标路径
+     * @param uploadedFileName 上传后的文件名
+     * @return 导入结果
+     */
+    public Long importCsvFile(Path csvFilePath, String targetPath, String uploadedFileName) throws Exception {
+
+        // 1. 解析命令并获取服务端准备的状态/路径（如果需要）
+        // 根据源码，此处可能会返回一个服务端期望的路径，但uploadFileChunk似乎更直接。
+        // 实际流程可能需要先调用一个接口获取上传令牌或路径。这里假设直接上传。
+        log.info("开始导入csv文件，csvFilePath：{}, targetPath:{}, uploadedFileName:{}", csvFilePath, targetPath, uploadedFileName);
+
+        // 2. 构建LOAD DATA SQL语句
+        // 注意：此处的路径是一个“约定”或“任务标识”，最终文件通过uploadFileChunk上传
+        String sql = String.format("LOAD DATA FROM INFILE '%s' AS CSV INTO %s;",
+                uploadedFileName, // 使用一个约定的文件名
+                targetPath);
+
+        // 3. 分块读取临时文件并上传
+        try (RandomAccessFile raf = new RandomAccessFile(csvFilePath.toFile(), "r")) {
+            long offset = 0;
+            byte[] buffer = new byte[CHUNK_SIZE];
+            int bytesRead;
+            while ((bytesRead = raf.read(buffer)) != -1) {
+                byte[] dataToSend;
+                if (bytesRead < CHUNK_SIZE) {
+                    dataToSend = new byte[bytesRead];
+                    System.arraycopy(buffer, 0, dataToSend, 0, bytesRead);
+                } else {
+                    dataToSend = buffer;
+                }
+                ByteBuffer data = ByteBuffer.wrap(dataToSend);
+                FileChunk chunk = new FileChunk(uploadedFileName, offset, data, bytesRead);
+                iginxSession.uploadFileChunk(chunk); // 关键步骤：上传文件块
+                offset += bytesRead;
+            }
+        }
+
+        // 4. 所有块上传完成后，执行导入SQL
+        Pair<List<String>, Long> result = iginxSession.executeLoadCSV(sql, uploadedFileName);
+        return result.v;
     }
 
     public void exportData(DataQueryRequest request, HttpServletResponse response) {

@@ -1,6 +1,7 @@
 package com.tsinghua.controller;
 
 import com.tsinghua.dto.*;
+import com.tsinghua.model.Result;
 import com.tsinghua.service.DataTableService;
 import com.tsinghua.service.RelationalDataService;
 import com.tsinghua.auth.annotation.RequirePermission;
@@ -54,8 +55,10 @@ public class DataTableController {
     @RequirePermission(Permission.DATA_CREATE)
     public com.tsinghua.model.Result<Void> importData(// 使用 @RequestPart 接收JSON格式的配置参数
                                                       @RequestPart("config") @Valid DataImportRequest config,
-                                                      @ApiParam(value = "数据文件", required = true) @RequestPart("file") MultipartFile file) {
-        return dataTableService.importData(file, config);
+                                                      @ApiParam(value = "数据文件", required = true) @RequestPart("file") MultipartFile file) throws Exception {
+        long recordsNum =  dataTableService.importData(file, config);
+        return Result.success(String.format("数据导入成功，导入记录数: %d", recordsNum));
+
     }
 
     /**

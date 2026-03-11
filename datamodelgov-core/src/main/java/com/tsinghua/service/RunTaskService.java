@@ -3,6 +3,7 @@ package com.tsinghua.service;
 import cn.edu.tsinghua.iginx.session.Session;
 import cn.edu.tsinghua.iginx.session.SessionExecuteSqlResult;
 import cn.edu.tsinghua.iginx.session_v2.IginXClient;
+import cn.edu.tsinghua.iginx.session_v2.query.IginXHeader;
 import cn.edu.tsinghua.iginx.session_v2.query.IginXRecord;
 import cn.edu.tsinghua.iginx.session_v2.query.IginXTable;
 import cn.edu.tsinghua.iginx.session_v2.write.Point;
@@ -25,10 +26,7 @@ import org.springframework.stereotype.Service;
 import java.io.*;
 import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardOpenOption;
+import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
@@ -443,7 +441,7 @@ public class RunTaskService {
 
             // 5. 执行命令
             if (associationRulesEntity.getCmd() != null && !associationRulesEntity.getCmd().trim().isEmpty()) {
-                executeCommand(associationRulesEntity, runTaskEntity, taskDir);
+                executeCommand(associationRulesEntity, runTaskEntity, taskDir, outputs);
             } else {
                 log.warn("未设置运行命令，任务状态保持为PENDING");
             }
@@ -503,46 +501,46 @@ public class RunTaskService {
     private void exportDataToFile(DataQueryRequest request, Path csvFile, List<InputBindDto> inputs, String tableName) throws IOException {
         // 查询数据
         IginXTable table = dataTableService.queryIginXTable(request);
-        
+
         try (PrintWriter writer = new PrintWriter(new FileWriter(csvFile.toFile()))) {
-            // 写入表头（根据inputsBind映射关系）
-            for (int i = 0; i < inputs.size(); i++) {
-                InputBindDto input = inputs.get(i);
-                writer.print(input.getTargetField()); // 使用targetField作为列名
-                if (i < inputs.size() - 1) {
-                    writer.print(",");
-                }
+            // 直接一行一行写入表头和数据（参考DataTableService.exportData逻辑）
+            IginXHeader header = table.getHeader();
+            if (header.hasTimestamp()) {
+                writer.print("key,");
+            }
+            
+            // 根据InputBindDto映射关系写入表头
+            for (InputBindDto input : inputs) {
+                writer.print(input.getTargetField() + ","); // 使用targetField作为列名
             }
             writer.println();
+            writer.flush();
             
             // 写入数据
-            if (table != null && table.getRecords() != null) {
-                for (IginXRecord record : table.getRecords()) {
-                    for (int i = 0; i < inputs.size(); i++) {
-                        InputBindDto input = inputs.get(i);
-                        String sourceField = String.format("%s.%s", tableName, input.getSourceField());
-                        Object value = record.getValue(sourceField);
-                        
-                        // 根据operator和conversionValue对数据进行计算
-                        Object convertedValue = ConvertUtil.convertValue(value, input.getOperator(), input.getConversionValue());
-                        
-                        if (convertedValue instanceof byte[]) {
-                            writer.print(ConvertUtil.bytesToString((byte[]) convertedValue));
-                        } else if (convertedValue != null) {
-                            writer.print(convertedValue.toString());
-                        } else {
-                            writer.print("");
-                        }
-                        
-                        if (i < inputs.size() - 1) {
-                            writer.print(",");
-                        }
-                    }
-                    writer.println();
+            List<IginXRecord> records = table.getRecords();
+            for (IginXRecord record : records) {
+                if (header.hasTimestamp()) {
+                    writer.print(record.getKey() + ",");
                 }
+                
+                // 根据InputBindDto映射关系写入数据
+                for (InputBindDto input : inputs) {
+                    String sourceField = String.format("%s.%s", tableName, input.getSourceField());
+                    Object value = record.getValue(sourceField);
+                    
+                    // 根据operator和conversionValue对数据进行计算
+                    Object convertedValue = ConvertUtil.convertValue(value, input.getOperator(), input.getConversionValue());
+                    
+                    if (convertedValue instanceof byte[]) {
+                        writer.print(ConvertUtil.bytesToString((byte[]) convertedValue));
+                    } else {
+                        writer.print(convertedValue);
+                    }
+                    writer.print(",");
+                }
+                writer.println();
+                writer.flush();
             }
-            
-            writer.flush();
         }
     }
 
@@ -630,7 +628,7 @@ public class RunTaskService {
         log.info("数据已导出到: {}", csvFile);
     }
 
-    private void executeCommand(AssociationRulesEntity associationRulesEntity, RunTaskEntity runTaskEntity, Path taskDir) throws Exception {
+    private void executeCommand(AssociationRulesEntity associationRulesEntity, RunTaskEntity runTaskEntity, Path taskDir, List<OutputBindDto> outputs) throws Exception {
         // 更新状态为RUNNING
         runTaskEntity.setStatus(TaskStatus.RUNNING);
         saveTask(runTaskEntity);
@@ -742,6 +740,14 @@ public class RunTaskService {
                 if (exitCode == 0) {
                     log.info("命令执行成功，退出码: {}", exitCode);
                     runTaskEntity.setStatus(TaskStatus.SUCCESS);
+
+                    // 处理输出CSV文件
+                    try {
+                        processOutputCsv(associationRulesEntity, taskDir, outputs);
+                    } catch (Exception outputException) {
+                        log.error("处理输出CSV文件失败: {}", outputException.getMessage(), outputException);
+                        // 不影响任务成功状态，只记录错误
+                    }
                 } else {
                     log.error("命令执行失败，退出码: {}", exitCode);
                     runTaskEntity.setStatus(TaskStatus.FAILED);
@@ -760,6 +766,74 @@ public class RunTaskService {
         });
         
         log.info("任务已启动，进程监控将在后台异步执行");
+    }
+
+    /**
+     * 处理输出CSV文件，将数据写入到对应的测点
+     */
+    private void processOutputCsv(AssociationRulesEntity associationRulesEntity, Path taskDir,
+                                  List<OutputBindDto> outputs) throws Exception {
+        if (associationRulesEntity.getOutputCsvName() == null || outputs == null || outputs.isEmpty()) {
+            log.info("输出CSV文件名或输出映射为空，跳过输出处理");
+            return;
+        }
+
+        // 构建输出CSV文件路径
+        Path outputCsvFile = taskDir.resolve(associationRulesEntity.getOutputCsvName());
+
+        if (!Files.exists(outputCsvFile)) {
+            log.warn("输出CSV文件不存在: {}", outputCsvFile);
+            return;
+        }
+
+        log.info("开始处理输出CSV文件: {}", outputCsvFile);
+
+        // 复制输出CSV文件到同目录
+        String modifiedCsvFileName = associationRulesEntity.getOutputCsvName().replace(".csv", "_bind.csv");
+        Path modifiedCsvFile = taskDir.resolve(modifiedCsvFileName);
+        Files.copy(outputCsvFile, modifiedCsvFile, StandardCopyOption.REPLACE_EXISTING);
+
+        // 读取CSV内容并修改表头
+        List<String> lines = Files.readAllLines(modifiedCsvFile, StandardCharsets.UTF_8);
+        if (!lines.isEmpty()) {
+            // 修改表头：将原列名(modelOutput)换成新列名(resultTarget)
+            String originalHeader = lines.get(0);
+            String[] originalColumns = originalHeader.split(",");
+
+            // 构建新的表头映射
+            Map<String, String> columnMapping = new HashMap<>();
+            for (OutputBindDto output : outputs) {
+                columnMapping.put(output.getModelOutput(), output.getResultTarget());
+            }
+
+            // 替换表头中的列名
+            String[] newColumns = new String[originalColumns.length];
+            for (int i = 0; i < originalColumns.length; i++) {
+                String originalCol = originalColumns[i].trim();
+                newColumns[i] = columnMapping.getOrDefault(originalCol, originalCol);
+            }
+
+            // 构建新表头
+            StringBuilder newHeader = new StringBuilder();
+            for (int i = 0; i < newColumns.length; i++) {
+                newHeader.append(newColumns[i]);
+                if (i < newColumns.length - 1) {
+                    newHeader.append(",");
+                }
+            }
+
+            // 替换表头
+            lines.set(0, newHeader.toString());
+
+            // 写回文件
+            Files.write(modifiedCsvFile, lines, StandardCharsets.UTF_8);
+        }
+
+        long recordsNum = dataTableService.importCsvFile(modifiedCsvFile, associationRulesEntity.getTableName(), modifiedCsvFileName);
+
+        log.info("输出CSV文件导入完成，记录数: {}", recordsNum);
+
+        log.info("输出CSV处理完成，处理了 {} 个输出映射", outputs.size());
     }
 
 }
