@@ -2273,23 +2273,26 @@ class VisualAnalysis extends HTMLElement {
                 return;
             }
             
-            // 调用后端日志接口
-            const result = await window.AppConfig.get('task', 'log', {
+            // 调用后端详情接口获取任务信息（包含日志）
+            const result = await window.AppConfig.get('task', 'detail', {
                 timestamp: record.timestamp
             });
             
-            console.log('获取日志响应:', result);
+            console.log('获取任务详情响应:', result);
             
-            if (result.success) {
+            if (result.success && result.data) {
+                // 从任务详情中获取日志信息
+                const logContent = result.data.processLog || '暂无日志信息';
+                
                 // 显示日志弹窗
-                this.showLogModal(record.name, result.data, record);
+                this.showLogModal(record.name, logContent, record);
             } else {
-                console.error('获取日志失败:', result);
-                this.showToast(result.message || '获取日志失败', 'error');
+                console.error('获取任务详情失败:', result);
+                this.showToast(result.message || '获取任务详情失败', 'error');
             }
         } catch (error) {
-            console.error('获取日志失败:', error);
-            this.showToast('网络错误，获取日志失败', 'error');
+            console.error('获取任务详情失败:', error);
+            this.showToast('网络错误，获取任务详情失败', 'error');
         }
     }
     
@@ -2400,14 +2403,17 @@ class VisualAnalysis extends HTMLElement {
         if (!this.currentLogTask) return;
         
         try {
-            const result = await window.AppConfig.get('task', 'log', {
+            // 调用详情接口获取最新任务信息（包含日志）
+            const result = await window.AppConfig.get('task', 'detail', {
                 timestamp: this.currentLogTask.timestamp
             });
             
-            if (result.success) {
+            if (result.success && result.data) {
+                // 从任务详情中获取日志信息
                 const logContent = this.shadowRoot.getElementById('logContent');
                 if (logContent) {
-                    logContent.innerHTML = `<pre>${result.data}</pre>`;
+                    const content = result.data.processLog || '暂无日志信息';
+                    logContent.innerHTML = `<pre>${content}</pre>`;
                     // 滚动到底部
                     logContent.scrollTop = logContent.scrollHeight;
                 }
@@ -2427,8 +2433,8 @@ class VisualAnalysis extends HTMLElement {
         if (!this.currentLogTask) return;
         
         try {
-            // 获取最新的任务信息
-            const result = await window.AppConfig.post('task', 'detail', {
+            // 获取最新的任务信息 - 使用GET方法
+            const result = await window.AppConfig.get('task', 'detail', {
                 timestamp: this.currentLogTask.timestamp
             });
             

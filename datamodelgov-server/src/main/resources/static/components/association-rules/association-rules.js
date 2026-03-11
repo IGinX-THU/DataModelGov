@@ -1886,7 +1886,9 @@ class AssociationRules extends HTMLElement {
                 
                 if (result.success) {
                     this.showToast(`规则运行成功: ${rule.ruleName}`);
-                    this.hideModal();
+                    
+                    // 直接在当前弹窗内显示日志内容
+                    this.showTaskLogInModal(rule.ruleName, result.data.timestamp);
                 } else {
                     this.showToast(result.message || '运行失败', 'error');
                 }
@@ -1894,6 +1896,799 @@ class AssociationRules extends HTMLElement {
                 console.error('运行规则失败:', error);
                 this.showToast('网络错误，运行失败', 'error');
             }
+        }
+    }
+    
+    // 在同一个弹窗内显示任务日志
+    async showTaskLogInModal(taskName, timestamp) {
+        try {
+            console.log('在弹窗内显示任务日志:', { taskName, timestamp });
+            
+            // 添加样式（如果还没有添加）
+            this.addInModalLogStyles();
+            
+            // 调用后端详情接口获取任务信息（包含日志）
+            const result = await window.AppConfig.get('task', 'detail', {
+                timestamp: timestamp
+            });
+            
+            console.log('获取任务详情响应:', result);
+            
+            if (result.success && result.data) {
+                // 从任务详情中获取日志信息
+                const logContent = result.data.processLog || '暂无日志信息';
+                const taskStatus = result.data.status || 'running';
+                
+                // 在同一个弹窗内显示日志内容
+                this.showModal('任务日志', `
+                    <div class="log-display">
+                        <div class="log-header">
+                            <h4>任务: ${taskName}</h4>
+                            <span class="status-indicator ${taskStatus}">${this.getStatusText(taskStatus)}</span>
+                        </div>
+                        <div class="log-content">
+                            <pre>${logContent}</pre>
+                        </div>
+                        <div class="log-controls">
+                            <button class="btn btn-refresh" id="inModalRefreshBtn">刷新日志</button>
+                            ${taskStatus === 'running' ? `
+                                <button class="btn btn-auto-refresh active" id="inModalAutoRefreshBtn">自动刷新: 开启</button>
+                            ` : ''}
+                        </div>
+                    </div>
+                `, [
+                    { text: '关闭', class: 'modal-btn primary', action: 'close' }
+                ]);
+                
+                // 存储当前任务信息用于刷新
+                this.currentLogTask = {
+                    name: taskName,
+                    timestamp: timestamp,
+                    status: taskStatus
+                };
+                
+                // 绑定日志刷新事件
+                this.bindInModalLogEvents();
+                
+                // 如果任务正在运行，自动开启刷新
+                if (taskStatus === 'running') {
+                    this.startInModalAutoRefresh();
+                }
+                
+            } else {
+                this.showToast(result.message || '获取任务详情失败', 'error');
+            }
+        } catch (error) {
+            console.error('获取任务详情失败:', error);
+            this.showToast('网络错误，获取任务详情失败', 'error');
+        }
+    }
+    
+    // 添加弹窗内日志样式
+    addInModalLogStyles() {
+        const styleId = 'in-modal-log-styles';
+        if (!this.shadowRoot.getElementById(styleId)) {
+            const style = document.createElement('style');
+            style.id = styleId;
+            style.textContent = `
+                .success-message {
+                    text-align: center;
+                    padding: var(--spacing-xl) 0;
+                }
+                
+                .success-icon {
+                    font-size: 48px;
+                    color: #4CAF50;
+                    margin-bottom: var(--spacing-lg);
+                }
+                
+                .success-message h3 {
+                    color: var(--text-primary);
+                    margin: 0 0 var(--spacing-md) 0;
+                    font-size: var(--font-size-lg);
+                }
+                
+                .success-message p {
+                    color: var(--text-secondary);
+                    margin: 0;
+                    font-size: var(--font-size-base);
+                }
+                
+                .log-display {
+                    display: flex;
+                    flex-direction: column;
+                    height: 400px;
+                }
+                
+                .log-display .log-header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    margin-bottom: var(--spacing-md);
+                    padding-bottom: var(--spacing-sm);
+                    border-bottom: 1px solid var(--border-primary);
+                }
+                
+                .log-display .log-header h4 {
+                    margin: 0;
+                    color: var(--text-primary);
+                    font-size: var(--font-size-base);
+                }
+                
+                .log-display .status-indicator {
+                    padding: 4px 8px;
+                    font-size: 12px;
+                    font-weight: 500;
+                    border-radius: 4px;
+                    text-transform: uppercase;
+                }
+                
+                .log-display .status-indicator.running {
+                    background-color: #e3f2fd;
+                    color: #1976d2;
+                    border: 1px solid #bbdefb;
+                }
+                
+                .log-display .status-indicator.success {
+                    background-color: #e8f5e8;
+                    color: #2e7d32;
+                    border: 1px solid #c8e6c9;
+                }
+                
+                .log-display .status-indicator.failed {
+                    background-color: #ffebee;
+                    color: #c62828;
+                    border: 1px solid #ffcdd2;
+                }
+                
+                .log-display .log-content {
+                    flex: 1;
+                    background-color: var(--bg-secondary);
+                    border: 1px solid var(--border-primary);
+                    border-radius: var(--radius-sm);
+                    padding: var(--spacing-md);
+                    overflow-y: auto;
+                    margin-bottom: var(--spacing-md);
+                }
+                
+                .log-display .log-content pre {
+                    margin: 0;
+                    font-family: 'Courier New', monospace;
+                    font-size: 12px;
+                    line-height: 1.4;
+                    color: var(--text-primary);
+                    white-space: pre-wrap;
+                    word-wrap: break-word;
+                }
+                
+                .log-display .log-controls {
+                    display: flex;
+                    gap: var(--spacing-sm);
+                    justify-content: flex-end;
+                }
+                
+                .log-display .btn {
+                    padding: 6px 12px;
+                    font-size: 12px;
+                    border: 1px solid var(--border-primary);
+                    border-radius: var(--radius-sm);
+                    background-color: var(--bg-primary);
+                    color: var(--text-primary);
+                    cursor: pointer;
+                    transition: all var(--transition-normal);
+                }
+                
+                .log-display .btn:hover {
+                    background-color: var(--bg-hover);
+                    border-color: var(--border-secondary);
+                }
+                
+                .log-display .btn-auto-refresh.active {
+                    background-color: var(--color-primary);
+                    color: white;
+                    border-color: var(--color-primary);
+                }
+            `;
+            this.shadowRoot.appendChild(style);
+        }
+    }
+    
+    // 绑定弹窗内日志事件
+    bindInModalLogEvents() {
+        // 刷新按钮
+        this.shadowRoot.getElementById('inModalRefreshBtn')?.addEventListener('click', () => {
+            this.refreshInModalLog();
+        });
+        
+        // 自动刷新按钮
+        this.shadowRoot.getElementById('inModalAutoRefreshBtn')?.addEventListener('click', () => {
+            this.toggleInModalAutoRefresh();
+        });
+    }
+    
+    // 刷新弹窗内日志
+    async refreshInModalLog() {
+        if (!this.currentLogTask) return;
+        
+        try {
+            const result = await window.AppConfig.get('task', 'detail', {
+                timestamp: this.currentLogTask.timestamp
+            });
+            
+            if (result.success && result.data) {
+                const logContent = result.data.processLog || '暂无日志信息';
+                const logElement = this.shadowRoot.querySelector('.log-content pre');
+                if (logElement) {
+                    logElement.textContent = logContent;
+                    // 滚动到底部
+                    logElement.scrollTop = logElement.scrollHeight;
+                }
+                
+                // 更新状态显示
+                const statusElement = this.shadowRoot.querySelector('.status-indicator');
+                if (statusElement) {
+                    const newStatus = result.data.status;
+                    statusElement.className = `status-indicator ${newStatus}`;
+                    statusElement.textContent = this.getStatusText(newStatus);
+                    
+                    // 检查任务状态变化
+                    if (this.currentLogTask.status === 'running' && newStatus !== 'running') {
+                        this.stopInModalAutoRefresh();
+                        this.showToast(`任务${this.getStatusText(newStatus)}`, newStatus === 'success' ? 'success' : 'warning');
+                    }
+                    
+                    this.currentLogTask.status = newStatus;
+                }
+            }
+        } catch (error) {
+            console.error('刷新日志失败:', error);
+        }
+    }
+    
+    // 开始弹窗内自动刷新
+    startInModalAutoRefresh() {
+        if (this.inModalRefreshInterval) return;
+        
+        this.inModalRefreshInterval = setInterval(() => {
+            this.refreshInModalLog();
+        }, 2000); // 每2秒刷新一次
+    }
+    
+    // 停止弹窗内自动刷新
+    stopInModalAutoRefresh() {
+        if (this.inModalRefreshInterval) {
+            clearInterval(this.inModalRefreshInterval);
+            this.inModalRefreshInterval = null;
+        }
+    }
+    
+    // 切换弹窗内自动刷新
+    toggleInModalAutoRefresh() {
+        const btn = this.shadowRoot.getElementById('inModalAutoRefreshBtn');
+        if (!btn) return;
+        
+        if (this.inModalRefreshInterval) {
+            this.stopInModalAutoRefresh();
+            btn.textContent = '自动刷新: 关闭';
+            btn.classList.remove('active');
+        } else {
+            this.startInModalAutoRefresh();
+            btn.textContent = '自动刷新: 开启';
+            btn.classList.add('active');
+        }
+    }
+    
+    // 显示任务日志
+    async showTaskLog(taskName, timestamp) {
+        try {
+            console.log('显示任务日志:', { taskName, timestamp });
+            
+            // 调用后端详情接口获取任务信息（包含日志）
+            const result = await window.AppConfig.get('task', 'detail', {
+                timestamp: timestamp
+            });
+            
+            console.log('获取任务详情响应:', result);
+            
+            if (result.success && result.data) {
+                // 从任务详情中获取日志信息
+                const logContent = result.data.processLog || '暂无日志信息';
+                
+                // 显示日志弹窗
+                this.showLogModal(taskName, logContent, {
+                    timestamp: timestamp,
+                    status: result.data.status || 'running'
+                });
+            } else {
+                this.showToast(result.message || '获取任务详情失败', 'error');
+            }
+        } catch (error) {
+            console.error('获取任务详情失败:', error);
+            this.showToast('网络错误，获取任务详情失败', 'error');
+        }
+    }
+    
+    // 显示日志弹窗（复用visual-analysis的逻辑）
+    showLogModal(taskName, logContent, record) {
+        console.log('显示日志弹窗，参数:', { taskName, logContentLength: logContent?.length, record });
+        
+        // 检查是否有弹窗元素，如果没有则创建
+        let modal = this.shadowRoot.getElementById('logModalMask');
+        if (!modal) {
+            // 创建弹窗HTML结构
+            const modalHTML = `
+                <div class="log-modal-mask" id="logModalMask" hidden>
+                    <div class="log-modal-container">
+                        <div class="log-modal-header">
+                            <h3 class="log-modal-title" id="logModalTitle">标题</h3>
+                            <button class="log-modal-close" id="logModalClose">×</button>
+                        </div>
+                        <div class="log-modal-body" id="logModalBody">
+                            <!-- 动态内容 -->
+                        </div>
+                        <div class="log-modal-footer" id="logModalFooter">
+                            <!-- 动态按钮 -->
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // 添加到shadow DOM
+            const container = document.createElement('div');
+            container.innerHTML = modalHTML;
+            this.shadowRoot.appendChild(container.firstElementChild);
+            
+            // 添加样式
+            this.addLogModalStyles();
+        }
+        
+        modal = this.shadowRoot.getElementById('logModalMask');
+        const title = this.shadowRoot.getElementById('logModalTitle');
+        const modalBody = this.shadowRoot.getElementById('logModalBody');
+        const modalFooter = this.shadowRoot.getElementById('logModalFooter');
+        
+        console.log('弹窗元素检查:', { modal: !!modal, title: !!title, modalBody: !!modalBody, modalFooter: !!modalFooter });
+        
+        if (modal && title && modalBody && modalFooter) {
+            title.textContent = `任务日志 - ${taskName}`;
+            
+            // 根据任务状态决定是否显示自动刷新控制
+            const isRunning = record.status === 'running';
+            
+            // 创建日志显示区域
+            modalBody.innerHTML = `
+                <div class="log-container">
+                    <div class="log-header">
+                        <h3>实时日志</h3>
+                        <div class="log-controls">
+                            <button class="btn btn-refresh" id="logRefreshBtn">刷新</button>
+                            ${isRunning ? `
+                                <button class="btn btn-auto-refresh active" id="logAutoRefreshBtn">自动刷新: 开启</button>
+                                <span class="status-indicator running">任务运行中</span>
+                            ` : `
+                                <span class="status-indicator ${record.status}">任务已结束</span>
+                            `}
+                        </div>
+                    </div>
+                    <div class="log-content" id="logContent">
+                        <pre>${logContent}</pre>
+                    </div>
+                </div>
+            `;
+            
+            // 设置弹窗按钮
+            modalFooter.innerHTML = `
+                <button type="button" class="btn btn-cancel" id="logCloseBtn">关闭</button>
+            `;
+            
+            // 存储当前任务信息用于刷新
+            this.currentLogTask = {
+                name: taskName,
+                timestamp: record.timestamp,
+                status: record.status
+            };
+            
+            console.log('设置currentLogTask:', this.currentLogTask);
+            
+            // 绑定事件
+            this.bindLogModalEvents();
+            
+            // 如果任务正在运行，自动开启自动刷新
+            if (isRunning) {
+                this.startLogAutoRefresh();
+            }
+            
+            // 显示弹窗
+            modal.hidden = false;
+            modal.style.display = 'flex';
+            
+            console.log('日志弹窗显示完成');
+        } else {
+            console.error('弹窗元素缺失');
+            this.showToast('弹窗元素缺失，无法显示日志', 'error');
+        }
+    }
+    
+    // 添加日志弹窗样式
+    addLogModalStyles() {
+        const styleId = 'log-modal-styles';
+        if (!this.shadowRoot.getElementById(styleId)) {
+            const style = document.createElement('style');
+            style.id = styleId;
+            style.textContent = `
+                .log-modal-mask {
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background-color: rgba(0, 0, 0, 0.5);
+                    display: none;
+                    justify-content: center;
+                    align-items: center;
+                    z-index: 1000;
+                    animation: fadeIn 0.3s ease;
+                }
+                
+                .log-modal-container {
+                    background-color: var(--bg-primary);
+                    border-radius: var(--radius-lg);
+                    box-shadow: var(--shadow-lg);
+                    max-width: 80%;
+                    max-height: 80%;
+                    width: 800px;
+                    min-height: 400px;
+                    display: flex;
+                    flex-direction: column;
+                    animation: slideIn 0.3s ease;
+                }
+                
+                .log-modal-header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    padding: var(--spacing-xl) var(--spacing-2xl);
+                    border-bottom: 1px solid var(--border-primary);
+                    background-color: var(--bg-secondary);
+                    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+                }
+                
+                .log-modal-title {
+                    margin: 0;
+                    font-size: var(--font-size-lg);
+                    font-weight: 600;
+                    color: var(--text-primary);
+                }
+                
+                .log-modal-close {
+                    background: none;
+                    border: none;
+                    font-size: 24px;
+                    color: var(--text-tertiary);
+                    cursor: pointer;
+                    padding: 0;
+                    width: 32px;
+                    height: 32px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    border-radius: var(--radius-sm);
+                    transition: all var(--transition-normal);
+                }
+                
+                .log-modal-close:hover {
+                    background-color: var(--bg-hover);
+                    color: var(--text-primary);
+                }
+                
+                .log-modal-body {
+                    flex: 1;
+                    padding: var(--spacing-xl) var(--spacing-2xl);
+                    overflow-y: auto;
+                }
+                
+                .log-modal-footer {
+                    padding: var(--spacing-lg) var(--spacing-2xl);
+                    border-top: 1px solid var(--border-primary);
+                    background-color: var(--bg-secondary);
+                    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+                    display: flex;
+                    justify-content: flex-end;
+                    gap: var(--spacing-md);
+                }
+                
+                .log-container {
+                    display: flex;
+                    flex-direction: column;
+                    height: 100%;
+                    min-height: 300px;
+                }
+                
+                .log-header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    margin-bottom: var(--spacing-lg);
+                    padding-bottom: var(--spacing-md);
+                    border-bottom: 1px solid var(--border-primary);
+                }
+                
+                .log-header h3 {
+                    margin: 0;
+                    font-size: var(--font-size-lg);
+                    color: var(--text-primary);
+                }
+                
+                .log-controls {
+                    display: flex;
+                    gap: var(--spacing-sm);
+                }
+                
+                .log-content {
+                    flex: 1;
+                    background-color: var(--bg-secondary);
+                    border: 1px solid var(--border-primary);
+                    border-radius: var(--radius-md);
+                    padding: var(--spacing-md);
+                    overflow-y: auto;
+                    max-height: 400px;
+                }
+                
+                .log-content pre {
+                    margin: 0;
+                    font-family: 'Courier New', monospace;
+                    font-size: var(--font-size-sm);
+                    line-height: 1.4;
+                    color: var(--text-primary);
+                    white-space: pre-wrap;
+                    word-wrap: break-word;
+                }
+                
+                .btn-refresh, .btn-auto-refresh {
+                    padding: var(--spacing-xs) var(--spacing-sm);
+                    font-size: var(--font-size-sm);
+                    border: 1px solid var(--border-primary);
+                    border-radius: var(--radius-sm);
+                    background-color: var(--bg-primary);
+                    color: var(--text-primary);
+                    cursor: pointer;
+                    transition: all var(--transition-normal);
+                }
+                
+                .btn-refresh:hover, .btn-auto-refresh:hover {
+                    background-color: var(--bg-hover);
+                    border-color: var(--border-secondary);
+                }
+                
+                .btn-auto-refresh.active {
+                    background-color: var(--color-primary);
+                    color: white;
+                    border-color: var(--color-primary);
+                }
+                
+                .status-indicator {
+                    padding: var(--spacing-xs) var(--spacing-sm);
+                    font-size: var(--font-size-xs);
+                    font-weight: 500;
+                    border-radius: var(--radius-sm);
+                    margin-left: var(--spacing-sm);
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                }
+                
+                .status-indicator.running {
+                    background-color: #e3f2fd;
+                    color: #1976d2;
+                    border: 1px solid #bbdefb;
+                    animation: pulse 2s infinite;
+                }
+                
+                .status-indicator.success {
+                    background-color: #e8f5e8;
+                    color: #2e7d32;
+                    border: 1px solid #c8e6c9;
+                }
+                
+                .status-indicator.failed {
+                    background-color: #ffebee;
+                    color: #c62828;
+                    border: 1px solid #ffcdd2;
+                }
+                
+                @keyframes pulse {
+                    0% { opacity: 1; }
+                    50% { opacity: 0.7; }
+                    100% { opacity: 1; }
+                }
+                
+                @keyframes fadeIn {
+                    from { opacity: 0; }
+                    to { opacity: 1; }
+                }
+                
+                @keyframes slideIn {
+                    from { 
+                        opacity: 0; 
+                        transform: translateY(-10px); 
+                    }
+                    to { 
+                        opacity: 1; 
+                        transform: translateY(0); 
+                    }
+                }
+            `;
+            this.shadowRoot.appendChild(style);
+        }
+    }
+    
+    // 绑定日志弹窗事件
+    bindLogModalEvents() {
+        // 关闭按钮
+        this.shadowRoot.getElementById('logCloseBtn')?.addEventListener('click', () => {
+            this.hideLogModal();
+            this.stopLogAutoRefresh();
+        });
+        
+        // 弹窗右上角关闭按钮
+        this.shadowRoot.getElementById('logModalClose')?.addEventListener('click', () => {
+            this.hideLogModal();
+            this.stopLogAutoRefresh();
+        });
+        
+        // 点击遮罩层关闭
+        this.shadowRoot.getElementById('logModalMask')?.addEventListener('click', (e) => {
+            if (e.target.id === 'logModalMask') {
+                this.hideLogModal();
+                this.stopLogAutoRefresh();
+            }
+        });
+        
+        // 刷新按钮
+        this.shadowRoot.getElementById('logRefreshBtn')?.addEventListener('click', () => {
+            this.refreshLog();
+        });
+        
+        // 自动刷新按钮
+        this.shadowRoot.getElementById('logAutoRefreshBtn')?.addEventListener('click', () => {
+            this.toggleLogAutoRefresh();
+        });
+    }
+    
+    // 隐藏日志弹窗
+    hideLogModal() {
+        const modal = this.shadowRoot.getElementById('logModalMask');
+        if (modal) {
+            modal.hidden = true;
+            modal.style.display = 'none';
+        }
+        // 清理状态
+        this.currentLogTask = null;
+        this.stopLogAutoRefresh();
+    }
+    
+    // 刷新日志
+    async refreshLog() {
+        if (!this.currentLogTask) return;
+        
+        try {
+            // 调用详情接口获取最新任务信息（包含日志）
+            const result = await window.AppConfig.get('task', 'detail', {
+                timestamp: this.currentLogTask.timestamp
+            });
+            
+            if (result.success && result.data) {
+                // 从任务详情中获取日志信息
+                const logContent = this.shadowRoot.getElementById('logContent');
+                if (logContent) {
+                    const content = result.data.processLog || '暂无日志信息';
+                    logContent.innerHTML = `<pre>${content}</pre>`;
+                    // 滚动到底部
+                    logContent.scrollTop = logContent.scrollHeight;
+                }
+                
+                // 检查任务状态是否变化，如果任务结束则停止自动刷新
+                if (this.logRefreshInterval) {
+                    await this.checkTaskStatus();
+                }
+            }
+        } catch (error) {
+            console.error('刷新日志失败:', error);
+        }
+    }
+    
+    // 检查任务状态
+    async checkTaskStatus() {
+        if (!this.currentLogTask) return;
+        
+        try {
+            // 获取最新的任务信息 - 使用GET方法
+            const result = await window.AppConfig.get('task', 'detail', {
+                timestamp: this.currentLogTask.timestamp
+            });
+            
+            if (result.success && result.data) {
+                const newStatus = result.data.status;
+                const oldStatus = this.currentLogTask.status;
+                
+                // 如果状态从运行中变为其他状态，停止自动刷新
+                if (oldStatus === 'running' && newStatus !== 'running') {
+                    console.log(`任务状态从 ${oldStatus} 变为 ${newStatus}，停止自动刷新`);
+                    this.stopLogAutoRefresh();
+                    
+                    // 更新状态显示
+                    this.updateStatusDisplay(newStatus);
+                    
+                    // 显示完成提示
+                    const statusText = this.getStatusText(newStatus);
+                    this.showToast(`任务${statusText}`, newStatus === 'success' ? 'success' : 'warning');
+                }
+                
+                // 更新当前任务状态
+                this.currentLogTask.status = newStatus;
+            }
+        } catch (error) {
+            console.error('检查任务状态失败:', error);
+        }
+    }
+    
+    // 更新状态显示
+    updateStatusDisplay(status) {
+        const statusIndicator = this.shadowRoot.querySelector('.status-indicator');
+        const autoRefreshBtn = this.shadowRoot.getElementById('logAutoRefreshBtn');
+        
+        if (statusIndicator) {
+            statusIndicator.className = `status-indicator ${status}`;
+            statusIndicator.textContent = status === 'running' ? '任务运行中' : `任务已结束`;
+        }
+        
+        if (autoRefreshBtn && status !== 'running') {
+            autoRefreshBtn.classList.remove('active');
+            autoRefreshBtn.textContent = '自动刷新: 关闭';
+        }
+    }
+    
+    // 获取状态文本
+    getStatusText(status) {
+        const statusMap = {
+            'running': '运行中',
+            'stopped': '已停止',
+            'pending': '等待中',
+            'success': '成功',
+            'failed': '失败'
+        };
+        return statusMap[status] || status;
+    }
+    
+    // 开始自动刷新
+    startLogAutoRefresh() {
+        if (this.logRefreshInterval) return;
+        
+        this.logRefreshInterval = setInterval(() => {
+            this.refreshLog();
+        }, 2000); // 每2秒刷新一次
+    }
+    
+    // 停止自动刷新
+    stopLogAutoRefresh() {
+        if (this.logRefreshInterval) {
+            clearInterval(this.logRefreshInterval);
+            this.logRefreshInterval = null;
+        }
+    }
+    
+    // 切换自动刷新
+    toggleLogAutoRefresh() {
+        const btn = this.shadowRoot.getElementById('logAutoRefreshBtn');
+        if (!btn) return;
+        
+        if (this.logRefreshInterval) {
+            this.stopLogAutoRefresh();
+            btn.textContent = '自动刷新: 关闭';
+            btn.classList.remove('active');
+        } else {
+            this.startLogAutoRefresh();
+            btn.textContent = '自动刷新: 开启';
+            btn.classList.add('active');
         }
     }
     

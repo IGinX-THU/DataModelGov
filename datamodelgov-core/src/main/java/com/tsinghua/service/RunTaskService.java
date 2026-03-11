@@ -404,7 +404,7 @@ public class RunTaskService {
         }
     }
 
-    public void runTask(RunTaskRequest runTaskRequest) {
+    public RunTaskEntity runTask(RunTaskRequest runTaskRequest) {
         try {
             // 0. 校验任务时间段的唯一性
             if (!validateTaskUniqueness(runTaskRequest)) {
@@ -447,6 +447,9 @@ public class RunTaskService {
             } else {
                 log.warn("未设置运行命令，任务状态保持为PENDING");
             }
+            
+            // 返回创建的任务实体
+            return runTaskEntity;
 
         } catch (Exception e) {
             log.error("运行任务失败", e);

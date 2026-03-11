@@ -25,9 +25,9 @@ public class RunTaskController {
     @ApiOperation("触发任务")
     @PostMapping("/run")
     @RequirePermission(Permission.RUN_TASK_CREATE)
-    public Result<Void> runTask(@RequestBody RunTaskRequest runTaskRequest) throws Exception {
-        runTaskService.runTask(runTaskRequest);
-        return Result.success("关联规则保存成功");
+    public Result<RunTaskEntity> runTask(@RequestBody RunTaskRequest runTaskRequest) throws Exception {
+        RunTaskEntity task = runTaskService.runTask(runTaskRequest);
+        return Result.success("关联规则保存成功", task);
     }
 
     @ApiOperation("校验任务时间段唯一性")
