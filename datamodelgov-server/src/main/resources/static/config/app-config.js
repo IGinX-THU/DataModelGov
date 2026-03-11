@@ -103,6 +103,7 @@ window.AppConfig = {
             run: '/api/task/run',
             'validate-uniqueness': '/api/task/validate-uniqueness',
             stop: '/api/task/stop',
+            log: '/api/task/log',
             query: '/api/task/tasks/query',
             count: '/api/task/tasks/count',
             detail: '/api/task/tasks/detail',

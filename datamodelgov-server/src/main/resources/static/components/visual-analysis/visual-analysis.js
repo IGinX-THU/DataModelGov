@@ -1016,26 +1016,35 @@ class VisualAnalysis extends HTMLElement {
             const actionButtons = document.createElement('div');
             actionButtons.className = 'action-buttons';
             
-            // 分析按钮
-            const analyzeBtn = document.createElement('button');
-            analyzeBtn.className = 'action-btn analyze';
-            analyzeBtn.textContent = '分析';
-            analyzeBtn.onclick = () => this.handleAnalyze(record);
-            actionButtons.appendChild(analyzeBtn);
+            // 分析按钮（仅成功状态显示）
+            if (record.status === 'success') {
+                const analyzeBtn = document.createElement('button');
+                analyzeBtn.className = 'action-btn analyze';
+                analyzeBtn.textContent = '分析';
+                analyzeBtn.onclick = () => this.handleAnalyze(record);
+                actionButtons.appendChild(analyzeBtn);
+                
+                // 生成报告按钮
+                const reportBtn = document.createElement('button');
+                reportBtn.className = 'action-btn report';
+                reportBtn.textContent = '生成报告';
+                reportBtn.onclick = () => this.handleGenerateReport(record);
+                actionButtons.appendChild(reportBtn);
+                
+                // 导出按钮
+                const exportBtn = document.createElement('button');
+                exportBtn.className = 'action-btn export';
+                exportBtn.textContent = '导出';
+                exportBtn.onclick = () => this.handleExport(record);
+                actionButtons.appendChild(exportBtn);
+            }
             
-            // 生成报告按钮
-            const reportBtn = document.createElement('button');
-            reportBtn.className = 'action-btn report';
-            reportBtn.textContent = '生成报告';
-            reportBtn.onclick = () => this.handleGenerateReport(record);
-            actionButtons.appendChild(reportBtn);
-            
-            // 导出按钮
-            const exportBtn = document.createElement('button');
-            exportBtn.className = 'action-btn export';
-            exportBtn.textContent = '导出';
-            exportBtn.onclick = () => this.handleExport(record);
-            actionButtons.appendChild(exportBtn);
+            // 查看日志按钮
+            const viewLogBtn = document.createElement('button');
+            viewLogBtn.className = 'action-btn view-log';
+            viewLogBtn.textContent = '查看日志';
+            viewLogBtn.onclick = () => this.handleViewLog(record);
+            actionButtons.appendChild(viewLogBtn);
             
             // 停止按钮（仅在运行中状态显示）
             if (record.status === 'running') {
@@ -2249,6 +2258,271 @@ class VisualAnalysis extends HTMLElement {
     handleExport(record) {
         this.showToast(`正在导出任务数据: ${record.name}`, 'info');
         console.log('导出任务:', record);
+    }
+
+    // 处理查看日志操作
+    async handleViewLog(record) {
+        try {
+            console.log('开始查看日志，任务信息:', record);
+            this.showToast(`正在获取任务日志: ${record.name}`, 'info');
+            
+            // 检查timestamp是否存在
+            if (!record.timestamp) {
+                console.error('任务缺少timestamp字段:', record);
+                this.showToast('任务信息不完整，无法获取日志', 'error');
+                return;
+            }
+            
+            // 调用后端日志接口
+            const result = await window.AppConfig.get('task', 'log', {
+                timestamp: record.timestamp
+            });
+            
+            console.log('获取日志响应:', result);
+            
+            if (result.success) {
+                // 显示日志弹窗
+                this.showLogModal(record.name, result.data, record);
+            } else {
+                console.error('获取日志失败:', result);
+                this.showToast(result.message || '获取日志失败', 'error');
+            }
+        } catch (error) {
+            console.error('获取日志失败:', error);
+            this.showToast('网络错误，获取日志失败', 'error');
+        }
+    }
+    
+    // 显示日志弹窗
+    showLogModal(taskName, logContent, record) {
+        console.log('显示日志弹窗，参数:', { taskName, logContentLength: logContent?.length, record });
+        
+        const modal = this.shadowRoot.getElementById('modalMask');
+        const title = this.shadowRoot.getElementById('modalTitle');
+        const modalBody = this.shadowRoot.getElementById('modalBody');
+        const modalFooter = this.shadowRoot.getElementById('modalFooter');
+        
+        console.log('弹窗元素检查:', { modal: !!modal, title: !!title, modalBody: !!modalBody, modalFooter: !!modalFooter });
+        
+        if (modal && title && modalBody && modalFooter) {
+            title.textContent = `任务日志 - ${taskName}`;
+            
+            // 根据任务状态决定是否显示自动刷新控制
+            const isRunning = record.status === 'running';
+            
+            // 创建日志显示区域
+            modalBody.innerHTML = `
+                <div class="log-container">
+                    <div class="log-header">
+                        <h3>实时日志</h3>
+                        <div class="log-controls">
+                            <button class="btn btn-refresh" id="refreshLogBtn">刷新</button>
+                            ${isRunning ? `
+                                <button class="btn btn-auto-refresh active" id="autoRefreshBtn">自动刷新: 开启</button>
+                                <span class="status-indicator running">任务运行中</span>
+                            ` : `
+                                <span class="status-indicator ${record.status}">任务${this.getStatusText(record.status)}</span>
+                            `}
+                        </div>
+                    </div>
+                    <div class="log-content" id="logContent">
+                        <pre>${logContent}</pre>
+                    </div>
+                </div>
+            `;
+            
+            // 设置弹窗按钮
+            modalFooter.innerHTML = `
+                <button type="button" class="btn btn-cancel" id="closeLogBtn">关闭</button>
+            `;
+            
+            // 存储当前任务信息用于刷新
+            this.currentLogTask = {
+                name: taskName,
+                timestamp: record.timestamp,
+                status: record.status
+            };
+            
+            console.log('设置currentLogTask:', this.currentLogTask);
+            
+            // 绑定事件
+            this.bindLogModalEvents();
+            
+            // 如果任务正在运行，自动开启自动刷新
+            if (isRunning) {
+                this.startLogAutoRefresh();
+            }
+            
+            this.showModal();
+            
+            console.log('日志弹窗显示完成');
+        } else {
+            console.error('弹窗元素缺失');
+            this.showToast('弹窗元素缺失，无法显示日志', 'error');
+        }
+    }
+    
+    // 绑定日志弹窗事件
+    bindLogModalEvents() {
+        // 关闭按钮
+        this.shadowRoot.getElementById('closeLogBtn')?.addEventListener('click', () => {
+            this.hideModal();
+            this.stopLogAutoRefresh();
+        });
+        
+        // 弹窗右上角关闭按钮
+        this.shadowRoot.getElementById('modalClose')?.addEventListener('click', () => {
+            this.hideModal();
+            this.stopLogAutoRefresh();
+        });
+        
+        // 点击遮罩层关闭
+        this.shadowRoot.getElementById('modalMask')?.addEventListener('click', (e) => {
+            if (e.target.id === 'modalMask') {
+                this.hideModal();
+                this.stopLogAutoRefresh();
+            }
+        });
+        
+        // 刷新按钮
+        this.shadowRoot.getElementById('refreshLogBtn')?.addEventListener('click', () => {
+            this.refreshLog();
+        });
+        
+        // 自动刷新按钮
+        this.shadowRoot.getElementById('autoRefreshBtn')?.addEventListener('click', () => {
+            this.toggleLogAutoRefresh();
+        });
+    }
+    
+    // 刷新日志
+    async refreshLog() {
+        if (!this.currentLogTask) return;
+        
+        try {
+            const result = await window.AppConfig.get('task', 'log', {
+                timestamp: this.currentLogTask.timestamp
+            });
+            
+            if (result.success) {
+                const logContent = this.shadowRoot.getElementById('logContent');
+                if (logContent) {
+                    logContent.innerHTML = `<pre>${result.data}</pre>`;
+                    // 滚动到底部
+                    logContent.scrollTop = logContent.scrollHeight;
+                }
+                
+                // 检查任务状态是否变化，如果任务结束则停止自动刷新
+                if (this.logRefreshInterval) {
+                    await this.checkTaskStatus();
+                }
+            }
+        } catch (error) {
+            console.error('刷新日志失败:', error);
+        }
+    }
+    
+    // 检查任务状态
+    async checkTaskStatus() {
+        if (!this.currentLogTask) return;
+        
+        try {
+            // 获取最新的任务信息
+            const result = await window.AppConfig.post('task', 'detail', {
+                timestamp: this.currentLogTask.timestamp
+            });
+            
+            if (result.success && result.data) {
+                const newStatus = result.data.status;
+                const oldStatus = this.currentLogTask.status;
+                
+                // 如果状态从运行中变为其他状态，停止自动刷新
+                if (oldStatus === 'running' && newStatus !== 'running') {
+                    console.log(`任务状态从 ${oldStatus} 变为 ${newStatus}，停止自动刷新`);
+                    this.stopLogAutoRefresh();
+                    
+                    // 更新状态显示
+                    this.updateStatusDisplay(newStatus);
+                    
+                    // 显示完成提示
+                    const statusText = this.getStatusText(newStatus);
+                    this.showToast(`任务${statusText}`, newStatus === 'success' ? 'success' : 'warning');
+                }
+                
+                // 更新当前任务状态
+                this.currentLogTask.status = newStatus;
+            }
+        } catch (error) {
+            console.error('检查任务状态失败:', error);
+        }
+    }
+    
+    // 更新状态显示
+    updateStatusDisplay(status) {
+        const statusIndicator = this.shadowRoot.querySelector('.status-indicator');
+        const autoRefreshBtn = this.shadowRoot.getElementById('autoRefreshBtn');
+        
+        if (statusIndicator) {
+            statusIndicator.className = `status-indicator ${status}`;
+            statusIndicator.textContent = `任务${this.getStatusText(status)}`;
+        }
+        
+        if (autoRefreshBtn && status !== 'running') {
+            autoRefreshBtn.classList.remove('active');
+            autoRefreshBtn.textContent = '自动刷新: 关闭';
+        }
+    }
+    
+    // 切换自动刷新
+    toggleLogAutoRefresh() {
+        const btn = this.shadowRoot.getElementById('autoRefreshBtn');
+        if (!btn) return;
+        
+        if (this.logRefreshInterval) {
+            this.stopLogAutoRefresh();
+            btn.textContent = '自动刷新: 关闭';
+            btn.classList.remove('active');
+        } else {
+            this.startLogAutoRefresh();
+            btn.textContent = '自动刷新: 开启';
+            btn.classList.add('active');
+        }
+    }
+    
+    // 开始自动刷新
+    startLogAutoRefresh() {
+        this.logRefreshInterval = setInterval(() => {
+            this.refreshLog();
+        }, 2000); // 每2秒刷新一次
+    }
+    
+    // 停止自动刷新
+    stopLogAutoRefresh() {
+        if (this.logRefreshInterval) {
+            clearInterval(this.logRefreshInterval);
+            this.logRefreshInterval = null;
+        }
+    }
+    
+    // 隐藏弹窗
+    hideModal() {
+        const modal = this.shadowRoot.getElementById('modalMask');
+        if (modal) {
+            modal.hidden = true;
+            modal.style.display = 'none';
+        }
+        // 清理状态
+        this.currentLogTask = null;
+        this.stopLogAutoRefresh();
+    }
+    
+    // 显示弹窗
+    showModal() {
+        const modal = this.shadowRoot.getElementById('modalMask');
+        if (modal) {
+            modal.hidden = false;
+            modal.style.display = 'flex';
+        }
     }
 
     // 处理停止操作

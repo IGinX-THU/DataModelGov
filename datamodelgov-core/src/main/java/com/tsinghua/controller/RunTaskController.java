@@ -50,6 +50,14 @@ public class RunTaskController {
         return Result.success("任务停止成功");
     }
 
+    @ApiOperation("获取任务日志")
+    @GetMapping("/log")
+    @RequirePermission(Permission.RUN_TASK_READ)
+    public Result<String> getTaskLog(@RequestParam("timestamp") Long timestamp) throws Exception {
+        String log = runTaskService.getTaskLog(timestamp);
+        return Result.success("操作成功", log);
+    }
+
     @ApiOperation("分页查询运行任务")
     @PostMapping("/tasks/query")
     @RequirePermission(Permission.RUN_TASK_READ)

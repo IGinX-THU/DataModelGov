@@ -24,6 +24,7 @@ import org.springframework.stereotype.Service;
 
 import java.io.*;
 import java.lang.reflect.Field;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -374,6 +375,35 @@ public class RunTaskService {
         }
     }
 
+    /**
+     * 获取任务日志
+     * 优先从数据库获取，如果不存在则从文件读取
+     */
+    public String getTaskLog(Long timestamp) throws Exception {
+        try {
+            // 1. 先从数据库获取
+            RunTaskEntity task = queryTask(timestamp);
+            if (task != null && task.getProcessLog() != null && !task.getProcessLog().isEmpty()) {
+                return task.getProcessLog();
+            }
+            
+            // 2. 如果数据库中没有，尝试从文件读取
+            Path taskDir = Paths.get("tasks", String.valueOf(timestamp));
+            Path logFile = taskDir.resolve("task.log");
+            
+            if (Files.exists(logFile)) {
+                byte[] logBytes = Files.readAllBytes(logFile);
+                return new String(logBytes, StandardCharsets.UTF_8);
+            }
+            
+            return "暂无日志信息";
+            
+        } catch (Exception e) {
+            log.error("获取任务日志失败: timestamp={}", timestamp, e);
+            throw new RuntimeException("获取任务日志失败: " + e.getMessage());
+        }
+    }
+
     public void runTask(RunTaskRequest runTaskRequest) {
         try {
             // 0. 校验任务时间段的唯一性
@@ -530,6 +560,8 @@ public class RunTaskService {
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "outputMeasurements", runTaskEntity.getOutputMeasurements(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "status", runTaskEntity.getStatus(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "timestamp", runTaskEntity.getTimestamp(), timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "processId", runTaskEntity.getProcessId(), timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "processLog", runTaskEntity.getProcessLog(), timestamp));
 
         // 批量写入元数据
         iginxClient.getWriteClient().writePoints(metaPoints);
