@@ -61,7 +61,7 @@ public class AssociationRulesService {
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "outputCsvName", associationRulesEntity.getOutputCsvName(), timestamp));
 
         // 批量写入元数据 - 完全参考ModelFileService的写入方式
-        iginxClient.getWriteClient().writePoints(metaPoints);
+        iginxClient.getWriteClient().writePoints(metaPoints.stream().filter(Objects::nonNull).collect(Collectors.toList()));
         log.info("关联规则已保存。名称: {}, 时间戳: {}", associationRulesEntity.getName(), timestamp);
     }
 

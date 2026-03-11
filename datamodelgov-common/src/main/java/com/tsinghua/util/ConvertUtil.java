@@ -101,9 +101,7 @@ public class ConvertUtil {
 
         // 根据值的类型设置对应的值类型
         if (value == null) {
-            byte[] bytes = "".getBytes(StandardCharsets.UTF_8);
-            builder.binaryValue(bytes)
-                    .dataType(DataType.BINARY);
+            return null;
         } else if (value instanceof Boolean) {
             builder.booleanValue((Boolean) value)
                     .dataType(DataType.BOOLEAN);

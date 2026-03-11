@@ -70,7 +70,7 @@ public class ParsingRulesService {
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "updateTime", parsingRulesEntity.getUpdateTime(), timestamp));
 
         // 批量写入元数据 - 完全参考ModelFileService的写入方式
-        iginxClient.getWriteClient().writePoints(metaPoints);
+        iginxClient.getWriteClient().writePoints(metaPoints.stream().filter(Objects::nonNull).collect(Collectors.toList()));
         log.info("解析规则已保存。名称: {}, 时间戳: {}", parsingRulesEntity.getName(), timestamp);
     }
 

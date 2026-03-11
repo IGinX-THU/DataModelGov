@@ -25,6 +25,7 @@ import org.springframework.stereotype.Service;
 
 import java.io.*;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.*;
@@ -239,7 +240,12 @@ public class RunTaskService {
             
             // 2. 检查任务状态
             if (task.getStatus() != TaskStatus.RUNNING) {
-                throw new RuntimeException("任务不在运行状态，无法停止: " + task.getStatus());
+                // 如果任务不在运行状态，直接标记为已停止
+                log.info("任务不在运行状态，直接标记为已停止: {}", task.getStatus());
+                task.setStatus(TaskStatus.STOPPED);
+                saveTask(task);
+                log.info("任务 {} 已标记为已停止", timestamp);
+                return;
             }
             
             // 3. 检查是否有保存的进程ID
@@ -260,19 +266,38 @@ public class RunTaskService {
                 return;
             }
             
-            // 5. 使用进程ID精确终止进程
-            log.info("发现目标进程 PID: {}, 开始精确终止...", processId);
+            // 5. 使用进程ID精确终止进程 - 确保物理释放所有计算资源
+            log.info("发现目标进程 PID: {}, 开始强制终止并释放所有计算资源...", processId);
             
+            // 使用强制终止命令确保彻底释放CPU/内存/显存
             ProcessBuilder killBuilder = new ProcessBuilder();
             killBuilder.command("taskkill", "/f", "/pid", String.valueOf(processId));
             Process killProcess = killBuilder.start();
             int killExitCode = killProcess.waitFor();
             
-            if (killExitCode == 0) {
-                log.info("进程 {} 已被成功终止", processId);
+            // 额外确保：再次尝试终止（处理顽固进程）
+            if (killExitCode != 0) {
+                log.warn("第一次终止失败，尝试更强力的终止方式...");
+                try {
+                    // 尝试使用wmic强制终止
+                    ProcessBuilder wmicKillBuilder = new ProcessBuilder(
+                        "wmic", "process", "where", "ProcessId=" + processId, "delete"
+                    );
+                    Process wmicKillProcess = wmicKillBuilder.start();
+                    int wmicExitCode = wmicKillProcess.waitFor();
+                    log.info("WMIC终止结果: {}", wmicExitCode);
+                } catch (Exception wmicException) {
+                    log.error("WMIC终止失败: {}", wmicException.getMessage());
+                }
+            }
+            
+            // 等待进程完全退出并验证资源释放
+            Thread.sleep(1000); // 等待1秒确保进程完全退出
+            if (!isProcessRunning(processId)) {
+                log.info("进程 {} 已被成功终止，计算资源已释放", processId);
             } else {
-                log.warn("终止进程 {} 失败，退出码: {}", processId, killExitCode);
-                throw new RuntimeException("终止进程失败，退出码: " + killExitCode);
+                log.error("进程 {} 仍在运行，资源可能未完全释放", processId);
+                throw new RuntimeException("进程终止失败");
             }
             
             // 6. 记录停止日志到内存和文件
@@ -571,7 +596,7 @@ public class RunTaskService {
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "processLog", runTaskEntity.getProcessLog(), timestamp));
 
         // 批量写入元数据
-        iginxClient.getWriteClient().writePoints(metaPoints);
+        iginxClient.getWriteClient().writePoints(metaPoints.stream().filter(Objects::nonNull).collect(Collectors.toList()));
         log.info("关联规则已保存。名称: {}, 时间戳: {}", runTaskEntity.getName(), timestamp);
     }
 
@@ -655,11 +680,74 @@ public class RunTaskService {
         Path logFile = taskDir.resolve("task.log");
         
         try {
-            // 获取进程ID
-            Field pidField = process.getClass().getDeclaredField("pid");
-            pidField.setAccessible(true);
-            processId = pidField.getLong(process);
+            // 获取进程ID - 尝试多种方式
+            processId = 0;
             
+            // 方法1: 尝试反射获取pid字段
+            try {
+                Field pidField = process.getClass().getDeclaredField("pid");
+                pidField.setAccessible(true);
+                processId = pidField.getLong(process);
+                log.info("方法1成功获取进程ID: {}", processId);
+            } catch (Exception e1) {
+                log.info("方法1失败: {}", e1.getMessage());
+                
+                // 方法2: 尝试其他可能的字段名
+                try {
+                    Field handleField = process.getClass().getDeclaredField("handle");
+                    handleField.setAccessible(true);
+                    Object handle = handleField.get(process);
+                    log.info("获取到handle: {} (类型: {})", handle, handle.getClass().getName());
+                    
+                    // handle直接就是Long类型的PID
+                    if (handle instanceof Long) {
+                        processId = (Long) handle;
+                        log.info("方法2成功获取进程ID: {}", processId);
+                    } else {
+                        // 如果handle不是Long，尝试从handle中获取PID
+                        try {
+                            Method getPidMethod = handle.getClass().getMethod("getPid");
+                            processId = (Long) getPidMethod.invoke(handle);
+                            log.info("方法2a成功获取进程ID: {}", processId);
+                        } catch (Exception e2a) {
+                            log.info("方法2a失败: {}", e2a.getMessage());
+                            
+                            // 尝试其他方法名
+                            try {
+                                Method getPidMethod2 = handle.getClass().getMethod("pid");
+                                processId = (Long) getPidMethod2.invoke(handle);
+                                log.info("方法2b成功获取进程ID: {}", processId);
+                            } catch (Exception e2b) {
+                                log.info("方法2b失败: {}", e2b.getMessage());
+                            }
+                        }
+                    }
+                } catch (Exception e2) {
+                    log.info("方法2失败: {}", e2.getMessage());
+                }
+            }
+            
+            // 如果都没成功，尝试使用系统命令获取
+            if (processId == 0) {
+                try {
+                    // 在Windows上可以使用wmic获取当前进程的父进程ID
+                    ProcessBuilder psBuilder = new ProcessBuilder("wmic", "process", "where", "name='python3'", "get", "ProcessId");
+                    Process psProcess = psBuilder.start();
+                    BufferedReader psReader = new BufferedReader(new InputStreamReader(psProcess.getInputStream()));
+                    String line;
+                    while ((line = psReader.readLine()) != null) {
+                        if (line.matches("\\d+")) {
+                            processId = Long.parseLong(line.trim());
+                            log.info("方法3成功获取进程ID: {}", processId);
+                            break;
+                        }
+                    }
+                    psProcess.waitFor();
+                } catch (Exception e3) {
+                    log.info("方法3失败: {}", e3.getMessage());
+                }
+            }
+
             // 保存进程ID到任务实体
             runTaskEntity.setProcessId(processId);
             
@@ -690,6 +778,67 @@ public class RunTaskService {
         long finalProcessId = processId;
         CompletableFuture.runAsync(() -> {
             try {
+                // 在监控开始时再次尝试获取进程ID
+                if (finalProcessId == 0) {
+                    log.info("监控开始，尝试重新获取进程ID...");
+                    try {
+                        // 方法1: 直接反射pid字段
+                        Field pidField = process.getClass().getDeclaredField("pid");
+                        pidField.setAccessible(true);
+                        long retryProcessId = pidField.getLong(process);
+                        if (retryProcessId > 0) {
+                            // 保存进程ID到任务实体
+                            runTaskEntity.setProcessId(retryProcessId);
+                            log.info("监控方法1成功获取进程ID: {}", retryProcessId);
+                            processLogBuilder.append("[INFO] 任务进程ID: " + retryProcessId + "\n");
+                        }
+                    } catch (Exception retryException1) {
+                        log.info("监控方法1失败: {}", retryException1.getMessage());
+                        
+                        // 方法2: 尝试通过handle获取
+                        try {
+                            Field handleField = process.getClass().getDeclaredField("handle");
+                            handleField.setAccessible(true);
+                            Object handle = handleField.get(process);
+                            log.info("监控获取到handle: {} (类型: {})", handle, handle.getClass().getName());
+                            
+                            // handle直接就是Long类型的PID
+                            if (handle instanceof Long) {
+                                long retryProcessId2 = (Long) handle;
+                                runTaskEntity.setProcessId(retryProcessId2);
+                                log.info("监控方法2成功获取进程ID: {}", retryProcessId2);
+                                processLogBuilder.append("[INFO] 任务进程ID: " + retryProcessId2 + "\n");
+                            } else {
+                                // 如果handle不是Long，尝试从handle中获取PID
+                                try {
+                                    Method getPidMethod = handle.getClass().getMethod("getPid");
+                                    long retryProcessId2 = (Long) getPidMethod.invoke(handle);
+                                    runTaskEntity.setProcessId(retryProcessId2);
+                                    log.info("监控方法2a成功获取进程ID: {}", retryProcessId2);
+                                    processLogBuilder.append("[INFO] 任务进程ID: " + retryProcessId2 + "\n");
+                                } catch (Exception retryException2a) {
+                                    log.info("监控方法2a失败: {}", retryException2a.getMessage());
+                                    
+                                    // 尝试其他方法名
+                                    try {
+                                        Method getPidMethod2 = handle.getClass().getMethod("pid");
+                                        long retryProcessId2b = (Long) getPidMethod2.invoke(handle);
+                                        runTaskEntity.setProcessId(retryProcessId2b);
+                                        log.info("监控方法2b成功获取进程ID: {}", retryProcessId2b);
+                                        processLogBuilder.append("[INFO] 任务进程ID: " + retryProcessId2b + "\n");
+                                    } catch (Exception retryException2b) {
+                                        log.info("监控方法2b失败: {}", retryException2b.getMessage());
+                                    }
+                                }
+                            }
+                        } catch (Exception retryException2) {
+                            log.info("监控方法2失败: {}", retryException2.getMessage());
+                        }
+                    }
+                } else {
+                    log.info("进程ID已存在: {}", finalProcessId);
+                }
+                
                 // 读取进程输出和错误流，同时记录到内存和文件
                 try (BufferedReader outputReader = new BufferedReader(new InputStreamReader(process.getInputStream()));
                      BufferedReader errorReader = new BufferedReader(new InputStreamReader(process.getErrorStream()))) {
@@ -763,7 +912,15 @@ public class RunTaskService {
                 runTaskEntity.setStatus(TaskStatus.FAILED);
                 String errorLog = "\n进程监控异常: " + e.getMessage() + "\n";
                 runTaskEntity.setProcessLog(processLogBuilder.toString() + errorLog);
-                saveTask(runTaskEntity);
+                
+                // 即使saveTask失败，也要确保状态更新
+                try {
+                    saveTask(runTaskEntity);
+                } catch (Exception saveException) {
+                    log.error("保存任务状态失败: {}", saveException.getMessage(), saveException);
+                    // 如果保存失败，至少记录到日志
+                    log.error("任务状态应该为: {}, 进程ID: {}", TaskStatus.FAILED, finalProcessId);
+                }
             }
         });
         

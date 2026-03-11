@@ -218,7 +218,7 @@ public class ModelFileService {
         metaPoints.add(createFieldPoint(metaBasePath, "timestamp", timestamp, timestamp));
 
         // 批量写入元数据
-        iginxClient.getWriteClient().writePoints(metaPoints);
+        iginxClient.getWriteClient().writePoints(metaPoints.stream().filter(Objects::nonNull).collect(Collectors.toList()));
         log.info("模型元数据已保存。名称: {}, 版本: {}, 时间戳: {}", modelMetaDto.getName(), modelMetaDto.getVersion(), timestamp);
     }
 
