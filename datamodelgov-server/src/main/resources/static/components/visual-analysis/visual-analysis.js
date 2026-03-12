@@ -2662,6 +2662,22 @@ class VisualAnalysis extends HTMLElement {
             targetFrequency: 10 // 默认目标频率：每10秒一个点
         };
 
+        // 找到所有任务的最早时间作为基准时间
+        let baseTime = null;
+        tasksData.forEach((taskData) => {
+            [...Object.values(taskData.inputData || {}), ...Object.values(taskData.outputData || {})].forEach(pathData => {
+                pathData.forEach(point => {
+                    if (point.timestamp && (baseTime === null || point.timestamp < baseTime)) {
+                        baseTime = point.timestamp;
+                    }
+                });
+            });
+        });
+
+        if (baseTime === null) {
+            baseTime = Date.now(); // 如果没有找到时间戳，使用当前时间
+        }
+
         // 为每个任务处理真实数据
         tasksData.forEach((taskData, index) => {
             const task = {
@@ -2669,23 +2685,29 @@ class VisualAnalysis extends HTMLElement {
                 name: taskData.name,
                 samplingInterval: 10, // 默认采样间隔
                 inputData: [],
-                calculationResult: []
+                calculationResult: [],
+                inputPaths: [], // 保存输入路径信息
+                outputPaths: []  // 保存输出路径信息
             };
 
-            // 处理输入数据
+            // 处理输入数据，转换为相对时间并保存路径信息
             if (taskData.inputData) {
                 Object.keys(taskData.inputData).forEach(path => {
+                    task.inputPaths.push(path); // 保存路径名
                     taskData.inputData[path].forEach(point => {
-                        task.inputData.push([point.timestamp, point.value]);
+                        const relativeTime = (point.timestamp - baseTime) / 1000; // 转换为秒
+                        task.inputData.push([relativeTime, point.value]);
                     });
                 });
             }
 
-            // 处理输出数据
+            // 处理输出数据，转换为相对时间并保存路径信息
             if (taskData.outputData) {
                 Object.keys(taskData.outputData).forEach(path => {
+                    task.outputPaths.push(path); // 保存路径名
                     taskData.outputData[path].forEach(point => {
-                        task.calculationResult.push([point.timestamp, point.value]);
+                        const relativeTime = (point.timestamp - baseTime) / 1000; // 转换为秒
+                        task.calculationResult.push([relativeTime, point.value]);
                     });
                 });
             }
@@ -2693,7 +2715,7 @@ class VisualAnalysis extends HTMLElement {
             comparisonData.tasks.push(task);
         });
 
-        // 生成统一的时间点用于X轴
+        // 生成统一的相对时间点用于X轴
         const allTimePoints = new Set();
         comparisonData.tasks.forEach(task => {
             task.inputData.forEach(point => allTimePoints.add(point[0]));
@@ -2878,51 +2900,92 @@ class VisualAnalysis extends HTMLElement {
         const colors = ['#1890ff', '#52c41a', '#faad14', '#f5222d', '#722ed1', '#13c2c2'];
         let colorIndex = 0;
 
-        // 为每个任务生成两条曲线：输入数据曲线和计算结果曲线
+        // 为每个任务生成曲线，按路径分组并区分输入输出
+        const pathSeriesMap = {}; // 用于按路径分组系列
+        
         comparisonData.tasks.forEach(task => {
-            const taskColor = colors[colorIndex % colors.length];
+            const taskColor = colors[comparisonData.tasks.indexOf(task) % colors.length];
             
-            // 输入数据曲线（虚线）
-            if (this.curveVisibility.input) {
+            // 处理输入数据曲线（虚线）- 按路径分组
+            if (this.curveVisibility.input && task.inputData && task.inputPaths) {
+                task.inputPaths.forEach((pathName, pathIndex) => {
+                    const pathData = task.inputData.filter((point, index) => 
+                        Math.floor(index / (task.inputData.length / task.inputPaths.length)) === pathIndex
+                    );
+                    
+                    const seriesKey = `${pathName}_input_${task.name}`;
+                    if (!pathSeriesMap[seriesKey]) {
+                        pathSeriesMap[seriesKey] = {
+                            data: pathData,
+                            color: taskColor,
+                            pathName: pathName,
+                            taskName: task.name,
+                            type: 'input'
+                        };
+                    }
+                });
+            }
+
+            // 处理输出数据曲线（实线）- 按路径分组
+            if (this.curveVisibility.output && task.calculationResult && task.outputPaths) {
+                task.outputPaths.forEach((pathName, pathIndex) => {
+                    const pathData = task.calculationResult.filter((point, index) => 
+                        Math.floor(index / (task.calculationResult.length / task.outputPaths.length)) === pathIndex
+                    );
+                    
+                    const seriesKey = `${pathName}_output_${task.name}`;
+                    if (!pathSeriesMap[seriesKey]) {
+                        pathSeriesMap[seriesKey] = {
+                            data: pathData,
+                            color: taskColor,
+                            pathName: pathName,
+                            taskName: task.name,
+                            type: 'output'
+                        };
+                    }
+                });
+            }
+        });
+
+        // 生成系列数据
+        Object.values(pathSeriesMap).forEach(seriesData => {
+            if (seriesData.type === 'input') {
+                // 输入数据曲线（虚线）
                 series.push({
-                    name: `${task.name} - 输入数据`,
+                    name: `${seriesData.pathName} (${seriesData.taskName}输入)`,
                     type: 'line',
-                    data: task.inputData,
+                    data: seriesData.data,
                     smooth: true,
                     symbol: 'circle',
                     symbolSize: 3,
                     lineStyle: {
                         width: 2,
-                        color: taskColor,
+                        color: seriesData.color,
                         type: 'dashed'
                     },
                     itemStyle: {
-                        color: taskColor
+                        color: seriesData.color
                     }
                 });
-            }
-
-            // 计算结果曲线（实线）
-            if (this.curveVisibility.output) {
+            } else {
+                // 输出数据曲线（实线）
                 series.push({
-                    name: `${task.name} - 计算结果`,
+                    name: `${seriesData.pathName} (${seriesData.taskName}输出)`,
                     type: 'line',
-                    data: task.calculationResult,
+                    data: seriesData.data,
                     smooth: true,
                     symbol: 'diamond',
                     symbolSize: 3,
                     lineStyle: {
                         width: 2,
-                        color: taskColor,
+                        color: seriesData.color,
                         type: 'solid'
                     },
                     itemStyle: {
-                        color: taskColor
+                        color: seriesData.color
                     }
                 });
             }
-
-            colorIndex++;
         });
 
         const option = {
@@ -2940,7 +3003,7 @@ class VisualAnalysis extends HTMLElement {
                 formatter: function(params) {
                     if (!params || params.length === 0) return '';
                     const time = params[0].value[0];
-                    let result = `相对时间: ${time}s<br/>`;
+                    let result = `相对时间: ${time.toFixed(1)}s<br/>`;
                     params.forEach(param => {
                         result += `${param.seriesName}: ${(param.value[1] || 0).toFixed(2)}<br/>`;
                     });
