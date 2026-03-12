@@ -28,6 +28,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import org.xhtmlrenderer.pdf.ITextRenderer;
+import org.apache.pdfbox.pdmodel.PDDocument;
 import java.io.*;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -1050,7 +1052,7 @@ public class RunTaskService {
     }
 
     /**
-     * 直接生成PDF文件，不使用复杂的服务
+     * 使用Flying Saucer进行专业的HTML转PDF - Java 8兼容的经典方案
      */
     private void convertHtmlToPdf(Path htmlFile, Path pdfFile) throws Exception {
         try {
@@ -1070,19 +1072,31 @@ public class RunTaskService {
             // 确保HTML是完整的格式
             htmlContent = ensureCompleteHtml(htmlContent);
             
-            // 使用自定义PDF生成
-            createCustomPdf(htmlContent, pdfFile);
+            // 使用Flying Saucer转换HTML为PDF
+            ITextRenderer renderer = new ITextRenderer();
             
-            log.info("生成PDF文件成功: {} -> {}", htmlFile, pdfFile);
+            // 设置文档内容
+            renderer.setDocumentFromString(htmlContent);
+            
+            // 布局文档
+            renderer.layout();
+            
+            // 创建PDF文件
+            try (FileOutputStream fos = new FileOutputStream(pdfFile.toFile())) {
+                renderer.createPDF(fos);
+            }
+            
+            log.info("使用Flying Saucer转换HTML转PDF成功: {} -> {}", htmlFile, pdfFile);
             
         } catch (Exception e) {
-            log.error("生成PDF失败: {}", e.getMessage());
-            // 如果失败，至少创建一个空文件
+            log.error("Flying Saucer转换失败，使用备用方案: {}", e.getMessage());
+            // 如果Flying Saucer失败，使用自定义PDF生成
             try {
-                Files.createDirectories(pdfFile.getParent());
-                Files.write(pdfFile, "PDF生成失败，请查看HTML文件".getBytes(StandardCharsets.UTF_8));
+                String htmlContent = new String(Files.readAllBytes(htmlFile), StandardCharsets.UTF_8);
+                createCustomPdf(htmlContent, pdfFile);
             } catch (Exception ignored) {
-                // 忽略
+                // 最终备用方案
+                createSimplePdf(htmlFile, pdfFile);
             }
         }
     }
@@ -1167,14 +1181,14 @@ public class RunTaskService {
     private String ensureCompleteHtml(String html) {
         // 如果HTML不完整，添加必要的结构
         if (!html.contains("<!DOCTYPE")) {
-            html = "<!DOCTYPE html>\n" + html;
+            html = "<!DOCTYPE html PUBLIC \"-//W3C//DTD HTML 4.01 Transitional//EN\">\n" + html;
         }
         
         if (!html.contains("<html")) {
-            html = html.replaceFirst("<!DOCTYPE html[^>]*>", "<!DOCTYPE html>");
-            html = html.replace("<!DOCTYPE html>", 
-                "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"UTF-8\">\n<title>任务分析报告</title>\n" +
-                "<style>\n" +
+            html = html.replaceFirst("<!DOCTYPE html[^>]*>", "<!DOCTYPE html PUBLIC \"-//W3C//DTD HTML 4.01 Transitional//EN\">");
+            html = html.replace("<!DOCTYPE html PUBLIC \"-//W3C//DTD HTML 4.01 Transitional//EN\">", 
+                "<!DOCTYPE html PUBLIC \"-//W3C//DTD HTML 4.01 Transitional//EN\">\n<html>\n<head>\n<meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\"></meta>\n<title>任务分析报告</title>\n" +
+                "<style type=\"text/css\">\n" +
                 "body { font-family: Arial, sans-serif; margin: 20px; }\n" +
                 "h1 { color: #333; font-size: 24px; }\n" +
                 "h2 { color: #666; font-size: 20px; }\n" +

@@ -3952,135 +3952,47 @@ class LocalPDFGenerator {
 
     // 生成HTML内容用于打印
     generateHTML() {
-        let html = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <title>实验报告</title>
-            <style>
-                @page {
-                    size: A4;
-                    margin: 1cm;
-                }
-                body {
-                    font-family: 'SimSun', '宋体', serif;
-                    font-size: ${this.fontSize}pt;
-                    line-height: 1.5;
-                    margin: 0;
-                    padding: 0;
-                }
-                .header {
-                    text-align: center;
-                    font-size: 14pt;
-                    font-weight: bold;
-                    margin-bottom: 30px;
-                    border-bottom: 2px solid #333;
-                    padding-bottom: 10px;
-                }
-                .footer {
-                    text-align: center;
-                    font-size: 10pt;
-                    margin-top: 30px;
-                    border-top: 1px solid #333;
-                    padding-top: 10px;
-                }
-                .title {
-                    text-align: center;
-                    font-size: 18pt;
-                    font-weight: bold;
-                    margin: 20px 0;
-                }
-                .subtitle {
-                    font-size: 14pt;
-                    font-weight: bold;
-                    margin: 15px 0 10px 0;
-                }
-                .content {
-                    margin: 20px;
-                }
-                .table {
-                    width: 100%;
-                    border-collapse: collapse;
-                    margin: 15px 0;
-                }
-                .table th, .table td {
-                    border: 1px solid #333;
-                    padding: 8px;
-                    text-align: left;
-                }
-                .table th {
-                    background-color: #f0f0f0;
-                    font-weight: bold;
-                }
-                .image-placeholder {
-                    border: 1px dashed #666;
-                    padding: 20px;
-                    text-align: center;
-                    margin: 15px 0;
-                    background-color: #f9f9f9;
-                }
-                .report-image {
-                    max-width: 100%;
-                    height: auto;
-                    margin: 15px 0;
-                    border: 1px solid #ddd;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                }
-                .image-title {
-                    font-weight: bold;
-                    margin: 10px 0 5px 0;
-                    text-align: center;
-                }
-                .watermark {
-                    position: fixed;
-                    top: 50%;
-                    left: 50%;
-                    transform: translate(-50%, -50%) rotate(-45deg);
-                    font-size: 48pt;
-                    color: #ccc;
-                    opacity: 0.1;
-                    z-index: -1;
-                }
-                .separator {
-                    border-top: 1px solid #666;
-                    margin: 20px 0;
-                }
-                @media print {
-                    .watermark {
-                        position: fixed;
-                        top: 50%;
-                        left: 50%;
-                        transform: translate(-50%, -50%) rotate(-45deg);
-                        font-size: 48pt;
-                        color: #ccc;
-                        opacity: 0.1;
-                        z-index: -1;
-                    }
-                }
-            </style>
-        </head>
-        <body>
-            <div class="watermark">清华大学大数据系统软件国家工程研究中心</div>
-            <div class="header">清华大学大数据系统软件国家工程研究中心 - 实验报告</div>
-            <div class="content">
-        `;
+        let html = '<!DOCTYPE HTML>' +
+        '<html>' +
+        '<head>' +
+        '<meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></meta>' +
+        '<title>实验报告</title>' +
+        '<style type="text/css">' +
+        'body { font-family: SimSun, 宋体, serif; font-size: ' + this.fontSize + 'pt; line-height: 1.5; margin: 0; padding: 0; }' +
+        '.header { text-align: center; font-size: 14pt; font-weight: bold; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 10px; }' +
+        '.footer { text-align: center; font-size: 10pt; margin-top: 30px; border-top: 1px solid #333; padding-top: 10px; }' +
+        '.title { text-align: center; font-size: 18pt; font-weight: bold; margin: 20px 0; }' +
+        '.subtitle { font-size: 14pt; font-weight: bold; margin: 15px 0 10px 0; }' +
+        '.content { padding: 20px; }' +
+        '.section { margin: 20px 0; }' +
+        '.text { margin: 10px 0; text-align: justify; }' +
+        '.table { width: 100%; border-collapse: collapse; margin: 10px 0; }' +
+        '.table th, .table td { border: 1px solid #ddd; padding: 8px; text-align: left; }' +
+        '.table th { background-color: #f2f2f2; font-weight: bold; }' +
+        '.image-title { font-weight: bold; margin: 10px 0 5px 0; }' +
+        '.report-image { max-width: 100%; height: auto; }' +
+        '.separator { height: 1px; background-color: #ccc; margin: 20px 0; }' +
+        '</style>' +
+        '</head>' +
+        '<body>' +
+        '<div class="header">实验报告</div>' +
+        '<div class="content">';
 
         // 添加内容
         this.content.forEach(item => {
             switch(item.type) {
                 case 'text':
                     if (item.bold) {
-                        html += `<div style="font-weight: bold; font-size: ${item.fontSize}pt; margin: 5px 0;">${item.text}</div>`;
+                        html += '<div style="font-weight: bold; font-size: ' + item.fontSize + 'pt; margin: 5px 0;">' + item.text + '</div>';
                     } else {
-                        html += `<div style="font-size: ${item.fontSize}pt; margin: 5px 0;">${item.text}</div>`;
+                        html += '<div style="font-size: ' + item.fontSize + 'pt; margin: 5px 0;">' + item.text + '</div>';
                     }
                     break;
                 case 'title':
-                    html += `<div class="title">${item.text}</div>`;
+                    html += '<div class="title">' + item.text + '</div>';
                     break;
                 case 'subtitle':
-                    html += `<div class="subtitle">${item.text}</div>`;
+                    html += '<div class="subtitle">' + item.text + '</div>';
                     break;
                 case 'table':
                     // 生成HTML表格
@@ -4088,14 +4000,14 @@ class LocalPDFGenerator {
                     // 表头
                     html += '<tr>';
                     item.headers.forEach(header => {
-                        html += `<th>${header}</th>`;
+                        html += '<th>' + header + '</th>';
                     });
                     html += '</tr>';
                     // 数据行
                     item.data.forEach(row => {
                         html += '<tr>';
                         row.forEach(cell => {
-                            html += `<td>${cell}</td>`;
+                            html += '<td>' + cell + '</td>';
                         });
                         html += '</tr>';
                     });
@@ -4103,24 +4015,23 @@ class LocalPDFGenerator {
                     break;
                 case 'image':
                     // 生成图片
-                    html += `<div class="image-title">${item.title}</div>`;
-                    html += `<img src="${item.imageData}" alt="${item.description}" class="report-image" />`;
-                    html += `<div style="text-align: center; font-size: 10pt; color: #666; margin: 5px 0;">${item.description}</div>`;
+                    html += '<div class="image-title">' + item.title + '</div>';
+                    html += '<img src="' + item.imageData + '" alt="' + item.description + '" class="report-image"></img>';
+                    html += '<div style="text-align: center; font-size: 10pt; color: #666; margin: 5px 0;">' + item.description + '</div>';
                     break;
                 case 'separator':
-                    html += `<div class="separator"></div>`;
+                    html += '<div class="separator"></div>';
                     break;
                 case 'newPage':
-                    html += `<div style="page-break-before: always;"></div>`;
+                    html += '<div style="page-break-before: always;"></div>';
                     break;
             }
         });
 
-        html += `
-            </div>
-            <div class="footer">实验报告生成时间: ${new Date().toLocaleString()}</div>
-        </body>
-        </html>`;
+        html += '</div>' +
+        '<div class="footer">实验报告生成时间: ' + new Date().toLocaleString() + '</div>' +
+        '</body>' +
+        '</html>';
 
         return html;
     }

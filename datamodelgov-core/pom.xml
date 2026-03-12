@@ -54,6 +54,19 @@
             <artifactId>logback-classic</artifactId>
         </dependency>
 
+        <!-- HTML转PDF依赖 - Java 8兼容的经典组合 -->
+        <dependency>
+            <groupId>org.xhtmlrenderer</groupId>
+            <artifactId>flying-saucer-pdf</artifactId>
+            <version>9.0.9</version>
+        </dependency>
+        
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>2.0.24</version>
+        </dependency>
+
     </dependencies>
 
     <build>
