@@ -320,7 +320,10 @@ class AssociationRules extends HTMLElement {
         this.shadowRoot.getElementById('exportBtn')?.addEventListener('click', () => this.exportRules());
 
         // 模态框事件
-        this.shadowRoot.getElementById('modalClose')?.addEventListener('click', () => this.hideModal());
+        this.shadowRoot.getElementById('modalClose')?.addEventListener('click', () => {
+            console.log('🔴 右上角关闭按钮被点击');
+            this.hideModal();
+        });
         this.shadowRoot.getElementById('cancelBtn')?.addEventListener('click', () => this.hideModal());
         this.shadowRoot.getElementById('saveBtn')?.addEventListener('click', () => this.saveRule());
         
@@ -338,6 +341,7 @@ class AssociationRules extends HTMLElement {
         // Close modal when clicking on the mask
         this.shadowRoot.getElementById('modalMask')?.addEventListener('click', (e) => {
             if (e.target === this.shadowRoot.getElementById('modalMask')) {
+                console.log('🔴 点击遮罩层关闭');
                 this.hideModal();
             }
         });
@@ -644,6 +648,7 @@ class AssociationRules extends HTMLElement {
     }
 
     hideModal() {
+        console.log('🚪 hideModal被调用，停止轮询');
         const modal = this.shadowRoot.getElementById('modalMask');
         if (modal) {
             modal.hidden = true;
@@ -660,6 +665,8 @@ class AssociationRules extends HTMLElement {
             this.selectedDataSource = null;
             this.selectedModel = null;
         }
+        // 停止日志轮询
+        this.stopInModalAutoRefresh();
     }
 
     async saveRule() {
@@ -827,7 +834,10 @@ class AssociationRules extends HTMLElement {
                 const id = event.target.dataset.id;
 
                 if (action === 'close') {
+                    console.log('🔴 模态框关闭按钮被点击');
                     this.hideModal();
+                    // 停止日志轮询
+                    this.stopInModalAutoRefresh();
                     // Restore previous state
                     modalTitle.textContent = previousState.title;
                     modalBody.innerHTML = previousState.body;
@@ -1798,11 +1808,11 @@ class AssociationRules extends HTMLElement {
                     <div class="form-row">
                         <div class="form-group">
                             <label for="startTime">开始时间</label>
-                            <input type="datetime-local" id="startTime" name="startTime" required value="${new Date().toISOString().split('T')[0]}" step="1">
+                            <input type="datetime-local" id="startTime" name="startTime" required value="${new Date().toISOString().slice(0, 16)}" step="1">
                         </div>
                         <div class="form-group">
                             <label for="endTime">结束时间</label>
-                            <input type="datetime-local" id="endTime" name="endTime" required value="${new Date().toISOString().split('T')[0]}" step="1">
+                            <input type="datetime-local" id="endTime" name="endTime" required value="${new Date().toISOString().slice(0, 16)}" step="1">
                         </div>
                     </div>
                 </form>
@@ -2525,12 +2535,14 @@ class AssociationRules extends HTMLElement {
     bindLogModalEvents() {
         // 关闭按钮
         this.shadowRoot.getElementById('logCloseBtn')?.addEventListener('click', () => {
+            console.log('🔴 点击关闭按钮');
             this.hideLogModal();
             this.stopLogAutoRefresh();
         });
         
         // 弹窗右上角关闭按钮
         this.shadowRoot.getElementById('logModalClose')?.addEventListener('click', () => {
+            console.log('🔴 点击右上角关闭按钮');
             this.hideLogModal();
             this.stopLogAutoRefresh();
         });
@@ -2538,6 +2550,7 @@ class AssociationRules extends HTMLElement {
         // 点击遮罩层关闭
         this.shadowRoot.getElementById('logModalMask')?.addEventListener('click', (e) => {
             if (e.target.id === 'logModalMask') {
+                console.log('🔴 点击遮罩层关闭');
                 this.hideLogModal();
                 this.stopLogAutoRefresh();
             }
@@ -2556,10 +2569,12 @@ class AssociationRules extends HTMLElement {
     
     // 隐藏日志弹窗
     hideLogModal() {
+        console.log('🚪 隐藏日志弹窗被调用');
         const modal = this.shadowRoot.getElementById('logModalMask');
         if (modal) {
             modal.hidden = true;
             modal.style.display = 'none';
+            console.log('👁️ 弹窗已隐藏');
         }
         // 清理状态
         this.currentLogTask = null;
@@ -2661,18 +2676,28 @@ class AssociationRules extends HTMLElement {
     
     // 开始自动刷新
     startLogAutoRefresh() {
-        if (this.logRefreshInterval) return;
+        console.log('🚀 开始自动刷新被调用，当前interval:', this.logRefreshInterval);
+        if (this.logRefreshInterval) {
+            console.log('⚠️ 自动刷新已在运行，跳过启动');
+            return;
+        }
         
         this.logRefreshInterval = setInterval(() => {
+            console.log('🔄 执行自动刷新');
             this.refreshLog();
-        }, 2000); // 每2秒刷新一次
+        }, 5000); // 每5秒刷新一次
+        console.log('✅ 自动刷新已启动，interval ID:', this.logRefreshInterval);
     }
     
     // 停止自动刷新
     stopLogAutoRefresh() {
+        console.log('🛑 停止自动刷新被调用，当前interval:', this.logRefreshInterval);
         if (this.logRefreshInterval) {
             clearInterval(this.logRefreshInterval);
             this.logRefreshInterval = null;
+            console.log('✅ 自动刷新已停止');
+        } else {
+            console.log('⚠️ 没有运行中的自动刷新');
         }
     }
     

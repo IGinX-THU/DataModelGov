@@ -2499,7 +2499,7 @@ class VisualAnalysis extends HTMLElement {
     startLogAutoRefresh() {
         this.logRefreshInterval = setInterval(() => {
             this.refreshLog();
-        }, 2000); // 每2秒刷新一次
+        }, 5000); // 每5秒刷新一次
     }
     
     // 停止自动刷新
