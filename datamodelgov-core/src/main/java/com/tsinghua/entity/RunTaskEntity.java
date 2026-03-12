@@ -15,6 +15,10 @@ public class RunTaskEntity {
     private Long ruleId;
     @ApiModelProperty(value = "规则名称")
     private String ruleName;
+    @ApiModelProperty(value = "目标模型")
+    private String modelName;
+    @ApiModelProperty(value = "模型版本号")
+    private String modelVersion;
     @ApiModelProperty(value = "输入测点")
     private String inputMeasurements;
     @ApiModelProperty(value = "输出测点")

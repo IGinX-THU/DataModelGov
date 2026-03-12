@@ -595,6 +595,8 @@ public class RunTaskService {
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "timestamp", runTaskEntity.getTimestamp(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "processId", runTaskEntity.getProcessId(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "processLog", runTaskEntity.getProcessLog(), timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "modelName", runTaskEntity.getModelName(), timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "modelVersion", runTaskEntity.getModelVersion(), timestamp));
 
         // 批量写入元数据
         iginxClient.getWriteClient().writePoints(metaPoints.stream().filter(Objects::nonNull).collect(Collectors.toList()));

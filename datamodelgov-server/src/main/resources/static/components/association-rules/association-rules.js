@@ -1811,6 +1811,17 @@ class AssociationRules extends HTMLElement {
                     
                     <div class="form-row">
                         <div class="form-group">
+                            <label for="modelName">模型名称</label>
+                            <input type="text" id="modelName" name="modelName" readonly value="${rule.targetModel || 'N/A'}">
+                        </div>
+                        <div class="form-group">
+                            <label for="modelVersion">版本号</label>
+                            <input type="text" id="modelVersion" name="modelVersion" readonly value="${rule.version || 'N/A'}">
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
                             <label for="startTime">开始时间</label>
                             <input type="datetime-local" id="startTime" name="startTime" required value="${new Date().toISOString().slice(0, 16)}" step="1">
                         </div>
@@ -1861,6 +1872,8 @@ class AssociationRules extends HTMLElement {
         const runName = this.shadowRoot.getElementById('runName')?.value.trim();
         const startTime = this.shadowRoot.getElementById('startTime')?.value;
         const endTime = this.shadowRoot.getElementById('endTime')?.value;
+        const modelName = this.shadowRoot.getElementById('modelName')?.value;
+        const modelVersion = this.shadowRoot.getElementById('modelVersion')?.value;
         
         if (!runName) {
             this.showToast('请输入运行任务名称', 'error');
@@ -1884,6 +1897,8 @@ class AssociationRules extends HTMLElement {
                 const requestBody = {
                     name: runName, // 使用用户输入的运行任务名称
                     ruleName: rule.ruleName, // 添加规则名称字段
+                    modelName: modelName, // 添加模型名称字段
+                    modelVersion: modelVersion, // 添加版本号字段
                     startTime: new Date(startTime).getTime(),
                     endTime: new Date(endTime).getTime(),
                     ruleId: rule.createTime // 使用createTime作为ruleId

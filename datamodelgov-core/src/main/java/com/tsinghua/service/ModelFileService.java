@@ -204,62 +204,22 @@ public class ModelFileService {
         String metaBasePath = META_PREFIX;
 
         // 创建各个字段的数据点
-        metaPoints.add(createFieldPoint(metaBasePath, "name", modelMetaDto.getName(), timestamp));
-        metaPoints.add(createFieldPoint(metaBasePath, "version", safeVersion, timestamp));
-        metaPoints.add(createFieldPoint(metaBasePath, "fileName", modelMetaDto.getFileName(), timestamp));
-        metaPoints.add(createFieldPoint(metaBasePath, "fileSize", modelMetaDto.getFileSize(), timestamp));
-        metaPoints.add(createFieldPoint(metaBasePath, "chunkCount", modelMetaDto.getChunkCount(), timestamp));
-        metaPoints.add(createFieldPoint(metaBasePath, "storagePath", modelMetaDto.getStoragePath(), timestamp));
-        metaPoints.add(createFieldPoint(metaBasePath, "fileMd5", modelMetaDto.getFileMd5(), timestamp));
-        metaPoints.add(createFieldPoint(metaBasePath, "author", modelMetaDto.getAuthor(), timestamp));
-        metaPoints.add(createFieldPoint(metaBasePath, "scene", modelMetaDto.getScene(), timestamp));
-        metaPoints.add(createFieldPoint(metaBasePath, "inputs", modelMetaDto.getInputs(), timestamp));
-        metaPoints.add(createFieldPoint(metaBasePath, "outputs", modelMetaDto.getOutputs(), timestamp));
-        metaPoints.add(createFieldPoint(metaBasePath, "timestamp", timestamp, timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "name", modelMetaDto.getName(), timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "version", safeVersion, timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "fileName", modelMetaDto.getFileName(), timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "fileSize", modelMetaDto.getFileSize(), timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "chunkCount", modelMetaDto.getChunkCount(), timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "storagePath", modelMetaDto.getStoragePath(), timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "fileMd5", modelMetaDto.getFileMd5(), timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "author", modelMetaDto.getAuthor(), timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "scene", modelMetaDto.getScene(), timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "inputs", modelMetaDto.getInputs(), timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "outputs", modelMetaDto.getOutputs(), timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "timestamp", timestamp, timestamp));
 
         // 批量写入元数据
         iginxClient.getWriteClient().writePoints(metaPoints.stream().filter(Objects::nonNull).collect(Collectors.toList()));
         log.info("模型元数据已保存。名称: {}, 版本: {}, 时间戳: {}", modelMetaDto.getName(), modelMetaDto.getVersion(), timestamp);
-    }
-
-    /**
-     * 创建字段数据点
-     */
-    private Point createFieldPoint(String basePath, String fieldName, Object value, long timestamp) {
-        String measurement = String.format("%s.%s", basePath, fieldName);
-
-        Point.Builder builder = Point.builder()
-                .measurement(measurement)
-                .key(timestamp);
-
-        // 根据值的类型设置对应的值类型
-        if (value == null) {
-            // 将字符串转换为字节数组存储
-            byte[] bytes = "".getBytes(StandardCharsets.UTF_8);
-            builder.binaryValue(bytes)
-                    .dataType(DataType.BINARY);
-        } else if (value instanceof Boolean) {
-            builder.booleanValue((Boolean) value)
-                    .dataType(DataType.BOOLEAN);
-        } else if (value instanceof Integer) {
-            builder.intValue(((Integer) value))
-                    .dataType(DataType.INTEGER);
-        } else if (value instanceof Long) {
-            builder.longValue((Long) value)
-                    .dataType(DataType.LONG);
-        } else if (value instanceof Float) {
-            builder.floatValue(((Float) value))
-                    .dataType(DataType.FLOAT);
-        } else if (value instanceof Double) {
-            builder.doubleValue(((Double) value))
-                    .dataType(DataType.DOUBLE);
-        } else {
-            // 默认转换为字节数组存储
-            builder.binaryValue(value.toString().getBytes(StandardCharsets.UTF_8))
-                    .dataType(DataType.BINARY);
-        }
-
-        return builder.build();
     }
 
     public ModelMetaEntity queryMeta(String name, String version) {

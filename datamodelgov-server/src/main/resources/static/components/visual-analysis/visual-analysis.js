@@ -1785,11 +1785,17 @@ class VisualAnalysis extends HTMLElement {
             pdfGenerator.addText(`任务ID: ${record.id}`, 12);
             pdfGenerator.addText(`任务名称: ${record.name}`, 12);
             pdfGenerator.addText(`当前状态: ${this.getStatusText(record.status)}`, 12);
-            pdfGenerator.addText(`数值: ${record.value || 'N/A'}`, 12);
-            pdfGenerator.addText(`时间戳: ${new Date(record.timestamp).toLocaleString()}`, 12);
+            pdfGenerator.addText(`规则名称: ${record.ruleName || 'N/A'}`, 12);
+            pdfGenerator.addText(`开始时间: ${record.startTime ? new Date(record.startTime).toLocaleString() : 'N/A'}`, 12);
+            pdfGenerator.addText(`结束时间: ${record.endTime ? new Date(record.endTime).toLocaleString() : 'N/A'}`, 12);
             
-            // 3. 添加当前曲线图
-            pdfGenerator.addSubtitle('二、曲线图分析');
+            // 3. 模型信息部分
+            pdfGenerator.addSubtitle('二、模型信息');
+            pdfGenerator.addText(`模型名称: ${record.modelName || 'N/A'}`, 12);
+            pdfGenerator.addText(`版本号: ${record.modelVersion || 'N/A'}`, 12);
+            
+            // 4. 添加当前曲线图
+            pdfGenerator.addSubtitle('三、曲线图分析');
             const chartElement = this.shadowRoot.getElementById('analysisChart');
             if (chartElement && this.chart) {
                 const chartImage = this.chart.getDataURL({
@@ -1802,8 +1808,8 @@ class VisualAnalysis extends HTMLElement {
                 pdfGenerator.addImagePlaceholder('曲线图', '当前任务的的趋势分析图表');
             }
             
-            // 4. 数据视图
-            pdfGenerator.addSubtitle('三、数据视图');
+            // 5. 数据视图
+            pdfGenerator.addSubtitle('四、数据视图');
             const allData = [];
             const pathInfo = {}; // 存储测点信息
             
@@ -1873,8 +1879,8 @@ class VisualAnalysis extends HTMLElement {
                 pdfGenerator.addText('暂无数据', 12);
             }
             
-            // 5. 统计分析
-            pdfGenerator.addSubtitle('四、统计分析');
+            // 6. 统计分析
+            pdfGenerator.addSubtitle('五、统计分析');
             if (this.currentChartData && this.currentChartData.data) {
                 const statistics = this.calculateRealDataStatistics(this.currentChartData.data);
                 const statsHeaders = ['统计指标', '数值', '说明'];
@@ -3277,6 +3283,9 @@ class VisualAnalysis extends HTMLElement {
                     startTime: task.startTime,
                     endTime: task.endTime,
                     ruleId: task.ruleId,
+                    ruleName: task.ruleName,
+                    modelName: task.modelName,
+                    modelVersion: task.modelVersion,
                     inputMeasurements: task.inputMeasurements,
                     outputMeasurements: task.outputMeasurements,
                     time: new Date(task.timestamp).toLocaleString('zh-CN')
@@ -3778,9 +3787,6 @@ class LocalPDFGenerator {
         
         // 等待内容加载完成后触发打印
         printWindow.onload = () => {
-            // 显示提示信息
-            alert('请在打印对话框中选择"保存为PDF"来下载报告');
-            
             // 触发打印对话框，用户可以选择"保存为PDF"
             printWindow.print();
             
