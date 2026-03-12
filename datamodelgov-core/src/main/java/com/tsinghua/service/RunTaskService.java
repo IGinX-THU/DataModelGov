@@ -199,7 +199,7 @@ public class RunTaskService {
         try {
             // 构建查询SQL：检查是否存在完全相同的任务
             String sql = String.format(
-                "SELECT COUNT(1) FROM %s WHERE ruleId = %d AND startTime = %d AND endTime = %d AND name = '%s';",
+                "SELECT COUNT(1) FROM %s WHERE ruleId = %d AND startTime = %d AND endTime = %d OR name = '%s';",
                 DATA_PREFIX,
                 request.getRuleId(),
                 request.getStartTime(),
@@ -431,7 +431,7 @@ public class RunTaskService {
         try {
             // 0. 校验任务时间段的唯一性
             if (!validateTaskUniqueness(runTaskRequest)) {
-                throw new RuntimeException("该规则在指定时间段已存在运行任务，请选择其他时间段");
+                throw new RuntimeException("任务已存在！");
             }
 
             // 1. 查询关联规则信息
@@ -588,6 +588,7 @@ public class RunTaskService {
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "startTime", runTaskEntity.getStartTime(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "endTime", runTaskEntity.getEndTime(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "ruleId", runTaskEntity.getRuleId(), timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "ruleName", runTaskEntity.getRuleName(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "inputMeasurements", runTaskEntity.getInputMeasurements(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "outputMeasurements", runTaskEntity.getOutputMeasurements(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "status", runTaskEntity.getStatus(), timestamp));
@@ -597,7 +598,7 @@ public class RunTaskService {
 
         // 批量写入元数据
         iginxClient.getWriteClient().writePoints(metaPoints.stream().filter(Objects::nonNull).collect(Collectors.toList()));
-        log.info("关联规则已保存。名称: {}, 时间戳: {}", runTaskEntity.getName(), timestamp);
+        log.info("任务已保存。名称: {}, 时间戳: {}", runTaskEntity.getName(), timestamp);
     }
 
     private void downloadModel(AssociationRulesEntity associationRulesEntity, Path taskDir) throws Exception {

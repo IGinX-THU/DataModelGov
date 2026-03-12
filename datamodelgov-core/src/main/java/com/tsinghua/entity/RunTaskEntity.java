@@ -3,8 +3,6 @@ package com.tsinghua.entity;
 import io.swagger.annotations.ApiModelProperty;
 import lombok.Data;
 
-import java.util.List;
-
 @Data
 public class RunTaskEntity {
     @ApiModelProperty(value = "任务名称")
@@ -15,6 +13,8 @@ public class RunTaskEntity {
     private Long endTime;
     @ApiModelProperty(value = "规则id")
     private Long ruleId;
+    @ApiModelProperty(value = "规则名称")
+    private String ruleName;
     @ApiModelProperty(value = "输入测点")
     private String inputMeasurements;
     @ApiModelProperty(value = "输出测点")

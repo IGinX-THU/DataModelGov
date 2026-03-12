@@ -1801,7 +1801,11 @@ class AssociationRules extends HTMLElement {
                     <div class="form-row">
                         <div class="form-group">
                             <label for="runName">名称</label>
-                            <input type="text" id="runName" name="runName" readonly value="${rule.ruleName}">
+                            <input type="text" id="runName" name="runName" placeholder="请输入运行任务名称">
+                        </div>
+                        <div class="form-group">
+                            <label for="ruleName">规则名称</label>
+                            <input type="text" id="ruleName" name="ruleName" readonly value="${rule.ruleName}">
                         </div>
                     </div>
                     
@@ -1854,8 +1858,14 @@ class AssociationRules extends HTMLElement {
     }
     
     async executeRule() {
+        const runName = this.shadowRoot.getElementById('runName')?.value.trim();
         const startTime = this.shadowRoot.getElementById('startTime')?.value;
         const endTime = this.shadowRoot.getElementById('endTime')?.value;
+        
+        if (!runName) {
+            this.showToast('请输入运行任务名称', 'error');
+            return;
+        }
         
         if (!startTime || !endTime) {
             this.showToast('请选择开始时间和结束时间', 'error');
@@ -1872,7 +1882,8 @@ class AssociationRules extends HTMLElement {
             try {
                 // 构建请求参数
                 const requestBody = {
-                    name: rule.ruleName, // 使用规则名称而不是用户输入
+                    name: runName, // 使用用户输入的运行任务名称
+                    ruleName: rule.ruleName, // 添加规则名称字段
                     startTime: new Date(startTime).getTime(),
                     endTime: new Date(endTime).getTime(),
                     ruleId: rule.createTime // 使用createTime作为ruleId
@@ -1886,7 +1897,7 @@ class AssociationRules extends HTMLElement {
                 console.log('唯一性校验结果:', validationResult);
                 
                 if (!validationResult.success || !validationResult.data) {
-                    this.showToast(validationResult.message || '该规则在指定时间段已存在相同的运行任务', 'error');
+                    this.showToast(validationResult.message || '任务名称已存在或该规则在同一时间段已存在相同的任务', 'error');
                     return;
                 }
                 
