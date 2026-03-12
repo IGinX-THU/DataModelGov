@@ -1877,12 +1877,16 @@ class VisualAnalysis extends HTMLElement {
             pdfGenerator.addSubtitle('四、统计分析');
             if (this.currentChartData && this.currentChartData.data) {
                 const statistics = this.calculateRealDataStatistics(this.currentChartData.data);
-                const statsHeaders = ['统计指标', '输入数据', '输出数据', '说明'];
+                const statsHeaders = ['统计指标', '数值', '说明'];
                 const statsData = [
-                    ['测点数量', statistics.inputPaths, statistics.outputPaths, '测点路径数量'],
-                    ['任务数量', statistics.inputCount, statistics.resultCount, '有效任务个数'],
-                    ['平均值', statistics.inputMean, statistics.resultMean, '数据平均值'],
-                    ['标准差', statistics.inputStdDev, statistics.resultStdDev, '数据标准差']
+                    ['输入测点数量', statistics.inputPaths, '输入测点路径数量'],
+                    ['输出测点数量', statistics.outputPaths, '输出测点路径数量'],
+                    ['输入数据点数量', statistics.inputCount, '输入数据有效数据点个数'],
+                    ['输出数据点数量', statistics.resultCount, '输出数据有效数据点个数'],
+                    ['输入数据平均值', statistics.inputMean.toFixed(2), '所有输入数据的平均值'],
+                    ['输出数据平均值', statistics.resultMean.toFixed(2), '所有输出数据的平均值'],
+                    ['输入数据标准差', statistics.inputStdDev.toFixed(2), '输入数据的标准差'],
+                    ['输出数据标准差', statistics.resultStdDev.toFixed(2), '输出数据的标准差']
                 ];
                 pdfGenerator.addTable(statsHeaders, statsData);
             } else {
