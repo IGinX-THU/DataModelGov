@@ -2662,20 +2662,64 @@ class VisualAnalysis extends HTMLElement {
             targetFrequency: 10 // 默认目标频率：每10秒一个点
         };
 
-        // 找到所有任务的最早时间作为基准时间
+        // 找到所有任务的最早时间作为基准时间（T=0）
         let baseTime = null;
+        const taskFrequencies = []; // 记录每个任务的采样频率
+        
         tasksData.forEach((taskData) => {
+            let taskMinTime = null;
+            let taskMaxTime = null;
+            let timePoints = [];
+            
+            // 收集任务的所有时间点
             [...Object.values(taskData.inputData || {}), ...Object.values(taskData.outputData || {})].forEach(pathData => {
                 pathData.forEach(point => {
-                    if (point.timestamp && (baseTime === null || point.timestamp < baseTime)) {
-                        baseTime = point.timestamp;
+                    if (point.timestamp) {
+                        timePoints.push(point.timestamp);
+                        if (taskMinTime === null || point.timestamp < taskMinTime) {
+                            taskMinTime = point.timestamp;
+                        }
+                        if (taskMaxTime === null || point.timestamp > taskMaxTime) {
+                            taskMaxTime = point.timestamp;
+                        }
                     }
                 });
             });
+            
+            // 计算任务的采样频率
+            if (timePoints.length > 1) {
+                timePoints.sort((a, b) => a - b);
+                const intervals = [];
+                for (let i = 1; i < timePoints.length; i++) {
+                    intervals.push((timePoints[i] - timePoints[i-1]) / 1000); // 转换为秒
+                }
+                // 使用中位数作为采样间隔
+                intervals.sort((a, b) => a - b);
+                const medianInterval = intervals[Math.floor(intervals.length / 2)];
+                taskFrequencies.push(medianInterval);
+                
+                // 更新全局基准时间
+                if (baseTime === null || taskMinTime < baseTime) {
+                    baseTime = taskMinTime;
+                }
+            }
         });
 
         if (baseTime === null) {
             baseTime = Date.now(); // 如果没有找到时间戳，使用当前时间
+        }
+
+        // 检查采样频率是否一致
+        if (taskFrequencies.length > 1) {
+            const uniqueFrequencies = [...new Set(taskFrequencies.map(f => Math.round(f)))];
+            if (uniqueFrequencies.length > 1) {
+                comparisonData.frequencyInconsistent = true;
+                // 使用最低频率作为目标频率（降采样）
+                comparisonData.targetFrequency = Math.max(...taskFrequencies);
+                this.showToast('检测到采样频率不一致，系统将自动进行数据对齐处理', 'info');
+            } else {
+                comparisonData.targetFrequency = taskFrequencies[0];
+            }
         }
 
         // 为每个任务处理真实数据
@@ -2683,7 +2727,7 @@ class VisualAnalysis extends HTMLElement {
             const task = {
                 id: taskData.id,
                 name: taskData.name,
-                samplingInterval: 10, // 默认采样间隔
+                samplingInterval: comparisonData.targetFrequency,
                 inputData: [],
                 calculationResult: [],
                 inputPaths: [], // 保存输入路径信息
@@ -2695,8 +2739,12 @@ class VisualAnalysis extends HTMLElement {
                 Object.keys(taskData.inputData).forEach(path => {
                     task.inputPaths.push(path); // 保存路径名
                     taskData.inputData[path].forEach(point => {
-                        const relativeTime = (point.timestamp - baseTime) / 1000; // 转换为秒
-                        task.inputData.push([relativeTime, point.value]);
+                        if (point && point.timestamp !== undefined && point.timestamp !== null && point.value !== undefined && point.value !== null) {
+                            const relativeTime = (point.timestamp - baseTime) / 1000; // 转换为秒，确保T=0对齐
+                            if (isFinite(relativeTime) && isFinite(point.value)) {
+                                task.inputData.push([relativeTime, point.value]);
+                            }
+                        }
                     });
                 });
             }
@@ -2706,23 +2754,77 @@ class VisualAnalysis extends HTMLElement {
                 Object.keys(taskData.outputData).forEach(path => {
                     task.outputPaths.push(path); // 保存路径名
                     taskData.outputData[path].forEach(point => {
-                        const relativeTime = (point.timestamp - baseTime) / 1000; // 转换为秒
-                        task.calculationResult.push([relativeTime, point.value]);
+                        if (point && point.timestamp !== undefined && point.timestamp !== null && point.value !== undefined && point.value !== null) {
+                            const relativeTime = (point.timestamp - baseTime) / 1000; // 转换为秒，确保T=0对齐
+                            if (isFinite(relativeTime) && isFinite(point.value)) {
+                                task.calculationResult.push([relativeTime, point.value]);
+                            }
+                        }
                     });
                 });
+            }
+
+            // 对数据进行频率对齐处理，并确保从0开始
+            // 对输入数据进行对齐处理
+            if (task.inputData && task.inputData.length > 0) {
+                // 找到最小时间点
+                const minTime = Math.min(...task.inputData.map(point => point[0]));
+                // 将所有时间点对齐到0
+                task.inputData = task.inputData.map(point => [point[0] - minTime, point[1]]);
+                
+                if (comparisonData.frequencyInconsistent) {
+                    task.inputData = this.alignDataSeries(task.inputData, comparisonData.targetFrequency);
+                }
+            }
+
+            // 对输出数据进行对齐处理
+            if (task.calculationResult && task.calculationResult.length > 0) {
+                // 找到最小时间点
+                const minTime = Math.min(...task.calculationResult.map(point => point[0]));
+                // 将所有时间点对齐到0
+                task.calculationResult = task.calculationResult.map(point => [point[0] - minTime, point[1]]);
+                
+                if (comparisonData.frequencyInconsistent) {
+                    task.calculationResult = this.alignDataSeries(task.calculationResult, comparisonData.targetFrequency);
+                }
             }
 
             comparisonData.tasks.push(task);
         });
 
-        // 生成统一的相对时间点用于X轴
-        const allTimePoints = new Set();
-        comparisonData.tasks.forEach(task => {
-            task.inputData.forEach(point => allTimePoints.add(point[0]));
-            task.calculationResult.forEach(point => allTimePoints.add(point[0]));
-        });
+        // 生成统一的相对时间点用于X轴（从0开始）
+        const allTimePoints = comparisonData.tasks.flatMap(task => 
+            [...task.inputData, ...task.calculationResult]
+                .filter(point => point && point[0] !== undefined && point[0] !== null && !isNaN(point[0]))
+                .map(point => point[0])
+        );
         
-        comparisonData.timePoints = Array.from(allTimePoints).sort((a, b) => a - b);
+        let maxTime = 0;
+        if (allTimePoints.length > 0) {
+            maxTime = Math.max(...allTimePoints);
+        }
+        
+        // 确保maxTime是有效数值，如果无效则使用默认值
+        if (!isFinite(maxTime) || maxTime < 0) {
+            maxTime = 100; // 默认最大时间100秒
+        }
+        
+        // 限制最大时间点数量，避免数组过长
+        const maxPoints = 1000;
+        const stepSize = comparisonData.targetFrequency;
+        const estimatedPoints = Math.floor(maxTime / stepSize);
+        
+        if (estimatedPoints > maxPoints) {
+            // 如果预计点数过多，调整步长
+            const adjustedStep = Math.ceil(maxTime / maxPoints);
+            comparisonData.targetFrequency = adjustedStep;
+            this.showToast('数据点过多，已自动调整采样间隔以优化显示', 'info');
+        }
+        
+        // 从0开始生成时间点，步长为目标频率
+        for (let time = 0; time <= maxTime; time += comparisonData.targetFrequency) {
+            comparisonData.timePoints.push(time);
+        }
 
         return comparisonData;
     }
@@ -2907,14 +3009,16 @@ class VisualAnalysis extends HTMLElement {
             const taskColor = colors[comparisonData.tasks.indexOf(task) % colors.length];
             
             // 处理输入数据曲线（虚线）- 按路径分组
-            if (this.curveVisibility.input && task.inputData && task.inputPaths) {
+            if (this.curveVisibility.input && task.inputData && task.inputData.length > 0 && task.inputPaths) {
                 task.inputPaths.forEach((pathName, pathIndex) => {
-                    const pathData = task.inputData.filter((point, index) => 
-                        Math.floor(index / (task.inputData.length / task.inputPaths.length)) === pathIndex
-                    );
+                    // 计算每个路径的数据点数量
+                    const pointsPerPath = Math.ceil(task.inputData.length / task.inputPaths.length);
+                    const startIndex = pathIndex * pointsPerPath;
+                    const endIndex = Math.min(startIndex + pointsPerPath, task.inputData.length);
+                    const pathData = task.inputData.slice(startIndex, endIndex);
                     
-                    const seriesKey = `${pathName}_input_${task.name}`;
-                    if (!pathSeriesMap[seriesKey]) {
+                    if (pathData.length > 0) {
+                        const seriesKey = `${pathName}_input_${task.name}`;
                         pathSeriesMap[seriesKey] = {
                             data: pathData,
                             color: taskColor,
@@ -2927,14 +3031,16 @@ class VisualAnalysis extends HTMLElement {
             }
 
             // 处理输出数据曲线（实线）- 按路径分组
-            if (this.curveVisibility.output && task.calculationResult && task.outputPaths) {
+            if (this.curveVisibility.output && task.calculationResult && task.calculationResult.length > 0 && task.outputPaths) {
                 task.outputPaths.forEach((pathName, pathIndex) => {
-                    const pathData = task.calculationResult.filter((point, index) => 
-                        Math.floor(index / (task.calculationResult.length / task.outputPaths.length)) === pathIndex
-                    );
+                    // 计算每个路径的数据点数量
+                    const pointsPerPath = Math.ceil(task.calculationResult.length / task.outputPaths.length);
+                    const startIndex = pathIndex * pointsPerPath;
+                    const endIndex = Math.min(startIndex + pointsPerPath, task.calculationResult.length);
+                    const pathData = task.calculationResult.slice(startIndex, endIndex);
                     
-                    const seriesKey = `${pathName}_output_${task.name}`;
-                    if (!pathSeriesMap[seriesKey]) {
+                    if (pathData.length > 0) {
+                        const seriesKey = `${pathName}_output_${task.name}`;
                         pathSeriesMap[seriesKey] = {
                             data: pathData,
                             color: taskColor,
@@ -2949,44 +3055,62 @@ class VisualAnalysis extends HTMLElement {
 
         // 生成系列数据
         Object.values(pathSeriesMap).forEach(seriesData => {
-            if (seriesData.type === 'input') {
-                // 输入数据曲线（虚线）
-                series.push({
-                    name: `${seriesData.pathName} (${seriesData.taskName}输入)`,
-                    type: 'line',
-                    data: seriesData.data,
-                    smooth: true,
-                    symbol: 'circle',
-                    symbolSize: 3,
-                    lineStyle: {
-                        width: 2,
-                        color: seriesData.color,
-                        type: 'dashed'
-                    },
-                    itemStyle: {
-                        color: seriesData.color
-                    }
-                });
-            } else {
-                // 输出数据曲线（实线）
-                series.push({
-                    name: `${seriesData.pathName} (${seriesData.taskName}输出)`,
-                    type: 'line',
-                    data: seriesData.data,
-                    smooth: true,
-                    symbol: 'diamond',
-                    symbolSize: 3,
-                    lineStyle: {
-                        width: 2,
-                        color: seriesData.color,
-                        type: 'solid'
-                    },
-                    itemStyle: {
-                        color: seriesData.color
-                    }
-                });
+            // 验证数据有效性
+            const validData = seriesData.data.filter(point => 
+                point && 
+                Array.isArray(point) && 
+                point.length === 2 && 
+                isFinite(point[0]) && 
+                isFinite(point[1])
+            );
+            
+            if (validData.length > 0) {
+                if (seriesData.type === 'input') {
+                    // 输入数据曲线（虚线）
+                    series.push({
+                        name: `${seriesData.pathName} (${seriesData.taskName}输入)`,
+                        type: 'line',
+                        data: validData,
+                        smooth: true,
+                        symbol: 'circle',
+                        symbolSize: 3,
+                        lineStyle: {
+                            width: 2,
+                            color: seriesData.color,
+                            type: 'dashed'
+                        },
+                        itemStyle: {
+                            color: seriesData.color
+                        }
+                    });
+                } else {
+                    // 输出数据曲线（实线）
+                    series.push({
+                        name: `${seriesData.pathName} (${seriesData.taskName}输出)`,
+                        type: 'line',
+                        data: validData,
+                        smooth: true,
+                        symbol: 'diamond',
+                        symbolSize: 3,
+                        lineStyle: {
+                            width: 2,
+                            color: seriesData.color,
+                            type: 'solid'
+                        },
+                        itemStyle: {
+                            color: seriesData.color
+                        }
+                    });
+                }
             }
         });
+
+        // 计算X轴最大值
+        let xAxisMax = 0;
+        if (comparisonData.timePoints.length > 0) {
+            const maxTime = Math.max(...comparisonData.timePoints);
+            xAxisMax = Math.ceil(maxTime / 10) * 10; // 向上取整到10的倍数
+        }
 
         const option = {
             title: {
@@ -3040,8 +3164,9 @@ class VisualAnalysis extends HTMLElement {
                         return value + 's';
                     }
                 },
-                min: 0,
-                max: Math.max(...comparisonData.timePoints)
+                min: 0, // 强制从0开始
+                max: xAxisMax, // 设置计算出的最大值
+                scale: true // 启用缩放
             },
             yAxis: {
                 type: 'value',
