@@ -21,7 +21,12 @@ import com.tsinghua.util.ConvertUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.io.*;
 import java.lang.reflect.Field;
@@ -31,6 +36,8 @@ import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 @Slf4j
 @Service
@@ -996,6 +1003,631 @@ public class RunTaskService {
         log.info("输出CSV文件导入完成，记录数: {}", recordsNum);
 
         log.info("输出CSV处理完成，处理了 {} 个输出映射", outputs.size());
+    }
+
+    /**
+     * 上传任务报告文件到任务目录
+     */
+    public String uploadReport(MultipartFile file, Long timestamp) throws Exception {
+        try {
+            // 获取任务目录 (job/{timestamp})
+            Path taskDir = Paths.get("job", String.valueOf(timestamp));
+            
+            if (!Files.exists(taskDir)) {
+                throw new RuntimeException("任务目录不存在: " + taskDir);
+            }
+            
+            // 保存原始HTML文件
+            String originalFileName = file.getOriginalFilename();
+            if (originalFileName == null || originalFileName.trim().isEmpty()) {
+                originalFileName = "任务分析报告.html";
+            }
+            
+            Path htmlFile = taskDir.resolve(originalFileName);
+            Files.copy(file.getInputStream(), htmlFile, StandardCopyOption.REPLACE_EXISTING);
+            
+            // 尝试将HTML转换为PDF
+            try {
+                String pdfFileName = originalFileName.replace(".html", ".pdf");
+                Path pdfFile = taskDir.resolve(pdfFileName);
+                
+                // 使用简单的HTML转PDF方法（这里可以集成更专业的PDF库如iText或Flying Saucer）
+                convertHtmlToPdf(htmlFile, pdfFile);
+                
+                log.info("HTML报告已转换为PDF: {}", pdfFile);
+                
+            } catch (Exception pdfError) {
+                log.warn("HTML转PDF失败，保留HTML文件: {}", pdfError.getMessage());
+            }
+            
+            log.info("报告文件已上传到: {}", htmlFile);
+            return htmlFile.toString();
+            
+        } catch (Exception e) {
+            log.error("上传报告文件失败", e);
+            throw new RuntimeException("上传报告文件失败: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 直接生成PDF文件，不使用复杂的服务
+     */
+    private void convertHtmlToPdf(Path htmlFile, Path pdfFile) throws Exception {
+        try {
+            // 读取HTML内容
+            String htmlContent;
+            try (FileInputStream fis = new FileInputStream(htmlFile.toFile());
+                 BufferedReader reader = new BufferedReader(new InputStreamReader(fis, StandardCharsets.UTF_8))) {
+                
+                StringBuilder htmlBuilder = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    htmlBuilder.append(line).append("\n");
+                }
+                htmlContent = htmlBuilder.toString();
+            }
+            
+            // 确保HTML是完整的格式
+            htmlContent = ensureCompleteHtml(htmlContent);
+            
+            // 使用自定义PDF生成
+            createCustomPdf(htmlContent, pdfFile);
+            
+            log.info("生成PDF文件成功: {} -> {}", htmlFile, pdfFile);
+            
+        } catch (Exception e) {
+            log.error("生成PDF失败: {}", e.getMessage());
+            // 如果失败，至少创建一个空文件
+            try {
+                Files.createDirectories(pdfFile.getParent());
+                Files.write(pdfFile, "PDF生成失败，请查看HTML文件".getBytes(StandardCharsets.UTF_8));
+            } catch (Exception ignored) {
+                // 忽略
+            }
+        }
+    }
+    
+    /**
+     * 自定义PDF生成方法 - 生成标准PDF格式
+     */
+    private void createCustomPdf(String htmlContent, Path pdfFile) throws Exception {
+        try (FileOutputStream fos = new FileOutputStream(pdfFile.toFile());
+             OutputStreamWriter osw = new OutputStreamWriter(fos, StandardCharsets.ISO_8859_1);
+             PrintWriter writer = new PrintWriter(osw)) {
+            
+            // 解析HTML内容并生成PDF
+            String textContent = extractTextFromHtml(htmlContent);
+            String[] lines = textContent.split("\n");
+            
+            // 生成标准PDF格式
+            writer.println("%PDF-1.4");
+            
+            List<String> objects = new ArrayList<>();
+            
+            // PDF对象
+            objects.add("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+            objects.add("2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n");
+            
+            // 页面内容
+            StringBuilder content = new StringBuilder();
+            content.append("BT\n/F1 12 Tf\n");
+            
+            float y = 750;
+            for (String line : lines) {
+                if (y < 50) break;
+                
+                String cleanLine = line.trim();
+                if (!cleanLine.isEmpty()) {
+                    cleanLine = extractTextFromHtml(cleanLine);
+                    cleanLine = cleanLine.length() > 80 ? cleanLine.substring(0, 80) + "..." : cleanLine;
+                    
+                    // 转义PDF特殊字符
+                    cleanLine = cleanLine.replace("\\", "\\\\")
+                                          .replace("(", "\\(")
+                                          .replace(")", "\\)");
+                    
+                    if (!cleanLine.trim().isEmpty()) {
+                        content.append("50 ").append(y).append(" Td\n(").append(cleanLine).append(") Tj\n");
+                        y -= 15;
+                    }
+                }
+            }
+            
+            content.append("ET\n");
+            
+            objects.add("3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n");
+            objects.add("4 0 obj\n<< /Length " + content.length() + " >>\nstream\n" + content + "\nendstream\nendobj\n");
+            objects.add("5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n");
+            
+            // 写入对象
+            long offset = 15; // PDF头长度
+            StringBuilder xref = new StringBuilder("xref\n0 " + (objects.size() + 1) + "\n0000000000 65535 f \n");
+            
+            for (String obj : objects) {
+                xref.append(String.format("%010d 00000 n \n", offset));
+                offset += obj.length();
+                writer.print(obj);
+            }
+            
+            // 写入交叉引用表和尾部
+            writer.println(xref.toString());
+            writer.println("trailer");
+            writer.println("<< /Size " + (objects.size() + 1) + " /Root 1 0 R >>");
+            writer.println("startxref");
+            writer.println(offset);
+            writer.println("%%EOF");
+        }
+        
+        log.info("自定义PDF生成成功: {}", pdfFile);
+    }
+    
+    /**
+     * 确保HTML是完整的格式
+     */
+    private String ensureCompleteHtml(String html) {
+        // 如果HTML不完整，添加必要的结构
+        if (!html.contains("<!DOCTYPE")) {
+            html = "<!DOCTYPE html>\n" + html;
+        }
+        
+        if (!html.contains("<html")) {
+            html = html.replaceFirst("<!DOCTYPE html[^>]*>", "<!DOCTYPE html>");
+            html = html.replace("<!DOCTYPE html>", 
+                "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"UTF-8\">\n<title>任务分析报告</title>\n" +
+                "<style>\n" +
+                "body { font-family: Arial, sans-serif; margin: 20px; }\n" +
+                "h1 { color: #333; font-size: 24px; }\n" +
+                "h2 { color: #666; font-size: 20px; }\n" +
+                "h3 { color: #999; font-size: 18px; }\n" +
+                "table { border-collapse: collapse; width: 100%; margin: 10px 0; }\n" +
+                "th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }\n" +
+                "th { background-color: #f2f2f2; }\n" +
+                "p { margin: 10px 0; line-height: 1.6; }\n" +
+                "</style>\n</head>\n<body>\n") + 
+                html + "\n</body>\n</html>";
+        }
+        
+        return html;
+    }
+    
+    /**
+     * 创建增强的PDF，解析HTML结构
+     */
+    private void createEnhancedPdf(Path htmlFile, Path pdfFile) throws Exception {
+        // 读取HTML内容
+        String htmlContent;
+        try (FileInputStream fis = new FileInputStream(htmlFile.toFile());
+             BufferedReader reader = new BufferedReader(new InputStreamReader(fis, StandardCharsets.UTF_8))) {
+            
+            StringBuilder htmlBuilder = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                htmlBuilder.append(line).append("\n");
+            }
+            htmlContent = htmlBuilder.toString();
+        }
+        
+        // 先移除CSS样式，避免干扰
+        htmlContent = removeCssAndScripts(htmlContent);
+        
+        // 解析HTML结构
+        List<PdfElement> elements = parseHtmlToPdfElements(htmlContent);
+        
+        // 创建PDF
+        try (FileOutputStream fos = new FileOutputStream(pdfFile.toFile())) {
+            // PDF文件头
+            String pdfHeader = "%PDF-1.4\n";
+            fos.write(pdfHeader.getBytes(StandardCharsets.ISO_8859_1));
+            
+            // PDF对象
+            List<String> objects = new ArrayList<>();
+            
+            // 添加目录对象
+            objects.add("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+            
+            // 添加页面对象
+            objects.add("2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n");
+            
+            // 添加页面内容
+            String pageContent = generateSimplePageContent(elements);
+            objects.add("3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n");
+            
+            // 添加内容流
+            objects.add("4 0 obj\n<< /Length " + pageContent.length() + " >>\nstream\n" + pageContent + "\nendstream\nendobj\n");
+            
+            // 添加字体对象
+            objects.add("5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n");
+            
+            // 计算偏移量并写入对象
+            long offset = pdfHeader.length();
+            StringBuilder xref = new StringBuilder("xref\n0 " + (objects.size() + 1) + "\n0000000000 65535 f \n");
+            
+            for (String obj : objects) {
+                xref.append(String.format("%010d 00000 n \n", offset));
+                offset += obj.length();
+                fos.write(obj.getBytes(StandardCharsets.ISO_8859_1));
+            }
+            
+            // 写入交叉引用表和尾部
+            String trailer = "trailer\n<< /Size " + (objects.size() + 1) + " /Root 1 0 R >>\nstartxref\n" + offset + "\n%%EOF\n";
+            fos.write(xref.toString().getBytes(StandardCharsets.ISO_8859_1));
+            fos.write(trailer.getBytes(StandardCharsets.ISO_8859_1));
+        }
+        
+        log.info("创建增强PDF完成: {} -> {}", htmlFile, pdfFile);
+    }
+    
+    /**
+     * 移除CSS和JavaScript
+     */
+    private String removeCssAndScripts(String html) {
+        // 移除<style>标签及其内容
+        html = html.replaceAll("(?s)<style.*?</style>", "");
+        // 移除<script>标签及其内容
+        html = html.replaceAll("(?s)<script.*?</script>", "");
+        // 移除CSS链接
+        html = html.replaceAll("<link[^>]*>", "");
+        // 移除内联样式
+        html = html.replaceAll("style=\"[^\"]*\"", "");
+        html = html.replaceAll("style='[^']*'", "");
+        
+        return html;
+    }
+    
+    /**
+     * 生成简化的页面内容
+     */
+    private String generateSimplePageContent(List<PdfElement> elements) {
+        StringBuilder content = new StringBuilder();
+        content.append("BT\n"); // 开始文本
+        content.append("/F1 12 Tf\n"); // 设置字体
+        
+        float y = 750; // 起始Y坐标
+        float x = 50;  // 起始X坐标
+        
+        for (PdfElement element : elements) {
+            if (y < 50) break; // 防止超出页面
+            
+            String text = element.text;
+            if (text == null || text.trim().isEmpty()) continue;
+            
+            // 清理文本，移除特殊字符
+            text = cleanTextForPdf(text);
+            
+            // 进一步简化文本，只保留基本ASCII和中文
+            text = simplifyText(text);
+            
+            // 限制长度
+            if (text.length() > 60) {
+                text = text.substring(0, 60) + "...";
+            }
+            
+            // 如果文本为空，跳过
+            if (text.trim().isEmpty()) continue;
+            
+            // 设置位置
+            content.append(x).append(" ").append(y).append(" Td\n");
+            
+            // 根据类型调整字体大小
+            switch (element.type) {
+                case "heading1":
+                    content.append("/F1 16 Tf\n");
+                    y -= 20;
+                    break;
+                case "heading2":
+                    content.append("/F1 14 Tf\n");
+                    y -= 18;
+                    break;
+                case "heading3":
+                    content.append("/F1 13 Tf\n");
+                    y -= 16;
+                    break;
+                default:
+                    content.append("/F1 12 Tf\n");
+                    y -= 14;
+                    break;
+            }
+            
+            // 写入文本
+            content.append("(").append(text).append(") Tj\n");
+        }
+        
+        content.append("ET\n"); // 结束文本
+        return content.toString();
+    }
+    
+    /**
+     * 简化文本，只保留安全字符
+     */
+    private String simplifyText(String text) {
+        if (text == null) return "";
+        
+        // 只保留ASCII字符、数字、基本标点和中文
+        StringBuilder result = new StringBuilder();
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            
+            // ASCII可打印字符
+            if (c >= 32 && c <= 126) {
+                result.append(c);
+            }
+            // 中文字符范围
+            else if (c >= '\u4E00' && c <= '\u9FFF') {
+                result.append(c);
+            }
+            // 其他字符用空格替换
+            else {
+                result.append(' ');
+            }
+        }
+        
+        return result.toString();
+    }
+    
+    /**
+     * 清理文本用于PDF
+     */
+    private String cleanTextForPdf(String text) {
+        if (text == null) return "";
+        
+        // 移除HTML标签
+        text = text.replaceAll("<[^>]*>", "");
+        
+        // 替换HTML实体
+        text = text.replace("&nbsp;", " ")
+                  .replace("&lt;", "<")
+                  .replace("&gt;", ">")
+                  .replace("&amp;", "&")
+                  .replace("&quot;", "\"")
+                  .replace("&#39;", "'")
+                  .replace("&apos;", "'");
+        
+        // 移除多余空格和换行
+        text = text.replaceAll("\\s+", " ").trim();
+        
+        // 转义PDF特殊字符
+        text = text.replace("\\", "\\\\")
+                  .replace("(", "\\(")
+                  .replace(")", "\\)");
+        
+        return text;
+    }
+    
+    /**
+     * 解析HTML为PDF元素
+     */
+    private List<PdfElement> parseHtmlToPdfElements(String html) {
+        List<PdfElement> elements = new ArrayList<>();
+        
+        // 简单的HTML解析
+        String[] lines = html.split("\n");
+        for (String line : lines) {
+            line = line.trim();
+            if (line.isEmpty()) continue;
+            
+            if (line.contains("<h1>")) {
+                String text = extractTextFromTag(line, "h1");
+                elements.add(new PdfElement(text, "heading1"));
+            } else if (line.contains("<h2>")) {
+                String text = extractTextFromTag(line, "h2");
+                elements.add(new PdfElement(text, "heading2"));
+            } else if (line.contains("<h3>")) {
+                String text = extractTextFromTag(line, "h3");
+                elements.add(new PdfElement(text, "heading3"));
+            } else if (line.contains("<p>")) {
+                String text = extractTextFromTag(line, "p");
+                elements.add(new PdfElement(text, "paragraph"));
+            } else if (line.contains("<table")) {
+                // 简单的表格处理
+                elements.add(new PdfElement("[表格]", "table"));
+            } else if (line.contains("<img")) {
+                elements.add(new PdfElement("[图片]", "image"));
+            } else if (!line.startsWith("<")) {
+                // 纯文本
+                elements.add(new PdfElement(line, "text"));
+            }
+        }
+        
+        return elements;
+    }
+    
+    /**
+     * 从标签中提取文本
+     */
+    private String extractTextFromTag(String line, String tag) {
+        String pattern = "<" + tag + ".*?>(.*?)</" + tag + ">";
+        java.util.regex.Pattern p = java.util.regex.Pattern.compile(pattern, java.util.regex.Pattern.DOTALL);
+        java.util.regex.Matcher m = p.matcher(line);
+        if (m.find()) {
+            return extractTextFromHtml(m.group(1));
+        }
+        return "";
+    }
+    
+    /**
+     * PDF元素类
+     */
+    private static class PdfElement {
+        String text;
+        String type;
+        
+        PdfElement(String text, String type) {
+            this.text = text;
+            this.type = type;
+        }
+    }
+    
+    /**
+     * 备用的简单PDF创建方法
+     */
+    private void createSimplePdf(Path htmlFile, Path pdfFile) throws Exception {
+        // 读取HTML内容
+        String htmlContent;
+        try (FileInputStream fis = new FileInputStream(htmlFile.toFile());
+             BufferedReader reader = new BufferedReader(new InputStreamReader(fis, StandardCharsets.UTF_8))) {
+            
+            StringBuilder htmlBuilder = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                htmlBuilder.append(line).append("\n");
+            }
+            htmlContent = htmlBuilder.toString();
+        }
+        
+        // 提取HTML中的文本内容
+        String textContent = extractTextFromHtml(htmlContent);
+        
+        // 创建基本的PDF文件
+        try (FileOutputStream fos = new FileOutputStream(pdfFile.toFile())) {
+            // PDF文件头
+            String pdfHeader = "%PDF-1.4\n";
+            fos.write(pdfHeader.getBytes(StandardCharsets.ISO_8859_1));
+            
+            // 创建一个简单的PDF对象
+            String catalog = "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n";
+            String pages = "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n";
+            String page = "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n";
+            
+            // 将文本内容转换为PDF流
+            String pdfText = convertTextToPdfStream(textContent);
+            String content = "4 0 obj\n<< /Length " + pdfText.length() + " >>\nstream\n" + pdfText + "\nendstream\nendobj\n";
+            
+            // 字体对象（简单使用内置字体）
+            String font = "5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n";
+            
+            // 交叉引用表
+            String xref = "xref\n0 6\n0000000000 65535 f \n";
+            long offset1 = pdfHeader.length();
+            xref += String.format("%010d 00000 n \n", offset1);
+            long offset2 = offset1 + catalog.length();
+            xref += String.format("%010d 00000 n \n", offset2);
+            long offset3 = offset2 + pages.length();
+            xref += String.format("%010d 00000 n \n", offset3);
+            long offset4 = offset3 + page.length();
+            xref += String.format("%010d 00000 n \n", offset4);
+            long offset5 = offset4 + content.length();
+            xref += String.format("%010d 00000 n \n", offset5);
+            
+            // PDF尾部
+            String trailer = "trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n" + (offset5 + font.length()) + "\n%%EOF\n";
+            
+            // 写入所有PDF对象
+            fos.write(catalog.getBytes(StandardCharsets.ISO_8859_1));
+            fos.write(pages.getBytes(StandardCharsets.ISO_8859_1));
+            fos.write(page.getBytes(StandardCharsets.ISO_8859_1));
+            fos.write(content.getBytes(StandardCharsets.ISO_8859_1));
+            fos.write(font.getBytes(StandardCharsets.ISO_8859_1));
+            fos.write(xref.getBytes(StandardCharsets.ISO_8859_1));
+            fos.write(trailer.getBytes(StandardCharsets.ISO_8859_1));
+        }
+        
+        log.info("使用备用方案创建简单PDF: {} -> {}", htmlFile, pdfFile);
+    }
+    
+    /**
+     * 将文本内容转换为PDF流格式
+     */
+    private String convertTextToPdfStream(String text) {
+        StringBuilder pdfStream = new StringBuilder();
+        pdfStream.append("BT\n/F1 12 Tf\n50 750 Td\n"); // 开始文本，设置字体和位置
+        
+        // 简单的文本换行处理
+        String[] lines = text.split("\n");
+        for (int i = 0; i < lines.length && i < 60; i++) { // 限制行数避免超出页面
+            String line = lines[i].trim();
+            if (!line.isEmpty()) {
+                // 转义PDF特殊字符
+                line = line.replace("\\", "\\\\")
+                          .replace("(", "\\(")
+                          .replace(")", "\\)");
+                
+                // 限制每行长度
+                if (line.length() > 80) {
+                    line = line.substring(0, 80) + "...";
+                }
+                
+                pdfStream.append("(").append(line).append(") Tj\n");
+                pdfStream.append("0 -12 Td\n"); // 换行
+            }
+        }
+        
+        pdfStream.append("ET\n"); // 结束文本
+        return pdfStream.toString();
+    }
+
+    /**
+     * 从HTML中提取纯文本内容
+     */
+    private String extractTextFromHtml(String html) {
+        // 简单的HTML标签移除
+        String text = html.replaceAll("<[^>]*>", "");
+        text = text.replaceAll("&nbsp;", " ");
+        text = text.replaceAll("&lt;", "<");
+        text = text.replaceAll("&gt;", ">");
+        text = text.replaceAll("&amp;", "&");
+        text = text.replaceAll("&quot;", "\"");
+        text = text.replaceAll("&#39;", "'");
+        
+        // 移除多余的空白字符
+        text = text.replaceAll("\\s+", " ").trim();
+        
+        return text;
+    }
+
+    /**
+     * 打包并下载任务文件
+     */
+    public ResponseEntity<Resource> packageAndDownload(Long timestamp) throws Exception {
+        try {
+            // 获取任务目录
+            Path taskDir = Paths.get("job", String.valueOf(timestamp));
+            
+            if (!Files.exists(taskDir)) {
+                throw new RuntimeException("任务目录不存在: " + taskDir);
+            }
+            
+            // 创建真正的临时目录
+            Path tempDir = Files.createTempDirectory("task-download-");
+            String zipFileName = String.format("task_%s_%d.zip", timestamp, System.currentTimeMillis());
+            Path zipFile = tempDir.resolve(zipFileName);
+            
+            // 创建ZIP文件
+            try (ZipOutputStream zipOut = new ZipOutputStream(Files.newOutputStream(zipFile))) {
+                // 添加任务目录中的所有文件
+                Files.walk(taskDir)
+                    .filter(path -> !Files.isDirectory(path))
+                    .forEach(path -> {
+                        try {
+                            String entryName = taskDir.relativize(path).toString().replace("\\", "/");
+                            ZipEntry zipEntry = new ZipEntry(entryName);
+                            zipOut.putNextEntry(zipEntry);
+                            Files.copy(path, zipOut);
+                            zipOut.closeEntry();
+                        } catch (Exception e) {
+                            log.warn("跳过文件 {}: {}", path, e.getMessage());
+                        }
+                    });
+            }
+            
+            log.info("任务文件已打包到: {}", zipFile);
+            
+            // 创建资源并返回下载响应
+            Resource resource = new org.springframework.core.io.PathResource(zipFile);
+            String fileName = "task_" + timestamp + "_" + System.currentTimeMillis() + ".zip";
+            
+            // 设置下载完成后删除临时文件的钩子
+            resource.getFile().deleteOnExit();
+            tempDir.toFile().deleteOnExit();
+            
+            return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fileName + "\"")
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(resource);
+                
+        } catch (Exception e) {
+            log.error("打包下载失败", e);
+            throw new RuntimeException("打包下载失败: " + e.getMessage(), e);
+        }
     }
 
 }

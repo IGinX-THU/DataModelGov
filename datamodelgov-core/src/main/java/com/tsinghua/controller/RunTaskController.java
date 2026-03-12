@@ -10,7 +10,10 @@ import com.tsinghua.service.RunTaskService;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.Resource;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -59,7 +62,7 @@ public class RunTaskController {
     }
 
     @ApiOperation("分页查询运行任务")
-    @PostMapping("/tasks/query")
+    @PostMapping("/query")
     @RequirePermission(Permission.RUN_TASK_READ)
     public Result<List<RunTaskEntity>> queryTasks(@RequestBody RunTaskQueryRequest request) {
         List<RunTaskEntity> result = runTaskService.queryTasks(request);
@@ -67,7 +70,7 @@ public class RunTaskController {
     }
 
     @ApiOperation("查询运行任务总数")
-    @PostMapping("/tasks/count")
+    @PostMapping("/count")
     @RequirePermission(Permission.RUN_TASK_READ)
     public Result<Object> countTasks(@RequestBody RunTaskQueryRequest request) {
         Object count = runTaskService.countTasks(request);
@@ -75,7 +78,7 @@ public class RunTaskController {
     }
 
     @ApiOperation("运行任务详情")
-    @GetMapping("/tasks/detail")
+    @GetMapping("/detail")
     @RequirePermission(Permission.RUN_TASK_READ)
     public Result<?> queryTask(
             @RequestParam("timestamp") Long timestamp) {
@@ -87,12 +90,29 @@ public class RunTaskController {
     }
 
     @ApiOperation("删除运行任务")
-    @DeleteMapping("/tasks/delete")
+    @DeleteMapping("/delete")
     @RequirePermission(Permission.RUN_TASK_DELETE)
     public Result<Void> deleteTask(
             @RequestParam("timestamp") Long timestamp) throws Exception {
         runTaskService.deleteTask(timestamp);
         return Result.success("操作成功");
+    }
+
+    @ApiOperation("上传任务报告文件")
+    @PostMapping("/upload-report")
+    @RequirePermission(Permission.RUN_TASK_UPDATE)
+    public Result<String> uploadReport(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam("timestamp") Long timestamp) throws Exception {
+        String filePath = runTaskService.uploadReport(file, timestamp);
+        return Result.success("报告上传成功", filePath);
+    }
+
+    @ApiOperation("打包并下载任务文件")
+    @PostMapping("/package-download")
+    @RequirePermission(Permission.RUN_TASK_READ)
+    public ResponseEntity<Resource> packageAndDownload(@RequestParam("timestamp") Long timestamp) throws Exception {
+        return runTaskService.packageAndDownload(timestamp);
     }
 
 }

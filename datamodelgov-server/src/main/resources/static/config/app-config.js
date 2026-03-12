@@ -104,10 +104,12 @@ window.AppConfig = {
             'validate-uniqueness': '/api/task/validate-uniqueness',
             stop: '/api/task/stop',
             log: '/api/task/log',
-            query: '/api/task/tasks/query',
-            count: '/api/task/tasks/count',
-            detail: '/api/task/tasks/detail',
-            'delete': '/api/task/tasks/delete'
+            query: '/api/task/query',
+            count: '/api/task/count',
+            detail: '/api/task/detail',
+            'delete': '/api/task/delete',
+            'upload-report': '/api/task/upload-report',
+            'package-download': '/api/task/package-download'
         }
     },
     

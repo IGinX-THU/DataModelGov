@@ -1899,11 +1899,53 @@ class VisualAnalysis extends HTMLElement {
                 pdfGenerator.addText('暂无统计数据', 12);
             }
             
-            // 生成并下载PDF
-            const fileName = `任务分析报告_${record.name}_${new Date().getTime()}.pdf`;
-            pdfGenerator.generateAndDownload(fileName);
+            // 生成HTML内容
+            const htmlContent = pdfGenerator.generateHTML();
             
-            this.showToast('报告生成成功！', 'success');
+            // 上传HTML报告到任务目录（后端可以将其转换为PDF）
+            try {
+                const formData = new FormData();
+                // 使用固定文件名，覆盖之前的报告
+                const reportFileName = `任务分析报告.html`;
+                formData.append('file', new Blob([htmlContent], { type: 'text/html;charset=utf-8' }), reportFileName);
+                formData.append('timestamp', record.timestamp);
+
+                const uploadResult = await window.AppConfig.upload('task', 'upload-report', formData);
+                
+                if (uploadResult.success) {
+                    this.showToast('报告已上传到任务目录！', 'success');
+                } else {
+                    throw new Error(uploadResult.message || '上传失败');
+                }
+            } catch (uploadError) {
+                console.warn('报告上传失败:', uploadError);
+                this.showToast('报告上传失败：' + uploadError.message, 'error');
+            }
+            
+            // 使用浏览器的打印功能生成PDF供用户下载
+            const printWindow = window.open('', '_blank');
+            printWindow.document.write(htmlContent);
+            printWindow.document.close();
+            
+            // 等待内容加载完成后触发打印
+            printWindow.onload = () => {
+                // 触发打印对话框，用户可以选择"保存为PDF"
+                printWindow.print();
+                
+                // 打印完成后关闭窗口
+                printWindow.onafterprint = () => {
+                    printWindow.close();
+                };
+                
+                // 备用关闭方案
+                setTimeout(() => {
+                    if (!printWindow.closed) {
+                        printWindow.close();
+                    }
+                }, 1000);
+            };
+            
+            this.showToast('PDF报告生成成功！请在打印对话框中选择"保存为PDF"', 'success');
             
         } catch (error) {
             console.error('生成报告失败:', error);
@@ -2265,9 +2307,317 @@ class VisualAnalysis extends HTMLElement {
     }
 
     // 处理导出操作
-    handleExport(record) {
+    async handleExport(record) {
         this.showToast(`正在导出任务数据: ${record.name}`, 'info');
         console.log('导出任务:', record);
+
+        try {
+            // 1. 先执行分析获取数据
+            await this.handleAnalyze(record);
+            
+            // 等待分析完成
+            await new Promise(resolve => setTimeout(resolve, 1000));
+
+            // 2. 生成报告HTML内容
+            const htmlContent = await this.generateReportHTML(record);
+            
+            // 3. 上传报告到任务目录
+            await this.uploadReportToTask(record, htmlContent);
+            
+            // 4. 打包并下载任务文件
+            await this.packageAndDownloadTask(record);
+
+        } catch (error) {
+            console.error('导出失败:', error);
+            this.showToast('导出失败，请重试', 'error');
+        }
+    }
+
+    // 上传报告到任务目录
+    async uploadReportToTask(record, htmlContent) {
+        try {
+            this.showToast('正在上传报告...', 'info');
+
+            const formData = new FormData();
+            // 使用固定文件名，覆盖之前的报告
+            const reportFileName = `任务分析报告.html`;
+            formData.append('file', new Blob([htmlContent], { type: 'text/html;charset=utf-8' }), reportFileName);
+            formData.append('timestamp', record.timestamp);
+
+            const uploadResult = await window.AppConfig.upload('task', 'upload-report', formData);
+            
+            if (!uploadResult.success) {
+                this.showToast('上传报告失败：' + uploadResult.message, 'error');
+            } else {
+                this.showToast('报告上传成功！', 'success');
+            }
+
+            return uploadResult.data;
+            
+        } catch (error) {
+            console.error('上传报告失败:', error);
+            this.showToast('上传报告失败：' + error.message, 'error');
+            throw error;
+        }
+    }
+
+    // 生成报告HTML内容
+    async generateReportHTML(record) {
+        // 创建加载提示
+        const loadingOverlay = document.createElement('div');
+        loadingOverlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            font-family: Arial, sans-serif;
+        `;
+        loadingOverlay.innerHTML = `
+            <div style="font-size: 24px; margin-bottom: 10px;">⏳</div>
+            <div style="font-size: 16px;">正在生成报告内容，请稍候...</div>
+        `;
+        document.body.appendChild(loadingOverlay);
+
+        try {
+            // 确保图表完全渲染
+            if (this.chart) {
+                this.chart.resize();
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+            
+            // 创建PDF生成器实例
+            const pdfGenerator = new LocalPDFGenerator();
+            
+            // 1. 添加报告标题
+            pdfGenerator.addTitle('任务分析报告');
+            pdfGenerator.addText(`任务名称: ${record.name}`, 12);
+            pdfGenerator.addText(`生成时间: ${new Date().toLocaleString()}`, 12);
+            pdfGenerator.addSeparator();
+            
+            // 2. 任务详情部分
+            pdfGenerator.addSubtitle('一、任务详情');
+            pdfGenerator.addText(`任务ID: ${record.id}`, 12);
+            pdfGenerator.addText(`任务名称: ${record.name}`, 12);
+            pdfGenerator.addText(`规则名称: ${record.ruleName || 'N/A'}`, 12);
+            pdfGenerator.addText(`当前状态: ${this.getStatusText(record.status)}`, 12);
+            pdfGenerator.addText(`开始时间: ${record.startTime ? new Date(record.startTime).toLocaleString() : 'N/A'}`, 12);
+            pdfGenerator.addText(`结束时间: ${record.endTime ? new Date(record.endTime).toLocaleString() : 'N/A'}`, 12);
+            
+            // 3. 模型信息部分
+            pdfGenerator.addSubtitle('二、模型信息');
+            pdfGenerator.addText(`模型名称: ${record.modelName || 'N/A'}`, 12);
+            pdfGenerator.addText(`版本号: ${record.modelVersion || 'N/A'}`, 12);
+            
+            // 4. 添加当前曲线图
+            pdfGenerator.addSubtitle('三、曲线图分析');
+            const chartElement = this.shadowRoot.getElementById('analysisChart');
+            if (chartElement && this.chart) {
+                const chartImage = this.chart.getDataURL({
+                    type: 'png',
+                    pixelRatio: 2,
+                    backgroundColor: '#fff'
+                });
+                await pdfGenerator.addChartImage(chartImage, '任务曲线图', `${record.name}的趋势分析图表`);
+            } else {
+                pdfGenerator.addImagePlaceholder('曲线图', '当前任务的的趋势分析图表');
+            }
+            
+            // 5. 数据视图
+            pdfGenerator.addSubtitle('四、数据视图');
+            const pathInfo = {}; // 存储测点信息
+            
+            // 添加输入数据
+            if (this.currentChartData && this.currentChartData.data && this.currentChartData.data.inputData) {
+                Object.keys(this.currentChartData.data.inputData).forEach(path => {
+                    const data = this.currentChartData.data.inputData[path];
+                    if (data && data.length > 0) {
+                        pathInfo[path] = { type: '输入数据', data: [] };
+                        data.forEach(point => {
+                            pathInfo[path].data.push({
+                                timestamp: point.timestamp,
+                                value: point.value
+                            });
+                        });
+                    }
+                });
+            }
+            
+            // 添加输出数据
+            if (this.currentChartData && this.currentChartData.data && this.currentChartData.data.outputData) {
+                Object.keys(this.currentChartData.data.outputData).forEach(path => {
+                    const data = this.currentChartData.data.outputData[path];
+                    if (data && data.length > 0) {
+                        pathInfo[path] = { type: '输出数据', data: [] };
+                        data.forEach(point => {
+                            pathInfo[path].data.push({
+                                timestamp: point.timestamp,
+                                value: point.value
+                            });
+                        });
+                    }
+                });
+            }
+            
+            if (Object.keys(pathInfo).length > 0) {
+                // 收集所有时间点
+                const allTimestamps = new Set();
+                Object.values(pathInfo).forEach(info => {
+                    info.data.forEach(point => {
+                        allTimestamps.add(point.timestamp);
+                    });
+                });
+                
+                const sortedTimestamps = Array.from(allTimestamps).sort((a, b) => a - b);
+                
+                // 构建表头：时间 + 每个测点（包含类型）
+                const headers = ['时间'];
+                Object.keys(pathInfo).forEach(path => {
+                    headers.push(`${path} (${pathInfo[path].type})`);
+                });
+                
+                // 构建数据行：每个时间点一行
+                const rows = sortedTimestamps.map(timestamp => {
+                    const row = [new Date(timestamp).toLocaleString()];
+                    
+                    Object.keys(pathInfo).forEach(path => {
+                        const point = pathInfo[path].data.find(p => p.timestamp === timestamp);
+                        row.push(point && point.value !== null && point.value !== undefined ? point.value.toFixed(2) : 'N/A');
+                    });
+                    
+                    return row;
+                });
+                
+                pdfGenerator.addTable(headers, rows);
+            } else {
+                pdfGenerator.addText('暂无数据', 12);
+            }
+            
+            // 6. 统计分析
+            pdfGenerator.addSubtitle('五、统计分析');
+            if (this.currentChartData && this.currentChartData.data) {
+                const statistics = this.calculateRealDataStatistics(this.currentChartData.data);
+                const statsHeaders = ['统计指标', '数值', '说明'];
+                const statsData = [
+                    ['输入测点数量', statistics.inputPaths, '输入测点路径数量'],
+                    ['输出测点数量', statistics.outputPaths, '输出测点路径数量'],
+                    ['输入数据点数量', statistics.inputCount, '输入数据有效数据点个数'],
+                    ['输出数据点数量', statistics.resultCount, '输出数据有效数据点个数'],
+                    ['输入数据平均值', statistics.inputMean.toFixed(2), '所有输入数据的平均值'],
+                    ['输出数据平均值', statistics.resultMean.toFixed(2), '所有输出数据的平均值'],
+                    ['输入数据标准差', statistics.inputStdDev.toFixed(2), '输入数据的标准差'],
+                    ['输出数据标准差', statistics.resultStdDev.toFixed(2), '输出数据的标准差']
+                ];
+                pdfGenerator.addTable(statsHeaders, statsData);
+            } else {
+                pdfGenerator.addText('暂无统计数据', 12);
+            }
+
+            // 生成HTML内容
+            const htmlContent = pdfGenerator.generateHTML();
+            
+            this.showToast('报告内容生成成功！', 'success');
+            return htmlContent;
+            
+        } finally {
+            // 移除加载提示
+            if (loadingOverlay.parentNode) {
+                loadingOverlay.remove();
+            }
+        }
+    }
+
+    // 生成PDF下载
+    generatePDFDownload(record, htmlContent) {
+        // 创建新窗口用于打印
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write(htmlContent);
+        printWindow.document.close();
+        
+        // 等待内容加载完成后触发打印
+        printWindow.onload = () => {
+            // 触发打印对话框，用户可以选择"保存为PDF"
+            printWindow.print();
+            
+            // 打印完成后关闭窗口
+            printWindow.onafterprint = () => {
+                printWindow.close();
+            };
+            
+            // 备用关闭方案
+            setTimeout(() => {
+                if (!printWindow.closed) {
+                    printWindow.close();
+                }
+            }, 1000);
+        };
+    }
+
+    // 打包并下载任务文件
+    async packageAndDownloadTask(record) {
+        try {
+            this.showToast('正在打包任务文件...', 'info');
+
+            // 构建URL，使用POST方法但参数通过URL传递
+            const url = `/api/task/package-download?timestamp=${record.timestamp}`;
+            
+            // 获取token并构建认证头
+            const token = localStorage.getItem('jwtToken');
+            const headers = {
+                'Authorization': token ? `Bearer ${token}` : ''
+            };
+            
+            // 使用fetch发送请求
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: headers
+            });
+
+            if (!response.ok) {
+                if (response.status === 401) {
+                    throw new Error('认证失败，请重新登录');
+                } else if (response.status === 403) {
+                    throw new Error('权限不足');
+                } else {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+            }
+
+            // 获取文件名
+            const contentDisposition = response.headers.get('Content-Disposition');
+            let fileName = `任务导出包_${record.name}_${new Date().getTime()}.zip`;
+            if (contentDisposition) {
+                const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+                if (filenameMatch) {
+                    fileName = filenameMatch[1];
+                }
+            }
+
+            // 创建下载链接
+            const blob = await response.blob();
+            const downloadUrl = window.URL.createObjectURL(blob);
+            const downloadLink = document.createElement('a');
+            downloadLink.href = downloadUrl;
+            downloadLink.download = fileName;
+            document.body.appendChild(downloadLink);
+            downloadLink.click();
+            document.body.removeChild(downloadLink);
+            window.URL.revokeObjectURL(downloadUrl);
+            
+            this.showToast('任务导出包下载成功！', 'success');
+            
+        } catch (error) {
+            console.error('打包下载失败:', error);
+            this.showToast('打包下载失败：' + error.message, 'error');
+            throw error;
+        }
     }
 
     // 处理查看日志操作
