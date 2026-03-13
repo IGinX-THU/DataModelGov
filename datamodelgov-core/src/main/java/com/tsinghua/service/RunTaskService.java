@@ -1012,18 +1012,18 @@ public class RunTaskService {
             Files.copy(file.getInputStream(), htmlFile, StandardCopyOption.REPLACE_EXISTING);
             
             // 尝试将HTML转换为PDF
-            try {
-                String pdfFileName = originalFileName.replace(".html", ".pdf");
-                Path pdfFile = taskDir.resolve(pdfFileName);
-                
-                // 使用简单的HTML转PDF方法（这里可以集成更专业的PDF库如iText或Flying Saucer）
-                convertHtmlToPdf(htmlFile, pdfFile);
-                
-                log.info("HTML报告已转换为PDF: {}", pdfFile);
-                
-            } catch (Exception pdfError) {
-                log.warn("HTML转PDF失败，保留HTML文件: {}", pdfError.getMessage());
-            }
+            // try {
+            //     String pdfFileName = originalFileName.replace(".html", ".pdf");
+            //     Path pdfFile = taskDir.resolve(pdfFileName);
+            //     
+            //     // 使用简单的HTML转PDF方法（这里可以集成更专业的PDF库如iText或Flying Saucer）
+            //     convertHtmlToPdf(htmlFile, pdfFile);
+            //     
+            //     log.info("HTML报告已转换为PDF: {}", pdfFile);
+            //     
+            // } catch (Exception pdfError) {
+            //     log.warn("HTML转PDF失败，保留HTML文件: {}", pdfError.getMessage());
+            // }
             
             log.info("报告文件已上传到: {}", htmlFile);
             return htmlFile.toString();
@@ -1576,6 +1576,18 @@ public class RunTaskService {
      */
     public ResponseEntity<Resource> packageAndDownload(Long timestamp) throws Exception {
         try {
+            // 获取任务信息
+            RunTaskEntity task = queryTask(timestamp);
+            if (task == null) {
+                throw new RuntimeException("未找到指定的任务: " + timestamp);
+            }
+            
+            // 获取关联规则信息
+            AssociationRulesEntity associationRules = associationRulesService.queryRule(task.getRuleId());
+            if (associationRules == null) {
+                throw new RuntimeException("未找到关联规则: " + task.getRuleId());
+            }
+            
             // 获取任务目录
             Path taskDir = Paths.get("job", String.valueOf(timestamp));
             
@@ -1588,22 +1600,71 @@ public class RunTaskService {
             String zipFileName = String.format("task_%s_%d.zip", timestamp, System.currentTimeMillis());
             Path zipFile = tempDir.resolve(zipFileName);
             
+            // 收集文件信息用于生成manifest
+            List<Map<String, Object>> fileInfoList = new ArrayList<>();
+            
             // 创建ZIP文件
             try (ZipOutputStream zipOut = new ZipOutputStream(Files.newOutputStream(zipFile))) {
-                // 添加任务目录中的所有文件
+                // 按目录结构组织文件到ZIP中
                 Files.walk(taskDir)
                     .filter(path -> !Files.isDirectory(path))
                     .forEach(path -> {
                         try {
-                            String entryName = taskDir.relativize(path).toString().replace("\\", "/");
-                            ZipEntry zipEntry = new ZipEntry(entryName);
+                            // 确定文件在ZIP中的路径
+                            String relativePath = taskDir.relativize(path).toString().replace("\\", "/");
+                            String zipEntryPath = categorizeFileForZip(relativePath, associationRules);
+                            
+                            ZipEntry zipEntry = new ZipEntry(zipEntryPath);
                             zipOut.putNextEntry(zipEntry);
+                            
+                            // 计算文件MD5
+                            String md5 = calculateMD5(path);
+                            long fileSize = Files.size(path);
+                            String lastModified = new Date(Files.getLastModifiedTime(path).toMillis()).toString();
+                            
+                            // 收集文件信息
+                            Map<String, Object> fileInfo = new HashMap<>();
+                            fileInfo.put("fileName", zipEntryPath);
+                            fileInfo.put("originalPath", relativePath);
+                            fileInfo.put("fileSize", fileSize);
+                            fileInfo.put("md5", md5);
+                            fileInfo.put("lastModified", lastModified);
+                            fileInfoList.add(fileInfo);
+                            
                             Files.copy(path, zipOut);
                             zipOut.closeEntry();
+                            
+                            log.debug("已添加文件到ZIP: {} -> {} (MD5: {}, 大小: {} bytes)", relativePath, zipEntryPath, md5, fileSize);
                         } catch (Exception e) {
                             log.warn("跳过文件 {}: {}", path, e.getMessage());
                         }
                     });
+                
+                // 生成manifest.json
+                Map<String, Object> manifest = new HashMap<>();
+                manifest.put("exportTime", new Date().toString());
+                manifest.put("exportedBy", "DataModelGov System");
+                manifest.put("taskTimestamp", timestamp);
+                manifest.put("taskName", task.getName());
+                manifest.put("taskStatus", task.getStatus());
+                manifest.put("dataStartTime", task.getStartTime());
+                manifest.put("dataEndTime", task.getEndTime());
+                manifest.put("ruleName", task.getRuleName());
+                manifest.put("modelName", task.getModelName());
+                manifest.put("modelVersion", task.getModelVersion());
+                manifest.put("totalFiles", fileInfoList.size());
+                manifest.put("files", fileInfoList);
+                
+                // 将manifest转换为JSON字符串
+                String manifestJson = generateManifestJson(manifest);
+                
+                // 添加manifest.json到ZIP根目录
+                ZipEntry manifestEntry = new ZipEntry("manifest.json");
+                zipOut.putNextEntry(manifestEntry);
+                zipOut.write(manifestJson.getBytes(StandardCharsets.UTF_8));
+                zipOut.closeEntry();
+                
+                log.info("已添加manifest.json到ZIP包，包含{}个文件信息", fileInfoList.size());
             }
             
             log.info("任务文件已打包到: {}", zipFile);
@@ -1625,6 +1686,181 @@ public class RunTaskService {
             log.error("打包下载失败", e);
             throw new RuntimeException("打包下载失败: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * 根据关联规则信息确定文件在ZIP中的分类路径
+     */
+    private String categorizeFileForZip(String relativePath, AssociationRulesEntity associationRules) {
+        String fileName = relativePath.substring(relativePath.lastIndexOf('/') + 1);
+        
+        // 1. 输入数据文件 - 根据inputCsvName确定
+        if (associationRules.getInputCsvName() != null && fileName.equals(associationRules.getInputCsvName())) {
+            return "data/" + relativePath;
+        }
+        
+        // 2. 输出结果文件 - 根据outputCsvName确定
+        if (associationRules.getOutputCsvName() != null && fileName.equals(associationRules.getOutputCsvName())) {
+            return "result/" + relativePath;
+        }
+        
+        // 3. 代码生成的结果文件 - _bind.csv文件
+        if (associationRules.getOutputCsvName() != null) {
+            String outputBindName = associationRules.getOutputCsvName().replace(".csv", "_bind.csv");
+            if (fileName.equals(outputBindName)) {
+                return "result/" + relativePath;
+            }
+        }
+        
+        // 4. 日志文件 - task.log
+        if (fileName.equals("task.log")) {
+            return "result/" + relativePath;
+        }
+        
+        // 5. 报告文件 - .html, .pdf文件
+        if (fileName.toLowerCase().endsWith(".html") || fileName.toLowerCase().endsWith(".pdf")) {
+            return "result/" + relativePath;
+        }
+        
+        // 6. 剩余所有文件都归类为模型文件
+        return "model/" + relativePath;
+    }
+
+    /**
+     * 计算文件的MD5校验码
+     */
+    private String calculateMD5(Path file) throws Exception {
+        java.security.MessageDigest md = java.security.MessageDigest.getInstance("MD5");
+        
+        try (FileInputStream fis = new FileInputStream(file.toFile())) {
+            byte[] buffer = new byte[8192];
+            int bytesRead;
+            
+            while ((bytesRead = fis.read(buffer)) != -1) {
+                md.update(buffer, 0, bytesRead);
+            }
+        }
+        
+        byte[] digest = md.digest();
+        
+        // 将字节数组转换为十六进制字符串
+        StringBuilder sb = new StringBuilder();
+        for (byte b : digest) {
+            sb.append(String.format("%02x", b));
+        }
+        
+        return sb.toString();
+    }
+
+    /**
+     * 生成manifest JSON字符串
+     */
+    private String generateManifestJson(Map<String, Object> manifest) {
+        StringBuilder json = new StringBuilder();
+        json.append("{\n");
+        
+        boolean first = true;
+        for (Map.Entry<String, Object> entry : manifest.entrySet()) {
+            if (!first) {
+                json.append(",\n");
+            }
+            first = false;
+            
+            json.append("  \"").append(entry.getKey()).append("\": ");
+            Object value = entry.getValue();
+            
+            if (value instanceof String) {
+                json.append("\"").append(escapeJson((String) value)).append("\"");
+            } else if (value instanceof List) {
+                json.append(generateJsonArray((List<?>) value));
+            } else {
+                json.append("\"").append(value != null ? value.toString() : "").append("\"");
+            }
+        }
+        
+        json.append("\n}");
+        return json.toString();
+    }
+    
+    /**
+     * 生成JSON数组
+     */
+    private String generateJsonArray(List<?> list) {
+        StringBuilder array = new StringBuilder();
+        array.append("[\n");
+        
+        for (int i = 0; i < list.size(); i++) {
+            if (i > 0) {
+                array.append(",\n");
+            }
+            
+            Object item = list.get(i);
+            if (item instanceof Map) {
+                array.append(generateJsonObject((Map<?, ?>) item, 4)); // 4个空格缩进
+            } else {
+                array.append("\"").append(item != null ? item.toString() : "").append("\"");
+            }
+        }
+        
+        array.append("\n]");
+        return array.toString();
+    }
+    
+    /**
+     * 生成JSON对象
+     */
+    private String generateJsonObject(Map<?, ?> map, int indent) {
+        StringBuilder obj = new StringBuilder();
+        String indentStr = repeatString(" ", indent);
+        String indentStr2 = repeatString(" ", indent + 2);
+        
+        obj.append("{\n");
+        
+        boolean first = true;
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            if (!first) {
+                obj.append(",\n");
+            }
+            first = false;
+            
+            obj.append(indentStr2).append("\"").append(entry.getKey()).append("\": ");
+            Object value = entry.getValue();
+            
+            if (value instanceof String) {
+                obj.append("\"").append(escapeJson((String) value)).append("\"");
+            } else {
+                obj.append("\"").append(value != null ? value.toString() : "").append("\"");
+            }
+        }
+        
+        obj.append("\n").append(indentStr).append("}");
+        return obj.toString();
+    }
+    
+    /**
+     * 重复字符串（Java 8兼容版本）
+     */
+    private String repeatString(String str, int count) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < count; i++) {
+            sb.append(str);
+        }
+        return sb.toString();
+    }
+    
+    /**
+     * 转义JSON字符串中的特殊字符
+     */
+    private String escapeJson(String str) {
+        if (str == null) {
+            return "";
+        }
+        
+        return str.replace("\\", "\\\\")
+                  .replace("\"", "\\\"")
+                  .replace("\n", "\\n")
+                  .replace("\r", "\\r")
+                  .replace("\t", "\\t");
     }
 
 }
