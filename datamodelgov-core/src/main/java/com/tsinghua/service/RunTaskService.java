@@ -187,17 +187,64 @@ public class RunTaskService {
     /**
      * 删除运行任务
      * 参考deleteModel逻辑，只用timestamp作为唯一标识
+     * 同时删除任务文件目录
      */
     public void deleteTask(Long timestamp) {
         try {
+            // 1. 删除数据库中的数据
             List<String> measurements = ConvertUtil.iginxFieldNamesConvert(RunTaskEntity.class, DATA_PREFIX);
             // 删除指定时间戳的数据
             iginxClient.getDeleteClient().deleteMeasurementsData(measurements, timestamp - 1, timestamp + 1);
-            log.info("已删除运行任务: timestamp: {}", timestamp);
+            log.info("已删除运行任务数据库数据: timestamp: {}", timestamp);
+            
+            // 2. 删除任务文件目录
+            Path taskDir = Paths.get("job", String.valueOf(timestamp));
+            if (Files.exists(taskDir)) {
+                try {
+                    // 转换为File对象并递归删除
+                    File dir = taskDir.toFile();
+                    if (deleteDirectory(dir)) {
+                        log.info("已删除任务目录: {}", taskDir);
+                    } else {
+                        log.warn("删除任务目录部分失败: {}", taskDir);
+                    }
+                } catch (Exception e) {
+                    log.error("删除任务目录失败: {}, 错误: {}", taskDir, e.getMessage());
+                    // 不抛出异常，允许数据库删除成功
+                }
+            } else {
+                log.info("任务目录不存在，跳过删除: {}", taskDir);
+            }
+            
+            log.info("任务删除完成: timestamp: {}", timestamp);
         } catch (Exception e) {
             log.error("删除运行任务失败", e);
             throw new RuntimeException("删除运行任务失败: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * 递归删除目录及其所有内容
+     */
+    private boolean deleteDirectory(File directory) {
+        if (!directory.exists()) {
+            return true;
+        }
+        
+        if (!directory.isDirectory()) {
+            return directory.delete();
+        }
+        
+        File[] files = directory.listFiles();
+        if (files != null) {
+            for (File file : files) {
+                if (!deleteDirectory(file)) {
+                    return false;
+                }
+            }
+        }
+        
+        return directory.delete();
     }
 
 
@@ -320,7 +367,7 @@ public class RunTaskService {
             
             // 写入停止日志到文件
             try {
-                Path taskDir = Paths.get("tasks", String.valueOf(timestamp));
+                Path taskDir = Paths.get("job", String.valueOf(timestamp));
                 Path logFile = taskDir.resolve("task.log");
                 Files.write(logFile, stopLog.getBytes(), StandardOpenOption.APPEND);
             } catch (IOException e) {
@@ -421,7 +468,7 @@ public class RunTaskService {
             }
             
             // 2. 如果数据库中没有，尝试从文件读取
-            Path taskDir = Paths.get("tasks", String.valueOf(timestamp));
+            Path taskDir = Paths.get("job", String.valueOf(timestamp));
             Path logFile = taskDir.resolve("task.log");
             
             if (Files.exists(logFile)) {

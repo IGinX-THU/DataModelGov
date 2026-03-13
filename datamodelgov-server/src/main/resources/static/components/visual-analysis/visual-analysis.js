@@ -998,6 +998,31 @@ class VisualAnalysis extends HTMLElement {
             nameTd.textContent = record.name || '-';
             tr.appendChild(nameTd);
             
+            // 规则名称列
+            const ruleNameTd = document.createElement('td');
+            ruleNameTd.textContent = record.ruleName || '-';
+            tr.appendChild(ruleNameTd);
+            
+            // 模型名称列
+            const modelNameTd = document.createElement('td');
+            modelNameTd.textContent = record.modelName || '-';
+            tr.appendChild(modelNameTd);
+            
+            // 版本号列
+            const modelVersionTd = document.createElement('td');
+            modelVersionTd.textContent = record.modelVersion || '-';
+            tr.appendChild(modelVersionTd);
+            
+            // 开始时间列
+            const startTimeTd = document.createElement('td');
+            startTimeTd.textContent = record.startTime ? new Date(record.startTime).toLocaleString() : '-';
+            tr.appendChild(startTimeTd);
+            
+            // 结束时间列
+            const endTimeTd = document.createElement('td');
+            endTimeTd.textContent = record.endTime ? new Date(record.endTime).toLocaleString() : '-';
+            tr.appendChild(endTimeTd);
+            
             // 运行状态列
             const statusTd = document.createElement('td');
             const statusBadge = document.createElement('span');
@@ -1005,11 +1030,6 @@ class VisualAnalysis extends HTMLElement {
             statusBadge.textContent = this.getStatusText(record.status);
             statusTd.appendChild(statusBadge);
             tr.appendChild(statusTd);
-            
-            // 时间列
-            const timeTd = document.createElement('td');
-            timeTd.textContent = new Date(record.timestamp).toLocaleString();
-            tr.appendChild(timeTd);
             
             // 操作列
             const actionTd = document.createElement('td');
@@ -1046,11 +1066,18 @@ class VisualAnalysis extends HTMLElement {
             viewLogBtn.onclick = () => this.handleViewLog(record);
             actionButtons.appendChild(viewLogBtn);
             
-            // 停止按钮（仅在运行中状态显示）
-            if (record.status === 'running') {
+            // 删除按钮
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'action-btn delete';
+            deleteBtn.textContent = '删除';
+            deleteBtn.onclick = () => this.handleDelete(record);
+            actionButtons.appendChild(deleteBtn);
+            
+            // 停止按钮（运行中和等待中状态显示）
+            if (record.status === 'running' || record.status === 'pending') {
                 const stopBtn = document.createElement('button');
                 stopBtn.className = 'action-btn stop';
-                stopBtn.textContent = '停止';
+                stopBtn.textContent = record.status === 'pending' ? '取消' : '停止';
                 stopBtn.onclick = () => this.handleStop(record);
                 actionButtons.appendChild(stopBtn);
             }
@@ -2917,6 +2944,106 @@ class VisualAnalysis extends HTMLElement {
         }
     }
 
+    // 处理删除操作
+    async handleDelete(record) {
+        try {
+            // 使用统一的弹窗样式显示确认对话框
+            const modalTitle = this.shadowRoot.getElementById('modalTitle');
+            const modalBody = this.shadowRoot.getElementById('modalBody');
+            const modalFooter = this.shadowRoot.getElementById('modalFooter');
+            
+            modalTitle.textContent = '删除确认';
+            modalBody.innerHTML = `
+                <div style="padding: 20px 0;">
+                    <p style="margin-bottom: 15px; color: #d32f2f; font-weight: 500;">
+                        ⚠️ 确定要删除任务 "${record.name}" 吗？
+                    </p>
+                    <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; padding: 15px; margin-bottom: 15px;">
+                        <p style="margin: 0 0 8px 0; font-weight: 500; color: #991b1b;">此操作将删除：</p>
+                        <ul style="margin: 0; padding-left: 20px; color: #7f1d1d;">
+                            <li>任务数据</li>
+                            <li>任务文件目录</li>
+                            <li>相关日志和报告</li>
+                        </ul>
+                    </div>
+                    <p style="margin: 0; color: #dc2626; font-size: 14px;">
+                        ⚠️ 此操作不可恢复！
+                    </p>
+                </div>
+            `;
+            
+            modalFooter.innerHTML = `
+                <button class="modal-btn secondary" id="cancelDelete">取消</button>
+                <button class="modal-btn danger" id="confirmDelete">确认删除</button>
+            `;
+            
+            // 显示弹窗
+            this.showModal();
+            
+            // 绑定事件
+            const cancelBtn = this.shadowRoot.getElementById('cancelDelete');
+            const confirmBtn = this.shadowRoot.getElementById('confirmDelete');
+            const modalClose = this.shadowRoot.getElementById('modalClose');
+            
+            const closeModal = () => {
+                this.hideModal();
+            };
+            
+            const handleConfirmDelete = async () => {
+                closeModal();
+                await this.performDelete(record);
+            };
+            
+            cancelBtn.addEventListener('click', closeModal);
+            confirmBtn.addEventListener('click', handleConfirmDelete);
+            modalClose.addEventListener('click', closeModal);
+            
+        } catch (error) {
+            console.error('显示删除确认弹窗失败:', error);
+            this.showToast('显示确认弹窗失败', 'error');
+        }
+    }
+    
+    // 执行删除操作
+    async performDelete(record) {
+        try {
+            this.showToast(`正在删除任务: ${record.name}`, 'warning');
+            
+            // 调用后端删除接口
+            const result = await window.AppConfig.delete('task', 'delete', {
+                timestamp: record.timestamp
+            });
+            
+            console.log('删除任务响应:', result);
+            
+            if (result.success) {
+                this.showToast(`任务 ${record.name} 删除成功`, 'success');
+                
+                // 从本地数据中移除
+                const index = this.allData.findIndex(item => item.timestamp === record.timestamp);
+                if (index > -1) {
+                    this.allData.splice(index, 1);
+                }
+                
+                // 重新加载和显示数据
+                await this.loadTasksFromAPI();
+                this.updateTable();
+                
+                // 如果当前显示的图表数据被删除，清空图表
+                if (this.currentChartData && this.currentChartData.some(item => item.timestamp === record.timestamp)) {
+                    this.currentChartData = this.currentChartData.filter(item => item.timestamp !== record.timestamp);
+                    this.updateChart();
+                }
+                
+            } else {
+                this.showToast(result.message || '删除任务失败', 'error');
+            }
+        } catch (error) {
+            console.error('删除任务失败:', error);
+            this.showToast('网络错误，删除任务失败', 'error');
+        }
+    }
+
     // 处理批量对比选中项
     async handleCompareSelected() {
         const selectedCheckboxes = this.shadowRoot.querySelectorAll('.checkbox-item:checked');
@@ -2940,6 +3067,17 @@ class VisualAnalysis extends HTMLElement {
         
         const selectedIds = Array.from(selectedCheckboxes).map(cb => cb.dataset.id);
         console.log('选中的任务ID:', selectedIds);
+        
+        // 检查选中的任务状态
+        const selectedTasks = this.allData.filter(record => selectedIds.includes(String(record.id)));
+        const nonSuccessTasks = selectedTasks.filter(task => task.status !== 'success');
+        
+        if (nonSuccessTasks.length > 0) {
+            const taskNames = nonSuccessTasks.map(task => `${task.name}(${this.getStatusText(task.status)})`).join(', ');
+            this.showToast(`只能对比成功状态的任务，以下任务不符合条件：${taskNames}`, 'warning');
+            return;
+        }
+        
         this.showToast(`正在对比 ${selectedIds.length} 个选中的任务`, 'success');
         
         // 显示对比图表
