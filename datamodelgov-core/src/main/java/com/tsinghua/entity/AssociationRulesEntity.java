@@ -25,6 +25,8 @@ public class AssociationRulesEntity {
     private String inputsBind;
     @ApiModelProperty(value = "输出参数json")
     private String outputsBind;
+    @ApiModelProperty(value = "结果回写路径前缀")
+    private String outputTable;
     @ApiModelProperty(value = "运行命令")
     private String cmd;
     @ApiModelProperty(value = "输入数据csv文件名")

@@ -461,7 +461,7 @@ public class RunTaskService {
             runTaskEntity.setInputMeasurements(JSONArray.toJSONString(inputs.stream().map(inputBindDto ->
                     String.format("%s.%s", associationRulesEntity.getTableName(), inputBindDto.getSourceField())).collect(Collectors.toList())));
             runTaskEntity.setOutputMeasurements(JSONArray.toJSONString(outputs.stream().map(outputBindDto ->
-                    String.format("%s.%s", associationRulesEntity.getTableName(), outputBindDto.getResultTarget())).collect(Collectors.toList())));
+                    String.format("%s.%s", associationRulesEntity.getOutputTable(), outputBindDto.getResultTarget())).collect(Collectors.toList())));
             saveTask(runTaskEntity);
 
             // 2. 创建任务目录 (相对于项目根目录的tasks文件夹下)
@@ -1000,7 +1000,7 @@ public class RunTaskService {
             Files.write(modifiedCsvFile, lines, StandardCharsets.UTF_8);
         }
 
-        long recordsNum = dataTableService.importCsvFile(modifiedCsvFile, associationRulesEntity.getTableName(), modifiedCsvFileName);
+        long recordsNum = dataTableService.importCsvFile(modifiedCsvFile, associationRulesEntity.getOutputTable(), modifiedCsvFileName);
 
         log.info("输出CSV文件导入完成，记录数: {}", recordsNum);
 

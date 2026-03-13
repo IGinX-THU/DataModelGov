@@ -557,6 +557,7 @@ class AssociationRules extends HTMLElement {
                 this.shadowRoot.getElementById('cmd').value = rule.cmd || '';
                 this.shadowRoot.getElementById('inputCsvName').value = rule.inputCsvName || '';
                 this.shadowRoot.getElementById('outputCsvName').value = rule.outputCsvName || '';
+                this.shadowRoot.getElementById('outputTable').value = rule.outputTable || '';
                 
                 // 设置版本 - 需要先加载版本选项
                 if (rule.modelName || rule.targetModel) {
@@ -733,6 +734,7 @@ class AssociationRules extends HTMLElement {
         const cmd = this.shadowRoot.getElementById('cmd').value.trim();
         const inputCsvName = this.shadowRoot.getElementById('inputCsvName').value.trim();
         const outputCsvName = this.shadowRoot.getElementById('outputCsvName').value.trim();
+        const outputTable = this.shadowRoot.getElementById('outputTable').value.trim();
         const status = this.shadowRoot.querySelector('input[name="status"]:checked')?.value || 'active';
         
         // 收集映射关系 - 参考model-edit.js的inputs/outputs收集逻辑
@@ -750,6 +752,7 @@ class AssociationRules extends HTMLElement {
             cmd: cmd,               // 运行命令
             inputCsvName: inputCsvName,   // 输入数据CSV文件名
             outputCsvName: outputCsvName, // 输出结果CSV文件名
+            outputTable: outputTable,     // 结果回写路径前缀
             status: status === 'active', // 转换为boolean类型
             createTime: this.currentAction === 'edit' && this.shadowRoot.getElementById('ruleForm').dataset.ruleId 
                 ? parseInt(this.shadowRoot.getElementById('ruleForm').dataset.ruleId) 
@@ -1007,6 +1010,14 @@ class AssociationRules extends HTMLElement {
                 customValueInput.value = '';
             }
         });
+
+        // Add field type validation
+        const sourceSelect = sourceField.querySelector('.data-field-select');
+        const targetSelect = targetField.querySelector('.mapping-target-field');
+        
+        // Add change event listeners for validation
+        sourceSelect.addEventListener('change', () => this.validateMappingType(sourceSelect, targetSelect));
+        targetSelect.addEventListener('change', () => this.validateMappingType(sourceSelect, targetSelect));
 
         // Update field options based on current selections
         this.updateMappingFieldOptionsForNewRow(sourceField, targetField);
@@ -1671,7 +1682,7 @@ class AssociationRules extends HTMLElement {
                         <div class="mapping-config">
                             <div class="mapping-header">
                                 <div class="mapping-source">
-                                    <label>数据源</label>
+                                    <label>数据源路径前缀</label>
                                     <select id="dataSource" class="data-source-select">
                                         <option value="">请选择数据源</option>
                                         <option value="car">车辆数据</option>
@@ -1708,6 +1719,12 @@ class AssociationRules extends HTMLElement {
                             
                             <div class="mapping-section">
                                 <div class="mapping-title">结果回写映射（模型 → 数据源）</div>
+                                <div class="form-row" style="margin-bottom: 15px;">
+                                    <div class="form-group">
+                                        <label for="outputTable">结果回写路径前缀</label>
+                                        <input type="text" id="outputTable" name="outputTable" placeholder="请输入结果回写路径前缀">
+                                    </div>
+                                </div>
                                 <div class="mappings-list" id="resultMappingsList">
                                     <!-- 动态添加结果映射行 -->
                                 </div>
@@ -3061,7 +3078,7 @@ class AssociationRules extends HTMLElement {
         if (!leftSidebarTree) return;
         
         const allNodes = leftSidebarTree.querySelectorAll('.tree-node');
-        const fields = new Set();
+        const fields = new Map(); // 使用Map来存储字段名和类型
         
         allNodes.forEach(node => {
             const span = node.querySelector('span');
@@ -3076,14 +3093,19 @@ class AssociationRules extends HTMLElement {
                     if (parentNode && parentNode.classList.contains('tree-node')) {
                         const parentPath = this.getFullTablePath(parentNode);
                         if (parentPath === tableName) {
-                            fields.add(nodeName);
+                            // 获取dataType属性（数值代码）
+                            const dataTypeCode = node.getAttribute('data-type') || node.dataset.type || '1';
+                            fields.set(nodeName, dataTypeCode);
                         }
                     }
                 }
             }
         });
         
-        console.log('获取到的字段:', Array.from(fields));
+        console.log('获取到的字段和类型代码:', Array.from(fields.entries()));
+        
+        // 存储字段类型信息供验证使用
+        this.dataSourceFieldTypes = fields;
         
         // 更新所有映射行中的数据源字段选项
         const mappingRows = this.shadowRoot.querySelectorAll('.mapping-row');
@@ -3093,11 +3115,12 @@ class AssociationRules extends HTMLElement {
                 const currentValue = sourceSelect.value;
                 sourceSelect.innerHTML = '<option value="">请选择字段</option>';
                 
-                // 添加字段选项
-                Array.from(fields).forEach(field => {
+                // 添加字段选项，包含转换后的类型信息
+                fields.forEach((typeCode, fieldName) => {
+                    const readableType = this.convertDataTypeCode(typeCode);
                     const option = document.createElement('option');
-                    option.value = field;
-                    option.textContent = field;
+                    option.value = fieldName;
+                    option.textContent = `${fieldName} (${readableType})`;
                     sourceSelect.appendChild(option);
                 });
                 
@@ -3403,7 +3426,7 @@ class AssociationRules extends HTMLElement {
                 const leftSidebarTree = document.querySelector('.left-sidebar .tree');
                 if (leftSidebarTree) {
                     const allNodes = leftSidebarTree.querySelectorAll('.tree-node');
-                    const fields = new Set();
+                    const fields = new Map(); // 使用Map来存储字段名和类型
                     
                     allNodes.forEach(node => {
                         const span = node.querySelector('span');
@@ -3415,20 +3438,26 @@ class AssociationRules extends HTMLElement {
                                 if (parentNode && parentNode.classList.contains('tree-node')) {
                                     const parentPath = this.getFullTablePath(parentNode);
                                     if (parentPath === dataSource) {
-                                        fields.add(nodeName);
+                                        // 获取dataType属性（数值代码）
+                                        const dataTypeCode = node.getAttribute('data-type') || node.dataset.type || '5';
+                                        fields.set(nodeName, dataTypeCode);
                                     }
                                 }
                             }
                         }
                     });
                     
-                    // 添加字段选项
-                    Array.from(fields).forEach(field => {
+                    // 添加字段选项，包含转换后的类型信息
+                    fields.forEach((typeCode, fieldName) => {
+                        const readableType = this.convertDataTypeCode(typeCode);
                         const option = document.createElement('option');
-                        option.value = field;
-                        option.textContent = field;
+                        option.value = fieldName;
+                        option.textContent = `${fieldName} (${readableType})`;
                         sourceSelect.appendChild(option);
                     });
+                    
+                    // 存储字段类型信息供验证使用
+                    this.dataSourceFieldTypes = fields;
                 }
             }
         }
@@ -3654,6 +3683,127 @@ class AssociationRules extends HTMLElement {
     goToPage(page) {
         this.currentPage = page;
         this.loadRulesFromAPI(); // 重新调用API获取数据
+    }
+
+    // 验证映射字段的数据类型匹配
+    validateMappingType(sourceSelect, targetSelect) {
+        const sourceValue = sourceSelect.value;
+        const targetValue = targetSelect.value;
+        
+        // 如果两个字段都已选择，则进行类型验证
+        if (sourceValue && targetValue) {
+            const sourceType = this.getDataSourceFieldType(sourceValue);
+            const targetType = this.getTargetModelFieldType(targetValue);
+            
+            console.log('验证类型匹配:', { sourceValue, sourceType, targetValue, targetType });
+            
+            // 检查类型是否兼容
+            if (!this.areTypesCompatible(sourceType, targetType)) {
+                // 显示错误提示
+                this.showToast(`Cannot map ${sourceType} to ${targetType}`, 'error');
+                
+                // 清空目标选择
+                targetSelect.value = '';
+                
+                // 添加错误样式
+                targetSelect.style.borderColor = '#ff4444';
+                setTimeout(() => {
+                    targetSelect.style.borderColor = '';
+                }, 3000);
+            }
+        }
+    }
+
+    // 将数值dataType转换为可读类型名称
+    convertDataTypeCode(dataType) {
+        const typeCode = parseInt(dataType);
+        
+        switch(typeCode) {
+            case 0:
+                return 'Boolean';
+            case 1:
+                return 'Integer';
+            case 2:
+                return 'Long';
+            case 3:
+                return 'Float';
+            case 4:
+                return 'Double';
+            case 5:
+                return 'String'; // Binary或String，统一按String处理
+            default:
+                console.warn('未知的dataType代码:', dataType);
+                return 'String'; // 默认为String
+        }
+    }
+
+    // 获取数据源字段的实际类型
+    getDataSourceFieldType(fieldName) {
+        // 从存储的字段类型Map中获取类型
+        if (this.dataSourceFieldTypes && this.dataSourceFieldTypes.has(fieldName)) {
+            const dataType = this.dataSourceFieldTypes.get(fieldName);
+            return this.convertDataTypeCode(dataType);
+        }
+        
+        // 如果没有找到，尝试从树节点中实时获取
+        const leftSidebarTree = document.querySelector('.left-sidebar .tree');
+        if (leftSidebarTree) {
+            const allNodes = leftSidebarTree.querySelectorAll('.tree-node');
+            for (const node of allNodes) {
+                const span = node.querySelector('span');
+                if (span && span.textContent.trim() === fieldName) {
+                    const dataType = node.getAttribute('data-type') || node.dataset.type || '1';
+                    return this.convertDataTypeCode(dataType);
+                }
+            }
+        }
+        
+        // 默认返回Integer (dataType=1)
+        return 'Integer';
+    }
+
+    // 获取目标模型字段的实际类型
+    getTargetModelFieldType(targetValue) {
+        // 从缓存的模型数据中获取类型信息
+        if (this.cachedModelData && this.cachedModelData.inputs) {
+            const inputs = typeof this.cachedModelData.inputs === 'string' 
+                ? JSON.parse(this.cachedModelData.inputs) 
+                : this.cachedModelData.inputs;
+            
+            const input = inputs.find(item => (item.name || item) === targetValue);
+            if (input && input.type) {
+                return input.type;
+            }
+        }
+        
+        // 如果没有找到类型信息，默认为String
+        return 'String';
+    }
+
+    // 检查两种类型是否兼容
+    areTypesCompatible(sourceType, targetType) {
+        // 类型相同则兼容
+        if (sourceType === targetType) {
+            return true;
+        }
+        
+        // String可以转换为任何类型（通过解析）
+        if (sourceType === 'String') {
+            return true;
+        }
+        
+        // Integer可以转换为Float
+        if (sourceType === 'Integer' && targetType === 'Float') {
+            return true;
+        }
+        
+        // Float可以转换为Integer（但可能丢失精度）
+        if (sourceType === 'Float' && targetType === 'Integer') {
+            return true;
+        }
+        
+        // 其他情况不兼容
+        return false;
     }
 
     hide() {
