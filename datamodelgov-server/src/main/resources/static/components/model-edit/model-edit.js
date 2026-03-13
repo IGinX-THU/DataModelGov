@@ -11,7 +11,7 @@ class ModelEdit extends HTMLElement {
         await this.loadResources();
         this.render();
         this.bindEvents();
-        this.loadParsingRules();
+        await this.loadParsingRules();
         this.hide(); // 默认隐藏
     }
 
@@ -155,13 +155,17 @@ class ModelEdit extends HTMLElement {
         this.currentModel = modelInfo;
         this.removeAttribute('hidden');
         await this.loadModelData(modelInfo);
+        await this.loadParsingRules(); // 确保加载解析规则
     }
 
     // 新增方法：直接接收model-detail的数据，不重复调用接口
-    showWithModelData(modelInfo, modelDetailData) {
+    async showWithModelData(modelInfo, modelDetailData) {
         this.currentModel = modelInfo;
         this.currentModelMeta = modelDetailData;
         this.removeAttribute('hidden');
+        
+        // 确保加载解析规则
+        await this.loadParsingRules();
         
         // 直接使用model-detail的数据填充表单，完全使用接口数据
         const modelNameInput = this.shadowRoot.getElementById('modelName');
@@ -546,55 +550,30 @@ class ModelEdit extends HTMLElement {
     }
     
     getParsingRuleConfig(ruleType) {
-        // 从解析规则组件获取配置
-        const parsingRules = document.querySelector('parsing-rules');
-        if (parsingRules && parsingRules.data) {
-            const rule = parsingRules.data.find(r => r.name === ruleType || r.id === parseInt(ruleType));
-            if (rule) {
-                return {
-                    type: rule.parsingType || 'regex',
-                    pattern: rule.regex || '',
-                    pythonModule: rule.pythonModule || '',
-                    pythonFunction: rule.pythonFunction || ''
-                };
+        // 从下拉选择框获取选中的解析规则配置
+        const parseRulesSelect = this.shadowRoot.getElementById('parseRulesSelect');
+        if (parseRulesSelect) {
+            const selectedOption = parseRulesSelect.querySelector(`option[value="${ruleType}"]`);
+            if (selectedOption) {
+                const regexPattern = selectedOption.dataset.regexPattern;
+                if (regexPattern) {
+                    return {
+                        type: 'regex',
+                        pattern: regexPattern,
+                        pythonModule: '',
+                        pythonFunction: ''
+                    };
+                }
             }
         }
         
-        // 注释解析规则配置
-        const commentRules = {
-            'Python标准': {
-                type: 'regex',
-                pattern: '#\\s*@(Input|Output)\\s*:\\s*(\\w+)\\s*\\(([^)]+)\\)\\s*-\\s*([^\\n]+)',
-                pythonModule: '',
-                pythonFunction: ''
-            },
-            'MATLAB标准': {
-                type: 'regex',
-                pattern: '%\\s*@(Input|Output)\\s*:\\s*(\\w+)\\s*\\(([^)]+)\\)\\s*-\\s*([^\\n]+)',
-                pythonModule: '',
-                pythonFunction: ''
-            },
-            'C++ Doxygen': {
-                type: 'regex',
-                pattern: '\\/\\*\\*\\s*@(?:param|return|in|out)\\s+(\\w+)\\s+([^\\n]+)\\s*(?:\\*\\s*Type:\\s*([^\\n]+))?',
-                pythonModule: '',
-                pythonFunction: ''
-            },
-            'JavaDoc': {
-                type: 'regex',
-                pattern: '\\/\\*\\*\\s*@(?:param|return)\\s+(\\w+)\\s+([^\\n]+)\\s*(?:\\{[^}]*\\}\\s*([^\\n]+))?',
-                pythonModule: '',
-                pythonFunction: ''
-            },
-            '通用注释': {
-                type: 'regex',
-                pattern: '[\\/\\#]\\s*@(Input|Output|Param|Return)\\s*[:=]\\s*(\\w+)\\s*\\[?([^\\]]*)\\]?\\s*-\\s*([^\\n]+)',
-                pythonModule: '',
-                pythonFunction: ''
-            }
+        // 默认返回空配置
+        return {
+            type: 'regex',
+            pattern: '',
+            pythonModule: '',
+            pythonFunction: ''
         };
-        
-        return commentRules[ruleType] || commentRules['Python标准'];
     }
     
     performCodeAnalysis(sourceFile, parsingRule) {
@@ -889,37 +868,46 @@ Generic processing function`
         this.outputs = mergeArray(this.outputs, codeAnalysis.outputs || []);
     }
     
-    loadParsingRules() {
+    async loadParsingRules() {
+        console.log('开始加载解析规则...');
         const parseRulesSelect = this.shadowRoot.getElementById('parseRulesSelect');
-        if (!parseRulesSelect) return;
-        
-        // 清空现有选项（保留默认选项）
-        parseRulesSelect.innerHTML = '<option value="default">默认规则</option>';
-        
-        // 从解析规则组件获取规则列表
-        const parsingRules = document.querySelector('parsing-rules');
-        if (parsingRules && parsingRules.data) {
-            parsingRules.data.forEach(rule => {
-                const option = document.createElement('option');
-                option.value = rule.id;
-                option.textContent = rule.name;
-                parseRulesSelect.appendChild(option);
-            });
+        if (!parseRulesSelect) {
+            console.warn('未找到parseRulesSelect元素');
+            return;
         }
         
-        // 添加一些内置规则选项
-        const builtinRules = [
-            { value: 'strict', text: '严格规则' },
-            { value: 'python_reflect', text: 'Python反射规则' },
-            { value: 'custom', text: '自定义规则' }
-        ];
+        // 清空现有选项
+        parseRulesSelect.innerHTML = '';
+        console.log('已清空现有选项');
         
-        builtinRules.forEach(rule => {
-            const option = document.createElement('option');
-            option.value = rule.value;
-            option.textContent = rule.text;
-            parseRulesSelect.appendChild(option);
-        });
+        try {
+            // 通过API动态查询解析规则
+            console.log('正在调用API查询解析规则...');
+            const response = await window.AppConfig.post('data', 'parsing/rules/query', {
+                pageNum: 1,
+                pageSize: 100 // 获取所有规则
+            });
+            
+            console.log('API响应:', response);
+            
+            if (response.success && response.data) {
+                console.log('解析规则数据:', response.data);
+                response.data.forEach(rule => {
+                    const option = document.createElement('option');
+                    option.value = rule.createTime; // 使用createTime作为唯一标识
+                    option.textContent = rule.name;
+                    option.dataset.regexPattern = rule.regexPattern || ''; // 存储正则表达式模式
+                    parseRulesSelect.appendChild(option);
+                    console.log('添加解析规则选项:', rule.name, rule.createTime);
+                });
+                
+                console.log('已加载解析规则:', response.data.length, '个规则');
+            } else {
+                console.warn('加载解析规则失败:', response.message);
+            }
+        } catch (error) {
+            console.error('加载解析规则时发生错误:', error);
+        }
     }
 
     onParseRulesChange(value) {
