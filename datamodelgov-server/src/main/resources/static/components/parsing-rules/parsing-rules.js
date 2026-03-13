@@ -121,7 +121,8 @@ class ParsingRules extends HTMLElement {
                 const frontendRule = {
                     id: rule.createTime,
                     name: rule.name,
-                    regex: rule.regexPattern
+                    regex: rule.regexPattern,
+                    example: rule.example
                 };
                 
                 this.showModal('编辑解析规则', this.getFormModalBody(frontendRule), [
@@ -204,11 +205,13 @@ class ParsingRules extends HTMLElement {
         // 收集基本信息
         const ruleName = this.shadowRoot.getElementById('ruleName')?.value.trim() || '';
         const regexValue = this.shadowRoot.getElementById('ruleRegex')?.value.trim() || '';
+        const exampleValue = this.shadowRoot.getElementById('ruleExample')?.value.trim() || '';
         
         // 构建完整的表单数据对象，包含ParsingRulesEntity需要的所有字段
         const formData = {
             name: ruleName,
             regexPattern: regexValue,
+            example: exampleValue,
             createTime: this.currentAction === 'edit' && this.currentEditId 
                 ? parseInt(this.currentEditId) 
                 : null
@@ -359,7 +362,8 @@ class ParsingRules extends HTMLElement {
     getFormModalBody(defaults = {}) {
         const values = {
             name: defaults.name || '',
-            regex: defaults.regex || ''
+            regex: defaults.regex || '',
+            example: defaults.example || ''
         };
         return `
             <div class="modal-form">
@@ -372,6 +376,11 @@ class ParsingRules extends HTMLElement {
                     <span class="modal-label">正则表达式 :</span>
                     <input class="modal-input" id="ruleRegex" type="text" value="${values.regex}" placeholder="请输入正则表达式" />
                     <div id="regexError" style="color: #ff4d4f; font-size: 12px; margin-top: 4px; display: none;">正则表达式无效</div>
+                </div>
+                
+                <div class="modal-form-row">
+                    <span class="modal-label">示例注释规范 :</span>
+                    <textarea class="modal-textarea" id="ruleExample" placeholder="请输入示例注释规范，如：&#10;# @Input: speed (float) - 车速&#10;# @Output: power (double) - 功率" rows="6">${values.example}</textarea>
                 </div>
                 
                 <div class="modal-test-area">

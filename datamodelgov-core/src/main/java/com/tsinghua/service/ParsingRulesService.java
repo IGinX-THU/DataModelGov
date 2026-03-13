@@ -33,6 +33,10 @@ public class ParsingRulesService {
             ParsingRulesEntity parsingRulesEntity = new ParsingRulesEntity();
             parsingRulesEntity.setName("默认规则");
             parsingRulesEntity.setRegexPattern("^#\\s*@(Input|Output)\\s*:?\\s*(\\w+)\\s*[\\(\\[]?\\s*(\\w+)\\s*[\\)\\]]?\\s*-?\\s*(.*)$");
+            parsingRulesEntity.setExample(
+                    "# @Input: speed (float) - 车速\n" +
+                    "# @Input: gear (int) - 档位\n" +
+                    "# @Output: power (float) - 功率");
             saveRules(parsingRulesEntity);
         } catch (Exception e) {
             log.error(e.getMessage());
@@ -66,6 +70,7 @@ public class ParsingRulesService {
         // 创建各个字段的数据点
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "name", parsingRulesEntity.getName(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "regexPattern", parsingRulesEntity.getRegexPattern(), timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "example", parsingRulesEntity.getExample(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "createTime", parsingRulesEntity.getCreateTime(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "updateTime", parsingRulesEntity.getUpdateTime(), timestamp));
 

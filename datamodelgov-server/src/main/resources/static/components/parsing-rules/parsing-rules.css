@@ -257,6 +257,20 @@
     background: #fafbff;
 }
 
+.modal-textarea {
+    flex: 1;
+    border: 1px solid #e2e6ef;
+    border-radius: 4px;
+    padding: 8px 10px;
+    font-size: 12px;
+    color: #2b2f36;
+    background: #fafbff;
+    resize: vertical;
+    min-height: 80px;
+    font-family: inherit;
+    line-height: 1.4;
+}
+
 .modal-import {
     display: flex;
     flex-direction: column;
