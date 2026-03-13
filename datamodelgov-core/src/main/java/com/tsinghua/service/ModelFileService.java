@@ -19,7 +19,10 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.ByteArrayOutputStream;
+import java.io.FileInputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -38,7 +41,7 @@ public class ModelFileService {
     private IginXClient iginxClient;
 
     /**
-     * 上传模型文件 (Java 17+ 优化版)
+     * 上传模型文件
      * 直接将二进制分块数据写入 IGinX，无需 Base64 编码
      */
     public UploadResult uploadModel(MultipartFile file, String name, String version) throws Exception {
@@ -185,6 +188,72 @@ public class ModelFileService {
                 name, version, modelMeta.getFileName(), fileBytes.length, chunkMap.size(), actualMd5);
 
         return fileBytes;
+    }
+
+    public void extractModelFile(String modelName, String modelVersion, Path taskDir) throws Exception {
+        if (!StringUtils.hasText(modelName) || !StringUtils.hasText(modelVersion)) {
+            throw new RuntimeException("模型名称或版本为空");
+        }
+
+        log.info("开始下载模型: {} 版本 {}", modelName, modelVersion);
+
+        // 获取模型元数据以获取正确的文件名
+        ModelMetaEntity modelMeta = queryMeta(modelName, modelVersion);
+        if (modelMeta == null) {
+            throw new RuntimeException("未找到模型元数据: " + modelName + " 版本 " + modelVersion);
+        }
+
+        byte[] modelData = downloadModel(modelName, modelVersion);
+        String fileName = modelMeta.getFileName();
+        if (fileName == null || fileName.trim().isEmpty()) {
+            throw new RuntimeException("模型文件名为空: " + modelName + " 版本 " + modelVersion);
+        }
+
+        Path modelFile = taskDir.resolve(fileName);
+        Files.write(modelFile, modelData);
+        log.info("模型文件已下载到: {}", modelFile);
+
+        // 如果是压缩包，解压到任务目录
+        if (fileName.toLowerCase().endsWith(".zip") || fileName.toLowerCase().endsWith(".tar") ||
+                fileName.toLowerCase().endsWith(".tar.gz") || fileName.toLowerCase().endsWith(".tgz")) {
+            extractArchive(modelFile, taskDir);
+            log.info("压缩包已解压到: {}", taskDir);
+        }
+    }
+
+    private void extractArchive(Path archiveFile, Path extractDir) {
+        try {
+            if (archiveFile.toString().toLowerCase().endsWith(".zip")) {
+                // 使用Java内置的ZipInputStream解压ZIP文件
+                try (java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(Files.newInputStream(archiveFile.toFile().toPath()))) {
+                    java.util.zip.ZipEntry entry;
+                    while ((entry = zis.getNextEntry()) != null) {
+                        Path entryPath = extractDir.resolve(entry.getName());
+                        if (entry.isDirectory()) {
+                            Files.createDirectories(entryPath);
+                        } else {
+                            Files.createDirectories(entryPath.getParent());
+                            Files.copy(zis, entryPath);
+                        }
+                        zis.closeEntry();
+                    }
+                }
+            } else if (archiveFile.toString().toLowerCase().endsWith(".tar") ||
+                    archiveFile.toString().toLowerCase().endsWith(".tar.gz") ||
+                    archiveFile.toString().toLowerCase().endsWith(".tgz")) {
+                // 对于tar文件，可以使用系统命令tar
+                ProcessBuilder pb = new ProcessBuilder("tar", "-xf", archiveFile.toString(), "-C", extractDir.toString());
+                pb.directory(extractDir.toFile());
+                Process process = pb.start();
+                int exitCode = process.waitFor();
+                if (exitCode != 0) {
+                    throw new RuntimeException("解压tar文件失败，退出码: " + exitCode);
+                }
+            }
+        } catch (Exception e) {
+            log.error("解压文件失败: {}", archiveFile, e);
+            throw new RuntimeException("解压文件失败: " + e.getMessage(), e);
+        }
     }
 
     /**

@@ -26,6 +26,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import org.xhtmlrenderer.pdf.ITextRenderer;
@@ -470,7 +471,7 @@ public class RunTaskService {
             log.info("创建任务目录: {}", taskDir);
 
             // 3. 下载模型文件
-            downloadModel(associationRulesEntity, taskDir);
+            modelFileService.extractModelFile(associationRulesEntity.getModelName(), associationRulesEntity.getModelVersion(), taskDir);
 
             // 4. 导出数据
             downloadData(associationRulesEntity, inputs, taskDir, runTaskEntity);
@@ -496,41 +497,6 @@ public class RunTaskService {
                 log.error("保存失败状态时发生错误", saveException);
             }
             throw new RuntimeException("运行任务失败: " + e.getMessage(), e);
-        }
-    }
-
-    private void extractArchive(Path archiveFile, Path extractDir) {
-        try {
-            if (archiveFile.toString().toLowerCase().endsWith(".zip")) {
-                // 使用Java内置的ZipInputStream解压ZIP文件
-                try (java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(new FileInputStream(archiveFile.toFile()))) {
-                    java.util.zip.ZipEntry entry;
-                    while ((entry = zis.getNextEntry()) != null) {
-                        Path entryPath = extractDir.resolve(entry.getName());
-                        if (entry.isDirectory()) {
-                            Files.createDirectories(entryPath);
-                        } else {
-                            Files.createDirectories(entryPath.getParent());
-                            Files.copy(zis, entryPath);
-                        }
-                        zis.closeEntry();
-                    }
-                }
-            } else if (archiveFile.toString().toLowerCase().endsWith(".tar") || 
-                      archiveFile.toString().toLowerCase().endsWith(".tar.gz") ||
-                      archiveFile.toString().toLowerCase().endsWith(".tgz")) {
-                // 对于tar文件，可以使用系统命令tar
-                ProcessBuilder pb = new ProcessBuilder("tar", "-xf", archiveFile.toString(), "-C", extractDir.toString());
-                pb.directory(extractDir.toFile());
-                Process process = pb.start();
-                int exitCode = process.waitFor();
-                if (exitCode != 0) {
-                    throw new RuntimeException("解压tar文件失败，退出码: " + exitCode);
-                }
-            }
-        } catch (Exception e) {
-            log.error("解压文件失败: {}", archiveFile, e);
-            throw new RuntimeException("解压文件失败: " + e.getMessage(), e);
         }
     }
 
@@ -611,37 +577,6 @@ public class RunTaskService {
         // 批量写入元数据
         iginxClient.getWriteClient().writePoints(metaPoints.stream().filter(Objects::nonNull).collect(Collectors.toList()));
         log.info("任务已保存。名称: {}, 时间戳: {}", runTaskEntity.getName(), timestamp);
-    }
-
-    private void downloadModel(AssociationRulesEntity associationRulesEntity, Path taskDir) throws Exception {
-        if (associationRulesEntity.getModelName() == null || associationRulesEntity.getModelVersion() == null) {
-            throw new RuntimeException("模型名称或版本为空");
-        }
-
-        log.info("开始下载模型: {} v{}", associationRulesEntity.getModelName(), associationRulesEntity.getModelVersion());
-        
-        // 获取模型元数据以获取正确的文件名
-        ModelMetaEntity modelMeta = modelFileService.queryMeta(associationRulesEntity.getModelName(), associationRulesEntity.getModelVersion());
-        if (modelMeta == null) {
-            throw new RuntimeException("未找到模型元数据: " + associationRulesEntity.getModelName() + " v" + associationRulesEntity.getModelVersion());
-        }
-        
-        byte[] modelData = modelFileService.downloadModel(associationRulesEntity.getModelName(), associationRulesEntity.getModelVersion());
-        String fileName = modelMeta.getFileName();
-        if (fileName == null || fileName.trim().isEmpty()) {
-            throw new RuntimeException("模型文件名为空: " + associationRulesEntity.getModelName() + " v" + associationRulesEntity.getModelVersion());
-        }
-        
-        Path modelFile = taskDir.resolve(fileName);
-        Files.write(modelFile, modelData);
-        log.info("模型文件已下载到: {}", modelFile);
-        
-        // 如果是压缩包，解压到任务目录
-        if (fileName.toLowerCase().endsWith(".zip") || fileName.toLowerCase().endsWith(".tar") || 
-            fileName.toLowerCase().endsWith(".tar.gz") || fileName.toLowerCase().endsWith(".tgz")) {
-            extractArchive(modelFile, taskDir);
-            log.info("压缩包已解压到: {}", taskDir);
-        }
     }
 
     private void downloadData(AssociationRulesEntity associationRulesEntity, List<InputBindDto> inputs, Path taskDir, RunTaskEntity runTaskEntity) throws Exception {
