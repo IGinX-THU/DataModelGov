@@ -398,6 +398,10 @@ class ModelEdit extends HTMLElement {
                 const index = parseInt(e.target.dataset.index);
                 const type = e.target.dataset.type;
                 
+                // 保存所有当前用户输入
+                this.saveAllCurrentValues();
+                
+                // 删除参数
                 if (type === 'input') {
                     this.inputs.splice(index, 1);
                 } else {
@@ -410,23 +414,86 @@ class ModelEdit extends HTMLElement {
     }
 
     addInputParam() {
+        // 保存所有当前用户输入（inputs和outputs）
+        this.saveAllCurrentValues();
+        
+        // 添加新的空参数
         this.inputs.push({
             name: '',
             type: '',
             unit: '',
             desc: ''
         });
+        
         this.renderParams();
     }
 
     addOutputParam() {
+        // 保存所有当前用户输入（inputs和outputs）
+        this.saveAllCurrentValues();
+        
+        // 添加新的空参数
         this.outputs.push({
             name: '',
             type: '',
             unit: '',
             desc: ''
         });
+        
         this.renderParams();
+    }
+    
+    saveAllCurrentValues() {
+        this.saveCurrentInputValues();
+        this.saveCurrentOutputValues();
+    }
+    
+    saveCurrentInputValues() {
+        const inputsBody = this.shadowRoot.getElementById('inputsBody');
+        if (!inputsBody) return;
+        
+        // 只处理inputsBody内的param-row
+        const inputRows = inputsBody.querySelectorAll('.param-row');
+        inputRows.forEach(row => {
+            const index = parseInt(row.dataset.index);
+            if (this.inputs[index]) {
+                const nameInput = row.querySelector('input[data-field="name"][data-type="input"]');
+                const typeSelect = row.querySelector('select[data-field="type"][data-type="input"]');
+                const unitSelect = row.querySelector('select[data-field="unit"][data-type="input"]');
+                const descInput = row.querySelector('input[data-field="desc"][data-type="input"]');
+                
+                if (nameInput) this.inputs[index].name = nameInput.value;
+                if (typeSelect) this.inputs[index].type = typeSelect.value;
+                if (unitSelect) this.inputs[index].unit = unitSelect.value;
+                if (descInput) this.inputs[index].desc = descInput.value;
+                
+                console.log(`保存输入参数[${index}]:`, this.inputs[index]);
+            }
+        });
+    }
+    
+    saveCurrentOutputValues() {
+        const outputsBody = this.shadowRoot.getElementById('outputsBody');
+        if (!outputsBody) return;
+        
+        // 只处理outputsBody内的param-row
+        const outputRows = outputsBody.querySelectorAll('.param-row');
+        outputRows.forEach(row => {
+            const index = parseInt(row.dataset.index);
+            if (this.outputs[index]) {
+                const nameInput = row.querySelector('input[data-field="name"][data-type="output"]');
+                const typeSelect = row.querySelector('select[data-field="type"][data-type="output"]');
+                const unitSelect = row.querySelector('select[data-field="unit"][data-type="output"]');
+                const descInput = row.querySelector('input[data-field="desc"][data-type="output"]');
+                
+                if (nameInput) this.outputs[index].name = nameInput.value;
+                if (typeSelect) this.outputs[index].type = typeSelect.value;
+                if (unitSelect) this.outputs[index].unit = unitSelect.value;
+                if (descInput) this.outputs[index].desc = descInput.value;
+                
+                console.log(`保存输出参数[${index}]:`, this.outputs[index]);
+            }
+        });
     }
 
     showParseRules() {
@@ -508,7 +575,7 @@ class ModelEdit extends HTMLElement {
         });
 
         this.renderParams();
-        this.showSuccessMessage('已强制覆盖为推荐值');
+        // 去掉提示信息，避免干扰用户
     }
 
     async autoParseFromCode() {
@@ -1149,6 +1216,9 @@ int process_data() {
     }
     
     mergeParameters(codeAnalysis) {
+        // 先保存当前用户输入
+        this.saveAllCurrentValues();
+        
         const mergeArray = (existing, parsed) => {
             const result = [...existing];
             
