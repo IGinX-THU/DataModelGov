@@ -16,6 +16,9 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 /**
  * Spring Security配置
@@ -51,6 +54,40 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
         return customUserDetailsService;
     }
 
+    /**
+     * CORS配置Bean
+     */
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+        
+        // 允许所有源
+        configuration.addAllowedOriginPattern("*");
+        
+        // 允许所有HTTP方法
+        configuration.addAllowedMethod("GET");
+        configuration.addAllowedMethod("POST");
+        configuration.addAllowedMethod("PUT");
+        configuration.addAllowedMethod("DELETE");
+        configuration.addAllowedMethod("OPTIONS");
+        configuration.addAllowedMethod("PATCH");
+        
+        // 允许所有请求头
+        configuration.addAllowedHeader("*");
+        
+        // 允许发送凭据
+        configuration.setAllowCredentials(true);
+        
+        // 预检请求缓存时间
+        configuration.setMaxAge(3600L);
+        
+        // 应用到所有路径
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", configuration);
+        
+        return source;
+    }
+
     @Override
     protected void configure(AuthenticationManagerBuilder auth) throws Exception {
         auth.userDetailsService(userDetailsService()).passwordEncoder(passwordEncoder());
@@ -59,6 +96,9 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
     @Override
     protected void configure(HttpSecurity http) throws Exception {
         http
+            // 启用CORS
+            .cors().and()
+            
             // 禁用CSRF
             .csrf().disable()
             

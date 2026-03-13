@@ -255,11 +255,12 @@ function confirmDialog(message, title = '确认操作') {
         modal.querySelector('.modal-close').addEventListener('click', () => closeModal(false));
         modal.querySelector('.cancel-btn').addEventListener('click', () => closeModal(false));
         modal.querySelector('.confirm-btn').addEventListener('click', () => closeModal(true));
-        modalMask.addEventListener('click', (e) => {
-            if (e.target === modalMask) {
-                closeModal(false);
-            }
-        });
+        // 移除点击遮罩关闭功能，避免误操作
+        // modalMask.addEventListener('click', (e) => {
+        //     if (e.target === modalMask) {
+        //         closeModal(false);
+        //     }
+        // });
     });
 }
 

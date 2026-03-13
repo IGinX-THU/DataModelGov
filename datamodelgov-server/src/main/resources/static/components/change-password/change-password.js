@@ -91,15 +91,15 @@ class ChangePassword extends HTMLElement {
             });
         }
 
-        // 点击模态框外部关闭
-        const modalMask = this.shadowRoot.getElementById('changePasswordModal');
-        if (modalMask) {
-            modalMask.addEventListener('click', (e) => {
-                if (e.target === modalMask) {
-                    this.hide();
-                }
-            });
-        }
+        // 移除点击遮罩关闭功能，避免误操作
+        // const modalMask = this.shadowRoot.getElementById('changePasswordModal');
+        // if (modalMask) {
+        //     modalMask.addEventListener('click', (e) => {
+        //         if (e.target === modalMask) {
+        //             this.hide();
+        //         }
+        //     });
+        // }
     }
 
     async loadCurrentUser() {

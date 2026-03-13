@@ -187,12 +187,12 @@ class UserManagement extends HTMLElement {
         this.shadowRoot.getElementById('cancelBtn')?.addEventListener('click', () => this.hideModal());
         this.shadowRoot.getElementById('saveBtn')?.addEventListener('click', () => this.saveUser());
         
-        // Close modal when clicking on the mask
-        this.shadowRoot.getElementById('modalMask')?.addEventListener('click', (e) => {
-            if (e.target === this.shadowRoot.getElementById('modalMask')) {
-                this.hideModal();
-            }
-        });
+        // 移除点击遮罩关闭功能，避免误操作
+        // this.shadowRoot.getElementById('modalMask')?.addEventListener('click', (e) => {
+        //     if (e.target === this.shadowRoot.getElementById('modalMask')) {
+        //         this.hideModal();
+        //     }
+        // });
     }
 
     async loadUsers() {

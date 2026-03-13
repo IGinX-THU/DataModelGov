@@ -373,13 +373,14 @@ class DatabaseTable extends HTMLElement {
             });
         }
 
-        if (modalMask) {
-            modalMask.addEventListener('click', (event) => {
-                if (event.target === modalMask) {
-                    this.hideModal();
-                }
-            });
-        }
+        // 移除点击遮罩关闭功能，避免误操作
+        // if (modalMask) {
+        //     modalMask.addEventListener('click', (event) => {
+        //         if (event.target === modalMask) {
+        //             this.hideModal();
+        //         }
+        //     });
+        // }
 
         // 注释掉表格行操作事件
         // const tbody = this.shadowRoot.getElementById('tableBody');

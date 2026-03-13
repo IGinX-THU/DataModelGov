@@ -2739,13 +2739,13 @@ class VisualAnalysis extends HTMLElement {
             this.stopLogAutoRefresh();
         });
         
-        // 点击遮罩层关闭
-        this.shadowRoot.getElementById('modalMask')?.addEventListener('click', (e) => {
-            if (e.target.id === 'modalMask') {
-                this.hideModal();
-                this.stopLogAutoRefresh();
-            }
-        });
+        // 移除点击遮罩关闭功能，避免误操作
+        // this.shadowRoot.getElementById('modalMask')?.addEventListener('click', (e) => {
+        //     if (e.target.id === 'modalMask') {
+        //         this.hideModal();
+        //         this.stopLogAutoRefresh();
+        //     }
+        // });
         
         // 刷新按钮
         this.shadowRoot.getElementById('refreshLogBtn')?.addEventListener('click', () => {

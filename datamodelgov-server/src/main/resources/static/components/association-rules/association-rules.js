@@ -338,13 +338,13 @@ class AssociationRules extends HTMLElement {
             this.updateResultMappingFieldOptions();
         });
         
-        // Close modal when clicking on the mask
-        this.shadowRoot.getElementById('modalMask')?.addEventListener('click', (e) => {
-            if (e.target === this.shadowRoot.getElementById('modalMask')) {
-                console.log('🔴 点击遮罩层关闭');
-                this.hideModal();
-            }
-        });
+        // 移除点击遮罩关闭功能，避免误操作
+        // this.shadowRoot.getElementById('modalMask')?.addEventListener('click', (e) => {
+        //     if (e.target === this.shadowRoot.getElementById('modalMask')) {
+        //         console.log('🔴 点击遮罩层关闭');
+        //         this.hideModal();
+        //     }
+        // });
         
         // Handle form submission
         this.shadowRoot.getElementById('ruleForm')?.addEventListener('submit', (e) => {
@@ -2601,14 +2601,14 @@ class AssociationRules extends HTMLElement {
             this.stopLogAutoRefresh();
         });
         
-        // 点击遮罩层关闭
-        this.shadowRoot.getElementById('logModalMask')?.addEventListener('click', (e) => {
-            if (e.target.id === 'logModalMask') {
-                console.log('🔴 点击遮罩层关闭');
-                this.hideLogModal();
-                this.stopLogAutoRefresh();
-            }
-        });
+        // 移除点击遮罩关闭功能，避免误操作
+        // this.shadowRoot.getElementById('logModalMask')?.addEventListener('click', (e) => {
+        //     if (e.target.id === 'logModalMask') {
+        //         console.log('🔴 点击遮罩层关闭');
+        //         this.hideLogModal();
+        //         this.stopLogAutoRefresh();
+        //     }
+        // });
         
         // 刷新按钮
         this.shadowRoot.getElementById('logRefreshBtn')?.addEventListener('click', () => {

@@ -260,12 +260,12 @@ class DataSourceList extends HTMLElement {
             this.callDeleteApi(dataSource);
         });
         
-        // 点击遮罩关闭
-        dialog.addEventListener('click', (e) => {
-            if (e.target === dialog) {
-                closeDialog();
-            }
-        });
+        // 移除点击遮罩关闭功能，避免误操作
+        // dialog.addEventListener('click', (e) => {
+        //     if (e.target === dialog) {
+        //         closeDialog();
+        //     }
+        // });
     }
 
     async callDeleteApi(dataSource) {

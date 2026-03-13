@@ -1370,11 +1370,12 @@ int process_data() {
         };
         
         closeBtn.addEventListener('click', closeDialog);
-        overlay.addEventListener('click', (e) => {
-            if (e.target === overlay) {
-                closeDialog();
-            }
-        });
+        // 移除点击遮罩关闭功能，避免误操作
+        // overlay.addEventListener('click', (e) => {
+        //     if (e.target === overlay) {
+        //         closeDialog();
+        //     }
+        // });
     }
 
     collectFormData() {
