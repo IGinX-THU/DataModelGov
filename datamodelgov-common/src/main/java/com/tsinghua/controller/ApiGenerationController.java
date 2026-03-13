@@ -75,7 +75,7 @@ public class ApiGenerationController {
     public Result<?> validateThriftFile() {
         try {
             ThriftCodeGenerator.ValidationResult result = ThriftCodeGenerator.validateThriftFile(
-                "src/main/resources/thrift/api.thrift"
+                "datamodelgov-server/src/main/resources/thrift/api.thrift"
             );
             
             if (result.isValid()) {

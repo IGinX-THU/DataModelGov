@@ -60,6 +60,126 @@ class Iface(object):
         """
         pass
 
+    def saveParsingRule(self, rule):
+        """
+        Parameters:
+         - rule
+
+        """
+        pass
+
+    def queryParsingRules(self, request):
+        """
+        Parameters:
+         - request
+
+        """
+        pass
+
+    def countParsingRules(self, request):
+        """
+        Parameters:
+         - request
+
+        """
+        pass
+
+    def getParsingRule(self, createTime):
+        """
+        Parameters:
+         - createTime
+
+        """
+        pass
+
+    def deleteParsingRule(self, createTime):
+        """
+        Parameters:
+         - createTime
+
+        """
+        pass
+
+    def runTask(self, runTaskRequest):
+        """
+        Parameters:
+         - runTaskRequest
+
+        """
+        pass
+
+    def validateTaskUniqueness(self, request):
+        """
+        Parameters:
+         - request
+
+        """
+        pass
+
+    def stopTask(self, timestamp):
+        """
+        Parameters:
+         - timestamp
+
+        """
+        pass
+
+    def getTaskLog(self, timestamp):
+        """
+        Parameters:
+         - timestamp
+
+        """
+        pass
+
+    def queryTasks(self, request):
+        """
+        Parameters:
+         - request
+
+        """
+        pass
+
+    def countTasks(self, request):
+        """
+        Parameters:
+         - request
+
+        """
+        pass
+
+    def getTask(self, timestamp):
+        """
+        Parameters:
+         - timestamp
+
+        """
+        pass
+
+    def deleteTask(self, timestamp):
+        """
+        Parameters:
+         - timestamp
+
+        """
+        pass
+
+    def uploadReport(self, file):
+        """
+        Parameters:
+         - file
+
+        """
+        pass
+
+    def packageDownload(self, timestamp):
+        """
+        Parameters:
+         - timestamp
+
+        """
+        pass
+
     def registerDataSource(self, jsonBody):
         """
         Parameters:
@@ -83,6 +203,23 @@ class Iface(object):
         pass
 
     def queryData(self, request):
+        """
+        Parameters:
+         - request
+
+        """
+        pass
+
+    def importData(self, config, file):
+        """
+        Parameters:
+         - config
+         - file
+
+        """
+        pass
+
+    def exportData(self, request):
         """
         Parameters:
          - request
@@ -114,10 +251,27 @@ class Iface(object):
         """
         pass
 
-    def saveModelMeta(self, modelMeta):
+    def exportRelationalData(self, request):
         """
         Parameters:
-         - modelMeta
+         - request
+
+        """
+        pass
+
+    def uploadModel(self, file):
+        """
+        Parameters:
+         - file
+
+        """
+        pass
+
+    def downloadModel(self, name, version):
+        """
+        Parameters:
+         - name
+         - version
 
         """
         pass
@@ -127,6 +281,14 @@ class Iface(object):
         Parameters:
          - name
          - version
+
+        """
+        pass
+
+    def saveModelMeta(self, modelMeta):
+        """
+        Parameters:
+         - modelMeta
 
         """
         pass
@@ -144,6 +306,14 @@ class Iface(object):
         Parameters:
          - name
          - version
+
+        """
+        pass
+
+    def extractModelFile(self, request):
+        """
+        Parameters:
+         - request
 
         """
         pass
@@ -316,6 +486,486 @@ class Client(Iface):
             return result.success
         raise TApplicationException(TApplicationException.MISSING_RESULT, "deleteAssociationRule failed: unknown result")
 
+    def saveParsingRule(self, rule):
+        """
+        Parameters:
+         - rule
+
+        """
+        self.send_saveParsingRule(rule)
+        return self.recv_saveParsingRule()
+
+    def send_saveParsingRule(self, rule):
+        self._oprot.writeMessageBegin('saveParsingRule', TMessageType.CALL, self._seqid)
+        args = saveParsingRule_args()
+        args.rule = rule
+        args.write(self._oprot)
+        self._oprot.writeMessageEnd()
+        self._oprot.trans.flush()
+
+    def recv_saveParsingRule(self):
+        iprot = self._iprot
+        (fname, mtype, rseqid) = iprot.readMessageBegin()
+        if mtype == TMessageType.EXCEPTION:
+            x = TApplicationException()
+            x.read(iprot)
+            iprot.readMessageEnd()
+            raise x
+        result = saveParsingRule_result()
+        result.read(iprot)
+        iprot.readMessageEnd()
+        if result.success is not None:
+            return result.success
+        raise TApplicationException(TApplicationException.MISSING_RESULT, "saveParsingRule failed: unknown result")
+
+    def queryParsingRules(self, request):
+        """
+        Parameters:
+         - request
+
+        """
+        self.send_queryParsingRules(request)
+        return self.recv_queryParsingRules()
+
+    def send_queryParsingRules(self, request):
+        self._oprot.writeMessageBegin('queryParsingRules', TMessageType.CALL, self._seqid)
+        args = queryParsingRules_args()
+        args.request = request
+        args.write(self._oprot)
+        self._oprot.writeMessageEnd()
+        self._oprot.trans.flush()
+
+    def recv_queryParsingRules(self):
+        iprot = self._iprot
+        (fname, mtype, rseqid) = iprot.readMessageBegin()
+        if mtype == TMessageType.EXCEPTION:
+            x = TApplicationException()
+            x.read(iprot)
+            iprot.readMessageEnd()
+            raise x
+        result = queryParsingRules_result()
+        result.read(iprot)
+        iprot.readMessageEnd()
+        if result.success is not None:
+            return result.success
+        raise TApplicationException(TApplicationException.MISSING_RESULT, "queryParsingRules failed: unknown result")
+
+    def countParsingRules(self, request):
+        """
+        Parameters:
+         - request
+
+        """
+        self.send_countParsingRules(request)
+        return self.recv_countParsingRules()
+
+    def send_countParsingRules(self, request):
+        self._oprot.writeMessageBegin('countParsingRules', TMessageType.CALL, self._seqid)
+        args = countParsingRules_args()
+        args.request = request
+        args.write(self._oprot)
+        self._oprot.writeMessageEnd()
+        self._oprot.trans.flush()
+
+    def recv_countParsingRules(self):
+        iprot = self._iprot
+        (fname, mtype, rseqid) = iprot.readMessageBegin()
+        if mtype == TMessageType.EXCEPTION:
+            x = TApplicationException()
+            x.read(iprot)
+            iprot.readMessageEnd()
+            raise x
+        result = countParsingRules_result()
+        result.read(iprot)
+        iprot.readMessageEnd()
+        if result.success is not None:
+            return result.success
+        raise TApplicationException(TApplicationException.MISSING_RESULT, "countParsingRules failed: unknown result")
+
+    def getParsingRule(self, createTime):
+        """
+        Parameters:
+         - createTime
+
+        """
+        self.send_getParsingRule(createTime)
+        return self.recv_getParsingRule()
+
+    def send_getParsingRule(self, createTime):
+        self._oprot.writeMessageBegin('getParsingRule', TMessageType.CALL, self._seqid)
+        args = getParsingRule_args()
+        args.createTime = createTime
+        args.write(self._oprot)
+        self._oprot.writeMessageEnd()
+        self._oprot.trans.flush()
+
+    def recv_getParsingRule(self):
+        iprot = self._iprot
+        (fname, mtype, rseqid) = iprot.readMessageBegin()
+        if mtype == TMessageType.EXCEPTION:
+            x = TApplicationException()
+            x.read(iprot)
+            iprot.readMessageEnd()
+            raise x
+        result = getParsingRule_result()
+        result.read(iprot)
+        iprot.readMessageEnd()
+        if result.success is not None:
+            return result.success
+        raise TApplicationException(TApplicationException.MISSING_RESULT, "getParsingRule failed: unknown result")
+
+    def deleteParsingRule(self, createTime):
+        """
+        Parameters:
+         - createTime
+
+        """
+        self.send_deleteParsingRule(createTime)
+        return self.recv_deleteParsingRule()
+
+    def send_deleteParsingRule(self, createTime):
+        self._oprot.writeMessageBegin('deleteParsingRule', TMessageType.CALL, self._seqid)
+        args = deleteParsingRule_args()
+        args.createTime = createTime
+        args.write(self._oprot)
+        self._oprot.writeMessageEnd()
+        self._oprot.trans.flush()
+
+    def recv_deleteParsingRule(self):
+        iprot = self._iprot
+        (fname, mtype, rseqid) = iprot.readMessageBegin()
+        if mtype == TMessageType.EXCEPTION:
+            x = TApplicationException()
+            x.read(iprot)
+            iprot.readMessageEnd()
+            raise x
+        result = deleteParsingRule_result()
+        result.read(iprot)
+        iprot.readMessageEnd()
+        if result.success is not None:
+            return result.success
+        raise TApplicationException(TApplicationException.MISSING_RESULT, "deleteParsingRule failed: unknown result")
+
+    def runTask(self, runTaskRequest):
+        """
+        Parameters:
+         - runTaskRequest
+
+        """
+        self.send_runTask(runTaskRequest)
+        return self.recv_runTask()
+
+    def send_runTask(self, runTaskRequest):
+        self._oprot.writeMessageBegin('runTask', TMessageType.CALL, self._seqid)
+        args = runTask_args()
+        args.runTaskRequest = runTaskRequest
+        args.write(self._oprot)
+        self._oprot.writeMessageEnd()
+        self._oprot.trans.flush()
+
+    def recv_runTask(self):
+        iprot = self._iprot
+        (fname, mtype, rseqid) = iprot.readMessageBegin()
+        if mtype == TMessageType.EXCEPTION:
+            x = TApplicationException()
+            x.read(iprot)
+            iprot.readMessageEnd()
+            raise x
+        result = runTask_result()
+        result.read(iprot)
+        iprot.readMessageEnd()
+        if result.success is not None:
+            return result.success
+        raise TApplicationException(TApplicationException.MISSING_RESULT, "runTask failed: unknown result")
+
+    def validateTaskUniqueness(self, request):
+        """
+        Parameters:
+         - request
+
+        """
+        self.send_validateTaskUniqueness(request)
+        return self.recv_validateTaskUniqueness()
+
+    def send_validateTaskUniqueness(self, request):
+        self._oprot.writeMessageBegin('validateTaskUniqueness', TMessageType.CALL, self._seqid)
+        args = validateTaskUniqueness_args()
+        args.request = request
+        args.write(self._oprot)
+        self._oprot.writeMessageEnd()
+        self._oprot.trans.flush()
+
+    def recv_validateTaskUniqueness(self):
+        iprot = self._iprot
+        (fname, mtype, rseqid) = iprot.readMessageBegin()
+        if mtype == TMessageType.EXCEPTION:
+            x = TApplicationException()
+            x.read(iprot)
+            iprot.readMessageEnd()
+            raise x
+        result = validateTaskUniqueness_result()
+        result.read(iprot)
+        iprot.readMessageEnd()
+        if result.success is not None:
+            return result.success
+        raise TApplicationException(TApplicationException.MISSING_RESULT, "validateTaskUniqueness failed: unknown result")
+
+    def stopTask(self, timestamp):
+        """
+        Parameters:
+         - timestamp
+
+        """
+        self.send_stopTask(timestamp)
+        return self.recv_stopTask()
+
+    def send_stopTask(self, timestamp):
+        self._oprot.writeMessageBegin('stopTask', TMessageType.CALL, self._seqid)
+        args = stopTask_args()
+        args.timestamp = timestamp
+        args.write(self._oprot)
+        self._oprot.writeMessageEnd()
+        self._oprot.trans.flush()
+
+    def recv_stopTask(self):
+        iprot = self._iprot
+        (fname, mtype, rseqid) = iprot.readMessageBegin()
+        if mtype == TMessageType.EXCEPTION:
+            x = TApplicationException()
+            x.read(iprot)
+            iprot.readMessageEnd()
+            raise x
+        result = stopTask_result()
+        result.read(iprot)
+        iprot.readMessageEnd()
+        if result.success is not None:
+            return result.success
+        raise TApplicationException(TApplicationException.MISSING_RESULT, "stopTask failed: unknown result")
+
+    def getTaskLog(self, timestamp):
+        """
+        Parameters:
+         - timestamp
+
+        """
+        self.send_getTaskLog(timestamp)
+        return self.recv_getTaskLog()
+
+    def send_getTaskLog(self, timestamp):
+        self._oprot.writeMessageBegin('getTaskLog', TMessageType.CALL, self._seqid)
+        args = getTaskLog_args()
+        args.timestamp = timestamp
+        args.write(self._oprot)
+        self._oprot.writeMessageEnd()
+        self._oprot.trans.flush()
+
+    def recv_getTaskLog(self):
+        iprot = self._iprot
+        (fname, mtype, rseqid) = iprot.readMessageBegin()
+        if mtype == TMessageType.EXCEPTION:
+            x = TApplicationException()
+            x.read(iprot)
+            iprot.readMessageEnd()
+            raise x
+        result = getTaskLog_result()
+        result.read(iprot)
+        iprot.readMessageEnd()
+        if result.success is not None:
+            return result.success
+        raise TApplicationException(TApplicationException.MISSING_RESULT, "getTaskLog failed: unknown result")
+
+    def queryTasks(self, request):
+        """
+        Parameters:
+         - request
+
+        """
+        self.send_queryTasks(request)
+        return self.recv_queryTasks()
+
+    def send_queryTasks(self, request):
+        self._oprot.writeMessageBegin('queryTasks', TMessageType.CALL, self._seqid)
+        args = queryTasks_args()
+        args.request = request
+        args.write(self._oprot)
+        self._oprot.writeMessageEnd()
+        self._oprot.trans.flush()
+
+    def recv_queryTasks(self):
+        iprot = self._iprot
+        (fname, mtype, rseqid) = iprot.readMessageBegin()
+        if mtype == TMessageType.EXCEPTION:
+            x = TApplicationException()
+            x.read(iprot)
+            iprot.readMessageEnd()
+            raise x
+        result = queryTasks_result()
+        result.read(iprot)
+        iprot.readMessageEnd()
+        if result.success is not None:
+            return result.success
+        raise TApplicationException(TApplicationException.MISSING_RESULT, "queryTasks failed: unknown result")
+
+    def countTasks(self, request):
+        """
+        Parameters:
+         - request
+
+        """
+        self.send_countTasks(request)
+        return self.recv_countTasks()
+
+    def send_countTasks(self, request):
+        self._oprot.writeMessageBegin('countTasks', TMessageType.CALL, self._seqid)
+        args = countTasks_args()
+        args.request = request
+        args.write(self._oprot)
+        self._oprot.writeMessageEnd()
+        self._oprot.trans.flush()
+
+    def recv_countTasks(self):
+        iprot = self._iprot
+        (fname, mtype, rseqid) = iprot.readMessageBegin()
+        if mtype == TMessageType.EXCEPTION:
+            x = TApplicationException()
+            x.read(iprot)
+            iprot.readMessageEnd()
+            raise x
+        result = countTasks_result()
+        result.read(iprot)
+        iprot.readMessageEnd()
+        if result.success is not None:
+            return result.success
+        raise TApplicationException(TApplicationException.MISSING_RESULT, "countTasks failed: unknown result")
+
+    def getTask(self, timestamp):
+        """
+        Parameters:
+         - timestamp
+
+        """
+        self.send_getTask(timestamp)
+        return self.recv_getTask()
+
+    def send_getTask(self, timestamp):
+        self._oprot.writeMessageBegin('getTask', TMessageType.CALL, self._seqid)
+        args = getTask_args()
+        args.timestamp = timestamp
+        args.write(self._oprot)
+        self._oprot.writeMessageEnd()
+        self._oprot.trans.flush()
+
+    def recv_getTask(self):
+        iprot = self._iprot
+        (fname, mtype, rseqid) = iprot.readMessageBegin()
+        if mtype == TMessageType.EXCEPTION:
+            x = TApplicationException()
+            x.read(iprot)
+            iprot.readMessageEnd()
+            raise x
+        result = getTask_result()
+        result.read(iprot)
+        iprot.readMessageEnd()
+        if result.success is not None:
+            return result.success
+        raise TApplicationException(TApplicationException.MISSING_RESULT, "getTask failed: unknown result")
+
+    def deleteTask(self, timestamp):
+        """
+        Parameters:
+         - timestamp
+
+        """
+        self.send_deleteTask(timestamp)
+        return self.recv_deleteTask()
+
+    def send_deleteTask(self, timestamp):
+        self._oprot.writeMessageBegin('deleteTask', TMessageType.CALL, self._seqid)
+        args = deleteTask_args()
+        args.timestamp = timestamp
+        args.write(self._oprot)
+        self._oprot.writeMessageEnd()
+        self._oprot.trans.flush()
+
+    def recv_deleteTask(self):
+        iprot = self._iprot
+        (fname, mtype, rseqid) = iprot.readMessageBegin()
+        if mtype == TMessageType.EXCEPTION:
+            x = TApplicationException()
+            x.read(iprot)
+            iprot.readMessageEnd()
+            raise x
+        result = deleteTask_result()
+        result.read(iprot)
+        iprot.readMessageEnd()
+        if result.success is not None:
+            return result.success
+        raise TApplicationException(TApplicationException.MISSING_RESULT, "deleteTask failed: unknown result")
+
+    def uploadReport(self, file):
+        """
+        Parameters:
+         - file
+
+        """
+        self.send_uploadReport(file)
+        return self.recv_uploadReport()
+
+    def send_uploadReport(self, file):
+        self._oprot.writeMessageBegin('uploadReport', TMessageType.CALL, self._seqid)
+        args = uploadReport_args()
+        args.file = file
+        args.write(self._oprot)
+        self._oprot.writeMessageEnd()
+        self._oprot.trans.flush()
+
+    def recv_uploadReport(self):
+        iprot = self._iprot
+        (fname, mtype, rseqid) = iprot.readMessageBegin()
+        if mtype == TMessageType.EXCEPTION:
+            x = TApplicationException()
+            x.read(iprot)
+            iprot.readMessageEnd()
+            raise x
+        result = uploadReport_result()
+        result.read(iprot)
+        iprot.readMessageEnd()
+        if result.success is not None:
+            return result.success
+        raise TApplicationException(TApplicationException.MISSING_RESULT, "uploadReport failed: unknown result")
+
+    def packageDownload(self, timestamp):
+        """
+        Parameters:
+         - timestamp
+
+        """
+        self.send_packageDownload(timestamp)
+        return self.recv_packageDownload()
+
+    def send_packageDownload(self, timestamp):
+        self._oprot.writeMessageBegin('packageDownload', TMessageType.CALL, self._seqid)
+        args = packageDownload_args()
+        args.timestamp = timestamp
+        args.write(self._oprot)
+        self._oprot.writeMessageEnd()
+        self._oprot.trans.flush()
+
+    def recv_packageDownload(self):
+        iprot = self._iprot
+        (fname, mtype, rseqid) = iprot.readMessageBegin()
+        if mtype == TMessageType.EXCEPTION:
+            x = TApplicationException()
+            x.read(iprot)
+            iprot.readMessageEnd()
+            raise x
+        result = packageDownload_result()
+        result.read(iprot)
+        iprot.readMessageEnd()
+        if result.success is not None:
+            return result.success
+        raise TApplicationException(TApplicationException.MISSING_RESULT, "packageDownload failed: unknown result")
+
     def registerDataSource(self, jsonBody):
         """
         Parameters:
@@ -464,6 +1114,72 @@ class Client(Iface):
             return result.success
         raise TApplicationException(TApplicationException.MISSING_RESULT, "queryData failed: unknown result")
 
+    def importData(self, config, file):
+        """
+        Parameters:
+         - config
+         - file
+
+        """
+        self.send_importData(config, file)
+        return self.recv_importData()
+
+    def send_importData(self, config, file):
+        self._oprot.writeMessageBegin('importData', TMessageType.CALL, self._seqid)
+        args = importData_args()
+        args.config = config
+        args.file = file
+        args.write(self._oprot)
+        self._oprot.writeMessageEnd()
+        self._oprot.trans.flush()
+
+    def recv_importData(self):
+        iprot = self._iprot
+        (fname, mtype, rseqid) = iprot.readMessageBegin()
+        if mtype == TMessageType.EXCEPTION:
+            x = TApplicationException()
+            x.read(iprot)
+            iprot.readMessageEnd()
+            raise x
+        result = importData_result()
+        result.read(iprot)
+        iprot.readMessageEnd()
+        if result.success is not None:
+            return result.success
+        raise TApplicationException(TApplicationException.MISSING_RESULT, "importData failed: unknown result")
+
+    def exportData(self, request):
+        """
+        Parameters:
+         - request
+
+        """
+        self.send_exportData(request)
+        return self.recv_exportData()
+
+    def send_exportData(self, request):
+        self._oprot.writeMessageBegin('exportData', TMessageType.CALL, self._seqid)
+        args = exportData_args()
+        args.request = request
+        args.write(self._oprot)
+        self._oprot.writeMessageEnd()
+        self._oprot.trans.flush()
+
+    def recv_exportData(self):
+        iprot = self._iprot
+        (fname, mtype, rseqid) = iprot.readMessageBegin()
+        if mtype == TMessageType.EXCEPTION:
+            x = TApplicationException()
+            x.read(iprot)
+            iprot.readMessageEnd()
+            raise x
+        result = exportData_result()
+        result.read(iprot)
+        iprot.readMessageEnd()
+        if result.success is not None:
+            return result.success
+        raise TApplicationException(TApplicationException.MISSING_RESULT, "exportData failed: unknown result")
+
     def deleteData(self, request):
         """
         Parameters:
@@ -560,24 +1276,24 @@ class Client(Iface):
             return result.success
         raise TApplicationException(TApplicationException.MISSING_RESULT, "countRelationalData failed: unknown result")
 
-    def saveModelMeta(self, modelMeta):
+    def exportRelationalData(self, request):
         """
         Parameters:
-         - modelMeta
+         - request
 
         """
-        self.send_saveModelMeta(modelMeta)
-        return self.recv_saveModelMeta()
+        self.send_exportRelationalData(request)
+        return self.recv_exportRelationalData()
 
-    def send_saveModelMeta(self, modelMeta):
-        self._oprot.writeMessageBegin('saveModelMeta', TMessageType.CALL, self._seqid)
-        args = saveModelMeta_args()
-        args.modelMeta = modelMeta
+    def send_exportRelationalData(self, request):
+        self._oprot.writeMessageBegin('exportRelationalData', TMessageType.CALL, self._seqid)
+        args = exportRelationalData_args()
+        args.request = request
         args.write(self._oprot)
         self._oprot.writeMessageEnd()
         self._oprot.trans.flush()
 
-    def recv_saveModelMeta(self):
+    def recv_exportRelationalData(self):
         iprot = self._iprot
         (fname, mtype, rseqid) = iprot.readMessageBegin()
         if mtype == TMessageType.EXCEPTION:
@@ -585,12 +1301,78 @@ class Client(Iface):
             x.read(iprot)
             iprot.readMessageEnd()
             raise x
-        result = saveModelMeta_result()
+        result = exportRelationalData_result()
         result.read(iprot)
         iprot.readMessageEnd()
         if result.success is not None:
             return result.success
-        raise TApplicationException(TApplicationException.MISSING_RESULT, "saveModelMeta failed: unknown result")
+        raise TApplicationException(TApplicationException.MISSING_RESULT, "exportRelationalData failed: unknown result")
+
+    def uploadModel(self, file):
+        """
+        Parameters:
+         - file
+
+        """
+        self.send_uploadModel(file)
+        return self.recv_uploadModel()
+
+    def send_uploadModel(self, file):
+        self._oprot.writeMessageBegin('uploadModel', TMessageType.CALL, self._seqid)
+        args = uploadModel_args()
+        args.file = file
+        args.write(self._oprot)
+        self._oprot.writeMessageEnd()
+        self._oprot.trans.flush()
+
+    def recv_uploadModel(self):
+        iprot = self._iprot
+        (fname, mtype, rseqid) = iprot.readMessageBegin()
+        if mtype == TMessageType.EXCEPTION:
+            x = TApplicationException()
+            x.read(iprot)
+            iprot.readMessageEnd()
+            raise x
+        result = uploadModel_result()
+        result.read(iprot)
+        iprot.readMessageEnd()
+        if result.success is not None:
+            return result.success
+        raise TApplicationException(TApplicationException.MISSING_RESULT, "uploadModel failed: unknown result")
+
+    def downloadModel(self, name, version):
+        """
+        Parameters:
+         - name
+         - version
+
+        """
+        self.send_downloadModel(name, version)
+        return self.recv_downloadModel()
+
+    def send_downloadModel(self, name, version):
+        self._oprot.writeMessageBegin('downloadModel', TMessageType.CALL, self._seqid)
+        args = downloadModel_args()
+        args.name = name
+        args.version = version
+        args.write(self._oprot)
+        self._oprot.writeMessageEnd()
+        self._oprot.trans.flush()
+
+    def recv_downloadModel(self):
+        iprot = self._iprot
+        (fname, mtype, rseqid) = iprot.readMessageBegin()
+        if mtype == TMessageType.EXCEPTION:
+            x = TApplicationException()
+            x.read(iprot)
+            iprot.readMessageEnd()
+            raise x
+        result = downloadModel_result()
+        result.read(iprot)
+        iprot.readMessageEnd()
+        if result.success is not None:
+            return result.success
+        raise TApplicationException(TApplicationException.MISSING_RESULT, "downloadModel failed: unknown result")
 
     def getModelMeta(self, name, version):
         """
@@ -625,6 +1407,38 @@ class Client(Iface):
         if result.success is not None:
             return result.success
         raise TApplicationException(TApplicationException.MISSING_RESULT, "getModelMeta failed: unknown result")
+
+    def saveModelMeta(self, modelMeta):
+        """
+        Parameters:
+         - modelMeta
+
+        """
+        self.send_saveModelMeta(modelMeta)
+        return self.recv_saveModelMeta()
+
+    def send_saveModelMeta(self, modelMeta):
+        self._oprot.writeMessageBegin('saveModelMeta', TMessageType.CALL, self._seqid)
+        args = saveModelMeta_args()
+        args.modelMeta = modelMeta
+        args.write(self._oprot)
+        self._oprot.writeMessageEnd()
+        self._oprot.trans.flush()
+
+    def recv_saveModelMeta(self):
+        iprot = self._iprot
+        (fname, mtype, rseqid) = iprot.readMessageBegin()
+        if mtype == TMessageType.EXCEPTION:
+            x = TApplicationException()
+            x.read(iprot)
+            iprot.readMessageEnd()
+            raise x
+        result = saveModelMeta_result()
+        result.read(iprot)
+        iprot.readMessageEnd()
+        if result.success is not None:
+            return result.success
+        raise TApplicationException(TApplicationException.MISSING_RESULT, "saveModelMeta failed: unknown result")
 
     def getModelHistory(self, name):
         """
@@ -692,6 +1506,38 @@ class Client(Iface):
             return result.success
         raise TApplicationException(TApplicationException.MISSING_RESULT, "deleteModel failed: unknown result")
 
+    def extractModelFile(self, request):
+        """
+        Parameters:
+         - request
+
+        """
+        self.send_extractModelFile(request)
+        return self.recv_extractModelFile()
+
+    def send_extractModelFile(self, request):
+        self._oprot.writeMessageBegin('extractModelFile', TMessageType.CALL, self._seqid)
+        args = extractModelFile_args()
+        args.request = request
+        args.write(self._oprot)
+        self._oprot.writeMessageEnd()
+        self._oprot.trans.flush()
+
+    def recv_extractModelFile(self):
+        iprot = self._iprot
+        (fname, mtype, rseqid) = iprot.readMessageBegin()
+        if mtype == TMessageType.EXCEPTION:
+            x = TApplicationException()
+            x.read(iprot)
+            iprot.readMessageEnd()
+            raise x
+        result = extractModelFile_result()
+        result.read(iprot)
+        iprot.readMessageEnd()
+        if result.success is not None:
+            return result.success
+        raise TApplicationException(TApplicationException.MISSING_RESULT, "extractModelFile failed: unknown result")
+
 
 class Processor(Iface, TProcessor):
     def __init__(self, handler):
@@ -702,18 +1548,39 @@ class Processor(Iface, TProcessor):
         self._processMap["countAssociationRules"] = Processor.process_countAssociationRules
         self._processMap["getAssociationRule"] = Processor.process_getAssociationRule
         self._processMap["deleteAssociationRule"] = Processor.process_deleteAssociationRule
+        self._processMap["saveParsingRule"] = Processor.process_saveParsingRule
+        self._processMap["queryParsingRules"] = Processor.process_queryParsingRules
+        self._processMap["countParsingRules"] = Processor.process_countParsingRules
+        self._processMap["getParsingRule"] = Processor.process_getParsingRule
+        self._processMap["deleteParsingRule"] = Processor.process_deleteParsingRule
+        self._processMap["runTask"] = Processor.process_runTask
+        self._processMap["validateTaskUniqueness"] = Processor.process_validateTaskUniqueness
+        self._processMap["stopTask"] = Processor.process_stopTask
+        self._processMap["getTaskLog"] = Processor.process_getTaskLog
+        self._processMap["queryTasks"] = Processor.process_queryTasks
+        self._processMap["countTasks"] = Processor.process_countTasks
+        self._processMap["getTask"] = Processor.process_getTask
+        self._processMap["deleteTask"] = Processor.process_deleteTask
+        self._processMap["uploadReport"] = Processor.process_uploadReport
+        self._processMap["packageDownload"] = Processor.process_packageDownload
         self._processMap["registerDataSource"] = Processor.process_registerDataSource
         self._processMap["removeDataSource"] = Processor.process_removeDataSource
         self._processMap["listDataSources"] = Processor.process_listDataSources
         self._processMap["getDataSourceTree"] = Processor.process_getDataSourceTree
         self._processMap["queryData"] = Processor.process_queryData
+        self._processMap["importData"] = Processor.process_importData
+        self._processMap["exportData"] = Processor.process_exportData
         self._processMap["deleteData"] = Processor.process_deleteData
         self._processMap["queryRelationalData"] = Processor.process_queryRelationalData
         self._processMap["countRelationalData"] = Processor.process_countRelationalData
-        self._processMap["saveModelMeta"] = Processor.process_saveModelMeta
+        self._processMap["exportRelationalData"] = Processor.process_exportRelationalData
+        self._processMap["uploadModel"] = Processor.process_uploadModel
+        self._processMap["downloadModel"] = Processor.process_downloadModel
         self._processMap["getModelMeta"] = Processor.process_getModelMeta
+        self._processMap["saveModelMeta"] = Processor.process_saveModelMeta
         self._processMap["getModelHistory"] = Processor.process_getModelHistory
         self._processMap["deleteModel"] = Processor.process_deleteModel
+        self._processMap["extractModelFile"] = Processor.process_extractModelFile
         self._on_message_begin = None
 
     def on_message_begin(self, func):
@@ -851,6 +1718,351 @@ class Processor(Iface, TProcessor):
         oprot.writeMessageEnd()
         oprot.trans.flush()
 
+    def process_saveParsingRule(self, seqid, iprot, oprot):
+        args = saveParsingRule_args()
+        args.read(iprot)
+        iprot.readMessageEnd()
+        result = saveParsingRule_result()
+        try:
+            result.success = self._handler.saveParsingRule(args.rule)
+            msg_type = TMessageType.REPLY
+        except TTransport.TTransportException:
+            raise
+        except TApplicationException as ex:
+            logging.exception('TApplication exception in handler')
+            msg_type = TMessageType.EXCEPTION
+            result = ex
+        except Exception:
+            logging.exception('Unexpected exception in handler')
+            msg_type = TMessageType.EXCEPTION
+            result = TApplicationException(TApplicationException.INTERNAL_ERROR, 'Internal error')
+        oprot.writeMessageBegin("saveParsingRule", msg_type, seqid)
+        result.write(oprot)
+        oprot.writeMessageEnd()
+        oprot.trans.flush()
+
+    def process_queryParsingRules(self, seqid, iprot, oprot):
+        args = queryParsingRules_args()
+        args.read(iprot)
+        iprot.readMessageEnd()
+        result = queryParsingRules_result()
+        try:
+            result.success = self._handler.queryParsingRules(args.request)
+            msg_type = TMessageType.REPLY
+        except TTransport.TTransportException:
+            raise
+        except TApplicationException as ex:
+            logging.exception('TApplication exception in handler')
+            msg_type = TMessageType.EXCEPTION
+            result = ex
+        except Exception:
+            logging.exception('Unexpected exception in handler')
+            msg_type = TMessageType.EXCEPTION
+            result = TApplicationException(TApplicationException.INTERNAL_ERROR, 'Internal error')
+        oprot.writeMessageBegin("queryParsingRules", msg_type, seqid)
+        result.write(oprot)
+        oprot.writeMessageEnd()
+        oprot.trans.flush()
+
+    def process_countParsingRules(self, seqid, iprot, oprot):
+        args = countParsingRules_args()
+        args.read(iprot)
+        iprot.readMessageEnd()
+        result = countParsingRules_result()
+        try:
+            result.success = self._handler.countParsingRules(args.request)
+            msg_type = TMessageType.REPLY
+        except TTransport.TTransportException:
+            raise
+        except TApplicationException as ex:
+            logging.exception('TApplication exception in handler')
+            msg_type = TMessageType.EXCEPTION
+            result = ex
+        except Exception:
+            logging.exception('Unexpected exception in handler')
+            msg_type = TMessageType.EXCEPTION
+            result = TApplicationException(TApplicationException.INTERNAL_ERROR, 'Internal error')
+        oprot.writeMessageBegin("countParsingRules", msg_type, seqid)
+        result.write(oprot)
+        oprot.writeMessageEnd()
+        oprot.trans.flush()
+
+    def process_getParsingRule(self, seqid, iprot, oprot):
+        args = getParsingRule_args()
+        args.read(iprot)
+        iprot.readMessageEnd()
+        result = getParsingRule_result()
+        try:
+            result.success = self._handler.getParsingRule(args.createTime)
+            msg_type = TMessageType.REPLY
+        except TTransport.TTransportException:
+            raise
+        except TApplicationException as ex:
+            logging.exception('TApplication exception in handler')
+            msg_type = TMessageType.EXCEPTION
+            result = ex
+        except Exception:
+            logging.exception('Unexpected exception in handler')
+            msg_type = TMessageType.EXCEPTION
+            result = TApplicationException(TApplicationException.INTERNAL_ERROR, 'Internal error')
+        oprot.writeMessageBegin("getParsingRule", msg_type, seqid)
+        result.write(oprot)
+        oprot.writeMessageEnd()
+        oprot.trans.flush()
+
+    def process_deleteParsingRule(self, seqid, iprot, oprot):
+        args = deleteParsingRule_args()
+        args.read(iprot)
+        iprot.readMessageEnd()
+        result = deleteParsingRule_result()
+        try:
+            result.success = self._handler.deleteParsingRule(args.createTime)
+            msg_type = TMessageType.REPLY
+        except TTransport.TTransportException:
+            raise
+        except TApplicationException as ex:
+            logging.exception('TApplication exception in handler')
+            msg_type = TMessageType.EXCEPTION
+            result = ex
+        except Exception:
+            logging.exception('Unexpected exception in handler')
+            msg_type = TMessageType.EXCEPTION
+            result = TApplicationException(TApplicationException.INTERNAL_ERROR, 'Internal error')
+        oprot.writeMessageBegin("deleteParsingRule", msg_type, seqid)
+        result.write(oprot)
+        oprot.writeMessageEnd()
+        oprot.trans.flush()
+
+    def process_runTask(self, seqid, iprot, oprot):
+        args = runTask_args()
+        args.read(iprot)
+        iprot.readMessageEnd()
+        result = runTask_result()
+        try:
+            result.success = self._handler.runTask(args.runTaskRequest)
+            msg_type = TMessageType.REPLY
+        except TTransport.TTransportException:
+            raise
+        except TApplicationException as ex:
+            logging.exception('TApplication exception in handler')
+            msg_type = TMessageType.EXCEPTION
+            result = ex
+        except Exception:
+            logging.exception('Unexpected exception in handler')
+            msg_type = TMessageType.EXCEPTION
+            result = TApplicationException(TApplicationException.INTERNAL_ERROR, 'Internal error')
+        oprot.writeMessageBegin("runTask", msg_type, seqid)
+        result.write(oprot)
+        oprot.writeMessageEnd()
+        oprot.trans.flush()
+
+    def process_validateTaskUniqueness(self, seqid, iprot, oprot):
+        args = validateTaskUniqueness_args()
+        args.read(iprot)
+        iprot.readMessageEnd()
+        result = validateTaskUniqueness_result()
+        try:
+            result.success = self._handler.validateTaskUniqueness(args.request)
+            msg_type = TMessageType.REPLY
+        except TTransport.TTransportException:
+            raise
+        except TApplicationException as ex:
+            logging.exception('TApplication exception in handler')
+            msg_type = TMessageType.EXCEPTION
+            result = ex
+        except Exception:
+            logging.exception('Unexpected exception in handler')
+            msg_type = TMessageType.EXCEPTION
+            result = TApplicationException(TApplicationException.INTERNAL_ERROR, 'Internal error')
+        oprot.writeMessageBegin("validateTaskUniqueness", msg_type, seqid)
+        result.write(oprot)
+        oprot.writeMessageEnd()
+        oprot.trans.flush()
+
+    def process_stopTask(self, seqid, iprot, oprot):
+        args = stopTask_args()
+        args.read(iprot)
+        iprot.readMessageEnd()
+        result = stopTask_result()
+        try:
+            result.success = self._handler.stopTask(args.timestamp)
+            msg_type = TMessageType.REPLY
+        except TTransport.TTransportException:
+            raise
+        except TApplicationException as ex:
+            logging.exception('TApplication exception in handler')
+            msg_type = TMessageType.EXCEPTION
+            result = ex
+        except Exception:
+            logging.exception('Unexpected exception in handler')
+            msg_type = TMessageType.EXCEPTION
+            result = TApplicationException(TApplicationException.INTERNAL_ERROR, 'Internal error')
+        oprot.writeMessageBegin("stopTask", msg_type, seqid)
+        result.write(oprot)
+        oprot.writeMessageEnd()
+        oprot.trans.flush()
+
+    def process_getTaskLog(self, seqid, iprot, oprot):
+        args = getTaskLog_args()
+        args.read(iprot)
+        iprot.readMessageEnd()
+        result = getTaskLog_result()
+        try:
+            result.success = self._handler.getTaskLog(args.timestamp)
+            msg_type = TMessageType.REPLY
+        except TTransport.TTransportException:
+            raise
+        except TApplicationException as ex:
+            logging.exception('TApplication exception in handler')
+            msg_type = TMessageType.EXCEPTION
+            result = ex
+        except Exception:
+            logging.exception('Unexpected exception in handler')
+            msg_type = TMessageType.EXCEPTION
+            result = TApplicationException(TApplicationException.INTERNAL_ERROR, 'Internal error')
+        oprot.writeMessageBegin("getTaskLog", msg_type, seqid)
+        result.write(oprot)
+        oprot.writeMessageEnd()
+        oprot.trans.flush()
+
+    def process_queryTasks(self, seqid, iprot, oprot):
+        args = queryTasks_args()
+        args.read(iprot)
+        iprot.readMessageEnd()
+        result = queryTasks_result()
+        try:
+            result.success = self._handler.queryTasks(args.request)
+            msg_type = TMessageType.REPLY
+        except TTransport.TTransportException:
+            raise
+        except TApplicationException as ex:
+            logging.exception('TApplication exception in handler')
+            msg_type = TMessageType.EXCEPTION
+            result = ex
+        except Exception:
+            logging.exception('Unexpected exception in handler')
+            msg_type = TMessageType.EXCEPTION
+            result = TApplicationException(TApplicationException.INTERNAL_ERROR, 'Internal error')
+        oprot.writeMessageBegin("queryTasks", msg_type, seqid)
+        result.write(oprot)
+        oprot.writeMessageEnd()
+        oprot.trans.flush()
+
+    def process_countTasks(self, seqid, iprot, oprot):
+        args = countTasks_args()
+        args.read(iprot)
+        iprot.readMessageEnd()
+        result = countTasks_result()
+        try:
+            result.success = self._handler.countTasks(args.request)
+            msg_type = TMessageType.REPLY
+        except TTransport.TTransportException:
+            raise
+        except TApplicationException as ex:
+            logging.exception('TApplication exception in handler')
+            msg_type = TMessageType.EXCEPTION
+            result = ex
+        except Exception:
+            logging.exception('Unexpected exception in handler')
+            msg_type = TMessageType.EXCEPTION
+            result = TApplicationException(TApplicationException.INTERNAL_ERROR, 'Internal error')
+        oprot.writeMessageBegin("countTasks", msg_type, seqid)
+        result.write(oprot)
+        oprot.writeMessageEnd()
+        oprot.trans.flush()
+
+    def process_getTask(self, seqid, iprot, oprot):
+        args = getTask_args()
+        args.read(iprot)
+        iprot.readMessageEnd()
+        result = getTask_result()
+        try:
+            result.success = self._handler.getTask(args.timestamp)
+            msg_type = TMessageType.REPLY
+        except TTransport.TTransportException:
+            raise
+        except TApplicationException as ex:
+            logging.exception('TApplication exception in handler')
+            msg_type = TMessageType.EXCEPTION
+            result = ex
+        except Exception:
+            logging.exception('Unexpected exception in handler')
+            msg_type = TMessageType.EXCEPTION
+            result = TApplicationException(TApplicationException.INTERNAL_ERROR, 'Internal error')
+        oprot.writeMessageBegin("getTask", msg_type, seqid)
+        result.write(oprot)
+        oprot.writeMessageEnd()
+        oprot.trans.flush()
+
+    def process_deleteTask(self, seqid, iprot, oprot):
+        args = deleteTask_args()
+        args.read(iprot)
+        iprot.readMessageEnd()
+        result = deleteTask_result()
+        try:
+            result.success = self._handler.deleteTask(args.timestamp)
+            msg_type = TMessageType.REPLY
+        except TTransport.TTransportException:
+            raise
+        except TApplicationException as ex:
+            logging.exception('TApplication exception in handler')
+            msg_type = TMessageType.EXCEPTION
+            result = ex
+        except Exception:
+            logging.exception('Unexpected exception in handler')
+            msg_type = TMessageType.EXCEPTION
+            result = TApplicationException(TApplicationException.INTERNAL_ERROR, 'Internal error')
+        oprot.writeMessageBegin("deleteTask", msg_type, seqid)
+        result.write(oprot)
+        oprot.writeMessageEnd()
+        oprot.trans.flush()
+
+    def process_uploadReport(self, seqid, iprot, oprot):
+        args = uploadReport_args()
+        args.read(iprot)
+        iprot.readMessageEnd()
+        result = uploadReport_result()
+        try:
+            result.success = self._handler.uploadReport(args.file)
+            msg_type = TMessageType.REPLY
+        except TTransport.TTransportException:
+            raise
+        except TApplicationException as ex:
+            logging.exception('TApplication exception in handler')
+            msg_type = TMessageType.EXCEPTION
+            result = ex
+        except Exception:
+            logging.exception('Unexpected exception in handler')
+            msg_type = TMessageType.EXCEPTION
+            result = TApplicationException(TApplicationException.INTERNAL_ERROR, 'Internal error')
+        oprot.writeMessageBegin("uploadReport", msg_type, seqid)
+        result.write(oprot)
+        oprot.writeMessageEnd()
+        oprot.trans.flush()
+
+    def process_packageDownload(self, seqid, iprot, oprot):
+        args = packageDownload_args()
+        args.read(iprot)
+        iprot.readMessageEnd()
+        result = packageDownload_result()
+        try:
+            result.success = self._handler.packageDownload(args.timestamp)
+            msg_type = TMessageType.REPLY
+        except TTransport.TTransportException:
+            raise
+        except TApplicationException as ex:
+            logging.exception('TApplication exception in handler')
+            msg_type = TMessageType.EXCEPTION
+            result = ex
+        except Exception:
+            logging.exception('Unexpected exception in handler')
+            msg_type = TMessageType.EXCEPTION
+            result = TApplicationException(TApplicationException.INTERNAL_ERROR, 'Internal error')
+        oprot.writeMessageBegin("packageDownload", msg_type, seqid)
+        result.write(oprot)
+        oprot.writeMessageEnd()
+        oprot.trans.flush()
+
     def process_registerDataSource(self, seqid, iprot, oprot):
         args = registerDataSource_args()
         args.read(iprot)
@@ -966,6 +2178,52 @@ class Processor(Iface, TProcessor):
         oprot.writeMessageEnd()
         oprot.trans.flush()
 
+    def process_importData(self, seqid, iprot, oprot):
+        args = importData_args()
+        args.read(iprot)
+        iprot.readMessageEnd()
+        result = importData_result()
+        try:
+            result.success = self._handler.importData(args.config, args.file)
+            msg_type = TMessageType.REPLY
+        except TTransport.TTransportException:
+            raise
+        except TApplicationException as ex:
+            logging.exception('TApplication exception in handler')
+            msg_type = TMessageType.EXCEPTION
+            result = ex
+        except Exception:
+            logging.exception('Unexpected exception in handler')
+            msg_type = TMessageType.EXCEPTION
+            result = TApplicationException(TApplicationException.INTERNAL_ERROR, 'Internal error')
+        oprot.writeMessageBegin("importData", msg_type, seqid)
+        result.write(oprot)
+        oprot.writeMessageEnd()
+        oprot.trans.flush()
+
+    def process_exportData(self, seqid, iprot, oprot):
+        args = exportData_args()
+        args.read(iprot)
+        iprot.readMessageEnd()
+        result = exportData_result()
+        try:
+            result.success = self._handler.exportData(args.request)
+            msg_type = TMessageType.REPLY
+        except TTransport.TTransportException:
+            raise
+        except TApplicationException as ex:
+            logging.exception('TApplication exception in handler')
+            msg_type = TMessageType.EXCEPTION
+            result = ex
+        except Exception:
+            logging.exception('Unexpected exception in handler')
+            msg_type = TMessageType.EXCEPTION
+            result = TApplicationException(TApplicationException.INTERNAL_ERROR, 'Internal error')
+        oprot.writeMessageBegin("exportData", msg_type, seqid)
+        result.write(oprot)
+        oprot.writeMessageEnd()
+        oprot.trans.flush()
+
     def process_deleteData(self, seqid, iprot, oprot):
         args = deleteData_args()
         args.read(iprot)
@@ -1035,13 +2293,13 @@ class Processor(Iface, TProcessor):
         oprot.writeMessageEnd()
         oprot.trans.flush()
 
-    def process_saveModelMeta(self, seqid, iprot, oprot):
-        args = saveModelMeta_args()
+    def process_exportRelationalData(self, seqid, iprot, oprot):
+        args = exportRelationalData_args()
         args.read(iprot)
         iprot.readMessageEnd()
-        result = saveModelMeta_result()
+        result = exportRelationalData_result()
         try:
-            result.success = self._handler.saveModelMeta(args.modelMeta)
+            result.success = self._handler.exportRelationalData(args.request)
             msg_type = TMessageType.REPLY
         except TTransport.TTransportException:
             raise
@@ -1053,7 +2311,53 @@ class Processor(Iface, TProcessor):
             logging.exception('Unexpected exception in handler')
             msg_type = TMessageType.EXCEPTION
             result = TApplicationException(TApplicationException.INTERNAL_ERROR, 'Internal error')
-        oprot.writeMessageBegin("saveModelMeta", msg_type, seqid)
+        oprot.writeMessageBegin("exportRelationalData", msg_type, seqid)
+        result.write(oprot)
+        oprot.writeMessageEnd()
+        oprot.trans.flush()
+
+    def process_uploadModel(self, seqid, iprot, oprot):
+        args = uploadModel_args()
+        args.read(iprot)
+        iprot.readMessageEnd()
+        result = uploadModel_result()
+        try:
+            result.success = self._handler.uploadModel(args.file)
+            msg_type = TMessageType.REPLY
+        except TTransport.TTransportException:
+            raise
+        except TApplicationException as ex:
+            logging.exception('TApplication exception in handler')
+            msg_type = TMessageType.EXCEPTION
+            result = ex
+        except Exception:
+            logging.exception('Unexpected exception in handler')
+            msg_type = TMessageType.EXCEPTION
+            result = TApplicationException(TApplicationException.INTERNAL_ERROR, 'Internal error')
+        oprot.writeMessageBegin("uploadModel", msg_type, seqid)
+        result.write(oprot)
+        oprot.writeMessageEnd()
+        oprot.trans.flush()
+
+    def process_downloadModel(self, seqid, iprot, oprot):
+        args = downloadModel_args()
+        args.read(iprot)
+        iprot.readMessageEnd()
+        result = downloadModel_result()
+        try:
+            result.success = self._handler.downloadModel(args.name, args.version)
+            msg_type = TMessageType.REPLY
+        except TTransport.TTransportException:
+            raise
+        except TApplicationException as ex:
+            logging.exception('TApplication exception in handler')
+            msg_type = TMessageType.EXCEPTION
+            result = ex
+        except Exception:
+            logging.exception('Unexpected exception in handler')
+            msg_type = TMessageType.EXCEPTION
+            result = TApplicationException(TApplicationException.INTERNAL_ERROR, 'Internal error')
+        oprot.writeMessageBegin("downloadModel", msg_type, seqid)
         result.write(oprot)
         oprot.writeMessageEnd()
         oprot.trans.flush()
@@ -1077,6 +2381,29 @@ class Processor(Iface, TProcessor):
             msg_type = TMessageType.EXCEPTION
             result = TApplicationException(TApplicationException.INTERNAL_ERROR, 'Internal error')
         oprot.writeMessageBegin("getModelMeta", msg_type, seqid)
+        result.write(oprot)
+        oprot.writeMessageEnd()
+        oprot.trans.flush()
+
+    def process_saveModelMeta(self, seqid, iprot, oprot):
+        args = saveModelMeta_args()
+        args.read(iprot)
+        iprot.readMessageEnd()
+        result = saveModelMeta_result()
+        try:
+            result.success = self._handler.saveModelMeta(args.modelMeta)
+            msg_type = TMessageType.REPLY
+        except TTransport.TTransportException:
+            raise
+        except TApplicationException as ex:
+            logging.exception('TApplication exception in handler')
+            msg_type = TMessageType.EXCEPTION
+            result = ex
+        except Exception:
+            logging.exception('Unexpected exception in handler')
+            msg_type = TMessageType.EXCEPTION
+            result = TApplicationException(TApplicationException.INTERNAL_ERROR, 'Internal error')
+        oprot.writeMessageBegin("saveModelMeta", msg_type, seqid)
         result.write(oprot)
         oprot.writeMessageEnd()
         oprot.trans.flush()
@@ -1123,6 +2450,29 @@ class Processor(Iface, TProcessor):
             msg_type = TMessageType.EXCEPTION
             result = TApplicationException(TApplicationException.INTERNAL_ERROR, 'Internal error')
         oprot.writeMessageBegin("deleteModel", msg_type, seqid)
+        result.write(oprot)
+        oprot.writeMessageEnd()
+        oprot.trans.flush()
+
+    def process_extractModelFile(self, seqid, iprot, oprot):
+        args = extractModelFile_args()
+        args.read(iprot)
+        iprot.readMessageEnd()
+        result = extractModelFile_result()
+        try:
+            result.success = self._handler.extractModelFile(args.request)
+            msg_type = TMessageType.REPLY
+        except TTransport.TTransportException:
+            raise
+        except TApplicationException as ex:
+            logging.exception('TApplication exception in handler')
+            msg_type = TMessageType.EXCEPTION
+            result = ex
+        except Exception:
+            logging.exception('Unexpected exception in handler')
+            msg_type = TMessageType.EXCEPTION
+            result = TApplicationException(TApplicationException.INTERNAL_ERROR, 'Internal error')
+        oprot.writeMessageBegin("extractModelFile", msg_type, seqid)
         result.write(oprot)
         oprot.writeMessageEnd()
         oprot.trans.flush()
@@ -1773,6 +3123,1933 @@ deleteAssociationRule_result.thrift_spec = (
 )
 
 
+class saveParsingRule_args(object):
+    """
+    Attributes:
+     - rule
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, rule = None,):
+        self.rule = rule
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 1:
+                if ftype == TType.STRUCT:
+                    self.rule = ParsingRule()
+                    self.rule.read(iprot)
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('saveParsingRule_args')
+        if self.rule is not None:
+            oprot.writeFieldBegin('rule', TType.STRUCT, 1)
+            self.rule.write(oprot)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+all_structs.append(saveParsingRule_args)
+saveParsingRule_args.thrift_spec = (
+    None,  # 0
+    (1, TType.STRUCT, 'rule', [ParsingRule, None], None, ),  # 1
+)
+
+
+class saveParsingRule_result(object):
+    """
+    Attributes:
+     - success
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, success = None,):
+        self.success = success
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 0:
+                if ftype == TType.STRUCT:
+                    self.success = Result()
+                    self.success.read(iprot)
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('saveParsingRule_result')
+        if self.success is not None:
+            oprot.writeFieldBegin('success', TType.STRUCT, 0)
+            self.success.write(oprot)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+all_structs.append(saveParsingRule_result)
+saveParsingRule_result.thrift_spec = (
+    (0, TType.STRUCT, 'success', [Result, None], None, ),  # 0
+)
+
+
+class queryParsingRules_args(object):
+    """
+    Attributes:
+     - request
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, request = None,):
+        self.request = request
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 1:
+                if ftype == TType.STRUCT:
+                    self.request = ParsingRulesQueryRequest()
+                    self.request.read(iprot)
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('queryParsingRules_args')
+        if self.request is not None:
+            oprot.writeFieldBegin('request', TType.STRUCT, 1)
+            self.request.write(oprot)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+all_structs.append(queryParsingRules_args)
+queryParsingRules_args.thrift_spec = (
+    None,  # 0
+    (1, TType.STRUCT, 'request', [ParsingRulesQueryRequest, None], None, ),  # 1
+)
+
+
+class queryParsingRules_result(object):
+    """
+    Attributes:
+     - success
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, success = None,):
+        self.success = success
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 0:
+                if ftype == TType.STRUCT:
+                    self.success = Result()
+                    self.success.read(iprot)
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('queryParsingRules_result')
+        if self.success is not None:
+            oprot.writeFieldBegin('success', TType.STRUCT, 0)
+            self.success.write(oprot)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+all_structs.append(queryParsingRules_result)
+queryParsingRules_result.thrift_spec = (
+    (0, TType.STRUCT, 'success', [Result, None], None, ),  # 0
+)
+
+
+class countParsingRules_args(object):
+    """
+    Attributes:
+     - request
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, request = None,):
+        self.request = request
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 1:
+                if ftype == TType.STRUCT:
+                    self.request = ParsingRulesQueryRequest()
+                    self.request.read(iprot)
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('countParsingRules_args')
+        if self.request is not None:
+            oprot.writeFieldBegin('request', TType.STRUCT, 1)
+            self.request.write(oprot)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+all_structs.append(countParsingRules_args)
+countParsingRules_args.thrift_spec = (
+    None,  # 0
+    (1, TType.STRUCT, 'request', [ParsingRulesQueryRequest, None], None, ),  # 1
+)
+
+
+class countParsingRules_result(object):
+    """
+    Attributes:
+     - success
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, success = None,):
+        self.success = success
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 0:
+                if ftype == TType.STRUCT:
+                    self.success = Result()
+                    self.success.read(iprot)
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('countParsingRules_result')
+        if self.success is not None:
+            oprot.writeFieldBegin('success', TType.STRUCT, 0)
+            self.success.write(oprot)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+all_structs.append(countParsingRules_result)
+countParsingRules_result.thrift_spec = (
+    (0, TType.STRUCT, 'success', [Result, None], None, ),  # 0
+)
+
+
+class getParsingRule_args(object):
+    """
+    Attributes:
+     - createTime
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, createTime = None,):
+        self.createTime = createTime
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 1:
+                if ftype == TType.I64:
+                    self.createTime = iprot.readI64()
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('getParsingRule_args')
+        if self.createTime is not None:
+            oprot.writeFieldBegin('createTime', TType.I64, 1)
+            oprot.writeI64(self.createTime)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+all_structs.append(getParsingRule_args)
+getParsingRule_args.thrift_spec = (
+    None,  # 0
+    (1, TType.I64, 'createTime', None, None, ),  # 1
+)
+
+
+class getParsingRule_result(object):
+    """
+    Attributes:
+     - success
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, success = None,):
+        self.success = success
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 0:
+                if ftype == TType.STRUCT:
+                    self.success = Result()
+                    self.success.read(iprot)
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('getParsingRule_result')
+        if self.success is not None:
+            oprot.writeFieldBegin('success', TType.STRUCT, 0)
+            self.success.write(oprot)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+all_structs.append(getParsingRule_result)
+getParsingRule_result.thrift_spec = (
+    (0, TType.STRUCT, 'success', [Result, None], None, ),  # 0
+)
+
+
+class deleteParsingRule_args(object):
+    """
+    Attributes:
+     - createTime
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, createTime = None,):
+        self.createTime = createTime
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 1:
+                if ftype == TType.I64:
+                    self.createTime = iprot.readI64()
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('deleteParsingRule_args')
+        if self.createTime is not None:
+            oprot.writeFieldBegin('createTime', TType.I64, 1)
+            oprot.writeI64(self.createTime)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+all_structs.append(deleteParsingRule_args)
+deleteParsingRule_args.thrift_spec = (
+    None,  # 0
+    (1, TType.I64, 'createTime', None, None, ),  # 1
+)
+
+
+class deleteParsingRule_result(object):
+    """
+    Attributes:
+     - success
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, success = None,):
+        self.success = success
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 0:
+                if ftype == TType.STRUCT:
+                    self.success = Result()
+                    self.success.read(iprot)
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('deleteParsingRule_result')
+        if self.success is not None:
+            oprot.writeFieldBegin('success', TType.STRUCT, 0)
+            self.success.write(oprot)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+all_structs.append(deleteParsingRule_result)
+deleteParsingRule_result.thrift_spec = (
+    (0, TType.STRUCT, 'success', [Result, None], None, ),  # 0
+)
+
+
+class runTask_args(object):
+    """
+    Attributes:
+     - runTaskRequest
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, runTaskRequest = None,):
+        self.runTaskRequest = runTaskRequest
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 1:
+                if ftype == TType.STRUCT:
+                    self.runTaskRequest = RunTaskRequest()
+                    self.runTaskRequest.read(iprot)
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('runTask_args')
+        if self.runTaskRequest is not None:
+            oprot.writeFieldBegin('runTaskRequest', TType.STRUCT, 1)
+            self.runTaskRequest.write(oprot)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+all_structs.append(runTask_args)
+runTask_args.thrift_spec = (
+    None,  # 0
+    (1, TType.STRUCT, 'runTaskRequest', [RunTaskRequest, None], None, ),  # 1
+)
+
+
+class runTask_result(object):
+    """
+    Attributes:
+     - success
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, success = None,):
+        self.success = success
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 0:
+                if ftype == TType.STRUCT:
+                    self.success = Result()
+                    self.success.read(iprot)
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('runTask_result')
+        if self.success is not None:
+            oprot.writeFieldBegin('success', TType.STRUCT, 0)
+            self.success.write(oprot)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+all_structs.append(runTask_result)
+runTask_result.thrift_spec = (
+    (0, TType.STRUCT, 'success', [Result, None], None, ),  # 0
+)
+
+
+class validateTaskUniqueness_args(object):
+    """
+    Attributes:
+     - request
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, request = None,):
+        self.request = request
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 1:
+                if ftype == TType.STRUCT:
+                    self.request = RunTaskRequest()
+                    self.request.read(iprot)
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('validateTaskUniqueness_args')
+        if self.request is not None:
+            oprot.writeFieldBegin('request', TType.STRUCT, 1)
+            self.request.write(oprot)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+all_structs.append(validateTaskUniqueness_args)
+validateTaskUniqueness_args.thrift_spec = (
+    None,  # 0
+    (1, TType.STRUCT, 'request', [RunTaskRequest, None], None, ),  # 1
+)
+
+
+class validateTaskUniqueness_result(object):
+    """
+    Attributes:
+     - success
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, success = None,):
+        self.success = success
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 0:
+                if ftype == TType.STRUCT:
+                    self.success = Result()
+                    self.success.read(iprot)
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('validateTaskUniqueness_result')
+        if self.success is not None:
+            oprot.writeFieldBegin('success', TType.STRUCT, 0)
+            self.success.write(oprot)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+all_structs.append(validateTaskUniqueness_result)
+validateTaskUniqueness_result.thrift_spec = (
+    (0, TType.STRUCT, 'success', [Result, None], None, ),  # 0
+)
+
+
+class stopTask_args(object):
+    """
+    Attributes:
+     - timestamp
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, timestamp = None,):
+        self.timestamp = timestamp
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 1:
+                if ftype == TType.I64:
+                    self.timestamp = iprot.readI64()
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('stopTask_args')
+        if self.timestamp is not None:
+            oprot.writeFieldBegin('timestamp', TType.I64, 1)
+            oprot.writeI64(self.timestamp)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+all_structs.append(stopTask_args)
+stopTask_args.thrift_spec = (
+    None,  # 0
+    (1, TType.I64, 'timestamp', None, None, ),  # 1
+)
+
+
+class stopTask_result(object):
+    """
+    Attributes:
+     - success
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, success = None,):
+        self.success = success
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 0:
+                if ftype == TType.STRUCT:
+                    self.success = Result()
+                    self.success.read(iprot)
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('stopTask_result')
+        if self.success is not None:
+            oprot.writeFieldBegin('success', TType.STRUCT, 0)
+            self.success.write(oprot)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+all_structs.append(stopTask_result)
+stopTask_result.thrift_spec = (
+    (0, TType.STRUCT, 'success', [Result, None], None, ),  # 0
+)
+
+
+class getTaskLog_args(object):
+    """
+    Attributes:
+     - timestamp
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, timestamp = None,):
+        self.timestamp = timestamp
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 1:
+                if ftype == TType.I64:
+                    self.timestamp = iprot.readI64()
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('getTaskLog_args')
+        if self.timestamp is not None:
+            oprot.writeFieldBegin('timestamp', TType.I64, 1)
+            oprot.writeI64(self.timestamp)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+all_structs.append(getTaskLog_args)
+getTaskLog_args.thrift_spec = (
+    None,  # 0
+    (1, TType.I64, 'timestamp', None, None, ),  # 1
+)
+
+
+class getTaskLog_result(object):
+    """
+    Attributes:
+     - success
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, success = None,):
+        self.success = success
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 0:
+                if ftype == TType.STRUCT:
+                    self.success = Result()
+                    self.success.read(iprot)
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('getTaskLog_result')
+        if self.success is not None:
+            oprot.writeFieldBegin('success', TType.STRUCT, 0)
+            self.success.write(oprot)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+all_structs.append(getTaskLog_result)
+getTaskLog_result.thrift_spec = (
+    (0, TType.STRUCT, 'success', [Result, None], None, ),  # 0
+)
+
+
+class queryTasks_args(object):
+    """
+    Attributes:
+     - request
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, request = None,):
+        self.request = request
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 1:
+                if ftype == TType.STRUCT:
+                    self.request = RunTaskQueryRequest()
+                    self.request.read(iprot)
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('queryTasks_args')
+        if self.request is not None:
+            oprot.writeFieldBegin('request', TType.STRUCT, 1)
+            self.request.write(oprot)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+all_structs.append(queryTasks_args)
+queryTasks_args.thrift_spec = (
+    None,  # 0
+    (1, TType.STRUCT, 'request', [RunTaskQueryRequest, None], None, ),  # 1
+)
+
+
+class queryTasks_result(object):
+    """
+    Attributes:
+     - success
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, success = None,):
+        self.success = success
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 0:
+                if ftype == TType.STRUCT:
+                    self.success = Result()
+                    self.success.read(iprot)
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('queryTasks_result')
+        if self.success is not None:
+            oprot.writeFieldBegin('success', TType.STRUCT, 0)
+            self.success.write(oprot)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+all_structs.append(queryTasks_result)
+queryTasks_result.thrift_spec = (
+    (0, TType.STRUCT, 'success', [Result, None], None, ),  # 0
+)
+
+
+class countTasks_args(object):
+    """
+    Attributes:
+     - request
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, request = None,):
+        self.request = request
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 1:
+                if ftype == TType.STRUCT:
+                    self.request = RunTaskQueryRequest()
+                    self.request.read(iprot)
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('countTasks_args')
+        if self.request is not None:
+            oprot.writeFieldBegin('request', TType.STRUCT, 1)
+            self.request.write(oprot)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+all_structs.append(countTasks_args)
+countTasks_args.thrift_spec = (
+    None,  # 0
+    (1, TType.STRUCT, 'request', [RunTaskQueryRequest, None], None, ),  # 1
+)
+
+
+class countTasks_result(object):
+    """
+    Attributes:
+     - success
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, success = None,):
+        self.success = success
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 0:
+                if ftype == TType.STRUCT:
+                    self.success = Result()
+                    self.success.read(iprot)
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('countTasks_result')
+        if self.success is not None:
+            oprot.writeFieldBegin('success', TType.STRUCT, 0)
+            self.success.write(oprot)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+all_structs.append(countTasks_result)
+countTasks_result.thrift_spec = (
+    (0, TType.STRUCT, 'success', [Result, None], None, ),  # 0
+)
+
+
+class getTask_args(object):
+    """
+    Attributes:
+     - timestamp
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, timestamp = None,):
+        self.timestamp = timestamp
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 1:
+                if ftype == TType.I64:
+                    self.timestamp = iprot.readI64()
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('getTask_args')
+        if self.timestamp is not None:
+            oprot.writeFieldBegin('timestamp', TType.I64, 1)
+            oprot.writeI64(self.timestamp)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+all_structs.append(getTask_args)
+getTask_args.thrift_spec = (
+    None,  # 0
+    (1, TType.I64, 'timestamp', None, None, ),  # 1
+)
+
+
+class getTask_result(object):
+    """
+    Attributes:
+     - success
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, success = None,):
+        self.success = success
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 0:
+                if ftype == TType.STRUCT:
+                    self.success = Result()
+                    self.success.read(iprot)
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('getTask_result')
+        if self.success is not None:
+            oprot.writeFieldBegin('success', TType.STRUCT, 0)
+            self.success.write(oprot)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+all_structs.append(getTask_result)
+getTask_result.thrift_spec = (
+    (0, TType.STRUCT, 'success', [Result, None], None, ),  # 0
+)
+
+
+class deleteTask_args(object):
+    """
+    Attributes:
+     - timestamp
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, timestamp = None,):
+        self.timestamp = timestamp
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 1:
+                if ftype == TType.I64:
+                    self.timestamp = iprot.readI64()
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('deleteTask_args')
+        if self.timestamp is not None:
+            oprot.writeFieldBegin('timestamp', TType.I64, 1)
+            oprot.writeI64(self.timestamp)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+all_structs.append(deleteTask_args)
+deleteTask_args.thrift_spec = (
+    None,  # 0
+    (1, TType.I64, 'timestamp', None, None, ),  # 1
+)
+
+
+class deleteTask_result(object):
+    """
+    Attributes:
+     - success
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, success = None,):
+        self.success = success
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 0:
+                if ftype == TType.STRUCT:
+                    self.success = Result()
+                    self.success.read(iprot)
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('deleteTask_result')
+        if self.success is not None:
+            oprot.writeFieldBegin('success', TType.STRUCT, 0)
+            self.success.write(oprot)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+all_structs.append(deleteTask_result)
+deleteTask_result.thrift_spec = (
+    (0, TType.STRUCT, 'success', [Result, None], None, ),  # 0
+)
+
+
+class uploadReport_args(object):
+    """
+    Attributes:
+     - file
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, file = None,):
+        self.file = file
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 1:
+                if ftype == TType.STRING:
+                    self.file = iprot.readBinary()
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('uploadReport_args')
+        if self.file is not None:
+            oprot.writeFieldBegin('file', TType.STRING, 1)
+            oprot.writeBinary(self.file)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+all_structs.append(uploadReport_args)
+uploadReport_args.thrift_spec = (
+    None,  # 0
+    (1, TType.STRING, 'file', 'BINARY', None, ),  # 1
+)
+
+
+class uploadReport_result(object):
+    """
+    Attributes:
+     - success
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, success = None,):
+        self.success = success
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 0:
+                if ftype == TType.STRUCT:
+                    self.success = Result()
+                    self.success.read(iprot)
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('uploadReport_result')
+        if self.success is not None:
+            oprot.writeFieldBegin('success', TType.STRUCT, 0)
+            self.success.write(oprot)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+all_structs.append(uploadReport_result)
+uploadReport_result.thrift_spec = (
+    (0, TType.STRUCT, 'success', [Result, None], None, ),  # 0
+)
+
+
+class packageDownload_args(object):
+    """
+    Attributes:
+     - timestamp
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, timestamp = None,):
+        self.timestamp = timestamp
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 1:
+                if ftype == TType.I64:
+                    self.timestamp = iprot.readI64()
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('packageDownload_args')
+        if self.timestamp is not None:
+            oprot.writeFieldBegin('timestamp', TType.I64, 1)
+            oprot.writeI64(self.timestamp)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+all_structs.append(packageDownload_args)
+packageDownload_args.thrift_spec = (
+    None,  # 0
+    (1, TType.I64, 'timestamp', None, None, ),  # 1
+)
+
+
+class packageDownload_result(object):
+    """
+    Attributes:
+     - success
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, success = None,):
+        self.success = success
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 0:
+                if ftype == TType.STRUCT:
+                    self.success = Result()
+                    self.success.read(iprot)
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('packageDownload_result')
+        if self.success is not None:
+            oprot.writeFieldBegin('success', TType.STRUCT, 0)
+            self.success.write(oprot)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+all_structs.append(packageDownload_result)
+packageDownload_result.thrift_spec = (
+    (0, TType.STRUCT, 'success', [Result, None], None, ),  # 0
+)
+
+
 class registerDataSource_args(object):
     """
     Attributes:
@@ -2377,6 +5654,275 @@ queryData_result.thrift_spec = (
 )
 
 
+class importData_args(object):
+    """
+    Attributes:
+     - config
+     - file
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, config = None, file = None,):
+        self.config = config
+        self.file = file
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 1:
+                if ftype == TType.STRING:
+                    self.config = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 2:
+                if ftype == TType.STRING:
+                    self.file = iprot.readBinary()
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('importData_args')
+        if self.config is not None:
+            oprot.writeFieldBegin('config', TType.STRING, 1)
+            oprot.writeString(self.config.encode('utf-8') if sys.version_info[0] == 2 else self.config)
+            oprot.writeFieldEnd()
+        if self.file is not None:
+            oprot.writeFieldBegin('file', TType.STRING, 2)
+            oprot.writeBinary(self.file)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+all_structs.append(importData_args)
+importData_args.thrift_spec = (
+    None,  # 0
+    (1, TType.STRING, 'config', 'UTF8', None, ),  # 1
+    (2, TType.STRING, 'file', 'BINARY', None, ),  # 2
+)
+
+
+class importData_result(object):
+    """
+    Attributes:
+     - success
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, success = None,):
+        self.success = success
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 0:
+                if ftype == TType.STRUCT:
+                    self.success = Result()
+                    self.success.read(iprot)
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('importData_result')
+        if self.success is not None:
+            oprot.writeFieldBegin('success', TType.STRUCT, 0)
+            self.success.write(oprot)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+all_structs.append(importData_result)
+importData_result.thrift_spec = (
+    (0, TType.STRUCT, 'success', [Result, None], None, ),  # 0
+)
+
+
+class exportData_args(object):
+    """
+    Attributes:
+     - request
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, request = None,):
+        self.request = request
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 1:
+                if ftype == TType.STRUCT:
+                    self.request = DataQueryRequest()
+                    self.request.read(iprot)
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('exportData_args')
+        if self.request is not None:
+            oprot.writeFieldBegin('request', TType.STRUCT, 1)
+            self.request.write(oprot)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+all_structs.append(exportData_args)
+exportData_args.thrift_spec = (
+    None,  # 0
+    (1, TType.STRUCT, 'request', [DataQueryRequest, None], None, ),  # 1
+)
+
+
+class exportData_result(object):
+    """
+    Attributes:
+     - success
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, success = None,):
+        self.success = success
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 0:
+                if ftype == TType.STRUCT:
+                    self.success = Result()
+                    self.success.read(iprot)
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('exportData_result')
+        if self.success is not None:
+            oprot.writeFieldBegin('success', TType.STRUCT, 0)
+            self.success.write(oprot)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+all_structs.append(exportData_result)
+exportData_result.thrift_spec = (
+    (0, TType.STRUCT, 'success', [Result, None], None, ),  # 0
+)
+
+
 class deleteData_args(object):
     """
     Attributes:
@@ -2764,17 +6310,17 @@ countRelationalData_result.thrift_spec = (
 )
 
 
-class saveModelMeta_args(object):
+class exportRelationalData_args(object):
     """
     Attributes:
-     - modelMeta
+     - request
 
     """
     thrift_spec = None
 
 
-    def __init__(self, modelMeta = None,):
-        self.modelMeta = modelMeta
+    def __init__(self, request = None,):
+        self.request = request
 
     def read(self, iprot):
         if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
@@ -2787,8 +6333,8 @@ class saveModelMeta_args(object):
                 break
             if fid == 1:
                 if ftype == TType.STRUCT:
-                    self.modelMeta = ModelMeta()
-                    self.modelMeta.read(iprot)
+                    self.request = RelationalQueryRequest()
+                    self.request.read(iprot)
                 else:
                     iprot.skip(ftype)
             else:
@@ -2801,10 +6347,10 @@ class saveModelMeta_args(object):
         if oprot._fast_encode is not None and self.thrift_spec is not None:
             oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
             return
-        oprot.writeStructBegin('saveModelMeta_args')
-        if self.modelMeta is not None:
-            oprot.writeFieldBegin('modelMeta', TType.STRUCT, 1)
-            self.modelMeta.write(oprot)
+        oprot.writeStructBegin('exportRelationalData_args')
+        if self.request is not None:
+            oprot.writeFieldBegin('request', TType.STRUCT, 1)
+            self.request.write(oprot)
             oprot.writeFieldEnd()
         oprot.writeFieldStop()
         oprot.writeStructEnd()
@@ -2822,14 +6368,14 @@ class saveModelMeta_args(object):
 
     def __ne__(self, other):
         return not (self == other)
-all_structs.append(saveModelMeta_args)
-saveModelMeta_args.thrift_spec = (
+all_structs.append(exportRelationalData_args)
+exportRelationalData_args.thrift_spec = (
     None,  # 0
-    (1, TType.STRUCT, 'modelMeta', [ModelMeta, None], None, ),  # 1
+    (1, TType.STRUCT, 'request', [RelationalQueryRequest, None], None, ),  # 1
 )
 
 
-class saveModelMeta_result(object):
+class exportRelationalData_result(object):
     """
     Attributes:
      - success
@@ -2866,7 +6412,7 @@ class saveModelMeta_result(object):
         if oprot._fast_encode is not None and self.thrift_spec is not None:
             oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
             return
-        oprot.writeStructBegin('saveModelMeta_result')
+        oprot.writeStructBegin('exportRelationalData_result')
         if self.success is not None:
             oprot.writeFieldBegin('success', TType.STRUCT, 0)
             self.success.write(oprot)
@@ -2887,8 +6433,276 @@ class saveModelMeta_result(object):
 
     def __ne__(self, other):
         return not (self == other)
-all_structs.append(saveModelMeta_result)
-saveModelMeta_result.thrift_spec = (
+all_structs.append(exportRelationalData_result)
+exportRelationalData_result.thrift_spec = (
+    (0, TType.STRUCT, 'success', [Result, None], None, ),  # 0
+)
+
+
+class uploadModel_args(object):
+    """
+    Attributes:
+     - file
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, file = None,):
+        self.file = file
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 1:
+                if ftype == TType.STRING:
+                    self.file = iprot.readBinary()
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('uploadModel_args')
+        if self.file is not None:
+            oprot.writeFieldBegin('file', TType.STRING, 1)
+            oprot.writeBinary(self.file)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+all_structs.append(uploadModel_args)
+uploadModel_args.thrift_spec = (
+    None,  # 0
+    (1, TType.STRING, 'file', 'BINARY', None, ),  # 1
+)
+
+
+class uploadModel_result(object):
+    """
+    Attributes:
+     - success
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, success = None,):
+        self.success = success
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 0:
+                if ftype == TType.STRUCT:
+                    self.success = Result()
+                    self.success.read(iprot)
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('uploadModel_result')
+        if self.success is not None:
+            oprot.writeFieldBegin('success', TType.STRUCT, 0)
+            self.success.write(oprot)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+all_structs.append(uploadModel_result)
+uploadModel_result.thrift_spec = (
+    (0, TType.STRUCT, 'success', [Result, None], None, ),  # 0
+)
+
+
+class downloadModel_args(object):
+    """
+    Attributes:
+     - name
+     - version
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, name = None, version = None,):
+        self.name = name
+        self.version = version
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 1:
+                if ftype == TType.STRING:
+                    self.name = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 2:
+                if ftype == TType.STRING:
+                    self.version = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('downloadModel_args')
+        if self.name is not None:
+            oprot.writeFieldBegin('name', TType.STRING, 1)
+            oprot.writeString(self.name.encode('utf-8') if sys.version_info[0] == 2 else self.name)
+            oprot.writeFieldEnd()
+        if self.version is not None:
+            oprot.writeFieldBegin('version', TType.STRING, 2)
+            oprot.writeString(self.version.encode('utf-8') if sys.version_info[0] == 2 else self.version)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+all_structs.append(downloadModel_args)
+downloadModel_args.thrift_spec = (
+    None,  # 0
+    (1, TType.STRING, 'name', 'UTF8', None, ),  # 1
+    (2, TType.STRING, 'version', 'UTF8', None, ),  # 2
+)
+
+
+class downloadModel_result(object):
+    """
+    Attributes:
+     - success
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, success = None,):
+        self.success = success
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 0:
+                if ftype == TType.STRUCT:
+                    self.success = Result()
+                    self.success.read(iprot)
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('downloadModel_result')
+        if self.success is not None:
+            oprot.writeFieldBegin('success', TType.STRUCT, 0)
+            self.success.write(oprot)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+all_structs.append(downloadModel_result)
+downloadModel_result.thrift_spec = (
     (0, TType.STRUCT, 'success', [Result, None], None, ),  # 0
 )
 
@@ -3029,6 +6843,135 @@ class getModelMeta_result(object):
         return not (self == other)
 all_structs.append(getModelMeta_result)
 getModelMeta_result.thrift_spec = (
+    (0, TType.STRUCT, 'success', [Result, None], None, ),  # 0
+)
+
+
+class saveModelMeta_args(object):
+    """
+    Attributes:
+     - modelMeta
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, modelMeta = None,):
+        self.modelMeta = modelMeta
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 1:
+                if ftype == TType.STRUCT:
+                    self.modelMeta = ModelMeta()
+                    self.modelMeta.read(iprot)
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('saveModelMeta_args')
+        if self.modelMeta is not None:
+            oprot.writeFieldBegin('modelMeta', TType.STRUCT, 1)
+            self.modelMeta.write(oprot)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+all_structs.append(saveModelMeta_args)
+saveModelMeta_args.thrift_spec = (
+    None,  # 0
+    (1, TType.STRUCT, 'modelMeta', [ModelMeta, None], None, ),  # 1
+)
+
+
+class saveModelMeta_result(object):
+    """
+    Attributes:
+     - success
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, success = None,):
+        self.success = success
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 0:
+                if ftype == TType.STRUCT:
+                    self.success = Result()
+                    self.success.read(iprot)
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('saveModelMeta_result')
+        if self.success is not None:
+            oprot.writeFieldBegin('success', TType.STRUCT, 0)
+            self.success.write(oprot)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+all_structs.append(saveModelMeta_result)
+saveModelMeta_result.thrift_spec = (
     (0, TType.STRUCT, 'success', [Result, None], None, ),  # 0
 )
 
@@ -3297,6 +7240,135 @@ class deleteModel_result(object):
         return not (self == other)
 all_structs.append(deleteModel_result)
 deleteModel_result.thrift_spec = (
+    (0, TType.STRUCT, 'success', [Result, None], None, ),  # 0
+)
+
+
+class extractModelFile_args(object):
+    """
+    Attributes:
+     - request
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, request = None,):
+        self.request = request
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 1:
+                if ftype == TType.STRUCT:
+                    self.request = ExtractModelFileRequest()
+                    self.request.read(iprot)
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('extractModelFile_args')
+        if self.request is not None:
+            oprot.writeFieldBegin('request', TType.STRUCT, 1)
+            self.request.write(oprot)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+all_structs.append(extractModelFile_args)
+extractModelFile_args.thrift_spec = (
+    None,  # 0
+    (1, TType.STRUCT, 'request', [ExtractModelFileRequest, None], None, ),  # 1
+)
+
+
+class extractModelFile_result(object):
+    """
+    Attributes:
+     - success
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, success = None,):
+        self.success = success
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 0:
+                if ftype == TType.STRUCT:
+                    self.success = Result()
+                    self.success.read(iprot)
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('extractModelFile_result')
+        if self.success is not None:
+            oprot.writeFieldBegin('success', TType.STRUCT, 0)
+            self.success.write(oprot)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+all_structs.append(extractModelFile_result)
+extractModelFile_result.thrift_spec = (
     (0, TType.STRUCT, 'success', [Result, None], None, ),  # 0
 )
 fix_spec(all_structs)

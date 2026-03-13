@@ -1049,6 +1049,2169 @@ func (p *AssociationRulesQueryRequest) Validate() error {
 }
 
 // Attributes:
+//  - Name
+//  - RegexPattern
+//  - Example
+//  - CreateTime
+//  - UpdateTime
+// 
+type ParsingRule struct {
+	Name string `thrift:"name,1" db:"name" json:"name"`
+	RegexPattern string `thrift:"regexPattern,2" db:"regexPattern" json:"regexPattern"`
+	Example *string `thrift:"example,3" db:"example" json:"example,omitempty"`
+	CreateTime int64 `thrift:"createTime,4" db:"createTime" json:"createTime"`
+	UpdateTime int64 `thrift:"updateTime,5" db:"updateTime" json:"updateTime"`
+}
+
+func NewParsingRule() *ParsingRule {
+	return &ParsingRule{}
+}
+
+
+
+func (p *ParsingRule) GetName() string {
+	return p.Name
+}
+
+
+
+func (p *ParsingRule) GetRegexPattern() string {
+	return p.RegexPattern
+}
+
+var ParsingRule_Example_DEFAULT string
+
+func (p *ParsingRule) GetExample() string {
+	if !p.IsSetExample() {
+		return ParsingRule_Example_DEFAULT
+	}
+	return *p.Example
+}
+
+
+
+func (p *ParsingRule) GetCreateTime() int64 {
+	return p.CreateTime
+}
+
+
+
+func (p *ParsingRule) GetUpdateTime() int64 {
+	return p.UpdateTime
+}
+
+func (p *ParsingRule) IsSetExample() bool {
+	return p.Example != nil
+}
+
+func (p *ParsingRule) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 1:
+			if fieldTypeId == thrift.STRING {
+				if err := p.ReadField1(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 2:
+			if fieldTypeId == thrift.STRING {
+				if err := p.ReadField2(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 3:
+			if fieldTypeId == thrift.STRING {
+				if err := p.ReadField3(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 4:
+			if fieldTypeId == thrift.I64 {
+				if err := p.ReadField4(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 5:
+			if fieldTypeId == thrift.I64 {
+				if err := p.ReadField5(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ParsingRule) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadString(ctx); err != nil {
+		return thrift.PrependError("error reading field 1: ", err)
+	} else {
+		p.Name = v
+	}
+	return nil
+}
+
+func (p *ParsingRule) ReadField2(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadString(ctx); err != nil {
+		return thrift.PrependError("error reading field 2: ", err)
+	} else {
+		p.RegexPattern = v
+	}
+	return nil
+}
+
+func (p *ParsingRule) ReadField3(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadString(ctx); err != nil {
+		return thrift.PrependError("error reading field 3: ", err)
+	} else {
+		p.Example = &v
+	}
+	return nil
+}
+
+func (p *ParsingRule) ReadField4(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadI64(ctx); err != nil {
+		return thrift.PrependError("error reading field 4: ", err)
+	} else {
+		p.CreateTime = v
+	}
+	return nil
+}
+
+func (p *ParsingRule) ReadField5(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadI64(ctx); err != nil {
+		return thrift.PrependError("error reading field 5: ", err)
+	} else {
+		p.UpdateTime = v
+	}
+	return nil
+}
+
+func (p *ParsingRule) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "ParsingRule"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField1(ctx, oprot); err != nil { return err }
+		if err := p.writeField2(ctx, oprot); err != nil { return err }
+		if err := p.writeField3(ctx, oprot); err != nil { return err }
+		if err := p.writeField4(ctx, oprot); err != nil { return err }
+		if err := p.writeField5(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ParsingRule) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "name", thrift.STRING, 1); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:name: ", p), err)
+	}
+	if err := oprot.WriteString(ctx, string(p.Name)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.name (1) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 1:name: ", p), err)
+	}
+	return err
+}
+
+func (p *ParsingRule) writeField2(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "regexPattern", thrift.STRING, 2); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 2:regexPattern: ", p), err)
+	}
+	if err := oprot.WriteString(ctx, string(p.RegexPattern)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.regexPattern (2) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 2:regexPattern: ", p), err)
+	}
+	return err
+}
+
+func (p *ParsingRule) writeField3(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if p.IsSetExample() {
+		if err := oprot.WriteFieldBegin(ctx, "example", thrift.STRING, 3); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field begin error 3:example: ", p), err)
+		}
+		if err := oprot.WriteString(ctx, string(*p.Example)); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T.example (3) field write error: ", p), err)
+		}
+		if err := oprot.WriteFieldEnd(ctx); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field end error 3:example: ", p), err)
+		}
+	}
+	return err
+}
+
+func (p *ParsingRule) writeField4(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "createTime", thrift.I64, 4); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 4:createTime: ", p), err)
+	}
+	if err := oprot.WriteI64(ctx, int64(p.CreateTime)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.createTime (4) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 4:createTime: ", p), err)
+	}
+	return err
+}
+
+func (p *ParsingRule) writeField5(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "updateTime", thrift.I64, 5); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 5:updateTime: ", p), err)
+	}
+	if err := oprot.WriteI64(ctx, int64(p.UpdateTime)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.updateTime (5) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 5:updateTime: ", p), err)
+	}
+	return err
+}
+
+func (p *ParsingRule) Equals(other *ParsingRule) bool {
+	if p == other {
+		return true
+	} else if p == nil || other == nil {
+		return false
+	}
+	if p.Name != other.Name { return false }
+	if p.RegexPattern != other.RegexPattern { return false }
+	if p.Example != other.Example {
+		if p.Example == nil || other.Example == nil {
+			return false
+		}
+		if (*p.Example) != (*other.Example) { return false }
+	}
+	if p.CreateTime != other.CreateTime { return false }
+	if p.UpdateTime != other.UpdateTime { return false }
+	return true
+}
+
+func (p *ParsingRule) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ParsingRule(%+v)", *p)
+}
+
+func (p *ParsingRule) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.ParsingRule",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*ParsingRule)(nil)
+
+func (p *ParsingRule) Validate() error {
+	return nil
+}
+
+// Attributes:
+//  - PageNum
+//  - PageSize
+//  - Name
+// 
+type ParsingRulesQueryRequest struct {
+	PageNum int32 `thrift:"pageNum,1" db:"pageNum" json:"pageNum"`
+	PageSize int32 `thrift:"pageSize,2" db:"pageSize" json:"pageSize"`
+	Name *string `thrift:"name,3" db:"name" json:"name,omitempty"`
+}
+
+func NewParsingRulesQueryRequest() *ParsingRulesQueryRequest {
+	return &ParsingRulesQueryRequest{
+		PageNum: 1,
+		PageSize: 6,
+	}
+}
+
+
+
+func (p *ParsingRulesQueryRequest) GetPageNum() int32 {
+	return p.PageNum
+}
+
+
+
+func (p *ParsingRulesQueryRequest) GetPageSize() int32 {
+	return p.PageSize
+}
+
+var ParsingRulesQueryRequest_Name_DEFAULT string
+
+func (p *ParsingRulesQueryRequest) GetName() string {
+	if !p.IsSetName() {
+		return ParsingRulesQueryRequest_Name_DEFAULT
+	}
+	return *p.Name
+}
+
+func (p *ParsingRulesQueryRequest) IsSetName() bool {
+	return p.Name != nil
+}
+
+func (p *ParsingRulesQueryRequest) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 1:
+			if fieldTypeId == thrift.I32 {
+				if err := p.ReadField1(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 2:
+			if fieldTypeId == thrift.I32 {
+				if err := p.ReadField2(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 3:
+			if fieldTypeId == thrift.STRING {
+				if err := p.ReadField3(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ParsingRulesQueryRequest) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadI32(ctx); err != nil {
+		return thrift.PrependError("error reading field 1: ", err)
+	} else {
+		p.PageNum = v
+	}
+	return nil
+}
+
+func (p *ParsingRulesQueryRequest) ReadField2(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadI32(ctx); err != nil {
+		return thrift.PrependError("error reading field 2: ", err)
+	} else {
+		p.PageSize = v
+	}
+	return nil
+}
+
+func (p *ParsingRulesQueryRequest) ReadField3(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadString(ctx); err != nil {
+		return thrift.PrependError("error reading field 3: ", err)
+	} else {
+		p.Name = &v
+	}
+	return nil
+}
+
+func (p *ParsingRulesQueryRequest) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "ParsingRulesQueryRequest"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField1(ctx, oprot); err != nil { return err }
+		if err := p.writeField2(ctx, oprot); err != nil { return err }
+		if err := p.writeField3(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ParsingRulesQueryRequest) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "pageNum", thrift.I32, 1); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:pageNum: ", p), err)
+	}
+	if err := oprot.WriteI32(ctx, int32(p.PageNum)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.pageNum (1) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 1:pageNum: ", p), err)
+	}
+	return err
+}
+
+func (p *ParsingRulesQueryRequest) writeField2(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "pageSize", thrift.I32, 2); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 2:pageSize: ", p), err)
+	}
+	if err := oprot.WriteI32(ctx, int32(p.PageSize)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.pageSize (2) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 2:pageSize: ", p), err)
+	}
+	return err
+}
+
+func (p *ParsingRulesQueryRequest) writeField3(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if p.IsSetName() {
+		if err := oprot.WriteFieldBegin(ctx, "name", thrift.STRING, 3); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field begin error 3:name: ", p), err)
+		}
+		if err := oprot.WriteString(ctx, string(*p.Name)); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T.name (3) field write error: ", p), err)
+		}
+		if err := oprot.WriteFieldEnd(ctx); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field end error 3:name: ", p), err)
+		}
+	}
+	return err
+}
+
+func (p *ParsingRulesQueryRequest) Equals(other *ParsingRulesQueryRequest) bool {
+	if p == other {
+		return true
+	} else if p == nil || other == nil {
+		return false
+	}
+	if p.PageNum != other.PageNum { return false }
+	if p.PageSize != other.PageSize { return false }
+	if p.Name != other.Name {
+		if p.Name == nil || other.Name == nil {
+			return false
+		}
+		if (*p.Name) != (*other.Name) { return false }
+	}
+	return true
+}
+
+func (p *ParsingRulesQueryRequest) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ParsingRulesQueryRequest(%+v)", *p)
+}
+
+func (p *ParsingRulesQueryRequest) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.ParsingRulesQueryRequest",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*ParsingRulesQueryRequest)(nil)
+
+func (p *ParsingRulesQueryRequest) Validate() error {
+	return nil
+}
+
+// Attributes:
+//  - Name
+//  - StartTime
+//  - EndTime
+//  - RuleId
+//  - RuleName
+//  - ModelName
+//  - ModelVersion
+//  - InputMeasurements
+//  - OutputMeasurements
+//  - OutputTable
+//  - Status
+//  - Timestamp
+//  - ProcessId
+//  - ProcessLog
+// 
+type RunTask struct {
+	Name string `thrift:"name,1" db:"name" json:"name"`
+	StartTime int64 `thrift:"startTime,2" db:"startTime" json:"startTime"`
+	EndTime int64 `thrift:"endTime,3" db:"endTime" json:"endTime"`
+	RuleId int64 `thrift:"ruleId,4" db:"ruleId" json:"ruleId"`
+	RuleName string `thrift:"ruleName,5" db:"ruleName" json:"ruleName"`
+	ModelName string `thrift:"modelName,6" db:"modelName" json:"modelName"`
+	ModelVersion string `thrift:"modelVersion,7" db:"modelVersion" json:"modelVersion"`
+	InputMeasurements string `thrift:"inputMeasurements,8" db:"inputMeasurements" json:"inputMeasurements"`
+	OutputMeasurements string `thrift:"outputMeasurements,9" db:"outputMeasurements" json:"outputMeasurements"`
+	OutputTable string `thrift:"outputTable,10" db:"outputTable" json:"outputTable"`
+	Status string `thrift:"status,11" db:"status" json:"status"`
+	Timestamp int64 `thrift:"timestamp,12" db:"timestamp" json:"timestamp"`
+	ProcessId *int64 `thrift:"processId,13" db:"processId" json:"processId,omitempty"`
+	ProcessLog *string `thrift:"processLog,14" db:"processLog" json:"processLog,omitempty"`
+}
+
+func NewRunTask() *RunTask {
+	return &RunTask{}
+}
+
+
+
+func (p *RunTask) GetName() string {
+	return p.Name
+}
+
+
+
+func (p *RunTask) GetStartTime() int64 {
+	return p.StartTime
+}
+
+
+
+func (p *RunTask) GetEndTime() int64 {
+	return p.EndTime
+}
+
+
+
+func (p *RunTask) GetRuleId() int64 {
+	return p.RuleId
+}
+
+
+
+func (p *RunTask) GetRuleName() string {
+	return p.RuleName
+}
+
+
+
+func (p *RunTask) GetModelName() string {
+	return p.ModelName
+}
+
+
+
+func (p *RunTask) GetModelVersion() string {
+	return p.ModelVersion
+}
+
+
+
+func (p *RunTask) GetInputMeasurements() string {
+	return p.InputMeasurements
+}
+
+
+
+func (p *RunTask) GetOutputMeasurements() string {
+	return p.OutputMeasurements
+}
+
+
+
+func (p *RunTask) GetOutputTable() string {
+	return p.OutputTable
+}
+
+
+
+func (p *RunTask) GetStatus() string {
+	return p.Status
+}
+
+
+
+func (p *RunTask) GetTimestamp() int64 {
+	return p.Timestamp
+}
+
+var RunTask_ProcessId_DEFAULT int64
+
+func (p *RunTask) GetProcessId() int64 {
+	if !p.IsSetProcessId() {
+		return RunTask_ProcessId_DEFAULT
+	}
+	return *p.ProcessId
+}
+
+var RunTask_ProcessLog_DEFAULT string
+
+func (p *RunTask) GetProcessLog() string {
+	if !p.IsSetProcessLog() {
+		return RunTask_ProcessLog_DEFAULT
+	}
+	return *p.ProcessLog
+}
+
+func (p *RunTask) IsSetProcessId() bool {
+	return p.ProcessId != nil
+}
+
+func (p *RunTask) IsSetProcessLog() bool {
+	return p.ProcessLog != nil
+}
+
+func (p *RunTask) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 1:
+			if fieldTypeId == thrift.STRING {
+				if err := p.ReadField1(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 2:
+			if fieldTypeId == thrift.I64 {
+				if err := p.ReadField2(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 3:
+			if fieldTypeId == thrift.I64 {
+				if err := p.ReadField3(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 4:
+			if fieldTypeId == thrift.I64 {
+				if err := p.ReadField4(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 5:
+			if fieldTypeId == thrift.STRING {
+				if err := p.ReadField5(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 6:
+			if fieldTypeId == thrift.STRING {
+				if err := p.ReadField6(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 7:
+			if fieldTypeId == thrift.STRING {
+				if err := p.ReadField7(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 8:
+			if fieldTypeId == thrift.STRING {
+				if err := p.ReadField8(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 9:
+			if fieldTypeId == thrift.STRING {
+				if err := p.ReadField9(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 10:
+			if fieldTypeId == thrift.STRING {
+				if err := p.ReadField10(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 11:
+			if fieldTypeId == thrift.STRING {
+				if err := p.ReadField11(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 12:
+			if fieldTypeId == thrift.I64 {
+				if err := p.ReadField12(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 13:
+			if fieldTypeId == thrift.I64 {
+				if err := p.ReadField13(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 14:
+			if fieldTypeId == thrift.STRING {
+				if err := p.ReadField14(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *RunTask) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadString(ctx); err != nil {
+		return thrift.PrependError("error reading field 1: ", err)
+	} else {
+		p.Name = v
+	}
+	return nil
+}
+
+func (p *RunTask) ReadField2(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadI64(ctx); err != nil {
+		return thrift.PrependError("error reading field 2: ", err)
+	} else {
+		p.StartTime = v
+	}
+	return nil
+}
+
+func (p *RunTask) ReadField3(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadI64(ctx); err != nil {
+		return thrift.PrependError("error reading field 3: ", err)
+	} else {
+		p.EndTime = v
+	}
+	return nil
+}
+
+func (p *RunTask) ReadField4(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadI64(ctx); err != nil {
+		return thrift.PrependError("error reading field 4: ", err)
+	} else {
+		p.RuleId = v
+	}
+	return nil
+}
+
+func (p *RunTask) ReadField5(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadString(ctx); err != nil {
+		return thrift.PrependError("error reading field 5: ", err)
+	} else {
+		p.RuleName = v
+	}
+	return nil
+}
+
+func (p *RunTask) ReadField6(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadString(ctx); err != nil {
+		return thrift.PrependError("error reading field 6: ", err)
+	} else {
+		p.ModelName = v
+	}
+	return nil
+}
+
+func (p *RunTask) ReadField7(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadString(ctx); err != nil {
+		return thrift.PrependError("error reading field 7: ", err)
+	} else {
+		p.ModelVersion = v
+	}
+	return nil
+}
+
+func (p *RunTask) ReadField8(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadString(ctx); err != nil {
+		return thrift.PrependError("error reading field 8: ", err)
+	} else {
+		p.InputMeasurements = v
+	}
+	return nil
+}
+
+func (p *RunTask) ReadField9(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadString(ctx); err != nil {
+		return thrift.PrependError("error reading field 9: ", err)
+	} else {
+		p.OutputMeasurements = v
+	}
+	return nil
+}
+
+func (p *RunTask) ReadField10(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadString(ctx); err != nil {
+		return thrift.PrependError("error reading field 10: ", err)
+	} else {
+		p.OutputTable = v
+	}
+	return nil
+}
+
+func (p *RunTask) ReadField11(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadString(ctx); err != nil {
+		return thrift.PrependError("error reading field 11: ", err)
+	} else {
+		p.Status = v
+	}
+	return nil
+}
+
+func (p *RunTask) ReadField12(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadI64(ctx); err != nil {
+		return thrift.PrependError("error reading field 12: ", err)
+	} else {
+		p.Timestamp = v
+	}
+	return nil
+}
+
+func (p *RunTask) ReadField13(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadI64(ctx); err != nil {
+		return thrift.PrependError("error reading field 13: ", err)
+	} else {
+		p.ProcessId = &v
+	}
+	return nil
+}
+
+func (p *RunTask) ReadField14(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadString(ctx); err != nil {
+		return thrift.PrependError("error reading field 14: ", err)
+	} else {
+		p.ProcessLog = &v
+	}
+	return nil
+}
+
+func (p *RunTask) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "RunTask"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField1(ctx, oprot); err != nil { return err }
+		if err := p.writeField2(ctx, oprot); err != nil { return err }
+		if err := p.writeField3(ctx, oprot); err != nil { return err }
+		if err := p.writeField4(ctx, oprot); err != nil { return err }
+		if err := p.writeField5(ctx, oprot); err != nil { return err }
+		if err := p.writeField6(ctx, oprot); err != nil { return err }
+		if err := p.writeField7(ctx, oprot); err != nil { return err }
+		if err := p.writeField8(ctx, oprot); err != nil { return err }
+		if err := p.writeField9(ctx, oprot); err != nil { return err }
+		if err := p.writeField10(ctx, oprot); err != nil { return err }
+		if err := p.writeField11(ctx, oprot); err != nil { return err }
+		if err := p.writeField12(ctx, oprot); err != nil { return err }
+		if err := p.writeField13(ctx, oprot); err != nil { return err }
+		if err := p.writeField14(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *RunTask) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "name", thrift.STRING, 1); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:name: ", p), err)
+	}
+	if err := oprot.WriteString(ctx, string(p.Name)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.name (1) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 1:name: ", p), err)
+	}
+	return err
+}
+
+func (p *RunTask) writeField2(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "startTime", thrift.I64, 2); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 2:startTime: ", p), err)
+	}
+	if err := oprot.WriteI64(ctx, int64(p.StartTime)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.startTime (2) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 2:startTime: ", p), err)
+	}
+	return err
+}
+
+func (p *RunTask) writeField3(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "endTime", thrift.I64, 3); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 3:endTime: ", p), err)
+	}
+	if err := oprot.WriteI64(ctx, int64(p.EndTime)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.endTime (3) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 3:endTime: ", p), err)
+	}
+	return err
+}
+
+func (p *RunTask) writeField4(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "ruleId", thrift.I64, 4); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 4:ruleId: ", p), err)
+	}
+	if err := oprot.WriteI64(ctx, int64(p.RuleId)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.ruleId (4) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 4:ruleId: ", p), err)
+	}
+	return err
+}
+
+func (p *RunTask) writeField5(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "ruleName", thrift.STRING, 5); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 5:ruleName: ", p), err)
+	}
+	if err := oprot.WriteString(ctx, string(p.RuleName)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.ruleName (5) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 5:ruleName: ", p), err)
+	}
+	return err
+}
+
+func (p *RunTask) writeField6(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "modelName", thrift.STRING, 6); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 6:modelName: ", p), err)
+	}
+	if err := oprot.WriteString(ctx, string(p.ModelName)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.modelName (6) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 6:modelName: ", p), err)
+	}
+	return err
+}
+
+func (p *RunTask) writeField7(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "modelVersion", thrift.STRING, 7); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 7:modelVersion: ", p), err)
+	}
+	if err := oprot.WriteString(ctx, string(p.ModelVersion)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.modelVersion (7) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 7:modelVersion: ", p), err)
+	}
+	return err
+}
+
+func (p *RunTask) writeField8(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "inputMeasurements", thrift.STRING, 8); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 8:inputMeasurements: ", p), err)
+	}
+	if err := oprot.WriteString(ctx, string(p.InputMeasurements)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.inputMeasurements (8) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 8:inputMeasurements: ", p), err)
+	}
+	return err
+}
+
+func (p *RunTask) writeField9(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "outputMeasurements", thrift.STRING, 9); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 9:outputMeasurements: ", p), err)
+	}
+	if err := oprot.WriteString(ctx, string(p.OutputMeasurements)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.outputMeasurements (9) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 9:outputMeasurements: ", p), err)
+	}
+	return err
+}
+
+func (p *RunTask) writeField10(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "outputTable", thrift.STRING, 10); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 10:outputTable: ", p), err)
+	}
+	if err := oprot.WriteString(ctx, string(p.OutputTable)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.outputTable (10) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 10:outputTable: ", p), err)
+	}
+	return err
+}
+
+func (p *RunTask) writeField11(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "status", thrift.STRING, 11); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 11:status: ", p), err)
+	}
+	if err := oprot.WriteString(ctx, string(p.Status)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.status (11) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 11:status: ", p), err)
+	}
+	return err
+}
+
+func (p *RunTask) writeField12(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "timestamp", thrift.I64, 12); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 12:timestamp: ", p), err)
+	}
+	if err := oprot.WriteI64(ctx, int64(p.Timestamp)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.timestamp (12) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 12:timestamp: ", p), err)
+	}
+	return err
+}
+
+func (p *RunTask) writeField13(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if p.IsSetProcessId() {
+		if err := oprot.WriteFieldBegin(ctx, "processId", thrift.I64, 13); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field begin error 13:processId: ", p), err)
+		}
+		if err := oprot.WriteI64(ctx, int64(*p.ProcessId)); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T.processId (13) field write error: ", p), err)
+		}
+		if err := oprot.WriteFieldEnd(ctx); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field end error 13:processId: ", p), err)
+		}
+	}
+	return err
+}
+
+func (p *RunTask) writeField14(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if p.IsSetProcessLog() {
+		if err := oprot.WriteFieldBegin(ctx, "processLog", thrift.STRING, 14); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field begin error 14:processLog: ", p), err)
+		}
+		if err := oprot.WriteString(ctx, string(*p.ProcessLog)); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T.processLog (14) field write error: ", p), err)
+		}
+		if err := oprot.WriteFieldEnd(ctx); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field end error 14:processLog: ", p), err)
+		}
+	}
+	return err
+}
+
+func (p *RunTask) Equals(other *RunTask) bool {
+	if p == other {
+		return true
+	} else if p == nil || other == nil {
+		return false
+	}
+	if p.Name != other.Name { return false }
+	if p.StartTime != other.StartTime { return false }
+	if p.EndTime != other.EndTime { return false }
+	if p.RuleId != other.RuleId { return false }
+	if p.RuleName != other.RuleName { return false }
+	if p.ModelName != other.ModelName { return false }
+	if p.ModelVersion != other.ModelVersion { return false }
+	if p.InputMeasurements != other.InputMeasurements { return false }
+	if p.OutputMeasurements != other.OutputMeasurements { return false }
+	if p.OutputTable != other.OutputTable { return false }
+	if p.Status != other.Status { return false }
+	if p.Timestamp != other.Timestamp { return false }
+	if p.ProcessId != other.ProcessId {
+		if p.ProcessId == nil || other.ProcessId == nil {
+			return false
+		}
+		if (*p.ProcessId) != (*other.ProcessId) { return false }
+	}
+	if p.ProcessLog != other.ProcessLog {
+		if p.ProcessLog == nil || other.ProcessLog == nil {
+			return false
+		}
+		if (*p.ProcessLog) != (*other.ProcessLog) { return false }
+	}
+	return true
+}
+
+func (p *RunTask) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("RunTask(%+v)", *p)
+}
+
+func (p *RunTask) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.RunTask",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*RunTask)(nil)
+
+func (p *RunTask) Validate() error {
+	return nil
+}
+
+// Attributes:
+//  - Name
+//  - StartTime
+//  - EndTime
+//  - RuleName
+//  - RuleId
+//  - ModelName
+//  - ModelVersion
+//  - OutputTable
+// 
+type RunTaskRequest struct {
+	Name string `thrift:"name,1" db:"name" json:"name"`
+	StartTime int64 `thrift:"startTime,2" db:"startTime" json:"startTime"`
+	EndTime int64 `thrift:"endTime,3" db:"endTime" json:"endTime"`
+	RuleName string `thrift:"ruleName,4" db:"ruleName" json:"ruleName"`
+	RuleId int64 `thrift:"ruleId,5" db:"ruleId" json:"ruleId"`
+	ModelName *string `thrift:"modelName,6" db:"modelName" json:"modelName,omitempty"`
+	ModelVersion *string `thrift:"modelVersion,7" db:"modelVersion" json:"modelVersion,omitempty"`
+	OutputTable *string `thrift:"outputTable,8" db:"outputTable" json:"outputTable,omitempty"`
+}
+
+func NewRunTaskRequest() *RunTaskRequest {
+	return &RunTaskRequest{}
+}
+
+
+
+func (p *RunTaskRequest) GetName() string {
+	return p.Name
+}
+
+
+
+func (p *RunTaskRequest) GetStartTime() int64 {
+	return p.StartTime
+}
+
+
+
+func (p *RunTaskRequest) GetEndTime() int64 {
+	return p.EndTime
+}
+
+
+
+func (p *RunTaskRequest) GetRuleName() string {
+	return p.RuleName
+}
+
+
+
+func (p *RunTaskRequest) GetRuleId() int64 {
+	return p.RuleId
+}
+
+var RunTaskRequest_ModelName_DEFAULT string
+
+func (p *RunTaskRequest) GetModelName() string {
+	if !p.IsSetModelName() {
+		return RunTaskRequest_ModelName_DEFAULT
+	}
+	return *p.ModelName
+}
+
+var RunTaskRequest_ModelVersion_DEFAULT string
+
+func (p *RunTaskRequest) GetModelVersion() string {
+	if !p.IsSetModelVersion() {
+		return RunTaskRequest_ModelVersion_DEFAULT
+	}
+	return *p.ModelVersion
+}
+
+var RunTaskRequest_OutputTable_DEFAULT string
+
+func (p *RunTaskRequest) GetOutputTable() string {
+	if !p.IsSetOutputTable() {
+		return RunTaskRequest_OutputTable_DEFAULT
+	}
+	return *p.OutputTable
+}
+
+func (p *RunTaskRequest) IsSetModelName() bool {
+	return p.ModelName != nil
+}
+
+func (p *RunTaskRequest) IsSetModelVersion() bool {
+	return p.ModelVersion != nil
+}
+
+func (p *RunTaskRequest) IsSetOutputTable() bool {
+	return p.OutputTable != nil
+}
+
+func (p *RunTaskRequest) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 1:
+			if fieldTypeId == thrift.STRING {
+				if err := p.ReadField1(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 2:
+			if fieldTypeId == thrift.I64 {
+				if err := p.ReadField2(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 3:
+			if fieldTypeId == thrift.I64 {
+				if err := p.ReadField3(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 4:
+			if fieldTypeId == thrift.STRING {
+				if err := p.ReadField4(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 5:
+			if fieldTypeId == thrift.I64 {
+				if err := p.ReadField5(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 6:
+			if fieldTypeId == thrift.STRING {
+				if err := p.ReadField6(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 7:
+			if fieldTypeId == thrift.STRING {
+				if err := p.ReadField7(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 8:
+			if fieldTypeId == thrift.STRING {
+				if err := p.ReadField8(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *RunTaskRequest) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadString(ctx); err != nil {
+		return thrift.PrependError("error reading field 1: ", err)
+	} else {
+		p.Name = v
+	}
+	return nil
+}
+
+func (p *RunTaskRequest) ReadField2(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadI64(ctx); err != nil {
+		return thrift.PrependError("error reading field 2: ", err)
+	} else {
+		p.StartTime = v
+	}
+	return nil
+}
+
+func (p *RunTaskRequest) ReadField3(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadI64(ctx); err != nil {
+		return thrift.PrependError("error reading field 3: ", err)
+	} else {
+		p.EndTime = v
+	}
+	return nil
+}
+
+func (p *RunTaskRequest) ReadField4(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadString(ctx); err != nil {
+		return thrift.PrependError("error reading field 4: ", err)
+	} else {
+		p.RuleName = v
+	}
+	return nil
+}
+
+func (p *RunTaskRequest) ReadField5(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadI64(ctx); err != nil {
+		return thrift.PrependError("error reading field 5: ", err)
+	} else {
+		p.RuleId = v
+	}
+	return nil
+}
+
+func (p *RunTaskRequest) ReadField6(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadString(ctx); err != nil {
+		return thrift.PrependError("error reading field 6: ", err)
+	} else {
+		p.ModelName = &v
+	}
+	return nil
+}
+
+func (p *RunTaskRequest) ReadField7(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadString(ctx); err != nil {
+		return thrift.PrependError("error reading field 7: ", err)
+	} else {
+		p.ModelVersion = &v
+	}
+	return nil
+}
+
+func (p *RunTaskRequest) ReadField8(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadString(ctx); err != nil {
+		return thrift.PrependError("error reading field 8: ", err)
+	} else {
+		p.OutputTable = &v
+	}
+	return nil
+}
+
+func (p *RunTaskRequest) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "RunTaskRequest"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField1(ctx, oprot); err != nil { return err }
+		if err := p.writeField2(ctx, oprot); err != nil { return err }
+		if err := p.writeField3(ctx, oprot); err != nil { return err }
+		if err := p.writeField4(ctx, oprot); err != nil { return err }
+		if err := p.writeField5(ctx, oprot); err != nil { return err }
+		if err := p.writeField6(ctx, oprot); err != nil { return err }
+		if err := p.writeField7(ctx, oprot); err != nil { return err }
+		if err := p.writeField8(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *RunTaskRequest) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "name", thrift.STRING, 1); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:name: ", p), err)
+	}
+	if err := oprot.WriteString(ctx, string(p.Name)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.name (1) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 1:name: ", p), err)
+	}
+	return err
+}
+
+func (p *RunTaskRequest) writeField2(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "startTime", thrift.I64, 2); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 2:startTime: ", p), err)
+	}
+	if err := oprot.WriteI64(ctx, int64(p.StartTime)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.startTime (2) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 2:startTime: ", p), err)
+	}
+	return err
+}
+
+func (p *RunTaskRequest) writeField3(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "endTime", thrift.I64, 3); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 3:endTime: ", p), err)
+	}
+	if err := oprot.WriteI64(ctx, int64(p.EndTime)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.endTime (3) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 3:endTime: ", p), err)
+	}
+	return err
+}
+
+func (p *RunTaskRequest) writeField4(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "ruleName", thrift.STRING, 4); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 4:ruleName: ", p), err)
+	}
+	if err := oprot.WriteString(ctx, string(p.RuleName)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.ruleName (4) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 4:ruleName: ", p), err)
+	}
+	return err
+}
+
+func (p *RunTaskRequest) writeField5(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "ruleId", thrift.I64, 5); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 5:ruleId: ", p), err)
+	}
+	if err := oprot.WriteI64(ctx, int64(p.RuleId)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.ruleId (5) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 5:ruleId: ", p), err)
+	}
+	return err
+}
+
+func (p *RunTaskRequest) writeField6(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if p.IsSetModelName() {
+		if err := oprot.WriteFieldBegin(ctx, "modelName", thrift.STRING, 6); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field begin error 6:modelName: ", p), err)
+		}
+		if err := oprot.WriteString(ctx, string(*p.ModelName)); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T.modelName (6) field write error: ", p), err)
+		}
+		if err := oprot.WriteFieldEnd(ctx); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field end error 6:modelName: ", p), err)
+		}
+	}
+	return err
+}
+
+func (p *RunTaskRequest) writeField7(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if p.IsSetModelVersion() {
+		if err := oprot.WriteFieldBegin(ctx, "modelVersion", thrift.STRING, 7); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field begin error 7:modelVersion: ", p), err)
+		}
+		if err := oprot.WriteString(ctx, string(*p.ModelVersion)); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T.modelVersion (7) field write error: ", p), err)
+		}
+		if err := oprot.WriteFieldEnd(ctx); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field end error 7:modelVersion: ", p), err)
+		}
+	}
+	return err
+}
+
+func (p *RunTaskRequest) writeField8(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if p.IsSetOutputTable() {
+		if err := oprot.WriteFieldBegin(ctx, "outputTable", thrift.STRING, 8); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field begin error 8:outputTable: ", p), err)
+		}
+		if err := oprot.WriteString(ctx, string(*p.OutputTable)); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T.outputTable (8) field write error: ", p), err)
+		}
+		if err := oprot.WriteFieldEnd(ctx); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field end error 8:outputTable: ", p), err)
+		}
+	}
+	return err
+}
+
+func (p *RunTaskRequest) Equals(other *RunTaskRequest) bool {
+	if p == other {
+		return true
+	} else if p == nil || other == nil {
+		return false
+	}
+	if p.Name != other.Name { return false }
+	if p.StartTime != other.StartTime { return false }
+	if p.EndTime != other.EndTime { return false }
+	if p.RuleName != other.RuleName { return false }
+	if p.RuleId != other.RuleId { return false }
+	if p.ModelName != other.ModelName {
+		if p.ModelName == nil || other.ModelName == nil {
+			return false
+		}
+		if (*p.ModelName) != (*other.ModelName) { return false }
+	}
+	if p.ModelVersion != other.ModelVersion {
+		if p.ModelVersion == nil || other.ModelVersion == nil {
+			return false
+		}
+		if (*p.ModelVersion) != (*other.ModelVersion) { return false }
+	}
+	if p.OutputTable != other.OutputTable {
+		if p.OutputTable == nil || other.OutputTable == nil {
+			return false
+		}
+		if (*p.OutputTable) != (*other.OutputTable) { return false }
+	}
+	return true
+}
+
+func (p *RunTaskRequest) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("RunTaskRequest(%+v)", *p)
+}
+
+func (p *RunTaskRequest) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.RunTaskRequest",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*RunTaskRequest)(nil)
+
+func (p *RunTaskRequest) Validate() error {
+	return nil
+}
+
+// Attributes:
+//  - PageNum
+//  - PageSize
+//  - Name
+//  - Status
+//  - RuleId
+//  - StartTime
+//  - EndTime
+// 
+type RunTaskQueryRequest struct {
+	PageNum int32 `thrift:"pageNum,1" db:"pageNum" json:"pageNum"`
+	PageSize int32 `thrift:"pageSize,2" db:"pageSize" json:"pageSize"`
+	Name *string `thrift:"name,3" db:"name" json:"name,omitempty"`
+	Status *string `thrift:"status,4" db:"status" json:"status,omitempty"`
+	RuleId *int64 `thrift:"ruleId,5" db:"ruleId" json:"ruleId,omitempty"`
+	StartTime *int64 `thrift:"startTime,6" db:"startTime" json:"startTime,omitempty"`
+	EndTime *int64 `thrift:"endTime,7" db:"endTime" json:"endTime,omitempty"`
+}
+
+func NewRunTaskQueryRequest() *RunTaskQueryRequest {
+	return &RunTaskQueryRequest{
+		PageNum: 1,
+		PageSize: 10,
+	}
+}
+
+
+
+func (p *RunTaskQueryRequest) GetPageNum() int32 {
+	return p.PageNum
+}
+
+
+
+func (p *RunTaskQueryRequest) GetPageSize() int32 {
+	return p.PageSize
+}
+
+var RunTaskQueryRequest_Name_DEFAULT string
+
+func (p *RunTaskQueryRequest) GetName() string {
+	if !p.IsSetName() {
+		return RunTaskQueryRequest_Name_DEFAULT
+	}
+	return *p.Name
+}
+
+var RunTaskQueryRequest_Status_DEFAULT string
+
+func (p *RunTaskQueryRequest) GetStatus() string {
+	if !p.IsSetStatus() {
+		return RunTaskQueryRequest_Status_DEFAULT
+	}
+	return *p.Status
+}
+
+var RunTaskQueryRequest_RuleId_DEFAULT int64
+
+func (p *RunTaskQueryRequest) GetRuleId() int64 {
+	if !p.IsSetRuleId() {
+		return RunTaskQueryRequest_RuleId_DEFAULT
+	}
+	return *p.RuleId
+}
+
+var RunTaskQueryRequest_StartTime_DEFAULT int64
+
+func (p *RunTaskQueryRequest) GetStartTime() int64 {
+	if !p.IsSetStartTime() {
+		return RunTaskQueryRequest_StartTime_DEFAULT
+	}
+	return *p.StartTime
+}
+
+var RunTaskQueryRequest_EndTime_DEFAULT int64
+
+func (p *RunTaskQueryRequest) GetEndTime() int64 {
+	if !p.IsSetEndTime() {
+		return RunTaskQueryRequest_EndTime_DEFAULT
+	}
+	return *p.EndTime
+}
+
+func (p *RunTaskQueryRequest) IsSetName() bool {
+	return p.Name != nil
+}
+
+func (p *RunTaskQueryRequest) IsSetStatus() bool {
+	return p.Status != nil
+}
+
+func (p *RunTaskQueryRequest) IsSetRuleId() bool {
+	return p.RuleId != nil
+}
+
+func (p *RunTaskQueryRequest) IsSetStartTime() bool {
+	return p.StartTime != nil
+}
+
+func (p *RunTaskQueryRequest) IsSetEndTime() bool {
+	return p.EndTime != nil
+}
+
+func (p *RunTaskQueryRequest) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 1:
+			if fieldTypeId == thrift.I32 {
+				if err := p.ReadField1(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 2:
+			if fieldTypeId == thrift.I32 {
+				if err := p.ReadField2(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 3:
+			if fieldTypeId == thrift.STRING {
+				if err := p.ReadField3(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 4:
+			if fieldTypeId == thrift.STRING {
+				if err := p.ReadField4(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 5:
+			if fieldTypeId == thrift.I64 {
+				if err := p.ReadField5(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 6:
+			if fieldTypeId == thrift.I64 {
+				if err := p.ReadField6(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 7:
+			if fieldTypeId == thrift.I64 {
+				if err := p.ReadField7(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *RunTaskQueryRequest) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadI32(ctx); err != nil {
+		return thrift.PrependError("error reading field 1: ", err)
+	} else {
+		p.PageNum = v
+	}
+	return nil
+}
+
+func (p *RunTaskQueryRequest) ReadField2(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadI32(ctx); err != nil {
+		return thrift.PrependError("error reading field 2: ", err)
+	} else {
+		p.PageSize = v
+	}
+	return nil
+}
+
+func (p *RunTaskQueryRequest) ReadField3(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadString(ctx); err != nil {
+		return thrift.PrependError("error reading field 3: ", err)
+	} else {
+		p.Name = &v
+	}
+	return nil
+}
+
+func (p *RunTaskQueryRequest) ReadField4(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadString(ctx); err != nil {
+		return thrift.PrependError("error reading field 4: ", err)
+	} else {
+		p.Status = &v
+	}
+	return nil
+}
+
+func (p *RunTaskQueryRequest) ReadField5(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadI64(ctx); err != nil {
+		return thrift.PrependError("error reading field 5: ", err)
+	} else {
+		p.RuleId = &v
+	}
+	return nil
+}
+
+func (p *RunTaskQueryRequest) ReadField6(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadI64(ctx); err != nil {
+		return thrift.PrependError("error reading field 6: ", err)
+	} else {
+		p.StartTime = &v
+	}
+	return nil
+}
+
+func (p *RunTaskQueryRequest) ReadField7(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadI64(ctx); err != nil {
+		return thrift.PrependError("error reading field 7: ", err)
+	} else {
+		p.EndTime = &v
+	}
+	return nil
+}
+
+func (p *RunTaskQueryRequest) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "RunTaskQueryRequest"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField1(ctx, oprot); err != nil { return err }
+		if err := p.writeField2(ctx, oprot); err != nil { return err }
+		if err := p.writeField3(ctx, oprot); err != nil { return err }
+		if err := p.writeField4(ctx, oprot); err != nil { return err }
+		if err := p.writeField5(ctx, oprot); err != nil { return err }
+		if err := p.writeField6(ctx, oprot); err != nil { return err }
+		if err := p.writeField7(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *RunTaskQueryRequest) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "pageNum", thrift.I32, 1); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:pageNum: ", p), err)
+	}
+	if err := oprot.WriteI32(ctx, int32(p.PageNum)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.pageNum (1) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 1:pageNum: ", p), err)
+	}
+	return err
+}
+
+func (p *RunTaskQueryRequest) writeField2(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "pageSize", thrift.I32, 2); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 2:pageSize: ", p), err)
+	}
+	if err := oprot.WriteI32(ctx, int32(p.PageSize)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.pageSize (2) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 2:pageSize: ", p), err)
+	}
+	return err
+}
+
+func (p *RunTaskQueryRequest) writeField3(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if p.IsSetName() {
+		if err := oprot.WriteFieldBegin(ctx, "name", thrift.STRING, 3); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field begin error 3:name: ", p), err)
+		}
+		if err := oprot.WriteString(ctx, string(*p.Name)); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T.name (3) field write error: ", p), err)
+		}
+		if err := oprot.WriteFieldEnd(ctx); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field end error 3:name: ", p), err)
+		}
+	}
+	return err
+}
+
+func (p *RunTaskQueryRequest) writeField4(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if p.IsSetStatus() {
+		if err := oprot.WriteFieldBegin(ctx, "status", thrift.STRING, 4); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field begin error 4:status: ", p), err)
+		}
+		if err := oprot.WriteString(ctx, string(*p.Status)); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T.status (4) field write error: ", p), err)
+		}
+		if err := oprot.WriteFieldEnd(ctx); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field end error 4:status: ", p), err)
+		}
+	}
+	return err
+}
+
+func (p *RunTaskQueryRequest) writeField5(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if p.IsSetRuleId() {
+		if err := oprot.WriteFieldBegin(ctx, "ruleId", thrift.I64, 5); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field begin error 5:ruleId: ", p), err)
+		}
+		if err := oprot.WriteI64(ctx, int64(*p.RuleId)); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T.ruleId (5) field write error: ", p), err)
+		}
+		if err := oprot.WriteFieldEnd(ctx); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field end error 5:ruleId: ", p), err)
+		}
+	}
+	return err
+}
+
+func (p *RunTaskQueryRequest) writeField6(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if p.IsSetStartTime() {
+		if err := oprot.WriteFieldBegin(ctx, "startTime", thrift.I64, 6); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field begin error 6:startTime: ", p), err)
+		}
+		if err := oprot.WriteI64(ctx, int64(*p.StartTime)); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T.startTime (6) field write error: ", p), err)
+		}
+		if err := oprot.WriteFieldEnd(ctx); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field end error 6:startTime: ", p), err)
+		}
+	}
+	return err
+}
+
+func (p *RunTaskQueryRequest) writeField7(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if p.IsSetEndTime() {
+		if err := oprot.WriteFieldBegin(ctx, "endTime", thrift.I64, 7); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field begin error 7:endTime: ", p), err)
+		}
+		if err := oprot.WriteI64(ctx, int64(*p.EndTime)); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T.endTime (7) field write error: ", p), err)
+		}
+		if err := oprot.WriteFieldEnd(ctx); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field end error 7:endTime: ", p), err)
+		}
+	}
+	return err
+}
+
+func (p *RunTaskQueryRequest) Equals(other *RunTaskQueryRequest) bool {
+	if p == other {
+		return true
+	} else if p == nil || other == nil {
+		return false
+	}
+	if p.PageNum != other.PageNum { return false }
+	if p.PageSize != other.PageSize { return false }
+	if p.Name != other.Name {
+		if p.Name == nil || other.Name == nil {
+			return false
+		}
+		if (*p.Name) != (*other.Name) { return false }
+	}
+	if p.Status != other.Status {
+		if p.Status == nil || other.Status == nil {
+			return false
+		}
+		if (*p.Status) != (*other.Status) { return false }
+	}
+	if p.RuleId != other.RuleId {
+		if p.RuleId == nil || other.RuleId == nil {
+			return false
+		}
+		if (*p.RuleId) != (*other.RuleId) { return false }
+	}
+	if p.StartTime != other.StartTime {
+		if p.StartTime == nil || other.StartTime == nil {
+			return false
+		}
+		if (*p.StartTime) != (*other.StartTime) { return false }
+	}
+	if p.EndTime != other.EndTime {
+		if p.EndTime == nil || other.EndTime == nil {
+			return false
+		}
+		if (*p.EndTime) != (*other.EndTime) { return false }
+	}
+	return true
+}
+
+func (p *RunTaskQueryRequest) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("RunTaskQueryRequest(%+v)", *p)
+}
+
+func (p *RunTaskQueryRequest) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.RunTaskQueryRequest",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*RunTaskQueryRequest)(nil)
+
+func (p *RunTaskQueryRequest) Validate() error {
+	return nil
+}
+
+// Attributes:
 //  - ID
 //  - IP
 //  - Port
@@ -3643,6 +5806,177 @@ func (p *ModelMeta) Validate() error {
 	return nil
 }
 
+// Attributes:
+//  - Name
+//  - Version
+// 
+type ExtractModelFileRequest struct {
+	Name string `thrift:"name,1" db:"name" json:"name"`
+	Version string `thrift:"version,2" db:"version" json:"version"`
+}
+
+func NewExtractModelFileRequest() *ExtractModelFileRequest {
+	return &ExtractModelFileRequest{}
+}
+
+
+
+func (p *ExtractModelFileRequest) GetName() string {
+	return p.Name
+}
+
+
+
+func (p *ExtractModelFileRequest) GetVersion() string {
+	return p.Version
+}
+
+func (p *ExtractModelFileRequest) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 1:
+			if fieldTypeId == thrift.STRING {
+				if err := p.ReadField1(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 2:
+			if fieldTypeId == thrift.STRING {
+				if err := p.ReadField2(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ExtractModelFileRequest) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadString(ctx); err != nil {
+		return thrift.PrependError("error reading field 1: ", err)
+	} else {
+		p.Name = v
+	}
+	return nil
+}
+
+func (p *ExtractModelFileRequest) ReadField2(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadString(ctx); err != nil {
+		return thrift.PrependError("error reading field 2: ", err)
+	} else {
+		p.Version = v
+	}
+	return nil
+}
+
+func (p *ExtractModelFileRequest) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "ExtractModelFileRequest"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField1(ctx, oprot); err != nil { return err }
+		if err := p.writeField2(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ExtractModelFileRequest) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "name", thrift.STRING, 1); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:name: ", p), err)
+	}
+	if err := oprot.WriteString(ctx, string(p.Name)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.name (1) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 1:name: ", p), err)
+	}
+	return err
+}
+
+func (p *ExtractModelFileRequest) writeField2(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "version", thrift.STRING, 2); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 2:version: ", p), err)
+	}
+	if err := oprot.WriteString(ctx, string(p.Version)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.version (2) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 2:version: ", p), err)
+	}
+	return err
+}
+
+func (p *ExtractModelFileRequest) Equals(other *ExtractModelFileRequest) bool {
+	if p == other {
+		return true
+	} else if p == nil || other == nil {
+		return false
+	}
+	if p.Name != other.Name { return false }
+	if p.Version != other.Version { return false }
+	return true
+}
+
+func (p *ExtractModelFileRequest) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ExtractModelFileRequest(%+v)", *p)
+}
+
+func (p *ExtractModelFileRequest) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.ExtractModelFileRequest",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*ExtractModelFileRequest)(nil)
+
+func (p *ExtractModelFileRequest) Validate() error {
+	return nil
+}
+
 type ApiService interface {
 	// Parameters:
 	//  - Rule
@@ -3665,6 +5999,66 @@ type ApiService interface {
 	// 
 	DeleteAssociationRule(ctx context.Context, createTime int64) (_r *Result_, _err error)
 	// Parameters:
+	//  - Rule
+	// 
+	SaveParsingRule(ctx context.Context, rule *ParsingRule) (_r *Result_, _err error)
+	// Parameters:
+	//  - Request
+	// 
+	QueryParsingRules(ctx context.Context, request *ParsingRulesQueryRequest) (_r *Result_, _err error)
+	// Parameters:
+	//  - Request
+	// 
+	CountParsingRules(ctx context.Context, request *ParsingRulesQueryRequest) (_r *Result_, _err error)
+	// Parameters:
+	//  - CreateTime
+	// 
+	GetParsingRule(ctx context.Context, createTime int64) (_r *Result_, _err error)
+	// Parameters:
+	//  - CreateTime
+	// 
+	DeleteParsingRule(ctx context.Context, createTime int64) (_r *Result_, _err error)
+	// Parameters:
+	//  - RunTaskRequest
+	// 
+	RunTask(ctx context.Context, runTaskRequest *RunTaskRequest) (_r *Result_, _err error)
+	// Parameters:
+	//  - Request
+	// 
+	ValidateTaskUniqueness(ctx context.Context, request *RunTaskRequest) (_r *Result_, _err error)
+	// Parameters:
+	//  - Timestamp
+	// 
+	StopTask(ctx context.Context, timestamp int64) (_r *Result_, _err error)
+	// Parameters:
+	//  - Timestamp
+	// 
+	GetTaskLog(ctx context.Context, timestamp int64) (_r *Result_, _err error)
+	// Parameters:
+	//  - Request
+	// 
+	QueryTasks(ctx context.Context, request *RunTaskQueryRequest) (_r *Result_, _err error)
+	// Parameters:
+	//  - Request
+	// 
+	CountTasks(ctx context.Context, request *RunTaskQueryRequest) (_r *Result_, _err error)
+	// Parameters:
+	//  - Timestamp
+	// 
+	GetTask(ctx context.Context, timestamp int64) (_r *Result_, _err error)
+	// Parameters:
+	//  - Timestamp
+	// 
+	DeleteTask(ctx context.Context, timestamp int64) (_r *Result_, _err error)
+	// Parameters:
+	//  - File
+	// 
+	UploadReport(ctx context.Context, file []byte) (_r *Result_, _err error)
+	// Parameters:
+	//  - Timestamp
+	// 
+	PackageDownload(ctx context.Context, timestamp int64) (_r *Result_, _err error)
+	// Parameters:
 	//  - JsonBody
 	// 
 	RegisterDataSource(ctx context.Context, jsonBody string) (_r *Result_, _err error)
@@ -3679,6 +6073,15 @@ type ApiService interface {
 	// 
 	QueryData(ctx context.Context, request *DataQueryRequest) (_r *Result_, _err error)
 	// Parameters:
+	//  - Config
+	//  - File
+	// 
+	ImportData(ctx context.Context, config string, file []byte) (_r *Result_, _err error)
+	// Parameters:
+	//  - Request
+	// 
+	ExportData(ctx context.Context, request *DataQueryRequest) (_r *Result_, _err error)
+	// Parameters:
 	//  - Request
 	// 
 	DeleteData(ctx context.Context, request *DataQueryRequest) (_r *Result_, _err error)
@@ -3691,14 +6094,27 @@ type ApiService interface {
 	// 
 	CountRelationalData(ctx context.Context, request *RelationalQueryRequest) (_r *Result_, _err error)
 	// Parameters:
-	//  - ModelMeta
+	//  - Request
 	// 
-	SaveModelMeta(ctx context.Context, modelMeta *ModelMeta) (_r *Result_, _err error)
+	ExportRelationalData(ctx context.Context, request *RelationalQueryRequest) (_r *Result_, _err error)
+	// Parameters:
+	//  - File
+	// 
+	UploadModel(ctx context.Context, file []byte) (_r *Result_, _err error)
+	// Parameters:
+	//  - Name
+	//  - Version
+	// 
+	DownloadModel(ctx context.Context, name string, version string) (_r *Result_, _err error)
 	// Parameters:
 	//  - Name
 	//  - Version
 	// 
 	GetModelMeta(ctx context.Context, name string, version string) (_r *Result_, _err error)
+	// Parameters:
+	//  - ModelMeta
+	// 
+	SaveModelMeta(ctx context.Context, modelMeta *ModelMeta) (_r *Result_, _err error)
 	// Parameters:
 	//  - Name
 	// 
@@ -3708,6 +6124,10 @@ type ApiService interface {
 	//  - Version
 	// 
 	DeleteModel(ctx context.Context, name string, version string) (_r *Result_, _err error)
+	// Parameters:
+	//  - Request
+	// 
+	ExtractModelFile(ctx context.Context, request *ExtractModelFileRequest) (_r *Result_, _err error)
 }
 
 type ApiServiceClient struct {
@@ -3841,20 +6261,305 @@ func (p *ApiServiceClient) DeleteAssociationRule(ctx context.Context, createTime
 }
 
 // Parameters:
-//  - JsonBody
+//  - Rule
 // 
-func (p *ApiServiceClient) RegisterDataSource(ctx context.Context, jsonBody string) (_r *Result_, _err error) {
-	var _args31 ApiServiceRegisterDataSourceArgs
-	_args31.JsonBody = jsonBody
-	var _result33 ApiServiceRegisterDataSourceResult
+func (p *ApiServiceClient) SaveParsingRule(ctx context.Context, rule *ParsingRule) (_r *Result_, _err error) {
+	var _args31 ApiServiceSaveParsingRuleArgs
+	_args31.Rule = rule
+	var _result33 ApiServiceSaveParsingRuleResult
 	var _meta32 thrift.ResponseMeta
-	_meta32, _err = p.Client_().Call(ctx, "registerDataSource", &_args31, &_result33)
+	_meta32, _err = p.Client_().Call(ctx, "saveParsingRule", &_args31, &_result33)
 	p.SetLastResponseMeta_(_meta32)
 	if _err != nil {
 		return
 	}
 	if _ret34 := _result33.GetSuccess(); _ret34 != nil {
 		return _ret34, nil
+	}
+	return nil, thrift.NewTApplicationException(thrift.MISSING_RESULT, "saveParsingRule failed: unknown result")
+}
+
+// Parameters:
+//  - Request
+// 
+func (p *ApiServiceClient) QueryParsingRules(ctx context.Context, request *ParsingRulesQueryRequest) (_r *Result_, _err error) {
+	var _args35 ApiServiceQueryParsingRulesArgs
+	_args35.Request = request
+	var _result37 ApiServiceQueryParsingRulesResult
+	var _meta36 thrift.ResponseMeta
+	_meta36, _err = p.Client_().Call(ctx, "queryParsingRules", &_args35, &_result37)
+	p.SetLastResponseMeta_(_meta36)
+	if _err != nil {
+		return
+	}
+	if _ret38 := _result37.GetSuccess(); _ret38 != nil {
+		return _ret38, nil
+	}
+	return nil, thrift.NewTApplicationException(thrift.MISSING_RESULT, "queryParsingRules failed: unknown result")
+}
+
+// Parameters:
+//  - Request
+// 
+func (p *ApiServiceClient) CountParsingRules(ctx context.Context, request *ParsingRulesQueryRequest) (_r *Result_, _err error) {
+	var _args39 ApiServiceCountParsingRulesArgs
+	_args39.Request = request
+	var _result41 ApiServiceCountParsingRulesResult
+	var _meta40 thrift.ResponseMeta
+	_meta40, _err = p.Client_().Call(ctx, "countParsingRules", &_args39, &_result41)
+	p.SetLastResponseMeta_(_meta40)
+	if _err != nil {
+		return
+	}
+	if _ret42 := _result41.GetSuccess(); _ret42 != nil {
+		return _ret42, nil
+	}
+	return nil, thrift.NewTApplicationException(thrift.MISSING_RESULT, "countParsingRules failed: unknown result")
+}
+
+// Parameters:
+//  - CreateTime
+// 
+func (p *ApiServiceClient) GetParsingRule(ctx context.Context, createTime int64) (_r *Result_, _err error) {
+	var _args43 ApiServiceGetParsingRuleArgs
+	_args43.CreateTime = createTime
+	var _result45 ApiServiceGetParsingRuleResult
+	var _meta44 thrift.ResponseMeta
+	_meta44, _err = p.Client_().Call(ctx, "getParsingRule", &_args43, &_result45)
+	p.SetLastResponseMeta_(_meta44)
+	if _err != nil {
+		return
+	}
+	if _ret46 := _result45.GetSuccess(); _ret46 != nil {
+		return _ret46, nil
+	}
+	return nil, thrift.NewTApplicationException(thrift.MISSING_RESULT, "getParsingRule failed: unknown result")
+}
+
+// Parameters:
+//  - CreateTime
+// 
+func (p *ApiServiceClient) DeleteParsingRule(ctx context.Context, createTime int64) (_r *Result_, _err error) {
+	var _args47 ApiServiceDeleteParsingRuleArgs
+	_args47.CreateTime = createTime
+	var _result49 ApiServiceDeleteParsingRuleResult
+	var _meta48 thrift.ResponseMeta
+	_meta48, _err = p.Client_().Call(ctx, "deleteParsingRule", &_args47, &_result49)
+	p.SetLastResponseMeta_(_meta48)
+	if _err != nil {
+		return
+	}
+	if _ret50 := _result49.GetSuccess(); _ret50 != nil {
+		return _ret50, nil
+	}
+	return nil, thrift.NewTApplicationException(thrift.MISSING_RESULT, "deleteParsingRule failed: unknown result")
+}
+
+// Parameters:
+//  - RunTaskRequest
+// 
+func (p *ApiServiceClient) RunTask(ctx context.Context, runTaskRequest *RunTaskRequest) (_r *Result_, _err error) {
+	var _args51 ApiServiceRunTaskArgs
+	_args51.RunTaskRequest = runTaskRequest
+	var _result53 ApiServiceRunTaskResult
+	var _meta52 thrift.ResponseMeta
+	_meta52, _err = p.Client_().Call(ctx, "runTask", &_args51, &_result53)
+	p.SetLastResponseMeta_(_meta52)
+	if _err != nil {
+		return
+	}
+	if _ret54 := _result53.GetSuccess(); _ret54 != nil {
+		return _ret54, nil
+	}
+	return nil, thrift.NewTApplicationException(thrift.MISSING_RESULT, "runTask failed: unknown result")
+}
+
+// Parameters:
+//  - Request
+// 
+func (p *ApiServiceClient) ValidateTaskUniqueness(ctx context.Context, request *RunTaskRequest) (_r *Result_, _err error) {
+	var _args55 ApiServiceValidateTaskUniquenessArgs
+	_args55.Request = request
+	var _result57 ApiServiceValidateTaskUniquenessResult
+	var _meta56 thrift.ResponseMeta
+	_meta56, _err = p.Client_().Call(ctx, "validateTaskUniqueness", &_args55, &_result57)
+	p.SetLastResponseMeta_(_meta56)
+	if _err != nil {
+		return
+	}
+	if _ret58 := _result57.GetSuccess(); _ret58 != nil {
+		return _ret58, nil
+	}
+	return nil, thrift.NewTApplicationException(thrift.MISSING_RESULT, "validateTaskUniqueness failed: unknown result")
+}
+
+// Parameters:
+//  - Timestamp
+// 
+func (p *ApiServiceClient) StopTask(ctx context.Context, timestamp int64) (_r *Result_, _err error) {
+	var _args59 ApiServiceStopTaskArgs
+	_args59.Timestamp = timestamp
+	var _result61 ApiServiceStopTaskResult
+	var _meta60 thrift.ResponseMeta
+	_meta60, _err = p.Client_().Call(ctx, "stopTask", &_args59, &_result61)
+	p.SetLastResponseMeta_(_meta60)
+	if _err != nil {
+		return
+	}
+	if _ret62 := _result61.GetSuccess(); _ret62 != nil {
+		return _ret62, nil
+	}
+	return nil, thrift.NewTApplicationException(thrift.MISSING_RESULT, "stopTask failed: unknown result")
+}
+
+// Parameters:
+//  - Timestamp
+// 
+func (p *ApiServiceClient) GetTaskLog(ctx context.Context, timestamp int64) (_r *Result_, _err error) {
+	var _args63 ApiServiceGetTaskLogArgs
+	_args63.Timestamp = timestamp
+	var _result65 ApiServiceGetTaskLogResult
+	var _meta64 thrift.ResponseMeta
+	_meta64, _err = p.Client_().Call(ctx, "getTaskLog", &_args63, &_result65)
+	p.SetLastResponseMeta_(_meta64)
+	if _err != nil {
+		return
+	}
+	if _ret66 := _result65.GetSuccess(); _ret66 != nil {
+		return _ret66, nil
+	}
+	return nil, thrift.NewTApplicationException(thrift.MISSING_RESULT, "getTaskLog failed: unknown result")
+}
+
+// Parameters:
+//  - Request
+// 
+func (p *ApiServiceClient) QueryTasks(ctx context.Context, request *RunTaskQueryRequest) (_r *Result_, _err error) {
+	var _args67 ApiServiceQueryTasksArgs
+	_args67.Request = request
+	var _result69 ApiServiceQueryTasksResult
+	var _meta68 thrift.ResponseMeta
+	_meta68, _err = p.Client_().Call(ctx, "queryTasks", &_args67, &_result69)
+	p.SetLastResponseMeta_(_meta68)
+	if _err != nil {
+		return
+	}
+	if _ret70 := _result69.GetSuccess(); _ret70 != nil {
+		return _ret70, nil
+	}
+	return nil, thrift.NewTApplicationException(thrift.MISSING_RESULT, "queryTasks failed: unknown result")
+}
+
+// Parameters:
+//  - Request
+// 
+func (p *ApiServiceClient) CountTasks(ctx context.Context, request *RunTaskQueryRequest) (_r *Result_, _err error) {
+	var _args71 ApiServiceCountTasksArgs
+	_args71.Request = request
+	var _result73 ApiServiceCountTasksResult
+	var _meta72 thrift.ResponseMeta
+	_meta72, _err = p.Client_().Call(ctx, "countTasks", &_args71, &_result73)
+	p.SetLastResponseMeta_(_meta72)
+	if _err != nil {
+		return
+	}
+	if _ret74 := _result73.GetSuccess(); _ret74 != nil {
+		return _ret74, nil
+	}
+	return nil, thrift.NewTApplicationException(thrift.MISSING_RESULT, "countTasks failed: unknown result")
+}
+
+// Parameters:
+//  - Timestamp
+// 
+func (p *ApiServiceClient) GetTask(ctx context.Context, timestamp int64) (_r *Result_, _err error) {
+	var _args75 ApiServiceGetTaskArgs
+	_args75.Timestamp = timestamp
+	var _result77 ApiServiceGetTaskResult
+	var _meta76 thrift.ResponseMeta
+	_meta76, _err = p.Client_().Call(ctx, "getTask", &_args75, &_result77)
+	p.SetLastResponseMeta_(_meta76)
+	if _err != nil {
+		return
+	}
+	if _ret78 := _result77.GetSuccess(); _ret78 != nil {
+		return _ret78, nil
+	}
+	return nil, thrift.NewTApplicationException(thrift.MISSING_RESULT, "getTask failed: unknown result")
+}
+
+// Parameters:
+//  - Timestamp
+// 
+func (p *ApiServiceClient) DeleteTask(ctx context.Context, timestamp int64) (_r *Result_, _err error) {
+	var _args79 ApiServiceDeleteTaskArgs
+	_args79.Timestamp = timestamp
+	var _result81 ApiServiceDeleteTaskResult
+	var _meta80 thrift.ResponseMeta
+	_meta80, _err = p.Client_().Call(ctx, "deleteTask", &_args79, &_result81)
+	p.SetLastResponseMeta_(_meta80)
+	if _err != nil {
+		return
+	}
+	if _ret82 := _result81.GetSuccess(); _ret82 != nil {
+		return _ret82, nil
+	}
+	return nil, thrift.NewTApplicationException(thrift.MISSING_RESULT, "deleteTask failed: unknown result")
+}
+
+// Parameters:
+//  - File
+// 
+func (p *ApiServiceClient) UploadReport(ctx context.Context, file []byte) (_r *Result_, _err error) {
+	var _args83 ApiServiceUploadReportArgs
+	_args83.File = file
+	var _result85 ApiServiceUploadReportResult
+	var _meta84 thrift.ResponseMeta
+	_meta84, _err = p.Client_().Call(ctx, "uploadReport", &_args83, &_result85)
+	p.SetLastResponseMeta_(_meta84)
+	if _err != nil {
+		return
+	}
+	if _ret86 := _result85.GetSuccess(); _ret86 != nil {
+		return _ret86, nil
+	}
+	return nil, thrift.NewTApplicationException(thrift.MISSING_RESULT, "uploadReport failed: unknown result")
+}
+
+// Parameters:
+//  - Timestamp
+// 
+func (p *ApiServiceClient) PackageDownload(ctx context.Context, timestamp int64) (_r *Result_, _err error) {
+	var _args87 ApiServicePackageDownloadArgs
+	_args87.Timestamp = timestamp
+	var _result89 ApiServicePackageDownloadResult
+	var _meta88 thrift.ResponseMeta
+	_meta88, _err = p.Client_().Call(ctx, "packageDownload", &_args87, &_result89)
+	p.SetLastResponseMeta_(_meta88)
+	if _err != nil {
+		return
+	}
+	if _ret90 := _result89.GetSuccess(); _ret90 != nil {
+		return _ret90, nil
+	}
+	return nil, thrift.NewTApplicationException(thrift.MISSING_RESULT, "packageDownload failed: unknown result")
+}
+
+// Parameters:
+//  - JsonBody
+// 
+func (p *ApiServiceClient) RegisterDataSource(ctx context.Context, jsonBody string) (_r *Result_, _err error) {
+	var _args91 ApiServiceRegisterDataSourceArgs
+	_args91.JsonBody = jsonBody
+	var _result93 ApiServiceRegisterDataSourceResult
+	var _meta92 thrift.ResponseMeta
+	_meta92, _err = p.Client_().Call(ctx, "registerDataSource", &_args91, &_result93)
+	p.SetLastResponseMeta_(_meta92)
+	if _err != nil {
+		return
+	}
+	if _ret94 := _result93.GetSuccess(); _ret94 != nil {
+		return _ret94, nil
 	}
 	return nil, thrift.NewTApplicationException(thrift.MISSING_RESULT, "registerDataSource failed: unknown result")
 }
@@ -3863,47 +6568,47 @@ func (p *ApiServiceClient) RegisterDataSource(ctx context.Context, jsonBody stri
 //  - StorageEngineInfo
 // 
 func (p *ApiServiceClient) RemoveDataSource(ctx context.Context, storageEngineInfo *StorageEngineInfo) (_r *Result_, _err error) {
-	var _args35 ApiServiceRemoveDataSourceArgs
-	_args35.StorageEngineInfo = storageEngineInfo
-	var _result37 ApiServiceRemoveDataSourceResult
-	var _meta36 thrift.ResponseMeta
-	_meta36, _err = p.Client_().Call(ctx, "removeDataSource", &_args35, &_result37)
-	p.SetLastResponseMeta_(_meta36)
+	var _args95 ApiServiceRemoveDataSourceArgs
+	_args95.StorageEngineInfo = storageEngineInfo
+	var _result97 ApiServiceRemoveDataSourceResult
+	var _meta96 thrift.ResponseMeta
+	_meta96, _err = p.Client_().Call(ctx, "removeDataSource", &_args95, &_result97)
+	p.SetLastResponseMeta_(_meta96)
 	if _err != nil {
 		return
 	}
-	if _ret38 := _result37.GetSuccess(); _ret38 != nil {
-		return _ret38, nil
+	if _ret98 := _result97.GetSuccess(); _ret98 != nil {
+		return _ret98, nil
 	}
 	return nil, thrift.NewTApplicationException(thrift.MISSING_RESULT, "removeDataSource failed: unknown result")
 }
 
 func (p *ApiServiceClient) ListDataSources(ctx context.Context) (_r *Result_, _err error) {
-	var _args39 ApiServiceListDataSourcesArgs
-	var _result41 ApiServiceListDataSourcesResult
-	var _meta40 thrift.ResponseMeta
-	_meta40, _err = p.Client_().Call(ctx, "listDataSources", &_args39, &_result41)
-	p.SetLastResponseMeta_(_meta40)
+	var _args99 ApiServiceListDataSourcesArgs
+	var _result101 ApiServiceListDataSourcesResult
+	var _meta100 thrift.ResponseMeta
+	_meta100, _err = p.Client_().Call(ctx, "listDataSources", &_args99, &_result101)
+	p.SetLastResponseMeta_(_meta100)
 	if _err != nil {
 		return
 	}
-	if _ret42 := _result41.GetSuccess(); _ret42 != nil {
-		return _ret42, nil
+	if _ret102 := _result101.GetSuccess(); _ret102 != nil {
+		return _ret102, nil
 	}
 	return nil, thrift.NewTApplicationException(thrift.MISSING_RESULT, "listDataSources failed: unknown result")
 }
 
 func (p *ApiServiceClient) GetDataSourceTree(ctx context.Context) (_r *Result_, _err error) {
-	var _args43 ApiServiceGetDataSourceTreeArgs
-	var _result45 ApiServiceGetDataSourceTreeResult
-	var _meta44 thrift.ResponseMeta
-	_meta44, _err = p.Client_().Call(ctx, "getDataSourceTree", &_args43, &_result45)
-	p.SetLastResponseMeta_(_meta44)
+	var _args103 ApiServiceGetDataSourceTreeArgs
+	var _result105 ApiServiceGetDataSourceTreeResult
+	var _meta104 thrift.ResponseMeta
+	_meta104, _err = p.Client_().Call(ctx, "getDataSourceTree", &_args103, &_result105)
+	p.SetLastResponseMeta_(_meta104)
 	if _err != nil {
 		return
 	}
-	if _ret46 := _result45.GetSuccess(); _ret46 != nil {
-		return _ret46, nil
+	if _ret106 := _result105.GetSuccess(); _ret106 != nil {
+		return _ret106, nil
 	}
 	return nil, thrift.NewTApplicationException(thrift.MISSING_RESULT, "getDataSourceTree failed: unknown result")
 }
@@ -3912,36 +6617,76 @@ func (p *ApiServiceClient) GetDataSourceTree(ctx context.Context) (_r *Result_, 
 //  - Request
 // 
 func (p *ApiServiceClient) QueryData(ctx context.Context, request *DataQueryRequest) (_r *Result_, _err error) {
-	var _args47 ApiServiceQueryDataArgs
-	_args47.Request = request
-	var _result49 ApiServiceQueryDataResult
-	var _meta48 thrift.ResponseMeta
-	_meta48, _err = p.Client_().Call(ctx, "queryData", &_args47, &_result49)
-	p.SetLastResponseMeta_(_meta48)
+	var _args107 ApiServiceQueryDataArgs
+	_args107.Request = request
+	var _result109 ApiServiceQueryDataResult
+	var _meta108 thrift.ResponseMeta
+	_meta108, _err = p.Client_().Call(ctx, "queryData", &_args107, &_result109)
+	p.SetLastResponseMeta_(_meta108)
 	if _err != nil {
 		return
 	}
-	if _ret50 := _result49.GetSuccess(); _ret50 != nil {
-		return _ret50, nil
+	if _ret110 := _result109.GetSuccess(); _ret110 != nil {
+		return _ret110, nil
 	}
 	return nil, thrift.NewTApplicationException(thrift.MISSING_RESULT, "queryData failed: unknown result")
+}
+
+// Parameters:
+//  - Config
+//  - File
+// 
+func (p *ApiServiceClient) ImportData(ctx context.Context, config string, file []byte) (_r *Result_, _err error) {
+	var _args111 ApiServiceImportDataArgs
+	_args111.Config = config
+	_args111.File = file
+	var _result113 ApiServiceImportDataResult
+	var _meta112 thrift.ResponseMeta
+	_meta112, _err = p.Client_().Call(ctx, "importData", &_args111, &_result113)
+	p.SetLastResponseMeta_(_meta112)
+	if _err != nil {
+		return
+	}
+	if _ret114 := _result113.GetSuccess(); _ret114 != nil {
+		return _ret114, nil
+	}
+	return nil, thrift.NewTApplicationException(thrift.MISSING_RESULT, "importData failed: unknown result")
+}
+
+// Parameters:
+//  - Request
+// 
+func (p *ApiServiceClient) ExportData(ctx context.Context, request *DataQueryRequest) (_r *Result_, _err error) {
+	var _args115 ApiServiceExportDataArgs
+	_args115.Request = request
+	var _result117 ApiServiceExportDataResult
+	var _meta116 thrift.ResponseMeta
+	_meta116, _err = p.Client_().Call(ctx, "exportData", &_args115, &_result117)
+	p.SetLastResponseMeta_(_meta116)
+	if _err != nil {
+		return
+	}
+	if _ret118 := _result117.GetSuccess(); _ret118 != nil {
+		return _ret118, nil
+	}
+	return nil, thrift.NewTApplicationException(thrift.MISSING_RESULT, "exportData failed: unknown result")
 }
 
 // Parameters:
 //  - Request
 // 
 func (p *ApiServiceClient) DeleteData(ctx context.Context, request *DataQueryRequest) (_r *Result_, _err error) {
-	var _args51 ApiServiceDeleteDataArgs
-	_args51.Request = request
-	var _result53 ApiServiceDeleteDataResult
-	var _meta52 thrift.ResponseMeta
-	_meta52, _err = p.Client_().Call(ctx, "deleteData", &_args51, &_result53)
-	p.SetLastResponseMeta_(_meta52)
+	var _args119 ApiServiceDeleteDataArgs
+	_args119.Request = request
+	var _result121 ApiServiceDeleteDataResult
+	var _meta120 thrift.ResponseMeta
+	_meta120, _err = p.Client_().Call(ctx, "deleteData", &_args119, &_result121)
+	p.SetLastResponseMeta_(_meta120)
 	if _err != nil {
 		return
 	}
-	if _ret54 := _result53.GetSuccess(); _ret54 != nil {
-		return _ret54, nil
+	if _ret122 := _result121.GetSuccess(); _ret122 != nil {
+		return _ret122, nil
 	}
 	return nil, thrift.NewTApplicationException(thrift.MISSING_RESULT, "deleteData failed: unknown result")
 }
@@ -3950,17 +6695,17 @@ func (p *ApiServiceClient) DeleteData(ctx context.Context, request *DataQueryReq
 //  - Request
 // 
 func (p *ApiServiceClient) QueryRelationalData(ctx context.Context, request *RelationalQueryRequest) (_r *Result_, _err error) {
-	var _args55 ApiServiceQueryRelationalDataArgs
-	_args55.Request = request
-	var _result57 ApiServiceQueryRelationalDataResult
-	var _meta56 thrift.ResponseMeta
-	_meta56, _err = p.Client_().Call(ctx, "queryRelationalData", &_args55, &_result57)
-	p.SetLastResponseMeta_(_meta56)
+	var _args123 ApiServiceQueryRelationalDataArgs
+	_args123.Request = request
+	var _result125 ApiServiceQueryRelationalDataResult
+	var _meta124 thrift.ResponseMeta
+	_meta124, _err = p.Client_().Call(ctx, "queryRelationalData", &_args123, &_result125)
+	p.SetLastResponseMeta_(_meta124)
 	if _err != nil {
 		return
 	}
-	if _ret58 := _result57.GetSuccess(); _ret58 != nil {
-		return _ret58, nil
+	if _ret126 := _result125.GetSuccess(); _ret126 != nil {
+		return _ret126, nil
 	}
 	return nil, thrift.NewTApplicationException(thrift.MISSING_RESULT, "queryRelationalData failed: unknown result")
 }
@@ -3969,38 +6714,78 @@ func (p *ApiServiceClient) QueryRelationalData(ctx context.Context, request *Rel
 //  - Request
 // 
 func (p *ApiServiceClient) CountRelationalData(ctx context.Context, request *RelationalQueryRequest) (_r *Result_, _err error) {
-	var _args59 ApiServiceCountRelationalDataArgs
-	_args59.Request = request
-	var _result61 ApiServiceCountRelationalDataResult
-	var _meta60 thrift.ResponseMeta
-	_meta60, _err = p.Client_().Call(ctx, "countRelationalData", &_args59, &_result61)
-	p.SetLastResponseMeta_(_meta60)
+	var _args127 ApiServiceCountRelationalDataArgs
+	_args127.Request = request
+	var _result129 ApiServiceCountRelationalDataResult
+	var _meta128 thrift.ResponseMeta
+	_meta128, _err = p.Client_().Call(ctx, "countRelationalData", &_args127, &_result129)
+	p.SetLastResponseMeta_(_meta128)
 	if _err != nil {
 		return
 	}
-	if _ret62 := _result61.GetSuccess(); _ret62 != nil {
-		return _ret62, nil
+	if _ret130 := _result129.GetSuccess(); _ret130 != nil {
+		return _ret130, nil
 	}
 	return nil, thrift.NewTApplicationException(thrift.MISSING_RESULT, "countRelationalData failed: unknown result")
 }
 
 // Parameters:
-//  - ModelMeta
+//  - Request
 // 
-func (p *ApiServiceClient) SaveModelMeta(ctx context.Context, modelMeta *ModelMeta) (_r *Result_, _err error) {
-	var _args63 ApiServiceSaveModelMetaArgs
-	_args63.ModelMeta = modelMeta
-	var _result65 ApiServiceSaveModelMetaResult
-	var _meta64 thrift.ResponseMeta
-	_meta64, _err = p.Client_().Call(ctx, "saveModelMeta", &_args63, &_result65)
-	p.SetLastResponseMeta_(_meta64)
+func (p *ApiServiceClient) ExportRelationalData(ctx context.Context, request *RelationalQueryRequest) (_r *Result_, _err error) {
+	var _args131 ApiServiceExportRelationalDataArgs
+	_args131.Request = request
+	var _result133 ApiServiceExportRelationalDataResult
+	var _meta132 thrift.ResponseMeta
+	_meta132, _err = p.Client_().Call(ctx, "exportRelationalData", &_args131, &_result133)
+	p.SetLastResponseMeta_(_meta132)
 	if _err != nil {
 		return
 	}
-	if _ret66 := _result65.GetSuccess(); _ret66 != nil {
-		return _ret66, nil
+	if _ret134 := _result133.GetSuccess(); _ret134 != nil {
+		return _ret134, nil
 	}
-	return nil, thrift.NewTApplicationException(thrift.MISSING_RESULT, "saveModelMeta failed: unknown result")
+	return nil, thrift.NewTApplicationException(thrift.MISSING_RESULT, "exportRelationalData failed: unknown result")
+}
+
+// Parameters:
+//  - File
+// 
+func (p *ApiServiceClient) UploadModel(ctx context.Context, file []byte) (_r *Result_, _err error) {
+	var _args135 ApiServiceUploadModelArgs
+	_args135.File = file
+	var _result137 ApiServiceUploadModelResult
+	var _meta136 thrift.ResponseMeta
+	_meta136, _err = p.Client_().Call(ctx, "uploadModel", &_args135, &_result137)
+	p.SetLastResponseMeta_(_meta136)
+	if _err != nil {
+		return
+	}
+	if _ret138 := _result137.GetSuccess(); _ret138 != nil {
+		return _ret138, nil
+	}
+	return nil, thrift.NewTApplicationException(thrift.MISSING_RESULT, "uploadModel failed: unknown result")
+}
+
+// Parameters:
+//  - Name
+//  - Version
+// 
+func (p *ApiServiceClient) DownloadModel(ctx context.Context, name string, version string) (_r *Result_, _err error) {
+	var _args139 ApiServiceDownloadModelArgs
+	_args139.Name = name
+	_args139.Version = version
+	var _result141 ApiServiceDownloadModelResult
+	var _meta140 thrift.ResponseMeta
+	_meta140, _err = p.Client_().Call(ctx, "downloadModel", &_args139, &_result141)
+	p.SetLastResponseMeta_(_meta140)
+	if _err != nil {
+		return
+	}
+	if _ret142 := _result141.GetSuccess(); _ret142 != nil {
+		return _ret142, nil
+	}
+	return nil, thrift.NewTApplicationException(thrift.MISSING_RESULT, "downloadModel failed: unknown result")
 }
 
 // Parameters:
@@ -4008,37 +6793,56 @@ func (p *ApiServiceClient) SaveModelMeta(ctx context.Context, modelMeta *ModelMe
 //  - Version
 // 
 func (p *ApiServiceClient) GetModelMeta(ctx context.Context, name string, version string) (_r *Result_, _err error) {
-	var _args67 ApiServiceGetModelMetaArgs
-	_args67.Name = name
-	_args67.Version = version
-	var _result69 ApiServiceGetModelMetaResult
-	var _meta68 thrift.ResponseMeta
-	_meta68, _err = p.Client_().Call(ctx, "getModelMeta", &_args67, &_result69)
-	p.SetLastResponseMeta_(_meta68)
+	var _args143 ApiServiceGetModelMetaArgs
+	_args143.Name = name
+	_args143.Version = version
+	var _result145 ApiServiceGetModelMetaResult
+	var _meta144 thrift.ResponseMeta
+	_meta144, _err = p.Client_().Call(ctx, "getModelMeta", &_args143, &_result145)
+	p.SetLastResponseMeta_(_meta144)
 	if _err != nil {
 		return
 	}
-	if _ret70 := _result69.GetSuccess(); _ret70 != nil {
-		return _ret70, nil
+	if _ret146 := _result145.GetSuccess(); _ret146 != nil {
+		return _ret146, nil
 	}
 	return nil, thrift.NewTApplicationException(thrift.MISSING_RESULT, "getModelMeta failed: unknown result")
+}
+
+// Parameters:
+//  - ModelMeta
+// 
+func (p *ApiServiceClient) SaveModelMeta(ctx context.Context, modelMeta *ModelMeta) (_r *Result_, _err error) {
+	var _args147 ApiServiceSaveModelMetaArgs
+	_args147.ModelMeta = modelMeta
+	var _result149 ApiServiceSaveModelMetaResult
+	var _meta148 thrift.ResponseMeta
+	_meta148, _err = p.Client_().Call(ctx, "saveModelMeta", &_args147, &_result149)
+	p.SetLastResponseMeta_(_meta148)
+	if _err != nil {
+		return
+	}
+	if _ret150 := _result149.GetSuccess(); _ret150 != nil {
+		return _ret150, nil
+	}
+	return nil, thrift.NewTApplicationException(thrift.MISSING_RESULT, "saveModelMeta failed: unknown result")
 }
 
 // Parameters:
 //  - Name
 // 
 func (p *ApiServiceClient) GetModelHistory(ctx context.Context, name string) (_r *Result_, _err error) {
-	var _args71 ApiServiceGetModelHistoryArgs
-	_args71.Name = name
-	var _result73 ApiServiceGetModelHistoryResult
-	var _meta72 thrift.ResponseMeta
-	_meta72, _err = p.Client_().Call(ctx, "getModelHistory", &_args71, &_result73)
-	p.SetLastResponseMeta_(_meta72)
+	var _args151 ApiServiceGetModelHistoryArgs
+	_args151.Name = name
+	var _result153 ApiServiceGetModelHistoryResult
+	var _meta152 thrift.ResponseMeta
+	_meta152, _err = p.Client_().Call(ctx, "getModelHistory", &_args151, &_result153)
+	p.SetLastResponseMeta_(_meta152)
 	if _err != nil {
 		return
 	}
-	if _ret74 := _result73.GetSuccess(); _ret74 != nil {
-		return _ret74, nil
+	if _ret154 := _result153.GetSuccess(); _ret154 != nil {
+		return _ret154, nil
 	}
 	return nil, thrift.NewTApplicationException(thrift.MISSING_RESULT, "getModelHistory failed: unknown result")
 }
@@ -4048,20 +6852,39 @@ func (p *ApiServiceClient) GetModelHistory(ctx context.Context, name string) (_r
 //  - Version
 // 
 func (p *ApiServiceClient) DeleteModel(ctx context.Context, name string, version string) (_r *Result_, _err error) {
-	var _args75 ApiServiceDeleteModelArgs
-	_args75.Name = name
-	_args75.Version = version
-	var _result77 ApiServiceDeleteModelResult
-	var _meta76 thrift.ResponseMeta
-	_meta76, _err = p.Client_().Call(ctx, "deleteModel", &_args75, &_result77)
-	p.SetLastResponseMeta_(_meta76)
+	var _args155 ApiServiceDeleteModelArgs
+	_args155.Name = name
+	_args155.Version = version
+	var _result157 ApiServiceDeleteModelResult
+	var _meta156 thrift.ResponseMeta
+	_meta156, _err = p.Client_().Call(ctx, "deleteModel", &_args155, &_result157)
+	p.SetLastResponseMeta_(_meta156)
 	if _err != nil {
 		return
 	}
-	if _ret78 := _result77.GetSuccess(); _ret78 != nil {
-		return _ret78, nil
+	if _ret158 := _result157.GetSuccess(); _ret158 != nil {
+		return _ret158, nil
 	}
 	return nil, thrift.NewTApplicationException(thrift.MISSING_RESULT, "deleteModel failed: unknown result")
+}
+
+// Parameters:
+//  - Request
+// 
+func (p *ApiServiceClient) ExtractModelFile(ctx context.Context, request *ExtractModelFileRequest) (_r *Result_, _err error) {
+	var _args159 ApiServiceExtractModelFileArgs
+	_args159.Request = request
+	var _result161 ApiServiceExtractModelFileResult
+	var _meta160 thrift.ResponseMeta
+	_meta160, _err = p.Client_().Call(ctx, "extractModelFile", &_args159, &_result161)
+	p.SetLastResponseMeta_(_meta160)
+	if _err != nil {
+		return
+	}
+	if _ret162 := _result161.GetSuccess(); _ret162 != nil {
+		return _ret162, nil
+	}
+	return nil, thrift.NewTApplicationException(thrift.MISSING_RESULT, "extractModelFile failed: unknown result")
 }
 
 type ApiServiceProcessor struct {
@@ -4084,25 +6907,46 @@ func (p *ApiServiceProcessor) ProcessorMap() map[string]thrift.TProcessorFunctio
 
 func NewApiServiceProcessor(handler ApiService) *ApiServiceProcessor {
 
-	self79 := &ApiServiceProcessor{handler:handler, processorMap:make(map[string]thrift.TProcessorFunction)}
-	self79.processorMap["saveAssociationRule"] = &apiServiceProcessorSaveAssociationRule{handler:handler}
-	self79.processorMap["queryAssociationRules"] = &apiServiceProcessorQueryAssociationRules{handler:handler}
-	self79.processorMap["countAssociationRules"] = &apiServiceProcessorCountAssociationRules{handler:handler}
-	self79.processorMap["getAssociationRule"] = &apiServiceProcessorGetAssociationRule{handler:handler}
-	self79.processorMap["deleteAssociationRule"] = &apiServiceProcessorDeleteAssociationRule{handler:handler}
-	self79.processorMap["registerDataSource"] = &apiServiceProcessorRegisterDataSource{handler:handler}
-	self79.processorMap["removeDataSource"] = &apiServiceProcessorRemoveDataSource{handler:handler}
-	self79.processorMap["listDataSources"] = &apiServiceProcessorListDataSources{handler:handler}
-	self79.processorMap["getDataSourceTree"] = &apiServiceProcessorGetDataSourceTree{handler:handler}
-	self79.processorMap["queryData"] = &apiServiceProcessorQueryData{handler:handler}
-	self79.processorMap["deleteData"] = &apiServiceProcessorDeleteData{handler:handler}
-	self79.processorMap["queryRelationalData"] = &apiServiceProcessorQueryRelationalData{handler:handler}
-	self79.processorMap["countRelationalData"] = &apiServiceProcessorCountRelationalData{handler:handler}
-	self79.processorMap["saveModelMeta"] = &apiServiceProcessorSaveModelMeta{handler:handler}
-	self79.processorMap["getModelMeta"] = &apiServiceProcessorGetModelMeta{handler:handler}
-	self79.processorMap["getModelHistory"] = &apiServiceProcessorGetModelHistory{handler:handler}
-	self79.processorMap["deleteModel"] = &apiServiceProcessorDeleteModel{handler:handler}
-	return self79
+	self163 := &ApiServiceProcessor{handler:handler, processorMap:make(map[string]thrift.TProcessorFunction)}
+	self163.processorMap["saveAssociationRule"] = &apiServiceProcessorSaveAssociationRule{handler:handler}
+	self163.processorMap["queryAssociationRules"] = &apiServiceProcessorQueryAssociationRules{handler:handler}
+	self163.processorMap["countAssociationRules"] = &apiServiceProcessorCountAssociationRules{handler:handler}
+	self163.processorMap["getAssociationRule"] = &apiServiceProcessorGetAssociationRule{handler:handler}
+	self163.processorMap["deleteAssociationRule"] = &apiServiceProcessorDeleteAssociationRule{handler:handler}
+	self163.processorMap["saveParsingRule"] = &apiServiceProcessorSaveParsingRule{handler:handler}
+	self163.processorMap["queryParsingRules"] = &apiServiceProcessorQueryParsingRules{handler:handler}
+	self163.processorMap["countParsingRules"] = &apiServiceProcessorCountParsingRules{handler:handler}
+	self163.processorMap["getParsingRule"] = &apiServiceProcessorGetParsingRule{handler:handler}
+	self163.processorMap["deleteParsingRule"] = &apiServiceProcessorDeleteParsingRule{handler:handler}
+	self163.processorMap["runTask"] = &apiServiceProcessorRunTask{handler:handler}
+	self163.processorMap["validateTaskUniqueness"] = &apiServiceProcessorValidateTaskUniqueness{handler:handler}
+	self163.processorMap["stopTask"] = &apiServiceProcessorStopTask{handler:handler}
+	self163.processorMap["getTaskLog"] = &apiServiceProcessorGetTaskLog{handler:handler}
+	self163.processorMap["queryTasks"] = &apiServiceProcessorQueryTasks{handler:handler}
+	self163.processorMap["countTasks"] = &apiServiceProcessorCountTasks{handler:handler}
+	self163.processorMap["getTask"] = &apiServiceProcessorGetTask{handler:handler}
+	self163.processorMap["deleteTask"] = &apiServiceProcessorDeleteTask{handler:handler}
+	self163.processorMap["uploadReport"] = &apiServiceProcessorUploadReport{handler:handler}
+	self163.processorMap["packageDownload"] = &apiServiceProcessorPackageDownload{handler:handler}
+	self163.processorMap["registerDataSource"] = &apiServiceProcessorRegisterDataSource{handler:handler}
+	self163.processorMap["removeDataSource"] = &apiServiceProcessorRemoveDataSource{handler:handler}
+	self163.processorMap["listDataSources"] = &apiServiceProcessorListDataSources{handler:handler}
+	self163.processorMap["getDataSourceTree"] = &apiServiceProcessorGetDataSourceTree{handler:handler}
+	self163.processorMap["queryData"] = &apiServiceProcessorQueryData{handler:handler}
+	self163.processorMap["importData"] = &apiServiceProcessorImportData{handler:handler}
+	self163.processorMap["exportData"] = &apiServiceProcessorExportData{handler:handler}
+	self163.processorMap["deleteData"] = &apiServiceProcessorDeleteData{handler:handler}
+	self163.processorMap["queryRelationalData"] = &apiServiceProcessorQueryRelationalData{handler:handler}
+	self163.processorMap["countRelationalData"] = &apiServiceProcessorCountRelationalData{handler:handler}
+	self163.processorMap["exportRelationalData"] = &apiServiceProcessorExportRelationalData{handler:handler}
+	self163.processorMap["uploadModel"] = &apiServiceProcessorUploadModel{handler:handler}
+	self163.processorMap["downloadModel"] = &apiServiceProcessorDownloadModel{handler:handler}
+	self163.processorMap["getModelMeta"] = &apiServiceProcessorGetModelMeta{handler:handler}
+	self163.processorMap["saveModelMeta"] = &apiServiceProcessorSaveModelMeta{handler:handler}
+	self163.processorMap["getModelHistory"] = &apiServiceProcessorGetModelHistory{handler:handler}
+	self163.processorMap["deleteModel"] = &apiServiceProcessorDeleteModel{handler:handler}
+	self163.processorMap["extractModelFile"] = &apiServiceProcessorExtractModelFile{handler:handler}
+	return self163
 }
 
 func (p *ApiServiceProcessor) Process(ctx context.Context, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
@@ -4113,12 +6957,12 @@ func (p *ApiServiceProcessor) Process(ctx context.Context, iprot, oprot thrift.T
 	}
 	iprot.Skip(ctx, thrift.STRUCT)
 	iprot.ReadMessageEnd(ctx)
-	x80 := thrift.NewTApplicationException(thrift.UNKNOWN_METHOD, "Unknown function " + name)
+	x164 := thrift.NewTApplicationException(thrift.UNKNOWN_METHOD, "Unknown function " + name)
 	oprot.WriteMessageBegin(ctx, name, thrift.EXCEPTION, seqId)
-	x80.Write(ctx, oprot)
+	x164.Write(ctx, oprot)
 	oprot.WriteMessageEnd(ctx)
 	oprot.Flush(ctx)
-	return false, x80
+	return false, x164
 }
 
 type apiServiceProcessorSaveAssociationRule struct {
@@ -4126,7 +6970,7 @@ type apiServiceProcessorSaveAssociationRule struct {
 }
 
 func (p *apiServiceProcessorSaveAssociationRule) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
-	var _write_err81 thrift.TException
+	var _write_err165 thrift.TException
 	args := ApiServiceSaveAssociationRuleArgs{}
 	if err2 := args.Read(ctx, iprot); err2 != nil {
 		iprot.ReadMessageEnd(ctx)
@@ -4183,22 +7027,22 @@ func (p *apiServiceProcessorSaveAssociationRule) Process(ctx context.Context, se
 				}
 			}
 		}
-		_exc82 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing saveAssociationRule: " + err2.Error())
+		_exc166 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing saveAssociationRule: " + err2.Error())
 		if err2 := oprot.WriteMessageBegin(ctx, "saveAssociationRule", thrift.EXCEPTION, seqId); err2 != nil {
-			_write_err81 = thrift.WrapTException(err2)
+			_write_err165 = thrift.WrapTException(err2)
 		}
-		if err2 := _exc82.Write(ctx, oprot); _write_err81 == nil && err2 != nil {
-			_write_err81 = thrift.WrapTException(err2)
+		if err2 := _exc166.Write(ctx, oprot); _write_err165 == nil && err2 != nil {
+			_write_err165 = thrift.WrapTException(err2)
 		}
-		if err2 := oprot.WriteMessageEnd(ctx); _write_err81 == nil && err2 != nil {
-			_write_err81 = thrift.WrapTException(err2)
+		if err2 := oprot.WriteMessageEnd(ctx); _write_err165 == nil && err2 != nil {
+			_write_err165 = thrift.WrapTException(err2)
 		}
-		if err2 := oprot.Flush(ctx); _write_err81 == nil && err2 != nil {
-			_write_err81 = thrift.WrapTException(err2)
+		if err2 := oprot.Flush(ctx); _write_err165 == nil && err2 != nil {
+			_write_err165 = thrift.WrapTException(err2)
 		}
-		if _write_err81 != nil {
+		if _write_err165 != nil {
 			return false, &thrift.ProcessorError{
-				WriteError:    _write_err81,
+				WriteError:    _write_err165,
 				EndpointError: err,
 			}
 		}
@@ -4208,20 +7052,20 @@ func (p *apiServiceProcessorSaveAssociationRule) Process(ctx context.Context, se
 	}
 	tickerCancel()
 	if err2 := oprot.WriteMessageBegin(ctx, "saveAssociationRule", thrift.REPLY, seqId); err2 != nil {
-		_write_err81 = thrift.WrapTException(err2)
+		_write_err165 = thrift.WrapTException(err2)
 	}
-	if err2 := result.Write(ctx, oprot); _write_err81 == nil && err2 != nil {
-		_write_err81 = thrift.WrapTException(err2)
+	if err2 := result.Write(ctx, oprot); _write_err165 == nil && err2 != nil {
+		_write_err165 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.WriteMessageEnd(ctx); _write_err81 == nil && err2 != nil {
-		_write_err81 = thrift.WrapTException(err2)
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err165 == nil && err2 != nil {
+		_write_err165 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.Flush(ctx); _write_err81 == nil && err2 != nil {
-		_write_err81 = thrift.WrapTException(err2)
+	if err2 := oprot.Flush(ctx); _write_err165 == nil && err2 != nil {
+		_write_err165 = thrift.WrapTException(err2)
 	}
-	if _write_err81 != nil {
+	if _write_err165 != nil {
 		return false, &thrift.ProcessorError{
-			WriteError:    _write_err81,
+			WriteError:    _write_err165,
 			EndpointError: err,
 		}
 	}
@@ -4233,7 +7077,7 @@ type apiServiceProcessorQueryAssociationRules struct {
 }
 
 func (p *apiServiceProcessorQueryAssociationRules) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
-	var _write_err83 thrift.TException
+	var _write_err167 thrift.TException
 	args := ApiServiceQueryAssociationRulesArgs{}
 	if err2 := args.Read(ctx, iprot); err2 != nil {
 		iprot.ReadMessageEnd(ctx)
@@ -4290,22 +7134,22 @@ func (p *apiServiceProcessorQueryAssociationRules) Process(ctx context.Context, 
 				}
 			}
 		}
-		_exc84 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing queryAssociationRules: " + err2.Error())
+		_exc168 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing queryAssociationRules: " + err2.Error())
 		if err2 := oprot.WriteMessageBegin(ctx, "queryAssociationRules", thrift.EXCEPTION, seqId); err2 != nil {
-			_write_err83 = thrift.WrapTException(err2)
+			_write_err167 = thrift.WrapTException(err2)
 		}
-		if err2 := _exc84.Write(ctx, oprot); _write_err83 == nil && err2 != nil {
-			_write_err83 = thrift.WrapTException(err2)
+		if err2 := _exc168.Write(ctx, oprot); _write_err167 == nil && err2 != nil {
+			_write_err167 = thrift.WrapTException(err2)
 		}
-		if err2 := oprot.WriteMessageEnd(ctx); _write_err83 == nil && err2 != nil {
-			_write_err83 = thrift.WrapTException(err2)
+		if err2 := oprot.WriteMessageEnd(ctx); _write_err167 == nil && err2 != nil {
+			_write_err167 = thrift.WrapTException(err2)
 		}
-		if err2 := oprot.Flush(ctx); _write_err83 == nil && err2 != nil {
-			_write_err83 = thrift.WrapTException(err2)
+		if err2 := oprot.Flush(ctx); _write_err167 == nil && err2 != nil {
+			_write_err167 = thrift.WrapTException(err2)
 		}
-		if _write_err83 != nil {
+		if _write_err167 != nil {
 			return false, &thrift.ProcessorError{
-				WriteError:    _write_err83,
+				WriteError:    _write_err167,
 				EndpointError: err,
 			}
 		}
@@ -4315,20 +7159,20 @@ func (p *apiServiceProcessorQueryAssociationRules) Process(ctx context.Context, 
 	}
 	tickerCancel()
 	if err2 := oprot.WriteMessageBegin(ctx, "queryAssociationRules", thrift.REPLY, seqId); err2 != nil {
-		_write_err83 = thrift.WrapTException(err2)
+		_write_err167 = thrift.WrapTException(err2)
 	}
-	if err2 := result.Write(ctx, oprot); _write_err83 == nil && err2 != nil {
-		_write_err83 = thrift.WrapTException(err2)
+	if err2 := result.Write(ctx, oprot); _write_err167 == nil && err2 != nil {
+		_write_err167 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.WriteMessageEnd(ctx); _write_err83 == nil && err2 != nil {
-		_write_err83 = thrift.WrapTException(err2)
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err167 == nil && err2 != nil {
+		_write_err167 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.Flush(ctx); _write_err83 == nil && err2 != nil {
-		_write_err83 = thrift.WrapTException(err2)
+	if err2 := oprot.Flush(ctx); _write_err167 == nil && err2 != nil {
+		_write_err167 = thrift.WrapTException(err2)
 	}
-	if _write_err83 != nil {
+	if _write_err167 != nil {
 		return false, &thrift.ProcessorError{
-			WriteError:    _write_err83,
+			WriteError:    _write_err167,
 			EndpointError: err,
 		}
 	}
@@ -4340,7 +7184,7 @@ type apiServiceProcessorCountAssociationRules struct {
 }
 
 func (p *apiServiceProcessorCountAssociationRules) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
-	var _write_err85 thrift.TException
+	var _write_err169 thrift.TException
 	args := ApiServiceCountAssociationRulesArgs{}
 	if err2 := args.Read(ctx, iprot); err2 != nil {
 		iprot.ReadMessageEnd(ctx)
@@ -4397,22 +7241,22 @@ func (p *apiServiceProcessorCountAssociationRules) Process(ctx context.Context, 
 				}
 			}
 		}
-		_exc86 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing countAssociationRules: " + err2.Error())
+		_exc170 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing countAssociationRules: " + err2.Error())
 		if err2 := oprot.WriteMessageBegin(ctx, "countAssociationRules", thrift.EXCEPTION, seqId); err2 != nil {
-			_write_err85 = thrift.WrapTException(err2)
+			_write_err169 = thrift.WrapTException(err2)
 		}
-		if err2 := _exc86.Write(ctx, oprot); _write_err85 == nil && err2 != nil {
-			_write_err85 = thrift.WrapTException(err2)
+		if err2 := _exc170.Write(ctx, oprot); _write_err169 == nil && err2 != nil {
+			_write_err169 = thrift.WrapTException(err2)
 		}
-		if err2 := oprot.WriteMessageEnd(ctx); _write_err85 == nil && err2 != nil {
-			_write_err85 = thrift.WrapTException(err2)
+		if err2 := oprot.WriteMessageEnd(ctx); _write_err169 == nil && err2 != nil {
+			_write_err169 = thrift.WrapTException(err2)
 		}
-		if err2 := oprot.Flush(ctx); _write_err85 == nil && err2 != nil {
-			_write_err85 = thrift.WrapTException(err2)
+		if err2 := oprot.Flush(ctx); _write_err169 == nil && err2 != nil {
+			_write_err169 = thrift.WrapTException(err2)
 		}
-		if _write_err85 != nil {
+		if _write_err169 != nil {
 			return false, &thrift.ProcessorError{
-				WriteError:    _write_err85,
+				WriteError:    _write_err169,
 				EndpointError: err,
 			}
 		}
@@ -4422,20 +7266,20 @@ func (p *apiServiceProcessorCountAssociationRules) Process(ctx context.Context, 
 	}
 	tickerCancel()
 	if err2 := oprot.WriteMessageBegin(ctx, "countAssociationRules", thrift.REPLY, seqId); err2 != nil {
-		_write_err85 = thrift.WrapTException(err2)
+		_write_err169 = thrift.WrapTException(err2)
 	}
-	if err2 := result.Write(ctx, oprot); _write_err85 == nil && err2 != nil {
-		_write_err85 = thrift.WrapTException(err2)
+	if err2 := result.Write(ctx, oprot); _write_err169 == nil && err2 != nil {
+		_write_err169 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.WriteMessageEnd(ctx); _write_err85 == nil && err2 != nil {
-		_write_err85 = thrift.WrapTException(err2)
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err169 == nil && err2 != nil {
+		_write_err169 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.Flush(ctx); _write_err85 == nil && err2 != nil {
-		_write_err85 = thrift.WrapTException(err2)
+	if err2 := oprot.Flush(ctx); _write_err169 == nil && err2 != nil {
+		_write_err169 = thrift.WrapTException(err2)
 	}
-	if _write_err85 != nil {
+	if _write_err169 != nil {
 		return false, &thrift.ProcessorError{
-			WriteError:    _write_err85,
+			WriteError:    _write_err169,
 			EndpointError: err,
 		}
 	}
@@ -4447,7 +7291,7 @@ type apiServiceProcessorGetAssociationRule struct {
 }
 
 func (p *apiServiceProcessorGetAssociationRule) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
-	var _write_err87 thrift.TException
+	var _write_err171 thrift.TException
 	args := ApiServiceGetAssociationRuleArgs{}
 	if err2 := args.Read(ctx, iprot); err2 != nil {
 		iprot.ReadMessageEnd(ctx)
@@ -4504,22 +7348,22 @@ func (p *apiServiceProcessorGetAssociationRule) Process(ctx context.Context, seq
 				}
 			}
 		}
-		_exc88 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing getAssociationRule: " + err2.Error())
+		_exc172 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing getAssociationRule: " + err2.Error())
 		if err2 := oprot.WriteMessageBegin(ctx, "getAssociationRule", thrift.EXCEPTION, seqId); err2 != nil {
-			_write_err87 = thrift.WrapTException(err2)
+			_write_err171 = thrift.WrapTException(err2)
 		}
-		if err2 := _exc88.Write(ctx, oprot); _write_err87 == nil && err2 != nil {
-			_write_err87 = thrift.WrapTException(err2)
+		if err2 := _exc172.Write(ctx, oprot); _write_err171 == nil && err2 != nil {
+			_write_err171 = thrift.WrapTException(err2)
 		}
-		if err2 := oprot.WriteMessageEnd(ctx); _write_err87 == nil && err2 != nil {
-			_write_err87 = thrift.WrapTException(err2)
+		if err2 := oprot.WriteMessageEnd(ctx); _write_err171 == nil && err2 != nil {
+			_write_err171 = thrift.WrapTException(err2)
 		}
-		if err2 := oprot.Flush(ctx); _write_err87 == nil && err2 != nil {
-			_write_err87 = thrift.WrapTException(err2)
+		if err2 := oprot.Flush(ctx); _write_err171 == nil && err2 != nil {
+			_write_err171 = thrift.WrapTException(err2)
 		}
-		if _write_err87 != nil {
+		if _write_err171 != nil {
 			return false, &thrift.ProcessorError{
-				WriteError:    _write_err87,
+				WriteError:    _write_err171,
 				EndpointError: err,
 			}
 		}
@@ -4529,20 +7373,20 @@ func (p *apiServiceProcessorGetAssociationRule) Process(ctx context.Context, seq
 	}
 	tickerCancel()
 	if err2 := oprot.WriteMessageBegin(ctx, "getAssociationRule", thrift.REPLY, seqId); err2 != nil {
-		_write_err87 = thrift.WrapTException(err2)
+		_write_err171 = thrift.WrapTException(err2)
 	}
-	if err2 := result.Write(ctx, oprot); _write_err87 == nil && err2 != nil {
-		_write_err87 = thrift.WrapTException(err2)
+	if err2 := result.Write(ctx, oprot); _write_err171 == nil && err2 != nil {
+		_write_err171 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.WriteMessageEnd(ctx); _write_err87 == nil && err2 != nil {
-		_write_err87 = thrift.WrapTException(err2)
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err171 == nil && err2 != nil {
+		_write_err171 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.Flush(ctx); _write_err87 == nil && err2 != nil {
-		_write_err87 = thrift.WrapTException(err2)
+	if err2 := oprot.Flush(ctx); _write_err171 == nil && err2 != nil {
+		_write_err171 = thrift.WrapTException(err2)
 	}
-	if _write_err87 != nil {
+	if _write_err171 != nil {
 		return false, &thrift.ProcessorError{
-			WriteError:    _write_err87,
+			WriteError:    _write_err171,
 			EndpointError: err,
 		}
 	}
@@ -4554,7 +7398,7 @@ type apiServiceProcessorDeleteAssociationRule struct {
 }
 
 func (p *apiServiceProcessorDeleteAssociationRule) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
-	var _write_err89 thrift.TException
+	var _write_err173 thrift.TException
 	args := ApiServiceDeleteAssociationRuleArgs{}
 	if err2 := args.Read(ctx, iprot); err2 != nil {
 		iprot.ReadMessageEnd(ctx)
@@ -4611,22 +7455,22 @@ func (p *apiServiceProcessorDeleteAssociationRule) Process(ctx context.Context, 
 				}
 			}
 		}
-		_exc90 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing deleteAssociationRule: " + err2.Error())
+		_exc174 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing deleteAssociationRule: " + err2.Error())
 		if err2 := oprot.WriteMessageBegin(ctx, "deleteAssociationRule", thrift.EXCEPTION, seqId); err2 != nil {
-			_write_err89 = thrift.WrapTException(err2)
+			_write_err173 = thrift.WrapTException(err2)
 		}
-		if err2 := _exc90.Write(ctx, oprot); _write_err89 == nil && err2 != nil {
-			_write_err89 = thrift.WrapTException(err2)
+		if err2 := _exc174.Write(ctx, oprot); _write_err173 == nil && err2 != nil {
+			_write_err173 = thrift.WrapTException(err2)
 		}
-		if err2 := oprot.WriteMessageEnd(ctx); _write_err89 == nil && err2 != nil {
-			_write_err89 = thrift.WrapTException(err2)
+		if err2 := oprot.WriteMessageEnd(ctx); _write_err173 == nil && err2 != nil {
+			_write_err173 = thrift.WrapTException(err2)
 		}
-		if err2 := oprot.Flush(ctx); _write_err89 == nil && err2 != nil {
-			_write_err89 = thrift.WrapTException(err2)
+		if err2 := oprot.Flush(ctx); _write_err173 == nil && err2 != nil {
+			_write_err173 = thrift.WrapTException(err2)
 		}
-		if _write_err89 != nil {
+		if _write_err173 != nil {
 			return false, &thrift.ProcessorError{
-				WriteError:    _write_err89,
+				WriteError:    _write_err173,
 				EndpointError: err,
 			}
 		}
@@ -4636,20 +7480,1625 @@ func (p *apiServiceProcessorDeleteAssociationRule) Process(ctx context.Context, 
 	}
 	tickerCancel()
 	if err2 := oprot.WriteMessageBegin(ctx, "deleteAssociationRule", thrift.REPLY, seqId); err2 != nil {
-		_write_err89 = thrift.WrapTException(err2)
+		_write_err173 = thrift.WrapTException(err2)
 	}
-	if err2 := result.Write(ctx, oprot); _write_err89 == nil && err2 != nil {
-		_write_err89 = thrift.WrapTException(err2)
+	if err2 := result.Write(ctx, oprot); _write_err173 == nil && err2 != nil {
+		_write_err173 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.WriteMessageEnd(ctx); _write_err89 == nil && err2 != nil {
-		_write_err89 = thrift.WrapTException(err2)
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err173 == nil && err2 != nil {
+		_write_err173 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.Flush(ctx); _write_err89 == nil && err2 != nil {
-		_write_err89 = thrift.WrapTException(err2)
+	if err2 := oprot.Flush(ctx); _write_err173 == nil && err2 != nil {
+		_write_err173 = thrift.WrapTException(err2)
 	}
-	if _write_err89 != nil {
+	if _write_err173 != nil {
 		return false, &thrift.ProcessorError{
-			WriteError:    _write_err89,
+			WriteError:    _write_err173,
+			EndpointError: err,
+		}
+	}
+	return true, err
+}
+
+type apiServiceProcessorSaveParsingRule struct {
+	handler ApiService
+}
+
+func (p *apiServiceProcessorSaveParsingRule) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
+	var _write_err175 thrift.TException
+	args := ApiServiceSaveParsingRuleArgs{}
+	if err2 := args.Read(ctx, iprot); err2 != nil {
+		iprot.ReadMessageEnd(ctx)
+		x := thrift.NewTApplicationException(thrift.PROTOCOL_ERROR, err2.Error())
+		oprot.WriteMessageBegin(ctx, "saveParsingRule", thrift.EXCEPTION, seqId)
+		x.Write(ctx, oprot)
+		oprot.WriteMessageEnd(ctx)
+		oprot.Flush(ctx)
+		return false, thrift.WrapTException(err2)
+	}
+	iprot.ReadMessageEnd(ctx)
+
+	tickerCancel := func() {}
+	// Start a goroutine to do server side connectivity check.
+	if thrift.ServerConnectivityCheckInterval > 0 {
+		var cancel context.CancelCauseFunc
+		ctx, cancel = context.WithCancelCause(ctx)
+		defer cancel(nil)
+		var tickerCtx context.Context
+		tickerCtx, tickerCancel = context.WithCancel(context.Background())
+		defer tickerCancel()
+		go func(ctx context.Context, cancel context.CancelCauseFunc) {
+			ticker := time.NewTicker(thrift.ServerConnectivityCheckInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					if !iprot.Transport().IsOpen() {
+						cancel(thrift.ErrAbandonRequest)
+						return
+					}
+				}
+			}
+		}(tickerCtx, cancel)
+	}
+
+	result := ApiServiceSaveParsingRuleResult{}
+	if retval, err2 := p.handler.SaveParsingRule(ctx, args.Rule); err2 != nil {
+		tickerCancel()
+		err = thrift.WrapTException(err2)
+		if errors.Is(err2, thrift.ErrAbandonRequest) {
+			return false, &thrift.ProcessorError{
+				WriteError:    thrift.WrapTException(err2),
+				EndpointError: err,
+			}
+		}
+		if errors.Is(err2, context.Canceled) {
+			if err3 := context.Cause(ctx); errors.Is(err3, thrift.ErrAbandonRequest) {
+				return false, &thrift.ProcessorError{
+					WriteError:    thrift.WrapTException(err3),
+					EndpointError: err,
+				}
+			}
+		}
+		_exc176 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing saveParsingRule: " + err2.Error())
+		if err2 := oprot.WriteMessageBegin(ctx, "saveParsingRule", thrift.EXCEPTION, seqId); err2 != nil {
+			_write_err175 = thrift.WrapTException(err2)
+		}
+		if err2 := _exc176.Write(ctx, oprot); _write_err175 == nil && err2 != nil {
+			_write_err175 = thrift.WrapTException(err2)
+		}
+		if err2 := oprot.WriteMessageEnd(ctx); _write_err175 == nil && err2 != nil {
+			_write_err175 = thrift.WrapTException(err2)
+		}
+		if err2 := oprot.Flush(ctx); _write_err175 == nil && err2 != nil {
+			_write_err175 = thrift.WrapTException(err2)
+		}
+		if _write_err175 != nil {
+			return false, &thrift.ProcessorError{
+				WriteError:    _write_err175,
+				EndpointError: err,
+			}
+		}
+		return true, err
+	} else {
+		result.Success = retval
+	}
+	tickerCancel()
+	if err2 := oprot.WriteMessageBegin(ctx, "saveParsingRule", thrift.REPLY, seqId); err2 != nil {
+		_write_err175 = thrift.WrapTException(err2)
+	}
+	if err2 := result.Write(ctx, oprot); _write_err175 == nil && err2 != nil {
+		_write_err175 = thrift.WrapTException(err2)
+	}
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err175 == nil && err2 != nil {
+		_write_err175 = thrift.WrapTException(err2)
+	}
+	if err2 := oprot.Flush(ctx); _write_err175 == nil && err2 != nil {
+		_write_err175 = thrift.WrapTException(err2)
+	}
+	if _write_err175 != nil {
+		return false, &thrift.ProcessorError{
+			WriteError:    _write_err175,
+			EndpointError: err,
+		}
+	}
+	return true, err
+}
+
+type apiServiceProcessorQueryParsingRules struct {
+	handler ApiService
+}
+
+func (p *apiServiceProcessorQueryParsingRules) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
+	var _write_err177 thrift.TException
+	args := ApiServiceQueryParsingRulesArgs{}
+	if err2 := args.Read(ctx, iprot); err2 != nil {
+		iprot.ReadMessageEnd(ctx)
+		x := thrift.NewTApplicationException(thrift.PROTOCOL_ERROR, err2.Error())
+		oprot.WriteMessageBegin(ctx, "queryParsingRules", thrift.EXCEPTION, seqId)
+		x.Write(ctx, oprot)
+		oprot.WriteMessageEnd(ctx)
+		oprot.Flush(ctx)
+		return false, thrift.WrapTException(err2)
+	}
+	iprot.ReadMessageEnd(ctx)
+
+	tickerCancel := func() {}
+	// Start a goroutine to do server side connectivity check.
+	if thrift.ServerConnectivityCheckInterval > 0 {
+		var cancel context.CancelCauseFunc
+		ctx, cancel = context.WithCancelCause(ctx)
+		defer cancel(nil)
+		var tickerCtx context.Context
+		tickerCtx, tickerCancel = context.WithCancel(context.Background())
+		defer tickerCancel()
+		go func(ctx context.Context, cancel context.CancelCauseFunc) {
+			ticker := time.NewTicker(thrift.ServerConnectivityCheckInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					if !iprot.Transport().IsOpen() {
+						cancel(thrift.ErrAbandonRequest)
+						return
+					}
+				}
+			}
+		}(tickerCtx, cancel)
+	}
+
+	result := ApiServiceQueryParsingRulesResult{}
+	if retval, err2 := p.handler.QueryParsingRules(ctx, args.Request); err2 != nil {
+		tickerCancel()
+		err = thrift.WrapTException(err2)
+		if errors.Is(err2, thrift.ErrAbandonRequest) {
+			return false, &thrift.ProcessorError{
+				WriteError:    thrift.WrapTException(err2),
+				EndpointError: err,
+			}
+		}
+		if errors.Is(err2, context.Canceled) {
+			if err3 := context.Cause(ctx); errors.Is(err3, thrift.ErrAbandonRequest) {
+				return false, &thrift.ProcessorError{
+					WriteError:    thrift.WrapTException(err3),
+					EndpointError: err,
+				}
+			}
+		}
+		_exc178 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing queryParsingRules: " + err2.Error())
+		if err2 := oprot.WriteMessageBegin(ctx, "queryParsingRules", thrift.EXCEPTION, seqId); err2 != nil {
+			_write_err177 = thrift.WrapTException(err2)
+		}
+		if err2 := _exc178.Write(ctx, oprot); _write_err177 == nil && err2 != nil {
+			_write_err177 = thrift.WrapTException(err2)
+		}
+		if err2 := oprot.WriteMessageEnd(ctx); _write_err177 == nil && err2 != nil {
+			_write_err177 = thrift.WrapTException(err2)
+		}
+		if err2 := oprot.Flush(ctx); _write_err177 == nil && err2 != nil {
+			_write_err177 = thrift.WrapTException(err2)
+		}
+		if _write_err177 != nil {
+			return false, &thrift.ProcessorError{
+				WriteError:    _write_err177,
+				EndpointError: err,
+			}
+		}
+		return true, err
+	} else {
+		result.Success = retval
+	}
+	tickerCancel()
+	if err2 := oprot.WriteMessageBegin(ctx, "queryParsingRules", thrift.REPLY, seqId); err2 != nil {
+		_write_err177 = thrift.WrapTException(err2)
+	}
+	if err2 := result.Write(ctx, oprot); _write_err177 == nil && err2 != nil {
+		_write_err177 = thrift.WrapTException(err2)
+	}
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err177 == nil && err2 != nil {
+		_write_err177 = thrift.WrapTException(err2)
+	}
+	if err2 := oprot.Flush(ctx); _write_err177 == nil && err2 != nil {
+		_write_err177 = thrift.WrapTException(err2)
+	}
+	if _write_err177 != nil {
+		return false, &thrift.ProcessorError{
+			WriteError:    _write_err177,
+			EndpointError: err,
+		}
+	}
+	return true, err
+}
+
+type apiServiceProcessorCountParsingRules struct {
+	handler ApiService
+}
+
+func (p *apiServiceProcessorCountParsingRules) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
+	var _write_err179 thrift.TException
+	args := ApiServiceCountParsingRulesArgs{}
+	if err2 := args.Read(ctx, iprot); err2 != nil {
+		iprot.ReadMessageEnd(ctx)
+		x := thrift.NewTApplicationException(thrift.PROTOCOL_ERROR, err2.Error())
+		oprot.WriteMessageBegin(ctx, "countParsingRules", thrift.EXCEPTION, seqId)
+		x.Write(ctx, oprot)
+		oprot.WriteMessageEnd(ctx)
+		oprot.Flush(ctx)
+		return false, thrift.WrapTException(err2)
+	}
+	iprot.ReadMessageEnd(ctx)
+
+	tickerCancel := func() {}
+	// Start a goroutine to do server side connectivity check.
+	if thrift.ServerConnectivityCheckInterval > 0 {
+		var cancel context.CancelCauseFunc
+		ctx, cancel = context.WithCancelCause(ctx)
+		defer cancel(nil)
+		var tickerCtx context.Context
+		tickerCtx, tickerCancel = context.WithCancel(context.Background())
+		defer tickerCancel()
+		go func(ctx context.Context, cancel context.CancelCauseFunc) {
+			ticker := time.NewTicker(thrift.ServerConnectivityCheckInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					if !iprot.Transport().IsOpen() {
+						cancel(thrift.ErrAbandonRequest)
+						return
+					}
+				}
+			}
+		}(tickerCtx, cancel)
+	}
+
+	result := ApiServiceCountParsingRulesResult{}
+	if retval, err2 := p.handler.CountParsingRules(ctx, args.Request); err2 != nil {
+		tickerCancel()
+		err = thrift.WrapTException(err2)
+		if errors.Is(err2, thrift.ErrAbandonRequest) {
+			return false, &thrift.ProcessorError{
+				WriteError:    thrift.WrapTException(err2),
+				EndpointError: err,
+			}
+		}
+		if errors.Is(err2, context.Canceled) {
+			if err3 := context.Cause(ctx); errors.Is(err3, thrift.ErrAbandonRequest) {
+				return false, &thrift.ProcessorError{
+					WriteError:    thrift.WrapTException(err3),
+					EndpointError: err,
+				}
+			}
+		}
+		_exc180 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing countParsingRules: " + err2.Error())
+		if err2 := oprot.WriteMessageBegin(ctx, "countParsingRules", thrift.EXCEPTION, seqId); err2 != nil {
+			_write_err179 = thrift.WrapTException(err2)
+		}
+		if err2 := _exc180.Write(ctx, oprot); _write_err179 == nil && err2 != nil {
+			_write_err179 = thrift.WrapTException(err2)
+		}
+		if err2 := oprot.WriteMessageEnd(ctx); _write_err179 == nil && err2 != nil {
+			_write_err179 = thrift.WrapTException(err2)
+		}
+		if err2 := oprot.Flush(ctx); _write_err179 == nil && err2 != nil {
+			_write_err179 = thrift.WrapTException(err2)
+		}
+		if _write_err179 != nil {
+			return false, &thrift.ProcessorError{
+				WriteError:    _write_err179,
+				EndpointError: err,
+			}
+		}
+		return true, err
+	} else {
+		result.Success = retval
+	}
+	tickerCancel()
+	if err2 := oprot.WriteMessageBegin(ctx, "countParsingRules", thrift.REPLY, seqId); err2 != nil {
+		_write_err179 = thrift.WrapTException(err2)
+	}
+	if err2 := result.Write(ctx, oprot); _write_err179 == nil && err2 != nil {
+		_write_err179 = thrift.WrapTException(err2)
+	}
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err179 == nil && err2 != nil {
+		_write_err179 = thrift.WrapTException(err2)
+	}
+	if err2 := oprot.Flush(ctx); _write_err179 == nil && err2 != nil {
+		_write_err179 = thrift.WrapTException(err2)
+	}
+	if _write_err179 != nil {
+		return false, &thrift.ProcessorError{
+			WriteError:    _write_err179,
+			EndpointError: err,
+		}
+	}
+	return true, err
+}
+
+type apiServiceProcessorGetParsingRule struct {
+	handler ApiService
+}
+
+func (p *apiServiceProcessorGetParsingRule) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
+	var _write_err181 thrift.TException
+	args := ApiServiceGetParsingRuleArgs{}
+	if err2 := args.Read(ctx, iprot); err2 != nil {
+		iprot.ReadMessageEnd(ctx)
+		x := thrift.NewTApplicationException(thrift.PROTOCOL_ERROR, err2.Error())
+		oprot.WriteMessageBegin(ctx, "getParsingRule", thrift.EXCEPTION, seqId)
+		x.Write(ctx, oprot)
+		oprot.WriteMessageEnd(ctx)
+		oprot.Flush(ctx)
+		return false, thrift.WrapTException(err2)
+	}
+	iprot.ReadMessageEnd(ctx)
+
+	tickerCancel := func() {}
+	// Start a goroutine to do server side connectivity check.
+	if thrift.ServerConnectivityCheckInterval > 0 {
+		var cancel context.CancelCauseFunc
+		ctx, cancel = context.WithCancelCause(ctx)
+		defer cancel(nil)
+		var tickerCtx context.Context
+		tickerCtx, tickerCancel = context.WithCancel(context.Background())
+		defer tickerCancel()
+		go func(ctx context.Context, cancel context.CancelCauseFunc) {
+			ticker := time.NewTicker(thrift.ServerConnectivityCheckInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					if !iprot.Transport().IsOpen() {
+						cancel(thrift.ErrAbandonRequest)
+						return
+					}
+				}
+			}
+		}(tickerCtx, cancel)
+	}
+
+	result := ApiServiceGetParsingRuleResult{}
+	if retval, err2 := p.handler.GetParsingRule(ctx, args.CreateTime); err2 != nil {
+		tickerCancel()
+		err = thrift.WrapTException(err2)
+		if errors.Is(err2, thrift.ErrAbandonRequest) {
+			return false, &thrift.ProcessorError{
+				WriteError:    thrift.WrapTException(err2),
+				EndpointError: err,
+			}
+		}
+		if errors.Is(err2, context.Canceled) {
+			if err3 := context.Cause(ctx); errors.Is(err3, thrift.ErrAbandonRequest) {
+				return false, &thrift.ProcessorError{
+					WriteError:    thrift.WrapTException(err3),
+					EndpointError: err,
+				}
+			}
+		}
+		_exc182 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing getParsingRule: " + err2.Error())
+		if err2 := oprot.WriteMessageBegin(ctx, "getParsingRule", thrift.EXCEPTION, seqId); err2 != nil {
+			_write_err181 = thrift.WrapTException(err2)
+		}
+		if err2 := _exc182.Write(ctx, oprot); _write_err181 == nil && err2 != nil {
+			_write_err181 = thrift.WrapTException(err2)
+		}
+		if err2 := oprot.WriteMessageEnd(ctx); _write_err181 == nil && err2 != nil {
+			_write_err181 = thrift.WrapTException(err2)
+		}
+		if err2 := oprot.Flush(ctx); _write_err181 == nil && err2 != nil {
+			_write_err181 = thrift.WrapTException(err2)
+		}
+		if _write_err181 != nil {
+			return false, &thrift.ProcessorError{
+				WriteError:    _write_err181,
+				EndpointError: err,
+			}
+		}
+		return true, err
+	} else {
+		result.Success = retval
+	}
+	tickerCancel()
+	if err2 := oprot.WriteMessageBegin(ctx, "getParsingRule", thrift.REPLY, seqId); err2 != nil {
+		_write_err181 = thrift.WrapTException(err2)
+	}
+	if err2 := result.Write(ctx, oprot); _write_err181 == nil && err2 != nil {
+		_write_err181 = thrift.WrapTException(err2)
+	}
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err181 == nil && err2 != nil {
+		_write_err181 = thrift.WrapTException(err2)
+	}
+	if err2 := oprot.Flush(ctx); _write_err181 == nil && err2 != nil {
+		_write_err181 = thrift.WrapTException(err2)
+	}
+	if _write_err181 != nil {
+		return false, &thrift.ProcessorError{
+			WriteError:    _write_err181,
+			EndpointError: err,
+		}
+	}
+	return true, err
+}
+
+type apiServiceProcessorDeleteParsingRule struct {
+	handler ApiService
+}
+
+func (p *apiServiceProcessorDeleteParsingRule) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
+	var _write_err183 thrift.TException
+	args := ApiServiceDeleteParsingRuleArgs{}
+	if err2 := args.Read(ctx, iprot); err2 != nil {
+		iprot.ReadMessageEnd(ctx)
+		x := thrift.NewTApplicationException(thrift.PROTOCOL_ERROR, err2.Error())
+		oprot.WriteMessageBegin(ctx, "deleteParsingRule", thrift.EXCEPTION, seqId)
+		x.Write(ctx, oprot)
+		oprot.WriteMessageEnd(ctx)
+		oprot.Flush(ctx)
+		return false, thrift.WrapTException(err2)
+	}
+	iprot.ReadMessageEnd(ctx)
+
+	tickerCancel := func() {}
+	// Start a goroutine to do server side connectivity check.
+	if thrift.ServerConnectivityCheckInterval > 0 {
+		var cancel context.CancelCauseFunc
+		ctx, cancel = context.WithCancelCause(ctx)
+		defer cancel(nil)
+		var tickerCtx context.Context
+		tickerCtx, tickerCancel = context.WithCancel(context.Background())
+		defer tickerCancel()
+		go func(ctx context.Context, cancel context.CancelCauseFunc) {
+			ticker := time.NewTicker(thrift.ServerConnectivityCheckInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					if !iprot.Transport().IsOpen() {
+						cancel(thrift.ErrAbandonRequest)
+						return
+					}
+				}
+			}
+		}(tickerCtx, cancel)
+	}
+
+	result := ApiServiceDeleteParsingRuleResult{}
+	if retval, err2 := p.handler.DeleteParsingRule(ctx, args.CreateTime); err2 != nil {
+		tickerCancel()
+		err = thrift.WrapTException(err2)
+		if errors.Is(err2, thrift.ErrAbandonRequest) {
+			return false, &thrift.ProcessorError{
+				WriteError:    thrift.WrapTException(err2),
+				EndpointError: err,
+			}
+		}
+		if errors.Is(err2, context.Canceled) {
+			if err3 := context.Cause(ctx); errors.Is(err3, thrift.ErrAbandonRequest) {
+				return false, &thrift.ProcessorError{
+					WriteError:    thrift.WrapTException(err3),
+					EndpointError: err,
+				}
+			}
+		}
+		_exc184 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing deleteParsingRule: " + err2.Error())
+		if err2 := oprot.WriteMessageBegin(ctx, "deleteParsingRule", thrift.EXCEPTION, seqId); err2 != nil {
+			_write_err183 = thrift.WrapTException(err2)
+		}
+		if err2 := _exc184.Write(ctx, oprot); _write_err183 == nil && err2 != nil {
+			_write_err183 = thrift.WrapTException(err2)
+		}
+		if err2 := oprot.WriteMessageEnd(ctx); _write_err183 == nil && err2 != nil {
+			_write_err183 = thrift.WrapTException(err2)
+		}
+		if err2 := oprot.Flush(ctx); _write_err183 == nil && err2 != nil {
+			_write_err183 = thrift.WrapTException(err2)
+		}
+		if _write_err183 != nil {
+			return false, &thrift.ProcessorError{
+				WriteError:    _write_err183,
+				EndpointError: err,
+			}
+		}
+		return true, err
+	} else {
+		result.Success = retval
+	}
+	tickerCancel()
+	if err2 := oprot.WriteMessageBegin(ctx, "deleteParsingRule", thrift.REPLY, seqId); err2 != nil {
+		_write_err183 = thrift.WrapTException(err2)
+	}
+	if err2 := result.Write(ctx, oprot); _write_err183 == nil && err2 != nil {
+		_write_err183 = thrift.WrapTException(err2)
+	}
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err183 == nil && err2 != nil {
+		_write_err183 = thrift.WrapTException(err2)
+	}
+	if err2 := oprot.Flush(ctx); _write_err183 == nil && err2 != nil {
+		_write_err183 = thrift.WrapTException(err2)
+	}
+	if _write_err183 != nil {
+		return false, &thrift.ProcessorError{
+			WriteError:    _write_err183,
+			EndpointError: err,
+		}
+	}
+	return true, err
+}
+
+type apiServiceProcessorRunTask struct {
+	handler ApiService
+}
+
+func (p *apiServiceProcessorRunTask) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
+	var _write_err185 thrift.TException
+	args := ApiServiceRunTaskArgs{}
+	if err2 := args.Read(ctx, iprot); err2 != nil {
+		iprot.ReadMessageEnd(ctx)
+		x := thrift.NewTApplicationException(thrift.PROTOCOL_ERROR, err2.Error())
+		oprot.WriteMessageBegin(ctx, "runTask", thrift.EXCEPTION, seqId)
+		x.Write(ctx, oprot)
+		oprot.WriteMessageEnd(ctx)
+		oprot.Flush(ctx)
+		return false, thrift.WrapTException(err2)
+	}
+	iprot.ReadMessageEnd(ctx)
+
+	tickerCancel := func() {}
+	// Start a goroutine to do server side connectivity check.
+	if thrift.ServerConnectivityCheckInterval > 0 {
+		var cancel context.CancelCauseFunc
+		ctx, cancel = context.WithCancelCause(ctx)
+		defer cancel(nil)
+		var tickerCtx context.Context
+		tickerCtx, tickerCancel = context.WithCancel(context.Background())
+		defer tickerCancel()
+		go func(ctx context.Context, cancel context.CancelCauseFunc) {
+			ticker := time.NewTicker(thrift.ServerConnectivityCheckInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					if !iprot.Transport().IsOpen() {
+						cancel(thrift.ErrAbandonRequest)
+						return
+					}
+				}
+			}
+		}(tickerCtx, cancel)
+	}
+
+	result := ApiServiceRunTaskResult{}
+	if retval, err2 := p.handler.RunTask(ctx, args.RunTaskRequest); err2 != nil {
+		tickerCancel()
+		err = thrift.WrapTException(err2)
+		if errors.Is(err2, thrift.ErrAbandonRequest) {
+			return false, &thrift.ProcessorError{
+				WriteError:    thrift.WrapTException(err2),
+				EndpointError: err,
+			}
+		}
+		if errors.Is(err2, context.Canceled) {
+			if err3 := context.Cause(ctx); errors.Is(err3, thrift.ErrAbandonRequest) {
+				return false, &thrift.ProcessorError{
+					WriteError:    thrift.WrapTException(err3),
+					EndpointError: err,
+				}
+			}
+		}
+		_exc186 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing runTask: " + err2.Error())
+		if err2 := oprot.WriteMessageBegin(ctx, "runTask", thrift.EXCEPTION, seqId); err2 != nil {
+			_write_err185 = thrift.WrapTException(err2)
+		}
+		if err2 := _exc186.Write(ctx, oprot); _write_err185 == nil && err2 != nil {
+			_write_err185 = thrift.WrapTException(err2)
+		}
+		if err2 := oprot.WriteMessageEnd(ctx); _write_err185 == nil && err2 != nil {
+			_write_err185 = thrift.WrapTException(err2)
+		}
+		if err2 := oprot.Flush(ctx); _write_err185 == nil && err2 != nil {
+			_write_err185 = thrift.WrapTException(err2)
+		}
+		if _write_err185 != nil {
+			return false, &thrift.ProcessorError{
+				WriteError:    _write_err185,
+				EndpointError: err,
+			}
+		}
+		return true, err
+	} else {
+		result.Success = retval
+	}
+	tickerCancel()
+	if err2 := oprot.WriteMessageBegin(ctx, "runTask", thrift.REPLY, seqId); err2 != nil {
+		_write_err185 = thrift.WrapTException(err2)
+	}
+	if err2 := result.Write(ctx, oprot); _write_err185 == nil && err2 != nil {
+		_write_err185 = thrift.WrapTException(err2)
+	}
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err185 == nil && err2 != nil {
+		_write_err185 = thrift.WrapTException(err2)
+	}
+	if err2 := oprot.Flush(ctx); _write_err185 == nil && err2 != nil {
+		_write_err185 = thrift.WrapTException(err2)
+	}
+	if _write_err185 != nil {
+		return false, &thrift.ProcessorError{
+			WriteError:    _write_err185,
+			EndpointError: err,
+		}
+	}
+	return true, err
+}
+
+type apiServiceProcessorValidateTaskUniqueness struct {
+	handler ApiService
+}
+
+func (p *apiServiceProcessorValidateTaskUniqueness) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
+	var _write_err187 thrift.TException
+	args := ApiServiceValidateTaskUniquenessArgs{}
+	if err2 := args.Read(ctx, iprot); err2 != nil {
+		iprot.ReadMessageEnd(ctx)
+		x := thrift.NewTApplicationException(thrift.PROTOCOL_ERROR, err2.Error())
+		oprot.WriteMessageBegin(ctx, "validateTaskUniqueness", thrift.EXCEPTION, seqId)
+		x.Write(ctx, oprot)
+		oprot.WriteMessageEnd(ctx)
+		oprot.Flush(ctx)
+		return false, thrift.WrapTException(err2)
+	}
+	iprot.ReadMessageEnd(ctx)
+
+	tickerCancel := func() {}
+	// Start a goroutine to do server side connectivity check.
+	if thrift.ServerConnectivityCheckInterval > 0 {
+		var cancel context.CancelCauseFunc
+		ctx, cancel = context.WithCancelCause(ctx)
+		defer cancel(nil)
+		var tickerCtx context.Context
+		tickerCtx, tickerCancel = context.WithCancel(context.Background())
+		defer tickerCancel()
+		go func(ctx context.Context, cancel context.CancelCauseFunc) {
+			ticker := time.NewTicker(thrift.ServerConnectivityCheckInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					if !iprot.Transport().IsOpen() {
+						cancel(thrift.ErrAbandonRequest)
+						return
+					}
+				}
+			}
+		}(tickerCtx, cancel)
+	}
+
+	result := ApiServiceValidateTaskUniquenessResult{}
+	if retval, err2 := p.handler.ValidateTaskUniqueness(ctx, args.Request); err2 != nil {
+		tickerCancel()
+		err = thrift.WrapTException(err2)
+		if errors.Is(err2, thrift.ErrAbandonRequest) {
+			return false, &thrift.ProcessorError{
+				WriteError:    thrift.WrapTException(err2),
+				EndpointError: err,
+			}
+		}
+		if errors.Is(err2, context.Canceled) {
+			if err3 := context.Cause(ctx); errors.Is(err3, thrift.ErrAbandonRequest) {
+				return false, &thrift.ProcessorError{
+					WriteError:    thrift.WrapTException(err3),
+					EndpointError: err,
+				}
+			}
+		}
+		_exc188 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing validateTaskUniqueness: " + err2.Error())
+		if err2 := oprot.WriteMessageBegin(ctx, "validateTaskUniqueness", thrift.EXCEPTION, seqId); err2 != nil {
+			_write_err187 = thrift.WrapTException(err2)
+		}
+		if err2 := _exc188.Write(ctx, oprot); _write_err187 == nil && err2 != nil {
+			_write_err187 = thrift.WrapTException(err2)
+		}
+		if err2 := oprot.WriteMessageEnd(ctx); _write_err187 == nil && err2 != nil {
+			_write_err187 = thrift.WrapTException(err2)
+		}
+		if err2 := oprot.Flush(ctx); _write_err187 == nil && err2 != nil {
+			_write_err187 = thrift.WrapTException(err2)
+		}
+		if _write_err187 != nil {
+			return false, &thrift.ProcessorError{
+				WriteError:    _write_err187,
+				EndpointError: err,
+			}
+		}
+		return true, err
+	} else {
+		result.Success = retval
+	}
+	tickerCancel()
+	if err2 := oprot.WriteMessageBegin(ctx, "validateTaskUniqueness", thrift.REPLY, seqId); err2 != nil {
+		_write_err187 = thrift.WrapTException(err2)
+	}
+	if err2 := result.Write(ctx, oprot); _write_err187 == nil && err2 != nil {
+		_write_err187 = thrift.WrapTException(err2)
+	}
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err187 == nil && err2 != nil {
+		_write_err187 = thrift.WrapTException(err2)
+	}
+	if err2 := oprot.Flush(ctx); _write_err187 == nil && err2 != nil {
+		_write_err187 = thrift.WrapTException(err2)
+	}
+	if _write_err187 != nil {
+		return false, &thrift.ProcessorError{
+			WriteError:    _write_err187,
+			EndpointError: err,
+		}
+	}
+	return true, err
+}
+
+type apiServiceProcessorStopTask struct {
+	handler ApiService
+}
+
+func (p *apiServiceProcessorStopTask) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
+	var _write_err189 thrift.TException
+	args := ApiServiceStopTaskArgs{}
+	if err2 := args.Read(ctx, iprot); err2 != nil {
+		iprot.ReadMessageEnd(ctx)
+		x := thrift.NewTApplicationException(thrift.PROTOCOL_ERROR, err2.Error())
+		oprot.WriteMessageBegin(ctx, "stopTask", thrift.EXCEPTION, seqId)
+		x.Write(ctx, oprot)
+		oprot.WriteMessageEnd(ctx)
+		oprot.Flush(ctx)
+		return false, thrift.WrapTException(err2)
+	}
+	iprot.ReadMessageEnd(ctx)
+
+	tickerCancel := func() {}
+	// Start a goroutine to do server side connectivity check.
+	if thrift.ServerConnectivityCheckInterval > 0 {
+		var cancel context.CancelCauseFunc
+		ctx, cancel = context.WithCancelCause(ctx)
+		defer cancel(nil)
+		var tickerCtx context.Context
+		tickerCtx, tickerCancel = context.WithCancel(context.Background())
+		defer tickerCancel()
+		go func(ctx context.Context, cancel context.CancelCauseFunc) {
+			ticker := time.NewTicker(thrift.ServerConnectivityCheckInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					if !iprot.Transport().IsOpen() {
+						cancel(thrift.ErrAbandonRequest)
+						return
+					}
+				}
+			}
+		}(tickerCtx, cancel)
+	}
+
+	result := ApiServiceStopTaskResult{}
+	if retval, err2 := p.handler.StopTask(ctx, args.Timestamp); err2 != nil {
+		tickerCancel()
+		err = thrift.WrapTException(err2)
+		if errors.Is(err2, thrift.ErrAbandonRequest) {
+			return false, &thrift.ProcessorError{
+				WriteError:    thrift.WrapTException(err2),
+				EndpointError: err,
+			}
+		}
+		if errors.Is(err2, context.Canceled) {
+			if err3 := context.Cause(ctx); errors.Is(err3, thrift.ErrAbandonRequest) {
+				return false, &thrift.ProcessorError{
+					WriteError:    thrift.WrapTException(err3),
+					EndpointError: err,
+				}
+			}
+		}
+		_exc190 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing stopTask: " + err2.Error())
+		if err2 := oprot.WriteMessageBegin(ctx, "stopTask", thrift.EXCEPTION, seqId); err2 != nil {
+			_write_err189 = thrift.WrapTException(err2)
+		}
+		if err2 := _exc190.Write(ctx, oprot); _write_err189 == nil && err2 != nil {
+			_write_err189 = thrift.WrapTException(err2)
+		}
+		if err2 := oprot.WriteMessageEnd(ctx); _write_err189 == nil && err2 != nil {
+			_write_err189 = thrift.WrapTException(err2)
+		}
+		if err2 := oprot.Flush(ctx); _write_err189 == nil && err2 != nil {
+			_write_err189 = thrift.WrapTException(err2)
+		}
+		if _write_err189 != nil {
+			return false, &thrift.ProcessorError{
+				WriteError:    _write_err189,
+				EndpointError: err,
+			}
+		}
+		return true, err
+	} else {
+		result.Success = retval
+	}
+	tickerCancel()
+	if err2 := oprot.WriteMessageBegin(ctx, "stopTask", thrift.REPLY, seqId); err2 != nil {
+		_write_err189 = thrift.WrapTException(err2)
+	}
+	if err2 := result.Write(ctx, oprot); _write_err189 == nil && err2 != nil {
+		_write_err189 = thrift.WrapTException(err2)
+	}
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err189 == nil && err2 != nil {
+		_write_err189 = thrift.WrapTException(err2)
+	}
+	if err2 := oprot.Flush(ctx); _write_err189 == nil && err2 != nil {
+		_write_err189 = thrift.WrapTException(err2)
+	}
+	if _write_err189 != nil {
+		return false, &thrift.ProcessorError{
+			WriteError:    _write_err189,
+			EndpointError: err,
+		}
+	}
+	return true, err
+}
+
+type apiServiceProcessorGetTaskLog struct {
+	handler ApiService
+}
+
+func (p *apiServiceProcessorGetTaskLog) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
+	var _write_err191 thrift.TException
+	args := ApiServiceGetTaskLogArgs{}
+	if err2 := args.Read(ctx, iprot); err2 != nil {
+		iprot.ReadMessageEnd(ctx)
+		x := thrift.NewTApplicationException(thrift.PROTOCOL_ERROR, err2.Error())
+		oprot.WriteMessageBegin(ctx, "getTaskLog", thrift.EXCEPTION, seqId)
+		x.Write(ctx, oprot)
+		oprot.WriteMessageEnd(ctx)
+		oprot.Flush(ctx)
+		return false, thrift.WrapTException(err2)
+	}
+	iprot.ReadMessageEnd(ctx)
+
+	tickerCancel := func() {}
+	// Start a goroutine to do server side connectivity check.
+	if thrift.ServerConnectivityCheckInterval > 0 {
+		var cancel context.CancelCauseFunc
+		ctx, cancel = context.WithCancelCause(ctx)
+		defer cancel(nil)
+		var tickerCtx context.Context
+		tickerCtx, tickerCancel = context.WithCancel(context.Background())
+		defer tickerCancel()
+		go func(ctx context.Context, cancel context.CancelCauseFunc) {
+			ticker := time.NewTicker(thrift.ServerConnectivityCheckInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					if !iprot.Transport().IsOpen() {
+						cancel(thrift.ErrAbandonRequest)
+						return
+					}
+				}
+			}
+		}(tickerCtx, cancel)
+	}
+
+	result := ApiServiceGetTaskLogResult{}
+	if retval, err2 := p.handler.GetTaskLog(ctx, args.Timestamp); err2 != nil {
+		tickerCancel()
+		err = thrift.WrapTException(err2)
+		if errors.Is(err2, thrift.ErrAbandonRequest) {
+			return false, &thrift.ProcessorError{
+				WriteError:    thrift.WrapTException(err2),
+				EndpointError: err,
+			}
+		}
+		if errors.Is(err2, context.Canceled) {
+			if err3 := context.Cause(ctx); errors.Is(err3, thrift.ErrAbandonRequest) {
+				return false, &thrift.ProcessorError{
+					WriteError:    thrift.WrapTException(err3),
+					EndpointError: err,
+				}
+			}
+		}
+		_exc192 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing getTaskLog: " + err2.Error())
+		if err2 := oprot.WriteMessageBegin(ctx, "getTaskLog", thrift.EXCEPTION, seqId); err2 != nil {
+			_write_err191 = thrift.WrapTException(err2)
+		}
+		if err2 := _exc192.Write(ctx, oprot); _write_err191 == nil && err2 != nil {
+			_write_err191 = thrift.WrapTException(err2)
+		}
+		if err2 := oprot.WriteMessageEnd(ctx); _write_err191 == nil && err2 != nil {
+			_write_err191 = thrift.WrapTException(err2)
+		}
+		if err2 := oprot.Flush(ctx); _write_err191 == nil && err2 != nil {
+			_write_err191 = thrift.WrapTException(err2)
+		}
+		if _write_err191 != nil {
+			return false, &thrift.ProcessorError{
+				WriteError:    _write_err191,
+				EndpointError: err,
+			}
+		}
+		return true, err
+	} else {
+		result.Success = retval
+	}
+	tickerCancel()
+	if err2 := oprot.WriteMessageBegin(ctx, "getTaskLog", thrift.REPLY, seqId); err2 != nil {
+		_write_err191 = thrift.WrapTException(err2)
+	}
+	if err2 := result.Write(ctx, oprot); _write_err191 == nil && err2 != nil {
+		_write_err191 = thrift.WrapTException(err2)
+	}
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err191 == nil && err2 != nil {
+		_write_err191 = thrift.WrapTException(err2)
+	}
+	if err2 := oprot.Flush(ctx); _write_err191 == nil && err2 != nil {
+		_write_err191 = thrift.WrapTException(err2)
+	}
+	if _write_err191 != nil {
+		return false, &thrift.ProcessorError{
+			WriteError:    _write_err191,
+			EndpointError: err,
+		}
+	}
+	return true, err
+}
+
+type apiServiceProcessorQueryTasks struct {
+	handler ApiService
+}
+
+func (p *apiServiceProcessorQueryTasks) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
+	var _write_err193 thrift.TException
+	args := ApiServiceQueryTasksArgs{}
+	if err2 := args.Read(ctx, iprot); err2 != nil {
+		iprot.ReadMessageEnd(ctx)
+		x := thrift.NewTApplicationException(thrift.PROTOCOL_ERROR, err2.Error())
+		oprot.WriteMessageBegin(ctx, "queryTasks", thrift.EXCEPTION, seqId)
+		x.Write(ctx, oprot)
+		oprot.WriteMessageEnd(ctx)
+		oprot.Flush(ctx)
+		return false, thrift.WrapTException(err2)
+	}
+	iprot.ReadMessageEnd(ctx)
+
+	tickerCancel := func() {}
+	// Start a goroutine to do server side connectivity check.
+	if thrift.ServerConnectivityCheckInterval > 0 {
+		var cancel context.CancelCauseFunc
+		ctx, cancel = context.WithCancelCause(ctx)
+		defer cancel(nil)
+		var tickerCtx context.Context
+		tickerCtx, tickerCancel = context.WithCancel(context.Background())
+		defer tickerCancel()
+		go func(ctx context.Context, cancel context.CancelCauseFunc) {
+			ticker := time.NewTicker(thrift.ServerConnectivityCheckInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					if !iprot.Transport().IsOpen() {
+						cancel(thrift.ErrAbandonRequest)
+						return
+					}
+				}
+			}
+		}(tickerCtx, cancel)
+	}
+
+	result := ApiServiceQueryTasksResult{}
+	if retval, err2 := p.handler.QueryTasks(ctx, args.Request); err2 != nil {
+		tickerCancel()
+		err = thrift.WrapTException(err2)
+		if errors.Is(err2, thrift.ErrAbandonRequest) {
+			return false, &thrift.ProcessorError{
+				WriteError:    thrift.WrapTException(err2),
+				EndpointError: err,
+			}
+		}
+		if errors.Is(err2, context.Canceled) {
+			if err3 := context.Cause(ctx); errors.Is(err3, thrift.ErrAbandonRequest) {
+				return false, &thrift.ProcessorError{
+					WriteError:    thrift.WrapTException(err3),
+					EndpointError: err,
+				}
+			}
+		}
+		_exc194 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing queryTasks: " + err2.Error())
+		if err2 := oprot.WriteMessageBegin(ctx, "queryTasks", thrift.EXCEPTION, seqId); err2 != nil {
+			_write_err193 = thrift.WrapTException(err2)
+		}
+		if err2 := _exc194.Write(ctx, oprot); _write_err193 == nil && err2 != nil {
+			_write_err193 = thrift.WrapTException(err2)
+		}
+		if err2 := oprot.WriteMessageEnd(ctx); _write_err193 == nil && err2 != nil {
+			_write_err193 = thrift.WrapTException(err2)
+		}
+		if err2 := oprot.Flush(ctx); _write_err193 == nil && err2 != nil {
+			_write_err193 = thrift.WrapTException(err2)
+		}
+		if _write_err193 != nil {
+			return false, &thrift.ProcessorError{
+				WriteError:    _write_err193,
+				EndpointError: err,
+			}
+		}
+		return true, err
+	} else {
+		result.Success = retval
+	}
+	tickerCancel()
+	if err2 := oprot.WriteMessageBegin(ctx, "queryTasks", thrift.REPLY, seqId); err2 != nil {
+		_write_err193 = thrift.WrapTException(err2)
+	}
+	if err2 := result.Write(ctx, oprot); _write_err193 == nil && err2 != nil {
+		_write_err193 = thrift.WrapTException(err2)
+	}
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err193 == nil && err2 != nil {
+		_write_err193 = thrift.WrapTException(err2)
+	}
+	if err2 := oprot.Flush(ctx); _write_err193 == nil && err2 != nil {
+		_write_err193 = thrift.WrapTException(err2)
+	}
+	if _write_err193 != nil {
+		return false, &thrift.ProcessorError{
+			WriteError:    _write_err193,
+			EndpointError: err,
+		}
+	}
+	return true, err
+}
+
+type apiServiceProcessorCountTasks struct {
+	handler ApiService
+}
+
+func (p *apiServiceProcessorCountTasks) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
+	var _write_err195 thrift.TException
+	args := ApiServiceCountTasksArgs{}
+	if err2 := args.Read(ctx, iprot); err2 != nil {
+		iprot.ReadMessageEnd(ctx)
+		x := thrift.NewTApplicationException(thrift.PROTOCOL_ERROR, err2.Error())
+		oprot.WriteMessageBegin(ctx, "countTasks", thrift.EXCEPTION, seqId)
+		x.Write(ctx, oprot)
+		oprot.WriteMessageEnd(ctx)
+		oprot.Flush(ctx)
+		return false, thrift.WrapTException(err2)
+	}
+	iprot.ReadMessageEnd(ctx)
+
+	tickerCancel := func() {}
+	// Start a goroutine to do server side connectivity check.
+	if thrift.ServerConnectivityCheckInterval > 0 {
+		var cancel context.CancelCauseFunc
+		ctx, cancel = context.WithCancelCause(ctx)
+		defer cancel(nil)
+		var tickerCtx context.Context
+		tickerCtx, tickerCancel = context.WithCancel(context.Background())
+		defer tickerCancel()
+		go func(ctx context.Context, cancel context.CancelCauseFunc) {
+			ticker := time.NewTicker(thrift.ServerConnectivityCheckInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					if !iprot.Transport().IsOpen() {
+						cancel(thrift.ErrAbandonRequest)
+						return
+					}
+				}
+			}
+		}(tickerCtx, cancel)
+	}
+
+	result := ApiServiceCountTasksResult{}
+	if retval, err2 := p.handler.CountTasks(ctx, args.Request); err2 != nil {
+		tickerCancel()
+		err = thrift.WrapTException(err2)
+		if errors.Is(err2, thrift.ErrAbandonRequest) {
+			return false, &thrift.ProcessorError{
+				WriteError:    thrift.WrapTException(err2),
+				EndpointError: err,
+			}
+		}
+		if errors.Is(err2, context.Canceled) {
+			if err3 := context.Cause(ctx); errors.Is(err3, thrift.ErrAbandonRequest) {
+				return false, &thrift.ProcessorError{
+					WriteError:    thrift.WrapTException(err3),
+					EndpointError: err,
+				}
+			}
+		}
+		_exc196 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing countTasks: " + err2.Error())
+		if err2 := oprot.WriteMessageBegin(ctx, "countTasks", thrift.EXCEPTION, seqId); err2 != nil {
+			_write_err195 = thrift.WrapTException(err2)
+		}
+		if err2 := _exc196.Write(ctx, oprot); _write_err195 == nil && err2 != nil {
+			_write_err195 = thrift.WrapTException(err2)
+		}
+		if err2 := oprot.WriteMessageEnd(ctx); _write_err195 == nil && err2 != nil {
+			_write_err195 = thrift.WrapTException(err2)
+		}
+		if err2 := oprot.Flush(ctx); _write_err195 == nil && err2 != nil {
+			_write_err195 = thrift.WrapTException(err2)
+		}
+		if _write_err195 != nil {
+			return false, &thrift.ProcessorError{
+				WriteError:    _write_err195,
+				EndpointError: err,
+			}
+		}
+		return true, err
+	} else {
+		result.Success = retval
+	}
+	tickerCancel()
+	if err2 := oprot.WriteMessageBegin(ctx, "countTasks", thrift.REPLY, seqId); err2 != nil {
+		_write_err195 = thrift.WrapTException(err2)
+	}
+	if err2 := result.Write(ctx, oprot); _write_err195 == nil && err2 != nil {
+		_write_err195 = thrift.WrapTException(err2)
+	}
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err195 == nil && err2 != nil {
+		_write_err195 = thrift.WrapTException(err2)
+	}
+	if err2 := oprot.Flush(ctx); _write_err195 == nil && err2 != nil {
+		_write_err195 = thrift.WrapTException(err2)
+	}
+	if _write_err195 != nil {
+		return false, &thrift.ProcessorError{
+			WriteError:    _write_err195,
+			EndpointError: err,
+		}
+	}
+	return true, err
+}
+
+type apiServiceProcessorGetTask struct {
+	handler ApiService
+}
+
+func (p *apiServiceProcessorGetTask) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
+	var _write_err197 thrift.TException
+	args := ApiServiceGetTaskArgs{}
+	if err2 := args.Read(ctx, iprot); err2 != nil {
+		iprot.ReadMessageEnd(ctx)
+		x := thrift.NewTApplicationException(thrift.PROTOCOL_ERROR, err2.Error())
+		oprot.WriteMessageBegin(ctx, "getTask", thrift.EXCEPTION, seqId)
+		x.Write(ctx, oprot)
+		oprot.WriteMessageEnd(ctx)
+		oprot.Flush(ctx)
+		return false, thrift.WrapTException(err2)
+	}
+	iprot.ReadMessageEnd(ctx)
+
+	tickerCancel := func() {}
+	// Start a goroutine to do server side connectivity check.
+	if thrift.ServerConnectivityCheckInterval > 0 {
+		var cancel context.CancelCauseFunc
+		ctx, cancel = context.WithCancelCause(ctx)
+		defer cancel(nil)
+		var tickerCtx context.Context
+		tickerCtx, tickerCancel = context.WithCancel(context.Background())
+		defer tickerCancel()
+		go func(ctx context.Context, cancel context.CancelCauseFunc) {
+			ticker := time.NewTicker(thrift.ServerConnectivityCheckInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					if !iprot.Transport().IsOpen() {
+						cancel(thrift.ErrAbandonRequest)
+						return
+					}
+				}
+			}
+		}(tickerCtx, cancel)
+	}
+
+	result := ApiServiceGetTaskResult{}
+	if retval, err2 := p.handler.GetTask(ctx, args.Timestamp); err2 != nil {
+		tickerCancel()
+		err = thrift.WrapTException(err2)
+		if errors.Is(err2, thrift.ErrAbandonRequest) {
+			return false, &thrift.ProcessorError{
+				WriteError:    thrift.WrapTException(err2),
+				EndpointError: err,
+			}
+		}
+		if errors.Is(err2, context.Canceled) {
+			if err3 := context.Cause(ctx); errors.Is(err3, thrift.ErrAbandonRequest) {
+				return false, &thrift.ProcessorError{
+					WriteError:    thrift.WrapTException(err3),
+					EndpointError: err,
+				}
+			}
+		}
+		_exc198 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing getTask: " + err2.Error())
+		if err2 := oprot.WriteMessageBegin(ctx, "getTask", thrift.EXCEPTION, seqId); err2 != nil {
+			_write_err197 = thrift.WrapTException(err2)
+		}
+		if err2 := _exc198.Write(ctx, oprot); _write_err197 == nil && err2 != nil {
+			_write_err197 = thrift.WrapTException(err2)
+		}
+		if err2 := oprot.WriteMessageEnd(ctx); _write_err197 == nil && err2 != nil {
+			_write_err197 = thrift.WrapTException(err2)
+		}
+		if err2 := oprot.Flush(ctx); _write_err197 == nil && err2 != nil {
+			_write_err197 = thrift.WrapTException(err2)
+		}
+		if _write_err197 != nil {
+			return false, &thrift.ProcessorError{
+				WriteError:    _write_err197,
+				EndpointError: err,
+			}
+		}
+		return true, err
+	} else {
+		result.Success = retval
+	}
+	tickerCancel()
+	if err2 := oprot.WriteMessageBegin(ctx, "getTask", thrift.REPLY, seqId); err2 != nil {
+		_write_err197 = thrift.WrapTException(err2)
+	}
+	if err2 := result.Write(ctx, oprot); _write_err197 == nil && err2 != nil {
+		_write_err197 = thrift.WrapTException(err2)
+	}
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err197 == nil && err2 != nil {
+		_write_err197 = thrift.WrapTException(err2)
+	}
+	if err2 := oprot.Flush(ctx); _write_err197 == nil && err2 != nil {
+		_write_err197 = thrift.WrapTException(err2)
+	}
+	if _write_err197 != nil {
+		return false, &thrift.ProcessorError{
+			WriteError:    _write_err197,
+			EndpointError: err,
+		}
+	}
+	return true, err
+}
+
+type apiServiceProcessorDeleteTask struct {
+	handler ApiService
+}
+
+func (p *apiServiceProcessorDeleteTask) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
+	var _write_err199 thrift.TException
+	args := ApiServiceDeleteTaskArgs{}
+	if err2 := args.Read(ctx, iprot); err2 != nil {
+		iprot.ReadMessageEnd(ctx)
+		x := thrift.NewTApplicationException(thrift.PROTOCOL_ERROR, err2.Error())
+		oprot.WriteMessageBegin(ctx, "deleteTask", thrift.EXCEPTION, seqId)
+		x.Write(ctx, oprot)
+		oprot.WriteMessageEnd(ctx)
+		oprot.Flush(ctx)
+		return false, thrift.WrapTException(err2)
+	}
+	iprot.ReadMessageEnd(ctx)
+
+	tickerCancel := func() {}
+	// Start a goroutine to do server side connectivity check.
+	if thrift.ServerConnectivityCheckInterval > 0 {
+		var cancel context.CancelCauseFunc
+		ctx, cancel = context.WithCancelCause(ctx)
+		defer cancel(nil)
+		var tickerCtx context.Context
+		tickerCtx, tickerCancel = context.WithCancel(context.Background())
+		defer tickerCancel()
+		go func(ctx context.Context, cancel context.CancelCauseFunc) {
+			ticker := time.NewTicker(thrift.ServerConnectivityCheckInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					if !iprot.Transport().IsOpen() {
+						cancel(thrift.ErrAbandonRequest)
+						return
+					}
+				}
+			}
+		}(tickerCtx, cancel)
+	}
+
+	result := ApiServiceDeleteTaskResult{}
+	if retval, err2 := p.handler.DeleteTask(ctx, args.Timestamp); err2 != nil {
+		tickerCancel()
+		err = thrift.WrapTException(err2)
+		if errors.Is(err2, thrift.ErrAbandonRequest) {
+			return false, &thrift.ProcessorError{
+				WriteError:    thrift.WrapTException(err2),
+				EndpointError: err,
+			}
+		}
+		if errors.Is(err2, context.Canceled) {
+			if err3 := context.Cause(ctx); errors.Is(err3, thrift.ErrAbandonRequest) {
+				return false, &thrift.ProcessorError{
+					WriteError:    thrift.WrapTException(err3),
+					EndpointError: err,
+				}
+			}
+		}
+		_exc200 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing deleteTask: " + err2.Error())
+		if err2 := oprot.WriteMessageBegin(ctx, "deleteTask", thrift.EXCEPTION, seqId); err2 != nil {
+			_write_err199 = thrift.WrapTException(err2)
+		}
+		if err2 := _exc200.Write(ctx, oprot); _write_err199 == nil && err2 != nil {
+			_write_err199 = thrift.WrapTException(err2)
+		}
+		if err2 := oprot.WriteMessageEnd(ctx); _write_err199 == nil && err2 != nil {
+			_write_err199 = thrift.WrapTException(err2)
+		}
+		if err2 := oprot.Flush(ctx); _write_err199 == nil && err2 != nil {
+			_write_err199 = thrift.WrapTException(err2)
+		}
+		if _write_err199 != nil {
+			return false, &thrift.ProcessorError{
+				WriteError:    _write_err199,
+				EndpointError: err,
+			}
+		}
+		return true, err
+	} else {
+		result.Success = retval
+	}
+	tickerCancel()
+	if err2 := oprot.WriteMessageBegin(ctx, "deleteTask", thrift.REPLY, seqId); err2 != nil {
+		_write_err199 = thrift.WrapTException(err2)
+	}
+	if err2 := result.Write(ctx, oprot); _write_err199 == nil && err2 != nil {
+		_write_err199 = thrift.WrapTException(err2)
+	}
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err199 == nil && err2 != nil {
+		_write_err199 = thrift.WrapTException(err2)
+	}
+	if err2 := oprot.Flush(ctx); _write_err199 == nil && err2 != nil {
+		_write_err199 = thrift.WrapTException(err2)
+	}
+	if _write_err199 != nil {
+		return false, &thrift.ProcessorError{
+			WriteError:    _write_err199,
+			EndpointError: err,
+		}
+	}
+	return true, err
+}
+
+type apiServiceProcessorUploadReport struct {
+	handler ApiService
+}
+
+func (p *apiServiceProcessorUploadReport) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
+	var _write_err201 thrift.TException
+	args := ApiServiceUploadReportArgs{}
+	if err2 := args.Read(ctx, iprot); err2 != nil {
+		iprot.ReadMessageEnd(ctx)
+		x := thrift.NewTApplicationException(thrift.PROTOCOL_ERROR, err2.Error())
+		oprot.WriteMessageBegin(ctx, "uploadReport", thrift.EXCEPTION, seqId)
+		x.Write(ctx, oprot)
+		oprot.WriteMessageEnd(ctx)
+		oprot.Flush(ctx)
+		return false, thrift.WrapTException(err2)
+	}
+	iprot.ReadMessageEnd(ctx)
+
+	tickerCancel := func() {}
+	// Start a goroutine to do server side connectivity check.
+	if thrift.ServerConnectivityCheckInterval > 0 {
+		var cancel context.CancelCauseFunc
+		ctx, cancel = context.WithCancelCause(ctx)
+		defer cancel(nil)
+		var tickerCtx context.Context
+		tickerCtx, tickerCancel = context.WithCancel(context.Background())
+		defer tickerCancel()
+		go func(ctx context.Context, cancel context.CancelCauseFunc) {
+			ticker := time.NewTicker(thrift.ServerConnectivityCheckInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					if !iprot.Transport().IsOpen() {
+						cancel(thrift.ErrAbandonRequest)
+						return
+					}
+				}
+			}
+		}(tickerCtx, cancel)
+	}
+
+	result := ApiServiceUploadReportResult{}
+	if retval, err2 := p.handler.UploadReport(ctx, args.File); err2 != nil {
+		tickerCancel()
+		err = thrift.WrapTException(err2)
+		if errors.Is(err2, thrift.ErrAbandonRequest) {
+			return false, &thrift.ProcessorError{
+				WriteError:    thrift.WrapTException(err2),
+				EndpointError: err,
+			}
+		}
+		if errors.Is(err2, context.Canceled) {
+			if err3 := context.Cause(ctx); errors.Is(err3, thrift.ErrAbandonRequest) {
+				return false, &thrift.ProcessorError{
+					WriteError:    thrift.WrapTException(err3),
+					EndpointError: err,
+				}
+			}
+		}
+		_exc202 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing uploadReport: " + err2.Error())
+		if err2 := oprot.WriteMessageBegin(ctx, "uploadReport", thrift.EXCEPTION, seqId); err2 != nil {
+			_write_err201 = thrift.WrapTException(err2)
+		}
+		if err2 := _exc202.Write(ctx, oprot); _write_err201 == nil && err2 != nil {
+			_write_err201 = thrift.WrapTException(err2)
+		}
+		if err2 := oprot.WriteMessageEnd(ctx); _write_err201 == nil && err2 != nil {
+			_write_err201 = thrift.WrapTException(err2)
+		}
+		if err2 := oprot.Flush(ctx); _write_err201 == nil && err2 != nil {
+			_write_err201 = thrift.WrapTException(err2)
+		}
+		if _write_err201 != nil {
+			return false, &thrift.ProcessorError{
+				WriteError:    _write_err201,
+				EndpointError: err,
+			}
+		}
+		return true, err
+	} else {
+		result.Success = retval
+	}
+	tickerCancel()
+	if err2 := oprot.WriteMessageBegin(ctx, "uploadReport", thrift.REPLY, seqId); err2 != nil {
+		_write_err201 = thrift.WrapTException(err2)
+	}
+	if err2 := result.Write(ctx, oprot); _write_err201 == nil && err2 != nil {
+		_write_err201 = thrift.WrapTException(err2)
+	}
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err201 == nil && err2 != nil {
+		_write_err201 = thrift.WrapTException(err2)
+	}
+	if err2 := oprot.Flush(ctx); _write_err201 == nil && err2 != nil {
+		_write_err201 = thrift.WrapTException(err2)
+	}
+	if _write_err201 != nil {
+		return false, &thrift.ProcessorError{
+			WriteError:    _write_err201,
+			EndpointError: err,
+		}
+	}
+	return true, err
+}
+
+type apiServiceProcessorPackageDownload struct {
+	handler ApiService
+}
+
+func (p *apiServiceProcessorPackageDownload) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
+	var _write_err203 thrift.TException
+	args := ApiServicePackageDownloadArgs{}
+	if err2 := args.Read(ctx, iprot); err2 != nil {
+		iprot.ReadMessageEnd(ctx)
+		x := thrift.NewTApplicationException(thrift.PROTOCOL_ERROR, err2.Error())
+		oprot.WriteMessageBegin(ctx, "packageDownload", thrift.EXCEPTION, seqId)
+		x.Write(ctx, oprot)
+		oprot.WriteMessageEnd(ctx)
+		oprot.Flush(ctx)
+		return false, thrift.WrapTException(err2)
+	}
+	iprot.ReadMessageEnd(ctx)
+
+	tickerCancel := func() {}
+	// Start a goroutine to do server side connectivity check.
+	if thrift.ServerConnectivityCheckInterval > 0 {
+		var cancel context.CancelCauseFunc
+		ctx, cancel = context.WithCancelCause(ctx)
+		defer cancel(nil)
+		var tickerCtx context.Context
+		tickerCtx, tickerCancel = context.WithCancel(context.Background())
+		defer tickerCancel()
+		go func(ctx context.Context, cancel context.CancelCauseFunc) {
+			ticker := time.NewTicker(thrift.ServerConnectivityCheckInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					if !iprot.Transport().IsOpen() {
+						cancel(thrift.ErrAbandonRequest)
+						return
+					}
+				}
+			}
+		}(tickerCtx, cancel)
+	}
+
+	result := ApiServicePackageDownloadResult{}
+	if retval, err2 := p.handler.PackageDownload(ctx, args.Timestamp); err2 != nil {
+		tickerCancel()
+		err = thrift.WrapTException(err2)
+		if errors.Is(err2, thrift.ErrAbandonRequest) {
+			return false, &thrift.ProcessorError{
+				WriteError:    thrift.WrapTException(err2),
+				EndpointError: err,
+			}
+		}
+		if errors.Is(err2, context.Canceled) {
+			if err3 := context.Cause(ctx); errors.Is(err3, thrift.ErrAbandonRequest) {
+				return false, &thrift.ProcessorError{
+					WriteError:    thrift.WrapTException(err3),
+					EndpointError: err,
+				}
+			}
+		}
+		_exc204 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing packageDownload: " + err2.Error())
+		if err2 := oprot.WriteMessageBegin(ctx, "packageDownload", thrift.EXCEPTION, seqId); err2 != nil {
+			_write_err203 = thrift.WrapTException(err2)
+		}
+		if err2 := _exc204.Write(ctx, oprot); _write_err203 == nil && err2 != nil {
+			_write_err203 = thrift.WrapTException(err2)
+		}
+		if err2 := oprot.WriteMessageEnd(ctx); _write_err203 == nil && err2 != nil {
+			_write_err203 = thrift.WrapTException(err2)
+		}
+		if err2 := oprot.Flush(ctx); _write_err203 == nil && err2 != nil {
+			_write_err203 = thrift.WrapTException(err2)
+		}
+		if _write_err203 != nil {
+			return false, &thrift.ProcessorError{
+				WriteError:    _write_err203,
+				EndpointError: err,
+			}
+		}
+		return true, err
+	} else {
+		result.Success = retval
+	}
+	tickerCancel()
+	if err2 := oprot.WriteMessageBegin(ctx, "packageDownload", thrift.REPLY, seqId); err2 != nil {
+		_write_err203 = thrift.WrapTException(err2)
+	}
+	if err2 := result.Write(ctx, oprot); _write_err203 == nil && err2 != nil {
+		_write_err203 = thrift.WrapTException(err2)
+	}
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err203 == nil && err2 != nil {
+		_write_err203 = thrift.WrapTException(err2)
+	}
+	if err2 := oprot.Flush(ctx); _write_err203 == nil && err2 != nil {
+		_write_err203 = thrift.WrapTException(err2)
+	}
+	if _write_err203 != nil {
+		return false, &thrift.ProcessorError{
+			WriteError:    _write_err203,
 			EndpointError: err,
 		}
 	}
@@ -4661,7 +9110,7 @@ type apiServiceProcessorRegisterDataSource struct {
 }
 
 func (p *apiServiceProcessorRegisterDataSource) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
-	var _write_err91 thrift.TException
+	var _write_err205 thrift.TException
 	args := ApiServiceRegisterDataSourceArgs{}
 	if err2 := args.Read(ctx, iprot); err2 != nil {
 		iprot.ReadMessageEnd(ctx)
@@ -4718,22 +9167,22 @@ func (p *apiServiceProcessorRegisterDataSource) Process(ctx context.Context, seq
 				}
 			}
 		}
-		_exc92 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing registerDataSource: " + err2.Error())
+		_exc206 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing registerDataSource: " + err2.Error())
 		if err2 := oprot.WriteMessageBegin(ctx, "registerDataSource", thrift.EXCEPTION, seqId); err2 != nil {
-			_write_err91 = thrift.WrapTException(err2)
+			_write_err205 = thrift.WrapTException(err2)
 		}
-		if err2 := _exc92.Write(ctx, oprot); _write_err91 == nil && err2 != nil {
-			_write_err91 = thrift.WrapTException(err2)
+		if err2 := _exc206.Write(ctx, oprot); _write_err205 == nil && err2 != nil {
+			_write_err205 = thrift.WrapTException(err2)
 		}
-		if err2 := oprot.WriteMessageEnd(ctx); _write_err91 == nil && err2 != nil {
-			_write_err91 = thrift.WrapTException(err2)
+		if err2 := oprot.WriteMessageEnd(ctx); _write_err205 == nil && err2 != nil {
+			_write_err205 = thrift.WrapTException(err2)
 		}
-		if err2 := oprot.Flush(ctx); _write_err91 == nil && err2 != nil {
-			_write_err91 = thrift.WrapTException(err2)
+		if err2 := oprot.Flush(ctx); _write_err205 == nil && err2 != nil {
+			_write_err205 = thrift.WrapTException(err2)
 		}
-		if _write_err91 != nil {
+		if _write_err205 != nil {
 			return false, &thrift.ProcessorError{
-				WriteError:    _write_err91,
+				WriteError:    _write_err205,
 				EndpointError: err,
 			}
 		}
@@ -4743,20 +9192,20 @@ func (p *apiServiceProcessorRegisterDataSource) Process(ctx context.Context, seq
 	}
 	tickerCancel()
 	if err2 := oprot.WriteMessageBegin(ctx, "registerDataSource", thrift.REPLY, seqId); err2 != nil {
-		_write_err91 = thrift.WrapTException(err2)
+		_write_err205 = thrift.WrapTException(err2)
 	}
-	if err2 := result.Write(ctx, oprot); _write_err91 == nil && err2 != nil {
-		_write_err91 = thrift.WrapTException(err2)
+	if err2 := result.Write(ctx, oprot); _write_err205 == nil && err2 != nil {
+		_write_err205 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.WriteMessageEnd(ctx); _write_err91 == nil && err2 != nil {
-		_write_err91 = thrift.WrapTException(err2)
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err205 == nil && err2 != nil {
+		_write_err205 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.Flush(ctx); _write_err91 == nil && err2 != nil {
-		_write_err91 = thrift.WrapTException(err2)
+	if err2 := oprot.Flush(ctx); _write_err205 == nil && err2 != nil {
+		_write_err205 = thrift.WrapTException(err2)
 	}
-	if _write_err91 != nil {
+	if _write_err205 != nil {
 		return false, &thrift.ProcessorError{
-			WriteError:    _write_err91,
+			WriteError:    _write_err205,
 			EndpointError: err,
 		}
 	}
@@ -4768,7 +9217,7 @@ type apiServiceProcessorRemoveDataSource struct {
 }
 
 func (p *apiServiceProcessorRemoveDataSource) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
-	var _write_err93 thrift.TException
+	var _write_err207 thrift.TException
 	args := ApiServiceRemoveDataSourceArgs{}
 	if err2 := args.Read(ctx, iprot); err2 != nil {
 		iprot.ReadMessageEnd(ctx)
@@ -4825,22 +9274,22 @@ func (p *apiServiceProcessorRemoveDataSource) Process(ctx context.Context, seqId
 				}
 			}
 		}
-		_exc94 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing removeDataSource: " + err2.Error())
+		_exc208 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing removeDataSource: " + err2.Error())
 		if err2 := oprot.WriteMessageBegin(ctx, "removeDataSource", thrift.EXCEPTION, seqId); err2 != nil {
-			_write_err93 = thrift.WrapTException(err2)
+			_write_err207 = thrift.WrapTException(err2)
 		}
-		if err2 := _exc94.Write(ctx, oprot); _write_err93 == nil && err2 != nil {
-			_write_err93 = thrift.WrapTException(err2)
+		if err2 := _exc208.Write(ctx, oprot); _write_err207 == nil && err2 != nil {
+			_write_err207 = thrift.WrapTException(err2)
 		}
-		if err2 := oprot.WriteMessageEnd(ctx); _write_err93 == nil && err2 != nil {
-			_write_err93 = thrift.WrapTException(err2)
+		if err2 := oprot.WriteMessageEnd(ctx); _write_err207 == nil && err2 != nil {
+			_write_err207 = thrift.WrapTException(err2)
 		}
-		if err2 := oprot.Flush(ctx); _write_err93 == nil && err2 != nil {
-			_write_err93 = thrift.WrapTException(err2)
+		if err2 := oprot.Flush(ctx); _write_err207 == nil && err2 != nil {
+			_write_err207 = thrift.WrapTException(err2)
 		}
-		if _write_err93 != nil {
+		if _write_err207 != nil {
 			return false, &thrift.ProcessorError{
-				WriteError:    _write_err93,
+				WriteError:    _write_err207,
 				EndpointError: err,
 			}
 		}
@@ -4850,20 +9299,20 @@ func (p *apiServiceProcessorRemoveDataSource) Process(ctx context.Context, seqId
 	}
 	tickerCancel()
 	if err2 := oprot.WriteMessageBegin(ctx, "removeDataSource", thrift.REPLY, seqId); err2 != nil {
-		_write_err93 = thrift.WrapTException(err2)
+		_write_err207 = thrift.WrapTException(err2)
 	}
-	if err2 := result.Write(ctx, oprot); _write_err93 == nil && err2 != nil {
-		_write_err93 = thrift.WrapTException(err2)
+	if err2 := result.Write(ctx, oprot); _write_err207 == nil && err2 != nil {
+		_write_err207 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.WriteMessageEnd(ctx); _write_err93 == nil && err2 != nil {
-		_write_err93 = thrift.WrapTException(err2)
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err207 == nil && err2 != nil {
+		_write_err207 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.Flush(ctx); _write_err93 == nil && err2 != nil {
-		_write_err93 = thrift.WrapTException(err2)
+	if err2 := oprot.Flush(ctx); _write_err207 == nil && err2 != nil {
+		_write_err207 = thrift.WrapTException(err2)
 	}
-	if _write_err93 != nil {
+	if _write_err207 != nil {
 		return false, &thrift.ProcessorError{
-			WriteError:    _write_err93,
+			WriteError:    _write_err207,
 			EndpointError: err,
 		}
 	}
@@ -4875,7 +9324,7 @@ type apiServiceProcessorListDataSources struct {
 }
 
 func (p *apiServiceProcessorListDataSources) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
-	var _write_err95 thrift.TException
+	var _write_err209 thrift.TException
 	args := ApiServiceListDataSourcesArgs{}
 	if err2 := args.Read(ctx, iprot); err2 != nil {
 		iprot.ReadMessageEnd(ctx)
@@ -4932,22 +9381,22 @@ func (p *apiServiceProcessorListDataSources) Process(ctx context.Context, seqId 
 				}
 			}
 		}
-		_exc96 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing listDataSources: " + err2.Error())
+		_exc210 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing listDataSources: " + err2.Error())
 		if err2 := oprot.WriteMessageBegin(ctx, "listDataSources", thrift.EXCEPTION, seqId); err2 != nil {
-			_write_err95 = thrift.WrapTException(err2)
+			_write_err209 = thrift.WrapTException(err2)
 		}
-		if err2 := _exc96.Write(ctx, oprot); _write_err95 == nil && err2 != nil {
-			_write_err95 = thrift.WrapTException(err2)
+		if err2 := _exc210.Write(ctx, oprot); _write_err209 == nil && err2 != nil {
+			_write_err209 = thrift.WrapTException(err2)
 		}
-		if err2 := oprot.WriteMessageEnd(ctx); _write_err95 == nil && err2 != nil {
-			_write_err95 = thrift.WrapTException(err2)
+		if err2 := oprot.WriteMessageEnd(ctx); _write_err209 == nil && err2 != nil {
+			_write_err209 = thrift.WrapTException(err2)
 		}
-		if err2 := oprot.Flush(ctx); _write_err95 == nil && err2 != nil {
-			_write_err95 = thrift.WrapTException(err2)
+		if err2 := oprot.Flush(ctx); _write_err209 == nil && err2 != nil {
+			_write_err209 = thrift.WrapTException(err2)
 		}
-		if _write_err95 != nil {
+		if _write_err209 != nil {
 			return false, &thrift.ProcessorError{
-				WriteError:    _write_err95,
+				WriteError:    _write_err209,
 				EndpointError: err,
 			}
 		}
@@ -4957,20 +9406,20 @@ func (p *apiServiceProcessorListDataSources) Process(ctx context.Context, seqId 
 	}
 	tickerCancel()
 	if err2 := oprot.WriteMessageBegin(ctx, "listDataSources", thrift.REPLY, seqId); err2 != nil {
-		_write_err95 = thrift.WrapTException(err2)
+		_write_err209 = thrift.WrapTException(err2)
 	}
-	if err2 := result.Write(ctx, oprot); _write_err95 == nil && err2 != nil {
-		_write_err95 = thrift.WrapTException(err2)
+	if err2 := result.Write(ctx, oprot); _write_err209 == nil && err2 != nil {
+		_write_err209 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.WriteMessageEnd(ctx); _write_err95 == nil && err2 != nil {
-		_write_err95 = thrift.WrapTException(err2)
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err209 == nil && err2 != nil {
+		_write_err209 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.Flush(ctx); _write_err95 == nil && err2 != nil {
-		_write_err95 = thrift.WrapTException(err2)
+	if err2 := oprot.Flush(ctx); _write_err209 == nil && err2 != nil {
+		_write_err209 = thrift.WrapTException(err2)
 	}
-	if _write_err95 != nil {
+	if _write_err209 != nil {
 		return false, &thrift.ProcessorError{
-			WriteError:    _write_err95,
+			WriteError:    _write_err209,
 			EndpointError: err,
 		}
 	}
@@ -4982,7 +9431,7 @@ type apiServiceProcessorGetDataSourceTree struct {
 }
 
 func (p *apiServiceProcessorGetDataSourceTree) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
-	var _write_err97 thrift.TException
+	var _write_err211 thrift.TException
 	args := ApiServiceGetDataSourceTreeArgs{}
 	if err2 := args.Read(ctx, iprot); err2 != nil {
 		iprot.ReadMessageEnd(ctx)
@@ -5039,22 +9488,22 @@ func (p *apiServiceProcessorGetDataSourceTree) Process(ctx context.Context, seqI
 				}
 			}
 		}
-		_exc98 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing getDataSourceTree: " + err2.Error())
+		_exc212 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing getDataSourceTree: " + err2.Error())
 		if err2 := oprot.WriteMessageBegin(ctx, "getDataSourceTree", thrift.EXCEPTION, seqId); err2 != nil {
-			_write_err97 = thrift.WrapTException(err2)
+			_write_err211 = thrift.WrapTException(err2)
 		}
-		if err2 := _exc98.Write(ctx, oprot); _write_err97 == nil && err2 != nil {
-			_write_err97 = thrift.WrapTException(err2)
+		if err2 := _exc212.Write(ctx, oprot); _write_err211 == nil && err2 != nil {
+			_write_err211 = thrift.WrapTException(err2)
 		}
-		if err2 := oprot.WriteMessageEnd(ctx); _write_err97 == nil && err2 != nil {
-			_write_err97 = thrift.WrapTException(err2)
+		if err2 := oprot.WriteMessageEnd(ctx); _write_err211 == nil && err2 != nil {
+			_write_err211 = thrift.WrapTException(err2)
 		}
-		if err2 := oprot.Flush(ctx); _write_err97 == nil && err2 != nil {
-			_write_err97 = thrift.WrapTException(err2)
+		if err2 := oprot.Flush(ctx); _write_err211 == nil && err2 != nil {
+			_write_err211 = thrift.WrapTException(err2)
 		}
-		if _write_err97 != nil {
+		if _write_err211 != nil {
 			return false, &thrift.ProcessorError{
-				WriteError:    _write_err97,
+				WriteError:    _write_err211,
 				EndpointError: err,
 			}
 		}
@@ -5064,20 +9513,20 @@ func (p *apiServiceProcessorGetDataSourceTree) Process(ctx context.Context, seqI
 	}
 	tickerCancel()
 	if err2 := oprot.WriteMessageBegin(ctx, "getDataSourceTree", thrift.REPLY, seqId); err2 != nil {
-		_write_err97 = thrift.WrapTException(err2)
+		_write_err211 = thrift.WrapTException(err2)
 	}
-	if err2 := result.Write(ctx, oprot); _write_err97 == nil && err2 != nil {
-		_write_err97 = thrift.WrapTException(err2)
+	if err2 := result.Write(ctx, oprot); _write_err211 == nil && err2 != nil {
+		_write_err211 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.WriteMessageEnd(ctx); _write_err97 == nil && err2 != nil {
-		_write_err97 = thrift.WrapTException(err2)
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err211 == nil && err2 != nil {
+		_write_err211 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.Flush(ctx); _write_err97 == nil && err2 != nil {
-		_write_err97 = thrift.WrapTException(err2)
+	if err2 := oprot.Flush(ctx); _write_err211 == nil && err2 != nil {
+		_write_err211 = thrift.WrapTException(err2)
 	}
-	if _write_err97 != nil {
+	if _write_err211 != nil {
 		return false, &thrift.ProcessorError{
-			WriteError:    _write_err97,
+			WriteError:    _write_err211,
 			EndpointError: err,
 		}
 	}
@@ -5089,7 +9538,7 @@ type apiServiceProcessorQueryData struct {
 }
 
 func (p *apiServiceProcessorQueryData) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
-	var _write_err99 thrift.TException
+	var _write_err213 thrift.TException
 	args := ApiServiceQueryDataArgs{}
 	if err2 := args.Read(ctx, iprot); err2 != nil {
 		iprot.ReadMessageEnd(ctx)
@@ -5146,22 +9595,22 @@ func (p *apiServiceProcessorQueryData) Process(ctx context.Context, seqId int32,
 				}
 			}
 		}
-		_exc100 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing queryData: " + err2.Error())
+		_exc214 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing queryData: " + err2.Error())
 		if err2 := oprot.WriteMessageBegin(ctx, "queryData", thrift.EXCEPTION, seqId); err2 != nil {
-			_write_err99 = thrift.WrapTException(err2)
+			_write_err213 = thrift.WrapTException(err2)
 		}
-		if err2 := _exc100.Write(ctx, oprot); _write_err99 == nil && err2 != nil {
-			_write_err99 = thrift.WrapTException(err2)
+		if err2 := _exc214.Write(ctx, oprot); _write_err213 == nil && err2 != nil {
+			_write_err213 = thrift.WrapTException(err2)
 		}
-		if err2 := oprot.WriteMessageEnd(ctx); _write_err99 == nil && err2 != nil {
-			_write_err99 = thrift.WrapTException(err2)
+		if err2 := oprot.WriteMessageEnd(ctx); _write_err213 == nil && err2 != nil {
+			_write_err213 = thrift.WrapTException(err2)
 		}
-		if err2 := oprot.Flush(ctx); _write_err99 == nil && err2 != nil {
-			_write_err99 = thrift.WrapTException(err2)
+		if err2 := oprot.Flush(ctx); _write_err213 == nil && err2 != nil {
+			_write_err213 = thrift.WrapTException(err2)
 		}
-		if _write_err99 != nil {
+		if _write_err213 != nil {
 			return false, &thrift.ProcessorError{
-				WriteError:    _write_err99,
+				WriteError:    _write_err213,
 				EndpointError: err,
 			}
 		}
@@ -5171,20 +9620,234 @@ func (p *apiServiceProcessorQueryData) Process(ctx context.Context, seqId int32,
 	}
 	tickerCancel()
 	if err2 := oprot.WriteMessageBegin(ctx, "queryData", thrift.REPLY, seqId); err2 != nil {
-		_write_err99 = thrift.WrapTException(err2)
+		_write_err213 = thrift.WrapTException(err2)
 	}
-	if err2 := result.Write(ctx, oprot); _write_err99 == nil && err2 != nil {
-		_write_err99 = thrift.WrapTException(err2)
+	if err2 := result.Write(ctx, oprot); _write_err213 == nil && err2 != nil {
+		_write_err213 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.WriteMessageEnd(ctx); _write_err99 == nil && err2 != nil {
-		_write_err99 = thrift.WrapTException(err2)
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err213 == nil && err2 != nil {
+		_write_err213 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.Flush(ctx); _write_err99 == nil && err2 != nil {
-		_write_err99 = thrift.WrapTException(err2)
+	if err2 := oprot.Flush(ctx); _write_err213 == nil && err2 != nil {
+		_write_err213 = thrift.WrapTException(err2)
 	}
-	if _write_err99 != nil {
+	if _write_err213 != nil {
 		return false, &thrift.ProcessorError{
-			WriteError:    _write_err99,
+			WriteError:    _write_err213,
+			EndpointError: err,
+		}
+	}
+	return true, err
+}
+
+type apiServiceProcessorImportData struct {
+	handler ApiService
+}
+
+func (p *apiServiceProcessorImportData) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
+	var _write_err215 thrift.TException
+	args := ApiServiceImportDataArgs{}
+	if err2 := args.Read(ctx, iprot); err2 != nil {
+		iprot.ReadMessageEnd(ctx)
+		x := thrift.NewTApplicationException(thrift.PROTOCOL_ERROR, err2.Error())
+		oprot.WriteMessageBegin(ctx, "importData", thrift.EXCEPTION, seqId)
+		x.Write(ctx, oprot)
+		oprot.WriteMessageEnd(ctx)
+		oprot.Flush(ctx)
+		return false, thrift.WrapTException(err2)
+	}
+	iprot.ReadMessageEnd(ctx)
+
+	tickerCancel := func() {}
+	// Start a goroutine to do server side connectivity check.
+	if thrift.ServerConnectivityCheckInterval > 0 {
+		var cancel context.CancelCauseFunc
+		ctx, cancel = context.WithCancelCause(ctx)
+		defer cancel(nil)
+		var tickerCtx context.Context
+		tickerCtx, tickerCancel = context.WithCancel(context.Background())
+		defer tickerCancel()
+		go func(ctx context.Context, cancel context.CancelCauseFunc) {
+			ticker := time.NewTicker(thrift.ServerConnectivityCheckInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					if !iprot.Transport().IsOpen() {
+						cancel(thrift.ErrAbandonRequest)
+						return
+					}
+				}
+			}
+		}(tickerCtx, cancel)
+	}
+
+	result := ApiServiceImportDataResult{}
+	if retval, err2 := p.handler.ImportData(ctx, args.Config, args.File); err2 != nil {
+		tickerCancel()
+		err = thrift.WrapTException(err2)
+		if errors.Is(err2, thrift.ErrAbandonRequest) {
+			return false, &thrift.ProcessorError{
+				WriteError:    thrift.WrapTException(err2),
+				EndpointError: err,
+			}
+		}
+		if errors.Is(err2, context.Canceled) {
+			if err3 := context.Cause(ctx); errors.Is(err3, thrift.ErrAbandonRequest) {
+				return false, &thrift.ProcessorError{
+					WriteError:    thrift.WrapTException(err3),
+					EndpointError: err,
+				}
+			}
+		}
+		_exc216 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing importData: " + err2.Error())
+		if err2 := oprot.WriteMessageBegin(ctx, "importData", thrift.EXCEPTION, seqId); err2 != nil {
+			_write_err215 = thrift.WrapTException(err2)
+		}
+		if err2 := _exc216.Write(ctx, oprot); _write_err215 == nil && err2 != nil {
+			_write_err215 = thrift.WrapTException(err2)
+		}
+		if err2 := oprot.WriteMessageEnd(ctx); _write_err215 == nil && err2 != nil {
+			_write_err215 = thrift.WrapTException(err2)
+		}
+		if err2 := oprot.Flush(ctx); _write_err215 == nil && err2 != nil {
+			_write_err215 = thrift.WrapTException(err2)
+		}
+		if _write_err215 != nil {
+			return false, &thrift.ProcessorError{
+				WriteError:    _write_err215,
+				EndpointError: err,
+			}
+		}
+		return true, err
+	} else {
+		result.Success = retval
+	}
+	tickerCancel()
+	if err2 := oprot.WriteMessageBegin(ctx, "importData", thrift.REPLY, seqId); err2 != nil {
+		_write_err215 = thrift.WrapTException(err2)
+	}
+	if err2 := result.Write(ctx, oprot); _write_err215 == nil && err2 != nil {
+		_write_err215 = thrift.WrapTException(err2)
+	}
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err215 == nil && err2 != nil {
+		_write_err215 = thrift.WrapTException(err2)
+	}
+	if err2 := oprot.Flush(ctx); _write_err215 == nil && err2 != nil {
+		_write_err215 = thrift.WrapTException(err2)
+	}
+	if _write_err215 != nil {
+		return false, &thrift.ProcessorError{
+			WriteError:    _write_err215,
+			EndpointError: err,
+		}
+	}
+	return true, err
+}
+
+type apiServiceProcessorExportData struct {
+	handler ApiService
+}
+
+func (p *apiServiceProcessorExportData) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
+	var _write_err217 thrift.TException
+	args := ApiServiceExportDataArgs{}
+	if err2 := args.Read(ctx, iprot); err2 != nil {
+		iprot.ReadMessageEnd(ctx)
+		x := thrift.NewTApplicationException(thrift.PROTOCOL_ERROR, err2.Error())
+		oprot.WriteMessageBegin(ctx, "exportData", thrift.EXCEPTION, seqId)
+		x.Write(ctx, oprot)
+		oprot.WriteMessageEnd(ctx)
+		oprot.Flush(ctx)
+		return false, thrift.WrapTException(err2)
+	}
+	iprot.ReadMessageEnd(ctx)
+
+	tickerCancel := func() {}
+	// Start a goroutine to do server side connectivity check.
+	if thrift.ServerConnectivityCheckInterval > 0 {
+		var cancel context.CancelCauseFunc
+		ctx, cancel = context.WithCancelCause(ctx)
+		defer cancel(nil)
+		var tickerCtx context.Context
+		tickerCtx, tickerCancel = context.WithCancel(context.Background())
+		defer tickerCancel()
+		go func(ctx context.Context, cancel context.CancelCauseFunc) {
+			ticker := time.NewTicker(thrift.ServerConnectivityCheckInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					if !iprot.Transport().IsOpen() {
+						cancel(thrift.ErrAbandonRequest)
+						return
+					}
+				}
+			}
+		}(tickerCtx, cancel)
+	}
+
+	result := ApiServiceExportDataResult{}
+	if retval, err2 := p.handler.ExportData(ctx, args.Request); err2 != nil {
+		tickerCancel()
+		err = thrift.WrapTException(err2)
+		if errors.Is(err2, thrift.ErrAbandonRequest) {
+			return false, &thrift.ProcessorError{
+				WriteError:    thrift.WrapTException(err2),
+				EndpointError: err,
+			}
+		}
+		if errors.Is(err2, context.Canceled) {
+			if err3 := context.Cause(ctx); errors.Is(err3, thrift.ErrAbandonRequest) {
+				return false, &thrift.ProcessorError{
+					WriteError:    thrift.WrapTException(err3),
+					EndpointError: err,
+				}
+			}
+		}
+		_exc218 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing exportData: " + err2.Error())
+		if err2 := oprot.WriteMessageBegin(ctx, "exportData", thrift.EXCEPTION, seqId); err2 != nil {
+			_write_err217 = thrift.WrapTException(err2)
+		}
+		if err2 := _exc218.Write(ctx, oprot); _write_err217 == nil && err2 != nil {
+			_write_err217 = thrift.WrapTException(err2)
+		}
+		if err2 := oprot.WriteMessageEnd(ctx); _write_err217 == nil && err2 != nil {
+			_write_err217 = thrift.WrapTException(err2)
+		}
+		if err2 := oprot.Flush(ctx); _write_err217 == nil && err2 != nil {
+			_write_err217 = thrift.WrapTException(err2)
+		}
+		if _write_err217 != nil {
+			return false, &thrift.ProcessorError{
+				WriteError:    _write_err217,
+				EndpointError: err,
+			}
+		}
+		return true, err
+	} else {
+		result.Success = retval
+	}
+	tickerCancel()
+	if err2 := oprot.WriteMessageBegin(ctx, "exportData", thrift.REPLY, seqId); err2 != nil {
+		_write_err217 = thrift.WrapTException(err2)
+	}
+	if err2 := result.Write(ctx, oprot); _write_err217 == nil && err2 != nil {
+		_write_err217 = thrift.WrapTException(err2)
+	}
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err217 == nil && err2 != nil {
+		_write_err217 = thrift.WrapTException(err2)
+	}
+	if err2 := oprot.Flush(ctx); _write_err217 == nil && err2 != nil {
+		_write_err217 = thrift.WrapTException(err2)
+	}
+	if _write_err217 != nil {
+		return false, &thrift.ProcessorError{
+			WriteError:    _write_err217,
 			EndpointError: err,
 		}
 	}
@@ -5196,7 +9859,7 @@ type apiServiceProcessorDeleteData struct {
 }
 
 func (p *apiServiceProcessorDeleteData) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
-	var _write_err101 thrift.TException
+	var _write_err219 thrift.TException
 	args := ApiServiceDeleteDataArgs{}
 	if err2 := args.Read(ctx, iprot); err2 != nil {
 		iprot.ReadMessageEnd(ctx)
@@ -5253,22 +9916,22 @@ func (p *apiServiceProcessorDeleteData) Process(ctx context.Context, seqId int32
 				}
 			}
 		}
-		_exc102 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing deleteData: " + err2.Error())
+		_exc220 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing deleteData: " + err2.Error())
 		if err2 := oprot.WriteMessageBegin(ctx, "deleteData", thrift.EXCEPTION, seqId); err2 != nil {
-			_write_err101 = thrift.WrapTException(err2)
+			_write_err219 = thrift.WrapTException(err2)
 		}
-		if err2 := _exc102.Write(ctx, oprot); _write_err101 == nil && err2 != nil {
-			_write_err101 = thrift.WrapTException(err2)
+		if err2 := _exc220.Write(ctx, oprot); _write_err219 == nil && err2 != nil {
+			_write_err219 = thrift.WrapTException(err2)
 		}
-		if err2 := oprot.WriteMessageEnd(ctx); _write_err101 == nil && err2 != nil {
-			_write_err101 = thrift.WrapTException(err2)
+		if err2 := oprot.WriteMessageEnd(ctx); _write_err219 == nil && err2 != nil {
+			_write_err219 = thrift.WrapTException(err2)
 		}
-		if err2 := oprot.Flush(ctx); _write_err101 == nil && err2 != nil {
-			_write_err101 = thrift.WrapTException(err2)
+		if err2 := oprot.Flush(ctx); _write_err219 == nil && err2 != nil {
+			_write_err219 = thrift.WrapTException(err2)
 		}
-		if _write_err101 != nil {
+		if _write_err219 != nil {
 			return false, &thrift.ProcessorError{
-				WriteError:    _write_err101,
+				WriteError:    _write_err219,
 				EndpointError: err,
 			}
 		}
@@ -5278,20 +9941,20 @@ func (p *apiServiceProcessorDeleteData) Process(ctx context.Context, seqId int32
 	}
 	tickerCancel()
 	if err2 := oprot.WriteMessageBegin(ctx, "deleteData", thrift.REPLY, seqId); err2 != nil {
-		_write_err101 = thrift.WrapTException(err2)
+		_write_err219 = thrift.WrapTException(err2)
 	}
-	if err2 := result.Write(ctx, oprot); _write_err101 == nil && err2 != nil {
-		_write_err101 = thrift.WrapTException(err2)
+	if err2 := result.Write(ctx, oprot); _write_err219 == nil && err2 != nil {
+		_write_err219 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.WriteMessageEnd(ctx); _write_err101 == nil && err2 != nil {
-		_write_err101 = thrift.WrapTException(err2)
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err219 == nil && err2 != nil {
+		_write_err219 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.Flush(ctx); _write_err101 == nil && err2 != nil {
-		_write_err101 = thrift.WrapTException(err2)
+	if err2 := oprot.Flush(ctx); _write_err219 == nil && err2 != nil {
+		_write_err219 = thrift.WrapTException(err2)
 	}
-	if _write_err101 != nil {
+	if _write_err219 != nil {
 		return false, &thrift.ProcessorError{
-			WriteError:    _write_err101,
+			WriteError:    _write_err219,
 			EndpointError: err,
 		}
 	}
@@ -5303,7 +9966,7 @@ type apiServiceProcessorQueryRelationalData struct {
 }
 
 func (p *apiServiceProcessorQueryRelationalData) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
-	var _write_err103 thrift.TException
+	var _write_err221 thrift.TException
 	args := ApiServiceQueryRelationalDataArgs{}
 	if err2 := args.Read(ctx, iprot); err2 != nil {
 		iprot.ReadMessageEnd(ctx)
@@ -5360,22 +10023,22 @@ func (p *apiServiceProcessorQueryRelationalData) Process(ctx context.Context, se
 				}
 			}
 		}
-		_exc104 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing queryRelationalData: " + err2.Error())
+		_exc222 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing queryRelationalData: " + err2.Error())
 		if err2 := oprot.WriteMessageBegin(ctx, "queryRelationalData", thrift.EXCEPTION, seqId); err2 != nil {
-			_write_err103 = thrift.WrapTException(err2)
+			_write_err221 = thrift.WrapTException(err2)
 		}
-		if err2 := _exc104.Write(ctx, oprot); _write_err103 == nil && err2 != nil {
-			_write_err103 = thrift.WrapTException(err2)
+		if err2 := _exc222.Write(ctx, oprot); _write_err221 == nil && err2 != nil {
+			_write_err221 = thrift.WrapTException(err2)
 		}
-		if err2 := oprot.WriteMessageEnd(ctx); _write_err103 == nil && err2 != nil {
-			_write_err103 = thrift.WrapTException(err2)
+		if err2 := oprot.WriteMessageEnd(ctx); _write_err221 == nil && err2 != nil {
+			_write_err221 = thrift.WrapTException(err2)
 		}
-		if err2 := oprot.Flush(ctx); _write_err103 == nil && err2 != nil {
-			_write_err103 = thrift.WrapTException(err2)
+		if err2 := oprot.Flush(ctx); _write_err221 == nil && err2 != nil {
+			_write_err221 = thrift.WrapTException(err2)
 		}
-		if _write_err103 != nil {
+		if _write_err221 != nil {
 			return false, &thrift.ProcessorError{
-				WriteError:    _write_err103,
+				WriteError:    _write_err221,
 				EndpointError: err,
 			}
 		}
@@ -5385,20 +10048,20 @@ func (p *apiServiceProcessorQueryRelationalData) Process(ctx context.Context, se
 	}
 	tickerCancel()
 	if err2 := oprot.WriteMessageBegin(ctx, "queryRelationalData", thrift.REPLY, seqId); err2 != nil {
-		_write_err103 = thrift.WrapTException(err2)
+		_write_err221 = thrift.WrapTException(err2)
 	}
-	if err2 := result.Write(ctx, oprot); _write_err103 == nil && err2 != nil {
-		_write_err103 = thrift.WrapTException(err2)
+	if err2 := result.Write(ctx, oprot); _write_err221 == nil && err2 != nil {
+		_write_err221 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.WriteMessageEnd(ctx); _write_err103 == nil && err2 != nil {
-		_write_err103 = thrift.WrapTException(err2)
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err221 == nil && err2 != nil {
+		_write_err221 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.Flush(ctx); _write_err103 == nil && err2 != nil {
-		_write_err103 = thrift.WrapTException(err2)
+	if err2 := oprot.Flush(ctx); _write_err221 == nil && err2 != nil {
+		_write_err221 = thrift.WrapTException(err2)
 	}
-	if _write_err103 != nil {
+	if _write_err221 != nil {
 		return false, &thrift.ProcessorError{
-			WriteError:    _write_err103,
+			WriteError:    _write_err221,
 			EndpointError: err,
 		}
 	}
@@ -5410,7 +10073,7 @@ type apiServiceProcessorCountRelationalData struct {
 }
 
 func (p *apiServiceProcessorCountRelationalData) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
-	var _write_err105 thrift.TException
+	var _write_err223 thrift.TException
 	args := ApiServiceCountRelationalDataArgs{}
 	if err2 := args.Read(ctx, iprot); err2 != nil {
 		iprot.ReadMessageEnd(ctx)
@@ -5467,22 +10130,22 @@ func (p *apiServiceProcessorCountRelationalData) Process(ctx context.Context, se
 				}
 			}
 		}
-		_exc106 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing countRelationalData: " + err2.Error())
+		_exc224 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing countRelationalData: " + err2.Error())
 		if err2 := oprot.WriteMessageBegin(ctx, "countRelationalData", thrift.EXCEPTION, seqId); err2 != nil {
-			_write_err105 = thrift.WrapTException(err2)
+			_write_err223 = thrift.WrapTException(err2)
 		}
-		if err2 := _exc106.Write(ctx, oprot); _write_err105 == nil && err2 != nil {
-			_write_err105 = thrift.WrapTException(err2)
+		if err2 := _exc224.Write(ctx, oprot); _write_err223 == nil && err2 != nil {
+			_write_err223 = thrift.WrapTException(err2)
 		}
-		if err2 := oprot.WriteMessageEnd(ctx); _write_err105 == nil && err2 != nil {
-			_write_err105 = thrift.WrapTException(err2)
+		if err2 := oprot.WriteMessageEnd(ctx); _write_err223 == nil && err2 != nil {
+			_write_err223 = thrift.WrapTException(err2)
 		}
-		if err2 := oprot.Flush(ctx); _write_err105 == nil && err2 != nil {
-			_write_err105 = thrift.WrapTException(err2)
+		if err2 := oprot.Flush(ctx); _write_err223 == nil && err2 != nil {
+			_write_err223 = thrift.WrapTException(err2)
 		}
-		if _write_err105 != nil {
+		if _write_err223 != nil {
 			return false, &thrift.ProcessorError{
-				WriteError:    _write_err105,
+				WriteError:    _write_err223,
 				EndpointError: err,
 			}
 		}
@@ -5492,37 +10155,37 @@ func (p *apiServiceProcessorCountRelationalData) Process(ctx context.Context, se
 	}
 	tickerCancel()
 	if err2 := oprot.WriteMessageBegin(ctx, "countRelationalData", thrift.REPLY, seqId); err2 != nil {
-		_write_err105 = thrift.WrapTException(err2)
+		_write_err223 = thrift.WrapTException(err2)
 	}
-	if err2 := result.Write(ctx, oprot); _write_err105 == nil && err2 != nil {
-		_write_err105 = thrift.WrapTException(err2)
+	if err2 := result.Write(ctx, oprot); _write_err223 == nil && err2 != nil {
+		_write_err223 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.WriteMessageEnd(ctx); _write_err105 == nil && err2 != nil {
-		_write_err105 = thrift.WrapTException(err2)
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err223 == nil && err2 != nil {
+		_write_err223 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.Flush(ctx); _write_err105 == nil && err2 != nil {
-		_write_err105 = thrift.WrapTException(err2)
+	if err2 := oprot.Flush(ctx); _write_err223 == nil && err2 != nil {
+		_write_err223 = thrift.WrapTException(err2)
 	}
-	if _write_err105 != nil {
+	if _write_err223 != nil {
 		return false, &thrift.ProcessorError{
-			WriteError:    _write_err105,
+			WriteError:    _write_err223,
 			EndpointError: err,
 		}
 	}
 	return true, err
 }
 
-type apiServiceProcessorSaveModelMeta struct {
+type apiServiceProcessorExportRelationalData struct {
 	handler ApiService
 }
 
-func (p *apiServiceProcessorSaveModelMeta) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
-	var _write_err107 thrift.TException
-	args := ApiServiceSaveModelMetaArgs{}
+func (p *apiServiceProcessorExportRelationalData) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
+	var _write_err225 thrift.TException
+	args := ApiServiceExportRelationalDataArgs{}
 	if err2 := args.Read(ctx, iprot); err2 != nil {
 		iprot.ReadMessageEnd(ctx)
 		x := thrift.NewTApplicationException(thrift.PROTOCOL_ERROR, err2.Error())
-		oprot.WriteMessageBegin(ctx, "saveModelMeta", thrift.EXCEPTION, seqId)
+		oprot.WriteMessageBegin(ctx, "exportRelationalData", thrift.EXCEPTION, seqId)
 		x.Write(ctx, oprot)
 		oprot.WriteMessageEnd(ctx)
 		oprot.Flush(ctx)
@@ -5556,8 +10219,8 @@ func (p *apiServiceProcessorSaveModelMeta) Process(ctx context.Context, seqId in
 		}(tickerCtx, cancel)
 	}
 
-	result := ApiServiceSaveModelMetaResult{}
-	if retval, err2 := p.handler.SaveModelMeta(ctx, args.ModelMeta); err2 != nil {
+	result := ApiServiceExportRelationalDataResult{}
+	if retval, err2 := p.handler.ExportRelationalData(ctx, args.Request); err2 != nil {
 		tickerCancel()
 		err = thrift.WrapTException(err2)
 		if errors.Is(err2, thrift.ErrAbandonRequest) {
@@ -5574,22 +10237,22 @@ func (p *apiServiceProcessorSaveModelMeta) Process(ctx context.Context, seqId in
 				}
 			}
 		}
-		_exc108 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing saveModelMeta: " + err2.Error())
-		if err2 := oprot.WriteMessageBegin(ctx, "saveModelMeta", thrift.EXCEPTION, seqId); err2 != nil {
-			_write_err107 = thrift.WrapTException(err2)
+		_exc226 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing exportRelationalData: " + err2.Error())
+		if err2 := oprot.WriteMessageBegin(ctx, "exportRelationalData", thrift.EXCEPTION, seqId); err2 != nil {
+			_write_err225 = thrift.WrapTException(err2)
 		}
-		if err2 := _exc108.Write(ctx, oprot); _write_err107 == nil && err2 != nil {
-			_write_err107 = thrift.WrapTException(err2)
+		if err2 := _exc226.Write(ctx, oprot); _write_err225 == nil && err2 != nil {
+			_write_err225 = thrift.WrapTException(err2)
 		}
-		if err2 := oprot.WriteMessageEnd(ctx); _write_err107 == nil && err2 != nil {
-			_write_err107 = thrift.WrapTException(err2)
+		if err2 := oprot.WriteMessageEnd(ctx); _write_err225 == nil && err2 != nil {
+			_write_err225 = thrift.WrapTException(err2)
 		}
-		if err2 := oprot.Flush(ctx); _write_err107 == nil && err2 != nil {
-			_write_err107 = thrift.WrapTException(err2)
+		if err2 := oprot.Flush(ctx); _write_err225 == nil && err2 != nil {
+			_write_err225 = thrift.WrapTException(err2)
 		}
-		if _write_err107 != nil {
+		if _write_err225 != nil {
 			return false, &thrift.ProcessorError{
-				WriteError:    _write_err107,
+				WriteError:    _write_err225,
 				EndpointError: err,
 			}
 		}
@@ -5598,21 +10261,235 @@ func (p *apiServiceProcessorSaveModelMeta) Process(ctx context.Context, seqId in
 		result.Success = retval
 	}
 	tickerCancel()
-	if err2 := oprot.WriteMessageBegin(ctx, "saveModelMeta", thrift.REPLY, seqId); err2 != nil {
-		_write_err107 = thrift.WrapTException(err2)
+	if err2 := oprot.WriteMessageBegin(ctx, "exportRelationalData", thrift.REPLY, seqId); err2 != nil {
+		_write_err225 = thrift.WrapTException(err2)
 	}
-	if err2 := result.Write(ctx, oprot); _write_err107 == nil && err2 != nil {
-		_write_err107 = thrift.WrapTException(err2)
+	if err2 := result.Write(ctx, oprot); _write_err225 == nil && err2 != nil {
+		_write_err225 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.WriteMessageEnd(ctx); _write_err107 == nil && err2 != nil {
-		_write_err107 = thrift.WrapTException(err2)
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err225 == nil && err2 != nil {
+		_write_err225 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.Flush(ctx); _write_err107 == nil && err2 != nil {
-		_write_err107 = thrift.WrapTException(err2)
+	if err2 := oprot.Flush(ctx); _write_err225 == nil && err2 != nil {
+		_write_err225 = thrift.WrapTException(err2)
 	}
-	if _write_err107 != nil {
+	if _write_err225 != nil {
 		return false, &thrift.ProcessorError{
-			WriteError:    _write_err107,
+			WriteError:    _write_err225,
+			EndpointError: err,
+		}
+	}
+	return true, err
+}
+
+type apiServiceProcessorUploadModel struct {
+	handler ApiService
+}
+
+func (p *apiServiceProcessorUploadModel) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
+	var _write_err227 thrift.TException
+	args := ApiServiceUploadModelArgs{}
+	if err2 := args.Read(ctx, iprot); err2 != nil {
+		iprot.ReadMessageEnd(ctx)
+		x := thrift.NewTApplicationException(thrift.PROTOCOL_ERROR, err2.Error())
+		oprot.WriteMessageBegin(ctx, "uploadModel", thrift.EXCEPTION, seqId)
+		x.Write(ctx, oprot)
+		oprot.WriteMessageEnd(ctx)
+		oprot.Flush(ctx)
+		return false, thrift.WrapTException(err2)
+	}
+	iprot.ReadMessageEnd(ctx)
+
+	tickerCancel := func() {}
+	// Start a goroutine to do server side connectivity check.
+	if thrift.ServerConnectivityCheckInterval > 0 {
+		var cancel context.CancelCauseFunc
+		ctx, cancel = context.WithCancelCause(ctx)
+		defer cancel(nil)
+		var tickerCtx context.Context
+		tickerCtx, tickerCancel = context.WithCancel(context.Background())
+		defer tickerCancel()
+		go func(ctx context.Context, cancel context.CancelCauseFunc) {
+			ticker := time.NewTicker(thrift.ServerConnectivityCheckInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					if !iprot.Transport().IsOpen() {
+						cancel(thrift.ErrAbandonRequest)
+						return
+					}
+				}
+			}
+		}(tickerCtx, cancel)
+	}
+
+	result := ApiServiceUploadModelResult{}
+	if retval, err2 := p.handler.UploadModel(ctx, args.File); err2 != nil {
+		tickerCancel()
+		err = thrift.WrapTException(err2)
+		if errors.Is(err2, thrift.ErrAbandonRequest) {
+			return false, &thrift.ProcessorError{
+				WriteError:    thrift.WrapTException(err2),
+				EndpointError: err,
+			}
+		}
+		if errors.Is(err2, context.Canceled) {
+			if err3 := context.Cause(ctx); errors.Is(err3, thrift.ErrAbandonRequest) {
+				return false, &thrift.ProcessorError{
+					WriteError:    thrift.WrapTException(err3),
+					EndpointError: err,
+				}
+			}
+		}
+		_exc228 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing uploadModel: " + err2.Error())
+		if err2 := oprot.WriteMessageBegin(ctx, "uploadModel", thrift.EXCEPTION, seqId); err2 != nil {
+			_write_err227 = thrift.WrapTException(err2)
+		}
+		if err2 := _exc228.Write(ctx, oprot); _write_err227 == nil && err2 != nil {
+			_write_err227 = thrift.WrapTException(err2)
+		}
+		if err2 := oprot.WriteMessageEnd(ctx); _write_err227 == nil && err2 != nil {
+			_write_err227 = thrift.WrapTException(err2)
+		}
+		if err2 := oprot.Flush(ctx); _write_err227 == nil && err2 != nil {
+			_write_err227 = thrift.WrapTException(err2)
+		}
+		if _write_err227 != nil {
+			return false, &thrift.ProcessorError{
+				WriteError:    _write_err227,
+				EndpointError: err,
+			}
+		}
+		return true, err
+	} else {
+		result.Success = retval
+	}
+	tickerCancel()
+	if err2 := oprot.WriteMessageBegin(ctx, "uploadModel", thrift.REPLY, seqId); err2 != nil {
+		_write_err227 = thrift.WrapTException(err2)
+	}
+	if err2 := result.Write(ctx, oprot); _write_err227 == nil && err2 != nil {
+		_write_err227 = thrift.WrapTException(err2)
+	}
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err227 == nil && err2 != nil {
+		_write_err227 = thrift.WrapTException(err2)
+	}
+	if err2 := oprot.Flush(ctx); _write_err227 == nil && err2 != nil {
+		_write_err227 = thrift.WrapTException(err2)
+	}
+	if _write_err227 != nil {
+		return false, &thrift.ProcessorError{
+			WriteError:    _write_err227,
+			EndpointError: err,
+		}
+	}
+	return true, err
+}
+
+type apiServiceProcessorDownloadModel struct {
+	handler ApiService
+}
+
+func (p *apiServiceProcessorDownloadModel) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
+	var _write_err229 thrift.TException
+	args := ApiServiceDownloadModelArgs{}
+	if err2 := args.Read(ctx, iprot); err2 != nil {
+		iprot.ReadMessageEnd(ctx)
+		x := thrift.NewTApplicationException(thrift.PROTOCOL_ERROR, err2.Error())
+		oprot.WriteMessageBegin(ctx, "downloadModel", thrift.EXCEPTION, seqId)
+		x.Write(ctx, oprot)
+		oprot.WriteMessageEnd(ctx)
+		oprot.Flush(ctx)
+		return false, thrift.WrapTException(err2)
+	}
+	iprot.ReadMessageEnd(ctx)
+
+	tickerCancel := func() {}
+	// Start a goroutine to do server side connectivity check.
+	if thrift.ServerConnectivityCheckInterval > 0 {
+		var cancel context.CancelCauseFunc
+		ctx, cancel = context.WithCancelCause(ctx)
+		defer cancel(nil)
+		var tickerCtx context.Context
+		tickerCtx, tickerCancel = context.WithCancel(context.Background())
+		defer tickerCancel()
+		go func(ctx context.Context, cancel context.CancelCauseFunc) {
+			ticker := time.NewTicker(thrift.ServerConnectivityCheckInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					if !iprot.Transport().IsOpen() {
+						cancel(thrift.ErrAbandonRequest)
+						return
+					}
+				}
+			}
+		}(tickerCtx, cancel)
+	}
+
+	result := ApiServiceDownloadModelResult{}
+	if retval, err2 := p.handler.DownloadModel(ctx, args.Name, args.Version); err2 != nil {
+		tickerCancel()
+		err = thrift.WrapTException(err2)
+		if errors.Is(err2, thrift.ErrAbandonRequest) {
+			return false, &thrift.ProcessorError{
+				WriteError:    thrift.WrapTException(err2),
+				EndpointError: err,
+			}
+		}
+		if errors.Is(err2, context.Canceled) {
+			if err3 := context.Cause(ctx); errors.Is(err3, thrift.ErrAbandonRequest) {
+				return false, &thrift.ProcessorError{
+					WriteError:    thrift.WrapTException(err3),
+					EndpointError: err,
+				}
+			}
+		}
+		_exc230 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing downloadModel: " + err2.Error())
+		if err2 := oprot.WriteMessageBegin(ctx, "downloadModel", thrift.EXCEPTION, seqId); err2 != nil {
+			_write_err229 = thrift.WrapTException(err2)
+		}
+		if err2 := _exc230.Write(ctx, oprot); _write_err229 == nil && err2 != nil {
+			_write_err229 = thrift.WrapTException(err2)
+		}
+		if err2 := oprot.WriteMessageEnd(ctx); _write_err229 == nil && err2 != nil {
+			_write_err229 = thrift.WrapTException(err2)
+		}
+		if err2 := oprot.Flush(ctx); _write_err229 == nil && err2 != nil {
+			_write_err229 = thrift.WrapTException(err2)
+		}
+		if _write_err229 != nil {
+			return false, &thrift.ProcessorError{
+				WriteError:    _write_err229,
+				EndpointError: err,
+			}
+		}
+		return true, err
+	} else {
+		result.Success = retval
+	}
+	tickerCancel()
+	if err2 := oprot.WriteMessageBegin(ctx, "downloadModel", thrift.REPLY, seqId); err2 != nil {
+		_write_err229 = thrift.WrapTException(err2)
+	}
+	if err2 := result.Write(ctx, oprot); _write_err229 == nil && err2 != nil {
+		_write_err229 = thrift.WrapTException(err2)
+	}
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err229 == nil && err2 != nil {
+		_write_err229 = thrift.WrapTException(err2)
+	}
+	if err2 := oprot.Flush(ctx); _write_err229 == nil && err2 != nil {
+		_write_err229 = thrift.WrapTException(err2)
+	}
+	if _write_err229 != nil {
+		return false, &thrift.ProcessorError{
+			WriteError:    _write_err229,
 			EndpointError: err,
 		}
 	}
@@ -5624,7 +10501,7 @@ type apiServiceProcessorGetModelMeta struct {
 }
 
 func (p *apiServiceProcessorGetModelMeta) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
-	var _write_err109 thrift.TException
+	var _write_err231 thrift.TException
 	args := ApiServiceGetModelMetaArgs{}
 	if err2 := args.Read(ctx, iprot); err2 != nil {
 		iprot.ReadMessageEnd(ctx)
@@ -5681,22 +10558,22 @@ func (p *apiServiceProcessorGetModelMeta) Process(ctx context.Context, seqId int
 				}
 			}
 		}
-		_exc110 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing getModelMeta: " + err2.Error())
+		_exc232 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing getModelMeta: " + err2.Error())
 		if err2 := oprot.WriteMessageBegin(ctx, "getModelMeta", thrift.EXCEPTION, seqId); err2 != nil {
-			_write_err109 = thrift.WrapTException(err2)
+			_write_err231 = thrift.WrapTException(err2)
 		}
-		if err2 := _exc110.Write(ctx, oprot); _write_err109 == nil && err2 != nil {
-			_write_err109 = thrift.WrapTException(err2)
+		if err2 := _exc232.Write(ctx, oprot); _write_err231 == nil && err2 != nil {
+			_write_err231 = thrift.WrapTException(err2)
 		}
-		if err2 := oprot.WriteMessageEnd(ctx); _write_err109 == nil && err2 != nil {
-			_write_err109 = thrift.WrapTException(err2)
+		if err2 := oprot.WriteMessageEnd(ctx); _write_err231 == nil && err2 != nil {
+			_write_err231 = thrift.WrapTException(err2)
 		}
-		if err2 := oprot.Flush(ctx); _write_err109 == nil && err2 != nil {
-			_write_err109 = thrift.WrapTException(err2)
+		if err2 := oprot.Flush(ctx); _write_err231 == nil && err2 != nil {
+			_write_err231 = thrift.WrapTException(err2)
 		}
-		if _write_err109 != nil {
+		if _write_err231 != nil {
 			return false, &thrift.ProcessorError{
-				WriteError:    _write_err109,
+				WriteError:    _write_err231,
 				EndpointError: err,
 			}
 		}
@@ -5706,20 +10583,127 @@ func (p *apiServiceProcessorGetModelMeta) Process(ctx context.Context, seqId int
 	}
 	tickerCancel()
 	if err2 := oprot.WriteMessageBegin(ctx, "getModelMeta", thrift.REPLY, seqId); err2 != nil {
-		_write_err109 = thrift.WrapTException(err2)
+		_write_err231 = thrift.WrapTException(err2)
 	}
-	if err2 := result.Write(ctx, oprot); _write_err109 == nil && err2 != nil {
-		_write_err109 = thrift.WrapTException(err2)
+	if err2 := result.Write(ctx, oprot); _write_err231 == nil && err2 != nil {
+		_write_err231 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.WriteMessageEnd(ctx); _write_err109 == nil && err2 != nil {
-		_write_err109 = thrift.WrapTException(err2)
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err231 == nil && err2 != nil {
+		_write_err231 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.Flush(ctx); _write_err109 == nil && err2 != nil {
-		_write_err109 = thrift.WrapTException(err2)
+	if err2 := oprot.Flush(ctx); _write_err231 == nil && err2 != nil {
+		_write_err231 = thrift.WrapTException(err2)
 	}
-	if _write_err109 != nil {
+	if _write_err231 != nil {
 		return false, &thrift.ProcessorError{
-			WriteError:    _write_err109,
+			WriteError:    _write_err231,
+			EndpointError: err,
+		}
+	}
+	return true, err
+}
+
+type apiServiceProcessorSaveModelMeta struct {
+	handler ApiService
+}
+
+func (p *apiServiceProcessorSaveModelMeta) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
+	var _write_err233 thrift.TException
+	args := ApiServiceSaveModelMetaArgs{}
+	if err2 := args.Read(ctx, iprot); err2 != nil {
+		iprot.ReadMessageEnd(ctx)
+		x := thrift.NewTApplicationException(thrift.PROTOCOL_ERROR, err2.Error())
+		oprot.WriteMessageBegin(ctx, "saveModelMeta", thrift.EXCEPTION, seqId)
+		x.Write(ctx, oprot)
+		oprot.WriteMessageEnd(ctx)
+		oprot.Flush(ctx)
+		return false, thrift.WrapTException(err2)
+	}
+	iprot.ReadMessageEnd(ctx)
+
+	tickerCancel := func() {}
+	// Start a goroutine to do server side connectivity check.
+	if thrift.ServerConnectivityCheckInterval > 0 {
+		var cancel context.CancelCauseFunc
+		ctx, cancel = context.WithCancelCause(ctx)
+		defer cancel(nil)
+		var tickerCtx context.Context
+		tickerCtx, tickerCancel = context.WithCancel(context.Background())
+		defer tickerCancel()
+		go func(ctx context.Context, cancel context.CancelCauseFunc) {
+			ticker := time.NewTicker(thrift.ServerConnectivityCheckInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					if !iprot.Transport().IsOpen() {
+						cancel(thrift.ErrAbandonRequest)
+						return
+					}
+				}
+			}
+		}(tickerCtx, cancel)
+	}
+
+	result := ApiServiceSaveModelMetaResult{}
+	if retval, err2 := p.handler.SaveModelMeta(ctx, args.ModelMeta); err2 != nil {
+		tickerCancel()
+		err = thrift.WrapTException(err2)
+		if errors.Is(err2, thrift.ErrAbandonRequest) {
+			return false, &thrift.ProcessorError{
+				WriteError:    thrift.WrapTException(err2),
+				EndpointError: err,
+			}
+		}
+		if errors.Is(err2, context.Canceled) {
+			if err3 := context.Cause(ctx); errors.Is(err3, thrift.ErrAbandonRequest) {
+				return false, &thrift.ProcessorError{
+					WriteError:    thrift.WrapTException(err3),
+					EndpointError: err,
+				}
+			}
+		}
+		_exc234 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing saveModelMeta: " + err2.Error())
+		if err2 := oprot.WriteMessageBegin(ctx, "saveModelMeta", thrift.EXCEPTION, seqId); err2 != nil {
+			_write_err233 = thrift.WrapTException(err2)
+		}
+		if err2 := _exc234.Write(ctx, oprot); _write_err233 == nil && err2 != nil {
+			_write_err233 = thrift.WrapTException(err2)
+		}
+		if err2 := oprot.WriteMessageEnd(ctx); _write_err233 == nil && err2 != nil {
+			_write_err233 = thrift.WrapTException(err2)
+		}
+		if err2 := oprot.Flush(ctx); _write_err233 == nil && err2 != nil {
+			_write_err233 = thrift.WrapTException(err2)
+		}
+		if _write_err233 != nil {
+			return false, &thrift.ProcessorError{
+				WriteError:    _write_err233,
+				EndpointError: err,
+			}
+		}
+		return true, err
+	} else {
+		result.Success = retval
+	}
+	tickerCancel()
+	if err2 := oprot.WriteMessageBegin(ctx, "saveModelMeta", thrift.REPLY, seqId); err2 != nil {
+		_write_err233 = thrift.WrapTException(err2)
+	}
+	if err2 := result.Write(ctx, oprot); _write_err233 == nil && err2 != nil {
+		_write_err233 = thrift.WrapTException(err2)
+	}
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err233 == nil && err2 != nil {
+		_write_err233 = thrift.WrapTException(err2)
+	}
+	if err2 := oprot.Flush(ctx); _write_err233 == nil && err2 != nil {
+		_write_err233 = thrift.WrapTException(err2)
+	}
+	if _write_err233 != nil {
+		return false, &thrift.ProcessorError{
+			WriteError:    _write_err233,
 			EndpointError: err,
 		}
 	}
@@ -5731,7 +10715,7 @@ type apiServiceProcessorGetModelHistory struct {
 }
 
 func (p *apiServiceProcessorGetModelHistory) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
-	var _write_err111 thrift.TException
+	var _write_err235 thrift.TException
 	args := ApiServiceGetModelHistoryArgs{}
 	if err2 := args.Read(ctx, iprot); err2 != nil {
 		iprot.ReadMessageEnd(ctx)
@@ -5788,22 +10772,22 @@ func (p *apiServiceProcessorGetModelHistory) Process(ctx context.Context, seqId 
 				}
 			}
 		}
-		_exc112 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing getModelHistory: " + err2.Error())
+		_exc236 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing getModelHistory: " + err2.Error())
 		if err2 := oprot.WriteMessageBegin(ctx, "getModelHistory", thrift.EXCEPTION, seqId); err2 != nil {
-			_write_err111 = thrift.WrapTException(err2)
+			_write_err235 = thrift.WrapTException(err2)
 		}
-		if err2 := _exc112.Write(ctx, oprot); _write_err111 == nil && err2 != nil {
-			_write_err111 = thrift.WrapTException(err2)
+		if err2 := _exc236.Write(ctx, oprot); _write_err235 == nil && err2 != nil {
+			_write_err235 = thrift.WrapTException(err2)
 		}
-		if err2 := oprot.WriteMessageEnd(ctx); _write_err111 == nil && err2 != nil {
-			_write_err111 = thrift.WrapTException(err2)
+		if err2 := oprot.WriteMessageEnd(ctx); _write_err235 == nil && err2 != nil {
+			_write_err235 = thrift.WrapTException(err2)
 		}
-		if err2 := oprot.Flush(ctx); _write_err111 == nil && err2 != nil {
-			_write_err111 = thrift.WrapTException(err2)
+		if err2 := oprot.Flush(ctx); _write_err235 == nil && err2 != nil {
+			_write_err235 = thrift.WrapTException(err2)
 		}
-		if _write_err111 != nil {
+		if _write_err235 != nil {
 			return false, &thrift.ProcessorError{
-				WriteError:    _write_err111,
+				WriteError:    _write_err235,
 				EndpointError: err,
 			}
 		}
@@ -5813,20 +10797,20 @@ func (p *apiServiceProcessorGetModelHistory) Process(ctx context.Context, seqId 
 	}
 	tickerCancel()
 	if err2 := oprot.WriteMessageBegin(ctx, "getModelHistory", thrift.REPLY, seqId); err2 != nil {
-		_write_err111 = thrift.WrapTException(err2)
+		_write_err235 = thrift.WrapTException(err2)
 	}
-	if err2 := result.Write(ctx, oprot); _write_err111 == nil && err2 != nil {
-		_write_err111 = thrift.WrapTException(err2)
+	if err2 := result.Write(ctx, oprot); _write_err235 == nil && err2 != nil {
+		_write_err235 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.WriteMessageEnd(ctx); _write_err111 == nil && err2 != nil {
-		_write_err111 = thrift.WrapTException(err2)
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err235 == nil && err2 != nil {
+		_write_err235 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.Flush(ctx); _write_err111 == nil && err2 != nil {
-		_write_err111 = thrift.WrapTException(err2)
+	if err2 := oprot.Flush(ctx); _write_err235 == nil && err2 != nil {
+		_write_err235 = thrift.WrapTException(err2)
 	}
-	if _write_err111 != nil {
+	if _write_err235 != nil {
 		return false, &thrift.ProcessorError{
-			WriteError:    _write_err111,
+			WriteError:    _write_err235,
 			EndpointError: err,
 		}
 	}
@@ -5838,7 +10822,7 @@ type apiServiceProcessorDeleteModel struct {
 }
 
 func (p *apiServiceProcessorDeleteModel) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
-	var _write_err113 thrift.TException
+	var _write_err237 thrift.TException
 	args := ApiServiceDeleteModelArgs{}
 	if err2 := args.Read(ctx, iprot); err2 != nil {
 		iprot.ReadMessageEnd(ctx)
@@ -5895,22 +10879,22 @@ func (p *apiServiceProcessorDeleteModel) Process(ctx context.Context, seqId int3
 				}
 			}
 		}
-		_exc114 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing deleteModel: " + err2.Error())
+		_exc238 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing deleteModel: " + err2.Error())
 		if err2 := oprot.WriteMessageBegin(ctx, "deleteModel", thrift.EXCEPTION, seqId); err2 != nil {
-			_write_err113 = thrift.WrapTException(err2)
+			_write_err237 = thrift.WrapTException(err2)
 		}
-		if err2 := _exc114.Write(ctx, oprot); _write_err113 == nil && err2 != nil {
-			_write_err113 = thrift.WrapTException(err2)
+		if err2 := _exc238.Write(ctx, oprot); _write_err237 == nil && err2 != nil {
+			_write_err237 = thrift.WrapTException(err2)
 		}
-		if err2 := oprot.WriteMessageEnd(ctx); _write_err113 == nil && err2 != nil {
-			_write_err113 = thrift.WrapTException(err2)
+		if err2 := oprot.WriteMessageEnd(ctx); _write_err237 == nil && err2 != nil {
+			_write_err237 = thrift.WrapTException(err2)
 		}
-		if err2 := oprot.Flush(ctx); _write_err113 == nil && err2 != nil {
-			_write_err113 = thrift.WrapTException(err2)
+		if err2 := oprot.Flush(ctx); _write_err237 == nil && err2 != nil {
+			_write_err237 = thrift.WrapTException(err2)
 		}
-		if _write_err113 != nil {
+		if _write_err237 != nil {
 			return false, &thrift.ProcessorError{
-				WriteError:    _write_err113,
+				WriteError:    _write_err237,
 				EndpointError: err,
 			}
 		}
@@ -5920,20 +10904,127 @@ func (p *apiServiceProcessorDeleteModel) Process(ctx context.Context, seqId int3
 	}
 	tickerCancel()
 	if err2 := oprot.WriteMessageBegin(ctx, "deleteModel", thrift.REPLY, seqId); err2 != nil {
-		_write_err113 = thrift.WrapTException(err2)
+		_write_err237 = thrift.WrapTException(err2)
 	}
-	if err2 := result.Write(ctx, oprot); _write_err113 == nil && err2 != nil {
-		_write_err113 = thrift.WrapTException(err2)
+	if err2 := result.Write(ctx, oprot); _write_err237 == nil && err2 != nil {
+		_write_err237 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.WriteMessageEnd(ctx); _write_err113 == nil && err2 != nil {
-		_write_err113 = thrift.WrapTException(err2)
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err237 == nil && err2 != nil {
+		_write_err237 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.Flush(ctx); _write_err113 == nil && err2 != nil {
-		_write_err113 = thrift.WrapTException(err2)
+	if err2 := oprot.Flush(ctx); _write_err237 == nil && err2 != nil {
+		_write_err237 = thrift.WrapTException(err2)
 	}
-	if _write_err113 != nil {
+	if _write_err237 != nil {
 		return false, &thrift.ProcessorError{
-			WriteError:    _write_err113,
+			WriteError:    _write_err237,
+			EndpointError: err,
+		}
+	}
+	return true, err
+}
+
+type apiServiceProcessorExtractModelFile struct {
+	handler ApiService
+}
+
+func (p *apiServiceProcessorExtractModelFile) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
+	var _write_err239 thrift.TException
+	args := ApiServiceExtractModelFileArgs{}
+	if err2 := args.Read(ctx, iprot); err2 != nil {
+		iprot.ReadMessageEnd(ctx)
+		x := thrift.NewTApplicationException(thrift.PROTOCOL_ERROR, err2.Error())
+		oprot.WriteMessageBegin(ctx, "extractModelFile", thrift.EXCEPTION, seqId)
+		x.Write(ctx, oprot)
+		oprot.WriteMessageEnd(ctx)
+		oprot.Flush(ctx)
+		return false, thrift.WrapTException(err2)
+	}
+	iprot.ReadMessageEnd(ctx)
+
+	tickerCancel := func() {}
+	// Start a goroutine to do server side connectivity check.
+	if thrift.ServerConnectivityCheckInterval > 0 {
+		var cancel context.CancelCauseFunc
+		ctx, cancel = context.WithCancelCause(ctx)
+		defer cancel(nil)
+		var tickerCtx context.Context
+		tickerCtx, tickerCancel = context.WithCancel(context.Background())
+		defer tickerCancel()
+		go func(ctx context.Context, cancel context.CancelCauseFunc) {
+			ticker := time.NewTicker(thrift.ServerConnectivityCheckInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					if !iprot.Transport().IsOpen() {
+						cancel(thrift.ErrAbandonRequest)
+						return
+					}
+				}
+			}
+		}(tickerCtx, cancel)
+	}
+
+	result := ApiServiceExtractModelFileResult{}
+	if retval, err2 := p.handler.ExtractModelFile(ctx, args.Request); err2 != nil {
+		tickerCancel()
+		err = thrift.WrapTException(err2)
+		if errors.Is(err2, thrift.ErrAbandonRequest) {
+			return false, &thrift.ProcessorError{
+				WriteError:    thrift.WrapTException(err2),
+				EndpointError: err,
+			}
+		}
+		if errors.Is(err2, context.Canceled) {
+			if err3 := context.Cause(ctx); errors.Is(err3, thrift.ErrAbandonRequest) {
+				return false, &thrift.ProcessorError{
+					WriteError:    thrift.WrapTException(err3),
+					EndpointError: err,
+				}
+			}
+		}
+		_exc240 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing extractModelFile: " + err2.Error())
+		if err2 := oprot.WriteMessageBegin(ctx, "extractModelFile", thrift.EXCEPTION, seqId); err2 != nil {
+			_write_err239 = thrift.WrapTException(err2)
+		}
+		if err2 := _exc240.Write(ctx, oprot); _write_err239 == nil && err2 != nil {
+			_write_err239 = thrift.WrapTException(err2)
+		}
+		if err2 := oprot.WriteMessageEnd(ctx); _write_err239 == nil && err2 != nil {
+			_write_err239 = thrift.WrapTException(err2)
+		}
+		if err2 := oprot.Flush(ctx); _write_err239 == nil && err2 != nil {
+			_write_err239 = thrift.WrapTException(err2)
+		}
+		if _write_err239 != nil {
+			return false, &thrift.ProcessorError{
+				WriteError:    _write_err239,
+				EndpointError: err,
+			}
+		}
+		return true, err
+	} else {
+		result.Success = retval
+	}
+	tickerCancel()
+	if err2 := oprot.WriteMessageBegin(ctx, "extractModelFile", thrift.REPLY, seqId); err2 != nil {
+		_write_err239 = thrift.WrapTException(err2)
+	}
+	if err2 := result.Write(ctx, oprot); _write_err239 == nil && err2 != nil {
+		_write_err239 = thrift.WrapTException(err2)
+	}
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err239 == nil && err2 != nil {
+		_write_err239 = thrift.WrapTException(err2)
+	}
+	if err2 := oprot.Flush(ctx); _write_err239 == nil && err2 != nil {
+		_write_err239 = thrift.WrapTException(err2)
+	}
+	if _write_err239 != nil {
+		return false, &thrift.ProcessorError{
+			WriteError:    _write_err239,
 			EndpointError: err,
 		}
 	}
@@ -7158,6 +12249,3630 @@ func (p *ApiServiceDeleteAssociationRuleResult) LogValue() slog.Value {
 var _ slog.LogValuer = (*ApiServiceDeleteAssociationRuleResult)(nil)
 
 // Attributes:
+//  - Rule
+// 
+type ApiServiceSaveParsingRuleArgs struct {
+	Rule *ParsingRule `thrift:"rule,1" db:"rule" json:"rule"`
+}
+
+func NewApiServiceSaveParsingRuleArgs() *ApiServiceSaveParsingRuleArgs {
+	return &ApiServiceSaveParsingRuleArgs{}
+}
+
+var ApiServiceSaveParsingRuleArgs_Rule_DEFAULT *ParsingRule
+
+func (p *ApiServiceSaveParsingRuleArgs) GetRule() *ParsingRule {
+	if !p.IsSetRule() {
+		return ApiServiceSaveParsingRuleArgs_Rule_DEFAULT
+	}
+	return p.Rule
+}
+
+func (p *ApiServiceSaveParsingRuleArgs) IsSetRule() bool {
+	return p.Rule != nil
+}
+
+func (p *ApiServiceSaveParsingRuleArgs) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 1:
+			if fieldTypeId == thrift.STRUCT {
+				if err := p.ReadField1(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceSaveParsingRuleArgs) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	p.Rule = &ParsingRule{}
+	if err := p.Rule.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Rule), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceSaveParsingRuleArgs) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "saveParsingRule_args"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField1(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ApiServiceSaveParsingRuleArgs) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "rule", thrift.STRUCT, 1); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:rule: ", p), err)
+	}
+	if err := p.Rule.Write(ctx, oprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Rule), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 1:rule: ", p), err)
+	}
+	return err
+}
+
+func (p *ApiServiceSaveParsingRuleArgs) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ApiServiceSaveParsingRuleArgs(%+v)", *p)
+}
+
+func (p *ApiServiceSaveParsingRuleArgs) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.ApiServiceSaveParsingRuleArgs",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*ApiServiceSaveParsingRuleArgs)(nil)
+
+// Attributes:
+//  - Success
+// 
+type ApiServiceSaveParsingRuleResult struct {
+	Success *Result_ `thrift:"success,0" db:"success" json:"success,omitempty"`
+}
+
+func NewApiServiceSaveParsingRuleResult() *ApiServiceSaveParsingRuleResult {
+	return &ApiServiceSaveParsingRuleResult{}
+}
+
+var ApiServiceSaveParsingRuleResult_Success_DEFAULT *Result_
+
+func (p *ApiServiceSaveParsingRuleResult) GetSuccess() *Result_ {
+	if !p.IsSetSuccess() {
+		return ApiServiceSaveParsingRuleResult_Success_DEFAULT
+	}
+	return p.Success
+}
+
+func (p *ApiServiceSaveParsingRuleResult) IsSetSuccess() bool {
+	return p.Success != nil
+}
+
+func (p *ApiServiceSaveParsingRuleResult) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 0:
+			if fieldTypeId == thrift.STRUCT {
+				if err := p.ReadField0(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceSaveParsingRuleResult) ReadField0(ctx context.Context, iprot thrift.TProtocol) error {
+	p.Success = &Result_{}
+	if err := p.Success.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Success), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceSaveParsingRuleResult) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "saveParsingRule_result"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField0(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ApiServiceSaveParsingRuleResult) writeField0(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if p.IsSetSuccess() {
+		if err := oprot.WriteFieldBegin(ctx, "success", thrift.STRUCT, 0); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field begin error 0:success: ", p), err)
+		}
+		if err := p.Success.Write(ctx, oprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Success), err)
+		}
+		if err := oprot.WriteFieldEnd(ctx); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field end error 0:success: ", p), err)
+		}
+	}
+	return err
+}
+
+func (p *ApiServiceSaveParsingRuleResult) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ApiServiceSaveParsingRuleResult(%+v)", *p)
+}
+
+func (p *ApiServiceSaveParsingRuleResult) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.ApiServiceSaveParsingRuleResult",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*ApiServiceSaveParsingRuleResult)(nil)
+
+// Attributes:
+//  - Request
+// 
+type ApiServiceQueryParsingRulesArgs struct {
+	Request *ParsingRulesQueryRequest `thrift:"request,1" db:"request" json:"request"`
+}
+
+func NewApiServiceQueryParsingRulesArgs() *ApiServiceQueryParsingRulesArgs {
+	return &ApiServiceQueryParsingRulesArgs{}
+}
+
+var ApiServiceQueryParsingRulesArgs_Request_DEFAULT *ParsingRulesQueryRequest
+
+func (p *ApiServiceQueryParsingRulesArgs) GetRequest() *ParsingRulesQueryRequest {
+	if !p.IsSetRequest() {
+		return ApiServiceQueryParsingRulesArgs_Request_DEFAULT
+	}
+	return p.Request
+}
+
+func (p *ApiServiceQueryParsingRulesArgs) IsSetRequest() bool {
+	return p.Request != nil
+}
+
+func (p *ApiServiceQueryParsingRulesArgs) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 1:
+			if fieldTypeId == thrift.STRUCT {
+				if err := p.ReadField1(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceQueryParsingRulesArgs) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	p.Request = &ParsingRulesQueryRequest{
+		PageNum: 1,
+		PageSize: 6,
+	}
+	if err := p.Request.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Request), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceQueryParsingRulesArgs) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "queryParsingRules_args"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField1(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ApiServiceQueryParsingRulesArgs) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "request", thrift.STRUCT, 1); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:request: ", p), err)
+	}
+	if err := p.Request.Write(ctx, oprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Request), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 1:request: ", p), err)
+	}
+	return err
+}
+
+func (p *ApiServiceQueryParsingRulesArgs) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ApiServiceQueryParsingRulesArgs(%+v)", *p)
+}
+
+func (p *ApiServiceQueryParsingRulesArgs) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.ApiServiceQueryParsingRulesArgs",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*ApiServiceQueryParsingRulesArgs)(nil)
+
+// Attributes:
+//  - Success
+// 
+type ApiServiceQueryParsingRulesResult struct {
+	Success *Result_ `thrift:"success,0" db:"success" json:"success,omitempty"`
+}
+
+func NewApiServiceQueryParsingRulesResult() *ApiServiceQueryParsingRulesResult {
+	return &ApiServiceQueryParsingRulesResult{}
+}
+
+var ApiServiceQueryParsingRulesResult_Success_DEFAULT *Result_
+
+func (p *ApiServiceQueryParsingRulesResult) GetSuccess() *Result_ {
+	if !p.IsSetSuccess() {
+		return ApiServiceQueryParsingRulesResult_Success_DEFAULT
+	}
+	return p.Success
+}
+
+func (p *ApiServiceQueryParsingRulesResult) IsSetSuccess() bool {
+	return p.Success != nil
+}
+
+func (p *ApiServiceQueryParsingRulesResult) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 0:
+			if fieldTypeId == thrift.STRUCT {
+				if err := p.ReadField0(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceQueryParsingRulesResult) ReadField0(ctx context.Context, iprot thrift.TProtocol) error {
+	p.Success = &Result_{}
+	if err := p.Success.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Success), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceQueryParsingRulesResult) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "queryParsingRules_result"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField0(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ApiServiceQueryParsingRulesResult) writeField0(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if p.IsSetSuccess() {
+		if err := oprot.WriteFieldBegin(ctx, "success", thrift.STRUCT, 0); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field begin error 0:success: ", p), err)
+		}
+		if err := p.Success.Write(ctx, oprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Success), err)
+		}
+		if err := oprot.WriteFieldEnd(ctx); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field end error 0:success: ", p), err)
+		}
+	}
+	return err
+}
+
+func (p *ApiServiceQueryParsingRulesResult) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ApiServiceQueryParsingRulesResult(%+v)", *p)
+}
+
+func (p *ApiServiceQueryParsingRulesResult) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.ApiServiceQueryParsingRulesResult",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*ApiServiceQueryParsingRulesResult)(nil)
+
+// Attributes:
+//  - Request
+// 
+type ApiServiceCountParsingRulesArgs struct {
+	Request *ParsingRulesQueryRequest `thrift:"request,1" db:"request" json:"request"`
+}
+
+func NewApiServiceCountParsingRulesArgs() *ApiServiceCountParsingRulesArgs {
+	return &ApiServiceCountParsingRulesArgs{}
+}
+
+var ApiServiceCountParsingRulesArgs_Request_DEFAULT *ParsingRulesQueryRequest
+
+func (p *ApiServiceCountParsingRulesArgs) GetRequest() *ParsingRulesQueryRequest {
+	if !p.IsSetRequest() {
+		return ApiServiceCountParsingRulesArgs_Request_DEFAULT
+	}
+	return p.Request
+}
+
+func (p *ApiServiceCountParsingRulesArgs) IsSetRequest() bool {
+	return p.Request != nil
+}
+
+func (p *ApiServiceCountParsingRulesArgs) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 1:
+			if fieldTypeId == thrift.STRUCT {
+				if err := p.ReadField1(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceCountParsingRulesArgs) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	p.Request = &ParsingRulesQueryRequest{
+		PageNum: 1,
+		PageSize: 6,
+	}
+	if err := p.Request.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Request), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceCountParsingRulesArgs) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "countParsingRules_args"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField1(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ApiServiceCountParsingRulesArgs) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "request", thrift.STRUCT, 1); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:request: ", p), err)
+	}
+	if err := p.Request.Write(ctx, oprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Request), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 1:request: ", p), err)
+	}
+	return err
+}
+
+func (p *ApiServiceCountParsingRulesArgs) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ApiServiceCountParsingRulesArgs(%+v)", *p)
+}
+
+func (p *ApiServiceCountParsingRulesArgs) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.ApiServiceCountParsingRulesArgs",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*ApiServiceCountParsingRulesArgs)(nil)
+
+// Attributes:
+//  - Success
+// 
+type ApiServiceCountParsingRulesResult struct {
+	Success *Result_ `thrift:"success,0" db:"success" json:"success,omitempty"`
+}
+
+func NewApiServiceCountParsingRulesResult() *ApiServiceCountParsingRulesResult {
+	return &ApiServiceCountParsingRulesResult{}
+}
+
+var ApiServiceCountParsingRulesResult_Success_DEFAULT *Result_
+
+func (p *ApiServiceCountParsingRulesResult) GetSuccess() *Result_ {
+	if !p.IsSetSuccess() {
+		return ApiServiceCountParsingRulesResult_Success_DEFAULT
+	}
+	return p.Success
+}
+
+func (p *ApiServiceCountParsingRulesResult) IsSetSuccess() bool {
+	return p.Success != nil
+}
+
+func (p *ApiServiceCountParsingRulesResult) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 0:
+			if fieldTypeId == thrift.STRUCT {
+				if err := p.ReadField0(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceCountParsingRulesResult) ReadField0(ctx context.Context, iprot thrift.TProtocol) error {
+	p.Success = &Result_{}
+	if err := p.Success.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Success), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceCountParsingRulesResult) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "countParsingRules_result"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField0(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ApiServiceCountParsingRulesResult) writeField0(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if p.IsSetSuccess() {
+		if err := oprot.WriteFieldBegin(ctx, "success", thrift.STRUCT, 0); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field begin error 0:success: ", p), err)
+		}
+		if err := p.Success.Write(ctx, oprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Success), err)
+		}
+		if err := oprot.WriteFieldEnd(ctx); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field end error 0:success: ", p), err)
+		}
+	}
+	return err
+}
+
+func (p *ApiServiceCountParsingRulesResult) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ApiServiceCountParsingRulesResult(%+v)", *p)
+}
+
+func (p *ApiServiceCountParsingRulesResult) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.ApiServiceCountParsingRulesResult",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*ApiServiceCountParsingRulesResult)(nil)
+
+// Attributes:
+//  - CreateTime
+// 
+type ApiServiceGetParsingRuleArgs struct {
+	CreateTime int64 `thrift:"createTime,1" db:"createTime" json:"createTime"`
+}
+
+func NewApiServiceGetParsingRuleArgs() *ApiServiceGetParsingRuleArgs {
+	return &ApiServiceGetParsingRuleArgs{}
+}
+
+
+
+func (p *ApiServiceGetParsingRuleArgs) GetCreateTime() int64 {
+	return p.CreateTime
+}
+
+func (p *ApiServiceGetParsingRuleArgs) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 1:
+			if fieldTypeId == thrift.I64 {
+				if err := p.ReadField1(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceGetParsingRuleArgs) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadI64(ctx); err != nil {
+		return thrift.PrependError("error reading field 1: ", err)
+	} else {
+		p.CreateTime = v
+	}
+	return nil
+}
+
+func (p *ApiServiceGetParsingRuleArgs) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "getParsingRule_args"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField1(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ApiServiceGetParsingRuleArgs) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "createTime", thrift.I64, 1); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:createTime: ", p), err)
+	}
+	if err := oprot.WriteI64(ctx, int64(p.CreateTime)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.createTime (1) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 1:createTime: ", p), err)
+	}
+	return err
+}
+
+func (p *ApiServiceGetParsingRuleArgs) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ApiServiceGetParsingRuleArgs(%+v)", *p)
+}
+
+func (p *ApiServiceGetParsingRuleArgs) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.ApiServiceGetParsingRuleArgs",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*ApiServiceGetParsingRuleArgs)(nil)
+
+// Attributes:
+//  - Success
+// 
+type ApiServiceGetParsingRuleResult struct {
+	Success *Result_ `thrift:"success,0" db:"success" json:"success,omitempty"`
+}
+
+func NewApiServiceGetParsingRuleResult() *ApiServiceGetParsingRuleResult {
+	return &ApiServiceGetParsingRuleResult{}
+}
+
+var ApiServiceGetParsingRuleResult_Success_DEFAULT *Result_
+
+func (p *ApiServiceGetParsingRuleResult) GetSuccess() *Result_ {
+	if !p.IsSetSuccess() {
+		return ApiServiceGetParsingRuleResult_Success_DEFAULT
+	}
+	return p.Success
+}
+
+func (p *ApiServiceGetParsingRuleResult) IsSetSuccess() bool {
+	return p.Success != nil
+}
+
+func (p *ApiServiceGetParsingRuleResult) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 0:
+			if fieldTypeId == thrift.STRUCT {
+				if err := p.ReadField0(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceGetParsingRuleResult) ReadField0(ctx context.Context, iprot thrift.TProtocol) error {
+	p.Success = &Result_{}
+	if err := p.Success.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Success), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceGetParsingRuleResult) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "getParsingRule_result"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField0(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ApiServiceGetParsingRuleResult) writeField0(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if p.IsSetSuccess() {
+		if err := oprot.WriteFieldBegin(ctx, "success", thrift.STRUCT, 0); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field begin error 0:success: ", p), err)
+		}
+		if err := p.Success.Write(ctx, oprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Success), err)
+		}
+		if err := oprot.WriteFieldEnd(ctx); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field end error 0:success: ", p), err)
+		}
+	}
+	return err
+}
+
+func (p *ApiServiceGetParsingRuleResult) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ApiServiceGetParsingRuleResult(%+v)", *p)
+}
+
+func (p *ApiServiceGetParsingRuleResult) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.ApiServiceGetParsingRuleResult",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*ApiServiceGetParsingRuleResult)(nil)
+
+// Attributes:
+//  - CreateTime
+// 
+type ApiServiceDeleteParsingRuleArgs struct {
+	CreateTime int64 `thrift:"createTime,1" db:"createTime" json:"createTime"`
+}
+
+func NewApiServiceDeleteParsingRuleArgs() *ApiServiceDeleteParsingRuleArgs {
+	return &ApiServiceDeleteParsingRuleArgs{}
+}
+
+
+
+func (p *ApiServiceDeleteParsingRuleArgs) GetCreateTime() int64 {
+	return p.CreateTime
+}
+
+func (p *ApiServiceDeleteParsingRuleArgs) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 1:
+			if fieldTypeId == thrift.I64 {
+				if err := p.ReadField1(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceDeleteParsingRuleArgs) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadI64(ctx); err != nil {
+		return thrift.PrependError("error reading field 1: ", err)
+	} else {
+		p.CreateTime = v
+	}
+	return nil
+}
+
+func (p *ApiServiceDeleteParsingRuleArgs) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "deleteParsingRule_args"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField1(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ApiServiceDeleteParsingRuleArgs) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "createTime", thrift.I64, 1); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:createTime: ", p), err)
+	}
+	if err := oprot.WriteI64(ctx, int64(p.CreateTime)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.createTime (1) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 1:createTime: ", p), err)
+	}
+	return err
+}
+
+func (p *ApiServiceDeleteParsingRuleArgs) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ApiServiceDeleteParsingRuleArgs(%+v)", *p)
+}
+
+func (p *ApiServiceDeleteParsingRuleArgs) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.ApiServiceDeleteParsingRuleArgs",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*ApiServiceDeleteParsingRuleArgs)(nil)
+
+// Attributes:
+//  - Success
+// 
+type ApiServiceDeleteParsingRuleResult struct {
+	Success *Result_ `thrift:"success,0" db:"success" json:"success,omitempty"`
+}
+
+func NewApiServiceDeleteParsingRuleResult() *ApiServiceDeleteParsingRuleResult {
+	return &ApiServiceDeleteParsingRuleResult{}
+}
+
+var ApiServiceDeleteParsingRuleResult_Success_DEFAULT *Result_
+
+func (p *ApiServiceDeleteParsingRuleResult) GetSuccess() *Result_ {
+	if !p.IsSetSuccess() {
+		return ApiServiceDeleteParsingRuleResult_Success_DEFAULT
+	}
+	return p.Success
+}
+
+func (p *ApiServiceDeleteParsingRuleResult) IsSetSuccess() bool {
+	return p.Success != nil
+}
+
+func (p *ApiServiceDeleteParsingRuleResult) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 0:
+			if fieldTypeId == thrift.STRUCT {
+				if err := p.ReadField0(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceDeleteParsingRuleResult) ReadField0(ctx context.Context, iprot thrift.TProtocol) error {
+	p.Success = &Result_{}
+	if err := p.Success.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Success), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceDeleteParsingRuleResult) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "deleteParsingRule_result"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField0(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ApiServiceDeleteParsingRuleResult) writeField0(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if p.IsSetSuccess() {
+		if err := oprot.WriteFieldBegin(ctx, "success", thrift.STRUCT, 0); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field begin error 0:success: ", p), err)
+		}
+		if err := p.Success.Write(ctx, oprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Success), err)
+		}
+		if err := oprot.WriteFieldEnd(ctx); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field end error 0:success: ", p), err)
+		}
+	}
+	return err
+}
+
+func (p *ApiServiceDeleteParsingRuleResult) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ApiServiceDeleteParsingRuleResult(%+v)", *p)
+}
+
+func (p *ApiServiceDeleteParsingRuleResult) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.ApiServiceDeleteParsingRuleResult",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*ApiServiceDeleteParsingRuleResult)(nil)
+
+// Attributes:
+//  - RunTaskRequest
+// 
+type ApiServiceRunTaskArgs struct {
+	RunTaskRequest *RunTaskRequest `thrift:"runTaskRequest,1" db:"runTaskRequest" json:"runTaskRequest"`
+}
+
+func NewApiServiceRunTaskArgs() *ApiServiceRunTaskArgs {
+	return &ApiServiceRunTaskArgs{}
+}
+
+var ApiServiceRunTaskArgs_RunTaskRequest_DEFAULT *RunTaskRequest
+
+func (p *ApiServiceRunTaskArgs) GetRunTaskRequest() *RunTaskRequest {
+	if !p.IsSetRunTaskRequest() {
+		return ApiServiceRunTaskArgs_RunTaskRequest_DEFAULT
+	}
+	return p.RunTaskRequest
+}
+
+func (p *ApiServiceRunTaskArgs) IsSetRunTaskRequest() bool {
+	return p.RunTaskRequest != nil
+}
+
+func (p *ApiServiceRunTaskArgs) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 1:
+			if fieldTypeId == thrift.STRUCT {
+				if err := p.ReadField1(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceRunTaskArgs) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	p.RunTaskRequest = &RunTaskRequest{}
+	if err := p.RunTaskRequest.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.RunTaskRequest), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceRunTaskArgs) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "runTask_args"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField1(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ApiServiceRunTaskArgs) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "runTaskRequest", thrift.STRUCT, 1); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:runTaskRequest: ", p), err)
+	}
+	if err := p.RunTaskRequest.Write(ctx, oprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.RunTaskRequest), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 1:runTaskRequest: ", p), err)
+	}
+	return err
+}
+
+func (p *ApiServiceRunTaskArgs) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ApiServiceRunTaskArgs(%+v)", *p)
+}
+
+func (p *ApiServiceRunTaskArgs) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.ApiServiceRunTaskArgs",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*ApiServiceRunTaskArgs)(nil)
+
+// Attributes:
+//  - Success
+// 
+type ApiServiceRunTaskResult struct {
+	Success *Result_ `thrift:"success,0" db:"success" json:"success,omitempty"`
+}
+
+func NewApiServiceRunTaskResult() *ApiServiceRunTaskResult {
+	return &ApiServiceRunTaskResult{}
+}
+
+var ApiServiceRunTaskResult_Success_DEFAULT *Result_
+
+func (p *ApiServiceRunTaskResult) GetSuccess() *Result_ {
+	if !p.IsSetSuccess() {
+		return ApiServiceRunTaskResult_Success_DEFAULT
+	}
+	return p.Success
+}
+
+func (p *ApiServiceRunTaskResult) IsSetSuccess() bool {
+	return p.Success != nil
+}
+
+func (p *ApiServiceRunTaskResult) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 0:
+			if fieldTypeId == thrift.STRUCT {
+				if err := p.ReadField0(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceRunTaskResult) ReadField0(ctx context.Context, iprot thrift.TProtocol) error {
+	p.Success = &Result_{}
+	if err := p.Success.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Success), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceRunTaskResult) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "runTask_result"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField0(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ApiServiceRunTaskResult) writeField0(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if p.IsSetSuccess() {
+		if err := oprot.WriteFieldBegin(ctx, "success", thrift.STRUCT, 0); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field begin error 0:success: ", p), err)
+		}
+		if err := p.Success.Write(ctx, oprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Success), err)
+		}
+		if err := oprot.WriteFieldEnd(ctx); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field end error 0:success: ", p), err)
+		}
+	}
+	return err
+}
+
+func (p *ApiServiceRunTaskResult) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ApiServiceRunTaskResult(%+v)", *p)
+}
+
+func (p *ApiServiceRunTaskResult) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.ApiServiceRunTaskResult",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*ApiServiceRunTaskResult)(nil)
+
+// Attributes:
+//  - Request
+// 
+type ApiServiceValidateTaskUniquenessArgs struct {
+	Request *RunTaskRequest `thrift:"request,1" db:"request" json:"request"`
+}
+
+func NewApiServiceValidateTaskUniquenessArgs() *ApiServiceValidateTaskUniquenessArgs {
+	return &ApiServiceValidateTaskUniquenessArgs{}
+}
+
+var ApiServiceValidateTaskUniquenessArgs_Request_DEFAULT *RunTaskRequest
+
+func (p *ApiServiceValidateTaskUniquenessArgs) GetRequest() *RunTaskRequest {
+	if !p.IsSetRequest() {
+		return ApiServiceValidateTaskUniquenessArgs_Request_DEFAULT
+	}
+	return p.Request
+}
+
+func (p *ApiServiceValidateTaskUniquenessArgs) IsSetRequest() bool {
+	return p.Request != nil
+}
+
+func (p *ApiServiceValidateTaskUniquenessArgs) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 1:
+			if fieldTypeId == thrift.STRUCT {
+				if err := p.ReadField1(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceValidateTaskUniquenessArgs) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	p.Request = &RunTaskRequest{}
+	if err := p.Request.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Request), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceValidateTaskUniquenessArgs) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "validateTaskUniqueness_args"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField1(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ApiServiceValidateTaskUniquenessArgs) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "request", thrift.STRUCT, 1); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:request: ", p), err)
+	}
+	if err := p.Request.Write(ctx, oprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Request), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 1:request: ", p), err)
+	}
+	return err
+}
+
+func (p *ApiServiceValidateTaskUniquenessArgs) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ApiServiceValidateTaskUniquenessArgs(%+v)", *p)
+}
+
+func (p *ApiServiceValidateTaskUniquenessArgs) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.ApiServiceValidateTaskUniquenessArgs",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*ApiServiceValidateTaskUniquenessArgs)(nil)
+
+// Attributes:
+//  - Success
+// 
+type ApiServiceValidateTaskUniquenessResult struct {
+	Success *Result_ `thrift:"success,0" db:"success" json:"success,omitempty"`
+}
+
+func NewApiServiceValidateTaskUniquenessResult() *ApiServiceValidateTaskUniquenessResult {
+	return &ApiServiceValidateTaskUniquenessResult{}
+}
+
+var ApiServiceValidateTaskUniquenessResult_Success_DEFAULT *Result_
+
+func (p *ApiServiceValidateTaskUniquenessResult) GetSuccess() *Result_ {
+	if !p.IsSetSuccess() {
+		return ApiServiceValidateTaskUniquenessResult_Success_DEFAULT
+	}
+	return p.Success
+}
+
+func (p *ApiServiceValidateTaskUniquenessResult) IsSetSuccess() bool {
+	return p.Success != nil
+}
+
+func (p *ApiServiceValidateTaskUniquenessResult) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 0:
+			if fieldTypeId == thrift.STRUCT {
+				if err := p.ReadField0(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceValidateTaskUniquenessResult) ReadField0(ctx context.Context, iprot thrift.TProtocol) error {
+	p.Success = &Result_{}
+	if err := p.Success.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Success), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceValidateTaskUniquenessResult) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "validateTaskUniqueness_result"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField0(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ApiServiceValidateTaskUniquenessResult) writeField0(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if p.IsSetSuccess() {
+		if err := oprot.WriteFieldBegin(ctx, "success", thrift.STRUCT, 0); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field begin error 0:success: ", p), err)
+		}
+		if err := p.Success.Write(ctx, oprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Success), err)
+		}
+		if err := oprot.WriteFieldEnd(ctx); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field end error 0:success: ", p), err)
+		}
+	}
+	return err
+}
+
+func (p *ApiServiceValidateTaskUniquenessResult) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ApiServiceValidateTaskUniquenessResult(%+v)", *p)
+}
+
+func (p *ApiServiceValidateTaskUniquenessResult) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.ApiServiceValidateTaskUniquenessResult",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*ApiServiceValidateTaskUniquenessResult)(nil)
+
+// Attributes:
+//  - Timestamp
+// 
+type ApiServiceStopTaskArgs struct {
+	Timestamp int64 `thrift:"timestamp,1" db:"timestamp" json:"timestamp"`
+}
+
+func NewApiServiceStopTaskArgs() *ApiServiceStopTaskArgs {
+	return &ApiServiceStopTaskArgs{}
+}
+
+
+
+func (p *ApiServiceStopTaskArgs) GetTimestamp() int64 {
+	return p.Timestamp
+}
+
+func (p *ApiServiceStopTaskArgs) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 1:
+			if fieldTypeId == thrift.I64 {
+				if err := p.ReadField1(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceStopTaskArgs) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadI64(ctx); err != nil {
+		return thrift.PrependError("error reading field 1: ", err)
+	} else {
+		p.Timestamp = v
+	}
+	return nil
+}
+
+func (p *ApiServiceStopTaskArgs) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "stopTask_args"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField1(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ApiServiceStopTaskArgs) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "timestamp", thrift.I64, 1); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:timestamp: ", p), err)
+	}
+	if err := oprot.WriteI64(ctx, int64(p.Timestamp)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.timestamp (1) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 1:timestamp: ", p), err)
+	}
+	return err
+}
+
+func (p *ApiServiceStopTaskArgs) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ApiServiceStopTaskArgs(%+v)", *p)
+}
+
+func (p *ApiServiceStopTaskArgs) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.ApiServiceStopTaskArgs",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*ApiServiceStopTaskArgs)(nil)
+
+// Attributes:
+//  - Success
+// 
+type ApiServiceStopTaskResult struct {
+	Success *Result_ `thrift:"success,0" db:"success" json:"success,omitempty"`
+}
+
+func NewApiServiceStopTaskResult() *ApiServiceStopTaskResult {
+	return &ApiServiceStopTaskResult{}
+}
+
+var ApiServiceStopTaskResult_Success_DEFAULT *Result_
+
+func (p *ApiServiceStopTaskResult) GetSuccess() *Result_ {
+	if !p.IsSetSuccess() {
+		return ApiServiceStopTaskResult_Success_DEFAULT
+	}
+	return p.Success
+}
+
+func (p *ApiServiceStopTaskResult) IsSetSuccess() bool {
+	return p.Success != nil
+}
+
+func (p *ApiServiceStopTaskResult) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 0:
+			if fieldTypeId == thrift.STRUCT {
+				if err := p.ReadField0(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceStopTaskResult) ReadField0(ctx context.Context, iprot thrift.TProtocol) error {
+	p.Success = &Result_{}
+	if err := p.Success.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Success), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceStopTaskResult) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "stopTask_result"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField0(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ApiServiceStopTaskResult) writeField0(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if p.IsSetSuccess() {
+		if err := oprot.WriteFieldBegin(ctx, "success", thrift.STRUCT, 0); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field begin error 0:success: ", p), err)
+		}
+		if err := p.Success.Write(ctx, oprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Success), err)
+		}
+		if err := oprot.WriteFieldEnd(ctx); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field end error 0:success: ", p), err)
+		}
+	}
+	return err
+}
+
+func (p *ApiServiceStopTaskResult) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ApiServiceStopTaskResult(%+v)", *p)
+}
+
+func (p *ApiServiceStopTaskResult) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.ApiServiceStopTaskResult",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*ApiServiceStopTaskResult)(nil)
+
+// Attributes:
+//  - Timestamp
+// 
+type ApiServiceGetTaskLogArgs struct {
+	Timestamp int64 `thrift:"timestamp,1" db:"timestamp" json:"timestamp"`
+}
+
+func NewApiServiceGetTaskLogArgs() *ApiServiceGetTaskLogArgs {
+	return &ApiServiceGetTaskLogArgs{}
+}
+
+
+
+func (p *ApiServiceGetTaskLogArgs) GetTimestamp() int64 {
+	return p.Timestamp
+}
+
+func (p *ApiServiceGetTaskLogArgs) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 1:
+			if fieldTypeId == thrift.I64 {
+				if err := p.ReadField1(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceGetTaskLogArgs) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadI64(ctx); err != nil {
+		return thrift.PrependError("error reading field 1: ", err)
+	} else {
+		p.Timestamp = v
+	}
+	return nil
+}
+
+func (p *ApiServiceGetTaskLogArgs) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "getTaskLog_args"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField1(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ApiServiceGetTaskLogArgs) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "timestamp", thrift.I64, 1); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:timestamp: ", p), err)
+	}
+	if err := oprot.WriteI64(ctx, int64(p.Timestamp)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.timestamp (1) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 1:timestamp: ", p), err)
+	}
+	return err
+}
+
+func (p *ApiServiceGetTaskLogArgs) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ApiServiceGetTaskLogArgs(%+v)", *p)
+}
+
+func (p *ApiServiceGetTaskLogArgs) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.ApiServiceGetTaskLogArgs",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*ApiServiceGetTaskLogArgs)(nil)
+
+// Attributes:
+//  - Success
+// 
+type ApiServiceGetTaskLogResult struct {
+	Success *Result_ `thrift:"success,0" db:"success" json:"success,omitempty"`
+}
+
+func NewApiServiceGetTaskLogResult() *ApiServiceGetTaskLogResult {
+	return &ApiServiceGetTaskLogResult{}
+}
+
+var ApiServiceGetTaskLogResult_Success_DEFAULT *Result_
+
+func (p *ApiServiceGetTaskLogResult) GetSuccess() *Result_ {
+	if !p.IsSetSuccess() {
+		return ApiServiceGetTaskLogResult_Success_DEFAULT
+	}
+	return p.Success
+}
+
+func (p *ApiServiceGetTaskLogResult) IsSetSuccess() bool {
+	return p.Success != nil
+}
+
+func (p *ApiServiceGetTaskLogResult) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 0:
+			if fieldTypeId == thrift.STRUCT {
+				if err := p.ReadField0(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceGetTaskLogResult) ReadField0(ctx context.Context, iprot thrift.TProtocol) error {
+	p.Success = &Result_{}
+	if err := p.Success.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Success), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceGetTaskLogResult) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "getTaskLog_result"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField0(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ApiServiceGetTaskLogResult) writeField0(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if p.IsSetSuccess() {
+		if err := oprot.WriteFieldBegin(ctx, "success", thrift.STRUCT, 0); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field begin error 0:success: ", p), err)
+		}
+		if err := p.Success.Write(ctx, oprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Success), err)
+		}
+		if err := oprot.WriteFieldEnd(ctx); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field end error 0:success: ", p), err)
+		}
+	}
+	return err
+}
+
+func (p *ApiServiceGetTaskLogResult) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ApiServiceGetTaskLogResult(%+v)", *p)
+}
+
+func (p *ApiServiceGetTaskLogResult) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.ApiServiceGetTaskLogResult",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*ApiServiceGetTaskLogResult)(nil)
+
+// Attributes:
+//  - Request
+// 
+type ApiServiceQueryTasksArgs struct {
+	Request *RunTaskQueryRequest `thrift:"request,1" db:"request" json:"request"`
+}
+
+func NewApiServiceQueryTasksArgs() *ApiServiceQueryTasksArgs {
+	return &ApiServiceQueryTasksArgs{}
+}
+
+var ApiServiceQueryTasksArgs_Request_DEFAULT *RunTaskQueryRequest
+
+func (p *ApiServiceQueryTasksArgs) GetRequest() *RunTaskQueryRequest {
+	if !p.IsSetRequest() {
+		return ApiServiceQueryTasksArgs_Request_DEFAULT
+	}
+	return p.Request
+}
+
+func (p *ApiServiceQueryTasksArgs) IsSetRequest() bool {
+	return p.Request != nil
+}
+
+func (p *ApiServiceQueryTasksArgs) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 1:
+			if fieldTypeId == thrift.STRUCT {
+				if err := p.ReadField1(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceQueryTasksArgs) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	p.Request = &RunTaskQueryRequest{
+		PageNum: 1,
+		PageSize: 10,
+	}
+	if err := p.Request.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Request), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceQueryTasksArgs) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "queryTasks_args"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField1(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ApiServiceQueryTasksArgs) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "request", thrift.STRUCT, 1); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:request: ", p), err)
+	}
+	if err := p.Request.Write(ctx, oprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Request), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 1:request: ", p), err)
+	}
+	return err
+}
+
+func (p *ApiServiceQueryTasksArgs) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ApiServiceQueryTasksArgs(%+v)", *p)
+}
+
+func (p *ApiServiceQueryTasksArgs) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.ApiServiceQueryTasksArgs",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*ApiServiceQueryTasksArgs)(nil)
+
+// Attributes:
+//  - Success
+// 
+type ApiServiceQueryTasksResult struct {
+	Success *Result_ `thrift:"success,0" db:"success" json:"success,omitempty"`
+}
+
+func NewApiServiceQueryTasksResult() *ApiServiceQueryTasksResult {
+	return &ApiServiceQueryTasksResult{}
+}
+
+var ApiServiceQueryTasksResult_Success_DEFAULT *Result_
+
+func (p *ApiServiceQueryTasksResult) GetSuccess() *Result_ {
+	if !p.IsSetSuccess() {
+		return ApiServiceQueryTasksResult_Success_DEFAULT
+	}
+	return p.Success
+}
+
+func (p *ApiServiceQueryTasksResult) IsSetSuccess() bool {
+	return p.Success != nil
+}
+
+func (p *ApiServiceQueryTasksResult) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 0:
+			if fieldTypeId == thrift.STRUCT {
+				if err := p.ReadField0(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceQueryTasksResult) ReadField0(ctx context.Context, iprot thrift.TProtocol) error {
+	p.Success = &Result_{}
+	if err := p.Success.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Success), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceQueryTasksResult) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "queryTasks_result"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField0(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ApiServiceQueryTasksResult) writeField0(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if p.IsSetSuccess() {
+		if err := oprot.WriteFieldBegin(ctx, "success", thrift.STRUCT, 0); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field begin error 0:success: ", p), err)
+		}
+		if err := p.Success.Write(ctx, oprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Success), err)
+		}
+		if err := oprot.WriteFieldEnd(ctx); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field end error 0:success: ", p), err)
+		}
+	}
+	return err
+}
+
+func (p *ApiServiceQueryTasksResult) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ApiServiceQueryTasksResult(%+v)", *p)
+}
+
+func (p *ApiServiceQueryTasksResult) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.ApiServiceQueryTasksResult",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*ApiServiceQueryTasksResult)(nil)
+
+// Attributes:
+//  - Request
+// 
+type ApiServiceCountTasksArgs struct {
+	Request *RunTaskQueryRequest `thrift:"request,1" db:"request" json:"request"`
+}
+
+func NewApiServiceCountTasksArgs() *ApiServiceCountTasksArgs {
+	return &ApiServiceCountTasksArgs{}
+}
+
+var ApiServiceCountTasksArgs_Request_DEFAULT *RunTaskQueryRequest
+
+func (p *ApiServiceCountTasksArgs) GetRequest() *RunTaskQueryRequest {
+	if !p.IsSetRequest() {
+		return ApiServiceCountTasksArgs_Request_DEFAULT
+	}
+	return p.Request
+}
+
+func (p *ApiServiceCountTasksArgs) IsSetRequest() bool {
+	return p.Request != nil
+}
+
+func (p *ApiServiceCountTasksArgs) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 1:
+			if fieldTypeId == thrift.STRUCT {
+				if err := p.ReadField1(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceCountTasksArgs) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	p.Request = &RunTaskQueryRequest{
+		PageNum: 1,
+		PageSize: 10,
+	}
+	if err := p.Request.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Request), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceCountTasksArgs) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "countTasks_args"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField1(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ApiServiceCountTasksArgs) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "request", thrift.STRUCT, 1); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:request: ", p), err)
+	}
+	if err := p.Request.Write(ctx, oprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Request), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 1:request: ", p), err)
+	}
+	return err
+}
+
+func (p *ApiServiceCountTasksArgs) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ApiServiceCountTasksArgs(%+v)", *p)
+}
+
+func (p *ApiServiceCountTasksArgs) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.ApiServiceCountTasksArgs",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*ApiServiceCountTasksArgs)(nil)
+
+// Attributes:
+//  - Success
+// 
+type ApiServiceCountTasksResult struct {
+	Success *Result_ `thrift:"success,0" db:"success" json:"success,omitempty"`
+}
+
+func NewApiServiceCountTasksResult() *ApiServiceCountTasksResult {
+	return &ApiServiceCountTasksResult{}
+}
+
+var ApiServiceCountTasksResult_Success_DEFAULT *Result_
+
+func (p *ApiServiceCountTasksResult) GetSuccess() *Result_ {
+	if !p.IsSetSuccess() {
+		return ApiServiceCountTasksResult_Success_DEFAULT
+	}
+	return p.Success
+}
+
+func (p *ApiServiceCountTasksResult) IsSetSuccess() bool {
+	return p.Success != nil
+}
+
+func (p *ApiServiceCountTasksResult) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 0:
+			if fieldTypeId == thrift.STRUCT {
+				if err := p.ReadField0(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceCountTasksResult) ReadField0(ctx context.Context, iprot thrift.TProtocol) error {
+	p.Success = &Result_{}
+	if err := p.Success.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Success), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceCountTasksResult) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "countTasks_result"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField0(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ApiServiceCountTasksResult) writeField0(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if p.IsSetSuccess() {
+		if err := oprot.WriteFieldBegin(ctx, "success", thrift.STRUCT, 0); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field begin error 0:success: ", p), err)
+		}
+		if err := p.Success.Write(ctx, oprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Success), err)
+		}
+		if err := oprot.WriteFieldEnd(ctx); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field end error 0:success: ", p), err)
+		}
+	}
+	return err
+}
+
+func (p *ApiServiceCountTasksResult) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ApiServiceCountTasksResult(%+v)", *p)
+}
+
+func (p *ApiServiceCountTasksResult) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.ApiServiceCountTasksResult",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*ApiServiceCountTasksResult)(nil)
+
+// Attributes:
+//  - Timestamp
+// 
+type ApiServiceGetTaskArgs struct {
+	Timestamp int64 `thrift:"timestamp,1" db:"timestamp" json:"timestamp"`
+}
+
+func NewApiServiceGetTaskArgs() *ApiServiceGetTaskArgs {
+	return &ApiServiceGetTaskArgs{}
+}
+
+
+
+func (p *ApiServiceGetTaskArgs) GetTimestamp() int64 {
+	return p.Timestamp
+}
+
+func (p *ApiServiceGetTaskArgs) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 1:
+			if fieldTypeId == thrift.I64 {
+				if err := p.ReadField1(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceGetTaskArgs) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadI64(ctx); err != nil {
+		return thrift.PrependError("error reading field 1: ", err)
+	} else {
+		p.Timestamp = v
+	}
+	return nil
+}
+
+func (p *ApiServiceGetTaskArgs) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "getTask_args"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField1(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ApiServiceGetTaskArgs) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "timestamp", thrift.I64, 1); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:timestamp: ", p), err)
+	}
+	if err := oprot.WriteI64(ctx, int64(p.Timestamp)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.timestamp (1) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 1:timestamp: ", p), err)
+	}
+	return err
+}
+
+func (p *ApiServiceGetTaskArgs) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ApiServiceGetTaskArgs(%+v)", *p)
+}
+
+func (p *ApiServiceGetTaskArgs) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.ApiServiceGetTaskArgs",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*ApiServiceGetTaskArgs)(nil)
+
+// Attributes:
+//  - Success
+// 
+type ApiServiceGetTaskResult struct {
+	Success *Result_ `thrift:"success,0" db:"success" json:"success,omitempty"`
+}
+
+func NewApiServiceGetTaskResult() *ApiServiceGetTaskResult {
+	return &ApiServiceGetTaskResult{}
+}
+
+var ApiServiceGetTaskResult_Success_DEFAULT *Result_
+
+func (p *ApiServiceGetTaskResult) GetSuccess() *Result_ {
+	if !p.IsSetSuccess() {
+		return ApiServiceGetTaskResult_Success_DEFAULT
+	}
+	return p.Success
+}
+
+func (p *ApiServiceGetTaskResult) IsSetSuccess() bool {
+	return p.Success != nil
+}
+
+func (p *ApiServiceGetTaskResult) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 0:
+			if fieldTypeId == thrift.STRUCT {
+				if err := p.ReadField0(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceGetTaskResult) ReadField0(ctx context.Context, iprot thrift.TProtocol) error {
+	p.Success = &Result_{}
+	if err := p.Success.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Success), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceGetTaskResult) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "getTask_result"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField0(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ApiServiceGetTaskResult) writeField0(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if p.IsSetSuccess() {
+		if err := oprot.WriteFieldBegin(ctx, "success", thrift.STRUCT, 0); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field begin error 0:success: ", p), err)
+		}
+		if err := p.Success.Write(ctx, oprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Success), err)
+		}
+		if err := oprot.WriteFieldEnd(ctx); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field end error 0:success: ", p), err)
+		}
+	}
+	return err
+}
+
+func (p *ApiServiceGetTaskResult) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ApiServiceGetTaskResult(%+v)", *p)
+}
+
+func (p *ApiServiceGetTaskResult) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.ApiServiceGetTaskResult",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*ApiServiceGetTaskResult)(nil)
+
+// Attributes:
+//  - Timestamp
+// 
+type ApiServiceDeleteTaskArgs struct {
+	Timestamp int64 `thrift:"timestamp,1" db:"timestamp" json:"timestamp"`
+}
+
+func NewApiServiceDeleteTaskArgs() *ApiServiceDeleteTaskArgs {
+	return &ApiServiceDeleteTaskArgs{}
+}
+
+
+
+func (p *ApiServiceDeleteTaskArgs) GetTimestamp() int64 {
+	return p.Timestamp
+}
+
+func (p *ApiServiceDeleteTaskArgs) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 1:
+			if fieldTypeId == thrift.I64 {
+				if err := p.ReadField1(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceDeleteTaskArgs) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadI64(ctx); err != nil {
+		return thrift.PrependError("error reading field 1: ", err)
+	} else {
+		p.Timestamp = v
+	}
+	return nil
+}
+
+func (p *ApiServiceDeleteTaskArgs) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "deleteTask_args"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField1(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ApiServiceDeleteTaskArgs) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "timestamp", thrift.I64, 1); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:timestamp: ", p), err)
+	}
+	if err := oprot.WriteI64(ctx, int64(p.Timestamp)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.timestamp (1) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 1:timestamp: ", p), err)
+	}
+	return err
+}
+
+func (p *ApiServiceDeleteTaskArgs) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ApiServiceDeleteTaskArgs(%+v)", *p)
+}
+
+func (p *ApiServiceDeleteTaskArgs) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.ApiServiceDeleteTaskArgs",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*ApiServiceDeleteTaskArgs)(nil)
+
+// Attributes:
+//  - Success
+// 
+type ApiServiceDeleteTaskResult struct {
+	Success *Result_ `thrift:"success,0" db:"success" json:"success,omitempty"`
+}
+
+func NewApiServiceDeleteTaskResult() *ApiServiceDeleteTaskResult {
+	return &ApiServiceDeleteTaskResult{}
+}
+
+var ApiServiceDeleteTaskResult_Success_DEFAULT *Result_
+
+func (p *ApiServiceDeleteTaskResult) GetSuccess() *Result_ {
+	if !p.IsSetSuccess() {
+		return ApiServiceDeleteTaskResult_Success_DEFAULT
+	}
+	return p.Success
+}
+
+func (p *ApiServiceDeleteTaskResult) IsSetSuccess() bool {
+	return p.Success != nil
+}
+
+func (p *ApiServiceDeleteTaskResult) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 0:
+			if fieldTypeId == thrift.STRUCT {
+				if err := p.ReadField0(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceDeleteTaskResult) ReadField0(ctx context.Context, iprot thrift.TProtocol) error {
+	p.Success = &Result_{}
+	if err := p.Success.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Success), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceDeleteTaskResult) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "deleteTask_result"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField0(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ApiServiceDeleteTaskResult) writeField0(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if p.IsSetSuccess() {
+		if err := oprot.WriteFieldBegin(ctx, "success", thrift.STRUCT, 0); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field begin error 0:success: ", p), err)
+		}
+		if err := p.Success.Write(ctx, oprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Success), err)
+		}
+		if err := oprot.WriteFieldEnd(ctx); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field end error 0:success: ", p), err)
+		}
+	}
+	return err
+}
+
+func (p *ApiServiceDeleteTaskResult) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ApiServiceDeleteTaskResult(%+v)", *p)
+}
+
+func (p *ApiServiceDeleteTaskResult) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.ApiServiceDeleteTaskResult",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*ApiServiceDeleteTaskResult)(nil)
+
+// Attributes:
+//  - File
+// 
+type ApiServiceUploadReportArgs struct {
+	File []byte `thrift:"file,1" db:"file" json:"file"`
+}
+
+func NewApiServiceUploadReportArgs() *ApiServiceUploadReportArgs {
+	return &ApiServiceUploadReportArgs{}
+}
+
+
+
+func (p *ApiServiceUploadReportArgs) GetFile() []byte {
+	return p.File
+}
+
+func (p *ApiServiceUploadReportArgs) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 1:
+			if fieldTypeId == thrift.STRING {
+				if err := p.ReadField1(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceUploadReportArgs) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadBinary(ctx); err != nil {
+		return thrift.PrependError("error reading field 1: ", err)
+	} else {
+		p.File = v
+	}
+	return nil
+}
+
+func (p *ApiServiceUploadReportArgs) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "uploadReport_args"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField1(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ApiServiceUploadReportArgs) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "file", thrift.STRING, 1); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:file: ", p), err)
+	}
+	if err := oprot.WriteBinary(ctx, p.File); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.file (1) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 1:file: ", p), err)
+	}
+	return err
+}
+
+func (p *ApiServiceUploadReportArgs) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ApiServiceUploadReportArgs(%+v)", *p)
+}
+
+func (p *ApiServiceUploadReportArgs) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.ApiServiceUploadReportArgs",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*ApiServiceUploadReportArgs)(nil)
+
+// Attributes:
+//  - Success
+// 
+type ApiServiceUploadReportResult struct {
+	Success *Result_ `thrift:"success,0" db:"success" json:"success,omitempty"`
+}
+
+func NewApiServiceUploadReportResult() *ApiServiceUploadReportResult {
+	return &ApiServiceUploadReportResult{}
+}
+
+var ApiServiceUploadReportResult_Success_DEFAULT *Result_
+
+func (p *ApiServiceUploadReportResult) GetSuccess() *Result_ {
+	if !p.IsSetSuccess() {
+		return ApiServiceUploadReportResult_Success_DEFAULT
+	}
+	return p.Success
+}
+
+func (p *ApiServiceUploadReportResult) IsSetSuccess() bool {
+	return p.Success != nil
+}
+
+func (p *ApiServiceUploadReportResult) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 0:
+			if fieldTypeId == thrift.STRUCT {
+				if err := p.ReadField0(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceUploadReportResult) ReadField0(ctx context.Context, iprot thrift.TProtocol) error {
+	p.Success = &Result_{}
+	if err := p.Success.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Success), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceUploadReportResult) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "uploadReport_result"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField0(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ApiServiceUploadReportResult) writeField0(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if p.IsSetSuccess() {
+		if err := oprot.WriteFieldBegin(ctx, "success", thrift.STRUCT, 0); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field begin error 0:success: ", p), err)
+		}
+		if err := p.Success.Write(ctx, oprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Success), err)
+		}
+		if err := oprot.WriteFieldEnd(ctx); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field end error 0:success: ", p), err)
+		}
+	}
+	return err
+}
+
+func (p *ApiServiceUploadReportResult) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ApiServiceUploadReportResult(%+v)", *p)
+}
+
+func (p *ApiServiceUploadReportResult) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.ApiServiceUploadReportResult",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*ApiServiceUploadReportResult)(nil)
+
+// Attributes:
+//  - Timestamp
+// 
+type ApiServicePackageDownloadArgs struct {
+	Timestamp int64 `thrift:"timestamp,1" db:"timestamp" json:"timestamp"`
+}
+
+func NewApiServicePackageDownloadArgs() *ApiServicePackageDownloadArgs {
+	return &ApiServicePackageDownloadArgs{}
+}
+
+
+
+func (p *ApiServicePackageDownloadArgs) GetTimestamp() int64 {
+	return p.Timestamp
+}
+
+func (p *ApiServicePackageDownloadArgs) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 1:
+			if fieldTypeId == thrift.I64 {
+				if err := p.ReadField1(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ApiServicePackageDownloadArgs) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadI64(ctx); err != nil {
+		return thrift.PrependError("error reading field 1: ", err)
+	} else {
+		p.Timestamp = v
+	}
+	return nil
+}
+
+func (p *ApiServicePackageDownloadArgs) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "packageDownload_args"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField1(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ApiServicePackageDownloadArgs) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "timestamp", thrift.I64, 1); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:timestamp: ", p), err)
+	}
+	if err := oprot.WriteI64(ctx, int64(p.Timestamp)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.timestamp (1) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 1:timestamp: ", p), err)
+	}
+	return err
+}
+
+func (p *ApiServicePackageDownloadArgs) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ApiServicePackageDownloadArgs(%+v)", *p)
+}
+
+func (p *ApiServicePackageDownloadArgs) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.ApiServicePackageDownloadArgs",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*ApiServicePackageDownloadArgs)(nil)
+
+// Attributes:
+//  - Success
+// 
+type ApiServicePackageDownloadResult struct {
+	Success *Result_ `thrift:"success,0" db:"success" json:"success,omitempty"`
+}
+
+func NewApiServicePackageDownloadResult() *ApiServicePackageDownloadResult {
+	return &ApiServicePackageDownloadResult{}
+}
+
+var ApiServicePackageDownloadResult_Success_DEFAULT *Result_
+
+func (p *ApiServicePackageDownloadResult) GetSuccess() *Result_ {
+	if !p.IsSetSuccess() {
+		return ApiServicePackageDownloadResult_Success_DEFAULT
+	}
+	return p.Success
+}
+
+func (p *ApiServicePackageDownloadResult) IsSetSuccess() bool {
+	return p.Success != nil
+}
+
+func (p *ApiServicePackageDownloadResult) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 0:
+			if fieldTypeId == thrift.STRUCT {
+				if err := p.ReadField0(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ApiServicePackageDownloadResult) ReadField0(ctx context.Context, iprot thrift.TProtocol) error {
+	p.Success = &Result_{}
+	if err := p.Success.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Success), err)
+	}
+	return nil
+}
+
+func (p *ApiServicePackageDownloadResult) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "packageDownload_result"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField0(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ApiServicePackageDownloadResult) writeField0(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if p.IsSetSuccess() {
+		if err := oprot.WriteFieldBegin(ctx, "success", thrift.STRUCT, 0); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field begin error 0:success: ", p), err)
+		}
+		if err := p.Success.Write(ctx, oprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Success), err)
+		}
+		if err := oprot.WriteFieldEnd(ctx); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field end error 0:success: ", p), err)
+		}
+	}
+	return err
+}
+
+func (p *ApiServicePackageDownloadResult) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ApiServicePackageDownloadResult(%+v)", *p)
+}
+
+func (p *ApiServicePackageDownloadResult) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.ApiServicePackageDownloadResult",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*ApiServicePackageDownloadResult)(nil)
+
+// Attributes:
 //  - JsonBody
 // 
 type ApiServiceRegisterDataSourceArgs struct {
@@ -8268,6 +16983,529 @@ func (p *ApiServiceQueryDataResult) LogValue() slog.Value {
 var _ slog.LogValuer = (*ApiServiceQueryDataResult)(nil)
 
 // Attributes:
+//  - Config
+//  - File
+// 
+type ApiServiceImportDataArgs struct {
+	Config string `thrift:"config,1" db:"config" json:"config"`
+	File []byte `thrift:"file,2" db:"file" json:"file"`
+}
+
+func NewApiServiceImportDataArgs() *ApiServiceImportDataArgs {
+	return &ApiServiceImportDataArgs{}
+}
+
+
+
+func (p *ApiServiceImportDataArgs) GetConfig() string {
+	return p.Config
+}
+
+
+
+func (p *ApiServiceImportDataArgs) GetFile() []byte {
+	return p.File
+}
+
+func (p *ApiServiceImportDataArgs) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 1:
+			if fieldTypeId == thrift.STRING {
+				if err := p.ReadField1(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 2:
+			if fieldTypeId == thrift.STRING {
+				if err := p.ReadField2(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceImportDataArgs) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadString(ctx); err != nil {
+		return thrift.PrependError("error reading field 1: ", err)
+	} else {
+		p.Config = v
+	}
+	return nil
+}
+
+func (p *ApiServiceImportDataArgs) ReadField2(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadBinary(ctx); err != nil {
+		return thrift.PrependError("error reading field 2: ", err)
+	} else {
+		p.File = v
+	}
+	return nil
+}
+
+func (p *ApiServiceImportDataArgs) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "importData_args"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField1(ctx, oprot); err != nil { return err }
+		if err := p.writeField2(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ApiServiceImportDataArgs) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "config", thrift.STRING, 1); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:config: ", p), err)
+	}
+	if err := oprot.WriteString(ctx, string(p.Config)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.config (1) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 1:config: ", p), err)
+	}
+	return err
+}
+
+func (p *ApiServiceImportDataArgs) writeField2(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "file", thrift.STRING, 2); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 2:file: ", p), err)
+	}
+	if err := oprot.WriteBinary(ctx, p.File); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.file (2) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 2:file: ", p), err)
+	}
+	return err
+}
+
+func (p *ApiServiceImportDataArgs) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ApiServiceImportDataArgs(%+v)", *p)
+}
+
+func (p *ApiServiceImportDataArgs) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.ApiServiceImportDataArgs",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*ApiServiceImportDataArgs)(nil)
+
+// Attributes:
+//  - Success
+// 
+type ApiServiceImportDataResult struct {
+	Success *Result_ `thrift:"success,0" db:"success" json:"success,omitempty"`
+}
+
+func NewApiServiceImportDataResult() *ApiServiceImportDataResult {
+	return &ApiServiceImportDataResult{}
+}
+
+var ApiServiceImportDataResult_Success_DEFAULT *Result_
+
+func (p *ApiServiceImportDataResult) GetSuccess() *Result_ {
+	if !p.IsSetSuccess() {
+		return ApiServiceImportDataResult_Success_DEFAULT
+	}
+	return p.Success
+}
+
+func (p *ApiServiceImportDataResult) IsSetSuccess() bool {
+	return p.Success != nil
+}
+
+func (p *ApiServiceImportDataResult) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 0:
+			if fieldTypeId == thrift.STRUCT {
+				if err := p.ReadField0(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceImportDataResult) ReadField0(ctx context.Context, iprot thrift.TProtocol) error {
+	p.Success = &Result_{}
+	if err := p.Success.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Success), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceImportDataResult) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "importData_result"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField0(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ApiServiceImportDataResult) writeField0(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if p.IsSetSuccess() {
+		if err := oprot.WriteFieldBegin(ctx, "success", thrift.STRUCT, 0); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field begin error 0:success: ", p), err)
+		}
+		if err := p.Success.Write(ctx, oprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Success), err)
+		}
+		if err := oprot.WriteFieldEnd(ctx); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field end error 0:success: ", p), err)
+		}
+	}
+	return err
+}
+
+func (p *ApiServiceImportDataResult) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ApiServiceImportDataResult(%+v)", *p)
+}
+
+func (p *ApiServiceImportDataResult) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.ApiServiceImportDataResult",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*ApiServiceImportDataResult)(nil)
+
+// Attributes:
+//  - Request
+// 
+type ApiServiceExportDataArgs struct {
+	Request *DataQueryRequest `thrift:"request,1" db:"request" json:"request"`
+}
+
+func NewApiServiceExportDataArgs() *ApiServiceExportDataArgs {
+	return &ApiServiceExportDataArgs{}
+}
+
+var ApiServiceExportDataArgs_Request_DEFAULT *DataQueryRequest
+
+func (p *ApiServiceExportDataArgs) GetRequest() *DataQueryRequest {
+	if !p.IsSetRequest() {
+		return ApiServiceExportDataArgs_Request_DEFAULT
+	}
+	return p.Request
+}
+
+func (p *ApiServiceExportDataArgs) IsSetRequest() bool {
+	return p.Request != nil
+}
+
+func (p *ApiServiceExportDataArgs) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 1:
+			if fieldTypeId == thrift.STRUCT {
+				if err := p.ReadField1(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceExportDataArgs) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	p.Request = &DataQueryRequest{}
+	if err := p.Request.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Request), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceExportDataArgs) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "exportData_args"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField1(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ApiServiceExportDataArgs) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "request", thrift.STRUCT, 1); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:request: ", p), err)
+	}
+	if err := p.Request.Write(ctx, oprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Request), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 1:request: ", p), err)
+	}
+	return err
+}
+
+func (p *ApiServiceExportDataArgs) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ApiServiceExportDataArgs(%+v)", *p)
+}
+
+func (p *ApiServiceExportDataArgs) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.ApiServiceExportDataArgs",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*ApiServiceExportDataArgs)(nil)
+
+// Attributes:
+//  - Success
+// 
+type ApiServiceExportDataResult struct {
+	Success *Result_ `thrift:"success,0" db:"success" json:"success,omitempty"`
+}
+
+func NewApiServiceExportDataResult() *ApiServiceExportDataResult {
+	return &ApiServiceExportDataResult{}
+}
+
+var ApiServiceExportDataResult_Success_DEFAULT *Result_
+
+func (p *ApiServiceExportDataResult) GetSuccess() *Result_ {
+	if !p.IsSetSuccess() {
+		return ApiServiceExportDataResult_Success_DEFAULT
+	}
+	return p.Success
+}
+
+func (p *ApiServiceExportDataResult) IsSetSuccess() bool {
+	return p.Success != nil
+}
+
+func (p *ApiServiceExportDataResult) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 0:
+			if fieldTypeId == thrift.STRUCT {
+				if err := p.ReadField0(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceExportDataResult) ReadField0(ctx context.Context, iprot thrift.TProtocol) error {
+	p.Success = &Result_{}
+	if err := p.Success.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Success), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceExportDataResult) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "exportData_result"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField0(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ApiServiceExportDataResult) writeField0(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if p.IsSetSuccess() {
+		if err := oprot.WriteFieldBegin(ctx, "success", thrift.STRUCT, 0); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field begin error 0:success: ", p), err)
+		}
+		if err := p.Success.Write(ctx, oprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Success), err)
+		}
+		if err := oprot.WriteFieldEnd(ctx); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field end error 0:success: ", p), err)
+		}
+	}
+	return err
+}
+
+func (p *ApiServiceExportDataResult) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ApiServiceExportDataResult(%+v)", *p)
+}
+
+func (p *ApiServiceExportDataResult) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.ApiServiceExportDataResult",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*ApiServiceExportDataResult)(nil)
+
+// Attributes:
 //  - Request
 // 
 type ApiServiceDeleteDataArgs struct {
@@ -9006,30 +18244,30 @@ func (p *ApiServiceCountRelationalDataResult) LogValue() slog.Value {
 var _ slog.LogValuer = (*ApiServiceCountRelationalDataResult)(nil)
 
 // Attributes:
-//  - ModelMeta
+//  - Request
 // 
-type ApiServiceSaveModelMetaArgs struct {
-	ModelMeta *ModelMeta `thrift:"modelMeta,1" db:"modelMeta" json:"modelMeta"`
+type ApiServiceExportRelationalDataArgs struct {
+	Request *RelationalQueryRequest `thrift:"request,1" db:"request" json:"request"`
 }
 
-func NewApiServiceSaveModelMetaArgs() *ApiServiceSaveModelMetaArgs {
-	return &ApiServiceSaveModelMetaArgs{}
+func NewApiServiceExportRelationalDataArgs() *ApiServiceExportRelationalDataArgs {
+	return &ApiServiceExportRelationalDataArgs{}
 }
 
-var ApiServiceSaveModelMetaArgs_ModelMeta_DEFAULT *ModelMeta
+var ApiServiceExportRelationalDataArgs_Request_DEFAULT *RelationalQueryRequest
 
-func (p *ApiServiceSaveModelMetaArgs) GetModelMeta() *ModelMeta {
-	if !p.IsSetModelMeta() {
-		return ApiServiceSaveModelMetaArgs_ModelMeta_DEFAULT
+func (p *ApiServiceExportRelationalDataArgs) GetRequest() *RelationalQueryRequest {
+	if !p.IsSetRequest() {
+		return ApiServiceExportRelationalDataArgs_Request_DEFAULT
 	}
-	return p.ModelMeta
+	return p.Request
 }
 
-func (p *ApiServiceSaveModelMetaArgs) IsSetModelMeta() bool {
-	return p.ModelMeta != nil
+func (p *ApiServiceExportRelationalDataArgs) IsSetRequest() bool {
+	return p.Request != nil
 }
 
-func (p *ApiServiceSaveModelMetaArgs) Read(ctx context.Context, iprot thrift.TProtocol) error {
+func (p *ApiServiceExportRelationalDataArgs) Read(ctx context.Context, iprot thrift.TProtocol) error {
 	if _, err := iprot.ReadStructBegin(ctx); err != nil {
 		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
 	}
@@ -9069,16 +18307,19 @@ func (p *ApiServiceSaveModelMetaArgs) Read(ctx context.Context, iprot thrift.TPr
 	return nil
 }
 
-func (p *ApiServiceSaveModelMetaArgs) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
-	p.ModelMeta = &ModelMeta{}
-	if err := p.ModelMeta.Read(ctx, iprot); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.ModelMeta), err)
+func (p *ApiServiceExportRelationalDataArgs) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	p.Request = &RelationalQueryRequest{
+		PageNum: 1,
+		PageSize: 10,
+	}
+	if err := p.Request.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Request), err)
 	}
 	return nil
 }
 
-func (p *ApiServiceSaveModelMetaArgs) Write(ctx context.Context, oprot thrift.TProtocol) error {
-	if err := oprot.WriteStructBegin(ctx, "saveModelMeta_args"); err != nil {
+func (p *ApiServiceExportRelationalDataArgs) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "exportRelationalData_args"); err != nil {
 		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
 	}
 	if p != nil {
@@ -9093,64 +18334,64 @@ func (p *ApiServiceSaveModelMetaArgs) Write(ctx context.Context, oprot thrift.TP
 	return nil
 }
 
-func (p *ApiServiceSaveModelMetaArgs) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if err := oprot.WriteFieldBegin(ctx, "modelMeta", thrift.STRUCT, 1); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:modelMeta: ", p), err)
+func (p *ApiServiceExportRelationalDataArgs) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "request", thrift.STRUCT, 1); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:request: ", p), err)
 	}
-	if err := p.ModelMeta.Write(ctx, oprot); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.ModelMeta), err)
+	if err := p.Request.Write(ctx, oprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Request), err)
 	}
 	if err := oprot.WriteFieldEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field end error 1:modelMeta: ", p), err)
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 1:request: ", p), err)
 	}
 	return err
 }
 
-func (p *ApiServiceSaveModelMetaArgs) String() string {
+func (p *ApiServiceExportRelationalDataArgs) String() string {
 	if p == nil {
 		return "<nil>"
 	}
-	return fmt.Sprintf("ApiServiceSaveModelMetaArgs(%+v)", *p)
+	return fmt.Sprintf("ApiServiceExportRelationalDataArgs(%+v)", *p)
 }
 
-func (p *ApiServiceSaveModelMetaArgs) LogValue() slog.Value {
+func (p *ApiServiceExportRelationalDataArgs) LogValue() slog.Value {
 	if p == nil {
 		return slog.AnyValue(nil)
 	}
 	v := thrift.SlogTStructWrapper{
-		Type: "*api.ApiServiceSaveModelMetaArgs",
+		Type: "*api.ApiServiceExportRelationalDataArgs",
 		Value: p,
 	}
 	return slog.AnyValue(v)
 }
 
-var _ slog.LogValuer = (*ApiServiceSaveModelMetaArgs)(nil)
+var _ slog.LogValuer = (*ApiServiceExportRelationalDataArgs)(nil)
 
 // Attributes:
 //  - Success
 // 
-type ApiServiceSaveModelMetaResult struct {
+type ApiServiceExportRelationalDataResult struct {
 	Success *Result_ `thrift:"success,0" db:"success" json:"success,omitempty"`
 }
 
-func NewApiServiceSaveModelMetaResult() *ApiServiceSaveModelMetaResult {
-	return &ApiServiceSaveModelMetaResult{}
+func NewApiServiceExportRelationalDataResult() *ApiServiceExportRelationalDataResult {
+	return &ApiServiceExportRelationalDataResult{}
 }
 
-var ApiServiceSaveModelMetaResult_Success_DEFAULT *Result_
+var ApiServiceExportRelationalDataResult_Success_DEFAULT *Result_
 
-func (p *ApiServiceSaveModelMetaResult) GetSuccess() *Result_ {
+func (p *ApiServiceExportRelationalDataResult) GetSuccess() *Result_ {
 	if !p.IsSetSuccess() {
-		return ApiServiceSaveModelMetaResult_Success_DEFAULT
+		return ApiServiceExportRelationalDataResult_Success_DEFAULT
 	}
 	return p.Success
 }
 
-func (p *ApiServiceSaveModelMetaResult) IsSetSuccess() bool {
+func (p *ApiServiceExportRelationalDataResult) IsSetSuccess() bool {
 	return p.Success != nil
 }
 
-func (p *ApiServiceSaveModelMetaResult) Read(ctx context.Context, iprot thrift.TProtocol) error {
+func (p *ApiServiceExportRelationalDataResult) Read(ctx context.Context, iprot thrift.TProtocol) error {
 	if _, err := iprot.ReadStructBegin(ctx); err != nil {
 		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
 	}
@@ -9190,7 +18431,7 @@ func (p *ApiServiceSaveModelMetaResult) Read(ctx context.Context, iprot thrift.T
 	return nil
 }
 
-func (p *ApiServiceSaveModelMetaResult) ReadField0(ctx context.Context, iprot thrift.TProtocol) error {
+func (p *ApiServiceExportRelationalDataResult) ReadField0(ctx context.Context, iprot thrift.TProtocol) error {
 	p.Success = &Result_{}
 	if err := p.Success.Read(ctx, iprot); err != nil {
 		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Success), err)
@@ -9198,8 +18439,8 @@ func (p *ApiServiceSaveModelMetaResult) ReadField0(ctx context.Context, iprot th
 	return nil
 }
 
-func (p *ApiServiceSaveModelMetaResult) Write(ctx context.Context, oprot thrift.TProtocol) error {
-	if err := oprot.WriteStructBegin(ctx, "saveModelMeta_result"); err != nil {
+func (p *ApiServiceExportRelationalDataResult) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "exportRelationalData_result"); err != nil {
 		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
 	}
 	if p != nil {
@@ -9214,7 +18455,7 @@ func (p *ApiServiceSaveModelMetaResult) Write(ctx context.Context, oprot thrift.
 	return nil
 }
 
-func (p *ApiServiceSaveModelMetaResult) writeField0(ctx context.Context, oprot thrift.TProtocol) (err error) {
+func (p *ApiServiceExportRelationalDataResult) writeField0(ctx context.Context, oprot thrift.TProtocol) (err error) {
 	if p.IsSetSuccess() {
 		if err := oprot.WriteFieldBegin(ctx, "success", thrift.STRUCT, 0); err != nil {
 			return thrift.PrependError(fmt.Sprintf("%T write field begin error 0:success: ", p), err)
@@ -9229,25 +18470,542 @@ func (p *ApiServiceSaveModelMetaResult) writeField0(ctx context.Context, oprot t
 	return err
 }
 
-func (p *ApiServiceSaveModelMetaResult) String() string {
+func (p *ApiServiceExportRelationalDataResult) String() string {
 	if p == nil {
 		return "<nil>"
 	}
-	return fmt.Sprintf("ApiServiceSaveModelMetaResult(%+v)", *p)
+	return fmt.Sprintf("ApiServiceExportRelationalDataResult(%+v)", *p)
 }
 
-func (p *ApiServiceSaveModelMetaResult) LogValue() slog.Value {
+func (p *ApiServiceExportRelationalDataResult) LogValue() slog.Value {
 	if p == nil {
 		return slog.AnyValue(nil)
 	}
 	v := thrift.SlogTStructWrapper{
-		Type: "*api.ApiServiceSaveModelMetaResult",
+		Type: "*api.ApiServiceExportRelationalDataResult",
 		Value: p,
 	}
 	return slog.AnyValue(v)
 }
 
-var _ slog.LogValuer = (*ApiServiceSaveModelMetaResult)(nil)
+var _ slog.LogValuer = (*ApiServiceExportRelationalDataResult)(nil)
+
+// Attributes:
+//  - File
+// 
+type ApiServiceUploadModelArgs struct {
+	File []byte `thrift:"file,1" db:"file" json:"file"`
+}
+
+func NewApiServiceUploadModelArgs() *ApiServiceUploadModelArgs {
+	return &ApiServiceUploadModelArgs{}
+}
+
+
+
+func (p *ApiServiceUploadModelArgs) GetFile() []byte {
+	return p.File
+}
+
+func (p *ApiServiceUploadModelArgs) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 1:
+			if fieldTypeId == thrift.STRING {
+				if err := p.ReadField1(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceUploadModelArgs) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadBinary(ctx); err != nil {
+		return thrift.PrependError("error reading field 1: ", err)
+	} else {
+		p.File = v
+	}
+	return nil
+}
+
+func (p *ApiServiceUploadModelArgs) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "uploadModel_args"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField1(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ApiServiceUploadModelArgs) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "file", thrift.STRING, 1); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:file: ", p), err)
+	}
+	if err := oprot.WriteBinary(ctx, p.File); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.file (1) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 1:file: ", p), err)
+	}
+	return err
+}
+
+func (p *ApiServiceUploadModelArgs) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ApiServiceUploadModelArgs(%+v)", *p)
+}
+
+func (p *ApiServiceUploadModelArgs) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.ApiServiceUploadModelArgs",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*ApiServiceUploadModelArgs)(nil)
+
+// Attributes:
+//  - Success
+// 
+type ApiServiceUploadModelResult struct {
+	Success *Result_ `thrift:"success,0" db:"success" json:"success,omitempty"`
+}
+
+func NewApiServiceUploadModelResult() *ApiServiceUploadModelResult {
+	return &ApiServiceUploadModelResult{}
+}
+
+var ApiServiceUploadModelResult_Success_DEFAULT *Result_
+
+func (p *ApiServiceUploadModelResult) GetSuccess() *Result_ {
+	if !p.IsSetSuccess() {
+		return ApiServiceUploadModelResult_Success_DEFAULT
+	}
+	return p.Success
+}
+
+func (p *ApiServiceUploadModelResult) IsSetSuccess() bool {
+	return p.Success != nil
+}
+
+func (p *ApiServiceUploadModelResult) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 0:
+			if fieldTypeId == thrift.STRUCT {
+				if err := p.ReadField0(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceUploadModelResult) ReadField0(ctx context.Context, iprot thrift.TProtocol) error {
+	p.Success = &Result_{}
+	if err := p.Success.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Success), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceUploadModelResult) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "uploadModel_result"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField0(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ApiServiceUploadModelResult) writeField0(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if p.IsSetSuccess() {
+		if err := oprot.WriteFieldBegin(ctx, "success", thrift.STRUCT, 0); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field begin error 0:success: ", p), err)
+		}
+		if err := p.Success.Write(ctx, oprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Success), err)
+		}
+		if err := oprot.WriteFieldEnd(ctx); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field end error 0:success: ", p), err)
+		}
+	}
+	return err
+}
+
+func (p *ApiServiceUploadModelResult) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ApiServiceUploadModelResult(%+v)", *p)
+}
+
+func (p *ApiServiceUploadModelResult) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.ApiServiceUploadModelResult",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*ApiServiceUploadModelResult)(nil)
+
+// Attributes:
+//  - Name
+//  - Version
+// 
+type ApiServiceDownloadModelArgs struct {
+	Name string `thrift:"name,1" db:"name" json:"name"`
+	Version string `thrift:"version,2" db:"version" json:"version"`
+}
+
+func NewApiServiceDownloadModelArgs() *ApiServiceDownloadModelArgs {
+	return &ApiServiceDownloadModelArgs{}
+}
+
+
+
+func (p *ApiServiceDownloadModelArgs) GetName() string {
+	return p.Name
+}
+
+
+
+func (p *ApiServiceDownloadModelArgs) GetVersion() string {
+	return p.Version
+}
+
+func (p *ApiServiceDownloadModelArgs) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 1:
+			if fieldTypeId == thrift.STRING {
+				if err := p.ReadField1(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 2:
+			if fieldTypeId == thrift.STRING {
+				if err := p.ReadField2(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceDownloadModelArgs) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadString(ctx); err != nil {
+		return thrift.PrependError("error reading field 1: ", err)
+	} else {
+		p.Name = v
+	}
+	return nil
+}
+
+func (p *ApiServiceDownloadModelArgs) ReadField2(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadString(ctx); err != nil {
+		return thrift.PrependError("error reading field 2: ", err)
+	} else {
+		p.Version = v
+	}
+	return nil
+}
+
+func (p *ApiServiceDownloadModelArgs) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "downloadModel_args"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField1(ctx, oprot); err != nil { return err }
+		if err := p.writeField2(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ApiServiceDownloadModelArgs) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "name", thrift.STRING, 1); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:name: ", p), err)
+	}
+	if err := oprot.WriteString(ctx, string(p.Name)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.name (1) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 1:name: ", p), err)
+	}
+	return err
+}
+
+func (p *ApiServiceDownloadModelArgs) writeField2(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "version", thrift.STRING, 2); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 2:version: ", p), err)
+	}
+	if err := oprot.WriteString(ctx, string(p.Version)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.version (2) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 2:version: ", p), err)
+	}
+	return err
+}
+
+func (p *ApiServiceDownloadModelArgs) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ApiServiceDownloadModelArgs(%+v)", *p)
+}
+
+func (p *ApiServiceDownloadModelArgs) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.ApiServiceDownloadModelArgs",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*ApiServiceDownloadModelArgs)(nil)
+
+// Attributes:
+//  - Success
+// 
+type ApiServiceDownloadModelResult struct {
+	Success *Result_ `thrift:"success,0" db:"success" json:"success,omitempty"`
+}
+
+func NewApiServiceDownloadModelResult() *ApiServiceDownloadModelResult {
+	return &ApiServiceDownloadModelResult{}
+}
+
+var ApiServiceDownloadModelResult_Success_DEFAULT *Result_
+
+func (p *ApiServiceDownloadModelResult) GetSuccess() *Result_ {
+	if !p.IsSetSuccess() {
+		return ApiServiceDownloadModelResult_Success_DEFAULT
+	}
+	return p.Success
+}
+
+func (p *ApiServiceDownloadModelResult) IsSetSuccess() bool {
+	return p.Success != nil
+}
+
+func (p *ApiServiceDownloadModelResult) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 0:
+			if fieldTypeId == thrift.STRUCT {
+				if err := p.ReadField0(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceDownloadModelResult) ReadField0(ctx context.Context, iprot thrift.TProtocol) error {
+	p.Success = &Result_{}
+	if err := p.Success.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Success), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceDownloadModelResult) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "downloadModel_result"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField0(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ApiServiceDownloadModelResult) writeField0(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if p.IsSetSuccess() {
+		if err := oprot.WriteFieldBegin(ctx, "success", thrift.STRUCT, 0); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field begin error 0:success: ", p), err)
+		}
+		if err := p.Success.Write(ctx, oprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Success), err)
+		}
+		if err := oprot.WriteFieldEnd(ctx); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field end error 0:success: ", p), err)
+		}
+	}
+	return err
+}
+
+func (p *ApiServiceDownloadModelResult) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ApiServiceDownloadModelResult(%+v)", *p)
+}
+
+func (p *ApiServiceDownloadModelResult) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.ApiServiceDownloadModelResult",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*ApiServiceDownloadModelResult)(nil)
 
 // Attributes:
 //  - Name
@@ -9527,6 +19285,250 @@ func (p *ApiServiceGetModelMetaResult) LogValue() slog.Value {
 }
 
 var _ slog.LogValuer = (*ApiServiceGetModelMetaResult)(nil)
+
+// Attributes:
+//  - ModelMeta
+// 
+type ApiServiceSaveModelMetaArgs struct {
+	ModelMeta *ModelMeta `thrift:"modelMeta,1" db:"modelMeta" json:"modelMeta"`
+}
+
+func NewApiServiceSaveModelMetaArgs() *ApiServiceSaveModelMetaArgs {
+	return &ApiServiceSaveModelMetaArgs{}
+}
+
+var ApiServiceSaveModelMetaArgs_ModelMeta_DEFAULT *ModelMeta
+
+func (p *ApiServiceSaveModelMetaArgs) GetModelMeta() *ModelMeta {
+	if !p.IsSetModelMeta() {
+		return ApiServiceSaveModelMetaArgs_ModelMeta_DEFAULT
+	}
+	return p.ModelMeta
+}
+
+func (p *ApiServiceSaveModelMetaArgs) IsSetModelMeta() bool {
+	return p.ModelMeta != nil
+}
+
+func (p *ApiServiceSaveModelMetaArgs) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 1:
+			if fieldTypeId == thrift.STRUCT {
+				if err := p.ReadField1(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceSaveModelMetaArgs) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	p.ModelMeta = &ModelMeta{}
+	if err := p.ModelMeta.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.ModelMeta), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceSaveModelMetaArgs) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "saveModelMeta_args"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField1(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ApiServiceSaveModelMetaArgs) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "modelMeta", thrift.STRUCT, 1); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:modelMeta: ", p), err)
+	}
+	if err := p.ModelMeta.Write(ctx, oprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.ModelMeta), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 1:modelMeta: ", p), err)
+	}
+	return err
+}
+
+func (p *ApiServiceSaveModelMetaArgs) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ApiServiceSaveModelMetaArgs(%+v)", *p)
+}
+
+func (p *ApiServiceSaveModelMetaArgs) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.ApiServiceSaveModelMetaArgs",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*ApiServiceSaveModelMetaArgs)(nil)
+
+// Attributes:
+//  - Success
+// 
+type ApiServiceSaveModelMetaResult struct {
+	Success *Result_ `thrift:"success,0" db:"success" json:"success,omitempty"`
+}
+
+func NewApiServiceSaveModelMetaResult() *ApiServiceSaveModelMetaResult {
+	return &ApiServiceSaveModelMetaResult{}
+}
+
+var ApiServiceSaveModelMetaResult_Success_DEFAULT *Result_
+
+func (p *ApiServiceSaveModelMetaResult) GetSuccess() *Result_ {
+	if !p.IsSetSuccess() {
+		return ApiServiceSaveModelMetaResult_Success_DEFAULT
+	}
+	return p.Success
+}
+
+func (p *ApiServiceSaveModelMetaResult) IsSetSuccess() bool {
+	return p.Success != nil
+}
+
+func (p *ApiServiceSaveModelMetaResult) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 0:
+			if fieldTypeId == thrift.STRUCT {
+				if err := p.ReadField0(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceSaveModelMetaResult) ReadField0(ctx context.Context, iprot thrift.TProtocol) error {
+	p.Success = &Result_{}
+	if err := p.Success.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Success), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceSaveModelMetaResult) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "saveModelMeta_result"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField0(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ApiServiceSaveModelMetaResult) writeField0(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if p.IsSetSuccess() {
+		if err := oprot.WriteFieldBegin(ctx, "success", thrift.STRUCT, 0); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field begin error 0:success: ", p), err)
+		}
+		if err := p.Success.Write(ctx, oprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Success), err)
+		}
+		if err := oprot.WriteFieldEnd(ctx); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field end error 0:success: ", p), err)
+		}
+	}
+	return err
+}
+
+func (p *ApiServiceSaveModelMetaResult) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ApiServiceSaveModelMetaResult(%+v)", *p)
+}
+
+func (p *ApiServiceSaveModelMetaResult) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.ApiServiceSaveModelMetaResult",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*ApiServiceSaveModelMetaResult)(nil)
 
 // Attributes:
 //  - Name
@@ -10044,5 +20046,249 @@ func (p *ApiServiceDeleteModelResult) LogValue() slog.Value {
 }
 
 var _ slog.LogValuer = (*ApiServiceDeleteModelResult)(nil)
+
+// Attributes:
+//  - Request
+// 
+type ApiServiceExtractModelFileArgs struct {
+	Request *ExtractModelFileRequest `thrift:"request,1" db:"request" json:"request"`
+}
+
+func NewApiServiceExtractModelFileArgs() *ApiServiceExtractModelFileArgs {
+	return &ApiServiceExtractModelFileArgs{}
+}
+
+var ApiServiceExtractModelFileArgs_Request_DEFAULT *ExtractModelFileRequest
+
+func (p *ApiServiceExtractModelFileArgs) GetRequest() *ExtractModelFileRequest {
+	if !p.IsSetRequest() {
+		return ApiServiceExtractModelFileArgs_Request_DEFAULT
+	}
+	return p.Request
+}
+
+func (p *ApiServiceExtractModelFileArgs) IsSetRequest() bool {
+	return p.Request != nil
+}
+
+func (p *ApiServiceExtractModelFileArgs) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 1:
+			if fieldTypeId == thrift.STRUCT {
+				if err := p.ReadField1(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceExtractModelFileArgs) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	p.Request = &ExtractModelFileRequest{}
+	if err := p.Request.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Request), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceExtractModelFileArgs) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "extractModelFile_args"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField1(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ApiServiceExtractModelFileArgs) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "request", thrift.STRUCT, 1); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:request: ", p), err)
+	}
+	if err := p.Request.Write(ctx, oprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Request), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 1:request: ", p), err)
+	}
+	return err
+}
+
+func (p *ApiServiceExtractModelFileArgs) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ApiServiceExtractModelFileArgs(%+v)", *p)
+}
+
+func (p *ApiServiceExtractModelFileArgs) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.ApiServiceExtractModelFileArgs",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*ApiServiceExtractModelFileArgs)(nil)
+
+// Attributes:
+//  - Success
+// 
+type ApiServiceExtractModelFileResult struct {
+	Success *Result_ `thrift:"success,0" db:"success" json:"success,omitempty"`
+}
+
+func NewApiServiceExtractModelFileResult() *ApiServiceExtractModelFileResult {
+	return &ApiServiceExtractModelFileResult{}
+}
+
+var ApiServiceExtractModelFileResult_Success_DEFAULT *Result_
+
+func (p *ApiServiceExtractModelFileResult) GetSuccess() *Result_ {
+	if !p.IsSetSuccess() {
+		return ApiServiceExtractModelFileResult_Success_DEFAULT
+	}
+	return p.Success
+}
+
+func (p *ApiServiceExtractModelFileResult) IsSetSuccess() bool {
+	return p.Success != nil
+}
+
+func (p *ApiServiceExtractModelFileResult) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 0:
+			if fieldTypeId == thrift.STRUCT {
+				if err := p.ReadField0(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceExtractModelFileResult) ReadField0(ctx context.Context, iprot thrift.TProtocol) error {
+	p.Success = &Result_{}
+	if err := p.Success.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Success), err)
+	}
+	return nil
+}
+
+func (p *ApiServiceExtractModelFileResult) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "extractModelFile_result"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField0(ctx, oprot); err != nil { return err }
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ApiServiceExtractModelFileResult) writeField0(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if p.IsSetSuccess() {
+		if err := oprot.WriteFieldBegin(ctx, "success", thrift.STRUCT, 0); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field begin error 0:success: ", p), err)
+		}
+		if err := p.Success.Write(ctx, oprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Success), err)
+		}
+		if err := oprot.WriteFieldEnd(ctx); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field end error 0:success: ", p), err)
+		}
+	}
+	return err
+}
+
+func (p *ApiServiceExtractModelFileResult) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ApiServiceExtractModelFileResult(%+v)", *p)
+}
+
+func (p *ApiServiceExtractModelFileResult) LogValue() slog.Value {
+	if p == nil {
+		return slog.AnyValue(nil)
+	}
+	v := thrift.SlogTStructWrapper{
+		Type: "*api.ApiServiceExtractModelFileResult",
+		Value: p,
+	}
+	return slog.AnyValue(v)
+}
+
+var _ slog.LogValuer = (*ApiServiceExtractModelFileResult)(nil)
 
 

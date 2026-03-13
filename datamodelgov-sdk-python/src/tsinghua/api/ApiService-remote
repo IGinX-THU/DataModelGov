@@ -29,18 +29,39 @@ if len(sys.argv) <= 1 or sys.argv[1] == '--help':
     print('  Result countAssociationRules(AssociationRulesQueryRequest request)')
     print('  Result getAssociationRule(i64 createTime)')
     print('  Result deleteAssociationRule(i64 createTime)')
+    print('  Result saveParsingRule(ParsingRule rule)')
+    print('  Result queryParsingRules(ParsingRulesQueryRequest request)')
+    print('  Result countParsingRules(ParsingRulesQueryRequest request)')
+    print('  Result getParsingRule(i64 createTime)')
+    print('  Result deleteParsingRule(i64 createTime)')
+    print('  Result runTask(RunTaskRequest runTaskRequest)')
+    print('  Result validateTaskUniqueness(RunTaskRequest request)')
+    print('  Result stopTask(i64 timestamp)')
+    print('  Result getTaskLog(i64 timestamp)')
+    print('  Result queryTasks(RunTaskQueryRequest request)')
+    print('  Result countTasks(RunTaskQueryRequest request)')
+    print('  Result getTask(i64 timestamp)')
+    print('  Result deleteTask(i64 timestamp)')
+    print('  Result uploadReport(string file)')
+    print('  Result packageDownload(i64 timestamp)')
     print('  Result registerDataSource(string jsonBody)')
     print('  Result removeDataSource(StorageEngineInfo storageEngineInfo)')
     print('  Result listDataSources()')
     print('  Result getDataSourceTree()')
     print('  Result queryData(DataQueryRequest request)')
+    print('  Result importData(string config, string file)')
+    print('  Result exportData(DataQueryRequest request)')
     print('  Result deleteData(DataQueryRequest request)')
     print('  Result queryRelationalData(RelationalQueryRequest request)')
     print('  Result countRelationalData(RelationalQueryRequest request)')
-    print('  Result saveModelMeta(ModelMeta modelMeta)')
+    print('  Result exportRelationalData(RelationalQueryRequest request)')
+    print('  Result uploadModel(string file)')
+    print('  Result downloadModel(string name, string version)')
     print('  Result getModelMeta(string name, string version)')
+    print('  Result saveModelMeta(ModelMeta modelMeta)')
     print('  Result getModelHistory(string name)')
     print('  Result deleteModel(string name, string version)')
+    print('  Result extractModelFile(ExtractModelFileRequest request)')
     print('')
     sys.exit(0)
 
@@ -150,6 +171,96 @@ elif cmd == 'deleteAssociationRule':
         sys.exit(1)
     pp.pprint(client.deleteAssociationRule(eval(args[0]),))
 
+elif cmd == 'saveParsingRule':
+    if len(args) != 1:
+        print('saveParsingRule requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.saveParsingRule(eval(args[0]),))
+
+elif cmd == 'queryParsingRules':
+    if len(args) != 1:
+        print('queryParsingRules requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.queryParsingRules(eval(args[0]),))
+
+elif cmd == 'countParsingRules':
+    if len(args) != 1:
+        print('countParsingRules requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.countParsingRules(eval(args[0]),))
+
+elif cmd == 'getParsingRule':
+    if len(args) != 1:
+        print('getParsingRule requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.getParsingRule(eval(args[0]),))
+
+elif cmd == 'deleteParsingRule':
+    if len(args) != 1:
+        print('deleteParsingRule requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.deleteParsingRule(eval(args[0]),))
+
+elif cmd == 'runTask':
+    if len(args) != 1:
+        print('runTask requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.runTask(eval(args[0]),))
+
+elif cmd == 'validateTaskUniqueness':
+    if len(args) != 1:
+        print('validateTaskUniqueness requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.validateTaskUniqueness(eval(args[0]),))
+
+elif cmd == 'stopTask':
+    if len(args) != 1:
+        print('stopTask requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.stopTask(eval(args[0]),))
+
+elif cmd == 'getTaskLog':
+    if len(args) != 1:
+        print('getTaskLog requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.getTaskLog(eval(args[0]),))
+
+elif cmd == 'queryTasks':
+    if len(args) != 1:
+        print('queryTasks requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.queryTasks(eval(args[0]),))
+
+elif cmd == 'countTasks':
+    if len(args) != 1:
+        print('countTasks requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.countTasks(eval(args[0]),))
+
+elif cmd == 'getTask':
+    if len(args) != 1:
+        print('getTask requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.getTask(eval(args[0]),))
+
+elif cmd == 'deleteTask':
+    if len(args) != 1:
+        print('deleteTask requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.deleteTask(eval(args[0]),))
+
+elif cmd == 'uploadReport':
+    if len(args) != 1:
+        print('uploadReport requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.uploadReport(args[0],))
+
+elif cmd == 'packageDownload':
+    if len(args) != 1:
+        print('packageDownload requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.packageDownload(eval(args[0]),))
+
 elif cmd == 'registerDataSource':
     if len(args) != 1:
         print('registerDataSource requires 1 args')
@@ -180,6 +291,18 @@ elif cmd == 'queryData':
         sys.exit(1)
     pp.pprint(client.queryData(eval(args[0]),))
 
+elif cmd == 'importData':
+    if len(args) != 2:
+        print('importData requires 2 args')
+        sys.exit(1)
+    pp.pprint(client.importData(args[0], args[1],))
+
+elif cmd == 'exportData':
+    if len(args) != 1:
+        print('exportData requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.exportData(eval(args[0]),))
+
 elif cmd == 'deleteData':
     if len(args) != 1:
         print('deleteData requires 1 args')
@@ -198,17 +321,35 @@ elif cmd == 'countRelationalData':
         sys.exit(1)
     pp.pprint(client.countRelationalData(eval(args[0]),))
 
-elif cmd == 'saveModelMeta':
+elif cmd == 'exportRelationalData':
     if len(args) != 1:
-        print('saveModelMeta requires 1 args')
+        print('exportRelationalData requires 1 args')
         sys.exit(1)
-    pp.pprint(client.saveModelMeta(eval(args[0]),))
+    pp.pprint(client.exportRelationalData(eval(args[0]),))
+
+elif cmd == 'uploadModel':
+    if len(args) != 1:
+        print('uploadModel requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.uploadModel(args[0],))
+
+elif cmd == 'downloadModel':
+    if len(args) != 2:
+        print('downloadModel requires 2 args')
+        sys.exit(1)
+    pp.pprint(client.downloadModel(args[0], args[1],))
 
 elif cmd == 'getModelMeta':
     if len(args) != 2:
         print('getModelMeta requires 2 args')
         sys.exit(1)
     pp.pprint(client.getModelMeta(args[0], args[1],))
+
+elif cmd == 'saveModelMeta':
+    if len(args) != 1:
+        print('saveModelMeta requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.saveModelMeta(eval(args[0]),))
 
 elif cmd == 'getModelHistory':
     if len(args) != 1:
@@ -221,6 +362,12 @@ elif cmd == 'deleteModel':
         print('deleteModel requires 2 args')
         sys.exit(1)
     pp.pprint(client.deleteModel(args[0], args[1],))
+
+elif cmd == 'extractModelFile':
+    if len(args) != 1:
+        print('extractModelFile requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.extractModelFile(eval(args[0]),))
 
 else:
     print('Unrecognized method %s' % cmd)

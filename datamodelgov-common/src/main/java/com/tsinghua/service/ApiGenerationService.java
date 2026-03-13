@@ -20,52 +20,35 @@ import java.util.Map;
 @Service
 public class ApiGenerationService {
 
-    private static final String THRIFT_FILE_PATH = "src/main/resources/thrift/api.thrift";
-    private static final String OUTPUT_BASE_DIR = "generated-api";
+    private static final String THRIFT_FILE_PATH = "datamodelgov-server/src/main/resources/thrift/api.thrift";
+    private static final String JAVA_SDK_OUTPUT_DIR = "datamodelgov-sdk-java/src/main/java";
+    private static final String GO_SDK_OUTPUT_DIR = "datamodelgov-sdk-go/src";
+    private static final String PYTHON_SDK_OUTPUT_DIR = "datamodelgov-sdk-python/src";
 
     /**
      * 生成Java代码
      */
     public Result<?> generateJavaCode() {
         try {
-            String serverOutputDir = OUTPUT_BASE_DIR + "/java/server";
-            String clientOutputDir = OUTPUT_BASE_DIR + "/java/client";
+            // 直接生成到Java SDK模块
+            String outputDir = JAVA_SDK_OUTPUT_DIR;
             
-            // 先创建父目录，再创建子目录
-            createOutputDirectory(OUTPUT_BASE_DIR + "/java");
-            createOutputDirectory(serverOutputDir);
-            createOutputDirectory(clientOutputDir);
+            // 确保输出目录存在
+            createOutputDirectory(outputDir);
             
-            // 生成Server端代码
-            ThriftCodeGenerator.GenerationResult serverResult = ThriftCodeGenerator.generateJavaServer(
-                THRIFT_FILE_PATH, serverOutputDir
+            // 生成Java代码
+            ThriftCodeGenerator.GenerationResult result = ThriftCodeGenerator.generateJavaServer(
+                THRIFT_FILE_PATH, outputDir
             );
             
-            // 生成Client端代码
-            ThriftCodeGenerator.GenerationResult clientResult = ThriftCodeGenerator.generateJavaClient(
-                THRIFT_FILE_PATH, clientOutputDir
-            );
-            
-            // 生成Server端实现
-            if (serverResult.isSuccess()) {
-                generateJavaServerImplementation(serverOutputDir);
-            }
-            
-            // 生成Client端示例
-            if (clientResult.isSuccess()) {
-                generateJavaClientExample(clientOutputDir);
-            }
-            
-            if (serverResult.isSuccess() && clientResult.isSuccess()) {
-                return Result.success("Java代码生成成功，Server端: " + serverOutputDir + ", Client端: " + clientOutputDir);
+            if (result.isSuccess()) {
+                return Result.success("Java SDK生成成功，输出目录: " + outputDir);
             } else {
-                return Result.error("Java代码生成失败: " + 
-                    (serverResult.isSuccess() ? "" : serverResult.getMessage() + "; ") +
-                    (clientResult.isSuccess() ? "" : clientResult.getMessage()));
+                return Result.error("Java SDK生成失败: " + result.getMessage());
             }
         } catch (Exception e) {
-            log.error("生成Java代码失败", e);
-            return Result.error("生成Java代码失败: " + e.getMessage());
+            log.error("生成Java SDK失败", e);
+            return Result.error("生成Java SDK失败: " + e.getMessage());
         }
     }
 
@@ -74,45 +57,25 @@ public class ApiGenerationService {
      */
     public Result<?> generateGoCode() {
         try {
-            String serverOutputDir = OUTPUT_BASE_DIR + "/go/server";
-            String clientOutputDir = OUTPUT_BASE_DIR + "/go/client";
+            // 直接生成到Go SDK模块
+            String outputDir = GO_SDK_OUTPUT_DIR;
             
-            // 先创建父目录，再创建子目录
-            createOutputDirectory(OUTPUT_BASE_DIR + "/go");
-            createOutputDirectory(serverOutputDir);
-            createOutputDirectory(clientOutputDir);
+            // 确保输出目录存在
+            createOutputDirectory(outputDir);
             
-            // 生成Server端代码
-            ThriftCodeGenerator.GenerationResult serverResult = ThriftCodeGenerator.generateGoServer(
-                THRIFT_FILE_PATH, serverOutputDir
+            // 生成Go代码
+            ThriftCodeGenerator.GenerationResult result = ThriftCodeGenerator.generateGoServer(
+                THRIFT_FILE_PATH, outputDir
             );
             
-            // 生成Client端代码
-            ThriftCodeGenerator.GenerationResult clientResult = ThriftCodeGenerator.generateGoClient(
-                THRIFT_FILE_PATH, clientOutputDir
-            );
-            
-            // 生成Go模块文件
-            if (serverResult.isSuccess()) {
-                generateGoModFile(serverOutputDir);
-                generateGoServerImplementation(serverOutputDir);
-            }
-            
-            if (clientResult.isSuccess()) {
-                generateGoModFile(clientOutputDir);
-                generateGoClientExample(clientOutputDir);
-            }
-            
-            if (serverResult.isSuccess() && clientResult.isSuccess()) {
-                return Result.success("Go代码生成成功，Server端: " + serverOutputDir + ", Client端: " + clientOutputDir);
+            if (result.isSuccess()) {
+                return Result.success("Go SDK生成成功，输出目录: " + outputDir);
             } else {
-                return Result.error("Go代码生成失败: " + 
-                    (serverResult.isSuccess() ? "" : serverResult.getMessage() + "; ") +
-                    (clientResult.isSuccess() ? "" : clientResult.getMessage()));
+                return Result.error("Go SDK生成失败: " + result.getMessage());
             }
         } catch (Exception e) {
-            log.error("生成Go代码失败", e);
-            return Result.error("生成Go代码失败: " + e.getMessage());
+            log.error("生成Go SDK失败", e);
+            return Result.error("生成Go SDK失败: " + e.getMessage());
         }
     }
 
@@ -121,45 +84,25 @@ public class ApiGenerationService {
      */
     public Result<?> generatePythonCode() {
         try {
-            String serverOutputDir = OUTPUT_BASE_DIR + "/python/server";
-            String clientOutputDir = OUTPUT_BASE_DIR + "/python/client";
+            // 直接生成到Python SDK模块
+            String outputDir = PYTHON_SDK_OUTPUT_DIR;
             
-            // 先创建父目录，再创建子目录
-            createOutputDirectory(OUTPUT_BASE_DIR + "/python");
-            createOutputDirectory(serverOutputDir);
-            createOutputDirectory(clientOutputDir);
+            // 确保输出目录存在
+            createOutputDirectory(outputDir);
             
-            // 生成Server端代码
-            ThriftCodeGenerator.GenerationResult serverResult = ThriftCodeGenerator.generatePythonServer(
-                THRIFT_FILE_PATH, serverOutputDir
+            // 生成Python代码
+            ThriftCodeGenerator.GenerationResult result = ThriftCodeGenerator.generatePythonServer(
+                THRIFT_FILE_PATH, outputDir
             );
             
-            // 生成Client端代码
-            ThriftCodeGenerator.GenerationResult clientResult = ThriftCodeGenerator.generatePythonClient(
-                THRIFT_FILE_PATH, clientOutputDir
-            );
-            
-            // 生成Python requirements文件
-            if (serverResult.isSuccess()) {
-                generatePythonRequirements(serverOutputDir);
-                generatePythonServerImplementation(serverOutputDir);
-            }
-            
-            if (clientResult.isSuccess()) {
-                generatePythonRequirements(clientOutputDir);
-                generatePythonClientExample(clientOutputDir);
-            }
-            
-            if (serverResult.isSuccess() && clientResult.isSuccess()) {
-                return Result.success("Python代码生成成功，Server端: " + serverOutputDir + ", Client端: " + clientOutputDir);
+            if (result.isSuccess()) {
+                return Result.success("Python SDK生成成功，输出目录: " + outputDir);
             } else {
-                return Result.error("Python代码生成失败: " + 
-                    (serverResult.isSuccess() ? "" : serverResult.getMessage() + "; ") +
-                    (clientResult.isSuccess() ? "" : clientResult.getMessage()));
+                return Result.error("Python SDK生成失败: " + result.getMessage());
             }
         } catch (Exception e) {
-            log.error("生成Python代码失败", e);
-            return Result.error("生成Python代码失败: " + e.getMessage());
+            log.error("生成Python SDK失败", e);
+            return Result.error("生成Python SDK失败: " + e.getMessage());
         }
     }
 
@@ -168,7 +111,7 @@ public class ApiGenerationService {
      */
     public Result<?> generateRestfulApiCode() {
         try {
-            String outputDir = OUTPUT_BASE_DIR + "/restful";
+            String outputDir = "generated-api/restful";
             createOutputDirectory(outputDir);
             
             // 生成Spring Boot RESTful API

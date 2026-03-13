@@ -3,18 +3,21 @@ package com.tsinghua.thrift;
 import com.tsinghua.dto.*;
 import com.tsinghua.entity.AssociationRulesEntity;
 import com.tsinghua.entity.ModelMetaEntity;
+import com.tsinghua.entity.ParsingRulesEntity;
+import com.tsinghua.entity.RunTaskEntity;
 import com.tsinghua.service.*;
 import com.tsinghua.thrift.api.*;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.thrift.TException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import java.nio.ByteBuffer;
 
 /**
  * DataModelGov Thrift API Service Implementation
  * Exposes your existing services as Thrift RPC interfaces
  * Completely matches your actual Controller methods and DTO structures
- * Excludes ApiGenerationController as requested
+ * Includes ParsingRules and RunTask support
  */
 @Slf4j
 @Component
@@ -35,6 +38,12 @@ public class ApiServiceImpl implements ApiService.Iface {
 
     @Autowired
     private ModelFileService modelFileService;
+
+    @Autowired
+    private ParsingRulesService parsingRulesService;
+
+    @Autowired
+    private RunTaskService runTaskService;
 
     // ========== Association Rules Interface - Match AssociationRulesController ==========
 
@@ -141,6 +150,310 @@ public class ApiServiceImpl implements ApiService.Iface {
         } catch (Exception e) {
             log.error("Thrift RPC: Delete association rule failed", e);
             com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Delete failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    // ========== Parsing Rules Interface - Match ParsingRulesController ==========
+
+    @Override
+    public com.tsinghua.thrift.api.Result saveParsingRule(com.tsinghua.thrift.api.ParsingRule rule) throws TException {
+        try {
+            log.info("Thrift RPC: Save parsing rule {}", rule.getName());
+            
+            // Convert Thrift object to your Entity (perfect match)
+            ParsingRulesEntity entity = convertToParsingRulesEntity(rule);
+            
+            // Call your existing service method directly
+            parsingRulesService.saveRules(entity);
+            
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "解析规则保存成功");
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Save parsing rule failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Save failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result queryParsingRules(com.tsinghua.thrift.api.ParsingRulesQueryRequest request) throws TException {
+        try {
+            log.info("Thrift RPC: Query parsing rules");
+            
+            // Convert Thrift request to your DTO (perfect match)
+            com.tsinghua.dto.ParsingRulesQueryRequest dtoRequest = convertToParsingRulesQueryRequest(request);
+            
+            // Call your existing service method directly
+            java.util.List<ParsingRulesEntity> entities = parsingRulesService.queryRules(dtoRequest);
+            
+            // Convert result to JSON string
+            String jsonData = convertListToJson(entities);
+            
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "Query successful");
+            result.setData(jsonData);
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Query parsing rules failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Query failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result countParsingRules(com.tsinghua.thrift.api.ParsingRulesQueryRequest request) throws TException {
+        try {
+            log.info("Thrift RPC: Count parsing rules");
+            
+            // Convert request
+            com.tsinghua.dto.ParsingRulesQueryRequest dtoRequest = convertToParsingRulesQueryRequest(request);
+            
+            // Call your existing service method directly
+            Object count = parsingRulesService.countRules(dtoRequest);
+            
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "Count successful");
+            result.setData(String.valueOf(count));
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Count parsing rules failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Count failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result getParsingRule(long createTime) throws TException {
+        try {
+            log.info("Thrift RPC: Get parsing rule detail {}", createTime);
+            
+            // Call your existing service method directly
+            ParsingRulesEntity entity = parsingRulesService.queryRule(createTime);
+            
+            if (entity == null) {
+                com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "未找到指定的解析规则");
+                return result;
+            }
+            
+            // Convert to JSON string
+            String jsonData = convertEntityToJson(entity);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "Query successful");
+            result.setData(jsonData);
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Get parsing rule detail failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Query failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result deleteParsingRule(long createTime) throws TException {
+        try {
+            log.info("Thrift RPC: Delete parsing rule {}", createTime);
+            
+            // Call your existing service method directly
+            parsingRulesService.deleteRule(createTime);
+            
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "操作成功");
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Delete parsing rule failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Delete failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    // ========== Run Task Interface - Match RunTaskController ==========
+
+    @Override
+    public com.tsinghua.thrift.api.Result runTask(com.tsinghua.thrift.api.RunTaskRequest runTaskRequest) throws TException {
+        try {
+            log.info("Thrift RPC: Run task {}", runTaskRequest.getName());
+            
+            // Convert Thrift request to your DTO (perfect match)
+            com.tsinghua.dto.RunTaskRequest dto = convertToRunTaskRequest(runTaskRequest);
+            
+            // Call your existing service method directly
+            RunTaskEntity task = runTaskService.runTask(dto);
+            
+            // Convert result to JSON string
+            String jsonData = convertEntityToJson(task);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "任务运行成功");
+            result.setData(jsonData);
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Run task failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Run task failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result validateTaskUniqueness(com.tsinghua.thrift.api.RunTaskRequest request) throws TException {
+        try {
+            log.info("Thrift RPC: Validate task uniqueness");
+            
+            // Convert Thrift request to your DTO (perfect match)
+            com.tsinghua.dto.RunTaskRequest dto = convertToRunTaskRequest(request);
+            
+            // Call your existing service method directly
+            boolean isUnique = runTaskService.validateTaskUniqueness(dto);
+            
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "验证完成");
+            result.setData(String.valueOf(isUnique));
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Validate task uniqueness failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Validation failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result stopTask(long timestamp) throws TException {
+        try {
+            log.info("Thrift RPC: Stop task {}", timestamp);
+            
+            // Call your existing service method directly
+            runTaskService.stopTask(timestamp);
+            
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "任务已停止");
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Stop task failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Stop task failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result getTaskLog(long timestamp) throws TException {
+        try {
+            log.info("Thrift RPC: Get task log {}", timestamp);
+            
+            // Call your existing service method directly
+            String log = runTaskService.getTaskLog(timestamp);
+            
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "获取日志成功");
+            result.setData(log);
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Get task log failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Get log failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result queryTasks(com.tsinghua.thrift.api.RunTaskQueryRequest request) throws TException {
+        try {
+            log.info("Thrift RPC: Query tasks");
+            
+            // Convert Thrift request to your DTO (perfect match)
+            com.tsinghua.dto.RunTaskQueryRequest dto = convertToRunTaskQueryRequest(request);
+            
+            // Call your existing service method directly
+            java.util.List<RunTaskEntity> tasks = runTaskService.queryTasks(dto);
+            
+            // Convert result to JSON string
+            String jsonData = convertListToJson(tasks);
+            
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "Query successful");
+            result.setData(jsonData);
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Query tasks failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Query failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result countTasks(com.tsinghua.thrift.api.RunTaskQueryRequest request) throws TException {
+        try {
+            log.info("Thrift RPC: Count tasks");
+            
+            // Convert Thrift request to your DTO (perfect match)
+            com.tsinghua.dto.RunTaskQueryRequest dto = convertToRunTaskQueryRequest(request);
+            
+            // Call your existing service method directly
+            Object count = runTaskService.countTasks(dto);
+            
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "Count successful");
+            result.setData(String.valueOf(count));
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Count tasks failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Count failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result getTask(long timestamp) throws TException {
+        try {
+            log.info("Thrift RPC: Get task detail {}", timestamp);
+            
+            // Call your existing service method directly
+            Object task = runTaskService.queryTask(timestamp);
+            
+            // Convert result to JSON string
+            String jsonData = convertEntityToJson(task);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "Query successful");
+            result.setData(jsonData);
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Get task detail failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Query failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result deleteTask(long timestamp) throws TException {
+        try {
+            log.info("Thrift RPC: Delete task {}", timestamp);
+            
+            // Call your existing service method directly
+            runTaskService.deleteTask(timestamp);
+            
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "操作成功");
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Delete task failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Delete failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result uploadReport(ByteBuffer file) throws TException {
+        try {
+            log.info("Thrift RPC: Upload report file");
+            
+            // Note: Binary file upload via Thrift is complex, this is a placeholder
+            // In practice, you might need to handle this differently or use HTTP for file upload
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "File upload via Thrift not implemented, use HTTP endpoint");
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Upload report failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Upload failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result packageDownload(long timestamp) throws TException {
+        try {
+            log.info("Thrift RPC: Package download {}", timestamp);
+            
+            // Note: File download via Thrift is complex, this is a placeholder
+            // In practice, you might need to handle this differently or use HTTP for file download
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "File download via Thrift not implemented, use HTTP endpoint");
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Package download failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Download failed: " + e.getMessage());
             return result;
         }
     }
@@ -367,7 +680,117 @@ public class ApiServiceImpl implements ApiService.Iface {
         }
     }
 
+    @Override
+    public com.tsinghua.thrift.api.Result importData(String config, ByteBuffer file) throws TException {
+        try {
+            log.info("Thrift RPC: Import data");
+            
+            // Note: File import via Thrift is complex, this is a placeholder
+            // In practice, you might need to handle this differently or use HTTP for file upload
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Data import via Thrift not implemented, use HTTP endpoint");
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Import data failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Import failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result exportData(com.tsinghua.thrift.api.DataQueryRequest request) throws TException {
+        try {
+            log.info("Thrift RPC: Export data");
+            
+            // Note: File export via Thrift is complex, this is a placeholder
+            // In practice, you might need to handle this differently or use HTTP for file download
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Data export via Thrift not implemented, use HTTP endpoint");
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Export data failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Export failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result exportRelationalData(com.tsinghua.thrift.api.RelationalQueryRequest request) throws TException {
+        try {
+            log.info("Thrift RPC: Export relational data");
+            
+            // Note: File export via Thrift is complex, this is a placeholder
+            // In practice, you might need to handle this differently or use HTTP for file download
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Data export via Thrift not implemented, use HTTP endpoint");
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Export relational data failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Export failed: " + e.getMessage());
+            return result;
+        }
+    }
+
     // ========== Model File Interface - Match ModelFileController ==========
+
+    @Override
+    public com.tsinghua.thrift.api.Result uploadModel(ByteBuffer file) throws TException {
+        try {
+            log.info("Thrift RPC: Upload model file");
+            
+            // Note: File upload via Thrift is complex, this is a placeholder
+            // In practice, you might need to handle this differently or use HTTP for file upload
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "File upload via Thrift not implemented, use HTTP endpoint");
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Upload model failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Upload failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result downloadModel(String name, String version) throws TException {
+        try {
+            log.info("Thrift RPC: Download model {}@{}", name, version);
+            
+            // Note: File download via Thrift is complex, this is a placeholder
+            // In practice, you might need to handle this differently or use HTTP for file download
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "File download via Thrift not implemented, use HTTP endpoint");
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Download model failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Download failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result extractModelFile(com.tsinghua.thrift.api.ExtractModelFileRequest request) throws TException {
+        try {
+            log.info("Thrift RPC: Extract model file {}@{}", request.getName(), request.getVersion());
+            
+            // Convert Thrift request to your DTO (perfect match)
+            com.tsinghua.dto.ExtractModelFileRequest dto = convertToExtractModelFileRequest(request);
+            
+            // Call your existing service method directly - use extractModelFile instead of extractModelFileForParsing
+            // Note: extractModelFile requires a Path parameter for the task directory
+            // For Thrift RPC, we'll create a temporary directory or use a default path
+            java.nio.file.Path tempDir = java.nio.file.Paths.get("temp", "model-extract", System.currentTimeMillis() + "");
+            java.nio.file.Files.createDirectories(tempDir);
+            
+            Object result = modelFileService.extractModelFile(dto.getName(), dto.getVersion(), tempDir);
+            
+            // Convert result to JSON string
+            String jsonData = convertEntityToJson(result);
+            com.tsinghua.thrift.api.Result thriftResult = new com.tsinghua.thrift.api.Result(true, "文件提取成功");
+            thriftResult.setData(jsonData);
+            return thriftResult;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Extract model file failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Extract failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    // ========== Existing Model File Interface Methods ==========
 
     @Override
     public com.tsinghua.thrift.api.Result saveModelMeta(com.tsinghua.thrift.api.ModelMeta modelMeta) throws TException {
@@ -452,7 +875,79 @@ public class ApiServiceImpl implements ApiService.Iface {
         }
     }
 
-    // ========== Data Conversion Utility Methods - Perfectly Match Your DTOs ==========
+    // ========== New Conversion Methods for ParsingRules and RunTask ==========
+
+    private ParsingRulesEntity convertToParsingRulesEntity(com.tsinghua.thrift.api.ParsingRule thriftRule) {
+        ParsingRulesEntity entity = new ParsingRulesEntity();
+        entity.setName(thriftRule.getName());
+        entity.setRegexPattern(thriftRule.getRegexPattern());
+        if (thriftRule.isSetExample()) {
+            entity.setExample(thriftRule.getExample());
+        }
+        entity.setCreateTime(thriftRule.getCreateTime());
+        entity.setUpdateTime(thriftRule.getUpdateTime());
+        return entity;
+    }
+
+    private com.tsinghua.dto.ParsingRulesQueryRequest convertToParsingRulesQueryRequest(com.tsinghua.thrift.api.ParsingRulesQueryRequest thriftRequest) {
+        com.tsinghua.dto.ParsingRulesQueryRequest dto = new com.tsinghua.dto.ParsingRulesQueryRequest();
+        dto.setPageNum(thriftRequest.getPageNum());
+        dto.setPageSize(thriftRequest.getPageSize());
+        if (thriftRequest.isSetName()) {
+            dto.setName(thriftRequest.getName());
+        }
+        return dto;
+    }
+
+    private com.tsinghua.dto.RunTaskRequest convertToRunTaskRequest(com.tsinghua.thrift.api.RunTaskRequest thriftRequest) {
+        com.tsinghua.dto.RunTaskRequest dto = new com.tsinghua.dto.RunTaskRequest();
+        dto.setName(thriftRequest.getName());
+        dto.setStartTime(thriftRequest.getStartTime());
+        dto.setEndTime(thriftRequest.getEndTime());
+        dto.setRuleName(thriftRequest.getRuleName());
+        dto.setRuleId(thriftRequest.getRuleId());
+        if (thriftRequest.isSetModelName()) {
+            dto.setModelName(thriftRequest.getModelName());
+        }
+        if (thriftRequest.isSetModelVersion()) {
+            dto.setModelVersion(thriftRequest.getModelVersion());
+        }
+        if (thriftRequest.isSetOutputTable()) {
+            dto.setOutputTable(thriftRequest.getOutputTable());
+        }
+        return dto;
+    }
+
+    private com.tsinghua.dto.RunTaskQueryRequest convertToRunTaskQueryRequest(com.tsinghua.thrift.api.RunTaskQueryRequest thriftRequest) {
+        com.tsinghua.dto.RunTaskQueryRequest dto = new com.tsinghua.dto.RunTaskQueryRequest();
+        dto.setPageNum(thriftRequest.getPageNum());
+        dto.setPageSize(thriftRequest.getPageSize());
+        if (thriftRequest.isSetName()) {
+            dto.setName(thriftRequest.getName());
+        }
+        if (thriftRequest.isSetStatus()) {
+            dto.setStatus(thriftRequest.getStatus());
+        }
+        if (thriftRequest.isSetRuleId()) {
+            dto.setRuleId(thriftRequest.getRuleId());
+        }
+        if (thriftRequest.isSetStartTime()) {
+            dto.setStartTime(thriftRequest.getStartTime());
+        }
+        if (thriftRequest.isSetEndTime()) {
+            dto.setEndTime(thriftRequest.getEndTime());
+        }
+        return dto;
+    }
+
+    private com.tsinghua.dto.ExtractModelFileRequest convertToExtractModelFileRequest(com.tsinghua.thrift.api.ExtractModelFileRequest thriftRequest) {
+        com.tsinghua.dto.ExtractModelFileRequest dto = new com.tsinghua.dto.ExtractModelFileRequest();
+        dto.setName(thriftRequest.getName());
+        dto.setVersion(thriftRequest.getVersion());
+        return dto;
+    }
+
+    // ========== Existing Data Conversion Utility Methods - Perfectly Match Your DTOs ==========
 
     private AssociationRulesEntity convertToAssociationRulesEntity(com.tsinghua.thrift.api.AssociationRule thriftRule) {
         AssociationRulesEntity entity = new AssociationRulesEntity();

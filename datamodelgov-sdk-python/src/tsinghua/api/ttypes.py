@@ -348,6 +348,653 @@ class AssociationRulesQueryRequest(object):
         return not (self == other)
 
 
+class ParsingRule(object):
+    """
+    Attributes:
+     - name
+     - regexPattern
+     - example
+     - createTime
+     - updateTime
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, name = None, regexPattern = None, example = None, createTime = None, updateTime = None,):
+        self.name = name
+        self.regexPattern = regexPattern
+        self.example = example
+        self.createTime = createTime
+        self.updateTime = updateTime
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 1:
+                if ftype == TType.STRING:
+                    self.name = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 2:
+                if ftype == TType.STRING:
+                    self.regexPattern = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 3:
+                if ftype == TType.STRING:
+                    self.example = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 4:
+                if ftype == TType.I64:
+                    self.createTime = iprot.readI64()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 5:
+                if ftype == TType.I64:
+                    self.updateTime = iprot.readI64()
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('ParsingRule')
+        if self.name is not None:
+            oprot.writeFieldBegin('name', TType.STRING, 1)
+            oprot.writeString(self.name.encode('utf-8') if sys.version_info[0] == 2 else self.name)
+            oprot.writeFieldEnd()
+        if self.regexPattern is not None:
+            oprot.writeFieldBegin('regexPattern', TType.STRING, 2)
+            oprot.writeString(self.regexPattern.encode('utf-8') if sys.version_info[0] == 2 else self.regexPattern)
+            oprot.writeFieldEnd()
+        if self.example is not None:
+            oprot.writeFieldBegin('example', TType.STRING, 3)
+            oprot.writeString(self.example.encode('utf-8') if sys.version_info[0] == 2 else self.example)
+            oprot.writeFieldEnd()
+        if self.createTime is not None:
+            oprot.writeFieldBegin('createTime', TType.I64, 4)
+            oprot.writeI64(self.createTime)
+            oprot.writeFieldEnd()
+        if self.updateTime is not None:
+            oprot.writeFieldBegin('updateTime', TType.I64, 5)
+            oprot.writeI64(self.updateTime)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+
+
+class ParsingRulesQueryRequest(object):
+    """
+    Attributes:
+     - pageNum
+     - pageSize
+     - name
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, pageNum = 1, pageSize = 6, name = None,):
+        self.pageNum = pageNum
+        self.pageSize = pageSize
+        self.name = name
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 1:
+                if ftype == TType.I32:
+                    self.pageNum = iprot.readI32()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 2:
+                if ftype == TType.I32:
+                    self.pageSize = iprot.readI32()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 3:
+                if ftype == TType.STRING:
+                    self.name = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('ParsingRulesQueryRequest')
+        if self.pageNum is not None:
+            oprot.writeFieldBegin('pageNum', TType.I32, 1)
+            oprot.writeI32(self.pageNum)
+            oprot.writeFieldEnd()
+        if self.pageSize is not None:
+            oprot.writeFieldBegin('pageSize', TType.I32, 2)
+            oprot.writeI32(self.pageSize)
+            oprot.writeFieldEnd()
+        if self.name is not None:
+            oprot.writeFieldBegin('name', TType.STRING, 3)
+            oprot.writeString(self.name.encode('utf-8') if sys.version_info[0] == 2 else self.name)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+
+
+class RunTask(object):
+    """
+    Attributes:
+     - name
+     - startTime
+     - endTime
+     - ruleId
+     - ruleName
+     - modelName
+     - modelVersion
+     - inputMeasurements
+     - outputMeasurements
+     - outputTable
+     - status
+     - timestamp
+     - processId
+     - processLog
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, name = None, startTime = None, endTime = None, ruleId = None, ruleName = None, modelName = None, modelVersion = None, inputMeasurements = None, outputMeasurements = None, outputTable = None, status = None, timestamp = None, processId = None, processLog = None,):
+        self.name = name
+        self.startTime = startTime
+        self.endTime = endTime
+        self.ruleId = ruleId
+        self.ruleName = ruleName
+        self.modelName = modelName
+        self.modelVersion = modelVersion
+        self.inputMeasurements = inputMeasurements
+        self.outputMeasurements = outputMeasurements
+        self.outputTable = outputTable
+        self.status = status
+        self.timestamp = timestamp
+        self.processId = processId
+        self.processLog = processLog
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 1:
+                if ftype == TType.STRING:
+                    self.name = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 2:
+                if ftype == TType.I64:
+                    self.startTime = iprot.readI64()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 3:
+                if ftype == TType.I64:
+                    self.endTime = iprot.readI64()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 4:
+                if ftype == TType.I64:
+                    self.ruleId = iprot.readI64()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 5:
+                if ftype == TType.STRING:
+                    self.ruleName = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 6:
+                if ftype == TType.STRING:
+                    self.modelName = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 7:
+                if ftype == TType.STRING:
+                    self.modelVersion = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 8:
+                if ftype == TType.STRING:
+                    self.inputMeasurements = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 9:
+                if ftype == TType.STRING:
+                    self.outputMeasurements = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 10:
+                if ftype == TType.STRING:
+                    self.outputTable = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 11:
+                if ftype == TType.STRING:
+                    self.status = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 12:
+                if ftype == TType.I64:
+                    self.timestamp = iprot.readI64()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 13:
+                if ftype == TType.I64:
+                    self.processId = iprot.readI64()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 14:
+                if ftype == TType.STRING:
+                    self.processLog = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('RunTask')
+        if self.name is not None:
+            oprot.writeFieldBegin('name', TType.STRING, 1)
+            oprot.writeString(self.name.encode('utf-8') if sys.version_info[0] == 2 else self.name)
+            oprot.writeFieldEnd()
+        if self.startTime is not None:
+            oprot.writeFieldBegin('startTime', TType.I64, 2)
+            oprot.writeI64(self.startTime)
+            oprot.writeFieldEnd()
+        if self.endTime is not None:
+            oprot.writeFieldBegin('endTime', TType.I64, 3)
+            oprot.writeI64(self.endTime)
+            oprot.writeFieldEnd()
+        if self.ruleId is not None:
+            oprot.writeFieldBegin('ruleId', TType.I64, 4)
+            oprot.writeI64(self.ruleId)
+            oprot.writeFieldEnd()
+        if self.ruleName is not None:
+            oprot.writeFieldBegin('ruleName', TType.STRING, 5)
+            oprot.writeString(self.ruleName.encode('utf-8') if sys.version_info[0] == 2 else self.ruleName)
+            oprot.writeFieldEnd()
+        if self.modelName is not None:
+            oprot.writeFieldBegin('modelName', TType.STRING, 6)
+            oprot.writeString(self.modelName.encode('utf-8') if sys.version_info[0] == 2 else self.modelName)
+            oprot.writeFieldEnd()
+        if self.modelVersion is not None:
+            oprot.writeFieldBegin('modelVersion', TType.STRING, 7)
+            oprot.writeString(self.modelVersion.encode('utf-8') if sys.version_info[0] == 2 else self.modelVersion)
+            oprot.writeFieldEnd()
+        if self.inputMeasurements is not None:
+            oprot.writeFieldBegin('inputMeasurements', TType.STRING, 8)
+            oprot.writeString(self.inputMeasurements.encode('utf-8') if sys.version_info[0] == 2 else self.inputMeasurements)
+            oprot.writeFieldEnd()
+        if self.outputMeasurements is not None:
+            oprot.writeFieldBegin('outputMeasurements', TType.STRING, 9)
+            oprot.writeString(self.outputMeasurements.encode('utf-8') if sys.version_info[0] == 2 else self.outputMeasurements)
+            oprot.writeFieldEnd()
+        if self.outputTable is not None:
+            oprot.writeFieldBegin('outputTable', TType.STRING, 10)
+            oprot.writeString(self.outputTable.encode('utf-8') if sys.version_info[0] == 2 else self.outputTable)
+            oprot.writeFieldEnd()
+        if self.status is not None:
+            oprot.writeFieldBegin('status', TType.STRING, 11)
+            oprot.writeString(self.status.encode('utf-8') if sys.version_info[0] == 2 else self.status)
+            oprot.writeFieldEnd()
+        if self.timestamp is not None:
+            oprot.writeFieldBegin('timestamp', TType.I64, 12)
+            oprot.writeI64(self.timestamp)
+            oprot.writeFieldEnd()
+        if self.processId is not None:
+            oprot.writeFieldBegin('processId', TType.I64, 13)
+            oprot.writeI64(self.processId)
+            oprot.writeFieldEnd()
+        if self.processLog is not None:
+            oprot.writeFieldBegin('processLog', TType.STRING, 14)
+            oprot.writeString(self.processLog.encode('utf-8') if sys.version_info[0] == 2 else self.processLog)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+
+
+class RunTaskRequest(object):
+    """
+    Attributes:
+     - name
+     - startTime
+     - endTime
+     - ruleName
+     - ruleId
+     - modelName
+     - modelVersion
+     - outputTable
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, name = None, startTime = None, endTime = None, ruleName = None, ruleId = None, modelName = None, modelVersion = None, outputTable = None,):
+        self.name = name
+        self.startTime = startTime
+        self.endTime = endTime
+        self.ruleName = ruleName
+        self.ruleId = ruleId
+        self.modelName = modelName
+        self.modelVersion = modelVersion
+        self.outputTable = outputTable
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 1:
+                if ftype == TType.STRING:
+                    self.name = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 2:
+                if ftype == TType.I64:
+                    self.startTime = iprot.readI64()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 3:
+                if ftype == TType.I64:
+                    self.endTime = iprot.readI64()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 4:
+                if ftype == TType.STRING:
+                    self.ruleName = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 5:
+                if ftype == TType.I64:
+                    self.ruleId = iprot.readI64()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 6:
+                if ftype == TType.STRING:
+                    self.modelName = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 7:
+                if ftype == TType.STRING:
+                    self.modelVersion = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 8:
+                if ftype == TType.STRING:
+                    self.outputTable = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('RunTaskRequest')
+        if self.name is not None:
+            oprot.writeFieldBegin('name', TType.STRING, 1)
+            oprot.writeString(self.name.encode('utf-8') if sys.version_info[0] == 2 else self.name)
+            oprot.writeFieldEnd()
+        if self.startTime is not None:
+            oprot.writeFieldBegin('startTime', TType.I64, 2)
+            oprot.writeI64(self.startTime)
+            oprot.writeFieldEnd()
+        if self.endTime is not None:
+            oprot.writeFieldBegin('endTime', TType.I64, 3)
+            oprot.writeI64(self.endTime)
+            oprot.writeFieldEnd()
+        if self.ruleName is not None:
+            oprot.writeFieldBegin('ruleName', TType.STRING, 4)
+            oprot.writeString(self.ruleName.encode('utf-8') if sys.version_info[0] == 2 else self.ruleName)
+            oprot.writeFieldEnd()
+        if self.ruleId is not None:
+            oprot.writeFieldBegin('ruleId', TType.I64, 5)
+            oprot.writeI64(self.ruleId)
+            oprot.writeFieldEnd()
+        if self.modelName is not None:
+            oprot.writeFieldBegin('modelName', TType.STRING, 6)
+            oprot.writeString(self.modelName.encode('utf-8') if sys.version_info[0] == 2 else self.modelName)
+            oprot.writeFieldEnd()
+        if self.modelVersion is not None:
+            oprot.writeFieldBegin('modelVersion', TType.STRING, 7)
+            oprot.writeString(self.modelVersion.encode('utf-8') if sys.version_info[0] == 2 else self.modelVersion)
+            oprot.writeFieldEnd()
+        if self.outputTable is not None:
+            oprot.writeFieldBegin('outputTable', TType.STRING, 8)
+            oprot.writeString(self.outputTable.encode('utf-8') if sys.version_info[0] == 2 else self.outputTable)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+
+
+class RunTaskQueryRequest(object):
+    """
+    Attributes:
+     - pageNum
+     - pageSize
+     - name
+     - status
+     - ruleId
+     - startTime
+     - endTime
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, pageNum = 1, pageSize = 10, name = None, status = None, ruleId = None, startTime = None, endTime = None,):
+        self.pageNum = pageNum
+        self.pageSize = pageSize
+        self.name = name
+        self.status = status
+        self.ruleId = ruleId
+        self.startTime = startTime
+        self.endTime = endTime
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 1:
+                if ftype == TType.I32:
+                    self.pageNum = iprot.readI32()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 2:
+                if ftype == TType.I32:
+                    self.pageSize = iprot.readI32()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 3:
+                if ftype == TType.STRING:
+                    self.name = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 4:
+                if ftype == TType.STRING:
+                    self.status = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 5:
+                if ftype == TType.I64:
+                    self.ruleId = iprot.readI64()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 6:
+                if ftype == TType.I64:
+                    self.startTime = iprot.readI64()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 7:
+                if ftype == TType.I64:
+                    self.endTime = iprot.readI64()
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('RunTaskQueryRequest')
+        if self.pageNum is not None:
+            oprot.writeFieldBegin('pageNum', TType.I32, 1)
+            oprot.writeI32(self.pageNum)
+            oprot.writeFieldEnd()
+        if self.pageSize is not None:
+            oprot.writeFieldBegin('pageSize', TType.I32, 2)
+            oprot.writeI32(self.pageSize)
+            oprot.writeFieldEnd()
+        if self.name is not None:
+            oprot.writeFieldBegin('name', TType.STRING, 3)
+            oprot.writeString(self.name.encode('utf-8') if sys.version_info[0] == 2 else self.name)
+            oprot.writeFieldEnd()
+        if self.status is not None:
+            oprot.writeFieldBegin('status', TType.STRING, 4)
+            oprot.writeString(self.status.encode('utf-8') if sys.version_info[0] == 2 else self.status)
+            oprot.writeFieldEnd()
+        if self.ruleId is not None:
+            oprot.writeFieldBegin('ruleId', TType.I64, 5)
+            oprot.writeI64(self.ruleId)
+            oprot.writeFieldEnd()
+        if self.startTime is not None:
+            oprot.writeFieldBegin('startTime', TType.I64, 6)
+            oprot.writeI64(self.startTime)
+            oprot.writeFieldEnd()
+        if self.endTime is not None:
+            oprot.writeFieldBegin('endTime', TType.I64, 7)
+            oprot.writeI64(self.endTime)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+
+
 class StorageEngineInfo(object):
     """
     Attributes:
@@ -1095,6 +1742,76 @@ class ModelMeta(object):
 
     def __ne__(self, other):
         return not (self == other)
+
+
+class ExtractModelFileRequest(object):
+    """
+    Attributes:
+     - name
+     - version
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, name = None, version = None,):
+        self.name = name
+        self.version = version
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 1:
+                if ftype == TType.STRING:
+                    self.name = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 2:
+                if ftype == TType.STRING:
+                    self.version = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('ExtractModelFileRequest')
+        if self.name is not None:
+            oprot.writeFieldBegin('name', TType.STRING, 1)
+            oprot.writeString(self.name.encode('utf-8') if sys.version_info[0] == 2 else self.name)
+            oprot.writeFieldEnd()
+        if self.version is not None:
+            oprot.writeFieldBegin('version', TType.STRING, 2)
+            oprot.writeString(self.version.encode('utf-8') if sys.version_info[0] == 2 else self.version)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
 all_structs.append(Result)
 Result.thrift_spec = (
     None,  # 0
@@ -1123,6 +1840,63 @@ AssociationRulesQueryRequest.thrift_spec = (
     (2, TType.I32, 'pageSize', None, 10, ),  # 2
     (3, TType.STRING, 'name', 'UTF8', None, ),  # 3
     (4, TType.STRING, 'status', 'UTF8', None, ),  # 4
+)
+all_structs.append(ParsingRule)
+ParsingRule.thrift_spec = (
+    None,  # 0
+    (1, TType.STRING, 'name', 'UTF8', None, ),  # 1
+    (2, TType.STRING, 'regexPattern', 'UTF8', None, ),  # 2
+    (3, TType.STRING, 'example', 'UTF8', None, ),  # 3
+    (4, TType.I64, 'createTime', None, None, ),  # 4
+    (5, TType.I64, 'updateTime', None, None, ),  # 5
+)
+all_structs.append(ParsingRulesQueryRequest)
+ParsingRulesQueryRequest.thrift_spec = (
+    None,  # 0
+    (1, TType.I32, 'pageNum', None, 1, ),  # 1
+    (2, TType.I32, 'pageSize', None, 6, ),  # 2
+    (3, TType.STRING, 'name', 'UTF8', None, ),  # 3
+)
+all_structs.append(RunTask)
+RunTask.thrift_spec = (
+    None,  # 0
+    (1, TType.STRING, 'name', 'UTF8', None, ),  # 1
+    (2, TType.I64, 'startTime', None, None, ),  # 2
+    (3, TType.I64, 'endTime', None, None, ),  # 3
+    (4, TType.I64, 'ruleId', None, None, ),  # 4
+    (5, TType.STRING, 'ruleName', 'UTF8', None, ),  # 5
+    (6, TType.STRING, 'modelName', 'UTF8', None, ),  # 6
+    (7, TType.STRING, 'modelVersion', 'UTF8', None, ),  # 7
+    (8, TType.STRING, 'inputMeasurements', 'UTF8', None, ),  # 8
+    (9, TType.STRING, 'outputMeasurements', 'UTF8', None, ),  # 9
+    (10, TType.STRING, 'outputTable', 'UTF8', None, ),  # 10
+    (11, TType.STRING, 'status', 'UTF8', None, ),  # 11
+    (12, TType.I64, 'timestamp', None, None, ),  # 12
+    (13, TType.I64, 'processId', None, None, ),  # 13
+    (14, TType.STRING, 'processLog', 'UTF8', None, ),  # 14
+)
+all_structs.append(RunTaskRequest)
+RunTaskRequest.thrift_spec = (
+    None,  # 0
+    (1, TType.STRING, 'name', 'UTF8', None, ),  # 1
+    (2, TType.I64, 'startTime', None, None, ),  # 2
+    (3, TType.I64, 'endTime', None, None, ),  # 3
+    (4, TType.STRING, 'ruleName', 'UTF8', None, ),  # 4
+    (5, TType.I64, 'ruleId', None, None, ),  # 5
+    (6, TType.STRING, 'modelName', 'UTF8', None, ),  # 6
+    (7, TType.STRING, 'modelVersion', 'UTF8', None, ),  # 7
+    (8, TType.STRING, 'outputTable', 'UTF8', None, ),  # 8
+)
+all_structs.append(RunTaskQueryRequest)
+RunTaskQueryRequest.thrift_spec = (
+    None,  # 0
+    (1, TType.I32, 'pageNum', None, 1, ),  # 1
+    (2, TType.I32, 'pageSize', None, 10, ),  # 2
+    (3, TType.STRING, 'name', 'UTF8', None, ),  # 3
+    (4, TType.STRING, 'status', 'UTF8', None, ),  # 4
+    (5, TType.I64, 'ruleId', None, None, ),  # 5
+    (6, TType.I64, 'startTime', None, None, ),  # 6
+    (7, TType.I64, 'endTime', None, None, ),  # 7
 )
 all_structs.append(StorageEngineInfo)
 StorageEngineInfo.thrift_spec = (
@@ -1185,6 +1959,12 @@ ModelMeta.thrift_spec = (
     (10, TType.STRING, 'inputs', 'UTF8', None, ),  # 10
     (11, TType.STRING, 'outputs', 'UTF8', None, ),  # 11
     (12, TType.I64, 'timestamp', None, None, ),  # 12
+)
+all_structs.append(ExtractModelFileRequest)
+ExtractModelFileRequest.thrift_spec = (
+    None,  # 0
+    (1, TType.STRING, 'name', 'UTF8', None, ),  # 1
+    (2, TType.STRING, 'version', 'UTF8', None, ),  # 2
 )
 fix_spec(all_structs)
 del all_structs
