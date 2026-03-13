@@ -557,7 +557,6 @@ class AssociationRules extends HTMLElement {
                 this.shadowRoot.getElementById('cmd').value = rule.cmd || '';
                 this.shadowRoot.getElementById('inputCsvName').value = rule.inputCsvName || '';
                 this.shadowRoot.getElementById('outputCsvName').value = rule.outputCsvName || '';
-                this.shadowRoot.getElementById('outputTable').value = rule.outputTable || '';
                 
                 // 设置版本 - 需要先加载版本选项
                 if (rule.modelName || rule.targetModel) {
@@ -734,7 +733,6 @@ class AssociationRules extends HTMLElement {
         const cmd = this.shadowRoot.getElementById('cmd').value.trim();
         const inputCsvName = this.shadowRoot.getElementById('inputCsvName').value.trim();
         const outputCsvName = this.shadowRoot.getElementById('outputCsvName').value.trim();
-        const outputTable = this.shadowRoot.getElementById('outputTable').value.trim();
         const status = this.shadowRoot.querySelector('input[name="status"]:checked')?.value || 'active';
         
         // 收集映射关系 - 参考model-edit.js的inputs/outputs收集逻辑
@@ -752,7 +750,6 @@ class AssociationRules extends HTMLElement {
             cmd: cmd,               // 运行命令
             inputCsvName: inputCsvName,   // 输入数据CSV文件名
             outputCsvName: outputCsvName, // 输出结果CSV文件名
-            outputTable: outputTable,     // 结果回写路径前缀
             status: status === 'active', // 转换为boolean类型
             createTime: this.currentAction === 'edit' && this.shadowRoot.getElementById('ruleForm').dataset.ruleId 
                 ? parseInt(this.shadowRoot.getElementById('ruleForm').dataset.ruleId) 
@@ -1847,6 +1844,13 @@ class AssociationRules extends HTMLElement {
                             <input type="datetime-local" id="endTime" name="endTime" required value="${new Date().toISOString().slice(0, 16)}" step="1">
                         </div>
                     </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="outputTable">结果回写路径前缀 *</label>
+                            <input type="text" id="outputTable" name="outputTable" required placeholder="root.result.job01">
+                        </div>
+                    </div>
                 </form>
             `;
             
@@ -1891,6 +1895,7 @@ class AssociationRules extends HTMLElement {
         const endTime = this.shadowRoot.getElementById('endTime')?.value;
         const modelName = this.shadowRoot.getElementById('modelName')?.value;
         const modelVersion = this.shadowRoot.getElementById('modelVersion')?.value;
+        const outputTable = this.shadowRoot.getElementById('outputTable')?.value.trim();
         
         if (!runName) {
             this.showToast('请输入运行任务名称', 'error');
@@ -1899,6 +1904,11 @@ class AssociationRules extends HTMLElement {
         
         if (!startTime || !endTime) {
             this.showToast('请选择开始时间和结束时间', 'error');
+            return;
+        }
+        
+        if (!outputTable) {
+            this.showToast('请输入结果回写路径前缀', 'error');
             return;
         }
         
@@ -1918,7 +1928,8 @@ class AssociationRules extends HTMLElement {
                     modelVersion: modelVersion, // 添加版本号字段
                     startTime: new Date(startTime).getTime(),
                     endTime: new Date(endTime).getTime(),
-                    ruleId: rule.createTime // 使用createTime作为ruleId
+                    ruleId: rule.createTime, // 使用createTime作为ruleId
+                    outputTable: outputTable // 添加结果回写路径前缀
                 };
                 
                 console.log('运行规则参数:', requestBody);

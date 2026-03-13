@@ -34,4 +34,7 @@ public class RunTaskRequest {
     @ApiModelProperty(value = "模型版本号")
     private String modelVersion;
 
+    @ApiModelProperty(value = "结果回写路径前缀")
+    private String outputTable;
+
 }

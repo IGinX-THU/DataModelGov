@@ -29,7 +29,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import org.xhtmlrenderer.pdf.ITextRenderer;
-import org.apache.pdfbox.pdmodel.PDDocument;
+
 import java.io.*;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -461,7 +461,7 @@ public class RunTaskService {
             runTaskEntity.setInputMeasurements(JSONArray.toJSONString(inputs.stream().map(inputBindDto ->
                     String.format("%s.%s", associationRulesEntity.getTableName(), inputBindDto.getSourceField())).collect(Collectors.toList())));
             runTaskEntity.setOutputMeasurements(JSONArray.toJSONString(outputs.stream().map(outputBindDto ->
-                    String.format("%s.%s", associationRulesEntity.getOutputTable(), outputBindDto.getResultTarget())).collect(Collectors.toList())));
+                    String.format("%s.%s", runTaskEntity.getOutputTable(), outputBindDto.getResultTarget())).collect(Collectors.toList())));
             saveTask(runTaskEntity);
 
             // 2. 创建任务目录 (相对于项目根目录的tasks文件夹下)
@@ -600,6 +600,7 @@ public class RunTaskService {
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "ruleName", runTaskEntity.getRuleName(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "inputMeasurements", runTaskEntity.getInputMeasurements(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "outputMeasurements", runTaskEntity.getOutputMeasurements(), timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "outputTable", runTaskEntity.getOutputTable(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "status", runTaskEntity.getStatus(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "timestamp", runTaskEntity.getTimestamp(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "processId", runTaskEntity.getProcessId(), timestamp));
@@ -906,7 +907,7 @@ public class RunTaskService {
 
                     // 处理输出CSV文件
                     try {
-                        processOutputCsv(associationRulesEntity, taskDir, outputs);
+                        processOutputCsv(associationRulesEntity, taskDir, outputs, runTaskEntity);
                     } catch (Exception outputException) {
                         log.error("处理输出CSV文件失败: {}", outputException.getMessage(), outputException);
                         // 不影响任务成功状态，只记录错误
@@ -943,7 +944,7 @@ public class RunTaskService {
      * 处理输出CSV文件，将数据写入到对应的测点
      */
     private void processOutputCsv(AssociationRulesEntity associationRulesEntity, Path taskDir,
-                                  List<OutputBindDto> outputs) throws Exception {
+                                  List<OutputBindDto> outputs, RunTaskEntity runTaskEntity) throws Exception {
         if (associationRulesEntity.getOutputCsvName() == null || outputs == null || outputs.isEmpty()) {
             log.info("输出CSV文件名或输出映射为空，跳过输出处理");
             return;
@@ -1000,7 +1001,7 @@ public class RunTaskService {
             Files.write(modifiedCsvFile, lines, StandardCharsets.UTF_8);
         }
 
-        long recordsNum = dataTableService.importCsvFile(modifiedCsvFile, associationRulesEntity.getOutputTable(), modifiedCsvFileName);
+        long recordsNum = dataTableService.importCsvFile(modifiedCsvFile, runTaskEntity.getOutputTable(), modifiedCsvFileName);
 
         log.info("输出CSV文件导入完成，记录数: {}", recordsNum);
 

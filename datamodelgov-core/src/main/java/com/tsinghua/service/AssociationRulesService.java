@@ -56,7 +56,6 @@ public class AssociationRulesService {
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "updateTime", associationRulesEntity.getUpdateTime(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "inputsBind", associationRulesEntity.getInputsBind(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "outputsBind", associationRulesEntity.getOutputsBind(), timestamp));
-        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "outputTable", associationRulesEntity.getOutputTable(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "cmd", associationRulesEntity.getCmd(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "inputCsvName", associationRulesEntity.getInputCsvName(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "outputCsvName", associationRulesEntity.getOutputCsvName(), timestamp));

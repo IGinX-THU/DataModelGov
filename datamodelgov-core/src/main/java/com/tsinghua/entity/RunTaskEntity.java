@@ -23,6 +23,8 @@ public class RunTaskEntity {
     private String inputMeasurements;
     @ApiModelProperty(value = "输出测点")
     private String outputMeasurements;
+    @ApiModelProperty(value = "结果回写路径前缀")
+    private String outputTable;
     @ApiModelProperty(value = "状态")
     private String status;
     @ApiModelProperty(value = "创建时间")
