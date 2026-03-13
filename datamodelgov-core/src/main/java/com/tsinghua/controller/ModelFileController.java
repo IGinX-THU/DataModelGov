@@ -3,6 +3,7 @@ package com.tsinghua.controller;
 import com.tsinghua.entity.ModelMetaEntity;
 import com.tsinghua.model.Result;
 import com.tsinghua.dto.UploadResult;
+import com.tsinghua.dto.ExtractModelFileRequest;
 import com.tsinghua.service.ModelFileService;
 import com.tsinghua.auth.annotation.RequirePermission;
 import com.tsinghua.auth.enums.Permission;
@@ -15,7 +16,11 @@ import org.springframework.web.multipart.MultipartFile;
 import javax.servlet.http.HttpServletResponse;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
+import java.util.Map;
 
 @Api(tags = "模型资产管理")
 @RestController
@@ -102,6 +107,44 @@ public class ModelFileController {
             @RequestParam(value = "version", required = false) String version) throws Exception {
         modelFileService.deleteModel(name, version);
         return Result.success("操作成功");
+    }
+
+    @ApiOperation("提取模型文件用于解析")
+    @PostMapping("/extractModelFile")
+    @RequirePermission(Permission.MODEL_READ)
+    public Result<?> extractModelFileForParsing(@RequestBody ExtractModelFileRequest request) throws Exception {
+        
+        String modelName = request.getName();
+        String version = request.getVersion();
+        
+        if (modelName == null || version == null) {
+            return Result.error("参数name和version不能为空");
+        }
+        
+        // 创建临时目录
+        Path tempDir = Files.createTempDirectory("model_parsing_");
+        
+        try {
+            // 调用修改后的extractModelFile方法
+            List<Map<String, Object>> fileList = modelFileService.extractModelFile(modelName, version, tempDir);
+            return Result.success(fileList);
+        } finally {
+            // 清理临时目录
+            try {
+                Files.walk(tempDir)
+                        .sorted(java.util.Comparator.reverseOrder())
+                        .forEach(path -> {
+                            try {
+                                Files.deleteIfExists(path);
+                            } catch (Exception deleteException) {
+                                // 忽略删除异常
+                            }
+                        });
+                Files.deleteIfExists(tempDir);
+            } catch (Exception deleteException) {
+                // 忽略删除异常
+            }
+        }
     }
 
 }

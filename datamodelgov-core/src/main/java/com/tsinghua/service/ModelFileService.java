@@ -190,7 +190,10 @@ public class ModelFileService {
         return fileBytes;
     }
 
-    public void extractModelFile(String modelName, String modelVersion, Path taskDir) throws Exception {
+    /**
+     * 提取模型文件（返回文件列表给前端）
+     */
+    public List<Map<String, Object>> extractModelFile(String modelName, String modelVersion, Path taskDir) throws Exception {
         if (!StringUtils.hasText(modelName) || !StringUtils.hasText(modelVersion)) {
             throw new RuntimeException("模型名称或版本为空");
         }
@@ -219,6 +222,46 @@ public class ModelFileService {
             extractArchive(modelFile, taskDir);
             log.info("压缩包已解压到: {}", taskDir);
         }
+
+        // 扫描任务目录，获取所有文件信息
+        List<Map<String, Object>> fileList = new ArrayList<>();
+        Files.walk(taskDir)
+                .filter(Files::isRegularFile)
+                .forEach(file -> {
+                    try {
+                        Map<String, Object> fileInfo = new HashMap<>();
+                        fileInfo.put("name", file.getFileName().toString());
+                        fileInfo.put("path", taskDir.relativize(file).toString());
+                        fileInfo.put("size", Files.size(file));
+                        fileInfo.put("lastModified", Files.getLastModifiedTime(file).toString());
+                        
+                        // 如果是文本文件，读取内容（限制大小）
+                        if (isTextFile(file) && Files.size(file) < 1024 * 1024) { // 小于1MB
+                            String content = String.join("\n", Files.readAllLines(file, StandardCharsets.UTF_8));
+                            fileInfo.put("content", content);
+                        }
+                        
+                        fileList.add(fileInfo);
+                        log.debug("找到文件: {} ({} bytes)", file.getFileName(), Files.size(file));
+                    } catch (Exception e) {
+                        log.warn("处理文件时出错: {}", file.getFileName(), e);
+                    }
+                });
+
+        log.info("提取完成，共找到 {} 个文件", fileList.size());
+        return fileList;
+    }
+    
+    /**
+     * 判断是否为文本文件
+     */
+    private boolean isTextFile(Path file) {
+        String fileName = file.getFileName().toString().toLowerCase();
+        return fileName.endsWith(".py") || fileName.endsWith(".m") || 
+               fileName.endsWith(".cpp") || fileName.endsWith(".c") || 
+               fileName.endsWith(".h") || fileName.endsWith(".java") ||
+               fileName.endsWith(".js") || fileName.endsWith(".ts") ||
+               fileName.endsWith(".txt") || fileName.endsWith(".md");
     }
 
     private void extractArchive(Path archiveFile, Path extractDir) {
@@ -491,5 +534,4 @@ public class ModelFileService {
             return "";
         }
     }
-
 }

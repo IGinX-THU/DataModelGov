@@ -96,7 +96,8 @@ window.AppConfig = {
             download: '/api/model/download',
             metas: '/api/model/metas',
             history: '/api/model/history',
-            delete: '/api/model/delete'
+            delete: '/api/model/delete',
+            extractModelFile: '/api/model/extractModelFile'
         },
         // 任务相关
         task: {

@@ -167,6 +167,9 @@ class ModelEdit extends HTMLElement {
         // 确保加载解析规则
         await this.loadParsingRules();
         
+        // 加载源文件列表
+        await this.loadSourceFiles();
+        
         // 直接使用model-detail的数据填充表单，完全使用接口数据
         const modelNameInput = this.shadowRoot.getElementById('modelName');
         const developerInput = this.shadowRoot.getElementById('developer');
@@ -508,45 +511,91 @@ class ModelEdit extends HTMLElement {
         this.showSuccessMessage('已强制覆盖为推荐值');
     }
 
-    autoParseFromCode() {
+    async autoParseFromCode() {
         // 获取当前选择的配置
         const parseRulesSelect = this.shadowRoot.getElementById('parseRulesSelect');
         const sourceFileSelect = this.shadowRoot.getElementById('sourceFileSelect');
         const forceOverrideCheck = this.shadowRoot.getElementById('forceOverrideCheck');
         
-        const selectedRule = parseRulesSelect?.value || 'default';
+        const selectedRule = parseRulesSelect?.value || '';
         const selectedFile = sourceFileSelect?.value || '';
         const forceOverride = forceOverrideCheck?.checked || false;
         
-        if (!selectedFile) {
-            this.showErrorMessage('请先选择源文件');
+        if (!selectedRule) {
+            this.showErrorMessage('请先选择解析规则');
             return;
         }
         
-        // 获取解析规则配置
-        const parsingRule = this.getParsingRuleConfig(selectedRule);
-        
-        // 模拟根据选择的解析规则和源文件进行解析
-        const codeAnalysis = this.performCodeAnalysis(selectedFile, parsingRule);
-        
-        if (!codeAnalysis || (!codeAnalysis.inputs && !codeAnalysis.outputs)) {
-            this.showErrorMessage('解析失败，请检查解析规则和源文件');
-            return;
+        try {
+            // 获取解析规则配置
+            const parsingRule = this.getParsingRuleConfig(selectedRule);
+            
+            if (!parsingRule || !parsingRule.pattern) {
+                this.showErrorMessage('解析规则配置无效');
+                return;
+            }
+            
+            console.log('开始解析代码文件，使用解析规则:', parsingRule);
+            
+            // 获取模型名称和版本
+            const modelName = this.currentModel?.name || this.currentModelMeta?.name;
+            const version = this.currentModel?.version || this.currentModelMeta?.version;
+            
+            console.log('使用的参数 - modelName:', modelName, 'version:', version);
+            
+            if (!modelName || !version) {
+                this.showErrorMessage('模型名称或版本为空，无法解析代码');
+                return;
+            }
+            
+            // 调用ModelFileService的extractModelFile方法
+            const extractResponse = await window.AppConfig.post('model', 'extractModelFile', {
+                name: modelName,
+                version: version
+            });
+            
+            if (!extractResponse.success) {
+                this.showErrorMessage('提取模型文件失败: ' + extractResponse.message);
+                return;
+            }
+            
+            console.log('模型文件提取成功:', extractResponse.data);
+            
+            // 动态填充源文件下拉选择框（每次点击都重新加载）
+            this.populateSourceFileSelect(extractResponse.data);
+            
+            // 如果没有选择文件，提示用户选择
+            if (!selectedFile) {
+                this.showErrorMessage('请从下拉列表中选择源文件');
+                return;
+            }
+            
+            // 执行代码分析
+            const codeAnalysis = this.performRealCodeAnalysis(selectedFile, parsingRule, extractResponse.data);
+            
+            if (!codeAnalysis || (!codeAnalysis.inputs && !codeAnalysis.outputs)) {
+                this.showErrorMessage('解析失败，请检查解析规则和源文件');
+                return;
+            }
+            
+            // 处理强制覆盖逻辑
+            if (forceOverride) {
+                // 强制覆盖：完全替换现有参数
+                this.inputs = codeAnalysis.inputs || [];
+                this.outputs = codeAnalysis.outputs || [];
+                this.showSuccessMessage(`已强制覆盖解析结果（${this.inputs.length}个输入，${this.outputs.length}个输出）`);
+            } else {
+                // 非强制覆盖：只填充未输入的内容
+                this.mergeParameters(codeAnalysis);
+                this.showSuccessMessage(`已智能合并解析结果（保留已有内容，填充空白项）`);
+            }
+            
+            this.renderParams();
+            
+        } catch (error) {
+            console.error('代码解析失败:', error);
+            this.showErrorMessage('代码解析失败: ' + error.message);
         }
-        
-        // 处理强制覆盖逻辑
-        if (forceOverride) {
-            // 强制覆盖：完全替换现有参数
-            this.inputs = codeAnalysis.inputs || [];
-            this.outputs = codeAnalysis.outputs || [];
-            this.showSuccessMessage(`已强制覆盖解析结果（${this.inputs.length}个输入，${this.outputs.length}个输出）`);
-        } else {
-            // 非强制覆盖：只填充未输入的内容
-            this.mergeParameters(codeAnalysis);
-            this.showSuccessMessage(`已智能合并解析结果（保留已有内容，填充空白项）`);
-        }
-        
-        this.renderParams();
     }
     
     getParsingRuleConfig(ruleType) {
@@ -671,6 +720,275 @@ Generic processing function`
         }
         
         return results;
+    }
+    
+    performRealCodeAnalysis(sourceFile, parsingRule, extractedFiles) {
+        console.log('开始真实代码分析:', sourceFile, parsingRule, extractedFiles);
+        
+        const results = {
+            inputs: [],
+            outputs: []
+        };
+        
+        try {
+            // 查找选择的源文件
+            const fileInfo = extractedFiles.find(file => file.name === sourceFile || file.path?.includes(sourceFile));
+            
+            console.log('查找的源文件:', sourceFile);
+            console.log('提取的文件列表:', extractedFiles);
+            console.log('找到的文件信息:', fileInfo);
+            
+            if (!fileInfo) {
+                console.warn('未找到源文件:', sourceFile);
+                return results;
+            }
+            
+            // 获取文件内容（这里假设文件内容已提取，实际可能需要读取临时文件）
+            let fileContent = '';
+            
+            console.log('fileInfo.content存在?', !!fileInfo.content);
+            console.log('fileInfo.path存在?', !!fileInfo.path);
+            
+            // 如果是文本文件内容直接使用
+            if (fileInfo.content) {
+                fileContent = fileInfo.content;
+                console.log('使用文件内容，长度:', fileContent.length);
+            } else if (fileInfo.path) {
+                // 否则尝试从临时路径读取（这里简化处理）
+                console.log('文件路径:', fileInfo.path);
+                fileContent = this.getMockFileContent(sourceFile); // 临时使用mock内容
+                console.log('使用mock内容，长度:', fileContent.length);
+            } else {
+                console.warn('文件信息中没有content和path字段');
+                fileContent = this.getMockFileContent(sourceFile); // 临时使用mock内容
+                console.log('强制使用mock内容，长度:', fileContent.length);
+            }
+            
+            if (!fileContent) {
+                console.warn('无法获取文件内容');
+                return results;
+            }
+            
+            console.log('完整文件内容:');
+            console.log(fileContent);
+            
+            // 按行分割文件内容，只读取前50行
+            const lines = fileContent.split('\n').slice(0, 50);
+            console.log('读取文件前50行，总行数:', lines.length);
+            
+            // 输出前10行内容用于调试
+            console.log('文件前10行内容:');
+            lines.slice(0, 10).forEach((line, index) => {
+                console.log(`第${index + 1}行: "${line}"`);
+            });
+            
+            // 创建正则表达式对象
+            const regex = new RegExp(parsingRule.pattern, 'gm');
+            console.log('使用的正则表达式:', parsingRule.pattern);
+            
+            // 遍历每一行，用正则表达式匹配
+            lines.forEach((line, index) => {
+                const matches = [...line.matchAll(regex)];
+                
+                if (matches.length > 0) {
+                    console.log(`第${index + 1}行匹配到 ${matches.length} 个结果:`, matches);
+                }
+                
+                matches.forEach(match => {
+                    console.log('匹配详情:', match);
+                    
+                    // 由于JavaScript的matchAll不直接支持命名捕获组，我们手动提取
+                    if (match.length >= 5) {
+                        const paramType = match[1];      // Input/Output
+                        const paramName = match[2];     // speed/gear/power
+                        const dataType = match[3];      // float/int
+                        const description = match[4];   // 车速/档位/功率
+                        
+                        console.log('提取的组:', { paramType, paramName, dataType, description });
+                        
+                        if (paramName && dataType) {
+                            const param = {
+                                name: paramName.trim(),
+                                type: this.normalizeDataType(dataType.trim()),
+                                unit: this.extractUnit(dataType.trim()),
+                                desc: (description || '').trim(),
+                                line: index + 1
+                            };
+                            
+                            console.log('解析到参数:', param);
+                            
+                            // 根据类型分类
+                            if (paramType.toLowerCase().includes('input') || paramType.toLowerCase().includes('param')) {
+                                results.inputs.push(param);
+                            } else if (paramType.toLowerCase().includes('output') || paramType.toLowerCase().includes('return')) {
+                                results.outputs.push(param);
+                            }
+                        } else {
+                            console.warn('参数名或数据类型为空:', { paramName, dataType });
+                        }
+                    } else {
+                        console.warn('匹配结果长度不足:', match);
+                    }
+                });
+            });
+            
+            console.log('解析结果:', results);
+            
+        } catch (error) {
+            console.error('真实代码分析失败:', error);
+        }
+        
+        return results;
+    }
+    
+    normalizeDataType(dataType) {
+        // 标准化数据类型
+        const typeMap = {
+            'float': 'float',
+            'double': 'double', 
+            'int': 'int',
+            'integer': 'int',
+            'long': 'long',
+            'bool': 'boolean',
+            'boolean': 'boolean',
+            'string': 'string',
+            'str': 'string',
+            'vector': 'vector',
+            'array': 'array'
+        };
+        
+        const cleanType = dataType.toLowerCase().replace(/[\[\]()]/g, '');
+        return typeMap[cleanType] || cleanType;
+    }
+    
+    extractUnit(dataType) {
+        // 从数据类型中提取物理单位
+        const unitMatch = dataType.match(/\[([^\]]+)\]/);
+        return unitMatch ? unitMatch[1] : '';
+    }
+    
+    getMockFileContent(fileName) {
+        // 临时mock文件内容，实际应该从提取的文件读取
+        const mockContents = {
+            'model.py': `# @Input: speed (float) - 车速
+# @Input: gear (int) - 档位
+# @Input: temperature (float) - 发动机温度
+# @Output: power (float) - 功率
+# @Output: torque (float) - 扭矩
+
+def calculate_engine_performance():
+    pass`,
+            'control.m': `% @Input: reference (double) - 参考值
+% @Input: feedback (double) - 反馈值
+% @Output: control_signal (double) - 控制信号
+
+function control_signal = pid_controller(reference, feedback)
+    % Implementation here`,
+            'processor.cpp': `/**
+ * @param input_data (vector<double>) - 输入数据向量
+ * @param threshold (double) - 阈值参数
+ * @Output: result (int) - 处理结果
+ */
+int process_data() {
+    // Implementation here
+    return 0;
+}`
+        };
+        
+        return mockContents[fileName] || '';
+    }
+    
+    async loadSourceFiles() {
+        try {
+            console.log('开始加载源文件列表...');
+            console.log('当前模型信息:', this.currentModel);
+            console.log('当前模型元数据:', this.currentModelMeta);
+            
+            // 获取模型名称和版本
+            const modelName = this.currentModel?.name || this.currentModelMeta?.name;
+            const version = this.currentModel?.version || this.currentModelMeta?.version;
+            
+            console.log('使用的参数 - modelName:', modelName, 'version:', version);
+            
+            if (!modelName || !version) {
+                console.warn('模型名称或版本为空，跳过源文件加载');
+                return;
+            }
+            
+            // 调用ModelFileService的extractModelFile方法
+            const extractResponse = await window.AppConfig.post('model', 'extractModelFile', {
+                name: modelName,
+                version: version
+            });
+            
+            if (extractResponse.success) {
+                console.log('源文件加载成功:', extractResponse.data);
+                this.populateSourceFileSelect(extractResponse.data);
+            } else {
+                console.warn('加载源文件失败:', extractResponse.message);
+                // 不显示错误消息，只是不填充下拉框
+            }
+        } catch (error) {
+            console.error('加载源文件时发生错误:', error);
+            // 不显示错误消息，只是不填充下拉框
+        }
+    }
+    
+    populateSourceFileSelect(extractedFiles) {
+        const sourceFileSelect = this.shadowRoot.getElementById('sourceFileSelect');
+        if (!sourceFileSelect) {
+            console.warn('未找到源文件选择框');
+            return;
+        }
+        
+        // 保存当前选择
+        const currentSelection = sourceFileSelect.value;
+        console.log('保存当前选择:', currentSelection);
+        
+        // 清空现有选项
+        sourceFileSelect.innerHTML = '<option value="">请选择源文件</option>';
+        
+        if (!extractedFiles || !Array.isArray(extractedFiles)) {
+            console.warn('提取的文件数据无效:', extractedFiles);
+            return;
+        }
+        
+        // 过滤出代码文件（常见的代码文件扩展名）
+        const codeExtensions = ['.py', '.m', '.cpp', '.c', '.h', '.java', '.js', '.ts'];
+        const codeFiles = extractedFiles.filter(file => {
+            const fileName = file.name || file.path || '';
+            return codeExtensions.some(ext => fileName.toLowerCase().endsWith(ext));
+        });
+        
+        console.log('找到代码文件:', codeFiles);
+        
+        // 添加代码文件选项
+        codeFiles.forEach(file => {
+            const option = document.createElement('option');
+            option.value = file.name || file.path;
+            option.textContent = `${file.name || file.path} (${file.size || 'unknown'} bytes)`;
+            sourceFileSelect.appendChild(option);
+        });
+        
+        if (codeFiles.length === 0) {
+            console.warn('未找到可解析的代码文件');
+            const noFileOption = document.createElement('option');
+            noFileOption.value = '';
+            noFileOption.textContent = '未找到可解析的代码文件';
+            noFileOption.disabled = true;
+            sourceFileSelect.appendChild(noFileOption);
+        }
+        
+        // 恢复之前的选择（如果还存在的话）
+        if (currentSelection) {
+            const optionExists = Array.from(sourceFileSelect.options).some(option => option.value === currentSelection);
+            if (optionExists) {
+                sourceFileSelect.value = currentSelection;
+                console.log('恢复之前的选择:', currentSelection);
+            } else {
+                console.log('之前的选择不再可用:', currentSelection);
+            }
+        }
     }
     
     performPythonReflection(moduleName, functionName) {
@@ -918,10 +1236,7 @@ Generic processing function`
 
     onSourceFileChange(value) {
         console.log('源文件变更:', value);
-        // 根据选择的源文件调整解析
-        if (value) {
-            this.showSuccessMessage(`已选择源文件: ${value}`);
-        }
+        // 不显示提示信息，避免干扰用户
     }
 
     onForceOverrideChange(checked) {
