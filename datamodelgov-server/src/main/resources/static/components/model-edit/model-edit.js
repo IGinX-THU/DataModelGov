@@ -909,23 +909,46 @@ Generic processing function`
     }
     
     normalizeDataType(dataType) {
-        // 标准化数据类型
+        console.log('normalizeDataType 输入:', dataType);
+        
+        // UI中的数据类型选项
+        const uiDataTypes = ['Double', 'Int32', 'String', 'Boolean', 'Float', 'Int64'];
+        
+        // 标准化数据类型映射
         const typeMap = {
-            'float': 'float',
-            'double': 'double', 
-            'int': 'int',
-            'integer': 'int',
-            'long': 'long',
-            'bool': 'boolean',
-            'boolean': 'boolean',
-            'string': 'string',
-            'str': 'string',
-            'vector': 'vector',
-            'array': 'array'
+            'float': 'Float',
+            'double': 'Double', 
+            'int': 'Int32',
+            'integer': 'Int32',
+            'long': 'Int64',
+            'bool': 'Boolean',
+            'boolean': 'Boolean',
+            'string': 'String',
+            'str': 'String',
+            'vector': 'String',  // 向量暂用String表示
+            'array': 'String'   // 数组暂用String表示
         };
         
         const cleanType = dataType.toLowerCase().replace(/[\[\]()]/g, '');
-        return typeMap[cleanType] || cleanType;
+        
+        // 首先尝试精确匹配
+        let result = typeMap[cleanType];
+        
+        if (!result) {
+            // 如果精确匹配失败，尝试不区分大小写的模糊匹配
+            result = uiDataTypes.find(uiType => 
+                uiType.toLowerCase() === cleanType
+            );
+        }
+        
+        // 如果还是没匹配到，使用默认值
+        if (!result) {
+            result = 'String';
+            console.warn(`未知数据类型 "${dataType}"，使用默认值 String`);
+        }
+        
+        console.log('normalizeDataType 输出:', result);
+        return result;
     }
     
     extractUnit(dataType) {
