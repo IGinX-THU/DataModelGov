@@ -1926,6 +1926,11 @@ class VisualAnalysis extends HTMLElement {
                 pdfGenerator.addText('暂无统计数据', 12);
             }
             
+            // 添加水印
+            console.log('准备添加水印...');
+            pdfGenerator.addWatermark();
+            console.log('水印添加完成');
+            
             // 生成HTML内容
             const htmlContent = pdfGenerator.generateHTML();
             
@@ -1950,27 +1955,56 @@ class VisualAnalysis extends HTMLElement {
             }
             
             // 使用浏览器的打印功能生成PDF供用户下载
-            const printWindow = window.open('', '_blank');
-            printWindow.document.write(htmlContent);
-            printWindow.document.close();
-            
-            // 等待内容加载完成后触发打印
-            printWindow.onload = () => {
-                // 触发打印对话框，用户可以选择"保存为PDF"
-                printWindow.print();
-                
-                // 打印完成后关闭窗口
-                printWindow.onafterprint = () => {
-                    printWindow.close();
-                };
-                
-                // 备用关闭方案
-                setTimeout(() => {
-                    if (!printWindow.closed) {
-                        printWindow.close();
-                    }
-                }, 1000);
-            };
+            try {
+                const printWindow = window.open('', '_blank');
+                if (printWindow && printWindow.document) {
+                    printWindow.document.write(htmlContent);
+                    printWindow.document.close();
+                    
+                    // 等待内容加载完成后触发打印
+                    printWindow.onload = () => {
+                        // 触发打印对话框，用户可以选择"保存为PDF"
+                        printWindow.print();
+                        
+                        // 打印完成后关闭窗口
+                        printWindow.onafterprint = () => {
+                            printWindow.close();
+                        };
+                        
+                        // 备用关闭方案
+                        setTimeout(() => {
+                            if (!printWindow.closed) {
+                                printWindow.close();
+                            }
+                        }, 1000);
+                    };
+                } else {
+                    // 如果弹窗被阻止，提供下载链接
+                    const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = '任务分析报告.html';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    this.showToast('弹窗被阻止，已直接下载HTML报告', 'info');
+                }
+            } catch (printError) {
+                console.warn('打印窗口创建失败:', printError);
+                // 如果打印失败，提供下载链接
+                const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = '任务分析报告.html';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                this.showToast('打印失败，已直接下载HTML报告', 'info');
+            }
             
             this.showToast('PDF报告生成成功！请在打印对话框中选择"保存为PDF"', 'success');
             
@@ -2546,6 +2580,11 @@ class VisualAnalysis extends HTMLElement {
             } else {
                 pdfGenerator.addText('暂无统计数据', 12);
             }
+
+            // 添加水印
+            console.log('准备添加水印...');
+            pdfGenerator.addWatermark();
+            console.log('水印添加完成');
 
             // 生成HTML内容
             const htmlContent = pdfGenerator.generateHTML();
@@ -4081,11 +4120,13 @@ class LocalPDFGenerator {
 
     // 添加水印
     addWatermark() {
+        console.log('addWatermark 被调用了！');
         this.content.push({
             type: 'watermark',
             text: '清华大学大数据系统软件国家工程研究中心',
             opacity: 0.1
         });
+        console.log('水印已添加到content数组，当前content长度:', this.content.length);
     }
 
     // 生成HTML内容用于打印
@@ -4097,7 +4138,7 @@ class LocalPDFGenerator {
         '<meta charset="UTF-8">' +
         '<title>实验报告</title>' +
         '<style type="text/css">' +
-        'body { font-family: SimSun, Microsoft YaHei, SimHei, Arial, sans-serif; font-size: ' + this.fontSize + 'pt; line-height: 1.5; margin: 0; padding: 0; }' +
+        'body { font-family: SimSun, Microsoft YaHei, SimHei, Arial, sans-serif; font-size: ' + this.fontSize + 'pt; line-height: 1.5; margin: 0; padding: 0; position: relative; min-height: 100vh; }' +
         '.header { text-align: center; font-size: 14pt; font-weight: bold; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 10px; }' +
         '.footer { text-align: center; font-size: 10pt; margin-top: 30px; border-top: 1px solid #333; padding-top: 10px; }' +
         '.title { text-align: center; font-size: 18pt; font-weight: bold; margin: 20px 0; }' +
@@ -4120,7 +4161,9 @@ class LocalPDFGenerator {
         '<div class="content">';
 
         // 添加内容
+        console.log('开始生成HTML，content数组内容:', this.content);
         this.content.forEach(item => {
+            console.log('处理item:', item.type, item);
             switch(item.type) {
                 case 'text':
                     if (item.bold) {
@@ -4159,6 +4202,12 @@ class LocalPDFGenerator {
                     html += '<div class="image-title" style="font-family: SimSun, Microsoft YaHei, SimHei, Arial, sans-serif;">' + item.title + '</div>';
                     html += '<img src="' + item.imageData + '" alt="' + item.description + '" class="report-image"></img>';
                     html += '<div style="text-align: center; font-size: 10pt; color: #666; margin: 5px 0; font-family: SimSun, Microsoft YaHei, SimHei, Arial, sans-serif;">' + item.description + '</div>';
+                    break;
+                case 'watermark':
+                    // 生成水印 - 正常版本
+                    console.log('正在生成水印，文本:', item.text);
+                    html += '<div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-45deg); font-size: 48px; color: #ccc; opacity: 0.1; z-index: -1; white-space: nowrap; font-family: SimSun, Microsoft YaHei, SimHei, Arial, sans-serif; pointer-events: none; user-select: none;">' + item.text + '</div>';
+                    console.log('水印HTML已添加');
                     break;
                 case 'separator':
                     html += '<div class="separator"></div>';
