@@ -137,6 +137,6 @@ public class UserController {
         if (authentication != null && authentication.isAuthenticated()) {
             return authentication.getName();
         }
-        return "LUDNS"; // 降级处理，默认返回LUDNS
+        return "Unknown User"; // 降级处理，默认返回Unknown User
     }
 }

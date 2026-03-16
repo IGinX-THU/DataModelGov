@@ -35,6 +35,8 @@ import com.itextpdf.layout.element.IElement;
 import com.itextpdf.layout.element.IBlockElement;
 import java.util.List;
 
+import com.tsinghua.auth.util.AuthUtil;
+
 import java.awt.image.BufferedImage;
 import java.io.*;
 import java.lang.reflect.Field;
@@ -1446,7 +1448,7 @@ public class RunTaskService {
                 // 生成manifest.json
                 Map<String, Object> manifest = new HashMap<>();
                 manifest.put("exportTime", new Date().toString());
-                manifest.put("exportedBy", "DataModelGov System");
+                manifest.put("exportedBy", AuthUtil.getCurrentUsername());
                 manifest.put("taskTimestamp", timestamp);
                 manifest.put("taskName", task.getName());
                 manifest.put("taskStatus", task.getStatus());
