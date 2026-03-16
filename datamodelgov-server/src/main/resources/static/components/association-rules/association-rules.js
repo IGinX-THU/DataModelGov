@@ -532,6 +532,15 @@ class AssociationRules extends HTMLElement {
             // Restore form content if it was replaced by showModal
             this.restoreFormContent();
             
+            // Debug: Check if form elements exist after restoration
+            setTimeout(() => {
+                console.log('Form elements after restore:');
+                console.log('cmd element:', this.shadowRoot.getElementById('cmd'));
+                console.log('inputCsvName element:', this.shadowRoot.getElementById('inputCsvName'));
+                console.log('outputCsvName element:', this.shadowRoot.getElementById('outputCsvName'));
+                console.log('Form HTML:', this.shadowRoot.getElementById('ruleForm')?.innerHTML);
+            }, 100);
+            
             title.textContent = '编辑关联规则';
             form.reset();
             
@@ -553,10 +562,27 @@ class AssociationRules extends HTMLElement {
                 this.shadowRoot.getElementById('dataSource').value = rule.dataSource || rule.tableName || '';
                 this.shadowRoot.getElementById('targetModel').value = rule.targetModel || rule.modelName || '';
                 
-                // Populate the three new fields
-                this.shadowRoot.getElementById('cmd').value = rule.cmd || '';
-                this.shadowRoot.getElementById('inputCsvName').value = rule.inputCsvName || '';
-                this.shadowRoot.getElementById('outputCsvName').value = rule.outputCsvName || '';
+                // Populate the three new fields with null checks
+                const cmdElement = this.shadowRoot.getElementById('cmd');
+                if (cmdElement) {
+                    cmdElement.value = rule.cmd || '';
+                } else {
+                    console.warn('cmd element not found in form');
+                }
+                
+                const inputCsvElement = this.shadowRoot.getElementById('inputCsvName');
+                if (inputCsvElement) {
+                    inputCsvElement.value = rule.inputCsvName || '';
+                } else {
+                    console.warn('inputCsvName element not found in form');
+                }
+                
+                const outputCsvElement = this.shadowRoot.getElementById('outputCsvName');
+                if (outputCsvElement) {
+                    outputCsvElement.value = rule.outputCsvName || '';
+                } else {
+                    console.warn('outputCsvName element not found in form');
+                }
                 
                 // 设置版本 - 需要先加载版本选项
                 if (rule.modelName || rule.targetModel) {
@@ -653,6 +679,10 @@ class AssociationRules extends HTMLElement {
         if (modal) {
             modal.hidden = true;
             modal.style.display = 'none';
+            
+            // Restore form content if it was replaced by showModal
+            this.restoreFormContent();
+            this.restoreFormFooter();
             
             // Remove highlight from external trees
             document.body.classList.remove('association-rules-modal-open');
@@ -1654,12 +1684,17 @@ class AssociationRules extends HTMLElement {
     }
     
     restoreFormContent() {
+        console.log('🔧 restoreFormContent called');
         const modalBody = this.shadowRoot.getElementById('modalBody');
-        if (!modalBody) return;
+        if (!modalBody) {
+            console.warn('modalBody not found');
+            return;
+        }
         
         // Check if form content exists, if not, restore it
         const existingForm = modalBody.querySelector('#ruleForm');
         if (!existingForm) {
+            console.log('Form not found, restoring form content');
             // Restore the original form content
             modalBody.innerHTML = `
                 <form id="ruleForm" class="rule-form">
@@ -1727,6 +1762,24 @@ class AssociationRules extends HTMLElement {
                                 </div>
                                 <button type="button" class="add-mapping-btn" id="addResultMapping">+ 添加回写映射</button>
                             </div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="cmd">运行命令</label>
+                            <input type="text" id="cmd" name="cmd" placeholder="python3 model_runner.py   --input-file raw_data.csv   --output-file processed_results.csv">
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="inputCsvName">输入数据CSV文件名</label>
+                            <input type="text" id="inputCsvName" name="inputCsvName" placeholder="raw_data.csv">
+                        </div>
+                        <div class="form-group">
+                            <label for="outputCsvName">输出结果CSV文件名</label>
+                            <input type="text" id="outputCsvName" name="outputCsvName" placeholder="processed_results.csv">
                         </div>
                     </div>
                     
