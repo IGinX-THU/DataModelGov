@@ -4206,7 +4206,7 @@ class LocalPDFGenerator {
                 case 'watermark':
                     // 生成水印 - 正常版本
                     console.log('正在生成水印，文本:', item.text);
-                    html += '<div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-45deg); font-size: 48px; color: #ccc; opacity: 0.1; z-index: -1; white-space: nowrap; font-family: SimSun, Microsoft YaHei, SimHei, Arial, sans-serif; pointer-events: none; user-select: none;">' + item.text + '</div>';
+                    html += '<div style="position: relative; width: 100%; height: 400px; margin: 20px 0;"><div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-45deg); font-size: 48px; color: #999; opacity: 0.15; z-index: 999; white-space: nowrap; font-family: SimSun, Microsoft YaHei, SimHei, Arial, sans-serif; pointer-events: none; user-select: none; font-weight: bold;">' + item.text + '</div></div>';
                     console.log('水印HTML已添加');
                     break;
                 case 'separator':
