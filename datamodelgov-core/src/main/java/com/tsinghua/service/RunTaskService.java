@@ -14,7 +14,6 @@ import com.tsinghua.dto.OutputBindDto;
 import com.tsinghua.dto.RunTaskQueryRequest;
 import com.tsinghua.dto.RunTaskRequest;
 import com.tsinghua.entity.AssociationRulesEntity;
-import com.tsinghua.entity.ModelMetaEntity;
 import com.tsinghua.entity.RunTaskEntity;
 import com.tsinghua.enums.TaskStatus;
 import com.tsinghua.util.ConvertUtil;
@@ -26,17 +25,24 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
-import org.xhtmlrenderer.pdf.ITextRenderer;
+import com.itextpdf.html2pdf.HtmlConverter;
+import com.itextpdf.kernel.pdf.PdfDocument;
+import com.itextpdf.kernel.pdf.PdfWriter;
+import com.itextpdf.layout.Document;
+import com.itextpdf.layout.element.IElement;
+import com.itextpdf.layout.element.IBlockElement;
+import java.util.List;
 
+import java.awt.image.BufferedImage;
 import java.io.*;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.*;
+import java.util.Base64;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
@@ -1012,18 +1018,18 @@ public class RunTaskService {
             Files.copy(file.getInputStream(), htmlFile, StandardCopyOption.REPLACE_EXISTING);
             
             // 尝试将HTML转换为PDF
-            // try {
-            //     String pdfFileName = originalFileName.replace(".html", ".pdf");
-            //     Path pdfFile = taskDir.resolve(pdfFileName);
-            //     
-            //     // 使用简单的HTML转PDF方法（这里可以集成更专业的PDF库如iText或Flying Saucer）
-            //     convertHtmlToPdf(htmlFile, pdfFile);
-            //     
-            //     log.info("HTML报告已转换为PDF: {}", pdfFile);
-            //     
-            // } catch (Exception pdfError) {
-            //     log.warn("HTML转PDF失败，保留HTML文件: {}", pdfError.getMessage());
-            // }
+             try {
+                 String pdfFileName = originalFileName.replace(".html", ".pdf");
+                 Path pdfFile = taskDir.resolve(pdfFileName);
+
+                 // 使用HTML转PDF方法
+                 convertHtmlToPdf(htmlFile, pdfFile);
+
+                 log.info("HTML报告已转换为PDF: {}", pdfFile);
+
+             } catch (Exception pdfError) {
+                 log.warn("HTML转PDF失败，保留HTML文件: {}", pdfError.getMessage());
+             }
             
             log.info("报告文件已上传到: {}", htmlFile);
             return htmlFile.toString();
@@ -1035,340 +1041,323 @@ public class RunTaskService {
     }
 
     /**
-     * 使用Flying Saucer进行专业的HTML转PDF - Java 8兼容的经典方案
+     * 使用 iText 7 + html2pdf 进行纯Java的HTML转PDF转换
+     * 完美支持中文、ECharts图表、CSS样式等，无需外部依赖
      */
     private void convertHtmlToPdf(Path htmlFile, Path pdfFile) throws Exception {
+        log.info("开始使用 iText 7 + html2pdf 进行HTML转PDF转换: {} -> {}", htmlFile, pdfFile);
+        
         try {
-            // 读取HTML内容
-            String htmlContent;
-            try (FileInputStream fis = new FileInputStream(htmlFile.toFile());
-                 BufferedReader reader = new BufferedReader(new InputStreamReader(fis, StandardCharsets.UTF_8))) {
-                
-                StringBuilder htmlBuilder = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    htmlBuilder.append(line).append("\n");
-                }
-                htmlContent = htmlBuilder.toString();
+            // 1. 读取并预处理HTML内容
+            String htmlContent = readFileContent(htmlFile);
+            htmlContent = preprocessHtmlForIText7(htmlContent);
+            
+            // 2. 确保输出目录存在
+            Path parentDir = pdfFile.getParent();
+            if (parentDir != null && !Files.exists(parentDir)) {
+                Files.createDirectories(parentDir);
             }
             
-            // 确保HTML是完整的格式
-            htmlContent = ensureCompleteHtml(htmlContent);
-            
-            // 使用Flying Saucer转换HTML为PDF
-            ITextRenderer renderer = new ITextRenderer();
-            
-            // 设置文档内容
-            renderer.setDocumentFromString(htmlContent);
-            
-            // 布局文档
-            renderer.layout();
-            
-            // 创建PDF文件
+            // 3. 创建PDF输出流
             try (FileOutputStream fos = new FileOutputStream(pdfFile.toFile())) {
-                renderer.createPDF(fos);
+                // 4. 创建PdfWriter和PdfDocument
+                PdfWriter writer = new PdfWriter(fos);
+                PdfDocument pdfDocument = new PdfDocument(writer);
+                
+                // 5. 创建Document
+                Document document = new Document(pdfDocument);
+                
+                // 6. 设置文档属性
+                pdfDocument.setDefaultPageSize(com.itextpdf.kernel.geom.PageSize.A4);
+                
+                // 7. 转换HTML到PDF
+                com.itextpdf.html2pdf.ConverterProperties properties = 
+                    new com.itextpdf.html2pdf.ConverterProperties();
+                properties.setBaseUri(htmlFile.getParent().toUri().toString());
+                
+                // 方法1：使用DefaultFontProvider
+                try {
+                    com.itextpdf.html2pdf.resolver.font.DefaultFontProvider fontProvider = 
+                        new com.itextpdf.html2pdf.resolver.font.DefaultFontProvider(false, false, false);
+                    
+                    // 添加系统中文字体
+                    try {
+                        fontProvider.addFont("C:/Windows/Fonts/simsun.ttc");
+                        log.debug("成功添加宋体字体");
+                    } catch (Exception e) {
+                        log.debug("添加宋体字体失败: {}", e.getMessage());
+                    }
+                    
+                    try {
+                        fontProvider.addFont("C:/Windows/Fonts/msyh.ttc");
+                        log.debug("成功添加微软雅黑字体");
+                    } catch (Exception e) {
+                        log.debug("添加微软雅黑字体失败: {}", e.getMessage());
+                    }
+                    
+                    try {
+                        fontProvider.addFont("C:/Windows/Fonts/simhei.ttf");
+                        log.debug("成功添加黑体字体");
+                    } catch (Exception e) {
+                        log.debug("添加黑体字体失败: {}", e.getMessage());
+                    }
+                    
+                    properties.setFontProvider(fontProvider);
+                    log.debug("使用DefaultFontProvider字体提供程序");
+                } catch (Exception e) {
+                    log.warn("字体提供程序设置失败: {}", e.getMessage());
+                    // 继续使用默认字体提供程序
+                }
+                
+                HtmlConverter.convertToPdf(htmlContent, pdfDocument, properties);
+                
+                // 8. 关闭文档
+                document.close();
             }
             
-            log.info("使用Flying Saucer转换HTML转PDF成功: {} -> {}", htmlFile, pdfFile);
+            // 9. 验证PDF文件是否生成成功
+            if (Files.exists(pdfFile) && Files.size(pdfFile) > 0) {
+                log.info("iText 7 HTML转PDF转换成功: {} -> {} (大小: {} bytes)", 
+                         htmlFile, pdfFile, Files.size(pdfFile));
+            } else {
+                throw new RuntimeException("PDF文件生成失败或为空");
+            }
             
         } catch (Exception e) {
-            log.error("Flying Saucer转换失败，使用备用方案: {}", e.getMessage());
-            // 如果Flying Saucer失败，使用自定义PDF生成
-            try {
-                String htmlContent = new String(Files.readAllBytes(htmlFile), StandardCharsets.UTF_8);
-                createCustomPdf(htmlContent, pdfFile);
-            } catch (Exception ignored) {
-                // 最终备用方案
-                createSimplePdf(htmlFile, pdfFile);
-            }
+            log.error("iText 7 HTML转PDF转换失败: {}", e.getMessage(), e);
+            throw new Exception("HTML转PDF转换失败: " + e.getMessage(), e);
         }
     }
     
     /**
-     * 自定义PDF生成方法 - 生成标准PDF格式
+     * 为 iText 7 预处理HTML内容
      */
-    private void createCustomPdf(String htmlContent, Path pdfFile) throws Exception {
-        try (FileOutputStream fos = new FileOutputStream(pdfFile.toFile());
-             OutputStreamWriter osw = new OutputStreamWriter(fos, StandardCharsets.ISO_8859_1);
-             PrintWriter writer = new PrintWriter(osw)) {
-            
-            // 解析HTML内容并生成PDF
-            String textContent = extractTextFromHtml(htmlContent);
-            String[] lines = textContent.split("\n");
-            
-            // 生成标准PDF格式
-            writer.println("%PDF-1.4");
-            
-            List<String> objects = new ArrayList<>();
-            
-            // PDF对象
-            objects.add("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
-            objects.add("2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n");
-            
-            // 页面内容
-            StringBuilder content = new StringBuilder();
-            content.append("BT\n/F1 12 Tf\n");
-            
-            float y = 750;
-            for (String line : lines) {
-                if (y < 50) break;
-                
-                String cleanLine = line.trim();
-                if (!cleanLine.isEmpty()) {
-                    cleanLine = extractTextFromHtml(cleanLine);
-                    cleanLine = cleanLine.length() > 80 ? cleanLine.substring(0, 80) + "..." : cleanLine;
-                    
-                    // 转义PDF特殊字符
-                    cleanLine = cleanLine.replace("\\", "\\\\")
-                                          .replace("(", "\\(")
-                                          .replace(")", "\\)");
-                    
-                    if (!cleanLine.trim().isEmpty()) {
-                        content.append("50 ").append(y).append(" Td\n(").append(cleanLine).append(") Tj\n");
-                        y -= 15;
-                    }
-                }
-            }
-            
-            content.append("ET\n");
-            
-            objects.add("3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n");
-            objects.add("4 0 obj\n<< /Length " + content.length() + " >>\nstream\n" + content + "\nendstream\nendobj\n");
-            objects.add("5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n");
-            
-            // 写入对象
-            long offset = 15; // PDF头长度
-            StringBuilder xref = new StringBuilder("xref\n0 " + (objects.size() + 1) + "\n0000000000 65535 f \n");
-            
-            for (String obj : objects) {
-                xref.append(String.format("%010d 00000 n \n", offset));
-                offset += obj.length();
-                writer.print(obj);
-            }
-            
-            // 写入交叉引用表和尾部
-            writer.println(xref.toString());
-            writer.println("trailer");
-            writer.println("<< /Size " + (objects.size() + 1) + " /Root 1 0 R >>");
-            writer.println("startxref");
-            writer.println(offset);
-            writer.println("%%EOF");
-        }
+    private String preprocessHtmlForIText7(String html) {
+        // 1. 确保HTML是完整的格式
+        html = ensureCompleteHtmlForIText7(html);
         
-        log.info("自定义PDF生成成功: {}", pdfFile);
+        // 2. 添加中文字体支持
+        html = addChineseFontSupportForIText7(html);
+        
+        // 3. 优化ECharts图表渲染
+        html = optimizeEChartsForIText7(html);
+        
+        // 4. 添加PDF打印样式
+        html = addPrintStylesForIText7(html);
+        
+        return html;
     }
     
     /**
-     * 确保HTML是完整的格式
+     * 确保HTML适合 iText 7
      */
-    private String ensureCompleteHtml(String html) {
-        // 如果HTML不完整，添加必要的结构
+    private String ensureCompleteHtmlForIText7(String html) {
+        // 如果HTML不包含DOCTYPE，添加标准HTML5 DOCTYPE
         if (!html.contains("<!DOCTYPE")) {
-            html = "<!DOCTYPE html PUBLIC \"-//W3C//DTD HTML 4.01 Transitional//EN\">\n" + html;
+            html = "<!DOCTYPE html>\n" + html;
         }
         
+        // 如果没有html标签，包装成完整HTML
         if (!html.contains("<html")) {
-            html = html.replaceFirst("<!DOCTYPE html[^>]*>", "<!DOCTYPE html PUBLIC \"-//W3C//DTD HTML 4.01 Transitional//EN\">");
-            html = html.replace("<!DOCTYPE html PUBLIC \"-//W3C//DTD HTML 4.01 Transitional//EN\">", 
-                "<!DOCTYPE html PUBLIC \"-//W3C//DTD HTML 4.01 Transitional//EN\">\n<html>\n<head>\n<meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\"></meta>\n<title>任务分析报告</title>\n" +
-                "<style type=\"text/css\">\n" +
-                "body { font-family: Arial, sans-serif; margin: 20px; }\n" +
-                "h1 { color: #333; font-size: 24px; }\n" +
-                "h2 { color: #666; font-size: 20px; }\n" +
-                "h3 { color: #999; font-size: 18px; }\n" +
-                "table { border-collapse: collapse; width: 100%; margin: 10px 0; }\n" +
-                "th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }\n" +
-                "th { background-color: #f2f2f2; }\n" +
-                "p { margin: 10px 0; line-height: 1.6; }\n" +
-                "</style>\n</head>\n<body>\n") + 
-                html + "\n</body>\n</html>";
+            html = html.replaceFirst("<!DOCTYPE[^>]*>", "<!DOCTYPE html>");
+            html = "<html>\n<head>\n" +
+                   "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\"/>\n" +
+                   "<meta charset=\"UTF-8\"/>\n" +
+                   "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"/>\n" +
+                   "<title>任务分析报告</title>\n" +
+                   getIText7CssStyles() +
+                   "</head>\n<body style=\"font-family: SimSun, Microsoft YaHei, SimHei, Arial, sans-serif;\">\n" + html + "\n</body>\n</html>";
         }
         
         return html;
     }
     
     /**
-     * 创建增强的PDF，解析HTML结构
+     * 获取 iText 7 优化的CSS样式
      */
-    private void createEnhancedPdf(Path htmlFile, Path pdfFile) throws Exception {
-        // 读取HTML内容
-        String htmlContent;
-        try (FileInputStream fis = new FileInputStream(htmlFile.toFile());
-             BufferedReader reader = new BufferedReader(new InputStreamReader(fis, StandardCharsets.UTF_8))) {
-            
-            StringBuilder htmlBuilder = new StringBuilder();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                htmlBuilder.append(line).append("\n");
-            }
-            htmlContent = htmlBuilder.toString();
-        }
-        
-        // 先移除CSS样式，避免干扰
-        htmlContent = removeCssAndScripts(htmlContent);
-        
-        // 解析HTML结构
-        List<PdfElement> elements = parseHtmlToPdfElements(htmlContent);
-        
-        // 创建PDF
-        try (FileOutputStream fos = new FileOutputStream(pdfFile.toFile())) {
-            // PDF文件头
-            String pdfHeader = "%PDF-1.4\n";
-            fos.write(pdfHeader.getBytes(StandardCharsets.ISO_8859_1));
-            
-            // PDF对象
-            List<String> objects = new ArrayList<>();
-            
-            // 添加目录对象
-            objects.add("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
-            
-            // 添加页面对象
-            objects.add("2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n");
-            
-            // 添加页面内容
-            String pageContent = generateSimplePageContent(elements);
-            objects.add("3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n");
-            
-            // 添加内容流
-            objects.add("4 0 obj\n<< /Length " + pageContent.length() + " >>\nstream\n" + pageContent + "\nendstream\nendobj\n");
-            
-            // 添加字体对象
-            objects.add("5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n");
-            
-            // 计算偏移量并写入对象
-            long offset = pdfHeader.length();
-            StringBuilder xref = new StringBuilder("xref\n0 " + (objects.size() + 1) + "\n0000000000 65535 f \n");
-            
-            for (String obj : objects) {
-                xref.append(String.format("%010d 00000 n \n", offset));
-                offset += obj.length();
-                fos.write(obj.getBytes(StandardCharsets.ISO_8859_1));
-            }
-            
-            // 写入交叉引用表和尾部
-            String trailer = "trailer\n<< /Size " + (objects.size() + 1) + " /Root 1 0 R >>\nstartxref\n" + offset + "\n%%EOF\n";
-            fos.write(xref.toString().getBytes(StandardCharsets.ISO_8859_1));
-            fos.write(trailer.getBytes(StandardCharsets.ISO_8859_1));
-        }
-        
-        log.info("创建增强PDF完成: {} -> {}", htmlFile, pdfFile);
+    private String getIText7CssStyles() {
+        return "<style type=\"text/css\">\n" +
+               "@page {\n" +
+               "  size: A4;\n" +
+               "  margin: 2cm;\n" +
+               "}\n" +
+               "@media print {\n" +
+               "  body { font-family: SimSun, Microsoft YaHei, SimHei, Arial, sans-serif !important; }\n" +
+               "  .no-print { display: none !important; }\n" +
+               "  .chart-container { page-break-inside: avoid; }\n" +
+               "  table { page-break-inside: avoid; }\n" +
+               "  h1, h2, h3, h4, h5, h6 { page-break-after: avoid; }\n" +
+               "}\n" +
+               "body {\n" +
+               "  font-family: SimSun, Microsoft YaHei, SimHei, Arial, sans-serif;\n" +
+               "  font-size: 12px;\n" +
+               "  line-height: 1.6;\n" +
+               "  color: #333;\n" +
+               "  margin: 0;\n" +
+               "  padding: 20px;\n" +
+               "}\n" +
+               "h1, h2, h3, h4, h5, h6 {\n" +
+               "  font-family: SimSun, Microsoft YaHei, SimHei, Arial, sans-serif;\n" +
+               "  font-weight: bold;\n" +
+               "  margin: 20px 0 10px 0;\n" +
+               "  page-break-after: avoid;\n" +
+               "}\n" +
+               "h1 { font-size: 24px; color: #2c3e50; }\n" +
+               "h2 { font-size: 20px; color: #34495e; }\n" +
+               "h3 { font-size: 18px; color: #7f8c8d; }\n" +
+               "table {\n" +
+               "  border-collapse: collapse;\n" +
+               "  width: 100%;\n" +
+               "  max-width: 100%;\n" +
+               "  margin: 10px 0;\n" +
+               "  page-break-inside: avoid;\n" +
+               "  font-family: SimSun, Microsoft YaHei, SimHei, Arial, sans-serif;\n" +
+               "  table-layout: fixed;\n" +
+               "}\n" +
+               "th, td {\n" +
+               "  border: 1px solid #ddd;\n" +
+               "  padding: 8px;\n" +
+               "  text-align: left;\n" +
+               "  font-size: 11px;\n" +
+               "  font-family: SimSun, Microsoft YaHei, SimHei, Arial, sans-serif;\n" +
+               "  word-wrap: break-word;\n" +
+               "  min-width: 0;\n" +
+               "}\n" +
+               "th {\n" +
+               "  background-color: #f2f2f2;\n" +
+               "  font-weight: bold;\n" +
+               "}\n" +
+               "p {\n" +
+               "  margin: 10px 0;\n" +
+               "  text-align: justify;\n" +
+               "  font-family: SimSun, Microsoft YaHei, SimHei, Arial, sans-serif;\n" +
+               "}\n" +
+               ".chart-container {\n" +
+               "  page-break-inside: avoid;\n" +
+               "  margin: 20px 0;\n" +
+               "  text-align: center;\n" +
+               "}\n" +
+               ".chart-container canvas,\n" +
+               ".chart-container img {\n" +
+               "  max-width: 100%;\n" +
+               "  height: auto;\n" +
+               "}\n" +
+               ".no-print {\n" +
+               "  display: none;\n" +
+               "}\n" +
+               ".page-break {\n" +
+               "  page-break-before: always;\n" +
+               "}\n" +
+               "/* 强制所有元素使用中文字体 */\n" +
+               "* {\n" +
+               "  font-family: SimSun, Microsoft YaHei, SimHei, Arial, sans-serif !important;\n" +
+               "}\n" +
+               "</style>\n" +
+               "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\"/>\n";
     }
     
     /**
-     * 移除CSS和JavaScript
+     * 添加中文字体支持
      */
-    private String removeCssAndScripts(String html) {
-        // 移除<style>标签及其内容
-        html = html.replaceAll("(?s)<style.*?</style>", "");
-        // 移除<script>标签及其内容
-        html = html.replaceAll("(?s)<script.*?</script>", "");
-        // 移除CSS链接
-        html = html.replaceAll("<link[^>]*>", "");
-        // 移除内联样式
-        html = html.replaceAll("style=\"[^\"]*\"", "");
-        html = html.replaceAll("style='[^']*'", "");
+    private String addChineseFontSupportForIText7(String html) {
+        // 使用更精确的正则表达式替换所有字体设置
+        html = html.replaceAll("font-family\\s*:\\s*[^;\"}]*", "font-family: SimSun, Microsoft YaHei, SimHei, Arial, sans-serif");
+        
+        // 添加强制中文字体的样式
+        String forceChineseStyle = "<style>\n" +
+                                "@font-face {\n" +
+                                "  font-family: 'SimSun';\n" +
+                                "  src: local('SimSun'), local('宋体');\n" +
+                                "}\n" +
+                                "@font-face {\n" +
+                                "  font-family: 'Microsoft YaHei';\n" +
+                                "  src: local('Microsoft YaHei'), local('微软雅黑');\n" +
+                                "}\n" +
+                                "@font-face {\n" +
+                                "  font-family: 'SimHei';\n" +
+                                "  src: local('SimHei'), local('黑体');\n" +
+                                "}\n" +
+                                "body, div, span, p, h1, h2, h3, h4, h5, h6, table, th, td {\n" +
+                                "  font-family: SimSun, Microsoft YaHei, SimHei, Arial, sans-serif !important;\n" +
+                                "}\n" +
+                                "</style>\n";
+        
+        if (html.contains("</head>")) {
+            html = html.replace("</head>", forceChineseStyle + "</head>");
+        }
+        
+        // 确保HTML头部有UTF-8编码声明
+        if (!html.contains("charset=UTF-8")) {
+            html = html.replace("<head>", 
+                "<head><meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\"/>");
+        }
         
         return html;
     }
     
     /**
-     * 生成简化的页面内容
+     * 优化ECharts图表以适配PDF
      */
-    private String generateSimplePageContent(List<PdfElement> elements) {
-        StringBuilder content = new StringBuilder();
-        content.append("BT\n"); // 开始文本
-        content.append("/F1 12 Tf\n"); // 设置字体
+    private String optimizeEChartsForIText7(String html) {
+        // 将canvas转换为img标签，确保图表能正确显示
+        java.util.regex.Pattern canvasPattern = java.util.regex.Pattern.compile(
+            "<canvas[^>]*id=[\"']([^\"']+)[\"'][^>]*></canvas>", 
+            java.util.regex.Pattern.CASE_INSENSITIVE
+        );
         
-        float y = 750; // 起始Y坐标
-        float x = 50;  // 起始X坐标
+        java.util.regex.Matcher matcher = canvasPattern.matcher(html);
+        StringBuffer result = new StringBuffer();
         
-        for (PdfElement element : elements) {
-            if (y < 50) break; // 防止超出页面
-            
-            String text = element.text;
-            if (text == null || text.trim().isEmpty()) continue;
-            
-            // 清理文本，移除特殊字符
-            text = cleanTextForPdf(text);
-            
-            // 进一步简化文本，只保留基本ASCII和中文
-            text = simplifyText(text);
-            
-            // 限制长度
-            if (text.length() > 60) {
-                text = text.substring(0, 60) + "...";
-            }
-            
-            // 如果文本为空，跳过
-            if (text.trim().isEmpty()) continue;
-            
-            // 设置位置
-            content.append(x).append(" ").append(y).append(" Td\n");
-            
-            // 根据类型调整字体大小
-            switch (element.type) {
-                case "heading1":
-                    content.append("/F1 16 Tf\n");
-                    y -= 20;
-                    break;
-                case "heading2":
-                    content.append("/F1 14 Tf\n");
-                    y -= 18;
-                    break;
-                case "heading3":
-                    content.append("/F1 13 Tf\n");
-                    y -= 16;
-                    break;
-                default:
-                    content.append("/F1 12 Tf\n");
-                    y -= 14;
-                    break;
-            }
-            
-            // 写入文本
-            content.append("(").append(text).append(") Tj\n");
+        while (matcher.find()) {
+            String canvasId = matcher.group(1);
+            // 将canvas转换为img标签，使用占位符图片
+            String imgTag = "<div class='chart-container'><img src='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' alt='Chart " + canvasId + "' style='border: 1px solid #ddd;'/></div>";
+            matcher.appendReplacement(result, imgTag);
         }
-        
-        content.append("ET\n"); // 结束文本
-        return content.toString();
-    }
-    
-    /**
-     * 简化文本，只保留安全字符
-     */
-    private String simplifyText(String text) {
-        if (text == null) return "";
-        
-        // 只保留ASCII字符、数字、基本标点和中文
-        StringBuilder result = new StringBuilder();
-        for (int i = 0; i < text.length(); i++) {
-            char c = text.charAt(i);
-            
-            // ASCII可打印字符
-            if (c >= 32 && c <= 126) {
-                result.append(c);
-            }
-            // 中文字符范围
-            else if (c >= '\u4E00' && c <= '\u9FFF') {
-                result.append(c);
-            }
-            // 其他字符用空格替换
-            else {
-                result.append(' ');
-            }
-        }
+        matcher.appendTail(result);
         
         return result.toString();
     }
     
     /**
-     * 清理文本用于PDF
+     * 添加打印样式
      */
-    private String cleanTextForPdf(String text) {
-        if (text == null) return "";
+    private String addPrintStylesForIText7(String html) {
+        String printStyles = "<style type=\"text/css\" media=\"print\">\n" +
+                             "body { font-family: 'SimSun', 'Microsoft YaHei', Arial, sans-serif !important; }\n" +
+                             ".no-print { display: none !important; }\n" +
+                             ".chart-container { page-break-inside: avoid !important; }\n" +
+                             "table { page-break-inside: avoid !important; }\n" +
+                             "h1, h2, h3, h4, h5, h6 { page-break-after: avoid !important; }\n" +
+                             "</style>\n";
         
+        if (html.contains("</head>")) {
+            html = html.replace("</head>", printStyles + "</head>");
+        }
+        
+        return html;
+    }
+    
+    /**
+     * 读取文件内容
+     */
+    private String readFileContent(Path file) throws IOException {
+        StringBuilder content = new StringBuilder();
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(new FileInputStream(file.toFile()), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                content.append(line).append("\n");
+            }
+        }
+        return content.toString();
+    }
+    
+    /**
+     * 从HTML中提取纯文本内容
+     */
+    private String extractTextFromHtml(String html) {
         // 移除HTML标签
-        text = text.replaceAll("<[^>]*>", "");
+        String text = html.replaceAll("<[^>]*>", "");
         
         // 替换HTML实体
         text = text.replace("&nbsp;", " ")
@@ -1378,192 +1367,6 @@ public class RunTaskService {
                   .replace("&quot;", "\"")
                   .replace("&#39;", "'")
                   .replace("&apos;", "'");
-        
-        // 移除多余空格和换行
-        text = text.replaceAll("\\s+", " ").trim();
-        
-        // 转义PDF特殊字符
-        text = text.replace("\\", "\\\\")
-                  .replace("(", "\\(")
-                  .replace(")", "\\)");
-        
-        return text;
-    }
-    
-    /**
-     * 解析HTML为PDF元素
-     */
-    private List<PdfElement> parseHtmlToPdfElements(String html) {
-        List<PdfElement> elements = new ArrayList<>();
-        
-        // 简单的HTML解析
-        String[] lines = html.split("\n");
-        for (String line : lines) {
-            line = line.trim();
-            if (line.isEmpty()) continue;
-            
-            if (line.contains("<h1>")) {
-                String text = extractTextFromTag(line, "h1");
-                elements.add(new PdfElement(text, "heading1"));
-            } else if (line.contains("<h2>")) {
-                String text = extractTextFromTag(line, "h2");
-                elements.add(new PdfElement(text, "heading2"));
-            } else if (line.contains("<h3>")) {
-                String text = extractTextFromTag(line, "h3");
-                elements.add(new PdfElement(text, "heading3"));
-            } else if (line.contains("<p>")) {
-                String text = extractTextFromTag(line, "p");
-                elements.add(new PdfElement(text, "paragraph"));
-            } else if (line.contains("<table")) {
-                // 简单的表格处理
-                elements.add(new PdfElement("[表格]", "table"));
-            } else if (line.contains("<img")) {
-                elements.add(new PdfElement("[图片]", "image"));
-            } else if (!line.startsWith("<")) {
-                // 纯文本
-                elements.add(new PdfElement(line, "text"));
-            }
-        }
-        
-        return elements;
-    }
-    
-    /**
-     * 从标签中提取文本
-     */
-    private String extractTextFromTag(String line, String tag) {
-        String pattern = "<" + tag + ".*?>(.*?)</" + tag + ">";
-        java.util.regex.Pattern p = java.util.regex.Pattern.compile(pattern, java.util.regex.Pattern.DOTALL);
-        java.util.regex.Matcher m = p.matcher(line);
-        if (m.find()) {
-            return extractTextFromHtml(m.group(1));
-        }
-        return "";
-    }
-    
-    /**
-     * PDF元素类
-     */
-    private static class PdfElement {
-        String text;
-        String type;
-        
-        PdfElement(String text, String type) {
-            this.text = text;
-            this.type = type;
-        }
-    }
-    
-    /**
-     * 备用的简单PDF创建方法
-     */
-    private void createSimplePdf(Path htmlFile, Path pdfFile) throws Exception {
-        // 读取HTML内容
-        String htmlContent;
-        try (FileInputStream fis = new FileInputStream(htmlFile.toFile());
-             BufferedReader reader = new BufferedReader(new InputStreamReader(fis, StandardCharsets.UTF_8))) {
-            
-            StringBuilder htmlBuilder = new StringBuilder();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                htmlBuilder.append(line).append("\n");
-            }
-            htmlContent = htmlBuilder.toString();
-        }
-        
-        // 提取HTML中的文本内容
-        String textContent = extractTextFromHtml(htmlContent);
-        
-        // 创建基本的PDF文件
-        try (FileOutputStream fos = new FileOutputStream(pdfFile.toFile())) {
-            // PDF文件头
-            String pdfHeader = "%PDF-1.4\n";
-            fos.write(pdfHeader.getBytes(StandardCharsets.ISO_8859_1));
-            
-            // 创建一个简单的PDF对象
-            String catalog = "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n";
-            String pages = "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n";
-            String page = "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n";
-            
-            // 将文本内容转换为PDF流
-            String pdfText = convertTextToPdfStream(textContent);
-            String content = "4 0 obj\n<< /Length " + pdfText.length() + " >>\nstream\n" + pdfText + "\nendstream\nendobj\n";
-            
-            // 字体对象（简单使用内置字体）
-            String font = "5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n";
-            
-            // 交叉引用表
-            String xref = "xref\n0 6\n0000000000 65535 f \n";
-            long offset1 = pdfHeader.length();
-            xref += String.format("%010d 00000 n \n", offset1);
-            long offset2 = offset1 + catalog.length();
-            xref += String.format("%010d 00000 n \n", offset2);
-            long offset3 = offset2 + pages.length();
-            xref += String.format("%010d 00000 n \n", offset3);
-            long offset4 = offset3 + page.length();
-            xref += String.format("%010d 00000 n \n", offset4);
-            long offset5 = offset4 + content.length();
-            xref += String.format("%010d 00000 n \n", offset5);
-            
-            // PDF尾部
-            String trailer = "trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n" + (offset5 + font.length()) + "\n%%EOF\n";
-            
-            // 写入所有PDF对象
-            fos.write(catalog.getBytes(StandardCharsets.ISO_8859_1));
-            fos.write(pages.getBytes(StandardCharsets.ISO_8859_1));
-            fos.write(page.getBytes(StandardCharsets.ISO_8859_1));
-            fos.write(content.getBytes(StandardCharsets.ISO_8859_1));
-            fos.write(font.getBytes(StandardCharsets.ISO_8859_1));
-            fos.write(xref.getBytes(StandardCharsets.ISO_8859_1));
-            fos.write(trailer.getBytes(StandardCharsets.ISO_8859_1));
-        }
-        
-        log.info("使用备用方案创建简单PDF: {} -> {}", htmlFile, pdfFile);
-    }
-    
-    /**
-     * 将文本内容转换为PDF流格式
-     */
-    private String convertTextToPdfStream(String text) {
-        StringBuilder pdfStream = new StringBuilder();
-        pdfStream.append("BT\n/F1 12 Tf\n50 750 Td\n"); // 开始文本，设置字体和位置
-        
-        // 简单的文本换行处理
-        String[] lines = text.split("\n");
-        for (int i = 0; i < lines.length && i < 60; i++) { // 限制行数避免超出页面
-            String line = lines[i].trim();
-            if (!line.isEmpty()) {
-                // 转义PDF特殊字符
-                line = line.replace("\\", "\\\\")
-                          .replace("(", "\\(")
-                          .replace(")", "\\)");
-                
-                // 限制每行长度
-                if (line.length() > 80) {
-                    line = line.substring(0, 80) + "...";
-                }
-                
-                pdfStream.append("(").append(line).append(") Tj\n");
-                pdfStream.append("0 -12 Td\n"); // 换行
-            }
-        }
-        
-        pdfStream.append("ET\n"); // 结束文本
-        return pdfStream.toString();
-    }
-
-    /**
-     * 从HTML中提取纯文本内容
-     */
-    private String extractTextFromHtml(String html) {
-        // 简单的HTML标签移除
-        String text = html.replaceAll("<[^>]*>", "");
-        text = text.replaceAll("&nbsp;", " ");
-        text = text.replaceAll("&lt;", "<");
-        text = text.replaceAll("&gt;", ">");
-        text = text.replaceAll("&amp;", "&");
-        text = text.replaceAll("&quot;", "\"");
-        text = text.replaceAll("&#39;", "'");
         
         // 移除多余的空白字符
         text = text.replaceAll("\\s+", " ").trim();
