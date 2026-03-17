@@ -255,9 +255,9 @@ public class RolePermissionService implements ApplicationContextAware {
             
             // 数据源查看权限
             Permission.DATASOURCE_READ,
-            
-            // 用户查看权限
-            Permission.USER_READ
+
+            // 解析规则查看权限
+            Permission.PARSING_RULES_READ
         );
         RoleEntity simulationEngineerRole = new RoleEntity(UserRole.SIMULATION_ENGINEER, simulationEngineerPermissions, 2000000000003L);
         roleDao.saveRole(simulationEngineerRole);
