@@ -694,8 +694,8 @@ class DataVisualization extends HTMLElement {
                 const activeQuickBtn = this.shadowRoot.querySelector('.quick-time-btn.active');
                 if (activeQuickBtn) {
                     const range = activeQuickBtn.dataset.range;
-                    const endTime = new Date();
-                    const startTime = new Date();
+                    let endTime = new Date();
+                    let startTime = new Date();
 
                     switch (range) {
                         case '1h':
@@ -817,8 +817,8 @@ class DataVisualization extends HTMLElement {
                 const activeQuickBtn = this.shadowRoot.querySelector('.quick-time-btn.active');
                 if (activeQuickBtn) {
                     const range = activeQuickBtn.dataset.range;
-                    const endTime = new Date();
-                    const startTime = new Date();
+                    let endTime = new Date();
+                    let startTime = new Date();
 
                     switch (range) {
                         case '1h':
@@ -983,6 +983,7 @@ class DataVisualization extends HTMLElement {
             return;
         }
 
+        console.log('使用降级方案显示toast');
         // 降级方案：在组件内显示临时提示
         const toast = document.createElement('div');
         toast.style.cssText = `
@@ -1599,9 +1600,16 @@ class DataVisualization extends HTMLElement {
                 this.showMessage('请先选择测点后再删除数据', 'error');
                 shouldCloseModal = false; // 验证失败不关闭弹窗
             } else {
-                // 获取删除参数
-                const startTimeInput = this.shadowRoot.getElementById('deleteStartTime');
-                const endTimeInput = this.shadowRoot.getElementById('deleteEndTime');
+                // 检查已选测点是否包含"_system"
+                const selectedPointsArray = Array.from(this.selectedPoints);
+                const hasSystemPoint = selectedPointsArray.some(point => point.includes('_system'));
+                if (hasSystemPoint) {
+                    this.showMessage('已选测点不能包含"_system"', 'error');
+                    shouldCloseModal = false; // 验证失败不关闭弹窗
+                } else {
+                    // 获取删除参数
+                    const startTimeInput = this.shadowRoot.getElementById('deleteStartTime');
+                    const endTimeInput = this.shadowRoot.getElementById('deleteEndTime');
 
                 console.log('时间输入元素:', startTimeInput, endTimeInput);
                 console.log('时间输入值:', startTimeInput?.value, endTimeInput?.value);
@@ -1671,6 +1679,7 @@ class DataVisualization extends HTMLElement {
                         console.log('准备关闭弹窗');
                     }
                 }
+            }
             }
 
         } catch (error) {

@@ -77,10 +77,10 @@ public class DataSourceController {
         }
         
         // 调试：打印接收到的请求信息
-        System.out.println("Received request type: " + request.getClass().getSimpleName());
-        System.out.println("Storage engine type: " + request.getStorageEngineType());
-        System.out.println("IP: " + request.getIp());
-        System.out.println("Port: " + request.getPort());
+        log.info("Received request type: " + request.getClass().getSimpleName());
+        log.info("Storage engine type: " + request.getStorageEngineType());
+        log.info("IP: " + request.getIp());
+        log.info("Port: " + request.getPort());
         
         boolean success = dataSourceService.registerDataSource(request);
         return success ? Result.success("数据源注册成功") : Result.error("注册失败，请检查配置");

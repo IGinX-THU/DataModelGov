@@ -192,6 +192,13 @@ class ImportDataComponent extends HTMLElement {
             return;
         }
 
+        // 目标存储路径前缀不能包含"_system"
+        if (targetPath.includes('_system')) {
+            targetPathError.textContent = '目标存储路径前缀不能包含"_system"';
+            targetPathError.classList.add('show');
+            return;
+        }
+
         if (!file) {
             csvFileError.textContent = '请选择CSV文件';
             csvFileError.classList.add('show');

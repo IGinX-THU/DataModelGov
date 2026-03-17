@@ -10,42 +10,25 @@
  * @param {number} duration - 显示时长（毫秒），默认3000
  */
 function showToast(message, type = 'success', duration = 3000) {
-    // Find workspace-content container
-    const workspaceContent = document.querySelector('.workspace-content');
-    if (!workspaceContent) {
-        console.warn('workspace-content element not found');
-        return;
-    }
-
-    // Make sure workspace content has relative positioning and proper z-index
-    workspaceContent.style.position = 'relative';
-    workspaceContent.style.overflow = 'visible';
-    workspaceContent.style.zIndex = '1';
-
     // Create toast container if it doesn't exist
-    let toastContainer = workspaceContent.querySelector('.toast-container');
+    let toastContainer = document.querySelector('.global-toast-container');
     if (!toastContainer) {
         toastContainer = document.createElement('div');
-        toastContainer.className = 'toast-container';
+        toastContainer.className = 'global-toast-container';
         toastContainer.style.cssText = `
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            z-index: 9999;
+            position: fixed;
+            top: 140px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 99999;
             display: flex;
             flex-direction: column;
             align-items: center;
-            padding: 20px 0;
             pointer-events: none;
             background: transparent;
         `;
-        // Insert at the beginning of workspace content
-        if (workspaceContent.firstChild) {
-            workspaceContent.insertBefore(toastContainer, workspaceContent.firstChild);
-        } else {
-            workspaceContent.appendChild(toastContainer);
-        }
+        // Add to document body instead of workspace content
+        document.body.appendChild(toastContainer);
     }
 
     // Create toast element

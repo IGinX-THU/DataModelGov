@@ -1900,7 +1900,7 @@ class AssociationRules extends HTMLElement {
                     
                     <div class="form-row">
                         <div class="form-group">
-                            <label for="outputTable">结果回写路径前缀 *</label>
+                            <label for="outputTable">结果回写路径前缀 </label>
                             <input type="text" id="outputTable" name="outputTable" required placeholder="root.result.job01">
                         </div>
                     </div>
@@ -1962,6 +1962,12 @@ class AssociationRules extends HTMLElement {
         
         if (!outputTable) {
             this.showToast('请输入结果回写路径前缀', 'error');
+            return;
+        }
+        
+        // 结果回写路径前缀不能包含"_system"
+        if (outputTable.includes('_system')) {
+            this.showToast('结果回写路径前缀不能包含"_system"', 'error');
             return;
         }
         

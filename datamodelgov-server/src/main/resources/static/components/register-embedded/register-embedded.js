@@ -210,7 +210,6 @@ class RegisterDataResourceEmbedded extends HTMLElement {
         
         // 类型映射
         const typeMapping = {
-            '0': 0,  // unknown
             '1': 1,  // iotdb12
             '2': 2,  // influxdb
             '3': 3,  // filesystem
@@ -220,7 +219,7 @@ class RegisterDataResourceEmbedded extends HTMLElement {
         };
         
         const data = {
-            storageEngineType: typeMapping[type] || 0,
+            storageEngineType: typeMapping[type] || null,
             ip: host,
             port: parseInt(port),
             hasData: hasData,
@@ -378,8 +377,14 @@ class RegisterDataResourceEmbedded extends HTMLElement {
     
     validateForm(data) {
         // 基础验证
-        if (!data.ip || !data.port || data.storageEngineType === 0) {
+        if (!data.ip || !data.port || !data.storageEngineType) {
             this.showMessage('请填写必填字段并选择有效的数据源类型', 'error');
+            return false;
+        }
+        
+        // 模式前缀不能包含"_system"
+        if (data.schemaPrefix && data.schemaPrefix.includes('_system')) {
+            this.showMessage('模式前缀不能包含"_system"', 'error');
             return false;
         }
         
