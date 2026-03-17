@@ -417,6 +417,22 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             }
 
+            // 检查是否点击了"明亮模式"
+            if (menuItemText === '明亮模式') {
+                console.log('明亮模式菜单被点击');
+                const html = document.documentElement;
+                html.classList.remove('dark-mode');
+                html.classList.add('light-mode');
+            }
+
+            // 检查是否点击了"暗黑模式"
+            if (menuItemText === '暗黑模式') {
+                console.log('暗黑模式菜单被点击');
+                const html = document.documentElement;
+                html.classList.remove('light-mode');
+                html.classList.add('dark-mode');
+            }
+
             // 数值与曲线分析 - 新增
             if (menuItemText === '数值与曲线分析') {
                 console.log('✅ 数值与曲线分析菜单被点击');
