@@ -412,7 +412,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         break;
                     case 'showAbout':
                         console.log('关于菜单被点击');
-                        // 可以在这里添加关于弹窗逻辑
+                        showAbout();
                         break;
                     default:
                         console.warn(`未知的菜单动作: ${action}`);
@@ -1843,3 +1843,193 @@ window.showChangePasswordModal = function() {
 };
 
 // 用户头像点击事件（修改密码）- 已移至 change-password 组件内部处理
+
+// 全局函数：显示用户手册
+window.showUserManual = function() {
+    // 创建模态框
+    const modalOverlay = document.createElement('div');
+    modalOverlay.className = 'modal-overlay';
+    modalOverlay.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+    `;
+    
+    // 创建模态框内容容器
+    const modalContainer = document.createElement('div');
+    modalContainer.style.cssText = `
+        width: 90%;
+        height: 90%;
+        max-width: 1400px;
+        max-height: 900px;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        overflow: hidden;
+        position: relative;
+        display: flex;
+        flex-direction: column;
+    `;
+    
+    // 加载用户手册内容
+    fetch('./components/user-manual/user-manual.html')
+        .then(response => response.text())
+        .then(html => {
+            modalContainer.innerHTML = html;
+            
+            // 获取用户手册容器并确保可以滚动
+            const userManualContainer = modalContainer.querySelector('.user-manual-container');
+            if (userManualContainer) {
+                userManualContainer.style.overflowY = 'auto';
+                userManualContainer.style.height = '100%';
+            }
+            
+            // 适配暗黑模式
+            if (document.documentElement.classList.contains('dark-mode')) {
+                modalContainer.querySelector('.user-manual-container').classList.add('dark-mode');
+            }
+        })
+        .catch(error => {
+            console.error('加载用户手册失败:', error);
+            modalContainer.innerHTML = `
+                <div style="padding: 40px; text-align: center;">
+                    <h3>加载用户手册失败</h3>
+                    <p>请检查网络连接或稍后重试</p>
+                    <button onclick="this.closest('.modal-overlay').remove()" style="
+                        padding: 8px 16px;
+                        background: #1890ff;
+                        color: white;
+                        border: none;
+                        border-radius: 4px;
+                        cursor: pointer;
+                    ">关闭</button>
+                </div>
+            `;
+        });
+    
+    // 点击遮罩关闭
+    modalOverlay.addEventListener('click', function(e) {
+        if (e.target === modalOverlay) {
+            modalOverlay.remove();
+        }
+    });
+    
+    // 添加到页面
+    modalOverlay.appendChild(modalContainer);
+    document.body.appendChild(modalOverlay);
+    
+    // ESC键关闭
+    const escHandler = function(e) {
+        if (e.key === 'Escape') {
+            modalOverlay.remove();
+            document.removeEventListener('keydown', escHandler);
+        }
+    };
+    document.addEventListener('keydown', escHandler);
+};
+
+// 全局函数：关闭用户手册
+window.closeUserManual = function() {
+    const modal = document.querySelector('.modal-overlay');
+    if (modal) {
+        modal.remove();
+    }
+};
+
+// 全局函数：关闭关于对话框
+window.closeAbout = function() {
+    const modal = document.querySelector('.modal-overlay');
+    if (modal) {
+        modal.remove();
+    }
+};
+
+// 全局函数：显示关于对话框
+window.showAbout = function() {
+    // 创建模态框
+    const modalOverlay = document.createElement('div');
+    modalOverlay.className = 'modal-overlay';
+    modalOverlay.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+    `;
+    
+    // 创建模态框内容容器
+    const modalContainer = document.createElement('div');
+    modalContainer.style.cssText = `
+        width: 500px;
+        max-width: 90vw;
+        height: 600px;
+        max-height: 90vh;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+        overflow: hidden;
+        position: relative;
+    `;
+    
+    // 加载关于页面内容
+    fetch('./components/about/about.html')
+        .then(response => response.text())
+        .then(html => {
+            modalContainer.innerHTML = html;
+            
+            // 适配暗黑模式
+            if (document.documentElement.classList.contains('dark-mode')) {
+                modalContainer.querySelector('.about-container').classList.add('dark-mode');
+            }
+        })
+        .catch(error => {
+            console.error('加载关于页面失败:', error);
+            modalContainer.innerHTML = `
+                <div style="padding: 40px; text-align: center; height: 100%; display: flex; flex-direction: column; justify-content: center;">
+                    <h3>加载失败</h3>
+                    <p>无法加载关于页面</p>
+                    <button onclick="this.closest('.modal-overlay').remove()" style="
+                        padding: 8px 16px;
+                        background: #1890ff;
+                        color: white;
+                        border: none;
+                        border-radius: 4px;
+                        cursor: pointer;
+                        margin-top: 20px;
+                    ">关闭</button>
+                </div>
+            `;
+        });
+    
+    // 点击遮罩关闭
+    modalOverlay.addEventListener('click', function(e) {
+        if (e.target === modalOverlay) {
+            modalOverlay.remove();
+        }
+    });
+    
+    // 添加到页面
+    modalOverlay.appendChild(modalContainer);
+    document.body.appendChild(modalOverlay);
+    
+    // ESC键关闭
+    const escHandler = function(e) {
+        if (e.key === 'Escape') {
+            modalOverlay.remove();
+            document.removeEventListener('keydown', escHandler);
+        }
+    };
+    document.addEventListener('keydown', escHandler);
+};
