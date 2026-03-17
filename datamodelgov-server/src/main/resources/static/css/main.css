@@ -357,151 +357,175 @@
     display: block !important;
 }
 
-/* 全局暗黑模式 */
-.dark-mode {
-    background-color: #0E0E10 !important;
+/* 限制范围的暗黑模式 - 只影响index.html的主要布局 */
+html.dark-mode .top-nav,
+html.light-mode .dark-mode .top-nav {
+    background-color: #23365D;
+    color: #fff;
+}
+
+html.dark-mode .nav-tabs .tab,
+html.light-mode .dark-mode .nav-tabs .tab {
     color: #FFFFFF !important;
 }
-/* ========== 关键修改：删除/修改暗黑模式下对top-nav的背景色覆盖 ========== */
-.dark-mode .top-nav {
-    /* 移除原有的 background-color: #0E0E10 !important; 不再覆盖默认背景色 */
-    border-bottom: none; /* 同时移除边框，避免顶部导航栏多出一条线（保持和默认样式一致） */
-}
-/* 保留tab文字颜色，避免文字看不清，但不改变导航栏背景 */
-.dark-mode .nav-tabs .tab {
-    color: #FFFFFF !important;
-}
-.dark-mode .nav-tabs .tab.active {
+
+html.dark-mode .nav-tabs .tab.active,
+html.light-mode .dark-mode .nav-tabs .tab.active {
     background-color: #1E1E20 !important;
     color: #FFFFFF !important;
 }
-/* ========== 其余暗黑模式样式保持你的原代码不变 ========== */
-.dark-mode .sub-tab-bar {
+
+html.dark-mode .sub-tab-bar,
+html.light-mode .dark-mode .sub-tab-bar {
     background-color: #1E1E20 !important;
 }
-.dark-mode .sub-tab-section .sub-tab {
+
+html.dark-mode .sub-tab-section .sub-tab,
+html.light-mode .dark-mode .sub-tab-section .sub-tab {
     color: #FFFFFF !important;
     border-top-color: #007bff !important;
 }
-.dark-mode .func-tab-container {
+
+html.dark-mode .func-tab-container,
+html.light-mode .dark-mode .func-tab-container {
     background-color: #1E1E20 !important;
     border-bottom: 1px solid #2D2D30;
 }
-.dark-mode .func-btn-bar {
+
+html.dark-mode .func-btn-bar,
+html.light-mode .dark-mode .func-btn-bar {
     background-color: #1E1E20 !important;
 }
-.dark-mode .func-btn {
+
+html.dark-mode .func-btn,
+html.light-mode .dark-mode .func-btn {
     background-color: transparent !important;
     border-color: transparent !important;
     color: #FFFFFF !important;
 }
-.dark-mode .func-btn:hover {
+
+html.dark-mode .func-btn:hover,
+html.light-mode .dark-mode .func-btn:hover {
     background-color: #2D2D30 !important;
     border-color: #404040 !important;
 }
-.dark-mode .btn-icon {
-    /* 移除fill，让SVG保持原色 */
-}
-.dark-mode .func-btn:hover .btn-icon {
-    /* 移除fill，让SVG保持原色 */
-}
-.dark-mode .sidebar {
+
+html.dark-mode .sidebar,
+html.light-mode .dark-mode .sidebar {
     background-color: #0E0E10 !important;
     border-right-color: #2D2D30 !important;
     color: #FFFFFF !important;
 }
-.dark-mode .sidebar-title {
+
+html.dark-mode .sidebar-title,
+html.light-mode .dark-mode .sidebar-title {
     background-color: #1E1E20 !important;
     border-bottom-color: #2D2D30 !important;
     color: #FFFFFF !important;
 }
-.dark-mode .tree-node {
+
+html.dark-mode .tree-node,
+html.light-mode .dark-mode .tree-node {
     color: #FFFFFF !important;
 }
-.dark-mode .tree-node.active {
+
+html.dark-mode .tree-node.active,
+html.light-mode .dark-mode .tree-node.active {
     background-color: #1E1E20 !important;
     color: #FFFFFF !important;
 }
-.dark-mode .search-box {
+
+html.dark-mode .search-box,
+html.light-mode .dark-mode .search-box {
     border-bottom-color: #2D2D30 !important;
     background: linear-gradient(135deg, #1E1E20 0%, #0E0E10 100%) !important;
 }
 
-.dark-mode .search-box input {
+html.dark-mode .search-box input,
+html.light-mode .dark-mode .search-box input {
     background-color: #2D2D30 !important;
     border-color: #404040 !important;
     color: #FFFFFF !important;
 }
 
-.dark-mode .search-box input:focus {
+html.dark-mode .search-box input:focus,
+html.light-mode .dark-mode .search-box input:focus {
     border-color: #2196F3 !important;
     box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.2) !important;
 }
 
-.dark-mode .search-box input::placeholder {
+html.dark-mode .search-box input::placeholder,
+html.light-mode .dark-mode .search-box input::placeholder {
     color: #9e9e9e !important;
 }
 
-.dark-mode .tree-node {
-    color: #FFFFFF !important;
-}
-
-.dark-mode .tree-node:hover {
+html.dark-mode .tree-node:hover,
+html.light-mode .dark-mode .tree-node:hover {
     background-color: #2D2D30 !important;
 }
 
-.dark-mode .tree-node.active {
+html.dark-mode .tree-node.active,
+html.light-mode .dark-mode .tree-node.active {
     background-color: #1e3a5f !important;
     color: #64b5f6 !important;
 }
 
-.dark-mode .tree-node.expanded > span::before,
-.dark-mode .tree-node:not(.expanded) > span::before {
+html.dark-mode .tree-node.expanded > span::before,
+html.dark-mode .tree-node:not(.expanded) > span::before,
+html.light-mode .dark-mode .tree-node.expanded > span::before,
+html.light-mode .dark-mode .tree-node:not(.expanded) > span::before {
     color: #9e9e9e !important;
 }
 
-.dark-mode .tree-node.expanded.active > span::before,
-.dark-mode .tree-node:not(.expanded).active > span::before {
+html.dark-mode .tree-node.expanded.active > span::before,
+html.dark-mode .tree-node:not(.expanded).active > span::before,
+html.light-mode .dark-mode .tree-node.expanded.active > span::before,
+html.light-mode .dark-mode .tree-node:not(.expanded).active > span::before {
     color: #64b5f6 !important;
 }
-.dark-mode .search-box input {
-    background-color: #1E1E20 !important;
-    border-color: #2D2D30 !important;
-    color: #FFFFFF !important;
-}
-.dark-mode .workspace {
+
+html.dark-mode .workspace,
+html.light-mode .dark-mode .workspace {
     background-color: #0E0E10 !important;
 }
-.dark-mode .workspace-title {
+
+html.dark-mode .workspace-title,
+html.light-mode .dark-mode .workspace-title {
     background-color: #1E1E20 !important;
     border-bottom: 1px solid #2D2D30;
     color: #FFFFFF !important;
 }
-.dark-mode .workspace-content {
+
+html.dark-mode .workspace-content,
+html.light-mode .dark-mode .workspace-content {
     background-color: #0E0E10 !important;
     color: #FFFFFF !important;
 }
-.dark-mode .dropdown-menu {
+
+html.dark-mode .dropdown-menu,
+html.light-mode .dark-mode .dropdown-menu {
     background-color: #0E0E10 !important;
     border-color: #2D2D30 !important;
     color: #FFFFFF !important;
 }
-.dark-mode .dropdown-menu li:hover {
+
+html.dark-mode .dropdown-menu li:hover,
+html.light-mode .dark-mode .dropdown-menu li:hover {
     background-color: #1E1E20 !important;
 }
-.dark-mode .dropdown-menu .shortcut {
+
+html.dark-mode .dropdown-menu .shortcut,
+html.light-mode .dark-mode .dropdown-menu .shortcut {
     color: #999 !important;
 }
-.dark-mode * {
-    color: #FFFFFF !important;
-}
-.dark-mode .icon {
+
+html.dark-mode .icon,
+html.light-mode .dark-mode .icon {
     filter: invert(1) !important;
 }
-.dark-mode .dropdown-menu {
-    z-index: 9999 !important;
-}
-.dark-mode .user-bar .icon {
+
+html.dark-mode .user-bar .icon,
+html.light-mode .dark-mode .user-bar .icon {
     filter: invert(1) !important;
 }
 
@@ -535,76 +559,42 @@
     color: #7b1fa2;
 }
 
-.dark-mode .loading-placeholder {
+/* 限制范围的暗黑模式样式 - 占位符 */
+html.dark-mode .loading-placeholder,
+html.light-mode .dark-mode .loading-placeholder {
     background-color: #2a2a2a;
     border: 1px solid #444;
     color: #ccc;
 }
 
-.dark-mode .error-placeholder {
+html.dark-mode .error-placeholder,
+html.light-mode .dark-mode .error-placeholder {
     background-color: #3d1a1a;
     border: 1px solid #d32f2f;
     color: #ff6b6b;
 }
 
-.dark-mode .empty-placeholder {
+html.dark-mode .empty-placeholder,
+html.light-mode .dark-mode .empty-placeholder {
     background-color: #2a1a2a;
     border: 1px solid #9c27b0;
     color: #ba68c8;
 }
 
-/* 全局Loading效果 */
-.global-loading-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(255, 255, 255, 0.9);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 9999;
-}
-
-.dark-mode .global-loading-overlay {
+/* 限制范围的暗黑模式样式 - Loading效果 */
+html.dark-mode .global-loading-overlay,
+html.light-mode .dark-mode .global-loading-overlay {
     background: rgba(0, 0, 0, 0.8);
 }
 
-.global-loading-spinner {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-}
-
-.global-spinner {
-    width: 40px;
-    height: 40px;
-    border: 4px solid #f3f3f3;
-    border-top: 4px solid #3370ff;
-    border-radius: 50%;
-    animation: globalSpin 1s linear infinite;
-    margin-bottom: 16px;
-}
-
-.dark-mode .global-spinner {
+html.dark-mode .global-spinner,
+html.light-mode .dark-mode .global-spinner {
     border: 4px solid #444;
     border-top: 4px solid #3370ff;
 }
 
-@keyframes globalSpin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-
-.global-loading-text {
-    font-size: 16px;
-    color: #666;
-    font-weight: 500;
-}
-
-.dark-mode .global-loading-text {
+html.dark-mode .global-loading-text,
+html.light-mode .dark-mode .global-loading-text {
     color: #ccc;
 }
 

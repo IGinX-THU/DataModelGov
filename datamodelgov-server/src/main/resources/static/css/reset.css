@@ -44,12 +44,7 @@ input {
 /* Dark mode is now handled by CSS variables in variables.css */
 /* The [data-theme="dark"] selector automatically applies dark mode variables */
 /* Legacy dark-mode class support for backward compatibility */
-.dark-mode,
-[data-theme="dark"] {
-    /* These are now handled by CSS variables */
-}
-
-.dark-mode .tree-node .icon,
+html.dark-mode .tree-node .icon, html.light-mode .dark-mode .tree-node .icon,
 [data-theme="dark"] .tree-node .icon {
     filter: invert(1);
 }
