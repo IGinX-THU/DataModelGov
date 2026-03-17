@@ -11,7 +11,8 @@ class ModelEdit extends HTMLElement {
         await this.loadResources();
         this.render();
         this.bindEvents();
-        await this.loadParsingRules();
+        // 不在初始化时自动加载解析规则，只在显示时加载
+        // await this.loadParsingRules();
         this.hide(); // 默认隐藏
     }
 

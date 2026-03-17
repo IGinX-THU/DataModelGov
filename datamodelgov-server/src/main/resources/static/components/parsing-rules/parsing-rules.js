@@ -251,8 +251,8 @@ class ParsingRules extends HTMLElement {
             }
             this.bindEvents();
             
-            // 组件初始化完成后自动加载数据
-            this.loadRulesFromAPI();
+            // 不在初始化时自动加载数据，只在显示时加载
+            // this.loadRulesFromAPI(); // 移除这行
         }, 100);
     }
 
@@ -629,10 +629,6 @@ class ParsingRules extends HTMLElement {
         }
     }
 
-    show() {
-        this.setAttribute('show', '');
-    }
-
     initPagination() {
         const pagination = this.shadowRoot.getElementById('pagination');
         if (pagination) {
@@ -657,6 +653,7 @@ class ParsingRules extends HTMLElement {
     }
 
     hide() {
+        this.style.display = 'none';
         this.removeAttribute('show');
     }
 }
