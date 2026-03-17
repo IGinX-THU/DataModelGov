@@ -329,128 +329,109 @@ document.addEventListener('DOMContentLoaded', function() {
         item.addEventListener('click', function(e) {
             e.stopPropagation();
             
-            const menuItemText = this.textContent.trim();
+            const menuId = this.id;
+            console.log(`菜单项被点击: ${menuId}`);
             
-            // 检查是否点击了"数据源管理"
-            if (menuItemText === '数据源管理') {
-                console.log('数据源管理菜单被点击');
-                showComponent('dataSourceList');
-            }
+            // 根据菜单ID获取对应的动作
+            const action = getMenuAction(menuId);
             
-            // 检查是否点击了"注册异构数据源"
-            if (menuItemText === '注册异构数据源') {
-                console.log('注册异构数据源菜单被点击');
-                showComponent('registerEmbedded');
-            }
-            
-            // 检查是否点击了"导入数据"
-            if (menuItemText === '导入数据') {
-                console.log('导入数据菜单被点击');
-                showComponent('importData');
-            }
-            
-            // 检查是否点击了"上传模型文件"
-            if (menuItemText === '上传模型文件') {
-                console.log('上传模型文件菜单被点击');
-                showComponent('modelUpload');
-            }
-            
-            // 检查是否点击了"下载模型文件"
-            if (menuItemText === '下载模型文件') {
-                console.log('下载模型文件菜单被点击');
-                const selectedModel = getSelectedModel();
-                showComponent('modelDownload', selectedModel);
-            }
-            
-            // 检查是否点击了"移除模型资产"
-            if (menuItemText === '移除模型资产') {
-                console.log('移除模型资产菜单被点击');
-                const selectedModel = getSelectedModel();
-                if (selectedModel) {
-                    showDeleteConfirmDialog(selectedModel);
+            if (action) {
+                // 根据动作类型执行相应操作
+                switch (action) {
+                    case 'showDataSourceList':
+                        console.log('数据源管理菜单被点击');
+                        showComponent('dataSourceList');
+                        break;
+                    case 'console.log':
+                        console.log('数据源管理被点击');
+                        break;
+                    case 'showRegisterEmbedded':
+                        console.log('注册异构数据源菜单被点击');
+                        showComponent('registerEmbedded');
+                        break;
+                    case 'showImportData':
+                        console.log('导入数据菜单被点击');
+                        showComponent('importData');
+                        break;
+                    case 'showModelUpload':
+                        console.log('上传模型文件菜单被点击');
+                        showComponent('modelUpload');
+                        break;
+                    case 'handleDownload':
+                        console.log('下载模型文件菜单被点击');
+                        const selectedModel = getSelectedModel();
+                        showComponent('modelDownload', selectedModel);
+                        break;
+                    case 'handleDeleteModel':
+                        console.log('移除模型资产菜单被点击');
+                        const selectedModelDelete = getSelectedModel();
+                        if (selectedModelDelete) {
+                            showDeleteConfirmDialog(selectedModelDelete);
+                        } else {
+                            showWorkspaceMessage('请先选择要移除的模型资产', 'warning');
+                        }
+                        break;
+                    case 'handleEditModel':
+                        console.log('编辑元模型档案菜单被点击');
+                        const selectedModelEdit = getSelectedModel();
+                        if (selectedModelEdit && selectedModelEdit.version) {
+                            showComponent('modelEdit', selectedModelEdit);
+                        } else {
+                            showWorkspaceMessage('请先选择要编辑的模型版本', 'warning');
+                        }
+                        break;
+                    case 'showParsingRules':
+                        console.log('配置解析规则菜单被点击');
+                        showComponent('parsingRules');
+                        break;
+                    case 'showAssociationRules':
+                        console.log('关联规则配置菜单被点击');
+                        showComponent('associationRules');
+                        break;
+                    case 'showVisualAnalysis':
+                        console.log('数值与曲线分析菜单被点击');
+                        // 先清空工作区
+                        clearWorkspace();
+                        showVisualAnalysis();
+                        return;
+                    case 'clearWorkspace':
+                        console.log('清空工作区菜单被点击');
+                        clearWorkspace();
+                        return;
+                    case 'setLightMode':
+                        console.log('明亮模式菜单被点击');
+                        const html = document.documentElement;
+                        html.classList.remove('dark-mode');
+                        html.classList.add('light-mode');
+                        break;
+                    case 'setDarkMode':
+                        console.log('暗黑模式菜单被点击');
+                        const htmlDark = document.documentElement;
+                        htmlDark.classList.remove('light-mode');
+                        htmlDark.classList.add('dark-mode');
+                        break;
+                    case 'showAbout':
+                        console.log('关于菜单被点击');
+                        // 可以在这里添加关于弹窗逻辑
+                        break;
+                    default:
+                        console.warn(`未知的菜单动作: ${action}`);
+                }
+            } else {
+                // 处理特殊菜单项（用户管理和修改密码）
+                if (menuId === 'userManagementMenuItem') {
+                    console.log('用户管理菜单被点击');
+                    showComponent('userManagement');
+                } else if (menuId === 'changePasswordMenuItem') {
+                    console.log('修改密码菜单被点击');
+                    const changePasswordComponent = document.querySelector('change-password');
+                    if (changePasswordComponent) {
+                        changePasswordComponent.show();
+                    }
                 } else {
-                    showWorkspaceMessage('请先选择要移除的模型资产', 'warning');
+                    console.warn(`未找到菜单ID ${menuId} 的对应动作`);
                 }
             }
-            
-            // 检查是否点击了"编辑元模型档案"
-            if (menuItemText === '编辑元模型档案') {
-                console.log('编辑元模型档案菜单被点击');
-                const selectedModel = getSelectedModel();
-                if (selectedModel && selectedModel.version) {
-                    showComponent('modelEdit', selectedModel);
-                } else {
-                    showWorkspaceMessage('请先选择要编辑的模型版本', 'warning');
-                }
-            }
-            
-            // 检查是否点击了"移除异构数据源"
-            if (menuItemText === '移除异构数据源') {
-                console.log('移除异构数据源菜单被点击');
-                handleRemoveDataSource();
-            }
-            
-            // 检查是否点击了"配置解析规则"
-            if (menuItemText === '配置解析规则') {
-                console.log('配置解析规则菜单被点击');
-                showComponent('parsingRules');
-            }
-            
-            // 检查是否点击了"关联规则配置"
-            if (menuItemText === '关联规则配置') {
-                console.log('关联规则配置菜单被点击');
-                showComponent('associationRules');
-            }
-            
-            // 检查是否点击了"用户管理"
-            if (menuItemText === '用户管理') {
-                console.log('用户管理菜单被点击');
-                showComponent('userManagement');
-            }
-            
-            // 检查是否点击了"修改密码"
-            if (menuItemText === '修改密码') {
-                console.log('修改密码菜单被点击');
-                const changePasswordComponent = document.querySelector('change-password');
-                if (changePasswordComponent) {
-                    changePasswordComponent.show(); // 使用 show() 而不是 showModal()
-                }
-            }
-
-            // 检查是否点击了"明亮模式"
-            if (menuItemText === '明亮模式') {
-                console.log('明亮模式菜单被点击');
-                const html = document.documentElement;
-                html.classList.remove('dark-mode');
-                html.classList.add('light-mode');
-            }
-
-            // 检查是否点击了"暗黑模式"
-            if (menuItemText === '暗黑模式') {
-                console.log('暗黑模式菜单被点击');
-                const html = document.documentElement;
-                html.classList.remove('light-mode');
-                html.classList.add('dark-mode');
-            }
-
-            // 数值与曲线分析 - 新增
-            if (menuItemText === '数值与曲线分析') {
-                console.log('✅ 数值与曲线分析菜单被点击');
-                
-                // 先清空工作区
-                clearWorkspace();
-                
-                showVisualAnalysis();
-                return;
-            }
-
-            // 清空工作区 - 新增
-            if (menuItemText === '清空工作区') {
-                console.log('✅ 清空工作区菜单被点击');
-                clearWorkspace();
-                return;
-            }
-
         });
     });
 
@@ -543,139 +524,92 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // 6. 功能按钮点击事件
+    // 6. 功能按钮点击事件 - 使用ID绑定而非文本绑定
     const addBtns = document.querySelectorAll('.func-btn');
     console.log('找到的功能按钮数量:', addBtns.length);
     
     addBtns.forEach((btn, index) => {
-        // 获取按钮文字，排除图标
-        const spans = btn.querySelectorAll('span');
-        let btnText = '';
-        for (let span of spans) {
-            const text = span.textContent.trim();
-            // 跳过图标（单个字符或符号）
-            if (text.length > 1) {
-                btnText = text;
-                break;
-            }
-        }
-        console.log(`按钮 ${index}: "${btnText}"`);
+        const btnId = btn.id;
+        console.log(`按钮 ${index}: "${btnId}"`);
         
-        // 分析按钮 - 新增
-        if (btnText === '分析') {
-            console.log('✅ 找到分析按钮，绑定事件');
+        // 根据按钮ID获取对应的动作
+        const action = getButtonAction(btnId);
+        
+        if (action) {
+            console.log(`✅ 找到按钮 ${btnId}，绑定事件`);
             btn.addEventListener('click', function() {
-                console.log('分析按钮被点击');
+                console.log(`${btnId} 按钮被点击`);
                 
-                // 先清空工作区
-                clearWorkspace();
-                
-                showVisualAnalysis();
-            });
-        }
-        
-        // 新增按钮
-        if (btnText === '新增') {
-            btn.addEventListener('click', function() {
-                console.log('新增按钮被点击');
-                showComponent('registerEmbedded');
-            });
-        }
-        
-        // 上传按钮
-        if (btnText === '上传') {
-            btn.addEventListener('click', function() {
-                console.log('上传按钮被点击');
-                showComponent('modelUpload');
-            });
-        }
-        
-        // 导入按钮
-        if (btnText === '导入') {
-            btn.addEventListener('click', function() {
-                console.log('导入按钮被点击');
-                showComponent('importData');
-            });
-        }
-        
-        // 下载按钮
-        if (btnText === '下载') {
-            btn.addEventListener('click', function() {
-                console.log('下载按钮被点击');
-                const selectedModel = getSelectedModel();
-                showComponent('modelDownload', selectedModel);
-            });
-        }
-        
-        // 删除按钮
-        if (btnText === '删除') {
-            console.log('绑定删除按钮事件');
-            btn.addEventListener('click', function() {
-                console.log('删除按钮被点击');
-                try {
-                    const selectedModel = getSelectedModel();
-                    console.log('选中的模型:', selectedModel);
-                    if (selectedModel) {
-                        showDeleteConfirmDialog(selectedModel);
-                    } else {
-                        showWorkspaceMessage('请先选择要删除的模型资产', 'warning');
-                    }
-                } catch (error) {
-                    console.error('删除按钮点击出错:', error);
+                // 根据动作类型执行相应操作
+                switch (action) {
+                    case 'showVisualAnalysis':
+                        // 先清空工作区
+                        clearWorkspace();
+                        showVisualAnalysis();
+                        break;
+                    case 'showRegisterEmbedded':
+                        showComponent('registerEmbedded');
+                        break;
+                    case 'showModelUpload':
+                        showComponent('modelUpload');
+                        break;
+                    case 'showImportData':
+                        showComponent('importData');
+                        break;
+                    case 'handleDownload':
+                        const selectedModel = getSelectedModel();
+                        if (selectedModel) {
+                            showComponent('modelDownload', selectedModel);
+                        } else {
+                            showWorkspaceMessage('请先选择要下载的模型版本', 'warning');
+                        }
+                        break;
+                    case 'handleDeleteModel':
+                        try {
+                            const selectedModel = getSelectedModel();
+                            console.log('选中的模型:', selectedModel);
+                            if (selectedModel) {
+                                showDeleteConfirmDialog(selectedModel);
+                            } else {
+                                showWorkspaceMessage('请先选择要删除的模型资产', 'warning');
+                            }
+                        } catch (error) {
+                            console.error('删除按钮点击出错:', error);
+                        }
+                        break;
+                    case 'handleRemoveDataSource':
+                        handleRemoveDataSource();
+                        break;
+                    case 'showDataSourceList':
+                        showComponent('dataSourceList');
+                        break;
+                    case 'handleEditModel':
+                        try {
+                            const selectedModel = getSelectedModel();
+                            console.log('选中的模型:', selectedModel);
+                            if (selectedModel && selectedModel.version) {
+                                showComponent('modelEdit', selectedModel);
+                            } else {
+                                showWorkspaceMessage('请先选择要编辑的模型版本', 'warning');
+                            }
+                        } catch (error) {
+                            console.error('编辑按钮点击出错:', error);
+                        }
+                        break;
+                    case 'showParsingRules':
+                        showComponent('parsingRules');
+                        break;
+                    case 'showAssociationRules':
+                        showComponent('associationRules');
+                        break;
+                    default:
+                        console.warn(`未知的按钮动作: ${action}`);
                 }
             });
+        } else {
+            console.warn(`未找到按钮ID ${btnId} 的对应动作`);
         }
-
-        // 卸载按钮
-        if (btnText === '卸载') {
-            btn.addEventListener('click', function() {
-                console.log('卸载按钮被点击');
-                handleRemoveDataSource();
-            });
-        }
-
-        if (btnText === '管理') {
-            btn.addEventListener('click', function() {
-                console.log('卸载按钮被点击');
-                showComponent('dataSourceList');
-            });
-        }
-        
-        // 编辑按钮
-        if (btnText === '编辑') {
-            btn.addEventListener('click', function() {
-                console.log('编辑按钮被点击');
-                try {
-                    const selectedModel = getSelectedModel();
-                    console.log('选中的模型:', selectedModel);
-                    if (selectedModel && selectedModel.version) {
-                        showComponent('modelEdit', selectedModel);
-                    } else {
-                        showWorkspaceMessage('请先选择要编辑的模型版本', 'warning');
-                    }
-                } catch (error) {
-                    console.error('编辑按钮点击出错:', error);
-                }
-            });
-        }
-        
-        // 解析按钮
-        if (btnText === '解析') {
-            btn.addEventListener('click', function() {
-                console.log('解析按钮被点击');
-                showComponent('parsingRules');
-            });
-        }
-        
-        // 关联按钮
-        if (btnText === '关联') {
-            btn.addEventListener('click', function() {
-                console.log('关联按钮被点击');
-                showComponent('associationRules');
-            });
-        }
-
-        });
+    });
 
     // 7. 监听内嵌页面提交事件
     const embedded = document.getElementById('registerEmbedded');

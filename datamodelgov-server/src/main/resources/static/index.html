@@ -93,34 +93,34 @@
         <span class="tab dropdown" id="dataDropdown">
                 <span class="dropdown-trigger">数据</span>
                 <ul class="dropdown-menu">
-                    <li onclick="console.log('数据源管理被点击')">数据源管理</li>
-                    <li>注册异构数据源</li>
+                    <li id="menu-data-source-management">数据源管理</li>
+                    <li id="menu-register-heterogeneous-data-source">注册异构数据源</li>
 <!--                    <li>移除异构数据源</li>-->
-                    <li>导入数据</li>
+                    <li id="menu-import-data">导入数据</li>
 <!--                    <li>导出数据</li>-->
                 </ul>
             </span>
         <span class="tab dropdown" id="modelDropdown">
                 <span class="dropdown-trigger">模型</span>
                 <ul class="dropdown-menu">
-                    <li>上传模型文件</li>
-                    <li>下载模型文件</li>
-                    <li>移除模型资产</li>
-                    <li>编辑元模型档案</li>
-                    <li>配置解析规则</li>
+                    <li id="menu-upload-model-file">上传模型文件</li>
+                    <li id="menu-download-model-file">下载模型文件</li>
+                    <li id="menu-remove-model-asset">移除模型资产</li>
+                    <li id="menu-edit-meta-model-archive">编辑元模型档案</li>
+                    <li id="menu-configure-parsing-rules">配置解析规则</li>
                 </ul>
             </span>
         <span class="tab dropdown" id="scheduleDropdown">
                 <span class="dropdown-trigger">关联</span>
                 <ul class="dropdown-menu">
-                    <li>关联规则配置</li>
+                    <li id="menu-association-rule-configuration">关联规则配置</li>
 <!--                    <li>仿真任务执行</li>-->
                 </ul>
             </span>
         <span class="tab dropdown" id="analysisDropdown">
                 <span class="dropdown-trigger">分析</span>
                 <ul class="dropdown-menu">
-                    <li>数值与曲线分析</li>
+                    <li id="menu-numerical-and-curve-analysis">数值与曲线分析</li>
                 </ul>
             </span>
         <span class="tab dropdown" id="userDropdown">
@@ -134,20 +134,20 @@
         <span class="tab dropdown" id="toolDropdown">
                 <span class="dropdown-trigger">工具</span>
                 <ul class="dropdown-menu">
-                    <li>清空工作区</li>
+                    <li id="menu-clear-workspace">清空工作区</li>
                 </ul>
             </span>
         <span class="tab dropdown" id="windowDropdown">
                 <span class="dropdown-trigger">窗口</span>
                 <ul class="dropdown-menu">
-                    <li>明亮模式</li>
-                    <li>暗黑模式</li>
+                    <li id="menu-light-mode">明亮模式</li>
+                    <li id="menu-dark-mode">暗黑模式</li>
                 </ul>
             </span>
         <span class="tab dropdown" id="helpDropdown">
                 <span class="dropdown-trigger">帮助</span>
                 <ul class="dropdown-menu">
-                    <li>关于</li>
+                    <li id="menu-about">关于</li>
                 </ul>
             </span>
     </div>
@@ -166,15 +166,15 @@
     <div class="sub-tab-bar">
         <div class="sub-tab-section">
             <div class="func-btn-group">
-                <button class="func-btn">
+                <button class="func-btn" id="btn-add">
                     <svg class="btn-icon"><use href="#icon-add"></use></svg>
                     <span>新增</span>
                 </button>
-                <button class="func-btn">
+                <button class="func-btn" id="btn-manage">
                     <svg class="btn-icon"><use href="#icon-unload"></use></svg>
                     <span>管理</span>
                 </button>
-                <button class="func-btn">
+                <button class="func-btn" id="btn-import">
                     <svg class="btn-icon"><use href="#icon-import"></use></svg>
                     <span>导入</span>
                 </button>
@@ -188,23 +188,23 @@
         
         <div class="sub-tab-section">
             <div class="func-btn-group">
-                <button class="func-btn">
+                <button class="func-btn" id="btn-upload">
                     <svg class="btn-icon"><use href="#icon-upload"></use></svg>
                     <span>上传</span>
                 </button>
-                <button class="func-btn">
+                <button class="func-btn" id="btn-download">
                     <svg class="btn-icon"><use href="#icon-download"></use></svg>
                     <span>下载</span>
                 </button>
-                <button class="func-btn">
+                <button class="func-btn" id="btn-delete">
                     <span class="btn-icon" style="color: #f5222d; font-size: 16px; font-weight: bold;">✕</span>
                     <span>删除</span>
                 </button>
-                <button class="func-btn">
+                <button class="func-btn" id="btn-edit">
                     <svg class="btn-icon"><use href="#icon-edit"></use></svg>
                     <span>编辑</span>
                 </button>
-                <button class="func-btn">
+                <button class="func-btn" id="btn-parse">
                     <svg class="btn-icon"><use href="#icon-parse"></use></svg>
                     <span>解析</span>
                 </button>
@@ -214,7 +214,7 @@
         
         <div class="sub-tab-section">
             <div class="func-btn-group">
-                <button class="func-btn">
+                <button class="func-btn" id="btn-link">
                     <svg class="btn-icon"><use href="#icon-link"></use></svg>
                     <span>关联</span>
                 </button>
@@ -232,7 +232,7 @@
         
         <div class="sub-tab-section">
             <div class="func-btn-group">
-                <button class="func-btn">
+                <button class="func-btn" id="btn-analyze">
                     <svg class="btn-icon"><use href="#icon-analyze"></use></svg>
                     <span>分析</span>
                 </button>
@@ -325,6 +325,7 @@
 </div>
 
 <script src="./config/app-config.js"></script>
+<script src="./js/button-id-mapping.js"></script>
 <script src="./js/modal-manager.js"></script>
 <script src="./js/common-utils.js"></script>
 <script src="./components/register-embedded/register-embedded.js"></script>
