@@ -3862,13 +3862,17 @@ class AssociationRules extends HTMLElement {
             return true;
         }
         
-        // Integer可以转换为Float
-        if (sourceType === 'Integer' && targetType === 'Float') {
+        // 定义所有数值类型
+        const numericTypes = ['Integer', 'Long', 'Float', 'Double'];
+        
+        // 所有数值类型之间可以互相转换
+        if (numericTypes.includes(sourceType) && numericTypes.includes(targetType)) {
             return true;
         }
         
-        // Float可以转换为Integer（但可能丢失精度）
-        if (sourceType === 'Float' && targetType === 'Integer') {
+        // Boolean可以转换为String，也可以从String转换
+        if ((sourceType === 'Boolean' && targetType === 'String') ||
+            (sourceType === 'String' && targetType === 'Boolean')) {
             return true;
         }
         

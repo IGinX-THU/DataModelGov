@@ -302,8 +302,8 @@ class ModelEdit extends HTMLElement {
         console.log('renderParams - this.inputs:', this.inputs);
         console.log('renderParams - this.outputs:', this.outputs);
         
-        // 数据类型选项
-        const dataTypes = ['Double', 'Int32', 'String', 'Boolean', 'Float', 'Int64'];
+        // 数据类型选项（与association-rules保持一致）
+        const dataTypes = ['Boolean', 'Integer', 'Long', 'Float', 'Double', 'String'];
         
         // 常用物理单位
         const commonUnits = [
@@ -514,7 +514,8 @@ class ModelEdit extends HTMLElement {
                         <strong>数据类型映射：</strong>
                         <ul>
                             <li>float/double → Double</li>
-                            <li>int/integer → Int32</li>
+                            <li>int/integer → Integer</li>
+                            <li>long → Long</li>
                             <li>string/text → String</li>
                             <li>bool/boolean → Boolean</li>
                         </ul>
@@ -543,7 +544,7 @@ class ModelEdit extends HTMLElement {
             pressure: { type: 'Double', unit: 'kPa', desc: '压力值' },
             flow_rate: { type: 'Double', unit: 'm³/h', desc: '流量' },
             control_signal: { type: 'Double', unit: '%', desc: '控制信号' },
-            status: { type: 'Int32', unit: '-', desc: '状态码' },
+            status: { type: 'Integer', unit: '-', desc: '状态码' },
             efficiency: { type: 'Double', unit: '%', desc: '效率' }
         };
 
@@ -912,16 +913,16 @@ Generic processing function`
     normalizeDataType(dataType) {
         console.log('normalizeDataType 输入:', dataType);
         
-        // UI中的数据类型选项
-        const uiDataTypes = ['Double', 'Int32', 'String', 'Boolean', 'Float', 'Int64'];
+        // UI中的数据类型选项（与association-rules保持一致）
+        const uiDataTypes = ['Boolean', 'Integer', 'Long', 'Float', 'Double', 'String'];
         
         // 标准化数据类型映射
         const typeMap = {
             'float': 'Float',
             'double': 'Double', 
-            'int': 'Int32',
-            'integer': 'Int32',
-            'long': 'Int64',
+            'int': 'Integer',
+            'integer': 'Integer',
+            'long': 'Long',
             'bool': 'Boolean',
             'boolean': 'Boolean',
             'string': 'String',

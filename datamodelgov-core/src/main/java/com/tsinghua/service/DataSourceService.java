@@ -68,8 +68,10 @@ public class DataSourceService {
     public List<ColumnDto> dataSourceTree() throws Exception {
         // iginxSession.openSession();
         List<Column> columnList = iginxSession.showColumns();
-        columnList.forEach(column -> System.out.println(column.toString()));
-        List<ColumnDto> tree = columnList.stream().map(column -> new ColumnDto(column.getPath(), column.getDataType().getValue())).collect(Collectors.toList());
+        List<ColumnDto> tree = columnList.stream()
+                .filter(column -> !column.getPath().contains("relational_system"))
+                .map(column -> new ColumnDto(column.getPath(), column.getDataType().getValue()))
+                .collect(Collectors.toList());
         // iginxSession.closeSession();
         return tree;
     }

@@ -1468,7 +1468,7 @@ function showVisualAnalysis() {
     async function loadDataSourceTree() {
         try {
             // 显示全局loading
-            window.showGlobalLoading('正在加载数据源...');
+            window.showGlobalLoading('正在加载数据资源...');
             
             // 同时显示右侧loading
             const rightSidebarTree = document.querySelector('.right-sidebar .tree');
@@ -1579,12 +1579,18 @@ function showVisualAnalysis() {
     function renderDataSourceTree(dataSources) {
         const treeContainer = document.getElementById('dataSourceTree');
         if (!dataSources || dataSources.length === 0) {
-            treeContainer.innerHTML = '<div class="empty-placeholder">暂无数据源</div>';
+            treeContainer.innerHTML = '<div class="empty-placeholder">暂无数据资源</div>';
             return;
         }
         
-        // 将字符串数组转换为树结构
-        const treeData = buildTreeFromStringArray(dataSources);
+        // 过滤掉 models_system 开头的数据源（这些数据源会移动到右侧显示）
+        const filteredDataSources = dataSources.filter(item => {
+            const path = typeof item === 'string' ? item : item.path;
+            return !path || !path.startsWith('models_system');
+        });
+        
+        // 将过滤后的字符串数组转换为树结构
+        const treeData = buildTreeFromStringArray(filteredDataSources);
         
         // 渲染树HTML
         const treeHTML = renderTreeNodes(treeData);
@@ -1781,7 +1787,7 @@ function showVisualAnalysis() {
                 // 如果没有filesystem数据，显示空状态
                 const rightSidebarTree = document.querySelector('.right-sidebar .tree');
                 if (rightSidebarTree) {
-                    rightSidebarTree.innerHTML = '<div class="empty-placeholder">暂无文件系统模型</div>';
+                    rightSidebarTree.innerHTML = '<div class="empty-placeholder">暂无模型资产</div>';
                 }
             }
             
@@ -1803,7 +1809,7 @@ window.loadDataSourceTree = async function() {
     console.log('🔄 loadDataSourceTree 被调用，开始重新加载数据源树...');
     try {
         // 显示全局loading
-        window.showGlobalLoading('正在加载数据源...');
+        window.showGlobalLoading('正在加载数据资源...');
         
         // 同时显示右侧loading
         const rightSidebarTree = document.querySelector('.right-sidebar .tree');
