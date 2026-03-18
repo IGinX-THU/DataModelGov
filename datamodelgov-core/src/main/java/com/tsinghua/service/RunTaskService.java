@@ -501,8 +501,8 @@ public class RunTaskService {
 
             // 1. 查询关联规则信息
             AssociationRulesEntity associationRulesEntity = associationRulesService.queryRule(runTaskRequest.getRuleId());
-            if (associationRulesEntity == null) {
-                throw new RuntimeException("未找到关联规则: " + runTaskRequest.getRuleId());
+            if (associationRulesEntity == null || !associationRulesEntity.getStatus()) {
+                throw new RuntimeException("未找到关联规则或已禁用: " + runTaskRequest.getRuleId());
             }
 
             long timestamp = System.currentTimeMillis();

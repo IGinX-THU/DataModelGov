@@ -422,7 +422,7 @@ class AssociationRules extends HTMLElement {
                 <td>${item.updateTime}</td>
                 <td>
                     <div class="action-buttons">
-                        <button class="action-btn run" data-action="run" data-id="${item.id}">运行</button>
+                        ${item.status === 'active' ? `<button class="action-btn run" data-action="run" data-id="${item.id}">运行</button>` : ''}
                         <button class="action-btn copy" data-action="copy" data-id="${item.id}">复制</button>
                         <button class="action-btn toggle" data-action="toggle" data-id="${item.id}" data-status="${item.status}">${item.status === 'active' ? '禁用' : '启用'}</button>
                         <button class="action-btn edit" data-action="edit" data-id="${item.id}">编辑</button>
@@ -476,7 +476,7 @@ class AssociationRules extends HTMLElement {
                 <td>${item.updateTime}</td>
                 <td>
                     <div class="action-buttons">
-                        <button class="action-btn run" data-action="run" data-id="${item.id}">运行</button>
+                        ${item.status === 'active' ? `<button class="action-btn run" data-action="run" data-id="${item.id}">运行</button>` : ''}
                         <button class="action-btn copy" data-action="copy" data-id="${item.id}">复制</button>
                         <button class="action-btn toggle" data-action="toggle" data-id="${item.id}" data-status="${item.status}">${item.status === 'active' ? '禁用' : '启用'}</button>
                         <button class="action-btn edit" data-action="edit" data-id="${item.id}">编辑</button>
