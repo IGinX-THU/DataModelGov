@@ -1,0 +1,411 @@
+### DataModelGov RESTful API 调用示例
+### 除了ApiGenerationController之外的4个Controller的所有方法
+
+@baseUrl = http://localhost:8080
+@contentType = application/json
+
+### ==================== 关联规则配置 (AssociationRulesController) ====================
+
+### 1. 创建关联规则
+POST {{baseUrl}}/api/association/rules/save
+Content-Type: {{contentType}}
+
+{
+  "name": "用户行为关联规则",
+  "description": "分析用户购买行为关联性",
+  "tableName": "user_behavior",
+  "modelName": "purchase_prediction",
+  "modelVersion": "1.0.0",
+  "status": true,
+  "inputsBind": "{\"age\": \"int\", \"income\": \"double\", \"gender\": \"string\"}",
+  "outputsBind": "{\"purchase_probability\": \"double\", \"recommendation\": \"string\"}"
+}
+
+### 2. 分页查询关联规则
+POST {{baseUrl}}/api/association/rules/query
+Content-Type: {{contentType}}
+
+{
+  "pageNum": 1,
+  "pageSize": 10,
+  "name": "用户行为",
+  "status": "active"
+}
+
+### 3. 查询关联规则总数
+POST {{baseUrl}}/api/association/rules/count
+Content-Type: {{contentType}}
+
+{
+  "name": "用户行为",
+  "status": "active"
+}
+
+### 4. 关联规则详情
+GET {{baseUrl}}/api/association/rules/detail?createTime=1640995200000
+
+### 5. 删除关联规则
+DELETE {{baseUrl}}/api/association/rules/delete?createTime=1640995200000
+
+### ==================== 数据资源管理 (DataSourceController) ====================
+
+### 1. 注册IoTDB数据源
+POST {{baseUrl}}/api/datasource/register
+Content-Type: {{contentType}}
+
+{
+  "storageEngineType": 1,
+  "ip": "127.0.0.1",
+  "port": 6667,
+  "hasData": false,
+  "isReadOnly": false,
+  "username": "root",
+  "password": "root",
+  "sessionPoolSize": 130
+}
+
+### 2. 注册InfluxDB数据源
+POST {{baseUrl}}/api/datasource/register
+Content-Type: {{contentType}}
+
+{
+  "storageEngineType": 2,
+  "ip": "127.0.0.1",
+  "port": 8086,
+  "hasData": false,
+  "isReadOnly": false,
+  "url": "http://localhost:8086/",
+  "username": "admin",
+  "password": "12345678",
+  "token": "influxdb-token",
+  "organization": "sensor-org"
+}
+
+### 3. 注册文件系统数据源
+POST {{baseUrl}}/api/datasource/register
+Content-Type: {{contentType}}
+
+{
+  "storageEngineType": 3,
+  "ip": "127.0.0.1",
+  "port": 6667,
+  "hasData": false,
+  "isReadOnly": false,
+  "iginxPort": 6888,
+  "dir": "/data/iginx",
+  "dataStruct": "LegacyParquet",
+  "dummyStruct": "LegacyFilesystem",
+  "clientSocketTimeout": 30000,
+  "clientConnectTimeout": 10000,
+  "clientConnectPoolMaxTotal": 8
+}
+
+### 4. 注册关系数据库数据源
+POST {{baseUrl}}/api/datasource/register
+Content-Type: {{contentType}}
+
+{
+  "storageEngineType": 4,
+  "ip": "127.0.0.1",
+  "port": 3306,
+  "hasData": false,
+  "isReadOnly": false,
+  "engine": "postgresql",
+  "username": "postgres",
+  "password": "postgres",
+  "connectionTimeout": 30000,
+  "idleTimeout": 10000,
+  "maximumPoolSize": 20,
+  "minimumIdle": 1,
+  "leakDetectionThreshold": 2500,
+  "prepStmtCacheSize": 250,
+  "prepStmtCacheSqlLimit": 2048
+}
+
+### 5. 注册MongoDB数据源
+POST {{baseUrl}}/api/datasource/register
+Content-Type: {{contentType}}
+
+{
+  "storageEngineType": 5,
+  "ip": "127.0.0.1",
+  "port": 27017,
+  "hasData": false,
+  "isReadOnly": false,
+  "uri": "mongodb://localhost:27017/datamodelgov",
+  "schemaSampleSize": 1000,
+  "dummySampleSize": 0
+}
+
+### 6. 注册Redis数据源
+POST {{baseUrl}}/api/datasource/register
+Content-Type: {{contentType}}
+
+{
+  "storageEngineType": 6,
+  "ip": "127.0.0.1",
+  "port": 6379,
+  "hasData": false,
+  "isReadOnly": false,
+  "username": "redis_user",
+  "password": "redis_password",
+  "timeout": 2000
+}
+
+### 7. 移除数据源
+POST {{baseUrl}}/api/datasource/remove
+Content-Type: {{contentType}}
+
+{
+  "id": 1,
+  "ip": "127.0.0.1",
+  "port": 6667,
+  "type": 1,
+  "schemaPrefix": "",
+  "dataPrefix": ""
+}
+
+### 8. 数据资源列表
+GET {{baseUrl}}/api/datasource/list
+
+### 9. 数据资源树
+GET {{baseUrl}}/api/datasource/tree
+
+### ==================== 数据查询与管理 (DataTableController) ====================
+
+### 1. 数据查询
+POST {{baseUrl}}/api/data/query
+Content-Type: {{contentType}}
+
+{
+  "paths": ["root.sg1.temperature", "root.sg1.humidity"],
+  "startTime": 1640995200000,
+  "endTime": 1641081600000,
+  "aggregateType": 2,
+  "precision": 3600000,
+  "timePrecision": 4
+}
+
+### 2. 导入数据 (multipart/form-data)
+POST {{baseUrl}}/api/data/import
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW
+
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="config"; Content-Type: {{contentType}}
+
+{
+  "targetPath": "root.sg.sensor_data"
+}
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="file"; filename="sensor_data.csv"
+Content-Type: text/csv
+
+timestamp,device_id,temperature,humidity
+1640995200000,device001,25.5,60.2
+1640995260000,device002,26.1,58.9
+1640995320000,device003,24.8,62.1
+------WebKitFormBoundary7MA4YWxkTrZu0gW--
+
+### 3. 导出数据
+POST {{baseUrl}}/api/data/export
+Content-Type: {{contentType}}
+
+{
+  "paths": ["root.sg1.temperature", "root.sg1.humidity"],
+  "startTime": 1640995200000,
+  "endTime": 1641081600000,
+  "aggregateType": 2,
+  "precision": 3600000,
+  "timePrecision": 4
+}
+
+### 4. 数据删除
+POST {{baseUrl}}/api/data/delete
+Content-Type: {{contentType}}
+
+{
+  "paths": ["root.sg1.temperature", "root.sg1.humidity"],
+  "startTime": 1640995200000,
+  "endTime": 1641081600000
+}
+
+### 5. 关系数据查询
+POST {{baseUrl}}/api/data/relational/query
+Content-Type: {{contentType}}
+
+{
+  "pageNum": 1,
+  "pageSize": 10,
+  "tableName": "user_orders",
+  "sortField": "create_time",
+  "sortDirection": "DESC",
+  "filters": [
+    {
+      "field": "amount",
+      "operator": ">",
+      "value": "1000",
+      "startGroup": true,
+      "endGroup": true
+    }
+  ]
+}
+
+### 6. 关系数据总量查询
+POST {{baseUrl}}/api/data/relational/count
+Content-Type: {{contentType}}
+
+{
+  "pageNum": 1,
+  "pageSize": 10,
+  "tableName": "user_orders",
+  "filters": [
+    {
+      "field": "amount",
+      "operator": ">",
+      "value": "1000",
+      "startGroup": true,
+      "endGroup": true
+    }
+  ]
+}
+
+### 7. 关系数据Excel导出
+POST {{baseUrl}}/api/data/relational/export
+Content-Type: {{contentType}}
+
+{
+  "pageNum": 1,
+  "pageSize": 10,
+  "tableName": "user_orders",
+  "sortField": "create_time",
+  "sortDirection": "DESC",
+  "filters": [
+    {
+      "field": "create_time",
+      "operator": ">=",
+      "value": "2023-01-01"
+    }
+  ]
+}
+
+### ==================== 模型资产管理 (ModelFileController) ====================
+
+### 1. 上传模型 (multipart/form-data)
+POST {{baseUrl}}/api/model/upload
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW
+
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="file"; filename="user_model.json"
+Content-Type: {{contentType}}
+
+{
+  "modelType": "classification",
+  "features": ["age", "income", "education"],
+  "target": "purchase_decision",
+  "algorithm": "random_forest",
+  "accuracy": 0.85
+}
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="name"
+Content-Type: text/plain
+
+用户购买预测模型
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="version"
+Content-Type: text/plain
+
+1.0.0
+------WebKitFormBoundary7MA4YWxkTrZu0gW--
+
+### 2. 下载模型
+POST {{baseUrl}}/api/model/download
+Content-Type: application/x-www-form-urlencoded
+
+name=用户购买预测模型&version=1.0.0&fileName=user_model_v1.json
+
+### 3. 模型元数据详情
+GET {{baseUrl}}/api/model/metas?name=用户购买预测模型&version=1.0.0
+
+### 4. 保存模型元数据
+POST {{baseUrl}}/api/model/metas
+Content-Type: {{contentType}}
+
+{
+  "name": "用户购买预测模型",
+  "version": "1.0.0",
+  "fileName": "user_model_v1.json",
+  "author": "data_scientist_001",
+  "scene": "电商推荐",
+  "inputs": "{\"age\": \"int\", \"income\": \"double\", \"gender\": \"string\"}",
+  "outputs": "{\"purchase_probability\": \"double\", \"recommendation\": \"string\"}",
+  "timestamp": 1640995200000
+}
+
+### 5. 模型元数据历史
+GET {{baseUrl}}/api/model/history?name=用户购买预测模型
+
+### 6. 移除模型资产 (删除指定版本)
+DELETE {{baseUrl}}/api/model/delete?name=用户购买预测模型&version=1.0.0
+
+### 7. 移除模型资产 (删除所有版本)
+DELETE {{baseUrl}}/api/model/delete?name=用户购买预测模型
+
+### ==================== 测试和验证 ====================
+
+### 健康检查
+GET {{baseUrl}}/actuator/health
+
+### 应用信息
+GET {{baseUrl}}/actuator/info
+
+### Swagger文档
+GET {{baseUrl}}/swagger-ui.html
+
+### ==================== 说明 ====================
+
+### Controller说明：
+# 1. AssociationRulesController - 关联规则配置 (/api/association)
+#    - 创建关联规则
+#    - 分页查询关联规则  
+#    - 查询关联规则总数
+#    - 关联规则详情
+#    - 删除关联规则
+
+# 2. DataSourceController - 数据资源管理 (/api/datasource)
+#    - 注册异构数据源 (支持6种类型：IoTDB, InfluxDB, 文件系统, 关系数据库, MongoDB, Redis)
+#    - 移除异构数据源
+#    - 数据资源列表
+#    - 数据资源树
+
+# 3. DataTableController - 数据查询与管理 (/api/data)
+#    - 数据查询
+#    - 导入数据 (支持文件上传)
+#    - 导出数据
+#    - 数据删除
+#    - 关系数据查询 (支持表连接)
+#    - 关系数据总量查询
+#    - 关系数据Excel导出
+
+# 4. ModelFileController - 模型资产管理 (/api/model)
+#    - 上传模型 (支持文件上传)
+#    - 下载模型
+#    - 模型元数据详情
+#    - 保存模型元数据
+#    - 模型元数据历史
+#    - 移除模型资产
+
+### 数据源类型说明：
+# 1 - IoTDB (时序数据库)
+# 2 - InfluxDB (时序数据库)
+# 3 - 文件系统
+# 4 - 关系数据库 (MySQL, PostgreSQL等)
+# 5 - MongoDB (文档数据库)
+# 6 - Redis (缓存数据库)
+
+### 使用说明：
+# 1. 修改 @baseUrl 变量为实际的服务地址
+# 2. 根据实际环境修改连接参数 (IP, 端口, 用户名, 密码等)
+# 3. 文件上传接口需要使用 multipart/form-data 格式
+# 4. 导出接口会返回文件流，需要特殊处理
+# 5. 所有POST请求体都是JSON格式
+# 6. 查询条件支持多种操作符：>, >=, <, <=, =, !=, LIKE, IN等

@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>关于 - 数据与模型一体化管理平台</title>
+    <link rel="stylesheet" href="../../css/reset.css">
+    <link rel="stylesheet" href="../../css/main.css">
+    <style>
+        .about-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px 20px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            color: #333;
+            height: 100%;
+            box-sizing: border-box;
+        }
+        
+        .about-logo {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #1890ff, #40a9ff);
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 24px;
+            box-shadow: 0 4px 12px rgba(24, 144, 255, 0.3);
+        }
+        
+        .about-logo svg {
+            width: 48px;
+            height: 48px;
+            fill: white;
+        }
+        
+        .about-title {
+            font-size: 28px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #1890ff;
+        }
+        
+        .about-version {
+            font-size: 16px;
+            color: #666;
+            margin-bottom: 32px;
+        }
+        
+        .about-description {
+            text-align: center;
+            max-width: 500px;
+            line-height: 1.6;
+            color: #555;
+            margin-bottom: 40px;
+        }
+        
+        .about-info {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 24px;
+            width: 100%;
+            max-width: 400px;
+        }
+        
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #e8e8e8;
+        }
+        
+        .info-item:last-child {
+            border-bottom: none;
+        }
+        
+        .info-label {
+            font-weight: 500;
+            color: #666;
+        }
+        
+        .info-value {
+            color: #333;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .about-footer {
+            margin-top: auto;
+            text-align: center;
+            color: #999;
+            font-size: 14px;
+        }
+        
+        .close-btn {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: #ff4d4f;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            z-index: 1000;
+        }
+        
+        .close-btn:hover {
+            background: #ff7875;
+        }
+        
+        .dark-mode .about-container {
+            color: #e0e0e0;
+        }
+        
+        .dark-mode .about-title {
+            color: #40a9ff;
+        }
+        
+        .dark-mode .about-version {
+            color: #999;
+        }
+        
+        .dark-mode .about-description {
+            color: #ccc;
+        }
+        
+        .dark-mode .about-info {
+            background: #2a2a2a;
+            border: 1px solid #404040;
+        }
+        
+        .dark-mode .info-item {
+            border-bottom-color: #404040;
+        }
+        
+        .dark-mode .info-label {
+            color: #999;
+        }
+        
+        .dark-mode .info-value {
+            color: #e0e0e0;
+        }
+        
+        .dark-mode .about-footer {
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="about-container">
+        <button class="close-btn" onclick="window.closeAbout()">关闭</button>
+        
+        <div class="about-logo">
+            <svg viewBox="0 0 24 24">
+                <path d="M12 2L2 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5z"/>
+            </svg>
+        </div>
+        
+        <h1 class="about-title">数据与模型一体化管理平台</h1>
+        <div class="about-version">版本 1.0.0</div>
+        
+        <p class="about-description">
+            数据与模型治理一站式Web可视化操作平台
+        </p>
+        
+        <div class="about-info">
+            <div class="info-item">
+                <span class="info-label">IGinX版本</span>
+                <span class="info-value">0.8.0</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Java版本</span>
+                <span class="info-value">1.8</span>
+            </div>
+        </div>
+        
+        <div class="about-footer">
+            <p>© 2026 清华大学 软件学院</p>
+            <p>大数据系统软件国家工程实验室</p>
+        </div>
+    </div>
+    
+    <script>
+        // 关闭关于对话框
+        window.closeAbout = function() {
+            const modal = document.querySelector('.about-container').closest('.modal-overlay');
+            if (modal) {
+                modal.remove();
+            } else {
+                window.close();
+            }
+        };
+        
+        // ESC键关闭
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                window.closeAbout();
+            }
+        });
+    </script>
+</body>
+</html>

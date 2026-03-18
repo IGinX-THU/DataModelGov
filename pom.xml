@@ -4,264 +4,376 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.tsinghua</groupId>
-    <artifactId>data-model-gov</artifactId>
+    <artifactId>datamodelgov-parent</artifactId>
     <version>1.0.0</version>
-    <name>数据与模型一体化管理软件</name>
+    <packaging>pom</packaging>
 
-    <parent>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-parent</artifactId>
-        <version>2.7.18</version>
-        <relativePath/> <!-- lookup parent from repository -->
-    </parent>
+    <name>DataModelGov Parent</name>
+    <description>数据与模型一体化管理软件 - 父项目</description>
 
-<!--    <repositories>-->
-<!--        <repository>-->
-<!--            <id>iginx</id>-->
-<!--            <name>IGinX GitHub repository</name>-->
-<!--            <url>https://iginx-thu.github.io/IGinX/maven-repo</url>-->
-<!--        </repository>-->
-<!--    </repositories>-->
+    <modules>
+        <module>datamodelgov-common</module>
+        <module>datamodelgov-core</module>
+        <module>datamodelgov-server</module>
+        <module>datamodelgov-auth</module>
+    </modules>
 
     <properties>
         <java.version>1.8</java.version>
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+        
+        <!-- 版本管理 -->
+        <spring.boot.version>2.7.18</spring.boot.version>
+        <thrift.version>0.22.0</thrift.version>
+        <jackson.version>2.15.2</jackson.version>
+        <slf4j.version>1.7.36</slf4j.version>
+        <logback.version>1.2.12</logback.version>
         <iginx.version>0.8.0</iginx.version>
+        <lombok.version>1.18.30</lombok.version>
+        <hutool.version>5.8.26</hutool.version>
+        <knife4j.version>3.0.2</knife4j.version>
+        <poi.version>5.2.4</poi.version>
     </properties>
 
-    <dependencies>
-        <!-- SpringBoot核心依赖 -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-web</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-test</artifactId>
-            <scope>test</scope>
-        </dependency>
+    <dependencyManagement>
+        <dependencies>
+            <!-- Spring Boot BOM -->
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>${spring.boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
 
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-validation</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-devtools</artifactId>
-            <scope>runtime</scope>
-            <optional>true</optional>
-        </dependency>
+            <!-- 项目内部模块 -->
+            <dependency>
+                <groupId>com.tsinghua</groupId>
+                <artifactId>datamodelgov-common</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            
+            <dependency>
+                <groupId>com.tsinghua</groupId>
+                <artifactId>datamodelgov-core</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            
+            <dependency>
+                <groupId>com.tsinghua</groupId>
+                <artifactId>datamodelgov-sdk-java</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            
+            <dependency>
+                <groupId>com.tsinghua</groupId>
+                <artifactId>datamodelgov-auth</artifactId>
+                <version>${project.version}</version>
+            </dependency>
 
-        <!-- IGinX客户端依赖 -->
-        <dependency>
-            <groupId>cn.edu.tsinghua</groupId>
-            <artifactId>iginx-session</artifactId>
-            <version>${iginx.version}</version>
-        </dependency>
-<!--        <dependency>-->
-<!--            <groupId>cn.edu.tsinghua</groupId>-->
-<!--            <artifactId>iginx-core</artifactId>-->
-<!--            <version>${iginx.version}</version>-->
-<!--        </dependency>-->
+            <!-- Thrift -->
+            <dependency>
+                <groupId>org.apache.thrift</groupId>
+                <artifactId>libthrift</artifactId>
+                <version>${thrift.version}</version>
+            </dependency>
 
-        <!-- 工具依赖 -->
-        <dependency>
-            <groupId>com.alibaba</groupId>
-            <artifactId>fastjson</artifactId>
-            <version>2.0.41</version>
-        </dependency>
-        <dependency>
-            <groupId>org.projectlombok</groupId>
-            <artifactId>lombok</artifactId>
-            <optional>true</optional>
-        </dependency>
-        <dependency>
-            <groupId>javax.servlet</groupId>
-            <artifactId>javax.servlet-api</artifactId>
-            <version>4.0.1</version>
-            <scope>provided</scope>
-        </dependency>
+            <!-- Jackson -->
+            <dependency>
+                <groupId>com.fasterxml.jackson.core</groupId>
+                <artifactId>jackson-databind</artifactId>
+                <version>${jackson.version}</version>
+            </dependency>
 
-        <dependency>
-            <groupId>cn.hutool</groupId>
-            <artifactId>hutool-all</artifactId>
-            <version>5.8.26</version>
-        </dependency>
-        
-        <!-- Spring AOP 依赖 -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-aop</artifactId>
-        </dependency>
-        
-        <!-- AspectJ 依赖 -->
-        <dependency>
-            <groupId>org.aspectj</groupId>
-            <artifactId>aspectjweaver</artifactId>
-            <version>1.9.7</version>
-        </dependency>
-        
-        <dependency>
-            <groupId>io.springfox</groupId>
-            <artifactId>springfox-boot-starter</artifactId>
-            <version>3.0.0</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>org.springframework.boot</groupId>
-                    <artifactId>spring-boot-starter-validation</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-        <!--Knife4j-->
-        <dependency>
-            <groupId>com.github.xiaoymin</groupId>
-            <artifactId>knife4j-spring-boot-starter</artifactId>
-            <version>3.0.2</version>
-        </dependency>
+            <!-- SLF4J -->
+            <dependency>
+                <groupId>org.slf4j</groupId>
+                <artifactId>slf4j-api</artifactId>
+                <version>${slf4j.version}</version>
+            </dependency>
 
-        <!-- Apache POI for Excel export -->
-        <dependency>
-            <groupId>org.apache.poi</groupId>
-            <artifactId>poi</artifactId>
-            <version>5.2.4</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.poi</groupId>
-            <artifactId>poi-ooxml</artifactId>
-            <version>5.2.4</version>
-        </dependency>
+            <!-- Logback -->
+            <dependency>
+                <groupId>ch.qos.logback</groupId>
+                <artifactId>logback-classic</artifactId>
+                <version>${logback.version}</version>
+            </dependency>
 
-    </dependencies>
+            <!-- Lombok -->
+            <dependency>
+                <groupId>org.projectlombok</groupId>
+                <artifactId>lombok</artifactId>
+                <version>${lombok.version}</version>
+                <scope>provided</scope>
+            </dependency>
+
+            <!-- Hutool -->
+            <dependency>
+                <groupId>cn.hutool</groupId>
+                <artifactId>hutool-all</artifactId>
+                <version>${hutool.version}</version>
+            </dependency>
+
+            <!-- Knife4j -->
+            <dependency>
+                <groupId>com.github.xiaoymin</groupId>
+                <artifactId>knife4j-spring-boot-starter</artifactId>
+                <version>${knife4j.version}</version>
+            </dependency>
+
+            <!-- Apache POI -->
+            <dependency>
+                <groupId>org.apache.poi</groupId>
+                <artifactId>poi</artifactId>
+                <version>${poi.version}</version>
+            </dependency>
+            
+            <dependency>
+                <groupId>org.apache.poi</groupId>
+                <artifactId>poi-ooxml</artifactId>
+                <version>${poi.version}</version>
+            </dependency>
+
+            <!-- IGinX -->
+            <dependency>
+                <groupId>cn.edu.tsinghua</groupId>
+                <artifactId>iginx-session</artifactId>
+                <version>${iginx.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <repositories>
+        <!-- IGinX Repository -->
+        <repository>
+            <id>iginx</id>
+            <name>IGinX GitHub repository</name>
+            <url>https://iginx-thu.github.io/IGinX/maven-repo</url>
+        </repository>
+    </repositories>
 
     <build>
-        <finalName>data-model-gov-1.0.0</finalName>
-        <plugins>
-            <!-- SpringBoot打包插件 -->
-            <plugin>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-maven-plugin</artifactId>
-                <version>2.7.18</version>
-                <executions>
-                    <execution>
-                        <goals>
-                            <goal>repackage</goal>
-                        </goals>
-                    </execution>
-                </executions>
-                <configuration>
-                    <includeSystemScope>true</includeSystemScope>
-                    <mainClass>com.tsinghua.DataModelGovApplication</mainClass>
-                </configuration>
-            </plugin>
+        <pluginManagement>
+            <plugins>
+                <!-- Spring Boot Maven Plugin -->
+                <plugin>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-maven-plugin</artifactId>
+                    <version>${spring.boot.version}</version>
+                </plugin>
 
-            <!-- 资源打包配置 -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-resources-plugin</artifactId>
-                <version>3.3.1</version>
-                <configuration>
-                    <encoding>UTF-8</encoding>
-                    <resources>
-                        <resource>
-                            <directory>src/main/resources</directory>
-                            <includes>
-                                <include>**/*</include>
-                            </includes>
-                        </resource>
-                    </resources>
-                </configuration>
-            </plugin>
+                <!-- Maven Compiler Plugin -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>3.11.0</version>
+                    <configuration>
+                        <source>${java.version}</source>
+                        <target>${java.version}</target>
+                        <encoding>${project.build.sourceEncoding}</encoding>
+                    </configuration>
+                </plugin>
 
-            <!-- 创建JRE和复制依赖 -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-antrun-plugin</artifactId>
-                <version>3.1.0</version>
-                <executions>
-                    <execution>
-                        <id>prepare-jre-and-libs</id>
-                        <phase>prepare-package</phase>
-                        <goals>
-                            <goal>run</goal>
-                        </goals>
-                        <configuration>
-                            <target>
-                                <!-- 创建JRE目录 -->
-                                <mkdir dir="${project.build.directory}/jre"/>
-                                
-                                <!-- 复制JRE -->
-                                <copy todir="${project.build.directory}/jre">
-                                    <fileset dir="${java.home}">
-                                        <exclude name="**/src/**"/>
-                                        <exclude name="**/demo/**"/>
-                                        <exclude name="**/sample/**"/>
-                                        <exclude name="**/man/**"/>
-                                    </fileset>
-                                </copy>
-                            </target>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
+                <!-- Maven Source Plugin -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-source-plugin</artifactId>
+                    <version>3.3.0</version>
+                    <executions>
+                        <execution>
+                            <id>attach-sources</id>
+                            <goals>
+                                <goal>jar</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
 
-            <!-- 复制依赖 -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-dependency-plugin</artifactId>
-                <version>3.7.0</version>
-                <executions>
-                    <execution>
-                        <id>copy-dependencies</id>
-                        <phase>prepare-package</phase>
-                        <goals>
-                            <goal>copy-dependencies</goal>
-                        </goals>
-                        <configuration>
-                            <outputDirectory>${project.build.directory}/lib</outputDirectory>
-                            <excludeScope>provided</excludeScope>
-                            <excludeTypes>sources,javadoc</excludeTypes>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
+                <!-- Maven Javadoc Plugin -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-javadoc-plugin</artifactId>
+                    <version>3.5.0</version>
+                    <executions>
+                        <execution>
+                            <id>attach-javadocs</id>
+                            <goals>
+                                <goal>jar</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                    <configuration>
+                        <encoding>${project.build.sourceEncoding}</encoding>
+                        <charset>${project.build.sourceEncoding}</charset>
+                        <docencoding>${project.build.sourceEncoding}</docencoding>
+                    </configuration>
+                </plugin>
 
-            <!-- 创建完整发布包 -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-assembly-plugin</artifactId>
-                <version>3.6.0</version>
-                <configuration>
-                    <descriptors>
-                        <descriptor>src/assembly/distribution.xml</descriptor>
-                    </descriptors>
-                    <tarLongFileMode>posix</tarLongFileMode>
-                </configuration>
-                <executions>
-                    <execution>
-                        <id>make-assembly</id>
-                        <phase>package</phase>
-                        <goals>
-                            <goal>single</goal>
-                        </goals>
-                    </execution>
-                </executions>
-            </plugin>
-        </plugins>
+                <!-- Thrift Maven Plugin -->
+                <plugin>
+                    <groupId>org.apache.thrift.tools</groupId>
+                    <artifactId>maven-thrift-plugin</artifactId>
+                    <version>0.1.11</version>
+                    <configuration>
+                        <thriftExecutable>thrift</thriftExecutable>
+                        <generator>java</generator>
+                    </configuration>
+                </plugin>
+            </plugins>
+        </pluginManagement>
     </build>
 
-    <!-- 离线打包配置 -->
+    <!-- 开发环境配置 -->
     <profiles>
         <profile>
-            <id>offline</id>
-            <repositories>
-                <repository>
-                    <id>local-lib</id>
-                    <name>Local Library Repository</name>
-                    <url>file://${project.basedir}/lib/maven</url>
-                </repository>
-            </repositories>
+            <id>dev</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
+            <properties>
+                <env>dev</env>
+            </properties>
+        </profile>
+        
+        <profile>
+            <id>with-sdks</id>
+            <properties>
+                <env>dev</env>
+                <skip.go.build>false</skip.go.build>
+                <skip.python.build>false</skip.python.build>
+                <skip.java.sdk>false</skip.java.sdk>
+            </properties>
+            <build>
+                <plugins>
+                    <!-- 单独构建SDK模块 -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-invoker-plugin</artifactId>
+                        <version>3.6.0</version>
+                        <executions>
+                            <execution>
+                                <id>build-sdks</id>
+                                <phase>validate</phase>
+                                <goals>
+                                    <goal>run</goal>
+                                </goals>
+                                <configuration>
+                                    <projectsDirectory>${basedir}</projectsDirectory>
+                                    <pomIncludes>
+                                        <pomInclude>datamodelgov-sdk-java/pom.xml</pomInclude>
+                                        <pomInclude>datamodelgov-sdk-go/pom.xml</pomInclude>
+                                        <pomInclude>datamodelgov-sdk-python/pom.xml</pomInclude>
+                                    </pomIncludes>
+                                    <goals>
+                                        <goal>install</goal>
+                                    </goals>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+        
+        <profile>
+            <id>with-examples</id>
+            <properties>
+                <env>dev</env>
+                <skip.java.sdk>false</skip.java.sdk>
+            </properties>
+            <build>
+                <plugins>
+                    <!-- 单独构建Examples模块 -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-invoker-plugin</artifactId>
+                        <version>3.6.0</version>
+                        <executions>
+                            <execution>
+                                <id>build-examples</id>
+                                <phase>validate</phase>
+                                <goals>
+                                    <goal>run</goal>
+                                </goals>
+                                <configuration>
+                                    <projectsDirectory>${basedir}</projectsDirectory>
+                                    <pomIncludes>
+                                        <pomInclude>datamodelgov-examples/pom.xml</pomInclude>
+                                    </pomIncludes>
+                                    <goals>
+                                        <goal>install</goal>
+                                    </goals>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+        
+        <profile>
+            <id>java-sdk-only</id>
+            <properties>
+                <env>dev</env>
+                <skip.java.sdk>false</skip.java.sdk>
+            </properties>
+            <build>
+                <plugins>
+                    <!-- 单独构建Java SDK模块 -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-invoker-plugin</artifactId>
+                        <version>3.6.0</version>
+                        <executions>
+                            <execution>
+                                <id>build-java-sdk</id>
+                                <phase>validate</phase>
+                                <goals>
+                                    <goal>run</goal>
+                                </goals>
+                                <configuration>
+                                    <projectsDirectory>${basedir}</projectsDirectory>
+                                    <pomIncludes>
+                                        <pomInclude>datamodelgov-sdk-java/pom.xml</pomInclude>
+                                    </pomIncludes>
+                                    <goals>
+                                        <goal>install</goal>
+                                    </goals>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+        
+        <profile>
+            <id>production</id>
+            <activation>
+                <property>
+                    <name>!skipProduction</name>
+                </property>
+            </activation>
+            <properties>
+                <env>prod</env>
+            </properties>
+        </profile>
+        
+        <profile>
+            <id>test</id>
+            <properties>
+                <env>test</env>
+            </properties>
+        </profile>
+        
+        <profile>
+            <id>prod</id>
+            <properties>
+                <env>prod</env>
+            </properties>
         </profile>
     </profiles>
 

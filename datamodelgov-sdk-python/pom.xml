@@ -1,0 +1,169 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.tsinghua</groupId>
+        <artifactId>datamodelgov-parent</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>datamodelgov-sdk-python</artifactId>
+    <packaging>pom</packaging>
+
+    <name>DataModelGov Python SDK</name>
+    <description>DataModelGov Thrift RPC Client SDK for Python</description>
+
+    <properties>
+        <python.version>3.8</python.version>
+        <thrift.version>0.22.0</thrift.version>
+        <skip.python.build>false</skip.python.build>
+    </properties>
+
+    <profiles>
+        <profile>
+            <id>skip-python</id>
+            <activation>
+                <property>
+                    <name>skip.python.build</name>
+                    <value>true</value>
+                </property>
+            </activation>
+            <properties>
+                <maven.test.skip>true</maven.test.skip>
+                <maven.main.skip>true</maven.main.skip>
+            </properties>
+        </profile>
+    </profiles>
+
+    <build>
+        <plugins>
+            <!-- Python Build Plugin -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.1.0</version>
+                <configuration>
+                    <skip>${skip.python.build}</skip>
+                </configuration>
+                <executions>
+                    <!-- Generate Thrift Python Code -->
+                    <execution>
+                        <id>generate-thrift-python</id>
+                        <phase>generate-sources</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>thrift</executable>
+                            <arguments>
+                                <argument>--gen</argument>
+                                <argument>py</argument>
+                                <argument>-out</argument>
+                                <argument>src</argument>
+                                <argument>../datamodelgov-server/src/main/resources/thrift/api.thrift</argument>
+                            </arguments>
+                            <workingDirectory>${project.basedir}</workingDirectory>
+                        </configuration>
+                    </execution>
+                    
+                    <!-- Python Setup -->
+                    <execution>
+                        <id>python-setup</id>
+                        <phase>initialize</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>python</executable>
+                            <arguments>
+                                <argument>-m</argument>
+                                <argument>venv</argument>
+                                <argument>venv</argument>
+                            </arguments>
+                            <workingDirectory>${project.basedir}</workingDirectory>
+                        </configuration>
+                    </execution>
+                    
+                    <!-- Install Dependencies -->
+                    <execution>
+                        <id>install-deps</id>
+                        <phase>generate-sources</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>venv/Scripts/pip</executable>
+                            <arguments>
+                                <argument>install</argument>
+                                <argument>thrift==${thrift.version}</argument>
+                                <argument>setuptools</argument>
+                                <argument>wheel</argument>
+                            </arguments>
+                            <workingDirectory>${project.basedir}</workingDirectory>
+                        </configuration>
+                    </execution>
+                    
+                    <!-- Python Build -->
+                    <execution>
+                        <id>python-build</id>
+                        <phase>compile</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>venv/Scripts/python</executable>
+                            <arguments>
+                                <argument>setup.py</argument>
+                                <argument>build</argument>
+                            </arguments>
+                            <workingDirectory>${project.basedir}</workingDirectory>
+                        </configuration>
+                    </execution>
+                    
+                    <!-- Python Test -->
+                    <execution>
+                        <id>python-test</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>venv/Scripts/python</executable>
+                            <arguments>
+                                <argument>-m</argument>
+                                <argument>pytest</argument>
+                                <argument>-v</argument>
+                                <argument>tests/</argument>
+                            </arguments>
+                            <workingDirectory>${project.basedir}</workingDirectory>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            
+            <!-- Clean Plugin -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-clean-plugin</artifactId>
+                <version>3.3.1</version>
+                <configuration>
+                    <filesets>
+                        <fileset>
+                            <directory>build</directory>
+                            <directory>dist</directory>
+                            <directory>venv</directory>
+                            <directory>__pycache__</directory>
+                            <directory>src/__pycache__</directory>
+                            <includes>
+                                <include>**/*.pyc</include>
+                                <include>**/*.pyo</include>
+                            </includes>
+                        </fileset>
+                    </filesets>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
