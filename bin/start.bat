@@ -12,7 +12,7 @@ REM Get script directory and go to parent directory
 cd /d "%~dp0.."
 
 REM Check application JAR
-set APP_JAR=app\data-model-gov-1.0.0.jar
+set APP_JAR=app\datamodelgov-server-1.0.0.jar
 if not exist "%APP_JAR%" (
     echo ERROR: Application JAR file not found at %APP_JAR%
     echo Please ensure you have extracted the deployment package correctly
@@ -48,13 +48,13 @@ if exist "jre\bin\java.exe" (
 REM Check for config directory
 set CONFIG_PATH=
 if exist "config\application.yml" (
-    set CONFIG_PATH=config\application.yml,config\config\iginx-config.properties
+    set CONFIG_PATH=config\application.yml
     echo Using config: !CONFIG_PATH!
 ) else if exist "config\application.yaml" (
-    set CONFIG_PATH=config\application.yaml,config\config\iginx-config.properties
+    set CONFIG_PATH=config\application.yaml
     echo Using config: !CONFIG_PATH!
 ) else if exist "config\application.properties" (
-    set CONFIG_PATH=config\application.properties,config\config\iginx-config.properties
+    set CONFIG_PATH=config\application.properties
     echo Using config: !CONFIG_PATH!
 ) else (
     echo WARNING: No configuration file found, using defaults

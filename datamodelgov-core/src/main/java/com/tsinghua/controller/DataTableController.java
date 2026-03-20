@@ -6,6 +6,7 @@ import com.tsinghua.service.DataTableService;
 import com.tsinghua.service.RelationalDataService;
 import com.tsinghua.auth.annotation.RequirePermission;
 import com.tsinghua.auth.enums.Permission;
+import com.tsinghua.auth.annotation.OperationLog;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiParam;
@@ -53,6 +54,7 @@ public class DataTableController {
     @ApiOperation("导入数据")
     @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @RequirePermission(Permission.DATA_CREATE)
+    @OperationLog(value = "导入数据", type = OperationLog.OperationType.IMPORT, recordParams = false)
     public com.tsinghua.model.Result<Void> importData(// 使用 @RequestPart 接收JSON格式的配置参数
                                                       @RequestPart("config") @Valid DataImportRequest config,
                                                       @ApiParam(value = "数据文件", required = true) @RequestPart("file") MultipartFile file) throws Exception {
@@ -67,6 +69,7 @@ public class DataTableController {
     @ApiOperation("导出数据")
     @PostMapping("/export")
     @RequirePermission(Permission.DATA_READ)
+    @OperationLog(value = "导出数据", type = OperationLog.OperationType.EXPORT, recordResult = false)
     public void exportData(@Validated @RequestBody DataQueryRequest request, HttpServletResponse response) {
         dataTableService.exportData(request, response);
     }
@@ -77,6 +80,7 @@ public class DataTableController {
     @ApiOperation("数据删除")
     @PostMapping("/delete")
     @RequirePermission(Permission.DATA_DELETE)
+    @OperationLog(value = "删除数据", type = OperationLog.OperationType.DELETE)
     public com.tsinghua.model.Result<Void> deleteData(@Validated @RequestBody DataQueryRequest request) {
         dataTableService.deleteData(request);
         return com.tsinghua.model.Result.success("删除成功");
@@ -108,6 +112,7 @@ public class DataTableController {
     @ApiOperation("关系数据Excel导出")
     @PostMapping("/relational/export")
     @RequirePermission(Permission.DATA_READ)
+    @OperationLog(value = "关系数据Excel导出", type = OperationLog.OperationType.EXPORT, recordResult = false)
     public void exportRelationalDataToExcel(@Validated @RequestBody RelationalQueryRequest request, 
                                          HttpServletResponse response) {
         try {

@@ -6,6 +6,7 @@ import com.tsinghua.model.Result;
 import com.tsinghua.service.ParsingRulesService;
 import com.tsinghua.auth.annotation.RequirePermission;
 import com.tsinghua.auth.enums.Permission;
+import com.tsinghua.auth.annotation.OperationLog;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,6 +25,7 @@ public class ParsingRulesController {
     @ApiOperation("创建解析规则")
     @PostMapping("/rules/save")
     @RequirePermission(Permission.PARSING_RULES_CREATE)
+    @OperationLog(value = "创建解析规则", type = OperationLog.OperationType.CREATE)
     public Result<Void> saveRules(@RequestBody ParsingRulesEntity parsingRulesEntity) {
         try {
             parsingRulesService.saveRules(parsingRulesEntity);
@@ -64,6 +66,7 @@ public class ParsingRulesController {
     @ApiOperation("删除解析规则")
     @DeleteMapping("/rules/delete")
     @RequirePermission(Permission.PARSING_RULES_DELETE)
+    @OperationLog(value = "删除解析规则", type = OperationLog.OperationType.DELETE)
     public Result<Void> deleteRule(
             @RequestParam("createTime") Long createTime) throws Exception {
         parsingRulesService.deleteRule(createTime);

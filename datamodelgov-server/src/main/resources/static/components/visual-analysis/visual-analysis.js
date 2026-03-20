@@ -4121,10 +4121,21 @@ class LocalPDFGenerator {
     // 添加水印
     addWatermark() {
         console.log('addWatermark 被调用了！');
-        this.content.push({
-            type: 'watermark',
+        
+        // 从配置文件读取水印设置
+        const watermarkConfig = window.AppConfig && window.AppConfig.watermark ? window.AppConfig.watermark : {
             text: '清华大学大数据系统软件国家工程研究中心',
             opacity: 0.1
+        };
+        
+        this.content.push({
+            type: 'watermark',
+            text: watermarkConfig.text,
+            opacity: watermarkConfig.opacity,
+            fontSize: watermarkConfig.fontSize || 48,
+            color: watermarkConfig.color || '#999',
+            rotation: watermarkConfig.rotation || -45,
+            enable: watermarkConfig.enable !== false
         });
         console.log('水印已添加到content数组，当前content长度:', this.content.length);
     }
@@ -4204,9 +4215,32 @@ class LocalPDFGenerator {
                     html += '<div style="text-align: center; font-size: 10pt; color: #666; margin: 5px 0; font-family: SimSun, Microsoft YaHei, SimHei, Arial, sans-serif;">' + item.description + '</div>';
                     break;
                 case 'watermark':
-                    // 生成水印 - 正常版本
+                    // 生成水印 - 使用配置文件参数
                     console.log('正在生成水印，文本:', item.text);
-                    html += '<div style="position: relative; width: 100%; height: 400px; margin: 20px 0;"><div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-45deg); font-size: 48px; color: #999; opacity: 0.15; z-index: 999; white-space: nowrap; font-family: SimSun, Microsoft YaHei, SimHei, Arial, sans-serif; pointer-events: none; user-select: none; font-weight: bold;">' + item.text + '</div></div>';
+                    
+                    // 检查是否启用水印
+                    if (item.enable === false) {
+                        console.log('水印已禁用，跳过生成');
+                        break;
+                    }
+                    
+                    const watermarkStyle = `
+                        position: absolute; 
+                        top: 50%; 
+                        left: 50%; 
+                        transform: translate(-50%, -50%) rotate(${item.rotation || -45}deg); 
+                        font-size: ${item.fontSize || 48}px; 
+                        color: ${item.color || '#999'}; 
+                        opacity: ${item.opacity || 0.15}; 
+                        z-index: 999; 
+                        white-space: nowrap; 
+                        font-family: SimSun, Microsoft YaHei, SimHei, Arial, sans-serif; 
+                        pointer-events: none; 
+                        user-select: none; 
+                        font-weight: bold;
+                    `;
+                    
+                    html += `<div style="position: relative; width: 100%; height: 400px; margin: 20px 0;"><div style="${watermarkStyle}">${item.text}</div></div>`;
                     console.log('水印HTML已添加');
                     break;
                 case 'separator':

@@ -131,6 +131,17 @@ window.AppConfig = {
         }
     },
     
+    // 水印配置
+    // 可以通过修改以下配置来自定义水印效果
+    watermark: {
+        text: '清华大学大数据系统软件国家工程研究中心', // 水印文本内容
+        opacity: 0.1,                                        // 透明度 (0-1)
+        fontSize: 48,                                        // 字体大小（像素）
+        color: '#999',                                       // 水印颜色
+        rotation: -45,                                       // 旋转角度（度）
+        enable: true                                         // 是否启用水印
+    },
+    
     // 获取认证头
     getAuthHeaders() {
         const headers = { ...this.api.headers };

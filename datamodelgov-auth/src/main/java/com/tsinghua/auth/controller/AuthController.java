@@ -1,6 +1,7 @@
 package com.tsinghua.auth.controller;
 
 import com.tsinghua.auth.util.JwtUtil;
+import com.tsinghua.auth.annotation.OperationLog;
 import com.tsinghua.model.Result;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,6 +34,7 @@ public class AuthController {
      * 用户登录
      */
     @PostMapping("/login")
+    @OperationLog(value = "用户登录", type = OperationLog.OperationType.LOGIN, recordResult = false)
     public Result<?> login(@RequestBody Map<String, String> loginRequest, HttpServletRequest request) {
         try {
             String username = loginRequest.get("username");
@@ -151,6 +153,7 @@ public class AuthController {
      * 用户登出
      */
     @PostMapping("/logout")
+    @OperationLog(value = "用户登出", type = OperationLog.OperationType.LOGOUT)
     public Result<?> logout() {
         try {
             // 清除Security上下文
