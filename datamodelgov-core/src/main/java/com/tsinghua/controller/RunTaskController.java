@@ -2,6 +2,7 @@ package com.tsinghua.controller;
 
 import com.tsinghua.auth.annotation.RequirePermission;
 import com.tsinghua.auth.enums.Permission;
+import com.tsinghua.auth.annotation.OperationLog;
 import com.tsinghua.dto.RunTaskQueryRequest;
 import com.tsinghua.dto.RunTaskRequest;
 import com.tsinghua.entity.RunTaskEntity;
@@ -28,6 +29,7 @@ public class RunTaskController {
     @ApiOperation("触发任务")
     @PostMapping("/run")
     @RequirePermission(Permission.RUN_TASK_CREATE)
+    @OperationLog(value = "触发任务", type = OperationLog.OperationType.CREATE)
     public Result<RunTaskEntity> runTask(@RequestBody RunTaskRequest runTaskRequest) throws Exception {
         RunTaskEntity task = runTaskService.runTask(runTaskRequest);
         return Result.success("关联规则保存成功", task);
@@ -48,6 +50,7 @@ public class RunTaskController {
     @ApiOperation("停止运行中的任务")
     @GetMapping("/stop")
     @RequirePermission(Permission.RUN_TASK_DELETE)
+    @OperationLog(value = "停止运行中的任务", type = OperationLog.OperationType.DELETE)
     public Result<Void> stopTask(@RequestParam("timestamp") Long timestamp) throws Exception {
         runTaskService.stopTask(timestamp);
         return Result.success("任务停止成功");
@@ -92,6 +95,7 @@ public class RunTaskController {
     @ApiOperation("删除运行任务")
     @DeleteMapping("/delete")
     @RequirePermission(Permission.RUN_TASK_DELETE)
+    @OperationLog(value = "删除运行任务", type = OperationLog.OperationType.DELETE)
     public Result<Void> deleteTask(
             @RequestParam("timestamp") Long timestamp) throws Exception {
         runTaskService.deleteTask(timestamp);
@@ -101,6 +105,7 @@ public class RunTaskController {
     @ApiOperation("上传任务报告文件")
     @PostMapping("/upload-report")
     @RequirePermission(Permission.RUN_TASK_UPDATE)
+    @OperationLog(value = "上传任务报告文件", type = OperationLog.OperationType.UPDATE, recordParams = false)
     public Result<String> uploadReport(
             @RequestParam("file") MultipartFile file,
             @RequestParam("timestamp") Long timestamp) throws Exception {
@@ -111,6 +116,7 @@ public class RunTaskController {
     @ApiOperation("打包并下载任务文件")
     @PostMapping("/package-download")
     @RequirePermission(Permission.RUN_TASK_READ)
+    @OperationLog(value = "打包并下载任务文件", type = OperationLog.OperationType.EXPORT, recordResult = false)
     public ResponseEntity<Resource> packageAndDownload(@RequestParam("timestamp") Long timestamp) throws Exception {
         return runTaskService.packageAndDownload(timestamp);
     }

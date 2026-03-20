@@ -7,6 +7,7 @@ import com.tsinghua.model.Result;
 import com.tsinghua.auth.annotation.RequirePermission;
 import com.tsinghua.auth.enums.Permission;
 import com.tsinghua.auth.dto.UserQueryRequest;
+import com.tsinghua.auth.annotation.OperationLog;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,6 +30,7 @@ public class UserController {
     @ApiOperation("创建用户")
     @PostMapping("/save")
     @RequirePermission(Permission.USER_CREATE)
+    @OperationLog(value = "创建用户", type = OperationLog.OperationType.CREATE)
     public Result<Void> saveUser(@RequestBody UserEntity user) throws Exception {
         // 检查用户名是否已存在
         UserEntity existingUser = rolePermissionService.getUser(user.getUsername());
@@ -86,6 +88,7 @@ public class UserController {
     @ApiOperation("删除用户")
     @DeleteMapping("/delete")
     @RequirePermission(Permission.USER_DELETE)
+    @OperationLog(value = "删除用户", type = OperationLog.OperationType.DELETE)
     public Result<Void> deleteUser(@RequestParam("username") String username) throws Exception {
         rolePermissionService.removeUser(username);
         return Result.success("操作成功");
@@ -94,6 +97,7 @@ public class UserController {
     @ApiOperation("更新用户")
     @PostMapping("/update")
     @RequirePermission(Permission.USER_UPDATE)
+    @OperationLog(value = "更新用户", type = OperationLog.OperationType.UPDATE)
     public Result<Void> updateUser(@RequestBody UserEntity user) throws Exception {
         rolePermissionService.updateUser(user);
         return Result.success("用户更新成功");
@@ -109,6 +113,7 @@ public class UserController {
 
     @ApiOperation("修改密码")
     @PostMapping("/change-password")
+    @OperationLog(value = "修改密码", type = OperationLog.OperationType.UPDATE, recordParams = false)
     public Result<Void> changePassword(@RequestBody Map<String, String> request) {
         String username = request.get("username");
         String oldPassword = request.get("oldPassword");

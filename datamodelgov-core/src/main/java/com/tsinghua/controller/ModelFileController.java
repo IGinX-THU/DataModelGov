@@ -7,6 +7,7 @@ import com.tsinghua.dto.ExtractModelFileRequest;
 import com.tsinghua.service.ModelFileService;
 import com.tsinghua.auth.annotation.RequirePermission;
 import com.tsinghua.auth.enums.Permission;
+import com.tsinghua.auth.annotation.OperationLog;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,6 +34,7 @@ public class ModelFileController {
     @ApiOperation("上传模型")
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @RequirePermission(Permission.MODEL_CREATE)
+    @OperationLog(value = "上传模型", type = OperationLog.OperationType.CREATE, recordParams = false)
     public Result<?> handleFileUpload(
             @RequestPart("file") MultipartFile file,
             @RequestParam("name") String name,
@@ -49,6 +51,7 @@ public class ModelFileController {
     @ApiOperation("下载模型")
     @PostMapping("/download")
     @RequirePermission(Permission.MODEL_READ)
+    @OperationLog(value = "下载模型", type = OperationLog.OperationType.EXPORT, recordResult = false)
     public void handleFileDownload(
             @RequestParam String name,
             @RequestParam String version,
@@ -86,6 +89,7 @@ public class ModelFileController {
     @ApiOperation("保存模型元数据")
     @PostMapping("/metas")
     @RequirePermission(Permission.MODEL_UPDATE)
+    @OperationLog(value = "保存模型元数据", type = OperationLog.OperationType.UPDATE)
     public Result<Void> saveMeta(@RequestBody ModelMetaEntity modelMetaDto) throws Exception {
         modelFileService.saveModelMetadata(modelMetaDto);
         return Result.success("元数据保存成功");
@@ -102,6 +106,7 @@ public class ModelFileController {
     @ApiOperation("移除模型资产")
     @DeleteMapping( "/delete")
     @RequirePermission(Permission.MODEL_DELETE)
+    @OperationLog(value = "移除模型资产", type = OperationLog.OperationType.DELETE)
     public Result<Void> handleDelete(
             @RequestParam("name") String name,
             @RequestParam(value = "version", required = false) String version) throws Exception {

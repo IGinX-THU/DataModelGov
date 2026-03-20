@@ -9,6 +9,7 @@ import com.tsinghua.service.DataSourceService;
 import com.tsinghua.model.Result;
 import com.tsinghua.auth.annotation.RequirePermission;
 import com.tsinghua.auth.enums.Permission;
+import com.tsinghua.auth.annotation.OperationLog;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import lombok.extern.slf4j.Slf4j;
@@ -36,6 +37,7 @@ public class DataSourceController {
     @ApiOperation("注册异构数据源")
     @PostMapping("/register")
     @RequirePermission(Permission.DATASOURCE_CREATE)
+    @OperationLog(value = "注册异构数据源", type = OperationLog.OperationType.CREATE)
     public Result<Void> register(@RequestBody String jsonBody) throws Exception {
         log.info("jsonBody:{}", jsonBody);
         ObjectMapper mapper = new ObjectMapper();
@@ -92,6 +94,7 @@ public class DataSourceController {
     @ApiOperation("移除异构数据源")
     @PostMapping("/remove")
     @RequirePermission(Permission.DATASOURCE_DELETE)
+    @OperationLog(value = "移除异构数据源", type = OperationLog.OperationType.DELETE)
     public Result<Void> remove(@Validated @RequestBody StorageEngineInfoDto removedStorageEngineInfo) throws Exception {
         boolean success = dataSourceService.removeDataSource(removedStorageEngineInfo);
         return success ? Result.success("数据源移除成功") : Result.error("移除失败，数据源可能被关联规则占用");
@@ -103,6 +106,7 @@ public class DataSourceController {
     @ApiOperation("数据资源列表")
     @GetMapping("/list")
     @RequirePermission(Permission.DATASOURCE_READ)
+    @OperationLog(value = "查询数据资源列表", type = OperationLog.OperationType.QUERY, recordResult = false)
     public Result<List<StorageEngineInfoDto>> list() throws Exception {
         return Result.success(dataSourceService.dataSourceList());
     }
@@ -113,6 +117,7 @@ public class DataSourceController {
     @ApiOperation("数据资源树")
     @GetMapping("/tree")
     @RequirePermission(Permission.DATASOURCE_READ)
+    @OperationLog(value = "查询数据资源树", type = OperationLog.OperationType.QUERY, recordResult = false)
     public Result<List<ColumnDto>> tree() throws Exception {
         return Result.success(dataSourceService.dataSourceTree());
     }

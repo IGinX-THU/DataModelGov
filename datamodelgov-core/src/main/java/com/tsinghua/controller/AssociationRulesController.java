@@ -6,6 +6,7 @@ import com.tsinghua.model.Result;
 import com.tsinghua.service.AssociationRulesService;
 import com.tsinghua.auth.annotation.RequirePermission;
 import com.tsinghua.auth.enums.Permission;
+import com.tsinghua.auth.annotation.OperationLog;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,6 +25,7 @@ public class AssociationRulesController {
     @ApiOperation("创建关联规则")
     @PostMapping("/rules/save")
     @RequirePermission(Permission.ASSOCIATION_RULES_CREATE)
+    @OperationLog(value = "创建关联规则", type = OperationLog.OperationType.CREATE)
     public Result<Void> saveRules(@RequestBody AssociationRulesEntity associationRulesEntity) throws Exception {
         associationRulesService.saveRules(associationRulesEntity);
         return Result.success("关联规则保存成功");
@@ -60,6 +62,7 @@ public class AssociationRulesController {
     @ApiOperation("删除关联规则")
     @DeleteMapping("/rules/delete")
     @RequirePermission(Permission.ASSOCIATION_RULES_DELETE)
+    @OperationLog(value = "删除关联规则", type = OperationLog.OperationType.DELETE)
     public Result<Void> deleteRule(
             @RequestParam("createTime") Long createTime) throws Exception {
         associationRulesService.deleteRule(createTime);
