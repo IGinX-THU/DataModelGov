@@ -11,7 +11,7 @@ echo "=========================================="
 cd "$(dirname "$0")/.."
 
 # Check application JAR
-APP_JAR="app/data-model-gov-1.0.0.jar"
+APP_JAR="app/datamodelgov-server-1.0.0.jar"
 if [ ! -f "$APP_JAR" ]; then
     echo "ERROR: Application JAR file not found at $APP_JAR"
     echo "Please ensure you have extracted the deployment package correctly"
@@ -42,13 +42,13 @@ JAVA_OPTS="-Xmx2g -Xms1g -XX:+UseG1GC -XX:+UseStringDeduplication -Djava.library
 
 # Check for config directory
 if [ -f "config/application.yml" ]; then
-    CONFIG_PATH="config/application.yml,config/config/iginx-config.properties"
+    CONFIG_PATH="config/application.yml"
     echo "Using config: $CONFIG_PATH"
 elif [ -f "config/application.yaml" ]; then
-    CONFIG_PATH="config/application.yaml,config/config/iginx-config.properties"
+    CONFIG_PATH="config/application.yaml"
     echo "Using config: $CONFIG_PATH"
 elif [ -f "config/application.properties" ]; then
-    CONFIG_PATH="config/application.properties,config/config/iginx-config.properties"
+    CONFIG_PATH="config/application.properties"
     echo "Using config: $CONFIG_PATH"
 else
     echo "WARNING: No configuration file found, using defaults"
