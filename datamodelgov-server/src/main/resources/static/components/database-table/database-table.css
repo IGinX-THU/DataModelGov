@@ -16,7 +16,7 @@
     padding: var(--spacing-xl) var(--spacing-3xl) var(--spacing-3xl);
     font-family: var(--font-family-primary);
     color: var(--text-primary);
-    width: 100%;
+    /*width: 100%;*/
     min-width: 0; /* 防止溢出 */
     overflow-x: auto; /* 允许横向滚动 */
 }
