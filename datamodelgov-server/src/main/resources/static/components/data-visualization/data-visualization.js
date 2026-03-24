@@ -1201,9 +1201,20 @@ class DataVisualization extends HTMLElement {
     updateChart() {
         if (!this.chart || !this.displayData.length || this.selectedPoints.size === 0) return;
 
-        // 检查是否有key列和是否为数值数据
+        // 检查是否有key列和是否包含选中的测点数据
         const actualColumns = this.actualDataColumns || [];
         const hasTimeColumn = this.tableHeader && this.tableHeader.includes('key'); // 直接判断表头是否有key列
+        
+        // 检查选中的测点是否在表头中，支持聚合函数前缀的匹配
+        const hasSelectedColumns = this.selectedPoints.size > 0 && Array.from(this.selectedPoints).some(selectedPoint => {
+            // 直接匹配
+            if (actualColumns.includes(selectedPoint)) {
+                return true;
+            }
+            // 检查是否有包含选中测点的列（如 avg(root.vehicle.engine01.oil_pressure) 包含 root.vehicle.engine01.oil_pressure）
+            return actualColumns.some(column => column.includes(selectedPoint));
+        });
+        
         const hasNumericData = this.displayData.some(record => {
             return actualColumns.some(column => {
                 const value = record[column] !== undefined ? record[column] : record.values && record.values[column] !== undefined ? record.values[column] : null;
@@ -1211,16 +1222,27 @@ class DataVisualization extends HTMLElement {
             });
         });
 
-        // 如果没有key列或不是数值数据，显示提示信息
-        if (!hasTimeColumn || !hasNumericData) {
-            console.log('没有key列或非数值数据，显示提示信息');
+        // 如果没有key列、不包含选中测点或不是数值数据，显示提示信息
+        if (!hasTimeColumn || !hasSelectedColumns || !hasNumericData) {
+            console.log('图表显示条件检查失败:', { hasTimeColumn, hasSelectedColumns, hasNumericData });
+            console.log('表头:', this.tableHeader);
+            console.log('实际数据列:', actualColumns);
+            console.log('选中测点:', Array.from(this.selectedPoints));
             const chartContainer = this.shadowRoot.getElementById('chartContainer');
             if (chartContainer) {
+                let reason = '';
+                if (!hasTimeColumn) {
+                    reason = '缺少时间列数据';
+                } else if (!hasSelectedColumns) {
+                    reason = '表头不包含选中的测点数据';
+                } else {
+                    reason = '测点数据为非数值类型';
+                }
                 chartContainer.innerHTML = `
                     <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #999;">
                         <div style="font-size: 48px; margin-bottom: 16px;">📊</div>
                         <div style="font-size: 14px; margin-bottom: 8px;">数据不适合图表显示</div>
-                        <div style="font-size: 12px;">${!hasTimeColumn ? '缺少时间列数据' : '测点数据为非数值类型'}</div>
+                        <div style="font-size: 12px;">${reason}</div>
                         <div style="font-size: 12px; margin-top: 8px; color: #666;">请选择包含时间列的数值型测点</div>
                     </div>
                 `;
@@ -1234,10 +1256,18 @@ class DataVisualization extends HTMLElement {
 
         // 只为数值类型的实际数据列创建系列，且只显示当前选中的测点
         actualColumns.forEach((column, index) => {
-            // 检查该列是否在当前选中的测点中
-            if (!this.selectedPoints.has(column)) {
-                console.log('跳过未选中的列:', column);
-                return; // 跳过未选中的列
+            // 检查该列是否对应当前选中的测点
+            let matchedSelectedPoint = null;
+            for (const selectedPoint of this.selectedPoints) {
+                if (column === selectedPoint || column.includes(selectedPoint)) {
+                    matchedSelectedPoint = selectedPoint;
+                    break;
+                }
+            }
+            
+            if (!matchedSelectedPoint) {
+                console.log('跳过未匹配的列:', column);
+                return; // 跳过未匹配的列
             }
             
             // 检查该列是否为数值类型
@@ -1256,9 +1286,9 @@ class DataVisualization extends HTMLElement {
                 record[column] !== undefined ? record[column] : record.values && record.values[column] !== undefined ? record.values[column] : 0
             ]);
 
-            const color = this.getColorForPoint(column);
+            const color = this.getColorForPoint(matchedSelectedPoint);
             series.push({
-                name: column,
+                name: matchedSelectedPoint, // 使用原始选中的测点名称作为系列名称
                 type: 'line',
                 data: data,
                 smooth: true,
