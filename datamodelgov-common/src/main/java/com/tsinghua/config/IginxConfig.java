@@ -13,6 +13,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.EnableAspectJAutoProxy;
 
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
@@ -36,6 +37,9 @@ public class IginxConfig {
 
     @Value("${iginx.password}")
     private String password;
+
+    @Value("${iginx.timeout}")
+    private long timeout;
 
     // IGinX操作的全局锁
     private final ReentrantLock iginxLock = new ReentrantLock();
@@ -191,7 +195,10 @@ public class IginxConfig {
         }
 
         // 其他操作需要并发控制
-        iginxLock.lock();
+        if (!iginxLock.tryLock(timeout, TimeUnit.MILLISECONDS)) {
+            log.error("❌ IGinX操作超时，无法获取锁: {} (等待超时: {}ms)", methodName, timeout);
+            throw new RuntimeException("IGinX操作繁忙，请稍后重试");
+        }
         try {
             long startTime = System.currentTimeMillis();
             Object result = joinPoint.proceed();
@@ -212,7 +219,10 @@ public class IginxConfig {
     public Object aroundClientOperations(ProceedingJoinPoint joinPoint) throws Throwable {
         String methodName = joinPoint.getSignature().getName();
         
-        iginxLock.lock();
+        if (!iginxLock.tryLock(timeout, TimeUnit.MILLISECONDS)) {
+            log.error("❌ IginXClient操作超时，无法获取锁: {} (等待超时: {}ms)", methodName, timeout);
+            throw new RuntimeException("IGinX操作繁忙，请稍后重试");
+        }
         try {
             long startTime = System.currentTimeMillis();
             Object result = joinPoint.proceed();
@@ -256,6 +266,12 @@ public class IginxConfig {
             return result;
             
         } catch (Exception e) {
+            // 检查是否是响应流相关的异常，如果是则重新抛出避免重复处理
+            if (e.getMessage() != null && e.getMessage().contains("getOutputStream() has already been called")) {
+                log.error("⚠️ 响应流冲突异常: " + className + "." + methodName + " - " + e.getMessage());
+                throw e;
+            }
+            
             log.error("❌ 服务方法执行异常: " + className + "." + methodName + " - " + e.getMessage(), e);
             throw e;
         } finally {

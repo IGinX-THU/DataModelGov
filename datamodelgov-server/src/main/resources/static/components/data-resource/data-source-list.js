@@ -272,8 +272,15 @@ class DataSourceList extends HTMLElement {
         try {
             console.log('删除数据源:', dataSource);
             
-            // 使用新的API配置
-            const result = await window.AppConfig.delete('datasource', 'remove', { id: dataSource.id });
+            // 使用新的API配置 - 后端接口是POST，需要传JSON body
+            const result = await window.AppConfig.post('datasource', 'remove', {
+                id: dataSource.id,
+                ip: dataSource.ip,
+                port: dataSource.port,
+                type: dataSource.type,
+                schemaPrefix: dataSource.schemaPrefix,
+                dataPrefix: dataSource.dataPrefix
+            });
             
             if (result.success) {
                 this.showMessage('数据源删除成功', 'success');

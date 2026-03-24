@@ -6,7 +6,8 @@ window.AppConfig = {
     // API基础配置
     api: {
         baseURL: 'http://localhost:8080', // 可配置的API域名
-        timeout: 10000,
+        // 前端请求超时时间（毫秒），建议略小于后端超时时间
+        timeout: 55000,
         headers: {
             'Content-Type': 'application/json'
         }
@@ -174,6 +175,16 @@ window.AppConfig = {
             delete config.headers[this.auth.tokenHeader];
         }
 
+        // 创建AbortController用于超时控制
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => {
+            controller.abort();
+            console.error(`请求超时: ${url} (超时时间: ${this.api.timeout}ms)`);
+        }, this.api.timeout);
+
+        // 将signal添加到config中
+        config.signal = controller.signal;
+
         try {
             const response = await fetch(url, config);
             
@@ -247,8 +258,18 @@ window.AppConfig = {
             }
             
         } catch (error) {
+            // 清除timeout
+            clearTimeout(timeoutId);
+            
+            if (error.name === 'AbortError') {
+                throw new Error(`请求超时，请检查网络连接或稍后重试 (超时时间: ${this.api.timeout}ms)`);
+            }
+            
             console.error('API请求失败:', error);
             throw error;
+        } finally {
+            // 确保清除timeout
+            clearTimeout(timeoutId);
         }
     },
 

@@ -78,6 +78,24 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * 处理NoClassDefFoundError异常（特别是POI相关）
+     */
+    @ExceptionHandler(NoClassDefFoundError.class)
+    public Result<Void> handleNoClassDefFoundError(NoClassDefFoundError e) {
+        log.error("类加载异常", e);
+        return Result.error("系统依赖缺失，请联系管理员: " + e.getMessage());
+    }
+
+    /**
+     * 处理AbstractMethodError异常（XML解析器版本冲突）
+     */
+    @ExceptionHandler(AbstractMethodError.class)
+    public Result<Void> handleAbstractMethodError(AbstractMethodError e) {
+        log.error("XML解析器版本冲突", e);
+        return Result.error("XML解析器版本冲突，请检查系统依赖: " + e.getMessage());
+    }
+
+    /**
      * 处理所有异常
      */
     @ExceptionHandler(Exception.class)

@@ -1035,8 +1035,8 @@ document.addEventListener('DOMContentLoaded', function() {
             
             console.log('发送删除请求:', dataSourceInfo);
             
-            // 使用新的API配置
-            const result = await window.AppConfig.delete('datasource', 'remove', dataSourceInfo);
+            // 使用新的API配置 - 后端接口是POST，需要传JSON body
+            const result = await window.AppConfig.post('datasource', 'remove', dataSourceInfo);
             
             console.log('删除响应:', result);
 
