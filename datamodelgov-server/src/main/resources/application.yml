@@ -19,7 +19,9 @@ iginx:
   port: 6888
   username: root
   password: root
-  timeout: 30000
+  # IGinX操作超时配置（毫秒）
+  # 用于全局锁等待超时，防止长时间阻塞
+  timeout: 60000
 
 # Spring配置
 spring:
