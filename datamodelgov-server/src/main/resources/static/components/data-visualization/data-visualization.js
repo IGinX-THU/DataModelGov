@@ -626,7 +626,10 @@ class DataVisualization extends HTMLElement {
             this.showEmptyState();
         } else {
             // 调用接口重新查询数据，确保表头和数据都是最新的
-            this.loadData();
+            // 添加小延迟确保UI更新完成
+            setTimeout(() => {
+                this.loadData();
+            }, 50);
         }
     }
 
@@ -1229,8 +1232,14 @@ class DataVisualization extends HTMLElement {
         const selectedPointsArray = Array.from(this.selectedPoints);
         // actualColumns 已在上面声明，直接使用
 
-        // 只为数值类型的实际数据列创建系列
+        // 只为数值类型的实际数据列创建系列，且只显示当前选中的测点
         actualColumns.forEach((column, index) => {
+            // 检查该列是否在当前选中的测点中
+            if (!this.selectedPoints.has(column)) {
+                console.log('跳过未选中的列:', column);
+                return; // 跳过未选中的列
+            }
+            
             // 检查该列是否为数值类型
             const isNumericColumn = this.displayData.some(record => {
                 const value = record[column] !== undefined ? record[column] : record.values && record.values[column] !== undefined ? record.values[column] : null;
@@ -1288,7 +1297,7 @@ class DataVisualization extends HTMLElement {
                 }
             },
             legend: {
-                data: actualColumns, // 使用实际数据列作为图例
+                data: selectedPointsArray, // 只显示当前选中的测点作为图例
                 top: 40,
                 left: 'center',
                 textStyle: {
@@ -1342,7 +1351,9 @@ class DataVisualization extends HTMLElement {
         };
 
         try {
-            this.chart.setOption(option, false); // 第二个参数false表示合并选项，避免DOM重建
+            // 先清空图表，然后重新设置选项，确保移除的测点不会残留
+            this.chart.clear();
+            this.chart.setOption(option, false); // 第二个参数false表示不合并选项
         } catch (error) {
             console.error('图表更新失败:', error);
             // 如果更新失败，尝试重新初始化图表
