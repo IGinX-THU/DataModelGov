@@ -35,7 +35,7 @@
         <lombok.version>1.18.30</lombok.version>
         <hutool.version>5.8.26</hutool.version>
         <knife4j.version>3.0.2</knife4j.version>
-        <poi.version>5.2.4</poi.version>
+        <poi.version>5.1.0</poi.version>
     </properties>
 
     <dependencyManagement>

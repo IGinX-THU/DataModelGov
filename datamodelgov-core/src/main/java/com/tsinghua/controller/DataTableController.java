@@ -20,6 +20,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
+import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 
@@ -114,7 +115,7 @@ public class DataTableController {
     @RequirePermission(Permission.DATA_READ)
     @OperationLog(value = "关系数据Excel导出", type = OperationLog.OperationType.EXPORT, recordResult = false)
     public void exportRelationalDataToExcel(@Validated @RequestBody RelationalQueryRequest request, 
-                                         HttpServletResponse response) {
+                                         HttpServletResponse response) throws IOException {
         try {
             log.info("开始Excel导出请求，表名: {}", request.getTableName());
             
@@ -139,9 +140,30 @@ public class DataTableController {
             
             log.info("Excel导出完成，表名: {}", request.getTableName());
             
+        } catch (NoClassDefFoundError e) {
+            log.error("POI类加载异常，Excel导出失败", e);
+            // 重置响应状态
+            response.reset();
+            response.setContentType("application/json;charset=UTF-8");
+            response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+            response.getWriter().write("{\"success\":false,\"message\":\"Excel导出功能异常，请检查系统依赖: " + e.getMessage() + "\"}");
+            response.getWriter().flush();
+        } catch (AbstractMethodError e) {
+            log.error("XML解析器版本冲突，Excel导出失败", e);
+            // 重置响应状态
+            response.reset();
+            response.setContentType("application/json;charset=UTF-8");
+            response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+            response.getWriter().write("{\"success\":false,\"message\":\"XML解析器版本冲突，请检查系统依赖: " + e.getMessage() + "\"}");
+            response.getWriter().flush();
         } catch (Exception e) {
             log.error("Excel导出失败", e);
-            throw new RuntimeException("Excel导出失败: " + e.getMessage(), e);
+            // 重置响应状态
+            response.reset();
+            response.setContentType("application/json;charset=UTF-8");
+            response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+            response.getWriter().write("{\"success\":false,\"message\":\"Excel导出失败: " + e.getMessage() + "\"}");
+            response.getWriter().flush();
         }
     }
 
