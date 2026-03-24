@@ -18,7 +18,8 @@ import org.springframework.web.multipart.MultipartFile;
 
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.io.PrintWriter;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
@@ -151,6 +152,8 @@ public class DataTableService {
     }
 
     public void exportData(DataQueryRequest request, HttpServletResponse response) {
+        OutputStream outputStream = null;
+        OutputStreamWriter writer = null;
         try {
             IginXTable table = queryIginXTable(request);;
             String fileName = "export_" + System.currentTimeMillis() + ".csv";
@@ -159,38 +162,58 @@ public class DataTableService {
             response.setCharacterEncoding("UTF-8");
             response.setHeader(HttpHeaders.CONTENT_DISPOSITION,
                 "attachment; filename=\"" + fileName + "\"");
-            PrintWriter writer = response.getWriter();
+            
+            outputStream = response.getOutputStream();
+            writer = new OutputStreamWriter(outputStream, "UTF-8");
 
             // 直接一行一行写入表头和数据
             IginXHeader header = table.getHeader();
             if (header.hasTimestamp()) {
-                writer.print("key,");
+                writer.write("key,");
             }
             for (IginXColumn column: header.getColumns()) {
-                writer.print(column.getName() + ",");
+                writer.write(column.getName() + ",");
             }
-            writer.println();
+            writer.write("\n");
             writer.flush();
             List<IginXRecord> records = table.getRecords();
             for (IginXRecord record: records) {
                 if (header.hasTimestamp()) {
-                    writer.print(record.getKey() + ",");
+                    writer.write(record.getKey() + ",");
                 }
                 for (IginXColumn column: header.getColumns()) {
                     if (record.getValue(column.getName()) instanceof byte[]) {
-                        writer.print(ConvertUtil.bytesToString((byte[]) record.getValue(column.getName())));
+                        writer.write(ConvertUtil.bytesToString((byte[]) record.getValue(column.getName())));
                     } else {
-                        writer.print(record.getValue(column.getName()));
+                        writer.write(String.valueOf(record.getValue(column.getName())));
                     }
-                    writer.print(",");
+                    writer.write(",");
                 }
-                writer.println();
+                writer.write("\n");
                 writer.flush();
             }
 
         } catch (IOException e) {
             // 忽略客户端中断
             log.error("客户端中断", e);
+        } catch (Exception e) {
+            // 其他异常时，确保writer和outputStream已关闭
+            if (writer != null) {
+                try {
+                    writer.close();
+                } catch (Exception ex) {
+                    log.error("关闭writer失败", ex);
+                }
+            }
+            if (outputStream != null) {
+                try {
+                    outputStream.close();
+                } catch (Exception ex) {
+                    log.error("关闭outputStream失败", ex);
+                }
+            }
+            log.error("导出数据失败", e);
+            throw new RuntimeException("导出数据失败: " + e.getMessage(), e);
         }
     }
 

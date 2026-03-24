@@ -21,6 +21,7 @@ import org.springframework.web.multipart.MultipartFile;
 import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 
@@ -72,7 +73,37 @@ public class DataTableController {
     @RequirePermission(Permission.DATA_READ)
     @OperationLog(value = "导出数据", type = OperationLog.OperationType.EXPORT, recordResult = false)
     public void exportData(@Validated @RequestBody DataQueryRequest request, HttpServletResponse response) {
-        dataTableService.exportData(request, response);
+        try {
+            dataTableService.exportData(request, response);
+        } catch (RuntimeException e) {
+            log.error("数据导出失败", e);
+            // 重置响应状态
+            response.reset();
+            response.setContentType("application/json;charset=UTF-8");
+            response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+            try {
+                OutputStream outputStream = response.getOutputStream();
+                String errorMessage = "{\"success\":false,\"message\":\"数据导出失败: " + e.getMessage() + "\"}";
+                outputStream.write(errorMessage.getBytes("UTF-8"));
+                outputStream.flush();
+            } catch (IOException ex) {
+                log.error("写入错误响应失败", ex);
+            }
+        } catch (Exception e) {
+            log.error("数据导出异常", e);
+            // 重置响应状态
+            response.reset();
+            response.setContentType("application/json;charset=UTF-8");
+            response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+            try {
+                OutputStream outputStream = response.getOutputStream();
+                String errorMessage = "{\"success\":false,\"message\":\"数据导出异常: " + e.getMessage() + "\"}";
+                outputStream.write(errorMessage.getBytes("UTF-8"));
+                outputStream.flush();
+            } catch (IOException ex) {
+                log.error("写入错误响应失败", ex);
+            }
+        }
     }
 
     /**

@@ -266,6 +266,12 @@ public class IginxConfig {
             return result;
             
         } catch (Exception e) {
+            // 检查是否是响应流相关的异常，如果是则重新抛出避免重复处理
+            if (e.getMessage() != null && e.getMessage().contains("getOutputStream() has already been called")) {
+                log.error("⚠️ 响应流冲突异常: " + className + "." + methodName + " - " + e.getMessage());
+                throw e;
+            }
+            
             log.error("❌ 服务方法执行异常: " + className + "." + methodName + " - " + e.getMessage(), e);
             throw e;
         } finally {
