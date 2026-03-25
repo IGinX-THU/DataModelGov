@@ -304,7 +304,7 @@ public class RunTaskService {
             }
             
             // 2. 检查任务状态
-            if (task.getStatus() != TaskStatus.RUNNING) {
+            if (!TaskStatus.RUNNING.equals(task.getStatus())) {
                 // 如果任务不在运行状态，直接标记为已停止
                 log.info("任务不在运行状态，直接标记为已停止: {}", task.getStatus());
                 task.setStatus(TaskStatus.STOPPED);
@@ -1666,6 +1666,34 @@ public class RunTaskService {
                   .replace("\n", "\\n")
                   .replace("\r", "\\r")
                   .replace("\t", "\\t");
+    }
+    
+    /**
+     * 检查指定规则是否有正在运行的任务
+     * @param ruleId 规则ID
+     * @return true如果有正在运行的任务，false如果没有
+     */
+    public boolean hasRunningTaskForRule(Long ruleId) {
+        try {
+            StringBuilder sql = new StringBuilder("SELECT COUNT(1) FROM relational_system.association_job WHERE ruleId = ");
+            sql.append(ruleId).append(" AND (status = 'pending' OR status = 'running');");
+            log.info("检查规则运行状态SQL: {}, ruleId: {}", sql, ruleId);
+            
+            SessionExecuteSqlResult res = iginxSession.executeSql(sql.toString());
+
+            List<List<Object>> data = res.getValues();
+            if (!data.isEmpty() && !data.get(0).isEmpty()) {
+                Object countObj = data.get(0).get(0);
+                if (countObj instanceof Number) {
+                    int count = ((Number) countObj).intValue();
+                    return count > 0;
+                }
+            }
+            return false;
+        } catch (Exception e) {
+            log.error("检查规则运行状态失败", e);
+            return false;
+        }
     }
 
 }

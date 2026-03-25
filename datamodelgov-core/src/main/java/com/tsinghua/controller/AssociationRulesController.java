@@ -4,6 +4,7 @@ import com.tsinghua.dto.AssociationRulesQueryRequest;
 import com.tsinghua.entity.AssociationRulesEntity;
 import com.tsinghua.model.Result;
 import com.tsinghua.service.AssociationRulesService;
+import com.tsinghua.service.RunTaskService;
 import com.tsinghua.auth.annotation.RequirePermission;
 import com.tsinghua.auth.enums.Permission;
 import com.tsinghua.auth.annotation.OperationLog;
@@ -21,6 +22,9 @@ public class AssociationRulesController {
 
     @Autowired
     private AssociationRulesService associationRulesService;
+
+    @Autowired
+    private RunTaskService runTaskService;
 
     @ApiOperation("创建关联规则")
     @PostMapping("/rules/save")
@@ -65,6 +69,12 @@ public class AssociationRulesController {
     @OperationLog(value = "删除关联规则", type = OperationLog.OperationType.DELETE)
     public Result<Void> deleteRule(
             @RequestParam("createTime") Long createTime) throws Exception {
+
+        // 检查是否有正在运行的任务
+        if (runTaskService.hasRunningTaskForRule(createTime)) {
+            return Result.paramError("该规则有正在执行的任务，无法删除");
+        }
+        
         associationRulesService.deleteRule(createTime);
         return Result.success("操作成功");
     }

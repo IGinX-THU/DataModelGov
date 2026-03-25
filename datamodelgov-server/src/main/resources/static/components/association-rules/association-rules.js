@@ -102,7 +102,6 @@ class AssociationRules extends HTMLElement {
             if (result.success) {
                 await this.loadRulesFromAPI();
                 this.renderTable();
-                this.hideModal(); // 直接关闭弹窗，不恢复新增弹窗
                 this.showToast('规则已删除');
             } else {
                 this.showToast(result.message || '删除失败', 'error');
@@ -111,6 +110,9 @@ class AssociationRules extends HTMLElement {
             console.error('删除规则失败:', error);
             this.showToast('网络错误，删除失败', 'error');
         }
+        
+        // 无论成功还是失败，都关闭确认框
+        this.hideModal();
     }
 
     getRuleNameByCreateTime(createTime) {
@@ -1549,6 +1551,9 @@ class AssociationRules extends HTMLElement {
             tableName: rule.dataSource || rule.tableName || '',
             modelName: rule.targetModel || rule.modelName || '',
             modelVersion: rule.version || rule.modelVersion || '',
+            cmd: rule.cmd || '',                           // 运行命令
+            inputCsvName: rule.inputCsvName || '',         // 输入数据CSV文件名
+            outputCsvName: rule.outputCsvName || '',       // 输出结果CSV文件名
             status: false, // 默认为禁用状态
             inputsBind: rule.mappings ? JSON.stringify(rule.mappings) : '[]',
             outputsBind: rule.resultMappings ? JSON.stringify(rule.resultMappings) : '[]'
@@ -1763,12 +1768,6 @@ class AssociationRules extends HTMLElement {
                             
                             <div class="mapping-section">
                                 <div class="mapping-title">结果回写映射（模型 → 数据源）</div>
-                                <div class="form-row" style="margin-bottom: 15px;">
-                                    <div class="form-group">
-                                        <label for="outputTable">结果回写路径前缀</label>
-                                        <input type="text" id="outputTable" name="outputTable" placeholder="请输入结果回写路径前缀">
-                                    </div>
-                                </div>
                                 <div class="mappings-list" id="resultMappingsList">
                                     <!-- 动态添加结果映射行 -->
                                 </div>
