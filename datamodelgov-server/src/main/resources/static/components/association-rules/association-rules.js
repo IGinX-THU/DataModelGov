@@ -500,6 +500,11 @@ class AssociationRules extends HTMLElement {
             
             title.textContent = '新增关联规则';
             form.reset();
+            // 移除规则名称的readonly属性
+            const ruleNameInput = this.shadowRoot.getElementById('ruleName');
+            if (ruleNameInput) {
+                ruleNameInput.removeAttribute('readonly');
+            }
             modal.hidden = false;
             modal.style.display = 'flex';
             // 移除静态版本值，等待模型选择后加载
@@ -509,6 +514,9 @@ class AssociationRules extends HTMLElement {
             
             // Restore form footer buttons
             this.restoreFormFooter();
+            
+            // Bind form events for new rule
+            this.bindFormEvents();
             
             // Highlight external trees
             document.body.classList.add('association-rules-modal-open');
@@ -520,6 +528,9 @@ class AssociationRules extends HTMLElement {
             // Initialize empty mappings list
             this.initializeMappings();
             this.initializeResultMappings();
+            
+            // Bind form events for new rule
+            this.bindFormEvents();
         }
     }
 
@@ -558,6 +569,7 @@ class AssociationRules extends HTMLElement {
                 
                 // Populate form with rule data - 使用正确的字段映射
                 this.shadowRoot.getElementById('ruleName').value = rule.ruleName || rule.name || '';
+                this.shadowRoot.getElementById('ruleName').setAttribute('readonly', 'readonly');
                 this.shadowRoot.getElementById('ruleDesc').value = rule.ruleDesc || rule.description || '';
                 this.shadowRoot.getElementById('dataSource').value = rule.dataSource || rule.tableName || '';
                 this.shadowRoot.getElementById('targetModel').value = rule.targetModel || rule.modelName || '';
@@ -1701,7 +1713,7 @@ class AssociationRules extends HTMLElement {
                     <div class="form-row">
                         <div class="form-group">
                             <label for="ruleName">规则名称</label>
-                            <input type="text" id="ruleName" name="ruleName" required placeholder="请输入规则名称">
+                            <input type="text" id="ruleName" name="ruleName" required placeholder="请输入规则名称" ${this.currentAction === 'edit' ? 'readonly' : ''}>
                         </div>
                         <div class="form-group">
                             <label for="ruleDesc">规则描述</label>
@@ -1803,8 +1815,6 @@ class AssociationRules extends HTMLElement {
                 </form>
             `;
             
-            // Re-bind form events after restoring content
-            this.bindFormEvents();
         }
     }
     
@@ -1832,6 +1842,41 @@ class AssociationRules extends HTMLElement {
             this.updateMappingFieldOptions();
             this.updateResultMappingFieldOptions();
         });
+        
+        // 添加规则名称唯一性校验
+        const ruleNameInput = this.shadowRoot.getElementById('ruleName');
+        if (ruleNameInput) {
+            // 移除旧的事件监听器，避免重复绑定
+            const newRuleNameInput = ruleNameInput.cloneNode(true);
+            ruleNameInput.parentNode.replaceChild(newRuleNameInput, ruleNameInput);
+            
+            let lastValidatedName = '';
+            const validateRuleName = async () => {
+                const ruleName = newRuleNameInput.value.trim();
+                // 只有新增时才进行校验，编辑时不校验，且避免重复校验相同名称
+                if (ruleName && this.currentAction === 'add' && ruleName !== lastValidatedName) {
+                    lastValidatedName = ruleName;
+                    try {
+                        const result = await window.AppConfig.get('data', 'association/rules/validate-name', {
+                            name: ruleName
+                        });
+                        
+                        if (!result.success) {
+                            newRuleNameInput.style.borderColor = '#ff4d4f';
+                            this.showToast(result.message || '规则名称已存在，请使用其他名称', 'error');
+                        } else {
+                            newRuleNameInput.style.borderColor = '#e2e6ef';
+                        }
+                    } catch (error) {
+                        console.error('校验规则名称失败:', error);
+                    }
+                } else {
+                    newRuleNameInput.style.borderColor = '#e2e6ef';
+                }
+            };
+            
+            newRuleNameInput.addEventListener('blur', validateRuleName);
+        }
         
         // Form submission
         this.shadowRoot.getElementById('ruleForm')?.addEventListener('submit', (e) => {

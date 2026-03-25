@@ -56,10 +56,10 @@ public class ParsingRulesService {
         long timestamp;
         
         if (queryRule != null && queryRule.getCreateTime() != null) {
-            // 编辑情况：不进行名称唯一校验，允许保持相同名称
+            // 编辑情况
             timestamp = queryRule.getCreateTime();
         } else {
-            // 新增情况：进行名称唯一校验
+            // 新增情况
             validateNameUniqueness(parsingRulesEntity.getName());
             timestamp = System.currentTimeMillis();
             parsingRulesEntity.setCreateTime(timestamp);
@@ -198,7 +198,7 @@ public class ParsingRulesService {
      * @param name 规则名称
      * @throws Exception 如果名称已存在则抛出异常
      */
-    private void validateNameUniqueness(String name) throws Exception {
+    public void validateNameUniqueness(String name) throws Exception {
         if (name == null || name.trim().isEmpty()) {
             throw new Exception("规则名称不能为空");
         }

@@ -109,6 +109,14 @@ class ParsingRules extends HTMLElement {
             { text: '取消', class: 'modal-btn secondary', action: 'close' },
             { text: '确认', class: 'modal-btn primary', action: 'submit' }
         ]);
+        
+        // 移除规则名称的readonly属性
+        setTimeout(() => {
+            const ruleNameInput = this.shadowRoot.getElementById('ruleName');
+            if (ruleNameInput) {
+                ruleNameInput.removeAttribute('readonly');
+            }
+        }, 100);
     }
 
     async editRule(id) {
@@ -124,6 +132,9 @@ class ParsingRules extends HTMLElement {
                     regex: rule.regexPattern,
                     example: rule.example
                 };
+                
+                // 设置当前操作为编辑模式
+                this.currentAction = 'edit';
                 
                 this.showModal('编辑解析规则', this.getFormModalBody(frontendRule), [
                     { text: '取消', class: 'modal-btn secondary', action: 'close' },
@@ -365,11 +376,12 @@ class ParsingRules extends HTMLElement {
             regex: defaults.regex || '',
             example: defaults.example || ''
         };
+        const isEdit = this.currentAction === 'edit';
         return `
             <div class="modal-form">
                 <div class="modal-form-row">
                     <span class="modal-label">名称 :</span>
-                    <input class="modal-input" id="ruleName" type="text" value="${values.name}" placeholder="请输入规则名称" />
+                    <input class="modal-input" id="ruleName" type="text" value="${values.name}" placeholder="请输入规则名称" ${isEdit ? 'readonly' : ''} />
                 </div>
                 
                 <div class="modal-form-row">
@@ -578,6 +590,41 @@ class ParsingRules extends HTMLElement {
             
             if (testInput) {
                 testInput.addEventListener('input', performTest);
+            }
+            
+            // 添加规则名称唯一性校验
+            const ruleNameInput = modalBody.querySelector('#ruleName');
+            if (ruleNameInput) {
+                // 移除旧的事件监听器，避免重复绑定
+                const newRuleNameInput = ruleNameInput.cloneNode(true);
+                ruleNameInput.parentNode.replaceChild(newRuleNameInput, ruleNameInput);
+                
+                let lastValidatedName = '';
+                const validateRuleName = async () => {
+                    const ruleName = newRuleNameInput.value.trim();
+                    // 只有新增时才进行校验，编辑时不校验，且避免重复校验相同名称
+                    if (ruleName && this.currentAction === 'add' && ruleName !== lastValidatedName) {
+                        lastValidatedName = ruleName;
+                        try {
+                            const result = await window.AppConfig.get('data', 'parsing/rules/validate-name', {
+                                name: ruleName
+                            });
+                            
+                            if (!result.success) {
+                                newRuleNameInput.style.borderColor = '#ff4d4f';
+                                this.showToast(result.message || '规则名称已存在，请使用其他名称', 'error');
+                            } else {
+                                newRuleNameInput.style.borderColor = '#e2e6ef';
+                            }
+                        } catch (error) {
+                            console.error('校验规则名称失败:', error);
+                        }
+                    } else {
+                        newRuleNameInput.style.borderColor = '#e2e6ef';
+                    }
+                };
+                
+                newRuleNameInput.addEventListener('blur', validateRuleName);
             }
             
             if (clearTestBtn) {

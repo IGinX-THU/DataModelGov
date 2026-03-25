@@ -69,4 +69,17 @@ public class AssociationRulesController {
         return Result.success("操作成功");
     }
 
+    @ApiOperation("校验规则名称唯一性")
+    @GetMapping("/rules/validate-name")
+    @RequirePermission(Permission.ASSOCIATION_RULES_READ)
+    public Result<?> validateNameUniqueness(
+            @RequestParam("name") String name) throws Exception {
+        try {
+            associationRulesService.validateNameUniqueness(name);
+            return Result.success(true);
+        } catch (Exception e) {
+            return Result.paramError(e.getMessage());
+        }
+    }
+
 }

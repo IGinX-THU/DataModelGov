@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Objects;
 
 @Api(tags = "解析规则配置")
 @RestController
@@ -27,7 +28,7 @@ public class ParsingRulesController {
     @RequirePermission(Permission.PARSING_RULES_CREATE)
     @OperationLog(value = "创建解析规则", type = OperationLog.OperationType.CREATE)
     public Result<Void> saveRules(@RequestBody ParsingRulesEntity parsingRulesEntity) throws Exception {
-        if (1774340873453L == parsingRulesEntity.getCreateTime() || "默认规则".equals(parsingRulesEntity.getName())){
+        if (Objects.equals(parsingRulesEntity.getCreateTime(),1774340873453L) || "默认规则".equals(parsingRulesEntity.getName())){
             return Result.paramError("不能修改默认规则");
         } else  {
             parsingRulesService.saveRules(parsingRulesEntity);
@@ -71,6 +72,19 @@ public class ParsingRulesController {
             @RequestParam("createTime") Long createTime) throws Exception {
         parsingRulesService.deleteRule(createTime);
         return Result.success("操作成功");
+    }
+
+    @ApiOperation("校验规则名称唯一性")
+    @GetMapping("/rules/validate-name")
+    @RequirePermission(Permission.PARSING_RULES_READ)
+    public Result<?> validateNameUniqueness(
+            @RequestParam("name") String name) throws Exception {
+        try {
+            parsingRulesService.validateNameUniqueness(name);
+            return Result.success(true);
+        } catch (Exception e) {
+            return Result.paramError(e.getMessage());
+        }
     }
 
 }

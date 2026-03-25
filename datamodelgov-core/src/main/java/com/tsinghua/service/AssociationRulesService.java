@@ -186,4 +186,28 @@ public class AssociationRulesService {
         }
     }
 
+    /**
+     * 校验名称唯一性（仅用于新增）
+     * @param name 规则名称
+     * @throws Exception 如果名称已存在则抛出异常
+     */
+    public void validateNameUniqueness(String name) throws Exception {
+        if (name == null || name.trim().isEmpty()) {
+            throw new Exception("规则名称不能为空");
+        }
+
+        // 查询是否存在同名规则
+        StringBuilder sql = new StringBuilder("SELECT createTime FROM relational_system.association_rules WHERE name = '");
+        sql.append(name.trim()).append("' LIMIT 1;");
+        
+        log.info("执行名称唯一性校验SQL: {}", sql);
+        
+        SessionExecuteSqlResult res = iginxSession.executeSql(sql.toString());
+        List<Map<String, Object>> records = ConvertUtil.getRecords(res);
+        
+        if (!records.isEmpty()) {
+            throw new Exception("规则名称 '" + name + "' 已存在，请使用其他名称");
+        }
+    }
+
 }
