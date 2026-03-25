@@ -3065,20 +3065,11 @@ class AssociationRules extends HTMLElement {
                     const parentNode = node.parentElement?.parentElement;
                     if (parentNode && parentNode.classList.contains('tree-node')) {
                         const tablePath = this.getFullTablePath(parentNode);
+                        // 只添加有字段子节点的表名（即最后一级表名）
                         tableNames.add(tablePath);
                     }
-                } else {
-                    // 对于非叶子节点，检查是否有叶子节点后代
-                    // 如果有叶子节点后代，则此节点也可以作为表名
-                    const hasLeafDescendants = node.querySelector('.tree-node[data-is-leaf="true"]');
-                    if (hasLeafDescendants) {
-                        const tablePath = this.getFullTablePath(node);
-                        // 只添加不是根节点且有多级路径的节点
-                        if (tablePath !== 'relational_system' && tablePath.includes('.')) {
-                            tableNames.add(tablePath);
-                        }
-                    }
                 }
+                // 移除之前的逻辑，不再添加中间路径的节点
             }
         });
         
