@@ -414,7 +414,7 @@ class ParsingRules extends HTMLElement {
                 <td>${item.updatetime}</td>
                 <td>
                     <div class="action-buttons">
-                        ${item.id != 1774340873453 ? `<button class="action-btn edit" data-action="edit" data-id="${item.id}">编辑</button>` : ''}
+                        <button class="action-btn edit" data-action="edit" data-id="${item.id}">编辑</button>
                         ${item.id != 1774340873453 ? `<button class="action-btn delete" data-action="delete" data-id="${item.id}">删除</button>` : ''}
                     </div>
                 </td>
