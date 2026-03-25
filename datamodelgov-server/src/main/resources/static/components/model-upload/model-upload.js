@@ -478,26 +478,52 @@ class ModelUpload extends HTMLElement {
     }
 
     removeFile() {
+        console.log('🔍 removeFile() 方法被调用');
         this.selectedFile = null;
         
-        // 首先尝试从Shadow DOM中获取元素（用于直接渲染）
-        let fileUploadArea = this.shadowRoot.getElementById('fileUploadArea');
-        let fileInfo = this.shadowRoot.getElementById('fileInfo');
-        let fileInput = this.shadowRoot.getElementById('modelFile');
+        // 优先从弹窗中获取元素（用于modal manager）
+        let fileUploadArea = null;
+        let fileInfo = null;
+        let fileInput = null;
         
-        // 如果Shadow DOM中没有找到，尝试从弹窗中获取（用于modal manager）
+        const modal = document.querySelector('.modal-overlay');
+        console.log('🔍 查找弹窗:', modal);
+        if (modal) {
+            fileUploadArea = modal.querySelector('#fileUploadArea');
+            fileInfo = modal.querySelector('#fileInfo');
+            fileInput = modal.querySelector('#modelFile');
+            console.log('🔍 弹窗中元素查找结果:', {
+                fileUploadArea: !!fileUploadArea,
+                fileInfo: !!fileInfo,
+                fileInput: !!fileInput
+            });
+        }
+        
+        // 如果弹窗中没有找到，尝试从Shadow DOM中获取（用于直接渲染）
         if (!fileUploadArea || !fileInfo || !fileInput) {
-            const modal = document.querySelector('.modal-overlay');
-            if (modal) {
-                fileUploadArea = modal.querySelector('#fileUploadArea');
-                fileInfo = modal.querySelector('#fileInfo');
-                fileInput = modal.querySelector('#modelFile');
-            }
+            console.log('🔍 弹窗中未找到所有元素，尝试从Shadow DOM中查找');
+            fileUploadArea = this.shadowRoot.getElementById('fileUploadArea');
+            fileInfo = this.shadowRoot.getElementById('fileInfo');
+            fileInput = this.shadowRoot.getElementById('modelFile');
+            console.log('🔍 Shadow DOM 元素查找结果:', {
+                fileUploadArea: !!fileUploadArea,
+                fileInfo: !!fileInfo,
+                fileInput: !!fileInput
+            });
         }
 
-        if (fileUploadArea) fileUploadArea.style.display = 'block';
-        if (fileInfo) fileInfo.style.display = 'none';
-        if (fileInput) fileInput.value = '';
+        if (fileUploadArea) {
+            fileUploadArea.style.display = 'block';
+            console.log('🔍 显示文件上传区域');
+        }
+        if (fileInfo) {
+            fileInfo.style.display = 'none';
+            console.log('🔍 隐藏文件信息区域');
+        }
+        if (fileInput) {
+            fileInput.value = '';
+            console.log('🔍 清空文件输入框');
+        }
     }
 
     formatFileSize(bytes) {
@@ -798,6 +824,21 @@ class ModelUpload extends HTMLElement {
                     console.log('🔍 bindModalEvents 没有找到文件');
                 }
             });
+        }
+        
+        // 绑定移除文件按钮事件
+        const removeFileBtn = modalElement.querySelector('#removeFileBtn');
+        console.log('🔍 bindFileEvents - 查找移除文件按钮:', removeFileBtn);
+        if (removeFileBtn) {
+            console.log('🔍 bindFileEvents - 绑定移除文件按钮点击事件');
+            removeFileBtn.addEventListener('click', (e) => {
+                console.log('🔍 移除文件按钮被点击');
+                e.preventDefault();
+                e.stopPropagation();
+                this.removeFile();
+            });
+        } else {
+            console.error('❌ bindFileEvents - 未找到移除文件按钮');
         }
     }
 
