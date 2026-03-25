@@ -1452,6 +1452,75 @@ int process_data() {
         return formData;
     }
 
+    validateParameterNames(formData) {
+        try {
+            // 解析inputs和outputs数据
+            let inputs = [];
+            let outputs = [];
+            
+            if (formData.inputs) {
+                inputs = typeof formData.inputs === 'string' ? JSON.parse(formData.inputs) : formData.inputs;
+            }
+            
+            if (formData.outputs) {
+                outputs = typeof formData.outputs === 'string' ? JSON.parse(formData.outputs) : formData.outputs;
+            }
+            
+            // 过滤出有参数名的项
+            const inputNames = inputs
+                .filter(input => input.name && input.name.trim())
+                .map(input => input.name.trim());
+            
+            const outputNames = outputs
+                .filter(output => output.name && output.name.trim())
+                .map(output => output.name.trim());
+            
+            // 检查inputs内部是否有重复
+            const inputDuplicates = this.findDuplicates(inputNames);
+            if (inputDuplicates.length > 0) {
+                return {
+                    valid: false,
+                    message: `输入参数中存在重复的参数名: ${inputDuplicates.join(', ')}`
+                };
+            }
+            
+            // 检查outputs内部是否有重复
+            const outputDuplicates = this.findDuplicates(outputNames);
+            if (outputDuplicates.length > 0) {
+                return {
+                    valid: false,
+                    message: `输出参数中存在重复的参数名: ${outputDuplicates.join(', ')}`
+                };
+            }
+            
+            return { valid: true };
+            
+        } catch (error) {
+            console.error('验证参数名时发生错误:', error);
+            return {
+                valid: false,
+                message: '参数名验证失败，请检查参数格式'
+            };
+        }
+    }
+
+    findDuplicates(array) {
+        const duplicates = [];
+        const seen = new Set();
+        
+        for (const item of array) {
+            if (seen.has(item)) {
+                if (!duplicates.includes(item)) {
+                    duplicates.push(item);
+                }
+            } else {
+                seen.add(item);
+            }
+        }
+        
+        return duplicates;
+    }
+
     async save() {
         try {
             const formData = this.collectFormData();
@@ -1464,6 +1533,13 @@ int process_data() {
             
             if (!formData.version) {
                 this.showErrorMessage('请输入版本号');
+                return;
+            }
+
+            // 验证参数名重复
+            const duplicateValidation = this.validateParameterNames(formData);
+            if (!duplicateValidation.valid) {
+                this.showErrorMessage(duplicateValidation.message);
                 return;
             }
 
