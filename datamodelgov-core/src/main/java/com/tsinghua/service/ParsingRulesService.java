@@ -31,6 +31,7 @@ public class ParsingRulesService {
     private void init() {
         try {
             ParsingRulesEntity parsingRulesEntity = new ParsingRulesEntity();
+            parsingRulesEntity.setCreateTime(1774340873453L);
             parsingRulesEntity.setName("默认规则");
             parsingRulesEntity.setRegexPattern("^#\\s*@(Input|Output)\\s*:?\\s*(\\w+)\\s*[\\(\\[]?\\s*(\\w+)\\s*[\\)\\]]?\\s*-?\\s*(.*)$");
             parsingRulesEntity.setExample(
