@@ -3848,11 +3848,6 @@ class AssociationRules extends HTMLElement {
             return true;
         }
         
-        // String可以转换为任何类型（通过解析）
-        if (sourceType === 'String') {
-            return true;
-        }
-        
         // 定义所有数值类型
         const numericTypes = ['Integer', 'Long', 'Float', 'Double'];
         
@@ -3861,9 +3856,9 @@ class AssociationRules extends HTMLElement {
             return true;
         }
         
-        // Boolean可以转换为String，也可以从String转换
-        if ((sourceType === 'Boolean' && targetType === 'String') ||
-            (sourceType === 'String' && targetType === 'Boolean')) {
+        // String类型与字节数组的转换（字节数组在系统中可能显示为String或Binary）
+        if ((sourceType === 'String' && targetType === 'Binary') ||
+            (sourceType === 'Binary' && targetType === 'String')) {
             return true;
         }
         
