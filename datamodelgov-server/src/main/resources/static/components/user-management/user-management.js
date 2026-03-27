@@ -116,12 +116,12 @@ class UserManagement extends HTMLElement {
 
     <!-- 用户编辑模态框 -->
     <div class="modal-mask" id="modalMask" hidden>
-        <div class="modal-container">
+        <div class="modal">
             <div class="modal-header">
-                <h3 class="modal-title" id="modalTitle">新增用户</h3>
-                <button class="close-btn" id="closeModal">&times;</button>
+                <span id="modalTitle">新增用户</span>
+                <button class="modal-close" id="closeModal">&times;</button>
             </div>
-            <div class="modal-body">
+            <div class="modal-body" id="modalBody">
                 <form id="userForm">
                     <input type="hidden" id="userId" />
                     <div class="form-group">
@@ -151,7 +151,7 @@ class UserManagement extends HTMLElement {
                     </div>
                 </form>
             </div>
-            <div class="modal-footer">
+            <div class="modal-footer" id="modalFooter">
                 <button class="btn secondary" type="button" id="cancelBtn">取消</button>
                 <button class="btn primary" type="button" id="saveBtn">保存</button>
             </div>
@@ -476,10 +476,10 @@ class UserManagement extends HTMLElement {
         // Handle buttons
         if (buttons.length === 0) {
             // Default close button
-            modalFooter.innerHTML = `<button type="button" class="modal-btn secondary" id="modalClose">关闭</button>`;
+            modalFooter.innerHTML = `<button class="modal-btn secondary" id="modalClose">关闭</button>`;
         } else {
             modalFooter.innerHTML = buttons.map(btn => 
-                `<button type="button" class="modal-btn ${btn.class}" data-action="${btn.action}" data-id="${btn.id || ''}">${btn.text}</button>`
+                `<button class="${btn.class}" data-action="${btn.action}" data-id="${btn.id || ''}">${btn.text}</button>`
             ).join('');
         }
 

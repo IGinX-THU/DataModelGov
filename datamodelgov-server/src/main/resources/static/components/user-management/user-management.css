@@ -156,15 +156,25 @@
 
 .modal-mask {
     position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.5);
+    inset: 0;
+    background: rgba(15, 23, 42, 0.35);
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 1000;
+    z-index: 2000;
+}
+
+.modal-mask[hidden] {
+    display: none;
+}
+
+.modal {
+    width: 600px;
+    max-width: 90vw;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    overflow: hidden;
 }
 
 .modal-container {
@@ -190,12 +200,22 @@
     font-weight: 600;
 }
 
-.close-btn {
+.modal-close {
     background: none;
     border: none;
     font-size: 24px;
     cursor: pointer;
     color: #666;
+    padding: 0;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-close:hover {
+    color: #333;
 }
 
 .modal-body {
@@ -262,4 +282,36 @@
 
 .btn:hover {
     opacity: 0.8;
+}
+
+/* Modal按钮样式 */
+.modal-btn {
+    padding: 6px 14px;
+    border-radius: 4px;
+    border: 1px solid #e2e6ef;
+    background: #fff;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.modal-btn.primary {
+    background: #4c89ff;
+    color: #fff;
+    border-color: #4c89ff;
+}
+
+.modal-btn.primary:hover {
+    background: #3671e6;
+    border-color: #3671e6;
+}
+
+.modal-btn.secondary {
+    background: #fff;
+    color: #6b7280;
+    border-color: #e2e6ef;
+}
+
+.modal-btn.secondary:hover {
+    border-color: #4c89ff;
+    color: #4c89ff;
 }
