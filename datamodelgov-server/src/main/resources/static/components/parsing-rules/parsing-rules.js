@@ -22,7 +22,7 @@ class ParsingRules extends HTMLElement {
             console.log('查询参数:', requestBody);
             
             // 调用查询接口
-            const result = await window.AppConfig.post('data', 'parsing/rules/query', requestBody);
+            const result = await window.AppConfig.post('parsingRules', 'query', requestBody);
             console.log('查询结果:', result);
             
             if (result.success && result.data) {
@@ -66,7 +66,7 @@ class ParsingRules extends HTMLElement {
             console.log('查询总量参数:', requestBody);
             
             // 使用新的API配置
-            const result = await window.AppConfig.post('data', 'parsing/rules/count', requestBody);
+            const result = await window.AppConfig.post('parsingRules', 'count', requestBody);
             console.log('总量查询结果:', result);
             
             if (result.success && result.data !== undefined) {
@@ -86,7 +86,7 @@ class ParsingRules extends HTMLElement {
     async deleteRuleFromAPI(createTime) {
         try {
             // 使用新的API配置
-            const result = await window.AppConfig.delete('data', 'parsing/rules/delete', { createTime });
+            const result = await window.AppConfig.delete('parsingRules', 'delete', { createTime });
             
             if (result.success) {
                 await this.loadRulesFromAPI();
@@ -122,7 +122,7 @@ class ParsingRules extends HTMLElement {
     async editRule(id) {
         try {
             // 从API获取规则详情
-            const result = await window.AppConfig.get('data', 'parsing/rules/detail', { createTime: id });
+            const result = await window.AppConfig.get('parsingRules', 'detail', { createTime: id });
             
             if (result.success && result.data) {
                 const rule = result.data;
@@ -182,7 +182,7 @@ class ParsingRules extends HTMLElement {
             console.log('保存解析规则数据:', formData);
 
             // 调用保存API
-            const result = await window.AppConfig.post('data', 'parsing/rules/save', formData);
+            const result = await window.AppConfig.post('parsingRules', 'save', formData);
             console.log('保存响应:', result);
             
             if (result.success) {
@@ -606,7 +606,7 @@ class ParsingRules extends HTMLElement {
                     if (ruleName && this.currentAction === 'add' && ruleName !== lastValidatedName) {
                         lastValidatedName = ruleName;
                         try {
-                            const result = await window.AppConfig.get('data', 'parsing/rules/validate-name', {
+                            const result = await window.AppConfig.get('parsingRules', 'validate-name', {
                                 name: ruleName
                             });
                             

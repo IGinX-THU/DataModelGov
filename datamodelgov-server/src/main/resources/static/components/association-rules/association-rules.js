@@ -24,7 +24,7 @@ class AssociationRules extends HTMLElement {
             console.log('查询参数:', requestBody);
             
             // 调用查询接口
-            const result = await window.AppConfig.post('data', 'association/rules/query', requestBody);
+            const result = await window.AppConfig.post('associationRules', 'query', requestBody);
             console.log('查询结果:', result);
             
             if (result.success && result.data) {
@@ -77,7 +77,7 @@ class AssociationRules extends HTMLElement {
             console.log('查询总量参数:', requestBody);
             
             // 使用新的API配置
-            const result = await window.AppConfig.post('data', 'association/rules/count', requestBody);
+            const result = await window.AppConfig.post('associationRules', 'count', requestBody);
             console.log('总量查询结果:', result);
             
             if (result.success && result.data !== undefined) {
@@ -97,7 +97,7 @@ class AssociationRules extends HTMLElement {
     async deleteRuleFromAPI(createTime) {
         try {
             // 使用新的API配置
-            const result = await window.AppConfig.delete('data', 'association/rules/delete', { createTime });
+            const result = await window.AppConfig.delete('associationRules', 'delete', { createTime });
             
             if (result.success) {
                 await this.loadRulesFromAPI();
@@ -736,7 +736,7 @@ class AssociationRules extends HTMLElement {
             console.log('保存关联规则数据:', formData);
 
             // 调用保存API - 参考model-edit.js的保存逻辑
-            const result = await window.AppConfig.post('data', 'association/rules/save', formData);
+            const result = await window.AppConfig.post('associationRules', 'save', formData);
             console.log('保存响应:', result);
             
             if (result.success) {
@@ -1571,7 +1571,7 @@ class AssociationRules extends HTMLElement {
             console.log('保存复制规则:', ruleData);
             
             // 使用新的API配置
-            const result = await window.AppConfig.post('data', 'association/rules/save', ruleData);
+            const result = await window.AppConfig.post('associationRules', 'save', ruleData);
             
             if (result.success) {
                 this.showToast('规则复制成功');
@@ -1856,7 +1856,7 @@ class AssociationRules extends HTMLElement {
                 if (ruleName && this.currentAction === 'add' && ruleName !== lastValidatedName) {
                     lastValidatedName = ruleName;
                     try {
-                        const result = await window.AppConfig.get('data', 'association/rules/validate-name', {
+                        const result = await window.AppConfig.get('associationRules', 'validate-name', {
                             name: ruleName
                         });
                         
@@ -2919,7 +2919,7 @@ class AssociationRules extends HTMLElement {
             console.log('保存规则状态:', formData);
             
             // 使用新的API配置
-            const result = await window.AppConfig.post('data', 'association/rules/save', formData);
+            const result = await window.AppConfig.post('associationRules', 'save', formData);
             
             if (result.success) {
                 // 更新本地数据

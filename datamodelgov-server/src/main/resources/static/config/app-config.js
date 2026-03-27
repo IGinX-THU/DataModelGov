@@ -46,18 +46,6 @@ window.AppConfig = {
             'relational/query': '/api/data/relational/query',
             'relational/count': '/api/data/relational/count',
             'relational/export': '/api/data/relational/export',
-            'association/rules/query': '/api/association/rules/query',
-            'association/rules/count': '/api/association/rules/count',
-            'association/rules/detail': '/api/association/rules/detail',
-            'association/rules/delete': '/api/association/rules/delete',
-            'association/rules/save': '/api/association/rules/save',
-            'association/rules/validate-name': '/api/association/rules/validate-name',
-            'parsing/rules/query': '/api/parsing/rules/query',
-            'parsing/rules/count': '/api/parsing/rules/count',
-            'parsing/rules/detail': '/api/parsing/rules/detail',
-            'parsing/rules/delete': '/api/parsing/rules/delete',
-            'parsing/rules/save': '/api/parsing/rules/save',
-            'parsing/rules/validate-name': '/api/parsing/rules/validate-name',
             import: '/api/data/import',
             export: '/api/data/export',
             delete: '/api/data/delete'
@@ -78,10 +66,21 @@ window.AppConfig = {
         },
         // 关联规则相关
         associationRules: {
-            list: '/api/association-rules/list',
-            save: '/api/association-rules/save',
-            delete: '/api/association-rules/delete',
-            detail: '/api/association-rules/detail'
+            query: '/api/association/rules/query',
+            count: '/api/association/rules/count',
+            detail: '/api/association/rules/detail',
+            delete: '/api/association/rules/delete',
+            save: '/api/association/rules/save',
+            'validate-name': '/api/association/rules/validate-name'
+        },
+        // 解析规则相关
+        parsingRules: {
+            query: '/api/parsing/rules/query',
+            count: '/api/parsing/rules/count',
+            detail: '/api/parsing/rules/detail',
+            delete: '/api/parsing/rules/delete',
+            save: '/api/parsing/rules/save',
+            'validate-name': '/api/parsing/rules/validate-name'
         },
         // 用户管理相关
         userManagement: {

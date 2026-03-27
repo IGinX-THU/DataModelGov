@@ -1296,7 +1296,7 @@ int process_data() {
         try {
             // 通过API动态查询解析规则
             console.log('正在调用API查询解析规则...');
-            const response = await window.AppConfig.post('data', 'parsing/rules/query', {
+            const response = await window.AppConfig.post('parsingRules', 'query', {
                 pageNum: 1,
                 pageSize: 100 // 获取所有规则
             });
