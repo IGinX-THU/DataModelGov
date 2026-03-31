@@ -125,7 +125,7 @@
                 </configuration>
             </plugin>
 
-            <!-- 复制JDK（内置方式） -->
+            <!-- 复制JDK（跨平台支持） -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-antrun-plugin</artifactId>
@@ -142,9 +142,28 @@
                                 <!-- 创建JDK目录 -->
                                 <mkdir dir="${project.build.directory}/jdk"/>
                                 
+                                <!-- 检测操作系统并设置JDK路径 -->
+                                <condition property="jdk.path" value="${env.JAVA_HOME}">
+                                    <isset property="env.JAVA_HOME"/>
+                                </condition>
+                                <condition property="jdk.path" value="/usr/lib/jvm/java-8-openjdk-amd64">
+                                    <available file="/usr/lib/jvm/java-8-openjdk-amd64/bin/java"/>
+                                </condition>
+                                <condition property="jdk.path" value="/usr/lib/jvm/java-8-openjdk">
+                                    <available file="/usr/lib/jvm/java-8-openjdk/bin/java"/>
+                                </condition>
+                                <condition property="jdk.path" value="/Library/Java/JavaVirtualMachines/jdk1.8.0_181.jdk/Contents/Home">
+                                    <available file="/Library/Java/JavaVirtualMachines/jdk1.8.0_181.jdk/Contents/Home/bin/java"/>
+                                </condition>
+                                <condition property="jdk.path" value="C:\Program Files\Java\jdk1.8.0_181">
+                                    <available file="C:\Program Files\Java\jdk1.8.0_181\bin\java.exe"/>
+                                </condition>
+                                
+                                <echo message="Copying JDK from: ${jdk.path}"/>
+                                
                                 <!-- 复制JDK核心文件 -->
                                 <copy todir="${project.build.directory}/jdk" verbose="true" failonerror="true">
-                                    <fileset dir="C:\Program Files\Java\jdk1.8.0_181">
+                                    <fileset dir="${jdk.path}">
                                         <include name="bin/**/*"/>
                                         <include name="lib/**/*"/>
                                         <include name="release"/>
@@ -159,6 +178,9 @@
                                         <exclude name="**/db/**"/>
                                         <exclude name="**/include/**"/>
                                         <exclude name="**/jmods/**"/>
+                                        <exclude name="**/bin/*.exe" if="not ${os.family}='windows'"/>
+                                        <exclude name="**/bin/*.bat" if="not ${os.family}='windows'"/>
+                                        <exclude name="**/bin/*.sh" if="${os.family}='windows'"/>
                                     </fileset>
                                 </copy>
                                 

@@ -20,25 +20,37 @@ fi
 
 echo "Found application JAR: $APP_JAR"
 
-# Check Java environment - prioritize embedded JRE
-if [ -x "jre/bin/java" ]; then
-    echo "Using embedded JRE"
-    JAVA_CMD="./jre/bin/java"
-    # Set JRE home to fix library path issues
-    export JRE_HOME="$(pwd)/jre"
-    export JAVA_HOME="$(pwd)/jre"
+# Check Java environment - prioritize embedded JDK
+if [ -x "jdk/bin/java" ]; then
+    echo "Testing embedded JDK..."
+    if ./jdk/bin/java -version > /dev/null 2>&1; then
+        echo "Using embedded JDK"
+        JAVA_CMD="./jdk/bin/java"
+        # Set JDK home to fix library path issues
+        export JAVA_HOME="$(pwd)/jdk"
+        export PATH="$JAVA_HOME/bin:$PATH"
+    else
+        echo "NOTE: Embedded JDK test failed, using system Java"
+        if ! command -v java &> /dev/null; then
+            echo "ERROR: Java environment not found"
+            echo "Please ensure Java 8+ is installed or JDK directory exists"
+            exit 1
+        fi
+        JAVA_CMD="java"
+    fi
 else
-    echo "Using system Java"
+    echo "NOTE: No embedded JDK found, using system Java"
+    echo "For production deployment, please ensure the package includes the JDK"
     if ! command -v java &> /dev/null; then
         echo "ERROR: Java environment not found"
-        echo "Please ensure Java 8+ is installed or JRE directory exists"
+        echo "Please ensure Java 8+ is installed"
         exit 1
     fi
     JAVA_CMD="java"
 fi
 
 # Set Java options
-JAVA_OPTS="-Xmx2g -Xms1g -XX:+UseG1GC -XX:+UseStringDeduplication -Djava.library.path=jre/bin"
+JAVA_OPTS="-Xmx2g -Xms1g -XX:+UseG1GC -XX:+UseStringDeduplication -Djava.library.path=jdk/lib"
 
 # Check for config directory
 if [ -f "config/application.yml" ]; then
