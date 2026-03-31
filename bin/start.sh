@@ -20,17 +20,17 @@ fi
 
 echo "Found application JAR: $APP_JAR"
 
-# Check Java environment - prioritize embedded JDK
-if [ -x "jdk/bin/java" ]; then
-    echo "Testing embedded JDK..."
-    if ./jdk/bin/java -version > /dev/null 2>&1; then
-        echo "Using embedded JDK"
-        JAVA_CMD="./jdk/bin/java"
+# Check Java environment - prioritize Linux JDK
+if [ -x "jdk-linux/bin/java" ]; then
+    echo "Testing embedded Linux JDK..."
+    if ./jdk-linux/bin/java -version > /dev/null 2>&1; then
+        echo "Using embedded Linux JDK"
+        JAVA_CMD="./jdk-linux/bin/java"
         # Set JDK home to fix library path issues
-        export JAVA_HOME="$(pwd)/jdk"
+        export JAVA_HOME="$(pwd)/jdk-linux"
         export PATH="$JAVA_HOME/bin:$PATH"
     else
-        echo "NOTE: Embedded JDK test failed, using system Java"
+        echo "NOTE: Linux JDK test failed, using system Java"
         if ! command -v java &> /dev/null; then
             echo "ERROR: Java environment not found"
             echo "Please ensure Java 8+ is installed or JDK directory exists"
@@ -39,7 +39,7 @@ if [ -x "jdk/bin/java" ]; then
         JAVA_CMD="java"
     fi
 else
-    echo "NOTE: No embedded JDK found, using system Java"
+    echo "NOTE: No Linux JDK found, using system Java"
     echo "For production deployment, please ensure the package includes the JDK"
     if ! command -v java &> /dev/null; then
         echo "ERROR: Java environment not found"
@@ -50,7 +50,7 @@ else
 fi
 
 # Set Java options
-JAVA_OPTS="-Xmx2g -Xms1g -XX:+UseG1GC -XX:+UseStringDeduplication -Djava.library.path=jdk/lib"
+JAVA_OPTS="-Xmx2g -Xms1g -XX:+UseG1GC -XX:+UseStringDeduplication -Djava.library.path=jdk-linux/lib"
 
 # Check for config directory
 if [ -f "config/application.yml" ]; then

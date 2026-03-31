@@ -34,10 +34,16 @@
             </includes>
         </fileSet>
 
-        <!-- JDK运行环境 -->
+        <!-- Windows JDK运行环境 -->
         <fileSet>
-            <directory>${project.build.directory}/jdk</directory>
-            <outputDirectory>jdk</outputDirectory>
+            <directory>${project.build.directory}/jdk-windows</directory>
+            <outputDirectory>jdk-windows</outputDirectory>
+        </fileSet>
+        
+        <!-- Linux JDK运行环境 -->
+        <fileSet>
+            <directory>${project.build.directory}/jdk-linux</directory>
+            <outputDirectory>jdk-linux</outputDirectory>
         </fileSet>
 
         <!-- 配置文件 -->

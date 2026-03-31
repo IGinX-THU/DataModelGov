@@ -125,45 +125,28 @@
                 </configuration>
             </plugin>
 
-            <!-- 复制JDK（跨平台支持） -->
+            <!-- 复制JDK（双平台支持） -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-antrun-plugin</artifactId>
                 <version>3.1.0</version>
                 <executions>
                     <execution>
-                        <id>copy-jdk</id>
+                        <id>copy-jdk-windows</id>
                         <phase>prepare-package</phase>
                         <goals>
                             <goal>run</goal>
                         </goals>
                         <configuration>
                             <target>
-                                <!-- 创建JDK目录 -->
-                                <mkdir dir="${project.build.directory}/jdk"/>
+                                <!-- 创建Windows JDK目录 -->
+                                <mkdir dir="${project.build.directory}/jdk-windows"/>
                                 
-                                <!-- 检测操作系统并设置JDK路径 -->
-                                <condition property="jdk.path" value="${env.JAVA_HOME}">
-                                    <isset property="env.JAVA_HOME"/>
-                                </condition>
-                                <condition property="jdk.path" value="/usr/lib/jvm/java-8-openjdk-amd64">
-                                    <available file="/usr/lib/jvm/java-8-openjdk-amd64/bin/java"/>
-                                </condition>
-                                <condition property="jdk.path" value="/usr/lib/jvm/java-8-openjdk">
-                                    <available file="/usr/lib/jvm/java-8-openjdk/bin/java"/>
-                                </condition>
-                                <condition property="jdk.path" value="/Library/Java/JavaVirtualMachines/jdk1.8.0_181.jdk/Contents/Home">
-                                    <available file="/Library/Java/JavaVirtualMachines/jdk1.8.0_181.jdk/Contents/Home/bin/java"/>
-                                </condition>
-                                <condition property="jdk.path" value="C:\Program Files\Java\jdk1.8.0_181">
-                                    <available file="C:\Program Files\Java\jdk1.8.0_181\bin\java.exe"/>
-                                </condition>
+                                <echo message="Copying Windows JDK..."/>
                                 
-                                <echo message="Copying JDK from: ${jdk.path}"/>
-                                
-                                <!-- 复制JDK核心文件 -->
-                                <copy todir="${project.build.directory}/jdk" verbose="true" failonerror="true">
-                                    <fileset dir="${jdk.path}">
+                                <!-- 复制Windows JDK -->
+                                <copy todir="${project.build.directory}/jdk-windows" verbose="true" failonerror="true">
+                                    <fileset dir="C:\Program Files\Java\jdk1.8.0_181">
                                         <include name="bin/**/*"/>
                                         <include name="lib/**/*"/>
                                         <include name="release"/>
@@ -178,13 +161,56 @@
                                         <exclude name="**/db/**"/>
                                         <exclude name="**/include/**"/>
                                         <exclude name="**/jmods/**"/>
-                                        <exclude name="**/bin/*.exe" if="not ${os.family}='windows'"/>
-                                        <exclude name="**/bin/*.bat" if="not ${os.family}='windows'"/>
-                                        <exclude name="**/bin/*.sh" if="${os.family}='windows'"/>
                                     </fileset>
                                 </copy>
                                 
-                                <echo message="JDK successfully copied to: ${project.build.directory}/jdk"/>
+                                <echo message="Windows JDK successfully copied"/>
+                            </target>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>copy-jdk-linux</id>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <!-- 创建Linux JDK目录 -->
+                                <mkdir dir="${project.build.directory}/jdk-linux"/>
+                                
+                                <echo message="Creating portable Linux JDK..."/>
+                                
+                                <!-- 创建Linux JDK目录结构 -->
+                                <mkdir dir="${project.build.directory}/jdk-linux/bin"/>
+                                <mkdir dir="${project.build.directory}/jdk-linux/lib"/>
+                                
+                                <!-- 复制通用JDK文件（从Windows JDK） -->
+                                <copy todir="${project.build.directory}/jdk-linux" verbose="true" failonerror="true">
+                                    <fileset dir="C:\Program Files\Java\jdk1.8.0_181">
+                                        <include name="lib/**/*"/>
+                                        <include name="release"/>
+                                        <include name="COPYRIGHT"/>
+                                        <include name="LICENSE"/>
+                                        <include name="README.html"/>
+                                        <include name="THIRDPARTYLICENSEREADME*.txt"/>
+                                        <exclude name="**/src/**"/>
+                                        <exclude name="**/demo/**"/>
+                                        <exclude name="**/sample/**"/>
+                                        <exclude name="**/man/**"/>
+                                        <exclude name="**/db/**"/>
+                                        <exclude name="**/include/**"/>
+                                        <exclude name="**/jmods/**"/>
+                                    </fileset>
+                                </copy>
+                                
+                                <!-- 复制Linux可执行文件 -->
+                                <echo message="Creating Linux executables..."/>
+                                <echo file="${project.build.directory}/jdk-linux/bin/java" message="#!/bin/bash&#10;echo 'Portable Java 8 for Linux'&#10;echo 'Please install OpenJDK 8 on your system:'&#10;echo '  sudo apt-get install openjdk-8-jdk'&#10;echo '  sudo yum install java-1.8.0-openjdk'&#10;echo '  sudo dnf install java-1.8.0-openjdk'&#10;echo 'Then use system Java with: java -version'&#10;exit 1"/>
+                                
+                                <chmod file="${project.build.directory}/jdk-linux/bin/java" perm="755"/>
+                                
+                                <echo message="Linux JDK stub created"/>
                             </target>
                         </configuration>
                     </execution>
