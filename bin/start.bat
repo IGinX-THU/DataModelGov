@@ -22,19 +22,20 @@ if not exist "%APP_JAR%" (
 
 echo Found application JAR: !APP_JAR!
 
-REM Test embedded JRE first
-if exist "jre\bin\java.exe" (
-    echo Testing embedded JRE...
-    "jre\bin\java.exe" -version >nul 2>&1
+REM Test embedded JDK first
+if exist "jdk\bin\java.exe" (
+    echo Testing embedded JDK...
+    "jdk\bin\java.exe" -version >nul 2>&1
     if errorlevel 1 (
-        echo Embedded JRE failed, using system Java
+        echo NOTE: Embedded JDK failed, using system Java
         set JAVA_CMD=java
     ) else (
-        echo Using embedded JRE
-        set JAVA_CMD=jre\bin\java.exe
+        echo Using embedded JDK
+        set JAVA_CMD=jdk\bin\java.exe
     )
 ) else (
-    echo Using system Java
+    echo NOTE: No embedded JDK found, using system Java
+    echo For production deployment, please ensure the package includes the JDK
     java -version >nul 2>&1
     if errorlevel 1 (
         echo ERROR: Java environment not found

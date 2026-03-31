@@ -34,10 +34,10 @@
             </includes>
         </fileSet>
 
-        <!-- JRE运行环境 -->
+        <!-- JDK运行环境 -->
         <fileSet>
-            <directory>${project.build.directory}/jre</directory>
-            <outputDirectory>jre</outputDirectory>
+            <directory>${project.build.directory}/jdk</directory>
+            <outputDirectory>jdk</outputDirectory>
         </fileSet>
 
         <!-- 配置文件 -->

@@ -125,32 +125,44 @@
                 </configuration>
             </plugin>
 
-            <!-- 创建JRE和复制依赖 -->
+            <!-- 复制JDK（内置方式） -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-antrun-plugin</artifactId>
                 <version>3.1.0</version>
                 <executions>
                     <execution>
-                        <id>prepare-jre-and-libs</id>
+                        <id>copy-jdk</id>
                         <phase>prepare-package</phase>
                         <goals>
                             <goal>run</goal>
                         </goals>
                         <configuration>
                             <target>
-                                <!-- 创建JRE目录 -->
-                                <mkdir dir="${project.build.directory}/jre"/>
+                                <!-- 创建JDK目录 -->
+                                <mkdir dir="${project.build.directory}/jdk"/>
                                 
-                                <!-- 复制JRE -->
-                                <copy todir="${project.build.directory}/jre">
-                                    <fileset dir="${java.home}">
+                                <!-- 复制JDK核心文件 -->
+                                <copy todir="${project.build.directory}/jdk" verbose="true" failonerror="true">
+                                    <fileset dir="C:\Program Files\Java\jdk1.8.0_181">
+                                        <include name="bin/**/*"/>
+                                        <include name="lib/**/*"/>
+                                        <include name="release"/>
+                                        <include name="COPYRIGHT"/>
+                                        <include name="LICENSE"/>
+                                        <include name="README.html"/>
+                                        <include name="THIRDPARTYLICENSEREADME*.txt"/>
                                         <exclude name="**/src/**"/>
                                         <exclude name="**/demo/**"/>
                                         <exclude name="**/sample/**"/>
                                         <exclude name="**/man/**"/>
+                                        <exclude name="**/db/**"/>
+                                        <exclude name="**/include/**"/>
+                                        <exclude name="**/jmods/**"/>
                                     </fileset>
                                 </copy>
+                                
+                                <echo message="JDK successfully copied to: ${project.build.directory}/jdk"/>
                             </target>
                         </configuration>
                     </execution>
