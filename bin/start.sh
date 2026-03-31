@@ -78,7 +78,7 @@ echo ""
 # Create logs directory if not exists
 mkdir -p logs
 
-# Start the application
+# Start application
 if [ -n "$CONFIG_PATH" ]; then
     $JAVA_CMD $JAVA_OPTS -jar "$APP_JAR" --spring.config.location="$CONFIG_PATH" --spring.profiles.active=standalone
 else
@@ -89,11 +89,11 @@ fi
 if [ $? -eq 0 ]; then
     echo ""
     echo "Application started successfully!"
-    echo "Access the application at: http://localhost:8080"
-    echo "Press Ctrl+C to stop the application"
+    echo "Access application at: http://localhost:8080"
+    echo "Press Ctrl+C to stop application"
 else
     echo ""
     echo "ERROR: Application failed to start"
-    echo "Please check the error message above"
+    echo "Please check error message above"
     exit 1
 fi
