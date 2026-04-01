@@ -54,6 +54,7 @@
                 <include>application*.yml</include>
                 <include>application*.yaml</include>
                 <include>application*.properties</include>
+                <include>logback-spring.xml</include>
             </includes>
         </fileSet>
 
