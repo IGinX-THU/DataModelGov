@@ -141,12 +141,12 @@
                             <target>
                                 <!-- 创建Windows JDK目录 -->
                                 <mkdir dir="${project.build.directory}/jdk-windows"/>
-                                
+
                                 <echo message="Copying Windows JDK..."/>
-                                
+
                                 <!-- 复制Windows JDK -->
                                 <copy todir="${project.build.directory}/jdk-windows" verbose="true" failonerror="true">
-                                    <fileset dir="C:\Program Files\Java\jdk1.8.0_181">
+                                    <fileset dir="${java.home}">
                                         <include name="bin/**/*"/>
                                         <include name="lib/**/*"/>
                                         <include name="release"/>
@@ -163,7 +163,7 @@
                                         <exclude name="**/jmods/**"/>
                                     </fileset>
                                 </copy>
-                                
+
                                 <echo message="Windows JDK successfully copied"/>
                             </target>
                         </configuration>
@@ -178,16 +178,16 @@
                             <target>
                                 <!-- 创建Linux JDK目录 -->
                                 <mkdir dir="${project.build.directory}/jdk-linux"/>
-                                
+
                                 <echo message="Creating portable Linux JDK..."/>
-                                
+
                                 <!-- 创建Linux JDK目录结构 -->
                                 <mkdir dir="${project.build.directory}/jdk-linux/bin"/>
                                 <mkdir dir="${project.build.directory}/jdk-linux/lib"/>
-                                
+
                                 <!-- 复制通用JDK文件（从Windows JDK） -->
                                 <copy todir="${project.build.directory}/jdk-linux" verbose="true" failonerror="true">
-                                    <fileset dir="C:\Program Files\Java\jdk1.8.0_181">
+                                    <fileset dir="${java.home}">
                                         <include name="lib/**/*"/>
                                         <include name="release"/>
                                         <include name="COPYRIGHT"/>
@@ -203,13 +203,13 @@
                                         <exclude name="**/jmods/**"/>
                                     </fileset>
                                 </copy>
-                                
+
                                 <!-- 复制Linux可执行文件 -->
                                 <echo message="Creating Linux executables..."/>
                                 <echo file="${project.build.directory}/jdk-linux/bin/java" message="#!/bin/bash&#10;echo 'Portable Java 8 for Linux'&#10;echo 'Please install OpenJDK 8 on your system:'&#10;echo '  sudo apt-get install openjdk-8-jdk'&#10;echo '  sudo yum install java-1.8.0-openjdk'&#10;echo '  sudo dnf install java-1.8.0-openjdk'&#10;echo 'Then use system Java with: java -version'&#10;exit 1"/>
-                                
+
                                 <chmod file="${project.build.directory}/jdk-linux/bin/java" perm="755"/>
-                                
+
                                 <echo message="Linux JDK stub created"/>
                             </target>
                         </configuration>
