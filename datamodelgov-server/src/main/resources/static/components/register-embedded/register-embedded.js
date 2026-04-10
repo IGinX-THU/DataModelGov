@@ -79,6 +79,14 @@ class RegisterDataResourceEmbedded extends HTMLElement {
                 this.toggleEngineField();
             });
         }
+
+        // 是否读取原有数据变化事件
+        const hasDataCheckbox = this.shadowRoot.getElementById('hasData');
+        if (hasDataCheckbox) {
+            hasDataCheckbox.addEventListener('change', () => {
+                this.updateDummyDirRequired();
+            });
+        }
     }
 
     show() {
@@ -127,6 +135,8 @@ class RegisterDataResourceEmbedded extends HTMLElement {
                 case '3': // Filesystem
                     this.showFieldGroup('filesystemFields');
                     // authFields remains hidden
+                    // 更新历史数据文件读取目录的必填状态
+                    this.updateDummyDirRequired();
                     break;
                 case '4': // Relational
                     this.showFieldGroup('relationalFields');
@@ -150,6 +160,25 @@ class RegisterDataResourceEmbedded extends HTMLElement {
         const fieldGroup = this.shadowRoot.getElementById(groupId);
         if (fieldGroup) {
             fieldGroup.style.display = 'block';
+        }
+    }
+
+    updateDummyDirRequired() {
+        const dataSourceType = this.shadowRoot.getElementById('dataSourceType');
+        const hasDataCheckbox = this.shadowRoot.getElementById('hasData');
+        const dummyDirLabel = this.shadowRoot.querySelector('#dummyDir').parentElement.querySelector('.form-label');
+        
+        // 只在filesystem类型下处理
+        if (dataSourceType && dataSourceType.value === '3' && hasDataCheckbox && dummyDirLabel) {
+            if (hasDataCheckbox.checked) {
+                // 添加required类显示红色星号
+                if (!dummyDirLabel.classList.contains('required')) {
+                    dummyDirLabel.classList.add('required');
+                }
+            } else {
+                // 移除required类
+                dummyDirLabel.classList.remove('required');
+            }
         }
     }
 
@@ -180,12 +209,7 @@ class RegisterDataResourceEmbedded extends HTMLElement {
             console.log('清除自动填充的模式前缀');
         }
 
-        // 取消勾选"是否只读"（仅当是自动勾选时取消）
-        const isReadOnlyCheckbox = this.shadowRoot.getElementById('isReadOnly');
-        if (isReadOnlyCheckbox && isReadOnlyCheckbox.checked) {
-            isReadOnlyCheckbox.checked = false;
-            console.log('取消勾选"是否只读"');
-        }
+        // 不再取消勾选"是否只读"，保持用户的选择
     }
 
     async submit() {
@@ -399,6 +423,11 @@ class RegisterDataResourceEmbedded extends HTMLElement {
             case 3: // Filesystem - iginxPort必填
                 if (!data.iginxPort) {
                     this.showMessage('IGinX节点端口为必填项', 'error');
+                    return false;
+                }
+                // Filesystem读取原有数据时，历史数据文件读取目录必填
+                if (data.hasData && !data.dummyDir) {
+                    this.showMessage('读取原有数据时，历史数据文件读取目录为必填项', 'error');
                     return false;
                 }
                 break;

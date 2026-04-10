@@ -40,11 +40,11 @@ public abstract class BaseStorageEngineRequest {
 
     @NotNull(message = "has_data参数不能为空")
     @ApiModelProperty(value = "是否读取原有数据", example = "false", required = true)
-    private Boolean hasData = false;
+    private Boolean hasData = true;
 
     @NotNull(message = "is_read_only参数不能为空")
     @ApiModelProperty(value = "是否只读", example = "false", required = true)
-    private Boolean isReadOnly = false;
+    private Boolean isReadOnly = true;
 
     @ApiModelProperty(value = "数据前缀")
     private String dataPrefix;
