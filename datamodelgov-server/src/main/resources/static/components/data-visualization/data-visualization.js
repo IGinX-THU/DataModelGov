@@ -232,6 +232,16 @@ class DataVisualization extends HTMLElement {
         }, 50);
     }
 
+    // 格式化本地时间为 datetime-local 输入框所需的格式 (YYYY-MM-DDTHH:mm)
+    formatLocalDateTime(date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        return `${year}-${month}-${day}T${hours}:${minutes}`;
+    }
+
     // 设置默认时间范围为最近1小时
     setDefaultTimeRange() {
         console.log('⚠️ setDefaultTimeRange() 被调用了！');
@@ -244,10 +254,10 @@ class DataVisualization extends HTMLElement {
         const quickTimeBtns = this.shadowRoot.querySelectorAll('.quick-time-btn');
 
         if (startTimeInput) {
-            startTimeInput.value = startTime.toISOString().slice(0, 16);
+            startTimeInput.value = this.formatLocalDateTime(startTime);
         }
         if (endTimeInput) {
-            endTimeInput.value = endTime.toISOString().slice(0, 16);
+            endTimeInput.value = this.formatLocalDateTime(endTime);
         }
 
         // 设置快速选择按钮的默认状态
@@ -507,10 +517,10 @@ class DataVisualization extends HTMLElement {
                 const endTimeInput = this.shadowRoot.getElementById('endTime');
 
                 if (startTimeInput) {
-                    startTimeInput.value = startTime.toISOString().slice(0, 16);
+                    startTimeInput.value = this.formatLocalDateTime(startTime);
                 }
                 if (endTimeInput) {
-                    endTimeInput.value = endTime.toISOString().slice(0, 16);
+                    endTimeInput.value = this.formatLocalDateTime(endTime);
                 }
             });
         });
