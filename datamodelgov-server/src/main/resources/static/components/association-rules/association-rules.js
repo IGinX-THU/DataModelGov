@@ -1999,10 +1999,10 @@ class AssociationRules extends HTMLElement {
             return;
         }
         
-        if (!startTime || !endTime) {
-            this.showToast('请选择开始时间和结束时间', 'error');
-            return;
-        }
+        // if (!startTime || !endTime) {
+        //     this.showToast('请选择开始时间和结束时间', 'error');
+        //     return;
+        // }
         
         if (!outputTable) {
             this.showToast('请输入结果回写路径前缀', 'error');
