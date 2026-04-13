@@ -78,22 +78,26 @@ echo ""
 # Create logs directory if not exists
 mkdir -p logs
 
-# Start application
+# Start application with nohup
 if [ -n "$CONFIG_PATH" ]; then
-    $JAVA_CMD $JAVA_OPTS -jar "$APP_JAR" --spring.config.location="$CONFIG_PATH" --spring.profiles.active=standalone
+    nohup $JAVA_CMD $JAVA_OPTS -jar "$APP_JAR" --spring.config.location="$CONFIG_PATH" --spring.profiles.active=standalone > logs/application.log 2>&1 &
 else
-    $JAVA_CMD $JAVA_OPTS -jar "$APP_JAR" --spring.profiles.active=standalone
+    nohup $JAVA_CMD $JAVA_OPTS -jar "$APP_JAR" --spring.profiles.active=standalone > logs/application.log 2>&1 &
 fi
+
+APP_PID=$!
 
 # Check if application started successfully
 if [ $? -eq 0 ]; then
     echo ""
-    echo "Application started successfully!"
+    echo "Application started successfully in background!"
+    echo "Application PID: $APP_PID"
     echo "Access application at: http://localhost:8080"
-    echo "Press Ctrl+C to stop application"
+    echo "Log file: logs/application.log"
+    echo "To stop application, run: kill $APP_PID"
 else
     echo ""
     echo "ERROR: Application failed to start"
-    echo "Please check error message above"
+    echo "Please check logs/application.log for error messages"
     exit 1
 fi
