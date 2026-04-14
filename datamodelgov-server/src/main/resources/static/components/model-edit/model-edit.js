@@ -127,12 +127,12 @@ class ModelEdit extends HTMLElement {
             });
         }
 
-        // 点击遮罩关闭 - 只有点击背景才关闭
-        this.addEventListener('click', (e) => {
-            if (e.target === this) {
-                this.hide();
-            }
-        });
+        // 点击遮罩关闭 - 已禁用，只能通过取消按钮或叉号关闭
+        // this.addEventListener('click', (e) => {
+        //     if (e.target === this) {
+        //         this.hide();
+        //     }
+        // });
 
         // 阻止表单容器内的点击事件冒泡
         const formContainer = this.shadowRoot.querySelector('.form-container');

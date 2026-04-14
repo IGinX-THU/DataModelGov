@@ -493,6 +493,7 @@ public class RunTaskService {
     }
 
     public RunTaskEntity runTask(RunTaskRequest runTaskRequest) {
+        RunTaskEntity runTaskEntity = ConvertUtil.entityConvert(runTaskRequest, RunTaskEntity.class);
         try {
             // 0. 校验任务时间段的唯一性
             if (!validateTaskUniqueness(runTaskRequest)) {
@@ -506,9 +507,10 @@ public class RunTaskService {
             }
 
             long timestamp = System.currentTimeMillis();
-            RunTaskEntity runTaskEntity = ConvertUtil.entityConvert(runTaskRequest, RunTaskEntity.class);
             runTaskEntity.setTimestamp(timestamp);
             runTaskEntity.setStatus(TaskStatus.PENDING);
+            runTaskEntity.setStartTime(Optional.ofNullable(runTaskRequest.getStartTime()).orElse(0L));
+            runTaskEntity.setEndTime(Optional.ofNullable(runTaskRequest.getEndTime()).orElse(timestamp));
 
             // 解析输入输出绑定
             List<InputBindDto> inputs = JSONArray.parseArray(associationRulesEntity.getInputsBind(), InputBindDto.class);
@@ -537,22 +539,16 @@ public class RunTaskService {
             } else {
                 log.warn("未设置运行命令，任务状态保持为PENDING");
             }
-            
-            // 返回创建的任务实体
-            return runTaskEntity;
 
         } catch (Exception e) {
             log.error("运行任务失败", e);
             // 更新任务状态为失败
-            try {
-                RunTaskEntity runTaskEntity = ConvertUtil.entityConvert(runTaskRequest, RunTaskEntity.class);
-                runTaskEntity.setStatus(TaskStatus.FAILED);
-                saveTask(runTaskEntity);
-            } catch (Exception saveException) {
-                log.error("保存失败状态时发生错误", saveException);
-            }
-            throw new RuntimeException("运行任务失败: " + e.getMessage(), e);
+            runTaskEntity.setStatus(TaskStatus.FAILED);
+            runTaskEntity.setProcessLog(e.getMessage());
+            saveTask(runTaskEntity);
         }
+        // 返回创建的任务实体
+        return runTaskEntity;
     }
 
     private void exportDataToFile(DataQueryRequest request, Path csvFile, List<InputBindDto> inputs, String tableName) throws IOException {
@@ -905,6 +901,8 @@ public class RunTaskService {
                 } else {
                     log.error("命令执行失败，退出码: {}", exitCode);
                     runTaskEntity.setStatus(TaskStatus.FAILED);
+                    String errorLog = "\n命令执行失败，退出码: " + exitCode+ "\n";
+                    runTaskEntity.setProcessLog(processLogBuilder.toString() + errorLog);
                 }
                 
                 saveTask(runTaskEntity);

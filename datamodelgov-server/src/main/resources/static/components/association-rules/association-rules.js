@@ -1831,10 +1831,6 @@ class AssociationRules extends HTMLElement {
     }
     
     bindFormEvents() {
-        // Re-bind form-specific events
-        this.shadowRoot.getElementById('addMapping')?.addEventListener('click', async () => this.addMapping());
-        this.shadowRoot.getElementById('addResultMapping')?.addEventListener('click', async () => this.addResultMapping());
-        
         // Data source and target model change events
         this.shadowRoot.getElementById('dataSource')?.addEventListener('change', () => this.updateMappingFieldOptions());
         this.shadowRoot.getElementById('targetModel')?.addEventListener('change', () => {
@@ -1893,8 +1889,22 @@ class AssociationRules extends HTMLElement {
     runRule(id) {
         const rule = this.data.find(item => item.id === id);
         if (!rule) return;
-        
+
         this.showRunModal(rule);
+    }
+
+    // Helper method to get Beijing time (UTC+8) in datetime-local format
+    getBeijingTime() {
+        const now = new Date();
+        // Convert to Beijing time (UTC+8)
+        const beijingTime = new Date(now.getTime() + (8 * 60 * 60 * 1000));
+        // Format as YYYY-MM-DDTHH:mm for datetime-local input
+        const year = beijingTime.getUTCFullYear();
+        const month = String(beijingTime.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(beijingTime.getUTCDate()).padStart(2, '0');
+        const hours = String(beijingTime.getUTCHours()).padStart(2, '0');
+        const minutes = String(beijingTime.getUTCMinutes()).padStart(2, '0');
+        return `${year}-${month}-${day}T${hours}:${minutes}`;
     }
     
     showRunModal(rule) {
@@ -1938,7 +1948,7 @@ class AssociationRules extends HTMLElement {
                         </div>
                         <div class="form-group">
                             <label for="endTime">结束时间</label>
-                            <input type="datetime-local" id="endTime" name="endTime" required value="${new Date().toISOString().slice(0, 16)}" step="1">
+                            <input type="datetime-local" id="endTime" name="endTime" required value="${this.getBeijingTime()}" step="1">
                         </div>
                     </div>
                     
@@ -1999,10 +2009,10 @@ class AssociationRules extends HTMLElement {
             return;
         }
         
-        if (!startTime || !endTime) {
-            this.showToast('请选择开始时间和结束时间', 'error');
-            return;
-        }
+        // if (!startTime || !endTime) {
+        //     this.showToast('请选择开始时间和结束时间', 'error');
+        //     return;
+        // }
         
         if (!outputTable) {
             this.showToast('请输入结果回写路径前缀', 'error');
@@ -3148,25 +3158,14 @@ class AssociationRules extends HTMLElement {
     getFullTablePath(node) {
         const parts = [];
         let current = node;
-        let foundRoot = false;
         
         while (current && current.classList.contains('tree-node')) {
             const span = current.querySelector('span');
             if (span) {
                 const nodeName = span.textContent.trim();
-                // 包含relational_system根路径
-                if (nodeName === 'relational_system') {
-                    foundRoot = true;
-                }
                 parts.unshift(nodeName);
             }
             current = current.parentElement?.parentElement;
-        }
-        
-        // 只有当路径中包含relational_system时才确保包含根路径
-        // 对于test.input、test.output等路径，不要强制添加relational_system前缀
-        if (!foundRoot && parts.length > 0 && parts.some(part => part.includes('relational') || part.includes('association') || part.includes('models') || part.includes('users') || part.includes('roles') || part.includes('parsing'))) {
-            parts.unshift('relational_system');
         }
         
         return parts.join('.');
