@@ -41,6 +41,9 @@ public class IginxConfig {
     @Value("${iginx.timeout}")
     private long timeout;
 
+    @Value("${iginx.max-retry:3}")
+    private int maxRetry;
+
     // IGinX操作的全局锁
     private final ReentrantLock iginxLock = new ReentrantLock();
     
@@ -62,7 +65,9 @@ public class IginxConfig {
     public Session iginxSession() {
         // 创建Session代理，自动管理生命周期
         Session originalSession = new Session(ip, port, username, password);
-        return new SessionProxy(originalSession);
+        SessionProxy proxy = new SessionProxy(originalSession);
+        proxy.setMaxRetry(maxRetry);
+        return proxy;
     }
 
     /**
@@ -70,11 +75,17 @@ public class IginxConfig {
      */
     public static class SessionProxy extends Session {
         private final Session delegate;
+        private int maxRetry;
 
         public SessionProxy(Session delegate) {
             super(delegate.getHost(), delegate.getPort(), delegate.getUsername(), delegate.getPassword());
             this.delegate = delegate;
+            this.maxRetry = 3; // 默认重试3次
             sessionHolder.set(this);
+        }
+
+        public void setMaxRetry(int maxRetry) {
+            this.maxRetry = maxRetry;
         }
 
         @Override
@@ -103,50 +114,51 @@ public class IginxConfig {
 
         @Override
         public cn.edu.tsinghua.iginx.session.QueryDataSet executeQuery(String sql) throws SessionException {
-            ensureSessionOpen();
-            return delegate.executeQuery(sql);
+            return executeWithRetry("executeQuery", () -> delegate.executeQuery(sql));
         }
 
         @Override
         public cn.edu.tsinghua.iginx.session.SessionExecuteSqlResult executeSql(String sql) throws SessionException {
-            ensureSessionOpen();
-            return delegate.executeSql(sql);
+            return executeWithRetry("executeSql", () -> delegate.executeSql(sql));
         }
 
         @Override
         public java.util.List<cn.edu.tsinghua.iginx.session.Column> showColumns() throws SessionException {
-            ensureSessionOpen();
-            return delegate.showColumns();
+            return executeWithRetry("showColumns", () -> delegate.showColumns());
         }
 
         @Override
         public cn.edu.tsinghua.iginx.session.ClusterInfo getClusterInfo() throws SessionException {
-            ensureSessionOpen();
-            return delegate.getClusterInfo();
+            return executeWithRetry("getClusterInfo", () -> delegate.getClusterInfo());
         }
 
         @Override
         public void addStorageEngine(String ip, int port, cn.edu.tsinghua.iginx.thrift.StorageEngineType type, java.util.Map<String, String> extraParams) throws SessionException {
-            ensureSessionOpen();
-            delegate.addStorageEngine(ip, port, type, extraParams);
+            executeWithRetry("addStorageEngine", () -> {
+                delegate.addStorageEngine(ip, port, type, extraParams);
+                return null;
+            });
         }
 
         @Override
         public void removeStorageEngine(java.util.List<cn.edu.tsinghua.iginx.thrift.RemovedStorageEngineInfo> removedStorageEngineList) throws SessionException {
-            ensureSessionOpen();
-            delegate.removeStorageEngine(removedStorageEngineList);
+            executeWithRetry("removeStorageEngine", () -> {
+                delegate.removeStorageEngine(removedStorageEngineList);
+                return null;
+            });
         }
 
         @Override
         public cn.edu.tsinghua.iginx.utils.Pair<java.util.List<String>, Long> executeLoadCSV(String sql, String uploadedFileName) throws SessionException {
-            ensureSessionOpen();
-            return delegate.executeLoadCSV(sql, uploadedFileName);
+            return executeWithRetry("executeLoadCSV", () -> delegate.executeLoadCSV(sql, uploadedFileName));
         }
 
         @Override
         public void uploadFileChunk(cn.edu.tsinghua.iginx.thrift.FileChunk chunk) throws SessionException {
-            ensureSessionOpen();
-            delegate.uploadFileChunk(chunk);
+            executeWithRetry("uploadFileChunk", () -> {
+                delegate.uploadFileChunk(chunk);
+                return null;
+            });
         }
 
         /**
@@ -158,6 +170,85 @@ public class IginxConfig {
                 delegate.openSession();
                 sessionOpen.set(true);
             }
+        }
+
+        /**
+         * 带重试机制的操作执行
+         * 检测到连接异常时自动重连并重试
+         */
+        private <T> T executeWithRetry(String operation, SessionOperation<T> op) throws SessionException {
+            int retryCount = 0;
+            SessionException lastException = null;
+
+            while (retryCount <= maxRetry) {
+                try {
+                    ensureSessionOpen();
+                    return op.execute();
+                } catch (SessionException e) {
+                    lastException = e;
+                    
+                    // 检查是否是连接相关的异常
+                    if (isConnectionError(e)) {
+                        retryCount++;
+                        if (retryCount <= maxRetry) {
+                            log.warn("⚠️ 检测到连接异常: {} - 尝试重连 (第 {}/{})", 
+                                    e.getMessage(), retryCount, maxRetry);
+                            
+                            // 关闭旧连接
+                            try {
+                                delegate.closeSession();
+                            } catch (Exception closeEx) {
+                                log.warn("关闭旧连接时异常: {}", closeEx.getMessage());
+                            }
+                            sessionOpen.set(false);
+                            
+                            // 短暂等待后重试
+                            try {
+                                Thread.sleep(100 * retryCount);
+                            } catch (InterruptedException ie) {
+                                Thread.currentThread().interrupt();
+                                throw new SessionException("重试被中断", ie);
+                            }
+                            
+                            continue;
+                        }
+                    }
+                    
+                    // 不是连接错误或重试次数用尽，直接抛出异常
+                    throw e;
+                }
+            }
+            
+            log.error("❌ 操作失败，已达最大重试次数: {}", maxRetry);
+            throw lastException;
+        }
+
+        /**
+         * 判断是否是连接相关的异常
+         */
+        private boolean isConnectionError(SessionException e) {
+            if (e == null) {
+                return false;
+            }
+            
+            String message = e.getMessage();
+            if (message == null) {
+                return false;
+            }
+            
+            // 检查常见的连接错误特征
+            return message.contains("Connection reset") ||
+                   message.contains("socket write error") ||
+                   message.contains("SocketException") ||
+                   message.contains("TTransportException") ||
+                   message.contains("Connection refused") ||
+                   message.contains("Broken pipe") ||
+                   message.contains("Connection timed out");
+        }
+
+        @FunctionalInterface
+        private interface SessionOperation<T> {
+            T execute() throws SessionException;
         }
 
         // 委托其他方法
