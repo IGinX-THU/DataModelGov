@@ -1831,10 +1831,6 @@ class AssociationRules extends HTMLElement {
     }
     
     bindFormEvents() {
-        // Re-bind form-specific events
-        this.shadowRoot.getElementById('addMapping')?.addEventListener('click', async () => this.addMapping());
-        this.shadowRoot.getElementById('addResultMapping')?.addEventListener('click', async () => this.addResultMapping());
-        
         // Data source and target model change events
         this.shadowRoot.getElementById('dataSource')?.addEventListener('change', () => this.updateMappingFieldOptions());
         this.shadowRoot.getElementById('targetModel')?.addEventListener('change', () => {
