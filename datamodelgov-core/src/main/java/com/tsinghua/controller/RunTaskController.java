@@ -32,7 +32,7 @@ public class RunTaskController {
     @OperationLog(value = "触发任务", type = OperationLog.OperationType.CREATE)
     public Result<RunTaskEntity> runTask(@RequestBody RunTaskRequest runTaskRequest) throws Exception {
         RunTaskEntity task = runTaskService.runTask(runTaskRequest);
-        return Result.success("关联规则保存成功", task);
+        return Result.success("任务保存成功", task);
     }
 
     @ApiOperation("校验任务时间段唯一性")

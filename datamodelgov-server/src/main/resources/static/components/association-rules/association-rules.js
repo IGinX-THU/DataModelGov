@@ -1889,8 +1889,22 @@ class AssociationRules extends HTMLElement {
     runRule(id) {
         const rule = this.data.find(item => item.id === id);
         if (!rule) return;
-        
+
         this.showRunModal(rule);
+    }
+
+    // Helper method to get Beijing time (UTC+8) in datetime-local format
+    getBeijingTime() {
+        const now = new Date();
+        // Convert to Beijing time (UTC+8)
+        const beijingTime = new Date(now.getTime() + (8 * 60 * 60 * 1000));
+        // Format as YYYY-MM-DDTHH:mm for datetime-local input
+        const year = beijingTime.getUTCFullYear();
+        const month = String(beijingTime.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(beijingTime.getUTCDate()).padStart(2, '0');
+        const hours = String(beijingTime.getUTCHours()).padStart(2, '0');
+        const minutes = String(beijingTime.getUTCMinutes()).padStart(2, '0');
+        return `${year}-${month}-${day}T${hours}:${minutes}`;
     }
     
     showRunModal(rule) {
@@ -1934,7 +1948,7 @@ class AssociationRules extends HTMLElement {
                         </div>
                         <div class="form-group">
                             <label for="endTime">结束时间</label>
-                            <input type="datetime-local" id="endTime" name="endTime" required value="${new Date().toISOString().slice(0, 16)}" step="1">
+                            <input type="datetime-local" id="endTime" name="endTime" required value="${this.getBeijingTime()}" step="1">
                         </div>
                     </div>
                     
