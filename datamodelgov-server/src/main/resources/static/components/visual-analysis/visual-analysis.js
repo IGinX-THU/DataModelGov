@@ -1226,8 +1226,8 @@ class VisualAnalysis extends HTMLElement {
             // 构建请求参数
             const requestBody = {
                 paths: allPaths,
-                startTime: record.startTime || record.timestamp,
-                endTime: record.endTime || (record.timestamp + 86400000), // 默认24小时
+                startTime: record.startTime,
+                endTime: record.endTime,
                 aggregateType: null, // 不使用聚合
                 precision: 0, // 不使用时间间隔
                 timePrecision: null // 不使用时间精度
@@ -1383,6 +1383,16 @@ class VisualAnalysis extends HTMLElement {
         // 处理输入数据 - 使用虚线
         if (chartData.inputData && this.curveVisibility.input) {
             Object.keys(chartData.inputData).forEach(path => {
+                // 检查该路径是否为数值类型
+                const isNumeric = chartData.inputData[path].some(point => {
+                    return typeof point.value === 'number';
+                });
+
+                if (!isNumeric) {
+                    console.log('跳过非数值类型字段:', path);
+                    return;
+                }
+
                 const data = chartData.inputData[path].map(point => [
                     point.timestamp,
                     point.value
@@ -1414,6 +1424,16 @@ class VisualAnalysis extends HTMLElement {
         // 处理输出数据 - 使用实线
         if (chartData.outputData && this.curveVisibility.output) {
             Object.keys(chartData.outputData).forEach(path => {
+                // 检查该路径是否为数值类型
+                const isNumeric = chartData.outputData[path].some(point => {
+                    return typeof point.value === 'number';
+                });
+
+                if (!isNumeric) {
+                    console.log('跳过非数值类型字段:', path);
+                    return;
+                }
+
                 const data = chartData.outputData[path].map(point => [
                     point.timestamp,
                     point.value
@@ -1895,7 +1915,16 @@ class VisualAnalysis extends HTMLElement {
                     
                     Object.keys(pathInfo).forEach(path => {
                         const point = pathInfo[path].data.find(p => p.timestamp === timestamp);
-                        row.push(point && point.value !== null && point.value !== undefined ? point.value.toFixed(2) : 'N/A');
+                        if (point && point.value !== null && point.value !== undefined) {
+                            // 检查是否为数字类型
+                            if (typeof point.value === 'number') {
+                                row.push(point.value.toFixed(2));
+                            } else {
+                                row.push(String(point.value));
+                            }
+                        } else {
+                            row.push('N/A');
+                        }
                     });
                     
                     return row;
@@ -2550,7 +2579,16 @@ class VisualAnalysis extends HTMLElement {
                     
                     Object.keys(pathInfo).forEach(path => {
                         const point = pathInfo[path].data.find(p => p.timestamp === timestamp);
-                        row.push(point && point.value !== null && point.value !== undefined ? point.value.toFixed(2) : 'N/A');
+                        if (point && point.value !== null && point.value !== undefined) {
+                            // 检查是否为数字类型
+                            if (typeof point.value === 'number') {
+                                row.push(point.value.toFixed(2));
+                            } else {
+                                row.push(String(point.value));
+                            }
+                        } else {
+                            row.push('N/A');
+                        }
                     });
                     
                     return row;
@@ -3553,7 +3591,17 @@ class VisualAnalysis extends HTMLElement {
                     const startIndex = pathIndex * pointsPerPath;
                     const endIndex = Math.min(startIndex + pointsPerPath, task.inputData.length);
                     const pathData = task.inputData.slice(startIndex, endIndex);
-                    
+
+                    // 检查该路径是否为数值类型
+                    const isNumeric = pathData.some(point => {
+                        return point && Array.isArray(point) && point.length === 2 && typeof point[1] === 'number';
+                    });
+
+                    if (!isNumeric) {
+                        console.log('跳过非数值类型字段:', pathName);
+                        return;
+                    }
+
                     if (pathData.length > 0) {
                         const seriesKey = `${pathName}_input_${task.name}`;
                         pathSeriesMap[seriesKey] = {
@@ -3575,7 +3623,17 @@ class VisualAnalysis extends HTMLElement {
                     const startIndex = pathIndex * pointsPerPath;
                     const endIndex = Math.min(startIndex + pointsPerPath, task.calculationResult.length);
                     const pathData = task.calculationResult.slice(startIndex, endIndex);
-                    
+
+                    // 检查该路径是否为数值类型
+                    const isNumeric = pathData.some(point => {
+                        return point && Array.isArray(point) && point.length === 2 && typeof point[1] === 'number';
+                    });
+
+                    if (!isNumeric) {
+                        console.log('跳过非数值类型字段:', pathName);
+                        return;
+                    }
+
                     if (pathData.length > 0) {
                         const seriesKey = `${pathName}_output_${task.name}`;
                         pathSeriesMap[seriesKey] = {

@@ -510,7 +510,7 @@ public class RunTaskService {
             runTaskEntity.setTimestamp(timestamp);
             runTaskEntity.setStatus(TaskStatus.PENDING);
             runTaskEntity.setStartTime(Optional.ofNullable(runTaskRequest.getStartTime()).orElse(0L));
-            runTaskEntity.setEndTime(Optional.ofNullable(runTaskRequest.getEndTime()).orElse(System.currentTimeMillis()));
+            runTaskEntity.setEndTime(Optional.ofNullable(runTaskRequest.getEndTime()).orElse(timestamp));
 
             // 解析输入输出绑定
             List<InputBindDto> inputs = JSONArray.parseArray(associationRulesEntity.getInputsBind(), InputBindDto.class);
