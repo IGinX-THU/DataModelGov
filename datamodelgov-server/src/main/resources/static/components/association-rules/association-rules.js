@@ -3148,25 +3148,14 @@ class AssociationRules extends HTMLElement {
     getFullTablePath(node) {
         const parts = [];
         let current = node;
-        let foundRoot = false;
         
         while (current && current.classList.contains('tree-node')) {
             const span = current.querySelector('span');
             if (span) {
                 const nodeName = span.textContent.trim();
-                // 包含relational_system根路径
-                if (nodeName === 'relational_system') {
-                    foundRoot = true;
-                }
                 parts.unshift(nodeName);
             }
             current = current.parentElement?.parentElement;
-        }
-        
-        // 只有当路径中包含relational_system时才确保包含根路径
-        // 对于test.input、test.output等路径，不要强制添加relational_system前缀
-        if (!foundRoot && parts.length > 0 && parts.some(part => part.includes('relational') || part.includes('association') || part.includes('models') || part.includes('users') || part.includes('roles') || part.includes('parsing'))) {
-            parts.unshift('relational_system');
         }
         
         return parts.join('.');

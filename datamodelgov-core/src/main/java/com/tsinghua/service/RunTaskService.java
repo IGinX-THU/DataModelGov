@@ -509,6 +509,8 @@ public class RunTaskService {
             RunTaskEntity runTaskEntity = ConvertUtil.entityConvert(runTaskRequest, RunTaskEntity.class);
             runTaskEntity.setTimestamp(timestamp);
             runTaskEntity.setStatus(TaskStatus.PENDING);
+            runTaskEntity.setStartTime(Optional.ofNullable(runTaskRequest.getStartTime()).orElse(0L));
+            runTaskEntity.setEndTime(Optional.ofNullable(runTaskRequest.getEndTime()).orElse(System.currentTimeMillis()));
 
             // 解析输入输出绑定
             List<InputBindDto> inputs = JSONArray.parseArray(associationRulesEntity.getInputsBind(), InputBindDto.class);
