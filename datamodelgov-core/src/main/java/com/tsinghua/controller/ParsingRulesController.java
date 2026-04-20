@@ -28,7 +28,7 @@ public class ParsingRulesController {
     @RequirePermission(Permission.PARSING_RULES_CREATE)
     @OperationLog(value = "创建解析规则", type = OperationLog.OperationType.CREATE)
     public Result<Void> saveRules(@RequestBody ParsingRulesEntity parsingRulesEntity) throws Exception {
-        if (Objects.equals(parsingRulesEntity.getCreateTime(),1774340873453L) || "默认规则".equals(parsingRulesEntity.getName())){
+        if (parsingRulesEntity.getName().contains("默认规则")){
             return Result.paramError("不能修改默认规则");
         } else  {
             parsingRulesService.saveRules(parsingRulesEntity);
