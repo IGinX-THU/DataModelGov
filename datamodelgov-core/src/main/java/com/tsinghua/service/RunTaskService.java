@@ -662,11 +662,20 @@ public class RunTaskService {
         // 在任务目录中执行命令
         ProcessBuilder processBuilder = new ProcessBuilder();
         processBuilder.directory(taskDir.toFile());
-        
+
         // 解析命令（支持空格分隔的参数）
-        String[] cmdArray = associationRulesEntity.getCmd().split("\\s+");
+        // 根据操作系统类型处理编码问题
+        String[] cmdArray;
+        String osName = System.getProperty("os.name", "").toLowerCase();
+        if (osName.contains("windows")) {
+            // Windows上使用chcp 65001设置控制台代码页为UTF-8，确保中文输出正常
+            cmdArray = new String[]{"cmd", "/c", "chcp 65001 && " + associationRulesEntity.getCmd()};
+        } else {
+            // Linux/Mac默认使用UTF-8编码，直接执行原命令
+            cmdArray = associationRulesEntity.getCmd().split("\\s+");
+        }
         processBuilder.command(cmdArray);
-        
+
         log.info("执行命令: {} 在目录: {}", associationRulesEntity.getCmd(), taskDir);
         
         Process process = processBuilder.start();
@@ -839,32 +848,33 @@ public class RunTaskService {
                 }
                 
                 // 读取进程输出和错误流，同时记录到内存和文件
-                try (BufferedReader outputReader = new BufferedReader(new InputStreamReader(process.getInputStream()));
-                     BufferedReader errorReader = new BufferedReader(new InputStreamReader(process.getErrorStream()))) {
-                    
+                // 由于已经通过chcp 65001设置了控制台代码页为UTF-8，cmd输出现在是UTF-8编码
+                try (BufferedReader outputReader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
+                     BufferedReader errorReader = new BufferedReader(new InputStreamReader(process.getErrorStream(), StandardCharsets.UTF_8))) {
+
                     String line;
-                    
+
                     // 处理标准输出
                     while ((line = outputReader.readLine()) != null) {
                         String outputLine = "[OUT] " + line + "\n";
                         processLogBuilder.append(outputLine);
-                        
-                        // 实时写入日志文件
+
+                        // 实时写入日志文件，使用UTF-8编码
                         try {
-                            Files.write(logFile, outputLine.getBytes(), StandardOpenOption.APPEND);
+                            Files.write(logFile, outputLine.getBytes(StandardCharsets.UTF_8), StandardOpenOption.APPEND);
                         } catch (IOException e) {
                             log.warn("无法写入输出日志: {}", e.getMessage());
                         }
                     }
-                    
+
                     // 处理错误输出
                     while ((line = errorReader.readLine()) != null) {
                         String errorLine = "[ERR] " + line + "\n";
                         processLogBuilder.append(errorLine);
-                        
-                        // 实时写入日志文件
+
+                        // 实时写入日志文件，使用UTF-8编码
                         try {
-                            Files.write(logFile, errorLine.getBytes(), StandardOpenOption.APPEND);
+                            Files.write(logFile, errorLine.getBytes(StandardCharsets.UTF_8), StandardOpenOption.APPEND);
                         } catch (IOException e) {
                             log.warn("无法写入错误日志: {}", e.getMessage());
                         }

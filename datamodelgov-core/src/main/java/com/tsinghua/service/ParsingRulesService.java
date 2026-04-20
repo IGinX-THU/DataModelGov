@@ -30,15 +30,24 @@ public class ParsingRulesService {
     @PostConstruct
     private void init() {
         try {
-            ParsingRulesEntity parsingRulesEntity = new ParsingRulesEntity();
-            parsingRulesEntity.setCreateTime(1774340873453L);
-            parsingRulesEntity.setName("默认规则");
-            parsingRulesEntity.setRegexPattern("^#\\s*@(Input|Output)\\s*:?\\s*(\\w+)\\s*[\\(\\[]?\\s*(\\w+)\\s*[\\)\\]]?\\s*-?\\s*(.*)$");
-            parsingRulesEntity.setExample(
+            ParsingRulesEntity pythonRuleEntity = new ParsingRulesEntity();
+            pythonRuleEntity.setCreateTime(1776676648997L);
+            pythonRuleEntity.setName("Python默认规则");
+            pythonRuleEntity.setRegexPattern("^#\\s*@(Input|Output)\\s*:?\\s*(\\w+)\\s*[\\(\\[]?\\s*(\\w+)\\s*[\\)\\]]?\\s*-?\\s*(.*)$");
+            pythonRuleEntity.setExample(
                     "# @Input: speed (float) - 车速\n" +
                     "# @Input: gear (int) - 档位\n" +
                     "# @Output: power (float) - 功率");
-            saveRules(parsingRulesEntity);
+            saveRules(pythonRuleEntity);
+            ParsingRulesEntity matlabRuleEntity = new ParsingRulesEntity();
+            matlabRuleEntity.setCreateTime(1776159194994L);
+            matlabRuleEntity.setName("Matlab默认规则");
+            matlabRuleEntity.setRegexPattern("^%\\s*@(Input|Output)\\s*:?\\s*(\\w+)\\s*[\\(\\[]?\\s*(\\w+)\\s*[\\)\\]]?\\s*-?\\s*(.*)$");
+            matlabRuleEntity.setExample(
+                    "% @Input: speed (float) - 车速\n" +
+                            "% @Input: gear (int) - 档位\n" +
+                            "% @Output: power (float) - 功率");
+            saveRules(matlabRuleEntity);
         } catch (Exception e) {
             log.error(e.getMessage());
         }
@@ -61,7 +70,7 @@ public class ParsingRulesService {
         } else {
             // 新增情况
             validateNameUniqueness(parsingRulesEntity.getName());
-            timestamp = System.currentTimeMillis();
+            timestamp = parsingRulesEntity.getCreateTime() == null ? System.currentTimeMillis() : parsingRulesEntity.getCreateTime();
             parsingRulesEntity.setCreateTime(timestamp);
         }
         parsingRulesEntity.setUpdateTime(System.currentTimeMillis());

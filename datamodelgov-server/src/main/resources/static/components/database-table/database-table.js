@@ -25,17 +25,10 @@ class DatabaseTable extends HTMLElement {
 
     async connectedCallback() {
         await this.loadResources();
-        
-        // 只有在没有tableName时才使用seedData
-        if (!this.tableName) {
-            this.seedData();
-            this.totalCount = this.data.length;
-            this.renderTable();
-        }
-        
+
         // 初始化分页组件
         this.initPagination();
-        
+
         // 确保模态框初始状态是隐藏的，并且移除任何可能的事件监听器
         setTimeout(() => {
             const modalMask = this.shadowRoot.getElementById('modalMask');
