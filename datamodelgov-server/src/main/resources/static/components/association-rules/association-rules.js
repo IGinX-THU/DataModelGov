@@ -733,6 +733,75 @@ class AssociationRules extends HTMLElement {
                 return;
             }
 
+            // 验证cmd必传
+            if (!formData.cmd || formData.cmd.trim() === '') {
+                this.showToast('请输入运行命令', 'error');
+                return;
+            }
+
+            // 验证inputCsvName必传
+            if (!formData.inputCsvName || formData.inputCsvName.trim() === '') {
+                this.showToast('请输入输入数据CSV文件名', 'error');
+                return;
+            }
+
+            // 验证outputCsvName必传
+            if (!formData.outputCsvName || formData.outputCsvName.trim() === '') {
+                this.showToast('请输入输出结果CSV文件名', 'error');
+                return;
+            }
+
+            // 验证inputsBind必传
+            let inputsBind;
+            try {
+                inputsBind = JSON.parse(formData.inputsBind);
+                if (!inputsBind || inputsBind.length === 0) {
+                    this.showToast('请添加输入映射关系', 'error');
+                    return;
+                }
+            } catch (error) {
+                this.showToast('输入映射关系格式错误', 'error');
+                return;
+            }
+
+            // 如果outputsBind为空，自动填充模型的所有输出字段
+            let outputsBind;
+            try {
+                outputsBind = JSON.parse(formData.outputsBind);
+                if (!outputsBind || outputsBind.length === 0) {
+                    // 尝试从缓存的模型数据中获取输出字段
+                    if (this.cachedModelData && this.cachedModelData.outputs) {
+                        let modelOutputs = [];
+                        try {
+                            modelOutputs = typeof this.cachedModelData.outputs === 'string' 
+                                ? JSON.parse(this.cachedModelData.outputs) 
+                                : this.cachedModelData.outputs;
+                        } catch (error) {
+                            console.error('解析模型输出字段失败:', error);
+                        }
+
+                        if (modelOutputs && modelOutputs.length > 0) {
+                            // 自动填充：回写目标与字段一致
+                            outputsBind = modelOutputs.map(output => ({
+                                modelOutput: output.name || output,
+                                resultTarget: output.name || output // 回写目标与字段一致
+                            }));
+                            formData.outputsBind = JSON.stringify(outputsBind);
+                            console.log('自动填充outputsBind:', outputsBind);
+                        } else {
+                            this.showToast('请添加输出映射关系', 'error');
+                            return;
+                        }
+                    } else {
+                        this.showToast('请添加输出映射关系', 'error');
+                        return;
+                    }
+                }
+            } catch (error) {
+                this.showToast('输出映射关系格式错误', 'error');
+                return;
+            }
+
             console.log('保存关联规则数据:', formData);
 
             // 调用保存API - 参考model-edit.js的保存逻辑
