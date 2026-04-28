@@ -642,8 +642,8 @@ class ModelEdit extends HTMLElement {
             // 执行代码分析
             const codeAnalysis = this.performRealCodeAnalysis(selectedFile, parsingRule, extractResponse.data);
             
-            if (!codeAnalysis || (!codeAnalysis.inputs && !codeAnalysis.outputs)) {
-                this.showErrorMessage('解析失败，请检查解析规则和源文件');
+            if (!codeAnalysis || (!codeAnalysis.inputs || codeAnalysis.inputs.length === 0) && (!codeAnalysis.outputs || codeAnalysis.outputs.length === 0)) {
+                this.showErrorMessage('未解析到数据，请确认代码注释是否符合规范');
                 return;
             }
             
@@ -1293,6 +1293,12 @@ int process_data() {
         parseRulesSelect.innerHTML = '';
         console.log('已清空现有选项');
         
+        // 添加默认选项
+        const defaultOption = document.createElement('option');
+        defaultOption.value = '';
+        defaultOption.textContent = '请选择解析规则';
+        parseRulesSelect.appendChild(defaultOption);
+        
         try {
             // 通过API动态查询解析规则
             console.log('正在调用API查询解析规则...');
@@ -1310,6 +1316,7 @@ int process_data() {
                     option.value = rule.createTime; // 使用createTime作为唯一标识
                     option.textContent = rule.name;
                     option.dataset.regexPattern = rule.regexPattern || ''; // 存储正则表达式模式
+                    option.dataset.example = rule.example || ''; // 存储example字段
                     parseRulesSelect.appendChild(option);
                     console.log('添加解析规则选项:', rule.name, rule.createTime);
                 });
@@ -1325,8 +1332,37 @@ int process_data() {
 
     onParseRulesChange(value) {
         console.log('解析规则变更:', value);
+        
+        // 获取选中的解析规则
+        const parseRulesSelect = this.shadowRoot.getElementById('parseRulesSelect');
+        const selectedOption = parseRulesSelect?.querySelector(`option[value="${value}"]`);
+        
+        // 显示或隐藏注释规范区域
+        const annotationSpecSection = this.shadowRoot.getElementById('annotationSpecSection');
+        const specContent = this.shadowRoot.getElementById('specContent');
+        
+        if (selectedOption && value) {
+            // 只有当有example字段时才显示注释规范区域
+            const example = selectedOption.dataset.example || '';
+            
+            if (example) {
+                annotationSpecSection.style.display = 'block';
+                specContent.innerHTML = `<pre>${this.escapeHtml(example)}</pre>`;
+            } else {
+                annotationSpecSection.style.display = 'none';
+            }
+        } else {
+            annotationSpecSection.style.display = 'none';
+        }
+        
         // 根据选择的规则调整解析逻辑
         this.applyParseRules(value);
+    }
+    
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
 
     onSourceFileChange(value) {
@@ -1344,13 +1380,8 @@ int process_data() {
 
     applyParseRules(ruleType) {
         // 根据规则类型应用不同的解析规则
-        const rules = {
-            default: '使用默认解析规则',
-            strict: '使用严格解析规则',
-            custom: '使用自定义解析规则'
-        };
-        
-        this.showSuccessMessage(`已应用${rules[ruleType]}`);
+        // 不再显示提示信息，避免干扰用户
+        console.log('已应用解析规则:', ruleType);
     }
 
     showDialog(content, closeBtnClass) {

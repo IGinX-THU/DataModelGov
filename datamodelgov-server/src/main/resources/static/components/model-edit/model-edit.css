@@ -773,3 +773,37 @@
     border-radius: 8px;
     border: 1px dashed #e5e7eb;
 }
+
+/* Annotation specification section */
+.annotation-spec-section {
+    margin-top: 16px;
+    padding: 16px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+}
+
+.spec-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 12px;
+}
+
+.spec-content {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    padding: 12px;
+    overflow-x: auto;
+}
+
+.spec-content pre {
+    margin: 0;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 13px;
+    color: #334155;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
