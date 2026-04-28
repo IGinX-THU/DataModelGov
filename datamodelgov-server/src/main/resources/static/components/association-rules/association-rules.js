@@ -3538,6 +3538,14 @@ class AssociationRules extends HTMLElement {
                 
                 console.log('模型字段:', { inputs, outputs });
                 
+                // 检查inputs和outputs是否有值
+                if ((!inputs || inputs.length === 0) && (!outputs || outputs.length === 0)) {
+                    this.showToast('该模型版本的输入参数和输出参数为空，请先编辑元模型档案', 'error');
+                    // 清空映射字段选项
+                    this.updateMappingFieldOptions([], []);
+                    return;
+                }
+                
                 // 缓存模型数据供后续使用
                 this.cachedModelData = modelData;
                 console.log('loadModelFields缓存模型数据:', modelData);
@@ -3666,14 +3674,21 @@ class AssociationRules extends HTMLElement {
                         
                         if (result.success && result.data) {
                             const modelData = result.data;
-                            // 缓存模型数据供后续使用
-                            this.cachedModelData = modelData;
-                            console.log('获取并缓存模型数据:', modelData);
                             
+                            // 检查inputs是否有值
                             let inputs = [];
                             if (modelData.inputs) {
                                 inputs = typeof modelData.inputs === 'string' ? JSON.parse(modelData.inputs) : modelData.inputs;
                             }
+                            
+                            if (!inputs || inputs.length === 0) {
+                                this.showToast('该模型版本的输入参数为空，请先编辑元模型档案', 'error');
+                                return;
+                            }
+                            
+                            // 缓存模型数据供后续使用
+                            this.cachedModelData = modelData;
+                            console.log('获取并缓存模型数据:', modelData);
                             
                             // 添加模型参数选项
                             inputs.forEach(input => {
@@ -3724,16 +3739,23 @@ class AssociationRules extends HTMLElement {
                         
                         if (result.success && result.data) {
                             const modelData = result.data;
+                            
+                            // 检查outputs是否有值
+                            let outputs = [];
+                            if (modelData.outputs) {
+                                outputs = typeof modelData.outputs === 'string' ? JSON.parse(modelData.outputs) : modelData.outputs;
+                            }
+                            
+                            if (!outputs || outputs.length === 0) {
+                                this.showToast('该模型版本的输出参数为空，请先编辑元模型档案', 'error');
+                                return;
+                            }
+                            
                             // 缓存模型数据供后续使用
                             if (!this.cachedModelData) {
                                 this.cachedModelData = modelData;
                             }
                             console.log('获取并缓存模型数据:', modelData);
-                            
-                            let outputs = [];
-                            if (modelData.outputs) {
-                                outputs = typeof modelData.outputs === 'string' ? JSON.parse(modelData.outputs) : modelData.outputs;
-                            }
                             
                             // 添加模型输出选项
                             outputs.forEach(output => {
