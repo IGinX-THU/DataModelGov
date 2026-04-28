@@ -3383,6 +3383,12 @@ class AssociationRules extends HTMLElement {
                     console.log('版本change事件触发:', event);
                     console.log('版本select当前值:', versionSelect.value);
                     
+                    // 清空缓存数据，避免使用旧版本数据
+                    this.cachedModelData = null;
+                    
+                    // 先清空所有映射字段的下拉选选项
+                    this.updateMappingFieldOptions([], []);
+                    
                     // 重新获取目标模型select元素
                     const currentTargetModelSelect = this.shadowRoot.getElementById('targetModel');
                     console.log('目标模型select元素:', currentTargetModelSelect);
@@ -3538,6 +3544,16 @@ class AssociationRules extends HTMLElement {
                 
                 console.log('模型字段:', { inputs, outputs });
                 
+                // 检查inputs和outputs是否有值
+                if ((!inputs || inputs.length === 0) && (!outputs || outputs.length === 0)) {
+                    this.showToast('该模型版本的输入参数和输出参数为空，请先编辑元模型档案', 'error');
+                    // 清空缓存数据，避免使用旧版本数据
+                    this.cachedModelData = null;
+                    // 清空映射字段选项
+                    this.updateMappingFieldOptions([], []);
+                    return;
+                }
+                
                 // 缓存模型数据供后续使用
                 this.cachedModelData = modelData;
                 console.log('loadModelFields缓存模型数据:', modelData);
@@ -3666,14 +3682,23 @@ class AssociationRules extends HTMLElement {
                         
                         if (result.success && result.data) {
                             const modelData = result.data;
-                            // 缓存模型数据供后续使用
-                            this.cachedModelData = modelData;
-                            console.log('获取并缓存模型数据:', modelData);
                             
+                            // 检查inputs是否有值
                             let inputs = [];
                             if (modelData.inputs) {
                                 inputs = typeof modelData.inputs === 'string' ? JSON.parse(modelData.inputs) : modelData.inputs;
                             }
+                            
+                            if (!inputs || inputs.length === 0) {
+                                this.showToast('该模型版本的输入参数为空，请先编辑元模型档案', 'error');
+                                // 清空下拉选选项
+                                targetSelect.innerHTML = '<option value="">请选择参数</option>';
+                                return;
+                            }
+                            
+                            // 缓存模型数据供后续使用
+                            this.cachedModelData = modelData;
+                            console.log('获取并缓存模型数据:', modelData);
                             
                             // 添加模型参数选项
                             inputs.forEach(input => {
@@ -3724,16 +3749,25 @@ class AssociationRules extends HTMLElement {
                         
                         if (result.success && result.data) {
                             const modelData = result.data;
+                            
+                            // 检查outputs是否有值
+                            let outputs = [];
+                            if (modelData.outputs) {
+                                outputs = typeof modelData.outputs === 'string' ? JSON.parse(modelData.outputs) : modelData.outputs;
+                            }
+                            
+                            if (!outputs || outputs.length === 0) {
+                                this.showToast('该模型版本的输出参数为空，请先编辑元模型档案', 'error');
+                                // 清空下拉选选项
+                                modelSelect.innerHTML = '<option value="">请选择输出</option>';
+                                return;
+                            }
+                            
                             // 缓存模型数据供后续使用
                             if (!this.cachedModelData) {
                                 this.cachedModelData = modelData;
                             }
                             console.log('获取并缓存模型数据:', modelData);
-                            
-                            let outputs = [];
-                            if (modelData.outputs) {
-                                outputs = typeof modelData.outputs === 'string' ? JSON.parse(modelData.outputs) : modelData.outputs;
-                            }
                             
                             // 添加模型输出选项
                             outputs.forEach(output => {

@@ -52,19 +52,29 @@
                                 <option value="interface.h">interface.h</option>
                             </select>
                         </div>
-                        <div class="config-row">
-                            <label>强制覆盖：</label>
-                            <div class="checkbox-group">
-                                <label class="checkbox-item">
-                                    <input type="checkbox" id="forceOverrideCheck" checked>
-                                    <span class="checkmark"></span>
-                                </label>
-                                <span class="checkbox-text">覆盖用户已经手动填写且保存过的内容</span>
+                        <div class="config-row config-row-space-between">
+                            <button class="advanced-config-btn" id="advancedConfigBtn">
+                                <span class="btn-icon">⚙️</span>
+                                <span class="btn-text">高级配置</span>
+                            </button>
+                            <div class="center-group">
+                                <label>强制覆盖：</label>
+                                <div class="checkbox-group checkbox-group-compact">
+                                    <label class="checkbox-item">
+                                        <input type="checkbox" id="forceOverrideCheck" checked>
+                                        <span class="checkmark"></span>
+                                    </label>
+                                    <span class="checkbox-text">覆盖用户已经手动填写且保存过的内容</span>
+                                </div>
                             </div>
                             <button class="auto-parse-btn" id="autoParseBtn">
                                 <span class="btn-icon">🔍</span>
                                 <span class="btn-text">从代码自动解析</span>
                             </button>
+                        </div>
+                        <div class="annotation-spec-section" id="annotationSpecSection" style="display: none;">
+                            <div class="spec-title">注释规范示例：</div>
+                            <div class="spec-content" id="specContent"></div>
                         </div>
                     </div>
                 </div>

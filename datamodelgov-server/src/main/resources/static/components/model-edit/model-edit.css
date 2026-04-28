@@ -306,7 +306,6 @@
     cursor: pointer;
     transition: all 0.2s ease;
     box-shadow: 0 2px 4px -1px rgba(59, 130, 246, 0.3);
-    margin-left: 8px;
 }
 
 .auto-parse-btn:hover {
@@ -333,6 +332,27 @@
 
 .config-row:last-child {
     margin-bottom: 0;
+}
+
+.config-row-centered {
+    justify-content: center;
+}
+
+.config-row-space-between {
+    justify-content: space-between;
+    gap: 0;
+}
+
+.config-row-space-between .center-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: center;
+}
+
+.config-row-space-between .center-group label {
+    min-width: auto;
+    white-space: nowrap;
 }
 
 .config-row label {
@@ -375,8 +395,30 @@
 .checkbox-group {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
     flex: 1;
+}
+
+.checkbox-group-compact {
+    gap: 4px;
+}
+
+.checkbox-group-compact .checkbox-item {
+    width: 26px;
+    height: 16px;
+    min-width: 16px;
+}
+
+.checkbox-group-compact .checkmark {
+    width: 16px;
+    height: 16px;
+}
+
+.checkbox-group-compact .checkbox-item input:checked ~ .checkmark:after {
+    left: 5px;
+    top: 2px;
+    width: 4px;
+    height: 8px;
 }
 
 .checkbox-item {
@@ -435,6 +477,7 @@
     font-size: 14px;
     color: #4b5563;
     margin-right: auto;
+    margin-left: 0;
 }
 
 .params-block {
@@ -772,4 +815,69 @@
     background: #f9fafb;
     border-radius: 8px;
     border: 1px dashed #e5e7eb;
+}
+
+/* Annotation specification section */
+.annotation-spec-section {
+    margin-top: 16px;
+    padding: 16px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+}
+
+.spec-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 12px;
+}
+
+.spec-content {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    padding: 12px;
+    overflow-x: auto;
+}
+
+.spec-content pre {
+    margin: 0;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 13px;
+    color: #334155;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+/* Advanced config button */
+.advanced-config-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 4px -1px rgba(139, 92, 246, 0.3);
+}
+
+.advanced-config-btn:hover {
+    background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px -2px rgba(139, 92, 246, 0.4);
+}
+
+.advanced-config-btn .btn-icon {
+    font-size: 14px;
+}
+
+.advanced-config-btn .btn-text {
+    font-size: 13px;
 }

@@ -389,12 +389,46 @@ class ParsingRules extends HTMLElement {
                     <input class="modal-input" id="ruleRegex" type="text" value="${values.regex}" placeholder="请输入正则表达式" />
                     <div id="regexError" style="color: #ff4d4f; font-size: 12px; margin-top: 4px; display: none;">正则表达式无效</div>
                 </div>
-                
+
                 <div class="modal-form-row">
                     <span class="modal-label">示例注释规范 :</span>
-                    <textarea class="modal-textarea" id="ruleExample" placeholder="请输入示例注释规范，如：&#10;# @Input: speed (float) - 车速&#10;# @Output: power (double) - 功率" rows="6">${values.example}</textarea>
+                    <textarea class="modal-textarea" id="ruleExample" placeholder="请输入示例注释规范，如：&#10;# @Input: speed (float) - 车速&#10;# @Output: power (double) - 功率" rows="4">${values.example}</textarea>
                 </div>
-                
+
+                <div class="regex-tutorial">
+                    <div class="tutorial-title">📖 正则表达式配置指南</div>
+                    <div class="tutorial-content">
+                        <p><strong>匹配规则：</strong>系统读取代码文件前50行，逐行用正则表达式匹配，提取出参数信息后分类到Inputs或Outputs。</p>
+                        <p><strong>捕获组要求（必须严格按此顺序）：</strong></p>
+                        <ol>
+                            <li><strong>第1组 - 参数类型：</strong>用于分类，匹配到的文字如果包含"input"或"param"（不区分大小写）会归入Inputs；包含"output"或"return"（不区分大小写）会归入Outputs。常用写法：<code>(Input|Output|Param|Return)</code></li>
+                            <li><strong>第2组 - 参数名称：</strong>参数变量名，如speed、gear。写法：<code>(\\w+)</code></li>
+                            <li><strong>第3组 - 数据类型：</strong>系统支持的数据类型（自动映射）：Boolean、Integer、Long、Float、Double、String。代码中可写：bool/boolean、int/integer、long、float、double、string/str。写法：<code>([\\w\\[\\]]+)</code>或<code>([^\\)]+)</code></li>
+                            <li><strong>第4组 - 参数说明：</strong>参数中文描述，如车速、档位。写法：<code>(.+)</code>或<code>([^\\n]*)</code></li>
+                        </ol>
+                        <p><strong>最简单的配置示例</strong></p>
+                        <p>假设代码注释格式为：<code>Input speed float 车速</code>（类型 名称 数据类型 说明，用空格分隔）</p>
+                        <p>对应的正则为：<code>(Input|Output)\\s+(\\w+)\\s+(\\w+)\\s+(.+)</code></p>
+                        <p>拆解说明：</p>
+                        <ol>
+                            <li><code>(Input|Output)</code> - 第1组：参数类型，匹配"Input"或"Output"</li>
+                            <li><code>\\s+</code> - 匹配一个或多个空格</li>
+                            <li><code>(\\w+)</code> - 第2组：参数名称，如"speed"</li>
+                            <li><code>\\s+</code> - 匹配一个或多个空格</li>
+                            <li><code>(\\w+)</code> - 第3组：数据类型，如"float"</li>
+                            <li><code>\\s+</code> - 匹配一个或多个空格</li>
+                            <li><code>(.+)</code> - 第4组：参数说明，如"车速"</li>
+                        </ol>
+                        <p><strong>常见代码注释示例：</strong></p>
+                        <ul>
+                            <li><strong>Python:</strong> <code># Input speed float 车速</code> — 正则为：<code>(Input|Output)\\s+(\\w+)\\s+(\\w+)\\s+(.+)</code></li>
+                            <li><strong>MATLAB:</strong> <code>% Output power double 功率</code> — 正则为：<code>(Input|Output)\\s+(\\w+)\\s+(\\w+)\\s+(.+)</code></li>
+                            <li><strong>Java/C++:</strong> <code>// Input gear int 档位</code> — 正则为：<code>(Input|Output)\\s+(\\w+)\\s+(\\w+)\\s+(.+)</code></li>
+                            <li><strong>Java/C++多行:</strong> <code>/* Output result float 结果 */</code> — 正则为：<code>/\\*\\s*(Input|Output)\\s+(\\w+)\\s+(\\w+)\\s+(.+?)\\s*\\*/</code></li>
+                        </ul>
+                    </div>
+                </div>
+
                 <div class="modal-test-area">
                     <div class="test-header">
                         <span class="test-label">测试区</span>
@@ -534,30 +568,40 @@ class ParsingRules extends HTMLElement {
                 }
                 
                 try {
-                    const regex = new RegExp(regexValue, 'g');
-                    const matches = testText.match(regex);
+                    const regex = new RegExp(regexValue, 'gm');
+                    const lines = testText.split('\n');
+                    let allMatches = [];
                     
-                    if (matches && matches.length > 0) {
-                        let resultHTML = `<div class="test-match-count">找到 ${matches.length} 个匹配项：</div>`;
-                        
-                        // 高亮显示匹配结果
-                        let highlightedText = testText;
-                        highlightedText = highlightedText.replace(regex, (match) => {
-                            return `<span class="test-match">${match}</span>`;
+                    lines.forEach((line, lineIndex) => {
+                        const lineMatches = [...line.matchAll(regex)];
+                        lineMatches.forEach(match => {
+                            allMatches.push({
+                                lineNum: lineIndex + 1,
+                                fullMatch: match[0],
+                                groups: match.slice(1)
+                            });
                         });
+                    });
+                    
+                    if (allMatches.length > 0) {
+                        let resultHTML = `<div class="test-match-count">找到 ${allMatches.length} 个匹配项：</div>`;
                         
-                        resultHTML += `<div>${highlightedText}</div>`;
-                        
-                        // 显示匹配列表
-                        resultHTML += '<div style="margin-top: 8px; font-size: 11px; color: #6b7280;">匹配项：';
-                        matches.forEach((match, index) => {
-                            resultHTML += `<div style="margin-left: 16px; margin-top: 2px;">${index + 1}. "${match}"</div>`;
+                        allMatches.forEach((match, index) => {
+                            resultHTML += `<div style="margin-top: 8px; padding: 8px; background: #f0f9ff; border-radius: 4px;">`;
+                            resultHTML += `<div style="font-weight: 500; color: #0369a1;">匹配 ${index + 1}（第${match.lineNum}行）</div>`;
+                            resultHTML += `<div style="margin: 4px 0; padding: 4px 8px; background: #fff; border-radius: 3px; font-family: monospace;">${match.fullMatch}</div>`;
+                            resultHTML += `<div style="font-size: 11px; color: #6b7280; margin-top: 4px;">捕获组：</div>`;
+                            resultHTML += `<div style="margin-left: 12px; font-size: 11px;">`;
+                            resultHTML += `<div>① 参数类型: <code style="background: #e0f2fe; padding: 1px 4px; border-radius: 2px;">${match.groups[0] || '空'}</code></div>`;
+                            resultHTML += `<div>② 参数名称: <code style="background: #e0f2fe; padding: 1px 4px; border-radius: 2px;">${match.groups[1] || '空'}</code></div>`;
+                            resultHTML += `<div>③ 数据类型: <code style="background: #e0f2fe; padding: 1px 4px; border-radius: 2px;">${match.groups[2] || '空'}</code></div>`;
+                            resultHTML += `<div>④ 参数说明: <code style="background: #e0f2fe; padding: 1px 4px; border-radius: 2px;">${match.groups[3] || '空'}</code></div>`;
+                            resultHTML += `</div></div>`;
                         });
-                        resultHTML += '</div>';
                         
                         testResultContent.innerHTML = resultHTML;
                     } else {
-                        testResultContent.innerHTML = '<span class="test-no-match">未找到匹配项</span>';
+                        testResultContent.innerHTML = '<span class="test-no-match">未找到匹配项，请检查正则表达式和测试文本格式是否匹配</span>';
                     }
                 } catch (e) {
                     testResultContent.innerHTML = '<span class="test-no-match">正则表达式无效，无法测试</span>';
