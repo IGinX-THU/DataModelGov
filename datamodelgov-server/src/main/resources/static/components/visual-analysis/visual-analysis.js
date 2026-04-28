@@ -1904,16 +1904,17 @@ class VisualAnalysis extends HTMLElement {
                 const sortedTimestamps = Array.from(allTimestamps).sort((a, b) => a - b);
                 
                 // 构建表头：时间 + 每个测点（包含类型）
-                const headers = ['时间'];
-                Object.keys(pathInfo).forEach(path => {
-                    headers.push(`${path} (${pathInfo[path].type})`);
+                const allHeaders = ['时间'];
+                const paths = Object.keys(pathInfo);
+                paths.forEach(path => {
+                    allHeaders.push(`${path} (${pathInfo[path].type})`);
                 });
                 
                 // 构建数据行：每个时间点一行
-                const rows = sortedTimestamps.map(timestamp => {
+                const allRows = sortedTimestamps.map(timestamp => {
                     const row = [new Date(timestamp).toLocaleString()];
                     
-                    Object.keys(pathInfo).forEach(path => {
+                    paths.forEach(path => {
                         const point = pathInfo[path].data.find(p => p.timestamp === timestamp);
                         if (point && point.value !== null && point.value !== undefined) {
                             // 检查是否为数字类型
@@ -1930,7 +1931,52 @@ class VisualAnalysis extends HTMLElement {
                     return row;
                 });
                 
-                pdfGenerator.addTable(headers, rows);
+                // 处理列数过多的情况：分表显示
+                const maxColumnsPerTable = 11; // 每个表最多显示11列（包含时间列）
+                const totalColumns = allHeaders.length;
+                
+                if (totalColumns <= maxColumnsPerTable) {
+                    // 列数较少，直接添加单个表格
+                    pdfGenerator.addTable(allHeaders, allRows);
+                } else {
+                    // 列数较多，需要分表显示
+                    const pathCount = paths.length;
+                    const pathsPerTable = maxColumnsPerTable - 1; // 减去时间列
+                    const tableCount = Math.ceil(pathCount / pathsPerTable);
+                    
+                    pdfGenerator.addText(`数据列数过多（共${pathCount}列），已拆分为${tableCount}个表格显示：`, 10);
+                    
+                    for (let tableIndex = 0; tableIndex < tableCount; tableIndex++) {
+                        const startPathIndex = tableIndex * pathsPerTable;
+                        const endPathIndex = Math.min(startPathIndex + pathsPerTable, pathCount);
+                        const currentPaths = paths.slice(startPathIndex, endPathIndex);
+                        
+                        // 构建当前表的表头
+                        const currentHeaders = ['时间'];
+                        currentPaths.forEach(path => {
+                            currentHeaders.push(`${path} (${pathInfo[path].type})`);
+                        });
+                        
+                        // 构建当前表的数据行
+                        const currentRows = allRows.map(row => {
+                            const currentRow = [row[0]]; // 时间列
+                            currentPaths.forEach((path, pathIdx) => {
+                                const originalPathIdx = paths.indexOf(path);
+                                currentRow.push(row[originalPathIdx + 1]); // +1 跳过时间列
+                            });
+                            return currentRow;
+                        });
+                        
+                        // 添加表格标题
+                        pdfGenerator.addText(`表格 ${tableIndex + 1}/${tableCount} (列 ${startPathIndex + 1}-${endPathIndex})`, 11, true);
+                        pdfGenerator.addTable(currentHeaders, currentRows);
+                        
+                        // 如果不是最后一个表，添加分隔线
+                        if (tableIndex < tableCount - 1) {
+                            pdfGenerator.addSeparator();
+                        }
+                    }
+                }
             } else {
                 pdfGenerator.addText('暂无数据', 12);
             }
@@ -2568,16 +2614,17 @@ class VisualAnalysis extends HTMLElement {
                 const sortedTimestamps = Array.from(allTimestamps).sort((a, b) => a - b);
                 
                 // 构建表头：时间 + 每个测点（包含类型）
-                const headers = ['时间'];
-                Object.keys(pathInfo).forEach(path => {
-                    headers.push(`${path} (${pathInfo[path].type})`);
+                const allHeaders = ['时间'];
+                const paths = Object.keys(pathInfo);
+                paths.forEach(path => {
+                    allHeaders.push(`${path} (${pathInfo[path].type})`);
                 });
                 
                 // 构建数据行：每个时间点一行
-                const rows = sortedTimestamps.map(timestamp => {
+                const allRows = sortedTimestamps.map(timestamp => {
                     const row = [new Date(timestamp).toLocaleString()];
                     
-                    Object.keys(pathInfo).forEach(path => {
+                    paths.forEach(path => {
                         const point = pathInfo[path].data.find(p => p.timestamp === timestamp);
                         if (point && point.value !== null && point.value !== undefined) {
                             // 检查是否为数字类型
@@ -2594,7 +2641,52 @@ class VisualAnalysis extends HTMLElement {
                     return row;
                 });
                 
-                pdfGenerator.addTable(headers, rows);
+                // 处理列数过多的情况：分表显示
+                const maxColumnsPerTable = 11; // 每个表最多显示11列（包含时间列）
+                const totalColumns = allHeaders.length;
+                
+                if (totalColumns <= maxColumnsPerTable) {
+                    // 列数较少，直接添加单个表格
+                    pdfGenerator.addTable(allHeaders, allRows);
+                } else {
+                    // 列数较多，需要分表显示
+                    const pathCount = paths.length;
+                    const pathsPerTable = maxColumnsPerTable - 1; // 减去时间列
+                    const tableCount = Math.ceil(pathCount / pathsPerTable);
+                    
+                    pdfGenerator.addText(`数据列数过多（共${pathCount}列），已拆分为${tableCount}个表格显示：`, 10);
+                    
+                    for (let tableIndex = 0; tableIndex < tableCount; tableIndex++) {
+                        const startPathIndex = tableIndex * pathsPerTable;
+                        const endPathIndex = Math.min(startPathIndex + pathsPerTable, pathCount);
+                        const currentPaths = paths.slice(startPathIndex, endPathIndex);
+                        
+                        // 构建当前表的表头
+                        const currentHeaders = ['时间'];
+                        currentPaths.forEach(path => {
+                            currentHeaders.push(`${path} (${pathInfo[path].type})`);
+                        });
+                        
+                        // 构建当前表的数据行
+                        const currentRows = allRows.map(row => {
+                            const currentRow = [row[0]]; // 时间列
+                            currentPaths.forEach((path, pathIdx) => {
+                                const originalPathIdx = paths.indexOf(path);
+                                currentRow.push(row[originalPathIdx + 1]); // +1 跳过时间列
+                            });
+                            return currentRow;
+                        });
+                        
+                        // 添加表格标题
+                        pdfGenerator.addText(`表格 ${tableIndex + 1}/${tableCount} (列 ${startPathIndex + 1}-${endPathIndex})`, 11, true);
+                        pdfGenerator.addTable(currentHeaders, currentRows);
+                        
+                        // 如果不是最后一个表，添加分隔线
+                        if (tableIndex < tableCount - 1) {
+                            pdfGenerator.addSeparator();
+                        }
+                    }
+                }
             } else {
                 pdfGenerator.addText('暂无数据', 12);
             }
