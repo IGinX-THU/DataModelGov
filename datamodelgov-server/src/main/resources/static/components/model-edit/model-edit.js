@@ -100,6 +100,15 @@ class ModelEdit extends HTMLElement {
             });
         }
 
+        // 高级规则配置按钮
+        const advancedConfigBtn = this.shadowRoot.getElementById('advancedConfigBtn');
+        if (advancedConfigBtn) {
+            advancedConfigBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.navigateToParsingRules();
+            });
+        }
+
         // 解析规则下拉选择
         const parseRulesSelect = this.shadowRoot.getElementById('parseRulesSelect');
         if (parseRulesSelect) {
@@ -1359,6 +1368,17 @@ int process_data() {
         this.applyParseRules(value);
     }
     
+    navigateToParsingRules() {
+        // 隐藏当前弹窗
+        this.hide();
+        // 调用全局函数显示parsing-rules组件
+        if (typeof window.showComponent === 'function') {
+            window.showComponent('parsingRules');
+        } else {
+            console.error('全局showComponent函数未找到');
+        }
+    }
+
     escapeHtml(text) {
         const div = document.createElement('div');
         div.textContent = text;

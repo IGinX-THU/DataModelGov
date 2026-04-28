@@ -335,6 +335,10 @@
     margin-bottom: 0;
 }
 
+.config-row-centered {
+    justify-content: center;
+}
+
 .config-row label {
     min-width: 80px;
     font-size: 14px;
@@ -375,8 +379,30 @@
 .checkbox-group {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
     flex: 1;
+}
+
+.checkbox-group-compact {
+    gap: 4px;
+}
+
+.checkbox-group-compact .checkbox-item {
+    width: 26px;
+    height: 16px;
+    min-width: 16px;
+}
+
+.checkbox-group-compact .checkmark {
+    width: 16px;
+    height: 16px;
+}
+
+.checkbox-group-compact .checkbox-item input:checked ~ .checkmark:after {
+    left: 5px;
+    top: 2px;
+    width: 4px;
+    height: 8px;
 }
 
 .checkbox-item {
@@ -435,6 +461,7 @@
     font-size: 14px;
     color: #4b5563;
     margin-right: auto;
+    margin-left: 0;
 }
 
 .params-block {
@@ -806,4 +833,36 @@
     line-height: 1.6;
     white-space: pre-wrap;
     word-wrap: break-word;
+}
+
+/* Advanced config button */
+.advanced-config-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 4px -1px rgba(139, 92, 246, 0.3);
+    margin-left: 8px;
+}
+
+.advanced-config-btn:hover {
+    background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px -2px rgba(139, 92, 246, 0.4);
+}
+
+.advanced-config-btn .btn-icon {
+    font-size: 14px;
+}
+
+.advanced-config-btn .btn-text {
+    font-size: 12px;
 }
