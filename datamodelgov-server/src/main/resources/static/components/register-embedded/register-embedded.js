@@ -87,6 +87,16 @@ class RegisterDataResourceEmbedded extends HTMLElement {
                 this.updateDummyDirRequired();
             });
         }
+
+        // 是否只读变化事件
+        const isReadOnlyCheckbox = this.shadowRoot.getElementById('isReadOnly');
+        if (isReadOnlyCheckbox) {
+            isReadOnlyCheckbox.addEventListener('change', (e) => {
+                if (!e.target.checked) {
+                    this.showMessage('非只读数据源将无法卸载！', 'warning');
+                }
+            });
+        }
     }
 
     show() {
@@ -107,20 +117,23 @@ class RegisterDataResourceEmbedded extends HTMLElement {
 
     toggleEngineField() {
         const dataSourceType = this.shadowRoot.getElementById('dataSourceType');
-        
+
         // Hide all storage-specific fields first
         const allFieldGroups = this.shadowRoot.querySelectorAll('.storage-specific-fields');
         allFieldGroups.forEach(group => group.style.display = 'none');
-        
+
         // Hide auth fields by default
         const authFields = this.shadowRoot.getElementById('authFields');
         if (authFields) {
             authFields.style.display = 'none';
         }
-        
+
         // 先清除relational的自动填充设置
         this.clearRelationalSettings();
-        
+
+        // 切换任意数据源类型时都默认勾选"是否只读"
+        this.autoCheckReadOnly();
+
         if (dataSourceType) {
             // Show relevant fields based on storage engine type
             switch(dataSourceType.value) {
@@ -141,7 +154,7 @@ class RegisterDataResourceEmbedded extends HTMLElement {
                 case '4': // Relational
                     this.showFieldGroup('relationalFields');
                     authFields.style.display = 'block';
-                    // 自动填充模式前缀为"relational"并勾选只读
+                    // 自动填充模式前缀为"relational"
                     this.autoFillRelationalSettings();
                     break;
                 case '5': // MongoDB
@@ -182,6 +195,15 @@ class RegisterDataResourceEmbedded extends HTMLElement {
         }
     }
 
+    autoCheckReadOnly() {
+        // 自动勾选"是否只读"
+        const isReadOnlyCheckbox = this.shadowRoot.getElementById('isReadOnly');
+        if (isReadOnlyCheckbox) {
+            isReadOnlyCheckbox.checked = true;
+            console.log('自动勾选"是否只读"');
+        }
+    }
+
     autoFillRelationalSettings() {
         // 自动填充模式前缀为"relational"
         const schemaPrefixInput = this.shadowRoot.getElementById('schemaPrefix');
@@ -191,13 +213,6 @@ class RegisterDataResourceEmbedded extends HTMLElement {
                 schemaPrefixInput.value = 'relational';
                 console.log('自动填充模式前缀为: relational');
             }
-        }
-
-        // 自动勾选"是否只读"
-        const isReadOnlyCheckbox = this.shadowRoot.getElementById('isReadOnly');
-        if (isReadOnlyCheckbox) {
-            isReadOnlyCheckbox.checked = true;
-            console.log('自动勾选"是否只读"');
         }
     }
 
