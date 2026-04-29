@@ -38,11 +38,9 @@ public abstract class BaseStorageEngineRequest {
     )
     private Integer storageEngineType;
 
-    @NotNull(message = "has_data参数不能为空")
     @ApiModelProperty(value = "是否读取原有数据", example = "false", required = true)
     private Boolean hasData = true;
 
-    @NotNull(message = "is_read_only参数不能为空")
     @ApiModelProperty(value = "是否只读", example = "false", required = true)
     private Boolean isReadOnly = true;
 
