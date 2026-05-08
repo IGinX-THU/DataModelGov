@@ -43,6 +43,9 @@ spring:
   mvc:
     pathmatch:
       matching-strategy: ANT_PATH_MATCHER
+  web:
+    resources:
+      static-locations: file:./static/,classpath:/static/
 
 #启用Swagger文档
 springfox:
