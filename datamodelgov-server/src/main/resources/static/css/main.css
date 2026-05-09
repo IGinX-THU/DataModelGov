@@ -101,6 +101,21 @@
 .func-tab-container {
     background-color: #f8f9fa;
     border-bottom: 1px solid #dee2e6;
+    position: relative;
+}
+
+/* Logo区域 */
+.func-tab-logo {
+    position: absolute;
+    right: 20px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 10;
+}
+
+.func-tab-logo img {
+    height: 75px;
+    width: auto;
 }
 
 /* 功能按钮栏 */
