@@ -8,6 +8,17 @@
     <link rel="stylesheet" href="./css/reset.css">
     <link rel="stylesheet" href="./css/icons.css">
     <link rel="stylesheet" href="./css/main.css">
+    <script>
+        // 页面加载前立即检查登录状态，避免先显示index.html再跳转
+        (function() {
+            const tokenKey = 'jwtToken';
+            const token = localStorage.getItem(tokenKey);
+            if (!token) {
+                window.location.href = '/login.html';
+            }
+        })();
+    </script>
+    <script src="./config/app-config.js"></script>
 </head>
 <body>
 <svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
