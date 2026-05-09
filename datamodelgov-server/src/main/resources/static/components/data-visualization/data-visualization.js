@@ -1478,7 +1478,11 @@ class DataVisualization extends HTMLElement {
                     const time = new Date(params[0].value[0]).toLocaleString();
                     let result = `时间: ${time}<br/>`;
                     params.forEach(param => {
-                        result += `${param.seriesName}: ${param.value[1].toFixed(2)}<br/>`;
+                        if (param.value[1] !== null && param.value[1] !== undefined) {
+                            result += `${param.seriesName}: ${param.value[1].toFixed(2)}<br/>`;
+                        } else {
+                            result += `${param.seriesName}: --<br/>`;
+                        }
                     });
                     return result;
                 }
