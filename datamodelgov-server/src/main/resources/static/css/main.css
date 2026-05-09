@@ -205,6 +205,81 @@
     padding-left: 10px;
     font-weight: bold;
     border-bottom: 1px solid #ccc;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-right: 10px;
+}
+
+/* 侧边栏视图切换按钮 */
+.sidebar-view-toggle-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+}
+
+.sidebar-view-toggle-btn:hover {
+    background-color: rgba(74, 144, 226, 0.1);
+}
+
+.sidebar-view-toggle-btn.active {
+    background-color: rgba(74, 144, 226, 0.2);
+}
+
+.sidebar-view-toggle-btn .view-icon {
+    font-size: 14px;
+}
+
+.sidebar-view-toggle-btn .view-text {
+    color: #666;
+}
+
+.sidebar-view-toggle-btn.active .view-text {
+    color: #4a90e2;
+}
+
+/* 视图切换容器 */
+.view-toggle-container {
+    padding: 10px;
+    border-bottom: 1px solid #e0e0e0;
+    background-color: #f8f9fa;
+}
+
+/* 视图切换按钮 */
+.view-toggle-btn {
+    width: 100%;
+    background-color: #4a90e2;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 10px 15px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.view-toggle-btn:hover {
+    background-color: #357abd;
+}
+
+.view-toggle-btn.active {
+    background-color: #2c5aa0;
+}
+
+.view-toggle-btn .view-icon {
+    font-size: 18px;
 }
 
 /* 搜索框 - 优化版本 */

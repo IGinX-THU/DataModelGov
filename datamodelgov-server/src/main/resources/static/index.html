@@ -250,7 +250,13 @@
 <div class="main-container">
     <!-- 左侧数据资源库 -->
     <div class="sidebar left-sidebar">
-        <div class="sidebar-title">数据资源库</div>
+        <div class="sidebar-title">
+            <span>数据资源库</span>
+            <button class="sidebar-view-toggle-btn active" id="viewToggleBtn">
+                <span class="view-icon">📊</span>
+                <span class="view-text">图表视图</span>
+            </button>
+        </div>
         <div class="tree" id="dataSourceTree">
             <!-- 数据源树将通过JavaScript动态加载 -->
             <div class="loading-placeholder">正在加载数据源...</div>
