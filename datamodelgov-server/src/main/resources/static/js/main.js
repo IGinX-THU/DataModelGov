@@ -36,8 +36,46 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    // 视图切换按钮
+    const viewToggleBtn = document.getElementById('viewToggleBtn');
+    if (viewToggleBtn) {
+        viewToggleBtn.addEventListener('click', function() {
+            // 切换视图模式
+            currentViewMode = currentViewMode === 'visualization' ? 'table' : 'visualization';
+            const viewIcon = this.querySelector('.view-icon');
+            const viewText = this.querySelector('.view-text');
+            
+            if (currentViewMode === 'table') {
+                viewIcon.textContent = '📋';
+                viewText.textContent = '表格视图';
+                // this.classList.add('active');
+                
+                // 如果有选中的数据源，重新加载为表格视图
+                if (selectedDataSource) {
+                    const pathParts = selectedDataSource.split('.');
+                    const parentPath = pathParts.slice(0, -1).join('.');
+                    showDatabaseTable(parentPath);
+                }
+            } else {
+                viewIcon.textContent = '📊';
+                viewText.textContent = '图表视图';
+                // this.classList.remove('active');
+                
+                // 如果有选中的数据源，重新加载为可视化视图
+                if (selectedDataSource) {
+                    showDataVisualization(selectedDataSource);
+                }
+            }
+            
+            console.log('视图模式切换为:', currentViewMode);
+        });
+    }
+
     // 全局变量：跟踪当前选中的数据源
     let selectedDataSource = null;
+    
+    // 视图模式：'visualization' 或 'table'
+    let currentViewMode = 'visualization';
     
     // 隐藏所有组件的函数
     function hideAllComponents() {
@@ -1645,14 +1683,14 @@ function showVisualAnalysis() {
                         console.log('点击了叶子节点:', fullPath);
                         selectedDataSource = fullPath;
                         
-                        // 检查是否为relational开头的路径，如果是则使用data-table跳转逻辑
-                        if (fullPath.startsWith('relational')) {
+                        // 根据视图模式决定使用哪个组件
+                        if (currentViewMode === 'table') {
                             // 获取父节点路径作为tableName
                             const pathParts = fullPath.split('.');
                             const parentPath = pathParts.slice(0, -1).join('.');
                             showDatabaseTable(parentPath);
                         } else {
-                            // 使用 dataSource.type === 1 的逻辑跳转到 data-visualization 页面
+                            // 使用 data-visualization 页面
                             showDataVisualization(fullPath);
                         }
                         

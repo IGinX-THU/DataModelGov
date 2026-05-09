@@ -3,11 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>数据与模型一体化管理平台</title>
-    <link rel="icon" type="image/x-icon" href="./favicon.ico">
+    <title>数据与模型一体化管理平台（清华IGinX支持）</title>
+    <link rel="icon" type="image/x-icon" href="./images/favicon.png">
     <link rel="stylesheet" href="./css/reset.css">
     <link rel="stylesheet" href="./css/icons.css">
     <link rel="stylesheet" href="./css/main.css">
+    <script>
+        // 页面加载前立即检查登录状态，避免先显示index.html再跳转
+        (function() {
+            const tokenKey = 'jwtToken';
+            const token = localStorage.getItem(tokenKey);
+            if (!token) {
+                window.location.href = '/login.html';
+            }
+        })();
+    </script>
+    <script src="./config/app-config.js"></script>
 </head>
 <body>
 <svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
@@ -162,6 +173,10 @@
 
 <!-- 功能按钮栏和标签栏合并区域 -->
 <div class="func-tab-container">
+    <!-- Logo区域 -->
+    <div class="func-tab-logo">
+        <img src="./images/slider4-2.jpg" alt="Logo">
+    </div>
     <!-- 二级标签栏 -->
     <div class="sub-tab-bar">
         <div class="sub-tab-section">
@@ -246,7 +261,13 @@
 <div class="main-container">
     <!-- 左侧数据资源库 -->
     <div class="sidebar left-sidebar">
-        <div class="sidebar-title">数据资源库</div>
+        <div class="sidebar-title">
+            <span>数据资源库</span>
+            <button class="sidebar-view-toggle-btn active" id="viewToggleBtn">
+                <span class="view-icon">📊</span>
+                <span class="view-text">图表视图</span>
+            </button>
+        </div>
         <div class="tree" id="dataSourceTree">
             <!-- 数据源树将通过JavaScript动态加载 -->
             <div class="loading-placeholder">正在加载数据源...</div>

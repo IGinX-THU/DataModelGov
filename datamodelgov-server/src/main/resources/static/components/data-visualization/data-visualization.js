@@ -21,6 +21,7 @@ class DataVisualization extends HTMLElement {
         await this.loadResources();
         setTimeout(() => {
             this.bindEvents();
+            this.setupSelectedPointsWatcher();
         }, 100);
     }
 
@@ -188,9 +189,22 @@ class DataVisualization extends HTMLElement {
         this.setAttribute('show', '');
         this.dataSource = dataSource;
         this.availablePoints = points;
+        
+        // 检查是否新增了测点
+        this._oldSize = this.selectedPoints ? this.selectedPoints.size : 0;
+        this._wasShowingInappropriate = this.isShowingInappropriateState();
+        
         // 如果是新的显示，使用传入的测点；如果是已存在的组件，保持当前选中的测点
         if (!this.selectedPoints || this.selectedPoints.size === 0) {
             this.selectedPoints = new Set(points);
+        } else {
+            // 检查是否有新增测点
+            const newPoints = points.filter(p => !this.selectedPoints.has(p));
+            if (newPoints.length > 0) {
+                console.log('检测到新增测点:', newPoints);
+                // 添加新测点
+                newPoints.forEach(p => this.selectedPoints.add(p));
+            }
         }
 
         // 设置数据源名称
@@ -322,10 +336,27 @@ class DataVisualization extends HTMLElement {
         // 更新表格
         this.updateTable();
 
+        // 检查是否需要重新更新可视化（新增测点的情况）
+        console.log('检查新增测点条件:', {
+            wasShowingInappropriate: this._wasShowingInappropriate,
+            oldSize: this._oldSize,
+            currentSize: this.selectedPoints.size,
+            hasData: this.allData.length > 0,
+            shouldTrigger: this._wasShowingInappropriate && this._oldSize < this.selectedPoints.size && this.allData.length > 0
+        });
+        
         // 初始化图表
         if (!this.chart) {
             this.initChart();
+        }
+        
+        // 如果是新增测点的情况，强制重新检查图表显示条件
+        if (this._wasShowingInappropriate && this._oldSize < this.selectedPoints.size && this.allData.length > 0) {
+            console.log('检测到新增测点且有数据，重新更新可视化');
+            // 强制重新检查图表显示条件
+            this.updateChart();
         } else {
+            // 正常更新可视化
             this.updateVisualization();
         }
 
@@ -635,12 +666,96 @@ class DataVisualization extends HTMLElement {
             console.log('没有选中的测点了，显示空状态');
             this.showEmptyState();
         } else {
+            // 重置图表渲染标记，确保重新检查显示条件
+            this._chartRendered = false;
+            console.log('🔄 重置图表渲染标记为 false');
+            
+            // 清空现有图表，避免显示已删除测点的数据
+            if (this.chart) {
+                this.chart.clear();
+                console.log('🧹 清空现有图表');
+            }
+            
             // 调用接口重新查询数据，确保表头和数据都是最新的
             // 添加小延迟确保UI更新完成
             setTimeout(() => {
                 this.loadData();
             }, 50);
         }
+    }
+
+    setupSelectedPointsWatcher() {
+        // 监听全局selectedDataPoints的变化
+        if (!window.selectedDataPoints) {
+            window.selectedDataPoints = new Set();
+        }
+        
+        // 保存原始的add方法
+        const originalAdd = window.selectedDataPoints.add;
+        let isUpdating = false;
+        
+        // 重写add方法以监听变化
+        window.selectedDataPoints.add = function(value) {
+            const result = originalAdd.call(this, value);
+            
+            // 避免循环更新
+            if (!isUpdating) {
+                isUpdating = true;
+                
+                // 通知组件更新
+                setTimeout(() => {
+                    const dataViz = document.querySelector('data-visualization');
+                    if (dataViz && dataViz.selectedPoints) {
+                        const oldSize = dataViz.selectedPoints.size;
+                        const wasShowingInappropriate = dataViz.isShowingInappropriateState();
+                        
+                        // 同步选中的测点
+                        dataViz.selectedPoints = new Set(window.selectedDataPoints);
+                        dataViz.updateSelectedPointsList();
+                        
+                        // 如果之前显示"数据不适合图表显示"且现在有新测点，则重新检查
+                        if (wasShowingInappropriate && oldSize < window.selectedDataPoints.size) {
+                            console.log('检测到新增测点，重新检查数据是否适合图表展示');
+                            // 如果有数据，重新更新可视化；否则重新加载数据
+                            if (dataViz.displayData.length > 0) {
+                                dataViz.updateVisualization();
+                            } else {
+                                dataViz.loadData();
+                            }
+                        }
+                    }
+                    isUpdating = false;
+                }, 50);
+            }
+            
+            return result;
+        };
+    }
+
+    // 显示覆盖层
+    showChartOverlay(content) {
+        const overlay = this.shadowRoot.getElementById('chartOverlay');
+        if (overlay) {
+            overlay.innerHTML = content;
+            overlay.style.display = 'flex';
+        }
+    }
+
+    // 隐藏覆盖层
+    hideChartOverlay() {
+        const overlay = this.shadowRoot.getElementById('chartOverlay');
+        if (overlay) {
+            overlay.style.display = 'none';
+        }
+    }
+
+    // 检查是否正在显示"数据不适合图表展示"状态
+    isShowingInappropriateState() {
+        const overlay = this.shadowRoot.getElementById('chartOverlay');
+        if (!overlay) return false;
+        
+        const innerHTML = overlay.innerHTML;
+        return innerHTML.includes('数据不适合图表显示') || innerHTML.includes('测点数据为非数值类型');
     }
 
     // 重新计算显示数据，不调用接口
@@ -956,37 +1071,28 @@ class DataVisualization extends HTMLElement {
     }
 
     showEmptyState() {
-        // 清理ECharts实例
-        if (this.chart) {
-            this.chart.dispose();
-            this.chart = null;
-        }
-
-        const chartContainer = this.shadowRoot.getElementById('chartContainer');
-        if (chartContainer) {
-            chartContainer.innerHTML = `
-                <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #999;">
-                    <div style="font-size: 48px; margin-bottom: 16px;">📊</div>
-                    <div style="font-size: 14px; margin-bottom: 8px;">暂无数据</div>
-                    <div style="font-size: 12px;">请在左侧选择测点后点击查询</div>
-                </div>
-            `;
-        }
+        // 不销毁ECharts实例，只显示覆盖层
+        const emptyContent = `
+            <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #999;">
+                <div style="font-size: 48px; margin-bottom: 16px;">📊</div>
+                <div style="font-size: 14px; margin-bottom: 8px;">暂无数据</div>
+                <div style="font-size: 12px;">请在左侧选择测点后点击查询</div>
+            </div>
+        `;
+        this.showChartOverlay(emptyContent);
 
         // 确保表格区域显示并更新为空状态
         this.updateTable();
     }
 
     showError(message) {
-        const chartContainer = this.shadowRoot.getElementById('chartContainer');
-        if (chartContainer) {
-            chartContainer.innerHTML = `
-                <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #ff4d4f;">
-                    <div style="font-size: 48px; margin-bottom: 16px;">❌</div>
-                    <div style="font-size: 14px;">${message}</div>
-                </div>
-            `;
-        }
+        const errorContent = `
+            <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #ff4d4f;">
+                <div style="font-size: 48px; margin-bottom: 16px;">❌</div>
+                <div style="font-size: 14px;">${message}</div>
+            </div>
+        `;
+        this.showChartOverlay(errorContent);
     }
 
     showMessage(message, type = 'info') {
@@ -1154,10 +1260,8 @@ class DataVisualization extends HTMLElement {
                 }
             }
 
-            // 如果容器显示的是空状态，清空它
-            if (chartContainer.querySelector('div[style*="📊"]')) {
-                chartContainer.innerHTML = '';
-            }
+            // 隐藏覆盖层，保留ECharts canvas
+            this.hideChartOverlay();
 
             // 清除加载提示
             const loadingEl = chartContainer.querySelector('.loading');
@@ -1184,7 +1288,8 @@ class DataVisualization extends HTMLElement {
 
                     try {
                         this.chart = window.echarts.init(chartContainer);
-                        console.log('图表初始化成功');
+                        this._chartRendered = false; // 重置渲染标记
+                        console.log('图表初始化成功，重置渲染标记');
                         this.updateChart();
                         console.log('图表初始化成功');
                     } catch (error) {
@@ -1209,7 +1314,15 @@ class DataVisualization extends HTMLElement {
     }
 
     updateChart() {
-        if (!this.chart || !this.displayData.length || this.selectedPoints.size === 0) return;
+        console.log('=== UPDATEChart 被调用 ===', Date.now());
+        if (!this.chart || !this.displayData.length || this.selectedPoints.size === 0) {
+            console.log('updateChart 提前退出:', {
+                hasChart: !!this.chart,
+                hasData: this.displayData.length > 0,
+                hasSelectedPoints: this.selectedPoints.size > 0
+            });
+            return;
+        }
 
         // 检查是否有key列和是否包含选中的测点数据
         const actualColumns = this.actualDataColumns || [];
@@ -1225,38 +1338,58 @@ class DataVisualization extends HTMLElement {
             return actualColumns.some(column => column.includes(selectedPoint));
         });
         
-        const hasNumericData = this.displayData.some(record => {
-            return actualColumns.some(column => {
-                const value = record[column] !== undefined ? record[column] : record.values && record.values[column] !== undefined ? record.values[column] : null;
+        const hasNumericData = Array.from(this.selectedPoints).some(selectedPoint => {
+            console.log('🔍 hasNumericData检查 - 测点:', selectedPoint);
+            // 找到对应的实际数据列
+            const matchedColumn = actualColumns.find(column => 
+                column === selectedPoint || column.includes(selectedPoint)
+            );
+            
+            console.log('🔍 hasNumericData检查 - 匹配列:', matchedColumn);
+            if (!matchedColumn) return false;
+            
+            // 检查该列是否有数值数据
+            const hasNumeric = this.displayData.some(record => {
+                const value = record[matchedColumn] !== undefined ? record[matchedColumn] : record.values && record.values[matchedColumn] !== undefined ? record.values[matchedColumn] : null;
+                console.log('🔍 hasNumericData检查 - 值:', value, '类型:', typeof value);
                 return typeof value === 'number';
             });
+            
+            console.log('🔍 hasNumericData检查 - 测点', selectedPoint, '是否有数值:', hasNumeric);
+            return hasNumeric;
         });
 
         // 如果没有key列、不包含选中测点或不是数值数据，显示提示信息
         if (!hasTimeColumn || !hasSelectedColumns || !hasNumericData) {
             console.log('图表显示条件检查失败:', { hasTimeColumn, hasSelectedColumns, hasNumericData });
+            console.log('🔒 检查图表渲染标记:', this._chartRendered);
+            
+            // 如果图表已经成功渲染，不要覆盖显示
+            if (this._chartRendered) {
+                console.log('🛡️ 图表已渲染，跳过显示条件检查');
+                return;
+            }
+            
             console.log('表头:', this.tableHeader);
             console.log('实际数据列:', actualColumns);
             console.log('选中测点:', Array.from(this.selectedPoints));
-            const chartContainer = this.shadowRoot.getElementById('chartContainer');
-            if (chartContainer) {
-                let reason = '';
-                if (!hasTimeColumn) {
-                    reason = '缺少时间列数据';
-                } else if (!hasSelectedColumns) {
-                    reason = '表头不包含选中的测点数据';
-                } else {
-                    reason = '测点数据为非数值类型';
-                }
-                chartContainer.innerHTML = `
-                    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #999;">
-                        <div style="font-size: 48px; margin-bottom: 16px;">📊</div>
-                        <div style="font-size: 14px; margin-bottom: 8px;">数据不适合图表显示</div>
-                        <div style="font-size: 12px;">${reason}</div>
-                        <div style="font-size: 12px; margin-top: 8px; color: #666;">请选择包含时间列的数值型测点</div>
-                    </div>
-                `;
+            let reason = '';
+            if (!hasTimeColumn) {
+                reason = '缺少时间列数据';
+            } else if (!hasSelectedColumns) {
+                reason = '表头不包含选中的测点数据';
+            } else {
+                reason = '测点数据为非数值类型';
             }
+            const inappropriateContent = `
+                <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #999;">
+                    <div style="font-size: 48px; margin-bottom: 16px;">📊</div>
+                    <div style="font-size: 14px; margin-bottom: 8px;">数据不适合图表显示</div>
+                    <div style="font-size: 12px;">${reason}</div>
+                    <div style="font-size: 12px; margin-top: 8px; color: #666;">请选择包含时间列的数值型测点</div>
+                </div>
+            `;
+            this.showChartOverlay(inappropriateContent);
             return;
         }
 
@@ -1265,12 +1398,18 @@ class DataVisualization extends HTMLElement {
         // actualColumns 已在上面声明，直接使用
 
         // 只为数值类型的实际数据列创建系列，且只显示当前选中的测点
+        console.log('处理图表系列 - 实际数据列:', actualColumns);
+        console.log('处理图表系列 - 选中测点:', Array.from(this.selectedPoints));
+        
         actualColumns.forEach((column, index) => {
+            console.log('处理列:', column);
+            
             // 检查该列是否对应当前选中的测点
             let matchedSelectedPoint = null;
             for (const selectedPoint of this.selectedPoints) {
                 if (column === selectedPoint || column.includes(selectedPoint)) {
                     matchedSelectedPoint = selectedPoint;
+                    console.log('列', column, '匹配到测点:', selectedPoint);
                     break;
                 }
             }
@@ -1287,17 +1426,19 @@ class DataVisualization extends HTMLElement {
             });
 
             if (!isNumericColumn) {
-                console.log('跳过非数值列:', column);
+                console.log('!!!!! 新版本文件 跳过非数值列:', column, '!!!!!');
                 return; // 跳过非数值列
             }
 
+            console.log('✅ 数值列检查通过:', column, '准备创建数据系列');
             const data = this.displayData.map(record => [
                 record.timestamp,
                 record[column] !== undefined ? record[column] : record.values && record.values[column] !== undefined ? record.values[column] : 0
             ]);
+            console.log('📊 创建的数据系列:', column, '数据长度:', data.length, '数据样本:', data.slice(0, 1));
 
             const color = this.getColorForPoint(matchedSelectedPoint);
-            series.push({
+            const seriesItem = {
                 name: matchedSelectedPoint, // 使用原始选中的测点名称作为系列名称
                 type: 'line',
                 data: data,
@@ -1310,8 +1451,14 @@ class DataVisualization extends HTMLElement {
                     color: color
                 },
                 areaStyle: undefined // 明确禁用填充区域
-            });
+            };
+            console.log('📈 准备推送系列:', seriesItem.name);
+            series.push(seriesItem);
         });
+
+        console.log('创建的图表系列数量:', series.length);
+        console.log('图表系列详情:', series);
+        console.log('图表系列名称列表:', series.map(s => s.name));
 
         const option = {
             title: {
@@ -1391,9 +1538,51 @@ class DataVisualization extends HTMLElement {
         };
 
         try {
+            console.log('🎨 开始渲染图表，系列数量:', series.length);
+            console.log('📊 图表选项预览:', {
+                title: option.title.text,
+                seriesCount: option.series.length,
+                seriesNames: option.series.map(s => s.name),
+                hasData: option.series.some(s => s.data && s.data.length > 0)
+            });
+            
+            // 隐藏覆盖层，确保图表可见
+            this.hideChartOverlay();
+            
             // 先清空图表，然后重新设置选项，确保移除的测点不会残留
             this.chart.clear();
             this.chart.setOption(option, false); // 第二个参数false表示不合并选项
+            
+            console.log('✅ 图表渲染完成');
+            
+            // 标记图表已成功渲染，防止后续检查覆盖
+            this._chartRendered = true;
+            console.log('🔒 设置图表渲染标记为 true');
+            
+            // 立即检查DOM内容
+            const overlay = this.shadowRoot.getElementById('chartOverlay');
+            if (overlay) {
+                console.log('🔍 图表渲染后覆盖层内容:', overlay.innerHTML.substring(0, 100));
+            }
+            
+            // 检查图表是否真的显示了
+            setTimeout(() => {
+                const chartInstance = this.chart;
+                if (chartInstance) {
+                    const model = chartInstance.getModel();
+                    const series = model.getSeries();
+                    console.log('🔍 图表实例检查 - 实际系列数量:', series.length);
+                    series.forEach((s, index) => {
+                        console.log(`  系列 ${index}:`, s.name, '数据点数:', s.getData().count());
+                    });
+                    
+                    // 再次检查DOM内容
+                    if (overlay) {
+                        console.log('🔍 100ms后覆盖层内容:', overlay.innerHTML.substring(0, 100));
+                    }
+                }
+            }, 100);
+            
         } catch (error) {
             console.error('图表更新失败:', error);
             // 如果更新失败，尝试重新初始化图表
