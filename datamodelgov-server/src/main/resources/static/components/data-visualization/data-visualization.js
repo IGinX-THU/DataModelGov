@@ -220,14 +220,8 @@ class DataVisualization extends HTMLElement {
             // 更新已选测点列表
             this.updateSelectedPointsList();
 
-            // 设置默认的快速选择为最近1小时（只在第一次加载时）
-            console.log('🔍 检查是否需要设置默认时间范围，keepQueryConditions:', keepQueryConditions);
-            if (!keepQueryConditions) {
-                console.log('✅ 调用 setDefaultTimeRange()');
-                this.setDefaultTimeRange();
-            } else {
-                console.log('❌ 跳过 setDefaultTimeRange()，保持现有查询条件');
-            }
+            // 不设置默认时间范围，让用户手动选择
+            console.log('🔍 不设置默认时间范围，等待用户手动选择');
 
             // 如果有传入的数据，处理它
             if (tableData) {
@@ -256,33 +250,7 @@ class DataVisualization extends HTMLElement {
         return `${year}-${month}-${day}T${hours}:${minutes}`;
     }
 
-    // 设置默认时间范围为最近1小时
-    setDefaultTimeRange() {
-        console.log('⚠️ setDefaultTimeRange() 被调用了！');
-        const endTime = new Date();
-        const startTime = new Date();
-        startTime.setHours(startTime.getHours() - 1);
-
-        const startTimeInput = this.shadowRoot.getElementById('startTime');
-        const endTimeInput = this.shadowRoot.getElementById('endTime');
-        const quickTimeBtns = this.shadowRoot.querySelectorAll('.quick-time-btn');
-
-        if (startTimeInput) {
-            startTimeInput.value = this.formatLocalDateTime(startTime);
-        }
-        if (endTimeInput) {
-            endTimeInput.value = this.formatLocalDateTime(endTime);
-        }
-
-        // 设置快速选择按钮的默认状态
-        quickTimeBtns.forEach(btn => {
-            btn.classList.remove('active');
-            if (btn.dataset.range === '1h') {
-                btn.classList.add('active');
-            }
-        });
-    }
-
+    
     // 处理表格数据
     processTableData(tableData) {
         console.log('处理表格数据:', tableData);
