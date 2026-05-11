@@ -12,13 +12,17 @@ class AssociationRules extends HTMLElement {
             // 获取筛选条件
             const nameFilter = this.shadowRoot.querySelector('.filter-input[type="text"]')?.value.trim();
             const statusFilter = this.shadowRoot.querySelector('.filter-input[type="text"] + select')?.value;
+            const targetModelFilter = this.shadowRoot.getElementById('targetModelFilter')?.value;
+            const versionFilter = this.shadowRoot.getElementById('versionFilter')?.value;
             
             // 构建请求对象
             const requestBody = {
                 pageNum: this.currentPage || 1,
                 pageSize: this.pageSize || 6,
                 name: nameFilter || null,
-                status: statusFilter || null
+                status: statusFilter || null,
+                modelName: targetModelFilter || null,
+                modelVersion: versionFilter || null
             };
             
             console.log('查询参数:', requestBody);
@@ -48,7 +52,7 @@ class AssociationRules extends HTMLElement {
                 
                 // 同时获取总数用于分页（仅在第一页时）
                 if (this.currentPage === 1) {
-                    await this.loadRulesCount(nameFilter, statusFilter);
+                    await this.loadRulesCount(nameFilter, statusFilter, targetModelFilter, versionFilter);
                 }
                 
                 console.log('加载的规则数据:', this.data);
@@ -66,12 +70,14 @@ class AssociationRules extends HTMLElement {
         }
     }
 
-    async loadRulesCount(name, status) {
+    async loadRulesCount(name, status, targetModel, version) {
         try {
             // 构建请求对象
             const requestBody = {
                 name: name || null,
-                status: status || null
+                status: status || null,
+                modelName: targetModel || null,
+                modelVersion: version || null
             };
             
             console.log('查询总量参数:', requestBody);
@@ -145,9 +151,22 @@ class AssociationRules extends HTMLElement {
     async show(...args) {
         console.log('AssociationRules show() 被调用', args);
         this.style.display = 'block';
+        
         // 每次显示时刷新数据
         await this.loadRulesFromAPI();
         this.renderTable();
+        
+        // 检查筛选器元素是否存在
+        console.log('检查筛选器元素:');
+        console.log('targetModelFilter:', this.shadowRoot.getElementById('targetModelFilter'));
+        console.log('versionFilter:', this.shadowRoot.getElementById('versionFilter'));
+        console.log('右侧树:', document.querySelector('.right-sidebar .tree'));
+        
+        // 每次显示时加载筛选器选项，确保右侧树已加载
+        setTimeout(() => {
+            console.log('开始加载筛选器选项...');
+            this.loadFilterOptions();
+        }, 500); // 增加延迟确保DOM完全加载
     }
 
     async loadResources() {
@@ -246,7 +265,7 @@ class AssociationRules extends HTMLElement {
 </div>`;
     }
 
-    buildFilterRow(name = '', status = '') {
+    buildFilterRow(name = '', status = '', targetModel = '', version = '') {
         return `
             <div class="filter-row">
                 <div class="filter-field">
@@ -259,6 +278,20 @@ class AssociationRules extends HTMLElement {
                         <option value="">全部</option>
                         <option value="active" ${status === 'active' ? 'selected' : ''}>启用</option>
                         <option value="inactive" ${status === 'inactive' ? 'selected' : ''}>禁用</option>
+                    </select>
+                </div>
+            </div>
+            <div class="filter-row">
+                <div class="filter-field">
+                    <span class="filter-label">关联模型</span>
+                    <select class="filter-input" id="targetModelFilter">
+                        <option value="">全部</option>
+                    </select>
+                </div>
+                <div class="filter-field">
+                    <span class="filter-label">版本</span>
+                    <select class="filter-input" id="versionFilter">
+                        <option value="">全部</option>
                     </select>
                 </div>
             </div>
@@ -315,6 +348,13 @@ class AssociationRules extends HTMLElement {
         this.shadowRoot.getElementById('addFilter')?.addEventListener('click', () => this.addFilterRow());
         this.shadowRoot.getElementById('resetFilters')?.addEventListener('click', () => this.resetFilters());
         this.shadowRoot.getElementById('applyFilters')?.addEventListener('click', () => this.applyFilters());
+        
+        // 关联模型和版本筛选器变化事件
+        this.shadowRoot.getElementById('targetModelFilter')?.addEventListener('change', () => {
+            this.loadVersionFilterOptions(); // 重新加载版本选项
+            this.applyFilters(); // 应用筛选
+        });
+        this.shadowRoot.getElementById('versionFilter')?.addEventListener('change', () => this.applyFilters());
 
         // 工具栏事件
         this.shadowRoot.getElementById('addRuleBtn')?.addEventListener('click', () => this.showAddModal());
@@ -390,9 +430,140 @@ class AssociationRules extends HTMLElement {
         filterRows.appendChild(newRow);
     }
 
+    async loadFilterOptions() {
+        try {
+            console.log('开始加载筛选器选项...');
+            // 加载关联模型选项
+            this.loadTargetModelFilterOptions();
+            // 加载版本选项
+            this.loadVersionFilterOptions();
+            console.log('筛选器选项加载完成');
+        } catch (error) {
+            console.error('加载筛选器选项失败:', error);
+        }
+    }
+
+    loadTargetModelFilterOptions() {
+        const targetModelFilter = this.shadowRoot.getElementById('targetModelFilter');
+        if (!targetModelFilter) {
+            console.warn('未找到targetModelFilter元素');
+            return;
+        }
+        
+        // 获取右侧模型资产库的根节点 - 使用与modal相同的逻辑
+        const rightSidebarTree = document.querySelector('.right-sidebar .tree');
+        if (!rightSidebarTree) {
+            console.warn('未找到右侧模型资产库树');
+            return;
+        }
+        
+        console.log('找到右侧模型资产库树，开始解析模型名称...');
+        
+        const allNodes = rightSidebarTree.querySelectorAll('.tree-node');
+        const modelNames = new Set(); // 使用Set避免重复
+        
+        allNodes.forEach(node => {
+            const span = node.querySelector('span');
+            if (span) {
+                const nodeName = span.textContent.trim();
+                
+                // 排除明显的路径节点
+                if (nodeName === 'models_system') {
+                    return;
+                }
+                
+                // 检查是否为父节点（有子节点）
+                const hasChildren = node.querySelector('.tree-children');
+                if (hasChildren) {
+                    // 检查子节点中是否有叶子节点
+                    const childNodes = node.querySelectorAll('.tree-node .tree-node');
+                    const hasLeafChild = Array.from(childNodes).some(child => !child.querySelector('.tree-children'));
+                    
+                    // 只有当子节点包含叶子节点时，才将父节点作为模型名称
+                    if (hasLeafChild) {
+                        modelNames.add(nodeName);
+                    }
+                }
+            }
+        });
+        
+        console.log('筛选器获取到的目标模型名称:', Array.from(modelNames));
+        
+        // 清空现有选项并添加"全部"选项
+        targetModelFilter.innerHTML = '<option value="">全部</option>';
+        
+        // 添加模型名称选项
+        Array.from(modelNames).forEach(name => {
+            const option = document.createElement('option');
+            option.value = name;
+            option.textContent = name;
+            targetModelFilter.appendChild(option);
+        });
+    }
+
+    loadVersionFilterOptions() {
+        const versionFilter = this.shadowRoot.getElementById('versionFilter');
+        if (!versionFilter) return;
+        
+        // 获取右侧模型资产库的版本信息 - 使用与modal相同的逻辑
+        const rightSidebarTree = document.querySelector('.right-sidebar .tree');
+        if (!rightSidebarTree) return;
+        
+        const allNodes = rightSidebarTree.querySelectorAll('.tree-node');
+        const versions = new Set(); // 使用Set避免重复
+        
+        // 获取选中的模型名称
+        const targetModelFilter = this.shadowRoot.getElementById('targetModelFilter');
+        const selectedModel = targetModelFilter?.value;
+        
+        allNodes.forEach(node => {
+            const span = node.querySelector('span');
+            if (span) {
+                const nodeName = span.textContent.trim();
+                
+                // 排除明显的路径节点
+                if (nodeName === 'models_system') {
+                    return;
+                }
+                
+                // 检查是否为叶子节点（版本）
+                const isLeaf = !node.querySelector('.tree-children');
+                if (isLeaf) {
+                    // 如果没有选择模型，显示所有版本；否则只显示选中模型的版本
+                    if (!selectedModel) {
+                        versions.add(nodeName);
+                    } else {
+                        const parentNode = node.closest('.tree-children')?.parentElement;
+                        if (parentNode) {
+                            const parentSpan = parentNode.querySelector('span');
+                            if (parentSpan && parentSpan.textContent.trim() === selectedModel) {
+                                versions.add(nodeName);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        
+        console.log('筛选器获取到的模型版本（模型:', selectedModel, '）:', Array.from(versions));
+        
+        // 清空现有选项并添加"全部"选项
+        versionFilter.innerHTML = '<option value="">全部</option>';
+        
+        // 添加版本选项
+        Array.from(versions).forEach(version => {
+            const option = document.createElement('option');
+            option.value = version;
+            option.textContent = version;
+            versionFilter.appendChild(option);
+        });
+    }
+
     resetFilters() {
         const filterRows = this.shadowRoot.getElementById('filterRows');
         filterRows.innerHTML = this.buildFilterRow();
+        // 重新加载筛选器选项
+        this.loadFilterOptions();
         this.renderTable();
     }
 
