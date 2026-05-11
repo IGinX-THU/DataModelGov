@@ -429,18 +429,26 @@
 .association-content {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-lg);
+    align-items: center;
 }
 
-.association-header-row {
+.association-table-wrapper {
+    width: 100%;
+    max-width: 600px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    overflow: hidden;
+    background: white;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.association-table-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: var(--spacing-lg);
-}
-
-.association-list-container {
-    flex: 1;
+    padding: 12px 16px;
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+    border-bottom: 1px solid #e2e8f0;
 }
 
 .association-list {
@@ -453,46 +461,39 @@
 
 .summary-item {
     display: flex;
-    flex-direction: column;
     align-items: center;
-    padding: var(--spacing-md);
-    background: var(--bg-secondary);
-    border-radius: var(--radius-md);
-    border: 1px solid var(--border-tertiary);
-    min-width: 120px;
+    gap: 8px;
 }
 
 .summary-label {
-    font-size: var(--font-size-sm);
-    color: var(--text-secondary);
-    margin-bottom: var(--spacing-xs);
+    font-size: 13px;
+    color: #64748b;
+    font-weight: 500;
 }
 
 .summary-value {
-    font-size: var(--font-size-lg);
-    font-weight: 600;
-    color: var(--text-primary);
+    font-size: 18px;
+    font-weight: 700;
+    color: #3b82f6;
 }
 
 .association-list {
-    max-height: 280px;
+    max-height: 200px;
     overflow-y: auto;
-    border: 1px solid var(--border-tertiary);
-    border-radius: var(--radius-md);
-    background: var(--bg-primary);
+    background: white;
 }
 
 .association-item {
-    display: flex;
+    display: grid;
+    grid-template-columns: 110px 1fr;
     align-items: center;
-    padding: var(--spacing-md) var(--spacing-lg);
-    border-bottom: 1px solid var(--border-tertiary);
-    gap: var(--spacing-lg);
-    transition: background-color 0.2s ease;
+    padding: 10px 16px;
+    border-bottom: 1px solid #f1f5f9;
+    transition: all 0.2s ease;
 }
 
 .association-item:hover {
-    background-color: var(--bg-secondary);
+    background-color: #f8fafc;
 }
 
 .association-item:last-child {
@@ -500,17 +501,18 @@
 }
 
 .association-time {
-    flex: 0 0 80px;
     font-size: 12px;
-    color: var(--text-secondary);
-    font-weight: 400;
+    color: #64748b;
+    font-weight: 500;
+    border-right: 1px solid #e2e8f0;
+    padding-right: 14px;
 }
 
 .association-name {
-    flex: 1;
     font-size: 13px;
-    color: var(--text-primary);
+    color: #1e293b;
     font-weight: 500;
+    padding-left: 14px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -570,22 +572,20 @@
 }
 
 .view-all-associations-btn {
-    padding: 10px 20px;
-    background: #3b82f6;
+    padding: 8px 20px;
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
     color: white;
     border: none;
-    border-radius: var(--radius-md);
-    font-size: var(--font-size-sm);
+    border-radius: 6px;
+    font-size: 13px;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.2s ease;
     white-space: nowrap;
-    width: 100%;
-    box-sizing: border-box;
     font-weight: 500;
+    box-shadow: 0 1px 3px rgba(59, 130, 246, 0.2);
 }
 
 .view-all-associations-btn:hover {
-    background: #2563eb;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
 }

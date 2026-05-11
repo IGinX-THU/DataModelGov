@@ -160,18 +160,16 @@
     <div class="model-association-card">
         <div class="association-header">关联规则信息</div>
         <div class="association-content">
-            <div class="association-header-row">
-                <div class="summary-item">
-                    <div class="summary-label">关联规则数量</div>
-                    <div class="summary-value" id="associationCount">0</div>
-                </div>
-                <div class="association-actions">
+            <div class="association-table-wrapper">
+                <div class="association-table-header">
+                    <div class="summary-item">
+                        <span class="summary-label">关联规则数量</span>
+                        <span class="summary-value" id="associationCount">0</span>
+                    </div>
                     <button class="view-all-associations-btn" id="viewAllAssociations">
                         查看所有关联规则
                     </button>
                 </div>
-            </div>
-            <div class="association-list-container">
                 <div class="association-list" id="associationList">
                     <!-- 动态加载关联规则列表 -->
                     <div class="no-associations" id="noAssociations">
