@@ -79,8 +79,6 @@ class UserManagement extends HTMLElement {
                         <option value="">全部</option>
                         <option value="ADMIN">管理员</option>
                         <option value="DATA_ENGINEER">数据工程师</option>
-                        <option value="MODEL_ENGINEER">模型工程师</option>
-                        <option value="SIMULATION_ENGINEER">仿真工程师</option>
                     </select>
                 </div>
             </div>
@@ -138,8 +136,6 @@ class UserManagement extends HTMLElement {
                             <option value="">请选择角色</option>
                             <option value="ADMIN">管理员</option>
                             <option value="DATA_ENGINEER">数据工程师</option>
-                            <option value="MODEL_ENGINEER">模型工程师</option>
-                            <option value="SIMULATION_ENGINEER">仿真工程师</option>
                         </select>
                     </div>
                     <div class="form-group">
@@ -560,9 +556,7 @@ class UserManagement extends HTMLElement {
     getRoleDisplayName(role) {
         const roleMap = {
             'ADMIN': '管理员',
-            'DATA_ENGINEER': '数据工程师',
-            'MODEL_ENGINEER': '模型工程师',
-            'SIMULATION_ENGINEER': '仿真工程师'
+            'DATA_ENGINEER': '数据工程师'
         };
         return roleMap[role] || role;
     }
