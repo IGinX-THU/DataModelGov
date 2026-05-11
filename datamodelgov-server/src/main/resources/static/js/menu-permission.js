@@ -35,14 +35,15 @@ class MenuPermission {
                 this.currentUser = data.data;
                 this.userRole = this.currentUser.role;
             } else {
-                // 降级处理：使用默认角色
-                this.userRole = 'SIMULATION_ENGINEER';
-                this.currentUser = { username: 'user', role: this.userRole };
+                // 获取用户失败，跳转到登录页面
+                console.error('获取用户信息失败，跳转到登录页面');
+                window.location.href = '/login.html';
+                throw new Error('获取用户信息失败');
             }
         } catch (error) {
-            console.warn('获取用户角色失败，使用默认角色:', error);
-            this.userRole = 'SIMULATION_ENGINEER';
-            this.currentUser = { username: 'user', role: this.userRole };
+            console.error('获取用户角色失败，跳转到登录页面:', error);
+            window.location.href = '/login.html';
+            throw error;
         }
     }
 
