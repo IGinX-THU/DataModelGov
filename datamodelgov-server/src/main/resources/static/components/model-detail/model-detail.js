@@ -601,7 +601,7 @@ class ModelDetail extends HTMLElement {
             // 使用关联规则API查询当前模型的关联规则
             const result = await window.AppConfig.post('associationRules', 'query', {
                 pageNum: 1,
-                pageSize: 100, // 获取更多数据用于展示
+                pageSize: 10, // 只获取前10条数据
                 modelName: modelInfo.name,
                 modelVersion: modelInfo.version,
                 name: null,
@@ -633,17 +633,22 @@ class ModelDetail extends HTMLElement {
         
         // 更新关联规则列表（显示所有规则）
         if (associationList && noAssociations) {
+            console.log('更新关联规则列表，规则数据:', rules);
             if (!rules || rules.length === 0) {
+                console.log('没有规则数据，显示空状态');
                 noAssociations.style.display = 'block';
                 associationList.innerHTML = '';
             } else {
+                console.log('有规则数据，数量:', rules.length);
                 noAssociations.style.display = 'none';
-                associationList.innerHTML = rules.map(rule => `
+                const listHTML = rules.map(rule => `
                     <div class="association-item">
                         <div class="association-time">${rule.updateTime || '-'}</div>
                         <div class="association-name">${rule.name || rule.ruleName || '-'}</div>
                     </div>
                 `).join('');
+                console.log('生成的HTML:', listHTML);
+                associationList.innerHTML = listHTML;
             }
         }
     }
