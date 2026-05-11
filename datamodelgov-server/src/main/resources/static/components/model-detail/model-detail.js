@@ -103,6 +103,12 @@ class ModelDetail extends HTMLElement {
             deleteButton.addEventListener('click', () => this.deleteModel());
         }
         
+        // 绑定关联规则按钮事件
+        const viewAllAssociationsBtn = this.shadowRoot.getElementById('viewAllAssociations');
+        if (viewAllAssociationsBtn) {
+            viewAllAssociationsBtn.addEventListener('click', () => this.viewAllAssociations());
+        }
+        
         // 监听模型更新事件
         document.addEventListener('model-updated', (e) => {
             if (this.currentModel && 
@@ -185,6 +191,9 @@ class ModelDetail extends HTMLElement {
         
         // 更新UML图数据
         this.updateUMLDiagram(modelInfo);
+        
+        // 加载关联规则信息
+        this.loadAssociationRules(modelInfo);
     }
     
     updateVersionHistory(modelInfo) {
@@ -582,6 +591,103 @@ class ModelDetail extends HTMLElement {
             setTimeout(() => {
                 if (messageEl) messageEl.remove();
             }, 3000);
+        }
+    }
+
+    async loadAssociationRules(modelInfo) {
+        try {
+            console.log('开始加载关联规则信息:', modelInfo);
+            
+            // 使用关联规则API查询当前模型的关联规则
+            const result = await window.AppConfig.post('associationRules', 'query', {
+                pageNum: 1,
+                pageSize: 100, // 获取更多数据用于展示
+                modelName: modelInfo.name,
+                modelVersion: modelInfo.version,
+                name: null,
+                status: null
+            });
+            
+            if (result.success && result.data) {
+                const rules = result.data;
+                console.log('获取关联规则成功:', rules);
+                this.updateAssociationCard(rules);
+            } else {
+                console.error('获取关联规则失败:', result.message);
+                this.updateAssociationCard([]);
+            }
+        } catch (error) {
+            console.error('加载关联规则失败:', error);
+            this.updateAssociationCard([]);
+        }
+    }
+
+    updateAssociationCard(rules) {
+        const associationCount = this.shadowRoot.getElementById('associationCount');
+        const associationList = this.shadowRoot.getElementById('associationList');
+        const noAssociations = this.shadowRoot.getElementById('noAssociations');
+        
+        if (associationCount) {
+            associationCount.textContent = rules.length;
+        }
+        
+        // 更新关联规则列表（显示所有规则）
+        if (associationList && noAssociations) {
+            if (!rules || rules.length === 0) {
+                noAssociations.style.display = 'block';
+                associationList.innerHTML = '';
+            } else {
+                noAssociations.style.display = 'none';
+                associationList.innerHTML = rules.map(rule => `
+                    <div class="association-item">
+                        <div class="association-time">${rule.updateTime || '-'}</div>
+                        <div class="association-name">${rule.name || rule.ruleName || '-'}</div>
+                    </div>
+                `).join('');
+            }
+        }
+    }
+
+    viewAllAssociations() {
+        if (!this.currentModel) {
+            console.warn('没有选中的模型');
+            return;
+        }
+        
+        console.log('跳转到关联规则页面，模型:', this.currentModel);
+        
+        // 隐藏当前组件
+        this.hide();
+        
+        // 显示关联规则组件并设置筛选参数
+        const associationRules = document.getElementById('associationRules');
+        if (associationRules && associationRules.show) {
+            // 设置筛选参数并跳转
+            setTimeout(() => {
+                associationRules.show();
+                
+                // 等待组件显示后设置筛选条件
+                setTimeout(() => {
+                    const targetModelFilter = associationRules.shadowRoot.getElementById('targetModelFilter');
+                    const versionFilter = associationRules.shadowRoot.getElementById('versionFilter');
+                    
+                    if (targetModelFilter) {
+                        targetModelFilter.value = this.currentModel.name;
+                        // 触发change事件以加载版本
+                        targetModelFilter.dispatchEvent(new Event('change'));
+                    }
+                    
+                    if (versionFilter) {
+                        // 等待版本加载完成后设置版本值
+                        setTimeout(() => {
+                            versionFilter.value = this.currentModel.version;
+                            versionFilter.dispatchEvent(new Event('change'));
+                        }, 300);
+                    }
+                }, 500);
+            }, 100);
+        } else {
+            console.error('未找到associationRules组件');
         }
     }
 }

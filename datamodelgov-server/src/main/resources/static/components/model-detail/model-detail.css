@@ -409,3 +409,168 @@
 }
 
 /* 移除重复的action-btn样式，使用base-components.css中的通用样式 */
+
+/* 关联信息卡片样式 */
+.model-association-card {
+    background: var(--bg-primary);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-tertiary);
+    padding: var(--spacing-xl) var(--spacing-2xl) var(--spacing-lg);
+    box-shadow: var(--shadow-sm);
+    margin-bottom: var(--spacing-lg);
+}
+
+.association-header {
+    font-size: var(--font-size-md);
+    color: var(--text-secondary);
+    margin-bottom: var(--spacing-lg);
+}
+
+.association-content {
+    display: flex;
+    gap: var(--spacing-lg);
+}
+
+.association-main {
+    flex: 1;
+}
+
+.association-sidebar {
+    width: 200px;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-lg);
+}
+
+.association-summary {
+    display: flex;
+    gap: var(--spacing-xl);
+    margin-bottom: var(--spacing-lg);
+}
+
+.summary-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: var(--spacing-md);
+    background: var(--bg-secondary);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-tertiary);
+    min-width: 120px;
+}
+
+.summary-label {
+    font-size: var(--font-size-sm);
+    color: var(--text-secondary);
+    margin-bottom: var(--spacing-xs);
+}
+
+.summary-value {
+    font-size: var(--font-size-lg);
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.association-list {
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid var(--border-tertiary);
+    border-radius: var(--radius-md);
+    background: var(--bg-primary);
+}
+
+.association-item {
+    display: flex;
+    align-items: center;
+    padding: var(--spacing-md);
+    border-bottom: 1px solid var(--border-tertiary);
+    gap: var(--spacing-md);
+}
+
+.association-item:last-child {
+    border-bottom: none;
+}
+
+.association-time {
+    flex-shrink: 0;
+    font-size: var(--font-size-xs);
+    color: var(--text-tertiary);
+    min-width: 150px;
+}
+
+.association-name {
+    flex: 1;
+    font-size: var(--font-size-sm);
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+.no-associations {
+    text-align: center;
+    padding: var(--spacing-xl);
+    color: var(--text-tertiary);
+    font-size: var(--font-size-sm);
+}
+
+.association-actions {
+    display: flex;
+    justify-content: center;
+}
+
+.association-names-section {
+    margin-top: var(--spacing-lg);
+}
+
+.association-names-list {
+    max-height: 200px;
+    overflow-y: auto;
+    border: 1px solid var(--border-tertiary);
+    border-radius: var(--radius-md);
+    background: var(--bg-primary);
+    padding: var(--spacing-md);
+}
+
+.association-name-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--spacing-sm) var(--spacing-md);
+    border-bottom: 1px solid var(--border-tertiary);
+    gap: var(--spacing-md);
+}
+
+.association-name-item:last-child {
+    border-bottom: none;
+}
+
+.name-badge {
+    flex: 1;
+    font-size: var(--font-size-sm);
+    color: var(--text-primary);
+    font-weight: 500;
+    background: var(--bg-secondary);
+    padding: 4px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-tertiary);
+}
+
+.name-status {
+    flex-shrink: 0;
+}
+
+.view-all-associations-btn {
+    padding: var(--spacing-md) var(--spacing-xl);
+    background: #3b82f6;
+    color: white;
+    border: none;
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-sm);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.view-all-associations-btn:hover {
+    background: #2563eb;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
