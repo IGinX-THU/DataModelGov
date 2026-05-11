@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>数据与模型一体化管理平台（清华IGinX支持） - 登录</title>
+    <title>【基于清华IGinX】数据与模型一体化管理平台 - 登录</title>
     <style>
         * {
             margin: 0;
@@ -161,13 +161,13 @@
 
     <script src="./config/app-config.js"></script>
     <script>
-        // 检查是否已有token，如果有则跳转到首页
+        // 登录页面加载时清理token，确保用户必须重新登录
         window.addEventListener('DOMContentLoaded', function() {
-            const token = window.AppConfig.getToken();
-            if (token) {
-                // 验证token是否有效
-                verifyToken();
-            }
+            // 清理所有认证相关的存储
+            window.AppConfig.clearToken();
+            window.AppConfig.clearRefreshToken();
+            window.AppConfig.clearUsername();
+            console.log('登录页面：已清理所有token');
         });
 
         // 登录表单提交

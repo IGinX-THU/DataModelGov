@@ -81,6 +81,12 @@ public class AssociationRulesService {
                 boolean statusValue = "active".equals(request.getStatus());
                 sql.append(" AND status = ").append(statusValue);
             }
+            if (request.getModelName() != null && !request.getModelName().trim().isEmpty()) {
+                sql.append(" AND modelName = '").append(request.getModelName().trim()).append("'");
+            }
+            if (request.getModelVersion() != null && !request.getModelVersion().trim().isEmpty()) {
+                sql.append(" AND modelVersion = '").append(request.getModelVersion().trim()).append("'");
+            }
             
             // 添加排序和分页
             sql.append(" ORDER BY updateTime DESC");
@@ -127,6 +133,12 @@ public class AssociationRulesService {
             if (request.getStatus() != null && !request.getStatus().trim().isEmpty()) {
                 boolean statusValue = "active".equals(request.getStatus());
                 sql.append(" AND status = ").append(statusValue);
+            }
+            if (request.getModelName() != null && !request.getModelName().trim().isEmpty()) {
+                sql.append(" AND modelName = '").append(request.getModelName().trim()).append("'");
+            }
+            if (request.getModelVersion() != null && !request.getModelVersion().trim().isEmpty()) {
+                sql.append(" AND modelVersion = '").append(request.getModelVersion().trim()).append("'");
             }
             sql.append(";");
             
