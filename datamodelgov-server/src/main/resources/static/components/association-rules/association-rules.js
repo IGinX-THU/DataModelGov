@@ -151,7 +151,7 @@ class AssociationRules extends HTMLElement {
     async show(...args) {
         console.log('AssociationRules show() 被调用', args);
         this.style.display = 'block';
-        
+
         // 每次显示时刷新数据
         await this.loadRulesFromAPI();
         this.renderTable();
@@ -381,11 +381,18 @@ class AssociationRules extends HTMLElement {
     }
 
     bindEvents() {
+        // 避免重复绑定事件的标记
+        if (this._eventsBound) {
+            console.log('事件已经绑定，跳过重复绑定');
+            return;
+        }
+        this._eventsBound = true;
+
         // 筛选相关事件
         this.shadowRoot.getElementById('addFilter')?.addEventListener('click', () => this.addFilterRow());
         this.shadowRoot.getElementById('resetFilters')?.addEventListener('click', () => this.resetFilters());
         this.shadowRoot.getElementById('applyFilters')?.addEventListener('click', () => this.applyFilters());
-        
+
         // 关联模型和版本筛选器变化事件
         this.shadowRoot.getElementById('targetModelFilter')?.addEventListener('change', () => {
             this.loadVersionFilterOptions(); // 重新加载版本选项
@@ -393,51 +400,64 @@ class AssociationRules extends HTMLElement {
         });
         this.shadowRoot.getElementById('versionFilter')?.addEventListener('change', () => this.applyFilters());
 
-        // 工具栏事件
-        this.shadowRoot.getElementById('addRuleBtn')?.addEventListener('click', () => this.showAddModal());
-        this.shadowRoot.getElementById('importBtn')?.addEventListener('click', () => this.importRules());
-        this.shadowRoot.getElementById('exportBtn')?.addEventListener('click', () => this.exportRules());
+        // 工具栏按钮使用事件委托，避免重复绑定问题
+        this.shadowRoot.addEventListener('click', (e) => {
+            const btn = e.target.closest('.toolbar-btn');
+            if (!btn) return;
 
-        // 模态框事件
-        this.shadowRoot.getElementById('modalClose')?.addEventListener('click', () => {
-            console.log('🔴 右上角关闭按钮被点击');
-            this.hideModal();
+            const btnId = btn.id;
+            switch (btnId) {
+                case 'addRuleBtn':
+                    console.log('新增按钮被点击');
+                    this.showAddModal();
+                    break;
+                case 'importBtn':
+                    this.importRules();
+                    break;
+                case 'exportBtn':
+                    this.exportRules();
+                    break;
+            }
         });
-        this.shadowRoot.getElementById('cancelBtn')?.addEventListener('click', () => this.hideModal());
-        this.shadowRoot.getElementById('saveBtn')?.addEventListener('click', () => this.saveRule());
-        
+
+        // 模态框事件 - 使用事件委托处理动态创建的关闭按钮
+        this.shadowRoot.addEventListener('click', (e) => {
+            if (e.target.id === 'modalClose' || e.target.closest('#modalClose')) {
+                console.log('🔴 右上角关闭按钮被点击');
+                this.hideModal();
+            }
+            if (e.target.id === 'cancelBtn' || e.target.closest('#cancelBtn')) {
+                this.hideModal();
+            }
+            if (e.target.id === 'saveBtn' || e.target.closest('#saveBtn')) {
+                this.saveRule();
+            }
+        });
+
         // 添加映射按钮
         this.shadowRoot.getElementById('addMapping')?.addEventListener('click', async () => this.addMapping());
         this.shadowRoot.getElementById('addResultMapping')?.addEventListener('click', async () => this.addResultMapping());
-        
+
         // 数据源和目标模型变化事件
         this.shadowRoot.getElementById('dataSource')?.addEventListener('change', () => this.updateMappingFieldOptions());
         this.shadowRoot.getElementById('targetModel')?.addEventListener('change', () => {
             this.updateMappingFieldOptions();
             this.updateResultMappingFieldOptions();
         });
-        
-        // 移除点击遮罩关闭功能，避免误操作
-        // this.shadowRoot.getElementById('modalMask')?.addEventListener('click', (e) => {
-        //     if (e.target === this.shadowRoot.getElementById('modalMask')) {
-        //         console.log('🔴 点击遮罩层关闭');
-        //         this.hideModal();
-        //     }
-        // });
-        
+
         // Handle form submission
         this.shadowRoot.getElementById('ruleForm')?.addEventListener('submit', (e) => {
             e.preventDefault();
             this.saveRule();
         });
 
-        // 处理操作按钮点击事件
+        // 处理表格操作按钮点击事件（事件委托）
         this.shadowRoot.addEventListener('click', (e) => {
             if (e.target.classList.contains('action-btn')) {
                 const action = e.target.dataset.action;
                 const id = parseInt(e.target.dataset.id);
                 const item = this.data.find(item => item.id === id);
-                
+
                 switch (action) {
                     case 'run':
                         this.runRule(id);
@@ -447,7 +467,6 @@ class AssociationRules extends HTMLElement {
                         break;
                     case 'toggle':
                         this.toggleRuleStatus(id);
-                        // 不在这里更新按钮文本，等状态保存成功后由renderTable刷新
                         break;
                     case 'edit':
                         this.editRule(id);
