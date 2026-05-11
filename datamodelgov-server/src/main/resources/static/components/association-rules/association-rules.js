@@ -429,9 +429,6 @@ class AssociationRules extends HTMLElement {
             if (e.target.id === 'cancelBtn' || e.target.closest('#cancelBtn')) {
                 this.hideModal();
             }
-            if (e.target.id === 'saveBtn' || e.target.closest('#saveBtn')) {
-                this.saveRule();
-            }
         });
 
         // 添加映射按钮
@@ -443,12 +440,6 @@ class AssociationRules extends HTMLElement {
         this.shadowRoot.getElementById('targetModel')?.addEventListener('change', () => {
             this.updateMappingFieldOptions();
             this.updateResultMappingFieldOptions();
-        });
-
-        // Handle form submission
-        this.shadowRoot.getElementById('ruleForm')?.addEventListener('submit', (e) => {
-            e.preventDefault();
-            this.saveRule();
         });
 
         // 处理表格操作按钮点击事件（事件委托）
@@ -743,23 +734,20 @@ class AssociationRules extends HTMLElement {
             
             // Restore form footer buttons
             this.restoreFormFooter();
-            
+
             // Bind form events for new rule
             this.bindFormEvents();
-            
+
             // Highlight external trees
             document.body.classList.add('association-rules-modal-open');
-            
+
             // 初始化动态数据源和目标模型
             this.loadDataSourceOptions();
             this.loadTargetModelOptions();
-            
+
             // Initialize empty mappings list
             this.initializeMappings();
             this.initializeResultMappings();
-            
-            // Bind form events for new rule
-            this.bindFormEvents();
         }
     }
 
@@ -920,10 +908,14 @@ class AssociationRules extends HTMLElement {
         if (modal) {
             modal.hidden = true;
             modal.style.display = 'none';
-            
+
             // Restore form content if it was replaced by showModal
             this.restoreFormContent();
             this.restoreFormFooter();
+
+            // 重置事件绑定标记，以便下次打开时可以重新绑定
+            this._formEventsBound = false;
+            this._footerEventsBound = false;
             
             // Remove highlight from external trees
             document.body.classList.remove('association-rules-modal-open');
@@ -2127,6 +2119,12 @@ class AssociationRules extends HTMLElement {
     }
     
     bindFormEvents() {
+        // 避免重复绑定
+        if (this._formEventsBound) {
+            return;
+        }
+        this._formEventsBound = true;
+
         // Data source and target model change events
         this.shadowRoot.getElementById('dataSource')?.addEventListener('change', () => this.updateMappingFieldOptions());
         this.shadowRoot.getElementById('targetModel')?.addEventListener('change', () => {
@@ -2168,15 +2166,15 @@ class AssociationRules extends HTMLElement {
             
             newRuleNameInput.addEventListener('blur', validateRuleName);
         }
-        
-        // Form submission
-        this.shadowRoot.getElementById('ruleForm')?.addEventListener('submit', (e) => {
-            e.preventDefault();
-            this.saveRule();
-        });
     }
     
     bindFooterEvents() {
+        // 避免重复绑定
+        if (this._footerEventsBound) {
+            return;
+        }
+        this._footerEventsBound = true;
+
         // Re-bind footer button events
         this.shadowRoot.getElementById('cancelBtn')?.addEventListener('click', () => this.hideModal());
         this.shadowRoot.getElementById('saveBtn')?.addEventListener('click', () => this.saveRule());
