@@ -55,12 +55,8 @@ class MenuPermission {
         const menuPermissions = {
             // ADMIN - 所有菜单区域
             'ADMIN': ['data', 'model', 'schedule', 'analysis', 'user', 'tool', 'window', 'help'],
-            // DATA_ENGINEER - 数据和数据资源管理
-            'DATA_ENGINEER': ['data', 'tool', 'window', 'help'],
-            // MODEL_ENGINEER - 模型和模型资产管理
-            'MODEL_ENGINEER': ['model', 'tool', 'window', 'help'],
-            // SIMULATION_ENGINEER - 关联和关联调度引擎、分析和可视化分析
-            'SIMULATION_ENGINEER': ['schedule', 'analysis', 'tool', 'window', 'help']
+            // DATA_ENGINEER - 除用户管理外的所有权限
+            'DATA_ENGINEER': ['data', 'model', 'schedule', 'analysis', 'tool', 'window', 'help']
         };
 
         return menuPermissions[this.userRole]?.includes(menuArea) || false;
@@ -130,9 +126,7 @@ class MenuPermission {
     showPermissionError(actionName) {
         const roleNames = {
             'ADMIN': '管理员',
-            'DATA_ENGINEER': '数据工程师',
-            'MODEL_ENGINEER': '模型工程师',
-            'SIMULATION_ENGINEER': '仿真工程师'
+            'DATA_ENGINEER': '数据工程师'
         };
         
         const message = `权限不足：${actionName}需要相应权限\n当前角色：${roleNames[this.userRole] || this.userRole}`;
@@ -154,9 +148,7 @@ class MenuPermission {
     getRoleDescription() {
         const descriptions = {
             'ADMIN': '管理员',
-            'DATA_ENGINEER': '数据工程师',
-            'MODEL_ENGINEER': '模型工程师',
-            'SIMULATION_ENGINEER': '仿真工程师'
+            'DATA_ENGINEER': '数据工程师'
         };
         return descriptions[this.userRole] || this.userRole;
     }
