@@ -166,7 +166,44 @@ class AssociationRules extends HTMLElement {
         setTimeout(() => {
             console.log('开始加载筛选器选项...');
             this.loadFilterOptions();
+            
+            // 如果有传入参数，应用筛选条件
+            if (args && args[0] && args[0].modelName) {
+                this.applyFilterParams(args[0]);
+            }
         }, 500); // 增加延迟确保DOM完全加载
+    }
+    
+    // 应用筛选参数
+    applyFilterParams(params) {
+        const modelName = params.modelName;
+        const modelVersion = params.modelVersion;
+        
+        console.log('应用筛选参数 - 模型名称:', modelName, '版本:', modelVersion);
+        
+        if (modelName) {
+            const targetModelFilter = this.shadowRoot.getElementById('targetModelFilter');
+            if (targetModelFilter) {
+                targetModelFilter.value = modelName;
+                targetModelFilter.dispatchEvent(new Event('change'));
+                
+                // 等待版本加载完成后设置版本值
+                if (modelVersion) {
+                    setTimeout(() => {
+                        const versionFilter = this.shadowRoot.getElementById('versionFilter');
+                        if (versionFilter) {
+                            versionFilter.value = modelVersion;
+                            versionFilter.dispatchEvent(new Event('change'));
+                            
+                            // 自动触发查询
+                            setTimeout(() => {
+                                this.applyFilters();
+                            }, 300);
+                        }
+                    }, 800);
+                }
+            }
+        }
     }
 
     async loadResources() {

@@ -661,38 +661,14 @@ class ModelDetail extends HTMLElement {
         
         console.log('跳转到关联规则页面，模型:', this.currentModel);
         
-        // 隐藏当前组件
-        this.hide();
-        
-        // 显示关联规则组件并设置筛选参数
-        const associationRules = document.getElementById('associationRules');
-        if (associationRules && associationRules.show) {
-            // 设置筛选参数并跳转
-            setTimeout(() => {
-                associationRules.show();
-                
-                // 等待组件显示后设置筛选条件
-                setTimeout(() => {
-                    const targetModelFilter = associationRules.shadowRoot.getElementById('targetModelFilter');
-                    const versionFilter = associationRules.shadowRoot.getElementById('versionFilter');
-                    
-                    if (targetModelFilter) {
-                        targetModelFilter.value = this.currentModel.name;
-                        // 触发change事件以加载版本
-                        targetModelFilter.dispatchEvent(new Event('change'));
-                    }
-                    
-                    if (versionFilter) {
-                        // 等待版本加载完成后设置版本值
-                        setTimeout(() => {
-                            versionFilter.value = this.currentModel.version;
-                            versionFilter.dispatchEvent(new Event('change'));
-                        }, 300);
-                    }
-                }, 500);
-            }, 100);
+        // 使用 showComponent 跳转到关联规则页面，并传递模型参数
+        if (window.showComponent) {
+            window.showComponent('associationRules', {
+                modelName: this.currentModel.name,
+                modelVersion: this.currentModel.version
+            });
         } else {
-            console.error('未找到associationRules组件');
+            console.error('showComponent 函数不可用');
         }
     }
 }
