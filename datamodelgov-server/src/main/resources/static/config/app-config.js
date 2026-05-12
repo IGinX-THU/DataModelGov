@@ -112,7 +112,8 @@ window.AppConfig = {
             detail: '/api/task/detail',
             'delete': '/api/task/delete',
             'upload-report': '/api/task/upload-report',
-            'package-download': '/api/task/package-download'
+            'package-download': '/api/task/package-download',
+            'time-range': '/api/task/time-range'
         }
     },
     

@@ -151,11 +151,7 @@ class AssociationRules extends HTMLElement {
     async show(...args) {
         console.log('AssociationRules show() 被调用', args);
         this.style.display = 'block';
-        
-        // 每次显示时刷新数据
-        await this.loadRulesFromAPI();
-        this.renderTable();
-        
+
         // 检查筛选器元素是否存在
         console.log('检查筛选器元素:');
         console.log('targetModelFilter:', this.shadowRoot.getElementById('targetModelFilter'));
@@ -167,9 +163,14 @@ class AssociationRules extends HTMLElement {
             console.log('开始加载筛选器选项...');
             this.loadFilterOptions();
             
-            // 如果有传入参数，应用筛选条件
-            if (args && args[0] && args[0].modelName) {
+            // 如果有传入参数，应用筛选条件（会自动执行查询）
+            if (args && args[0]) {
                 this.applyFilterParams(args[0]);
+            } else {
+                // 没有筛选参数时，才执行默认查询
+                this.loadRulesFromAPI().then(() => {
+                    this.renderTable();
+                });
             }
         }, 500); // 增加延迟确保DOM完全加载
     }
@@ -178,12 +179,33 @@ class AssociationRules extends HTMLElement {
     applyFilterParams(params) {
         const modelName = params.modelName;
         const modelVersion = params.modelVersion;
+        const ruleName = params.ruleName;
         
-        console.log('应用筛选参数 - 模型名称:', modelName, '版本:', modelVersion);
+        console.log('应用筛选参数 - 模型名称:', modelName, '版本:', modelVersion, '规则名:', ruleName);
         
+        // 如果有规则名，直接设置规则名筛选并查询
+        if (ruleName) {
+            setTimeout(() => {
+                const nameFilter = this.shadowRoot.querySelector('.filter-input[type="text"]');
+                if (nameFilter) {
+                    nameFilter.value = ruleName;
+                    console.log('设置规则名筛选:', ruleName);
+                    
+                    // 自动触发查询
+                    setTimeout(() => {
+                        this.applyFilters();
+                    }, 300);
+                }
+            }, 800);
+            return;
+        }
+        
+        // 原有的模型和版本筛选逻辑
         if (modelName) {
             const targetModelFilter = this.shadowRoot.getElementById('targetModelFilter');
             if (targetModelFilter) {
+                // 设置标志位，防止change事件触发查询
+                this._applyingFilter = true;
                 targetModelFilter.value = modelName;
                 targetModelFilter.dispatchEvent(new Event('change'));
                 
@@ -195,12 +217,21 @@ class AssociationRules extends HTMLElement {
                             versionFilter.value = modelVersion;
                             versionFilter.dispatchEvent(new Event('change'));
                             
-                            // 自动触发查询
+                            // 清除标志位并手动触发查询
                             setTimeout(() => {
+                                this._applyingFilter = false;
                                 this.applyFilters();
                             }, 300);
+                        } else {
+                            this._applyingFilter = false;
                         }
                     }, 800);
+                } else {
+                    // 没有版本参数时，直接触发查询
+                    setTimeout(() => {
+                        this._applyingFilter = false;
+                        this.applyFilters();
+                    }, 300);
                 }
             }
         }
@@ -381,63 +412,80 @@ class AssociationRules extends HTMLElement {
     }
 
     bindEvents() {
+        // 避免重复绑定事件的标记
+        if (this._eventsBound) {
+            console.log('事件已经绑定，跳过重复绑定');
+            return;
+        }
+        this._eventsBound = true;
+
         // 筛选相关事件
         this.shadowRoot.getElementById('addFilter')?.addEventListener('click', () => this.addFilterRow());
         this.shadowRoot.getElementById('resetFilters')?.addEventListener('click', () => this.resetFilters());
         this.shadowRoot.getElementById('applyFilters')?.addEventListener('click', () => this.applyFilters());
-        
+
         // 关联模型和版本筛选器变化事件
         this.shadowRoot.getElementById('targetModelFilter')?.addEventListener('change', () => {
             this.loadVersionFilterOptions(); // 重新加载版本选项
-            this.applyFilters(); // 应用筛选
+            if (!this._applyingFilter) {
+                this.applyFilters(); // 应用筛选
+            }
         });
-        this.shadowRoot.getElementById('versionFilter')?.addEventListener('change', () => this.applyFilters());
-
-        // 工具栏事件
-        this.shadowRoot.getElementById('addRuleBtn')?.addEventListener('click', () => this.showAddModal());
-        this.shadowRoot.getElementById('importBtn')?.addEventListener('click', () => this.importRules());
-        this.shadowRoot.getElementById('exportBtn')?.addEventListener('click', () => this.exportRules());
-
-        // 模态框事件
-        this.shadowRoot.getElementById('modalClose')?.addEventListener('click', () => {
-            console.log('🔴 右上角关闭按钮被点击');
-            this.hideModal();
+        this.shadowRoot.getElementById('versionFilter')?.addEventListener('change', () => {
+            if (!this._applyingFilter) {
+                this.applyFilters();
+            }
         });
-        this.shadowRoot.getElementById('cancelBtn')?.addEventListener('click', () => this.hideModal());
-        this.shadowRoot.getElementById('saveBtn')?.addEventListener('click', () => this.saveRule());
-        
+
+        // 工具栏按钮使用事件委托，避免重复绑定问题
+        this.shadowRoot.addEventListener('click', (e) => {
+            const btn = e.target.closest('.toolbar-btn');
+            if (!btn) return;
+
+            const btnId = btn.id;
+            switch (btnId) {
+                case 'addRuleBtn':
+                    console.log('新增按钮被点击');
+                    this.showAddModal();
+                    break;
+                case 'importBtn':
+                    this.importRules();
+                    break;
+                case 'exportBtn':
+                    this.exportRules();
+                    break;
+            }
+        });
+
+        // 模态框事件 - 使用事件委托处理动态创建的关闭按钮
+        this.shadowRoot.addEventListener('click', (e) => {
+            if (e.target.id === 'modalClose' || e.target.closest('#modalClose')) {
+                console.log('🔴 右上角关闭按钮被点击');
+                this.hideModal();
+            }
+            if (e.target.id === 'cancelBtn' || e.target.closest('#cancelBtn')) {
+                this.hideModal();
+            }
+        });
+
         // 添加映射按钮
         this.shadowRoot.getElementById('addMapping')?.addEventListener('click', async () => this.addMapping());
         this.shadowRoot.getElementById('addResultMapping')?.addEventListener('click', async () => this.addResultMapping());
-        
+
         // 数据源和目标模型变化事件
         this.shadowRoot.getElementById('dataSource')?.addEventListener('change', () => this.updateMappingFieldOptions());
         this.shadowRoot.getElementById('targetModel')?.addEventListener('change', () => {
             this.updateMappingFieldOptions();
             this.updateResultMappingFieldOptions();
         });
-        
-        // 移除点击遮罩关闭功能，避免误操作
-        // this.shadowRoot.getElementById('modalMask')?.addEventListener('click', (e) => {
-        //     if (e.target === this.shadowRoot.getElementById('modalMask')) {
-        //         console.log('🔴 点击遮罩层关闭');
-        //         this.hideModal();
-        //     }
-        // });
-        
-        // Handle form submission
-        this.shadowRoot.getElementById('ruleForm')?.addEventListener('submit', (e) => {
-            e.preventDefault();
-            this.saveRule();
-        });
 
-        // 处理操作按钮点击事件
+        // 处理表格操作按钮点击事件（事件委托）
         this.shadowRoot.addEventListener('click', (e) => {
             if (e.target.classList.contains('action-btn')) {
                 const action = e.target.dataset.action;
                 const id = parseInt(e.target.dataset.id);
                 const item = this.data.find(item => item.id === id);
-                
+
                 switch (action) {
                     case 'run':
                         this.runRule(id);
@@ -447,7 +495,6 @@ class AssociationRules extends HTMLElement {
                         break;
                     case 'toggle':
                         this.toggleRuleStatus(id);
-                        // 不在这里更新按钮文本，等状态保存成功后由renderTable刷新
                         break;
                     case 'edit':
                         this.editRule(id);
@@ -724,23 +771,20 @@ class AssociationRules extends HTMLElement {
             
             // Restore form footer buttons
             this.restoreFormFooter();
-            
+
             // Bind form events for new rule
             this.bindFormEvents();
-            
+
             // Highlight external trees
             document.body.classList.add('association-rules-modal-open');
-            
+
             // 初始化动态数据源和目标模型
             this.loadDataSourceOptions();
             this.loadTargetModelOptions();
-            
+
             // Initialize empty mappings list
             this.initializeMappings();
             this.initializeResultMappings();
-            
-            // Bind form events for new rule
-            this.bindFormEvents();
         }
     }
 
@@ -901,10 +945,14 @@ class AssociationRules extends HTMLElement {
         if (modal) {
             modal.hidden = true;
             modal.style.display = 'none';
-            
+
             // Restore form content if it was replaced by showModal
             this.restoreFormContent();
             this.restoreFormFooter();
+
+            // 重置事件绑定标记，以便下次打开时可以重新绑定
+            this._formEventsBound = false;
+            this._footerEventsBound = false;
             
             // Remove highlight from external trees
             document.body.classList.remove('association-rules-modal-open');
@@ -2108,6 +2156,12 @@ class AssociationRules extends HTMLElement {
     }
     
     bindFormEvents() {
+        // 避免重复绑定
+        if (this._formEventsBound) {
+            return;
+        }
+        this._formEventsBound = true;
+
         // Data source and target model change events
         this.shadowRoot.getElementById('dataSource')?.addEventListener('change', () => this.updateMappingFieldOptions());
         this.shadowRoot.getElementById('targetModel')?.addEventListener('change', () => {
@@ -2149,15 +2203,15 @@ class AssociationRules extends HTMLElement {
             
             newRuleNameInput.addEventListener('blur', validateRuleName);
         }
-        
-        // Form submission
-        this.shadowRoot.getElementById('ruleForm')?.addEventListener('submit', (e) => {
-            e.preventDefault();
-            this.saveRule();
-        });
     }
     
     bindFooterEvents() {
+        // 避免重复绑定
+        if (this._footerEventsBound) {
+            return;
+        }
+        this._footerEventsBound = true;
+
         // Re-bind footer button events
         this.shadowRoot.getElementById('cancelBtn')?.addEventListener('click', () => this.hideModal());
         this.shadowRoot.getElementById('saveBtn')?.addEventListener('click', () => this.saveRule());
@@ -2252,6 +2306,63 @@ class AssociationRules extends HTMLElement {
             
             modal.hidden = false;
             modal.style.display = 'flex';
+            
+            // 自动获取并设置时间范围
+            this.loadTimeRangeForRule(rule);
+        }
+    }
+    
+    // 自动获取并设置时间范围
+    async loadTimeRangeForRule(rule) {
+        try {
+            console.log('开始获取规则时间范围:', rule);
+            
+            // 构建请求参数 - 使用新的inputsBind结构
+            const requestBody = {
+                tableName: rule.dataSource,
+                inputsBind: rule.mappings || []
+            };
+            
+            console.log('时间范围查询请求:', requestBody);
+            
+            // 调用API获取时间范围
+            const result = await window.AppConfig.post('task', 'time-range', requestBody);
+            console.log('时间范围查询结果:', result);
+            
+            if (result.success && result.data) {
+                const timeRange = result.data;
+                
+                if (timeRange.minKey && timeRange.maxKey) {
+                    // 转换为datetime-local格式
+                    const startTime = new Date(timeRange.minKey).toISOString().slice(0, 16);
+                    const endTime = new Date(timeRange.maxKey).toISOString().slice(0, 16);
+                    
+                    // 设置时间字段
+                    const startTimeElement = this.shadowRoot.getElementById('startTime');
+                    const endTimeElement = this.shadowRoot.getElementById('endTime');
+                    
+                    if (startTimeElement) {
+                        startTimeElement.value = startTime;
+                        console.log('设置开始时间:', startTime);
+                    }
+                    
+                    if (endTimeElement) {
+                        endTimeElement.value = endTime;
+                        console.log('设置结束时间:', endTime);
+                    }
+                    
+                    this.showToast('时间范围已自动设置为数据范围', 'success');
+                } else {
+                    console.warn('时间范围为空，使用默认值');
+                    this.showToast('未找到数据时间范围，使用默认时间', 'warning');
+                }
+            } else {
+                console.warn('获取时间范围失败:', result.message);
+                this.showToast('获取时间范围失败，使用默认时间', 'warning');
+            }
+        } catch (error) {
+            console.error('获取时间范围异常:', error);
+            this.showToast('获取时间范围异常，使用默认时间', 'warning');
         }
     }
     
@@ -3571,6 +3682,8 @@ class AssociationRules extends HTMLElement {
             targetModelSelect.addEventListener('change', () => {
                 console.log('目标模型变化，加载版本');
                 this.loadModelVersions(targetModelSelect.value);
+                // 清空自动填充的字段，等待版本选择后重新填充
+                this.clearAutoFilledFields();
                 // 不在这里加载字段，等版本选择后再加载
             });
             
@@ -3606,8 +3719,12 @@ class AssociationRules extends HTMLElement {
                     if (selectedModel && versionSelect.value) {
                         console.log('版本变化，加载模型字段:', selectedModel, versionSelect.value);
                         this.loadModelFields(selectedModel);
+                        // 自动填充运行命令和CSV文件名
+                        this.autoFillCommandAndCsvFields(selectedModel, versionSelect.value);
                     } else {
                         console.log('条件不满足 - selectedModel:', selectedModel, 'version:', versionSelect.value);
+                        // 如果没有选择版本，清空自动填充的字段
+                        this.clearAutoFilledFields();
                     }
                 };
                 
@@ -3630,6 +3747,77 @@ class AssociationRules extends HTMLElement {
         }
     }
     
+    // 清空自动填充的字段
+    clearAutoFilledFields() {
+        // 清空运行命令
+        const cmdElement = this.shadowRoot.getElementById('cmd');
+        if (cmdElement) {
+            cmdElement.value = '';
+        }
+        
+        // 清空输入CSV文件名
+        const inputCsvElement = this.shadowRoot.getElementById('inputCsvName');
+        if (inputCsvElement) {
+            inputCsvElement.value = '';
+        }
+        
+        // 清空输出CSV文件名
+        const outputCsvElement = this.shadowRoot.getElementById('outputCsvName');
+        if (outputCsvElement) {
+            outputCsvElement.value = '';
+        }
+        
+        console.log('已清空自动填充的字段');
+    }
+    
+    // 自动填充运行命令和CSV文件名
+    async autoFillCommandAndCsvFields(modelName, version) {
+        try {
+            console.log('自动填充运行命令和CSV文件名:', modelName, version);
+            
+            // 调用模型元数据API获取fileName
+            const result = await window.AppConfig.get('model', 'metas', { name: modelName, version: version });
+            
+            if (result.success && result.data) {
+                const modelData = result.data;
+                console.log('获取模型元数据成功:', modelData);
+                
+                // 获取fileName，如果没有则使用modelName作为默认值
+                const fileName = modelData.fileName || `${modelName}.py`;
+                console.log('使用fileName:', fileName);
+                
+                // 自动填充运行命令
+                const cmdElement = this.shadowRoot.getElementById('cmd');
+                if (cmdElement) {
+                    cmdElement.value = `python ${fileName} -i input.csv -o output.csv`;
+                    console.log('自动填充运行命令:', cmdElement.value);
+                }
+                
+                // 自动填充输入CSV文件名
+                const inputCsvElement = this.shadowRoot.getElementById('inputCsvName');
+                if (inputCsvElement) {
+                    inputCsvElement.value = 'input.csv';
+                    console.log('自动填充输入CSV文件名:', inputCsvElement.value);
+                }
+                
+                // 自动填充输出CSV文件名
+                const outputCsvElement = this.shadowRoot.getElementById('outputCsvName');
+                if (outputCsvElement) {
+                    outputCsvElement.value = 'output.csv';
+                    console.log('自动填充输出CSV文件名:', outputCsvElement.value);
+                }
+            } else {
+                console.warn('获取模型元数据失败，让用户自己填写:', result.message);
+                // 如果获取失败，清空字段让用户自己填写
+                this.clearAutoFilledFields();
+            }
+        } catch (error) {
+            console.error('自动填充失败:', error);
+            // 如果出错，清空字段让用户自己填写
+            this.clearAutoFilledFields();
+        }
+    }
+    
     // 动态加载模型版本 - 参考model-download.js的版本获取
     loadModelVersions(modelName) {
         const versionSelect = this.shadowRoot.getElementById('version');
@@ -3637,9 +3825,10 @@ class AssociationRules extends HTMLElement {
         
         console.log('加载模型版本:', modelName);
         
-        // 如果没有选择模型，清空版本下拉
+        // 如果没有选择模型，清空版本下拉和自动填充字段
         if (!modelName) {
             versionSelect.innerHTML = '<option value="">请选择版本</option>';
+            this.clearAutoFilledFields();
             return;
         }
         
