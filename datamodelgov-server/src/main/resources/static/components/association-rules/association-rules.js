@@ -152,10 +152,6 @@ class AssociationRules extends HTMLElement {
         console.log('AssociationRules show() 被调用', args);
         this.style.display = 'block';
 
-        // 每次显示时刷新数据
-        await this.loadRulesFromAPI();
-        this.renderTable();
-        
         // 检查筛选器元素是否存在
         console.log('检查筛选器元素:');
         console.log('targetModelFilter:', this.shadowRoot.getElementById('targetModelFilter'));
@@ -167,9 +163,14 @@ class AssociationRules extends HTMLElement {
             console.log('开始加载筛选器选项...');
             this.loadFilterOptions();
             
-            // 如果有传入参数，应用筛选条件
-            if (args && args[0] && args[0].modelName) {
+            // 如果有传入参数，应用筛选条件（会自动执行查询）
+            if (args && args[0]) {
                 this.applyFilterParams(args[0]);
+            } else {
+                // 没有筛选参数时，才执行默认查询
+                this.loadRulesFromAPI().then(() => {
+                    this.renderTable();
+                });
             }
         }, 500); // 增加延迟确保DOM完全加载
     }
@@ -178,12 +179,33 @@ class AssociationRules extends HTMLElement {
     applyFilterParams(params) {
         const modelName = params.modelName;
         const modelVersion = params.modelVersion;
+        const ruleName = params.ruleName;
         
-        console.log('应用筛选参数 - 模型名称:', modelName, '版本:', modelVersion);
+        console.log('应用筛选参数 - 模型名称:', modelName, '版本:', modelVersion, '规则名:', ruleName);
         
+        // 如果有规则名，直接设置规则名筛选并查询
+        if (ruleName) {
+            setTimeout(() => {
+                const nameFilter = this.shadowRoot.querySelector('.filter-input[type="text"]');
+                if (nameFilter) {
+                    nameFilter.value = ruleName;
+                    console.log('设置规则名筛选:', ruleName);
+                    
+                    // 自动触发查询
+                    setTimeout(() => {
+                        this.applyFilters();
+                    }, 300);
+                }
+            }, 800);
+            return;
+        }
+        
+        // 原有的模型和版本筛选逻辑
         if (modelName) {
             const targetModelFilter = this.shadowRoot.getElementById('targetModelFilter');
             if (targetModelFilter) {
+                // 设置标志位，防止change事件触发查询
+                this._applyingFilter = true;
                 targetModelFilter.value = modelName;
                 targetModelFilter.dispatchEvent(new Event('change'));
                 
@@ -195,12 +217,21 @@ class AssociationRules extends HTMLElement {
                             versionFilter.value = modelVersion;
                             versionFilter.dispatchEvent(new Event('change'));
                             
-                            // 自动触发查询
+                            // 清除标志位并手动触发查询
                             setTimeout(() => {
+                                this._applyingFilter = false;
                                 this.applyFilters();
                             }, 300);
+                        } else {
+                            this._applyingFilter = false;
                         }
                     }, 800);
+                } else {
+                    // 没有版本参数时，直接触发查询
+                    setTimeout(() => {
+                        this._applyingFilter = false;
+                        this.applyFilters();
+                    }, 300);
                 }
             }
         }
@@ -396,9 +427,15 @@ class AssociationRules extends HTMLElement {
         // 关联模型和版本筛选器变化事件
         this.shadowRoot.getElementById('targetModelFilter')?.addEventListener('change', () => {
             this.loadVersionFilterOptions(); // 重新加载版本选项
-            this.applyFilters(); // 应用筛选
+            if (!this._applyingFilter) {
+                this.applyFilters(); // 应用筛选
+            }
         });
-        this.shadowRoot.getElementById('versionFilter')?.addEventListener('change', () => this.applyFilters());
+        this.shadowRoot.getElementById('versionFilter')?.addEventListener('change', () => {
+            if (!this._applyingFilter) {
+                this.applyFilters();
+            }
+        });
 
         // 工具栏按钮使用事件委托，避免重复绑定问题
         this.shadowRoot.addEventListener('click', (e) => {

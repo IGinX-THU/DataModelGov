@@ -109,6 +109,14 @@ class ModelDetail extends HTMLElement {
             viewAllAssociationsBtn.addEventListener('click', () => this.viewAllAssociations());
         }
         
+        // 绑定关联规则跳转按钮事件（使用事件委托）
+        this.shadowRoot.addEventListener('click', (e) => {
+            if (e.target.classList.contains('association-link-btn')) {
+                const ruleName = e.target.dataset.ruleName;
+                this.navigateToRule(ruleName);
+            }
+        });
+        
         // 监听模型更新事件
         document.addEventListener('model-updated', (e) => {
             if (this.currentModel && 
@@ -645,11 +653,26 @@ class ModelDetail extends HTMLElement {
                     <div class="association-item">
                         <div class="association-time">${rule.updateTime || '-'}</div>
                         <div class="association-name">${rule.name || rule.ruleName || '-'}</div>
+                        <div class="association-action">
+                            <button class="association-link-btn" data-rule-name="${rule.name || rule.ruleName}">详情</button>
+                        </div>
                     </div>
                 `).join('');
                 console.log('生成的HTML:', listHTML);
                 associationList.innerHTML = listHTML;
             }
+        }
+    }
+
+    navigateToRule(ruleName) {
+        console.log('跳转到关联规则页面，规则名:', ruleName);
+        
+        // 使用 showComponent 跳转到关联规则页面，并传递规则名参数用于筛选
+        if (window.showComponent) {
+            window.showComponent('associationRules', { ruleName });
+        } else {
+            console.error('showComponent 函数不可用');
+            this.showErrorMessage('无法跳转到关联规则页面');
         }
     }
 
