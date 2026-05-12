@@ -8,6 +8,8 @@ import com.tsinghua.dto.RunTaskRequest;
 import com.tsinghua.entity.RunTaskEntity;
 import com.tsinghua.model.Result;
 import com.tsinghua.service.RunTaskService;
+import com.tsinghua.dto.TimeRangeRequest;
+import com.tsinghua.dto.TimeRangeResponse;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -119,6 +121,14 @@ public class RunTaskController {
     @OperationLog(value = "打包并下载任务文件", type = OperationLog.OperationType.EXPORT, recordResult = false)
     public ResponseEntity<Resource> packageAndDownload(@RequestParam("timestamp") Long timestamp) throws Exception {
         return runTaskService.packageAndDownload(timestamp);
+    }
+
+    @ApiOperation("获取数据表的时间范围")
+    @PostMapping("/time-range")
+    @RequirePermission(Permission.RUN_TASK_READ)
+    public Result<TimeRangeResponse> getTimeRange(@RequestBody TimeRangeRequest request) throws Exception {
+        TimeRangeResponse timeRange = runTaskService.getTimeRange(request);
+        return Result.success(timeRange);
     }
 
 }

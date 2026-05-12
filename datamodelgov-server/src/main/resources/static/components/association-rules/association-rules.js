@@ -2306,6 +2306,63 @@ class AssociationRules extends HTMLElement {
             
             modal.hidden = false;
             modal.style.display = 'flex';
+            
+            // 自动获取并设置时间范围
+            this.loadTimeRangeForRule(rule);
+        }
+    }
+    
+    // 自动获取并设置时间范围
+    async loadTimeRangeForRule(rule) {
+        try {
+            console.log('开始获取规则时间范围:', rule);
+            
+            // 构建请求参数 - 使用新的inputsBind结构
+            const requestBody = {
+                tableName: rule.dataSource,
+                inputsBind: rule.mappings || []
+            };
+            
+            console.log('时间范围查询请求:', requestBody);
+            
+            // 调用API获取时间范围
+            const result = await window.AppConfig.post('task', 'time-range', requestBody);
+            console.log('时间范围查询结果:', result);
+            
+            if (result.success && result.data) {
+                const timeRange = result.data;
+                
+                if (timeRange.minKey && timeRange.maxKey) {
+                    // 转换为datetime-local格式
+                    const startTime = new Date(timeRange.minKey).toISOString().slice(0, 16);
+                    const endTime = new Date(timeRange.maxKey).toISOString().slice(0, 16);
+                    
+                    // 设置时间字段
+                    const startTimeElement = this.shadowRoot.getElementById('startTime');
+                    const endTimeElement = this.shadowRoot.getElementById('endTime');
+                    
+                    if (startTimeElement) {
+                        startTimeElement.value = startTime;
+                        console.log('设置开始时间:', startTime);
+                    }
+                    
+                    if (endTimeElement) {
+                        endTimeElement.value = endTime;
+                        console.log('设置结束时间:', endTime);
+                    }
+                    
+                    this.showToast('时间范围已自动设置为数据范围', 'success');
+                } else {
+                    console.warn('时间范围为空，使用默认值');
+                    this.showToast('未找到数据时间范围，使用默认时间', 'warning');
+                }
+            } else {
+                console.warn('获取时间范围失败:', result.message);
+                this.showToast('获取时间范围失败，使用默认时间', 'warning');
+            }
+        } catch (error) {
+            console.error('获取时间范围异常:', error);
+            this.showToast('获取时间范围异常，使用默认时间', 'warning');
         }
     }
     

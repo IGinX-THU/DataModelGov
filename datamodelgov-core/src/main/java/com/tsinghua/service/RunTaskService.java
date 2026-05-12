@@ -13,6 +13,8 @@ import com.tsinghua.dto.InputBindDto;
 import com.tsinghua.dto.OutputBindDto;
 import com.tsinghua.dto.RunTaskQueryRequest;
 import com.tsinghua.dto.RunTaskRequest;
+import com.tsinghua.dto.TimeRangeRequest;
+import com.tsinghua.dto.TimeRangeResponse;
 import com.tsinghua.entity.AssociationRulesEntity;
 import com.tsinghua.entity.RunTaskEntity;
 import com.tsinghua.enums.TaskStatus;
@@ -25,6 +27,8 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.util.CollectionUtils;
+import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.itextpdf.html2pdf.HtmlConverter;
@@ -1702,6 +1706,36 @@ public class RunTaskService {
             log.error("检查规则运行状态失败", e);
             return false;
         }
+    }
+
+    /**
+     * 获取数据表的时间范围（最小和最大key值）
+     * @param request 时间范围查询请求
+     * @return 时间范围响应
+     */
+    public TimeRangeResponse getTimeRange(TimeRangeRequest request) throws Exception {
+        TimeRangeResponse response = new TimeRangeResponse();
+
+        String tableName = request.getTableName();
+        List<String> fieldList = request.getInputsBind().stream().map(InputBindDto::getSourceField).collect(Collectors.toList());
+        String field = CollectionUtils.isEmpty(fieldList)? "*" : StringUtils.collectionToCommaDelimitedString(fieldList);
+        log.info("查询数据表时间范围,数据表: {},字段: {},", tableName,field);
+
+        // 构建SQL查询获取最小和最大时间戳
+        String minSql = "SELECT %s FROM %s limit 1;";
+
+        SessionExecuteSqlResult minResult = iginxSession.executeSql(String.format(minSql, field, tableName));
+        Long minKey = minResult.getKeys()[0];
+
+        String maxSql = "SELECT %s FROM %s order by key desc limit 1;";
+        SessionExecuteSqlResult maxResult = iginxSession.executeSql(String.format(maxSql, field, tableName));
+        Long maxKey = maxResult.getKeys()[0];
+
+        response.setMinKey(minKey);
+        response.setMaxKey(maxKey);
+        log.info("时间范围查询结果: minKey={}, maxKey={}", minKey, maxKey);
+        
+        return response;
     }
 
 }
