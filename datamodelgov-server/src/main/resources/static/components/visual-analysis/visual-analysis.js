@@ -1323,10 +1323,34 @@ class VisualAnalysis extends HTMLElement {
             pathData
         });
 
+        // 检查数据量，如果过大则进行采样
+        const totalInputCount = Object.values(inputData).reduce((sum, data) => sum + (data ? data.length : 0), 0);
+        const totalOutputCount = Object.values(outputData).reduce((sum, data) => sum + (data ? data.length : 0), 0);
+        const totalCount = totalInputCount + totalOutputCount;
+        
+        console.log(`数据量统计 - 输入: ${totalInputCount}, 输出: ${totalOutputCount}, 总计: ${totalCount}`);
+        
+        if (totalCount > 100) {
+            console.log('数据量过大，开始采样...');
+            const sampledResult = this.sampleDataConsistently(inputData, outputData, 100);
+            
+            console.log('采样完成，更新数据');
+            return {
+                inputData: sampledResult.inputData,
+                outputData: sampledResult.outputData,
+                allPathData: pathData,
+                isSampled: true,
+                originalCount: totalCount,
+                sampledCount: Object.values(sampledResult.inputData).reduce((sum, data) => sum + (data ? data.length : 0), 0) + 
+                            Object.values(sampledResult.outputData).reduce((sum, data) => sum + (data ? data.length : 0), 0)
+            };
+        }
+
         return {
             inputData,
             outputData,
-            allPathData: pathData
+            allPathData: pathData,
+            isSampled: false
         };
     }
 
@@ -2150,6 +2174,89 @@ class VisualAnalysis extends HTMLElement {
         return statusMap[quality] || '未知';
     }
 
+    // 数据采样函数，当数据量过大时进行合理采样
+    sampleData(data, maxRows = 100) {
+        if (!data || data.length === 0) {
+            return data;
+        }
+        
+        if (data.length <= maxRows) {
+            return data;
+        }
+        
+        // 计算采样间隔
+        const interval = Math.ceil(data.length / maxRows);
+        const sampledData = [];
+        
+        // 均匀采样，确保包含首尾数据点
+        for (let i = 0; i < data.length; i += interval) {
+            sampledData.push(data[i]);
+        }
+        
+        // 确保包含最后一个数据点
+        if (sampledData[sampledData.length - 1] !== data[data.length - 1]) {
+            sampledData.push(data[data.length - 1]);
+        }
+        
+        console.log(`数据采样完成：原始数据 ${data.length} 行，采样后 ${sampledData.length} 行，采样间隔 ${interval}`);
+        return sampledData;
+    }
+
+    // 统一采样函数，确保输入输出数据同步采样
+    sampleDataConsistently(inputData, outputData, maxRows = 100) {
+        const result = {
+            inputData: inputData ? {} : null,
+            outputData: outputData ? {} : null
+        };
+        
+        // 计算总数据量
+        const totalInputCount = inputData ? Object.values(inputData).reduce((sum, data) => sum + (data ? data.length : 0), 0) : 0;
+        const totalOutputCount = outputData ? Object.values(outputData).reduce((sum, data) => sum + (data ? data.length : 0), 0) : 0;
+        const totalCount = totalInputCount + totalOutputCount;
+        
+        console.log(`准备采样 - 输入: ${totalInputCount}, 输出: ${totalOutputCount}, 总计: ${totalCount}`);
+        
+        if (totalCount > maxRows) {
+            console.log('数据量过大，开始采样...');
+            
+            // 对输入数据进行采样
+            if (inputData) {
+                Object.keys(inputData).forEach(path => {
+                    const data = inputData[path];
+                    if (data && data.length > 0) {
+                        result.inputData[path] = this.sampleData(data, maxRows);
+                    } else {
+                        result.inputData[path] = data;
+                    }
+                });
+            }
+            
+            // 对输出数据进行采样
+            if (outputData) {
+                Object.keys(outputData).forEach(path => {
+                    const data = outputData[path];
+                    if (data && data.length > 0) {
+                        result.outputData[path] = this.sampleData(data, maxRows);
+                    } else {
+                        result.outputData[path] = data;
+                    }
+                });
+            }
+            
+            const sampledInputCount = result.inputData ? Object.values(result.inputData).reduce((sum, data) => sum + (data ? data.length : 0), 0) : 0;
+            const sampledOutputCount = result.outputData ? Object.values(result.outputData).reduce((sum, data) => sum + (data ? data.length : 0), 0) : 0;
+            
+            console.log(`统一采样完成 - 输入: ${totalInputCount} -> ${sampledInputCount}, 输出: ${totalOutputCount} -> ${sampledOutputCount}`);
+        } else {
+            // 数据量不大，直接使用原数据
+            result.inputData = inputData;
+            result.outputData = outputData;
+            console.log('数据量在合理范围内，无需采样');
+        }
+        
+        return result;
+    }
+
     // 计算真实数据的统计信息
     calculateRealDataStatistics(chartData) {
         const statistics = {
@@ -2568,20 +2675,24 @@ class VisualAnalysis extends HTMLElement {
             
             // 5. 数据视图
             pdfGenerator.addSubtitle('四、数据视图');
+            
+            // 检查是否进行了采样
+            if (this.currentChartData && this.currentChartData.isSampled) {
+                pdfGenerator.addText(`注意：由于数据量较大（${this.currentChartData.originalCount}行），已采样为${this.currentChartData.sampledCount}行进行展示`, 10, true);
+            }
+            
             const pathInfo = {}; // 存储测点信息
             
             // 添加输入数据
             if (this.currentChartData && this.currentChartData.data && this.currentChartData.data.inputData) {
                 Object.keys(this.currentChartData.data.inputData).forEach(path => {
-                    const data = this.currentChartData.data.inputData[path];
-                    if (data && data.length > 0) {
-                        pathInfo[path] = { type: '输入数据', data: [] };
-                        data.forEach(point => {
-                            pathInfo[path].data.push({
-                                timestamp: point.timestamp,
-                                value: point.value
-                            });
-                        });
+                    const originalData = this.currentChartData.data.inputData[path];
+                    if (originalData && originalData.length > 0) {
+                        pathInfo[path] = { 
+                            type: '输入数据', 
+                            data: originalData,
+                            originalCount: originalData.length
+                        };
                     }
                 });
             }
