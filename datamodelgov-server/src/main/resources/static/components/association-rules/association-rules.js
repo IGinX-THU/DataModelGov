@@ -2333,9 +2333,11 @@ class AssociationRules extends HTMLElement {
                 const timeRange = result.data;
                 
                 if (timeRange.minKey && timeRange.maxKey) {
-                    // 转换为datetime-local格式
-                    const startTime = new Date(timeRange.minKey).toISOString().slice(0, 16);
-                    const endTime = new Date(timeRange.maxKey).toISOString().slice(0, 16);
+                    // 转换为本地时间的datetime-local格式
+                    const startDate = new Date(timeRange.minKey);
+                    const endDate = new Date(timeRange.maxKey);
+                    const startTime = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}-${String(startDate.getDate()).padStart(2, '0')}T${String(startDate.getHours()).padStart(2, '0')}:${String(startDate.getMinutes()).padStart(2, '0')}`;
+                    const endTime = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}T${String(endDate.getHours()).padStart(2, '0')}:${String(endDate.getMinutes()).padStart(2, '0')}`;
                     
                     // 设置时间字段
                     const startTimeElement = this.shadowRoot.getElementById('startTime');
