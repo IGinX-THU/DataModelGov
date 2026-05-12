@@ -3625,6 +3625,8 @@ class AssociationRules extends HTMLElement {
             targetModelSelect.addEventListener('change', () => {
                 console.log('目标模型变化，加载版本');
                 this.loadModelVersions(targetModelSelect.value);
+                // 清空自动填充的字段，等待版本选择后重新填充
+                this.clearAutoFilledFields();
                 // 不在这里加载字段，等版本选择后再加载
             });
             
@@ -3660,8 +3662,12 @@ class AssociationRules extends HTMLElement {
                     if (selectedModel && versionSelect.value) {
                         console.log('版本变化，加载模型字段:', selectedModel, versionSelect.value);
                         this.loadModelFields(selectedModel);
+                        // 自动填充运行命令和CSV文件名
+                        this.autoFillCommandAndCsvFields(selectedModel, versionSelect.value);
                     } else {
                         console.log('条件不满足 - selectedModel:', selectedModel, 'version:', versionSelect.value);
+                        // 如果没有选择版本，清空自动填充的字段
+                        this.clearAutoFilledFields();
                     }
                 };
                 
@@ -3684,6 +3690,77 @@ class AssociationRules extends HTMLElement {
         }
     }
     
+    // 清空自动填充的字段
+    clearAutoFilledFields() {
+        // 清空运行命令
+        const cmdElement = this.shadowRoot.getElementById('cmd');
+        if (cmdElement) {
+            cmdElement.value = '';
+        }
+        
+        // 清空输入CSV文件名
+        const inputCsvElement = this.shadowRoot.getElementById('inputCsvName');
+        if (inputCsvElement) {
+            inputCsvElement.value = '';
+        }
+        
+        // 清空输出CSV文件名
+        const outputCsvElement = this.shadowRoot.getElementById('outputCsvName');
+        if (outputCsvElement) {
+            outputCsvElement.value = '';
+        }
+        
+        console.log('已清空自动填充的字段');
+    }
+    
+    // 自动填充运行命令和CSV文件名
+    async autoFillCommandAndCsvFields(modelName, version) {
+        try {
+            console.log('自动填充运行命令和CSV文件名:', modelName, version);
+            
+            // 调用模型元数据API获取fileName
+            const result = await window.AppConfig.get('model', 'metas', { name: modelName, version: version });
+            
+            if (result.success && result.data) {
+                const modelData = result.data;
+                console.log('获取模型元数据成功:', modelData);
+                
+                // 获取fileName，如果没有则使用modelName作为默认值
+                const fileName = modelData.fileName || `${modelName}.py`;
+                console.log('使用fileName:', fileName);
+                
+                // 自动填充运行命令
+                const cmdElement = this.shadowRoot.getElementById('cmd');
+                if (cmdElement) {
+                    cmdElement.value = `python ${fileName} -i input.csv -o output.csv`;
+                    console.log('自动填充运行命令:', cmdElement.value);
+                }
+                
+                // 自动填充输入CSV文件名
+                const inputCsvElement = this.shadowRoot.getElementById('inputCsvName');
+                if (inputCsvElement) {
+                    inputCsvElement.value = 'input.csv';
+                    console.log('自动填充输入CSV文件名:', inputCsvElement.value);
+                }
+                
+                // 自动填充输出CSV文件名
+                const outputCsvElement = this.shadowRoot.getElementById('outputCsvName');
+                if (outputCsvElement) {
+                    outputCsvElement.value = 'output.csv';
+                    console.log('自动填充输出CSV文件名:', outputCsvElement.value);
+                }
+            } else {
+                console.warn('获取模型元数据失败，让用户自己填写:', result.message);
+                // 如果获取失败，清空字段让用户自己填写
+                this.clearAutoFilledFields();
+            }
+        } catch (error) {
+            console.error('自动填充失败:', error);
+            // 如果出错，清空字段让用户自己填写
+            this.clearAutoFilledFields();
+        }
+    }
+    
     // 动态加载模型版本 - 参考model-download.js的版本获取
     loadModelVersions(modelName) {
         const versionSelect = this.shadowRoot.getElementById('version');
@@ -3691,9 +3768,10 @@ class AssociationRules extends HTMLElement {
         
         console.log('加载模型版本:', modelName);
         
-        // 如果没有选择模型，清空版本下拉
+        // 如果没有选择模型，清空版本下拉和自动填充字段
         if (!modelName) {
             versionSelect.innerHTML = '<option value="">请选择版本</option>';
+            this.clearAutoFilledFields();
             return;
         }
         
