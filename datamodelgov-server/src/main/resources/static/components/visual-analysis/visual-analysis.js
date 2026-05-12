@@ -470,6 +470,11 @@ class VisualAnalysis extends HTMLElement {
             colorIndex++;
         });
 
+        // 计算数据范围用于动态调整Y轴
+        const dataRange = this.calculateDataRange(this.currentChartData);
+        console.log('计算的数据范围:', dataRange);
+        console.log('当前图表数据:', this.currentChartData);
+
         const option = {
             title: {
                 text: '多任务对比分析',
@@ -513,6 +518,8 @@ class VisualAnalysis extends HTMLElement {
             },
             yAxis: {
                 type: 'value',
+                min: dataRange.min,
+                max: dataRange.max,
                 axisLabel: {
                     formatter: function(value) {
                         return value.toFixed(2);
@@ -552,6 +559,9 @@ class VisualAnalysis extends HTMLElement {
     }
 
     getTrendChartOption(data) {
+        // 计算数据范围
+        const dataRange = this.calculateDataRange(this.currentChartData);
+        
         return {
             title: {
                 text: '趋势分析',
@@ -586,6 +596,8 @@ class VisualAnalysis extends HTMLElement {
             },
             yAxis: {
                 type: 'value',
+                min: dataRange.min,
+                max: dataRange.max,
                 axisLabel: {
                     formatter: function(value) {
                         return value.toFixed(2);
@@ -637,6 +649,9 @@ class VisualAnalysis extends HTMLElement {
     }
 
     getCorrelationChartOption(data) {
+        // 计算数据范围
+        const dataRange = this.calculateDataRange(this.currentChartData);
+        
         return {
             title: {
                 text: '相关性分析',
@@ -671,6 +686,8 @@ class VisualAnalysis extends HTMLElement {
             },
             yAxis: {
                 type: 'value',
+                min: dataRange.min,
+                max: dataRange.max,
                 axisLabel: {
                     formatter: function(value) {
                         return value.toFixed(2);
@@ -731,6 +748,9 @@ class VisualAnalysis extends HTMLElement {
             }
         });
 
+        // 计算数据范围
+        const dataRange = this.calculateDataRange(this.currentChartData);
+
         return {
             title: {
                 text: '异常检测',
@@ -770,6 +790,8 @@ class VisualAnalysis extends HTMLElement {
             },
             yAxis: {
                 type: 'value',
+                min: dataRange.min,
+                max: dataRange.max,
                 axisLabel: {
                     formatter: function(value) {
                         return value.toFixed(2);
@@ -840,6 +862,9 @@ class VisualAnalysis extends HTMLElement {
             predictData.push([data[i][0], predictedValue]);
         }
 
+        // 计算数据范围（包含预测数据）
+        const dataRange = this.calculateDataRange(this.currentChartData);
+
         return {
             title: {
                 text: '预测分析',
@@ -883,6 +908,8 @@ class VisualAnalysis extends HTMLElement {
             },
             yAxis: {
                 type: 'value',
+                min: dataRange.min,
+                max: dataRange.max,
                 axisLabel: {
                     formatter: function(value) {
                         return value.toFixed(2);
@@ -1486,6 +1513,10 @@ class VisualAnalysis extends HTMLElement {
             });
         }
 
+        // 计算数据范围用于动态调整Y轴
+        const dataRange = this.calculateDataRange(chartData);
+        console.log('updateChartWithData 计算的数据范围:', dataRange);
+
         // 基于 data-visualization 的图表配置
         const option = {
             title: {
@@ -1539,6 +1570,8 @@ class VisualAnalysis extends HTMLElement {
             },
             yAxis: {
                 type: 'value',
+                min: dataRange.min,
+                max: dataRange.max,
                 axisLabel: {
                     formatter: function(value) {
                         return value.toFixed(2);
@@ -2200,6 +2233,56 @@ class VisualAnalysis extends HTMLElement {
         
         console.log(`数据采样完成：原始数据 ${data.length} 行，采样后 ${sampledData.length} 行，采样间隔 ${interval}`);
         return sampledData;
+    }
+
+    // 计算数据范围，用于动态调整坐标轴
+    calculateDataRange(chartData) {
+        let minValue = Infinity;
+        let maxValue = -Infinity;
+        let hasData = false;
+
+        // 检查输入数据
+        if (chartData && chartData.inputData) {
+            Object.values(chartData.inputData).forEach(dataArray => {
+                if (dataArray && dataArray.length > 0) {
+                    dataArray.forEach(point => {
+                        if (point.value !== null && point.value !== undefined && typeof point.value === 'number') {
+                            minValue = Math.min(minValue, point.value);
+                            maxValue = Math.max(maxValue, point.value);
+                            hasData = true;
+                        }
+                    });
+                }
+            });
+        }
+
+        // 检查输出数据
+        if (chartData && chartData.outputData) {
+            Object.values(chartData.outputData).forEach(dataArray => {
+                if (dataArray && dataArray.length > 0) {
+                    dataArray.forEach(point => {
+                        if (point.value !== null && point.value !== undefined && typeof point.value === 'number') {
+                            minValue = Math.min(minValue, point.value);
+                            maxValue = Math.max(maxValue, point.value);
+                            hasData = true;
+                        }
+                    });
+                }
+            });
+        }
+
+        if (!hasData) {
+            return { min: 0, max: 100 }; // 默认范围
+        }
+
+        // 添加10%的边距，避免数据贴边
+        const range = maxValue - minValue;
+        const padding = range * 0.1;
+        
+        return {
+            min: minValue - padding,
+            max: maxValue + padding
+        };
     }
 
     // 统一采样函数，确保输入输出数据同步采样
