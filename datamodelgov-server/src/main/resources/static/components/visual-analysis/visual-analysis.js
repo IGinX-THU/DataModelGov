@@ -1689,6 +1689,14 @@ class VisualAnalysis extends HTMLElement {
             });
         }
 
+        // 计算数据范围用于动态调整Y轴
+        const allData = [...taskData.inputData, ...taskData.calculationResult];
+        const dataRange = this.calculateDataRange({
+            inputData: { 'input': taskData.inputData },
+            outputData: { 'output': taskData.calculationResult }
+        });
+        console.log('updateSingleTaskChart 计算的数据范围:', dataRange);
+
         const option = {
             title: {
                 text: `单个任务分析 - ${taskData.name}`,
@@ -1742,6 +1750,8 @@ class VisualAnalysis extends HTMLElement {
                 name: '数值',
                 nameLocation: 'middle',
                 nameGap: 50,
+                min: dataRange.min,
+                max: dataRange.max,
                 axisLabel: {
                     formatter: function(value) {
                         return value.toFixed(1);

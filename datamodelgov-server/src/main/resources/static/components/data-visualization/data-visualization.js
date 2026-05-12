@@ -1276,6 +1276,37 @@ class DataVisualization extends HTMLElement {
         }
     }
 
+    // 计算数据范围，用于动态调整坐标轴
+    calculateDataRange() {
+        let minValue = Infinity;
+        let maxValue = -Infinity;
+        let hasData = false;
+
+        // 遍历显示数据中的所有数据点
+        this.displayData.forEach(record => {
+            this.selectedPoints.forEach(pointName => {
+                if (record[pointName] !== null && record[pointName] !== undefined && typeof record[pointName] === 'number') {
+                    minValue = Math.min(minValue, record[pointName]);
+                    maxValue = Math.max(maxValue, record[pointName]);
+                    hasData = true;
+                }
+            });
+        });
+
+        if (!hasData) {
+            return { min: 0, max: 100 }; // 默认范围
+        }
+
+        // 添加10%的边距，避免数据贴边
+        const range = maxValue - minValue;
+        const padding = range * 0.1;
+        
+        return {
+            min: minValue - padding,
+            max: maxValue + padding
+        };
+    }
+
     updateVisualization() {
         this.updateChart();
         this.updateTable();
@@ -1428,6 +1459,10 @@ class DataVisualization extends HTMLElement {
         console.log('图表系列详情:', series);
         console.log('图表系列名称列表:', series.map(s => s.name));
 
+        // 计算数据范围用于动态调整Y轴
+        const dataRange = this.calculateDataRange();
+        console.log('data-visualization 计算的数据范围:', dataRange);
+
         const option = {
             title: {
                 text: '数据趋势',
@@ -1479,6 +1514,8 @@ class DataVisualization extends HTMLElement {
             },
             yAxis: {
                 type: 'value',
+                min: dataRange.min,
+                max: dataRange.max,
                 axisLabel: {
                     formatter: function(value) {
                         return value.toFixed(2);
