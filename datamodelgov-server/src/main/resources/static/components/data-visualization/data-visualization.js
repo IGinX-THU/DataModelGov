@@ -1804,9 +1804,9 @@ class DataVisualization extends HTMLElement {
                         break;
                 }
 
-                // 转换为datetime-local格式 (YYYY-MM-DDTHH:mm)
-                startTime = start.toISOString().slice(0, 16);
-                endTime = end.toISOString().slice(0, 16);
+                // 转换为本地时间的datetime-local格式 (YYYY-MM-DDTHH:mm)
+                startTime = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}T${String(start.getHours()).padStart(2, '0')}:${String(start.getMinutes()).padStart(2, '0')}`;
+                endTime = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}T${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}`;
                 console.log('快速选择时间:', { startTime, endTime });
             }
         }

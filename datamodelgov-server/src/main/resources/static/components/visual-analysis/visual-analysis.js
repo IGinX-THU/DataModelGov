@@ -1357,9 +1357,9 @@ class VisualAnalysis extends HTMLElement {
         
         console.log(`数据量统计 - 输入: ${totalInputCount}, 输出: ${totalOutputCount}, 总计: ${totalCount}`);
         
-        if (totalCount > 100) {
+        if (totalCount > 20) {
             console.log('数据量过大，开始采样...');
-            const sampledResult = this.sampleDataConsistently(inputData, outputData, 100);
+            const sampledResult = this.sampleDataConsistently(inputData, outputData, 20);
             
             console.log('采样完成，更新数据');
             return {
@@ -2218,7 +2218,7 @@ class VisualAnalysis extends HTMLElement {
     }
 
     // 数据采样函数，当数据量过大时进行合理采样
-    sampleData(data, maxRows = 100) {
+    sampleData(data, maxRows = 20) {
         if (!data || data.length === 0) {
             return data;
         }
