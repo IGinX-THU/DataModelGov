@@ -4,6 +4,9 @@ import cn.edu.tsinghua.iginx.session.Session;
 import cn.edu.tsinghua.iginx.session.SessionExecuteSqlResult;
 import cn.edu.tsinghua.iginx.session_v2.IginXClient;
 import cn.edu.tsinghua.iginx.session_v2.write.Point;
+import com.tsinghua.auth.service.DataPermissionService;
+import com.tsinghua.auth.util.AuthUtil;
+import com.tsinghua.auth.util.VisibilitySqlUtil;
 import com.tsinghua.dto.AssociationRulesQueryRequest;
 import com.tsinghua.entity.AssociationRulesEntity;
 import com.tsinghua.util.ConvertUtil;
@@ -19,6 +22,9 @@ import java.util.stream.Collectors;
 public class AssociationRulesService {
 
     private static final String DATA_PREFIX = "relational_system.association_rules";
+
+    @Autowired
+    private DataPermissionService dataPermissionService;
 
     @Autowired
     private Session iginxSession;
@@ -87,6 +93,14 @@ public class AssociationRulesService {
             if (request.getModelVersion() != null && !request.getModelVersion().trim().isEmpty()) {
                 sql.append(" AND modelVersion = '").append(request.getModelVersion().trim()).append("'");
             }
+
+            if (!AuthUtil.isAdmin()) {
+                List<String> tables = dataPermissionService.getCurrentUserAccessibleTables();
+                List<String> modelTables = tables.stream()
+                        .filter(table -> table.startsWith("models_system"))
+                        .collect(Collectors.toList());
+                VisibilitySqlUtil.generateModelVisibilityFilter(modelTables, sql);
+            }
             
             // 添加排序和分页
             sql.append(" ORDER BY updateTime DESC");
@@ -140,6 +154,15 @@ public class AssociationRulesService {
             if (request.getModelVersion() != null && !request.getModelVersion().trim().isEmpty()) {
                 sql.append(" AND modelVersion = '").append(request.getModelVersion().trim()).append("'");
             }
+
+            if (!AuthUtil.isAdmin()) {
+                List<String> tables = dataPermissionService.getCurrentUserAccessibleTables();
+                List<String> modelTables = tables.stream()
+                        .filter(table -> table.startsWith("models_system"))
+                        .collect(Collectors.toList());
+                VisibilitySqlUtil.generateModelVisibilityFilter(modelTables, sql);
+            }
+
             sql.append(";");
             
             log.info("执行COUNT SQL: {}", sql);

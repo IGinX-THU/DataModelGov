@@ -2,6 +2,11 @@ package com.tsinghua.auth.util;
 
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
 /**
  * 可见性SQL工具类
  * 生成基于BaseEntity可见性字段的SQL过滤条件
@@ -43,30 +48,36 @@ public class VisibilitySqlUtil {
     }
     
     /**
-     * 生成可见性过滤SQL条件（简化版）
-     * @param currentUser 当前用户名
-     * @param tablePrefix 表前缀
+     * 生成可见性过滤SQL条件（模型版）
      * @return SQL WHERE条件
      */
-    public static String generateSimpleVisibilityFilter(String currentUser, String tablePrefix) {
-        if (currentUser == null || currentUser.trim().isEmpty()) {
-            return "1=0";
-        }
-        
-        StringBuilder sql = new StringBuilder();
+    public static String generateModelVisibilityFilter(List<String> tables, StringBuilder sql) {
+        Set<String> modelNames = new HashSet<>();
+        Set<String> modelVersions = new HashSet<>();
+        tables.forEach(tablePrefix -> {
+            if (tablePrefix == null || tablePrefix.trim().isEmpty() || tablePrefix.split("\\.").length < 3 || !tablePrefix.startsWith("models_system")) {
+                return;
+            }
+
+            String[] tablePrefixes = tablePrefix.split("\\.");
+            modelNames.add(tablePrefixes[1]);
+            modelVersions.add(tablePrefixes[2]);
+        });
+
+
+        sql.append(" AND ");
         sql.append("(");
-        
-        // 公开数据或创建者数据
-        sql.append(tablePrefix).append(".isPublic = true");
-        sql.append(" OR ");
-        sql.append(tablePrefix).append(".creator = '").append(currentUser).append("'");
-        
-        // 指定可见用户数据
-        sql.append(" OR (");
-        sql.append(tablePrefix).append(".visibleUsers IS NOT NULL");
-        sql.append(" AND ").append(tablePrefix).append(".visibleUsers LIKE '%").append(currentUser).append("%'");
-        sql.append(")");
-        
+
+        String modelName = String.join(",", modelNames.stream()
+                .map(v -> "'" + v.trim() + "'")
+                .toArray(String[]::new));
+        sql.append("modelName IN (").append(modelName).append(")");
+        sql.append(" AND ");
+        String modelVersion = String.join(",", modelVersions.stream()
+                .map(v -> "'" + v.trim() + "'")
+                .toArray(String[]::new));
+        sql.append("modelVersion IN (").append(modelVersion).append(")");
+
         sql.append(")");
         
         return sql.toString();
