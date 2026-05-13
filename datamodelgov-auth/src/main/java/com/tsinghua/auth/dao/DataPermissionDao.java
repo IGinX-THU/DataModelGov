@@ -76,6 +76,30 @@ public class DataPermissionDao {
     }
 
     /**
+     * 查询权限
+     */
+    public List<DataPermissionEntity> findByOwner(String owner) {
+        List<DataPermissionEntity> list = new ArrayList<>();
+        try {
+            // 构建查询SQL - 完全参考AssociationRulesService
+            String querySql = "SELECT * FROM " + PERMISSIONS_TABLE + " WHERE owner = '" + owner + "';";
+
+            log.info("执行权限查询SQL: {}", querySql);
+
+            // 使用Session.executeSql - 参考AssociationRulesService
+            SessionExecuteSqlResult result = iginxSession.executeSql(querySql);
+            List<Map<String, Object>> records = ConvertUtil.getRecords(result);
+
+            // 转换为UserEntity - 参考ModelFileService的转换方式
+            records.forEach(record ->
+                    list.add(ConvertUtil.mapToEntity(new DataPermissionEntity(), record, PERMISSIONS_TABLE)));
+        } catch (Exception e) {
+            log.error("查询用户失败: {}", e.getMessage(), e);
+        }
+        return list;
+    }
+
+    /**
      * 保存数据权限
      */
     public void saveDataPermission(DataPermissionEntity permission) {

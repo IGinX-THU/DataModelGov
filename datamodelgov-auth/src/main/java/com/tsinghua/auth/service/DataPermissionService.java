@@ -81,6 +81,14 @@ public class DataPermissionService {
     }
 
     /**
+     * 获取当前用户可访问的表前缀列表
+     */
+    public List<DataPermissionEntity> getOwnerTables() {
+        String currentUser = AuthUtil.getCurrentUsername();
+        return dataPermissionDao.findByOwner(currentUser);
+    }
+
+    /**
      * 删除
      */
     public void deleteByTablePrefix(String tablePrefix) {
