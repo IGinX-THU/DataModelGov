@@ -73,8 +73,11 @@ public class DataPermissionService {
     }
 
     public boolean existTablePrefix(String tablePrefix){
-        DataPermissionEntity dataPermissionEntity = dataPermissionDao.findByTablePrefix(tablePrefix);
-        return dataPermissionEntity != null;
+        if (!AuthUtil.isAdmin()) {
+            List<DataPermissionEntity> list = dataPermissionDao.findByTablePrefix(tablePrefix);
+            return !list.isEmpty();
+        }
+        return false;
     }
 
     /**
@@ -83,16 +86,30 @@ public class DataPermissionService {
     public void deleteByTablePrefix(String tablePrefix) {
         try {
             // 先查询用户获取时间戳
-            DataPermissionEntity dataPermissionEntity = dataPermissionDao.findByTablePrefix(tablePrefix);
-            if (dataPermissionEntity == null || dataPermissionEntity.getCreateTime() == null) {
+            List<DataPermissionEntity> list = dataPermissionDao.findByTablePrefix(tablePrefix);
+            if (list.isEmpty()) {
                 log.warn("权限不存在，无法删除: {}", tablePrefix);
                 return;
             }
-            dataPermissionDao.deleteById(dataPermissionEntity.getCreateTime());
+            list.forEach(dataPermissionEntity ->
+                    dataPermissionDao.deleteById(dataPermissionEntity.getCreateTime()));
             log.info("权限已删除: {}", tablePrefix);
         } catch (Exception e) {
             log.error("删除用户失败: {}", e.getMessage(), e);
             throw new RuntimeException("删除用户失败: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 保存
+     */
+    public void saveTablePrefix(String tablePrefix) {
+        if (!AuthUtil.isAdmin()) {
+            DataPermissionEntity dataPermissionEntity = DataPermissionEntity.builder()
+                    .tablePrefix(tablePrefix)
+                    .isPublic(false)
+                    .build();
+            saveDataPermission(dataPermissionEntity);
         }
     }
 

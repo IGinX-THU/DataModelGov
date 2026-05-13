@@ -9,6 +9,7 @@ import cn.edu.tsinghua.iginx.session_v2.query.IginXTable;
 import cn.edu.tsinghua.iginx.session_v2.query.SimpleQuery;
 import cn.edu.tsinghua.iginx.session_v2.write.Point;
 import cn.edu.tsinghua.iginx.thrift.DataType;
+import com.tsinghua.auth.service.DataPermissionService;
 import com.tsinghua.entity.ModelMetaEntity;
 import com.tsinghua.dto.UploadResult;
 import com.tsinghua.util.ConvertUtil;
@@ -35,6 +36,9 @@ public class ModelFileService {
     private static final String META_PREFIX = "relational_system.models_meta";
 
     @Autowired
+    private DataPermissionService dataPermissionService;
+
+    @Autowired
     private Session iginxSession;
 
     @Autowired
@@ -46,6 +50,11 @@ public class ModelFileService {
      */
     public UploadResult uploadModel(MultipartFile file, String name, String version) throws Exception {
         String storagePath = buildStoragePath(name, version);
+
+        if (dataPermissionService.existTablePrefix(storagePath)) {
+            throw new IllegalArgumentException("模型资产已存在");
+        }
+
         byte[] fileBytes = file.getBytes();
         int totalChunks = (int) Math.ceil((double) fileBytes.length / CHUNK_SIZE);
 
@@ -93,8 +102,8 @@ public class ModelFileService {
         modelMetaDto.setFileMd5(fileMd5);
         saveModelMetadata(modelMetaDto);
 
-        log.info("模型文件上传成功。名称: {}, 版本: {}, 块数: {}, MD5: {}",
-                name, version, totalChunks, fileMd5);
+        dataPermissionService.saveTablePrefix(storagePath);
+        log.info("模型文件上传成功。storagePath: {}", storagePath);
 
         return new UploadResult(name, version, file.getOriginalFilename(),
                 file.getSize(), totalChunks, storagePath, fileMd5);
@@ -482,7 +491,7 @@ public class ModelFileService {
     public void deleteModel(String name, String version) {
         try {
             List<String> measurements = ConvertUtil.iginxFieldNamesConvert(ModelMetaEntity.class, META_PREFIX);
-            if (StringUtils.hasText(version)) {
+            if (StringUtils.hasText(version) && !"null".equals(version)) {
                 String storagePath = buildStoragePath(name, version);
                 iginxClient.getDeleteClient().deleteMeasurement(storagePath);
                 ModelMetaEntity queryMeta = queryMeta(name, version);
@@ -490,6 +499,7 @@ public class ModelFileService {
                     long timestamp = queryMeta.getTimestamp();
                     iginxClient.getDeleteClient().deleteMeasurementsData(measurements, timestamp-1, timestamp+1);
                 }
+                dataPermissionService.deleteByTablePrefix(storagePath);
             } else {
                 List<ModelMetaEntity> queryMetas = queryMetaList(name);
                 List<String> storagePaths = queryMetas.stream()
@@ -503,6 +513,7 @@ public class ModelFileService {
                         .forEach(timestamp ->
                                 iginxClient.getDeleteClient().deleteMeasurementsData(measurements, timestamp-1, timestamp+1)
                         );
+                storagePaths.forEach(storagePath -> dataPermissionService.deleteByTablePrefix(storagePath));
             }
         } catch (Exception e) {
             log.error("移除模型资产失败", e);

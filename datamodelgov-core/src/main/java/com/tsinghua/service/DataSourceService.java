@@ -41,7 +41,7 @@ public class DataSourceService {
      */
     public boolean registerDataSource(BaseStorageEngineRequest request) throws Exception {
         if (dataPermissionService.existTablePrefix(request.getSchemaPrefix())) {
-            throw new IllegalArgumentException("数据源已存在");
+            throw new IllegalArgumentException("数据资源已存在");
         }
         // iginxSession.openSession();
         iginxSession.addStorageEngine(request.getIp(),
@@ -49,13 +49,7 @@ public class DataSourceService {
                 StorageEngineType.findByValue(request.getStorageEngineType()),
                 request.buildExtraParams());
         // iginxSession.closeSession();
-        if (!AuthUtil.isAdmin()) {
-            DataPermissionEntity dataPermissionEntity = DataPermissionEntity.builder()
-                    .tablePrefix(request.getSchemaPrefix())
-                    .isPublic(false)
-                    .build();
-            dataPermissionService.saveDataPermission(dataPermissionEntity);
-        }
+        dataPermissionService.saveTablePrefix(request.getSchemaPrefix());
         log.info("成功注册数据源: {}", request);
         return true;
     }
@@ -81,11 +75,16 @@ public class DataSourceService {
         // iginxSession.closeSession();
 
         if (!AuthUtil.isAdmin()) {
+            List<StorageEngineInfoDto> filteredList = new ArrayList<>();
             List<String> accessibleTables = dataPermissionService.getCurrentUserAccessibleTables();
             if (CollectionUtils.isEmpty(accessibleTables)) {
-                return new ArrayList<>();
+                return filteredList;
             }
-            accessibleTables.forEach(accessibleTable -> storageEngineInfoDtos.removeIf(storageEngineInfoDto -> !storageEngineInfoDto.getSchemaPrefix().startsWith(accessibleTable)));
+            accessibleTables.forEach(accessibleTable -> filteredList.addAll(
+                    storageEngineInfoDtos.stream().filter(storageEngineInfoDto ->
+                                    accessibleTable.equalsIgnoreCase(storageEngineInfoDto.getSchemaPrefix()))
+                            .collect(Collectors.toList())));
+            return filteredList;
         }
 
         return storageEngineInfoDtos;
@@ -101,11 +100,16 @@ public class DataSourceService {
         // iginxSession.closeSession();
 
         if (!AuthUtil.isAdmin()) {
+            List<ColumnDto> filteredTree = new ArrayList<>();
             List<String> accessibleTables = dataPermissionService.getCurrentUserAccessibleTables();
             if (CollectionUtils.isEmpty(accessibleTables)) {
-                return new ArrayList<>();
+                return filteredTree;
             }
-            accessibleTables.forEach(accessibleTable -> tree.removeIf(columnDto -> !columnDto.getPath().startsWith(accessibleTable)));
+            accessibleTables.forEach(accessibleTable -> filteredTree.addAll(
+                    tree.stream().filter(columnDto ->
+                                    columnDto.getPath().startsWith(accessibleTable))
+                            .collect(Collectors.toList())));
+            return  filteredTree;
         }
 
         return tree;

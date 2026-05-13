@@ -54,7 +54,8 @@ public class DataPermissionDao {
     /**
      * 查询权限
      */
-    public DataPermissionEntity findByTablePrefix(String tablePrefix) {
+    public List<DataPermissionEntity> findByTablePrefix(String tablePrefix) {
+        List<DataPermissionEntity> list = new ArrayList<>();
         try {
             // 构建查询SQL - 完全参考AssociationRulesService
             String querySql = "SELECT * FROM " + PERMISSIONS_TABLE + " WHERE tablePrefix = '" + tablePrefix + "';";
@@ -65,17 +66,13 @@ public class DataPermissionDao {
             SessionExecuteSqlResult result = iginxSession.executeSql(querySql);
             List<Map<String, Object>> records = ConvertUtil.getRecords(result);
 
-            if (records.isEmpty()) {
-                return null;
-            }
-
             // 转换为UserEntity - 参考ModelFileService的转换方式
-            Map<String, Object> record = records.get(0);
-            return ConvertUtil.mapToEntity(new DataPermissionEntity(), record, PERMISSIONS_TABLE);
+            records.forEach(record ->
+                    list.add(ConvertUtil.mapToEntity(new DataPermissionEntity(), record, PERMISSIONS_TABLE)));
         } catch (Exception e) {
             log.error("查询用户失败: {}", e.getMessage(), e);
-            return null;
         }
+        return list;
     }
 
     /**
