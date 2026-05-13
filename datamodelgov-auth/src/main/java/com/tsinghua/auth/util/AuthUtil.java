@@ -1,5 +1,6 @@
 package com.tsinghua.auth.util;
 
+import com.tsinghua.auth.enums.UserRole;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.Authentication;
@@ -44,6 +45,15 @@ public class AuthUtil {
             log.warn("获取当前用户失败: {}", e.getMessage());
         }
         return defaultValue;
+    }
+
+    /**
+     * 检查当前用户是否是管理员
+     *
+     * @return true if user has the role, false otherwise
+     */
+    public static boolean isAdmin() {
+        return hasRole(UserRole.ADMIN);
     }
 
     /**

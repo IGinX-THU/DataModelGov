@@ -1,6 +1,7 @@
 package com.tsinghua.auth.filter;
 
 import com.tsinghua.auth.util.JwtUtil;
+import com.tsinghua.auth.service.CustomUserDetailsService;
 import com.tsinghua.model.Result;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -9,7 +10,6 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
@@ -21,7 +21,6 @@ import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.util.ArrayList;
 
 /**
  * JWT认证过滤器
@@ -31,6 +30,7 @@ import java.util.ArrayList;
 public class JwtAuthenticationFilter extends OncePerRequestFilter implements ApplicationContextAware {
 
     private JwtUtil jwtUtil;
+    private CustomUserDetailsService userDetailsService;
     private final ObjectMapper objectMapper;
     private ApplicationContext applicationContext;
 
@@ -49,7 +49,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter implements App
                                 FilterChain filterChain) throws ServletException, IOException {
         
         try {
-            // 懒加载JwtUtil
+            // 懒加载JwtUtil和UserDetailsService
             if (jwtUtil == null) {
                 if (applicationContext == null) {
                     log.warn("ApplicationContext尚未初始化，跳过JWT验证");
@@ -57,6 +57,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter implements App
                     return;
                 }
                 jwtUtil = applicationContext.getBean(JwtUtil.class);
+                userDetailsService = applicationContext.getBean(CustomUserDetailsService.class);
             }
 
             // 获取请求路径
@@ -81,12 +82,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter implements App
                 if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
                     // 验证token有效性
                     if (jwtUtil.validateToken(token, username)) {
-                        // 创建认证对象
-                        UserDetails userDetails = User.builder()
-                                .username(username)
-                                .password("")
-                                .authorities(new ArrayList<>())
-                                .build();
+                        // 从数据库加载用户的完整信息（包括角色）
+                        UserDetails userDetails = userDetailsService.loadUserByUsername(username);
                         
                         UsernamePasswordAuthenticationToken authentication = 
                                 new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
@@ -95,7 +92,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter implements App
                         // 设置到Security上下文
                         SecurityContextHolder.getContext().setAuthentication(authentication);
                         
-                        log.debug("用户 {} 认证成功", username);
+                        log.debug("用户 {} 认证成功，权限: {}", username, userDetails.getAuthorities());
                     } else {
                         log.warn("Token验证失败: {}", username);
                         handleAuthenticationFailure(response, "Token已过期或无效");
