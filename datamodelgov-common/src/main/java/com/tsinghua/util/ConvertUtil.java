@@ -127,6 +127,19 @@ public class ConvertUtil {
     }
 
     /**
+     * 将记录映射为实体 - 通用方法
+     */
+    public static <T> T mapToEntity(T entity, Map<String, Object> record, String tablePrefix) {
+
+        // 使用ConvertUtil的通用方法设置字段值 - 参考ModelFileService.queryMeta
+        record.forEach((k, v) -> {
+            String fieldName = k.replace(tablePrefix + ".", "");
+            ConvertUtil.setEntityField(entity, tablePrefix, fieldName, v);
+        });
+
+        return entity;
+    }
+    /**
      * 根据字段名设置实体属性 - 通用方法
      * 参考ModelFileService的setDtoField方法，提取为公共工具方法
      * 需要传入实体类、字段映射前缀、字段名和值

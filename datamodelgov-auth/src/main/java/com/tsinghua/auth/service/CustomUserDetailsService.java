@@ -37,8 +37,8 @@ public class CustomUserDetailsService implements UserDetailsService {
                 throw new UsernameNotFoundException("用户已被禁用: " + username);
             }
             
-            // 创建权限列表（这里简化处理，实际应该从用户角色表获取）
-            SimpleGrantedAuthority authority = new SimpleGrantedAuthority("ROLE_USER");
+            // 创建权限列表，使用用户的实际角色
+            SimpleGrantedAuthority authority = new SimpleGrantedAuthority("ROLE_" + user.getRole());
             
             // 返回UserDetails对象
             return new User(

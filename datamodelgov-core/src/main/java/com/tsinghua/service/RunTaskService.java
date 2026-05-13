@@ -8,6 +8,8 @@ import cn.edu.tsinghua.iginx.session_v2.query.IginXRecord;
 import cn.edu.tsinghua.iginx.session_v2.query.IginXTable;
 import cn.edu.tsinghua.iginx.session_v2.write.Point;
 import com.alibaba.fastjson2.JSONArray;
+import com.tsinghua.auth.service.DataPermissionService;
+import com.tsinghua.auth.util.VisibilitySqlUtil;
 import com.tsinghua.dto.DataQueryRequest;
 import com.tsinghua.dto.InputBindDto;
 import com.tsinghua.dto.OutputBindDto;
@@ -68,6 +70,9 @@ public class RunTaskService {
     private AssociationRulesService associationRulesService;
 
     @Autowired
+    private DataPermissionService dataPermissionService;
+
+    @Autowired
     private IginXClient iginxClient;
 
     @Autowired
@@ -100,7 +105,15 @@ public class RunTaskService {
             if (request.getEndTime() != null) {
                 sql.append(" AND timestamp <= ").append(request.getEndTime());
             }
-            
+
+            if (!AuthUtil.isAdmin()) {
+                List<String> tables = dataPermissionService.getCurrentUserAccessibleTables();
+                List<String> modelTables = tables.stream()
+                        .filter(table -> table.startsWith("models_system"))
+                        .collect(Collectors.toList());
+                VisibilitySqlUtil.generateModelVisibilityFilter(modelTables, sql);
+            }
+
             // 添加排序和分页
             sql.append(" ORDER BY timestamp DESC");
             sql.append(" LIMIT ").append(request.getPageSize());
@@ -154,6 +167,15 @@ public class RunTaskService {
             if (request.getEndTime() != null) {
                 sql.append(" AND timestamp <= ").append(request.getEndTime());
             }
+
+            if (!AuthUtil.isAdmin()) {
+                List<String> tables = dataPermissionService.getCurrentUserAccessibleTables();
+                List<String> modelTables = tables.stream()
+                        .filter(table -> table.startsWith("models_system"))
+                        .collect(Collectors.toList());
+                VisibilitySqlUtil.generateModelVisibilityFilter(modelTables, sql);
+            }
+
             sql.append(";");
             
             log.info("执行COUNT SQL: {}", sql);

@@ -47,6 +47,7 @@ public abstract class BaseStorageEngineRequest {
     @ApiModelProperty(value = "数据前缀")
     private String dataPrefix;
 
+    @NotBlank(message = "请为数据源起个模式前缀")
     @ApiModelProperty(value = "模式前缀")
     private String schemaPrefix;
 

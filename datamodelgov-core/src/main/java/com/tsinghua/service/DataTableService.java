@@ -7,6 +7,7 @@ import cn.edu.tsinghua.iginx.session_v2.QueryClient;
 import cn.edu.tsinghua.iginx.session_v2.query.*;
 import cn.edu.tsinghua.iginx.thrift.*;
 import cn.edu.tsinghua.iginx.utils.Pair;
+import com.tsinghua.auth.service.DataPermissionService;
 import com.tsinghua.dto.*;
 import com.tsinghua.model.Result;
 import com.tsinghua.util.ConvertUtil;
@@ -43,6 +44,9 @@ public class DataTableService {
 
     @Autowired
     private IginXClient iginxClient;
+
+    @Autowired
+    private DataPermissionService dataPermissionService;
 
     public TableDto queryData(DataQueryRequest request) {
         List<String> columns = new ArrayList<>();
@@ -148,6 +152,7 @@ public class DataTableService {
 
         // 4. 所有块上传完成后，执行导入SQL
         Pair<List<String>, Long> result = iginxSession.executeLoadCSV(sql, uploadedFileName);
+        dataPermissionService.saveTablePrefix(targetPath);
         return result.v;
     }
 

@@ -269,9 +269,8 @@ class RegisterDataResourceEmbedded extends HTMLElement {
         if (dataPrefix && dataPrefix.trim()) {
             data.dataPrefix = dataPrefix.trim();
         }
-        if (schemaPrefix && schemaPrefix.trim()) {
-            data.schemaPrefix = schemaPrefix.trim();
-        }
+        // 模式前缀为必填项
+        data.schemaPrefix = schemaPrefix ? schemaPrefix.trim() : '';
         
         // 只对需要用户名密码的存储引擎类型添加这些字段
         if (username && (data.storageEngineType === 1 || data.storageEngineType === 2 || data.storageEngineType === 4 || data.storageEngineType === 6)) {
@@ -418,6 +417,12 @@ class RegisterDataResourceEmbedded extends HTMLElement {
         // 基础验证
         if (!data.ip || !data.port || !data.storageEngineType) {
             this.showMessage('请填写必填字段并选择有效的数据源类型', 'error');
+            return false;
+        }
+        
+        // 模式前缀为必填项
+        if (!data.schemaPrefix || data.schemaPrefix.trim() === '') {
+            this.showMessage('模式前缀为必填项', 'error');
             return false;
         }
         

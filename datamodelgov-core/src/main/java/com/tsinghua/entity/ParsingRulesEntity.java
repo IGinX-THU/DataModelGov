@@ -15,4 +15,7 @@ public class ParsingRulesEntity {
     private Long createTime;
     @ApiModelProperty(value = "修改时间")
     private Long updateTime;
+    @ApiModelProperty(value = "创建人")
+    private String owner;
+
 }
