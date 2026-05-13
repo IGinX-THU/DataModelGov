@@ -5,6 +5,7 @@ import cn.edu.tsinghua.iginx.session.SessionExecuteSqlResult;
 import cn.edu.tsinghua.iginx.session_v2.IginXClient;
 import cn.edu.tsinghua.iginx.session_v2.WriteClient;
 import com.tsinghua.auth.entity.DataPermissionEntity;
+import com.tsinghua.auth.entity.UserEntity;
 import com.tsinghua.auth.util.AuthUtil;
 import com.tsinghua.auth.util.VisibilitySqlUtil;
 import com.tsinghua.util.ConvertUtil;
@@ -30,6 +31,52 @@ public class DataPermissionDao {
 
     @Autowired
     private IginXClient iginxClient;
+
+    /**
+     * 删除
+     */
+    public void deleteById(long timestamp) {
+        try {
+
+            // 获取所有字段名
+            List<String> measurements = ConvertUtil.iginxFieldNamesConvert(DataPermissionEntity.class, PERMISSIONS_TABLE);
+
+            // 删除指定时间戳的数据
+            iginxClient.getDeleteClient().deleteMeasurementsData(measurements, timestamp - 1, timestamp + 1);
+
+            log.info("权限已删除, 时间戳: {}", timestamp);
+        } catch (Exception e) {
+            log.error("删除用户失败: {}", e.getMessage(), e);
+            throw new RuntimeException("删除用户失败: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 查询权限
+     */
+    public DataPermissionEntity findByTablePrefix(String tablePrefix) {
+        try {
+            // 构建查询SQL - 完全参考AssociationRulesService
+            String querySql = "SELECT * FROM " + PERMISSIONS_TABLE + " WHERE tablePrefix = '" + tablePrefix + "';";
+
+            log.info("执行权限查询SQL: {}", querySql);
+
+            // 使用Session.executeSql - 参考AssociationRulesService
+            SessionExecuteSqlResult result = iginxSession.executeSql(querySql);
+            List<Map<String, Object>> records = ConvertUtil.getRecords(result);
+
+            if (records.isEmpty()) {
+                return null;
+            }
+
+            // 转换为UserEntity - 参考ModelFileService的转换方式
+            Map<String, Object> record = records.get(0);
+            return ConvertUtil.mapToEntity(new DataPermissionEntity(), record, PERMISSIONS_TABLE);
+        } catch (Exception e) {
+            log.error("查询用户失败: {}", e.getMessage(), e);
+            return null;
+        }
+    }
 
     /**
      * 保存数据权限

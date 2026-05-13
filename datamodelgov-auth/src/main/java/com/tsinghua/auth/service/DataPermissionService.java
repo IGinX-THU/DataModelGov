@@ -5,6 +5,7 @@ import cn.edu.tsinghua.iginx.session_v2.WriteClient;
 import com.tsinghua.auth.dao.DataPermissionDao;
 import com.tsinghua.auth.entity.DataPermissionEntity;
 import com.tsinghua.auth.util.AuthUtil;
+import com.tsinghua.util.ConvertUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -69,6 +70,30 @@ public class DataPermissionService {
             return new ArrayList<>();
         }
         return dataPermissionDao.getUserAccessibleTables(currentUser);
+    }
+
+    public boolean existTablePrefix(String tablePrefix){
+        DataPermissionEntity dataPermissionEntity = dataPermissionDao.findByTablePrefix(tablePrefix);
+        return dataPermissionEntity != null;
+    }
+
+    /**
+     * 删除
+     */
+    public void deleteByTablePrefix(String tablePrefix) {
+        try {
+            // 先查询用户获取时间戳
+            DataPermissionEntity dataPermissionEntity = dataPermissionDao.findByTablePrefix(tablePrefix);
+            if (dataPermissionEntity == null || dataPermissionEntity.getCreateTime() == null) {
+                log.warn("权限不存在，无法删除: {}", tablePrefix);
+                return;
+            }
+            dataPermissionDao.deleteById(dataPermissionEntity.getCreateTime());
+            log.info("权限已删除: {}", tablePrefix);
+        } catch (Exception e) {
+            log.error("删除用户失败: {}", e.getMessage(), e);
+            throw new RuntimeException("删除用户失败: " + e.getMessage(), e);
+        }
     }
 
 }

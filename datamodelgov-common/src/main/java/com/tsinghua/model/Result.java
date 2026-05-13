@@ -33,6 +33,11 @@ public class Result<T> {
         return new Result<>(500, message, null);
     }
 
+    // 错误响应
+    public static Result<String> error(String message, String data) {
+        return new Result<>(500, message, data);
+    }
+
     // 参数错误响应
     public static Result<Void> paramError(String message) {
         return new Result<>(400, message, null);
