@@ -4,6 +4,7 @@ import cn.edu.tsinghua.iginx.session.Session;
 import cn.edu.tsinghua.iginx.session.SessionExecuteSqlResult;
 import cn.edu.tsinghua.iginx.session_v2.IginXClient;
 import cn.edu.tsinghua.iginx.session_v2.write.Point;
+import com.tsinghua.auth.util.AuthUtil;
 import com.tsinghua.dto.ParsingRulesQueryRequest;
 import com.tsinghua.entity.ParsingRulesEntity;
 import com.tsinghua.util.ConvertUtil;
@@ -63,10 +64,15 @@ public class ParsingRulesService {
         List<Point> metaPoints = new ArrayList<>();
         ParsingRulesEntity queryRule = queryRule(parsingRulesEntity.getCreateTime());
         long timestamp;
-        
+        String owner = AuthUtil.getCurrentUsername();
         if (queryRule != null && queryRule.getCreateTime() != null) {
             // 编辑情况
             timestamp = queryRule.getCreateTime();
+
+            if (!AuthUtil.isAdmin() && !Objects.equals(owner, queryRule.getOwner())){
+                throw new IllegalArgumentException("只能操作自己的规则！");
+            }
+            owner = queryRule.getOwner();
         } else {
             // 新增情况
             validateNameUniqueness(parsingRulesEntity.getName());
@@ -74,6 +80,7 @@ public class ParsingRulesService {
             parsingRulesEntity.setCreateTime(timestamp);
         }
         parsingRulesEntity.setUpdateTime(System.currentTimeMillis());
+        parsingRulesEntity.setOwner(owner);
         String metaBasePath = DATA_PREFIX;
 
         // 完全参考ModelFileService.saveModelMetadata的字段创建方式
@@ -83,6 +90,7 @@ public class ParsingRulesService {
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "example", parsingRulesEntity.getExample(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "createTime", parsingRulesEntity.getCreateTime(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "updateTime", parsingRulesEntity.getUpdateTime(), timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "owner", parsingRulesEntity.getOwner(), timestamp));
 
         // 批量写入元数据 - 完全参考ModelFileService的写入方式
         iginxClient.getWriteClient().writePoints(metaPoints.stream().filter(Objects::nonNull).collect(Collectors.toList()));
@@ -190,16 +198,18 @@ public class ParsingRulesService {
      * 删除解析规则
      * 参考deleteModel逻辑，只用createTime作为唯一标识
      */
-    public void deleteRule(Long createTime) {
-        try {
-            List<String> measurements = ConvertUtil.iginxFieldNamesConvert(ParsingRulesEntity.class, DATA_PREFIX);
-            // 删除指定时间戳的数据
-            iginxClient.getDeleteClient().deleteMeasurementsData(measurements, createTime - 1, createTime + 1);
-            log.info("已删除解析规则: createTime: {}", createTime);
-        } catch (Exception e) {
-            log.error("删除解析规则失败", e);
-            throw new RuntimeException("删除解析规则失败: " + e.getMessage(), e);
+    public void deleteRule(Long createTime) throws Exception {
+        if (!AuthUtil.isAdmin()) {
+            ParsingRulesEntity queryRule = queryRule(createTime);
+            String owner = AuthUtil.getCurrentUsername();
+            if (!Objects.equals(owner, queryRule.getOwner())) {
+                throw new IllegalArgumentException("只能操作自己的规则！");
+            }
         }
+        List<String> measurements = ConvertUtil.iginxFieldNamesConvert(ParsingRulesEntity.class, DATA_PREFIX);
+        // 删除指定时间戳的数据
+        iginxClient.getDeleteClient().deleteMeasurementsData(measurements, createTime - 1, createTime + 1);
+        log.info("已删除解析规则: createTime: {}", createTime);
     }
 
     /**

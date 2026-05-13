@@ -26,7 +26,7 @@ public class AuthUtil {
         } catch (Exception e) {
             log.warn("获取当前用户失败: {}", e.getMessage());
         }
-        return "Unknown User";
+        return "unknown";
     }
 
     /**
