@@ -2300,7 +2300,7 @@ class AssociationRules extends HTMLElement {
                     <div class="form-row">
                         <div class="form-group">
                             <label for="startTime">开始时间</label>
-                            <input type="datetime-local" id="startTime" name="startTime" required value="${new Date().toISOString().slice(0, 16)}" step="1">
+                            <input type="datetime-local" id="startTime" name="startTime" required value="1970-01-01T08:00" step="1">
                         </div>
                         <div class="form-group">
                             <label for="endTime">结束时间</label>
@@ -2382,14 +2382,26 @@ class AssociationRules extends HTMLElement {
                 } else {
                     console.warn('时间范围为空，使用默认值');
                     this.showToast('未找到数据时间范围，使用默认时间', 'warning');
+                    const startTimeElement = this.shadowRoot.getElementById('startTime');
+                    if (startTimeElement) {
+                        startTimeElement.value = '1970-01-01T08:00';
+                    }
                 }
             } else {
                 console.warn('获取时间范围失败:', result.message);
                 this.showToast('获取时间范围失败，使用默认时间', 'warning');
+                const startTimeElement = this.shadowRoot.getElementById('startTime');
+                if (startTimeElement) {
+                    startTimeElement.value = '1970-01-01T08:00';
+                }
             }
         } catch (error) {
             console.error('获取时间范围异常:', error);
             this.showToast('获取时间范围异常，使用默认时间', 'warning');
+            const startTimeElement = this.shadowRoot.getElementById('startTime');
+            if (startTimeElement) {
+                startTimeElement.value = '1970-01-01T08:00';
+            }
         }
     }
     
