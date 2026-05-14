@@ -6,3 +6,12 @@
 :host .modal {
     width: min(560px, 92vw);
 }
+
+:host #visibleUsers {
+    max-height: 200px;
+    overflow-y: auto;
+    border: 1px solid #ccc;
+    padding: 8px;
+    border-radius: 4px;
+    width: 500px;
+}

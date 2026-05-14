@@ -279,20 +279,27 @@ class PermissionManagement extends HTMLElement {
             if (result.success && Array.isArray(result.data)) {
                 // 清空现有选项
                 visibleUsers.innerHTML = '';
+                // 设置网格布局
+                visibleUsers.style.display = 'grid';
+                visibleUsers.style.gridTemplateColumns = 'repeat(auto-fill, minmax(75px, 1fr))';
+                visibleUsers.style.gap = '8px';
+
                 // 添加用户复选框
                 result.data.forEach(username => {
                     const checkboxDiv = document.createElement('div');
-                    checkboxDiv.style.marginBottom = '4px';
+                    checkboxDiv.style.display = 'flex';
+                    checkboxDiv.style.alignItems = 'center';
 
                     const checkbox = document.createElement('input');
                     checkbox.type = 'checkbox';
                     checkbox.value = username;
                     checkbox.id = `user-${username}`;
+                    checkbox.style.marginRight = '6px';
 
                     const label = document.createElement('label');
                     label.htmlFor = `user-${username}`;
                     label.textContent = username;
-                    label.style.marginLeft = '6px';
+                    label.style.cursor = 'pointer';
 
                     checkboxDiv.appendChild(checkbox);
                     checkboxDiv.appendChild(label);
