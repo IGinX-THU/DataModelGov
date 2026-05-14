@@ -281,6 +281,14 @@ class ParsingRules extends HTMLElement {
     async show(...args) {
         console.log('ParsingRules show() 被调用', args);
         this.style.display = 'block';
+
+        // 重置筛选条件和分页
+        this.currentPage = 1;
+        const filterInput = this.shadowRoot.querySelector('.filter-input[type="text"]');
+        if (filterInput) {
+            filterInput.value = '';
+        }
+
         // 每次显示时刷新数据
         await this.loadRulesFromAPI();
         this.renderTable();

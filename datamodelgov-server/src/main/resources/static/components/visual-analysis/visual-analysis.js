@@ -176,11 +176,11 @@ class VisualAnalysis extends HTMLElement {
         this.displayData = [];
         this.currentPage = 1;
         this.pageSize = 10; // 减少每页显示数量以便测试滚动
-        
+
         setTimeout(() => {
             this.initPagination();
             this.initializeComponent();
-        }, 50);
+        }, 100);
     }
 
     hide() {
@@ -4136,8 +4136,10 @@ class VisualAnalysis extends HTMLElement {
     async loadTasksFromAPI() {
         try {
             // 显示全局loading
+            console.log('visual-analysis: 准备显示全局loading');
             if (window.showGlobalLoading) {
                 window.showGlobalLoading('正在查询数据...');
+                console.log('visual-analysis: 全局loading已显示');
             }
 
             // 获取筛选条件

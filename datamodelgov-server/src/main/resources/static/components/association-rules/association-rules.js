@@ -162,17 +162,32 @@ class AssociationRules extends HTMLElement {
         console.log('AssociationRules show() 被调用', args);
         this.style.display = 'block';
 
+        // 重置筛选条件和分页
+        this.currentPage = 1;
+        const nameFilter = this.shadowRoot.querySelector('.filter-input[type="text"]');
+        if (nameFilter) {
+            nameFilter.value = '';
+        }
+        const targetModelFilter = this.shadowRoot.getElementById('targetModelFilter');
+        if (targetModelFilter) {
+            targetModelFilter.value = '';
+        }
+        const versionFilter = this.shadowRoot.getElementById('versionFilter');
+        if (versionFilter) {
+            versionFilter.value = '';
+        }
+
         // 检查筛选器元素是否存在
         console.log('检查筛选器元素:');
         console.log('targetModelFilter:', this.shadowRoot.getElementById('targetModelFilter'));
         console.log('versionFilter:', this.shadowRoot.getElementById('versionFilter'));
         console.log('右侧树:', document.querySelector('.right-sidebar .tree'));
-        
+
         // 每次显示时加载筛选器选项，确保右侧树已加载
         setTimeout(() => {
             console.log('开始加载筛选器选项...');
             this.loadFilterOptions();
-            
+
             // 如果有传入参数，应用筛选条件（会自动执行查询）
             if (args && args[0]) {
                 this.applyFilterParams(args[0]);
