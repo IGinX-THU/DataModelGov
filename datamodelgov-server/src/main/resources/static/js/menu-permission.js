@@ -55,8 +55,8 @@ class MenuPermission {
         const menuPermissions = {
             // ADMIN - 所有菜单区域
             'ADMIN': ['data', 'model', 'schedule', 'analysis', 'user', 'tool', 'window', 'help'],
-            // DATA_ENGINEER - 除用户管理外的所有权限
-            'DATA_ENGINEER': ['data', 'model', 'schedule', 'analysis', 'tool', 'window', 'help']
+            // DATA_ENGINEER - 含「用户」父菜单；其中「用户管理」子项仅管理员可见，由 applyUserDropdownSubmenuVisibility 控制
+            'DATA_ENGINEER': ['data', 'model', 'schedule', 'analysis', 'user', 'tool', 'window', 'help']
         };
 
         return menuPermissions[this.userRole]?.includes(menuArea) || false;
@@ -68,9 +68,21 @@ class MenuPermission {
 
         // 控制菜单标签显示
         this.controlMenuTabs();
+
+        // 「用户」下拉内：仅管理员可见「用户管理」
+        this.applyUserDropdownSubmenuVisibility();
         
         // 控制功能按钮组显示
         this.controlFunctionButtonGroups();
+    }
+
+    /** 「用户管理」仅 ADMIN；「权限管理」「修改密码」对所有已登录角色可见 */
+    applyUserDropdownSubmenuVisibility() {
+        const el = document.getElementById('userManagementMenuItem');
+        if (!el) {
+            return;
+        }
+        el.style.display = this.userRole === 'ADMIN' ? '' : 'none';
     }
 
     // 控制菜单标签

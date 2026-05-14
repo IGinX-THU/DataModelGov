@@ -92,6 +92,12 @@ window.AppConfig = {
             delete: '/api/user/delete',
             'change-password': '/api/user/change-password'
         },
+        dataPermission: {
+            ownerTables: '/api/data-permission/owner-tables',
+            query: '/api/data-permission/query',
+            count: '/api/data-permission/count',
+            update: '/api/data-permission/update'
+        },
         // 模型相关
         model: {
             upload: '/api/model/upload',

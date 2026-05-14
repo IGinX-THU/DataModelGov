@@ -94,7 +94,8 @@ document.addEventListener('DOMContentLoaded', function() {
             'modelDetail',
             'dataSourceList',
             'importData',
-            'userManagement'
+            'userManagement',
+            'permissionManagement'
         ];
         
         components.forEach(componentId => {
@@ -471,6 +472,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     console.log('用户管理菜单被点击');
                     if (isSecondClick) clearWorkspace();
                     showComponent('userManagement');
+                } else if (menuId === 'permissionManagementMenuItem') {
+                    console.log('权限管理菜单被点击');
+                    if (isSecondClick) clearWorkspace();
+                    showComponent('permissionManagement');
                 } else if (menuId === 'changePasswordMenuItem') {
                     console.log('修改密码菜单被点击');
                     const changePasswordComponent = document.querySelector('change-password');
