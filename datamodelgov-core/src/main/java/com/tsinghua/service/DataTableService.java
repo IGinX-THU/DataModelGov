@@ -15,6 +15,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import javax.servlet.http.HttpServletResponse;
@@ -99,7 +100,7 @@ public class DataTableService {
             // 1. 保存上传文件到临时位置
             tempFilePath = Files.createTempFile("iginx_upload_", ".csv");
             file.transferTo(tempFilePath.toFile());
-            return importCsvFile(tempFilePath, importConfig.getTargetPath(), uploadedFileName);
+            return importCsvFile(tempFilePath, importConfig.getTargetPath(), uploadedFileName, importConfig.getKey());
         }  finally {
             // 清理临时文件
             if (tempFilePath != null) {
@@ -117,7 +118,7 @@ public class DataTableService {
      * @param uploadedFileName 上传后的文件名
      * @return 导入结果
      */
-    public Long importCsvFile(Path csvFilePath, String targetPath, String uploadedFileName) throws Exception {
+    public Long importCsvFile(Path csvFilePath, String targetPath, String uploadedFileName, String key) throws Exception {
 
         // 1. 解析命令并获取服务端准备的状态/路径（如果需要）
         // 根据源码，此处可能会返回一个服务端期望的路径，但uploadFileChunk似乎更直接。
@@ -126,7 +127,9 @@ public class DataTableService {
 
         // 2. 构建LOAD DATA SQL语句
         // 注意：此处的路径是一个“约定”或“任务标识”，最终文件通过uploadFileChunk上传
-        String sql = String.format("LOAD DATA FROM INFILE '%s' AS CSV INTO %s;",
+        String sql = StringUtils.hasText(key)?
+                String.format("LOAD DATA FROM INFILE '%s' AS CSV INTO %s set key '%s';", uploadedFileName, targetPath, key)
+                : String.format("LOAD DATA FROM INFILE '%s' AS CSV INTO %s;",
                 uploadedFileName, // 使用一个约定的文件名
                 targetPath);
 
