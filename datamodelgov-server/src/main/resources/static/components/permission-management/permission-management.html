@@ -18,7 +18,7 @@
 
     <div class="parsing-table-card">
         <div class="table-toolbar">
-            <span class="toolbar-title">我拥有的数据表权限</span>
+            <span class="table-toolbar-title">我拥有的数据表权限</span>
             <button class="toolbar-btn green" type="button" id="refreshBtn">刷新</button>
         </div>
         <div class="table-wrapper">
@@ -46,31 +46,31 @@
     <div class="modal">
         <div class="modal-header">
             <span id="modalTitle">编辑权限</span>
-            <button class="modal-close" id="closeModal">&times;</button>
+            <button type="button" class="modal-close" id="modalClose" aria-label="关闭">×</button>
         </div>
         <div class="modal-body" id="modalBody">
-            <form id="permForm">
+            <form id="permForm" class="modal-form">
                 <input type="hidden" id="recordId" />
-                <div class="form-group">
-                    <label class="form-label">表前缀</label>
-                    <input type="text" class="form-control" id="displayTablePrefix" readonly />
+                <div class="modal-form-row">
+                    <span class="modal-label">表前缀</span>
+                    <input type="text" class="modal-input" id="displayTablePrefix" readonly />
                 </div>
-                <div class="form-group">
-                    <label class="form-label required">是否公开</label>
-                    <select class="form-control form-select" id="isPublic" required>
+                <div class="modal-form-row">
+                    <span class="modal-label">是否公开</span>
+                    <select class="modal-input" id="isPublic" required>
                         <option value="true">是（所有用户可见）</option>
                         <option value="false">否</option>
                     </select>
                 </div>
-                <div class="form-group">
-                    <label class="form-label">可见用户</label>
-                    <textarea class="form-control" id="visibleUsers" rows="3" placeholder="非公开时填写；多个用户名用英文逗号分隔，留空表示仅创建者可见"></textarea>
+                <div class="modal-form-row">
+                    <span class="modal-label">可见用户</span>
+                    <textarea class="modal-textarea" id="visibleUsers" placeholder="非公开时填写；多个用户名用英文逗号分隔，留空表示仅创建者可见"></textarea>
                 </div>
             </form>
         </div>
         <div class="modal-footer" id="modalFooter">
-            <button class="btn secondary" type="button" id="cancelBtn">取消</button>
-            <button class="btn primary" type="button" id="saveBtn">保存</button>
+            <button type="button" class="modal-btn secondary" id="cancelBtn">取消</button>
+            <button type="button" class="modal-btn primary" id="saveBtn">保存</button>
         </div>
     </div>
 </div>

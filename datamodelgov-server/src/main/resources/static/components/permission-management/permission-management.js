@@ -19,6 +19,7 @@ class PermissionManagement extends HTMLElement {
                 modalMask.hidden = true;
                 modalMask.style.display = 'none';
             }
+            this.capturePermModalTemplate();
             this.initPagination();
             this.bindEvents();
         }, 100);
@@ -68,6 +69,31 @@ class PermissionManagement extends HTMLElement {
         }
     }
 
+    capturePermModalTemplate() {
+        const modalBody = this.shadowRoot.getElementById('modalBody');
+        const modalFooter = this.shadowRoot.getElementById('modalFooter');
+        if (modalBody && modalFooter) {
+            this._defaultPermModalSnapshot = {
+                body: modalBody.innerHTML,
+                footer: modalFooter.innerHTML
+            };
+        }
+    }
+
+    restorePermModalDom() {
+        if (!this._defaultPermModalSnapshot) {
+            return;
+        }
+        const modalBody = this.shadowRoot.getElementById('modalBody');
+        const modalFooter = this.shadowRoot.getElementById('modalFooter');
+        if (modalBody) {
+            modalBody.innerHTML = this._defaultPermModalSnapshot.body;
+        }
+        if (modalFooter) {
+            modalFooter.innerHTML = this._defaultPermModalSnapshot.footer;
+        }
+    }
+
     bindEvents() {
         this.shadowRoot.getElementById('applyFilters')?.addEventListener('click', () => {
             this.currentPage = 1;
@@ -83,9 +109,25 @@ class PermissionManagement extends HTMLElement {
             this.loadList();
         });
 
-        this.shadowRoot.getElementById('closeModal')?.addEventListener('click', () => this.hideModal());
-        this.shadowRoot.getElementById('cancelBtn')?.addEventListener('click', () => this.hideModal());
-        this.shadowRoot.getElementById('saveBtn')?.addEventListener('click', () => this.savePermission());
+        this.bindModalDelegationOnce();
+    }
+
+    bindModalDelegationOnce() {
+        const mask = this.shadowRoot.getElementById('modalMask');
+        if (!mask || mask.dataset.delegationBound === '1') {
+            return;
+        }
+        mask.dataset.delegationBound = '1';
+        mask.addEventListener('click', (e) => {
+            const id = e.target.id;
+            if (id === 'modalClose' || id === 'cancelBtn') {
+                e.preventDefault();
+                this.hideModal();
+            } else if (id === 'saveBtn') {
+                e.preventDefault();
+                this.savePermission();
+            }
+        });
     }
 
     filterPayload() {
@@ -96,6 +138,9 @@ class PermissionManagement extends HTMLElement {
     }
 
     async loadList() {
+        if (window.showGlobalLoading) {
+            window.showGlobalLoading('正在查询数据权限...');
+        }
         try {
             const requestBody = {
                 page: this.currentPage || 1,
@@ -113,6 +158,10 @@ class PermissionManagement extends HTMLElement {
         } catch (error) {
             console.error('加载权限列表失败:', error);
             this.showToast('加载权限列表失败', 'error');
+        } finally {
+            if (window.hideGlobalLoading) {
+                window.hideGlobalLoading();
+            }
         }
     }
 
@@ -120,8 +169,11 @@ class PermissionManagement extends HTMLElement {
         try {
             const requestBody = this.filterPayload();
             const result = await window.AppConfig.post('dataPermission', 'count', requestBody);
-            if (result.success && result.data) {
-                this.totalCount = Number(result.data.count) || 0;
+            if (result.success && result.data !== undefined && result.data !== null) {
+                const raw = result.data;
+                this.totalCount = typeof raw === 'object' && raw !== null && 'count' in raw
+                    ? Number(raw.count) || 0
+                    : Number(raw) || 0;
                 this.updatePagination();
             }
         } catch (error) {
@@ -159,10 +211,12 @@ class PermissionManagement extends HTMLElement {
                 <td>${this.escapeHtml(this.truncate(row.timestampSet, 48))}</td>
                 <td>${this.formatTime(row.createTime)}</td>
                 <td>
-                    <button class="table-btn edit" type="button" data-id="${pk != null ? pk : ''}">编辑</button>
+                    <div class="action-buttons">
+                        <button type="button" class="action-btn edit" data-id="${pk != null ? pk : ''}">编辑</button>
+                    </div>
                 </td>
             `;
-            const editBtn = tr.querySelector('.table-btn.edit');
+            const editBtn = tr.querySelector('.action-btn.edit');
             if (editBtn && pk != null) {
                 editBtn.addEventListener('click', () => this.openEditModal(row));
             }
@@ -205,6 +259,7 @@ class PermissionManagement extends HTMLElement {
     }
 
     hideModal() {
+        this.restorePermModalDom();
         const modalMask = this.shadowRoot.getElementById('modalMask');
         const form = this.shadowRoot.getElementById('permForm');
         if (modalMask) {

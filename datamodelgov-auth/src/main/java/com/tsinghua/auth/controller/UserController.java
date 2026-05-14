@@ -2,6 +2,7 @@ package com.tsinghua.auth.controller;
 
 import com.tsinghua.auth.entity.UserEntity;
 import com.tsinghua.auth.entity.RoleEntity;
+import com.tsinghua.auth.enums.UserRole;
 import com.tsinghua.auth.service.RolePermissionService;
 import com.tsinghua.model.Result;
 import com.tsinghua.auth.annotation.RequirePermission;
@@ -16,8 +17,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.HashMap;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Api(tags = "用户管理")
 @RestController
@@ -60,18 +61,29 @@ public class UserController {
     @ApiOperation("查询用户总数")
     @PostMapping("/count")
     @RequirePermission(Permission.USER_READ)
-    public Result<Object> countUsers(@RequestBody UserQueryRequest request) {
-        // 调用服务层方法进行筛选查询总数
+    public Result<Long> countUsers(@RequestBody UserQueryRequest request) {
         List<UserEntity> users = rolePermissionService.queryUsers(
-            request.getUsername(), 
-            request.getRole(), 
-            request.getEnabled(), 
-            null, 
+            request.getUsername(),
+            request.getRole(),
+            request.getEnabled(),
+            null,
             null
         );
-        Map<String, Object> result = new HashMap<>();
-        result.put("count", users.size());
-        return Result.success(result);
+        return Result.success((long) users.size());
+    }
+
+    @ApiOperation("查询所有用户")
+    @GetMapping("/all")
+    public Result<List<String>> allUsers() {
+        List<UserEntity> users = rolePermissionService.queryUsers(
+                null,
+                UserRole.DATA_ENGINEER,
+                "true",
+                null,
+                null
+        );
+        List<String> all = users.stream().map(UserEntity::getUsername).collect(Collectors.toList());
+        return Result.success(all);
     }
 
     @ApiOperation("用户详情")

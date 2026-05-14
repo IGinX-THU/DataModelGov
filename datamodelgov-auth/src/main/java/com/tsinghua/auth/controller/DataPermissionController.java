@@ -15,9 +15,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import javax.validation.Valid;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 @Api(tags = "数据权限")
 @RestController
@@ -41,11 +39,9 @@ public class DataPermissionController {
 
     @ApiOperation("当前用户拥有的数据表权限总数（与 query 筛选条件一致）")
     @PostMapping("/count")
-    public Result<Map<String, Object>> count(@RequestBody DataPermissionQueryRequest request) {
+    public Result<Long> count(@RequestBody DataPermissionQueryRequest request) {
         long count = dataPermissionService.countOwnerTables(request);
-        Map<String, Object> body = new HashMap<>();
-        body.put("count", count);
-        return Result.success(body);
+        return Result.success(count);
     }
 
     @ApiOperation("更新当前用户某条权限的公开与可见用户")
