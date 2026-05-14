@@ -212,4 +212,18 @@ public class DataPermissionService {
         }
     }
 
+    /**
+     * 保存
+     */
+    public void saveTablePrefix(String tablePrefix, boolean isPublic, String owner) {
+        if (!AuthUtil.isAdmin()) {
+            DataPermissionEntity dataPermissionEntity = DataPermissionEntity.builder()
+                    .tablePrefix(tablePrefix)
+                    .isPublic(isPublic)
+                    .owner(owner)
+                    .build();
+            saveDataPermission(dataPermissionEntity);
+        }
+    }
+
 }
