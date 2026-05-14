@@ -208,7 +208,6 @@ class PermissionManagement extends HTMLElement {
                 <td>${this.escapeHtml(row.owner || '')}</td>
                 <td>${row.isPublic ? '是' : '否'}</td>
                 <td>${this.escapeHtml(row.visibleUsers || '-')}</td>
-                <td>${this.escapeHtml(this.truncate(row.timestampSet, 48))}</td>
                 <td>${this.formatTime(row.createTime)}</td>
                 <td>
                     <div class="action-buttons">
