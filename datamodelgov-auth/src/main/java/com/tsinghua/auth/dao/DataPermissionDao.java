@@ -82,7 +82,9 @@ public class DataPermissionDao {
         List<DataPermissionEntity> list = new ArrayList<>();
         try {
             // 构建查询SQL - 完全参考AssociationRulesService
-            String querySql = "SELECT * FROM " + PERMISSIONS_TABLE + " WHERE owner = '" + owner + "';";
+            String querySql = AuthUtil.isAdmin()?
+                    "SELECT * FROM " + PERMISSIONS_TABLE + ";":
+                    "SELECT * FROM " + PERMISSIONS_TABLE + " WHERE owner = '" + owner + "';";
 
             log.info("执行权限查询SQL: {}", querySql);
 

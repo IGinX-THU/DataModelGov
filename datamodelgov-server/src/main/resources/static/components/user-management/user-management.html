@@ -2,7 +2,7 @@
     <div class="parsing-filter-card">
         <div class="filter-header">筛选</div>
         <div class="filter-rows" id="filterRows">
-            <div class="filter-row">
+            <div class="filter-row filter-row--cols-3">
                 <div class="filter-field">
                     <span class="filter-label">用户名</span>
                     <input class="filter-input" type="text" placeholder="请输入用户名" id="usernameFilter" />
@@ -49,40 +49,40 @@
                 </thead>
                 <tbody id="tableBody"></tbody>
             </table>
+            <div class="empty-hint" id="emptyHint" hidden>暂无用户数据</div>
         </div>
         <common-pagination id="pagination"></common-pagination>
     </div>
 </div>
 
-<!-- 用户编辑模态框 -->
 <div class="modal-mask" id="modalMask" hidden>
     <div class="modal">
         <div class="modal-header">
             <span id="modalTitle">新增用户</span>
-            <button class="modal-close" id="closeModal">&times;</button>
+            <button type="button" class="modal-close" id="modalClose" aria-label="关闭">×</button>
         </div>
         <div class="modal-body" id="modalBody">
-            <form id="userForm">
+            <form id="userForm" class="modal-form">
                 <input type="hidden" id="userId" />
-                <div class="form-group">
-                    <label class="form-label required">用户名</label>
-                    <input type="text" class="form-control" id="username" placeholder="请输入用户名" required />
+                <div class="modal-form-row">
+                    <span class="modal-label">用户名</span>
+                    <input type="text" class="modal-input" id="username" placeholder="请输入用户名" required />
                 </div>
-                <div class="form-group">
-                    <label class="form-label required" id="passwordLabel">密码</label>
-                    <input type="password" class="form-control" id="password" placeholder="请输入密码" />
+                <div class="modal-form-row">
+                    <span class="modal-label" id="passwordLabel">密码</span>
+                    <input type="password" class="modal-input" id="password" placeholder="请输入密码" autocomplete="new-password" />
                 </div>
-                <div class="form-group">
-                    <label class="form-label required">角色</label>
-                    <select class="form-control form-select" id="role" required>
+                <div class="modal-form-row">
+                    <span class="modal-label">角色</span>
+                    <select class="modal-input" id="role" required>
                         <option value="">请选择角色</option>
                         <option value="ADMIN">管理员</option>
                         <option value="DATA_ENGINEER">数据工程师</option>
                     </select>
                 </div>
-                <div class="form-group">
-                    <label class="form-label">状态</label>
-                    <select class="form-control form-select" id="enabled">
+                <div class="modal-form-row">
+                    <span class="modal-label">状态</span>
+                    <select class="modal-input" id="enabled">
                         <option value="true">启用</option>
                         <option value="false">禁用</option>
                     </select>
@@ -90,8 +90,8 @@
             </form>
         </div>
         <div class="modal-footer" id="modalFooter">
-            <button class="btn secondary" type="button" id="cancelBtn">取消</button>
-            <button class="btn primary" type="button" id="saveBtn">保存</button>
+            <button type="button" class="modal-btn secondary" id="cancelBtn">取消</button>
+            <button type="button" class="modal-btn primary" id="saveBtn">保存</button>
         </div>
     </div>
 </div>

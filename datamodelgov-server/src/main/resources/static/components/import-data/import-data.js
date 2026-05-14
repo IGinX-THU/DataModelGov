@@ -170,6 +170,7 @@ class ImportDataComponent extends HTMLElement {
 
     async handleImport() {
         const targetPath = this.shadowRoot.getElementById('targetPath').value.trim();
+        const keyColumn = this.shadowRoot.getElementById('keyColumn').value.trim();
         const fileInput = this.shadowRoot.getElementById('csvFile');
         const file = fileInput.files[0];
         const targetPathError = this.shadowRoot.getElementById('targetPathError');
@@ -218,10 +219,11 @@ class ImportDataComponent extends HTMLElement {
             // 创建FormData
             const formData = new FormData();
             
-            // 添加配置参数作为JSON字符串
-            const config = {
-                targetPath: targetPath
-            };
+            // 添加配置参数作为JSON字符串（key 与后端 DataImportRequest.key 一致，非必传）
+            const config = { targetPath };
+            if (keyColumn) {
+                config.key = keyColumn;
+            }
             formData.append('config', new Blob([JSON.stringify(config)], { type: 'application/json' }));
             
             // 添加文件
@@ -280,6 +282,7 @@ class ImportDataComponent extends HTMLElement {
         this.removeAttribute('hidden');
         // 重置表单
         this.shadowRoot.getElementById('targetPath').value = '';
+        this.shadowRoot.getElementById('keyColumn').value = '';
         this.shadowRoot.getElementById('csvFile').value = '';
         this.shadowRoot.getElementById('targetPathError').classList.remove('show');
         this.shadowRoot.getElementById('csvFileError').classList.remove('show');
@@ -292,7 +295,7 @@ class ImportDataComponent extends HTMLElement {
             fileUploadLabel.innerHTML = `
                 <div style="font-size: 48px; margin-bottom: 12px;">📁</div>
                 <div style="font-weight: 500; margin-bottom: 8px;">点击选择CSV文件或拖拽文件到此处</div>
-                <div class="form-hint">CSV文件header的第一个字段名称为“key”，数值类型，默认为时间戳。</div>
+                <div class="form-hint">要求第一列必须是KEY，没有可手动指定long类型列作为key，不指定key则从0开始。</div>
             `;
             // 重新添加input元素
             if (existingInput) {

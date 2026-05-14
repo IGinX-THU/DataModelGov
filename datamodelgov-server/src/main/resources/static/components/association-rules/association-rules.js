@@ -9,12 +9,17 @@ class AssociationRules extends HTMLElement {
 
     async loadRulesFromAPI() {
         try {
+            // 显示全局loading
+            if (window.showGlobalLoading) {
+                window.showGlobalLoading('正在查询数据...');
+            }
+
             // 获取筛选条件
             const nameFilter = this.shadowRoot.querySelector('.filter-input[type="text"]')?.value.trim();
             const statusFilter = this.shadowRoot.querySelector('.filter-input[type="text"] + select')?.value;
             const targetModelFilter = this.shadowRoot.getElementById('targetModelFilter')?.value;
             const versionFilter = this.shadowRoot.getElementById('versionFilter')?.value;
-            
+
             // 构建请求对象
             const requestBody = {
                 pageNum: this.currentPage || 1,
@@ -24,9 +29,9 @@ class AssociationRules extends HTMLElement {
                 modelName: targetModelFilter || null,
                 modelVersion: versionFilter || null
             };
-            
+
             console.log('查询参数:', requestBody);
-            
+
             // 调用查询接口
             const result = await window.AppConfig.post('associationRules', 'query', requestBody);
             console.log('查询结果:', result);
@@ -67,6 +72,11 @@ class AssociationRules extends HTMLElement {
         } catch (error) {
             console.error('加载规则失败:', error);
             this.showToast('网络错误，无法加载规则', 'error');
+        } finally {
+            // 隐藏全局loading
+            if (window.hideGlobalLoading) {
+                window.hideGlobalLoading();
+            }
         }
     }
 
@@ -152,17 +162,32 @@ class AssociationRules extends HTMLElement {
         console.log('AssociationRules show() 被调用', args);
         this.style.display = 'block';
 
+        // 重置筛选条件和分页
+        this.currentPage = 1;
+        const nameFilter = this.shadowRoot.querySelector('.filter-input[type="text"]');
+        if (nameFilter) {
+            nameFilter.value = '';
+        }
+        const targetModelFilter = this.shadowRoot.getElementById('targetModelFilter');
+        if (targetModelFilter) {
+            targetModelFilter.value = '';
+        }
+        const versionFilter = this.shadowRoot.getElementById('versionFilter');
+        if (versionFilter) {
+            versionFilter.value = '';
+        }
+
         // 检查筛选器元素是否存在
         console.log('检查筛选器元素:');
         console.log('targetModelFilter:', this.shadowRoot.getElementById('targetModelFilter'));
         console.log('versionFilter:', this.shadowRoot.getElementById('versionFilter'));
         console.log('右侧树:', document.querySelector('.right-sidebar .tree'));
-        
+
         // 每次显示时加载筛选器选项，确保右侧树已加载
         setTimeout(() => {
             console.log('开始加载筛选器选项...');
             this.loadFilterOptions();
-            
+
             // 如果有传入参数，应用筛选条件（会自动执行查询）
             if (args && args[0]) {
                 this.applyFilterParams(args[0]);
@@ -2275,7 +2300,7 @@ class AssociationRules extends HTMLElement {
                     <div class="form-row">
                         <div class="form-group">
                             <label for="startTime">开始时间</label>
-                            <input type="datetime-local" id="startTime" name="startTime" required value="${new Date().toISOString().slice(0, 16)}" step="1">
+                            <input type="datetime-local" id="startTime" name="startTime" required value="1970-01-01T08:00" step="1">
                         </div>
                         <div class="form-group">
                             <label for="endTime">结束时间</label>
@@ -2357,14 +2382,26 @@ class AssociationRules extends HTMLElement {
                 } else {
                     console.warn('时间范围为空，使用默认值');
                     this.showToast('未找到数据时间范围，使用默认时间', 'warning');
+                    const startTimeElement = this.shadowRoot.getElementById('startTime');
+                    if (startTimeElement) {
+                        startTimeElement.value = '1970-01-01T08:00';
+                    }
                 }
             } else {
                 console.warn('获取时间范围失败:', result.message);
                 this.showToast('获取时间范围失败，使用默认时间', 'warning');
+                const startTimeElement = this.shadowRoot.getElementById('startTime');
+                if (startTimeElement) {
+                    startTimeElement.value = '1970-01-01T08:00';
+                }
             }
         } catch (error) {
             console.error('获取时间范围异常:', error);
             this.showToast('获取时间范围异常，使用默认时间', 'warning');
+            const startTimeElement = this.shadowRoot.getElementById('startTime');
+            if (startTimeElement) {
+                startTimeElement.value = '1970-01-01T08:00';
+            }
         }
     }
     

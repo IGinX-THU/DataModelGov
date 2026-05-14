@@ -1025,7 +1025,7 @@ public class RunTaskService {
             Files.write(modifiedCsvFile, lines, StandardCharsets.UTF_8);
         }
 
-        long recordsNum = dataTableService.importCsvFile(modifiedCsvFile, runTaskEntity.getOutputTable(), modifiedCsvFileName);
+        long recordsNum = dataTableService.importCsvFile(modifiedCsvFile, runTaskEntity.getOutputTable(), modifiedCsvFileName, null);
 
         log.info("输出CSV文件导入完成，记录数: {}", recordsNum);
 

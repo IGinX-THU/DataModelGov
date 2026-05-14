@@ -21,6 +21,7 @@ class UserManagement extends HTMLElement {
                 modalMask.hidden = true;
                 modalMask.style.display = 'none';
             }
+            this.captureUserModalTemplate();
             this.bindEvents();
         }, 100);
     }
@@ -29,9 +30,32 @@ class UserManagement extends HTMLElement {
     async show(...args) {
         console.log('UserManagement show() 被调用', args);
         this.style.display = 'block';
-        // 每次显示时刷新数据
         await this.loadUsers();
-        this.renderTable();
+    }
+
+    captureUserModalTemplate() {
+        const modalBody = this.shadowRoot.getElementById('modalBody');
+        const modalFooter = this.shadowRoot.getElementById('modalFooter');
+        if (modalBody && modalFooter) {
+            this._defaultUserModalSnapshot = {
+                body: modalBody.innerHTML,
+                footer: modalFooter.innerHTML
+            };
+        }
+    }
+
+    restoreUserModalDom() {
+        if (!this._defaultUserModalSnapshot) {
+            return;
+        }
+        const modalBody = this.shadowRoot.getElementById('modalBody');
+        const modalFooter = this.shadowRoot.getElementById('modalFooter');
+        if (modalBody) {
+            modalBody.innerHTML = this._defaultUserModalSnapshot.body;
+        }
+        if (modalFooter) {
+            modalFooter.innerHTML = this._defaultUserModalSnapshot.footer;
+        }
     }
 
     async loadResources() {
@@ -68,7 +92,7 @@ class UserManagement extends HTMLElement {
     <div class="parsing-filter-card">
         <div class="filter-header">筛选</div>
         <div class="filter-rows" id="filterRows">
-            <div class="filter-row">
+            <div class="filter-row filter-row--cols-3">
                 <div class="filter-field">
                     <span class="filter-label">用户名</span>
                     <input class="filter-input" type="text" placeholder="请输入用户名" id="usernameFilter" />
@@ -81,10 +105,17 @@ class UserManagement extends HTMLElement {
                         <option value="DATA_ENGINEER">数据工程师</option>
                     </select>
                 </div>
+                <div class="filter-field">
+                    <span class="filter-label">状态</span>
+                    <select class="filter-input" id="statusFilter">
+                        <option value="">全部</option>
+                        <option value="true">启用</option>
+                        <option value="false">禁用</option>
+                    </select>
+                </div>
             </div>
         </div>
         <div class="filter-actions">
-            <button class="filter-add" type="button" id="addFilter">⊕</button>
             <div class="filter-spacer"></div>
             <button class="filter-btn outline" type="button" id="resetFilters">重置</button>
             <button class="filter-btn solid" type="button" id="applyFilters">查询</button>
@@ -108,49 +139,49 @@ class UserManagement extends HTMLElement {
                 </thead>
                 <tbody id="tableBody"></tbody>
             </table>
+            <div class="empty-hint" id="emptyHint" hidden>暂无用户数据</div>
         </div>
         <common-pagination id="pagination"></common-pagination>
     </div>
+</div>
 
-    <!-- 用户编辑模态框 -->
-    <div class="modal-mask" id="modalMask" hidden>
-        <div class="modal">
-            <div class="modal-header">
-                <span id="modalTitle">新增用户</span>
-                <button class="modal-close" id="closeModal">&times;</button>
-            </div>
-            <div class="modal-body" id="modalBody">
-                <form id="userForm">
-                    <input type="hidden" id="userId" />
-                    <div class="form-group">
-                        <label class="form-label required">用户名</label>
-                        <input type="text" class="form-control" id="username" placeholder="请输入用户名" required />
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label required" id="passwordLabel">密码</label>
-                        <input type="password" class="form-control" id="password" placeholder="请输入密码" />
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label required">角色</label>
-                        <select class="form-control form-select" id="role" required>
-                            <option value="">请选择角色</option>
-                            <option value="ADMIN">管理员</option>
-                            <option value="DATA_ENGINEER">数据工程师</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">状态</label>
-                        <select class="form-control form-select" id="enabled">
-                            <option value="true">启用</option>
-                            <option value="false">禁用</option>
-                        </select>
-                    </div>
-                </form>
-            </div>
-            <div class="modal-footer" id="modalFooter">
-                <button class="btn secondary" type="button" id="cancelBtn">取消</button>
-                <button class="btn primary" type="button" id="saveBtn">保存</button>
-            </div>
+<div class="modal-mask" id="modalMask" hidden>
+    <div class="modal">
+        <div class="modal-header">
+            <span id="modalTitle">新增用户</span>
+            <button type="button" class="modal-close" id="modalClose" aria-label="关闭">×</button>
+        </div>
+        <div class="modal-body" id="modalBody">
+            <form id="userForm" class="modal-form">
+                <input type="hidden" id="userId" />
+                <div class="modal-form-row">
+                    <span class="modal-label">用户名</span>
+                    <input type="text" class="modal-input" id="username" placeholder="请输入用户名" required />
+                </div>
+                <div class="modal-form-row">
+                    <span class="modal-label" id="passwordLabel">密码</span>
+                    <input type="password" class="modal-input" id="password" placeholder="请输入密码" autocomplete="new-password" />
+                </div>
+                <div class="modal-form-row">
+                    <span class="modal-label">角色</span>
+                    <select class="modal-input" id="role" required>
+                        <option value="">请选择角色</option>
+                        <option value="ADMIN">管理员</option>
+                        <option value="DATA_ENGINEER">数据工程师</option>
+                    </select>
+                </div>
+                <div class="modal-form-row">
+                    <span class="modal-label">状态</span>
+                    <select class="modal-input" id="enabled">
+                        <option value="true">启用</option>
+                        <option value="false">禁用</option>
+                    </select>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer" id="modalFooter">
+            <button type="button" class="modal-btn secondary" id="cancelBtn">取消</button>
+            <button type="button" class="modal-btn primary" id="saveBtn">保存</button>
         </div>
     </div>
 </div>
@@ -158,13 +189,11 @@ class UserManagement extends HTMLElement {
     }
 
     bindEvents() {
-        // 查询按钮
         this.shadowRoot.getElementById('applyFilters')?.addEventListener('click', () => {
             this.currentPage = 1;
             this.loadUsers();
         });
 
-        // 重置按钮
         this.shadowRoot.getElementById('resetFilters')?.addEventListener('click', () => {
             this.shadowRoot.getElementById('usernameFilter').value = '';
             this.shadowRoot.getElementById('roleFilter').value = '';
@@ -173,32 +202,41 @@ class UserManagement extends HTMLElement {
             this.loadUsers();
         });
 
-        // 新增用户按钮
         this.shadowRoot.getElementById('addUserBtn')?.addEventListener('click', () => {
             this.showAddUserModal();
         });
 
-        // 模态框事件
-        this.shadowRoot.getElementById('closeModal')?.addEventListener('click', () => this.hideModal());
-        this.shadowRoot.getElementById('cancelBtn')?.addEventListener('click', () => this.hideModal());
-        this.shadowRoot.getElementById('saveBtn')?.addEventListener('click', () => this.saveUser());
-        
-        // 移除点击遮罩关闭功能，避免误操作
-        // this.shadowRoot.getElementById('modalMask')?.addEventListener('click', (e) => {
-        //     if (e.target === this.shadowRoot.getElementById('modalMask')) {
-        //         this.hideModal();
-        //     }
-        // });
+        this.bindModalDelegationOnce();
+    }
+
+    /** 弹窗内按钮事件委托，避免 innerHTML 替换后重复绑定 */
+    bindModalDelegationOnce() {
+        const mask = this.shadowRoot.getElementById('modalMask');
+        if (!mask || mask.dataset.delegationBound === '1') {
+            return;
+        }
+        mask.dataset.delegationBound = '1';
+        mask.addEventListener('click', (e) => {
+            const id = e.target.id;
+            if (id === 'modalClose' || id === 'cancelBtn') {
+                e.preventDefault();
+                this.hideModal();
+            } else if (id === 'saveBtn') {
+                e.preventDefault();
+                this.saveUser();
+            }
+        });
     }
 
     async loadUsers() {
+        if (window.showGlobalLoading) {
+            window.showGlobalLoading('正在查询用户...');
+        }
         try {
-            // 获取筛选条件 - 完全参考AssociationRules
             const usernameFilter = this.shadowRoot.getElementById('usernameFilter')?.value.trim();
             const roleFilter = this.shadowRoot.getElementById('roleFilter')?.value;
             const statusFilter = this.shadowRoot.getElementById('statusFilter')?.value;
 
-            // 构建请求对象 - 完全参考AssociationRules
             const requestBody = {
                 page: this.currentPage || 1,
                 pageSize: this.pageSize || 10,
@@ -206,32 +244,28 @@ class UserManagement extends HTMLElement {
                 role: roleFilter || null,
                 enabled: statusFilter || null
             };
-            
-            console.log('查询参数:', requestBody);
-            
-            // 调用查询接口 - 完全参考AssociationRules
-            const result = await window.AppConfig.post('userManagement', 'query', requestBody);
-            console.log('查询结果:', result);
 
-            if (result.success && result.data) {
-                // 后端直接返回List<UserEntity>，转换为前端所需格式
-                this.users = result.data.map(user => {
-                    console.log('用户数据:', user); // 调试日志
-                    return {
-                        username: user.username,
-                        role: user.role,
-                        enabled: user.enabled, // 保持布尔值
-                        timestamp: user.timestamp
-                    };
-                });
+            const result = await window.AppConfig.post('userManagement', 'query', requestBody);
+
+            if (result.success && Array.isArray(result.data)) {
+                this.users = result.data.map((user) => ({
+                    username: user.username,
+                    role: user.role,
+                    enabled: user.enabled,
+                    timestamp: user.timestamp
+                }));
                 this.renderTable();
-                this.loadTotalCount();
+                await this.loadTotalCount();
             } else {
                 this.showToast('加载用户列表失败: ' + (result.message || '未知错误'), 'error');
             }
         } catch (error) {
             console.error('加载用户列表失败:', error);
             this.showToast('加载用户列表失败', 'error');
+        } finally {
+            if (window.hideGlobalLoading) {
+                window.hideGlobalLoading();
+            }
         }
     }
 
@@ -248,15 +282,14 @@ class UserManagement extends HTMLElement {
                 role: roleFilter || null,
                 enabled: statusFilter || null
             };
-            
-            console.log('计数查询参数:', requestBody);
-            
-            // 调用计数接口 - 完全参考AssociationRules
-            const result = await window.AppConfig.post('userManagement', 'count', requestBody);
-            console.log('计数查询结果:', result);
 
-            if (result.success && result.data) {
-                this.totalCount = result.data.count || 0;
+            const result = await window.AppConfig.post('userManagement', 'count', requestBody);
+
+            if (result.success && result.data !== undefined && result.data !== null) {
+                const raw = result.data;
+                this.totalCount = typeof raw === 'object' && raw !== null && 'count' in raw
+                    ? Number(raw.count) || 0
+                    : Number(raw) || 0;
                 this.updatePagination();
             }
         } catch (error) {
@@ -266,41 +299,52 @@ class UserManagement extends HTMLElement {
 
     renderTable() {
         const tableBody = this.shadowRoot.getElementById('tableBody');
-        if (!tableBody) return;
-        
+        const emptyHint = this.shadowRoot.getElementById('emptyHint');
+        if (!tableBody) {
+            return;
+        }
+
         tableBody.innerHTML = '';
 
-        this.users.forEach(user => {
+        if (!this.users.length) {
+            if (emptyHint) {
+                emptyHint.hidden = false;
+            }
+            return;
+        }
+        if (emptyHint) {
+            emptyHint.hidden = true;
+        }
+
+        this.users.forEach((user) => {
             const row = document.createElement('tr');
             row.innerHTML = `
-                <td>${user.username}</td>
+                <td>${this.escapeHtml(user.username)}</td>
                 <td>${this.getRoleDisplayName(user.role)}</td>
                 <td>${user.enabled ? '启用' : '禁用'}</td>
                 <td>${this.formatTimestamp(user.timestamp)}</td>
                 <td>
-                    <button class="table-btn edit" data-username="${user.username}">编辑</button>
-                    <button class="table-btn delete" data-username="${user.username}">删除</button>
+                    <div class="action-buttons">
+                        <button type="button" class="action-btn edit" data-username="${this.escapeHtml(user.username)}">编辑</button>
+                        <button type="button" class="action-btn delete" data-username="${this.escapeHtml(user.username)}">删除</button>
+                    </div>
                 </td>
             `;
-            
-            // 绑定事件
-            const editBtn = row.querySelector('.table-btn.edit');
-            const deleteBtn = row.querySelector('.table-btn.delete');
-            
-            if (editBtn) {
-                editBtn.addEventListener('click', () => {
-                    this.editUser(user.username);
-                });
-            }
-            
-            if (deleteBtn) {
-                deleteBtn.addEventListener('click', () => {
-                    this.deleteUser(user.username);
-                });
-            }
-            
+            row.querySelector('.action-btn.edit')?.addEventListener('click', () => this.editUser(user.username));
+            row.querySelector('.action-btn.delete')?.addEventListener('click', () => this.deleteUser(user.username));
             tableBody.appendChild(row);
         });
+    }
+
+    escapeHtml(str) {
+        if (str == null) {
+            return '';
+        }
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
     }
 
     updatePagination() {
@@ -472,10 +516,10 @@ class UserManagement extends HTMLElement {
         // Handle buttons
         if (buttons.length === 0) {
             // Default close button
-            modalFooter.innerHTML = `<button class="modal-btn secondary" id="modalClose">关闭</button>`;
+            modalFooter.innerHTML = `<button type="button" class="modal-btn secondary" id="modalClose">关闭</button>`;
         } else {
-            modalFooter.innerHTML = buttons.map(btn => 
-                `<button class="${btn.class}" data-action="${btn.action}" data-id="${btn.id || ''}">${btn.text}</button>`
+            modalFooter.innerHTML = buttons.map(btn =>
+                `<button type="button" class="${btn.class}" data-action="${btn.action}" data-id="${btn.id || ''}">${btn.text}</button>`
             ).join('');
         }
 
@@ -489,11 +533,11 @@ class UserManagement extends HTMLElement {
             const id = e.target.dataset.id;
             
             if (action === 'close') {
-                this.hideModal();
-                // Restore previous state
                 modalTitle.textContent = previousState.title;
                 modalBody.innerHTML = previousState.body;
                 modalFooter.innerHTML = previousState.footer;
+                modalMask.hidden = true;
+                modalMask.style.display = 'none';
             } else if (action === 'delete' && id) {
                 this.deleteUserFromAPI(id);
                 // 删除操作后不需要恢复之前的状态，直接关闭弹窗
@@ -535,16 +579,21 @@ class UserManagement extends HTMLElement {
     }
 
     hideModal() {
+        this.restoreUserModalDom();
         const modalMask = this.shadowRoot.getElementById('modalMask');
         const username = this.shadowRoot.getElementById('username');
         const form = this.shadowRoot.getElementById('userForm');
-        
+
         if (modalMask) {
             modalMask.hidden = true;
             modalMask.style.display = 'none';
         }
-        if (username) username.disabled = false;
-        if (form) form.reset();
+        if (username) {
+            username.disabled = false;
+        }
+        if (form) {
+            form.reset();
+        }
     }
 
     hide() {

@@ -94,7 +94,8 @@ document.addEventListener('DOMContentLoaded', function() {
             'modelDetail',
             'dataSourceList',
             'importData',
-            'userManagement'
+            'userManagement',
+            'permissionManagement'
         ];
         
         components.forEach(componentId => {
@@ -362,22 +363,30 @@ document.addEventListener('DOMContentLoaded', function() {
         userDropdown.classList.remove('active');
     });
 
+    // 跟踪最后点击的菜单项，用于实现二次点击刷新
+    let lastClickedMenuId = null;
+
     const menuItems = document.querySelectorAll('.dropdown-menu li');
     menuItems.forEach(item => {
         item.addEventListener('click', function(e) {
             e.stopPropagation();
-            
+
             const menuId = this.id;
             console.log(`菜单项被点击: ${menuId}`);
-            
+
             // 根据菜单ID获取对应的动作
             const action = getMenuAction(menuId);
-            
+
+            // 检查是否是二次点击同一菜单项，如果是则清空工作区实现刷新
+            const isSecondClick = (lastClickedMenuId === menuId);
+            lastClickedMenuId = menuId;
+
             if (action) {
                 // 根据动作类型执行相应操作
                 switch (action) {
                     case 'showDataSourceList':
                         console.log('数据源管理菜单被点击');
+                        if (isSecondClick) clearWorkspace();
                         showComponent('dataSourceList');
                         break;
                     case 'console.log':
@@ -420,10 +429,12 @@ document.addEventListener('DOMContentLoaded', function() {
                         break;
                     case 'showParsingRules':
                         console.log('配置解析规则菜单被点击');
+                        if (isSecondClick) clearWorkspace();
                         showComponent('parsingRules');
                         break;
                     case 'showAssociationRules':
                         console.log('关联规则配置菜单被点击');
+                        if (isSecondClick) clearWorkspace();
                         showComponent('associationRules');
                         break;
                     case 'showVisualAnalysis':
@@ -459,7 +470,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 // 处理特殊菜单项（用户管理和修改密码）
                 if (menuId === 'userManagementMenuItem') {
                     console.log('用户管理菜单被点击');
+                    if (isSecondClick) clearWorkspace();
                     showComponent('userManagement');
+                } else if (menuId === 'permissionManagementMenuItem') {
+                    console.log('权限管理菜单被点击');
+                    if (isSecondClick) clearWorkspace();
+                    showComponent('permissionManagement');
                 } else if (menuId === 'changePasswordMenuItem') {
                     console.log('修改密码菜单被点击');
                     const changePasswordComponent = document.querySelector('change-password');
@@ -1511,7 +1527,7 @@ function showVisualAnalysis() {
             // 同时显示右侧loading
             const rightSidebarTree = document.querySelector('.right-sidebar .tree');
             if (rightSidebarTree) {
-                rightSidebarTree.innerHTML = '<div class="loading-placeholder">正在同步模型资产...</div>';
+                rightSidebarTree.innerHTML = '<div class="loading-placeholder">正在加载模型资产...</div>';
             }
             
             // 使用新的API配置
@@ -1852,7 +1868,7 @@ window.loadDataSourceTree = async function() {
         // 同时显示右侧loading
         const rightSidebarTree = document.querySelector('.right-sidebar .tree');
         if (rightSidebarTree) {
-            rightSidebarTree.innerHTML = '<div class="loading-placeholder">正在同步模型资产...</div>';
+            rightSidebarTree.innerHTML = '<div class="loading-placeholder">正在加载模型资产...</div>';
         }
         
         console.log('🔄 调用接口:', window.AppConfig.getApiUrl('datasource', 'tree'));

@@ -138,12 +138,17 @@ class ModelDetail extends HTMLElement {
 
     async loadModelData(modelInfo) {
         try {
+            // 显示全局loading
+            if (window.showGlobalLoading) {
+                window.showGlobalLoading('正在加载模型信息...');
+            }
+
             // 使用新的API配置
             const result = await window.AppConfig.get('model', 'metas', {
                 name: modelInfo.name,
                 version: modelInfo.version
             });
-            
+
             if (result.success && result.data) {
                 const meta = result.data;
                 console.log('获取模型元数据成功:', meta);
@@ -158,6 +163,11 @@ class ModelDetail extends HTMLElement {
             console.error('加载模型数据失败:', error);
             // 如果接口失败，使用默认值
             this.updateContent(modelInfo);
+        } finally {
+            // 隐藏全局loading
+            if (window.hideGlobalLoading) {
+                window.hideGlobalLoading();
+            }
         }
     }
 
@@ -211,9 +221,14 @@ class ModelDetail extends HTMLElement {
 
     async loadVersionHistory(modelInfo) {
         try {
+            // 显示全局loading
+            if (window.showGlobalLoading) {
+                window.showGlobalLoading('正在加载版本历史...');
+            }
+
             // 使用新的API配置
             const result = await window.AppConfig.get('model', 'history', { name: modelInfo.name });
-            
+
             if (result.success && result.data) {
                 const historyData = result.data;
                 console.log('获取版本历史成功:', historyData);
@@ -226,6 +241,11 @@ class ModelDetail extends HTMLElement {
             console.error('加载版本历史失败:', error);
             // 如果接口失败，显示空的历史
             this.renderVersionHistory([]);
+        } finally {
+            // 隐藏全局loading
+            if (window.hideGlobalLoading) {
+                window.hideGlobalLoading();
+            }
         }
     }
 
@@ -605,7 +625,12 @@ class ModelDetail extends HTMLElement {
     async loadAssociationRules(modelInfo) {
         try {
             console.log('开始加载关联规则信息:', modelInfo);
-            
+
+            // 显示全局loading
+            if (window.showGlobalLoading) {
+                window.showGlobalLoading('正在加载关联规则...');
+            }
+
             // 使用关联规则API查询当前模型的关联规则
             const result = await window.AppConfig.post('associationRules', 'query', {
                 pageNum: 1,
@@ -615,7 +640,7 @@ class ModelDetail extends HTMLElement {
                 name: null,
                 status: null
             });
-            
+
             if (result.success && result.data) {
                 const rules = result.data;
                 console.log('获取关联规则成功:', rules);
@@ -627,6 +652,11 @@ class ModelDetail extends HTMLElement {
         } catch (error) {
             console.error('加载关联规则失败:', error);
             this.updateAssociationCard([]);
+        } finally {
+            // 隐藏全局loading
+            if (window.hideGlobalLoading) {
+                window.hideGlobalLoading();
+            }
         }
     }
 

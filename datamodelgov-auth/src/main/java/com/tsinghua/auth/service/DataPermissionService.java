@@ -3,9 +3,10 @@ package com.tsinghua.auth.service;
 import cn.edu.tsinghua.iginx.session_v2.IginXClient;
 import cn.edu.tsinghua.iginx.session_v2.WriteClient;
 import com.tsinghua.auth.dao.DataPermissionDao;
+import com.tsinghua.auth.dto.DataPermissionQueryRequest;
+import com.tsinghua.auth.dto.DataPermissionUpdateRequest;
 import com.tsinghua.auth.entity.DataPermissionEntity;
 import com.tsinghua.auth.util.AuthUtil;
-import com.tsinghua.util.ConvertUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -86,6 +87,96 @@ public class DataPermissionService {
     public List<DataPermissionEntity> getOwnerTables() {
         String currentUser = AuthUtil.getCurrentUsername();
         return dataPermissionDao.findByOwner(currentUser);
+    }
+
+    private List<DataPermissionEntity> listOwnerTablesFiltered(DataPermissionQueryRequest request) {
+        String currentUser = AuthUtil.getCurrentUsername();
+        if (currentUser == null || "unknown".equalsIgnoreCase(currentUser)) {
+            return Collections.emptyList();
+        }
+        List<DataPermissionEntity> all = dataPermissionDao.findByOwner(currentUser);
+        String prefix = request != null && StringUtils.hasText(request.getTablePrefix())
+                ? request.getTablePrefix().trim().toLowerCase(Locale.ROOT)
+                : null;
+        List<DataPermissionEntity> filtered = new ArrayList<>();
+        for (DataPermissionEntity e : all) {
+            if (prefix != null) {
+                String tp = e.getTablePrefix() != null ? e.getTablePrefix().toLowerCase(Locale.ROOT) : "";
+                if (!tp.contains(prefix)) {
+                    continue;
+                }
+            }
+            filtered.add(e);
+        }
+        filtered.sort(Comparator.comparing(
+                DataPermissionEntity::getCreateTime,
+                Comparator.nullsLast(Comparator.reverseOrder())));
+        return filtered;
+    }
+
+    /**
+     * 当前用户拥有的权限分页列表（内存分页，与筛选条件一致）
+     */
+    public List<DataPermissionEntity> queryOwnerTables(DataPermissionQueryRequest request) {
+        if (request == null) {
+            request = new DataPermissionQueryRequest();
+        }
+        List<DataPermissionEntity> filtered = listOwnerTablesFiltered(request);
+        int page = request.getPage() == null || request.getPage() < 1 ? 1 : request.getPage();
+        int pageSize = request.getPageSize() == null || request.getPageSize() < 1 ? 10 : request.getPageSize();
+        int from = (page - 1) * pageSize;
+        if (from >= filtered.size()) {
+            return Collections.emptyList();
+        }
+        int to = Math.min(from + pageSize, filtered.size());
+        return new ArrayList<>(filtered.subList(from, to));
+    }
+
+    public long countOwnerTables(DataPermissionQueryRequest request) {
+        if (request == null) {
+            request = new DataPermissionQueryRequest();
+        }
+        return listOwnerTablesFiltered(request).size();
+    }
+
+    private long primaryKeyOf(DataPermissionEntity e) {
+        if (e.getId() != null) {
+            return e.getId();
+        }
+        if (e.getCreateTime() != null) {
+            return e.getCreateTime();
+        }
+        return -1L;
+    }
+
+    /**
+     * 更新当前用户名下某条权限的公开范围与可见用户（不可改表前缀、所有者等）
+     */
+    public void updateOwnerPermission(DataPermissionUpdateRequest req) {
+        String currentUser = AuthUtil.getCurrentUsername();
+        if (currentUser == null || "unknown".equalsIgnoreCase(currentUser)) {
+            throw new IllegalStateException("未登录");
+        }
+        long id = req.getId();
+        DataPermissionEntity existing = null;
+        for (DataPermissionEntity e : dataPermissionDao.findByOwner(currentUser)) {
+            if (primaryKeyOf(e) == id) {
+                existing = e;
+                break;
+            }
+        }
+        if (existing == null) {
+            throw new IllegalArgumentException("记录不存在或无权修改");
+        }
+        if (req.getIsPublic() != null) {
+            existing.setPublic(req.getIsPublic());
+        }
+        if (req.getVisibleUsers() != null) {
+            existing.setVisibleUsers(req.getVisibleUsers());
+        }
+        existing.setId(id);
+        existing.setCreateTime(id);
+        saveDataPermission(existing);
     }
 
     /**

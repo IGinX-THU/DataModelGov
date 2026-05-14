@@ -15,12 +15,20 @@
             </div>
 
             <div class="form-group">
+                <label class="form-label">指定Key列（图表横轴）</label>
+                <div class="input-wrapper">
+                    <input type="text" class="form-control" id="keyColumn" placeholder="从 csv 中选出列 colName 复制为 key 列，即 key 列与 colName相同" autocomplete="off">
+                    <div class="form-hint">可选：csv没有key列且不手动指定key列，IGinX 自动从 0 开始生成 key 列。</div>
+                </div>
+            </div>
+
+            <div class="form-group">
                 <label class="form-label required">选择CSV文件</label>
                 <div class="file-upload-wrapper">
                     <label class="file-upload-label" for="csvFile">
                         <div style="font-size: 48px; margin-bottom: 12px;">📁</div>
                         <div style="font-weight: 500; margin-bottom: 8px;">点击选择CSV文件或拖拽文件到此处</div>
-                        <div class="form-hint">CSV文件header的第一个字段名称为“key”，数值类型，默认为时间戳。</div>
+                        <div class="form-hint">要求第一列必须是KEY，没有可手动指定long类型列作为key，不指定key则从0开始。</div>
                         <input type="file" class="file-input" id="csvFile" accept=".csv" required>
                     </label>
                 </div>

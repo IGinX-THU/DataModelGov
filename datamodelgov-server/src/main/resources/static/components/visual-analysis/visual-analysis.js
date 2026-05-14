@@ -176,11 +176,11 @@ class VisualAnalysis extends HTMLElement {
         this.displayData = [];
         this.currentPage = 1;
         this.pageSize = 10; // 减少每页显示数量以便测试滚动
-        
+
         setTimeout(() => {
             this.initPagination();
             this.initializeComponent();
-        }, 50);
+        }, 100);
     }
 
     hide() {
@@ -475,6 +475,10 @@ class VisualAnalysis extends HTMLElement {
         console.log('计算的数据范围:', dataRange);
         console.log('当前图表数据:', this.currentChartData);
 
+        // 计算x轴范围用于动态调整X轴
+        const xAxisRange = this.calculateXAxisRange(this.currentChartData);
+        console.log('计算的x轴范围:', xAxisRange);
+
         const option = {
             title: {
                 text: '多任务对比分析',
@@ -487,10 +491,16 @@ class VisualAnalysis extends HTMLElement {
             },
             tooltip: {
                 trigger: 'axis',
-                formatter: function(params) {
+                formatter: (params) => {
                     if (!params || params.length === 0) return '';
-                    const time = new Date(params[0].value[0]).toLocaleString();
-                    let result = `时间: ${time}<br/>`;
+                    const xValue = params[0].value[0];
+                    let xLabel = '';
+                    if (this.isValidTimestamp(xValue)) {
+                        xLabel = new Date(xValue).toLocaleString();
+                    } else {
+                        xLabel = String(xValue);
+                    }
+                    let result = `X: ${xLabel}<br/>`;
                     params.forEach(param => {
                         result += `${param.seriesName}: ${(param.value[1] || 0).toFixed(2)}<br/>`;
                     });
@@ -509,10 +519,16 @@ class VisualAnalysis extends HTMLElement {
                 top: '25%'
             },
             xAxis: {
-                type: 'time',
+                type: 'value',
+                min: xAxisRange.min,
+                max: xAxisRange.max,
                 axisLabel: {
-                    formatter: function(value) {
-                        return new Date(value).toLocaleString();
+                    formatter: (value) => {
+                        if (this.isValidTimestamp(value)) {
+                            return new Date(value).toLocaleString();
+                        } else {
+                            return String(value);
+                        }
                     }
                 }
             },
@@ -562,6 +578,9 @@ class VisualAnalysis extends HTMLElement {
         // 计算数据范围
         const dataRange = this.calculateDataRange(this.currentChartData);
         
+        // 计算x轴范围
+        const xAxisRange = this.calculateXAxisRange(this.currentChartData);
+        
         return {
             title: {
                 text: '趋势分析',
@@ -574,10 +593,16 @@ class VisualAnalysis extends HTMLElement {
             },
             tooltip: {
                 trigger: 'axis',
-                formatter: function(params) {
+                formatter: (params) => {
                     if (!params || params.length === 0) return '';
-                    const time = new Date(params[0].value[0]).toLocaleString();
-                    return `时间: ${time}<br/>数值: ${(params[0].value[1] || 0).toFixed(2)}`;
+                    const xValue = params[0].value[0];
+                    let xLabel = '';
+                    if (this.isValidTimestamp(xValue)) {
+                        xLabel = new Date(xValue).toLocaleString();
+                    } else {
+                        xLabel = String(xValue);
+                    }
+                    return `X: ${xLabel}<br/>数值: ${(params[0].value[1] || 0).toFixed(2)}`;
                 }
             },
             grid: {
@@ -587,10 +612,16 @@ class VisualAnalysis extends HTMLElement {
                 top: '20%'
             },
             xAxis: {
-                type: 'time',
+                type: 'value',
+                min: xAxisRange.min,
+                max: xAxisRange.max,
                 axisLabel: {
-                    formatter: function(value) {
-                        return new Date(value).toLocaleString();
+                    formatter: (value) => {
+                        if (this.isValidTimestamp(value)) {
+                            return new Date(value).toLocaleString();
+                        } else {
+                            return String(value);
+                        }
                     }
                 }
             },
@@ -652,6 +683,9 @@ class VisualAnalysis extends HTMLElement {
         // 计算数据范围
         const dataRange = this.calculateDataRange(this.currentChartData);
         
+        // 计算x轴范围
+        const xAxisRange = this.calculateXAxisRange(this.currentChartData);
+        
         return {
             title: {
                 text: '相关性分析',
@@ -664,10 +698,16 @@ class VisualAnalysis extends HTMLElement {
             },
             tooltip: {
                 trigger: 'axis',
-                formatter: function(params) {
+                formatter: (params) => {
                     if (!params || params.length === 0) return '';
-                    const time = new Date(params[0].value[0]).toLocaleString();
-                    return `时间: ${time}<br/>数值: ${(params[0].value[1] || 0).toFixed(2)}`;
+                    const xValue = params[0].value[0];
+                    let xLabel = '';
+                    if (this.isValidTimestamp(xValue)) {
+                        xLabel = new Date(xValue).toLocaleString();
+                    } else {
+                        xLabel = String(xValue);
+                    }
+                    return `X: ${xLabel}<br/>数值: ${(params[0].value[1] || 0).toFixed(2)}`;
                 }
             },
             grid: {
@@ -677,10 +717,16 @@ class VisualAnalysis extends HTMLElement {
                 top: '20%'
             },
             xAxis: {
-                type: 'time',
+                type: 'value',
+                min: xAxisRange.min,
+                max: xAxisRange.max,
                 axisLabel: {
-                    formatter: function(value) {
-                        return new Date(value).toLocaleString();
+                    formatter: (value) => {
+                        if (this.isValidTimestamp(value)) {
+                            return new Date(value).toLocaleString();
+                        } else {
+                            return String(value);
+                        }
                     }
                 }
             },
@@ -751,6 +797,9 @@ class VisualAnalysis extends HTMLElement {
         // 计算数据范围
         const dataRange = this.calculateDataRange(this.currentChartData);
 
+        // 计算x轴范围
+        const xAxisRange = this.calculateXAxisRange(this.currentChartData);
+
         return {
             title: {
                 text: '异常检测',
@@ -763,10 +812,16 @@ class VisualAnalysis extends HTMLElement {
             },
             tooltip: {
                 trigger: 'axis',
-                formatter: function(params) {
+                formatter: (params) => {
                     if (!params || params.length === 0) return '';
-                    const time = new Date(params[0].value[0]).toLocaleString();
-                    return `时间: ${time}<br/>数值: ${(params[0].value[1] || 0).toFixed(2)}`;
+                    const xValue = params[0].value[0];
+                    let xLabel = '';
+                    if (this.isValidTimestamp(xValue)) {
+                        xLabel = new Date(xValue).toLocaleString();
+                    } else {
+                        xLabel = String(xValue);
+                    }
+                    return `X: ${xLabel}<br/>数值: ${(params[0].value[1] || 0).toFixed(2)}`;
                 }
             },
             legend: {
@@ -781,10 +836,16 @@ class VisualAnalysis extends HTMLElement {
                 top: '25%'
             },
             xAxis: {
-                type: 'time',
+                type: 'value',
+                min: xAxisRange.min,
+                max: xAxisRange.max,
                 axisLabel: {
-                    formatter: function(value) {
-                        return new Date(value).toLocaleString();
+                    formatter: (value) => {
+                        if (this.isValidTimestamp(value)) {
+                            return new Date(value).toLocaleString();
+                        } else {
+                            return String(value);
+                        }
                     }
                 }
             },
@@ -865,6 +926,9 @@ class VisualAnalysis extends HTMLElement {
         // 计算数据范围（包含预测数据）
         const dataRange = this.calculateDataRange(this.currentChartData);
 
+        // 计算x轴范围
+        const xAxisRange = this.calculateXAxisRange(this.currentChartData);
+
         return {
             title: {
                 text: '预测分析',
@@ -877,10 +941,16 @@ class VisualAnalysis extends HTMLElement {
             },
             tooltip: {
                 trigger: 'axis',
-                formatter: function(params) {
+                formatter: (params) => {
                     if (!params || params.length === 0) return '';
-                    const time = new Date(params[0].value[0]).toLocaleString();
-                    let result = `时间: ${time}<br/>`;
+                    const xValue = params[0].value[0];
+                    let xLabel = '';
+                    if (this.isValidTimestamp(xValue)) {
+                        xLabel = new Date(xValue).toLocaleString();
+                    } else {
+                        xLabel = String(xValue);
+                    }
+                    let result = `X: ${xLabel}<br/>`;
                     params.forEach(param => {
                         result += `${param.seriesName}: ${(param.value[1] || 0).toFixed(2)}<br/>`;
                     });
@@ -899,10 +969,16 @@ class VisualAnalysis extends HTMLElement {
                 top: '25%'
             },
             xAxis: {
-                type: 'time',
+                type: 'value',
+                min: xAxisRange.min,
+                max: xAxisRange.max,
                 axisLabel: {
-                    formatter: function(value) {
-                        return new Date(value).toLocaleString();
+                    formatter: (value) => {
+                        if (this.isValidTimestamp(value)) {
+                            return new Date(value).toLocaleString();
+                        } else {
+                            return String(value);
+                        }
                     }
                 }
             },
@@ -1517,6 +1593,10 @@ class VisualAnalysis extends HTMLElement {
         const dataRange = this.calculateDataRange(chartData);
         console.log('updateChartWithData 计算的数据范围:', dataRange);
 
+        // 计算x轴范围用于动态调整X轴
+        const xAxisRange = this.calculateXAxisRange(chartData);
+        console.log('updateChartWithData 计算的x轴范围:', xAxisRange);
+
         // 基于 data-visualization 的图表配置
         const option = {
             title: {
@@ -1530,11 +1610,17 @@ class VisualAnalysis extends HTMLElement {
             },
             tooltip: {
                 trigger: 'axis',
-                formatter: function(params) {
+                formatter: (params) => {
                     if (!params || params.length === 0) return '';
 
-                    const time = new Date(params[0].value[0]).toLocaleString();
-                    let result = `时间: ${time}<br/>`;
+                    const xValue = params[0].value[0];
+                    let xLabel = '';
+                    if (this.isValidTimestamp(xValue)) {
+                        xLabel = new Date(xValue).toLocaleString();
+                    } else {
+                        xLabel = String(xValue);
+                    }
+                    let result = `X: ${xLabel}<br/>`;
                     params.forEach(param => {
                         // 检查数据是否存在且有效
                         if (param.value && param.value[1] !== undefined && param.value[1] !== null && !isNaN(param.value[1])) {
@@ -1561,10 +1647,16 @@ class VisualAnalysis extends HTMLElement {
                 top: '20%'
             },
             xAxis: {
-                type: 'time',
+                type: 'value',
+                min: xAxisRange.min,
+                max: xAxisRange.max,
                 axisLabel: {
-                    formatter: function(value) {
-                        return new Date(value).toLocaleString();
+                    formatter: (value) => {
+                        if (this.isValidTimestamp(value)) {
+                            return new Date(value).toLocaleString();
+                        } else {
+                            return String(value);
+                        }
                     }
                 }
             },
@@ -2288,6 +2380,74 @@ class VisualAnalysis extends HTMLElement {
         // 添加10%的边距，避免数据贴边
         const range = maxValue - minValue;
         const padding = range * 0.1;
+        
+        return {
+            min: minValue - padding,
+            max: maxValue + padding
+        };
+    }
+
+    isValidTimestamp(timestamp) {
+        if (timestamp == null || isNaN(timestamp)) {
+            return false;
+        }
+        
+        const numValue = Number(timestamp);
+        
+        const timestampStr = String(Math.floor(Math.abs(numValue)));
+        const isValidLength = timestampStr.length === 13 || timestampStr.length === 10;
+        
+        if (!isValidLength) {
+            return false;
+        }
+        
+        const date = new Date(numValue);
+        if (isNaN(date.getTime())) {
+            return false;
+        }
+        
+        const year = date.getFullYear();
+        return year >= 1970 && year <= 2100;
+    }
+
+    calculateXAxisRange(chartData) {
+        if (!chartData) {
+            return { min: 0, max: 100 };
+        }
+
+        let minValue = Infinity;
+        let maxValue = -Infinity;
+        let hasData = false;
+
+        const processArray = (dataArray) => {
+            if (dataArray && dataArray.length > 0) {
+                dataArray.forEach(point => {
+                    if (point.timestamp !== null && point.timestamp !== undefined) {
+                        const value = typeof point.timestamp === 'number' ? point.timestamp : parseFloat(point.timestamp);
+                        if (!isNaN(value)) {
+                            minValue = Math.min(minValue, value);
+                            maxValue = Math.max(maxValue, value);
+                            hasData = true;
+                        }
+                    }
+                });
+            }
+        };
+
+        if (chartData.inputData) {
+            Object.values(chartData.inputData).forEach(processArray);
+        }
+
+        if (chartData.outputData) {
+            Object.values(chartData.outputData).forEach(processArray);
+        }
+
+        if (!hasData) {
+            return { min: 0, max: 100 };
+        }
+
+        const range = maxValue - minValue;
+        const padding = range * 0.05;
         
         return {
             min: minValue - padding,
@@ -4135,6 +4295,13 @@ class VisualAnalysis extends HTMLElement {
 
     async loadTasksFromAPI() {
         try {
+            // 显示全局loading
+            console.log('visual-analysis: 准备显示全局loading');
+            if (window.showGlobalLoading) {
+                window.showGlobalLoading('正在查询数据...');
+                console.log('visual-analysis: 全局loading已显示');
+            }
+
             // 获取筛选条件
             const nameFilter = this.shadowRoot.getElementById('nameSearch')?.value.trim();
             const statusFilter = this.shadowRoot.getElementById('statusFilter')?.value;
@@ -4194,6 +4361,11 @@ class VisualAnalysis extends HTMLElement {
             this.allData = mockData;
             this.displayData = mockData;
             this.updateTable();
+        } finally {
+            // 隐藏全局loading
+            if (window.hideGlobalLoading) {
+                window.hideGlobalLoading();
+            }
         }
     }
 

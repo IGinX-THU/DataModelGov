@@ -1,0 +1,77 @@
+<div class="parsing-rules">
+    <div class="parsing-filter-card">
+        <div class="filter-header">筛选</div>
+        <div class="filter-rows">
+            <div class="filter-row">
+                <div class="filter-field">
+                    <span class="filter-label">资源</span>
+                    <input class="filter-input" type="text" placeholder="关键字（包含匹配）" id="prefixFilter" />
+                </div>
+            </div>
+        </div>
+        <div class="filter-actions">
+            <div class="filter-spacer"></div>
+            <button class="filter-btn outline" type="button" id="resetFilters">重置</button>
+            <button class="filter-btn solid" type="button" id="applyFilters">查询</button>
+        </div>
+    </div>
+
+    <div class="parsing-table-card">
+        <div class="table-toolbar">
+            <span class="table-toolbar-title">数据权限</span>
+            <button class="toolbar-btn green" type="button" id="refreshBtn">刷新</button>
+        </div>
+        <div class="table-wrapper">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>资源</th>
+                        <th>所有者</th>
+                        <th>公开可见</th>
+                        <th>部分可见</th>
+                        <th>创建时间</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody"></tbody>
+            </table>
+            <div class="empty-hint" id="emptyHint" hidden>暂无权限记录</div>
+        </div>
+        <common-pagination id="pagination"></common-pagination>
+    </div>
+</div>
+
+<div class="modal-mask" id="modalMask" hidden>
+    <div class="modal">
+        <div class="modal-header">
+            <span id="modalTitle">编辑权限</span>
+            <button type="button" class="modal-close" id="modalClose" aria-label="关闭">×</button>
+        </div>
+        <div class="modal-body" id="modalBody">
+            <form id="permForm" class="modal-form">
+                <input type="hidden" id="recordId" />
+                <div class="modal-form-row">
+                    <span class="modal-label">表前缀</span>
+                    <input type="text" class="modal-input" id="displayTablePrefix" readonly />
+                </div>
+                <div class="modal-form-row">
+                    <span class="modal-label">是否公开</span>
+                    <select class="modal-input" id="isPublic" required>
+                        <option value="true">是（所有用户可见）</option>
+                        <option value="false">否（指定用户可见）</option>
+                    </select>
+                </div>
+                <div class="modal-form-row">
+                    <span class="modal-label">可见用户</span>
+                    <div id="visibleUsers">
+                        <div style="color: #666;">加载中...</div>
+                    </div>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer" id="modalFooter">
+            <button type="button" class="modal-btn secondary" id="cancelBtn">取消</button>
+            <button type="button" class="modal-btn primary" id="saveBtn">保存</button>
+        </div>
+    </div>
+</div>

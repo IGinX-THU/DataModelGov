@@ -64,6 +64,10 @@ function bindMenuPermissionChecks() {
 
 // 检查菜单项权限
 function checkMenuItemPermission(dropdownId, menuText) {
+    if (dropdownId === 'userDropdown' && menuText === '用户管理') {
+        return window.MenuPermission.getCurrentRole() === 'ADMIN';
+    }
+
     const menuAreaMapping = {
         'dataDropdown': 'data',
         'modelDropdown': 'model',
