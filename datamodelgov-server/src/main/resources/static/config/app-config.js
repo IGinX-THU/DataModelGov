@@ -90,7 +90,8 @@ window.AppConfig = {
             update: '/api/user/update',
             save: '/api/user/save',
             delete: '/api/user/delete',
-            'change-password': '/api/user/change-password'
+            'change-password': '/api/user/change-password',
+            all: '/api/user/all'
         },
         dataPermission: {
             ownerTables: '/api/data-permission/owner-tables',

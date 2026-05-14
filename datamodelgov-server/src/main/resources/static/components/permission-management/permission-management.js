@@ -224,7 +224,7 @@ class PermissionManagement extends HTMLElement {
         });
     }
 
-    openEditModal(row) {
+    async openEditModal(row) {
         const pk = this.rowPrimaryKey(row);
         if (pk == null) {
             this.showToast('无法识别记录主键', 'error');
@@ -249,12 +249,61 @@ class PermissionManagement extends HTMLElement {
         if (isPublic) {
             isPublic.value = row.isPublic ? 'true' : 'false';
         }
-        if (visibleUsers) {
-            visibleUsers.value = row.visibleUsers != null ? row.visibleUsers : '';
+
+        // 加载所有用户列表
+        await this.loadAllUsers();
+
+        // 设置已选中的用户
+        if (visibleUsers && row.visibleUsers != null) {
+            const selectedUsers = row.visibleUsers.split(',').map(u => u.trim()).filter(u => u);
+            const checkboxes = visibleUsers.querySelectorAll('input[type="checkbox"]');
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = selectedUsers.includes(checkbox.value);
+            });
         }
+
         if (modalMask) {
             modalMask.hidden = false;
             modalMask.style.display = 'flex';
+        }
+    }
+
+    async loadAllUsers() {
+        const visibleUsers = this.shadowRoot.getElementById('visibleUsers');
+        if (!visibleUsers) {
+            return;
+        }
+
+        try {
+            const result = await window.AppConfig.get('userManagement', 'all');
+            if (result.success && Array.isArray(result.data)) {
+                // 清空现有选项
+                visibleUsers.innerHTML = '';
+                // 添加用户复选框
+                result.data.forEach(username => {
+                    const checkboxDiv = document.createElement('div');
+                    checkboxDiv.style.marginBottom = '4px';
+
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.value = username;
+                    checkbox.id = `user-${username}`;
+
+                    const label = document.createElement('label');
+                    label.htmlFor = `user-${username}`;
+                    label.textContent = username;
+                    label.style.marginLeft = '6px';
+
+                    checkboxDiv.appendChild(checkbox);
+                    checkboxDiv.appendChild(label);
+                    visibleUsers.appendChild(checkboxDiv);
+                });
+            } else {
+                this.showToast('加载用户列表失败', 'error');
+            }
+        } catch (error) {
+            console.error('加载用户列表失败:', error);
+            this.showToast('加载用户列表失败', 'error');
         }
     }
 
@@ -279,10 +328,18 @@ class PermissionManagement extends HTMLElement {
             this.showToast('记录主键缺失', 'error');
             return;
         }
+
+        // 获取选中的用户列表
+        let visibleUsers = '';
+        if (visibleUsersEl) {
+            const checkboxes = visibleUsersEl.querySelectorAll('input[type="checkbox"]:checked');
+            visibleUsers = Array.from(checkboxes).map(checkbox => checkbox.value).join(',');
+        }
+
         const body = {
             id: Number(recordId),
             isPublic: isPublicEl ? isPublicEl.value === 'true' : false,
-            visibleUsers: visibleUsersEl ? visibleUsersEl.value.trim() : ''
+            visibleUsers: visibleUsers
         };
         try {
             const result = await window.AppConfig.post('dataPermission', 'update', body);

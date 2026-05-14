@@ -25,10 +25,10 @@
             <table class="data-table">
                 <thead>
                     <tr>
-                        <th>表前缀</th>
+                        <th>资源</th>
                         <th>所有者</th>
-                        <th>公开</th>
-                        <th>可见用户</th>
+                        <th>公开可见</th>
+                        <th>部分可见</th>
                         <th>时间戳集合</th>
                         <th>创建时间</th>
                         <th>操作</th>
@@ -59,12 +59,15 @@
                     <span class="modal-label">是否公开</span>
                     <select class="modal-input" id="isPublic" required>
                         <option value="true">是（所有用户可见）</option>
-                        <option value="false">否</option>
+                        <option value="false">否（指定用户可见）</option>
                     </select>
                 </div>
                 <div class="modal-form-row">
                     <span class="modal-label">可见用户</span>
-                    <textarea class="modal-textarea" id="visibleUsers" placeholder="非公开时填写；多个用户名用英文逗号分隔，留空表示仅创建者可见"></textarea>
+                    <div id="visibleUsers" style="max-height: 120px; overflow-y: auto; border: 1px solid #ccc; padding: 8px; border-radius: 4px;">
+                        <div style="color: #666;">加载中...</div>
+                    </div>
+                    <div style="font-size: 12px; color: #666; margin-top: 4px;">勾选用户，留空表示仅创建者可见</div>
                 </div>
             </form>
         </div>
