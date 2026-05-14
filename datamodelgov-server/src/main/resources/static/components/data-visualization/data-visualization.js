@@ -250,6 +250,32 @@ class DataVisualization extends HTMLElement {
         return `${year}-${month}-${day}T${hours}:${minutes}`;
     }
 
+    isValidTimestamp(timestamp) {
+        if (timestamp == null || isNaN(timestamp)) {
+            return false;
+        }
+        
+        const numValue = Number(timestamp);
+        
+        // 检查是否是时间戳格式：
+        // 毫秒级时间戳：13位数字（如 1704067200000）
+        // 秒级时间戳：10位数字（如 1704067200）
+        const timestampStr = String(Math.floor(Math.abs(numValue)));
+        const isValidLength = timestampStr.length === 13 || timestampStr.length === 10;
+        
+        if (!isValidLength) {
+            return false;
+        }
+        
+        const date = new Date(numValue);
+        if (isNaN(date.getTime())) {
+            return false;
+        }
+        
+        const year = date.getFullYear();
+        return year >= 1970 && year <= 2100;
+    }
+
     
     // 处理表格数据
     processTableData(tableData) {
@@ -278,23 +304,25 @@ class DataVisualization extends HTMLElement {
         this.allData = tableData.records.map(record => {
             const processedRecord = { ...record };
 
-            // 如果有key列，转换为时间戳，解析失败则跳过这条数据
+            // 如果有key列，尝试转换为时间戳
             if (record.key) {
                 try {
-                    processedRecord.timestamp = new Date(record.key).getTime();
-                    // 检查时间戳是否有效
-                    if (isNaN(processedRecord.timestamp)) {
-                        console.warn('时间解析失败，跳过数据:', record.key);
-                        return null; // 返回null表示跳过这条数据
+                    const parsedTimestamp = new Date(record.key).getTime();
+                    // 检查是否是有效时间戳
+                    if (this.isValidTimestamp(parsedTimestamp)) {
+                        processedRecord.timestamp = parsedTimestamp;
+                    } else {
+                        // 不是有效时间戳，保留原始值
+                        processedRecord.timestamp = record.key;
                     }
                 } catch (error) {
-                    console.warn('时间解析异常，跳过数据:', record.key, error);
-                    return null; // 返回null表示跳过这条数据
+                    // 解析异常，保留原始值
+                    processedRecord.timestamp = record.key;
                 }
             }
 
             return processedRecord;
-        }).filter(record => record !== null); // 过滤掉null记录
+        });
 
         console.log('处理后的数据:', this.allData.length, '条记录');
 
@@ -1307,6 +1335,39 @@ class DataVisualization extends HTMLElement {
         };
     }
 
+    // 计算x轴范围，用于动态调整x坐标轴
+    calculateXAxisRange() {
+        if (!this.displayData || this.displayData.length === 0) {
+            return { min: 0, max: 100 };
+        }
+
+        let minValue = Infinity;
+        let maxValue = -Infinity;
+
+        this.displayData.forEach(record => {
+            if (record.timestamp !== null && record.timestamp !== undefined) {
+                const value = typeof record.timestamp === 'number' ? record.timestamp : parseFloat(record.timestamp);
+                if (!isNaN(value)) {
+                    minValue = Math.min(minValue, value);
+                    maxValue = Math.max(maxValue, value);
+                }
+            }
+        });
+
+        if (minValue === Infinity || maxValue === -Infinity) {
+            return { min: 0, max: 100 };
+        }
+
+        // 添加5%的边距，避免数据贴边
+        const range = maxValue - minValue;
+        const padding = range * 0.05;
+        
+        return {
+            min: minValue - padding,
+            max: maxValue + padding
+        };
+    }
+
     updateVisualization() {
         this.updateChart();
         this.updateTable();
@@ -1463,6 +1524,10 @@ class DataVisualization extends HTMLElement {
         const dataRange = this.calculateDataRange();
         console.log('data-visualization 计算的数据范围:', dataRange);
 
+        // 计算x轴范围用于动态调整X轴
+        const xAxisRange = this.calculateXAxisRange();
+        console.log('data-visualization 计算的x轴范围:', xAxisRange);
+
         const option = {
             title: {
                 text: '数据趋势',
@@ -1475,11 +1540,17 @@ class DataVisualization extends HTMLElement {
             },
             tooltip: {
                 trigger: 'axis',
-                formatter: function(params) {
+                formatter: (params) => {
                     if (!params || params.length === 0) return '';
 
-                    const time = new Date(params[0].value[0]).toLocaleString();
-                    let result = `时间: ${time}<br/>`;
+                    const xValue = params[0].value[0];
+                    let xLabel = '';
+                    if (this.isValidTimestamp(xValue)) {
+                        xLabel = new Date(xValue).toLocaleString();
+                    } else {
+                        xLabel = String(xValue);
+                    }
+                    let result = `X: ${xLabel}<br/>`;
                     params.forEach(param => {
                         if (param.value[1] !== null && param.value[1] !== undefined) {
                             result += `${param.seriesName}: ${param.value[1].toFixed(2)}<br/>`;
@@ -1505,10 +1576,16 @@ class DataVisualization extends HTMLElement {
                 top: '20%'
             },
             xAxis: {
-                type: 'time',
+                type: 'value',
+                min: xAxisRange.min,
+                max: xAxisRange.max,
                 axisLabel: {
-                    formatter: function(value) {
-                        return new Date(value).toLocaleString();
+                    formatter: (value) => {
+                        if (this.isValidTimestamp(value)) {
+                            return new Date(value).toLocaleString();
+                        } else {
+                            return String(value);
+                        }
                     }
                 }
             },
@@ -1669,12 +1746,14 @@ class DataVisualization extends HTMLElement {
             const timeTd = document.createElement('td');
             const originalKey = record.key;
             const parsedTimestamp = record.timestamp;
-            timeTd.innerHTML = `
-                <div>
-                    <span>${originalKey}</span>
-                    <span style="color: #999; font-size: 12px; margin-left: 4px;">(${new Date(parsedTimestamp).toLocaleString()})</span>
-                </div>
-            `;
+            
+            // 判断是否是有效时间戳
+            let displayContent = originalKey;
+            if (this.isValidTimestamp(parsedTimestamp)) {
+                displayContent = new Date(parsedTimestamp).toLocaleString();
+            }
+            
+            timeTd.innerHTML = `<div>${displayContent}</div>`;
             tr.appendChild(timeTd);
 
             // 实际数据列（不是选中测点）
