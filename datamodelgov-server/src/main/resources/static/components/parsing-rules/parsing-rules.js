@@ -9,18 +9,23 @@ class ParsingRules extends HTMLElement {
 
     async loadRulesFromAPI() {
         try {
+            // 显示全局loading
+            if (window.showGlobalLoading) {
+                window.showGlobalLoading('正在查询数据...');
+            }
+
             // 获取筛选条件
             const nameFilter = this.shadowRoot.querySelector('.filter-input[type="text"]')?.value.trim();
-            
+
             // 构建请求对象
             const requestBody = {
                 pageNum: this.currentPage || 1,
                 pageSize: this.pageSize || 6,
                 name: nameFilter || null
             };
-            
+
             console.log('查询参数:', requestBody);
-            
+
             // 调用查询接口
             const result = await window.AppConfig.post('parsingRules', 'query', requestBody);
             console.log('查询结果:', result);
@@ -53,6 +58,11 @@ class ParsingRules extends HTMLElement {
         } catch (error) {
             console.error('加载规则失败:', error);
             this.showToast('网络错误，无法加载规则', 'error');
+        } finally {
+            // 隐藏全局loading
+            if (window.hideGlobalLoading) {
+                window.hideGlobalLoading();
+            }
         }
     }
 

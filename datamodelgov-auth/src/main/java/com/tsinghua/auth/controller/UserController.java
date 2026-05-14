@@ -133,6 +133,7 @@ public class UserController {
         // 从Spring Security Context获取当前用户名
         String username = getCurrentUsername();
         UserEntity user = rolePermissionService.getUser(username);
+        user.setPassword(null);
         return Result.success(user);
     }
 

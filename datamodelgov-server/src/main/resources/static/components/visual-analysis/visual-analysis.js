@@ -4135,6 +4135,11 @@ class VisualAnalysis extends HTMLElement {
 
     async loadTasksFromAPI() {
         try {
+            // 显示全局loading
+            if (window.showGlobalLoading) {
+                window.showGlobalLoading('正在查询数据...');
+            }
+
             // 获取筛选条件
             const nameFilter = this.shadowRoot.getElementById('nameSearch')?.value.trim();
             const statusFilter = this.shadowRoot.getElementById('statusFilter')?.value;
@@ -4194,6 +4199,11 @@ class VisualAnalysis extends HTMLElement {
             this.allData = mockData;
             this.displayData = mockData;
             this.updateTable();
+        } finally {
+            // 隐藏全局loading
+            if (window.hideGlobalLoading) {
+                window.hideGlobalLoading();
+            }
         }
     }
 

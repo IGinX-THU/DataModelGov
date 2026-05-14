@@ -45,6 +45,11 @@ class DataSourceList extends HTMLElement {
 
     async loadDataSources() {
         try {
+            // 显示全局loading
+            if (window.showGlobalLoading) {
+                window.showGlobalLoading('正在加载数据源...');
+            }
+
             // 使用新的API配置
             const result = await window.AppConfig.get('datasource', 'list');
             
@@ -57,6 +62,11 @@ class DataSourceList extends HTMLElement {
         } catch (error) {
             console.error('获取数据源列表异常:', error);
             this.dataSources = [];
+        } finally {
+            // 隐藏全局loading
+            if (window.hideGlobalLoading) {
+                window.hideGlobalLoading();
+            }
         }
 
         this.renderTable();

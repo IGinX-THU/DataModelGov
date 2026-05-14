@@ -9,12 +9,17 @@ class AssociationRules extends HTMLElement {
 
     async loadRulesFromAPI() {
         try {
+            // 显示全局loading
+            if (window.showGlobalLoading) {
+                window.showGlobalLoading('正在查询数据...');
+            }
+
             // 获取筛选条件
             const nameFilter = this.shadowRoot.querySelector('.filter-input[type="text"]')?.value.trim();
             const statusFilter = this.shadowRoot.querySelector('.filter-input[type="text"] + select')?.value;
             const targetModelFilter = this.shadowRoot.getElementById('targetModelFilter')?.value;
             const versionFilter = this.shadowRoot.getElementById('versionFilter')?.value;
-            
+
             // 构建请求对象
             const requestBody = {
                 pageNum: this.currentPage || 1,
@@ -24,9 +29,9 @@ class AssociationRules extends HTMLElement {
                 modelName: targetModelFilter || null,
                 modelVersion: versionFilter || null
             };
-            
+
             console.log('查询参数:', requestBody);
-            
+
             // 调用查询接口
             const result = await window.AppConfig.post('associationRules', 'query', requestBody);
             console.log('查询结果:', result);
@@ -67,6 +72,11 @@ class AssociationRules extends HTMLElement {
         } catch (error) {
             console.error('加载规则失败:', error);
             this.showToast('网络错误，无法加载规则', 'error');
+        } finally {
+            // 隐藏全局loading
+            if (window.hideGlobalLoading) {
+                window.hideGlobalLoading();
+            }
         }
     }
 
