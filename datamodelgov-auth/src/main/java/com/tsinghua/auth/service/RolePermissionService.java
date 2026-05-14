@@ -253,6 +253,7 @@ public class RolePermissionService implements ApplicationContextAware {
 
         userDao.saveUser(new UserEntity("admin", getPasswordEncoder().encode("admin123"), UserRole.ADMIN, adminRoleId, 1000000000000L));
         userDao.saveUser(new UserEntity("data", getPasswordEncoder().encode("data123"), UserRole.DATA_ENGINEER, dataEngineerRoleId, 1000000000001L));
+        userDao.saveUser(new UserEntity("user", getPasswordEncoder().encode("user123"), UserRole.DATA_ENGINEER, dataEngineerRoleId, 1000000000002L));
 
         log.info("默认用户初始化完成: admin/admin123, data/data123");
     }
