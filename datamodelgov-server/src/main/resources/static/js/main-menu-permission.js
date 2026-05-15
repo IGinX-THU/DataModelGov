@@ -18,6 +18,11 @@ document.addEventListener('DOMContentLoaded', async function() {
     
     // 显示用户信息
     displayUserInfo();
+    
+    // 恢复用户设置（字体大小和主题模式）
+    if (window.restoreUserSettings) {
+        window.restoreUserSettings();
+    }
 });
 
 // 初始化菜单权限系统
@@ -68,6 +73,11 @@ function checkMenuItemPermission(dropdownId, menuText) {
         return window.MenuPermission.getCurrentRole() === 'ADMIN';
     }
 
+    // 设置菜单（字体设置）不需要权限检查，所有用户都可访问
+    if (dropdownId === 'settingsDropdown') {
+        return true;
+    }
+
     const menuAreaMapping = {
         'dataDropdown': 'data',
         'modelDropdown': 'model',
@@ -76,6 +86,7 @@ function checkMenuItemPermission(dropdownId, menuText) {
         'userDropdown': 'user',
         'toolDropdown': 'tool',
         'windowDropdown': 'window',
+        'settingsDropdown': 'settings',
         'helpDropdown': 'help'
     };
 
