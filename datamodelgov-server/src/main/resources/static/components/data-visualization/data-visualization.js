@@ -379,6 +379,60 @@ class DataVisualization extends HTMLElement {
                 tableHead.appendChild(th);
             });
         }
+
+        // 更新X轴和Y轴下拉框
+        this.updateAxisDropdowns(header);
+    }
+
+    // 更新X轴和Y轴下拉框
+    updateAxisDropdowns(header) {
+        const xAxisSelect = this.shadowRoot.getElementById('xAxisSelect');
+        const yAxisSelect = this.shadowRoot.getElementById('yAxisSelect');
+
+        if (xAxisSelect) {
+            // 保存当前选中的值
+            const currentXValue = xAxisSelect.value;
+            
+            // 清空选项
+            xAxisSelect.innerHTML = '<option value="">自动选择</option>';
+            
+            // 添加列选项
+            header.forEach(columnName => {
+                const option = document.createElement('option');
+                option.value = columnName;
+                option.textContent = columnName;
+                xAxisSelect.appendChild(option);
+            });
+
+            // 恢复选中的值
+            if (currentXValue && header.includes(currentXValue)) {
+                xAxisSelect.value = currentXValue;
+            }
+        }
+
+        if (yAxisSelect) {
+            // 保存当前选中的值
+            const currentYValue = yAxisSelect.value;
+            
+            // 清空选项
+            yAxisSelect.innerHTML = '<option value="">自动选择</option>';
+            
+            // 添加列选项（排除时间列）
+            header.forEach(columnName => {
+                // 跳过key列（通常是时间列）
+                if (columnName.toLowerCase() !== 'key' && columnName.toLowerCase() !== '时间') {
+                    const option = document.createElement('option');
+                    option.value = columnName;
+                    option.textContent = columnName;
+                    yAxisSelect.appendChild(option);
+                }
+            });
+
+            // 恢复选中的值
+            if (currentYValue && header.includes(currentYValue)) {
+                yAxisSelect.value = currentYValue;
+            }
+        }
     }
 
     hide() {
@@ -413,6 +467,30 @@ class DataVisualization extends HTMLElement {
         if (closeBtn) {
             closeBtn.addEventListener('click', () => {
                 this.hide();
+            });
+        }
+
+        // 图表类型选择
+        const chartTypeSelect = this.shadowRoot.getElementById('chartType');
+        if (chartTypeSelect) {
+            chartTypeSelect.addEventListener('change', () => {
+                this.updateVisualization();
+            });
+        }
+
+        // X轴选择
+        const xAxisSelect = this.shadowRoot.getElementById('xAxisSelect');
+        if (xAxisSelect) {
+            xAxisSelect.addEventListener('change', () => {
+                this.updateVisualization();
+            });
+        }
+
+        // Y轴选择
+        const yAxisSelect = this.shadowRoot.getElementById('yAxisSelect');
+        if (yAxisSelect) {
+            yAxisSelect.addEventListener('change', () => {
+                this.updateVisualization();
             });
         }
 
@@ -1384,17 +1462,39 @@ class DataVisualization extends HTMLElement {
             return;
         }
 
+        // 获取选中的图表类型和轴
+        const chartTypeSelect = this.shadowRoot.getElementById('chartType');
+        const xAxisSelect = this.shadowRoot.getElementById('xAxisSelect');
+        const yAxisSelect = this.shadowRoot.getElementById('yAxisSelect');
+
+        const selectedChartType = chartTypeSelect ? chartTypeSelect.value : 'line';
+        const selectedXAxis = xAxisSelect ? xAxisSelect.value : '';
+        const selectedYAxis = yAxisSelect ? yAxisSelect.value : '';
+
+        console.log('选中的图表类型:', selectedChartType);
+        console.log('选中的X轴:', selectedXAxis);
+        console.log('选中的Y轴:', selectedYAxis);
+
+        // 根据图表类型渲染不同的图表
+        if (selectedChartType === 'histogram') {
+            this.renderHistogram(selectedXAxis, selectedYAxis);
+        } else if (selectedChartType === 'scatter') {
+            this.renderScatter(selectedXAxis, selectedYAxis);
+        } else {
+            this.renderLineOrBarChart(selectedChartType, selectedXAxis, selectedYAxis);
+        }
+    }
+
+    renderLineOrBarChart(chartType, selectedXAxis, selectedYAxis) {
         // 检查是否有key列和是否包含选中的测点数据
         const actualColumns = this.actualDataColumns || [];
-        const hasTimeColumn = this.tableHeader && this.tableHeader.includes('key'); // 直接判断表头是否有key列
+        const hasTimeColumn = this.tableHeader && this.tableHeader.includes('key');
         
-        // 检查选中的测点是否在表头中，支持聚合函数前缀的匹配
+        // 检查选中的测点是否在表头中
         const hasSelectedColumns = this.selectedPoints.size > 0 && Array.from(this.selectedPoints).some(selectedPoint => {
-            // 直接匹配
             if (actualColumns.includes(selectedPoint)) {
                 return true;
             }
-            // 检查是否有包含选中测点的列（如 avg(root.vehicle.engine01.oil_pressure) 包含 root.vehicle.engine01.oil_pressure）
             return actualColumns.some(column => column.includes(selectedPoint));
         });
         
@@ -1455,29 +1555,22 @@ class DataVisualization extends HTMLElement {
 
         const series = [];
         const selectedPointsArray = Array.from(this.selectedPoints);
-        // actualColumns 已在上面声明，直接使用
 
-        // 只为数值类型的实际数据列创建系列，且只显示当前选中的测点
-        console.log('处理图表系列 - 实际数据列:', actualColumns);
-        console.log('处理图表系列 - 选中测点:', Array.from(this.selectedPoints));
+        // 确定X轴列
+        const xAxisColumn = selectedXAxis || 'key';
         
-        actualColumns.forEach((column, index) => {
+        // 确定Y轴列
+        const yAxisColumns = selectedYAxis ? [selectedYAxis] : Array.from(this.selectedPoints);
+
+        console.log('处理图表系列 - X轴列:', xAxisColumn);
+        console.log('处理图表系列 - Y轴列:', yAxisColumns);
+
+        // 计算X轴范围（根据选择的X轴列）
+        let xAxisMin = Infinity;
+        let xAxisMax = -Infinity;
+        
+        yAxisColumns.forEach((column, index) => {
             console.log('处理列:', column);
-            
-            // 检查该列是否对应当前选中的测点
-            let matchedSelectedPoint = null;
-            for (const selectedPoint of this.selectedPoints) {
-                if (column === selectedPoint || column.includes(selectedPoint)) {
-                    matchedSelectedPoint = selectedPoint;
-                    console.log('列', column, '匹配到测点:', selectedPoint);
-                    break;
-                }
-            }
-            
-            if (!matchedSelectedPoint) {
-                console.log('跳过未匹配的列:', column);
-                return; // 跳过未匹配的列
-            }
             
             // 检查该列是否为数值类型
             const isNumericColumn = this.displayData.some(record => {
@@ -1486,23 +1579,36 @@ class DataVisualization extends HTMLElement {
             });
 
             if (!isNumericColumn) {
-                console.log('!!!!! 新版本文件 跳过非数值列:', column, '!!!!!');
-                return; // 跳过非数值列
+                console.log('跳过非数值列:', column);
+                return;
             }
 
             console.log('✅ 数值列检查通过:', column, '准备创建数据系列');
-            const data = this.displayData.map(record => [
-                record.timestamp,
-                record[column] !== undefined ? record[column] : record.values && record.values[column] !== undefined ? record.values[column] : 0
-            ]);
-            console.log('📊 创建的数据系列:', column, '数据长度:', data.length, '数据样本:', data.slice(0, 1));
+            const data = this.displayData.map(record => {
+                let xValue;
+                if (xAxisColumn === 'key') {
+                    xValue = record.timestamp;
+                } else {
+                    xValue = record[xAxisColumn] !== undefined ? record[xAxisColumn] : record.values && record.values[xAxisColumn] !== undefined ? record.values[xAxisColumn] : 0;
+                }
+                const yValue = record[column] !== undefined ? record[column] : record.values && record.values[column] !== undefined ? record.values[column] : 0;
+                
+                // 收集X轴范围
+                if (typeof xValue === 'number' && !isNaN(xValue)) {
+                    xAxisMin = Math.min(xAxisMin, xValue);
+                    xAxisMax = Math.max(xAxisMax, xValue);
+                }
+                
+                return [xValue, yValue];
+            });
+            console.log('📊 创建的数据系列:', column, '数据长度:', data.length);
 
-            const color = this.getColorForPoint(matchedSelectedPoint);
+            const color = this.getColorForPoint(column);
             const seriesItem = {
-                name: matchedSelectedPoint, // 使用原始选中的测点名称作为系列名称
-                type: 'line',
+                name: column,
+                type: chartType,
                 data: data,
-                smooth: true,
+                smooth: chartType === 'line',
                 symbol: 'circle',
                 symbolSize: 4,
                 showSymbol: false,
@@ -1510,27 +1616,24 @@ class DataVisualization extends HTMLElement {
                     width: 2,
                     color: color
                 },
-                areaStyle: undefined // 明确禁用填充区域
+                areaStyle: undefined
             };
             console.log('📈 准备推送系列:', seriesItem.name);
             series.push(seriesItem);
         });
 
         console.log('创建的图表系列数量:', series.length);
-        console.log('图表系列详情:', series);
-        console.log('图表系列名称列表:', series.map(s => s.name));
 
-        // 计算数据范围用于动态调整Y轴
+        // 计算数据范围
         const dataRange = this.calculateDataRange();
-        console.log('data-visualization 计算的数据范围:', dataRange);
-
-        // 计算x轴范围用于动态调整X轴
-        const xAxisRange = this.calculateXAxisRange();
-        console.log('data-visualization 计算的x轴范围:', xAxisRange);
+        
+        // 使用计算得到的X轴范围，如果没有则使用默认值
+        const xAxisRange = xAxisMin === Infinity ? this.calculateXAxisRange() : { min: xAxisMin, max: xAxisMax };
+        console.log('X轴范围:', xAxisRange, 'X轴列:', xAxisColumn);
 
         const option = {
             title: {
-                text: '数据趋势',
+                text: chartType === 'bar' ? '数据柱状图' : '数据趋势图',
                 left: 'center',
                 top: 10,
                 textStyle: {
@@ -1562,7 +1665,7 @@ class DataVisualization extends HTMLElement {
                 }
             },
             legend: {
-                data: selectedPointsArray, // 只显示当前选中的测点作为图例
+                data: yAxisColumns,
                 top: 40,
                 left: 'center',
                 textStyle: {
@@ -1579,9 +1682,13 @@ class DataVisualization extends HTMLElement {
                 type: 'value',
                 min: xAxisRange.min,
                 max: xAxisRange.max,
+                name: xAxisColumn === 'key' ? '' : xAxisColumn,
+                nameLocation: 'middle',
+                nameGap: 30,
                 axisLabel: {
                     formatter: (value) => {
-                        if (this.isValidTimestamp(value)) {
+                        // 只有当X轴是key（时间）时才使用时间格式化
+                        if (xAxisColumn === 'key' && this.isValidTimestamp(value)) {
                             return new Date(value).toLocaleString();
                         } else {
                             return String(value);
@@ -1624,55 +1731,194 @@ class DataVisualization extends HTMLElement {
         };
 
         try {
-            console.log('🎨 开始渲染图表，系列数量:', series.length);
-            console.log('📊 图表选项预览:', {
-                title: option.title.text,
-                seriesCount: option.series.length,
-                seriesNames: option.series.map(s => s.name),
-                hasData: option.series.some(s => s.data && s.data.length > 0)
-            });
-            
-            // 隐藏覆盖层，确保图表可见
             this.hideChartOverlay();
-            
-            // 先清空图表，然后重新设置选项，确保移除的测点不会残留
             this.chart.clear();
-            this.chart.setOption(option, false); // 第二个参数false表示不合并选项
-            
-            console.log('✅ 图表渲染完成');
-            
-            // 标记图表已成功渲染，防止后续检查覆盖
+            this.chart.setOption(option, false);
             this._chartRendered = true;
-            console.log('🔒 设置图表渲染标记为 true');
-            
-            // 立即检查DOM内容
-            const overlay = this.shadowRoot.getElementById('chartOverlay');
-            if (overlay) {
-                console.log('🔍 图表渲染后覆盖层内容:', overlay.innerHTML.substring(0, 100));
-            }
-            
-            // 检查图表是否真的显示了
-            setTimeout(() => {
-                const chartInstance = this.chart;
-                if (chartInstance) {
-                    const model = chartInstance.getModel();
-                    const series = model.getSeries();
-                    console.log('🔍 图表实例检查 - 实际系列数量:', series.length);
-                    series.forEach((s, index) => {
-                        console.log(`  系列 ${index}:`, s.name, '数据点数:', s.getData().count());
-                    });
-                    
-                    // 再次检查DOM内容
-                    if (overlay) {
-                        console.log('🔍 100ms后覆盖层内容:', overlay.innerHTML.substring(0, 100));
-                    }
-                }
-            }, 100);
-            
+            console.log('✅ 图表渲染完成');
         } catch (error) {
-            console.error('图表更新失败:', error);
-            // 如果更新失败，尝试重新初始化图表
-            this.initChart();
+            console.error('图表渲染失败:', error);
+        }
+    }
+
+    renderScatter(selectedXAxis, selectedYAxis) {
+        const actualColumns = this.actualDataColumns || [];
+        
+        // 确定X轴和Y轴列
+        const xAxisColumn = selectedXAxis || actualColumns[0];
+        const yAxisColumn = selectedYAxis || (actualColumns.length > 1 ? actualColumns[1] : actualColumns[0]);
+
+        if (!xAxisColumn || !yAxisColumn) {
+            this.showChartOverlay(`
+                <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #999;">
+                    <div style="font-size: 48px; margin-bottom: 16px;">📊</div>
+                    <div style="font-size: 14px;">请选择X轴和Y轴列</div>
+                </div>
+            `);
+            return;
+        }
+
+        const data = this.displayData.map(record => [
+            record[xAxisColumn] !== undefined ? record[xAxisColumn] : 0,
+            record[yAxisColumn] !== undefined ? record[yAxisColumn] : 0
+        ]);
+
+        const option = {
+            title: {
+                text: '散点图',
+                left: 'center',
+                top: 10,
+                textStyle: {
+                    fontSize: 14,
+                    fontWeight: 'bold'
+                }
+            },
+            tooltip: {
+                trigger: 'item',
+                formatter: (params) => {
+                    return `${xAxisColumn}: ${params.value[0].toFixed(2)}<br/>${yAxisColumn}: ${params.value[1].toFixed(2)}`;
+                }
+            },
+            grid: {
+                left: '10%',
+                right: '10%',
+                bottom: '15%',
+                top: '20%'
+            },
+            xAxis: {
+                type: 'value',
+                name: xAxisColumn,
+                nameLocation: 'middle',
+                nameGap: 30
+            },
+            yAxis: {
+                type: 'value',
+                name: yAxisColumn,
+                nameLocation: 'middle',
+                nameGap: 40
+            },
+            series: [{
+                type: 'scatter',
+                data: data,
+                symbolSize: 6,
+                itemStyle: {
+                    color: '#3370ff'
+                }
+            }]
+        };
+
+        try {
+            this.hideChartOverlay();
+            this.chart.clear();
+            this.chart.setOption(option, false);
+            this._chartRendered = true;
+            console.log('✅ 散点图渲染完成');
+        } catch (error) {
+            console.error('散点图渲染失败:', error);
+        }
+    }
+
+    renderHistogram(selectedXAxis, selectedYAxis) {
+        const actualColumns = this.actualDataColumns || [];
+        
+        // 确定要统计的列
+        const targetColumn = selectedYAxis || actualColumns.find(col => col !== 'key') || actualColumns[0];
+
+        if (!targetColumn) {
+            this.showChartOverlay(`
+                <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #999;">
+                    <div style="font-size: 48px; margin-bottom: 16px;">📊</div>
+                    <div style="font-size: 14px;">请选择要统计的列</div>
+                </div>
+            `);
+            return;
+        }
+
+        // 收集数值数据
+        const values = this.displayData.map(record => record[targetColumn] !== undefined ? record[targetColumn] : 0).filter(v => typeof v === 'number');
+
+        if (values.length === 0) {
+            this.showChartOverlay(`
+                <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #999;">
+                    <div style="font-size: 48px; margin-bottom: 16px;">📊</div>
+                    <div style="font-size: 14px;">该列没有数值数据</div>
+                </div>
+            `);
+            return;
+        }
+
+        // 计算直方图数据
+        const min = Math.min(...values);
+        const max = Math.max(...values);
+        const binCount = 20;
+        const binSize = (max - min) / binCount;
+        
+        const bins = new Array(binCount).fill(0);
+        values.forEach(value => {
+            const binIndex = Math.min(Math.floor((value - min) / binSize), binCount - 1);
+            bins[binIndex]++;
+        });
+
+        const data = bins.map((count, index) => ({
+            value: [min + index * binSize + binSize / 2, count],
+            itemStyle: {
+                color: '#3370ff'
+            }
+        }));
+
+        const option = {
+            title: {
+                text: '直方图',
+                left: 'center',
+                top: 10,
+                textStyle: {
+                    fontSize: 14,
+                    fontWeight: 'bold'
+                }
+            },
+            tooltip: {
+                trigger: 'item',
+                formatter: (params) => {
+                    const rangeStart = params.value[0] - binSize / 2;
+                    const rangeEnd = params.value[0] + binSize / 2;
+                    return `范围: ${rangeStart.toFixed(2)} - ${rangeEnd.toFixed(2)}<br/>频数: ${params.value[1]}`;
+                }
+            },
+            grid: {
+                left: '10%',
+                right: '10%',
+                bottom: '15%',
+                top: '20%'
+            },
+            xAxis: {
+                type: 'value',
+                name: targetColumn,
+                nameLocation: 'middle',
+                nameGap: 30,
+                min: min,
+                max: max
+            },
+            yAxis: {
+                type: 'value',
+                name: '频数',
+                nameLocation: 'middle',
+                nameGap: 40
+            },
+            series: [{
+                type: 'bar',
+                data: data,
+                barWidth: (max - min) / binCount * 0.8
+            }]
+        };
+
+        try {
+            this.hideChartOverlay();
+            this.chart.clear();
+            this.chart.setOption(option, false);
+            this._chartRendered = true;
+            console.log('✅ 直方图渲染完成');
+        } catch (error) {
+            console.error('直方图渲染失败:', error);
         }
     }
 
