@@ -2380,15 +2380,11 @@ class VisualAnalysis extends HTMLElement {
             }
             
             // 检查是否进行了采样
-            // if (this.currentChartData && this.currentChartData.data && this.currentChartData.data.isSampled) {
-                pdfGenerator.addSeparator();
-                // pdfGenerator.addText(`注意：由于数据量较大（${this.currentChartData.data.originalCount}行），已采样为${this.currentChartData.data.sampledCount}行进行展示`, 10, true);
-                pdfGenerator.addText(`如何访问完整数据集：`, 10, true);
-                pdfGenerator.addText(`使用"导出"功能下载完整数据集`, 9, false);
-                pdfGenerator.addText(`通过数据资源库查询直接获取完整数据`, 9, false);
-                pdfGenerator.addText(`调整报告数据限制参数以显示更多数据`, 9, false);
-                pdfGenerator.addText(`选择合适的采样算法以优化数据展示`, 9, false);
-            // }
+            pdfGenerator.addSeparator();
+            pdfGenerator.addText(`如何访问完整数据集：`, 10, true);
+            pdfGenerator.addText(`使用"导出"功能下载完整数据集（任务号：${record.id}）`, 9, false);
+            pdfGenerator.addText(`通过数据资源库查询直接获取完整数据（输入路径：${Object.keys(this.currentChartData.data.inputData || {}).join(', ')}，输出路径：${Object.keys(this.currentChartData.data.outputData || {}).join(', ')}）`, 9, false);
+
             
             // 6. 统计分析
             pdfGenerator.addSubtitle('五、统计分析');
@@ -3472,15 +3468,11 @@ class VisualAnalysis extends HTMLElement {
             }
             
             // 检查是否进行了采样
-            // if (this.currentChartData && this.currentChartData.data && this.currentChartData.data.isSampled) {
-                pdfGenerator.addSeparator();
-                // pdfGenerator.addText(`注意：由于数据量较大（${this.currentChartData.data.originalCount}行），已采样为${this.currentChartData.data.sampledCount}行进行展示`, 10, true);
-                pdfGenerator.addText(`如何访问完整数据集：`, 10, true);
-                pdfGenerator.addText(`使用"导出"功能下载完整数据集`, 9, false);
-                pdfGenerator.addText(`通过数据资源库查询直接获取完整数据`, 9, false);
-                pdfGenerator.addText(`调整报告数据限制参数以显示更多数据`, 9, false);
-                pdfGenerator.addText(`选择合适的采样算法以优化数据展示`, 9, false);
-            // }
+            pdfGenerator.addSeparator();
+            pdfGenerator.addText(`如何访问完整数据集：`, 10, true);
+            pdfGenerator.addText(`使用"导出"功能下载完整数据集（任务号：${record.id}）`, 9, false);
+            pdfGenerator.addText(`通过数据资源库查询直接获取完整数据（输入路径：${Object.keys(this.currentChartData.data.inputData || {}).join(', ')}，输出路径：${Object.keys(this.currentChartData.data.outputData || {}).join(', ')}）`, 9, false);
+
             
             // 6. 统计分析
             pdfGenerator.addSubtitle('五、统计分析');
