@@ -202,6 +202,75 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
+    // 2. 字体大小设置
+    function applyFontScale(scale) {
+        console.log('Setting font scale to:', scale);
+        
+        // If scale is undefined, don't apply it
+        if (scale === undefined || scale === null) {
+            console.warn('Font scale is undefined, skipping');
+            return;
+        }
+        
+        // Remove all font scale classes
+        document.documentElement.classList.remove('font-scale-1', 'font-scale-1-15', 'font-scale-1-3', 'font-scale-1-5');
+        
+        // Add the appropriate class based on scale
+        const scaleClassMap = {
+            '1': 'font-scale-1',
+            '1.15': 'font-scale-1-15',
+            '1.3': 'font-scale-1-3',
+            '1.5': 'font-scale-1-5'
+        };
+        
+        const className = scaleClassMap[scale] || 'font-scale-1';
+        document.documentElement.classList.add(className);
+        
+        console.log('Added class:', className);
+        
+        // 使用用户名作为键的一部分，使字体设置按用户隔离
+        const username = window.MenuPermission?.currentUser?.username || 'default';
+        localStorage.setItem('fontScale_' + username, scale);
+        
+        // 更新子菜单选中状态
+        document.querySelectorAll('.dropdown-menu .submenu li').forEach(li => {
+            li.classList.remove('active');
+            if (parseFloat(li.dataset.scale) === parseFloat(scale)) {
+                li.classList.add('active');
+            }
+        });
+    }
+
+    // 页面加载时恢复保存的字体大小和主题模式（在用户信息加载后调用）
+    function restoreUserSettings() {
+        const username = window.MenuPermission?.currentUser?.username || 'default';
+        console.log('restoreUserSettings called for user:', username);
+        
+        // 恢复字体大小
+        const savedFontScale = localStorage.getItem('fontScale_' + username);
+        console.log('Saved font scale for user', username, ':', savedFontScale);
+        if (savedFontScale) {
+            applyFontScale(savedFontScale);
+        } else {
+            // 默认选中"小"
+            console.log('No saved font scale, using default 1');
+            applyFontScale(1);
+        }
+
+        // 恢复主题模式
+        const savedThemeMode = localStorage.getItem('themeMode_' + username);
+        console.log('Saved theme mode for user', username, ':', savedThemeMode);
+        const html = document.documentElement;
+        if (savedThemeMode === 'dark') {
+            html.classList.add('dark-mode');
+        } else if (savedThemeMode === 'light') {
+            html.classList.add('light-mode');
+        }
+    }
+
+    // 将恢复设置函数暴露到全局，供main-menu-permission.js调用
+    window.restoreUserSettings = restoreUserSettings;
+
     // 2.5. 右侧模型资产库树形节点点击事件
     const rightSidebarTree = document.querySelector('.right-sidebar .tree');
     if (rightSidebarTree) {
@@ -254,9 +323,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const scheduleDropdown = document.getElementById('scheduleDropdown');
     const analysisDropdown = document.getElementById('analysisDropdown');
     const toolDropdown = document.getElementById('toolDropdown');
-    const windowDropdown = document.getElementById('windowDropdown');
     const helpDropdown = document.getElementById('helpDropdown');
     const userDropdown = document.getElementById('userDropdown');
+    const settingsDropdown = document.getElementById('settingsDropdown');
 
     dataDropdown.addEventListener('click', function(e) {
         e.stopPropagation();
@@ -264,9 +333,9 @@ document.addEventListener('DOMContentLoaded', function() {
         scheduleDropdown.classList.remove('active');
         analysisDropdown.classList.remove('active');
         toolDropdown.classList.remove('active');
-        windowDropdown.classList.remove('active');
         helpDropdown.classList.remove('active');
         userDropdown.classList.remove('active');
+        settingsDropdown.classList.remove('active');
         this.classList.toggle('active');
     });
 
@@ -276,9 +345,9 @@ document.addEventListener('DOMContentLoaded', function() {
         scheduleDropdown.classList.remove('active');
         analysisDropdown.classList.remove('active');
         toolDropdown.classList.remove('active');
-        windowDropdown.classList.remove('active');
         helpDropdown.classList.remove('active');
         userDropdown.classList.remove('active');
+        settingsDropdown.classList.remove('active');
         this.classList.toggle('active');
     });
 
@@ -288,9 +357,9 @@ document.addEventListener('DOMContentLoaded', function() {
         modelDropdown.classList.remove('active');
         analysisDropdown.classList.remove('active');
         toolDropdown.classList.remove('active');
-        windowDropdown.classList.remove('active');
         helpDropdown.classList.remove('active');
         userDropdown.classList.remove('active');
+        settingsDropdown.classList.remove('active');
         this.classList.toggle('active');
     });
 
@@ -300,9 +369,9 @@ document.addEventListener('DOMContentLoaded', function() {
         modelDropdown.classList.remove('active');
         scheduleDropdown.classList.remove('active');
         toolDropdown.classList.remove('active');
-        windowDropdown.classList.remove('active');
         helpDropdown.classList.remove('active');
         userDropdown.classList.remove('active');
+        settingsDropdown.classList.remove('active');
         this.classList.toggle('active');
     });
 
@@ -312,21 +381,9 @@ document.addEventListener('DOMContentLoaded', function() {
         modelDropdown.classList.remove('active');
         scheduleDropdown.classList.remove('active');
         analysisDropdown.classList.remove('active');
-        windowDropdown.classList.remove('active');
         helpDropdown.classList.remove('active');
         userDropdown.classList.remove('active');
-        this.classList.toggle('active');
-    });
-
-    windowDropdown.addEventListener('click', function(e) {
-        e.stopPropagation();
-        dataDropdown.classList.remove('active');
-        modelDropdown.classList.remove('active');
-        scheduleDropdown.classList.remove('active');
-        analysisDropdown.classList.remove('active');
-        toolDropdown.classList.remove('active');
-        helpDropdown.classList.remove('active');
-        userDropdown.classList.remove('active');
+        settingsDropdown.classList.remove('active');
         this.classList.toggle('active');
     });
 
@@ -337,8 +394,8 @@ document.addEventListener('DOMContentLoaded', function() {
         scheduleDropdown.classList.remove('active');
         analysisDropdown.classList.remove('active');
         toolDropdown.classList.remove('active');
-        windowDropdown.classList.remove('active');
         userDropdown.classList.remove('active');
+        settingsDropdown.classList.remove('active');
         this.classList.toggle('active');
     });
 
@@ -349,9 +406,32 @@ document.addEventListener('DOMContentLoaded', function() {
         scheduleDropdown.classList.remove('active');
         analysisDropdown.classList.remove('active');
         toolDropdown.classList.remove('active');
-        windowDropdown.classList.remove('active');
         helpDropdown.classList.remove('active');
+        settingsDropdown.classList.remove('active');
         this.classList.toggle('active');
+    });
+
+    settingsDropdown.addEventListener('click', function(e) {
+        e.stopPropagation();
+        dataDropdown.classList.remove('active');
+        modelDropdown.classList.remove('active');
+        scheduleDropdown.classList.remove('active');
+        analysisDropdown.classList.remove('active');
+        toolDropdown.classList.remove('active');
+        helpDropdown.classList.remove('active');
+        userDropdown.classList.remove('active');
+        this.classList.toggle('active');
+    });
+
+    // 绑定字体大小子菜单点击事件
+    document.querySelectorAll('.dropdown-menu .submenu li[data-scale]').forEach(li => {
+        li.addEventListener('click', function(e) {
+            e.stopPropagation();
+            e.stopImmediatePropagation(); // Prevent other event handlers from firing
+            const scale = this.dataset.scale;
+            applyFontScale(scale);
+            settingsDropdown.classList.remove('active');
+        });
     });
 
     document.addEventListener('click', function() {
@@ -360,9 +440,9 @@ document.addEventListener('DOMContentLoaded', function() {
         scheduleDropdown.classList.remove('active');
         analysisDropdown.classList.remove('active');
         toolDropdown.classList.remove('active');
-        windowDropdown.classList.remove('active');
         helpDropdown.classList.remove('active');
         userDropdown.classList.remove('active');
+        settingsDropdown.classList.remove('active');
     });
 
     // 跟踪最后点击的菜单项，用于实现二次点击刷新
@@ -372,6 +452,16 @@ document.addEventListener('DOMContentLoaded', function() {
     menuItems.forEach(item => {
         item.addEventListener('click', function(e) {
             e.stopPropagation();
+
+            // Skip font size submenu items - they are handled separately
+            if (this.hasAttribute('data-scale')) {
+                return;
+            }
+
+            // Skip submenu parents (has-submenu class) - they don't have actions
+            if (this.classList.contains('has-submenu')) {
+                return;
+            }
 
             const menuId = this.id;
             console.log(`菜单项被点击: ${menuId}`);
@@ -452,14 +542,24 @@ document.addEventListener('DOMContentLoaded', function() {
                     case 'setLightMode':
                         console.log('明亮模式菜单被点击');
                         const html = document.documentElement;
+                        console.log('Before setLightMode, classes:', html.className);
                         html.classList.remove('dark-mode');
                         html.classList.add('light-mode');
+                        console.log('After setLightMode, classes:', html.className);
+                        // 保存主题模式到localStorage（按用户隔离）
+                        const usernameLight = window.MenuPermission?.currentUser?.username || 'default';
+                        localStorage.setItem('themeMode_' + usernameLight, 'light');
                         break;
                     case 'setDarkMode':
                         console.log('暗黑模式菜单被点击');
                         const htmlDark = document.documentElement;
+                        console.log('Before setDarkMode, classes:', htmlDark.className);
                         htmlDark.classList.remove('light-mode');
                         htmlDark.classList.add('dark-mode');
+                        console.log('After setDarkMode, classes:', htmlDark.className);
+                        // 保存主题模式到localStorage（按用户隔离）
+                        const usernameDark = window.MenuPermission?.currentUser?.username || 'default';
+                        localStorage.setItem('themeMode_' + usernameDark, 'dark');
                         break;
                     case 'showAbout':
                         console.log('关于菜单被点击');

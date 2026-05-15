@@ -8,6 +8,29 @@
         <div class="chart-section">
             <div class="chart-header">
                 <h4 class="chart-title">趋势图</h4>
+                <div class="chart-controls">
+                    <div class="chart-control-item">
+                        <label class="chart-control-label">图表类型:</label>
+                        <select class="chart-control-select" id="chartType">
+                            <option value="line">曲线图</option>
+                            <option value="bar">柱状图</option>
+                            <option value="scatter">散点图</option>
+                            <option value="histogram">直方图</option>
+                        </select>
+                    </div>
+                    <div class="chart-control-item">
+                        <label class="chart-control-label">X轴:</label>
+                        <select class="chart-control-select" id="xAxisSelect">
+                            <option value="">自动选择</option>
+                        </select>
+                    </div>
+                    <div class="chart-control-item">
+                        <label class="chart-control-label">Y轴:</label>
+                        <select class="chart-control-select" id="yAxisSelect">
+                            <option value="">自动选择</option>
+                        </select>
+                    </div>
+                </div>
             </div>
             <div class="chart-container" id="chartContainer">
                 <!-- ECharts图表将在这里渲染 -->

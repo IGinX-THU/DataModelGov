@@ -149,11 +149,25 @@
                     <li id="menu-clear-workspace">清空工作区</li>
                 </ul>
             </span>
-        <span class="tab dropdown" id="windowDropdown">
-                <span class="dropdown-trigger">窗口</span>
+        <span class="tab dropdown" id="settingsDropdown">
+                <span class="dropdown-trigger">设置</span>
                 <ul class="dropdown-menu">
-                    <li id="menu-light-mode">明亮模式</li>
-                    <li id="menu-dark-mode">暗黑模式</li>
+                    <li class="has-submenu" id="menu-font-size">
+                        菜单字体 ▸
+                        <ul class="submenu">
+                            <li id="menu-font-small" data-scale="1">小</li>
+                            <li id="menu-font-medium" data-scale="1.15">中</li>
+                            <li id="menu-font-large" data-scale="1.3">大</li>
+                            <li id="menu-font-xlarge" data-scale="1.5">特大</li>
+                        </ul>
+                    </li>
+                    <li class="has-submenu" id="menu-window">
+                        窗口 ▸
+                        <ul class="submenu">
+                            <li id="menu-light-mode">明亮模式</li>
+                            <li id="menu-dark-mode">暗黑模式</li>
+                        </ul>
+                    </li>
                 </ul>
             </span>
         <span class="tab dropdown" id="helpDropdown">
