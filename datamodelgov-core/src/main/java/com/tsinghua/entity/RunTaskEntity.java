@@ -33,4 +33,6 @@ public class RunTaskEntity {
     private Long processId;
     @ApiModelProperty(value = "进程运行日志")
     private String processLog;
+    @ApiModelProperty(value = "创建人")
+    private String owner;
 }
