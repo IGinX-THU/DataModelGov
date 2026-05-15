@@ -274,6 +274,14 @@ class VisualAnalysis extends HTMLElement {
             });
         }
 
+        // 报告数据限制帮助按钮
+        const reportLimitHelp = this.shadowRoot.getElementById('reportLimitHelp');
+        if (reportLimitHelp) {
+            reportLimitHelp.addEventListener('click', () => {
+                this.showReportLimitHelp();
+            });
+        }
+
         // 名称搜索输入框
         // const nameSearch = this.shadowRoot.getElementById('nameSearch');
         // if (nameSearch) {
@@ -1218,6 +1226,63 @@ class VisualAnalysis extends HTMLElement {
         this.loadTasksFromAPI();
     }
 
+    // 显示报告数据限制帮助信息
+    showReportLimitHelp() {
+        const modalTitle = this.shadowRoot.getElementById('modalTitle');
+        const modalBody = this.shadowRoot.getElementById('modalBody');
+        const modalFooter = this.shadowRoot.getElementById('modalFooter');
+        
+        modalTitle.textContent = '报告数据限制说明';
+        modalBody.innerHTML = `
+            <div style="padding: 20px 0; line-height: 1.8;">
+                <p style="margin-bottom: 15px; font-weight: 500; color: #1f2329;">
+                    📊 报告数据限制
+                </p>
+                <p style="margin-bottom: 15px; color: #646a73;">
+                    为保证报告生成性能，报告仅显示用户指定数量的数据行（K条）。
+                </p>
+                
+                <div style="background: #f0f7ff; border-left: 4px solid #2969ff; padding: 15px; margin: 20px 0; border-radius: 4px;">
+                    <p style="margin: 0 0 10px 0; font-weight: 500; color: #2969ff;">
+                        💡 如何访问完整数据集：
+                    </p>
+                    <ul style="margin: 0; padding-left: 20px; color: #646a73;">
+                        <li style="margin-bottom: 8px;">使用"导出"功能下载完整数据集</li>
+                        <li style="margin-bottom: 8px;">通过数据资源库查询直接获取完整数据</li>
+                        <li style="margin-bottom: 8px;">调整报告数据限制参数以显示更多数据</li>
+                        <li>选择合适的采样算法以优化数据展示</li>
+                    </ul>
+                </div>
+                
+                <p style="margin-bottom: 15px; font-weight: 500; color: #1f2329;">
+                    📋 采样算法说明：
+                </p>
+                <ul style="margin: 0; padding-left: 20px; color: #646a73;">
+                    <li style="margin-bottom: 8px;"><strong>均匀采样</strong>：在整个数据范围内均匀采样，保持数据分布特征</li>
+                    <li style="margin-bottom: 8px;"><strong>随机采样</strong>：随机选择K条数据，适合大数据集的快速预览</li>
+                    <li style="margin-bottom: 8px;"><strong>取前N条</strong>：选择数据集的前N条，适合查看最新数据</li>
+                    <li><strong>取后N条</strong>：选择数据集的后N条，适合查看历史数据</li>
+                </ul>
+            </div>
+        `;
+        
+        modalFooter.innerHTML = `
+            <button class="modal-btn secondary" id="closeHelp">关闭</button>
+        `;
+        
+        this.showModal();
+        
+        const closeBtn = this.shadowRoot.getElementById('closeHelp');
+        const modalClose = this.shadowRoot.getElementById('modalClose');
+        
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => this.hideModal());
+        }
+        if (modalClose) {
+            modalClose.addEventListener('click', () => this.hideModal());
+        }
+    }
+
     // 处理名称搜索
     handleNameSearch(searchValue) {
         this.currentFilter.name = searchValue.toLowerCase();
@@ -1433,9 +1498,18 @@ class VisualAnalysis extends HTMLElement {
         
         console.log(`数据量统计 - 输入: ${totalInputCount}, 输出: ${totalOutputCount}, 总计: ${totalCount}`);
         
-        if (totalCount > 20) {
-            console.log('数据量过大，开始采样...');
-            const sampledResult = this.sampleDataConsistently(inputData, outputData, 20);
+        // 获取用户设置的数据限制
+        const reportDataLimitInput = this.shadowRoot.getElementById('reportDataLimit');
+        const samplingAlgorithmSelect = this.shadowRoot.getElementById('samplingAlgorithm');
+        
+        const maxRows = reportDataLimitInput ? parseInt(reportDataLimitInput.value) || 20 : 20;
+        const samplingAlgorithm = samplingAlgorithmSelect ? samplingAlgorithmSelect.value : 'uniform';
+        
+        console.log(`报告数据限制: ${maxRows}条, 采样算法: ${samplingAlgorithm}`);
+        
+        if (totalCount > maxRows) {
+            console.log(`数据量过大(${totalCount} > ${maxRows})，开始采样...`);
+            const sampledResult = this.sampleDataConsistently(inputData, outputData, maxRows, samplingAlgorithm);
             
             console.log('采样完成，更新数据');
             return {
@@ -1445,7 +1519,9 @@ class VisualAnalysis extends HTMLElement {
                 isSampled: true,
                 originalCount: totalCount,
                 sampledCount: Object.values(sampledResult.inputData).reduce((sum, data) => sum + (data ? data.length : 0), 0) + 
-                            Object.values(sampledResult.outputData).reduce((sum, data) => sum + (data ? data.length : 0), 0)
+                            Object.values(sampledResult.outputData).reduce((sum, data) => sum + (data ? data.length : 0), 0),
+                maxRows: maxRows,
+                samplingAlgorithm: samplingAlgorithm
             };
         }
 
@@ -1653,6 +1729,14 @@ class VisualAnalysis extends HTMLElement {
                 textStyle: {
                     fontSize: 14,
                     fontWeight: 'bold'
+                },
+                subtext: chartData.isSampled 
+                    ? `⚠️ 数据已采样：原始${chartData.originalCount}行 → 采样${chartData.sampledCount}行（${chartData.maxRows}条/ ${chartData.samplingAlgorithm === 'uniform' ? '均匀采样' : chartData.samplingAlgorithm === 'random' ? '随机采样' : chartData.samplingAlgorithm === 'first' ? '取前N条' : '取后N条'}）。点击"?"按钮查看如何访问完整数据集。`
+                    : '',
+                subtextStyle: {
+                    fontSize: 11,
+                    color: '#faad14',
+                    lineHeight: 16
                 }
             },
             tooltip: {
@@ -2015,8 +2099,29 @@ class VisualAnalysis extends HTMLElement {
                 
                 const outputQueryData = await this.queryOutputDataWithAdjustedStartTime(record);
                 if (outputQueryData && outputQueryData.outputData) {
-                    this.currentChartData.data.outputData = outputQueryData.outputData;
-                    console.log('重新查询输出数据成功');
+                    // 获取用户设置的数据限制
+                    const reportDataLimitInput = this.shadowRoot.getElementById('reportDataLimit');
+                    const samplingAlgorithmSelect = this.shadowRoot.getElementById('samplingAlgorithm');
+                    
+                    const maxRows = reportDataLimitInput ? parseInt(reportDataLimitInput.value) || 20 : 20;
+                    const samplingAlgorithm = samplingAlgorithmSelect ? samplingAlgorithmSelect.value : 'uniform';
+                    
+                    // 对重新查询的输出数据进行采样
+                    const sampledResult = this.sampleDataConsistently(
+                        null, 
+                        outputQueryData.outputData, 
+                        maxRows, 
+                        samplingAlgorithm
+                    );
+                    
+                    this.currentChartData.data.outputData = sampledResult.outputData;
+                    this.currentChartData.data.isSampled = true;
+                    this.currentChartData.data.originalCount = Object.values(outputQueryData.outputData).reduce((sum, data) => sum + (data ? data.length : 0), 0);
+                    this.currentChartData.data.sampledCount = Object.values(sampledResult.outputData).reduce((sum, data) => sum + (data ? data.length : 0), 0);
+                    this.currentChartData.data.maxRows = maxRows;
+                    this.currentChartData.data.samplingAlgorithm = samplingAlgorithm;
+                    
+                    console.log('重新查询输出数据成功并已采样');
                 }
             }
         }
@@ -2090,11 +2195,6 @@ class VisualAnalysis extends HTMLElement {
             
             // 5. 数据视图
             pdfGenerator.addSubtitle('四、数据视图');
-            
-            // 检查是否进行了采样
-            if (this.currentChartData && this.currentChartData.isSampled) {
-                pdfGenerator.addText(`注意：由于数据量较大（${this.currentChartData.originalCount}行），已采样为${this.currentChartData.sampledCount}行进行展示`, 10, true);
-            }
             
             // 5.1 输入数据表格
             if (this.currentChartData && this.currentChartData.data && this.currentChartData.data.inputData) {
@@ -2279,6 +2379,17 @@ class VisualAnalysis extends HTMLElement {
                 pdfGenerator.addText('暂无数据', 12);
             }
             
+            // 检查是否进行了采样
+            // if (this.currentChartData && this.currentChartData.data && this.currentChartData.data.isSampled) {
+                pdfGenerator.addSeparator();
+                // pdfGenerator.addText(`注意：由于数据量较大（${this.currentChartData.data.originalCount}行），已采样为${this.currentChartData.data.sampledCount}行进行展示`, 10, true);
+                pdfGenerator.addText(`如何访问完整数据集：`, 10, true);
+                pdfGenerator.addText(`使用"导出"功能下载完整数据集`, 9, false);
+                pdfGenerator.addText(`通过数据资源库查询直接获取完整数据`, 9, false);
+                pdfGenerator.addText(`调整报告数据限制参数以显示更多数据`, 9, false);
+                pdfGenerator.addText(`选择合适的采样算法以优化数据展示`, 9, false);
+            // }
+            
             // 6. 统计分析
             pdfGenerator.addSubtitle('五、统计分析');
             if (this.currentChartData && this.currentChartData.data) {
@@ -2449,7 +2560,7 @@ class VisualAnalysis extends HTMLElement {
     }
 
     // 数据采样函数，当数据量过大时进行合理采样
-    sampleData(data, maxRows = 20) {
+    sampleData(data, maxRows = 20, samplingAlgorithm = 'uniform') {
         if (!data || data.length === 0) {
             return data;
         }
@@ -2458,21 +2569,64 @@ class VisualAnalysis extends HTMLElement {
             return data;
         }
         
-        // 计算采样间隔
-        const interval = Math.ceil(data.length / maxRows);
         const sampledData = [];
         
-        // 均匀采样，确保包含首尾数据点
-        for (let i = 0; i < data.length; i += interval) {
-            sampledData.push(data[i]);
+        switch (samplingAlgorithm) {
+            case 'uniform':
+                // 均匀采样，确保包含首尾数据点
+                const interval = Math.ceil(data.length / maxRows);
+                for (let i = 0; i < data.length; i += interval) {
+                    sampledData.push(data[i]);
+                }
+                // 确保包含最后一个数据点
+                if (sampledData[sampledData.length - 1] !== data[data.length - 1]) {
+                    sampledData.push(data[data.length - 1]);
+                }
+                console.log(`均匀采样完成：原始数据 ${data.length} 行，采样后 ${sampledData.length} 行，采样间隔 ${interval}`);
+                break;
+                
+            case 'random':
+                // 随机采样
+                const indices = new Set();
+                while (indices.size < maxRows) {
+                    indices.add(Math.floor(Math.random() * data.length));
+                }
+                Array.from(indices).sort((a, b) => a - b).forEach(index => {
+                    sampledData.push(data[index]);
+                });
+                console.log(`随机采样完成：原始数据 ${data.length} 行，采样后 ${sampledData.length} 行`);
+                break;
+                
+            case 'first':
+                // 取前N条
+                for (let i = 0; i < maxRows; i++) {
+                    sampledData.push(data[i]);
+                }
+                console.log(`取前N条采样完成：原始数据 ${data.length} 行，采样后 ${sampledData.length} 行`);
+                break;
+                
+            case 'last':
+                // 取后N条
+                const startIndex = Math.max(0, data.length - maxRows);
+                for (let i = startIndex; i < data.length; i++) {
+                    sampledData.push(data[i]);
+                }
+                console.log(`取后N条采样完成：原始数据 ${data.length} 行，采样后 ${sampledData.length} 行`);
+                break;
+                
+            default:
+                // 默认使用均匀采样
+                const defaultInterval = Math.ceil(data.length / maxRows);
+                for (let i = 0; i < data.length; i += defaultInterval) {
+                    sampledData.push(data[i]);
+                }
+                if (sampledData[sampledData.length - 1] !== data[data.length - 1]) {
+                    sampledData.push(data[data.length - 1]);
+                }
+                console.log(`默认均匀采样完成：原始数据 ${data.length} 行，采样后 ${sampledData.length} 行，采样间隔 ${defaultInterval}`);
+                break;
         }
         
-        // 确保包含最后一个数据点
-        if (sampledData[sampledData.length - 1] !== data[data.length - 1]) {
-            sampledData.push(data[data.length - 1]);
-        }
-        
-        console.log(`数据采样完成：原始数据 ${data.length} 行，采样后 ${sampledData.length} 行，采样间隔 ${interval}`);
         return sampledData;
     }
 
@@ -2616,7 +2770,7 @@ class VisualAnalysis extends HTMLElement {
     }
 
     // 统一采样函数，确保输入输出数据同步采样
-    sampleDataConsistently(inputData, outputData, maxRows = 100) {
+    sampleDataConsistently(inputData, outputData, maxRows = 100, samplingAlgorithm = 'uniform') {
         const result = {
             inputData: inputData ? {} : null,
             outputData: outputData ? {} : null
@@ -2630,14 +2784,14 @@ class VisualAnalysis extends HTMLElement {
         console.log(`准备采样 - 输入: ${totalInputCount}, 输出: ${totalOutputCount}, 总计: ${totalCount}`);
         
         if (totalCount > maxRows) {
-            console.log('数据量过大，开始采样...');
+            console.log(`数据量过大(${totalCount} > ${maxRows})，开始采样，算法: ${samplingAlgorithm}...`);
             
             // 对输入数据进行采样
             if (inputData) {
                 Object.keys(inputData).forEach(path => {
                     const data = inputData[path];
                     if (data && data.length > 0) {
-                        result.inputData[path] = this.sampleData(data, maxRows);
+                        result.inputData[path] = this.sampleData(data, maxRows, samplingAlgorithm);
                     } else {
                         result.inputData[path] = data;
                     }
@@ -2649,7 +2803,7 @@ class VisualAnalysis extends HTMLElement {
                 Object.keys(outputData).forEach(path => {
                     const data = outputData[path];
                     if (data && data.length > 0) {
-                        result.outputData[path] = this.sampleData(data, maxRows);
+                        result.outputData[path] = this.sampleData(data, maxRows, samplingAlgorithm);
                     } else {
                         result.outputData[path] = data;
                     }
@@ -2992,8 +3146,29 @@ class VisualAnalysis extends HTMLElement {
                     
                     const outputQueryData = await this.queryOutputDataWithAdjustedStartTime(record);
                     if (outputQueryData && outputQueryData.outputData) {
-                        this.currentChartData.data.outputData = outputQueryData.outputData;
-                        console.log('重新查询输出数据成功');
+                        // 获取用户设置的数据限制
+                        const reportDataLimitInput = this.shadowRoot.getElementById('reportDataLimit');
+                        const samplingAlgorithmSelect = this.shadowRoot.getElementById('samplingAlgorithm');
+                        
+                        const maxRows = reportDataLimitInput ? parseInt(reportDataLimitInput.value) || 20 : 20;
+                        const samplingAlgorithm = samplingAlgorithmSelect ? samplingAlgorithmSelect.value : 'uniform';
+                        
+                        // 对重新查询的输出数据进行采样
+                        const sampledResult = this.sampleDataConsistently(
+                            null, 
+                            outputQueryData.outputData, 
+                            maxRows, 
+                            samplingAlgorithm
+                        );
+                        
+                        this.currentChartData.data.outputData = sampledResult.outputData;
+                        this.currentChartData.data.isSampled = true;
+                        this.currentChartData.data.originalCount = Object.values(outputQueryData.outputData).reduce((sum, data) => sum + (data ? data.length : 0), 0);
+                        this.currentChartData.data.sampledCount = Object.values(sampledResult.outputData).reduce((sum, data) => sum + (data ? data.length : 0), 0);
+                        this.currentChartData.data.maxRows = maxRows;
+                        this.currentChartData.data.samplingAlgorithm = samplingAlgorithm;
+                        
+                        console.log('重新查询输出数据成功并已采样');
                     }
                 }
             }
@@ -3112,11 +3287,6 @@ class VisualAnalysis extends HTMLElement {
             
             // 5. 数据视图
             pdfGenerator.addSubtitle('四、数据视图');
-            
-            // 检查是否进行了采样
-            if (this.currentChartData && this.currentChartData.isSampled) {
-                pdfGenerator.addText(`注意：由于数据量较大（${this.currentChartData.originalCount}行），已采样为${this.currentChartData.sampledCount}行进行展示`, 10, true);
-            }
             
             // 5.1 输入数据表格
             if (this.currentChartData && this.currentChartData.data && this.currentChartData.data.inputData) {
@@ -3300,6 +3470,17 @@ class VisualAnalysis extends HTMLElement {
                 (!this.currentChartData || !this.currentChartData.data || !this.currentChartData.data.outputData)) {
                 pdfGenerator.addText('暂无数据', 12);
             }
+            
+            // 检查是否进行了采样
+            // if (this.currentChartData && this.currentChartData.data && this.currentChartData.data.isSampled) {
+                pdfGenerator.addSeparator();
+                // pdfGenerator.addText(`注意：由于数据量较大（${this.currentChartData.data.originalCount}行），已采样为${this.currentChartData.data.sampledCount}行进行展示`, 10, true);
+                pdfGenerator.addText(`如何访问完整数据集：`, 10, true);
+                pdfGenerator.addText(`使用"导出"功能下载完整数据集`, 9, false);
+                pdfGenerator.addText(`通过数据资源库查询直接获取完整数据`, 9, false);
+                pdfGenerator.addText(`调整报告数据限制参数以显示更多数据`, 9, false);
+                pdfGenerator.addText(`选择合适的采样算法以优化数据展示`, 9, false);
+            // }
             
             // 6. 统计分析
             pdfGenerator.addSubtitle('五、统计分析');
