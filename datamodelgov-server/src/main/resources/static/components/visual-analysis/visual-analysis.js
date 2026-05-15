@@ -1697,12 +1697,15 @@ class VisualAnalysis extends HTMLElement {
                 type: 'value',
                 min: xAxisRange.min,
                 max: xAxisRange.max,
+                name: '时间',
+                nameLocation: 'middle',
+                nameGap: 30,
                 axisLabel: {
                     formatter: (value) => {
                         if (this.isValidTimestamp(value)) {
                             return new Date(value).toLocaleString();
                         } else {
-                            return String(value);
+                            return this.formatTimeWithUnit(value);
                         }
                     }
                 }
@@ -2544,6 +2547,27 @@ class VisualAnalysis extends HTMLElement {
         
         const year = date.getFullYear();
         return year >= 1970 && year <= 2100;
+    }
+
+    formatTimeWithUnit(value) {
+        if (value == null || isNaN(value)) {
+            return String(value);
+        }
+        
+        const absValue = Math.abs(value);
+        
+        // 根据数值大小自动选择合适的单位
+        if (absValue >= 86400000) {
+            return (value / 86400000).toFixed(1) + 'd';
+        } else if (absValue >= 3600000) {
+            return (value / 3600000).toFixed(1) + 'h';
+        } else if (absValue >= 60000) {
+            return (value / 60000).toFixed(1) + 'min';
+        } else if (absValue >= 1000) {
+            return (value / 1000).toFixed(1) + 's';
+        } else {
+            return value.toFixed(0) + 'ms';
+        }
     }
 
     calculateXAxisRange(chartData) {
