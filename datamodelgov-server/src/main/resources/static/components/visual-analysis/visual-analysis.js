@@ -1457,6 +1457,53 @@ class VisualAnalysis extends HTMLElement {
         };
     }
 
+    // 查询输出数据（调整开始时间为1970/01/01 08:00:00）
+    async queryOutputDataWithAdjustedStartTime(record) {
+        try {
+            let outputPaths = [];
+
+            try {
+                outputPaths = JSON.parse(record.outputMeasurements || '[]');
+            } catch (e) {
+                console.warn('解析 outputMeasurements 失败:', e);
+            }
+
+            if (outputPaths.length === 0) {
+                console.log('没有输出测点路径');
+                return null;
+            }
+
+            const adjustedStartTime = new Date('1970-01-01T08:00:00').getTime();
+            
+            const requestBody = {
+                paths: outputPaths,
+                startTime: adjustedStartTime,
+                endTime: record.endTime,
+                aggregateType: null,
+                precision: 0,
+                timePrecision: null
+            };
+
+            console.log('重新查询输出数据参数:', requestBody);
+
+            const result = await window.AppConfig.post('data', 'query', requestBody);
+
+            if (result.success && result.data) {
+                console.log('重新查询到的输出数据:', result.data);
+                const processedData = this.processQueryData(result.data, [], outputPaths);
+                return {
+                    outputData: processedData.outputData
+                };
+            } else {
+                console.error('重新查询输出数据失败:', result);
+                return null;
+            }
+        } catch (error) {
+            console.error('重新查询输出数据异常:', error);
+            return null;
+        }
+    }
+
     // 显示单个任务分析
     showSingleTaskAnalysis(task, queryData = null) {
         this.currentAnalysisMode = 'single';
@@ -1947,6 +1994,30 @@ class VisualAnalysis extends HTMLElement {
             return;
         }
 
+        // 检查输出数据是否为空，如果为空则重新查询输出数据
+        if (this.currentChartData && this.currentChartData.data) {
+            const outputData = this.currentChartData.data.outputData;
+            let hasOutputData = false;
+            
+            if (outputData) {
+                Object.values(outputData).forEach(dataArray => {
+                    if (dataArray && dataArray.length > 0) {
+                        hasOutputData = true;
+                    }
+                });
+            }
+            
+            if (!hasOutputData) {
+                console.log('输出数据为空，重新查询输出数据...');
+                
+                const outputQueryData = await this.queryOutputDataWithAdjustedStartTime(record);
+                if (outputQueryData && outputQueryData.outputData) {
+                    this.currentChartData.data.outputData = outputQueryData.outputData;
+                    console.log('重新查询输出数据成功');
+                }
+            }
+        }
+
         // 创建加载提示（参考previewFile的Loading.service）
         const loadingOverlay = document.createElement('div');
         loadingOverlay.style.cssText = `
@@ -2016,127 +2087,192 @@ class VisualAnalysis extends HTMLElement {
             
             // 5. 数据视图
             pdfGenerator.addSubtitle('四、数据视图');
-            const allData = [];
-            const pathInfo = {}; // 存储测点信息
             
-            // 添加输入数据
+            // 检查是否进行了采样
+            if (this.currentChartData && this.currentChartData.isSampled) {
+                pdfGenerator.addText(`注意：由于数据量较大（${this.currentChartData.originalCount}行），已采样为${this.currentChartData.sampledCount}行进行展示`, 10, true);
+            }
+            
+            // 5.1 输入数据表格
             if (this.currentChartData && this.currentChartData.data && this.currentChartData.data.inputData) {
-                Object.keys(this.currentChartData.data.inputData).forEach(path => {
+                const inputPaths = Object.keys(this.currentChartData.data.inputData);
+                const inputPathsWithData = inputPaths.filter(path => {
                     const data = this.currentChartData.data.inputData[path];
-                    if (data && data.length > 0) {
-                        pathInfo[path] = { type: '输入数据', data: [] };
-                        data.forEach(point => {
-                            pathInfo[path].data.push({
-                                timestamp: point.timestamp,
-                                value: point.value
-                            });
-                        });
-                    }
-                });
-            }
-            
-            // 添加输出数据
-            if (this.currentChartData && this.currentChartData.data && this.currentChartData.data.outputData) {
-                Object.keys(this.currentChartData.data.outputData).forEach(path => {
-                    const data = this.currentChartData.data.outputData[path];
-                    if (data && data.length > 0) {
-                        pathInfo[path] = { type: '输出数据', data: [] };
-                        data.forEach(point => {
-                            pathInfo[path].data.push({
-                                timestamp: point.timestamp,
-                                value: point.value
-                            });
-                        });
-                    }
-                });
-            }
-            
-            if (Object.keys(pathInfo).length > 0) {
-                // 收集所有时间点
-                const allTimestamps = new Set();
-                Object.values(pathInfo).forEach(info => {
-                    info.data.forEach(point => {
-                        allTimestamps.add(point.timestamp);
-                    });
+                    return data && data.length > 0;
                 });
                 
-                const sortedTimestamps = Array.from(allTimestamps).sort((a, b) => a - b);
-                
-                // 构建表头：时间 + 每个测点（包含类型）
-                const allHeaders = ['时间'];
-                const paths = Object.keys(pathInfo);
-                paths.forEach(path => {
-                    allHeaders.push(`${path} (${pathInfo[path].type})`);
-                });
-                
-                // 构建数据行：每个时间点一行
-                const allRows = sortedTimestamps.map(timestamp => {
-                    const row = [new Date(timestamp).toLocaleString()];
+                if (inputPathsWithData.length > 0) {
+                    pdfGenerator.addText('输入数据', 12, true);
                     
-                    paths.forEach(path => {
-                        const point = pathInfo[path].data.find(p => p.timestamp === timestamp);
-                        if (point && point.value !== null && point.value !== undefined) {
-                            // 检查是否为数字类型
-                            if (typeof point.value === 'number') {
-                                row.push(point.value.toFixed(2));
-                            } else {
-                                row.push(String(point.value));
-                            }
+                    const inputPathInfo = {};
+                    inputPathsWithData.forEach(path => {
+                        inputPathInfo[path] = {
+                            data: this.currentChartData.data.inputData[path]
+                        };
+                    });
+                    
+                    const inputTimestamps = new Set();
+                    Object.values(inputPathInfo).forEach(info => {
+                        info.data.forEach(point => {
+                            inputTimestamps.add(point.timestamp);
+                        });
+                    });
+                    
+                    const sortedInputTimestamps = Array.from(inputTimestamps).sort((a, b) => a - b);
+                    
+                    const inputHeaders = ['时间', ...inputPathsWithData];
+                    const inputRows = sortedInputTimestamps.map(timestamp => {
+                        let timeLabel;
+                        if (this.isValidTimestamp(timestamp)) {
+                            timeLabel = new Date(timestamp).toLocaleString();
                         } else {
-                            row.push('N/A');
+                            timeLabel = String(timestamp);
                         }
+                        const row = [timeLabel];
+                        inputPathsWithData.forEach(path => {
+                            const point = inputPathInfo[path].data.find(p => p.timestamp === timestamp);
+                            if (point && point.value !== null && point.value !== undefined) {
+                                if (typeof point.value === 'number') {
+                                    row.push(point.value.toFixed(2));
+                                } else {
+                                    row.push(String(point.value));
+                                }
+                            } else {
+                                row.push('N/A');
+                            }
+                        });
+                        return row;
                     });
                     
-                    return row;
+                    const maxColumnsPerTable = 11;
+                    const totalInputColumns = inputHeaders.length;
+                    
+                    if (totalInputColumns <= maxColumnsPerTable) {
+                        pdfGenerator.addTable(inputHeaders, inputRows);
+                    } else {
+                        const pathsPerTable = maxColumnsPerTable - 1;
+                        const inputTableCount = Math.ceil(inputPathsWithData.length / pathsPerTable);
+                        
+                        pdfGenerator.addText(`输入数据列数过多（共${inputPathsWithData.length}列），已拆分为${inputTableCount}个表格显示：`, 10);
+                        
+                        for (let tableIndex = 0; tableIndex < inputTableCount; tableIndex++) {
+                            const startPathIndex = tableIndex * pathsPerTable;
+                            const endPathIndex = Math.min(startPathIndex + pathsPerTable, inputPathsWithData.length);
+                            const currentPaths = inputPathsWithData.slice(startPathIndex, endPathIndex);
+                            
+                            const currentHeaders = ['时间', ...currentPaths];
+                            const currentRows = inputRows.map(row => {
+                                const currentRow = [row[0]];
+                                currentPaths.forEach(path => {
+                                    const originalPathIdx = inputPathsWithData.indexOf(path);
+                                    currentRow.push(row[originalPathIdx + 1]);
+                                });
+                                return currentRow;
+                            });
+                            
+                            pdfGenerator.addText(`输入数据表格 ${tableIndex + 1}/${inputTableCount} (列 ${startPathIndex + 1}-${endPathIndex})`, 11, true);
+                            pdfGenerator.addTable(currentHeaders, currentRows);
+                            
+                            if (tableIndex < inputTableCount - 1) {
+                                pdfGenerator.addSeparator();
+                            }
+                        }
+                    }
+                    
+                    pdfGenerator.addSeparator();
+                }
+            }
+            
+            // 5.2 输出数据表格
+            if (this.currentChartData && this.currentChartData.data && this.currentChartData.data.outputData) {
+                const outputPaths = Object.keys(this.currentChartData.data.outputData);
+                const outputPathsWithData = outputPaths.filter(path => {
+                    const data = this.currentChartData.data.outputData[path];
+                    return data && data.length > 0;
                 });
                 
-                // 处理列数过多的情况：分表显示
-                const maxColumnsPerTable = 11; // 每个表最多显示11列（包含时间列）
-                const totalColumns = allHeaders.length;
-                
-                if (totalColumns <= maxColumnsPerTable) {
-                    // 列数较少，直接添加单个表格
-                    pdfGenerator.addTable(allHeaders, allRows);
-                } else {
-                    // 列数较多，需要分表显示
-                    const pathCount = paths.length;
-                    const pathsPerTable = maxColumnsPerTable - 1; // 减去时间列
-                    const tableCount = Math.ceil(pathCount / pathsPerTable);
+                if (outputPathsWithData.length > 0) {
+                    pdfGenerator.addText('输出数据', 12, true);
                     
-                    pdfGenerator.addText(`数据列数过多（共${pathCount}列），已拆分为${tableCount}个表格显示：`, 10);
+                    const outputPathInfo = {};
+                    outputPathsWithData.forEach(path => {
+                        outputPathInfo[path] = {
+                            data: this.currentChartData.data.outputData[path]
+                        };
+                    });
                     
-                    for (let tableIndex = 0; tableIndex < tableCount; tableIndex++) {
-                        const startPathIndex = tableIndex * pathsPerTable;
-                        const endPathIndex = Math.min(startPathIndex + pathsPerTable, pathCount);
-                        const currentPaths = paths.slice(startPathIndex, endPathIndex);
-                        
-                        // 构建当前表的表头
-                        const currentHeaders = ['时间'];
-                        currentPaths.forEach(path => {
-                            currentHeaders.push(`${path} (${pathInfo[path].type})`);
+                    const outputTimestamps = new Set();
+                    Object.values(outputPathInfo).forEach(info => {
+                        info.data.forEach(point => {
+                            outputTimestamps.add(point.timestamp);
                         });
+                    });
+                    
+                    const sortedOutputTimestamps = Array.from(outputTimestamps).sort((a, b) => a - b);
+                    
+                    const outputHeaders = ['时间', ...outputPathsWithData];
+                    const outputRows = sortedOutputTimestamps.map(timestamp => {
+                        let timeLabel;
+                        if (this.isValidTimestamp(timestamp)) {
+                            timeLabel = new Date(timestamp).toLocaleString();
+                        } else {
+                            timeLabel = String(timestamp);
+                        }
+                        const row = [timeLabel];
+                        outputPathsWithData.forEach(path => {
+                            const point = outputPathInfo[path].data.find(p => p.timestamp === timestamp);
+                            if (point && point.value !== null && point.value !== undefined) {
+                                if (typeof point.value === 'number') {
+                                    row.push(point.value.toFixed(2));
+                                } else {
+                                    row.push(String(point.value));
+                                }
+                            } else {
+                                row.push('N/A');
+                            }
+                        });
+                        return row;
+                    });
+                    
+                    const maxColumnsPerTable = 11;
+                    const totalOutputColumns = outputHeaders.length;
+                    
+                    if (totalOutputColumns <= maxColumnsPerTable) {
+                        pdfGenerator.addTable(outputHeaders, outputRows);
+                    } else {
+                        const pathsPerTable = maxColumnsPerTable - 1;
+                        const outputTableCount = Math.ceil(outputPathsWithData.length / pathsPerTable);
                         
-                        // 构建当前表的数据行
-                        const currentRows = allRows.map(row => {
-                            const currentRow = [row[0]]; // 时间列
-                            currentPaths.forEach((path, pathIdx) => {
-                                const originalPathIdx = paths.indexOf(path);
-                                currentRow.push(row[originalPathIdx + 1]); // +1 跳过时间列
+                        pdfGenerator.addText(`输出数据列数过多（共${outputPathsWithData.length}列），已拆分为${outputTableCount}个表格显示：`, 10);
+                        
+                        for (let tableIndex = 0; tableIndex < outputTableCount; tableIndex++) {
+                            const startPathIndex = tableIndex * pathsPerTable;
+                            const endPathIndex = Math.min(startPathIndex + pathsPerTable, outputPathsWithData.length);
+                            const currentPaths = outputPathsWithData.slice(startPathIndex, endPathIndex);
+                            
+                            const currentHeaders = ['时间', ...currentPaths];
+                            const currentRows = outputRows.map(row => {
+                                const currentRow = [row[0]];
+                                currentPaths.forEach(path => {
+                                    const originalPathIdx = outputPathsWithData.indexOf(path);
+                                    currentRow.push(row[originalPathIdx + 1]);
+                                });
+                                return currentRow;
                             });
-                            return currentRow;
-                        });
-                        
-                        // 添加表格标题
-                        pdfGenerator.addText(`表格 ${tableIndex + 1}/${tableCount} (列 ${startPathIndex + 1}-${endPathIndex})`, 11, true);
-                        pdfGenerator.addTable(currentHeaders, currentRows);
-                        
-                        // 如果不是最后一个表，添加分隔线
-                        if (tableIndex < tableCount - 1) {
-                            pdfGenerator.addSeparator();
+                            
+                            pdfGenerator.addText(`输出数据表格 ${tableIndex + 1}/${outputTableCount} (列 ${startPathIndex + 1}-${endPathIndex})`, 11, true);
+                            pdfGenerator.addTable(currentHeaders, currentRows);
+                            
+                            if (tableIndex < outputTableCount - 1) {
+                                pdfGenerator.addSeparator();
+                            }
                         }
                     }
                 }
-            } else {
+            }
+            
+            if ((!this.currentChartData || !this.currentChartData.data || !this.currentChartData.data.inputData) && 
+                (!this.currentChartData || !this.currentChartData.data || !this.currentChartData.data.outputData)) {
                 pdfGenerator.addText('暂无数据', 12);
             }
             
@@ -2814,13 +2950,37 @@ class VisualAnalysis extends HTMLElement {
             // 等待分析完成
             await new Promise(resolve => setTimeout(resolve, 1000));
 
-            // 2. 生成报告HTML内容
+            // 2. 检查输出数据是否为空，如果为空则重新查询输出数据
+            if (this.currentChartData && this.currentChartData.data) {
+                const outputData = this.currentChartData.data.outputData;
+                let hasOutputData = false;
+                
+                if (outputData) {
+                    Object.values(outputData).forEach(dataArray => {
+                        if (dataArray && dataArray.length > 0) {
+                            hasOutputData = true;
+                        }
+                    });
+                }
+                
+                if (!hasOutputData) {
+                    console.log('输出数据为空，重新查询输出数据...');
+                    
+                    const outputQueryData = await this.queryOutputDataWithAdjustedStartTime(record);
+                    if (outputQueryData && outputQueryData.outputData) {
+                        this.currentChartData.data.outputData = outputQueryData.outputData;
+                        console.log('重新查询输出数据成功');
+                    }
+                }
+            }
+
+            // 3. 生成报告HTML内容
             const htmlContent = await this.generateReportHTML(record);
             
-            // 3. 上传报告到任务目录
+            // 4. 上传报告到任务目录
             await this.uploadReportToTask(record, htmlContent);
             
-            // 4. 打包并下载任务文件
+            // 5. 打包并下载任务文件
             await this.packageAndDownloadTask(record);
 
         } catch (error) {
@@ -2934,124 +3094,186 @@ class VisualAnalysis extends HTMLElement {
                 pdfGenerator.addText(`注意：由于数据量较大（${this.currentChartData.originalCount}行），已采样为${this.currentChartData.sampledCount}行进行展示`, 10, true);
             }
             
-            const pathInfo = {}; // 存储测点信息
-            
-            // 添加输入数据
+            // 5.1 输入数据表格
             if (this.currentChartData && this.currentChartData.data && this.currentChartData.data.inputData) {
-                Object.keys(this.currentChartData.data.inputData).forEach(path => {
-                    const originalData = this.currentChartData.data.inputData[path];
-                    if (originalData && originalData.length > 0) {
-                        pathInfo[path] = { 
-                            type: '输入数据', 
-                            data: originalData,
-                            originalCount: originalData.length
+                const inputPaths = Object.keys(this.currentChartData.data.inputData);
+                const inputPathsWithData = inputPaths.filter(path => {
+                    const data = this.currentChartData.data.inputData[path];
+                    return data && data.length > 0;
+                });
+                
+                if (inputPathsWithData.length > 0) {
+                    pdfGenerator.addText('输入数据', 12, true);
+                    
+                    const inputPathInfo = {};
+                    inputPathsWithData.forEach(path => {
+                        inputPathInfo[path] = {
+                            data: this.currentChartData.data.inputData[path]
                         };
-                    }
-                });
-            }
-            
-            // 添加输出数据
-            if (this.currentChartData && this.currentChartData.data && this.currentChartData.data.outputData) {
-                Object.keys(this.currentChartData.data.outputData).forEach(path => {
-                    const data = this.currentChartData.data.outputData[path];
-                    if (data && data.length > 0) {
-                        pathInfo[path] = { type: '输出数据', data: [] };
-                        data.forEach(point => {
-                            pathInfo[path].data.push({
-                                timestamp: point.timestamp,
-                                value: point.value
-                            });
-                        });
-                    }
-                });
-            }
-            
-            if (Object.keys(pathInfo).length > 0) {
-                // 收集所有时间点
-                const allTimestamps = new Set();
-                Object.values(pathInfo).forEach(info => {
-                    info.data.forEach(point => {
-                        allTimestamps.add(point.timestamp);
                     });
-                });
-                
-                const sortedTimestamps = Array.from(allTimestamps).sort((a, b) => a - b);
-                
-                // 构建表头：时间 + 每个测点（包含类型）
-                const allHeaders = ['时间'];
-                const paths = Object.keys(pathInfo);
-                paths.forEach(path => {
-                    allHeaders.push(`${path} (${pathInfo[path].type})`);
-                });
-                
-                // 构建数据行：每个时间点一行
-                const allRows = sortedTimestamps.map(timestamp => {
-                    const row = [new Date(timestamp).toLocaleString()];
                     
-                    paths.forEach(path => {
-                        const point = pathInfo[path].data.find(p => p.timestamp === timestamp);
-                        if (point && point.value !== null && point.value !== undefined) {
-                            // 检查是否为数字类型
-                            if (typeof point.value === 'number') {
-                                row.push(point.value.toFixed(2));
-                            } else {
-                                row.push(String(point.value));
-                            }
+                    const inputTimestamps = new Set();
+                    Object.values(inputPathInfo).forEach(info => {
+                        info.data.forEach(point => {
+                            inputTimestamps.add(point.timestamp);
+                        });
+                    });
+                    
+                    const sortedInputTimestamps = Array.from(inputTimestamps).sort((a, b) => a - b);
+                    
+                    const inputHeaders = ['时间', ...inputPathsWithData];
+                    const inputRows = sortedInputTimestamps.map(timestamp => {
+                        let timeLabel;
+                        if (this.isValidTimestamp(timestamp)) {
+                            timeLabel = new Date(timestamp).toLocaleString();
                         } else {
-                            row.push('N/A');
+                            timeLabel = String(timestamp);
                         }
+                        const row = [timeLabel];
+                        inputPathsWithData.forEach(path => {
+                            const point = inputPathInfo[path].data.find(p => p.timestamp === timestamp);
+                            if (point && point.value !== null && point.value !== undefined) {
+                                if (typeof point.value === 'number') {
+                                    row.push(point.value.toFixed(2));
+                                } else {
+                                    row.push(String(point.value));
+                                }
+                            } else {
+                                row.push('N/A');
+                            }
+                        });
+                        return row;
                     });
                     
-                    return row;
+                    const maxColumnsPerTable = 11;
+                    const totalInputColumns = inputHeaders.length;
+                    
+                    if (totalInputColumns <= maxColumnsPerTable) {
+                        pdfGenerator.addTable(inputHeaders, inputRows);
+                    } else {
+                        const pathsPerTable = maxColumnsPerTable - 1;
+                        const inputTableCount = Math.ceil(inputPathsWithData.length / pathsPerTable);
+                        
+                        pdfGenerator.addText(`输入数据列数过多（共${inputPathsWithData.length}列），已拆分为${inputTableCount}个表格显示：`, 10);
+                        
+                        for (let tableIndex = 0; tableIndex < inputTableCount; tableIndex++) {
+                            const startPathIndex = tableIndex * pathsPerTable;
+                            const endPathIndex = Math.min(startPathIndex + pathsPerTable, inputPathsWithData.length);
+                            const currentPaths = inputPathsWithData.slice(startPathIndex, endPathIndex);
+                            
+                            const currentHeaders = ['时间', ...currentPaths];
+                            const currentRows = inputRows.map(row => {
+                                const currentRow = [row[0]];
+                                currentPaths.forEach(path => {
+                                    const originalPathIdx = inputPathsWithData.indexOf(path);
+                                    currentRow.push(row[originalPathIdx + 1]);
+                                });
+                                return currentRow;
+                            });
+                            
+                            pdfGenerator.addText(`输入数据表格 ${tableIndex + 1}/${inputTableCount} (列 ${startPathIndex + 1}-${endPathIndex})`, 11, true);
+                            pdfGenerator.addTable(currentHeaders, currentRows);
+                            
+                            if (tableIndex < inputTableCount - 1) {
+                                pdfGenerator.addSeparator();
+                            }
+                        }
+                    }
+                    
+                    pdfGenerator.addSeparator();
+                }
+            }
+            
+            // 5.2 输出数据表格
+            if (this.currentChartData && this.currentChartData.data && this.currentChartData.data.outputData) {
+                const outputPaths = Object.keys(this.currentChartData.data.outputData);
+                const outputPathsWithData = outputPaths.filter(path => {
+                    const data = this.currentChartData.data.outputData[path];
+                    return data && data.length > 0;
                 });
                 
-                // 处理列数过多的情况：分表显示
-                const maxColumnsPerTable = 11; // 每个表最多显示11列（包含时间列）
-                const totalColumns = allHeaders.length;
-                
-                if (totalColumns <= maxColumnsPerTable) {
-                    // 列数较少，直接添加单个表格
-                    pdfGenerator.addTable(allHeaders, allRows);
-                } else {
-                    // 列数较多，需要分表显示
-                    const pathCount = paths.length;
-                    const pathsPerTable = maxColumnsPerTable - 1; // 减去时间列
-                    const tableCount = Math.ceil(pathCount / pathsPerTable);
+                if (outputPathsWithData.length > 0) {
+                    pdfGenerator.addText('输出数据', 12, true);
                     
-                    pdfGenerator.addText(`数据列数过多（共${pathCount}列），已拆分为${tableCount}个表格显示：`, 10);
+                    const outputPathInfo = {};
+                    outputPathsWithData.forEach(path => {
+                        outputPathInfo[path] = {
+                            data: this.currentChartData.data.outputData[path]
+                        };
+                    });
                     
-                    for (let tableIndex = 0; tableIndex < tableCount; tableIndex++) {
-                        const startPathIndex = tableIndex * pathsPerTable;
-                        const endPathIndex = Math.min(startPathIndex + pathsPerTable, pathCount);
-                        const currentPaths = paths.slice(startPathIndex, endPathIndex);
-                        
-                        // 构建当前表的表头
-                        const currentHeaders = ['时间'];
-                        currentPaths.forEach(path => {
-                            currentHeaders.push(`${path} (${pathInfo[path].type})`);
+                    const outputTimestamps = new Set();
+                    Object.values(outputPathInfo).forEach(info => {
+                        info.data.forEach(point => {
+                            outputTimestamps.add(point.timestamp);
                         });
+                    });
+                    
+                    const sortedOutputTimestamps = Array.from(outputTimestamps).sort((a, b) => a - b);
+                    
+                    const outputHeaders = ['时间', ...outputPathsWithData];
+                    const outputRows = sortedOutputTimestamps.map(timestamp => {
+                        let timeLabel;
+                        if (this.isValidTimestamp(timestamp)) {
+                            timeLabel = new Date(timestamp).toLocaleString();
+                        } else {
+                            timeLabel = String(timestamp);
+                        }
+                        const row = [timeLabel];
+                        outputPathsWithData.forEach(path => {
+                            const point = outputPathInfo[path].data.find(p => p.timestamp === timestamp);
+                            if (point && point.value !== null && point.value !== undefined) {
+                                if (typeof point.value === 'number') {
+                                    row.push(point.value.toFixed(2));
+                                } else {
+                                    row.push(String(point.value));
+                                }
+                            } else {
+                                row.push('N/A');
+                            }
+                        });
+                        return row;
+                    });
+                    
+                    const maxColumnsPerTable = 11;
+                    const totalOutputColumns = outputHeaders.length;
+                    
+                    if (totalOutputColumns <= maxColumnsPerTable) {
+                        pdfGenerator.addTable(outputHeaders, outputRows);
+                    } else {
+                        const pathsPerTable = maxColumnsPerTable - 1;
+                        const outputTableCount = Math.ceil(outputPathsWithData.length / pathsPerTable);
                         
-                        // 构建当前表的数据行
-                        const currentRows = allRows.map(row => {
-                            const currentRow = [row[0]]; // 时间列
-                            currentPaths.forEach((path, pathIdx) => {
-                                const originalPathIdx = paths.indexOf(path);
-                                currentRow.push(row[originalPathIdx + 1]); // +1 跳过时间列
+                        pdfGenerator.addText(`输出数据列数过多（共${outputPathsWithData.length}列），已拆分为${outputTableCount}个表格显示：`, 10);
+                        
+                        for (let tableIndex = 0; tableIndex < outputTableCount; tableIndex++) {
+                            const startPathIndex = tableIndex * pathsPerTable;
+                            const endPathIndex = Math.min(startPathIndex + pathsPerTable, outputPathsWithData.length);
+                            const currentPaths = outputPathsWithData.slice(startPathIndex, endPathIndex);
+                            
+                            const currentHeaders = ['时间', ...currentPaths];
+                            const currentRows = outputRows.map(row => {
+                                const currentRow = [row[0]];
+                                currentPaths.forEach(path => {
+                                    const originalPathIdx = outputPathsWithData.indexOf(path);
+                                    currentRow.push(row[originalPathIdx + 1]);
+                                });
+                                return currentRow;
                             });
-                            return currentRow;
-                        });
-                        
-                        // 添加表格标题
-                        pdfGenerator.addText(`表格 ${tableIndex + 1}/${tableCount} (列 ${startPathIndex + 1}-${endPathIndex})`, 11, true);
-                        pdfGenerator.addTable(currentHeaders, currentRows);
-                        
-                        // 如果不是最后一个表，添加分隔线
-                        if (tableIndex < tableCount - 1) {
-                            pdfGenerator.addSeparator();
+                            
+                            pdfGenerator.addText(`输出数据表格 ${tableIndex + 1}/${outputTableCount} (列 ${startPathIndex + 1}-${endPathIndex})`, 11, true);
+                            pdfGenerator.addTable(currentHeaders, currentRows);
+                            
+                            if (tableIndex < outputTableCount - 1) {
+                                pdfGenerator.addSeparator();
+                            }
                         }
                     }
                 }
-            } else {
+            }
+            
+            if ((!this.currentChartData || !this.currentChartData.data || !this.currentChartData.data.inputData) && 
+                (!this.currentChartData || !this.currentChartData.data || !this.currentChartData.data.outputData)) {
                 pdfGenerator.addText('暂无数据', 12);
             }
             
