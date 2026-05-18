@@ -879,14 +879,37 @@ class AssociationRules extends HTMLElement {
                 if (rule.modelName || rule.targetModel) {
                     const modelName = rule.modelName || rule.targetModel;
                     console.log('加载版本选项:', modelName);
+                    // 设置标志位，防止loadModelVersions中的change事件触发auto-fill
+                    this._isInitializingEdit = true;
                     this.loadModelVersions(modelName);
                     
                     // 等待版本加载完成后设置版本值
                     setTimeout(() => {
                         const versionSelect = this.shadowRoot.getElementById('version');
                         if (rule.version || rule.modelVersion) {
+                            // 移除事件监听器，避免触发auto-fill
+                            versionSelect.removeEventListener('change', this.handleVersionChange);
+                            versionSelect.removeEventListener('blur', this.handleVersionChange);
+                            
+                            // 设置版本值
                             versionSelect.value = rule.version || rule.modelVersion;
-                            console.log('设置版本值:', rule.version || rule.modelVersion);
+                            console.log('设置版本值（不触发事件）:', rule.version || rule.modelVersion);
+                            
+                            // 手动调用loadModelFields加载模型数据（不触发auto-fill）
+                            const selectedModel = rule.modelName || rule.targetModel;
+                            if (selectedModel) {
+                                // 设置标志位防止auto-fill
+                                this._isInitializingEdit = true;
+                                this.loadModelFields(selectedModel);
+                            }
+                            
+                            // 重新添加事件监听器并清除初始化标志位
+                            setTimeout(() => {
+                                versionSelect.addEventListener('change', this.handleVersionChange);
+                                versionSelect.addEventListener('blur', this.handleVersionChange);
+                                this._isInitializingEdit = false;
+                                console.log('重新添加版本事件监听器，清除初始化标志位');
+                            }, 300);
                         }
                         
                         // 不在这里调用loadModelFields，等映射关系初始化后再调用
@@ -3738,8 +3761,8 @@ class AssociationRules extends HTMLElement {
         if (versionSelect) {
             // 只在第一次初始化时绑定事件监听器
             if (!this.versionEventBound) {
-                // 使用事件委托方式监听
-                const handleVersionChange = (event) => {
+                // 使用事件委托方式监听 - 存储为实例属性以便在其他方法中访问
+                this.handleVersionChange = (event) => {
                     console.log('版本change事件触发:', event);
                     console.log('版本select当前值:', versionSelect.value);
                     
@@ -3757,9 +3780,15 @@ class AssociationRules extends HTMLElement {
                     const selectedModel = currentTargetModelSelect.value;
                     if (selectedModel && versionSelect.value) {
                         console.log('版本变化，加载模型字段:', selectedModel, versionSelect.value);
+                        console.log('_isInitializingEdit标志位:', this._isInitializingEdit);
                         this.loadModelFields(selectedModel);
-                        // 自动填充运行命令和CSV文件名
-                        this.autoFillCommandAndCsvFields(selectedModel, versionSelect.value);
+                        // 初始化编辑模式时不自动填充，只有手动切换版本时才填充
+                        if (!this._isInitializingEdit) {
+                            // 切换版本时，自动填充运行命令和CSV文件名
+                            this.autoFillCommandAndCsvFields(selectedModel, versionSelect.value);
+                        } else {
+                            console.log('初始化编辑模式，跳过自动填充，保持数据库原始值');
+                        }
                     } else {
                         console.log('条件不满足 - selectedModel:', selectedModel, 'version:', versionSelect.value);
                         // 如果没有选择版本，清空自动填充的字段
@@ -3768,8 +3797,8 @@ class AssociationRules extends HTMLElement {
                 };
                 
                 // 添加监听器
-                versionSelect.addEventListener('change', handleVersionChange);
-                versionSelect.addEventListener('blur', handleVersionChange);
+                versionSelect.addEventListener('change', this.handleVersionChange);
+                versionSelect.addEventListener('blur', this.handleVersionChange);
                 
                 // 标记事件已绑定
                 this.versionEventBound = true;
@@ -3828,7 +3857,9 @@ class AssociationRules extends HTMLElement {
                 // 自动填充运行命令
                 const cmdElement = this.shadowRoot.getElementById('cmd');
                 if (cmdElement) {
-                    cmdElement.value = `python ${fileName} -i input.csv -o output.csv`;
+                    // 判断文件类型，如果是matlab文件(.m扩展名)则使用matlab命令，否则使用python
+                    const command = fileName.endsWith('.m') ? 'matlab' : 'python';
+                    cmdElement.value = `${command} ${fileName} -i input.csv -o output.csv`;
                     console.log('自动填充运行命令:', cmdElement.value);
                 }
                 
@@ -3927,10 +3958,13 @@ class AssociationRules extends HTMLElement {
         }
         
         // 手动触发change事件（如果版本已选择）
-        if (versionSelect.value && versions.includes(versionSelect.value)) {
+        // 编辑模式下初始化时不触发，避免覆盖数据库原始值
+        if (versionSelect.value && versions.includes(versionSelect.value) && !this._isInitializingEdit) {
             console.log('手动触发版本change事件，当前模式:', this.currentAction);
             const changeEvent = new Event('change', { bubbles: true });
             versionSelect.dispatchEvent(changeEvent);
+        } else if (this._isInitializingEdit) {
+            console.log('初始化编辑模式，跳过手动触发版本change事件');
         }
     }
     
