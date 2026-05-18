@@ -1,7 +1,13 @@
 package com.tsinghua.entity;
 
+import cn.edu.tsinghua.iginx.session_v2.annotations.Field;
+import cn.edu.tsinghua.iginx.session_v2.annotations.Measurement;
 import io.swagger.annotations.ApiModelProperty;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.experimental.Accessors;
 
 import java.util.List;
 
@@ -10,43 +16,42 @@ import java.util.List;
  * 用于管理工程项目，包含模型、算法、数据和元模型档案
  */
 @Data
+@Builder
+@Accessors(chain = true)
+@NoArgsConstructor
+@AllArgsConstructor
+@Measurement(name = "relational_system.projects")
 public class ProjectEntity {
     @ApiModelProperty(value = "项目ID")
-    private String id;
+    @Field(timestamp = true)
+    private Long id;
     
     @ApiModelProperty(value = "项目名称")
+    @Field(name = "name")
     private String name;
     
     @ApiModelProperty(value = "项目描述")
-    private String description;
-    
-    @ApiModelProperty(value = "项目类型")
-    private String type;
-    
+    @Field(name = "desc")
+    private String desc;
+
     @ApiModelProperty(value = "关联的算法列表（JSON格式：[{name, version}]）")
+    @Field(name = "algorithms")
     private String algorithms;
     
     @ApiModelProperty(value = "关联的模型列表（JSON格式：[{name, version}]）")
+    @Field(name = "models")
     private String models;
     
     @ApiModelProperty(value = "关联的数据源列表（JSON格式：[{dataSourcePath}]）")
-    private String dataSources;
-    
-    @ApiModelProperty(value = "关联的仿真档案列表（JSON格式：[{archiveName}]）")
-    private String simulationArchives;
-    
+    @Field(name = "datas")
+    private String datas;
+
     @ApiModelProperty(value = "创建时间")
+    @Field(name = "createTime")
     private Long createTime;
-    
-    @ApiModelProperty(value = "更新时间")
-    private Long updateTime;
-    
+
     @ApiModelProperty(value = "创建人")
+    @Field(name = "owner")
     private String owner;
-    
-    @ApiModelProperty(value = "项目状态：active-启用，inactive-禁用")
-    private Boolean status;
-    
-    @ApiModelProperty(value = "项目配置（JSON格式）")
-    private String config;
+
 }

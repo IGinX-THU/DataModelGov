@@ -6,59 +6,20 @@
         </div>
         <div class="vs-modal-body">
             <form id="projectForm" class="vs-project-form">
-                <div class="vs-form-grid">
-                    <div class="vs-form-left">
-                        <div class="vs-form-section">
-                            <h4>项目模板</h4>
-                            <div class="vs-template-list">
-                                <div class="vs-template-item active" data-type="simulation">
-                                    <div class="vs-template-icon">📊</div>
-                                    <div class="vs-template-info">
-                                        <div class="vs-template-name">仿真项目</div>
-                                        <div class="vs-template-desc">创建用于系统仿真的工程项目</div>
-                                    </div>
-                                </div>
-                                <div class="vs-template-item" data-type="analysis">
-                                    <div class="vs-template-icon">📈</div>
-                                    <div class="vs-template-info">
-                                        <div class="vs-template-name">分析项目</div>
-                                        <div class="vs-template-desc">创建用于数据分析的工程项目</div>
-                                    </div>
-                                </div>
-                                <div class="vs-template-item" data-type="research">
-                                    <div class="vs-template-icon">🔬</div>
-                                    <div class="vs-template-info">
-                                        <div class="vs-template-name">研究项目</div>
-                                        <div class="vs-template-desc">创建用于学术研究的工程项目</div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                <div class="vs-form-section">
+                    <div class="vs-form-row">
+                        <label class="vs-form-label">项目名称 <span class="vs-required">*</span></label>
+                        <input type="text" id="projectName" name="projectName" class="vs-form-input" required placeholder="输入项目名称">
                     </div>
-                    <div class="vs-form-right">
-                        <div class="vs-form-section">
-                            <h4>项目详情</h4>
-                            <div class="vs-form-row">
-                                <label class="vs-form-label">项目名称 <span class="vs-required">*</span></label>
-                                <input type="text" id="projectName" name="projectName" class="vs-form-input" required placeholder="输入项目名称">
-                            </div>
-                            <div class="vs-form-row">
-                                <label class="vs-form-label">项目描述</label>
-                                <textarea id="projectDescription" name="projectDescription" class="vs-form-textarea" rows="3" placeholder="输入项目描述"></textarea>
-                            </div>
-                            <input type="hidden" id="projectType" name="projectType" value="simulation">
-                        </div>
+                    <div class="vs-form-row">
+                        <label class="vs-form-label">项目描述</label>
+                        <textarea id="projectDescription" name="projectDescription" class="vs-form-textarea" rows="3" placeholder="输入项目描述"></textarea>
                     </div>
+                    <input type="hidden" id="projectType" name="projectType" value="simulation">
                 </div>
-                <div class="vs-form-bottom">
-                    <div class="vs-form-row-inline">
-                        <label class="vs-form-label">位置:</label>
-                        <input type="text" class="vs-form-input vs-location-input" value="C:\Users\Projects\" readonly>
-                    </div>
-                    <div class="vs-form-actions">
-                        <button type="button" class="vs-btn vs-btn-secondary" id="cancelBtn">取消</button>
-                        <button type="submit" class="vs-btn vs-btn-primary" id="saveBtn">创建</button>
-                    </div>
+                <div class="vs-form-actions">
+                    <button type="button" class="vs-btn vs-btn-secondary" id="cancelBtn">取消</button>
+                    <button type="submit" class="vs-btn vs-btn-primary" id="saveBtn">创建</button>
                 </div>
             </form>
         </div>

@@ -199,43 +199,11 @@ public class RolePermissionService implements ApplicationContextAware {
         roleDao.saveRole(adminRole);
         
         // 数据工程师角色 - 除用户管理外的所有权限
-        Set<Permission> dataEngineerPermissions = EnumSet.of(
-            // 数据源管理权限
-            Permission.DATASOURCE_CREATE,
-            Permission.DATASOURCE_READ,
-            Permission.DATASOURCE_UPDATE,
-            Permission.DATASOURCE_DELETE,
-
-            // 数据表管理权限
-            Permission.DATA_CREATE,
-            Permission.DATA_READ,
-            Permission.DATA_UPDATE,
-            Permission.DATA_DELETE,
-
-            // 模型文件管理权限
-            Permission.MODEL_CREATE,
-            Permission.MODEL_READ,
-            Permission.MODEL_UPDATE,
-            Permission.MODEL_DELETE,
-
-            // 关联规则管理权限
-            Permission.ASSOCIATION_RULES_CREATE,
-            Permission.ASSOCIATION_RULES_READ,
-            Permission.ASSOCIATION_RULES_UPDATE,
-            Permission.ASSOCIATION_RULES_DELETE,
-
-            // 运行任务管理权限
-            Permission.RUN_TASK_CREATE,
-            Permission.RUN_TASK_READ,
-            Permission.RUN_TASK_UPDATE,
-            Permission.RUN_TASK_DELETE,
-
-            // 解析规则管理权限
-            Permission.PARSING_RULES_CREATE,
-            Permission.PARSING_RULES_READ,
-            Permission.PARSING_RULES_UPDATE,
-            Permission.PARSING_RULES_DELETE
-        );
+        Set<Permission> dataEngineerPermissions = EnumSet.allOf(Permission.class);
+        dataEngineerPermissions.remove(Permission.USER_CREATE);
+        dataEngineerPermissions.remove(Permission.USER_READ);
+        dataEngineerPermissions.remove(Permission.USER_UPDATE);
+        dataEngineerPermissions.remove(Permission.USER_DELETE);
         RoleEntity dataEngineerRole = new RoleEntity(UserRole.DATA_ENGINEER, dataEngineerPermissions, 2000000000001L);
         roleDao.saveRole(dataEngineerRole);
     }

@@ -142,6 +142,10 @@ window.AppConfig = {
             'upload-report': '/api/task/upload-report',
             'package-download': '/api/task/package-download',
             'time-range': '/api/task/time-range'
+        },
+        // 项目相关
+        project: {
+            create: '/api/project/create'
         }
     },
     

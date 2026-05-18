@@ -221,15 +221,11 @@ class ProjectCreate extends HTMLElement {
         }
 
         const projectData = {
-            id: this.projectId,
             name: name,
-            description: this.shadowRoot.getElementById('projectDescription').value.trim(),
-            type: this.shadowRoot.getElementById('projectType').value,
+            desc: this.shadowRoot.getElementById('projectDescription').value.trim(),
             algorithms: '[]',
             models: '[]',
-            dataSources: '[]',
-            simulationArchives: '[]',
-            status: true,
+            datas: '[]',
             owner: window.AppConfig.getUsername() || 'unknown'
         };
 
