@@ -1,0 +1,52 @@
+<div class="parsing-rules">
+    <div class="parsing-filter-card">
+        <div class="filter-header">筛选</div>
+        <div class="filter-rows" id="filterRows">
+            <div class="filter-row">
+                <div class="filter-field">
+                    <span class="filter-label">算法名称</span>
+                    <input class="filter-input" type="text" placeholder="请输入算法名称" id="nameFilter" />
+                </div>
+                <div class="filter-field">
+                    <span class="filter-label">算法类型</span>
+                    <select class="filter-input" id="typeFilter">
+                        <option value="">全部</option>
+                        <option value="python">Python脚本</option>
+                        <option value="java">Java程序</option>
+                        <option value="shell">Shell脚本</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+        <div class="filter-actions">
+            <div class="filter-spacer"></div>
+            <button class="filter-btn outline" type="button" id="resetFilters">重置</button>
+            <button class="filter-btn solid" type="button" id="applyFilters">查询</button>
+        </div>
+    </div>
+
+    <div class="parsing-table-card">
+        <div class="table-toolbar">
+            <button class="toolbar-btn green" type="button" id="uploadAlgorithmBtn">上传算法</button>
+        </div>
+        <div class="table-wrapper">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>算法名称</th>
+                        <th>版本</th>
+                        <th>类型</th>
+                        <th>开发者</th>
+                        <th>场景</th>
+                        <th>创建时间</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody"></tbody>
+            </table>
+        </div>
+        <common-pagination id="pagination"></common-pagination>
+    </div>
+</div>
+
+<algorithm-upload id="algorithmUpload"></algorithm-upload>

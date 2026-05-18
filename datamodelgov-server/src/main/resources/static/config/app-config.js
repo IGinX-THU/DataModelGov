@@ -82,6 +82,27 @@ window.AppConfig = {
             save: '/api/parsing/rules/save',
             'validate-name': '/api/parsing/rules/validate-name'
         },
+        // 仿真档案相关
+        simulationArchives: {
+            query: '/api/simulation/archives/query',
+            count: '/api/simulation/archives/count',
+            detail: '/api/simulation/archives/detail',
+            delete: '/api/simulation/archives/delete',
+            save: '/api/simulation/archives/save',
+            'validate-name': '/api/simulation/archives/validate-name',
+            copy: '/api/simulation/archives/copy',
+            run: '/api/simulation/archives/run',
+            stop: '/api/simulation/archives/stop',
+            'execution-status': '/api/simulation/archives/execution-status'
+        },
+        // 算法管理相关
+        algorithm: {
+            upload: '/api/algorithm/upload',
+            download: '/api/algorithm/download',
+            metas: '/api/algorithm/metas',
+            history: '/api/algorithm/history',
+            delete: '/api/algorithm/delete'
+        },
         // 用户管理相关
         userManagement: {
             query: '/api/user/query',

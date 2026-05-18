@@ -14,6 +14,36 @@
     color: var(--text-primary);
 }
 
+/* Override desktop-shell toolbar-btn styles for data source list */
+.data-source-list .toolbar-btn {
+    width: auto;
+    height: auto;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.data-source-list .toolbar-btn.green {
+    background: #10b981;
+    color: white;
+}
+
+.data-source-list .toolbar-btn.green:hover {
+    background: #059669;
+}
+
+.data-source-list .toolbar-btn.blue {
+    background: #3b82f6;
+    color: white;
+}
+
+.data-source-list .toolbar-btn.blue:hover {
+    background: #2563eb;
+}
+
 /* 使用与database-table相同的样式 */
 .db-table-card {
     background: var(--bg-primary);

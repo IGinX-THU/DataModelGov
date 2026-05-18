@@ -1,0 +1,85 @@
+<div class="project-list">
+    <div class="project-filter-card">
+        <div class="filter-header">筛选</div>
+        <div class="filter-rows" id="filterRows">
+            <div class="filter-row">
+                <div class="filter-field">
+                    <span class="filter-label">搜索关键词</span>
+                    <input class="filter-input" type="text" placeholder="请输入搜索关键词" id="keywordFilter" />
+                </div>
+                <div class="filter-field">
+                    <span class="filter-label">搜索类型</span>
+                    <select class="filter-input" id="searchType">
+                        <option value="all">全部</option>
+                        <option value="name">按名称</option>
+                        <option value="algorithm">按算法</option>
+                        <option value="model">按模型</option>
+                        <option value="data">按数据</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+        <div class="filter-actions">
+            <div class="filter-spacer"></div>
+            <button class="filter-btn outline" type="button" id="resetFilters">重置</button>
+            <button class="filter-btn solid" type="button" id="applyFilters">查询</button>
+        </div>
+    </div>
+
+    <div class="project-table-card">
+        <div class="table-toolbar">
+            <button class="toolbar-btn green" type="button" id="addProjectBtn">新建项目</button>
+            <button class="toolbar-btn blue" type="button" id="importProjectBtn">导入项目</button>
+        </div>
+        <div class="table-wrapper">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>项目名称</th>
+                        <th>描述</th>
+                        <th>类型</th>
+                        <th>创建人</th>
+                        <th>创建时间</th>
+                        <th>状态</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody"></tbody>
+            </table>
+        </div>
+        <div class="pagination">
+            <div class="pagination-left">
+                <button class="page-btn" id="prevPage">&lt;</button>
+                <div class="page-list" id="pageList"></div>
+                <button class="page-btn" id="nextPage">&gt;</button>
+            </div>
+            <div class="pagination-right">
+                <span class="total-count">共 <span id="totalCount">0</span> 条</span>
+                <select class="page-size-select" id="pageSizeSelect">
+                    <option value="5">5条/页</option>
+                    <option value="10" selected>10条/页</option>
+                    <option value="20">20条/页</option>
+                    <option value="50">50条/页</option>
+                </select>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal-mask" id="modalMask" hidden>
+    <div class="modal">
+        <div class="modal-header">
+            <span id="modalTitle">确认删除</span>
+            <button class="modal-close" id="modalClose">×</button>
+        </div>
+        <div class="modal-body" id="modalBody">
+            <p>确定要删除该项目吗？此操作不可恢复。</p>
+        </div>
+        <div class="modal-footer" id="modalFooter">
+            <button type="button" class="modal-btn secondary" id="cancelBtn">取消</button>
+            <button type="button" class="modal-btn danger" id="confirmBtn">确定</button>
+        </div>
+    </div>
+</div>
+
+<input type="file" id="importFileInput" accept=".json" style="display: none;" />

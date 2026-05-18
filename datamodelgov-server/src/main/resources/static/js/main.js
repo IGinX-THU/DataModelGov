@@ -89,13 +89,18 @@ document.addEventListener('DOMContentLoaded', function() {
             'modelEdit',
             'parsingRules',
             'associationRules',
+            'simulationArchive',
+            'algorithmList',
             'databaseTable',
             'dataVisualization',
             'modelDetail',
             'dataSourceList',
             'importData',
             'userManagement',
-            'permissionManagement'
+            'permissionManagement',
+            'projectList',
+            'projectDetail',
+            'projectCreate'
         ];
         
         components.forEach(componentId => {
@@ -232,8 +237,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const username = window.MenuPermission?.currentUser?.username || 'default';
         localStorage.setItem('fontScale_' + username, scale);
         
-        // 更新子菜单选中状态
-        document.querySelectorAll('.dropdown-menu .submenu li').forEach(li => {
+        // 更新子菜单选中状态（只针对字体菜单项）
+        document.querySelectorAll('.dropdown-menu .submenu li[data-scale]').forEach(li => {
             li.classList.remove('active');
             if (parseFloat(li.dataset.scale) === parseFloat(scale)) {
                 li.classList.add('active');
@@ -263,8 +268,18 @@ document.addEventListener('DOMContentLoaded', function() {
         const html = document.documentElement;
         if (savedThemeMode === 'dark') {
             html.classList.add('dark-mode');
+            // 更新主题菜单选中状态
+            document.querySelectorAll('#menu-light-mode, #menu-dark-mode').forEach(li => {
+                li.classList.remove('active');
+            });
+            document.getElementById('menu-dark-mode').classList.add('active');
         } else if (savedThemeMode === 'light') {
             html.classList.add('light-mode');
+            // 更新主题菜单选中状态
+            document.querySelectorAll('#menu-light-mode, #menu-dark-mode').forEach(li => {
+                li.classList.remove('active');
+            });
+            document.getElementById('menu-light-mode').classList.add('active');
         }
     }
 
@@ -272,9 +287,9 @@ document.addEventListener('DOMContentLoaded', function() {
     window.restoreUserSettings = restoreUserSettings;
 
     // 2.5. 右侧模型资产库树形节点点击事件
-    const rightSidebarTree = document.querySelector('.right-sidebar .tree');
-    if (rightSidebarTree) {
-        const rightTreeNodes = rightSidebarTree.querySelectorAll('.tree-node');
+    const modelTree = document.getElementById('modelTree');
+    if (modelTree) {
+        const rightTreeNodes = modelTree.querySelectorAll('.tree-node');
         rightTreeNodes.forEach(node => {
             node.addEventListener('click', function(e) {
                 e.stopPropagation();
@@ -321,105 +336,81 @@ document.addEventListener('DOMContentLoaded', function() {
     const dataDropdown = document.getElementById('dataDropdown');
     const modelDropdown = document.getElementById('modelDropdown');
     const scheduleDropdown = document.getElementById('scheduleDropdown');
+    const simulationDropdown = document.getElementById('simulationDropdown');
+    const projectDropdown = document.getElementById('projectDropdown');
     const analysisDropdown = document.getElementById('analysisDropdown');
     const toolDropdown = document.getElementById('toolDropdown');
     const helpDropdown = document.getElementById('helpDropdown');
     const userDropdown = document.getElementById('userDropdown');
     const settingsDropdown = document.getElementById('settingsDropdown');
 
+    const allDropdowns = [dataDropdown, modelDropdown, scheduleDropdown, simulationDropdown, projectDropdown, analysisDropdown, toolDropdown, helpDropdown, userDropdown, settingsDropdown];
+
+    function closeAllDropdowns(except = null) {
+        allDropdowns.forEach(dropdown => {
+            if (dropdown && dropdown !== except) {
+                dropdown.classList.remove('active');
+            }
+        });
+    }
+
     dataDropdown.addEventListener('click', function(e) {
         e.stopPropagation();
-        modelDropdown.classList.remove('active');
-        scheduleDropdown.classList.remove('active');
-        analysisDropdown.classList.remove('active');
-        toolDropdown.classList.remove('active');
-        helpDropdown.classList.remove('active');
-        userDropdown.classList.remove('active');
-        settingsDropdown.classList.remove('active');
+        closeAllDropdowns(this);
         this.classList.toggle('active');
     });
 
     modelDropdown.addEventListener('click', function(e) {
         e.stopPropagation();
-        dataDropdown.classList.remove('active');
-        scheduleDropdown.classList.remove('active');
-        analysisDropdown.classList.remove('active');
-        toolDropdown.classList.remove('active');
-        helpDropdown.classList.remove('active');
-        userDropdown.classList.remove('active');
-        settingsDropdown.classList.remove('active');
+        closeAllDropdowns(this);
         this.classList.toggle('active');
     });
 
     scheduleDropdown.addEventListener('click', function(e) {
         e.stopPropagation();
-        dataDropdown.classList.remove('active');
-        modelDropdown.classList.remove('active');
-        analysisDropdown.classList.remove('active');
-        toolDropdown.classList.remove('active');
-        helpDropdown.classList.remove('active');
-        userDropdown.classList.remove('active');
-        settingsDropdown.classList.remove('active');
+        closeAllDropdowns(this);
+        this.classList.toggle('active');
+    });
+
+    simulationDropdown.addEventListener('click', function(e) {
+        e.stopPropagation();
+        closeAllDropdowns(this);
+        this.classList.toggle('active');
+    });
+
+    projectDropdown.addEventListener('click', function(e) {
+        e.stopPropagation();
+        closeAllDropdowns(this);
         this.classList.toggle('active');
     });
 
     analysisDropdown.addEventListener('click', function(e) {
         e.stopPropagation();
-        dataDropdown.classList.remove('active');
-        modelDropdown.classList.remove('active');
-        scheduleDropdown.classList.remove('active');
-        toolDropdown.classList.remove('active');
-        helpDropdown.classList.remove('active');
-        userDropdown.classList.remove('active');
-        settingsDropdown.classList.remove('active');
+        closeAllDropdowns(this);
         this.classList.toggle('active');
     });
 
     toolDropdown.addEventListener('click', function(e) {
         e.stopPropagation();
-        dataDropdown.classList.remove('active');
-        modelDropdown.classList.remove('active');
-        scheduleDropdown.classList.remove('active');
-        analysisDropdown.classList.remove('active');
-        helpDropdown.classList.remove('active');
-        userDropdown.classList.remove('active');
-        settingsDropdown.classList.remove('active');
+        closeAllDropdowns(this);
         this.classList.toggle('active');
     });
 
     helpDropdown.addEventListener('click', function(e) {
         e.stopPropagation();
-        dataDropdown.classList.remove('active');
-        modelDropdown.classList.remove('active');
-        scheduleDropdown.classList.remove('active');
-        analysisDropdown.classList.remove('active');
-        toolDropdown.classList.remove('active');
-        userDropdown.classList.remove('active');
-        settingsDropdown.classList.remove('active');
+        closeAllDropdowns(this);
         this.classList.toggle('active');
     });
 
     userDropdown.addEventListener('click', function(e) {
         e.stopPropagation();
-        dataDropdown.classList.remove('active');
-        modelDropdown.classList.remove('active');
-        scheduleDropdown.classList.remove('active');
-        analysisDropdown.classList.remove('active');
-        toolDropdown.classList.remove('active');
-        helpDropdown.classList.remove('active');
-        settingsDropdown.classList.remove('active');
+        closeAllDropdowns(this);
         this.classList.toggle('active');
     });
 
     settingsDropdown.addEventListener('click', function(e) {
         e.stopPropagation();
-        dataDropdown.classList.remove('active');
-        modelDropdown.classList.remove('active');
-        scheduleDropdown.classList.remove('active');
-        analysisDropdown.classList.remove('active');
-        toolDropdown.classList.remove('active');
-        helpDropdown.classList.remove('active');
-        userDropdown.classList.remove('active');
+        closeAllDropdowns(this);
         this.classList.toggle('active');
     });
 
@@ -430,19 +421,12 @@ document.addEventListener('DOMContentLoaded', function() {
             e.stopImmediatePropagation(); // Prevent other event handlers from firing
             const scale = this.dataset.scale;
             applyFontScale(scale);
-            settingsDropdown.classList.remove('active');
+            closeAllDropdowns();
         });
     });
 
     document.addEventListener('click', function() {
-        dataDropdown.classList.remove('active');
-        modelDropdown.classList.remove('active');
-        scheduleDropdown.classList.remove('active');
-        analysisDropdown.classList.remove('active');
-        toolDropdown.classList.remove('active');
-        helpDropdown.classList.remove('active');
-        userDropdown.classList.remove('active');
-        settingsDropdown.classList.remove('active');
+        closeAllDropdowns();
     });
 
     // 跟踪最后点击的菜单项，用于实现二次点击刷新
@@ -474,6 +458,9 @@ document.addEventListener('DOMContentLoaded', function() {
             lastClickedMenuId = menuId;
 
             if (action) {
+                // 关闭所有下拉菜单
+                closeAllDropdowns();
+                
                 // 根据动作类型执行相应操作
                 switch (action) {
                     case 'showDataSourceList':
@@ -529,6 +516,26 @@ document.addEventListener('DOMContentLoaded', function() {
                         if (isSecondClick) clearWorkspace();
                         showComponent('associationRules');
                         break;
+                    case 'showSimulationArchive':
+                        console.log('仿真档案管理菜单被点击');
+                        if (isSecondClick) clearWorkspace();
+                        showComponent('simulationArchive');
+                        break;
+                    case 'showAlgorithmList':
+                        console.log('算法管理菜单被点击');
+                        if (isSecondClick) clearWorkspace();
+                        showComponent('algorithmList');
+                        break;
+                    case 'showProjectList':
+                        console.log('项目管理菜单被点击');
+                        if (isSecondClick) clearWorkspace();
+                        showComponent('projectList');
+                        break;
+                    case 'showProjectCreate':
+                        console.log('新增项目菜单被点击');
+                        if (isSecondClick) clearWorkspace();
+                        showComponent('projectCreate');
+                        break;
                     case 'showVisualAnalysis':
                         console.log('数值与曲线分析菜单被点击');
                         // 先清空工作区
@@ -549,6 +556,11 @@ document.addEventListener('DOMContentLoaded', function() {
                         // 保存主题模式到localStorage（按用户隔离）
                         const usernameLight = window.MenuPermission?.currentUser?.username || 'default';
                         localStorage.setItem('themeMode_' + usernameLight, 'light');
+                        // 更新主题菜单选中状态
+                        document.querySelectorAll('#menu-light-mode, #menu-dark-mode').forEach(li => {
+                            li.classList.remove('active');
+                        });
+                        document.getElementById('menu-light-mode').classList.add('active');
                         break;
                     case 'setDarkMode':
                         console.log('暗黑模式菜单被点击');
@@ -560,6 +572,11 @@ document.addEventListener('DOMContentLoaded', function() {
                         // 保存主题模式到localStorage（按用户隔离）
                         const usernameDark = window.MenuPermission?.currentUser?.username || 'default';
                         localStorage.setItem('themeMode_' + usernameDark, 'dark');
+                        // 更新主题菜单选中状态
+                        document.querySelectorAll('#menu-light-mode, #menu-dark-mode').forEach(li => {
+                            li.classList.remove('active');
+                        });
+                        document.getElementById('menu-dark-mode').classList.add('active');
                         break;
                     case 'showAbout':
                         console.log('关于菜单被点击');
@@ -569,6 +586,9 @@ document.addEventListener('DOMContentLoaded', function() {
                         console.warn(`未知的菜单动作: ${action}`);
                 }
             } else {
+                // 关闭所有下拉菜单
+                closeAllDropdowns();
+                
                 // 处理特殊菜单项（用户管理和修改密码）
                 if (menuId === 'userManagementMenuItem') {
                     console.log('用户管理菜单被点击');
@@ -584,6 +604,14 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (changePasswordComponent) {
                         changePasswordComponent.show();
                     }
+                } else if (menuId === 'menu-project-list') {
+                    console.log('项目管理菜单被点击');
+                    if (isSecondClick) clearWorkspace();
+                    showComponent('projectList');
+                } else if (menuId === 'menu-project-new') {
+                    console.log('新增项目菜单被点击');
+                    if (isSecondClick) clearWorkspace();
+                    showComponent('projectCreate');
                 } else {
                     console.warn(`未找到菜单ID ${menuId} 的对应动作`);
                 }
@@ -593,10 +621,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // 获取当前选中的模型
     function getSelectedModel() {
-        const rightSidebarTree = document.querySelector('.right-sidebar .tree');
-        if (!rightSidebarTree) return null;
-        
-        const activeNode = rightSidebarTree.querySelector('.tree-node.active');
+        const modelTree = document.getElementById('modelTree');
+        if (!modelTree) return null;
+
+        const activeNode = modelTree.querySelector('.tree-node.active');
         if (!activeNode) return null;
         
         const span = activeNode.querySelector('span');
@@ -666,7 +694,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // 5. 右侧树节点单击事件 - 显示模型详情
-    document.querySelectorAll('.right-sidebar .tree-node').forEach(node => {
+    document.querySelectorAll('#modelTree .tree-node').forEach(node => {
         node.addEventListener('click', function() {
             console.log('单击节点:', this);
             const selectedModel = getSelectedModel();
@@ -681,7 +709,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // 6. 功能按钮点击事件 - 使用ID绑定而非文本绑定
-    const addBtns = document.querySelectorAll('.func-btn');
+    const addBtns = document.querySelectorAll('.ribbon-btn');
     console.log('找到的功能按钮数量:', addBtns.length);
     
     addBtns.forEach((btn, index) => {
@@ -972,11 +1000,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // 从右侧树中移除该节点
                 removeModelFromTree(selectedModel);
-                
+
                 // 清除选中状态
-                const rightSidebarTree = document.querySelector('.right-sidebar .tree');
-                if (rightSidebarTree) {
-                    const activeNodes = rightSidebarTree.querySelectorAll('.tree-node.active');
+                const modelTree = document.getElementById('modelTree');
+                if (modelTree) {
+                    const activeNodes = modelTree.querySelectorAll('.tree-node.active');
                     activeNodes.forEach(node => node.classList.remove('active'));
                 }
             } else {
@@ -990,10 +1018,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // 从树中移除模型节点
     function removeModelFromTree(selectedModel) {
-        const rightSidebarTree = document.querySelector('.right-sidebar .tree');
-        if (!rightSidebarTree) return;
-        
-        const allNodes = rightSidebarTree.querySelectorAll('.tree-node');
+        const modelTree = document.getElementById('modelTree');
+        if (!modelTree) return;
+
+        const allNodes = modelTree.querySelectorAll('.tree-node');
         
         allNodes.forEach(node => {
             const span = node.querySelector('span');
@@ -1622,16 +1650,18 @@ function showVisualAnalysis() {
     
     // 动态加载数据源树
     async function loadDataSourceTree() {
+        console.log('🔄 loadDataSourceTree 开始执行');
         try {
             
             // 同时显示右侧loading
-            const rightSidebarTree = document.querySelector('.right-sidebar .tree');
-            if (rightSidebarTree) {
-                rightSidebarTree.innerHTML = '<div class="loading-placeholder">正在加载模型资产...</div>';
+            const modelTree = document.getElementById('modelTree');
+            if (modelTree) {
+                modelTree.innerHTML = '<div class="loading-placeholder">正在加载模型资产...</div>';
             }
             
             // 使用新的API配置
             const result = await window.AppConfig.get('datasource', 'tree');
+            console.log('🔄 loadDataSourceTree API响应:', result);
             
             if (result.success && result.data) {
                 renderDataSourceTree(result.data);
@@ -1682,6 +1712,7 @@ function showVisualAnalysis() {
     // 渲染树节点HTML
     function renderTreeNodes(treeData, level = 0) {
         let html = '';
+        console.log(`🔄 renderTreeNodes 被调用，level=${level}, treeData keys:`, Object.keys(treeData));
         
         Object.values(treeData).forEach(node => {
             const hasChildren = Object.keys(node.children).length > 0;
@@ -1731,7 +1762,12 @@ function showVisualAnalysis() {
     
     // 渲染数据源树
     function renderDataSourceTree(dataSources) {
+        console.log('🔄 renderDataSourceTree 被调用，数据源数量:', dataSources?.length);
         const treeContainer = document.getElementById('dataSourceTree');
+        if (!treeContainer) {
+            console.error('❌ dataSourceTree 容器不存在');
+            return;
+        }
         if (!dataSources || dataSources.length === 0) {
             treeContainer.innerHTML = '<div class="empty-placeholder">暂无数据资源</div>';
             return;
@@ -1742,14 +1778,18 @@ function showVisualAnalysis() {
             const path = typeof item === 'string' ? item : item.path;
             return !path || !path.startsWith('models_system');
         });
+        console.log('🔄 过滤后的数据源数量:', filteredDataSources.length);
         
         // 将过滤后的字符串数组转换为树结构
         const treeData = buildTreeFromStringArray(filteredDataSources);
+        console.log('🔄 树结构数据:', treeData);
         
         // 渲染树HTML
         const treeHTML = renderTreeNodes(treeData);
+        console.log('🔄 渲染的HTML长度:', treeHTML.length);
         
         treeContainer.innerHTML = treeHTML;
+        console.log('🔄 容器innerHTML已设置');
         
         // 重新绑定树节点点击事件
         bindTreeEvents();
@@ -1774,9 +1814,13 @@ function showVisualAnalysis() {
     
     // 重新绑定树节点事件
     function bindTreeEvents() {
-        const leftSidebarTree = document.querySelector('.left-sidebar .tree');
-        if (leftSidebarTree) {
-            const treeNodes = leftSidebarTree.querySelectorAll('.tree-node');
+        console.log('🔄 bindTreeEvents 被调用');
+        const dataSourceTree = document.getElementById('dataSourceTree');
+        console.log('🔄 dataSourceTree:', dataSourceTree);
+        if (dataSourceTree) {
+            console.log('🔄 dataSourceTree.innerHTML:', dataSourceTree.innerHTML.substring(0, 200));
+            const treeNodes = dataSourceTree.querySelectorAll('.tree-node');
+            console.log('🔄 找到的树节点数量:', treeNodes.length);
             treeNodes.forEach(node => {
                 node.addEventListener('click', function(e) {
                     e.stopPropagation();
@@ -1787,7 +1831,7 @@ function showVisualAnalysis() {
                     }
                     
                     // 先清除所有选中状态（仅限左侧）
-                    leftSidebarTree.querySelectorAll('.tree-node.active').forEach(n => n.classList.remove('active'));
+                    dataSourceTree.querySelectorAll('.tree-node.active').forEach(n => n.classList.remove('active'));
                     
                     // 设置当前选中
                     this.classList.add('active');
@@ -1838,9 +1882,9 @@ function showVisualAnalysis() {
             console.log('过滤出的models_system数据:', filesystemData);
             
             if (filesystemData.length > 0) {
-                // 获取右侧树容器
-                const rightSidebarTree = document.querySelector('.right-sidebar .tree');
-                if (!rightSidebarTree) return;
+                // 获取模型树容器
+                const modelTree = document.getElementById('modelTree');
+                if (!modelTree) return;
                 
                 // 构建树结构
                 const treeMap = {};
@@ -1901,31 +1945,31 @@ function showVisualAnalysis() {
                 }
                 
                 // 清空容器并创建新树
-                rightSidebarTree.innerHTML = '';
-                createTreeNodes(treeMap, rightSidebarTree);
-                
+                modelTree.innerHTML = '';
+                createTreeNodes(treeMap, modelTree);
+
                 // 重新绑定右侧树节点事件（保持原有逻辑）
-                const rightTreeNodes = rightSidebarTree.querySelectorAll('.tree-node');
+                const rightTreeNodes = modelTree.querySelectorAll('.tree-node');
                 rightTreeNodes.forEach(node => {
                     node.addEventListener('click', function(e) {
                         e.stopPropagation();
-                        
+
                         // 确保只处理右侧的节点
                         if (!this.closest('.right-sidebar')) {
                             return;
                         }
-                        
+
                         // 先清除所有选中状态（仅限右侧）
-                        rightSidebarTree.querySelectorAll('.tree-node.active').forEach(n => n.classList.remove('active'));
-                        
+                        modelTree.querySelectorAll('.tree-node.active').forEach(n => n.classList.remove('active'));
+
                         // 设置当前选中
                         this.classList.add('active');
-                        
+
                         // 展开收起（如果有子节点）
                         if (this.querySelector('.tree-children')) {
                             this.classList.toggle('expanded');
                         }
-                        
+
                         // 调用原有的模型详情显示逻辑
                         const selectedModel = getSelectedModel();
                         if (selectedModel && selectedModel.version) {
@@ -1939,17 +1983,17 @@ function showVisualAnalysis() {
                 
             } else {
                 // 如果没有filesystem数据，显示空状态
-                const rightSidebarTree = document.querySelector('.right-sidebar .tree');
-                if (rightSidebarTree) {
-                    rightSidebarTree.innerHTML = '<div class="empty-placeholder">暂无模型资产</div>';
+                const modelTree = document.getElementById('modelTree');
+                if (modelTree) {
+                    modelTree.innerHTML = '<div class="empty-placeholder">暂无模型资产</div>';
                 }
             }
             
         } catch (error) {
             console.error('同步filesystem数据到模型资产库失败:', error);
-            const rightSidebarTree = document.querySelector('.right-sidebar .tree');
-            if (rightSidebarTree) {
-                rightSidebarTree.innerHTML = '<div class="error-placeholder">同步模型资产失败</div>';
+            const modelTree = document.getElementById('modelTree');
+            if (modelTree) {
+                modelTree.innerHTML = '<div class="error-placeholder">同步模型资产失败</div>';
             }
         }
     }
@@ -1966,9 +2010,9 @@ window.loadDataSourceTree = async function() {
         window.showGlobalLoading('正在加载数据资源...');
         
         // 同时显示右侧loading
-        const rightSidebarTree = document.querySelector('.right-sidebar .tree');
-        if (rightSidebarTree) {
-            rightSidebarTree.innerHTML = '<div class="loading-placeholder">正在加载模型资产...</div>';
+        const modelTree = document.getElementById('modelTree');
+        if (modelTree) {
+            modelTree.innerHTML = '<div class="loading-placeholder">正在加载模型资产...</div>';
         }
         
         console.log('🔄 调用接口:', window.AppConfig.getApiUrl('datasource', 'tree'));

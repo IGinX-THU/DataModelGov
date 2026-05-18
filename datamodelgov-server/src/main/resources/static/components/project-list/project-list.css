@@ -1,0 +1,326 @@
+/* Project List Styles */
+@import url('../../css/variables.css');
+@import url('../../css/base-components.css');
+@import url('../../css/workbench-crud-panel.css');
+
+.project-list {
+    padding: 20px;
+}
+
+.project-filter-card {
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.project-table-card {
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.table-toolbar {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.toolbar-btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.toolbar-btn.green {
+    background: #67c23a;
+    color: white;
+}
+
+.toolbar-btn.green:hover {
+    background: #85ce61;
+}
+
+.toolbar-btn.blue {
+    background: #409eff;
+    color: white;
+}
+
+.toolbar-btn.blue:hover {
+    background: #66b1ff;
+}
+
+.table-wrapper {
+    overflow-x: auto;
+}
+
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.data-table th {
+    background: #f5f7fa;
+    padding: 12px;
+    text-align: left;
+    font-weight: 600;
+    color: #333;
+    border-bottom: 2px solid #e4e7ed;
+}
+
+.data-table td {
+    padding: 12px;
+    border-bottom: 1px solid #e4e7ed;
+}
+
+.data-table tr:hover {
+    background: #f5f7fa;
+}
+
+.status-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+}
+
+.status-badge.active {
+    background: #f0f9ff;
+    color: #67c23a;
+}
+
+.status-badge.inactive {
+    background: #fef0f0;
+    color: #f56c6c;
+}
+
+.action-buttons {
+    display: flex;
+    gap: 8px;
+}
+
+.action-btn {
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    border: none;
+    transition: all 0.3s;
+}
+
+.action-btn.edit {
+    background: #409eff;
+    color: white;
+}
+
+.action-btn.edit:hover {
+    background: #66b1ff;
+}
+
+.action-btn.copy {
+    background: #909399;
+    color: white;
+}
+
+.action-btn.copy:hover {
+    background: #a6a9ad;
+}
+
+.action-btn.delete {
+    background: #f56c6c;
+    color: white;
+}
+
+.action-btn.delete:hover {
+    background: #f78989;
+}
+
+.pagination {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 20px;
+}
+
+.pagination-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.page-btn {
+    padding: 6px 12px;
+    border: 1px solid #dcdfe6;
+    background: white;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.page-btn:hover:not(:disabled) {
+    border-color: #409eff;
+    color: #409eff;
+}
+
+.page-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.page-list {
+    display: flex;
+    gap: 4px;
+}
+
+.page-num {
+    padding: 6px 12px;
+    border: 1px solid #dcdfe6;
+    background: white;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.page-num:hover {
+    border-color: #409eff;
+    color: #409eff;
+}
+
+.page-num.active {
+    background: #409eff;
+    color: white;
+    border-color: #409eff;
+}
+
+.pagination-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.total-count {
+    font-size: 14px;
+    color: #606266;
+}
+
+.page-size-select {
+    padding: 6px 12px;
+    border: 1px solid #dcdfe6;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+/* Modal Styles */
+.modal-mask {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+}
+
+.modal {
+    background: white;
+    border-radius: 8px;
+    min-width: 400px;
+    max-width: 600px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+    border-bottom: 1px solid #e4e7ed;
+}
+
+.modal-header span {
+    font-size: 18px;
+    font-weight: 600;
+    color: #333;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #909399;
+    transition: color 0.3s;
+}
+
+.modal-close:hover {
+    color: #f56c6c;
+}
+
+.modal-body {
+    padding: 20px;
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 20px;
+    border-top: 1px solid #e4e7ed;
+}
+
+.modal-btn {
+    padding: 8px 20px;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.modal-btn.primary {
+    background: #409eff;
+    color: white;
+}
+
+.modal-btn.primary:hover {
+    background: #66b1ff;
+}
+
+.modal-btn.secondary {
+    background: white;
+    border: 1px solid #dcdfe6;
+    color: #606266;
+}
+
+.modal-btn.secondary:hover {
+    border-color: #409eff;
+    color: #409eff;
+}
+
+.modal-btn.danger {
+    background: #f56c6c;
+    color: white;
+}
+
+.modal-btn.danger:hover {
+    background: #f78989;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}

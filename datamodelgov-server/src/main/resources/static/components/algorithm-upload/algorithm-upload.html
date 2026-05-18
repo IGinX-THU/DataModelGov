@@ -1,0 +1,81 @@
+<div class="upload-container">
+    <div class="upload-header">
+        <h3 class="upload-title">上传算法文件</h3>
+        <button class="close-btn" id="closeBtn">&times;</button>
+    </div>
+    
+    <form id="uploadForm">
+        <div class="form-group">
+            <label class="form-label required">算法文件</label>
+            <div class="file-upload-area" id="fileUploadArea">
+                <div class="upload-content">
+                    <div class="upload-icon">📁</div>
+                    <p class="upload-text">点击选择文件或拖拽文件到此处</p>
+                    <p class="upload-hint">支持 .py, .java, .sh, .jar 格式</p>
+                    <input type="file" class="file-input" id="algorithmFile" accept=".py,.java,.sh,.jar" required>
+                </div>
+            </div>
+            <div class="file-info" id="fileInfo" style="display: none;">
+                <div class="file-details">
+                    <span class="file-name" id="fileName"></span>
+                    <span class="file-size" id="fileSize"></span>
+                </div>
+                <button type="button" class="remove-file-btn" id="removeFileBtn">&times;</button>
+            </div>
+            <div class="error-message" id="algorithmFileError">请选择算法文件</div>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label required">算法名称</label>
+            <input type="text" class="form-control" id="algorithmName" placeholder="请输入算法名称" required>
+            <div class="error-message" id="algorithmNameError">请输入算法名称</div>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label required">版本号</label>
+            <input type="text" class="form-control" id="algorithmVersion" placeholder="请输入版本号" required>
+            <div class="error-message" id="algorithmVersionError">请输入版本号</div>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label required">算法类型</label>
+            <select class="form-control" id="algorithmType" required>
+                <option value="">请选择算法类型</option>
+                <option value="python">Python脚本</option>
+                <option value="java">Java程序</option>
+                <option value="shell">Shell脚本</option>
+            </select>
+            <div class="error-message" id="algorithmTypeError">请选择算法类型</div>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">开发者</label>
+            <input type="text" class="form-control" id="author" placeholder="请输入开发者名称">
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">场景描述</label>
+            <textarea class="form-control" id="scene" rows="3" placeholder="请输入算法应用场景描述"></textarea>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">运行命令</label>
+            <input type="text" class="form-control" id="cmd" placeholder="例如: python algorithm.py">
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">输入文件名</label>
+            <input type="text" class="form-control" id="inputFile" placeholder="例如: input.txt">
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">输出文件名</label>
+            <input type="text" class="form-control" id="outputFile" placeholder="例如: output.txt">
+        </div>
+
+        <div class="form-actions">
+            <button type="button" class="btn btn-secondary" id="cancelBtn">取消</button>
+            <button type="button" class="btn btn-primary" id="uploadBtn">确认上传</button>
+        </div>
+    </form>
+</div>

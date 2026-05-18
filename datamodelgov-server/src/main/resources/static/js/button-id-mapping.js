@@ -89,6 +89,22 @@ const MENU_ID_MAP = {
         text: '关联规则配置',
         action: 'showAssociationRules'
     },
+    'menu-simulation-archive': {
+        text: '仿真档案管理',
+        action: 'showSimulationArchive'
+    },
+    'menu-algorithm-list': {
+        text: '算法管理',
+        action: 'showAlgorithmList'
+    },
+    'menu-project-new': {
+        text: '新增项目',
+        action: 'showProjectCreate'
+    },
+    'menu-project-list': {
+        text: '项目管理',
+        action: 'showProjectList'
+    },
     'menu-numerical-and-curve-analysis': {
         text: '数值与曲线分析',
         action: 'showVisualAnalysis'

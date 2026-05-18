@@ -1,0 +1,92 @@
+<div class="project-detail">
+    <div class="detail-header">
+        <div class="header-left">
+            <button class="back-btn" id="backBtn">← 返回项目列表</button>
+            <h1 class="project-title" id="projectTitle">项目详情</h1>
+        </div>
+        <div class="header-right">
+            <button class="action-btn edit" id="editBtn">编辑项目</button>
+            <button class="action-btn delete" id="deleteBtn">删除项目</button>
+        </div>
+    </div>
+
+    <div class="detail-tabs">
+        <button class="tab-btn active" data-tab="overview">概览</button>
+        <button class="tab-btn" data-tab="algorithms">算法档案</button>
+        <button class="tab-btn" data-tab="models">模型档案</button>
+        <button class="tab-btn" data-tab="data">数据档案</button>
+        <button class="tab-btn" data-tab="archives">仿真档案</button>
+    </div>
+
+    <div class="detail-content">
+        <div class="tab-content active" id="overviewTab">
+            <div class="info-card">
+                <h3>基本信息</h3>
+                <div class="info-row">
+                    <span class="info-label">项目名称:</span>
+                    <span class="info-value" id="infoName">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">项目描述:</span>
+                    <span class="info-value" id="infoDescription">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">项目类型:</span>
+                    <span class="info-value" id="infoType">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">创建人:</span>
+                    <span class="info-value" id="infoOwner">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">创建时间:</span>
+                    <span class="info-value" id="infoCreateTime">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">更新时间:</span>
+                    <span class="info-value" id="infoUpdateTime">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">状态:</span>
+                    <span class="info-value" id="infoStatus">-</span>
+                </div>
+            </div>
+
+            <div class="info-card">
+                <h3>资源统计</h3>
+                <div class="info-row">
+                    <span class="info-label">算法数量:</span>
+                    <span class="info-value" id="infoAlgorithmCount">0</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">模型数量:</span>
+                    <span class="info-value" id="infoModelCount">0</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">数据源数量:</span>
+                    <span class="info-value" id="infoDataSourceCount">0</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">仿真档案数量:</span>
+                    <span class="info-value" id="infoArchiveCount">0</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="tab-content" id="algorithmsTab">
+            <div class="archive-list" id="algorithmList"></div>
+        </div>
+
+        <div class="tab-content" id="modelsTab">
+            <div class="archive-list" id="modelList"></div>
+        </div>
+
+        <div class="tab-content" id="dataTab">
+            <div class="archive-list" id="dataSourceList"></div>
+        </div>
+
+        <div class="tab-content" id="archivesTab">
+            <div class="archive-list" id="simulationArchiveList"></div>
+        </div>
+    </div>
+</div>

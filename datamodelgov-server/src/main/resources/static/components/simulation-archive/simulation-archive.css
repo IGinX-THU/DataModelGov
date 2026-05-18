@@ -1,0 +1,223 @@
+/* 仿真档案管理 — 与解析规则等工作区 CRUD 一致 */
+@import url('../../css/variables.css');
+@import url('../../css/base-components.css');
+@import url('../../css/workbench-crud-panel.css');
+
+/* Simulation Archive Specific Styles */
+
+/* Table Styles */
+.table-wrapper {
+    overflow-x: auto;
+}
+
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.data-table th {
+    background: #f5f7fa;
+    padding: 12px;
+    text-align: left;
+    font-weight: 600;
+    color: #333;
+    border-bottom: 2px solid #e4e7ed;
+}
+
+.data-table td {
+    padding: 12px;
+    border-bottom: 1px solid #e4e7ed;
+}
+
+.data-table tr:hover {
+    background: #f5f7fa;
+}
+
+.status-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+}
+
+.status-badge.active {
+    background: #f0f9ff;
+    color: #67c23a;
+}
+
+.status-badge.inactive {
+    background: #fef0f0;
+    color: #f56c6c;
+}
+
+.action-buttons {
+    display: flex;
+    gap: 8px;
+}
+
+.action-btn {
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    border: none;
+    transition: all 0.3s;
+}
+
+.action-btn.run {
+    background: #67c23a;
+    color: white;
+}
+
+.action-btn.run:hover {
+    background: #85ce61;
+}
+
+.action-btn.stop {
+    background: #f56c6c;
+    color: white;
+}
+
+.action-btn.stop:hover {
+    background: #f78989;
+}
+
+.action-btn.copy {
+    background: #909399;
+    color: white;
+}
+
+.action-btn.copy:hover {
+    background: #a6a9ad;
+}
+
+.action-btn.edit {
+    background: #409eff;
+    color: white;
+}
+
+.action-btn.edit:hover {
+    background: #66b1ff;
+}
+
+.action-btn.delete {
+    background: #f56c6c;
+    color: white;
+}
+
+.action-btn.delete:hover {
+    background: #f78989;
+}
+
+/* Graph Editor Styles */
+.graph-editor {
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    overflow: hidden;
+    margin-top: 16px;
+}
+
+.graph-toolbar {
+    display: flex;
+    gap: 8px;
+    padding: 12px;
+    background: #f5f7fa;
+    border-bottom: 1px solid #ddd;
+    flex-wrap: wrap;
+}
+
+.graph-btn {
+    padding: 6px 12px;
+    border: 1px solid #ddd;
+    background: white;
+    border-radius: 4px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.graph-btn:hover {
+    background: #409eff;
+    color: white;
+    border-color: #409eff;
+}
+
+.graph-canvas {
+    height: 500px;
+    background: white;
+    position: relative;
+}
+
+#graphSvg {
+    display: block;
+}
+
+.graph-info {
+    display: flex;
+    gap: 20px;
+    padding: 12px;
+    background: #f5f7fa;
+    border-top: 1px solid #ddd;
+}
+
+.info-item {
+    font-size: 14px;
+    color: #666;
+}
+
+.info-item span:last-child {
+    font-weight: 600;
+    color: #333;
+}
+
+/* SVG Graph Styles */
+.graph-node {
+    cursor: move;
+}
+
+.graph-node circle {
+    stroke: #333;
+    stroke-width: 2;
+}
+
+.graph-node.algorithm circle {
+    fill: #67c23a;
+}
+
+.graph-node.model circle {
+    fill: #409eff;
+}
+
+.graph-node.data circle {
+    fill: #e6a23c;
+}
+
+.graph-node.selected circle {
+    stroke: #f56c6c;
+    stroke-width: 3;
+}
+
+.graph-node text {
+    font-size: 12px;
+    fill: #333;
+    pointer-events: none;
+}
+
+.graph-edge {
+    stroke: #999;
+    stroke-width: 2;
+    fill: none;
+}
+
+.graph-edge.selected {
+    stroke: #f56c6c;
+    stroke-width: 3;
+}
+
+.graph-edge-marker {
+    fill: #999;
+}
+
+.graph-edge.selected .graph-edge-marker {
+    fill: #f56c6c;
+}
