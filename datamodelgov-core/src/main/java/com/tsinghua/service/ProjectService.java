@@ -135,8 +135,11 @@ public class ProjectService {
     }
 
     public ProjectTree buildProjectTree(String name) {
-        ProjectEntity project = findByName(name);
         ProjectTree projectTree = new ProjectTree();
+        ProjectEntity project = findByName(name);
+        if (project == null) {
+            return null;
+        }
         projectTree.setName(project.getName());
         if (StringUtils.hasText(project.getAlgorithms())) {
             projectTree.setAlgorithms(Arrays.stream(project.getAlgorithms().split(",")).distinct().collect(Collectors.toList()));

@@ -97,6 +97,17 @@ public class DataSourceService {
         // iginxSession.closeSession();
         dataPermissionService.deleteByTablePrefix(storageEngineInfoDto.getSchemaPrefix());
 
+        // 删除对应的数据档案元数据
+        try {
+            DataArchiveEntity archive = dataArchiveService.findByName(storageEngineInfoDto.getSchemaPrefix());
+            if (archive != null && archive.getId() != null) {
+                dataArchiveService.deleteArchive(archive.getId());
+                log.info("已删除数据源档案元数据: {}", storageEngineInfoDto.getSchemaPrefix());
+            }
+        } catch (Exception e) {
+            log.error("删除数据源档案元数据失败", e);
+        }
+
         // 从项目的datas字段移除
         String projectName = ProjectContext.getCurrentProject("unknown");
         if (projectName != null && !projectName.isEmpty()) {
@@ -166,7 +177,9 @@ public class DataSourceService {
             DataArchiveEntity archive = new DataArchiveEntity();
             archive.setName(request.getSchemaPrefix());
             archive.setType("datasource");
-            archive.setDescription(request.getDescription());
+            archive.setDesc(request.getDescription());
+            
+            log.info("准备保存数据源档案: name={}, desc={}", archive.getName(), archive.getDesc());
             
             // 从上下文获取项目名称和用户名
             String projectName = ProjectContext.getCurrentProject(null);
@@ -179,7 +192,7 @@ public class DataSourceService {
             archive.setConfig(configJson);
 
             dataArchiveService.saveArchive(archive);
-            log.info("数据源档案已保存: {}", request.getSchemaPrefix());
+            log.info("数据源档案已保存: {}, desc={}", request.getSchemaPrefix(), archive.getDesc());
         } catch (Exception e) {
             log.error("保存数据源档案失败", e);
             // 不抛出异常，避免影响主流程

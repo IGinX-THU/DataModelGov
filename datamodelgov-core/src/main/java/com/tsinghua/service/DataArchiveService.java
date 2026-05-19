@@ -55,6 +55,8 @@ public class DataArchiveService {
             archive.setOwner(com.tsinghua.auth.util.AuthUtil.getCurrentUsername());
         }
 
+        log.info("准备保存数据档案到IginX: name={}, type={}, desc={}", archive.getName(), archive.getType(), archive.getDesc());
+
         WriteClient writeClient = iginxClient.getWriteClient();
         writeClient.writeMeasurement(archive);
 
@@ -84,6 +86,40 @@ public class DataArchiveService {
             return ConvertUtil.mapToEntity(entity, rs, DATA_ARCHIVE_PREFIX);
         } catch (Exception e) {
             log.error("查询数据档案失败", e);
+            return null;
+        }
+    }
+
+    /**
+     * 根据名称查询单个数据档案
+     */
+    public DataArchiveEntity findByName(String name) {
+        try {
+            if (name == null || name.trim().isEmpty()) {
+                return null;
+            }
+            String sql = String.format("SELECT * FROM %s WHERE name = '%s';", DATA_ARCHIVE_PREFIX, name.trim());
+            log.info("执行SQL: {}", sql);
+
+            SessionExecuteSqlResult res = iginxSession.executeSql(sql);
+            List<Map<String, Object>> records = ConvertUtil.getRecords(res);
+
+            log.info("查询结果记录数: {}", records.size());
+            if (!records.isEmpty()) {
+                log.info("查询结果: {}", records.get(0));
+            }
+
+            if (records.isEmpty()) {
+                return null;
+            }
+
+            DataArchiveEntity entity = new DataArchiveEntity();
+            Map<String, Object> rs = records.get(0);
+            DataArchiveEntity result = ConvertUtil.mapToEntity(entity, rs, DATA_ARCHIVE_PREFIX);
+            log.info("映射后的实体: name={}, desc={}", result.getName(), result.getDesc());
+            return result;
+        } catch (Exception e) {
+            log.error("根据名称查询数据档案失败", e);
             return null;
         }
     }

@@ -228,6 +228,7 @@ class ImportDataComponent extends HTMLElement {
             if (description) {
                 config.description = description;
             }
+            console.log('导入配置:', config);
             formData.append('config', new Blob([JSON.stringify(config)], { type: 'application/json' }));
             
             // 添加文件

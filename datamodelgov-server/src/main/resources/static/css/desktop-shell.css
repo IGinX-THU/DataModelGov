@@ -76,6 +76,7 @@
 
 .bottom-sidebar-spacer {
     flex: 1;
+    text-align: center;
 }
 
 .bottom-sidebar-icons {

@@ -100,7 +100,8 @@ document.addEventListener('DOMContentLoaded', function() {
             'permissionManagement',
             'projectList',
             'projectDetail',
-            'projectCreate'
+            'projectCreate',
+            'dataArchiveDetail'
         ];
         
         components.forEach(componentId => {
@@ -122,8 +123,8 @@ document.addEventListener('DOMContentLoaded', function() {
         // 额外清理：移除所有可能残留的动态创建的组件
         const workspace = document.querySelector('.workspace-content');
         if (workspace) {
-            // 查找所有动态创建的组件并移除
-            const dynamicComponents = workspace.querySelectorAll('visual-analysis, data-visualization');
+            // 查找所有动态创建的组件并移除（只移除没有ID的动态组件）
+            const dynamicComponents = workspace.querySelectorAll('visual-analysis:not([id]), data-visualization:not([id]), data-archive-detail:not([id])');
             dynamicComponents.forEach(comp => {
                 console.log(`🗑️ 移除动态组件: ${comp.tagName}`);
                 comp.remove();
@@ -474,10 +475,28 @@ document.addEventListener('DOMContentLoaded', function() {
                         break;
                     case 'showRegisterEmbedded':
                         console.log('注册异构数据源菜单被点击');
+                        // 检查是否有当前项目
+                        const username = window.localStorage.getItem('username');
+                        const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
+                        if (!cachedProject) {
+                            if (window.CommonUtils && window.CommonUtils.showToast) {
+                                window.CommonUtils.showToast('请先选择或创建项目', 'error');
+                            }
+                            return;
+                        }
                         showComponent('registerEmbedded');
                         break;
                     case 'showImportData':
                         console.log('导入数据菜单被点击');
+                        // 检查是否有当前项目
+                        const usernameForImport = window.localStorage.getItem('username');
+                        const cachedProjectForImport = usernameForImport ? JSON.parse(window.localStorage.getItem('currentProject_' + usernameForImport) || 'null') : null;
+                        if (!cachedProjectForImport) {
+                            if (window.CommonUtils && window.CommonUtils.showToast) {
+                                window.CommonUtils.showToast('请先选择或创建项目', 'error');
+                            }
+                            return;
+                        }
                         showComponent('importData');
                         break;
                     case 'showModelUpload':
@@ -1836,7 +1855,7 @@ function showVisualAnalysis() {
         // 清空底部项目名称显示
         const spacerElement = document.querySelector('.bottom-sidebar-spacer');
         if (spacerElement) {
-            spacerElement.textContent = '';
+            spacerElement.textContent = '当前项目：无';
         }
     };
 
@@ -2376,6 +2395,25 @@ window.showAbout = function() {
 window.displayProjectTree = function(projectName) {
     console.log('🔄 displayProjectTree 被调用，项目名称:', projectName);
 
+    if (!projectName || !projectName.trim()) {
+        console.log('项目名称为空，显示无项目提示');
+        const treeContainer = document.getElementById('projectTree');
+        if (treeContainer) {
+            treeContainer.innerHTML = `
+                <div style="padding: 20px; text-align: center; color: #999;">
+                    <div style="font-size: 48px; margin-bottom: 16px;">📂</div>
+                    <div style="font-size: 14px; margin-bottom: 12px;">暂未打开项目</div>
+                    <div style="font-size: 12px; color: #aaa;">请在项目管理中打开或新建项目</div>
+                </div>
+            `;
+        }
+        const spacerElement = document.querySelector('.bottom-sidebar-spacer');
+        if (spacerElement) {
+            spacerElement.textContent = '当前项目：无';
+        }
+        return Promise.resolve();
+    }
+
     if (window.showGlobalLoading) {
         window.showGlobalLoading('正在加载项目树...');
     }
@@ -2414,10 +2452,38 @@ window.displayProjectTree = function(projectName) {
                 }
             } else {
                 console.error('获取项目树失败:', result.message);
+                const treeContainer = document.getElementById('projectTree');
+                if (treeContainer) {
+                    treeContainer.innerHTML = `
+                        <div style="padding: 20px; text-align: center; color: #999;">
+                            <div style="font-size: 48px; margin-bottom: 16px;">📂</div>
+                            <div style="font-size: 14px; margin-bottom: 12px;">暂未打开项目</div>
+                            <div style="font-size: 12px; color: #aaa;">请在项目管理中打开或新建项目</div>
+                        </div>
+                    `;
+                }
+                const spacerElement = document.querySelector('.bottom-sidebar-spacer');
+                if (spacerElement) {
+                    spacerElement.textContent = '当前项目：无';
+                }
             }
         })
         .catch(error => {
             console.error('加载项目树失败:', error);
+            const treeContainer = document.getElementById('projectTree');
+            if (treeContainer) {
+                treeContainer.innerHTML = `
+                    <div style="padding: 20px; text-align: center; color: #999;">
+                        <div style="font-size: 48px; margin-bottom: 16px;">📂</div>
+                        <div style="font-size: 14px; margin-bottom: 12px;">暂未打开项目</div>
+                        <div style="font-size: 12px; color: #aaa;">请在项目管理中打开或新建项目</div>
+                    </div>
+                `;
+            }
+            const spacerElement = document.querySelector('.bottom-sidebar-spacer');
+            if (spacerElement) {
+                spacerElement.textContent = '当前项目：无';
+            }
         })
         .finally(() => {
             if (window.hideGlobalLoading) {
@@ -2456,6 +2522,17 @@ function bindProjectTreeEvents() {
                 // 根据节点类型执行不同操作
                 if (nodeType === 'data') {
                     console.log('点击数据节点:', nodeName);
+                    // 清空工作区
+                    if (window.hideAllComponents) {
+                        window.hideAllComponents();
+                    }
+                    // 跳转到数据档案详情页
+                    const dataArchiveDetail = document.getElementById('dataArchiveDetail');
+                    if (dataArchiveDetail) {
+                        dataArchiveDetail.showDetail(nodeName);
+                    } else {
+                        console.error('数据档案详情组件未找到');
+                    }
                 } else if (nodeType === 'algorithm') {
                     console.log('点击算法节点:', nodeName);
                 } else if (nodeType === 'model') {
@@ -2473,7 +2550,8 @@ function renderProjectTree(treeData) {
     // 根节点：项目名
     html += `
         <div class="tree-node expanded" data-node-type="project" data-full-path="0">
-            <span class="tree-node-text">📂 ${treeData.name}</span>
+            <span class="tree-icon project-icon">📁</span>
+            <span class="tree-node-text">${treeData.name}</span>
             <div class="tree-children">
     `;
 
@@ -2481,13 +2559,15 @@ function renderProjectTree(treeData) {
     if (treeData.algorithms && treeData.algorithms.length > 0) {
         html += `
             <div class="tree-node expanded" data-node-type="folder" data-full-path="0-algorithms">
-                <span class="tree-node-text">📂 algorithms</span>
+                <span class="tree-icon folder-icon">📂</span>
+                <span class="tree-node-text">algorithms</span>
                 <div class="tree-children">
         `;
         treeData.algorithms.forEach((algo, index) => {
             html += `
                 <div class="tree-node" data-node-type="algorithm" data-full-path="0-algorithms-${index}">
-                    <span class="tree-node-text">🧮 ${algo}</span>
+                    <span class="tree-icon algorithm-icon">🧮</span>
+                    <span class="tree-node-text">${algo}</span>
                 </div>
             `;
         });
@@ -2501,13 +2581,15 @@ function renderProjectTree(treeData) {
     if (treeData.models && treeData.models.length > 0) {
         html += `
             <div class="tree-node expanded" data-node-type="folder" data-full-path="0-models">
-                <span class="tree-node-text">📂 models</span>
+                <span class="tree-icon folder-icon">📂</span>
+                <span class="tree-node-text">models</span>
                 <div class="tree-children">
         `;
         treeData.models.forEach((model, index) => {
             html += `
                 <div class="tree-node" data-node-type="model" data-full-path="0-models-${index}">
-                    <span class="tree-node-text">📦 ${model}</span>
+                    <span class="tree-icon model-icon">📦</span>
+                    <span class="tree-node-text">${model}</span>
                 </div>
             `;
         });
@@ -2521,13 +2603,15 @@ function renderProjectTree(treeData) {
     if (treeData.datas && treeData.datas.length > 0) {
         html += `
             <div class="tree-node expanded" data-node-type="folder" data-full-path="0-datas">
-                <span class="tree-node-text">📂 datas</span>
+                <span class="tree-icon folder-icon">📂</span>
+                <span class="tree-node-text">datas</span>
                 <div class="tree-children">
         `;
         treeData.datas.forEach((data, index) => {
             html += `
                 <div class="tree-node" data-node-type="data" data-full-path="0-datas-${index}">
-                    <span class="tree-node-text">📊 ${data}</span>
+                    <span class="tree-icon data-icon">📊</span>
+                    <span class="tree-node-text">${data}</span>
                 </div>
             `;
         });

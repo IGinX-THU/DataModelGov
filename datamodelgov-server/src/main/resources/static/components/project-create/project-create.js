@@ -238,7 +238,11 @@ class ProjectCreate extends HTMLElement {
             const result = await window.AppConfig.post('project', endpoint, projectData);
 
             if (result.code === 200) {
-                this.showToast('项目创建成功');
+                if (window.CommonUtils && window.CommonUtils.showToast) {
+                    window.CommonUtils.showToast('项目创建成功');
+                } else {
+                    this.showToast('项目创建成功');
+                }
                 this.hide();
                 // Refresh project list if visible
                 const projectList = document.querySelector('project-list');
@@ -246,11 +250,19 @@ class ProjectCreate extends HTMLElement {
                     projectList.loadProjectsFromAPI();
                 }
             } else {
-                this.showToast(result.message || '创建失败', 'error');
+                if (window.CommonUtils && window.CommonUtils.showToast) {
+                    window.CommonUtils.showToast(result.message || '创建失败', 'error');
+                } else {
+                    this.showToast(result.message || '创建失败', 'error');
+                }
             }
         } catch (error) {
             console.error('创建项目失败:', error);
-            this.showToast('网络错误，创建失败', 'error');
+            if (window.CommonUtils && window.CommonUtils.showToast) {
+                window.CommonUtils.showToast('网络错误，创建失败', 'error');
+            } else {
+                this.showToast('网络错误，创建失败', 'error');
+            }
         } finally {
             if (window.hideGlobalLoading) {
                 window.hideGlobalLoading();

@@ -28,13 +28,9 @@ public class DataArchiveEntity {
     @Field(name = "name")
     private String name;
 
-    @ApiModelProperty(value = "类型：datasource-数据源，import-导入数据")
-    @Field(name = "type")
-    private String type;
-
     @ApiModelProperty(value = "描述信息")
-    @Field(name = "description")
-    private String description;
+    @Field(name = "desc")
+    private String desc;
 
     @ApiModelProperty(value = "项目名称")
     @Field(name = "projectName")
@@ -47,6 +43,10 @@ public class DataArchiveEntity {
     @ApiModelProperty(value = "创建时间")
     @Field(name = "createTime")
     private Long createTime;
+
+    @ApiModelProperty(value = "类型：datasource-数据源，import-导入数据")
+    @Field(name = "type")
+    private String type;
 
     @ApiModelProperty(value = "配置信息（JSON格式，包含数据源配置或导入配置）")
     @Field(name = "config")

@@ -1186,7 +1186,11 @@ class AssociationRules extends HTMLElement {
             const parsed = JSON.parse(textarea.value);
             textarea.value = JSON.stringify(parsed, null, 2);
         } catch (e) {
-            alert('无效的JSON格式');
+            if (window.CommonUtils && window.CommonUtils.showToast) {
+                window.CommonUtils.showToast('无效的JSON格式', 'error');
+            } else {
+                console.error('无效的JSON格式');
+            }
         }
     }
 
@@ -1903,11 +1907,19 @@ class AssociationRules extends HTMLElement {
     }
 
     importRules() {
-        alert('导入功能待实现');
+        if (window.CommonUtils && window.CommonUtils.showToast) {
+            window.CommonUtils.showToast('导入功能待实现', 'info');
+        } else {
+            console.log('导入功能待实现');
+        }
     }
 
     exportRules() {
-        alert('导出功能待实现');
+        if (window.CommonUtils && window.CommonUtils.showToast) {
+            window.CommonUtils.showToast('导出功能待实现', 'info');
+        } else {
+            console.log('导出功能待实现');
+        }
     }
     
     copyRule(id) {

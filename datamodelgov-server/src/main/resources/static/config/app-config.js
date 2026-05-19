@@ -95,6 +95,14 @@ window.AppConfig = {
             stop: '/api/simulation/archives/stop',
             'execution-status': '/api/simulation/archives/execution-status'
         },
+        // 数据档案相关
+        dataArchive: {
+            query: '/api/dataArchive/query',
+            count: '/api/dataArchive/count',
+            detail: '/api/dataArchive/detail',
+            update: '/api/dataArchive/update',
+            delete: '/api/dataArchive/delete'
+        },
         // 算法管理相关
         algorithm: {
             upload: '/api/algorithm/upload',

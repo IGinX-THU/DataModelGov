@@ -311,7 +311,7 @@ public class DataTableService {
             DataArchiveEntity archive = new DataArchiveEntity();
             archive.setName(importConfig.getTargetPath());
             archive.setType("import");
-            archive.setDescription(importConfig.getDescription());
+            archive.setDesc(importConfig.getDescription());
             
             // 从上下文获取项目名称和用户名
             String projectName = com.tsinghua.util.ProjectContext.getCurrentProject(null);
