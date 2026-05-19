@@ -20,7 +20,7 @@ import java.util.List;
 @Accessors(chain = true)
 @NoArgsConstructor
 @AllArgsConstructor
-@Measurement(name = "relational_system.projects")
+@Measurement(name = "relational_system.project")
 public class ProjectEntity {
     @ApiModelProperty(value = "项目ID")
     @Field(timestamp = true)
@@ -34,15 +34,15 @@ public class ProjectEntity {
     @Field(name = "desc")
     private String desc;
 
-    @ApiModelProperty(value = "关联的算法列表（JSON格式：[{name, version}]）")
+    @ApiModelProperty(value = "关联的算法列表（格式：name_version, name_version2, ... ）")
     @Field(name = "algorithms")
     private String algorithms;
     
-    @ApiModelProperty(value = "关联的模型列表（JSON格式：[{name, version}]）")
+    @ApiModelProperty(value = "关联的模型列表（格式：model1, model2, ... ）")
     @Field(name = "models")
     private String models;
     
-    @ApiModelProperty(value = "关联的数据源列表（JSON格式：[{dataSourcePath}]）")
+    @ApiModelProperty(value = "关联的数据源列表（格式：dataSourcePath1, dataSourcePath2, ... ）")
     @Field(name = "datas")
     private String datas;
 

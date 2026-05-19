@@ -14,66 +14,35 @@ class ProjectList extends HTMLElement {
                 window.showGlobalLoading('正在查询项目...');
             }
 
-            const keyword = this.shadowRoot.getElementById('keywordFilter')?.value.trim();
-            const searchType = this.shadowRoot.getElementById('searchType')?.value || 'all';
+            const nameFilter = this.shadowRoot.getElementById('nameFilter')?.value.trim();
+            const algorithmFilter = this.shadowRoot.getElementById('algorithmFilter')?.value.trim();
+            const modelFilter = this.shadowRoot.getElementById('modelFilter')?.value.trim();
+            const dataFilter = this.shadowRoot.getElementById('dataFilter')?.value.trim();
 
-            // Try to load from local cache first
-            let result = null;
-            if (window.localDB) {
-                try {
-                    const isStale = await window.localDB.isCacheStale('project_list', 5 * 60 * 1000);
-                    if (!isStale && !keyword) {
-                        const cachedData = await window.localDB.getCacheMetadata('project_list');
-                        if (cachedData) {
-                            console.log('Loading projects from local cache');
-                            result = cachedData;
-                        }
-                    }
-                } catch (cacheError) {
-                    console.error('Cache read failed:', cacheError);
-                }
-            }
+            // Build query request matching backend ProjectsQueryRequest
+            const queryRequest = {
+                pageNum: this.currentPage,
+                pageSize: this.pageSize,
+                name: nameFilter || null,
+                algorithm: algorithmFilter || null,
+                model: modelFilter || null,
+                data: dataFilter || null
+            };
 
-            // Fetch from server if no cache or cache is stale
-            if (!result) {
-                result = await window.AppConfig.get('project', 'search', {
-                    keyword: keyword || null,
-                    searchType: searchType
-                });
-                
-                // Cache the result if successful
-                if (result.code === 200 && window.localDB && !keyword) {
-                    try {
-                        await window.localDB.setCacheMetadata('project_list', result);
-                        
-                        // Also cache individual projects
-                        if (result.data) {
-                            for (const project of result.data) {
-                                await window.localDB.put('projects', project);
-                            }
-                        }
-                    } catch (cacheError) {
-                        console.error('Cache write failed:', cacheError);
-                    }
-                }
-            }
-            
+            const result = await window.AppConfig.post('project', 'query', queryRequest);
+
             if (result.code === 200 && result.data) {
                 this.data = result.data.map(project => ({
-                    id: project.id,
+                    id: project.createTime,
                     name: project.name,
-                    description: project.description,
-                    type: project.type,
-                    updateTime: new Date(project.updateTime).toLocaleString('zh-CN'),
+                    desc: project.desc,
                     createTime: new Date(project.createTime).toLocaleString('zh-CN'),
                     owner: project.owner,
-                    status: project.status ? 'active' : 'inactive',
                     algorithms: project.algorithms ? JSON.parse(project.algorithms) : [],
                     models: project.models ? JSON.parse(project.models) : [],
-                    dataSources: project.dataSources ? JSON.parse(project.dataSources) : [],
-                    simulationArchives: project.simulationArchives ? JSON.parse(project.simulationArchives) : []
+                    datas: project.datas ? JSON.parse(project.datas) : []
                 }));
-                
+
                 this.totalCount = this.data.length;
                 this.renderTable();
             } else {
@@ -81,37 +50,6 @@ class ProjectList extends HTMLElement {
             }
         } catch (error) {
             console.error('加载项目失败:', error);
-            
-            // Fallback to local cache if network fails
-            if (window.localDB) {
-                try {
-                    const cachedProjects = await window.localDB.getAll('projects');
-                    if (cachedProjects && cachedProjects.length > 0) {
-                        console.log('Using offline cache as fallback');
-                        this.data = cachedProjects.map(project => ({
-                            id: project.id,
-                            name: project.name,
-                            description: project.description,
-                            type: project.type,
-                            updateTime: new Date(project.updateTime).toLocaleString('zh-CN'),
-                            createTime: new Date(project.createTime).toLocaleString('zh-CN'),
-                            owner: project.owner,
-                            status: project.status ? 'active' : 'inactive',
-                            algorithms: project.algorithms ? JSON.parse(project.algorithms) : [],
-                            models: project.models ? JSON.parse(project.models) : [],
-                            dataSources: project.dataSources ? JSON.parse(project.dataSources) : [],
-                            simulationArchives: project.simulationArchives ? JSON.parse(project.simulationArchives) : []
-                        }));
-                        this.totalCount = this.data.length;
-                        this.renderTable();
-                        this.showToast('离线模式：使用本地缓存数据', 'warning');
-                        return;
-                    }
-                } catch (cacheError) {
-                    console.error('Fallback cache read failed:', cacheError);
-                }
-            }
-            
             this.showToast('网络错误，无法加载项目', 'error');
         } finally {
             if (window.hideGlobalLoading) {
@@ -120,58 +58,62 @@ class ProjectList extends HTMLElement {
         }
     }
 
-    async deleteProjectFromAPI(projectId) {
+    async viewProjectDetail(createTime) {
         try {
-            const result = await window.AppConfig.delete('project', 'delete', { projectId });
-            
-            if (result.code === 200) {
-                await this.loadProjectsFromAPI();
-                this.showToast('项目已删除');
+            if (window.showGlobalLoading) {
+                window.showGlobalLoading('正在加载项目详情...');
+            }
+
+            const result = await window.AppConfig.get('project', 'detail', { createTime });
+
+            if (result.code === 200 && result.data) {
+                this.showDetailModal(result.data);
             } else {
-                this.showToast(result.message || '删除失败', 'error');
+                this.showToast(result.message || '加载项目详情失败', 'error');
             }
         } catch (error) {
-            console.error('删除项目失败:', error);
-            this.showToast('网络错误，删除失败', 'error');
+            console.error('加载项目详情失败:', error);
+            this.showToast('网络错误，无法加载项目详情', 'error');
+        } finally {
+            if (window.hideGlobalLoading) {
+                window.hideGlobalLoading();
+            }
         }
-        
-        this.hideModal();
     }
 
-    async exportProjectFromAPI(projectId) {
-        try {
-            const result = await window.AppConfig.get('project', 'export', { projectId });
-            
-            if (result.code === 200 && result.data) {
-                // Create a blob and download
-                const blob = new Blob([result.data], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `project_${projectId}.json`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-                this.showToast('项目导出成功');
-            } else {
-                this.showToast(result.message || '导出失败', 'error');
-            }
-        } catch (error) {
-            console.error('导出项目失败:', error);
-            this.showToast('网络错误，导出失败', 'error');
+    showDetailModal(project) {
+        this.shadowRoot.getElementById('detailName').textContent = project.name || '-';
+        this.shadowRoot.getElementById('detailDesc').textContent = project.desc || '-';
+        this.shadowRoot.getElementById('detailOwner').textContent = project.owner || '-';
+        this.shadowRoot.getElementById('detailCreateTime').textContent = new Date(project.createTime).toLocaleString('zh-CN');
+
+        const algorithms = project.algorithms ? JSON.parse(project.algorithms) : [];
+        const models = project.models ? JSON.parse(project.models) : [];
+        const datas = project.datas ? JSON.parse(project.datas) : [];
+
+        this.shadowRoot.getElementById('detailAlgorithms').textContent = algorithms.length > 0 ? algorithms.map(a => a.name).join(', ') : '-';
+        this.shadowRoot.getElementById('detailModels').textContent = models.length > 0 ? models.map(m => m.name).join(', ') : '-';
+        this.shadowRoot.getElementById('detailDatas').textContent = datas.length > 0 ? datas.join(', ') : '-';
+
+        const modal = this.shadowRoot.getElementById('detailModalMask');
+        if (modal) {
+            modal.hidden = false;
+            modal.style.display = 'flex';
+        }
+    }
+
+    hideDetailModal() {
+        const modal = this.shadowRoot.getElementById('detailModalMask');
+        if (modal) {
+            modal.hidden = true;
+            modal.style.display = 'none';
         }
     }
 
     async connectedCallback() {
         await this.loadResources();
-        
+
         setTimeout(() => {
-            const modalMask = this.shadowRoot.getElementById('modalMask');
-            if (modalMask) {
-                modalMask.hidden = true;
-                modalMask.style.display = 'none';
-            }
             this.bindEvents();
         }, 100);
     }
@@ -181,13 +123,21 @@ class ProjectList extends HTMLElement {
         this.style.display = 'block';
 
         this.currentPage = 1;
-        const keywordFilter = this.shadowRoot.getElementById('keywordFilter');
-        if (keywordFilter) {
-            keywordFilter.value = '';
+        const nameFilter = this.shadowRoot.getElementById('nameFilter');
+        if (nameFilter) {
+            nameFilter.value = '';
         }
-        const searchType = this.shadowRoot.getElementById('searchType');
-        if (searchType) {
-            searchType.value = 'all';
+        const algorithmFilter = this.shadowRoot.getElementById('algorithmFilter');
+        if (algorithmFilter) {
+            algorithmFilter.value = '';
+        }
+        const modelFilter = this.shadowRoot.getElementById('modelFilter');
+        if (modelFilter) {
+            modelFilter.value = '';
+        }
+        const dataFilter = this.shadowRoot.getElementById('dataFilter');
+        if (dataFilter) {
+            dataFilter.value = '';
         }
 
         setTimeout(() => {
@@ -237,18 +187,20 @@ class ProjectList extends HTMLElement {
         <div class="filter-rows" id="filterRows">
             <div class="filter-row">
                 <div class="filter-field">
-                    <span class="filter-label">搜索关键词</span>
-                    <input class="filter-input" type="text" placeholder="请输入搜索关键词" id="keywordFilter" />
+                    <span class="filter-label">项目名称</span>
+                    <input class="filter-input" type="text" placeholder="请输入项目名称" id="nameFilter" />
                 </div>
                 <div class="filter-field">
-                    <span class="filter-label">搜索类型</span>
-                    <select class="filter-input" id="searchType">
-                        <option value="all">全部</option>
-                        <option value="name">按名称</option>
-                        <option value="algorithm">按算法</option>
-                        <option value="model">按模型</option>
-                        <option value="data">按数据</option>
-                    </select>
+                    <span class="filter-label">算法</span>
+                    <input class="filter-input" type="text" placeholder="请输入算法" id="algorithmFilter" />
+                </div>
+                <div class="filter-field">
+                    <span class="filter-label">模型</span>
+                    <input class="filter-input" type="text" placeholder="请输入模型" id="modelFilter" />
+                </div>
+                <div class="filter-field">
+                    <span class="filter-label">数据</span>
+                    <input class="filter-input" type="text" placeholder="请输入数据" id="dataFilter" />
                 </div>
             </div>
         </div>
@@ -262,7 +214,6 @@ class ProjectList extends HTMLElement {
     <div class="project-table-card">
         <div class="table-toolbar">
             <button class="toolbar-btn green" type="button" id="addProjectBtn">新建项目</button>
-            <button class="toolbar-btn blue" type="button" id="importProjectBtn">导入项目</button>
         </div>
         <div class="table-wrapper">
             <table class="data-table">
@@ -270,10 +221,8 @@ class ProjectList extends HTMLElement {
                     <tr>
                         <th>项目名称</th>
                         <th>描述</th>
-                        <th>类型</th>
                         <th>创建人</th>
                         <th>创建时间</th>
-                        <th>状态</th>
                         <th>操作</th>
                     </tr>
                 </thead>
@@ -299,23 +248,49 @@ class ProjectList extends HTMLElement {
     </div>
 </div>
 
-<div class="modal-mask" id="modalMask" hidden>
+<div class="modal-mask" id="detailModalMask" hidden>
     <div class="modal">
         <div class="modal-header">
-            <span id="modalTitle">确认删除</span>
-            <button class="modal-close" id="modalClose">×</button>
+            <span id="detailModalTitle">项目详情</span>
+            <button class="modal-close" id="detailModalClose">×</button>
         </div>
-        <div class="modal-body" id="modalBody">
-            <p>确定要删除该项目吗？此操作不可恢复。</p>
+        <div class="modal-body" id="detailModalBody">
+            <div class="detail-content">
+                <div class="detail-row">
+                    <span class="detail-label">项目名称：</span>
+                    <span class="detail-value" id="detailName"></span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">描述：</span>
+                    <span class="detail-value" id="detailDesc"></span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">创建人：</span>
+                    <span class="detail-value" id="detailOwner"></span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">创建时间：</span>
+                    <span class="detail-value" id="detailCreateTime"></span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">算法：</span>
+                    <span class="detail-value" id="detailAlgorithms"></span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">模型：</span>
+                    <span class="detail-value" id="detailModels"></span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">数据：</span>
+                    <span class="detail-value" id="detailDatas"></span>
+                </div>
+            </div>
         </div>
-        <div class="modal-footer" id="modalFooter">
-            <button type="button" class="modal-btn secondary" id="cancelBtn">取消</button>
-            <button type="button" class="modal-btn danger" id="confirmBtn">确定</button>
+        <div class="modal-footer">
+            <button type="button" class="modal-btn secondary" id="detailModalCloseBtn">关闭</button>
         </div>
     </div>
-</div>
-
-<input type="file" id="importFileInput" accept=".json" style="display: none;" />`;
+</div>`;
     }
 
     bindEvents() {
@@ -335,17 +310,11 @@ class ProjectList extends HTMLElement {
                 case 'addProjectBtn':
                     this.showCreateProject();
                     break;
-                case 'importProjectBtn':
-                    this.shadowRoot.getElementById('importFileInput').click();
-                    break;
             }
         });
 
-        this.shadowRoot.getElementById('importFileInput')?.addEventListener('change', (e) => this.handleImportFile(e));
-
-        this.shadowRoot.getElementById('modalClose')?.addEventListener('click', () => this.hideModal());
-        this.shadowRoot.getElementById('cancelBtn')?.addEventListener('click', () => this.hideModal());
-        this.shadowRoot.getElementById('confirmBtn')?.addEventListener('click', () => this.confirmDelete());
+        this.shadowRoot.getElementById('detailModalClose')?.addEventListener('click', () => this.hideDetailModal());
+        this.shadowRoot.getElementById('detailModalCloseBtn')?.addEventListener('click', () => this.hideDetailModal());
 
         this.shadowRoot.getElementById('prevPage')?.addEventListener('click', () => this.changePage(-1));
         this.shadowRoot.getElementById('nextPage')?.addEventListener('click', () => this.changePage(1));
@@ -357,10 +326,14 @@ class ProjectList extends HTMLElement {
     }
 
     resetFilters() {
-        const keywordFilter = this.shadowRoot.getElementById('keywordFilter');
-        const searchType = this.shadowRoot.getElementById('searchType');
-        if (keywordFilter) keywordFilter.value = '';
-        if (searchType) searchType.value = 'all';
+        const nameFilter = this.shadowRoot.getElementById('nameFilter');
+        const algorithmFilter = this.shadowRoot.getElementById('algorithmFilter');
+        const modelFilter = this.shadowRoot.getElementById('modelFilter');
+        const dataFilter = this.shadowRoot.getElementById('dataFilter');
+        if (nameFilter) nameFilter.value = '';
+        if (algorithmFilter) algorithmFilter.value = '';
+        if (modelFilter) modelFilter.value = '';
+        if (dataFilter) dataFilter.value = '';
         this.loadProjectsFromAPI();
     }
 
@@ -380,18 +353,13 @@ class ProjectList extends HTMLElement {
         tbody.innerHTML = pageData.map(project => `
             <tr data-project-id="${project.id}">
                 <td>${this.escapeHtml(project.name)}</td>
-                <td>${this.escapeHtml(project.description || '-')}</td>
-                <td>${this.escapeHtml(project.type || '-')}</td>
+                <td>${this.escapeHtml(project.desc || '-')}</td>
                 <td>${this.escapeHtml(project.owner || '-')}</td>
                 <td>${project.createTime}</td>
                 <td>
-                    <span class="status-badge ${project.status}">${project.status === 'active' ? '启用' : '禁用'}</span>
-                </td>
-                <td>
                     <div class="action-buttons">
-                        <button class="action-btn edit" data-action="view" data-project-id="${project.id}">查看</button>
-                        <button class="action-btn copy" data-action="export" data-project-id="${project.id}">导出</button>
-                        <button class="action-btn delete" data-action="delete" data-project-id="${project.id}">删除</button>
+                        <button class="action-btn edit" data-action="open" data-create-time="${project.id}">打开</button>
+                        <button class="action-btn copy" data-action="view" data-create-time="${project.id}">查看</button>
                     </div>
                 </td>
             </tr>
@@ -402,17 +370,14 @@ class ProjectList extends HTMLElement {
             if (!btn) return;
 
             const action = btn.dataset.action;
-            const projectId = btn.dataset.projectId;
+            const createTime = btn.dataset.createTime;
 
             switch (action) {
+                case 'open':
+                    this.openProject(createTime);
+                    break;
                 case 'view':
-                    this.viewProject(projectId);
-                    break;
-                case 'export':
-                    this.exportProjectFromAPI(projectId);
-                    break;
-                case 'delete':
-                    this.showDeleteModal(projectId);
+                    this.viewProjectDetail(createTime);
                     break;
             }
         });
@@ -452,75 +417,48 @@ class ProjectList extends HTMLElement {
         }
     }
 
-    showDeleteModal(projectId) {
-        this._deleteProjectId = projectId;
-        const modal = this.shadowRoot.getElementById('modalMask');
-        if (modal) {
-            modal.hidden = false;
-            modal.style.display = 'flex';
-        }
-    }
-
-    hideModal() {
-        const modal = this.shadowRoot.getElementById('modalMask');
-        if (modal) {
-            modal.hidden = true;
-            modal.style.display = 'none';
-        }
-        this._deleteProjectId = null;
-    }
-
-    confirmDelete() {
-        if (this._deleteProjectId) {
-            this.deleteProjectFromAPI(this._deleteProjectId);
-        }
-    }
-
-    viewProject(projectId) {
-        // Show project detail component
-        const projectDetail = document.querySelector('project-detail');
-        if (projectDetail) {
-            window.hideAllComponents();
-            projectDetail.show(projectId);
-        }
-    }
-
     showCreateProject() {
-        // Show project create component
         const projectCreate = document.querySelector('project-create');
         if (projectCreate) {
             projectCreate.show();
         }
     }
 
-    async handleImportFile(e) {
-        const file = e.target.files[0];
-        if (!file) return;
-
+    async openProject(createTime) {
         try {
-            const text = await file.text();
-            const projectJson = JSON.parse(text);
-
             if (window.showGlobalLoading) {
-                window.showGlobalLoading('正在导入项目...');
+                window.showGlobalLoading('正在打开项目...');
             }
 
-            const result = await window.AppConfig.post('project', 'import', projectJson);
+            const result = await window.AppConfig.get('project', 'detail', { createTime });
 
-            if (result.code === 200) {
-                this.showToast('项目导入成功');
-                this.loadProjectsFromAPI();
+            if (result.code === 200 && result.data) {
+                const project = result.data;
+
+                // Cache current project
+                if (window.localStorage) {
+                    window.localStorage.setItem('currentProject', JSON.stringify({
+                        name: project.name,
+                        createTime: project.createTime
+                    }));
+                }
+
+                // Call global function to display tree in left sidebar
+                if (window.displayProjectTree) {
+                    window.displayProjectTree(project.name);
+                } else {
+                    this.showToast('树形展示功能暂不可用', 'error');
+                }
             } else {
-                this.showToast(result.message || '导入失败', 'error');
+                this.showToast(result.message || '打开项目失败', 'error');
             }
         } catch (error) {
-            console.error('导入项目失败:', error);
-            this.showToast('文件格式错误或网络错误', 'error');
+            console.error('打开项目失败:', error);
+            this.showToast('网络错误，无法打开项目', 'error');
         } finally {
             if (window.hideGlobalLoading) {
                 window.hideGlobalLoading();
             }
-            e.target.value = '';
         }
     }
 

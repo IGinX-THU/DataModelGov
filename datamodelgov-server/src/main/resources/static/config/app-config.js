@@ -145,7 +145,11 @@ window.AppConfig = {
         },
         // 项目相关
         project: {
-            create: '/api/project/create'
+            create: '/api/project/create',
+            query: '/api/project/query',
+            count: '/api/project/count',
+            detail: '/api/project/detail',
+            tree: '/api/project/tree'
         }
     },
     

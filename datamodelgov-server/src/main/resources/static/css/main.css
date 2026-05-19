@@ -560,6 +560,49 @@ html.font-scale-1-5 .btn-icon {
 .sidebar-title > span {
 }
 
+/* 关闭项目按钮 */
+.close-project-btn {
+    background: #f5f5f5;
+    border: 1px solid #ccc;
+    font-size: 12px;
+    color: #666;
+    cursor: pointer;
+    padding: 2px 8px;
+    border-radius: 3px;
+    transition: all 0.2s;
+}
+
+.close-project-btn:hover {
+    background: #e0e0e0;
+    color: #333;
+}
+
+/* 项目树图标样式 */
+.tree-icon {
+    display: inline-block;
+    margin-right: 6px;
+    font-size: 14px;
+}
+
+.tree-node-text {
+    cursor: pointer;
+    user-select: none;
+}
+
+.tree-node {
+    cursor: pointer;
+    padding: 2px 8px;
+    transition: background-color 0.2s;
+}
+
+.tree-node:hover {
+    background-color: #f0f0f0;
+}
+
+.tree-node.active {
+    background-color: #e3f2fd;
+}
+
 /* 侧边栏视图切换按钮 */
 .sidebar-view-toggle-btn {
     background: none;

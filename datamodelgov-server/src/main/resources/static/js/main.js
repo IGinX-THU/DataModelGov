@@ -188,10 +188,11 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     };
     
-    // 0. 动态加载数据源树
+    // 0. 动态加载数据源树和项目树
     // 显示全局loading
     window.showGlobalLoading('正在加载数据资源...');
     loadDataSourceTree();
+    loadProjectTree();
     
     // 1. 明暗模式切换
     const themeToggle = document.getElementById('themeToggle');
@@ -1652,17 +1653,16 @@ function showVisualAnalysis() {
     async function loadDataSourceTree() {
         console.log('🔄 loadDataSourceTree 开始执行');
         try {
-            
             // 同时显示右侧loading
             const modelTree = document.getElementById('modelTree');
             if (modelTree) {
                 modelTree.innerHTML = '<div class="loading-placeholder">正在加载模型资产...</div>';
             }
-            
+
             // 使用新的API配置
             const result = await window.AppConfig.get('datasource', 'tree');
             console.log('🔄 loadDataSourceTree API响应:', result);
-            
+
             if (result.success && result.data) {
                 renderDataSourceTree(result.data);
                 // 同步filesystem数据到右侧模型资产库
@@ -1677,6 +1677,36 @@ function showVisualAnalysis() {
         } finally {
             // 隐藏全局loading
             window.hideGlobalLoading();
+        }
+    }
+
+    // 动态加载项目树
+    async function loadProjectTree() {
+        console.log('🔄 loadProjectTree 开始执行');
+        try {
+            // 检查是否有缓存的项目
+            const cachedProject = window.localStorage ? JSON.parse(window.localStorage.getItem('currentProject') || 'null') : null;
+
+            if (cachedProject) {
+                // 有项目，加载项目树
+                if (window.displayProjectTree) {
+                    await window.displayProjectTree(cachedProject.name);
+                }
+            } else {
+                // 没有项目，显示引导信息
+                const projectTreeContainer = document.getElementById('projectTree');
+                if (projectTreeContainer) {
+                    projectTreeContainer.innerHTML = `
+                        <div style="padding: 20px; text-align: center; color: #999;">
+                            <div style="font-size: 48px; margin-bottom: 16px;">📂</div>
+                            <div style="font-size: 14px; margin-bottom: 12px;">暂未打开项目</div>
+                            <div style="font-size: 12px; color: #aaa;">请在项目管理中打开或新建项目</div>
+                        </div>
+                    `;
+                }
+            }
+        } catch (error) {
+            console.error('加载项目树异常:', error);
         }
     }
     
@@ -1713,52 +1743,149 @@ function showVisualAnalysis() {
     function renderTreeNodes(treeData, level = 0) {
         let html = '';
         console.log(`🔄 renderTreeNodes 被调用，level=${level}, treeData keys:`, Object.keys(treeData));
-        
+
         Object.values(treeData).forEach(node => {
             const hasChildren = Object.keys(node.children).length > 0;
-            const expandedClass = level < 2 ? 'expanded' : '';
+            const expandedClass = level === 0 ? 'expanded' : '';
             const nodeClass = `tree-node ${expandedClass}`;
-            
-            // 根据节点类型选择图标
+
+            // 根据节点类型选择图标 - 针对项目树使用不同的图标
             let iconHtml = '';
+            const nodeType = node.type || '';
+
             if (hasChildren) {
-                // 有子节点：检查是否为relational开头的根节点，显示数据库图标，否则显示文件夹图标
-                if (level === 0 && (node.name.startsWith('relational'))) {
-                    iconHtml = `<i class="icon db-icon"></i>`;
+                // 有子节点：根据类型选择图标
+                if (nodeType === 'project') {
+                    iconHtml = `<span class="tree-icon project-icon">📁</span>`;
+                } else if (nodeType === 'folder') {
+                    iconHtml = `<span class="tree-icon folder-icon">📂</span>`;
                 } else {
-                    iconHtml = `<i class="icon folder-icon"></i>`;
+                    iconHtml = `<span class="tree-icon folder-icon">📁</span>`;
                 }
             } else {
-                // 没有子节点的叶子节点：根据数据类型显示图标
-                const dataTypeIcons = {
-                    0: '🔘',      // BOOLEAN(0) - 开关
-                    1: '📈',      // INTEGER(1) - 曲线图
-                    2: '📈',      // LONG(2) - 曲线图
-                    3: '📈',      // FLOAT(3) - 曲线图
-                    4: '📈',      // DOUBLE(4) - 曲线图
-                    5: '📦'       // BINARY(5) - 包裹
-                };
-                const icon = dataTypeIcons[node.dataType] || '📈';
-                iconHtml = `<i class="folder-icon">${icon}</i>`;
+                // 没有子节点的叶子节点：根据类型选择图标
+                if (nodeType === 'algorithm') {
+                    iconHtml = `<span class="tree-icon algorithm-icon">🧮</span>`;
+                } else if (nodeType === 'model') {
+                    iconHtml = `<span class="tree-icon model-icon">📦</span>`;
+                } else if (nodeType === 'data') {
+                    iconHtml = `<span class="tree-icon data-icon">📊</span>`;
+                } else {
+                    // 数据资源库的叶子节点：根据数据类型显示图标
+                    const dataTypeIcons = {
+                        0: '🔘',      // BOOLEAN(0) - 开关
+                        1: '📈',      // INTEGER(1) - 曲线图
+                        2: '📈',      // LONG(2) - 曲线图
+                        3: '📈',      // FLOAT(3) - 曲线图
+                        4: '📈',      // DOUBLE(4) - 曲线图
+                        5: '📦'       // BINARY(5) - 包裹
+                    };
+                    const icon = dataTypeIcons[node.dataType] || '📈';
+                    iconHtml = `<span class="tree-icon">${icon}</span>`;
+                }
             }
-            
+
             html += `
-                <div class="${nodeClass}" data-full-path="${node.fullPath}" data-is-leaf="${node.isLeaf}" data-type="${node.dataType || ''}">
+                <div class="${nodeClass}" data-full-path="${node.fullPath}" data-is-leaf="${node.isLeaf}" data-type="${node.dataType || ''}" data-node-type="${nodeType || ''}">
                     ${iconHtml}
-                    <span>${node.name}</span>
+                    <span class="tree-node-text">${node.name}</span>
             `;
-            
+
+            // 只有当子节点不为空时才渲染子节点容器
             if (hasChildren) {
                 html += '<div class="tree-children">';
                 html += renderTreeNodes(node.children, level + 1);
                 html += '</div>';
             }
-            
+
             html += '</div>';
         });
-        
+
         return html;
     }
+
+    // 暴露renderTreeNodes到全局作用域
+    window.renderTreeNodesGlobal = renderTreeNodes;
+
+    // 关闭项目功能
+    window.closeProject = function() {
+        // 清除缓存的项目
+        if (window.localStorage) {
+            window.localStorage.removeItem('currentProject');
+        }
+
+        // 清空项目树
+        const projectTreeContainer = document.getElementById('projectTree');
+        if (projectTreeContainer) {
+            projectTreeContainer.innerHTML = `
+                <div style="padding: 20px; text-align: center; color: #999;">
+                    <div style="font-size: 48px; margin-bottom: 16px;">📂</div>
+                    <div style="font-size: 14px; margin-bottom: 12px;">暂未打开项目</div>
+                    <div style="font-size: 12px; color: #aaa;">请在项目管理中打开或新建项目</div>
+                </div>
+            `;
+        }
+
+        // 清空底部项目名称显示
+        const spacerElement = document.querySelector('.bottom-sidebar-spacer');
+        if (spacerElement) {
+            spacerElement.textContent = '';
+        }
+    };
+
+    // 绑定关闭项目按钮事件
+    const closeProjectBtn = document.getElementById('closeProjectBtn');
+    if (closeProjectBtn) {
+        closeProjectBtn.addEventListener('click', window.closeProject);
+    }
+
+    // 绑定项目树节点点击事件
+    function bindProjectTreeEvents() {
+        const projectTree = document.getElementById('projectTree');
+        if (projectTree) {
+            projectTree.addEventListener('click', function(e) {
+                const node = e.target.closest('.tree-node');
+                if (node) {
+                    e.stopPropagation();
+
+                    // 检查是否有子节点，如果有则切换展开/收起状态
+                    const hasChildren = node.querySelector('.tree-children');
+                    if (hasChildren) {
+                        node.classList.toggle('expanded');
+                    }
+
+                    // 清除所有选中状态
+                    projectTree.querySelectorAll('.tree-node.active').forEach(n => n.classList.remove('active'));
+
+                    // 设置当前选中
+                    node.classList.add('active');
+
+                    // 获取节点信息
+                    const nodeType = node.getAttribute('data-node-type');
+                    const nodeName = node.querySelector('.tree-node-text')?.textContent;
+
+                    console.log('点击项目树节点:', { nodeType, nodeName });
+
+                    // 根据节点类型执行不同操作
+                    if (nodeType === 'data') {
+                        console.log('点击数据节点:', nodeName);
+                    } else if (nodeType === 'algorithm') {
+                        console.log('点击算法节点:', nodeName);
+                    } else if (nodeType === 'model') {
+                        console.log('点击模型节点:', nodeName);
+                    }
+                }
+            });
+        }
+    }
+
+    // 在项目树渲染后绑定事件
+    const originalRenderTreeNodes = window.renderTreeNodesGlobal;
+    window.renderTreeNodesGlobal = function(treeData, level) {
+        const html = originalRenderTreeNodes(treeData, level);
+        setTimeout(bindProjectTreeEvents, 100);
+        return html;
+    };
     
     // 渲染数据源树
     function renderDataSourceTree(dataSources) {
@@ -2192,7 +2319,7 @@ window.showAbout = function() {
         .then(response => response.text())
         .then(html => {
             modalContainer.innerHTML = html;
-            
+
             // 适配暗黑模式
             if (document.documentElement.classList.contains('dark-mode')) {
                 modalContainer.querySelector('.about-container').classList.add('dark-mode');
@@ -2216,18 +2343,18 @@ window.showAbout = function() {
                 </div>
             `;
         });
-    
+
     // 点击遮罩关闭
     modalOverlay.addEventListener('click', function(e) {
         if (e.target === modalOverlay) {
             modalOverlay.remove();
         }
     });
-    
+
     // 添加到页面
     modalOverlay.appendChild(modalContainer);
     document.body.appendChild(modalOverlay);
-    
+
     // ESC键关闭
     const escHandler = function(e) {
         if (e.key === 'Escape') {
@@ -2237,3 +2364,176 @@ window.showAbout = function() {
     };
     document.addEventListener('keydown', escHandler);
 };
+
+// 显示项目树形结构
+window.displayProjectTree = function(projectName) {
+    console.log('🔄 displayProjectTree 被调用，项目名称:', projectName);
+
+    if (window.showGlobalLoading) {
+        window.showGlobalLoading('正在加载项目树...');
+    }
+
+    // Call backend API to get project tree structure
+    return window.AppConfig.get('project', 'tree', { name: projectName })
+        .then(result => {
+            if (result.code === 200 && result.data) {
+                const treeData = result.data;
+                console.log('🔄 后端返回的树结构:', treeData);
+
+                const treeContainer = document.getElementById('projectTree');
+                if (treeContainer) {
+                    // 直接渲染ProjectTree结构
+                    const treeHTML = renderProjectTree(treeData);
+                    treeContainer.innerHTML = treeHTML;
+                    console.log('🔄 项目树渲染完成');
+                    // 绑定点击事件
+                    bindProjectTreeEvents();
+                }
+
+                // Update bottom-sidebar-spacer to show current project name
+                const spacerElement = document.querySelector('.bottom-sidebar-spacer');
+                if (spacerElement) {
+                    spacerElement.textContent = `当前项目：${treeData.name}`;
+                    spacerElement.style.cssText = `
+                        text-align: center;
+                        padding: 0 16px;
+                        font-size: 14px;
+                        font-weight: 500;
+                        color: #333;
+                        white-space: nowrap;
+                        overflow: hidden;
+                        text-overflow: ellipsis;
+                    `;
+                }
+            } else {
+                console.error('获取项目树失败:', result.message);
+            }
+        })
+        .catch(error => {
+            console.error('加载项目树失败:', error);
+        })
+        .finally(() => {
+            if (window.hideGlobalLoading) {
+                window.hideGlobalLoading();
+            }
+        });
+};
+
+// 绑定项目树节点点击事件
+function bindProjectTreeEvents() {
+    const projectTree = document.getElementById('projectTree');
+    if (projectTree) {
+        projectTree.addEventListener('click', function(e) {
+            const node = e.target.closest('.tree-node');
+            if (node) {
+                e.stopPropagation();
+
+                // 检查是否有子节点，如果有则切换展开/收起状态
+                const hasChildren = node.querySelector('.tree-children');
+                if (hasChildren) {
+                    node.classList.toggle('expanded');
+                }
+
+                // 清除所有选中状态
+                projectTree.querySelectorAll('.tree-node.active').forEach(n => n.classList.remove('active'));
+
+                // 设置当前选中
+                node.classList.add('active');
+
+                // 获取节点信息
+                const nodeType = node.getAttribute('data-node-type');
+                const nodeName = node.querySelector('.tree-node-text')?.textContent;
+
+                console.log('点击项目树节点:', { nodeType, nodeName });
+
+                // 根据节点类型执行不同操作
+                if (nodeType === 'data') {
+                    console.log('点击数据节点:', nodeName);
+                } else if (nodeType === 'algorithm') {
+                    console.log('点击算法节点:', nodeName);
+                } else if (nodeType === 'model') {
+                    console.log('点击模型节点:', nodeName);
+                }
+            }
+        });
+    }
+}
+
+// 渲染ProjectTree结构
+function renderProjectTree(treeData) {
+    let html = '';
+
+    // 根节点：项目名
+    html += `
+        <div class="tree-node expanded" data-node-type="project" data-full-path="0">
+            <span class="tree-node-text">📂 ${treeData.name}</span>
+            <div class="tree-children">
+    `;
+
+    // 渲染算法节点
+    if (treeData.algorithms && treeData.algorithms.length > 0) {
+        html += `
+            <div class="tree-node expanded" data-node-type="folder" data-full-path="0-algorithms">
+                <span class="tree-node-text">📂 algorithms</span>
+                <div class="tree-children">
+        `;
+        treeData.algorithms.forEach((algo, index) => {
+            html += `
+                <div class="tree-node" data-node-type="algorithm" data-full-path="0-algorithms-${index}">
+                    <span class="tree-node-text">🧮 ${algo}</span>
+                </div>
+            `;
+        });
+        html += `
+                </div>
+            </div>
+        `;
+    }
+
+    // 渲染模型节点
+    if (treeData.models && treeData.models.length > 0) {
+        html += `
+            <div class="tree-node expanded" data-node-type="folder" data-full-path="0-models">
+                <span class="tree-node-text">📂 models</span>
+                <div class="tree-children">
+        `;
+        treeData.models.forEach((model, index) => {
+            html += `
+                <div class="tree-node" data-node-type="model" data-full-path="0-models-${index}">
+                    <span class="tree-node-text">📦 ${model}</span>
+                </div>
+            `;
+        });
+        html += `
+                </div>
+            </div>
+        `;
+    }
+
+    // 渲染数据节点
+    if (treeData.datas && treeData.datas.length > 0) {
+        html += `
+            <div class="tree-node expanded" data-node-type="folder" data-full-path="0-datas">
+                <span class="tree-node-text">📂 datas</span>
+                <div class="tree-children">
+        `;
+        treeData.datas.forEach((data, index) => {
+            html += `
+                <div class="tree-node" data-node-type="data" data-full-path="0-datas-${index}">
+                    <span class="tree-node-text">📊 ${data}</span>
+                </div>
+            `;
+        });
+        html += `
+                </div>
+            </div>
+        `;
+    }
+
+    html += `
+            </div>
+        </div>
+    `;
+
+    return html;
+}

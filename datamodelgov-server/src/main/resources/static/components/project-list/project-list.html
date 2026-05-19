@@ -4,18 +4,20 @@
         <div class="filter-rows" id="filterRows">
             <div class="filter-row">
                 <div class="filter-field">
-                    <span class="filter-label">搜索关键词</span>
-                    <input class="filter-input" type="text" placeholder="请输入搜索关键词" id="keywordFilter" />
+                    <span class="filter-label">项目名称</span>
+                    <input class="filter-input" type="text" placeholder="请输入项目名称" id="nameFilter" />
                 </div>
                 <div class="filter-field">
-                    <span class="filter-label">搜索类型</span>
-                    <select class="filter-input" id="searchType">
-                        <option value="all">全部</option>
-                        <option value="name">按名称</option>
-                        <option value="algorithm">按算法</option>
-                        <option value="model">按模型</option>
-                        <option value="data">按数据</option>
-                    </select>
+                    <span class="filter-label">算法</span>
+                    <input class="filter-input" type="text" placeholder="请输入算法" id="algorithmFilter" />
+                </div>
+                <div class="filter-field">
+                    <span class="filter-label">模型</span>
+                    <input class="filter-input" type="text" placeholder="请输入模型" id="modelFilter" />
+                </div>
+                <div class="filter-field">
+                    <span class="filter-label">数据</span>
+                    <input class="filter-input" type="text" placeholder="请输入数据" id="dataFilter" />
                 </div>
             </div>
         </div>
@@ -29,7 +31,6 @@
     <div class="project-table-card">
         <div class="table-toolbar">
             <button class="toolbar-btn green" type="button" id="addProjectBtn">新建项目</button>
-            <button class="toolbar-btn blue" type="button" id="importProjectBtn">导入项目</button>
         </div>
         <div class="table-wrapper">
             <table class="data-table">
@@ -37,10 +38,8 @@
                     <tr>
                         <th>项目名称</th>
                         <th>描述</th>
-                        <th>类型</th>
                         <th>创建人</th>
                         <th>创建时间</th>
-                        <th>状态</th>
                         <th>操作</th>
                     </tr>
                 </thead>
@@ -66,20 +65,46 @@
     </div>
 </div>
 
-<div class="modal-mask" id="modalMask" hidden>
+<div class="modal-mask" id="detailModalMask" hidden>
     <div class="modal">
         <div class="modal-header">
-            <span id="modalTitle">确认删除</span>
-            <button class="modal-close" id="modalClose">×</button>
+            <span id="detailModalTitle">项目详情</span>
+            <button class="modal-close" id="detailModalClose">×</button>
         </div>
-        <div class="modal-body" id="modalBody">
-            <p>确定要删除该项目吗？此操作不可恢复。</p>
+        <div class="modal-body" id="detailModalBody">
+            <div class="detail-content">
+                <div class="detail-row">
+                    <span class="detail-label">项目名称：</span>
+                    <span class="detail-value" id="detailName"></span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">描述：</span>
+                    <span class="detail-value" id="detailDesc"></span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">创建人：</span>
+                    <span class="detail-value" id="detailOwner"></span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">创建时间：</span>
+                    <span class="detail-value" id="detailCreateTime"></span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">算法：</span>
+                    <span class="detail-value" id="detailAlgorithms"></span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">模型：</span>
+                    <span class="detail-value" id="detailModels"></span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">数据：</span>
+                    <span class="detail-value" id="detailDatas"></span>
+                </div>
+            </div>
         </div>
-        <div class="modal-footer" id="modalFooter">
-            <button type="button" class="modal-btn secondary" id="cancelBtn">取消</button>
-            <button type="button" class="modal-btn danger" id="confirmBtn">确定</button>
+        <div class="modal-footer">
+            <button type="button" class="modal-btn secondary" id="detailModalCloseBtn">关闭</button>
         </div>
     </div>
 </div>
-
-<input type="file" id="importFileInput" accept=".json" style="display: none;" />
