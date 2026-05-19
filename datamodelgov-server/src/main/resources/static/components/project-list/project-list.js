@@ -29,6 +29,13 @@ class ProjectList extends HTMLElement {
                 data: dataFilter || null
             };
 
+            // 先调用count接口获取总数
+            const countResult = await window.AppConfig.post('project', 'count', queryRequest);
+            if (countResult.code === 200) {
+                this.totalCount = parseInt(countResult.data) || 0;
+            }
+
+            // 再调用query接口获取分页数据
             const result = await window.AppConfig.post('project', 'query', queryRequest);
 
             if (result.code === 200 && result.data) {
@@ -38,12 +45,11 @@ class ProjectList extends HTMLElement {
                     desc: project.desc,
                     createTime: new Date(project.createTime).toLocaleString('zh-CN'),
                     owner: project.owner,
-                    algorithms: project.algorithms ? JSON.parse(project.algorithms) : [],
-                    models: project.models ? JSON.parse(project.models) : [],
-                    datas: project.datas ? JSON.parse(project.datas) : []
+                    algorithms: project.algorithms || '',
+                    models: project.models || '',
+                    datas: project.datas || ''
                 }));
 
-                this.totalCount = this.data.length;
                 this.renderTable();
             } else {
                 this.showToast(result.message || '加载项目失败', 'error');
@@ -87,13 +93,9 @@ class ProjectList extends HTMLElement {
         this.shadowRoot.getElementById('detailOwner').textContent = project.owner || '-';
         this.shadowRoot.getElementById('detailCreateTime').textContent = new Date(project.createTime).toLocaleString('zh-CN');
 
-        const algorithms = project.algorithms ? JSON.parse(project.algorithms) : [];
-        const models = project.models ? JSON.parse(project.models) : [];
-        const datas = project.datas ? JSON.parse(project.datas) : [];
-
-        this.shadowRoot.getElementById('detailAlgorithms').textContent = algorithms.length > 0 ? algorithms.map(a => a.name).join(', ') : '-';
-        this.shadowRoot.getElementById('detailModels').textContent = models.length > 0 ? models.map(m => m.name).join(', ') : '-';
-        this.shadowRoot.getElementById('detailDatas').textContent = datas.length > 0 ? datas.join(', ') : '-';
+        this.shadowRoot.getElementById('detailAlgorithms').textContent = project.algorithms || '-';
+        this.shadowRoot.getElementById('detailModels').textContent = project.models || '-';
+        this.shadowRoot.getElementById('detailDatas').textContent = project.datas || '-';
 
         const modal = this.shadowRoot.getElementById('detailModalMask');
         if (modal) {

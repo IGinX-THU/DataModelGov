@@ -211,7 +211,7 @@ public class ProjectService {
     public Object countProjects(ProjectsQueryRequest request) {
         try {
             // 构建基础SQL
-            StringBuilder sql = new StringBuilder("SELECT * FROM relational_system.project WHERE 1=1");
+            StringBuilder sql = new StringBuilder("SELECT COUNT(1) FROM relational_system.project WHERE 1=1");
 
             // 添加筛选条件
             if (request.getName() != null && !request.getName().trim().isEmpty()) {
