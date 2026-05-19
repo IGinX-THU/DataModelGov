@@ -20,6 +20,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
+        // 注册权限拦截器
         registry.addInterceptor(permissionInterceptor)
                 .addPathPatterns("/api/**") // 拦截所有API接口进行权限检查
                 .excludePathPatterns("/api/auth/**", "/api/rbac/**", "/api/test/**"); // 排除认证、RBAC测试和测试接口

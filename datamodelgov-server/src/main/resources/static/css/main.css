@@ -746,8 +746,8 @@ html.font-scale-1-5 .btn-icon {
 }
 
 /* 简洁的展开/折叠指示器 */
-.tree-node.expanded > span::before,
-.tree-node:not(.expanded) > span::before {
+.tree-node.expanded > .tree-node-text::before,
+.tree-node:not(.expanded) > .tree-node-text::before {
     content: '▼';
     display: inline-block;
     width: 12px;
@@ -757,12 +757,12 @@ html.font-scale-1-5 .btn-icon {
     transition: transform 0.2s ease;
 }
 
-.tree-node:not(.expanded) > span::before {
+.tree-node:not(.expanded) > .tree-node-text::before {
     transform: rotate(-90deg);
 }
 
-.tree-node.expanded.active > span::before,
-.tree-node:not(.expanded).active > span::before {
+.tree-node.expanded.active > .tree-node-text::before,
+.tree-node:not(.expanded).active > .tree-node-text::before {
     color: #1976d2;
 }
 
@@ -946,17 +946,17 @@ html.light-mode .dark-mode .tree-node.active {
     color: #64b5f6 !important;
 }
 
-html.dark-mode .tree-node.expanded > span::before,
-html.dark-mode .tree-node:not(.expanded) > span::before,
-html.light-mode .dark-mode .tree-node.expanded > span::before,
-html.light-mode .dark-mode .tree-node:not(.expanded) > span::before {
+html.dark-mode .tree-node.expanded > .tree-node-text::before,
+html.dark-mode .tree-node:not(.expanded) > .tree-node-text::before,
+html.light-mode .dark-mode .tree-node.expanded > .tree-node-text::before,
+html.light-mode .dark-mode .tree-node:not(.expanded) > .tree-node-text::before {
     color: #9e9e9e !important;
 }
 
-html.dark-mode .tree-node.expanded.active > span::before,
-html.dark-mode .tree-node:not(.expanded).active > span::before,
-html.light-mode .dark-mode .tree-node.expanded.active > span::before,
-html.light-mode .dark-mode .tree-node:not(.expanded).active > span::before {
+html.dark-mode .tree-node.expanded.active > .tree-node-text::before,
+html.dark-mode .tree-node:not(.expanded).active > .tree-node-text::before,
+html.light-mode .dark-mode .tree-node.expanded.active > .tree-node-text::before,
+html.light-mode .dark-mode .tree-node:not(.expanded).active > .tree-node-text::before {
     color: #64b5f6 !important;
 }
 

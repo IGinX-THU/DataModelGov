@@ -139,13 +139,13 @@ public class ProjectService {
         ProjectTree projectTree = new ProjectTree();
         projectTree.setName(project.getName());
         if (StringUtils.hasText(project.getAlgorithms())) {
-            projectTree.setAlgorithms(Arrays.asList(project.getAlgorithms().split(",")));
+            projectTree.setAlgorithms(Arrays.stream(project.getAlgorithms().split(",")).distinct().collect(Collectors.toList()));
         }
         if (StringUtils.hasText(project.getModels())) {
-            projectTree.setModels(Arrays.asList(project.getModels().split(",")));
+            projectTree.setModels(Arrays.stream(project.getModels().split(",")).distinct().collect(Collectors.toList()));
         }
         if (StringUtils.hasText(project.getDatas())) {
-            projectTree.setDatas(Arrays.asList(project.getDatas().split(",")));
+            projectTree.setDatas(Arrays.stream(project.getDatas().split(",")).collect(Collectors.toList()));
         }
         return projectTree;
     }
@@ -245,6 +245,86 @@ public class ProjectService {
             log.error("查询失败", e);
             return 0;
         }
+    }
+
+    /**
+     * 添加数据路径到项目
+     */
+    public void addDataToProject(String projectName, String dataPath) throws Exception {
+        if (projectName == null || projectName.isEmpty()) {
+            log.warn("项目名称为空，跳过添加数据路径");
+            return;
+        }
+        if (dataPath == null || dataPath.isEmpty()) {
+            log.warn("数据路径为空，跳过添加");
+            return;
+        }
+
+        ProjectEntity project = findByName(projectName);
+        if (project == null) {
+            log.warn("项目不存在: {}", projectName);
+            return;
+        }
+
+        String currentDatas = project.getDatas();
+        String newDatas;
+        if (currentDatas == null || currentDatas.isEmpty()) {
+            newDatas = dataPath;
+        } else {
+            // 检查是否已存在
+            String[] existingDatas = currentDatas.split(",");
+            for (String existing : existingDatas) {
+                if (existing.trim().equals(dataPath)) {
+                    log.info("数据路径已存在: {}", dataPath);
+                    return;
+                }
+            }
+            newDatas = currentDatas + "," + dataPath;
+        }
+
+        project.setDatas(newDatas);
+        saveProjectMetadata(project);
+        log.info("已添加数据路径到项目: {}, 路径: {}", projectName, dataPath);
+    }
+
+    /**
+     * 从项目移除数据路径
+     */
+    public void removeDataFromProject(String projectName, String dataPath) throws Exception {
+        if (projectName == null || projectName.isEmpty()) {
+            log.warn("项目名称为空，跳过移除数据路径");
+            return;
+        }
+        if (dataPath == null || dataPath.isEmpty()) {
+            log.warn("数据路径为空，跳过移除");
+            return;
+        }
+
+        ProjectEntity project = findByName(projectName);
+        if (project == null) {
+            log.warn("项目不存在: {}", projectName);
+            return;
+        }
+
+        String currentDatas = project.getDatas();
+        if (currentDatas == null || currentDatas.isEmpty()) {
+            log.info("项目的datas字段为空，无需移除");
+            return;
+        }
+
+        // 移除指定的数据路径
+        String[] existingDatas = currentDatas.split(",");
+        List<String> newDatasList = new ArrayList<>();
+        for (String existing : existingDatas) {
+            if (!existing.trim().equals(dataPath)) {
+                newDatasList.add(existing.trim());
+            }
+        }
+
+        String newDatas = String.join(",", newDatasList);
+        project.setDatas(newDatas);
+        saveProjectMetadata(project);
+        log.info("已从项目移除数据路径: {}, 路径: {}", projectName, dataPath);
     }
 
 }

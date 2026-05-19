@@ -12,4 +12,6 @@ public class DataImportRequest {
     private String targetPath;
     @ApiModelProperty(value = "key列：从 CSV 中选出的列名，导入时作为 key（对应 LOAD DATA set key）。不传或留空则使用默认导入行为", required = false)
     private String key;
+    @ApiModelProperty(value = "描述信息", required = false)
+    private String description;
 }

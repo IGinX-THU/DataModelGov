@@ -188,6 +188,21 @@ window.AppConfig = {
         if (token) {
             headers[this.auth.tokenHeader] = `Bearer ${token}`;
         }
+        // 添加当前项目信息到请求头（按用户隔离）
+        const username = this.getUsername();
+        if (username) {
+            const currentProject = localStorage.getItem('currentProject_' + username);
+            if (currentProject) {
+                try {
+                    const project = JSON.parse(currentProject);
+                    if (project && project.name) {
+                        headers['X-Current-Project'] = project.name;
+                    }
+                } catch (e) {
+                    console.error('解析当前项目失败:', e);
+                }
+            }
+        }
         return headers;
     },
     
@@ -477,6 +492,7 @@ window.AppConfig = {
                 this.setToken(response.data.token);
                 this.setRefreshToken(response.data.refreshToken);
                 this.setUsername(username);
+                // 不清除项目信息，让用户能恢复上次的项目
                 return response;
             } else {
                 throw new Error(response.message || '登录失败');
@@ -499,9 +515,14 @@ window.AppConfig = {
         } catch (error) {
             console.error('登出请求失败:', error);
         } finally {
+            const username = this.getUsername();
             this.clearToken();
             this.clearRefreshToken();
             this.clearUsername();
+            // 清除当前用户的项目信息（按用户隔离）
+            if (username) {
+                localStorage.removeItem('currentProject_' + username);
+            }
             
             // 跳转到登录页
             if (!window.location.pathname.includes('/login.html')) {

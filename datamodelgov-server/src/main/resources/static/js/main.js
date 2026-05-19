@@ -1684,8 +1684,12 @@ function showVisualAnalysis() {
     async function loadProjectTree() {
         console.log('🔄 loadProjectTree 开始执行');
         try {
-            // 检查是否有缓存的项目
-            const cachedProject = window.localStorage ? JSON.parse(window.localStorage.getItem('currentProject') || 'null') : null;
+            // 检查是否有缓存的项目（按用户隔离）
+            const username = window.AppConfig.getUsername();
+            let cachedProject = null;
+            if (username && window.localStorage) {
+                cachedProject = JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null');
+            }
 
             if (cachedProject) {
                 // 有项目，加载项目树
@@ -1809,9 +1813,12 @@ function showVisualAnalysis() {
 
     // 关闭项目功能
     window.closeProject = function() {
-        // 清除缓存的项目
+        // 清除缓存的项目（按用户隔离）
         if (window.localStorage) {
-            window.localStorage.removeItem('currentProject');
+            const username = window.AppConfig.getUsername();
+            if (username) {
+                window.localStorage.removeItem('currentProject_' + username);
+            }
         }
 
         // 清空项目树

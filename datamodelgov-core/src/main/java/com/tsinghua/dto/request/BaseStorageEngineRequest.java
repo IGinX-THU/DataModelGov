@@ -51,6 +51,9 @@ public abstract class BaseStorageEngineRequest {
     @ApiModelProperty(value = "模式前缀")
     private String schemaPrefix;
 
+    @ApiModelProperty(value = "描述信息")
+    private String description;
+
     /**
      * 构建额外参数字典
      */

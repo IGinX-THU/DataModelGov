@@ -171,6 +171,7 @@ class ImportDataComponent extends HTMLElement {
     async handleImport() {
         const targetPath = this.shadowRoot.getElementById('targetPath').value.trim();
         const keyColumn = this.shadowRoot.getElementById('keyColumn').value.trim();
+        const description = this.shadowRoot.getElementById('description')?.value.trim();
         const fileInput = this.shadowRoot.getElementById('csvFile');
         const file = fileInput.files[0];
         const targetPathError = this.shadowRoot.getElementById('targetPathError');
@@ -223,6 +224,9 @@ class ImportDataComponent extends HTMLElement {
             const config = { targetPath };
             if (keyColumn) {
                 config.key = keyColumn;
+            }
+            if (description) {
+                config.description = description;
             }
             formData.append('config', new Blob([JSON.stringify(config)], { type: 'application/json' }));
             

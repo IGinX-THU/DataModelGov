@@ -435,12 +435,15 @@ class ProjectList extends HTMLElement {
             if (result.code === 200 && result.data) {
                 const project = result.data;
 
-                // Cache current project
+                // Cache current project (按用户隔离)
                 if (window.localStorage) {
-                    window.localStorage.setItem('currentProject', JSON.stringify({
-                        name: project.name,
-                        createTime: project.createTime
-                    }));
+                    const username = window.AppConfig.getUsername();
+                    if (username) {
+                        window.localStorage.setItem('currentProject_' + username, JSON.stringify({
+                            name: project.name,
+                            createTime: project.createTime
+                        }));
+                    }
                 }
 
                 // Call global function to display tree in left sidebar

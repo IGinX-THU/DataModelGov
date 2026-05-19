@@ -7,10 +7,11 @@ import cn.edu.tsinghua.iginx.session_v2.QueryClient;
 import cn.edu.tsinghua.iginx.session_v2.query.*;
 import cn.edu.tsinghua.iginx.thrift.*;
 import cn.edu.tsinghua.iginx.utils.Pair;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tsinghua.auth.service.DataPermissionService;
 import com.tsinghua.auth.util.AuthUtil;
 import com.tsinghua.dto.*;
-import com.tsinghua.model.Result;
+import com.tsinghua.entity.DataArchiveEntity;
 import com.tsinghua.util.ConvertUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -49,6 +50,12 @@ public class DataTableService {
 
     @Autowired
     private DataPermissionService dataPermissionService;
+
+    @Autowired
+    private DataArchiveService dataArchiveService;
+
+    @Autowired
+    private ProjectService projectService;
 
     public TableDto queryData(DataQueryRequest request) {
         List<String> columns = new ArrayList<>();
@@ -93,6 +100,16 @@ public class DataTableService {
     }
 
     public Long importData(MultipartFile file, DataImportRequest importConfig) throws Exception {
+        // 自动添加项目名称前缀
+        String projectName = com.tsinghua.util.ProjectContext.getCurrentProject("unknown");
+        if (projectName != null && !projectName.isEmpty()) {
+            String targetPath = importConfig.getTargetPath();
+            if (!targetPath.startsWith(projectName + ".")) {
+                importConfig.setTargetPath(projectName + "." + targetPath);
+                log.info("自动添加项目名称前缀: {} -> {}", targetPath, importConfig.getTargetPath());
+            }
+        }
+
         Path tempFilePath = null;
 
         try {
@@ -101,7 +118,21 @@ public class DataTableService {
             // 1. 保存上传文件到临时位置
             tempFilePath = Files.createTempFile("iginx_upload_", ".csv");
             file.transferTo(tempFilePath.toFile());
-            return importCsvFile(tempFilePath, importConfig.getTargetPath(), uploadedFileName, importConfig.getKey(), AuthUtil.getCurrentUsername());
+            Long result = importCsvFile(tempFilePath, importConfig.getTargetPath(), uploadedFileName, importConfig.getKey(), AuthUtil.getCurrentUsername());
+            
+            // 保存数据档案
+            saveDataImportArchive(importConfig);
+
+            // 添加到项目的datas字段
+            if (projectName != null && !projectName.isEmpty()) {
+                try {
+                    projectService.addDataToProject(projectName, importConfig.getTargetPath());
+                } catch (Exception e) {
+                    log.error("添加数据路径到项目失败", e);
+                }
+            }
+            
+            return result;
         }  finally {
             // 清理临时文件
             if (tempFilePath != null) {
@@ -270,6 +301,34 @@ public class DataTableService {
         DeleteClient deleteClient = iginxClient.getDeleteClient();
         // 删除多个时间序列在 [startTime, endTime) 这段时间上的数据
         deleteClient.deleteMeasurementsData(request.getPaths(), request.getStartTime(), request.getEndTime());
+    }
+
+    /**
+     * 保存数据导入档案
+     */
+    private void saveDataImportArchive(DataImportRequest importConfig) {
+        try {
+            DataArchiveEntity archive = new DataArchiveEntity();
+            archive.setName(importConfig.getTargetPath());
+            archive.setType("import");
+            archive.setDescription(importConfig.getDescription());
+            
+            // 从上下文获取项目名称和用户名
+            String projectName = com.tsinghua.util.ProjectContext.getCurrentProject(null);
+            archive.setProjectName(projectName);
+            archive.setOwner(AuthUtil.getCurrentUsername());
+
+            // 将导入配置转换为JSON字符串保存到config字段
+            ObjectMapper objectMapper = new ObjectMapper();
+            String configJson = objectMapper.writeValueAsString(importConfig);
+            archive.setConfig(configJson);
+
+            dataArchiveService.saveArchive(archive);
+            log.info("数据导入档案已保存: {}", importConfig.getTargetPath());
+        } catch (Exception e) {
+            log.error("保存数据导入档案失败", e);
+            // 不抛出异常，避免影响主流程
+        }
     }
 
 }
