@@ -295,3 +295,107 @@
 .btn-secondary:hover {
     background: var(--border-secondary);
 }
+
+/* 水平单选框组样式 */
+.radio-group-horizontal {
+    display: flex;
+    gap: var(--spacing-xl);
+}
+
+.radio-item-horizontal {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+}
+
+.radio-item-horizontal input[type="radio"] {
+    margin-right: 6px;
+}
+
+.radio-item-horizontal label {
+    cursor: pointer;
+    font-size: var(--font-size-base);
+    color: var(--text-primary);
+}
+
+/* 单选框组样式 */
+.radio-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+}
+
+.radio-item {
+    display: flex;
+    align-items: center;
+    padding: var(--spacing-sm) var(--spacing-lg);
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all var(--transition-normal);
+}
+
+.radio-item:hover {
+    border-color: var(--color-primary);
+    background: var(--color-primary-light);
+}
+
+.radio-item.selected {
+    border-color: var(--color-primary);
+    background: var(--color-primary-light);
+}
+
+.radio-item input[type="radio"] {
+    margin-right: 8px;
+}
+
+.radio-item label {
+    cursor: pointer;
+    margin: 0;
+    font-size: var(--font-size-base);
+    color: var(--text-primary);
+}
+
+/* 消息提示样式 */
+.message {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    padding: var(--spacing-xl) var(--spacing-3xl);
+    border-radius: var(--radius-lg);
+    color: var(--text-inverse);
+    font-size: var(--font-size-base);
+    z-index: var(--z-message);
+    animation: fadeIn var(--transition-normal) ease;
+    box-shadow: var(--shadow-lg);
+    min-width: 300px;
+    text-align: center;
+}
+
+.message.success {
+    background: var(--color-success);
+}
+
+.message.error {
+    background: var(--color-danger);
+}
+
+.message.info {
+    background: var(--color-info);
+}
+
+.message.warning {
+    background: var(--color-warning);
+}
+
+@keyframes fadeIn {
+    from { 
+        opacity: 0; 
+        transform: translate(-50%, -50%) scale(0.9); 
+    }
+    to { 
+        opacity: 1; 
+        transform: translate(-50%, -50%) scale(1); 
+    }
+}

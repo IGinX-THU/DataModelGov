@@ -25,6 +25,10 @@ const BUTTON_ID_MAP = {
         text: '上传',
         action: 'showModelUpload'
     },
+    'btn-algorithm-upload': {
+        text: '算法上传',
+        action: 'showAlgorithmUpload'
+    },
     'btn-import': {
         text: '导入',
         action: 'showImportData'
@@ -36,6 +40,10 @@ const BUTTON_ID_MAP = {
     'btn-download': {
         text: '下载',
         action: 'handleDownload'
+    },
+    'btn-algorithm-download': {
+        text: '算法下载',
+        action: 'handleAlgorithmDownload'
     },
     'btn-delete': {
         text: '删除',
@@ -52,6 +60,18 @@ const BUTTON_ID_MAP = {
     'btn-edit': {
         text: '编辑',
         action: 'handleEditModel'
+    },
+    'btn-algorithm-edit': {
+        text: '算法编辑',
+        action: 'handleEditAlgorithm'
+    },
+    'btn-algorithm-delete': {
+        text: '删除',
+        action: 'handleDeleteAlgorithm'
+    },
+    'btn-algorithm-parse': {
+        text: '解析',
+        action: 'showParsingRules'
     },
     'btn-parse': {
         text: '解析',
@@ -85,9 +105,17 @@ const MENU_ID_MAP = {
         text: '上传模型文件',
         action: 'showModelUpload'
     },
+    'menu-upload-algorithm-file': {
+        text: '上传算法文件',
+        action: 'showAlgorithmUpload'
+    },
     'menu-download-model-file': {
         text: '下载模型文件',
         action: 'handleDownload'
+    },
+    'menu-download-algorithm-file': {
+        text: '下载算法文件',
+        action: 'handleAlgorithmDownload'
     },
     'menu-remove-model-asset': {
         text: '移除模型资产',
@@ -96,6 +124,14 @@ const MENU_ID_MAP = {
     'menu-edit-meta-model-archive': {
         text: '编辑元模型档案',
         action: 'handleEditModel'
+    },
+    'menu-edit-meta-algorithm-archive': {
+        text: '编辑元算法档案',
+        action: 'handleEditAlgorithm'
+    },
+    'menu-remove-algorithm-asset': {
+        text: '移除算法资产',
+        action: 'handleDeleteAlgorithm'
     },
     'menu-configure-parsing-rules': {
         text: '配置解析规则',

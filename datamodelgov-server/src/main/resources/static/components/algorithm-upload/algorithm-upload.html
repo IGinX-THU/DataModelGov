@@ -26,9 +26,32 @@
         </div>
 
         <div class="form-group">
-            <label class="form-label required">算法名称</label>
-            <input type="text" class="form-control" id="algorithmName" placeholder="请输入算法名称" required>
-            <div class="error-message" id="algorithmNameError">请输入算法名称</div>
+            <label class="form-label required">是否关联已有算法</label>
+            <div class="radio-group-horizontal">
+                <div class="radio-item-horizontal">
+                    <input type="radio" id="isRelatedAlgorithmYes" name="isRelatedAlgorithm" value="yes" required>
+                    <label for="isRelatedAlgorithmYes">是</label>
+                </div>
+                <div class="radio-item-horizontal">
+                    <input type="radio" id="isRelatedAlgorithmNo" name="isRelatedAlgorithm" value="no" checked required>
+                    <label for="isRelatedAlgorithmNo">否</label>
+                </div>
+            </div>
+            <div class="error-message" id="isRelatedAlgorithmError">请选择是否关联已有算法</div>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label required">名称</label>
+            <div id="algorithmNameInputContainer">
+                <input type="text" class="form-control" id="algorithmName" placeholder="请输入算法名称" required>
+                <div class="error-message" id="algorithmNameError">请输入算法名称</div>
+            </div>
+            <div id="algorithmNameSelectContainer" style="display: none;">
+                <select class="form-control form-select" id="algorithmNameSelect" required>
+                    <option value="">请选择算法名称</option>
+                </select>
+                <div class="error-message" id="algorithmNameError">请选择算法名称</div>
+            </div>
         </div>
 
         <div class="form-group">
@@ -37,45 +60,13 @@
             <div class="error-message" id="algorithmVersionError">请输入版本号</div>
         </div>
 
-        <div class="form-group">
-            <label class="form-label required">算法类型</label>
-            <select class="form-control" id="algorithmType" required>
-                <option value="">请选择算法类型</option>
-                <option value="python">Python脚本</option>
-                <option value="java">Java程序</option>
-                <option value="shell">Shell脚本</option>
-            </select>
-            <div class="error-message" id="algorithmTypeError">请选择算法类型</div>
-        </div>
-
-        <div class="form-group">
-            <label class="form-label">开发者</label>
-            <input type="text" class="form-control" id="author" placeholder="请输入开发者名称">
-        </div>
-
-        <div class="form-group">
-            <label class="form-label">场景描述</label>
-            <textarea class="form-control" id="scene" rows="3" placeholder="请输入算法应用场景描述"></textarea>
-        </div>
-
-        <div class="form-group">
-            <label class="form-label">运行命令</label>
-            <input type="text" class="form-control" id="cmd" placeholder="例如: python algorithm.py">
-        </div>
-
-        <div class="form-group">
-            <label class="form-label">输入文件名</label>
-            <input type="text" class="form-control" id="inputFile" placeholder="例如: input.txt">
-        </div>
-
-        <div class="form-group">
-            <label class="form-label">输出文件名</label>
-            <input type="text" class="form-control" id="outputFile" placeholder="例如: output.txt">
-        </div>
-
         <div class="form-actions">
-            <button type="button" class="btn btn-secondary" id="cancelBtn">取消</button>
-            <button type="button" class="btn btn-primary" id="uploadBtn">确认上传</button>
+            <button type="button" class="btn btn-secondary" id="cancelBtn">
+                取消
+            </button>
+            <button type="button" class="btn btn-primary" id="uploadBtn">
+                确认上传
+            </button>
         </div>
     </form>
 </div>

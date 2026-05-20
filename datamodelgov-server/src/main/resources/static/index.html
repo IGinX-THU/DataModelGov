@@ -183,13 +183,23 @@
                     <li id="menu-configure-parsing-rules">配置解析规则</li>
                 </ul>
             </span>
+        <span class="tab dropdown" id="algorithmDropdown">
+                <span class="dropdown-trigger">算法</span>
+                <ul class="dropdown-menu">
+                    <li id="menu-upload-algorithm-file">上传算法文件</li>
+                    <li id="menu-download-algorithm-file">下载算法文件</li>
+                    <li id="menu-remove-algorithm-asset">移除算法资产</li>
+                    <li id="menu-edit-meta-algorithm-archive">编辑元算法档案</li>
+                    <li id="menu-configure-parsing-rules">配置解析规则</li>
+                </ul>
+            </span>
         <span class="tab dropdown" id="scheduleDropdown">
                 <span class="dropdown-trigger">关联</span>
                 <ul class="dropdown-menu">
                     <li id="menu-association-rule-configuration">关联规则配置</li>
                 </ul>
             </span>
-        <span class="tab dropdown" id="simulationDropdown">
+        <span class="tab dropdown" id="simulationDropdown" style="display: none;">
                 <span class="dropdown-trigger">仿真</span>
                 <ul class="dropdown-menu">
                     <li id="menu-simulation-archive">仿真档案管理</li>
@@ -215,6 +225,13 @@
                 <span class="dropdown-trigger">工具</span>
                 <ul class="dropdown-menu">
                     <li id="menu-clear-workspace">清空工作区</li>
+                    <li class="has-submenu" id="menu-window">
+                        窗口 ▸
+                        <ul class="submenu">
+                            <li id="menu-toggle-left-sidebar">左侧边栏</li>
+                            <li id="menu-toggle-right-sidebar">右侧边栏</li>
+                        </ul>
+                    </li>
                 </ul>
             </span>
         <span class="tab dropdown" id="settingsDropdown">
@@ -234,13 +251,6 @@
                         <ul class="submenu">
                             <li id="menu-light-mode">明亮模式</li>
                             <li id="menu-dark-mode">暗黑模式</li>
-                        </ul>
-                    </li>
-                    <li class="has-submenu" id="menu-window">
-                        窗口 ▸
-                        <ul class="submenu">
-                            <li id="menu-toggle-left-sidebar">左侧边栏</li>
-                            <li id="menu-toggle-right-sidebar">右侧边栏</li>
                         </ul>
                     </li>
                 </ul>
@@ -337,9 +347,38 @@
                 </button>
             </div>
         </div>
-        
+
         <div class="ribbon-separator"></div>
-        
+
+        <!-- 算法资产管理组 -->
+        <div class="ribbon-group">
+            <div class="ribbon-group-title">算法资产管理</div>
+            <div class="ribbon-buttons">
+                <button class="ribbon-btn" id="btn-algorithm-upload">
+                    <svg class="ribbon-btn-icon"><use href="#icon-upload"></use></svg>
+                    <span class="ribbon-btn-text">上传</span>
+                </button>
+                <button class="ribbon-btn" id="btn-algorithm-download">
+                    <svg class="ribbon-btn-icon"><use href="#icon-download"></use></svg>
+                    <span class="ribbon-btn-text">下载</span>
+                </button>
+                <button class="ribbon-btn" id="btn-algorithm-delete">
+                    <span class="ribbon-btn-icon" style="color: #f5222d; font-size: 16px; font-weight: bold;">✕</span>
+                    <span class="ribbon-btn-text">删除</span>
+                </button>
+                <button class="ribbon-btn" id="btn-algorithm-edit">
+                    <svg class="ribbon-btn-icon"><use href="#icon-edit"></use></svg>
+                    <span class="ribbon-btn-text">编辑</span>
+                </button>
+                <button class="ribbon-btn" id="btn-algorithm-parse">
+                    <svg class="ribbon-btn-icon"><use href="#icon-parse"></use></svg>
+                    <span class="ribbon-btn-text">解析</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="ribbon-separator"></div>
+
         <!-- 关联调度引擎组 -->
         <div class="ribbon-group">
             <div class="ribbon-group-title">关联调度引擎</div>
@@ -415,6 +454,14 @@
             <model-detail id="modelDetail"></model-detail>
             <!-- 模型编辑组件 -->
             <model-edit id="modelEdit"></model-edit>
+            <!-- 上传算法文件组件 -->
+            <algorithm-upload id="algorithmUpload"></algorithm-upload>
+            <!-- 下载算法文件组件 -->
+            <algorithm-download id="algorithmDownload"></algorithm-download>
+            <!-- 算法详情组件 -->
+            <algorithm-detail id="algorithmDetail"></algorithm-detail>
+            <!-- 算法编辑组件 -->
+            <algorithm-edit id="algorithmEdit"></algorithm-edit>
             <!-- 数据可视化组件 -->
             <data-visualization id="dataVisualization"></data-visualization>
             <!-- 数据库表格组件 -->
@@ -485,6 +532,10 @@
 <script src="./components/model-download/model-download.js"></script>
 <script src="./components/model-detail/model-detail.js"></script>
 <script src="./components/model-edit/model-edit.js"></script>
+<script src="./components/algorithm-upload/algorithm-upload.js"></script>
+<script src="./components/algorithm-download/algorithm-download.js"></script>
+<script src="./components/algorithm-detail/algorithm-detail.js"></script>
+<script src="./components/algorithm-edit/algorithm-edit.js"></script>
 <script src="./components/data-visualization/data-visualization.js"></script>
 <script src="./components/common-pagination/common-pagination.js"></script>
 <script src="./components/import-data/import-data.js"></script>
@@ -492,7 +543,6 @@
 <script src="./components/parsing-rules/parsing-rules.js"></script>
 <script src="./components/association-rules/association-rules.js"></script>
 <script src="./components/simulation-archive/simulation-archive.js"></script>
-<script src="./components/algorithm-upload/algorithm-upload.js"></script>
 <script src="./components/algorithm-list/algorithm-list.js"></script>
 <script src="./components/visual-analysis/visual-analysis.js"></script>
 <script src="./components/project-list/project-list.js"></script>

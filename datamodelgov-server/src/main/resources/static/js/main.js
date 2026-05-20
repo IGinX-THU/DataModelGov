@@ -87,6 +87,9 @@ document.addEventListener('DOMContentLoaded', function() {
             'modelUpload', 
             'modelDownload',
             'modelEdit',
+            'algorithmUpload',
+            'algorithmDownload',
+            'algorithmEdit',
             'parsingRules',
             'associationRules',
             'simulationArchive',
@@ -94,6 +97,7 @@ document.addEventListener('DOMContentLoaded', function() {
             'databaseTable',
             'dataVisualization',
             'modelDetail',
+            'algorithmDetail',
             'dataSourceList',
             'dataArchiveList',
             'importData',
@@ -517,10 +521,19 @@ document.addEventListener('DOMContentLoaded', function() {
                         console.log('上传模型文件菜单被点击');
                         showComponent('modelUpload');
                         break;
+                    case 'showAlgorithmUpload':
+                        console.log('上传算法文件菜单被点击');
+                        showComponent('algorithmUpload');
+                        break;
                     case 'handleDownload':
                         console.log('下载模型文件菜单被点击');
                         const selectedModel = getSelectedModel();
                         showComponent('modelDownload', selectedModel);
+                        break;
+                    case 'handleAlgorithmDownload':
+                        console.log('下载算法文件菜单被点击');
+                        const selectedAlgorithm = getSelectedAlgorithm();
+                        showComponent('algorithmDownload', selectedAlgorithm);
                         break;
                     case 'handleDeleteModel':
                         console.log('移除模型资产菜单被点击');
@@ -538,6 +551,24 @@ document.addEventListener('DOMContentLoaded', function() {
                             showComponent('modelEdit', selectedModelEdit);
                         } else {
                             showWorkspaceMessage('请先选择要编辑的模型版本', 'warning');
+                        }
+                        break;
+                    case 'handleEditAlgorithm':
+                        console.log('编辑元算法档案菜单被点击');
+                        const selectedAlgorithmEdit = getSelectedAlgorithm();
+                        if (selectedAlgorithmEdit && selectedAlgorithmEdit.version) {
+                            showComponent('algorithmEdit', selectedAlgorithmEdit);
+                        } else {
+                            showWorkspaceMessage('请先选择要编辑的算法版本', 'warning');
+                        }
+                        break;
+                    case 'handleDeleteAlgorithm':
+                        console.log('移除算法资产菜单被点击');
+                        const selectedAlgorithmDelete = getSelectedAlgorithm();
+                        if (selectedAlgorithmDelete) {
+                            showDeleteConfirmDialogAlgorithm(selectedAlgorithmDelete);
+                        } else {
+                            showWorkspaceMessage('请先选择要移除的算法资产', 'warning');
                         }
                         break;
                     case 'showParsingRules':
@@ -742,6 +773,95 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
+    // 获取当前选中的算法
+    function getSelectedAlgorithm() {
+        const algorithmTree = document.getElementById('algorithmTree');
+        if (!algorithmTree) return null;
+
+        const activeNode = algorithmTree.querySelector('.tree-node.active');
+        if (!activeNode) return null;
+        
+        const span = activeNode.querySelector('span');
+        if (!span) return null;
+        
+        const nodeName = span.textContent.trim();
+        console.log('选中的算法节点名称:', nodeName);
+        
+        // 排除明显的路径节点
+        if (nodeName === 'filesystem' || nodeName === 'algorithms') {
+            console.log('选中的是路径节点，不是有效的算法节点');
+            return null;
+        }
+        
+        // 检查是否是最后一级叶子节点（没有子节点的节点）
+        const childrenContainer = activeNode.querySelector('.tree-children');
+        if (!childrenContainer || childrenContainer.children.length === 0) {
+            // 如果是最后一级叶子节点，获取其直接父节点的算法名称
+            const parentNode = activeNode.closest('.tree-children')?.parentElement;
+            const parentSpan = parentNode?.querySelector('span');
+            if (parentSpan) {
+                const algorithmName = parentSpan.textContent.trim();
+                // 再次检查父节点也不是路径节点
+                if (algorithmName !== 'filesystem' && algorithmName !== 'algorithms') {
+                    console.log('找到算法名称（最后一级叶子节点的父节点）:', algorithmName, '版本号（最后一级叶子节点）:', nodeName);
+                    return {
+                        name: algorithmName,
+                        version: nodeName
+                    };
+                }
+            }
+        } else {
+            // 如果是算法名称节点，检查是否有最后一级叶子节点子节点
+            if (childrenContainer && childrenContainer.children.length > 0) {
+                // 检查子节点是否包含最后一级叶子节点
+                const childNodes = childrenContainer.querySelectorAll('.tree-node');
+                let hasLeafChild = false;
+                
+                childNodes.forEach(childNode => {
+                    const childChildrenContainer = childNode.querySelector('.tree-children');
+                    if (!childChildrenContainer || childChildrenContainer.children.length === 0) {
+                        hasLeafChild = true;
+                    }
+                });
+                
+                if (hasLeafChild) {
+                    // 如果有最后一级叶子节点子节点，返回算法名称（表示删除所有版本，不显示版本号）
+                    console.log('找到算法名称（有最后一级叶子节点子节点）:', nodeName, '将删除所有版本');
+                    return {
+                        name: nodeName,
+                        version: null // null表示删除所有版本
+                    };
+                } else {
+                    // 如果没有最后一级叶子节点子节点，不返回有效信息
+                    console.log('找到算法名称但无最后一级叶子节点子节点:', nodeName, '不是有效的算法结构');
+                    return null;
+                }
+            } else {
+                // 如果没有子节点，不返回有效信息
+                console.log('找到算法名称但无子节点:', nodeName, '不是有效的算法结构');
+                return null;
+            }
+        }
+        
+        console.log('未找到有效的算法信息');
+        return null;
+    }
+
+    // 5.5 右侧算法树节点单击事件 - 显示算法详情
+    document.querySelectorAll('#algorithmTree .tree-node').forEach(node => {
+        node.addEventListener('click', function() {
+            console.log('单击算法节点:', this);
+            const selectedAlgorithm = getSelectedAlgorithm();
+            if (selectedAlgorithm && selectedAlgorithm.version) {
+                // 只有当有版本信息时才显示详情页面
+                console.log('显示算法详情:', selectedAlgorithm);
+                showComponent('algorithmDetail', selectedAlgorithm);
+            } else {
+                console.log('未获取到版本信息或点击的是父节点，不显示详情页面');
+            }
+        });
+    });
+
     // 6. 功能按钮点击事件 - 使用ID绑定而非文本绑定
     const addBtns = document.querySelectorAll('.ribbon-btn');
     console.log('找到的功能按钮数量:', addBtns.length);
@@ -770,6 +890,29 @@ document.addEventListener('DOMContentLoaded', function() {
                         break;
                     case 'showModelUpload':
                         showComponent('modelUpload');
+                        break;
+                    case 'showAlgorithmUpload':
+                        showComponent('algorithmUpload');
+                        break;
+                    case 'handleAlgorithmDownload':
+                        const selectedAlgorithmRibbon = getSelectedAlgorithm();
+                        showComponent('algorithmDownload', selectedAlgorithmRibbon);
+                        break;
+                    case 'handleEditAlgorithm':
+                        const selectedAlgorithmEditRibbon = getSelectedAlgorithm();
+                        if (selectedAlgorithmEditRibbon && selectedAlgorithmEditRibbon.version) {
+                            showComponent('algorithmEdit', selectedAlgorithmEditRibbon);
+                        } else {
+                            showWorkspaceMessage('请先选择要编辑的算法版本', 'warning');
+                        }
+                        break;
+                    case 'handleDeleteAlgorithm':
+                        const selectedAlgorithmDeleteRibbon = getSelectedAlgorithm();
+                        if (selectedAlgorithmDeleteRibbon) {
+                            showDeleteConfirmDialogAlgorithm(selectedAlgorithmDeleteRibbon);
+                        } else {
+                            showWorkspaceMessage('请先选择要删除的算法资产', 'warning');
+                        }
                         break;
                     case 'showImportData':
                         showComponent('importData');
@@ -1065,18 +1208,179 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!modelTree) return;
 
         const allNodes = modelTree.querySelectorAll('.tree-node');
-        
+
         allNodes.forEach(node => {
             const span = node.querySelector('span');
             if (span) {
                 const nodeName = span.textContent.trim();
-                
+
                 // 如果匹配要删除的模型名称，删除整个模型（包括所有版本）
                 if (nodeName === selectedModel.name) {
                     node.remove();
                 }
                 // 如果只匹配版本号，只删除该版本节点
                 else if (selectedModel.version && nodeName === selectedModel.version) {
+                    node.remove();
+                }
+            }
+        });
+    }
+
+    // 显示算法删除确认对话框
+    function showDeleteConfirmDialogAlgorithm(selectedAlgorithm) {
+        // 创建对话框HTML
+        const dialogHtml = `
+            <div class="delete-confirm-dialog" style="
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0, 0, 0, 0.5);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 2000;
+            ">
+                <div class="dialog-content" style="
+                    background: white;
+                    border-radius: 8px;
+                    padding: 24px;
+                    max-width: 400px;
+                    width: 90%;
+                    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+                ">
+                    <h3 style="margin: 0 0 16px 0; font-size: 18px; color: #1f2329;">确认删除</h3>
+                    <p style="margin: 0 0 24px 0; color: #646a73; line-height: 1.5;">
+                        ${selectedAlgorithm.version ?
+                            `确定要删除算法资产 <strong>${selectedAlgorithm.name}</strong> (版本: ${selectedAlgorithm.version}) 吗？` :
+                            `确定要删除算法资产 <strong>${selectedAlgorithm.name}</strong> 及其所有版本吗？`
+                        }<br><br>
+                        <span style="color: #f5222d;">此操作不可恢复！</span>
+                    </p>
+                    <div class="dialog-actions" style="display: flex; gap: 12px; justify-content: flex-end;">
+                        <button class="cancel-btn" style="
+                            padding: 8px 16px;
+                            border: 1px solid #c9cdd4;
+                            border-radius: 4px;
+                            background: white;
+                            color: #1f2329;
+                            cursor: pointer;
+                            font-size: 14px;
+                        ">取消</button>
+                        <button class="confirm-btn" style="
+                            padding: 8px 16px;
+                            border: 1px solid #f5222d;
+                            border-radius: 4px;
+                            background: #f5222d;
+                            color: white;
+                            cursor: pointer;
+                            font-size: 14px;
+                        ">确认删除</button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // 创建对话框元素
+        const dialog = document.createElement('div');
+        dialog.innerHTML = dialogHtml;
+        document.body.appendChild(dialog);
+
+        // 绑定事件
+        const cancelBtn = dialog.querySelector('.cancel-btn');
+        const confirmBtn = dialog.querySelector('.confirm-btn');
+
+        const closeDialog = () => {
+            document.body.removeChild(dialog);
+        };
+
+        cancelBtn.addEventListener('click', closeDialog);
+
+        confirmBtn.addEventListener('click', () => {
+            closeDialog();
+            deleteAlgorithmAsset(selectedAlgorithm);
+        });
+
+        // 点击遮罩关闭
+        dialog.addEventListener('click', (e) => {
+            if (e.target === dialog) {
+                closeDialog();
+            }
+        });
+
+        // ESC键关闭
+        const handleEsc = (e) => {
+            if (e.key === 'Escape') {
+                closeDialog();
+                document.removeEventListener('keydown', handleEsc);
+            }
+        };
+        document.addEventListener('keydown', handleEsc);
+    }
+
+    // 删除算法资产
+    window.deleteAlgorithmAsset = async function(selectedAlgorithm) {
+        try {
+            console.log('删除算法资产:', selectedAlgorithm);
+
+            // 构建查询参数
+            const params = new URLSearchParams({
+                name: selectedAlgorithm.name
+            });
+
+            // 如果有版本号，添加版本参数
+            if (selectedAlgorithm.version) {
+                params.append('version', selectedAlgorithm.version);
+            }
+
+            // 使用新的API配置
+            const result = await window.AppConfig.delete('algorithm', 'delete', {
+                name: selectedAlgorithm.name,
+                version: selectedAlgorithm.version
+            });
+
+            console.log('删除响应:', result);
+
+            if (result.success) {
+                showWorkspaceMessage(`算法资产 "${selectedAlgorithm.name}" 删除成功`, 'success');
+
+                // 从右侧树中移除该节点
+                removeAlgorithmFromTree(selectedAlgorithm);
+
+                // 清除选中状态
+                const algorithmTree = document.getElementById('algorithmTree');
+                if (algorithmTree) {
+                    const activeNodes = algorithmTree.querySelectorAll('.tree-node.active');
+                    activeNodes.forEach(node => node.classList.remove('active'));
+                }
+            } else {
+                showWorkspaceMessage(result.message || '删除失败', 'error');
+            }
+        } catch (error) {
+            console.error('删除算法资产失败:', error);
+            showWorkspaceMessage('删除失败，请稍后重试', 'error');
+        }
+    }
+
+    // 从树中移除算法节点
+    function removeAlgorithmFromTree(selectedAlgorithm) {
+        const algorithmTree = document.getElementById('algorithmTree');
+        if (!algorithmTree) return;
+
+        const allNodes = algorithmTree.querySelectorAll('.tree-node');
+
+        allNodes.forEach(node => {
+            const span = node.querySelector('span');
+            if (span) {
+                const nodeName = span.textContent.trim();
+
+                // 如果匹配要删除的算法名称，删除整个算法（包括所有版本）
+                if (nodeName === selectedAlgorithm.name) {
+                    node.remove();
+                }
+                // 如果只匹配版本号，只删除该版本节点
+                else if (selectedAlgorithm.version && nodeName === selectedAlgorithm.version) {
                     node.remove();
                 }
             }
@@ -1548,7 +1852,7 @@ function showVisualAnalysis() {
         console.log(`显示组件: ${componentId}`, args);
         
         // 弹窗组件不需要清空工作区
-        const modalComponents = ['registerEmbedded', 'importData', 'modelUpload', 'modelDownload', 'modelEdit'];
+        const modalComponents = ['registerEmbedded', 'importData', 'modelUpload', 'modelDownload', 'modelEdit', 'algorithmUpload', 'algorithmDownload', 'algorithmEdit'];
         if (!modalComponents.includes(componentId)) {
             // 先清空工作区
             clearWorkspace();
@@ -1700,6 +2004,11 @@ function showVisualAnalysis() {
             if (modelTree) {
                 modelTree.innerHTML = '<div class="loading-placeholder">正在加载模型资产...</div>';
             }
+            
+            const algorithmTree = document.getElementById('algorithmTree');
+            if (algorithmTree) {
+                algorithmTree.innerHTML = '<div class="loading-placeholder">正在加载算法资产...</div>';
+            }
 
             // 使用新的API配置
             const result = await window.AppConfig.get('datasource', 'tree');
@@ -1709,6 +2018,8 @@ function showVisualAnalysis() {
                 renderDataSourceTree(result.data);
                 // 同步filesystem数据到右侧模型资产库
                 syncFilesystemToModelAssets(result.data);
+                // 同步filesystem数据到右侧算法资产库
+                syncFilesystemToAlgorithmAssets(result.data);
             } else {
                 console.error('加载数据源树失败:', result.message);
                 document.getElementById('dataSourceTree').innerHTML = '<div class="error-placeholder">加载数据源失败</div>';
@@ -2101,12 +2412,13 @@ function showVisualAnalysis() {
                             icon.className = 'icon cube-icon';
                             treeNode.appendChild(icon);
                         }
-                        
+
                         // 添加节点名称
                         const span = document.createElement('span');
+                        span.className = 'tree-node-text';
                         span.textContent = node.name;
                         treeNode.appendChild(span);
-                        
+
                         // 如果有子节点，创建子容器并递归
                         if (hasChildren) {
                             const childrenContainer = document.createElement('div');
@@ -2173,7 +2485,136 @@ function showVisualAnalysis() {
             }
         }
     }
-    
+
+    // 同步filesystem数据到算法资产库
+    function syncFilesystemToAlgorithmAssets(allData) {
+        try {
+            // 过滤出以"algorithms_system"开头的路径数据
+            const filesystemData = allData.filter(item => {
+                const path = typeof item === 'string' ? item : item.path;
+                return path && path.startsWith('algorithms_system');
+            });
+
+            console.log('过滤出的algorithms_system数据:', filesystemData);
+
+            if (filesystemData.length > 0) {
+                // 获取算法树容器
+                const algorithmTree = document.getElementById('algorithmTree');
+                if (!algorithmTree) return;
+
+                // 构建树结构
+                const treeMap = {};
+                filesystemData.forEach(item => {
+                    const path = typeof item === 'string' ? item : item.path;
+                    const parts = path.split('.');
+
+                    let current = treeMap;
+                    for (let i = 0; i < parts.length; i++) {
+                        const part = parts[i];
+                        if (!current[part]) {
+                            current[part] = {
+                                name: part,
+                                children: {},
+                                fullPath: parts.slice(0, i + 1).join('.'),
+                                isLeaf: i === parts.length - 1,
+                                level: i
+                            };
+                        }
+                        current = current[part].children;
+                    }
+                });
+
+                // 递归创建DOM树节点
+                function createTreeNodes(nodes, container, level = 0) {
+                    Object.values(nodes).forEach(node => {
+                        const hasChildren = Object.keys(node.children).length > 0;
+
+                        // 创建树节点
+                        const treeNode = document.createElement('div');
+                        treeNode.className = hasChildren ? 'tree-node expanded' : 'tree-node';
+                        treeNode.setAttribute('data-full-path', node.fullPath);
+                        treeNode.setAttribute('data-is-leaf', node.isLeaf.toString());
+
+                        // 只有父节点（有子节点的）才有图标，子节点（版本号）没有图标
+                        if (hasChildren) {
+                            const icon = document.createElement('i');
+                            icon.className = 'icon algorithm-icon';
+                            treeNode.appendChild(icon);
+                        }
+
+                        // 添加节点名称
+                        const span = document.createElement('span');
+                        span.className = 'tree-node-text';
+                        span.textContent = node.name;
+                        treeNode.appendChild(span);
+
+                        // 如果有子节点，创建子容器并递归
+                        if (hasChildren) {
+                            const childrenContainer = document.createElement('div');
+                            childrenContainer.className = 'tree-children';
+                            createTreeNodes(node.children, childrenContainer, level + 1);
+                            treeNode.appendChild(childrenContainer);
+                        }
+
+                        // 添加到容器
+                        container.appendChild(treeNode);
+                    });
+                }
+
+                // 清空容器并创建新树
+                algorithmTree.innerHTML = '';
+                createTreeNodes(treeMap, algorithmTree);
+
+                // 重新绑定右侧算法树节点事件
+                const rightTreeNodes = algorithmTree.querySelectorAll('.tree-node');
+                rightTreeNodes.forEach(node => {
+                    node.addEventListener('click', function(e) {
+                        e.stopPropagation();
+
+                        // 确保只处理右侧的节点
+                        if (!this.closest('.right-sidebar')) {
+                            return;
+                        }
+
+                        // 先清除所有选中状态（仅限右侧）
+                        algorithmTree.querySelectorAll('.tree-node.active').forEach(n => n.classList.remove('active'));
+
+                        // 设置当前选中
+                        this.classList.add('active');
+
+                        // 展开收起（如果有子节点）
+                        if (this.querySelector('.tree-children')) {
+                            this.classList.toggle('expanded');
+                        }
+
+                        // 调用算法详情显示逻辑
+                        const selectedAlgorithm = getSelectedAlgorithm();
+                        if (selectedAlgorithm && selectedAlgorithm.version) {
+                            console.log('显示算法详情:', selectedAlgorithm);
+                            showComponent('algorithmDetail', selectedAlgorithm);
+                        } else {
+                            console.log('未获取到版本信息或点击的是父节点，不显示详情页面');
+                        }
+                    });
+                });
+
+            } else {
+                // 如果没有filesystem数据，显示空状态
+                const algorithmTree = document.getElementById('algorithmTree');
+                if (algorithmTree) {
+                    algorithmTree.innerHTML = '<div class="empty-placeholder">暂无算法资产</div>';
+                }
+            }
+
+        } catch (error) {
+            console.error('同步filesystem数据到算法资产库失败:', error);
+            const algorithmTree = document.getElementById('algorithmTree');
+            if (algorithmTree) {
+                algorithmTree.innerHTML = '<div class="error-placeholder">加载算法资产失败</div>';
+            }
+        }
+    }
+
     // 将loadDataSourceTree函数暴露到全局作用域，供其他组件调用
     window.loadDataSourceTree = loadDataSourceTree;
 });
@@ -2191,6 +2632,11 @@ window.loadDataSourceTree = async function() {
             modelTree.innerHTML = '<div class="loading-placeholder">正在加载模型资产...</div>';
         }
         
+        const algorithmTree = document.getElementById('algorithmTree');
+        if (algorithmTree) {
+            algorithmTree.innerHTML = '<div class="loading-placeholder">正在加载算法资产...</div>';
+        }
+        
         console.log('🔄 调用接口:', window.AppConfig.getApiUrl('datasource', 'tree'));
         const result = await window.AppConfig.get('datasource', 'tree');
         
@@ -2200,6 +2646,8 @@ window.loadDataSourceTree = async function() {
             renderDataSourceTree(result.data);
             // 同步filesystem数据到右侧模型资产库
             syncFilesystemToModelAssets(result.data);
+            // 同步filesystem数据到右侧算法资产库
+            syncFilesystemToAlgorithmAssets(result.data);
             console.log('🔄 数据源树重新加载完成');
         } else {
             console.error('加载数据源树失败:', result.message);

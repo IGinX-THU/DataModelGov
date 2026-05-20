@@ -3,6 +3,7 @@ package com.tsinghua.controller;
 import com.tsinghua.entity.AlgorithmMetaEntity;
 import com.tsinghua.model.Result;
 import com.tsinghua.dto.UploadResult;
+import com.tsinghua.dto.ExtractAlgorithmFileRequest;
 import com.tsinghua.service.AlgorithmFileService;
 import com.tsinghua.auth.annotation.RequirePermission;
 import com.tsinghua.auth.enums.Permission;
@@ -16,7 +17,10 @@ import org.springframework.web.multipart.MultipartFile;
 import javax.servlet.http.HttpServletResponse;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 
 @Api(tags = "算法资产管理")
 @RestController
@@ -28,37 +32,28 @@ public class AlgorithmFileController {
 
     @ApiOperation("上传算法")
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @RequirePermission(Permission.MODEL_CREATE)
+    @RequirePermission(Permission.CREATE)
     @OperationLog(value = "上传算法", type = OperationLog.OperationType.CREATE, recordParams = false)
     public Result<?> handleFileUpload(
             @RequestPart("file") MultipartFile file,
             @RequestParam("name") String name,
-            @RequestParam("version") String version,
-            @RequestParam(value = "algorithmType", defaultValue = "python") String algorithmType) throws Exception {
+            @RequestParam("version") String version) throws Exception {
 
         if (file.isEmpty()) {
             return Result.error("上传文件不能为空。");
         }
 
         UploadResult result = algorithmFileService.uploadAlgorithm(file, name, version);
-        
-        // 更新算法类型
-        AlgorithmMetaEntity meta = algorithmFileService.queryMeta(name, version);
-        if (meta != null) {
-            meta.setAlgorithmType(algorithmType);
-            algorithmFileService.saveAlgorithmMetadata(meta);
-        }
-        
         return Result.success(result);
     }
 
     @ApiOperation("下载算法")
     @PostMapping("/download")
-    @RequirePermission(Permission.MODEL_READ)
+    @RequirePermission(Permission.READ)
     @OperationLog(value = "下载算法", type = OperationLog.OperationType.EXPORT, recordResult = false)
     public void handleFileDownload(
-            @RequestParam("name") String name,
-            @RequestParam("version") String version,
+            @RequestParam String name,
+            @RequestParam String version,
             @RequestParam(value = "fileName", required = false) String fileName,
             HttpServletResponse response) throws Exception {
 
@@ -66,6 +61,7 @@ public class AlgorithmFileController {
         AlgorithmMetaEntity queryMeta = algorithmFileService.queryMeta(name, version);
         fileName = queryMeta.getFileName();
 
+        // 设置响应头
         String encodedFilename = URLEncoder.encode(fileName, StandardCharsets.UTF_8.name())
                 .replace("+", "%20");
 
@@ -74,13 +70,14 @@ public class AlgorithmFileController {
                 "attachment; filename=\"" + encodedFilename + "\"; filename*=UTF-8''" + encodedFilename);
         response.setContentLength(fileData.length);
 
+        // 写入响应流
         response.getOutputStream().write(fileData);
         response.flushBuffer();
     }
 
     @ApiOperation("算法元数据详情")
-    @GetMapping("/metas")
-    @RequirePermission(Permission.MODEL_READ)
+    @GetMapping( "/metas")
+    @RequirePermission(Permission.READ)
     public Result<AlgorithmMetaEntity> queryMeta(
             @RequestParam("name") String name,
             @RequestParam("version") String version) throws Exception {
@@ -90,7 +87,7 @@ public class AlgorithmFileController {
 
     @ApiOperation("保存算法元数据")
     @PostMapping("/metas")
-    @RequirePermission(Permission.MODEL_UPDATE)
+    @RequirePermission(Permission.UPDATE)
     @OperationLog(value = "保存算法元数据", type = OperationLog.OperationType.UPDATE)
     public Result<Void> saveMeta(@RequestBody AlgorithmMetaEntity algorithmMetaDto) throws Exception {
         algorithmFileService.saveAlgorithmMetadata(algorithmMetaDto);
@@ -98,30 +95,60 @@ public class AlgorithmFileController {
     }
 
     @ApiOperation("算法元数据历史")
-    @GetMapping("/history")
-    @RequirePermission(Permission.MODEL_READ)
+    @GetMapping( "/history")
+    @RequirePermission(Permission.READ)
     public Result<List<AlgorithmMetaEntity>> queryMetaList(
             @RequestParam("name") String name) {
-        try {
-            List<AlgorithmMetaEntity> result = algorithmFileService.queryMetaList(name);
-            return Result.success(result);
-        } catch (Exception e) {
-            return new Result<>(500, "查询失败: " + e.getMessage(), null);
-        }
+        return Result.success(algorithmFileService.queryMetaList(name));
     }
 
     @ApiOperation("移除算法资产")
-    @DeleteMapping("/delete")
-    @RequirePermission(Permission.MODEL_DELETE)
+    @DeleteMapping( "/delete")
+    @RequirePermission(Permission.DELETE)
     @OperationLog(value = "移除算法资产", type = OperationLog.OperationType.DELETE)
     public Result<Void> handleDelete(
             @RequestParam("name") String name,
-            @RequestParam(value = "version", required = false) String version) {
+            @RequestParam(value = "version", required = false) String version) throws Exception {
+        algorithmFileService.deleteAlgorithm(name, version);
+        return Result.success("操作成功");
+    }
+
+    @ApiOperation("提取算法文件用于解析")
+    @PostMapping("/extractAlgorithmFile")
+    @RequirePermission(Permission.READ)
+    public Result<?> extractAlgorithmFileForParsing(@RequestBody ExtractAlgorithmFileRequest request) throws Exception {
+        
+        String algorithmName = request.getName();
+        String version = request.getVersion();
+        
+        if (algorithmName == null || version == null) {
+            return Result.error("参数name和version不能为空");
+        }
+        
+        // 创建临时目录
+        Path tempDir = Files.createTempDirectory("algorithm_parsing_");
+        
         try {
-            algorithmFileService.deleteAlgorithm(name, version);
-            return Result.success("操作成功");
-        } catch (Exception e) {
-            return Result.error("删除失败: " + e.getMessage());
+            // 调用修改后的extractAlgorithmFile方法
+            List<Map<String, Object>> fileList = algorithmFileService.extractAlgorithmFile(algorithmName, version, tempDir);
+            return Result.success(fileList);
+        } finally {
+            // 清理临时目录
+            try {
+                Files.walk(tempDir)
+                        .sorted(java.util.Comparator.reverseOrder())
+                        .forEach(path -> {
+                            try {
+                                Files.deleteIfExists(path);
+                            } catch (Exception deleteException) {
+                                // 忽略删除异常
+                            }
+                        });
+                Files.deleteIfExists(tempDir);
+            } catch (Exception deleteException) {
+                // 忽略删除异常
+            }
         }
     }
+
 }

@@ -109,7 +109,8 @@ window.AppConfig = {
             download: '/api/algorithm/download',
             metas: '/api/algorithm/metas',
             history: '/api/algorithm/history',
-            delete: '/api/algorithm/delete'
+            delete: '/api/algorithm/delete',
+            extractAlgorithmFile: '/api/algorithm/extractAlgorithmFile'
         },
         // 用户管理相关
         userManagement: {

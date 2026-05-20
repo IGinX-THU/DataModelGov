@@ -1388,24 +1388,14 @@ class AssociationRules extends HTMLElement {
             row.remove();
         });
 
-        // Assemble the row with conversion in the middle
-        row.appendChild(sourceField);
-        row.appendChild(conversion);
-        row.appendChild(arrow);
-        row.appendChild(targetField);
-        row.appendChild(removeBtn);
-
-        // Add to the list
-        mappingsList.appendChild(row);
-
         // 添加转换类型变更事件处理
         const operatorSelect = conversion.querySelector('.conversion-operator');
         const valueSelect = conversion.querySelector('.conversion-value');
         const customValueInput = conversion.querySelector('.conversion-custom-value');
-        
+
         operatorSelect.addEventListener('change', () => {
             const operator = operatorSelect.value;
-            
+
             if (operator === 'none') {
                 valueSelect.style.display = 'none';
                 customValueInput.style.display = 'none';
@@ -1416,10 +1406,10 @@ class AssociationRules extends HTMLElement {
                 valueSelect.focus();
             }
         });
-        
+
         valueSelect.addEventListener('change', () => {
             const selectedValue = valueSelect.value;
-            
+
             if (selectedValue === 'custom') {
                 customValueInput.style.display = 'inline-block';
                 customValueInput.focus();
@@ -1429,47 +1419,64 @@ class AssociationRules extends HTMLElement {
             }
         });
 
-        // Add field type validation
-        const sourceSelect = sourceField.querySelector('.data-field-select');
-        const targetSelect = targetField.querySelector('.mapping-target-field');
-        
-        // Add change event listeners for validation
-        sourceSelect.addEventListener('change', () => this.validateMappingType(sourceSelect, targetSelect));
-        targetSelect.addEventListener('change', () => this.validateMappingType(sourceSelect, targetSelect));
+        // Assemble the row with conversion in the middle
+        row.appendChild(sourceField);
+        row.appendChild(conversion);
+        row.appendChild(arrow);
+        row.appendChild(targetField);
+        row.appendChild(removeBtn);
 
-        // Update field options based on current selections
-        this.updateMappingFieldOptionsForNewRow(sourceField, targetField);
+        // Add to the list
+        mappingsList.appendChild(row);
 
-        // If mapping data is provided, populate the fields
-        if (mappingData) {
-            const sourceSelect = sourceField.querySelector('.data-field-select');
-            const targetSelect = targetField.querySelector('.mapping-target-field');
-            const operatorSelect = conversion.querySelector('.conversion-operator');
-            const valueSelect = conversion.querySelector('.conversion-value');
-            const customValueInput = conversion.querySelector('.conversion-custom-value');
-            
-            if (mappingData.sourceField) sourceSelect.value = mappingData.sourceField;
-            if (mappingData.targetField) targetSelect.value = mappingData.targetField;
-            if (mappingData.operator) operatorSelect.value = mappingData.operator;
-            
-            // 处理转换值
-            if (mappingData.conversionValue) {
-                // 检查是否是预设值
-                const presetValues = ['1000', '3600', '3.6', '0.2777777777777778', '100', '0.01', '273.15', '9/5', '32'];
-                if (presetValues.includes(mappingData.conversionValue)) {
-                    valueSelect.value = mappingData.conversionValue;
-                    customValueInput.style.display = 'none';
-                } else {
-                    valueSelect.value = 'custom';
-                    customValueInput.value = mappingData.conversionValue;
-                    customValueInput.style.display = 'inline-block';
-                }
-                valueSelect.style.display = 'inline-block';
+        // 如果有已选择的数据源表，自动填充字段选项
+        const dataSourceSelect = this.shadowRoot.getElementById('dataSource');
+        if (dataSourceSelect && dataSourceSelect.value) {
+            this.loadDataSourceFields(dataSourceSelect.value);
+        }
+
+        // 如果有缓存的模型数据，自动填充模型参数选项
+        if (this.cachedModelData) {
+            let inputs = [];
+            let outputs = [];
+
+            // 处理inputs，可能是字符串或数组
+            if (this.cachedModelData.inputs) {
+                inputs = typeof this.cachedModelData.inputs === 'string'
+                    ? JSON.parse(this.cachedModelData.inputs)
+                    : this.cachedModelData.inputs;
             }
-            
-            // 触发operator change事件来显示/隐藏value选择框
+
+            // 处理outputs，可能是字符串或数组
+            if (this.cachedModelData.outputs) {
+                outputs = typeof this.cachedModelData.outputs === 'string'
+                    ? JSON.parse(this.cachedModelData.outputs)
+                    : this.cachedModelData.outputs;
+            }
+
+            this.updateMappingFieldOptions(inputs, outputs);
+        }
+
+        // 如果有映射数据，填充映射数据
+        if (mappingData) {
+            const sourceSelect = row.querySelector('.data-field-select');
+            const targetSelect = row.querySelector('.mapping-target-field');
+            const operatorSelect = row.querySelector('.conversion-operator');
+            const valueSelect = row.querySelector('.conversion-value');
+            const customValueInput = row.querySelector('.conversion-custom-value');
+
+            if (sourceSelect) sourceSelect.value = mappingData.sourceField || '';
+            if (targetSelect) targetSelect.value = mappingData.targetField || '';
+            if (operatorSelect) operatorSelect.value = mappingData.operator || 'none';
+            if (valueSelect) valueSelect.value = mappingData.conversionValue || '';
+            if (customValueInput) customValueInput.value = mappingData.customValue || '';
+
+            // 处理换算操作符显示
             if (mappingData.operator && mappingData.operator !== 'none') {
-                valueSelect.style.display = 'inline-block';
+                valueSelect.style.display = 'block';
+                if (mappingData.conversionValue === 'custom') {
+                    customValueInput.style.display = 'block';
+                }
             }
         }
     }
@@ -3553,67 +3560,64 @@ class AssociationRules extends HTMLElement {
     loadDataSourceOptions() {
         const dataSourceSelect = this.shadowRoot.getElementById('dataSource');
         if (!dataSourceSelect) return;
-        
-        // 获取左侧关系查询的表名 - 参考 database-table.js 的表名获取方式
-        const leftSidebarTree = document.querySelector('.left-sidebar .tree');
-        if (!leftSidebarTree) {
-            console.warn('未找到左侧关系查询树');
-            return;
-        }
-        
-        const allNodes = leftSidebarTree.querySelectorAll('.tree-node');
-        const tableNames = new Set();
-        
-        allNodes.forEach(node => {
-            const span = node.querySelector('span');
-            if (span) {
-                const nodeName = span.textContent.trim();
-                
-                // 排除根节点
-                if (nodeName === 'relational_system') {
+
+        // 调用tree接口获取数据源数据
+        window.AppConfig.get('datasource', 'tree')
+            .then(data => {
+                if (!data || !data.data) {
+                    console.warn('未获取到数据源树数据');
                     return;
                 }
-                
-                // 判断是否为字段（最后一级叶子节点）
-                const isField = !node.querySelector('.tree-children');
-                if (isField) {
-                    // 字段节点，获取其父节点（表名）
-                    const parentNode = node.parentElement?.parentElement;
-                    if (parentNode && parentNode.classList.contains('tree-node')) {
-                        const tablePath = this.getFullTablePath(parentNode);
-                        // 只添加有字段子节点的表名（即最后一级表名）
-                        tableNames.add(tablePath);
+
+                // 缓存数据供后续使用
+                this.cachedDataSourceData = data.data;
+
+                const tableNames = new Set();
+
+                // 处理扁平的路径列表数据
+                data.data.forEach(item => {
+                    if (item.path) {
+                        // 过滤掉算法系统和模型系统的路径
+                        if (!item.path.startsWith('algorithms_system.') && !item.path.startsWith('models_system.')) {
+                            // 提取表名（最后一部分）
+                            const parts = item.path.split('.');
+                            const tableName = parts[parts.length - 1];
+                            // 提取表路径（去掉字段名）
+                            const tablePath = parts.slice(0, -1).join('.');
+                            tableNames.add(tablePath);
+                        }
                     }
+                });
+
+                console.log('获取到的数据源表名:', Array.from(tableNames));
+
+                // 清空现有选项
+                dataSourceSelect.innerHTML = '<option value="">请选择数据源</option>';
+
+                // 添加表名选项
+                Array.from(tableNames).forEach(tableName => {
+                    const option = document.createElement('option');
+                    option.value = tableName;
+                    option.textContent = tableName;
+                    dataSourceSelect.appendChild(option);
+                });
+
+                // 监听数据源变化，加载字段
+                if (!this.dataSourceEventBound) {
+                    dataSourceSelect.addEventListener('change', () => {
+                        this.loadDataSourceFields(dataSourceSelect.value);
+                    });
+
+                    // 标记事件已绑定
+                    this.dataSourceEventBound = true;
+                    console.log('数据源事件监听器已绑定');
+                } else {
+                    console.log('数据源事件监听器已存在，跳过绑定');
                 }
-                // 移除之前的逻辑，不再添加中间路径的节点
-            }
-        });
-        
-        console.log('获取到的数据源表名:', Array.from(tableNames));
-        
-        // 清空现有选项
-        dataSourceSelect.innerHTML = '<option value="">请选择数据源</option>';
-        
-        // 添加表名选项
-        Array.from(tableNames).forEach(tableName => {
-            const option = document.createElement('option');
-            option.value = tableName;
-            option.textContent = tableName;
-            dataSourceSelect.appendChild(option);
-        });
-        
-        // 监听数据源变化，加载字段
-        if (!this.dataSourceEventBound) {
-            dataSourceSelect.addEventListener('change', () => {
-                this.loadDataSourceFields(dataSourceSelect.value);
+            })
+            .catch(error => {
+                console.error('获取数据源树数据失败:', error);
             });
-            
-            // 标记事件已绑定
-            this.dataSourceEventBound = true;
-            console.log('数据源事件监听器已绑定');
-        } else {
-            console.log('数据源事件监听器已存在，跳过绑定');
-        }
     }
 
     // 获取表的完整路径
@@ -3636,43 +3640,40 @@ class AssociationRules extends HTMLElement {
     // 动态加载数据源字段
     loadDataSourceFields(tableName) {
         if (!tableName) return;
-        
+
         console.log('加载表字段:', tableName);
-        
-        // 从左侧树中获取该表的字段（最后一级叶子节点）
-        const leftSidebarTree = document.querySelector('.left-sidebar .tree');
-        if (!leftSidebarTree) return;
-        
-        const allNodes = leftSidebarTree.querySelectorAll('.tree-node');
-        const fields = new Map(); // 使用Map来存储字段名和类型
-        
-        allNodes.forEach(node => {
-            const span = node.querySelector('span');
-            if (span) {
-                const nodeName = span.textContent.trim();
-                
-                // 判断是否为字段（最后一级叶子节点）
-                const isField = !node.querySelector('.tree-children');
-                if (isField) {
-                    // 获取父节点的完整路径
-                    const parentNode = node.parentElement?.parentElement;
-                    if (parentNode && parentNode.classList.contains('tree-node')) {
-                        const parentPath = this.getFullTablePath(parentNode);
-                        if (parentPath === tableName) {
-                            // 获取dataType属性（数值代码）
-                            const dataTypeCode = node.getAttribute('data-type') || node.dataset.type || '1';
-                            fields.set(nodeName, dataTypeCode);
-                        }
+
+        // 使用缓存的数据源数据
+        if (!this.cachedDataSourceData) {
+            console.warn('数据源数据未缓存，请先加载数据源选项');
+            return;
+        }
+
+        const fields = new Map();
+
+        // 处理扁平的路径列表数据，提取字段
+        this.cachedDataSourceData.forEach(item => {
+            if (item.path) {
+                // 过滤掉算法系统和模型系统的路径
+                if (!item.path.startsWith('algorithms_system.') && !item.path.startsWith('models_system.')) {
+                    // 提取表路径和字段名
+                    const parts = item.path.split('.');
+                    const fieldPath = parts.slice(0, -1).join('.');
+                    const fieldName = parts[parts.length - 1];
+
+                    // 如果表路径匹配选择的表名，添加字段
+                    if (fieldPath === tableName) {
+                        fields.set(fieldName, item.dataType);
                     }
                 }
             }
         });
-        
+
         console.log('获取到的字段和类型代码:', Array.from(fields.entries()));
-        
+
         // 存储字段类型信息供验证使用
         this.dataSourceFieldTypes = fields;
-        
+
         // 更新所有映射行中的数据源字段选项
         const mappingRows = this.shadowRoot.querySelectorAll('.mapping-row');
         mappingRows.forEach(row => {
@@ -3680,7 +3681,7 @@ class AssociationRules extends HTMLElement {
             if (sourceSelect) {
                 const currentValue = sourceSelect.value;
                 sourceSelect.innerHTML = '<option value="">请选择字段</option>';
-                
+
                 // 添加字段选项，包含转换后的类型信息
                 fields.forEach((typeCode, fieldName) => {
                     const readableType = this.convertDataTypeCode(typeCode);
@@ -3689,7 +3690,7 @@ class AssociationRules extends HTMLElement {
                     option.textContent = `${fieldName} (${readableType})`;
                     sourceSelect.appendChild(option);
                 });
-                
+
                 // 恢复之前选择的值
                 if (currentValue) {
                     sourceSelect.value = currentValue;
@@ -3702,34 +3703,34 @@ class AssociationRules extends HTMLElement {
     loadTargetModelOptions() {
         const targetModelSelect = this.shadowRoot.getElementById('targetModel');
         if (!targetModelSelect) return;
-        
-        // 获取右侧模型资产库的根节点 - 参考 model-download.js 的模型获取方式
-        const rightSidebarTree = document.querySelector('.right-sidebar .tree');
-        if (!rightSidebarTree) {
-            console.warn('未找到右侧模型资产库树');
+
+        // 只从模型树获取数据，排除算法树
+        const modelTree = document.getElementById('modelTree');
+        if (!modelTree) {
+            console.warn('未找到模型树');
             return;
         }
-        
-        const allNodes = rightSidebarTree.querySelectorAll('.tree-node');
+
+        const allNodes = modelTree.querySelectorAll('.tree-node');
         const modelNames = new Set(); // 使用Set避免重复
-        
+
         allNodes.forEach(node => {
             const span = node.querySelector('span');
             if (span) {
                 const nodeName = span.textContent.trim();
-                
+
                 // 排除明显的路径节点
                 if (nodeName === 'models_system') {
                     return;
                 }
-                
+
                 // 检查是否为父节点（有子节点）
                 const hasChildren = node.querySelector('.tree-children');
                 if (hasChildren) {
                     // 检查子节点中是否有叶子节点
                     const childNodes = node.querySelectorAll('.tree-node .tree-node');
                     const hasLeafChild = Array.from(childNodes).some(child => !child.querySelector('.tree-children'));
-                    
+
                     // 只有当子节点包含叶子节点时，才将父节点作为模型名称
                     if (hasLeafChild) {
                         modelNames.add(nodeName);
@@ -3737,12 +3738,12 @@ class AssociationRules extends HTMLElement {
                 }
             }
         });
-        
+
         console.log('获取到的目标模型名称:', Array.from(modelNames));
-        
+
         // 清空现有选项
         targetModelSelect.innerHTML = '<option value="">请选择目标模型</option>';
-        
+
         // 添加模型名称选项
         Array.from(modelNames).forEach(name => {
             const option = document.createElement('option');
@@ -3750,7 +3751,7 @@ class AssociationRules extends HTMLElement {
             option.textContent = name;
             targetModelSelect.appendChild(option);
         });
-        
+
         // 监听目标模型变化，加载版本
         if (!this.targetModelEventBound) {
             targetModelSelect.addEventListener('change', () => {
@@ -3760,7 +3761,7 @@ class AssociationRules extends HTMLElement {
                 this.clearAutoFilledFields();
                 // 不在这里加载字段，等版本选择后再加载
             });
-            
+
             // 标记事件已绑定
             this.targetModelEventBound = true;
             console.log('目标模型事件监听器已绑定');
@@ -4054,7 +4055,13 @@ class AssociationRules extends HTMLElement {
         if (!inputs || !outputs) {
             return;
         }
-        
+
+        // 确保inputs和outputs是数组
+        if (!Array.isArray(inputs) || !Array.isArray(outputs)) {
+            console.warn('updateMappingFieldOptions: inputs或outputs不是数组', { inputs, outputs });
+            return;
+        }
+
         // 更新输入映射的目标字段选项（模型参数）
         const mappingTargetFields = this.shadowRoot.querySelectorAll('.mapping-target-field');
         mappingTargetFields.forEach(select => {
@@ -4068,7 +4075,7 @@ class AssociationRules extends HTMLElement {
             });
             if (currentValue) select.value = currentValue;
         });
-        
+
         // 更新输出映射的源字段选项（模型输出）
         const resultMappingSourceFields = this.shadowRoot.querySelectorAll('.result-mapping-source-field');
         resultMappingSourceFields.forEach(select => {
