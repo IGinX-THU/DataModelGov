@@ -222,11 +222,7 @@ class ProjectCreate extends HTMLElement {
 
         const projectData = {
             name: name,
-            desc: this.shadowRoot.getElementById('projectDescription').value.trim(),
-            algorithms: '[]',
-            models: '[]',
-            datas: '[]',
-            owner: window.AppConfig.getUsername() || 'unknown'
+            desc: this.shadowRoot.getElementById('projectDescription').value.trim()
         };
 
         try {
@@ -244,6 +240,22 @@ class ProjectCreate extends HTMLElement {
                     this.showToast('项目创建成功');
                 }
                 this.hide();
+
+                // 保存项目信息到localStorage（按用户隔离）
+                if (window.localStorage) {
+                    const username = window.AppConfig.getUsername();
+                    if (username) {
+                        window.localStorage.setItem('currentProject_' + username, JSON.stringify({
+                            name: name,
+                            createTime: result.data?.createTime || Date.now()
+                        }));
+                    }
+                }
+
+                // 在项目侧边栏调用tree接口打开项目
+                if (window.displayProjectTree) {
+                    window.displayProjectTree(name);
+                }
                 // Refresh project list if visible
                 const projectList = document.querySelector('project-list');
                 if (projectList && projectList.style.display !== 'none') {

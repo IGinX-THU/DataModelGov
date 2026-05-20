@@ -3924,51 +3924,51 @@ class AssociationRules extends HTMLElement {
         }
     }
     
-    // 动态加载模型版本 - 参考model-download.js的版本获取
-    loadModelVersions(modelName) {
+    // 动态加载模型版本 - 从datasource/tree接口数据中获取
+    async loadModelVersions(modelName) {
         const versionSelect = this.shadowRoot.getElementById('version');
         if (!versionSelect) return;
-        
+
         console.log('加载模型版本:', modelName);
-        
+
         // 如果没有选择模型，清空版本下拉和自动填充字段
         if (!modelName) {
             versionSelect.innerHTML = '<option value="">请选择版本</option>';
             this.clearAutoFilledFields();
             return;
         }
-        
-        // 获取右侧模型资产库的版本信息
-        const rightSidebarTree = document.querySelector('.right-sidebar .tree');
-        if (!rightSidebarTree) return;
-        
-        const allNodes = rightSidebarTree.querySelectorAll('.tree-node');
+
+        // 从datasource/tree接口数据中获取模型版本
+        if (!this.cachedDataSourceData) {
+            console.warn('数据源数据未缓存，先加载数据源选项');
+            await this.loadDataSourceOptions();
+        }
+
+        if (!this.cachedDataSourceData) {
+            console.warn('无法获取数据源数据');
+            return;
+        }
+
         const versions = [];
-        
-        allNodes.forEach(node => {
-            const span = node.querySelector('span');
-            if (span) {
-                const nodeName = span.textContent.trim();
-                
-                // 排除明显的路径节点
-                if (nodeName === 'models_system') {
-                    return;
-                }
-                
-                // 检查是否为叶子节点（版本）
-                const isLeaf = !node.querySelector('.tree-children');
-                if (isLeaf) {
-                    const parentNode = node.closest('.tree-children')?.parentElement;
-                    if (parentNode) {
-                        const parentSpan = parentNode.querySelector('span');
-                        if (parentSpan && parentSpan.textContent.trim() === modelName) {
-                            versions.push(nodeName);
+
+        // 从缓存的数据源数据中过滤出模型版本
+        this.cachedDataSourceData.forEach(item => {
+            if (item.path) {
+                // 过滤出以"models_system.模型名."开头的路径
+                const path = item.path;
+                if (path.startsWith(`models_system.${modelName}.`)) {
+                    // 提取版本号（路径的最后一部分）
+                    const parts = path.split('.');
+                    if (parts.length > 2) {
+                        const version = parts[parts.length - 1];
+                        if (version && !versions.includes(version)) {
+                            versions.push(version);
                         }
                     }
                 }
             }
         });
-        
+
         console.log('获取到的模型版本:', versions);
         
         // 保存当前值

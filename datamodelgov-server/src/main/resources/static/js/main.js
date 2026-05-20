@@ -493,28 +493,10 @@ document.addEventListener('DOMContentLoaded', function() {
                         break;
                     case 'showRegisterEmbedded':
                         console.log('注册异构数据源菜单被点击');
-                        // 检查是否有当前项目
-                        const username = window.localStorage.getItem('username');
-                        const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
-                        if (!cachedProject) {
-                            if (window.CommonUtils && window.CommonUtils.showToast) {
-                                window.CommonUtils.showToast('请先选择或创建项目', 'error');
-                            }
-                            return;
-                        }
                         showComponent('registerEmbedded');
                         break;
                     case 'showImportData':
                         console.log('导入数据菜单被点击');
-                        // 检查是否有当前项目
-                        const usernameForImport = window.localStorage.getItem('username');
-                        const cachedProjectForImport = usernameForImport ? JSON.parse(window.localStorage.getItem('currentProject_' + usernameForImport) || 'null') : null;
-                        if (!cachedProjectForImport) {
-                            if (window.CommonUtils && window.CommonUtils.showToast) {
-                                window.CommonUtils.showToast('请先选择或创建项目', 'error');
-                            }
-                            return;
-                        }
                         showComponent('importData');
                         break;
                     case 'showModelUpload':
@@ -603,9 +585,8 @@ document.addEventListener('DOMContentLoaded', function() {
                         break;
                     case 'showVisualAnalysis':
                         console.log('数值与曲线分析菜单被点击');
-                        // 先清空工作区
-                        clearWorkspace();
-                        showVisualAnalysis();
+                        if (isSecondClick) clearWorkspace();
+                        showComponent('visualAnalysis');
                         return;
                     case 'clearWorkspace':
                         console.log('清空工作区菜单被点击');
@@ -881,9 +862,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 // 根据动作类型执行相应操作
                 switch (action) {
                     case 'showVisualAnalysis':
-                        // 先清空工作区
-                        clearWorkspace();
-                        showVisualAnalysis();
+                        showComponent('visualAnalysis');
                         break;
                     case 'showRegisterEmbedded':
                         showComponent('registerEmbedded');
@@ -1624,7 +1603,7 @@ window.selectedDataPoints = new Set();
 // 显示数值与曲线分析
 function showVisualAnalysis() {
     console.log('🚀 showVisualAnalysis() 函数被调用');
-    
+
     // 创建并添加visual-analysis组件
     const visualAnalysis = document.createElement('visual-analysis');
     console.log('创建visual-analysis组件:', visualAnalysis);
@@ -1660,7 +1639,7 @@ function showVisualAnalysis() {
         // 获取或创建数据可视化组件
         let dataViz = document.getElementById('dataVisualization');
         let isFirstLoad = false;
-        
+
         if (!dataViz) {
             // 先清空工作区
             clearWorkspace();
@@ -1679,6 +1658,17 @@ function showVisualAnalysis() {
             }
         } else {
             console.log('使用现有的数据可视化组件');
+            // 隐藏databaseTable组件
+            const databaseTable = document.getElementById('databaseTable');
+            if (databaseTable) {
+                if (typeof databaseTable.hide === 'function') {
+                    databaseTable.hide();
+                } else {
+                    databaseTable.removeAttribute('show');
+                    databaseTable.setAttribute('hidden', '');
+                }
+                console.log('✅ 已隐藏databaseTable组件');
+            }
             // 检查是否是清空工作区后的第一次操作（没有选中的测点）
             if (window.selectedDataPoints.size === 0) {
                 console.log('🎯 检测到清空工作区后的第一次操作，设置为首次加载');
@@ -1850,14 +1840,49 @@ function showVisualAnalysis() {
 // 通用显示组件函数
     function showComponent(componentId, ...args) {
         console.log(`显示组件: ${componentId}`, args);
-        
+
+        // 需要检查项目的组件列表（除了数据档案查询外）
+        const componentsRequiringProject = [
+            'dataSourceList',
+            'registerEmbedded',
+            'importData',
+            'modelUpload',
+            'modelDownload',
+            'modelEdit',
+            'algorithmUpload',
+            'algorithmDownload',
+            'algorithmEdit',
+            'parsingRules',
+            'algorithmList',
+            'associationRules',
+            'visualAnalysis',
+            'simulationArchive'
+        ];
+
+        if (componentsRequiringProject.includes(componentId)) {
+            const username = window.localStorage.getItem('username');
+            const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
+            if (!cachedProject) {
+                if (window.CommonUtils && window.CommonUtils.showToast) {
+                    window.CommonUtils.showToast('请先选择或创建项目', 'error');
+                }
+                return;
+            }
+        }
+
         // 弹窗组件不需要清空工作区
         const modalComponents = ['registerEmbedded', 'importData', 'modelUpload', 'modelDownload', 'modelEdit', 'algorithmUpload', 'algorithmDownload', 'algorithmEdit'];
         if (!modalComponents.includes(componentId)) {
             // 先清空工作区
             clearWorkspace();
         }
-        
+
+        // 特殊处理visualAnalysis组件（动态创建的组件）
+        if (componentId === 'visualAnalysis') {
+            showVisualAnalysis();
+            return;
+        }
+
         console.log(`🔍 尝试获取组件: ${componentId}`);
         const component = document.getElementById(componentId);
         console.log(`🔍 获取到的组件:`, component);
@@ -2260,10 +2285,10 @@ function showVisualAnalysis() {
             return;
         }
         
-        // 过滤掉 models_system 开头的数据源（这些数据源会移动到右侧显示）
+        // 过滤掉 models_system 和 algorithms_system 开头的数据源（这些数据源会移动到右侧显示）
         const filteredDataSources = dataSources.filter(item => {
             const path = typeof item === 'string' ? item : item.path;
-            return !path || !path.startsWith('models_system');
+            return !path || (!path.startsWith('models_system') && !path.startsWith('algorithms_system'));
         });
         console.log('🔄 过滤后的数据源数量:', filteredDataSources.length);
         
