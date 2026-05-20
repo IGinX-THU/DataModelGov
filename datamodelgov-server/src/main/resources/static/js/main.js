@@ -95,6 +95,7 @@ document.addEventListener('DOMContentLoaded', function() {
             'dataVisualization',
             'modelDetail',
             'dataSourceList',
+            'dataArchiveList',
             'importData',
             'userManagement',
             'permissionManagement',
@@ -124,7 +125,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const workspace = document.querySelector('.workspace-content');
         if (workspace) {
             // 查找所有动态创建的组件并移除（只移除没有ID的动态组件）
-            const dynamicComponents = workspace.querySelectorAll('visual-analysis:not([id]), data-visualization:not([id]), data-archive-detail:not([id])');
+            const dynamicComponents = workspace.querySelectorAll('visual-analysis:not([id]), data-visualization:not([id]), data-archive-detail:not([id]), data-archive-list:not([id])');
             dynamicComponents.forEach(comp => {
                 console.log(`🗑️ 移除动态组件: ${comp.tagName}`);
                 comp.remove();
@@ -465,10 +466,23 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // 根据动作类型执行相应操作
                 switch (action) {
+                    case 'showProjectCreate':
+                        console.log('新建项目菜单被点击');
+                        showComponent('projectCreate');
+                        break;
+                    case 'showProjectList':
+                        console.log('打开项目菜单被点击');
+                        showComponent('projectList');
+                        break;
                     case 'showDataSourceList':
-                        console.log('数据源管理菜单被点击');
+                        console.log('异构数据源管理菜单被点击');
                         if (isSecondClick) clearWorkspace();
                         showComponent('dataSourceList');
+                        break;
+                    case 'showDataArchiveList':
+                        console.log('数据档案查询菜单被点击');
+                        if (isSecondClick) clearWorkspace();
+                        showComponent('dataArchiveList');
                         break;
                     case 'console.log':
                         console.log('数据源管理被点击');
@@ -760,6 +774,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     case 'showImportData':
                         showComponent('importData');
                         break;
+                    case 'showProjectCreate':
+                        showComponent('projectCreate');
+                        break;
+                    case 'showProjectList':
+                        showComponent('projectList');
+                        break;
                     case 'handleDownload':
                         const selectedModel = getSelectedModel();
                         if (selectedModel) {
@@ -805,6 +825,9 @@ document.addEventListener('DOMContentLoaded', function() {
                         break;
                     case 'showAssociationRules':
                         showComponent('associationRules');
+                        break;
+                    case 'showDataArchiveList':
+                        showComponent('dataArchiveList');
                         break;
                     default:
                         console.warn(`未知的按钮动作: ${action}`);

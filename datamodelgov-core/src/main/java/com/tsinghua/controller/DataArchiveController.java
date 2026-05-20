@@ -1,5 +1,6 @@
 package com.tsinghua.controller;
 
+import com.tsinghua.dto.DataArchiveQueryRequest;
 import com.tsinghua.entity.DataArchiveEntity;
 import com.tsinghua.model.Result;
 import com.tsinghua.service.DataArchiveService;
@@ -11,7 +12,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Map;
 
 @Api(tags = "数据档案管理")
 @RestController
@@ -24,15 +24,15 @@ public class DataArchiveController {
     @ApiOperation("分页查询数据档案")
     @PostMapping("/query")
     @RequirePermission(Permission.READ)
-    public Result<List<DataArchiveEntity>> queryArchives(@RequestBody Map<String, Object> request) {
-        String name = request.get("name") != null ? request.get("name").toString() : null;
-        String type = request.get("type") != null ? request.get("type").toString() : null;
-        String projectName = request.get("projectName") != null ? request.get("projectName").toString() : null;
-        String owner = request.get("owner") != null ? request.get("owner").toString() : null;
-        Integer pageNum = request.get("pageNum") != null ? Integer.parseInt(request.get("pageNum").toString()) : null;
-        Integer pageSize = request.get("pageSize") != null ? Integer.parseInt(request.get("pageSize").toString()) : null;
-
-        List<DataArchiveEntity> result = dataArchiveService.queryArchives(name, type, projectName, owner, pageNum, pageSize);
+    public Result<List<DataArchiveEntity>> queryArchives(@RequestBody DataArchiveQueryRequest request) {
+        List<DataArchiveEntity> result = dataArchiveService.queryArchives(
+            request.getName(),
+            request.getType(),
+            request.getProjectName(),
+            request.getOwner(),
+            request.getPageNum(),
+            request.getPageSize()
+        );
         return Result.success(result);
     }
 
@@ -47,23 +47,23 @@ public class DataArchiveController {
     @ApiOperation("查询总数")
     @PostMapping("/count")
     @RequirePermission(Permission.READ)
-    public Result<Object> countArchives(@RequestBody Map<String, Object> request) {
-        String name = request.get("name") != null ? request.get("name").toString() : null;
-        String type = request.get("type") != null ? request.get("type").toString() : null;
-        String projectName = request.get("projectName") != null ? request.get("projectName").toString() : null;
-        String owner = request.get("owner") != null ? request.get("owner").toString() : null;
-
-        // 查询所有符合条件的记录
-        List<DataArchiveEntity> allArchives = dataArchiveService.queryArchives(name, type, projectName, owner, null, null);
+    public Result<Object> countArchives(@RequestBody DataArchiveQueryRequest request) {
+        List<DataArchiveEntity> allArchives = dataArchiveService.queryArchives(
+            request.getName(),
+            request.getType(),
+            request.getProjectName(),
+            request.getOwner(),
+            null,
+            null
+        );
         return Result.success(allArchives.size());
     }
 
     @ApiOperation("删除数据档案")
     @PostMapping("/delete")
     @RequirePermission(Permission.DELETE)
-    public Result<Void> deleteArchive(@RequestBody Map<String, Object> request) throws Exception {
-        Long id = request.get("id") != null ? Long.parseLong(request.get("id").toString()) : null;
-        dataArchiveService.deleteArchive(id);
+    public Result<Void> deleteArchive(@RequestBody DataArchiveQueryRequest request) throws Exception {
+        dataArchiveService.deleteArchive(request.getId());
         return Result.success("删除成功");
     }
 

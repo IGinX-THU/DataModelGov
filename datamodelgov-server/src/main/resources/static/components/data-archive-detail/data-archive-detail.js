@@ -29,6 +29,17 @@ class DataArchiveDetail extends HTMLElement {
     }
 
     bindEvents() {
+        const backBtn = this.shadowRoot.getElementById('backBtn');
+        if (backBtn) {
+            backBtn.addEventListener('click', () => {
+                this.hide();
+                const dataArchiveList = document.getElementById('dataArchiveList');
+                if (dataArchiveList && dataArchiveList.show) {
+                    dataArchiveList.show();
+                }
+            });
+        }
+
         const closeBtn = this.shadowRoot.getElementById('closeBtn');
         if (closeBtn) {
             closeBtn.addEventListener('click', () => {

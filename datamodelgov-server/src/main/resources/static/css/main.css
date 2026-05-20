@@ -352,7 +352,10 @@ html.font-scale-1-5 .btn-icon {
     align-items: center;
     padding: 0 10px;
     user-select: none;
-    position: relative;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
     z-index: 9999;
 }
 
@@ -455,7 +458,7 @@ html.font-scale-1-5 .btn-icon {
 /* Logo区域 */
 .func-tab-logo {
     position: absolute;
-    right: 20px;
+    right: 0;
     top: 50%;
     transform: translateY(-50%);
     z-index: 500;

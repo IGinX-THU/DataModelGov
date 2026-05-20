@@ -144,7 +144,6 @@ public class DataArchiveService {
                 sql.append(" AND owner = '").append(owner.trim()).append("'");
             }
 
-            sql.append(" ORDER BY updateTime DESC");
             if (pageNum != null && pageSize != null) {
                 sql.append(" LIMIT ").append(pageSize);
                 sql.append(" OFFSET ").append((pageNum - 1) * pageSize);

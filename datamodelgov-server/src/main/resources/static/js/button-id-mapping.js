@@ -5,12 +5,20 @@
 
 // 按钮ID到功能的映射
 const BUTTON_ID_MAP = {
+    'btn-new-project': {
+        text: '新建',
+        action: 'showProjectCreate'
+    },
+    'btn-open-project': {
+        text: '打开',
+        action: 'showProjectList'
+    },
     'btn-analyze': {
         text: '分析',
         action: 'showVisualAnalysis'
     },
     'btn-add': {
-        text: '新增',
+        text: '接入',
         action: 'showRegisterEmbedded'
     },
     'btn-upload': {
@@ -20,6 +28,10 @@ const BUTTON_ID_MAP = {
     'btn-import': {
         text: '导入',
         action: 'showImportData'
+    },
+    'btn-query': {
+        text: '查询',
+        action: 'showDataArchiveList'
     },
     'btn-download': {
         text: '下载',
@@ -54,8 +66,12 @@ const BUTTON_ID_MAP = {
 // 菜单项ID到功能的映射
 const MENU_ID_MAP = {
     'menu-data-source-management': {
-        text: '数据源管理',
+        text: '异构数据源管理',
         action: 'showDataSourceList'
+    },
+    'menu-data-archive-query': {
+        text: '数据档案查询',
+        action: 'showDataArchiveList'
     },
     'menu-register-heterogeneous-data-source': {
         text: '注册异构数据源',
@@ -98,11 +114,11 @@ const MENU_ID_MAP = {
         action: 'showAlgorithmList'
     },
     'menu-project-new': {
-        text: '新增项目',
+        text: '新建项目',
         action: 'showProjectCreate'
     },
     'menu-project-list': {
-        text: '项目管理',
+        text: '打开项目',
         action: 'showProjectList'
     },
     'menu-numerical-and-curve-analysis': {
