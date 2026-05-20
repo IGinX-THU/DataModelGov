@@ -2466,39 +2466,51 @@ class AssociationRules extends HTMLElement {
     }
     
     async executeRule() {
+        // 防止重复点击
+        const executeBtn = this.shadowRoot.getElementById('runExecuteBtn');
+        if (executeBtn && executeBtn.disabled) {
+            return;
+        }
+
         const runName = this.shadowRoot.getElementById('runName')?.value.trim();
         const startTime = this.shadowRoot.getElementById('startTime')?.value;
         const endTime = this.shadowRoot.getElementById('endTime')?.value;
         const modelName = this.shadowRoot.getElementById('modelName')?.value;
         const modelVersion = this.shadowRoot.getElementById('modelVersion')?.value;
         const outputTable = this.shadowRoot.getElementById('outputTable')?.value.trim();
-        
+
         if (!runName) {
             this.showToast('请输入运行任务名称', 'error');
             return;
         }
-        
+
         // if (!startTime || !endTime) {
         //     this.showToast('请选择开始时间和结束时间', 'error');
         //     return;
         // }
-        
+
         if (!outputTable) {
             this.showToast('请输入结果回写路径前缀', 'error');
             return;
         }
-        
+
         // 结果回写路径前缀不能包含"_system"
         if (outputTable.includes('_system')) {
             this.showToast('结果回写路径前缀不能包含"_system"', 'error');
             return;
         }
-        
+
         if (new Date(startTime) > new Date(endTime)) {
             this.showToast('开始时间不能晚于结束时间', 'error');
             return;
         }
-        
+
+        // 禁用提交按钮，防止重复点击
+        if (executeBtn) {
+            executeBtn.disabled = true;
+            executeBtn.textContent = '运行中...';
+        }
+
         const rule = this.data.find(item => item.id === this.currentRunRuleId);
         if (rule) {
             try {
@@ -2515,24 +2527,29 @@ class AssociationRules extends HTMLElement {
                 };
                 
                 console.log('运行规则参数:', requestBody);
-                
+
                 // 先校验唯一性
                 console.log('开始校验任务时间段唯一性...');
                 const validationResult = await window.AppConfig.post('task', 'validate-uniqueness', requestBody);
                 console.log('唯一性校验结果:', validationResult);
-                
+
                 if (!validationResult.success || !validationResult.data) {
                     this.showToast(validationResult.message || '任务名称已存在或该规则在同一时间段已存在相同的任务', 'error');
+                    // 恢复按钮状态
+                    if (executeBtn) {
+                        executeBtn.disabled = false;
+                        executeBtn.textContent = '立即运行';
+                    }
                     return;
                 }
-                
+
                 // 调用/api/task/run接口
                 const result = await window.AppConfig.post('task', 'run', requestBody);
                 console.log('运行规则响应:', result);
-                
+
                 if (result.success) {
                     this.showToast(`规则运行成功: ${rule.ruleName}`);
-                    
+
                     // 直接在当前弹窗内显示日志内容
                     this.showTaskLogInModal(rule.ruleName, result.data.timestamp);
                 } else {
@@ -2541,6 +2558,12 @@ class AssociationRules extends HTMLElement {
             } catch (error) {
                 console.error('运行规则失败:', error);
                 this.showToast('网络错误，运行失败', 'error');
+            } finally {
+                // 恢复按钮状态
+                if (executeBtn) {
+                    executeBtn.disabled = false;
+                    executeBtn.textContent = '立即运行';
+                }
             }
         }
     }
