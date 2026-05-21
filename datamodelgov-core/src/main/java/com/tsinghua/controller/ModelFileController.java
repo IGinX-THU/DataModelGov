@@ -4,10 +4,12 @@ import com.tsinghua.entity.ModelMetaEntity;
 import com.tsinghua.model.Result;
 import com.tsinghua.dto.UploadResult;
 import com.tsinghua.dto.ExtractModelFileRequest;
+import com.tsinghua.dto.ModelArchiveQueryRequest;
 import com.tsinghua.service.ModelFileService;
 import com.tsinghua.auth.annotation.RequirePermission;
 import com.tsinghua.auth.enums.Permission;
 import com.tsinghua.auth.annotation.OperationLog;
+import com.tsinghua.util.ProjectContext;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -109,6 +111,47 @@ public class ModelFileController {
             @RequestParam(value = "version", required = false) String version) throws Exception {
         modelFileService.deleteModel(name, version);
         return Result.success("操作成功");
+    }
+
+    @ApiOperation("模型资产树")
+    @GetMapping("/tree")
+    @RequirePermission(Permission.MODEL_READ)
+    public Result<?> queryModelTree(
+            @RequestParam(value = "projectName", required = false) String projectName) {
+        String effectiveProjectName = projectName;
+        if (effectiveProjectName == null || effectiveProjectName.trim().isEmpty()) {
+            effectiveProjectName = ProjectContext.getCurrentProject();
+        }
+        List<String> tree = modelFileService.queryModelTree(effectiveProjectName);
+        return Result.success(tree);
+    }
+
+    @ApiOperation("分页查询模型档案")
+    @PostMapping("/archive/query")
+    @RequirePermission(Permission.MODEL_READ)
+    public Result<List<ModelMetaEntity>> queryModelArchives(@RequestBody ModelArchiveQueryRequest request) {
+        List<ModelMetaEntity> result = modelFileService.queryModelArchives(
+            request.getName(),
+            request.getProjectName(),
+            request.getAuthor(),
+            request.getPageNum(),
+            request.getPageSize()
+        );
+        return Result.success(result);
+    }
+
+    @ApiOperation("查询模型档案总数")
+    @PostMapping("/archive/count")
+    @RequirePermission(Permission.MODEL_READ)
+    public Result<Object> countModelArchives(@RequestBody ModelArchiveQueryRequest request) {
+        List<ModelMetaEntity> allArchives = modelFileService.queryModelArchives(
+            request.getName(),
+            request.getProjectName(),
+            request.getAuthor(),
+            null,
+            null
+        );
+        return Result.success(allArchives.size());
     }
 
     @ApiOperation("提取模型文件用于解析")

@@ -13,6 +13,7 @@ import com.tsinghua.auth.service.DataPermissionService;
 import com.tsinghua.entity.ModelMetaEntity;
 import com.tsinghua.dto.UploadResult;
 import com.tsinghua.util.ConvertUtil;
+import com.tsinghua.util.ProjectContext;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -32,7 +33,7 @@ import java.util.stream.Collectors;
 public class ModelFileService {
 
     private static final int CHUNK_SIZE = 65536; // 64KB
-    private static final String STORAGE_PREFIX = "models_system";
+    private static final String STORAGE_PREFIX_BASE = "models_system";
     private static final String META_PREFIX = "relational_system.models_meta";
 
     @Autowired
@@ -44,11 +45,15 @@ public class ModelFileService {
     @Autowired
     private IginXClient iginxClient;
 
+    @Autowired
+    private ProjectService projectService;
+
     /**
      * 上传模型文件
      * 直接将二进制分块数据写入 IGinX，无需 Base64 编码
      */
     public UploadResult uploadModel(MultipartFile file, String name, String version) throws Exception {
+        String projectName = ProjectContext.getCurrentProject("unknown");
         String storagePath = buildStoragePath(name, version);
 
         if (dataPermissionService.existTablePrefix(storagePath)) {
@@ -100,10 +105,21 @@ public class ModelFileService {
         modelMetaDto.setChunkCount(totalChunks);
         modelMetaDto.setStoragePath(storagePath);
         modelMetaDto.setFileMd5(fileMd5);
+        modelMetaDto.setProjectName(projectName);
+        modelMetaDto.setAuthor(com.tsinghua.auth.util.AuthUtil.getCurrentUsername());
         saveModelMetadata(modelMetaDto);
 
         dataPermissionService.saveTablePrefix(storagePath);
         log.info("模型文件上传成功。storagePath: {}", storagePath);
+
+        // 添加到项目的models字段
+        if (projectName != null && !projectName.isEmpty()) {
+            try {
+                projectService.addToProject(projectName, storagePath, "models");
+            } catch (Exception e) {
+                log.error("添加模型路径到项目失败", e);
+            }
+        }
 
         return new UploadResult(name, version, file.getOriginalFilename(),
                 file.getSize(), totalChunks, storagePath, fileMd5);
@@ -373,6 +389,7 @@ public class ModelFileService {
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "outputs", modelMetaDto.getOutputs(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "apis", modelMetaDto.getApis(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "timestamp", timestamp, timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "projectName", modelMetaDto.getProjectName(), timestamp));
 
         // 批量写入元数据
         iginxClient.getWriteClient().writePoints(metaPoints.stream().filter(Objects::nonNull).collect(Collectors.toList()));
@@ -499,6 +516,13 @@ public class ModelFileService {
                         dto.setTimestamp((Long) value);
                     }
                     break;
+                case META_PREFIX+"."+"projectName":
+                    if (value instanceof byte[]) {
+                        dto.setProjectName(new String((byte[]) value, StandardCharsets.UTF_8));
+                    } else if (value instanceof String) {
+                        dto.setProjectName((String) value);
+                    }
+                    break;
                 default:
                     log.debug("忽略未知字段: {}", fieldName);
             }
@@ -564,11 +588,75 @@ public class ModelFileService {
     }
 
     /**
-     * 构建存储路径
+     * 构建存储路径（含项目名称）
      */
     private String buildStoragePath(String name, String version) {
+        String projectName = ProjectContext.getCurrentProject("unknown");
         String safeVersion = version.replace('.', '_');
-        return String.format("%s.%s.%s", STORAGE_PREFIX, name, safeVersion);
+        return String.format("%s.%s.%s.%s", STORAGE_PREFIX_BASE, projectName, name, safeVersion);
+    }
+
+    /**
+     * 查询模型资产树（按项目名过滤）
+     */
+    public List<String> queryModelTree(String projectName) {
+        try {
+            String prefix;
+            if (StringUtils.hasText(projectName)) {
+                prefix = STORAGE_PREFIX_BASE + "." + projectName;
+            } else {
+                prefix = STORAGE_PREFIX_BASE;
+            }
+            String sql = String.format("SHOW TABLES LIKE '%s.*';", prefix);
+            log.info("执行SQL: {}", sql);
+            SessionExecuteSqlResult res = iginxSession.executeSql(sql);
+            List<String> paths = new ArrayList<>();
+            if (res.getPaths() != null) {
+                for (String path : res.getPaths()) {
+                    if (path.startsWith(prefix)) {
+                        paths.add(path);
+                    }
+                }
+            }
+            return paths;
+        } catch (Exception e) {
+            log.error("查询模型资产树失败", e);
+            return new ArrayList<>();
+        }
+    }
+
+    /**
+     * 分页查询模型元数据（按项目名过滤）
+     */
+    public List<ModelMetaEntity> queryModelArchives(String name, String projectName, String author, Integer pageNum, Integer pageSize) {
+        try {
+            StringBuilder sql = new StringBuilder("SELECT * FROM " + META_PREFIX + " WHERE 1=1");
+            if (name != null && !name.trim().isEmpty()) {
+                sql.append(" AND name LIKE '^.*").append(name.trim()).append(".*'");
+            }
+            if (projectName != null && !projectName.trim().isEmpty()) {
+                sql.append(" AND projectName LIKE '^.*").append(projectName.trim()).append(".*'");
+            }
+            if (author != null && !author.trim().isEmpty()) {
+                sql.append(" AND author LIKE '^.*").append(author.trim()).append(".*'");
+            }
+            if (pageNum != null && pageSize != null) {
+                sql.append(" LIMIT ").append(pageSize);
+                sql.append(" OFFSET ").append((pageNum - 1) * pageSize);
+            }
+            sql.append(";");
+            log.info("执行SQL: {}", sql);
+            SessionExecuteSqlResult res = iginxSession.executeSql(sql.toString());
+            List<Map<String, Object>> records = ConvertUtil.getRecords(res);
+            return records.stream().map(rs -> {
+                ModelMetaEntity dto = new ModelMetaEntity();
+                rs.forEach((k, v) -> setDtoField(dto, k, v));
+                return dto;
+            }).collect(Collectors.toList());
+        } catch (Exception e) {
+            log.error("查询模型档案列表失败", e);
+            return new ArrayList<>();
+        }
     }
 
     /**

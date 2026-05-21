@@ -138,7 +138,10 @@ window.AppConfig = {
             history: '/api/model/history',
             delete: '/api/model/delete',
             extractModelFile: '/api/model/extractModelFile',
-            autoParse: '/api/parsing/autoParse'
+            autoParse: '/api/parsing/autoParse',
+            tree: '/api/model/tree',
+            'archive/query': '/api/model/archive/query',
+            'archive/count': '/api/model/archive/count'
         },
         // 任务相关
         task: {

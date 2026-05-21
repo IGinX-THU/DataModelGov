@@ -106,7 +106,8 @@ document.addEventListener('DOMContentLoaded', function() {
             'projectList',
             'projectDetail',
             'projectCreate',
-            'dataArchiveDetail'
+            'dataArchiveDetail',
+            'modelArchiveList'
         ];
         
         components.forEach(componentId => {
@@ -487,6 +488,11 @@ document.addEventListener('DOMContentLoaded', function() {
                         console.log('数据档案查询菜单被点击');
                         if (isSecondClick) clearWorkspace();
                         showComponent('dataArchiveList');
+                        break;
+                    case 'showModelArchiveList':
+                        console.log('模型档案查询菜单被点击');
+                        if (isSecondClick) clearWorkspace();
+                        showComponent('modelArchiveList');
                         break;
                     case 'console.log':
                         console.log('数据源管理被点击');
@@ -950,6 +956,9 @@ document.addEventListener('DOMContentLoaded', function() {
                         break;
                     case 'showDataArchiveList':
                         showComponent('dataArchiveList');
+                        break;
+                    case 'showModelArchiveList':
+                        showComponent('modelArchiveList');
                         break;
                     default:
                         console.warn(`未知的按钮动作: ${action}`);
@@ -2687,6 +2696,53 @@ window.loadDataSourceTree = async function() {
     }
 };
 
+// 全局函数：在右侧模型侧边栏展开对应节点
+window.expandModelNodeInRightSidebar = function(storagePath) {
+    console.log('尝试在右侧模型侧边栏展开节点:', storagePath);
+    
+    // 切换到右侧模型侧边栏
+    const activeModelIcon = document.querySelector('.bottom-sidebar-icon.right-sidebar-icon.active[data-panel="model"]');
+    const rightSidebar = document.querySelector('.right-sidebar');
+    const isModelSidebarActive = !!activeModelIcon;
+    const isSidebarExpanded = rightSidebar && !rightSidebar.classList.contains('collapsed');
+    
+    if (!isModelSidebarActive || !isSidebarExpanded) {
+        const modelIcon = document.querySelector('.bottom-sidebar-icon.right-sidebar-icon[data-panel="model"]');
+        if (modelIcon) {
+            console.log('当前不是模型侧边栏或侧边栏未展开，点击切换');
+            modelIcon.click();
+        }
+    }
+    
+    // 等待树加载完成后展开对应节点
+    setTimeout(() => {
+        const modelTree = document.getElementById('modelTree');
+        if (!modelTree) return;
+        
+        const treeNodes = modelTree.querySelectorAll('.tree-node');
+        let found = false;
+        treeNodes.forEach(node => {
+            const fullPath = node.getAttribute('data-full-path');
+            if (fullPath === storagePath) {
+                found = true;
+                // 展开父节点
+                let parent = node.closest('.tree-children')?.parentElement;
+                while (parent && parent.classList.contains('tree-node')) {
+                    parent.classList.add('expanded');
+                    parent = parent.closest('.tree-children')?.parentElement;
+                }
+                // 模拟点击节点
+                node.click();
+                node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        });
+        
+        if (!found) {
+            console.log('未找到匹配的模型树节点:', storagePath);
+        }
+    }, 500);
+};
+
 // 全局函数：显示修改密码弹窗
 window.showChangePasswordModal = function() {
     const changePasswordComponent = document.querySelector('change-password');
@@ -3033,6 +3089,25 @@ function bindProjectTreeEvents() {
                     console.log('点击算法节点:', nodeName);
                 } else if (nodeType === 'model') {
                     console.log('点击模型节点:', nodeName);
+                    // 清空工作区
+                    if (window.hideAllComponents) {
+                        window.hideAllComponents();
+                    }
+                    // 显示模型详情
+                    const modelDetail = document.getElementById('modelDetail');
+                    if (modelDetail && modelDetail.show) {
+                        // nodeName是storagePath格式: models_system.projectName.modelName.version
+                        const pathParts = nodeName.split('.');
+                        if (pathParts.length >= 4) {
+                            const modelName = pathParts[2];
+                            const modelVersion = pathParts[3];
+                            modelDetail.show({ name: modelName, version: modelVersion });
+                        } else {
+                            modelDetail.show({ name: nodeName });
+                        }
+                    }
+                    // 同时在右侧模型侧边栏展开对应节点
+                    expandModelNodeInRightSidebar(nodeName);
                 }
             }
         });
@@ -3083,7 +3158,7 @@ function renderProjectTree(treeData) {
         `;
         treeData.models.forEach((model, index) => {
             html += `
-                <div class="tree-node" data-node-type="model" data-full-path="0-models-${index}">
+                <div class="tree-node" data-node-type="model" data-full-path="${model}">
                     <span class="tree-icon model-icon">📦</span>
                     <span class="tree-node-text">${model}</span>
                 </div>

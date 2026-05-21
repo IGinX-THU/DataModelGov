@@ -77,7 +77,7 @@ public class DataSourceService {
         // 添加到项目的datas字段
         if (projectName != null && !projectName.isEmpty()) {
             try {
-                projectService.addDataToProject(projectName, request.getSchemaPrefix());
+                projectService.addToProject(projectName, request.getSchemaPrefix(), "datas");
             } catch (Exception e) {
                 log.error("添加数据路径到项目失败", e);
             }
@@ -112,7 +112,7 @@ public class DataSourceService {
         String projectName = ProjectContext.getCurrentProject("unknown");
         if (projectName != null && !projectName.isEmpty()) {
             try {
-                projectService.removeDataFromProject(projectName, storageEngineInfoDto.getSchemaPrefix());
+                projectService.removeFromProject(projectName, storageEngineInfoDto.getSchemaPrefix(), "datas");
             } catch (Exception e) {
                 log.error("从项目移除数据路径失败", e);
             }
@@ -159,9 +159,21 @@ public class DataSourceService {
             if (CollectionUtils.isEmpty(accessibleTables)) {
                 return filteredTree;
             }
+            String currentProject = ProjectContext.getCurrentProject(null);
+
             accessibleTables.forEach(accessibleTable -> filteredTree.addAll(
                     tree.stream().filter(columnDto ->
                                     columnDto.getPath().startsWith(accessibleTable))
+                            .filter(column -> {
+                                // 如果有当前项目，只返回该项目相关的路径
+                                if (currentProject != null && !currentProject.isEmpty()) {
+                                    String path = column.getPath();
+                                    return path.startsWith(currentProject + ".") ||
+                                            path.startsWith("models_system." + currentProject + ".") ||
+                                            path.startsWith("algorithms_system." + currentProject + ".");
+                                }
+                                return true;
+                            })
                             .collect(Collectors.toList())));
             return  filteredTree;
         }

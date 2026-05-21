@@ -126,7 +126,7 @@ public class DataTableService {
             // 添加到项目的datas字段
             if (projectName != null && !projectName.isEmpty()) {
                 try {
-                    projectService.addDataToProject(projectName, importConfig.getTargetPath());
+                    projectService.addToProject(projectName, importConfig.getTargetPath(), "datas");
                 } catch (Exception e) {
                     log.error("添加数据路径到项目失败", e);
                 }

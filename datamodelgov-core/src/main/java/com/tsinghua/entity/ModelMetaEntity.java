@@ -27,6 +27,8 @@ public class ModelMetaEntity {
     private String apis;
     @ApiModelProperty(value = "创建时间")
     private Long timestamp;
+    @ApiModelProperty(value = "项目名称")
+    private String projectName;
     @ApiModelProperty(value = "运行命令")
     private String cmd;
     @ApiModelProperty(value = "输入文件名")

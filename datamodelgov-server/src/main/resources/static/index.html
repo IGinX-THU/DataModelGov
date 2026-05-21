@@ -180,6 +180,7 @@
                     <li id="menu-download-model-file">下载模型文件</li>
                     <li id="menu-remove-model-asset">移除模型资产</li>
                     <li id="menu-edit-meta-model-archive">编辑元模型档案</li>
+                    <li id="menu-model-archive-query">搜索模型档案</li>
 <!--                    <li id="menu-configure-parsing-rules">配置解析规则</li>-->
                 </ul>
             </span>
@@ -342,8 +343,8 @@
                     <span class="ribbon-btn-text">编辑</span>
                 </button>
                 <button class="ribbon-btn" id="btn-parse">
-                    <svg class="ribbon-btn-icon"><use href="#icon-parse"></use></svg>
-                    <span class="ribbon-btn-text">解析</span>
+                    <svg class="ribbon-btn-icon"><use href="#icon-search"></use></svg>
+                    <span class="ribbon-btn-text">搜索</span>
                 </button>
             </div>
         </div>
@@ -490,6 +491,8 @@
             <data-archive-list id="dataArchiveList" style="display: none;"></data-archive-list>
             <!-- 数据档案详情组件 -->
             <data-archive-detail id="dataArchiveDetail" style="display: none;"></data-archive-detail>
+            <!-- 模型档案列表组件 -->
+            <model-archive-list id="modelArchiveList" style="display: none;"></model-archive-list>
         </div>
     </div>
 
@@ -550,6 +553,7 @@
 <script src="./components/project-create/project-create.js"></script>
 <script src="./components/data-archive-list/data-archive-list.js"></script>
 <script src="./components/data-archive-detail/data-archive-detail.js"></script>
+<script src="./components/model-archive-list/model-archive-list.js"></script>
     <script src="./components/user-management/user-management.js"></script>
     <script src="./components/permission-management/permission-management.js"></script>
     <script src="./components/change-password/change-password.js"></script>

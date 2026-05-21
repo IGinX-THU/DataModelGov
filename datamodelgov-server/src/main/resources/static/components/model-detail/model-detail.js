@@ -77,6 +77,23 @@ class ModelDetail extends HTMLElement {
 
     bindEvents() {
         // 绑定事件
+        const backBtn = this.shadowRoot.getElementById('backBtn');
+        if (backBtn) {
+            backBtn.addEventListener('click', () => {
+                this.hide();
+                const modelArchiveList = document.getElementById('modelArchiveList');
+                if (modelArchiveList && modelArchiveList.show) {
+                    modelArchiveList.show();
+                }
+            });
+        }
+
+        const closeBtn = this.shadowRoot.getElementById('closeBtn');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => {
+                this.hide();
+            });
+        }
         const downloadBtn = this.shadowRoot.getElementById('downloadBtn');
         const editBtn = this.shadowRoot.getElementById('editBtn');
         const deleteBtn = this.shadowRoot.getElementById('deleteBtn');
