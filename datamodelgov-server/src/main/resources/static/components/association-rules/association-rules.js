@@ -26,8 +26,8 @@ class AssociationRules extends HTMLElement {
                 pageSize: this.pageSize || 6,
                 name: nameFilter || null,
                 status: statusFilter || null,
-                modelName: targetModelFilter || null,
-                modelVersion: versionFilter || null
+                algorithmName: targetModelFilter || null,
+                algorithmVersion: versionFilter || null
             };
 
             console.log('查询参数:', requestBody);
@@ -43,8 +43,8 @@ class AssociationRules extends HTMLElement {
                     ruleName: rule.name,
                     ruleDesc: rule.description,
                     dataSource: rule.tableName,
-                    targetModel: rule.modelName,
-                    version: rule.modelVersion,
+                    targetModel: rule.algorithmName,
+                    version: rule.algorithmVersion,
                     cmd: rule.cmd,
                     inputCsvName: rule.inputCsvName,
                     outputCsvName: rule.outputCsvName,
@@ -86,8 +86,8 @@ class AssociationRules extends HTMLElement {
             const requestBody = {
                 name: name || null,
                 status: status || null,
-                modelName: targetModel || null,
-                modelVersion: version || null
+                algorithmName: targetModel || null,
+                algorithmVersion: version || null
             };
             
             console.log('查询总量参数:', requestBody);
@@ -202,11 +202,11 @@ class AssociationRules extends HTMLElement {
     
     // 应用筛选参数
     applyFilterParams(params) {
-        const modelName = params.modelName;
-        const modelVersion = params.modelVersion;
+        const algorithmName = params.algorithmName;
+        const algorithmVersion = params.algorithmVersion;
         const ruleName = params.ruleName;
         
-        console.log('应用筛选参数 - 模型名称:', modelName, '版本:', modelVersion, '规则名:', ruleName);
+        console.log('应用筛选参数 - 算法名称:', algorithmName, '版本:', algorithmVersion, '规则名:', ruleName);
         
         // 如果有规则名，直接设置规则名筛选并查询
         if (ruleName) {
@@ -226,20 +226,20 @@ class AssociationRules extends HTMLElement {
         }
         
         // 原有的模型和版本筛选逻辑
-        if (modelName) {
+        if (algorithmName) {
             const targetModelFilter = this.shadowRoot.getElementById('targetModelFilter');
             if (targetModelFilter) {
                 // 设置标志位，防止change事件触发查询
                 this._applyingFilter = true;
-                targetModelFilter.value = modelName;
+                targetModelFilter.value = algorithmName;
                 targetModelFilter.dispatchEvent(new Event('change'));
                 
                 // 等待版本加载完成后设置版本值
-                if (modelVersion) {
+                if (algorithmVersion) {
                     setTimeout(() => {
                         const versionFilter = this.shadowRoot.getElementById('versionFilter');
                         if (versionFilter) {
-                            versionFilter.value = modelVersion;
+                            versionFilter.value = algorithmVersion;
                             versionFilter.dispatchEvent(new Event('change'));
                             
                             // 清除标志位并手动触发查询
@@ -569,7 +569,7 @@ class AssociationRules extends HTMLElement {
         console.log('找到右侧模型资产库树，开始解析模型名称...');
         
         const allNodes = rightSidebarTree.querySelectorAll('.tree-node');
-        const modelNames = new Set(); // 使用Set避免重复
+        const algorithmNames = new Set(); // 使用Set避免重复
         
         allNodes.forEach(node => {
             const span = node.querySelector('span');
@@ -577,7 +577,7 @@ class AssociationRules extends HTMLElement {
                 const nodeName = span.textContent.trim();
                 
                 // 排除明显的路径节点
-                if (nodeName === 'models_system') {
+                if (nodeName === 'algorithms_system') {
                     return;
                 }
                 
@@ -590,19 +590,19 @@ class AssociationRules extends HTMLElement {
                     
                     // 只有当子节点包含叶子节点时，才将父节点作为模型名称
                     if (hasLeafChild) {
-                        modelNames.add(nodeName);
+                        algorithmNames.add(nodeName);
                     }
                 }
             }
         });
         
-        console.log('筛选器获取到的目标模型名称:', Array.from(modelNames));
+        console.log('筛选器获取到的目标模型名称:', Array.from(algorithmNames));
         
         // 清空现有选项并添加"全部"选项
         targetModelFilter.innerHTML = '<option value="">全部</option>';
         
         // 添加模型名称选项
-        Array.from(modelNames).forEach(name => {
+        Array.from(algorithmNames).forEach(name => {
             const option = document.createElement('option');
             option.value = name;
             option.textContent = name;
@@ -631,7 +631,7 @@ class AssociationRules extends HTMLElement {
                 const nodeName = span.textContent.trim();
                 
                 // 排除明显的路径节点
-                if (nodeName === 'models_system') {
+                if (nodeName === 'algorithms_system') {
                     return;
                 }
                 
@@ -851,7 +851,7 @@ class AssociationRules extends HTMLElement {
                 this.shadowRoot.getElementById('ruleName').setAttribute('readonly', 'readonly');
                 this.shadowRoot.getElementById('ruleDesc').value = rule.ruleDesc || rule.description || '';
                 this.shadowRoot.getElementById('dataSource').value = rule.dataSource || rule.tableName || '';
-                this.shadowRoot.getElementById('targetModel').value = rule.targetModel || rule.modelName || '';
+                this.shadowRoot.getElementById('targetModel').value = rule.targetModel || rule.algorithmName || '';
                 
                 // Populate the three new fields with null checks
                 const cmdElement = this.shadowRoot.getElementById('cmd');
@@ -876,27 +876,27 @@ class AssociationRules extends HTMLElement {
                 }
                 
                 // 设置版本 - 需要先加载版本选项
-                if (rule.modelName || rule.targetModel) {
-                    const modelName = rule.modelName || rule.targetModel;
-                    console.log('加载版本选项:', modelName);
+                if (rule.algorithmName || rule.targetModel) {
+                    const algorithmName = rule.algorithmName || rule.targetModel;
+                    console.log('加载版本选项:', algorithmName);
                     // 设置标志位，防止loadModelVersions中的change事件触发auto-fill
                     this._isInitializingEdit = true;
-                    this.loadModelVersions(modelName);
+                    this.loadModelVersions(algorithmName);
                     
                     // 等待版本加载完成后设置版本值
                     setTimeout(() => {
                         const versionSelect = this.shadowRoot.getElementById('version');
-                        if (rule.version || rule.modelVersion) {
+                        if (rule.version || rule.algorithmVersion) {
                             // 移除事件监听器，避免触发auto-fill
                             versionSelect.removeEventListener('change', this.handleVersionChange);
                             versionSelect.removeEventListener('blur', this.handleVersionChange);
                             
                             // 设置版本值
-                            versionSelect.value = rule.version || rule.modelVersion;
-                            console.log('设置版本值（不触发事件）:', rule.version || rule.modelVersion);
+                            versionSelect.value = rule.version || rule.algorithmVersion;
+                            console.log('设置版本值（不触发事件）:', rule.version || rule.algorithmVersion);
                             
                             // 手动调用loadModelFields加载模型数据（不触发auto-fill）
-                            const selectedModel = rule.modelName || rule.targetModel;
+                            const selectedModel = rule.algorithmName || rule.targetModel;
                             if (selectedModel) {
                                 // 设置标志位防止auto-fill
                                 this._isInitializingEdit = true;
@@ -1032,8 +1032,8 @@ class AssociationRules extends HTMLElement {
                 return;
             }
             
-            if (!formData.modelName) {
-                this.showToast('请选择目标模型', 'error');
+            if (!formData.algorithmName) {
+                this.showToast('请选择目标算法', 'error');
                 return;
             }
 
@@ -1081,7 +1081,7 @@ class AssociationRules extends HTMLElement {
                                 ? JSON.parse(this.cachedModelData.outputs) 
                                 : this.cachedModelData.outputs;
                         } catch (error) {
-                            console.error('解析模型输出字段失败:', error);
+                            console.error('解析算法输出字段失败:', error);
                         }
 
                         if (modelOutputs && modelOutputs.length > 0) {
@@ -1162,8 +1162,8 @@ class AssociationRules extends HTMLElement {
             name: ruleName,
             description: ruleDesc,
             tableName: dataSource,  // 前端dataSource映射到后端tableName
-            modelName: targetModel, // 前端targetModel映射到后端modelName
-            modelVersion: version,   // 前端version映射到后端modelVersion
+            algorithmName: targetModel, // 前端targetModel映射到后端algorithmName
+            algorithmVersion: version,   // 前端version映射到后端algorithmVersion
             cmd: cmd,               // 运行命令
             inputCsvName: inputCsvName,   // 输入数据CSV文件名
             outputCsvName: outputCsvName, // 输出结果CSV文件名
@@ -1343,7 +1343,7 @@ class AssociationRules extends HTMLElement {
         const targetField = document.createElement('div');
         targetField.className = 'mapping-field';
         targetField.innerHTML = `
-            <label>模型参数</label>
+            <label>算法参数</label>
             <select class="mapping-target-field">
                 <option value="">请选择参数</option>
             </select>
@@ -1435,7 +1435,7 @@ class AssociationRules extends HTMLElement {
             this.loadDataSourceFields(dataSourceSelect.value);
         }
 
-        // 如果有缓存的模型数据，自动填充模型参数选项
+        // 如果有缓存的模型数据，自动填充算法参数选项
         if (this.cachedModelData) {
             let inputs = [];
             let outputs = [];
@@ -1495,7 +1495,7 @@ class AssociationRules extends HTMLElement {
         const modelField = document.createElement('div');
         modelField.className = 'mapping-field';
         modelField.innerHTML = `
-            <label>模型输出</label>
+            <label>算法输出</label>
             <select class="result-mapping-source-field">
                 <option value="">请选择输出</option>
             </select>
@@ -1613,45 +1613,18 @@ class AssociationRules extends HTMLElement {
         const dataSource = this.shadowRoot.getElementById('dataSource')?.value;
         const targetModel = this.shadowRoot.getElementById('targetModel')?.value;
         
-        const dataFields = this.getDataSourceFields(dataSource);
-        const modelFields = this.getTargetModelFields(targetModel);
+        // 如果没有选择目标模型或版本，不更新算法参数选项
+        if (!targetModel) {
+            return;
+        }
         
-        // Update all mapping rows
-        const mappingRows = this.shadowRoot.querySelectorAll('.mapping-row');
-        mappingRows.forEach(row => {
-            const sourceSelect = row.querySelector('.data-field-select');
-            const targetSelect = row.querySelector('.model-field-select');
-            
-            // Update source field options
-            if (sourceSelect) {
-                const currentValue = sourceSelect.value;
-                sourceSelect.innerHTML = '<option value="">请选择字段</option>';
-                dataFields.forEach(field => {
-                    const option = document.createElement('option');
-                    option.value = field.id;
-                    option.textContent = field.name;
-                    if (field.id === currentValue) {
-                        option.selected = true;
-                    }
-                    sourceSelect.appendChild(option);
-                });
-            }
-            
-            // Update target field options
-            if (targetSelect) {
-                const currentValue = targetSelect.value;
-                targetSelect.innerHTML = '<option value="">请选择参数</option>';
-                modelFields.forEach(field => {
-                    const option = document.createElement('option');
-                    option.value = field.id;
-                    option.textContent = field.name;
-                    if (field.id === currentValue) {
-                        option.selected = true;
-                    }
-                    targetSelect.appendChild(option);
-                });
-            }
-        });
+        const version = this.shadowRoot.getElementById('version')?.value;
+        if (!version) {
+            return;
+        }
+        
+        // 调用loadModelFields获取实际的算法参数
+        this.loadModelFields(targetModel);
     }
 
     /**
@@ -1660,31 +1633,18 @@ class AssociationRules extends HTMLElement {
     updateResultMappingFieldOptions() {
         const targetModel = this.shadowRoot.getElementById('targetModel')?.value;
         
-        const modelOutputs = this.getModelOutputs(targetModel);
-        const resultTargets = this.getResultTargets();
+        // 如果没有选择目标模型或版本，不更新算法输出选项
+        if (!targetModel) {
+            return;
+        }
         
-        // Update all result mapping rows
-        const resultMappingRows = this.shadowRoot.querySelectorAll('#resultMappingsList .mapping-row');
-        resultMappingRows.forEach(row => {
-            const modelSelect = row.querySelector('.result-mapping-source-field');
-            
-            // Update model output options
-            if (modelSelect) {
-                const currentValue = modelSelect.value;
-                modelSelect.innerHTML = '<option value="">请选择输出</option>';
-                modelOutputs.forEach(output => {
-                    const option = document.createElement('option');
-                    option.value = output.id;
-                    option.textContent = output.name;
-                    if (output.id === currentValue) {
-                        option.selected = true;
-                    }
-                    modelSelect.appendChild(option);
-                });
-            }
-            
-            // Note: 回写目标是输入框，不需要更新选项
-        });
+        const version = this.shadowRoot.getElementById('version')?.value;
+        if (!version) {
+            return;
+        }
+        
+        // 调用loadModelFields获取实际的算法输出
+        this.loadModelFields(targetModel);
     }
 
     /**
@@ -1941,8 +1901,8 @@ class AssociationRules extends HTMLElement {
             name: (rule.ruleName || rule.name) + ' - 副本',
             description: rule.ruleDesc || rule.description || '',
             tableName: rule.dataSource || rule.tableName || '',
-            modelName: rule.targetModel || rule.modelName || '',
-            modelVersion: rule.version || rule.modelVersion || '',
+            algorithmName: rule.targetModel || rule.algorithmName || '',
+            algorithmVersion: rule.version || rule.algorithmVersion || '',
             cmd: rule.cmd || '',                           // 运行命令
             inputCsvName: rule.inputCsvName || '',         // 输入数据CSV文件名
             outputCsvName: rule.outputCsvName || '',       // 输出结果CSV文件名
@@ -2003,26 +1963,26 @@ class AssociationRules extends HTMLElement {
                 this.shadowRoot.getElementById('ruleName').value = rule.ruleName + ' - 副本';
                 this.shadowRoot.getElementById('ruleDesc').value = rule.ruleDesc || rule.description || '';
                 this.shadowRoot.getElementById('dataSource').value = rule.dataSource || rule.tableName || '';
-                this.shadowRoot.getElementById('targetModel').value = rule.targetModel || rule.modelName || '';
+                this.shadowRoot.getElementById('targetModel').value = rule.targetModel || rule.algorithmName || '';
                 
                 // 设置版本 - 需要先加载版本选项
-                if (rule.modelName || rule.targetModel) {
-                    const modelName = rule.modelName || rule.targetModel;
-                    console.log('复制模式，加载版本选项:', modelName);
-                    this.loadModelVersions(modelName);
+                if (rule.algorithmName || rule.targetModel) {
+                    const algorithmName = rule.algorithmName || rule.targetModel;
+                    console.log('复制模式，加载版本选项:', algorithmName);
+                    this.loadModelVersions(algorithmName);
                     
                     // 等待版本加载完成后设置版本值
                     setTimeout(() => {
                         const versionSelect = this.shadowRoot.getElementById('version');
-                        if (rule.version || rule.modelVersion) {
-                            versionSelect.value = rule.version || rule.modelVersion;
-                            console.log('复制模式，设置版本值:', rule.version || rule.modelVersion);
+                        if (rule.version || rule.algorithmVersion) {
+                            versionSelect.value = rule.version || rule.algorithmVersion;
+                            console.log('复制模式，设置版本值:', rule.version || rule.algorithmVersion);
                         }
                         
                         // 加载模型字段
                         if (versionSelect.value) {
-                            console.log('复制模式，加载模型字段:', modelName, versionSelect.value);
-                            this.loadModelFields(modelName);
+                            console.log('复制模式，加载模型字段:', algorithmName, versionSelect.value);
+                            this.loadModelFields(algorithmName);
                         }
                     }, 100);
                 }
@@ -2132,9 +2092,9 @@ class AssociationRules extends HTMLElement {
                                     </select>
                                 </div>
                                 <div class="mapping-target">
-                                    <label>目标模型</label>
+                                    <label>目标算法</label>
                                     <select id="targetModel" class="target-model-select">
-                                        <option value="">请选择目标模型</option>
+                                        <option value="">请选择目标算法</option>
                                         <option value="speedModel">速度模型</option>
                                         <option value="tempModel">温度模型</option>
                                         <option value="pressureModel">压力模型</option>
@@ -2151,7 +2111,7 @@ class AssociationRules extends HTMLElement {
                             </div>
                             
                             <div class="mapping-section">
-                                <div class="mapping-title">输入映射关系（数据源 → 模型）</div>
+                                <div class="mapping-title">输入映射关系</div>
                                 <div class="mappings-list" id="mappingsList">
                                     <!-- 动态添加映射行 -->
                                 </div>
@@ -2159,7 +2119,7 @@ class AssociationRules extends HTMLElement {
                             </div>
                             
                             <div class="mapping-section">
-                                <div class="mapping-title">结果回写映射（模型 → 数据源）</div>
+                                <div class="mapping-title">结果回写映射</div>
                                 <div class="mappings-list" id="resultMappingsList">
                                     <!-- 动态添加结果映射行 -->
                                 </div>
@@ -2330,12 +2290,12 @@ class AssociationRules extends HTMLElement {
                     
                     <div class="form-row">
                         <div class="form-group">
-                            <label for="modelName">模型名称</label>
-                            <input type="text" id="modelName" name="modelName" readonly value="${rule.targetModel || 'N/A'}">
+                            <label for="algorithmName">算法名称</label>
+                            <input type="text" id="algorithmName" name="algorithmName" readonly value="${rule.targetModel || 'N/A'}">
                         </div>
                         <div class="form-group">
-                            <label for="modelVersion">版本号</label>
-                            <input type="text" id="modelVersion" name="modelVersion" readonly value="${rule.version || 'N/A'}">
+                            <label for="algorithmVersion">版本号</label>
+                            <input type="text" id="algorithmVersion" name="algorithmVersion" readonly value="${rule.version || 'N/A'}">
                         </div>
                     </div>
                     
@@ -2475,8 +2435,8 @@ class AssociationRules extends HTMLElement {
         const runName = this.shadowRoot.getElementById('runName')?.value.trim();
         const startTime = this.shadowRoot.getElementById('startTime')?.value;
         const endTime = this.shadowRoot.getElementById('endTime')?.value;
-        const modelName = this.shadowRoot.getElementById('modelName')?.value;
-        const modelVersion = this.shadowRoot.getElementById('modelVersion')?.value;
+        const algorithmName = this.shadowRoot.getElementById('algorithmName')?.value;
+        const algorithmVersion = this.shadowRoot.getElementById('algorithmVersion')?.value;
         const outputTable = this.shadowRoot.getElementById('outputTable')?.value.trim();
 
         if (!runName) {
@@ -2518,8 +2478,8 @@ class AssociationRules extends HTMLElement {
                 const requestBody = {
                     name: runName, // 使用用户输入的运行任务名称
                     ruleName: rule.ruleName, // 添加规则名称字段
-                    modelName: modelName, // 添加模型名称字段
-                    modelVersion: modelVersion, // 添加版本号字段
+                    algorithmName: algorithmName, // 添加模型名称字段
+                    algorithmVersion: algorithmVersion, // 添加版本号字段
                     startTime: new Date(startTime).getTime(),
                     endTime: new Date(endTime).getTime(),
                     ruleId: rule.createTime, // 使用createTime作为ruleId
@@ -3403,8 +3363,8 @@ class AssociationRules extends HTMLElement {
             name: rule.ruleName,
             description: rule.ruleDesc,
             tableName: rule.dataSource,
-            modelName: rule.targetModel,
-            modelVersion: rule.version,
+            algorithmName: rule.targetModel,
+            algorithmVersion: rule.version,
             inputsBind: rule.mappings ? JSON.stringify(rule.mappings) : '[]', // 使用mappings字段
             outputsBind: rule.resultMappings ? JSON.stringify(rule.resultMappings) : '[]' // 使用resultMappings字段
         };
@@ -3526,7 +3486,7 @@ class AssociationRules extends HTMLElement {
         const currentValue = targetModelSelect.value;
         
         // 清空现有选项
-        targetModelSelect.innerHTML = '<option value="">请选择目标模型</option>';
+        targetModelSelect.innerHTML = '<option value="">请选择目标算法</option>';
         
         // 从右侧树中获取所有模型名称
         const rightSidebarTree = document.querySelector('.right-sidebar .tree');
@@ -3536,7 +3496,7 @@ class AssociationRules extends HTMLElement {
         }
         
         const allNodes = rightSidebarTree.querySelectorAll('.tree-node');
-        const modelNames = new Set(); // 使用Set避免重复
+        const algorithmNames = new Set(); // 使用Set避免重复
         
         allNodes.forEach(node => {
             const span = node.querySelector('span');
@@ -3544,7 +3504,7 @@ class AssociationRules extends HTMLElement {
                 const nodeName = span.textContent.trim();
                 
                 // 排除明显的路径节点
-                if (nodeName === 'models_system') {
+                if (nodeName === 'algorithms_system') {
                     return;
                 }
                 
@@ -3557,16 +3517,16 @@ class AssociationRules extends HTMLElement {
                     
                     // 只有当子节点包含叶子节点时，才将父节点作为模型名称
                     if (hasLeafChild) {
-                        modelNames.add(nodeName);
+                        algorithmNames.add(nodeName);
                     }
                 }
             }
         });
         
-        console.log('获取到的目标模型名称:', Array.from(modelNames));
+        console.log('获取到的目标模型名称:', Array.from(algorithmNames));
         
         // 添加模型名称选项
-        Array.from(modelNames).forEach(name => {
+        Array.from(algorithmNames).forEach(name => {
             const option = document.createElement('option');
             option.value = name;
             option.textContent = name;
@@ -3574,7 +3534,7 @@ class AssociationRules extends HTMLElement {
         });
         
         // 恢复之前的选择
-        if (currentValue && modelNames.has(currentValue)) {
+        if (currentValue && algorithmNames.has(currentValue)) {
             targetModelSelect.value = currentValue;
         }
     }
@@ -3722,20 +3682,20 @@ class AssociationRules extends HTMLElement {
         });
     }
     
-    // 动态加载目标模型选项 - 参考model-download.js的模型获取
+    // 动态加载目标算法选项 - 从算法树获取
     loadTargetModelOptions() {
         const targetModelSelect = this.shadowRoot.getElementById('targetModel');
         if (!targetModelSelect) return;
 
-        // 只从模型树获取数据，排除算法树
-        const modelTree = document.getElementById('modelTree');
-        if (!modelTree) {
-            console.warn('未找到模型树');
+        // 只从算法树获取数据，排除模型树
+        const algorithmTree = document.getElementById('algorithmTree');
+        if (!algorithmTree) {
+            console.warn('未找到算法树');
             return;
         }
 
-        const allNodes = modelTree.querySelectorAll('.tree-node');
-        const modelNames = new Set(); // 使用Set避免重复
+        const allNodes = algorithmTree.querySelectorAll('.tree-node');
+        const algorithmNames = new Set(); // 使用Set避免重复
 
         allNodes.forEach(node => {
             const span = node.querySelector('span');
@@ -3743,7 +3703,7 @@ class AssociationRules extends HTMLElement {
                 const nodeName = span.textContent.trim();
 
                 // 排除明显的路径节点
-                if (nodeName === 'models_system') {
+                if (nodeName === 'algorithms_system') {
                     return;
                 }
 
@@ -3754,31 +3714,31 @@ class AssociationRules extends HTMLElement {
                     const childNodes = node.querySelectorAll('.tree-node .tree-node');
                     const hasLeafChild = Array.from(childNodes).some(child => !child.querySelector('.tree-children'));
 
-                    // 只有当子节点包含叶子节点时，才将父节点作为模型名称
+                    // 只有当子节点包含叶子节点时，才将父节点作为算法名称
                     if (hasLeafChild) {
-                        modelNames.add(nodeName);
+                        algorithmNames.add(nodeName);
                     }
                 }
             }
         });
 
-        console.log('获取到的目标模型名称:', Array.from(modelNames));
+        console.log('获取到的目标算法名称:', Array.from(algorithmNames));
 
         // 清空现有选项
-        targetModelSelect.innerHTML = '<option value="">请选择目标模型</option>';
+        targetModelSelect.innerHTML = '<option value="">请选择目标算法</option>';
 
-        // 添加模型名称选项
-        Array.from(modelNames).forEach(name => {
+        // 添加算法名称选项
+        Array.from(algorithmNames).forEach(name => {
             const option = document.createElement('option');
             option.value = name;
             option.textContent = name;
             targetModelSelect.appendChild(option);
         });
 
-        // 监听目标模型变化，加载版本
+        // 监听目标算法变化，加载版本
         if (!this.targetModelEventBound) {
             targetModelSelect.addEventListener('change', () => {
-                console.log('目标模型变化，加载版本');
+                console.log('目标算法变化，加载版本');
                 this.loadModelVersions(targetModelSelect.value);
                 // 清空自动填充的字段，等待版本选择后重新填充
                 this.clearAutoFilledFields();
@@ -3787,9 +3747,9 @@ class AssociationRules extends HTMLElement {
 
             // 标记事件已绑定
             this.targetModelEventBound = true;
-            console.log('目标模型事件监听器已绑定');
+            console.log('目标算法事件监听器已绑定');
         } else {
-            console.log('目标模型事件监听器已存在，跳过绑定');
+            console.log('目标算法事件监听器已存在，跳过绑定');
         }
         
         // 监听版本变化，加载模型字段 - 使用更可靠的方式
@@ -3875,19 +3835,19 @@ class AssociationRules extends HTMLElement {
     }
     
     // 自动填充运行命令和CSV文件名
-    async autoFillCommandAndCsvFields(modelName, version) {
+    async autoFillCommandAndCsvFields(algorithmName, version) {
         try {
-            console.log('自动填充运行命令和CSV文件名:', modelName, version);
+            console.log('自动填充运行命令和CSV文件名:', algorithmName, version);
             
-            // 调用模型元数据API获取fileName
-            const result = await window.AppConfig.get('model', 'metas', { name: modelName, version: version });
+            // 调用算法元数据API获取fileName
+            const result = await window.AppConfig.get('algorithm', 'metas', { name: algorithmName, version: version });
             
             if (result.success && result.data) {
                 const modelData = result.data;
                 console.log('获取模型元数据成功:', modelData);
                 
-                // 获取fileName，如果没有则使用modelName作为默认值
-                const fileName = modelData.fileName || `${modelName}.py`;
+                // 获取fileName，如果没有则使用algorithmName作为默认值
+                const fileName = modelData.fileName || `${algorithmName}.py`;
                 console.log('使用fileName:', fileName);
                 
                 // 自动填充运行命令
@@ -3924,21 +3884,21 @@ class AssociationRules extends HTMLElement {
         }
     }
     
-    // 动态加载模型版本 - 从datasource/tree接口数据中获取
-    async loadModelVersions(modelName) {
+    // 动态加载算法版本 - 从datasource/tree接口数据中获取
+    async loadModelVersions(algorithmName) {
         const versionSelect = this.shadowRoot.getElementById('version');
         if (!versionSelect) return;
 
-        console.log('加载模型版本:', modelName);
+        console.log('加载算法版本:', algorithmName);
 
-        // 如果没有选择模型，清空版本下拉和自动填充字段
-        if (!modelName) {
+        // 如果没有选择算法，清空版本下拉和自动填充字段
+        if (!algorithmName) {
             versionSelect.innerHTML = '<option value="">请选择版本</option>';
             this.clearAutoFilledFields();
             return;
         }
 
-        // 从datasource/tree接口数据中获取模型版本
+        // 从datasource/tree接口数据中获取算法版本
         if (!this.cachedDataSourceData) {
             console.warn('数据源数据未缓存，先加载数据源选项');
             await this.loadDataSourceOptions();
@@ -3951,12 +3911,12 @@ class AssociationRules extends HTMLElement {
 
         const versions = [];
 
-        // 从缓存的数据源数据中过滤出模型版本
+        // 从缓存的数据源数据中过滤出算法版本
         this.cachedDataSourceData.forEach(item => {
             if (item.path) {
-                // 过滤出以"models_system.模型名."开头的路径
+                // 过滤出以"algorithms_system.算法名."开头的路径
                 const path = item.path;
-                if (path.startsWith(`models_system.${modelName}.`)) {
+                if (path.startsWith(`algorithms_system.${algorithmName}.`)) {
                     // 提取版本号（路径的最后一部分）
                     const parts = path.split('.');
                     if (parts.length > 2) {
@@ -3969,7 +3929,7 @@ class AssociationRules extends HTMLElement {
             }
         });
 
-        console.log('获取到的模型版本:', versions);
+        console.log('获取到的算法版本:', versions);
         
         // 保存当前值
         const currentValue = versionSelect.value;
@@ -4005,10 +3965,10 @@ class AssociationRules extends HTMLElement {
     }
     
     // 动态加载模型字段 - 参考model-detail.js的inputs/outputs解析
-    async loadModelFields(modelName) {
-        if (!modelName) return;
+    async loadModelFields(algorithmName) {
+        if (!algorithmName) return;
         
-        console.log('加载模型字段:', modelName);
+        console.log('加载模型字段:', algorithmName);
         // 获取当前选择的版本
         const versionSelect = this.shadowRoot.getElementById('version');
         const selectedVersion = versionSelect.value;
@@ -4018,12 +3978,12 @@ class AssociationRules extends HTMLElement {
             return;
         }
         
-        // 这里需要调用模型详情接口获取inputs和outputs
-        // 参考 model-detail.js 的 renderParamsTable 方法
+        // 这里需要调用算法详情接口获取inputs和outputs
+        // 参考 algorithm-detail.js 的 renderParamsTable 方法
         
-        // 示例：调用模型详情接口
+        // 示例：调用算法详情接口
         try {
-            const result = await window.AppConfig.get('model', 'metas', { name: modelName, version: selectedVersion });
+            const result = await window.AppConfig.get('algorithm', 'metas', { name: algorithmName, version: selectedVersion });
             
             if (result.success && result.data) {
                 const modelData = result.data;
@@ -4085,7 +4045,7 @@ class AssociationRules extends HTMLElement {
             return;
         }
 
-        // 更新输入映射的目标字段选项（模型参数）
+        // 更新输入映射的目标字段选项（算法参数）
         const mappingTargetFields = this.shadowRoot.querySelectorAll('.mapping-target-field');
         mappingTargetFields.forEach(select => {
             const currentValue = select.value;
@@ -4099,7 +4059,7 @@ class AssociationRules extends HTMLElement {
             if (currentValue) select.value = currentValue;
         });
 
-        // 更新输出映射的源字段选项（模型输出）
+        // 更新输出映射的源字段选项（算法输出）
         const resultMappingSourceFields = this.shadowRoot.querySelectorAll('.result-mapping-source-field');
         resultMappingSourceFields.forEach(select => {
             const currentValue = select.value;
@@ -4163,7 +4123,7 @@ class AssociationRules extends HTMLElement {
             }
         }
         
-        // 更新模型参数选项
+        // 更新算法参数选项
         const targetModel = this.shadowRoot.getElementById('targetModel')?.value;
         const version = this.shadowRoot.getElementById('version')?.value;
         if (targetModel && version) {
@@ -4173,13 +4133,13 @@ class AssociationRules extends HTMLElement {
                 
                 // 如果已有缓存的模型数据，直接使用
                 if (this.cachedModelData) {
-                    console.log('使用缓存数据更新模型参数选项');
+                    console.log('使用缓存数据更新算法参数选项');
                     let inputs = [];
                     if (this.cachedModelData.inputs) {
                         inputs = typeof this.cachedModelData.inputs === 'string' ? JSON.parse(this.cachedModelData.inputs) : this.cachedModelData.inputs;
                     }
                     
-                    // 添加模型参数选项
+                    // 添加算法参数选项
                     inputs.forEach(input => {
                         const option = document.createElement('option');
                         option.value = input.name || input;
@@ -4187,10 +4147,10 @@ class AssociationRules extends HTMLElement {
                         targetSelect.appendChild(option);
                     });
                 } else {
-                    console.log('缓存数据不存在，调用API获取模型参数');
-                    // 调用API获取模型参数
+                    console.log('缓存数据不存在，调用API获取算法参数');
+                    // 调用API获取算法参数
                     try {
-                        const result = await window.AppConfig.get('model', 'metas', { name: targetModel, version: version });
+                        const result = await window.AppConfig.get('algorithm', 'metas', { name: targetModel, version: version });
                         
                         if (result.success && result.data) {
                             const modelData = result.data;
@@ -4212,7 +4172,7 @@ class AssociationRules extends HTMLElement {
                             this.cachedModelData = modelData;
                             console.log('获取并缓存模型数据:', modelData);
                             
-                            // 添加模型参数选项
+                            // 添加算法参数选项
                             inputs.forEach(input => {
                                 const option = document.createElement('option');
                                 option.value = input.name || input;
@@ -4221,7 +4181,7 @@ class AssociationRules extends HTMLElement {
                             });
                         }
                     } catch (error) {
-                        console.error('获取模型参数失败:', error);
+                        console.error('获取算法参数失败:', error);
                     }
                 }
             }
@@ -4230,7 +4190,7 @@ class AssociationRules extends HTMLElement {
 
     // 为新添加的回写映射行更新字段选项
     async updateResultMappingFieldOptionsForNewRow(modelField) {
-        // 更新模型输出选项
+        // 更新算法输出选项
         const targetModel = this.shadowRoot.getElementById('targetModel')?.value;
         const version = this.shadowRoot.getElementById('version')?.value;
         if (targetModel && version) {
@@ -4240,13 +4200,13 @@ class AssociationRules extends HTMLElement {
                 
                 // 如果已有缓存的模型数据，直接使用
                 if (this.cachedModelData) {
-                    console.log('使用缓存数据更新模型输出选项');
+                    console.log('使用缓存数据更新算法输出选项');
                     let outputs = [];
                     if (this.cachedModelData.outputs) {
                         outputs = typeof this.cachedModelData.outputs === 'string' ? JSON.parse(this.cachedModelData.outputs) : this.cachedModelData.outputs;
                     }
                     
-                    // 添加模型输出选项
+                    // 添加算法输出选项
                     outputs.forEach(output => {
                         const option = document.createElement('option');
                         option.value = output.name || output;
@@ -4254,10 +4214,10 @@ class AssociationRules extends HTMLElement {
                         modelSelect.appendChild(option);
                     });
                 } else {
-                    console.log('缓存数据不存在，调用API获取模型输出');
-                    // 调用API获取模型输出
+                    console.log('缓存数据不存在，调用API获取算法输出');
+                    // 调用API获取算法输出
                     try {
-                        const result = await window.AppConfig.get('model', 'metas', { name: targetModel, version: version });
+                        const result = await window.AppConfig.get('algorithm', 'metas', { name: targetModel, version: version });
                         
                         if (result.success && result.data) {
                             const modelData = result.data;
@@ -4281,7 +4241,7 @@ class AssociationRules extends HTMLElement {
                             }
                             console.log('获取并缓存模型数据:', modelData);
                             
-                            // 添加模型输出选项
+                            // 添加算法输出选项
                             outputs.forEach(output => {
                                 const option = document.createElement('option');
                                 option.value = output.name || output;
@@ -4290,7 +4250,7 @@ class AssociationRules extends HTMLElement {
                             });
                         }
                     } catch (error) {
-                        console.error('获取模型输出失败:', error);
+                        console.error('获取算法输出失败:', error);
                     }
                 }
             }

@@ -1114,14 +1114,14 @@ class VisualAnalysis extends HTMLElement {
             ruleNameTd.textContent = record.ruleName || '-';
             tr.appendChild(ruleNameTd);
             
-            // 模型名称列
+            // 算法名称列
             const modelNameTd = document.createElement('td');
-            modelNameTd.textContent = record.modelName || '-';
+            modelNameTd.textContent = record.algorithmName || '-';
             tr.appendChild(modelNameTd);
             
             // 版本号列
             const modelVersionTd = document.createElement('td');
-            modelVersionTd.textContent = record.modelVersion || '-';
+            modelVersionTd.textContent = record.algorithmVersion || '-';
             tr.appendChild(modelVersionTd);
             
             // 开始时间列
@@ -2174,10 +2174,10 @@ class VisualAnalysis extends HTMLElement {
             pdfGenerator.addText(`开始时间: ${record.startTime ? new Date(record.startTime).toLocaleString() : 'N/A'}`, 12);
             pdfGenerator.addText(`结束时间: ${record.endTime ? new Date(record.endTime).toLocaleString() : 'N/A'}`, 12);
             
-            // 3. 模型信息部分
-            pdfGenerator.addSubtitle('二、模型信息');
-            pdfGenerator.addText(`模型名称: ${record.modelName || 'N/A'}`, 12);
-            pdfGenerator.addText(`版本号: ${record.modelVersion || 'N/A'}`, 12);
+            // 3. 算法信息部分
+            pdfGenerator.addSubtitle('二、算法信息');
+            pdfGenerator.addText(`算法名称: ${record.algorithmName || 'N/A'}`, 12);
+            pdfGenerator.addText(`版本号: ${record.algorithmVersion || 'N/A'}`, 12);
             
             // 4. 添加当前曲线图
             pdfGenerator.addSubtitle('三、曲线图分析');
@@ -3064,11 +3064,11 @@ class VisualAnalysis extends HTMLElement {
         return conclusions;
     }
 
-    // 获取模型信息
+    // 获取算法信息
     getModelInfo(record) {
-        // 模拟返回模型信息，实际应该从后端获取
+        // 模拟返回算法信息，实际应该从后端获取
         return {
-            type: '深度学习模型',
+            type: '深度学习算法',
             version: 'v2.1.0',
             algorithm: 'LSTM神经网络',
             parameters: 'hidden_units=128, epochs=100, batch_size=32',
@@ -3096,7 +3096,7 @@ class VisualAnalysis extends HTMLElement {
     getConclusions(record) {
         return [
             '数据分析任务执行成功，各项指标均达到预期目标',
-            '模型表现良好，准确率和召回率均超过90%',
+            '算法表现良好，准确率和召回率均超过90%',
             '数据处理效率较高，在合理时间内完成了分析任务',
             '数据质量整体良好，满足分析要求'
         ];
@@ -3105,10 +3105,10 @@ class VisualAnalysis extends HTMLElement {
     // 获取建议
     getRecommendations(record) {
         return [
-            '建议定期更新模型，以保持预测准确性',
+            '建议定期更新算法，以保持预测准确性',
             '可以进一步优化数据处理流程，提高处理效率',
             '建议增加数据验证步骤，确保数据质量',
-            '可以考虑引入更多特征，提升模型性能'
+            '可以考虑引入更多特征，提升算法性能'
         ];
     }
 
@@ -3262,10 +3262,10 @@ class VisualAnalysis extends HTMLElement {
             pdfGenerator.addText(`开始时间: ${record.startTime ? new Date(record.startTime).toLocaleString() : 'N/A'}`, 12);
             pdfGenerator.addText(`结束时间: ${record.endTime ? new Date(record.endTime).toLocaleString() : 'N/A'}`, 12);
             
-            // 3. 模型信息部分
-            pdfGenerator.addSubtitle('二、模型信息');
-            pdfGenerator.addText(`模型名称: ${record.modelName || 'N/A'}`, 12);
-            pdfGenerator.addText(`版本号: ${record.modelVersion || 'N/A'}`, 12);
+            // 3. 算法信息部分
+            pdfGenerator.addSubtitle('二、算法信息');
+            pdfGenerator.addText(`算法名称: ${record.algorithmName || 'N/A'}`, 12);
+            pdfGenerator.addText(`版本号: ${record.algorithmVersion || 'N/A'}`, 12);
             
             // 4. 添加当前曲线图
             pdfGenerator.addSubtitle('三、曲线图分析');
@@ -4751,8 +4751,8 @@ class VisualAnalysis extends HTMLElement {
                     endTime: task.endTime,
                     ruleId: task.ruleId,
                     ruleName: task.ruleName,
-                    modelName: task.modelName,
-                    modelVersion: task.modelVersion,
+                    algorithmName: task.algorithmName,
+                    algorithmVersion: task.algorithmVersion,
                     inputMeasurements: task.inputMeasurements,
                     outputMeasurements: task.outputMeasurements,
                     time: new Date(task.timestamp).toLocaleString('zh-CN')

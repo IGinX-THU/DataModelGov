@@ -907,10 +907,10 @@ public class ApiServiceImpl implements ApiService.Iface {
         dto.setRuleName(thriftRequest.getRuleName());
         dto.setRuleId(thriftRequest.getRuleId());
         if (thriftRequest.isSetModelName()) {
-            dto.setModelName(thriftRequest.getModelName());
+            dto.setAlgorithmName(thriftRequest.getModelName());
         }
         if (thriftRequest.isSetModelVersion()) {
-            dto.setModelVersion(thriftRequest.getModelVersion());
+            dto.setAlgorithmVersion(thriftRequest.getModelVersion());
         }
         if (thriftRequest.isSetOutputTable()) {
             dto.setOutputTable(thriftRequest.getOutputTable());
@@ -954,8 +954,8 @@ public class ApiServiceImpl implements ApiService.Iface {
         entity.setName(thriftRule.getName());
         entity.setDescription(thriftRule.getDescription());
         entity.setTableName(thriftRule.getTableName());
-        entity.setModelName(thriftRule.getModelName());
-        entity.setModelVersion(thriftRule.getModelVersion());
+        entity.setAlgorithmName(thriftRule.getModelName());
+        entity.setAlgorithmVersion(thriftRule.getModelVersion());
         entity.setStatus(thriftRule.isStatus());
         entity.setCreateTime(thriftRule.getCreateTime());
         entity.setUpdateTime(thriftRule.getUpdateTime());

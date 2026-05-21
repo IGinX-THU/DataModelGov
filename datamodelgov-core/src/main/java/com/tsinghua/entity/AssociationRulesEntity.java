@@ -11,10 +11,10 @@ public class AssociationRulesEntity {
     private String description;
     @ApiModelProperty(value = "数据源")
     private String tableName;
-    @ApiModelProperty(value = "目标模型")
-    private String modelName;
-    @ApiModelProperty(value = "模型版本号")
-    private String modelVersion;
+    @ApiModelProperty(value = "目标算法")
+    private String algorithmName;
+    @ApiModelProperty(value = "算法版本号")
+    private String algorithmVersion;
     @ApiModelProperty(value = "状态")
     private Boolean status;
     @ApiModelProperty(value = "创建时间")

@@ -18,7 +18,7 @@
             </div>
             <div class="filter-row">
                 <div class="filter-field">
-                    <span class="filter-label">关联模型</span>
+                    <span class="filter-label">关联算法</span>
                     <select class="filter-input" id="targetModelFilter">
                         <option value="">全部</option>
                     </select>
@@ -47,7 +47,7 @@
                 <thead>
                     <tr>
                         <th>规则名称</th>
-                        <th>关联模型</th>
+                        <th>关联算法</th>
                         <th>版本</th>
                         <th>状态</th>
                         <th>最后修改时间</th>
@@ -94,9 +94,9 @@
                                 </select>
                             </div>
                             <div class="mapping-target">
-                                <label>目标模型</label>
+                                <label>目标算法</label>
                                 <select id="targetModel" class="target-model-select">
-                                    <option value="">请选择目标模型</option>
+                                    <option value="">请选择目标算法</option>
                                     <option value="speedModel">速度模型</option>
                                     <option value="tempModel">温度模型</option>
                                     <option value="pressureModel">压力模型</option>
@@ -113,7 +113,7 @@
                         </div>
                         
                         <div class="mapping-section">
-                            <div class="mapping-title">输入映射关系（数据源 → 模型）</div>
+                            <div class="mapping-title">输入映射关系</div>
                             <div class="mappings-list" id="mappingsList">
                                 <!-- 动态添加映射行 -->
                             </div>
@@ -121,7 +121,7 @@
                         </div>
                         
                         <div class="mapping-section">
-                            <div class="mapping-title">结果回写映射（模型 → 数据源）</div>
+                            <div class="mapping-title">结果回写映射</div>
                             <div class="mappings-list" id="resultMappingsList">
                                 <!-- 动态添加结果映射行 -->
                             </div>
