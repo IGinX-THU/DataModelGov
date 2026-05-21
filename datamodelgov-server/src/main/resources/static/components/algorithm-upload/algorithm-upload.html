@@ -1,0 +1,72 @@
+<div class="upload-container">
+    <div class="upload-header">
+        <h3 class="upload-title">上传算法文件</h3>
+        <button class="close-btn" id="closeBtn">&times;</button>
+    </div>
+    
+    <form id="uploadForm">
+        <div class="form-group">
+            <label class="form-label required">算法文件</label>
+            <div class="file-upload-area" id="fileUploadArea">
+                <div class="upload-content">
+                    <div class="upload-icon">📁</div>
+                    <p class="upload-text">点击选择文件或拖拽文件到此处</p>
+                    <p class="upload-hint">支持 .py, .java, .sh, .jar 格式</p>
+                    <input type="file" class="file-input" id="algorithmFile" accept=".py,.java,.sh,.jar" required>
+                </div>
+            </div>
+            <div class="file-info" id="fileInfo" style="display: none;">
+                <div class="file-details">
+                    <span class="file-name" id="fileName"></span>
+                    <span class="file-size" id="fileSize"></span>
+                </div>
+                <button type="button" class="remove-file-btn" id="removeFileBtn">&times;</button>
+            </div>
+            <div class="error-message" id="algorithmFileError">请选择算法文件</div>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label required">是否关联已有算法</label>
+            <div class="radio-group-horizontal">
+                <div class="radio-item-horizontal">
+                    <input type="radio" id="isRelatedAlgorithmYes" name="isRelatedAlgorithm" value="yes" required>
+                    <label for="isRelatedAlgorithmYes">是</label>
+                </div>
+                <div class="radio-item-horizontal">
+                    <input type="radio" id="isRelatedAlgorithmNo" name="isRelatedAlgorithm" value="no" checked required>
+                    <label for="isRelatedAlgorithmNo">否</label>
+                </div>
+            </div>
+            <div class="error-message" id="isRelatedAlgorithmError">请选择是否关联已有算法</div>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label required">名称</label>
+            <div id="algorithmNameInputContainer">
+                <input type="text" class="form-control" id="algorithmName" placeholder="请输入算法名称" required>
+                <div class="error-message" id="algorithmNameError">请输入算法名称</div>
+            </div>
+            <div id="algorithmNameSelectContainer" style="display: none;">
+                <select class="form-control form-select" id="algorithmNameSelect" required>
+                    <option value="">请选择算法名称</option>
+                </select>
+                <div class="error-message" id="algorithmNameError">请选择算法名称</div>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label required">版本号</label>
+            <input type="text" class="form-control" id="algorithmVersion" placeholder="请输入版本号" required>
+            <div class="error-message" id="algorithmVersionError">请输入版本号</div>
+        </div>
+
+        <div class="form-actions">
+            <button type="button" class="btn btn-secondary" id="cancelBtn">
+                取消
+            </button>
+            <button type="button" class="btn btn-primary" id="uploadBtn">
+                确认上传
+            </button>
+        </div>
+    </form>
+</div>

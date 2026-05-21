@@ -5,25 +5,45 @@
 
 // 按钮ID到功能的映射
 const BUTTON_ID_MAP = {
+    'btn-new-project': {
+        text: '新建',
+        action: 'showProjectCreate'
+    },
+    'btn-open-project': {
+        text: '打开',
+        action: 'showProjectList'
+    },
     'btn-analyze': {
         text: '分析',
         action: 'showVisualAnalysis'
     },
     'btn-add': {
-        text: '新增',
+        text: '接入',
         action: 'showRegisterEmbedded'
     },
     'btn-upload': {
         text: '上传',
         action: 'showModelUpload'
     },
+    'btn-algorithm-upload': {
+        text: '算法上传',
+        action: 'showAlgorithmUpload'
+    },
     'btn-import': {
         text: '导入',
         action: 'showImportData'
     },
+    'btn-query': {
+        text: '查询',
+        action: 'showDataArchiveList'
+    },
     'btn-download': {
         text: '下载',
         action: 'handleDownload'
+    },
+    'btn-algorithm-download': {
+        text: '算法下载',
+        action: 'handleAlgorithmDownload'
     },
     'btn-delete': {
         text: '删除',
@@ -41,6 +61,18 @@ const BUTTON_ID_MAP = {
         text: '编辑',
         action: 'handleEditModel'
     },
+    'btn-algorithm-edit': {
+        text: '算法编辑',
+        action: 'handleEditAlgorithm'
+    },
+    'btn-algorithm-delete': {
+        text: '删除',
+        action: 'handleDeleteAlgorithm'
+    },
+    'btn-algorithm-parse': {
+        text: '解析',
+        action: 'showParsingRules'
+    },
     'btn-parse': {
         text: '解析',
         action: 'showParsingRules'
@@ -54,8 +86,12 @@ const BUTTON_ID_MAP = {
 // 菜单项ID到功能的映射
 const MENU_ID_MAP = {
     'menu-data-source-management': {
-        text: '数据源管理',
+        text: '异构数据源管理',
         action: 'showDataSourceList'
+    },
+    'menu-data-archive-query': {
+        text: '数据档案查询',
+        action: 'showDataArchiveList'
     },
     'menu-register-heterogeneous-data-source': {
         text: '注册异构数据源',
@@ -69,9 +105,17 @@ const MENU_ID_MAP = {
         text: '上传模型文件',
         action: 'showModelUpload'
     },
+    'menu-upload-algorithm-file': {
+        text: '上传算法文件',
+        action: 'showAlgorithmUpload'
+    },
     'menu-download-model-file': {
         text: '下载模型文件',
         action: 'handleDownload'
+    },
+    'menu-download-algorithm-file': {
+        text: '下载算法文件',
+        action: 'handleAlgorithmDownload'
     },
     'menu-remove-model-asset': {
         text: '移除模型资产',
@@ -81,6 +125,14 @@ const MENU_ID_MAP = {
         text: '编辑元模型档案',
         action: 'handleEditModel'
     },
+    'menu-edit-meta-algorithm-archive': {
+        text: '编辑元算法档案',
+        action: 'handleEditAlgorithm'
+    },
+    'menu-remove-algorithm-asset': {
+        text: '移除算法资产',
+        action: 'handleDeleteAlgorithm'
+    },
     'menu-configure-parsing-rules': {
         text: '配置解析规则',
         action: 'showParsingRules'
@@ -88,6 +140,22 @@ const MENU_ID_MAP = {
     'menu-association-rule-configuration': {
         text: '关联规则配置',
         action: 'showAssociationRules'
+    },
+    'menu-simulation-archive': {
+        text: '仿真档案管理',
+        action: 'showSimulationArchive'
+    },
+    'menu-algorithm-list': {
+        text: '算法管理',
+        action: 'showAlgorithmList'
+    },
+    'menu-project-new': {
+        text: '新建项目',
+        action: 'showProjectCreate'
+    },
+    'menu-project-list': {
+        text: '打开项目',
+        action: 'showProjectList'
     },
     'menu-numerical-and-curve-analysis': {
         text: '数值与曲线分析',

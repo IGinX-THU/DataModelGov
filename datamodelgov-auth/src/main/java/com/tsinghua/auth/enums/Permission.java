@@ -44,7 +44,13 @@ public enum Permission {
     USER_CREATE,
     USER_READ,
     USER_UPDATE,
-    USER_DELETE;
+    USER_DELETE,
+
+    // 通用权限
+    CREATE,
+    READ,
+    UPDATE,
+    DELETE;
     
     /**
      * 获取权限描述（用于错误提示）
@@ -92,7 +98,13 @@ public enum Permission {
             case USER_READ: return "查看用户";
             case USER_UPDATE: return "更新用户";
             case USER_DELETE: return "删除用户";
-            
+
+            // 通用权限
+            case CREATE: return "创建";
+            case READ: return "查看";
+            case UPDATE: return "更新";
+            case DELETE: return "删除";
+
             default: return this.name();
         }
     }

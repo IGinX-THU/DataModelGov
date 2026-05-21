@@ -143,11 +143,12 @@ class MenuPermission {
         
         const message = `权限不足：${actionName}需要相应权限\n当前角色：${roleNames[this.userRole] || this.userRole}`;
         
-        // 尝试使用CommonUtils显示错误，否则使用alert
         if (window.CommonUtils && window.CommonUtils.showError) {
             window.CommonUtils.showError(message, 5000);
+        } else if (window.CommonUtils && window.CommonUtils.showToast) {
+            window.CommonUtils.showToast(message, 'error');
         } else {
-            alert(message);
+            console.error(message);
         }
     }
 

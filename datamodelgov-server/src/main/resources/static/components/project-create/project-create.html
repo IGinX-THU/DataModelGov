@@ -1,0 +1,27 @@
+<div class="vs-modal-mask" id="vsModalMask" hidden>
+    <div class="vs-modal">
+        <div class="vs-modal-header">
+            <div class="vs-modal-title">新建项目</div>
+            <button class="vs-modal-close" id="vsModalClose">×</button>
+        </div>
+        <div class="vs-modal-body">
+            <form id="projectForm" class="vs-project-form">
+                <div class="vs-form-section">
+                    <div class="vs-form-row">
+                        <label class="vs-form-label">项目名称 <span class="vs-required">*</span></label>
+                        <input type="text" id="projectName" name="projectName" class="vs-form-input" required placeholder="输入项目名称">
+                    </div>
+                    <div class="vs-form-row">
+                        <label class="vs-form-label">项目描述</label>
+                        <textarea id="projectDescription" name="projectDescription" class="vs-form-textarea" rows="3" placeholder="输入项目描述"></textarea>
+                    </div>
+                    <input type="hidden" id="projectType" name="projectType" value="simulation">
+                </div>
+                <div class="vs-form-actions">
+                    <button type="button" class="vs-btn vs-btn-secondary" id="cancelBtn">取消</button>
+                    <button type="submit" class="vs-btn vs-btn-primary" id="saveBtn">创建</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,183 @@
+<div class="algorithm-detail">
+    <!-- 第一个card：元算法档案 -->
+    <div class="algorithm-info-card">
+        <div class="info-header">元算法档案</div>
+        
+        <!-- 上半部分：基本信息区域 -->
+        <div class="basic-info-section">
+            <div class="section-header">
+                <div class="section-title-with-name">
+                    <span class="algorithm-name" id="algorithmName">-</span>
+                </div>
+                <div class="action-buttons">
+                    <button class="edit-button">编辑</button>
+                    <button class="delete-button">删除</button>
+                </div>
+            </div>
+            <div class="basic-info-list">
+                <div class="info-item">
+                    <div class="info-label">开发者</div>
+                    <div class="info-value" id="developer">-</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">版本号</div>
+                    <div class="info-value" id="algorithmVersion">-</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">场景</div>
+                    <div class="info-value" id="scene">-</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">创建时间</div>
+                    <div class="info-value" id="createTime">-</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 下半部分：版本历史区域 -->
+        <div class="version-history-section">
+            <div class="section-title">版本历史</div>
+            <div class="horizontal-timeline">
+                <div class="timeline-item">
+                    <div class="timeline-dot"></div>
+                    <div class="timeline-content">
+                        <div class="timeline-version">v0.9.0</div>
+                        <div class="timeline-developer">李四</div>
+                        <div class="timeline-date">2024-01-10</div>
+                    </div>
+                </div>
+                <div class="timeline-item">
+                    <div class="timeline-dot"></div>
+                    <div class="timeline-content">
+                        <div class="timeline-version">v1.0.0</div>
+                        <div class="timeline-developer">张三</div>
+                        <div class="timeline-date">2024-01-15</div>
+                    </div>
+                </div>
+                <div class="timeline-item">
+                    <div class="timeline-dot"></div>
+                    <div class="timeline-content">
+                        <div class="timeline-version">v1.0.1</div>
+                        <div class="timeline-developer">张三</div>
+                        <div class="timeline-date">2024-01-20</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 第二个card：算法结构图 -->
+    <div class="algorithm-structure-card">
+        <div class="structure-header">接口信息</div>
+        <div class="uml-diagram-vertical">
+            <!-- 上方Inputs -->
+            <div class="inputs-container">
+                <div class="params-table">
+                    <div class="params-header">
+                        <div class="param-col param-name">参数名</div>
+                        <div class="param-col param-type">数据类型</div>
+                        <div class="param-col param-unit">物理单位</div>
+                        <div class="param-col param-desc">说明</div>
+                    </div>
+                    <div class="params-body">
+                        <div class="param-row">
+                            <div class="param-col param-name">temperature</div>
+                            <div class="param-col param-type">float</div>
+                            <div class="param-col param-unit">°C</div>
+                            <div class="param-col param-desc">环境温度</div>
+                        </div>
+                        <div class="param-row">
+                            <div class="param-col param-name">pressure</div>
+                            <div class="param-col param-type">float</div>
+                            <div class="param-col param-unit">kPa</div>
+                            <div class="param-col param-desc">压力值</div>
+                        </div>
+                        <div class="param-row">
+                            <div class="param-col param-name">flow_rate</div>
+                            <div class="param-col param-type">float</div>
+                            <div class="param-col param-unit">m³/h</div>
+                            <div class="param-col param-desc">流量</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 连接线和标签 -->
+            <div class="connection-container">
+                <div class="arrow-label">Inputs</div>
+                <div class="arrow-down"></div>
+            </div>
+            
+            <!-- 中间算法 -->
+            <div class="algorithm-container">
+                <div class="algorithm-box">
+                    <div class="algorithm-name" id="algorithmDiagramName">Timer</div>
+                    <div class="algorithm-version" id="algorithmDiagramVersion">v1.0.1</div>
+                </div>
+            </div>
+            
+            <!-- 连接线和标签 -->
+            <div class="connection-container">
+                <div class="arrow-label">Outputs</div>
+                <div class="arrow-down"></div>
+            </div>
+            
+            <!-- 下方Outputs -->
+            <div class="outputs-container">
+                <div class="params-table">
+                    <div class="params-header">
+                        <div class="param-col param-name">参数名</div>
+                        <div class="param-col param-type">数据类型</div>
+                        <div class="param-col param-unit">物理单位</div>
+                        <div class="param-col param-desc">说明</div>
+                    </div>
+                    <div class="params-body">
+                        <div class="param-row">
+                            <div class="param-col param-name">control_signal</div>
+                            <div class="param-col param-type">float</div>
+                            <div class="param-col param-unit">%</div>
+                            <div class="param-col param-desc">控制信号</div>
+                        </div>
+                        <div class="param-row">
+                            <div class="param-col param-name">status</div>
+                            <div class="param-col param-type">int</div>
+                            <div class="param-col param-unit">-</div>
+                            <div class="param-col param-desc">状态码</div>
+                        </div>
+                        <div class="param-row">
+                            <div class="param-col param-name">efficiency</div>
+                            <div class="param-col param-type">float</div>
+                            <div class="param-col param-unit">%</div>
+                            <div class="param-col param-desc">效率</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 第三个card：关联信息 -->
+    <div class="algorithm-association-card">
+        <div class="association-header">关联规则信息</div>
+        <div class="association-content">
+            <div class="association-table-wrapper">
+                <div class="association-table-header">
+                    <div class="summary-item">
+                        <span class="summary-label">关联规则数量</span>
+                        <span class="summary-value" id="associationCount">0</span>
+                    </div>
+                    <button class="view-all-associations-btn" id="viewAllAssociations">
+                        查看所有关联规则
+                    </button>
+                </div>
+                <div class="association-list" id="associationList">
+                    <!-- 动态加载关联规则列表 -->
+                    <div class="no-associations" id="noAssociations">
+                        暂无关联规则
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>

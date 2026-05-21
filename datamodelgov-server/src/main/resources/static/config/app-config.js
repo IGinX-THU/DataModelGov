@@ -82,6 +82,36 @@ window.AppConfig = {
             save: '/api/parsing/rules/save',
             'validate-name': '/api/parsing/rules/validate-name'
         },
+        // 仿真档案相关
+        simulationArchives: {
+            query: '/api/simulation/archives/query',
+            count: '/api/simulation/archives/count',
+            detail: '/api/simulation/archives/detail',
+            delete: '/api/simulation/archives/delete',
+            save: '/api/simulation/archives/save',
+            'validate-name': '/api/simulation/archives/validate-name',
+            copy: '/api/simulation/archives/copy',
+            run: '/api/simulation/archives/run',
+            stop: '/api/simulation/archives/stop',
+            'execution-status': '/api/simulation/archives/execution-status'
+        },
+        // 数据档案相关
+        dataArchive: {
+            query: '/api/dataArchive/query',
+            count: '/api/dataArchive/count',
+            detail: '/api/dataArchive/detail',
+            update: '/api/dataArchive/update',
+            delete: '/api/dataArchive/delete'
+        },
+        // 算法管理相关
+        algorithm: {
+            upload: '/api/algorithm/upload',
+            download: '/api/algorithm/download',
+            metas: '/api/algorithm/metas',
+            history: '/api/algorithm/history',
+            delete: '/api/algorithm/delete',
+            extractAlgorithmFile: '/api/algorithm/extractAlgorithmFile'
+        },
         // 用户管理相关
         userManagement: {
             query: '/api/user/query',
@@ -121,6 +151,14 @@ window.AppConfig = {
             'upload-report': '/api/task/upload-report',
             'package-download': '/api/task/package-download',
             'time-range': '/api/task/time-range'
+        },
+        // 项目相关
+        project: {
+            create: '/api/project/create',
+            query: '/api/project/query',
+            count: '/api/project/count',
+            detail: '/api/project/detail',
+            tree: '/api/project/tree'
         }
     },
     
@@ -158,6 +196,21 @@ window.AppConfig = {
         const token = this.getToken();
         if (token) {
             headers[this.auth.tokenHeader] = `Bearer ${token}`;
+        }
+        // 添加当前项目信息到请求头（按用户隔离）
+        const username = this.getUsername();
+        if (username) {
+            const currentProject = localStorage.getItem('currentProject_' + username);
+            if (currentProject) {
+                try {
+                    const project = JSON.parse(currentProject);
+                    if (project && project.name) {
+                        headers['X-Current-Project'] = project.name;
+                    }
+                } catch (e) {
+                    console.error('解析当前项目失败:', e);
+                }
+            }
         }
         return headers;
     },
@@ -448,6 +501,7 @@ window.AppConfig = {
                 this.setToken(response.data.token);
                 this.setRefreshToken(response.data.refreshToken);
                 this.setUsername(username);
+                // 不清除项目信息，让用户能恢复上次的项目
                 return response;
             } else {
                 throw new Error(response.message || '登录失败');
@@ -470,9 +524,14 @@ window.AppConfig = {
         } catch (error) {
             console.error('登出请求失败:', error);
         } finally {
+            const username = this.getUsername();
             this.clearToken();
             this.clearRefreshToken();
             this.clearUsername();
+            // 清除当前用户的项目信息（按用户隔离）
+            if (username) {
+                localStorage.removeItem('currentProject_' + username);
+            }
             
             // 跳转到登录页
             if (!window.location.pathname.includes('/login.html')) {

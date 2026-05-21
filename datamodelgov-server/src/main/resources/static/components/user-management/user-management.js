@@ -618,7 +618,9 @@ class UserManagement extends HTMLElement {
 
     showMessage(message, type = 'info') {
         console.log(`[${type}] ${message}`);
-        alert(message);
+        if (window.CommonUtils && window.CommonUtils.showToast) {
+            window.CommonUtils.showToast(message, type);
+        }
     }
 }
 

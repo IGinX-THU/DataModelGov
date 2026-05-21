@@ -238,6 +238,7 @@ class RegisterDataResourceEmbedded extends HTMLElement {
         const isReadOnly = this.shadowRoot.getElementById('isReadOnly')?.checked || false;
         const dataPrefix = this.shadowRoot.getElementById('dataPrefix')?.value;
         const schemaPrefix = this.shadowRoot.getElementById('schemaPrefix')?.value;
+        const description = this.shadowRoot.getElementById('description')?.value;
         
         // 只对需要认证的存储引擎类型获取用户名密码
         let username = null;
@@ -246,7 +247,7 @@ class RegisterDataResourceEmbedded extends HTMLElement {
             username = this.shadowRoot.getElementById('username')?.value;
             password = this.shadowRoot.getElementById('password')?.value;
         }
-        
+
         // 类型映射
         const typeMapping = {
             '1': 1,  // iotdb12
@@ -272,6 +273,11 @@ class RegisterDataResourceEmbedded extends HTMLElement {
         // 模式前缀为必填项
         data.schemaPrefix = schemaPrefix ? schemaPrefix.trim() : '';
         
+        // 添加描述信息
+        if (description && description.trim()) {
+            data.description = description.trim();
+        }
+
         // 只对需要用户名密码的存储引擎类型添加这些字段
         if (username && (data.storageEngineType === 1 || data.storageEngineType === 2 || data.storageEngineType === 4 || data.storageEngineType === 6)) {
             data.username = username;
