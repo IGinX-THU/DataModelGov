@@ -13,6 +13,25 @@ class ModelUpload extends HTMLElement {
         this.selectedFile = null;
     }
 
+    // 去掉存储路径前缀（如 models_system.projectName.）
+    stripStoragePrefix(path) {
+        if (!path) return path;
+        const prefixes = ['models_system.', 'algorithms_system.'];
+        for (const prefix of prefixes) {
+            if (path.startsWith(prefix)) {
+                // 去掉前缀后，再去掉项目名部分
+                const withoutPrefix = path.substring(prefix.length);
+                const parts = withoutPrefix.split('.');
+                if (parts.length > 1) {
+                    // 返回去掉项目名后的部分（即模型/算法名称）
+                    return parts.slice(1).join('.');
+                }
+                return withoutPrefix;
+            }
+        }
+        return path;
+    }
+
     async connectedCallback() {
         await this.loadResources();
         this.render();
@@ -303,16 +322,16 @@ class ModelUpload extends HTMLElement {
             console.error('❌ 未找到modelNameSelect元素');
             return;
         }
-        
+
         // 获取右侧模型资产库的根节点
-        const rightSidebarTree = document.querySelector('.right-sidebar .tree');
-        if (!rightSidebarTree) {
-            console.warn('未找到右侧模型资产库');
+        const modelTree = document.getElementById('modelTree');
+        if (!modelTree) {
+            console.warn('未找到模型树');
             return;
         }
-        
+
         // 获取所有节点，包括嵌套的子节点
-        const allNodes = rightSidebarTree.querySelectorAll('.tree-node');
+        const allNodes = modelTree.querySelectorAll('.tree-node');
         const modelNames = new Set(); // 使用Set避免重复
         
         allNodes.forEach(node => {
@@ -324,14 +343,17 @@ class ModelUpload extends HTMLElement {
                 if (nodeName === 'models_system') {
                     return;
                 }
-                
+
+                // 去掉存储路径前缀
+                const strippedName = this.stripStoragePrefix(nodeName);
+
                 // 检查是否是父节点（有子节点的节点）
                 const childrenContainer = node.querySelector('.tree-children');
                 if (childrenContainer && childrenContainer.children.length > 0) {
                     // 检查子节点是否为叶子节点（没有子节点的节点）
                     const childNodes = childrenContainer.querySelectorAll('.tree-node');
                     let hasLeafChild = false;
-                    
+
                     childNodes.forEach(childNode => {
                         const childChildrenContainer = childNode.querySelector('.tree-children');
                         // 如果子节点没有子节点，则是叶子节点
@@ -339,10 +361,10 @@ class ModelUpload extends HTMLElement {
                             hasLeafChild = true;
                         }
                     });
-                    
+
                     // 只有当子节点包含叶子节点时，才将父节点作为模型名称
                     if (hasLeafChild) {
-                        modelNames.add(nodeName);
+                        modelNames.add(strippedName);
                     }
                 }
             }
