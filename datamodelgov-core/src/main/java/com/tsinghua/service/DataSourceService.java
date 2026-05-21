@@ -134,9 +134,18 @@ public class DataSourceService {
             if (CollectionUtils.isEmpty(accessibleTables)) {
                 return filteredList;
             }
+            String currentProject = ProjectContext.getCurrentProject(null);
             accessibleTables.forEach(accessibleTable -> filteredList.addAll(
                     storageEngineInfoDtos.stream().filter(storageEngineInfoDto ->
                                     accessibleTable.equalsIgnoreCase(storageEngineInfoDto.getSchemaPrefix()))
+                            .filter(column -> {
+                                // 如果有当前项目，只返回该项目相关的路径
+                                if (currentProject != null && !currentProject.isEmpty()) {
+                                    String path = column.getSchemaPrefix();
+                                    return path.startsWith(currentProject + ".");
+                                }
+                                return true;
+                            })
                             .collect(Collectors.toList())));
             return filteredList;
         }
