@@ -2111,7 +2111,7 @@ class AssociationRules extends HTMLElement {
                             </div>
                             
                             <div class="mapping-section">
-                                <div class="mapping-title">输入映射关系（数据源 → 模型）</div>
+                                <div class="mapping-title">输入映射关系</div>
                                 <div class="mappings-list" id="mappingsList">
                                     <!-- 动态添加映射行 -->
                                 </div>
@@ -2119,7 +2119,7 @@ class AssociationRules extends HTMLElement {
                             </div>
                             
                             <div class="mapping-section">
-                                <div class="mapping-title">结果回写映射（模型 → 数据源）</div>
+                                <div class="mapping-title">结果回写映射</div>
                                 <div class="mappings-list" id="resultMappingsList">
                                     <!-- 动态添加结果映射行 -->
                                 </div>
