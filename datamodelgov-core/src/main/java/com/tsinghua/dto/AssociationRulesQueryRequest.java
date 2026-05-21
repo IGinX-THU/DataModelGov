@@ -19,10 +19,10 @@ public class AssociationRulesQueryRequest {
     
     @ApiModelProperty(value = "状态（active/inactive）", example = "active")
     private String status;
-    
-    @ApiModelProperty(value = "关联模型名称", example = "环境监测模型")
-    private String modelName;
-    
-    @ApiModelProperty(value = "模型版本", example = "v1.0.0")
-    private String modelVersion;
+
+    @ApiModelProperty(value = "关联算法名称", example = "环境监测算法")
+    private String algorithmName;
+
+    @ApiModelProperty(value = "算法版本", example = "v1.0.0")
+    private String algorithmVersion;
 }
