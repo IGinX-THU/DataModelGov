@@ -4,10 +4,12 @@ import com.tsinghua.entity.ModelMetaEntity;
 import com.tsinghua.model.Result;
 import com.tsinghua.dto.UploadResult;
 import com.tsinghua.dto.ExtractModelFileRequest;
+import com.tsinghua.dto.ModelArchiveQueryRequest;
 import com.tsinghua.service.ModelFileService;
 import com.tsinghua.auth.annotation.RequirePermission;
 import com.tsinghua.auth.enums.Permission;
 import com.tsinghua.auth.annotation.OperationLog;
+import com.tsinghua.util.ProjectContext;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,7 +21,6 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.List;
 import java.util.Map;
 
@@ -62,7 +63,6 @@ public class ModelFileController {
         ModelMetaEntity queryMeta = modelFileService.queryMeta(name, version);
         fileName = queryMeta.getFileName();
 
-        // 设置响应头
         String encodedFilename = URLEncoder.encode(fileName, StandardCharsets.UTF_8.name())
                 .replace("+", "%20");
 
@@ -71,7 +71,6 @@ public class ModelFileController {
                 "attachment; filename=\"" + encodedFilename + "\"; filename*=UTF-8''" + encodedFilename);
         response.setContentLength(fileData.length);
 
-        // 写入响应流
         response.getOutputStream().write(fileData);
         response.flushBuffer();
     }
@@ -98,7 +97,7 @@ public class ModelFileController {
     @ApiOperation("模型元数据历史")
     @GetMapping( "/history")
     @RequirePermission(Permission.MODEL_READ)
-    public Result<List<ModelMetaEntity>> queryMetaList(
+    public Result<?> queryMetaList(
             @RequestParam("name") String name) {
         return Result.success(modelFileService.queryMetaList(name));
     }
@@ -114,42 +113,76 @@ public class ModelFileController {
         return Result.success("操作成功");
     }
 
+    @ApiOperation("模型资产树")
+    @GetMapping("/tree")
+    @RequirePermission(Permission.MODEL_READ)
+    public Result<?> queryModelTree(
+            @RequestParam(value = "projectName", required = false) String projectName) {
+        String effectiveProjectName = projectName;
+        if (effectiveProjectName == null || effectiveProjectName.trim().isEmpty()) {
+            effectiveProjectName = ProjectContext.getCurrentProject();
+        }
+        List<String> tree = modelFileService.queryModelTree(effectiveProjectName);
+        return Result.success(tree);
+    }
+
+    @ApiOperation("分页查询模型档案")
+    @PostMapping("/archive/query")
+    @RequirePermission(Permission.MODEL_READ)
+    public Result<List<ModelMetaEntity>> queryModelArchives(@RequestBody ModelArchiveQueryRequest request) {
+        List<ModelMetaEntity> result = modelFileService.queryModelArchives(
+            request.getName(),
+            request.getProjectName(),
+            request.getAuthor(),
+            request.getPageNum(),
+            request.getPageSize()
+        );
+        return Result.success(result);
+    }
+
+    @ApiOperation("查询模型档案总数")
+    @PostMapping("/archive/count")
+    @RequirePermission(Permission.MODEL_READ)
+    public Result<Object> countModelArchives(@RequestBody ModelArchiveQueryRequest request) {
+        List<ModelMetaEntity> allArchives = modelFileService.queryModelArchives(
+            request.getName(),
+            request.getProjectName(),
+            request.getAuthor(),
+            null,
+            null
+        );
+        return Result.success(allArchives.size());
+    }
+
     @ApiOperation("提取模型文件用于解析")
     @PostMapping("/extractModelFile")
     @RequirePermission(Permission.MODEL_READ)
     public Result<?> extractModelFileForParsing(@RequestBody ExtractModelFileRequest request) throws Exception {
-        
         String modelName = request.getName();
         String version = request.getVersion();
-        
+
         if (modelName == null || version == null) {
             return Result.error("参数name和version不能为空");
         }
-        
-        // 创建临时目录
+
         Path tempDir = Files.createTempDirectory("model_parsing_");
-        
         try {
-            // 调用修改后的extractModelFile方法
             List<Map<String, Object>> fileList = modelFileService.extractModelFile(modelName, version, tempDir);
             return Result.success(fileList);
         } finally {
-            // 清理临时目录
-            try {
-                Files.walk(tempDir)
-                        .sorted(java.util.Comparator.reverseOrder())
-                        .forEach(path -> {
-                            try {
-                                Files.deleteIfExists(path);
-                            } catch (Exception deleteException) {
-                                // 忽略删除异常
-                            }
-                        });
-                Files.deleteIfExists(tempDir);
-            } catch (Exception deleteException) {
-                // 忽略删除异常
-            }
+            cleanupTempDir(tempDir);
         }
+    }
+
+    private void cleanupTempDir(Path tempDir) {
+        try {
+            Files.walk(tempDir)
+                    .sorted(java.util.Comparator.reverseOrder())
+                    .forEach(path -> {
+                        try { Files.deleteIfExists(path); } catch (Exception ignored) {}
+                    });
+            Files.deleteIfExists(tempDir);
+        } catch (Exception ignored) {}
     }
 
 }

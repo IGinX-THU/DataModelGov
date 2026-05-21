@@ -77,6 +77,23 @@ class ModelDetail extends HTMLElement {
 
     bindEvents() {
         // 绑定事件
+        const backBtn = this.shadowRoot.getElementById('backBtn');
+        if (backBtn) {
+            backBtn.addEventListener('click', () => {
+                this.hide();
+                const modelArchiveList = document.getElementById('modelArchiveList');
+                if (modelArchiveList && modelArchiveList.show) {
+                    modelArchiveList.show();
+                }
+            });
+        }
+
+        const closeBtn = this.shadowRoot.getElementById('closeBtn');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => {
+                this.hide();
+            });
+        }
         const downloadBtn = this.shadowRoot.getElementById('downloadBtn');
         const editBtn = this.shadowRoot.getElementById('editBtn');
         const deleteBtn = this.shadowRoot.getElementById('deleteBtn');
@@ -303,11 +320,68 @@ class ModelDetail extends HTMLElement {
         if (modelDiagramName) modelDiagramName.textContent = modelInfo.name || 'Timer';
         if (modelDiagramVersion) modelDiagramVersion.textContent = modelInfo.version || 'v1.0.1';
         
-        // 动态渲染inputs参数表格
-        this.renderParamsTable('inputs', modelInfo.inputs);
+        // 解析apis数据，支持多API展示
+        let apis = [];
+        if (modelInfo.apis) {
+            try {
+                apis = typeof modelInfo.apis === 'string' ? JSON.parse(modelInfo.apis) : modelInfo.apis;
+            } catch (e) {
+                console.error('解析apis数据失败:', e);
+            }
+        }
         
-        // 动态渲染outputs参数表格
-        this.renderParamsTable('outputs', modelInfo.outputs);
+        // 如果没有apis数据，降级到单API模式
+        if (!Array.isArray(apis) || apis.length === 0) {
+            let inputs = [];
+            let outputs = [];
+            if (modelInfo.inputs) {
+                try { inputs = typeof modelInfo.inputs === 'string' ? JSON.parse(modelInfo.inputs) : modelInfo.inputs; } catch(e) {}
+            }
+            if (modelInfo.outputs) {
+                try { outputs = typeof modelInfo.outputs === 'string' ? JSON.parse(modelInfo.outputs) : modelInfo.outputs; } catch(e) {}
+            }
+            apis = [{ name: '默认API', description: '', inputs: inputs || [], outputs: outputs || [] }];
+        }
+        
+        this.detailApis = apis;
+        this.detailCurrentApiIndex = 0;
+        this.renderDetailApiTabs();
+        this.renderDetailApiParams(0);
+    }
+    
+    renderDetailApiTabs() {
+        const tabsContainer = this.shadowRoot.getElementById('detailApiTabs');
+        if (!tabsContainer) return;
+        
+        if (this.detailApis.length <= 1) {
+            tabsContainer.innerHTML = '';
+            tabsContainer.style.display = 'none';
+            return;
+        }
+        
+        tabsContainer.style.display = 'flex';
+        tabsContainer.innerHTML = this.detailApis.map((api, index) => `
+            <div class="detail-api-tab ${index === this.detailCurrentApiIndex ? 'active' : ''}" data-index="${index}">
+                ${api.name || 'API' + (index + 1)}
+            </div>
+        `).join('');
+        
+        // 绑定点击事件
+        tabsContainer.querySelectorAll('.detail-api-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                const idx = parseInt(tab.dataset.index);
+                this.detailCurrentApiIndex = idx;
+                this.renderDetailApiTabs();
+                this.renderDetailApiParams(idx);
+            });
+        });
+    }
+    
+    renderDetailApiParams(index) {
+        const api = this.detailApis[index];
+        if (!api) return;
+        this.renderParamsTable('inputs', api.inputs || []);
+        this.renderParamsTable('outputs', api.outputs || []);
     }
 
     renderParamsTable(type, paramsData) {

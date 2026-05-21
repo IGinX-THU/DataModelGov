@@ -74,8 +74,8 @@ const BUTTON_ID_MAP = {
         action: 'showParsingRules'
     },
     'btn-parse': {
-        text: '解析',
-        action: 'showParsingRules'
+        text: '搜索',
+        action: 'showModelArchiveList'
     },
     'btn-link': {
         text: '关联',
@@ -124,6 +124,10 @@ const MENU_ID_MAP = {
     'menu-edit-meta-model-archive': {
         text: '编辑元模型档案',
         action: 'handleEditModel'
+    },
+    'menu-model-archive-query': {
+        text: '搜索模型档案',
+        action: 'showModelArchiveList'
     },
     'menu-edit-meta-algorithm-archive': {
         text: '编辑元算法档案',
