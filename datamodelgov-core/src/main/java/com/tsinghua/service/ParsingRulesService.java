@@ -31,24 +31,131 @@ public class ParsingRulesService {
     @PostConstruct
     private void init() {
         try {
+            // 1. Python标准规则（# @Input/@Output注释）
             ParsingRulesEntity pythonRuleEntity = new ParsingRulesEntity();
             pythonRuleEntity.setCreateTime(1776676648997L);
-            pythonRuleEntity.setName("Python默认规则");
+            pythonRuleEntity.setName("Python标准规则");
             pythonRuleEntity.setRegexPattern("^#\\s*@(Input|Output)\\s*:?\\s*(\\w+)\\s*[\\(\\[]?\\s*(\\w+)\\s*[\\)\\]]?\\s*-?\\s*(.*)$");
             pythonRuleEntity.setExample(
                     "# @Input: speed (float) - 车速\n" +
                     "# @Input: gear (int) - 档位\n" +
                     "# @Output: power (float) - 功率");
+            pythonRuleEntity.setParseType("regex");
+            pythonRuleEntity.setLanguage("python");
+            pythonRuleEntity.setIsReadonly(true);
             saveRules(pythonRuleEntity);
+
+            // 2. MATLAB标准规则（% @Input/@Output注释）
             ParsingRulesEntity matlabRuleEntity = new ParsingRulesEntity();
             matlabRuleEntity.setCreateTime(1776159194994L);
-            matlabRuleEntity.setName("Matlab默认规则");
+            matlabRuleEntity.setName("MATLAB标准规则");
             matlabRuleEntity.setRegexPattern("^%\\s*@(Input|Output)\\s*:?\\s*(\\w+)\\s*[\\(\\[]?\\s*(\\w+)\\s*[\\)\\]]?\\s*-?\\s*(.*)$");
             matlabRuleEntity.setExample(
                     "% @Input: speed (float) - 车速\n" +
-                            "% @Input: gear (int) - 档位\n" +
-                            "% @Output: power (float) - 功率");
+                    "% @Input: gear (int) - 档位\n" +
+                    "% @Output: power (float) - 功率");
+            matlabRuleEntity.setParseType("regex");
+            matlabRuleEntity.setLanguage("matlab");
+            matlabRuleEntity.setIsReadonly(true);
             saveRules(matlabRuleEntity);
+
+            // 3. C++ Doxygen规则（@param/@return注释）
+            ParsingRulesEntity cppRuleEntity = new ParsingRulesEntity();
+            cppRuleEntity.setCreateTime(1776159194995L);
+            cppRuleEntity.setName("C++ Doxygen规则");
+            cppRuleEntity.setRegexPattern("^\\s*\\*\\s*@(param|return)\\s+(?:\\[([^\\]]+)\\]\\s+)?(\\w+)(?:\\s*\\(([^)]+)\\))?\\s*-?\\s*(.*)$");
+            cppRuleEntity.setExample(
+                    "/**\n" +
+                    " * @param[in] speed (float) - 车速\n" +
+                    " * @param[in] gear (int) - 档位\n" +
+                    " * @return power (float) - 功率\n" +
+                    " */");
+            cppRuleEntity.setParseType("regex");
+            cppRuleEntity.setLanguage("cpp");
+            cppRuleEntity.setIsReadonly(true);
+            saveRules(cppRuleEntity);
+
+            // 4. Python TypeHint规则（def run(a: float) -> float签名）
+            ParsingRulesEntity typehintRuleEntity = new ParsingRulesEntity();
+            typehintRuleEntity.setCreateTime(1776159194996L);
+            typehintRuleEntity.setName("Python TypeHint规则");
+            typehintRuleEntity.setRegexPattern("^\\s*def\\s+(\\w+)\\s*\\(([^)]*)\\)\\s*->\\s*([^:]+):\\s*(?:#.*)?$");
+            typehintRuleEntity.setExample(
+                    "def run(speed: float, gear: int) -> float:\n" +
+                    "    \"\"\"计算功率\"\"\"\n" +
+                    "def init(temp: float, pressure: float) -> None:");
+            typehintRuleEntity.setParseType("typehint");
+            typehintRuleEntity.setLanguage("python");
+            typehintRuleEntity.setIsReadonly(true);
+            saveRules(typehintRuleEntity);
+
+            // 5. Python Inspect规则（基于inspect模块反射解析）
+            ParsingRulesEntity inspectRuleEntity = new ParsingRulesEntity();
+            inspectRuleEntity.setCreateTime(1776159194997L);
+            inspectRuleEntity.setName("Python Inspect规则");
+            inspectRuleEntity.setParseType("inspect");
+            inspectRuleEntity.setLanguage("python");
+            inspectRuleEntity.setIsReadonly(true);
+            inspectRuleEntity.setPythonModule("");
+            inspectRuleEntity.setPythonFunction("");
+            inspectRuleEntity.setExample(
+                    "# 使用Python inspect模块自动解析函数签名\n" +
+                    "# 需要指定模块名和函数名\n" +
+                    "# 例如: module=my_module, function=run");
+            saveRules(inspectRuleEntity);
+
+            // 6. Python Google Style规则（Args/Returns段注释）
+            ParsingRulesEntity googleRuleEntity = new ParsingRulesEntity();
+            googleRuleEntity.setCreateTime(1776159194998L);
+            googleRuleEntity.setName("Python Google Style规则");
+            googleRuleEntity.setRegexPattern("^\\s+(\\w+)\\s*\\(([^)]+)\\)\\s*:\\s*(.+)$");
+            googleRuleEntity.setExample(
+                    "def run(speed, gear):\n" +
+                    "    \"\"\"计算功率.\n" +
+                    "    Args:\n" +
+                    "        speed (float): 车速\n" +
+                    "        gear (int): 档位\n" +
+                    "    Returns:\n" +
+                    "        power (float): 功率\n" +
+                    "    \"\"\"");
+            googleRuleEntity.setParseType("regex");
+            googleRuleEntity.setLanguage("python");
+            googleRuleEntity.setIsReadonly(true);
+            saveRules(googleRuleEntity);
+
+            // 7. Python Sphinx/reST Style规则（:param/:type/:returns注释）
+            ParsingRulesEntity sphinxRuleEntity = new ParsingRulesEntity();
+            sphinxRuleEntity.setCreateTime(1776159194999L);
+            sphinxRuleEntity.setName("Python Sphinx Style规则");
+            sphinxRuleEntity.setRegexPattern("^\\s*:(param|type|returns?|rtype)\\s+([^:]*):\\s*(.*)$");
+            sphinxRuleEntity.setExample(
+                    "def run(speed, gear):\n" +
+                    "    \"\"\"计算功率.\n" +
+                    "    :param float speed: 车速\n" +
+                    "    :param int gear: 档位\n" +
+                    "    :returns: 功率\n" +
+                    "    :rtype: float\n" +
+                    "    \"\"\"");
+            sphinxRuleEntity.setParseType("regex");
+            sphinxRuleEntity.setLanguage("python");
+            sphinxRuleEntity.setIsReadonly(true);
+            saveRules(sphinxRuleEntity);
+
+            // 8. MATLAB Help Text规则（标准MATLAB函数帮助注释）
+            ParsingRulesEntity matlabHelpRuleEntity = new ParsingRulesEntity();
+            matlabHelpRuleEntity.setCreateTime(1776159194200L);
+            matlabHelpRuleEntity.setName("MATLAB Help Text规则");
+            matlabHelpRuleEntity.setRegexPattern("^%\\s*(\\w+)\\s*-\\s*(.+)$");
+            matlabHelpRuleEntity.setExample(
+                    "function power = run(speed, gear)\n" +
+                    "%RUN 计算功率\n" +
+                    "%   speed - 车速 (float)\n" +
+                    "%   gear - 档位 (int)\n" +
+                    "%   power - 功率 (float)");
+            matlabHelpRuleEntity.setParseType("regex");
+            matlabHelpRuleEntity.setLanguage("matlab");
+            matlabHelpRuleEntity.setIsReadonly(true);
+            saveRules(matlabHelpRuleEntity);
         } catch (Exception e) {
             log.error(e.getMessage());
         }
@@ -88,6 +195,11 @@ public class ParsingRulesService {
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "name", parsingRulesEntity.getName(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "regexPattern", parsingRulesEntity.getRegexPattern(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "example", parsingRulesEntity.getExample(), timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "parseType", parsingRulesEntity.getParseType(), timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "language", parsingRulesEntity.getLanguage(), timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "isReadonly", parsingRulesEntity.getIsReadonly(), timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "pythonModule", parsingRulesEntity.getPythonModule(), timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "pythonFunction", parsingRulesEntity.getPythonFunction(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "createTime", parsingRulesEntity.getCreateTime(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "updateTime", parsingRulesEntity.getUpdateTime(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "owner", parsingRulesEntity.getOwner(), timestamp));
@@ -199,8 +311,15 @@ public class ParsingRulesService {
      * 参考deleteModel逻辑，只用createTime作为唯一标识
      */
     public void deleteRule(Long createTime) throws Exception {
+        ParsingRulesEntity queryRule = queryRule(createTime);
+        if (queryRule == null) {
+            throw new IllegalArgumentException("规则不存在");
+        }
+        // 禁止删除只读预置规则
+        if (queryRule.getIsReadonly() != null && queryRule.getIsReadonly()) {
+            throw new IllegalArgumentException("系统预置规则不可删除");
+        }
         if (!AuthUtil.isAdmin()) {
-            ParsingRulesEntity queryRule = queryRule(createTime);
             String owner = AuthUtil.getCurrentUsername();
             if (!Objects.equals(owner, queryRule.getOwner())) {
                 throw new IllegalArgumentException("只能操作自己的规则！");

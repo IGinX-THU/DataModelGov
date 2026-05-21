@@ -614,3 +614,34 @@
     background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
     box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
 }
+
+/* Detail API Tabs */
+.detail-api-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 12px;
+    padding: 8px 0;
+}
+
+.detail-api-tab {
+    padding: 4px 14px;
+    font-size: 12px;
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    transition: all 0.2s ease;
+}
+
+.detail-api-tab:hover {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+}
+
+.detail-api-tab.active {
+    background: var(--color-primary);
+    color: white;
+    border-color: var(--color-primary);
+}

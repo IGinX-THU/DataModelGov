@@ -136,7 +136,8 @@ window.AppConfig = {
             metas: '/api/model/metas',
             history: '/api/model/history',
             delete: '/api/model/delete',
-            extractModelFile: '/api/model/extractModelFile'
+            extractModelFile: '/api/model/extractModelFile',
+            autoParse: '/api/model/autoParse'
         },
         // 任务相关
         task: {

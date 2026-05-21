@@ -243,6 +243,7 @@ public class ModelFileService {
                         fileInfo.put("path", taskDir.relativize(file).toString());
                         fileInfo.put("size", Files.size(file));
                         fileInfo.put("lastModified", Files.getLastModifiedTime(file).toString());
+                        fileInfo.put("category", getFileCategory(file.getFileName().toString()));
                         
                         // 如果是文本文件，读取内容（限制大小）
                         if (isTextFile(file) && Files.size(file) < 1024 * 1024) { // 小于1MB
@@ -266,11 +267,353 @@ public class ModelFileService {
      */
     private boolean isTextFile(Path file) {
         String fileName = file.getFileName().toString().toLowerCase();
-        return fileName.endsWith(".py") || fileName.endsWith(".m") || 
-               fileName.endsWith(".cpp") || fileName.endsWith(".c") || 
-               fileName.endsWith(".h") || fileName.endsWith(".java") ||
-               fileName.endsWith(".js") || fileName.endsWith(".ts") ||
-               fileName.endsWith(".txt") || fileName.endsWith(".md");
+        // 脚本类
+        if (fileName.endsWith(".py") || fileName.endsWith(".m")) return true;
+        // C/C++源码
+        if (fileName.endsWith(".cpp") || fileName.endsWith(".c") ||
+            fileName.endsWith(".h") || fileName.endsWith(".hpp") ||
+            fileName.endsWith(".cc") || fileName.endsWith(".cxx")) return true;
+        // 通用文本
+        if (fileName.endsWith(".java") || fileName.endsWith(".js") ||
+            fileName.endsWith(".ts") || fileName.endsWith(".txt") ||
+            fileName.endsWith(".md") || fileName.endsWith(".json") ||
+            fileName.endsWith(".yaml") || fileName.endsWith(".yml") ||
+            fileName.endsWith(".xml") || fileName.endsWith(".ini") ||
+            fileName.endsWith(".cfg") || fileName.endsWith(".conf")) return true;
+        return false;
+    }
+
+    /**
+     * 判断文件类型分类
+     */
+    public String getFileCategory(String fileName) {
+        String lower = fileName.toLowerCase();
+        // 脚本类
+        if (lower.endsWith(".py")) return "script_python";
+        if (lower.endsWith(".m")) return "script_matlab";
+        // C/C++源码
+        if (lower.endsWith(".cpp") || lower.endsWith(".c") ||
+            lower.endsWith(".h") || lower.endsWith(".hpp") ||
+            lower.endsWith(".cc") || lower.endsWith(".cxx")) return "source_cpp";
+        // 二进制类
+        if (lower.endsWith(".dll")) return "binary_dll";
+        if (lower.endsWith(".so")) return "binary_so";
+        if (lower.endsWith(".pyd")) return "binary_pyd";
+        // 仿真专有
+        if (lower.endsWith(".ame")) return "simulation_amesim";
+        if (lower.endsWith(".fmu")) return "simulation_fmu";
+        // 压缩包
+        if (lower.endsWith(".zip") || lower.endsWith(".tar") ||
+            lower.endsWith(".tar.gz") || lower.endsWith(".tgz")) return "archive";
+        return "unknown";
+    }
+
+    /**
+     * 轻量级源码扫描器：按行读取文件前N行，匹配特定前缀
+     * 支持regex、typehint、inspect三种解析模式
+     *
+     * @param fileContent 文件内容
+     * @param fileName    文件名（用于判断语言）
+     * @param regexPattern 正则表达式（regex模式使用）
+     * @param parseType   解析类型：regex / typehint / inspect
+     * @param maxLines    最大扫描行数
+     * @return 解析结果，包含apis列表
+     */
+    public Map<String, Object> parseSourceCode(String fileContent, String fileName,
+                                                 String regexPattern, String parseType,
+                                                 int maxLines) {
+        Map<String, Object> result = new HashMap<>();
+        List<Map<String, Object>> apis = new ArrayList<>();
+
+        if (fileContent == null || fileContent.trim().isEmpty()) {
+            result.put("apis", apis);
+            result.put("message", "文件内容为空");
+            return result;
+        }
+
+        String[] lines = fileContent.split("\n");
+        int scanLines = Math.min(lines.length, maxLines > 0 ? maxLines : 50);
+
+        switch (parseType != null ? parseType : "regex") {
+            case "regex":
+                apis = parseWithRegex(lines, scanLines, regexPattern, fileName);
+                break;
+            case "typehint":
+                apis = parseWithTypeHint(lines, scanLines, fileName);
+                break;
+            case "inspect":
+                // inspect模式需要Python运行环境，此处返回提示信息
+                Map<String, Object> inspectApi = new HashMap<>();
+                inspectApi.put("name", "inspect_parse_pending");
+                inspectApi.put("description", "Python inspect模式需要在Python运行环境中执行");
+                inspectApi.put("inputs", new ArrayList<>());
+                inspectApi.put("outputs", new ArrayList<>());
+                apis.add(inspectApi);
+                break;
+            default:
+                apis = parseWithRegex(lines, scanLines, regexPattern, fileName);
+        }
+
+        result.put("apis", apis);
+        result.put("fileName", fileName);
+        result.put("parseType", parseType);
+        result.put("scannedLines", scanLines);
+        return result;
+    }
+
+    /**
+     * 使用正则表达式解析源码注释
+     */
+    private List<Map<String, Object>> parseWithRegex(String[] lines, int scanLines,
+                                                      String regexPattern, String fileName) {
+        List<Map<String, Object>> apis = new ArrayList<>();
+        if (regexPattern == null || regexPattern.trim().isEmpty()) {
+            return apis;
+        }
+
+        List<Map<String, Object>> inputs = new ArrayList<>();
+        List<Map<String, Object>> outputs = new ArrayList<>();
+        java.util.regex.Pattern pattern;
+        try {
+            pattern = java.util.regex.Pattern.compile(regexPattern);
+        } catch (Exception e) {
+            log.warn("正则表达式编译失败: {}", regexPattern, e);
+            return apis;
+        }
+
+        // 推断捕获组结构
+        int groupCount = 0;
+        try {
+            java.util.regex.Matcher testMatcher = pattern.matcher("");
+            groupCount = testMatcher.groupCount();
+        } catch (Exception ignored) {}
+
+        for (int i = 0; i < scanLines; i++) {
+            String line = lines[i];
+            try {
+                java.util.regex.Matcher matcher = pattern.matcher(line);
+                if (matcher.find()) {
+                    Map<String, Object> param = new HashMap<>();
+                    String paramType = "";
+                    String paramName = "";
+                    String dataType = "";
+                    String desc = "";
+
+                    if (groupCount == 2) {
+                        // 2组格式: 名称 + 说明(含类型)，如MATLAB Help Text
+                        paramName = nvl(matcher.group(1));
+                        String descWithType = nvl(matcher.group(2));
+                        // 尝试从说明中提取类型: "车速 (float)" -> type=float, desc=车速
+                        java.util.regex.Matcher typeInDesc = java.util.regex.Pattern.compile("\\(([^)]+)\\)").matcher(descWithType);
+                        if (typeInDesc.find()) {
+                            dataType = typeInDesc.group(1).trim();
+                            desc = descWithType.replace(typeInDesc.group(0), "").replace("-", "").trim();
+                        } else {
+                            desc = descWithType;
+                        }
+                        // 2组格式无法从正则判断Input/Output，统一归为Input
+                        // 后端需结合函数签名判断，此处默认Input
+                        paramType = "input";
+                    } else if (groupCount == 3) {
+                        // 3组格式可能是:
+                        // - Google Style: 名称 + 类型 + 说明
+                        // - Sphinx Style: 标记类型 + 类型+名称 + 说明
+                        // - TypeHint: 函数名 + 参数列表 + 返回类型
+                        String g1 = nvl(matcher.group(1));
+                        String g2 = nvl(matcher.group(2));
+                        String g3 = nvl(matcher.group(3));
+
+                        if (isTypeMarker(g1)) {
+                            // Sphinx Style: (param|return|rtype) + 类型名称 + 说明
+                            paramType = g1;
+                            // g2可能是 "float speed" 格式
+                            java.util.regex.Matcher nameType = java.util.regex.Pattern.compile("(\\w+)\\s+(\\w+)").matcher(g2);
+                            if (nameType.find()) {
+                                dataType = nameType.group(1).trim();
+                                paramName = nameType.group(2).trim();
+                            } else {
+                                paramName = g2.trim();
+                            }
+                            desc = g3.trim();
+                        } else {
+                            // Google Style: 名称 + 类型 + 说明
+                            paramName = g1.trim();
+                            dataType = g2.trim();
+                            desc = g3.trim();
+                            // Google Style需根据上下文(Args/Returns段)判断，此处无法判断
+                            // 默认归为Input，需前端或后端后续处理
+                            paramType = "input";
+                        }
+                    } else if (groupCount == 5) {
+                        // 5组格式: C++ Doxygen - 标记类型 + 方向(可选) + 名称 + 类型(可选) + 说明
+                        paramType = nvl(matcher.group(1));
+                        String direction = nvl(matcher.group(2)); // [in]/[out]/[in,out]，可选
+                        paramName = nvl(matcher.group(3));
+                        dataType = nvl(matcher.group(4)); // 可选
+                        desc = nvl(matcher.group(5));
+                        // 如果有方向信息，优先用方向判断Input/Output
+                        if (!direction.isEmpty()) {
+                            paramType = direction; // in/out/in,out
+                        }
+                    } else {
+                        // 默认4组格式: 参数类型 + 名称 + 类型 + 说明
+                        paramType = nvl(matcher.group(1));
+                        paramName = nvl(matcher.group(2));
+                        dataType = nvl(matcher.group(3));
+                        desc = nvl(matcher.group(4));
+                    }
+
+                    param.put("name", paramName.trim());
+                    param.put("type", normalizeDataType(dataType.trim()));
+                    param.put("unit", "");
+                    param.put("desc", desc.trim());
+                    param.put("line", i + 1);
+
+                    String pt = paramType.toLowerCase();
+                    if (pt.contains("input") || pt.contains("param") || pt.contains("in") || pt.contains("arg")) {
+                        inputs.add(param);
+                    } else if (pt.contains("output") || pt.contains("return") || pt.contains("out") || pt.contains("rtype")) {
+                        outputs.add(param);
+                    } else {
+                        // 无法分类时默认归为Input
+                        inputs.add(param);
+                    }
+                }
+            } catch (Exception e) {
+                log.debug("第{}行正则匹配异常: {}", i + 1, e.getMessage());
+            }
+        }
+
+        if (!inputs.isEmpty() || !outputs.isEmpty()) {
+            Map<String, Object> api = new HashMap<>();
+            api.put("name", extractApiName(fileName));
+            api.put("description", "从" + fileName + "自动提取的API");
+            api.put("inputs", inputs);
+            api.put("outputs", outputs);
+            apis.add(api);
+        }
+        return apis;
+    }
+
+    /**
+     * 判断字符串是否为类型标记(param/return/type/returns/rtype)
+     */
+    private boolean isTypeMarker(String value) {
+        if (value == null || value.trim().isEmpty()) return false;
+        String lower = value.toLowerCase().trim();
+        return lower.equals("param") || lower.equals("return") || lower.equals("returns")
+                || lower.equals("type") || lower.equals("rtype");
+    }
+
+    /**
+     * 安全获取Matcher group值，null转空字符串
+     */
+    private String nvl(String value) {
+        return value != null ? value : "";
+    }
+
+    /**
+     * 使用TypeHint签名解析Python函数
+     * 匹配: def func_name(param: type, ...) -> return_type:
+     */
+    private List<Map<String, Object>> parseWithTypeHint(String[] lines, int scanLines, String fileName) {
+        List<Map<String, Object>> apis = new ArrayList<>();
+        java.util.regex.Pattern funcPattern;
+        try {
+            funcPattern = java.util.regex.Pattern.compile(
+                "^\\s*def\\s+(\\w+)\\s*\\(([^)]*)\\)\\s*(?:->\\s*([^:]+))?\\s*:\\s*(?:#.*)?$");
+        } catch (Exception e) {
+            log.warn("TypeHint正则编译失败", e);
+            return apis;
+        }
+
+        java.util.regex.Pattern paramPattern;
+        try {
+            paramPattern = java.util.regex.Pattern.compile(
+                "\\s*(\\w+)\\s*(?::\\s*([^,=]+?))?\\s*(?:=[^,]*)?\\s*(?:,|$)");
+        } catch (Exception e) {
+            log.warn("参数正则编译失败", e);
+            return apis;
+        }
+
+        for (int i = 0; i < scanLines; i++) {
+            String line = lines[i];
+            java.util.regex.Matcher funcMatcher = funcPattern.matcher(line);
+            if (funcMatcher.find()) {
+                String funcName = funcMatcher.group(1);
+                String paramsStr = funcMatcher.group(2);
+                String returnType = funcMatcher.group(3);
+
+                List<Map<String, Object>> inputs = new ArrayList<>();
+                List<Map<String, Object>> outputs = new ArrayList<>();
+
+                // 解析输入参数
+                if (paramsStr != null && !paramsStr.trim().isEmpty()) {
+                    java.util.regex.Matcher paramMatcher = paramPattern.matcher(paramsStr);
+                    while (paramMatcher.find()) {
+                        String pName = paramMatcher.group(1);
+                        String pType = paramMatcher.group(2);
+                        if (pName != null && !pName.equals("self") && !pName.equals("cls")) {
+                            Map<String, Object> param = new HashMap<>();
+                            param.put("name", pName.trim());
+                            param.put("type", normalizeDataType(pType != null ? pType.trim() : ""));
+                            param.put("unit", "");
+                            param.put("desc", "");
+                            inputs.add(param);
+                        }
+                    }
+                }
+
+                // 解析输出参数
+                if (returnType != null && !returnType.trim().isEmpty() && !returnType.trim().equals("None")) {
+                    Map<String, Object> outParam = new HashMap<>();
+                    outParam.put("name", "result");
+                    outParam.put("type", normalizeDataType(returnType.trim()));
+                    outParam.put("unit", "");
+                    outParam.put("desc", "");
+                    outputs.add(outParam);
+                }
+
+                if (!inputs.isEmpty() || !outputs.isEmpty()) {
+                    Map<String, Object> api = new HashMap<>();
+                    api.put("name", funcName);
+                    api.put("description", "函数 " + funcName);
+                    api.put("inputs", inputs);
+                    api.put("outputs", outputs);
+                    apis.add(api);
+                }
+            }
+        }
+        return apis;
+    }
+
+    /**
+     * 从文件名提取API名称
+     */
+    private String extractApiName(String fileName) {
+        if (fileName == null) return "unknown";
+        int dotIdx = fileName.lastIndexOf('.');
+        return dotIdx > 0 ? fileName.substring(0, dotIdx) : fileName;
+    }
+
+    /**
+     * 标准化数据类型映射
+     */
+    private String normalizeDataType(String dataType) {
+        if (dataType == null || dataType.trim().isEmpty()) return "String";
+        String lower = dataType.toLowerCase().replaceAll("[\\[\\](){}]", "");
+        switch (lower) {
+            case "float": return "Float";
+            case "double": return "Double";
+            case "int": case "integer": return "Integer";
+            case "long": return "Long";
+            case "bool": case "boolean": return "Boolean";
+            case "str": case "string": return "String";
+            case "list": case "dict": case "tuple":
+            case "vector": case "array": return "String";
+            case "none": return "String";
+            default: return "String";
+        }
     }
 
     private void extractArchive(Path archiveFile, Path extractDir) {
@@ -336,6 +679,7 @@ public class ModelFileService {
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "scene", modelMetaDto.getScene(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "inputs", modelMetaDto.getInputs(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "outputs", modelMetaDto.getOutputs(), timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "apis", modelMetaDto.getApis(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "timestamp", timestamp, timestamp));
 
         // 批量写入元数据
@@ -449,6 +793,13 @@ public class ModelFileService {
                         dto.setOutputs(new String((byte[]) value, StandardCharsets.UTF_8));
                     } else if (value instanceof String) {
                         dto.setOutputs((String) value);
+                    }
+                    break;
+                case META_PREFIX+"."+"apis":
+                    if (value instanceof byte[]) {
+                        dto.setApis(new String((byte[]) value, StandardCharsets.UTF_8));
+                    } else if (value instanceof String) {
+                        dto.setApis((String) value);
                     }
                     break;
                 case META_PREFIX+"."+"timestamp":

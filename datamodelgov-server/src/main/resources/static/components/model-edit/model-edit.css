@@ -881,3 +881,126 @@
 .advanced-config-btn .btn-text {
     font-size: 13px;
 }
+
+/* API Management Section */
+.api-management-section {
+    margin: 16px 0;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-secondary);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+}
+
+.api-tabs-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 16px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-secondary);
+}
+
+.api-tabs-title {
+    font-weight: var(--font-weight-semibold);
+    font-size: var(--font-size-base);
+    color: var(--text-primary);
+}
+
+.api-tabs-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.add-api-btn {
+    padding: 4px 12px;
+    font-size: 12px;
+    border: 1px solid var(--color-primary);
+    background: var(--bg-primary);
+    color: var(--color-primary);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all var(--transition-normal);
+}
+
+.add-api-btn:hover {
+    background: var(--color-primary);
+    color: white;
+}
+
+.api-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 8px 12px;
+    min-height: 36px;
+}
+
+.api-tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    font-size: 12px;
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    transition: all var(--transition-normal);
+}
+
+.api-tab:hover {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+}
+
+.api-tab.active {
+    background: var(--color-primary);
+    color: white;
+    border-color: var(--color-primary);
+}
+
+.api-tab .api-tab-name {
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.api-tab .api-tab-delete {
+    font-size: 14px;
+    line-height: 1;
+    opacity: 0.6;
+    cursor: pointer;
+    margin-left: 2px;
+}
+
+.api-tab .api-tab-delete:hover {
+    opacity: 1;
+    color: var(--color-danger);
+}
+
+.api-info-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border-secondary);
+}
+
+.api-info-row .info-item label {
+    display: block;
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+}
+
+.api-info-row .info-item input {
+    width: 100%;
+    padding: 6px 10px;
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    box-sizing: border-box;
+}

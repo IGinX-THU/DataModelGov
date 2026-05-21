@@ -23,6 +23,8 @@ public class ModelMetaEntity {
     private String inputs;
     @ApiModelProperty(value = "输出参数json")
     private String outputs;
+    @ApiModelProperty(value = "API列表json，每个API包含name/description/inputs/outputs")
+    private String apis;
     @ApiModelProperty(value = "创建时间")
     private Long timestamp;
     @ApiModelProperty(value = "运行命令")

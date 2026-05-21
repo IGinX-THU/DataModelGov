@@ -379,7 +379,7 @@ class ModelUpload extends HTMLElement {
 
         console.log('🔍 开始验证文件类型');
         // 验证文件类型
-        const allowedTypes = ['.py', '.m', '.dll', '.so', '.pyd', '.ame', '.fmu', '.mat', '.zip'];
+        const allowedTypes = ['.py', '.m', '.dll', '.so', '.pyd', '.ame', '.fmu', '.mat', '.zip', '.cpp', '.c', '.h', '.hpp', '.cc', '.cxx', '.java', '.tar', '.gz'];
         const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
         console.log('🔍 文件扩展名:', fileExtension, '允许的扩展名:', allowedTypes);
         
