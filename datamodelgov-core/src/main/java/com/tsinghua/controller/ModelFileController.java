@@ -4,7 +4,6 @@ import com.tsinghua.entity.ModelMetaEntity;
 import com.tsinghua.model.Result;
 import com.tsinghua.dto.UploadResult;
 import com.tsinghua.dto.ExtractModelFileRequest;
-import com.tsinghua.dto.AutoParseRequest;
 import com.tsinghua.service.ModelFileService;
 import com.tsinghua.auth.annotation.RequirePermission;
 import com.tsinghua.auth.enums.Permission;
@@ -20,7 +19,6 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.List;
 import java.util.Map;
 
@@ -63,7 +61,6 @@ public class ModelFileController {
         ModelMetaEntity queryMeta = modelFileService.queryMeta(name, version);
         fileName = queryMeta.getFileName();
 
-        // 设置响应头
         String encodedFilename = URLEncoder.encode(fileName, StandardCharsets.UTF_8.name())
                 .replace("+", "%20");
 
@@ -72,7 +69,6 @@ public class ModelFileController {
                 "attachment; filename=\"" + encodedFilename + "\"; filename*=UTF-8''" + encodedFilename);
         response.setContentLength(fileData.length);
 
-        // 写入响应流
         response.getOutputStream().write(fileData);
         response.flushBuffer();
     }
@@ -99,7 +95,7 @@ public class ModelFileController {
     @ApiOperation("模型元数据历史")
     @GetMapping( "/history")
     @RequirePermission(Permission.MODEL_READ)
-    public Result<List<ModelMetaEntity>> queryMetaList(
+    public Result<?> queryMetaList(
             @RequestParam("name") String name) {
         return Result.success(modelFileService.queryMetaList(name));
     }
@@ -119,101 +115,31 @@ public class ModelFileController {
     @PostMapping("/extractModelFile")
     @RequirePermission(Permission.MODEL_READ)
     public Result<?> extractModelFileForParsing(@RequestBody ExtractModelFileRequest request) throws Exception {
-        
         String modelName = request.getName();
         String version = request.getVersion();
-        
+
         if (modelName == null || version == null) {
             return Result.error("参数name和version不能为空");
         }
-        
-        // 创建临时目录
+
         Path tempDir = Files.createTempDirectory("model_parsing_");
-        
         try {
-            // 调用修改后的extractModelFile方法
             List<Map<String, Object>> fileList = modelFileService.extractModelFile(modelName, version, tempDir);
             return Result.success(fileList);
         } finally {
-            // 清理临时目录
-            try {
-                Files.walk(tempDir)
-                        .sorted(java.util.Comparator.reverseOrder())
-                        .forEach(path -> {
-                            try {
-                                Files.deleteIfExists(path);
-                            } catch (Exception deleteException) {
-                                // 忽略删除异常
-                            }
-                        });
-                Files.deleteIfExists(tempDir);
-            } catch (Exception deleteException) {
-                // 忽略删除异常
-            }
+            cleanupTempDir(tempDir);
         }
     }
 
-    @ApiOperation("自动解析源码提取API信息")
-    @PostMapping("/autoParse")
-    @RequirePermission(Permission.MODEL_READ)
-    public Result<?> autoParseSourceCode(@RequestBody AutoParseRequest request) throws Exception {
-        
-        String modelName = request.getName();
-        String version = request.getVersion();
-        String filePath = request.getFilePath();
-        
-        if (modelName == null || version == null || filePath == null) {
-            return Result.error("参数name、version和filePath不能为空");
-        }
-        
-        // 创建临时目录，提取模型文件
-        Path tempDir = Files.createTempDirectory("model_autoparse_");
+    private void cleanupTempDir(Path tempDir) {
         try {
-            List<Map<String, Object>> fileList = modelFileService.extractModelFile(modelName, version, tempDir);
-            
-            // 查找目标文件
-            String fileContent = null;
-            String fileName = null;
-            for (Map<String, Object> fileInfo : fileList) {
-                String path = (String) fileInfo.get("path");
-                String name = (String) fileInfo.get("name");
-                if (filePath.equals(path) || filePath.equals(name) || path.endsWith(filePath)) {
-                    fileContent = (String) fileInfo.get("content");
-                    fileName = name;
-                    break;
-                }
-            }
-            
-            if (fileContent == null) {
-                return Result.error("未找到文件: " + filePath + "，或该文件不是文本文件");
-            }
-            
-            // 调用轻量级扫描器
-            String parseType = request.getParseType() != null ? request.getParseType() : "regex";
-            String regexPattern = request.getRegexPattern();
-            int maxLines = request.getMaxLines() != null ? request.getMaxLines() : 50;
-            
-            Map<String, Object> parseResult = modelFileService.parseSourceCode(
-                fileContent, fileName, regexPattern, parseType, maxLines);
-            
-            return Result.success(parseResult);
-        } finally {
-            // 清理临时目录
-            try {
-                Files.walk(tempDir)
-                        .sorted(java.util.Comparator.reverseOrder())
-                        .forEach(path -> {
-                            try {
-                                Files.deleteIfExists(path);
-                            } catch (Exception deleteException) {
-                                // 忽略删除异常
-                            }
-                        });
-                Files.deleteIfExists(tempDir);
-            } catch (Exception deleteException) {
-                // 忽略删除异常
-            }
-        }
+            Files.walk(tempDir)
+                    .sorted(java.util.Comparator.reverseOrder())
+                    .forEach(path -> {
+                        try { Files.deleteIfExists(path); } catch (Exception ignored) {}
+                    });
+            Files.deleteIfExists(tempDir);
+        } catch (Exception ignored) {}
     }
 
 }

@@ -80,7 +80,8 @@ window.AppConfig = {
             detail: '/api/parsing/rules/detail',
             delete: '/api/parsing/rules/delete',
             save: '/api/parsing/rules/save',
-            'validate-name': '/api/parsing/rules/validate-name'
+            'validate-name': '/api/parsing/rules/validate-name',
+            autoParse: '/api/parsing/autoParse'
         },
         // 仿真档案相关
         simulationArchives: {
@@ -137,7 +138,7 @@ window.AppConfig = {
             history: '/api/model/history',
             delete: '/api/model/delete',
             extractModelFile: '/api/model/extractModelFile',
-            autoParse: '/api/model/autoParse'
+            autoParse: '/api/parsing/autoParse'
         },
         // 任务相关
         task: {

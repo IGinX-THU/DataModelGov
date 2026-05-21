@@ -688,13 +688,24 @@ class ModelEdit extends HTMLElement {
                 return;
             }
             
+            // 从fileList中查找目标文件内容
+            const targetFile = (this.extractedFileList || []).find(f => {
+                const path = f.path || '';
+                const name = f.name || '';
+                return selectedFile === path || selectedFile === name || path.endsWith(selectedFile);
+            });
+            
+            if (!targetFile || !targetFile.content) {
+                this.showErrorMessage('未找到文件内容: ' + selectedFile);
+                return;
+            }
+            
             // 调用后端autoParse端点
             if (window.showGlobalLoading) window.showGlobalLoading('正在解析代码...');
             
-            const parseResponse = await window.AppConfig.post('model', 'autoParse', {
-                name: modelName,
-                version: version,
-                filePath: selectedFile,
+            const parseResponse = await window.AppConfig.post('parsingRules', 'autoParse', {
+                fileContent: targetFile.content,
+                fileName: targetFile.name,
                 parseType: parseType,
                 regexPattern: regexPattern,
                 pythonModule: pythonModule,
@@ -1115,18 +1126,19 @@ int process_data() {
                 return;
             }
             
-            // 调用ModelFileService的extractModelFile方法
+            // 调用extractModelFile接口获取文件列表
             const extractResponse = await window.AppConfig.post('model', 'extractModelFile', {
                 name: modelName,
                 version: version
             });
             
             if (extractResponse.success) {
+                // 保存fileList供autoParse使用
+                this.extractedFileList = extractResponse.data || [];
                 console.log('源文件加载成功:', extractResponse.data);
-                this.populateSourceFileSelect(extractResponse.data);
+                this.populateSourceFileSelect(this.extractedFileList);
             } else {
                 console.warn('加载源文件失败:', extractResponse.message);
-                // 不显示错误消息，只是不填充下拉框
             }
         } catch (error) {
             console.error('加载源文件时发生错误:', error);

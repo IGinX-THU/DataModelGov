@@ -4,19 +4,16 @@ import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 
 /**
- * 自动解析源码请求DTO
+ * 自动解析源码请求DTO（通用，接收文件内容）
  */
 @ApiModel("自动解析源码请求")
 public class AutoParseRequest {
     
-    @ApiModelProperty(value = "模型名称", required = true)
-    private String name;
+    @ApiModelProperty(value = "源文件内容", required = true)
+    private String fileContent;
     
-    @ApiModelProperty(value = "模型版本", required = true)
-    private String version;
-    
-    @ApiModelProperty(value = "源文件路径（相对于解压目录）", required = true)
-    private String filePath;
+    @ApiModelProperty(value = "源文件名", required = true)
+    private String fileName;
     
     @ApiModelProperty(value = "解析类型：regex / typehint / inspect")
     private String parseType;
@@ -35,12 +32,10 @@ public class AutoParseRequest {
 
     public AutoParseRequest() {}
 
-    public String getName() { return name; }
-    public void setName(String name) { this.name = name; }
-    public String getVersion() { return version; }
-    public void setVersion(String version) { this.version = version; }
-    public String getFilePath() { return filePath; }
-    public void setFilePath(String filePath) { this.filePath = filePath; }
+    public String getFileContent() { return fileContent; }
+    public void setFileContent(String fileContent) { this.fileContent = fileContent; }
+    public String getFileName() { return fileName; }
+    public void setFileName(String fileName) { this.fileName = fileName; }
     public String getParseType() { return parseType; }
     public void setParseType(String parseType) { this.parseType = parseType; }
     public String getRegexPattern() { return regexPattern; }
@@ -55,9 +50,7 @@ public class AutoParseRequest {
     @Override
     public String toString() {
         return "AutoParseRequest{" +
-                "name='" + name + '\'' +
-                ", version='" + version + '\'' +
-                ", filePath='" + filePath + '\'' +
+                "fileName='" + fileName + '\'' +
                 ", parseType='" + parseType + '\'' +
                 ", maxLines=" + maxLines +
                 '}';
