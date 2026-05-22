@@ -107,7 +107,8 @@ document.addEventListener('DOMContentLoaded', function() {
             'projectDetail',
             'projectCreate',
             'dataArchiveDetail',
-            'modelArchiveList'
+            'modelArchiveList',
+            'algorithmArchiveList'
         ];
         
         components.forEach(componentId => {
@@ -493,6 +494,11 @@ document.addEventListener('DOMContentLoaded', function() {
                         console.log('模型档案查询菜单被点击');
                         if (isSecondClick) clearWorkspace();
                         showComponent('modelArchiveList');
+                        break;
+                    case 'showAlgorithmArchiveList':
+                        console.log('算法档案查询菜单被点击');
+                        if (isSecondClick) clearWorkspace();
+                        showComponent('algorithmArchiveList');
                         break;
                     case 'console.log':
                         console.log('数据源管理被点击');
@@ -1054,6 +1060,9 @@ document.addEventListener('DOMContentLoaded', function() {
                         break;
                     case 'showModelArchiveList':
                         showComponent('modelArchiveList');
+                        break;
+                    case 'showAlgorithmArchiveList':
+                        showComponent('algorithmArchiveList');
                         break;
                     default:
                         console.warn(`未知的按钮动作: ${action}`);
@@ -2838,6 +2847,53 @@ window.expandModelNodeInRightSidebar = function(storagePath) {
     }, 500);
 };
 
+// 全局函数：在右侧算法侧边栏展开对应节点
+window.expandAlgorithmNodeInRightSidebar = function(storagePath) {
+    console.log('尝试在右侧算法侧边栏展开节点:', storagePath);
+
+    // 切换到右侧算法侧边栏
+    const activeAlgorithmIcon = document.querySelector('.bottom-sidebar-icon.right-sidebar-icon.active[data-panel="algorithm"]');
+    const rightSidebar = document.querySelector('.right-sidebar');
+    const isAlgorithmSidebarActive = !!activeAlgorithmIcon;
+    const isSidebarExpanded = rightSidebar && !rightSidebar.classList.contains('collapsed');
+
+    if (!isAlgorithmSidebarActive || !isSidebarExpanded) {
+        const algorithmIcon = document.querySelector('.bottom-sidebar-icon.right-sidebar-icon[data-panel="algorithm"]');
+        if (algorithmIcon) {
+            console.log('当前不是算法侧边栏或侧边栏未展开，点击切换');
+            algorithmIcon.click();
+        }
+    }
+
+    // 等待树加载完成后展开对应节点
+    setTimeout(() => {
+        const algorithmTree = document.getElementById('algorithmTree');
+        if (!algorithmTree) return;
+
+        const treeNodes = algorithmTree.querySelectorAll('.tree-node');
+        let found = false;
+        treeNodes.forEach(node => {
+            const fullPath = node.getAttribute('data-full-path');
+            if (fullPath === storagePath) {
+                found = true;
+                // 展开父节点
+                let parent = node.closest('.tree-children')?.parentElement;
+                while (parent && parent.classList.contains('tree-node')) {
+                    parent.classList.add('expanded');
+                    parent = parent.closest('.tree-children')?.parentElement;
+                }
+                // 模拟点击节点
+                node.click();
+                node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        });
+
+        if (!found) {
+            console.log('未找到匹配的算法树节点:', storagePath);
+        }
+    }, 500);
+};
+
 // 全局函数：显示修改密码弹窗
 window.showChangePasswordModal = function() {
     const changePasswordComponent = document.querySelector('change-password');
@@ -3182,6 +3238,25 @@ function bindProjectTreeEvents() {
                     }
                 } else if (nodeType === 'algorithm') {
                     console.log('点击算法节点:', nodeName);
+                    // 清空工作区
+                    if (window.hideAllComponents) {
+                        window.hideAllComponents();
+                    }
+                    // 显示算法详情
+                    const algorithmDetail = document.getElementById('algorithmDetail');
+                    if (algorithmDetail && algorithmDetail.show) {
+                        // nodeName是storagePath格式: algorithms_system.projectName.algorithmName.version
+                        const pathParts = nodeName.split('.');
+                        if (pathParts.length >= 4) {
+                            const algorithmName = pathParts[2];
+                            const algorithmVersion = pathParts[3];
+                            algorithmDetail.show({ name: algorithmName, version: algorithmVersion });
+                        } else {
+                            algorithmDetail.show({ name: nodeName });
+                        }
+                    }
+                    // 同时在右侧算法侧边栏展开对应节点
+                    expandAlgorithmNodeInRightSidebar(nodeName);
                 } else if (nodeType === 'model') {
                     console.log('点击模型节点:', nodeName);
                     // 清空工作区

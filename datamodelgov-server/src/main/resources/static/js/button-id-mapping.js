@@ -133,6 +133,10 @@ const MENU_ID_MAP = {
         text: '编辑元算法档案',
         action: 'handleEditAlgorithm'
     },
+    'menu-algorithm-archive-query': {
+        text: '搜索算法档案',
+        action: 'showAlgorithmArchiveList'
+    },
     'menu-remove-algorithm-asset': {
         text: '移除算法资产',
         action: 'handleDeleteAlgorithm'

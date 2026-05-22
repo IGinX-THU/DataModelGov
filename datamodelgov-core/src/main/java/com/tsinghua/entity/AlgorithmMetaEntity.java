@@ -51,4 +51,19 @@ public class AlgorithmMetaEntity {
     
     @ApiModelProperty(value = "依赖库列表（json）")
     private String dependencies;
+
+    @ApiModelProperty(value = "项目名称")
+    private String projectName;
+
+    @ApiModelProperty(value = "描述信息")
+    private String description;
+
+    @ApiModelProperty(value = "关联输入数据（json）")
+    private String inputData;
+
+    @ApiModelProperty(value = "调用的模型（json）")
+    private String calledModels;
+
+    @ApiModelProperty(value = "输出格式")
+    private String outputFormat;
 }

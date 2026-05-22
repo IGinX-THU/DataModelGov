@@ -1,4 +1,12 @@
 <div class="algorithm-detail">
+    <div class="detail-header">
+        <h2>算法档案详情</h2>
+        <div class="header-actions">
+            <button class="back-btn" id="backBtn">返回列表</button>
+            <button class="close-btn" id="closeBtn">关闭</button>
+        </div>
+    </div>
+
     <!-- 第一个card：元算法档案 -->
     <div class="algorithm-info-card">
         <div class="info-header">元算法档案</div>
@@ -30,6 +38,28 @@
                 <div class="info-item">
                     <div class="info-label">创建时间</div>
                     <div class="info-value" id="createTime">-</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">项目名称</div>
+                    <div class="info-value" id="projectName">-</div>
+                </div>
+            </div>
+            <div class="basic-info-list" style="margin-top: 12px;">
+                <div class="info-item full-width">
+                    <div class="info-label">描述信息</div>
+                    <div class="info-value" id="description">-</div>
+                </div>
+                <div class="info-item full-width">
+                    <div class="info-label">关联输入数据</div>
+                    <div class="info-value" id="inputData">-</div>
+                </div>
+                <div class="info-item full-width">
+                    <div class="info-label">调用的模型</div>
+                    <div class="info-value" id="calledModels">-</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">输出格式</div>
+                    <div class="info-value" id="outputFormat">-</div>
                 </div>
             </div>
         </div>
@@ -156,25 +186,75 @@
         </div>
     </div>
     
-    <!-- 第三个card：关联信息 -->
-    <div class="algorithm-association-card">
-        <div class="association-header">关联规则信息</div>
-        <div class="association-content">
-            <div class="association-table-wrapper">
-                <div class="association-table-header">
-                    <div class="summary-item">
-                        <span class="summary-label">关联规则数量</span>
-                        <span class="summary-value" id="associationCount">0</span>
-                    </div>
-                    <button class="view-all-associations-btn" id="viewAllAssociations">
-                        查看所有关联规则
-                    </button>
+    <!-- 第三个card：数据绑定信息 -->
+    <div class="algorithm-binding-card">
+        <div class="binding-header">数据绑定</div>
+        <div class="binding-content">
+            <div class="binding-info-grid">
+                <div class="binding-info-item">
+                    <span class="binding-label">数据源</span>
+                    <span class="binding-value" id="detailDataSource">-</span>
                 </div>
-                <div class="association-list" id="associationList">
-                    <!-- 动态加载关联规则列表 -->
-                    <div class="no-associations" id="noAssociations">
-                        暂无关联规则
+                <div class="binding-info-item">
+                    <span class="binding-label">运行命令</span>
+                    <span class="binding-value" id="detailCmd">-</span>
+                </div>
+                <div class="binding-info-item">
+                    <span class="binding-label">输入CSV</span>
+                    <span class="binding-value" id="detailInputCsv">-</span>
+                </div>
+                <div class="binding-info-item">
+                    <span class="binding-label">输出CSV</span>
+                    <span class="binding-value" id="detailOutputCsv">-</span>
+                </div>
+            </div>
+            <!-- 模型绑定列表 -->
+            <div class="binding-mapping-section">
+                <div class="binding-mapping-title">绑定模型</div>
+                <div class="detail-model-bind-list" id="detailModelBindings">
+                    <div class="binding-mapping-row binding-mapping-header">
+                        <span>模型名称</span>
+                        <span>版本</span>
                     </div>
+                </div>
+            </div>
+            <!-- 输入映射表 -->
+            <div class="binding-mapping-section">
+                <div class="binding-mapping-title">输入映射（数据源字段 → 算法参数）</div>
+                <div class="binding-mapping-table" id="detailInputMappings">
+                    <div class="binding-mapping-row binding-mapping-header">
+                        <span>数据源字段</span>
+                        <span class="mapping-arrow">→</span>
+                        <span>算法参数</span>
+                    </div>
+                </div>
+            </div>
+            <!-- 输出映射表 -->
+            <div class="binding-mapping-section">
+                <div class="binding-mapping-title">输出映射（算法输出 → 回写目标）</div>
+                <div class="binding-mapping-table" id="detailOutputMappings">
+                    <div class="binding-mapping-row binding-mapping-header">
+                        <span>算法输出</span>
+                        <span class="mapping-arrow">→</span>
+                        <span>回写目标</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 第四个card：输出格式预览 -->
+    <div class="algorithm-output-card">
+        <div class="output-header">输出格式预览</div>
+        <div class="output-content">
+            <div class="output-format-template">
+                <div class="template-label">格式模板</div>
+                <div class="template-value" id="outputFormatTemplate">-</div>
+            </div>
+            <div class="output-format-preview">
+                <div class="preview-label">输出预览</div>
+                <div class="preview-value" id="outputFormatPreview">
+                    <pre>暂无输出格式</pre>
                 </div>
             </div>
         </div>

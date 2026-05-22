@@ -5,6 +5,8 @@ class AlgorithmEdit extends HTMLElement {
         this.currentAlgorithm = null;
         this.inputs = [];
         this.outputs = [];
+        this._dataSourceFields = [];
+        this._modelBindings = [];
     }
 
     async connectedCallback() {
@@ -93,6 +95,33 @@ class AlgorithmEdit extends HTMLElement {
             addOutputBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 this.addOutputParam();
+            });
+        }
+
+        // 数据源变化事件 - 刷新参数表中的数据源字段下拉
+        const dataSource = this.shadowRoot.getElementById('dataSource');
+        if (dataSource) {
+            dataSource.addEventListener('change', () => this.loadDataSourceFields());
+        }
+
+        // 添加模型绑定按钮
+        const addModelBindBtn = this.shadowRoot.getElementById('addModelBindBtn');
+        if (addModelBindBtn) {
+            addModelBindBtn.addEventListener('click', () => this.addModelBindRow());
+        }
+
+        // 生成CSV表头按钮
+        const genCsvHeaderBtn = this.shadowRoot.getElementById('genCsvHeaderBtn');
+        if (genCsvHeaderBtn) {
+            genCsvHeaderBtn.addEventListener('click', () => this.generateCsvHeader());
+        }
+
+        // 预览按钮
+        const previewBtn = this.shadowRoot.getElementById('previewBtn');
+        if (previewBtn) {
+            previewBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.refreshPreview();
             });
         }
 
@@ -189,8 +218,18 @@ class AlgorithmEdit extends HTMLElement {
         if (versionInput) versionInput.value = algorithmDetailData.version || '';
         if (sceneInput) sceneInput.value = algorithmDetailData.scene || '';
 
+        // 加载档案描述字段
+        const descriptionInput = this.shadowRoot.getElementById('description');
+        const outputFormatInput = this.shadowRoot.getElementById('outputFormat');
+
+        if (descriptionInput) descriptionInput.value = algorithmDetailData.description || '';
+        if (outputFormatInput) outputFormatInput.value = algorithmDetailData.outputFormat || '';
+
         // 使用接口返回的inputs和outputs数据
         this.loadInterfaceParamsFromData(algorithmDetailData.inputs, algorithmDetailData.outputs);
+
+        // 加载关联绑定数据
+        this.loadBindingData(algorithmInfo);
     }
 
     hide() {
@@ -240,6 +279,13 @@ class AlgorithmEdit extends HTMLElement {
         if (versionInput) versionInput.value = algorithmInfo.version || '';
         if (sceneInput) sceneInput.value = algorithmInfo.scene || '';
 
+        // 加载档案描述字段
+        const descriptionInput = this.shadowRoot.getElementById('description');
+        const outputFormatInput = this.shadowRoot.getElementById('outputFormat');
+
+        if (descriptionInput) descriptionInput.value = this.currentAlgorithmMeta?.description || '';
+        if (outputFormatInput) outputFormatInput.value = this.currentAlgorithmMeta?.outputFormat || '';
+
         // 加载接口参数（使用从API获取的数据）
         if (this.currentAlgorithmMeta && this.currentAlgorithmMeta.inputs) {
             this.loadInterfaceParamsFromData(this.currentAlgorithmMeta.inputs, this.currentAlgorithmMeta.outputs);
@@ -247,6 +293,9 @@ class AlgorithmEdit extends HTMLElement {
             // 如果没有数据，使用默认参数
             this.loadInterfaceParams();
         }
+
+        // 加载关联绑定数据
+        this.loadBindingData(algorithmInfo);
     }
 
     loadInterfaceParamsFromData(inputsData, outputsData) {
@@ -347,6 +396,11 @@ class AlgorithmEdit extends HTMLElement {
                                 ).join('')}
                             </select>
                         </div>
+                        <div class="col-bind">
+                            <select class="data-field-select" data-index="${index}">
+                                <option value="">请选择字段</option>
+                            </select>
+                        </div>
                         <div class="col-desc">
                             <input type="text" value="${input.desc || ''}" data-field="desc" data-type="input" placeholder="说明">
                         </div>
@@ -383,6 +437,9 @@ class AlgorithmEdit extends HTMLElement {
                                 ).join('')}
                             </select>
                         </div>
+                        <div class="col-bind">
+                            <input type="text" class="result-target-input" value="${output.bindTarget || output.name || ''}" data-index="${index}" placeholder="回写目标字段">
+                        </div>
                         <div class="col-desc">
                             <input type="text" value="${output.desc || ''}" data-field="desc" data-type="output" placeholder="说明">
                         </div>
@@ -396,6 +453,9 @@ class AlgorithmEdit extends HTMLElement {
 
         // 绑定删除按钮事件
         this.bindDeleteEvents();
+
+        // 刷新数据源字段下拉选项
+        this.updateBindFieldOptions();
     }
 
     bindDeleteEvents() {
@@ -474,6 +534,8 @@ class AlgorithmEdit extends HTMLElement {
                 if (typeSelect) this.inputs[index].type = typeSelect.value;
                 if (unitSelect) this.inputs[index].unit = unitSelect.value;
                 if (descInput) this.inputs[index].desc = descInput.value;
+                const bindSelect = row.querySelector('.data-field-select');
+                if (bindSelect) this.inputs[index].bindField = bindSelect.value;
                 
                 console.log(`保存输入参数[${index}]:`, this.inputs[index]);
             }
@@ -498,6 +560,8 @@ class AlgorithmEdit extends HTMLElement {
                 if (typeSelect) this.outputs[index].type = typeSelect.value;
                 if (unitSelect) this.outputs[index].unit = unitSelect.value;
                 if (descInput) this.outputs[index].desc = descInput.value;
+                const bindInput = row.querySelector('.result-target-input');
+                if (bindInput) this.outputs[index].bindTarget = bindInput.value;
                 
                 console.log(`保存输出参数[${index}]:`, this.outputs[index]);
             }
@@ -1107,6 +1171,338 @@ int process_data() {
         console.log('已应用解析规则:', ruleType);
     }
 
+    // === 数据绑定 ===
+
+    async loadDataSourceOptions() {
+        const dataSource = this.shadowRoot.getElementById('dataSource');
+        if (!dataSource) return;
+        try {
+            const result = await window.AppConfig.get('dataSource', 'list', {});
+            if (result.success && result.data) {
+                dataSource.innerHTML = '<option value="">请选择数据源</option>';
+                result.data.forEach(ds => {
+                    const option = document.createElement('option');
+                    option.value = ds.name || ds.tableName || ds;
+                    option.textContent = ds.name || ds.tableName || ds;
+                    dataSource.appendChild(option);
+                });
+            }
+        } catch (e) {
+            console.error('加载数据源列表失败:', e);
+        }
+    }
+
+    async loadDataSourceFields() {
+        const dataSource = this.shadowRoot.getElementById('dataSource')?.value;
+        this._dataSourceFields = [];
+        if (dataSource) {
+            try {
+                const result = await window.AppConfig.get('dataSource', 'fields', { tableName: dataSource });
+                if (result.success && result.data) {
+                    this._dataSourceFields = result.data;
+                }
+            } catch (e) {
+                console.error('加载数据源字段失败:', e);
+            }
+        }
+        this.updateBindFieldOptions();
+    }
+
+    getModelNames() {
+        const modelNames = [];
+        const rightSidebarTree = document.querySelector('.right-sidebar .tree');
+        if (!rightSidebarTree) return modelNames;
+        const seen = new Set();
+        rightSidebarTree.querySelectorAll('.tree-node').forEach(node => {
+            const span = node.querySelector('span');
+            if (!span) return;
+            const name = span.textContent.trim();
+            if (name === 'models_system' || name === 'models' || seen.has(name)) return;
+            const hasChildren = node.querySelector('.tree-children');
+            if (hasChildren) {
+                const childNodes = hasChildren.querySelectorAll(':scope > .tree-node');
+                const hasLeaf = Array.from(childNodes).some(c => !c.querySelector('.tree-children'));
+                if (hasLeaf) { modelNames.push(name); seen.add(name); }
+            }
+        });
+        return modelNames;
+    }
+
+    getModelVersions(modelName) {
+        const versions = [];
+        const rightSidebarTree = document.querySelector('.right-sidebar .tree');
+        if (!rightSidebarTree) return versions;
+        rightSidebarTree.querySelectorAll('.tree-node').forEach(node => {
+            const span = node.querySelector('span');
+            if (!span || span.textContent.trim() !== modelName) return;
+            const children = node.querySelector('.tree-children');
+            if (!children) return;
+            children.querySelectorAll(':scope > .tree-node').forEach(child => {
+                const childSpan = child.querySelector('span');
+                if (childSpan && !child.querySelector('.tree-children')) {
+                    versions.push(childSpan.textContent.trim());
+                }
+            });
+        });
+        return versions;
+    }
+
+    addModelBindRow(data = null) {
+        const modelBindList = this.shadowRoot.getElementById('modelBindList');
+        if (!modelBindList) return;
+
+        const row = document.createElement('div');
+        row.className = 'model-bind-row';
+
+        const modelNames = this.getModelNames();
+        const selectedModel = data?.modelName || '';
+        const versions = selectedModel ? this.getModelVersions(selectedModel) : [];
+
+        row.innerHTML = `
+            <select class="model-bind-name">
+                <option value="">请选择模型</option>
+                ${modelNames.map(n => `<option value="${n}" ${n === selectedModel ? 'selected' : ''}>${n}</option>`).join('')}
+            </select>
+            <select class="model-bind-version">
+                <option value="">请选择版本</option>
+                ${versions.map(v => `<option value="${v}" ${v === data?.version ? 'selected' : ''}>${v}</option>`).join('')}
+            </select>
+            <button type="button" class="remove-model-bind">×</button>
+        `;
+
+        const nameSelect = row.querySelector('.model-bind-name');
+        const versionSelect = row.querySelector('.model-bind-version');
+        nameSelect.addEventListener('change', () => {
+            const vers = this.getModelVersions(nameSelect.value);
+            versionSelect.innerHTML = '<option value="">请选择版本</option>' +
+                vers.map(v => `<option value="${v}">${v}</option>`).join('');
+        });
+        row.querySelector('.remove-model-bind').addEventListener('click', () => row.remove());
+
+        modelBindList.appendChild(row);
+    }
+
+    getModelBindings() {
+        const bindings = [];
+        this.shadowRoot.querySelectorAll('#modelBindList .model-bind-row').forEach(row => {
+            const modelName = row.querySelector('.model-bind-name')?.value;
+            const version = row.querySelector('.model-bind-version')?.value;
+            if (modelName) bindings.push({ modelName, version: version || '' });
+        });
+        return bindings;
+    }
+
+    generateCsvHeader() {
+        this.saveAllCurrentValues();
+        const headers = this.outputs.map(o => o.bindTarget || o.name || '').filter(h => h);
+        const outputCsvName = this.shadowRoot.getElementById('outputCsvName');
+        if (outputCsvName && headers.length > 0) {
+            // Just show a toast/preview of the CSV header, not overwrite the filename
+            const headerLine = headers.join(',');
+            // Show as a temporary message
+            const existing = outputCsvName.value;
+            if (!existing) {
+                outputCsvName.value = 'result.csv';
+            }
+            alert('CSV表头预览:\n' + headerLine);
+        } else if (headers.length === 0) {
+            alert('请先添加输出参数');
+        }
+    }
+
+    updateBindFieldOptions() {
+        const fields = this._dataSourceFields || [];
+        // 更新输入参数表中的数据源字段下拉
+        this.shadowRoot.querySelectorAll('.data-field-select').forEach(select => {
+            const current = select.value;
+            select.innerHTML = '<option value="">请选择字段</option>';
+            fields.forEach(f => {
+                const name = f.name || f.fieldName || f;
+                const option = document.createElement('option');
+                option.value = name;
+                option.textContent = name;
+                select.appendChild(option);
+            });
+            if (current) select.value = current;
+        });
+    }
+
+    async loadBindingData(algorithmInfo) {
+        // 加载数据源选项
+        await this.loadDataSourceOptions();
+
+        // 从关联规则API加载绑定数据
+        try {
+            const result = await window.AppConfig.post('associationRules', 'query', {
+                pageNum: 1,
+                pageSize: 100,
+                algorithmName: algorithmInfo.name || algorithmInfo.author,
+                algorithmVersion: algorithmInfo.version
+            });
+            if (result.success && result.data && result.data.length > 0) {
+                // Use first rule for data binding config (dataSource, cmd, csv)
+                const firstRule = result.data[0];
+                const dataSource = this.shadowRoot.getElementById('dataSource');
+                const ruleCmd = this.shadowRoot.getElementById('ruleCmd');
+                const inputCsvName = this.shadowRoot.getElementById('inputCsvName');
+                const outputCsvName = this.shadowRoot.getElementById('outputCsvName');
+
+                if (dataSource) dataSource.value = firstRule.tableName || '';
+                if (firstRule.tableName) await this.loadDataSourceFields();
+                if (ruleCmd) ruleCmd.value = firstRule.cmd || '';
+                if (inputCsvName) inputCsvName.value = firstRule.inputCsvName || '';
+                if (outputCsvName) outputCsvName.value = firstRule.outputCsvName || '';
+
+                // Load model bindings from all rules (each rule = one model binding)
+                const modelBindList = this.shadowRoot.getElementById('modelBindList');
+                if (modelBindList) modelBindList.innerHTML = '';
+                result.data.forEach(rule => {
+                    if (rule.algorithmName) {
+                        this.addModelBindRow({ modelName: rule.algorithmName, version: rule.algorithmVersion || '' });
+                    }
+                });
+
+                // Apply input/output mappings from first rule
+                if (firstRule.inputsBind) {
+                    try {
+                        const mappings = typeof firstRule.inputsBind === 'string' ? JSON.parse(firstRule.inputsBind) : firstRule.inputsBind;
+                        this._inputMappings = mappings;
+                        this.applyInputMappings();
+                    } catch (e) { this._inputMappings = []; }
+                }
+                if (firstRule.outputsBind) {
+                    try {
+                        const resultMappings = typeof firstRule.outputsBind === 'string' ? JSON.parse(firstRule.outputsBind) : firstRule.outputsBind;
+                        this._outputMappings = resultMappings;
+                        this.applyOutputMappings();
+                    } catch (e) { this._outputMappings = []; }
+                }
+            }
+        } catch (error) {
+            console.error('加载绑定数据失败:', error);
+        }
+    }
+
+    applyInputMappings() {
+        if (!this._inputMappings) return;
+        this._inputMappings.forEach(mapping => {
+            const paramName = mapping.targetField;
+            const rows = this.shadowRoot.querySelectorAll('#inputsBody .param-row');
+            rows.forEach(row => {
+                const nameInput = row.querySelector('input[data-field="name"]');
+                if (nameInput && nameInput.value === paramName) {
+                    const bindSelect = row.querySelector('.data-field-select');
+                    if (bindSelect) bindSelect.value = mapping.sourceField || '';
+                }
+            });
+        });
+    }
+
+    applyOutputMappings() {
+        if (!this._outputMappings) return;
+        this._outputMappings.forEach(mapping => {
+            const paramName = mapping.modelOutput;
+            const rows = this.shadowRoot.querySelectorAll('#outputsBody .param-row');
+            rows.forEach(row => {
+                const nameInput = row.querySelector('input[data-field="name"]');
+                if (nameInput && nameInput.value === paramName) {
+                    const bindInput = row.querySelector('.result-target-input');
+                    if (bindInput) bindInput.value = mapping.resultTarget || '';
+                }
+            });
+        });
+    }
+
+    getInputMappings() {
+        const mappings = [];
+        const rows = this.shadowRoot.querySelectorAll('#inputsBody .param-row');
+        rows.forEach(row => {
+            const paramName = row.querySelector('input[data-field="name"]')?.value;
+            const sourceField = row.querySelector('.data-field-select')?.value;
+            if (paramName && sourceField) {
+                mappings.push({ sourceField, targetField: paramName });
+            }
+        });
+        return mappings;
+    }
+
+    getOutputMappings() {
+        const mappings = [];
+        const rows = this.shadowRoot.querySelectorAll('#outputsBody .param-row');
+        rows.forEach(row => {
+            const paramName = row.querySelector('input[data-field="name"]')?.value;
+            const resultTarget = row.querySelector('.result-target-input')?.value;
+            if (paramName && resultTarget) {
+                mappings.push({ modelOutput: paramName, resultTarget });
+            }
+        });
+        return mappings;
+    }
+
+    // === 输出格式预览 ===
+    refreshPreview() {
+        const outputFormat = this.shadowRoot.getElementById('outputFormat')?.value || '';
+        const previewContent = this.shadowRoot.getElementById('previewContent');
+        if (!previewContent) return;
+
+        if (!outputFormat.trim()) {
+            previewContent.innerHTML = '<pre>请先填写输出格式模板</pre>';
+            return;
+        }
+
+        // 收集当前数据用于预览
+        const algorithmName = this.shadowRoot.getElementById('algorithmName')?.value || '';
+        const version = this.shadowRoot.getElementById('version')?.value || '';
+        const developer = this.shadowRoot.getElementById('developer')?.value || '';
+        const scene = this.shadowRoot.getElementById('scene')?.value || '';
+        const description = this.shadowRoot.getElementById('description')?.value || '';
+
+        // 保存当前参数值
+        this.saveAllCurrentValues();
+
+        // 构建变量映射
+        const context = {
+            name: algorithmName,
+            version: version,
+            author: developer,
+            scene: scene,
+            description: description
+        };
+
+        // 添加输入参数
+        this.inputs.forEach((input, i) => {
+            context[`input.${input.name}`] = `${input.name}(${input.type}${input.unit ? ' ' + input.unit : ''})`;
+            context[`input.${i}.name`] = input.name;
+            context[`input.${i}.type`] = input.type;
+            context[`input.${i}.unit`] = input.unit;
+            context[`input.${i}.desc`] = input.desc;
+        });
+
+        // 添加输出参数
+        this.outputs.forEach((output, i) => {
+            context[`output.${output.name}`] = `${output.name}(${output.type}${output.unit ? ' ' + output.unit : ''})`;
+            context[`output.${i}.name`] = output.name;
+            context[`output.${i}.type`] = output.type;
+            context[`output.${i}.unit`] = output.unit;
+            context[`output.${i}.desc`] = output.desc;
+        });
+
+        // 替换模板变量 {{xxx}}
+        let result = outputFormat;
+        result = result.replace(/\{\{([^}]+)\}\}/g, (match, key) => {
+            const trimmedKey = key.trim();
+            return context[trimmedKey] !== undefined ? context[trimmedKey] : match;
+        });
+
+        previewContent.innerHTML = `<pre>${this.escapeHtml(result)}</pre>`;
+    }
+
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
     collectFormData() {
         // 收集基本信息
         const algorithmName = this.shadowRoot.getElementById('algorithmName').value.trim();
@@ -1173,7 +1569,17 @@ int process_data() {
             scene: scene,
             inputs: JSON.stringify(inputsData),
             outputs: JSON.stringify(outputsData),
-            timestamp: this.currentAlgorithmMeta?.timestamp || Date.now()
+            timestamp: this.currentAlgorithmMeta?.timestamp || Date.now(),
+            projectName: this.currentAlgorithmMeta?.projectName || '',
+            description: this.shadowRoot.getElementById('description')?.value?.trim() || '',
+            outputFormat: this.shadowRoot.getElementById('outputFormat')?.value?.trim() || '',
+            dataSource: this.shadowRoot.getElementById('dataSource')?.value || '',
+            modelBindings: JSON.stringify(this.getModelBindings()),
+            cmd: this.shadowRoot.getElementById('ruleCmd')?.value?.trim() || '',
+            inputCsvName: this.shadowRoot.getElementById('inputCsvName')?.value?.trim() || '',
+            outputCsvName: this.shadowRoot.getElementById('outputCsvName')?.value?.trim() || '',
+            inputsBind: JSON.stringify(this.getInputMappings()),
+            outputsBind: JSON.stringify(this.getOutputMappings())
         };
 
         return formData;

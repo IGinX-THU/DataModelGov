@@ -401,7 +401,7 @@ class AlgorithmUpload extends HTMLElement {
 
         console.log('🔍 开始验证文件类型');
         // 验证文件类型
-        const allowedTypes = ['.py', '.java', '.sh', '.jar'];
+        const allowedTypes = ['.py', '.c', '.cpp', '.h', '.m', '.zip'];
         const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
         console.log('🔍 文件扩展名:', fileExtension, '允许的扩展名:', allowedTypes);
         

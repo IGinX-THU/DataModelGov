@@ -215,8 +215,10 @@ class AlgorithmList extends HTMLElement {
     getTypeLabel(type) {
         const typeMap = {
             'python': 'Python脚本',
-            'java': 'Java程序',
-            'shell': 'Shell脚本'
+            'c': 'C程序',
+            'cpp': 'C++程序',
+            'matlab': 'MATLAB程序',
+            'zip': '压缩包'
         };
         return typeMap[type] || type || '-';
     }
