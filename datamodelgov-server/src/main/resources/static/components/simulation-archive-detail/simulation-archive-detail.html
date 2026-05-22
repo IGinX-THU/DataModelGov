@@ -1,0 +1,137 @@
+<div class="simulation-archive-detail">
+    <div class="detail-header">
+        <h2>仿真档案详情</h2>
+        <div class="header-actions">
+            <button class="back-btn" id="backBtn">返回列表</button>
+            <button class="edit-btn" id="editBtn">编辑</button>
+            <button class="close-btn" id="closeBtn">关闭</button>
+        </div>
+    </div>
+
+    <div class="detail-content">
+        <div class="detail-section">
+            <h3>基本信息</h3>
+            <div class="detail-row">
+                <span class="detail-label">档案名称：</span>
+                <span class="detail-value" id="detailName">-</span>
+                <input class="detail-input" id="detailNameInput" style="display: none;">
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">档案描述：</span>
+                <span class="detail-value" id="detailDesc">-</span>
+                <textarea class="detail-input" id="detailDescInput" style="display: none;"></textarea>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">项目名称：</span>
+                <span class="detail-value" id="detailProjectName">-</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">所有者：</span>
+                <span class="detail-value" id="detailOwner">-</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">调度配置：</span>
+                <span class="detail-value" id="detailScheduleCron">-</span>
+                <input class="detail-input" id="detailScheduleCronInput" style="display: none;" placeholder="例如: 0 0 2 * * ? （每天凌晨2点）">
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">输出API配置：</span>
+                <span class="detail-value" id="detailOutputApiConfig">-</span>
+                <textarea class="detail-input" id="detailOutputApiConfigInput" style="display: none;" rows="5" placeholder='{"url": "http://example.com/api", "headers": {"Authorization": "Bearer token"}}'></textarea>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">状态：</span>
+                <span class="detail-value" id="detailStatus">-</span>
+                <select class="detail-input" id="detailStatusInput" style="display: none;">
+                    <option value="true">启用</option>
+                    <option value="false">禁用</option>
+                </select>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">最后修改时间：</span>
+                <span class="detail-value" id="detailUpdateTime">-</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">执行次数：</span>
+                <span class="detail-value" id="detailExecutionCount">-</span>
+            </div>
+
+            <div class="graph-section" id="graphSection">
+                <h3>有向图</h3>
+                <div class="graph-editor">
+                    <div class="graph-toolbar">
+                        <button type="button" class="graph-btn" id="addAlgorithmNode">+ 算法节点</button>
+                        <button type="button" class="graph-btn" id="deleteNode">删除节点</button>
+                        <button type="button" class="graph-btn" id="addEdge">添加连线</button>
+                        <button type="button" class="graph-btn" id="deleteEdge">删除连线</button>
+                        <button type="button" class="graph-btn" id="clearGraph">清空画布</button>
+                    </div>
+                    <div class="graph-canvas" id="graphCanvas">
+                        <svg id="graphSvg" width="100%" height="500"></svg>
+                    </div>
+                    <div class="graph-info">
+                        <div class="info-item">
+                            <span>节点数量: </span>
+                            <span id="nodeCount">0</span>
+                        </div>
+                        <div class="info-item">
+                            <span>连线数量: </span>
+                            <span id="edgeCount">0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="edit-actions" id="editActions" style="display: none;">
+                <button class="save-btn" id="saveBtn">保存</button>
+                <button class="cancel-btn" id="cancelBtn">取消</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal-mask" id="nodeModalMask" hidden>
+    <div class="modal">
+        <div class="modal-header">
+            <span id="nodeModalTitle">节点配置</span>
+            <button class="modal-close" id="nodeModalClose">×</button>
+        </div>
+        <div class="modal-body" id="nodeModalBody">
+            <form id="nodeForm" class="modal-form">
+                <input type="hidden" id="nodeId" name="nodeId">
+                <div class="modal-form-row">
+                    <label class="modal-label">节点名称</label>
+                    <input type="text" id="nodeName" name="nodeName" class="modal-input" required placeholder="请输入节点名称">
+                </div>
+                <div class="modal-form-row">
+                    <label class="modal-label">选择算法</label>
+                    <select id="algorithmSelect" name="algorithmSelect" class="modal-input">
+                        <option value="">请选择算法</option>
+                    </select>
+                </div>
+                <div class="modal-form-row">
+                    <label class="modal-label">绑定模型（可选）</label>
+                    <select id="modelSelect" name="modelSelect" class="modal-input">
+                        <option value="">不绑定模型</option>
+                    </select>
+                </div>
+                <div class="modal-form-row">
+                    <label class="modal-label">开始时间（毫秒时间戳）</label>
+                    <input type="number" id="startTime" name="startTime" class="modal-input" placeholder="例如: 1704067200000">
+                </div>
+                <div class="modal-form-row">
+                    <label class="modal-label">结束时间（毫秒时间戳）</label>
+                    <input type="number" id="endTime" name="endTime" class="modal-input" placeholder="例如: 1704153600000">
+                </div>
+                <div class="modal-form-row">
+                    <label class="modal-label">执行参数（JSON）</label>
+                    <textarea id="executionParams" name="executionParams" class="modal-textarea" rows="3" placeholder='{"param1": "value1"}'></textarea>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer" id="nodeModalFooter">
+            <button type="button" class="modal-btn secondary" id="nodeCancelBtn">取消</button>
+            <button type="button" class="modal-btn primary" id="nodeSaveBtn">确定</button>
+        </div>
+    </div>
+</div>

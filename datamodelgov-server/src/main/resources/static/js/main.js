@@ -92,7 +92,8 @@ document.addEventListener('DOMContentLoaded', function() {
             'algorithmEdit',
             'parsingRules',
             'associationRules',
-            'simulationArchive',
+            'simulationArchiveList',
+            'simulationArchiveDetail',
             'algorithmList',
             'databaseTable',
             'dataVisualization',
@@ -608,7 +609,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     case 'showSimulationArchive':
                         console.log('仿真档案管理菜单被点击');
                         if (isSecondClick) clearWorkspace();
-                        showComponent('simulationArchive');
+                        showComponent('simulationArchiveList');
                         break;
                     case 'showAlgorithmList':
                         console.log('算法管理菜单被点击');
@@ -1063,6 +1064,9 @@ document.addEventListener('DOMContentLoaded', function() {
                         break;
                     case 'showAlgorithmArchiveList':
                         showComponent('algorithmArchiveList');
+                        break;
+                    case 'showSimulationArchive':
+                        showComponent('simulationArchiveList');
                         break;
                     default:
                         console.warn(`未知的按钮动作: ${action}`);
@@ -1969,7 +1973,7 @@ function showVisualAnalysis() {
             'algorithmList',
             'associationRules',
             'visualAnalysis',
-            'simulationArchive'
+            'simulationArchiveList'
         ];
 
         if (componentsRequiringProject.includes(componentId)) {

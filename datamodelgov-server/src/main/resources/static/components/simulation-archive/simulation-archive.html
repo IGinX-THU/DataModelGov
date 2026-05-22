@@ -1,184 +1,77 @@
-<div class="parsing-rules">
-    <div class="parsing-filter-card">
-        <div class="filter-header">筛选</div>
-        <div class="filter-rows" id="filterRows">
-            <div class="filter-row">
-                <div class="filter-field">
-                    <span class="filter-label">档案名称</span>
-                    <input class="filter-input" type="text" placeholder="请输入档案名称" id="nameFilter" />
-                </div>
-                <div class="filter-field">
-                    <span class="filter-label">状态</span>
-                    <select class="filter-input" id="statusFilter">
-                        <option value="">全部</option>
-                        <option value="active">启用</option>
-                        <option value="inactive">禁用</option>
-                    </select>
-                </div>
+<div class="simulation-archive-list">
+    <div class="list-header">
+        <h2>搜索仿真档案</h2>
+    </div>
+
+    <div class="filter-section">
+        <div class="filter-row">
+            <div class="filter-item">
+                <label>名称：</label>
+                <input type="text" id="nameInput" placeholder="请输入档案名称">
             </div>
-        </div>
-        <div class="filter-actions">
-            <div class="filter-spacer"></div>
-            <button class="filter-btn outline" type="button" id="resetFilters">重置</button>
-            <button class="filter-btn solid" type="button" id="applyFilters">查询</button>
+            <div class="filter-item">
+                <label>项目名称：</label>
+                <input type="text" id="projectNameInput" placeholder="请输入项目名称">
+            </div>
+            <div class="filter-item">
+                <label>所有者：</label>
+                <input type="text" id="ownerInput" placeholder="请输入所有者">
+            </div>
+            <div class="filter-item">
+                <label>状态：</label>
+                <select id="statusSelect">
+                    <option value="">全部</option>
+                    <option value="active">启用</option>
+                    <option value="inactive">禁用</option>
+                </select>
+            </div>
+            <div class="filter-actions">
+                <button class="btn-primary" id="searchBtn">查询</button>
+                <button class="btn-secondary" id="resetBtn">重置</button>
+            </div>
         </div>
     </div>
 
-    <div class="parsing-table-card">
-        <div class="table-toolbar">
-            <button class="toolbar-btn green" type="button" id="addArchiveBtn">新增仿真档案</button>
+    <div class="table-actions">
+        <button class="btn-primary" id="addBtn">新增仿真档案</button>
+    </div>
+
+    <div class="table-section">
+        <table>
+            <thead>
+                <tr>
+                    <th>档案名称</th>
+                    <th>描述</th>
+                    <th>项目名称</th>
+                    <th>所有者</th>
+                    <th>状态</th>
+                    <th>最后修改时间</th>
+                    <th>执行次数</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody">
+                <tr><td colspan="8" style="text-align: center; padding: 20px;">加载中...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="pagination-section">
+        <span id="paginationInfo">第 1 / 1 页，共 0 条</span>
+        <div class="pagination-actions">
+            <button class="btn-secondary" id="prevBtn">上一页</button>
+            <button class="btn-secondary" id="nextBtn">下一页</button>
         </div>
-        <div class="table-wrapper">
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>档案名称</th>
-                        <th>描述</th>
-                        <th>状态</th>
-                        <th>最后修改时间</th>
-                        <th>执行次数</th>
-                        <th>操作</th>
-                    </tr>
-                </thead>
-                <tbody id="tableBody"></tbody>
-            </table>
-        </div>
-        <common-pagination id="pagination"></common-pagination>
     </div>
 </div>
 
 <div class="modal-mask" id="modalMask" hidden>
-    <div class="modal modal-large">
-        <div class="modal-header">
-            <span id="modalTitle">仿真档案配置</span>
-            <button class="modal-close" id="modalClose">×</button>
-        </div>
-        <div class="modal-body" id="modalBody">
-            <form id="archiveForm" class="modal-form">
-                <div class="modal-form-row">
-                    <label class="modal-label">档案名称</label>
-                    <input type="text" id="archiveName" name="archiveName" class="modal-input" required placeholder="请输入档案名称">
-                </div>
-                <div class="modal-form-row">
-                    <label class="modal-label">档案描述</label>
-                    <input type="text" id="archiveDesc" name="archiveDesc" class="modal-input" placeholder="请输入档案描述">
-                </div>
-
-                <div class="modal-form-row">
-                    <label class="modal-label">调度配置</label>
-                    <input type="text" id="scheduleCron" name="scheduleCron" class="modal-input" placeholder="例如: 0 0 2 * * ? （每天凌晨2点）">
-                </div>
-
-                <div class="modal-form-row">
-                    <label class="modal-label">输出API配置</label>
-                    <textarea id="outputApiConfig" name="outputApiConfig" class="modal-textarea" rows="5" placeholder='{"url": "http://example.com/api", "headers": {"Authorization": "Bearer token"}}'></textarea>
-                </div>
-
-                <div class="modal-form-row">
-                    <label class="modal-label">状态</label>
-                    <select id="status" name="status" class="modal-input">
-                        <option value="true">启用</option>
-                        <option value="false">禁用</option>
-                    </select>
-                </div>
-
-                <!-- Graph Editor Section -->
-                <div class="modal-form-row">
-                    <label class="modal-label">有向图编辑器</label>
-                    <div class="graph-editor">
-                        <div class="graph-toolbar">
-                            <button type="button" class="graph-btn" id="addAlgorithmNode">+ 算法节点</button>
-                            <button type="button" class="graph-btn" id="addModelNode">+ 模型节点</button>
-                            <button type="button" class="graph-btn" id="addDataNode">+ 数据节点</button>
-                            <button type="button" class="graph-btn" id="deleteNode">删除节点</button>
-                            <button type="button" class="graph-btn" id="addEdge">添加连线</button>
-                            <button type="button" class="graph-btn" id="deleteEdge">删除连线</button>
-                            <button type="button" class="graph-btn" id="clearGraph">清空画布</button>
-                        </div>
-                        <div class="graph-canvas" id="graphCanvas">
-                            <svg id="graphSvg" width="100%" height="500"></svg>
-                        </div>
-                        <div class="graph-info">
-                            <div class="info-item">
-                                <span>节点数量: </span>
-                                <span id="nodeCount">0</span>
-                            </div>
-                            <div class="info-item">
-                                <span>连线数量: </span>
-                                <span id="edgeCount">0</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </form>
-        </div>
-        <div class="modal-footer" id="modalFooter">
-            <button type="button" class="modal-btn secondary" id="cancelBtn">取消</button>
-            <button type="button" class="modal-btn primary" id="saveBtn">确定</button>
-        </div>
-    </div>
-</div>
-
-<div class="modal-mask" id="nodeModalMask" hidden>
     <div class="modal">
         <div class="modal-header">
-            <span id="nodeModalTitle">节点配置</span>
-            <button class="modal-close" id="nodeModalClose">×</button>
+            <span id="modalTitle">提示</span>
+            <button class="modal-close" id="modalClose">×</button>
         </div>
-        <div class="modal-body" id="nodeModalBody">
-            <form id="nodeForm" class="modal-form">
-                <input type="hidden" id="nodeId" name="nodeId">
-                <div class="modal-form-row">
-                    <label class="modal-label">节点名称</label>
-                    <input type="text" id="nodeName" name="nodeName" class="modal-input" required placeholder="请输入节点名称">
-                </div>
-                <div class="modal-form-row">
-                    <label class="modal-label">节点类型</label>
-                    <select id="nodeType" name="nodeType" class="modal-input" disabled>
-                        <option value="algorithm">算法</option>
-                        <option value="model">模型</option>
-                        <option value="data">数据</option>
-                    </select>
-                </div>
-                
-                <!-- 算法选择区域 -->
-                <div id="algorithmSection" style="display: none;">
-                    <div class="modal-form-row">
-                        <label class="modal-label">选择算法</label>
-                        <select id="algorithmSelect" name="algorithmSelect" class="modal-input">
-                            <option value="">请选择算法</option>
-                        </select>
-                    </div>
-                    <div class="modal-form-row">
-                        <label class="modal-label">输入数据源</label>
-                        <select id="inputDataSource" name="inputDataSource" class="modal-input">
-                            <option value="">请选择数据源</option>
-                        </select>
-                    </div>
-                    <div class="modal-form-row">
-                        <label class="modal-label">输入数据表</label>
-                        <select id="inputDataTable" name="inputDataTable" class="modal-input">
-                            <option value="">请选择数据表</option>
-                        </select>
-                    </div>
-                </div>
-                
-                <!-- 模型/数据选择区域 -->
-                <div id="resourceSection">
-                    <div class="modal-form-row">
-                        <label class="modal-label">关联资源</label>
-                        <input type="text" id="resourceName" name="resourceName" class="modal-input" placeholder="请输入关联的资源名称">
-                    </div>
-                    <div class="modal-form-row">
-                        <label class="modal-label">资源版本</label>
-                        <input type="text" id="resourceVersion" name="resourceVersion" class="modal-input" placeholder="请输入资源版本（可选）">
-                    </div>
-                </div>
-            </form>
-        </div>
-        <div class="modal-footer" id="nodeModalFooter">
-            <button type="button" class="modal-btn secondary" id="nodeCancelBtn">取消</button>
-            <button type="button" class="modal-btn primary" id="nodeSaveBtn">确定</button>
-        </div>
+        <div class="modal-body" id="modalBody"></div>
+        <div class="modal-footer" id="modalFooter"></div>
     </div>
 </div>

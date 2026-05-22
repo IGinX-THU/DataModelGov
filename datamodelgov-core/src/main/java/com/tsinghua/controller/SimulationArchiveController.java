@@ -56,10 +56,12 @@ public class SimulationArchiveController {
     @RequirePermission(Permission.PARSING_RULES_READ)
     public Result<List<SimulationArchiveEntity>> queryArchives(
             @RequestParam(required = false) String name,
+            @RequestParam(required = false) String projectName,
+            @RequestParam(required = false) String owner,
             @RequestParam(required = false) Boolean status,
             @RequestParam(defaultValue = "1") Integer pageNum,
             @RequestParam(defaultValue = "10") Integer pageSize) {
-        List<SimulationArchiveEntity> archives = simulationArchiveService.queryArchives(name, status, pageNum, pageSize);
+        List<SimulationArchiveEntity> archives = simulationArchiveService.queryArchives(name, projectName, owner, status, pageNum, pageSize);
         return Result.success(archives);
     }
 
@@ -71,8 +73,10 @@ public class SimulationArchiveController {
     @RequirePermission(Permission.PARSING_RULES_READ)
     public Result<Object> countArchives(
             @RequestParam(required = false) String name,
+            @RequestParam(required = false) String projectName,
+            @RequestParam(required = false) String owner,
             @RequestParam(required = false) Boolean status) {
-        Object count = simulationArchiveService.countArchives(name, status);
+        Object count = simulationArchiveService.countArchives(name, projectName, owner, status);
         return Result.success(count);
     }
 

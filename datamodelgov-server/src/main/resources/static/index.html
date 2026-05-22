@@ -380,13 +380,13 @@
 
         <div class="ribbon-separator"></div>
 
-        <!-- 关联调度引擎组 -->
-        <div class="ribbon-group" style="display: none;">
-            <div class="ribbon-group-title">关联调度引擎</div>
+        <!-- 联合仿真组 -->
+        <div class="ribbon-group">
+            <div class="ribbon-group-title">联合仿真</div>
             <div class="ribbon-buttons">
-                <button class="ribbon-btn" id="btn-link">
-                    <svg class="ribbon-btn-icon"><use href="#icon-link"></use></svg>
-                    <span class="ribbon-btn-text">关联</span>
+                <button class="ribbon-btn" id="btn-simulation">
+                    <svg class="ribbon-btn-icon"><use href="#icon-run"></use></svg>
+                    <span class="ribbon-btn-text">仿真</span>
                 </button>
             </div>
         </div>
@@ -473,8 +473,10 @@
             <parsing-rules id="parsingRules"></parsing-rules>
             <!-- 关联规则配置组件 -->
             <association-rules id="associationRules"></association-rules>
-            <!-- 仿真档案管理组件 -->
-            <simulation-archive id="simulationArchive"></simulation-archive>
+            <!-- 仿真档案列表组件 -->
+            <simulation-archive-list id="simulationArchiveList" style="display: none;"></simulation-archive-list>
+            <!-- 仿真档案详情组件 -->
+            <simulation-archive-detail id="simulationArchiveDetail" style="display: none;"></simulation-archive-detail>
             <!-- 算法列表组件 -->
             <algorithm-list id="algorithmList"></algorithm-list>
             <!-- 用户管理组件 -->
@@ -548,6 +550,7 @@
 <script src="./components/parsing-rules/parsing-rules.js"></script>
 <script src="./components/association-rules/association-rules.js"></script>
 <script src="./components/simulation-archive/simulation-archive.js"></script>
+<script src="./components/simulation-archive-detail/simulation-archive-detail.js"></script>
 <script src="./components/algorithm-list/algorithm-list.js"></script>
 <script src="./components/visual-analysis/visual-analysis.js"></script>
 <script src="./components/project-list/project-list.js"></script>

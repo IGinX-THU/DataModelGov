@@ -77,9 +77,9 @@ const BUTTON_ID_MAP = {
         text: '搜索',
         action: 'showModelArchiveList'
     },
-    'btn-link': {
-        text: '关联',
-        action: 'showAssociationRules'
+    'btn-simulation': {
+        text: '仿真',
+        action: 'showSimulationArchive'
     }
 };
 

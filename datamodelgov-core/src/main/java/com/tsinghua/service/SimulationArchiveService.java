@@ -57,6 +57,7 @@ public class SimulationArchiveService {
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "createTime", archive.getCreateTime(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "updateTime", archive.getUpdateTime(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "owner", archive.getOwner(), timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "projectName", archive.getProjectName(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "scheduleCron", archive.getScheduleCron(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "outputApiConfig", archive.getOutputApiConfig(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "lastExecutionTime", archive.getLastExecutionTime(), timestamp));
@@ -71,12 +72,18 @@ public class SimulationArchiveService {
     /**
      * 分页查询仿真档案
      */
-    public List<SimulationArchiveEntity> queryArchives(String name, Boolean status, Integer pageNum, Integer pageSize) {
+    public List<SimulationArchiveEntity> queryArchives(String name, String projectName, String owner, Boolean status, Integer pageNum, Integer pageSize) {
         try {
             StringBuilder sql = new StringBuilder("SELECT * FROM " + DATA_PREFIX + " WHERE 1=1");
             
             if (name != null && !name.trim().isEmpty()) {
                 sql.append(" AND name LIKE '^.*").append(name.trim()).append(".*'");
+            }
+            if (projectName != null && !projectName.trim().isEmpty()) {
+                sql.append(" AND projectName LIKE '^.*").append(projectName.trim()).append(".*'");
+            }
+            if (owner != null && !owner.trim().isEmpty()) {
+                sql.append(" AND owner LIKE '^.*").append(owner.trim()).append(".*'");
             }
             if (status != null) {
                 sql.append(" AND status = ").append(status);
@@ -114,12 +121,18 @@ public class SimulationArchiveService {
     /**
      * 查询仿真档案总数
      */
-    public Object countArchives(String name, Boolean status) {
+    public Object countArchives(String name, String projectName, String owner, Boolean status) {
         try {
             StringBuilder sql = new StringBuilder("SELECT COUNT(1) FROM " + DATA_PREFIX + " WHERE 1=1");
             
             if (name != null && !name.trim().isEmpty()) {
                 sql.append(" AND name LIKE '%").append(name.trim()).append("%'");
+            }
+            if (projectName != null && !projectName.trim().isEmpty()) {
+                sql.append(" AND projectName LIKE '%").append(projectName.trim()).append("%'");
+            }
+            if (owner != null && !owner.trim().isEmpty()) {
+                sql.append(" AND owner LIKE '%").append(owner.trim()).append("%'");
             }
             if (status != null) {
                 sql.append(" AND status = ").append(status);
@@ -214,6 +227,7 @@ public class SimulationArchiveService {
         copy.setGraphJson(original.getGraphJson());
         copy.setStatus(false); // 复制的档案默认禁用
         copy.setOwner(original.getOwner());
+        copy.setProjectName(original.getProjectName());
         copy.setScheduleCron(original.getScheduleCron());
         copy.setOutputApiConfig(original.getOutputApiConfig());
         copy.setExecutionCount(0L);
