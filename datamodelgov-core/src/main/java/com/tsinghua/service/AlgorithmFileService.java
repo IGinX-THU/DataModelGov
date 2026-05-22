@@ -106,6 +106,15 @@ public class AlgorithmFileService {
         algorithmMetaDto.setFileMd5(fileMd5);
         algorithmMetaDto.setProjectName(projectName);
         algorithmMetaDto.setAuthor(com.tsinghua.auth.util.AuthUtil.getCurrentUsername());
+        // 初始化新增字段为空
+        algorithmMetaDto.setTableName("");
+        algorithmMetaDto.setInputData("");
+        algorithmMetaDto.setCalledModels("");
+        algorithmMetaDto.setInputsBind("");
+        algorithmMetaDto.setOutputsBind("");
+        algorithmMetaDto.setCmd("");
+        algorithmMetaDto.setInputCsvName("");
+        algorithmMetaDto.setOutputCsvName("");
         saveAlgorithmMetadata(algorithmMetaDto);
 
         dataPermissionService.saveTablePrefix(storagePath);
@@ -354,9 +363,14 @@ public class AlgorithmFileService {
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "timestamp", timestamp, timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "projectName", algorithmMetaDto.getProjectName(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "description", algorithmMetaDto.getDescription(), timestamp));
-        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "inputData", algorithmMetaDto.getInputData(), timestamp));
-        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "calledModels", algorithmMetaDto.getCalledModels(), timestamp));
-        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "outputFormat", algorithmMetaDto.getOutputFormat(), timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "tableName", algorithmMetaDto.getTableName() != null ? algorithmMetaDto.getTableName() : "", timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "inputData", algorithmMetaDto.getInputData() != null ? algorithmMetaDto.getInputData() : "", timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "calledModels", algorithmMetaDto.getCalledModels() != null ? algorithmMetaDto.getCalledModels() : "", timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "inputsBind", algorithmMetaDto.getInputsBind() != null ? algorithmMetaDto.getInputsBind() : "", timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "outputsBind", algorithmMetaDto.getOutputsBind() != null ? algorithmMetaDto.getOutputsBind() : "", timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "cmd", algorithmMetaDto.getCmd() != null ? algorithmMetaDto.getCmd() : "", timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "inputCsvName", algorithmMetaDto.getInputCsvName() != null ? algorithmMetaDto.getInputCsvName() : "", timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "outputCsvName", algorithmMetaDto.getOutputCsvName() != null ? algorithmMetaDto.getOutputCsvName() : "", timestamp));
 
         // 批量写入元数据
         iginxClient.getWriteClient().writePoints(metaPoints.stream().filter(Objects::nonNull).collect(Collectors.toList()));
@@ -490,6 +504,13 @@ public class AlgorithmFileService {
                         dto.setDescription((String) value);
                     }
                     break;
+                case META_PREFIX+"."+"tableName":
+                    if (value instanceof byte[]) {
+                        dto.setTableName(new String((byte[]) value, StandardCharsets.UTF_8));
+                    } else if (value instanceof String) {
+                        dto.setTableName((String) value);
+                    }
+                    break;
                 case META_PREFIX+"."+"inputData":
                     if (value instanceof byte[]) {
                         dto.setInputData(new String((byte[]) value, StandardCharsets.UTF_8));
@@ -504,11 +525,39 @@ public class AlgorithmFileService {
                         dto.setCalledModels((String) value);
                     }
                     break;
-                case META_PREFIX+"."+"outputFormat":
+                case META_PREFIX+"."+"inputsBind":
                     if (value instanceof byte[]) {
-                        dto.setOutputFormat(new String((byte[]) value, StandardCharsets.UTF_8));
+                        dto.setInputsBind(new String((byte[]) value, StandardCharsets.UTF_8));
                     } else if (value instanceof String) {
-                        dto.setOutputFormat((String) value);
+                        dto.setInputsBind((String) value);
+                    }
+                    break;
+                case META_PREFIX+"."+"outputsBind":
+                    if (value instanceof byte[]) {
+                        dto.setOutputsBind(new String((byte[]) value, StandardCharsets.UTF_8));
+                    } else if (value instanceof String) {
+                        dto.setOutputsBind((String) value);
+                    }
+                    break;
+                case META_PREFIX+"."+"cmd":
+                    if (value instanceof byte[]) {
+                        dto.setCmd(new String((byte[]) value, StandardCharsets.UTF_8));
+                    } else if (value instanceof String) {
+                        dto.setCmd((String) value);
+                    }
+                    break;
+                case META_PREFIX+"."+"inputCsvName":
+                    if (value instanceof byte[]) {
+                        dto.setInputCsvName(new String((byte[]) value, StandardCharsets.UTF_8));
+                    } else if (value instanceof String) {
+                        dto.setInputCsvName((String) value);
+                    }
+                    break;
+                case META_PREFIX+"."+"outputCsvName":
+                    if (value instanceof byte[]) {
+                        dto.setOutputCsvName(new String((byte[]) value, StandardCharsets.UTF_8));
+                    } else if (value instanceof String) {
+                        dto.setOutputCsvName((String) value);
                     }
                     break;
                 default:

@@ -225,15 +225,9 @@ class AlgorithmDetail extends HTMLElement {
         // 填充档案描述字段
         const projectName = this.shadowRoot.getElementById('projectName');
         const description = this.shadowRoot.getElementById('description');
-        const inputData = this.shadowRoot.getElementById('inputData');
-        const calledModels = this.shadowRoot.getElementById('calledModels');
-        const outputFormat = this.shadowRoot.getElementById('outputFormat');
 
         if (projectName) projectName.textContent = algorithmInfo.projectName || '-';
         if (description) description.textContent = algorithmInfo.description || '-';
-        if (inputData) inputData.textContent = algorithmInfo.inputData || '-';
-        if (calledModels) calledModels.textContent = algorithmInfo.calledModels || '-';
-        if (outputFormat) outputFormat.textContent = algorithmInfo.outputFormat || '-';
         
         // 渲染输出格式预览
         this.renderOutputFormatPreview(algorithmInfo);
@@ -249,70 +243,55 @@ class AlgorithmDetail extends HTMLElement {
     }
     
     renderOutputFormatPreview(algorithmInfo) {
-        const templateEl = this.shadowRoot.getElementById('outputFormatTemplate');
         const previewEl = this.shadowRoot.getElementById('outputFormatPreview');
-        if (!templateEl || !previewEl) return;
+        if (!previewEl) return;
 
-        const template = algorithmInfo.outputFormat || '';
-        templateEl.textContent = template || '-';
-
-        if (!template.trim()) {
-            previewEl.innerHTML = '<pre>暂无输出格式</pre>';
-            return;
-        }
-
-        // 构建变量映射
-        const context = {
-            name: algorithmInfo.name || '',
-            version: algorithmInfo.version || '',
-            author: algorithmInfo.author || '',
-            scene: algorithmInfo.scene || '',
-            description: algorithmInfo.description || ''
-        };
-
-        // 添加输入参数
-        let inputs = [];
-        if (algorithmInfo.inputs) {
-            try {
-                inputs = typeof algorithmInfo.inputs === 'string' ? JSON.parse(algorithmInfo.inputs) : algorithmInfo.inputs;
-            } catch (e) { inputs = []; }
-        }
-        inputs.forEach((input, i) => {
-            context[`input.${input.name}`] = `${input.name}(${input.type || ''}${input.unit ? ' ' + input.unit : ''})`;
-            context[`input.${i}.name`] = input.name || '';
-            context[`input.${i}.type`] = input.type || '';
-            context[`input.${i}.unit`] = input.unit || '';
-            context[`input.${i}.desc`] = input.desc || '';
-        });
-
-        // 添加输出参数
+        // 从输出参数的回写目标生成CSV表头
         let outputs = [];
         if (algorithmInfo.outputs) {
             try {
                 outputs = typeof algorithmInfo.outputs === 'string' ? JSON.parse(algorithmInfo.outputs) : algorithmInfo.outputs;
             } catch (e) { outputs = []; }
         }
-        outputs.forEach((output, i) => {
-            context[`output.${output.name}`] = `${output.name}(${output.type || ''}${output.unit ? ' ' + output.unit : ''})`;
-            context[`output.${i}.name`] = output.name || '';
-            context[`output.${i}.type`] = output.type || '';
-            context[`output.${i}.unit`] = output.unit || '';
-            context[`output.${i}.desc`] = output.desc || '';
-        });
 
-        // 替换模板变量 {{xxx}}
-        let result = template;
-        result = result.replace(/\{\{([^}]+)\}\}/g, (match, key) => {
-            const trimmedKey = key.trim();
-            return context[trimmedKey] !== undefined ? context[trimmedKey] : match;
-        });
+        const headers = outputs.map(o => o.bindTarget || o.name || '').filter(h => h);
 
-        // HTML转义
-        const div = document.createElement('div');
-        div.textContent = result;
-        const escaped = div.innerHTML;
+        if (headers.length === 0) {
+            previewEl.innerHTML = '<pre>暂无输出格式</pre>';
+            return;
+        }
 
-        previewEl.innerHTML = `<pre>${escaped}</pre>`;
+        // 生成CSV表头
+        const csvHeader = headers.join(',');
+
+        // 生成模拟数据行（3行）
+        const mockRows = [];
+        for (let i = 0; i < 3; i++) {
+            const row = headers.map(header => {
+                // 根据数据类型生成模拟值
+                const output = outputs.find(o => (o.bindTarget || o.name) === header);
+                if (!output) return '';
+
+                const type = (output.type || 'string').toLowerCase();
+                switch (type) {
+                    case 'int':
+                    case 'integer':
+                        return Math.floor(Math.random() * 100);
+                    case 'float':
+                    case 'double':
+                        return (Math.random() * 100).toFixed(2);
+                    case 'bool':
+                    case 'boolean':
+                        return Math.random() > 0.5 ? 'true' : 'false';
+                    default:
+                        return `sample_${i + 1}`;
+                }
+            });
+            mockRows.push(row.join(','));
+        }
+
+        const csvContent = csvHeader + '\n' + mockRows.join('\n');
+        previewEl.innerHTML = `<pre>${csvContent}</pre>`;
     }
 
     updateVersionHistory(algorithmInfo) {
@@ -729,21 +708,20 @@ class AlgorithmDetail extends HTMLElement {
                 window.showGlobalLoading('正在加载数据绑定...');
             }
 
-            const result = await window.AppConfig.post('associationRules', 'query', {
-                pageNum: 1,
-                pageSize: 100,
-                algorithmName: algorithmInfo.name,
-                algorithmVersion: algorithmInfo.version
+            // 从算法元数据API加载绑定数据
+            const result = await window.AppConfig.get('algorithm', 'metas', {
+                name: algorithmInfo.name,
+                version: algorithmInfo.version
             });
 
-            if (result.success && result.data && result.data.length > 0) {
+            if (result.success && result.data) {
                 this.renderBindingData(result.data);
             } else {
-                this.renderBindingData([]);
+                this.renderBindingData({});
             }
         } catch (error) {
             console.error('加载数据绑定失败:', error);
-            this.renderBindingData([]);
+            this.renderBindingData({});
         } finally {
             if (window.hideGlobalLoading) {
                 window.hideGlobalLoading();
@@ -751,13 +729,13 @@ class AlgorithmDetail extends HTMLElement {
         }
     }
 
-    renderBindingData(rules) {
-        const rule = rules && rules.length > 0 ? rules[0] : null;
+    renderBindingData(algorithmData) {
+        // 填充基本绑定信息
         const ids = {
-            detailDataSource: rule?.tableName || '-',
-            detailCmd: rule?.cmd || '-',
-            detailInputCsv: rule?.inputCsvName || '-',
-            detailOutputCsv: rule?.outputCsvName || '-'
+            detailDataSource: algorithmData?.tableName || '-',
+            detailCmd: algorithmData?.cmd || '-',
+            detailInputCsv: algorithmData?.inputCsvName || '-',
+            detailOutputCsv: algorithmData?.outputCsvName || '-'
         };
         Object.entries(ids).forEach(([id, value]) => {
             const el = this.shadowRoot.getElementById(id);
@@ -770,19 +748,56 @@ class AlgorithmDetail extends HTMLElement {
             const header = modelBindEl.querySelector('.binding-mapping-header');
             modelBindEl.innerHTML = '';
             if (header) modelBindEl.appendChild(header);
-            if (!rules || rules.length === 0 || !rules.some(r => r.algorithmName)) {
+            
+            let modelBindings = [];
+            if (algorithmData?.calledModels) {
+                try {
+                    modelBindings = typeof algorithmData.calledModels === 'string'
+                        ? JSON.parse(algorithmData.calledModels)
+                        : algorithmData.calledModels;
+                } catch (e) { modelBindings = []; }
+            }
+            
+            if (!modelBindings || modelBindings.length === 0) {
                 const empty = document.createElement('div');
                 empty.className = 'binding-mapping-row binding-mapping-empty';
                 empty.innerHTML = '<span>暂无绑定模型</span>';
                 modelBindEl.appendChild(empty);
             } else {
-                rules.forEach(r => {
-                    if (r.algorithmName) {
-                        const row = document.createElement('div');
-                        row.className = 'binding-mapping-row binding-model-row';
-                        row.innerHTML = `<span>${r.algorithmName}</span><span>${r.algorithmVersion || '-'}</span>`;
-                        modelBindEl.appendChild(row);
-                    }
+                modelBindings.forEach(binding => {
+                    const row = document.createElement('div');
+                    row.className = 'binding-mapping-row binding-model-row';
+                    row.innerHTML = `<span>${binding.modelName || '-'}</span><span>${binding.version || '-'}</span><span>${binding.storagePath || '-'}</span>`;
+                    modelBindEl.appendChild(row);
+                });
+            }
+        }
+
+        // 渲染数据源字段全路径
+        const inputFieldPathsEl = this.shadowRoot.getElementById('detailInputFieldPaths');
+        if (inputFieldPathsEl) {
+            let fieldPaths = [];
+            if (algorithmData?.inputData) {
+                try {
+                    fieldPaths = typeof algorithmData.inputData === 'string'
+                        ? JSON.parse(algorithmData.inputData)
+                        : algorithmData.inputData;
+                } catch (e) { fieldPaths = []; }
+            }
+            const header = inputFieldPathsEl.querySelector('.binding-mapping-header');
+            inputFieldPathsEl.innerHTML = '';
+            if (header) inputFieldPathsEl.appendChild(header);
+            if (!fieldPaths || fieldPaths.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'binding-mapping-row binding-mapping-empty';
+                empty.innerHTML = '<span>暂无数据源字段</span>';
+                inputFieldPathsEl.appendChild(empty);
+            } else {
+                fieldPaths.forEach(path => {
+                    const row = document.createElement('div');
+                    row.className = 'binding-mapping-row';
+                    row.innerHTML = `<span>${path || '-'}</span>`;
+                    inputFieldPathsEl.appendChild(row);
                 });
             }
         }
@@ -791,9 +806,11 @@ class AlgorithmDetail extends HTMLElement {
         const inputMappingsEl = this.shadowRoot.getElementById('detailInputMappings');
         if (inputMappingsEl) {
             let mappings = [];
-            if (rule?.inputsBind) {
+            if (algorithmData?.inputsBind) {
                 try {
-                    mappings = typeof rule.inputsBind === 'string' ? JSON.parse(rule.inputsBind) : rule.inputsBind;
+                    mappings = typeof algorithmData.inputsBind === 'string'
+                        ? JSON.parse(algorithmData.inputsBind)
+                        : algorithmData.inputsBind;
                 } catch (e) { mappings = []; }
             }
             const header = inputMappingsEl.querySelector('.binding-mapping-header');
@@ -818,9 +835,11 @@ class AlgorithmDetail extends HTMLElement {
         const outputMappingsEl = this.shadowRoot.getElementById('detailOutputMappings');
         if (outputMappingsEl) {
             let mappings = [];
-            if (rule?.outputsBind) {
+            if (algorithmData?.outputsBind) {
                 try {
-                    mappings = typeof rule.outputsBind === 'string' ? JSON.parse(rule.outputsBind) : rule.outputsBind;
+                    mappings = typeof algorithmData.outputsBind === 'string'
+                        ? JSON.parse(algorithmData.outputsBind)
+                        : algorithmData.outputsBind;
                 } catch (e) { mappings = []; }
             }
             const header = outputMappingsEl.querySelector('.binding-mapping-header');

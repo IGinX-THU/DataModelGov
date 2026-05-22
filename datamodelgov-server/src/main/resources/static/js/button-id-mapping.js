@@ -69,9 +69,9 @@ const BUTTON_ID_MAP = {
         text: '删除',
         action: 'handleDeleteAlgorithm'
     },
-    'btn-algorithm-parse': {
-        text: '解析',
-        action: 'showParsingRules'
+    'btn-algorithm-search': {
+        text: '搜索',
+        action: 'showAlgorithmArchiveList'
     },
     'btn-parse': {
         text: '搜索',
@@ -130,7 +130,7 @@ const MENU_ID_MAP = {
         action: 'showModelArchiveList'
     },
     'menu-edit-meta-algorithm-archive': {
-        text: '编辑元算法档案',
+        text: '编辑算法档案',
         action: 'handleEditAlgorithm'
     },
     'menu-algorithm-archive-query': {

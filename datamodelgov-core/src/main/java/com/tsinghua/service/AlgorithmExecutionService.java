@@ -75,8 +75,8 @@ public class AlgorithmExecutionService {
                 Files.write(algorithmFile, algorithmBytes);
 
                 // 准备输入文件
-                Path inputFile = tempDir.resolve(algorithmMeta.getInputFile() != null ? 
-                    algorithmMeta.getInputFile() : "input.txt");
+                Path inputFile = tempDir.resolve(algorithmMeta.getInputCsvName() != null ?
+                    algorithmMeta.getInputCsvName() : "input.txt");
                 if (inputData != null && !inputData.isEmpty()) {
                     Files.write(inputFile, formatInputData(inputData));
                 }

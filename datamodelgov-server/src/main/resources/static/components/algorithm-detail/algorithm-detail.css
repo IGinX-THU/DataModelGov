@@ -503,6 +503,10 @@
     gap: 4px;
 }
 
+.binding-info-item.full-width {
+    grid-column: 1 / -1;
+}
+
 .binding-label {
     font-size: 12px;
     color: #64748b;
@@ -558,6 +562,10 @@
     font-size: 12px;
 }
 
+.binding-mapping-header.binding-model-header {
+    grid-template-columns: 1fr 1fr 1.5fr;
+}
+
 .binding-mapping-row .mapping-arrow {
     color: #22c55e;
     font-weight: bold;
@@ -566,7 +574,7 @@
 }
 
 .binding-model-row {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr 1fr 1.5fr;
 }
 
 .binding-model-row span {
@@ -659,4 +667,10 @@
     line-height: 1.6;
     white-space: pre-wrap;
     word-wrap: break-word;
+}
+
+.run-config-section {
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px solid #e5e7eb;
 }

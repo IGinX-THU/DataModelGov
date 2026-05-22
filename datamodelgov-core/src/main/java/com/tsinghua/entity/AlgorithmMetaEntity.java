@@ -39,16 +39,16 @@ public class AlgorithmMetaEntity {
     
     @ApiModelProperty(value = "运行命令")
     private String cmd;
-    
-    @ApiModelProperty(value = "输入文件名")
-    private String inputFile;
-    
-    @ApiModelProperty(value = "输出文件名")
-    private String outputFile;
-    
+
+    @ApiModelProperty(value = "输入数据csv文件名")
+    private String inputCsvName;
+
+    @ApiModelProperty(value = "输出结果csv文件名")
+    private String outputCsvName;
+
     @ApiModelProperty(value = "算法类型：python/java/shell")
     private String algorithmType;
-    
+
     @ApiModelProperty(value = "依赖库列表（json）")
     private String dependencies;
 
@@ -58,7 +58,10 @@ public class AlgorithmMetaEntity {
     @ApiModelProperty(value = "描述信息")
     private String description;
 
-    @ApiModelProperty(value = "关联输入数据（json）")
+    @ApiModelProperty(value = "数据源")
+    private String tableName;
+
+    @ApiModelProperty(value = "数据源字段全路径")
     private String inputData;
 
     @ApiModelProperty(value = "调用的模型（json）")
@@ -66,4 +69,10 @@ public class AlgorithmMetaEntity {
 
     @ApiModelProperty(value = "输出格式")
     private String outputFormat;
+
+    @ApiModelProperty(value = "输入参数绑定json")
+    private String inputsBind;
+
+    @ApiModelProperty(value = "输出参数绑定json")
+    private String outputsBind;
 }

@@ -16,7 +16,7 @@
                     </div>
                     <div class="info-item">
                         <label>开发者</label>
-                        <input type="text" id="developer" placeholder="请输入开发者">
+                        <input type="text" id="developer" placeholder="请输入开发者" readonly>
                     </div>
                     <div class="info-item">
                         <label>版本号</label>
@@ -72,33 +72,7 @@
                                 <option value="">请选择数据源</option>
                             </select>
                         </div>
-                        <div class="binding-field">
-                            <label>运行命令</label>
-                            <input type="text" id="ruleCmd" placeholder="python3 model_runner.py --input-file raw_data.csv --output-file result.csv">
-                        </div>
                     </div>
-                    <div class="binding-config-row">
-                        <div class="binding-field">
-                            <label>输入CSV文件名</label>
-                            <input type="text" id="inputCsvName" placeholder="raw_data.csv">
-                        </div>
-                        <div class="binding-field">
-                            <label>输出CSV文件名</label>
-                            <div class="csv-field-with-btn">
-                                <input type="text" id="outputCsvName" placeholder="result.csv">
-                                <button type="button" class="gen-csv-header-btn" id="genCsvHeaderBtn" title="根据输出参数回写目标生成CSV表头">生成表头</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 模型绑定配置 -->
-                <div class="binding-config model-binding-section">
-                    <div class="binding-config-header">模型绑定</div>
-                    <div class="model-bind-list" id="modelBindList">
-                        <!-- 动态添加模型绑定行 -->
-                    </div>
-                    <button type="button" class="add-model-bind-btn" id="addModelBindBtn">+ 添加模型</button>
                 </div>
 
                 <!-- Inputs（含数据源字段绑定列） -->
@@ -139,25 +113,50 @@
                         </div>
                     </div>
                 </div>
-            </div>
 
-            <!-- 4. 输出格式 -->
-            <div class="section-card">
-                <div class="section-title">输出格式</div>
+                <!-- 输出格式预览 -->
                 <div class="output-format-section">
-                    <div class="format-editor">
-                        <label>格式模板（txt输出格式定义）</label>
-                        <textarea id="outputFormat" placeholder="定义txt输出格式模板，使用 {{变量名}} 引用参数&#10;示例：&#10;[Algorithm] {{name}} v{{version}}&#10;[Input] {{input.temperature}} °C&#10;[Output] {{output.control_signal}} %" rows="8"></textarea>
-                    </div>
                     <div class="format-preview">
                         <div class="preview-header">
-                            <span>输出预览</span>
+                            <span>输出格式预览（根据输出参数回写目标自动生成）</span>
                             <button class="preview-btn" id="previewBtn">刷新预览</button>
                         </div>
                         <div class="preview-content" id="previewContent">
-                            <pre>点击"刷新预览"查看输出效果</pre>
+                            <pre>点击"刷新预览"查看输出格式</pre>
                         </div>
                     </div>
+                </div>
+
+                <!-- 运行配置 -->
+                <div class="binding-config run-config-section">
+                    <div class="binding-config-header">运行配置</div>
+                    <div class="binding-config-row">
+                        <div class="binding-field">
+                            <label>运行命令</label>
+                            <input type="text" id="ruleCmd" placeholder="python3 model_runner.py --input-file raw_data.csv --output-file result.csv">
+                        </div>
+                    </div>
+                    <div class="binding-config-row">
+                        <div class="binding-field">
+                            <label>输入CSV文件名</label>
+                            <input type="text" id="inputCsvName" placeholder="raw_data.csv">
+                        </div>
+                        <div class="binding-field">
+                            <label>输出CSV文件名</label>
+                            <input type="text" id="outputCsvName" placeholder="result.csv">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 4. 模型绑定 -->
+            <div class="section-card">
+                <div class="section-title">模型绑定</div>
+                <div class="model-binding-section">
+                    <div class="model-bind-list" id="modelBindList">
+                        <!-- 动态添加模型绑定行 -->
+                    </div>
+                    <button type="button" class="add-model-bind-btn" id="addModelBindBtn">+ 添加模型</button>
                 </div>
             </div>
         </div>

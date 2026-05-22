@@ -190,24 +190,24 @@
                     <li id="menu-upload-algorithm-file">上传算法文件</li>
                     <li id="menu-download-algorithm-file">下载算法文件</li>
                     <li id="menu-remove-algorithm-asset">移除算法资产</li>
-                    <li id="menu-edit-meta-algorithm-archive">编辑元算法档案</li>
+                    <li id="menu-edit-meta-algorithm-archive">编辑算法档案</li>
                     <li id="menu-algorithm-archive-query">搜索算法档案</li>
                 </ul>
             </span>
-        <span class="tab dropdown" id="scheduleDropdown">
+        <span class="tab dropdown" id="scheduleDropdown" style="display: none;">
                 <span class="dropdown-trigger">关联</span>
                 <ul class="dropdown-menu">
                     <li id="menu-association-rule-configuration">关联规则配置</li>
                 </ul>
             </span>
-        <span class="tab dropdown" id="simulationDropdown" style="display: none;">
+        <span class="tab dropdown" id="simulationDropdown" >
                 <span class="dropdown-trigger">仿真</span>
                 <ul class="dropdown-menu">
                     <li id="menu-simulation-archive">仿真档案管理</li>
                     <li id="menu-algorithm-list">算法管理</li>
                 </ul>
             </span>
-        <span class="tab dropdown" id="analysisDropdown">
+        <span class="tab dropdown" id="analysisDropdown" style="display: none;">
                 <span class="dropdown-trigger">分析</span>
                 <ul class="dropdown-menu">
                     <li id="menu-numerical-and-curve-analysis">数值与曲线分析</li>
@@ -372,9 +372,9 @@
                     <svg class="ribbon-btn-icon"><use href="#icon-edit"></use></svg>
                     <span class="ribbon-btn-text">编辑</span>
                 </button>
-                <button class="ribbon-btn" id="btn-algorithm-parse">
-                    <svg class="ribbon-btn-icon"><use href="#icon-parse"></use></svg>
-                    <span class="ribbon-btn-text">解析</span>
+                <button class="ribbon-btn" id="btn-algorithm-search">
+                    <svg class="ribbon-btn-icon"><use href="#icon-search"></use></svg>
+                    <span class="ribbon-btn-text">搜索</span>
                 </button>
             </div>
         </div>
@@ -382,7 +382,7 @@
         <div class="ribbon-separator"></div>
 
         <!-- 关联调度引擎组 -->
-        <div class="ribbon-group">
+        <div class="ribbon-group" style="display: none;">
             <div class="ribbon-group-title">关联调度引擎</div>
             <div class="ribbon-buttons">
                 <button class="ribbon-btn" id="btn-link">
@@ -395,7 +395,7 @@
         <div class="ribbon-separator"></div>
         
         <!-- 可视化分析组 -->
-        <div class="ribbon-group">
+        <div class="ribbon-group" style="display: none;">
             <div class="ribbon-group-title">可视化分析</div>
             <div class="ribbon-buttons">
                 <button class="ribbon-btn" id="btn-analyze">

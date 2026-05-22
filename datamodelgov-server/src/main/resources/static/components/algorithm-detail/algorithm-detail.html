@@ -7,9 +7,9 @@
         </div>
     </div>
 
-    <!-- 第一个card：元算法档案 -->
+    <!-- 第一个card：算法档案 -->
     <div class="algorithm-info-card">
-        <div class="info-header">元算法档案</div>
+        <div class="info-header">算法档案</div>
         
         <!-- 上半部分：基本信息区域 -->
         <div class="basic-info-section">
@@ -48,18 +48,6 @@
                 <div class="info-item full-width">
                     <div class="info-label">描述信息</div>
                     <div class="info-value" id="description">-</div>
-                </div>
-                <div class="info-item full-width">
-                    <div class="info-label">关联输入数据</div>
-                    <div class="info-value" id="inputData">-</div>
-                </div>
-                <div class="info-item full-width">
-                    <div class="info-label">调用的模型</div>
-                    <div class="info-value" id="calledModels">-</div>
-                </div>
-                <div class="info-item">
-                    <div class="info-label">输出格式</div>
-                    <div class="info-value" id="outputFormat">-</div>
                 </div>
             </div>
         </div>
@@ -190,31 +178,30 @@
     <div class="algorithm-binding-card">
         <div class="binding-header">数据绑定</div>
         <div class="binding-content">
-            <div class="binding-info-grid">
-                <div class="binding-info-item">
-                    <span class="binding-label">数据源</span>
-                    <span class="binding-value" id="detailDataSource">-</span>
+            <!-- 数据源和字段全路径 -->
+            <div class="binding-mapping-section">
+                <div class="binding-mapping-title">数据源</div>
+                <div class="binding-info-grid">
+                    <div class="binding-info-item">
+                        <span class="binding-label">数据源</span>
+                        <span class="binding-value" id="detailDataSource">-</span>
+                    </div>
                 </div>
-                <div class="binding-info-item">
-                    <span class="binding-label">运行命令</span>
-                    <span class="binding-value" id="detailCmd">-</span>
-                </div>
-                <div class="binding-info-item">
-                    <span class="binding-label">输入CSV</span>
-                    <span class="binding-value" id="detailInputCsv">-</span>
-                </div>
-                <div class="binding-info-item">
-                    <span class="binding-label">输出CSV</span>
-                    <span class="binding-value" id="detailOutputCsv">-</span>
+                <div class="binding-mapping-title" style="margin-top: 12px;">数据源字段全路径</div>
+                <div class="binding-mapping-table" id="detailInputFieldPaths">
+                    <div class="binding-mapping-row binding-mapping-header">
+                        <span>字段全路径</span>
+                    </div>
                 </div>
             </div>
             <!-- 模型绑定列表 -->
             <div class="binding-mapping-section">
                 <div class="binding-mapping-title">绑定模型</div>
                 <div class="detail-model-bind-list" id="detailModelBindings">
-                    <div class="binding-mapping-row binding-mapping-header">
+                    <div class="binding-mapping-row binding-mapping-header binding-model-header">
                         <span>模型名称</span>
                         <span>版本</span>
+                        <span>模型全路径</span>
                     </div>
                 </div>
             </div>
@@ -247,14 +234,28 @@
     <div class="algorithm-output-card">
         <div class="output-header">输出格式预览</div>
         <div class="output-content">
-            <div class="output-format-template">
-                <div class="template-label">格式模板</div>
-                <div class="template-value" id="outputFormatTemplate">-</div>
-            </div>
             <div class="output-format-preview">
-                <div class="preview-label">输出预览</div>
+                <div class="preview-label">输出格式预览（根据输出参数回写目标自动生成）</div>
                 <div class="preview-value" id="outputFormatPreview">
                     <pre>暂无输出格式</pre>
+                </div>
+            </div>
+        </div>
+        <!-- 运行配置 -->
+        <div class="run-config-section">
+            <div class="binding-mapping-title">运行配置</div>
+            <div class="binding-info-grid">
+                <div class="binding-info-item full-width">
+                    <span class="binding-label">运行命令</span>
+                    <span class="binding-value" id="detailCmd">-</span>
+                </div>
+                <div class="binding-info-item">
+                    <span class="binding-label">输入CSV</span>
+                    <span class="binding-value" id="detailInputCsv">-</span>
+                </div>
+                <div class="binding-info-item">
+                    <span class="binding-label">输出CSV</span>
+                    <span class="binding-value" id="detailOutputCsv">-</span>
                 </div>
             </div>
         </div>

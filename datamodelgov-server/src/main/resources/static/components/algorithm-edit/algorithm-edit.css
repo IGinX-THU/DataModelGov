@@ -777,6 +777,11 @@
     border: 1px solid #bfdbfe;
 }
 
+.run-config-section {
+    background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+    border: 1px solid #fcd34d;
+}
+
 .binding-config-header {
     font-size: 14px;
     font-weight: 600;
@@ -792,6 +797,11 @@
 .model-binding-section .binding-config-header {
     color: #1e40af;
     border-bottom: 1px solid #bfdbfe;
+}
+
+.run-config-section .binding-config-header {
+    color: #92400e;
+    border-bottom: 1px solid #fcd34d;
 }
 
 .binding-config-row {
@@ -839,34 +849,6 @@
 .model-binding-section .binding-field input:focus {
     border-color: #3b82f6;
     box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
-}
-
-/* CSV field with generate button */
-.csv-field-with-btn {
-    display: flex;
-    gap: 6px;
-}
-
-.csv-field-with-btn input {
-    flex: 1;
-}
-
-.gen-csv-header-btn {
-    padding: 10px 12px;
-    background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
-    color: white;
-    border: none;
-    border-radius: 6px;
-    font-size: 12px;
-    font-weight: 500;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: all 0.2s ease;
-}
-
-.gen-csv-header-btn:hover {
-    background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
-    transform: translateY(-1px);
 }
 
 /* Model bind row */
@@ -976,9 +958,7 @@
 
 /* Output format section */
 .output-format-section {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 16px;
+    margin-bottom: 20px;
 }
 
 .format-editor {
