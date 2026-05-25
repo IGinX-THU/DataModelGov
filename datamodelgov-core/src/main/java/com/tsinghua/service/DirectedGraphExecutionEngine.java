@@ -290,8 +290,10 @@ public class DirectedGraphExecutionEngine {
                             }
                             Map<String, Object> outputEntry = new HashMap<>();
                             outputEntry.put("output", predMap.get("output"));
+                            outputEntry.put("outputCsv", predMap.get("outputCsv"));
                             outputEntry.put("sourceOutput", sourceOutput);
                             outputEntry.put("targetInput", targetInput);
+                            outputEntry.put("taskDir", predMap.get("taskDir"));
                             predecessorOutputs.put(sourceId, outputEntry);
                         }
                     }

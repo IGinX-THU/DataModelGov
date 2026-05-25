@@ -112,7 +112,8 @@ public class AlgorithmExecutionService {
                 downloadCalledModels(algorithmMeta, taskDir);
 
                 // 5. 写入前驱节点的输出数据作为输入（使用边的数据映射配置）
-                if (predecessorOutputs != null && !predecessorOutputs.isEmpty()) {
+                boolean hasPredecessorData = predecessorOutputs != null && !predecessorOutputs.isEmpty();
+                if (hasPredecessorData) {
                     writePredecessorOutputs(taskDir, predecessorOutputs, algorithmMeta);
                     String predLog = "前驱节点输出数据已写入\n";
                     processLogBuilder.append(predLog);
@@ -120,15 +121,23 @@ public class AlgorithmExecutionService {
                 }
 
                 // 6. 导出输入数据（从IginX查询，使用算法档案中的数据源配置）
-                exportInputData(startTime, endTime, algorithmMeta, taskDir);
-                String dataLog = "输入数据导出完成" + (startTime != null ? ", startTime=" + startTime : "") + (endTime != null ? ", endTime=" + endTime : "") + "\n";
-                processLogBuilder.append(dataLog);
-                try { Files.write(logFile, dataLog.getBytes(StandardCharsets.UTF_8), StandardOpenOption.APPEND); } catch (IOException e) { /* ignore */ }
+                // 如果没有前驱节点数据，才从IginX导出数据作为输入
+                if (!hasPredecessorData) {
+                    exportInputData(startTime, endTime, algorithmMeta, taskDir);
+                    String dataLog = "输入数据导出完成" + (startTime != null ? ", startTime=" + startTime : "") + (endTime != null ? ", endTime=" + endTime : "") + "\n";
+                    processLogBuilder.append(dataLog);
+                    try { Files.write(logFile, dataLog.getBytes(StandardCharsets.UTF_8), StandardOpenOption.APPEND); } catch (IOException e) { /* ignore */ }
+                }
 
-                // 7. 执行命令
+                // 7. 执行命令（根据边数据映射动态调整输入输出CSV文件名）
                 String cmd = algorithmMeta.getCmd();
                 if (cmd == null || cmd.trim().isEmpty()) {
                     return new Result<>(500, "算法未设置运行命令", null);
+                }
+
+                // 如果有前驱节点数据，根据边数据映射替换命令中的输入文件名
+                if (hasPredecessorData && predecessorOutputs != null) {
+                    cmd = adjustCommandWithMapping(cmd, predecessorOutputs, algorithmMeta);
                 }
 
                 String cmdLog = "执行命令: " + cmd + "\n";
@@ -178,6 +187,8 @@ public class AlgorithmExecutionService {
      */
     private void downloadCalledModels(AlgorithmMetaEntity algorithmMeta, Path taskDir) {
         String calledModelsStr = algorithmMeta.getCalledModels();
+        log.info("开始下载模型，calledModels={}", calledModelsStr);
+
         if (calledModelsStr == null || calledModelsStr.trim().isEmpty()) {
             log.info("算法 {} 无依赖模型，跳过模型下载", algorithmMeta.getName());
             return;
@@ -185,28 +196,33 @@ public class AlgorithmExecutionService {
 
         try {
             JSONArray calledModels = JSONArray.parseArray(calledModelsStr);
+            log.info("解析到 {} 个依赖模型", calledModels.size());
+
             for (int i = 0; i < calledModels.size(); i++) {
                 JSONObject modelRef = calledModels.getJSONObject(i);
-                String modelName = modelRef.getString("name");
+                String modelName = modelRef.getString("modelName");
                 String modelVersion = modelRef.getString("version");
+                log.info("准备下载模型: {} v{}", modelName, modelVersion);
+
                 if (modelName != null && modelVersion != null) {
                     try {
                         modelFileService.extractModelFile(modelName, modelVersion, taskDir);
-                        log.info("模型 {} v{} 已下载到执行目录", modelName, modelVersion);
+                        log.info("模型 {} v{} 已下载到执行目录: {}", modelName, modelVersion, taskDir);
                     } catch (Exception e) {
-                        log.warn("下载模型 {} v{} 失败: {}", modelName, modelVersion, e.getMessage());
+                        log.error("下载模型 {} v{} 失败", modelName, modelVersion, e);
                     }
                 }
             }
         } catch (Exception e) {
-            log.warn("解析calledModels失败: {}", calledModelsStr, e);
+            log.error("解析calledModels失败: {}", calledModelsStr, e);
         }
     }
 
     /**
      * 写入前驱节点的输出数据到任务目录
-     * 使用边的数据映射配置：sourceOutput指定源节点输出文件名，targetInput指定当前节点输入文件名
+     * 使用边的数据映射配置：sourceOutput指定源节点输出CSV文件名，targetInput指定当前节点输入CSV文件名
      * 例如：A输出output.csv → B输入input.csv，则将A的output.csv内容写入B的input.csv
+     * 多个前驱输出到同一目标文件时，合并CSV数据（保留第一个表头，追加后续数据行）
      */
     @SuppressWarnings("unchecked")
     private void writePredecessorOutputs(Path taskDir, Map<String, Object> predecessorOutputs,
@@ -216,39 +232,96 @@ public class AlgorithmExecutionService {
             defaultInputCsv = "input.csv";
         }
 
-        boolean hasMappedInput = false;
-        StringBuilder combinedOutput = new StringBuilder();
+        // 收集每个目标输入文件对应的CSV数据
+        Map<String, List<String>> targetInputData = new LinkedHashMap<>();
+        List<String> unmappedCsvData = new ArrayList<>();
 
         for (Map.Entry<String, Object> entry : predecessorOutputs.entrySet()) {
             if (!(entry.getValue() instanceof Map)) continue;
             Map<String, Object> predData = (Map<String, Object>) entry.getValue();
-            String outputText = predData.get("output") != null ? predData.get("output").toString() : "";
+            // 使用前驱节点的outputCsv（CSV数据），而不是output（文本输出）
+            String outputCsv = predData.get("outputCsv") != null ? predData.get("outputCsv").toString() : null;
             String sourceOutput = (String) predData.get("sourceOutput");
             String targetInput = (String) predData.get("targetInput");
 
+            if (outputCsv == null || outputCsv.trim().isEmpty()) {
+                log.warn("前驱节点 {} 无CSV输出数据，跳过", entry.getKey());
+                continue;
+            }
+
             if (targetInput != null && !targetInput.isEmpty()) {
-                // 有明确的目标输入文件名映射：将前驱输出写入指定的输入文件
-                Path targetFile = taskDir.resolve(targetInput);
-                try (PrintWriter writer = new PrintWriter(new FileWriter(targetFile.toFile(), true))) {
-                    writer.print(outputText);
-                }
-                hasMappedInput = true;
-                log.info("前驱节点 {} 输出已写入: {}", entry.getKey(), targetFile);
+                // 有明确的目标输入文件名映射
+                targetInputData.computeIfAbsent(targetInput, k -> new ArrayList<>()).add(outputCsv);
+                log.info("前驱节点 {} CSV输出将写入: {}", entry.getKey(), targetInput);
             } else {
-                // 无明确映射，追加到组合输出
-                combinedOutput.append("=== 前驱节点 ").append(entry.getKey()).append(" 输出 ===\n");
-                combinedOutput.append(outputText).append("\n");
+                // 无明确映射，使用默认输入文件
+                targetInputData.computeIfAbsent(defaultInputCsv, k -> new ArrayList<>()).add(outputCsv);
+                log.info("前驱节点 {} CSV输出将写入默认输入文件: {}", entry.getKey(), defaultInputCsv);
             }
         }
 
-        // 如果有未映射的前驱输出，写入默认输入文件
-        if (combinedOutput.length() > 0 && !hasMappedInput) {
-            Path defaultInputFile = taskDir.resolve(defaultInputCsv);
-            try (PrintWriter writer = new PrintWriter(new FileWriter(defaultInputFile.toFile(), true))) {
-                writer.print(combinedOutput.toString());
+        // 写入每个目标输入文件（合并多个前驱的CSV数据）
+        for (Map.Entry<String, List<String>> targetEntry : targetInputData.entrySet()) {
+            Path targetFile = taskDir.resolve(targetEntry.getKey());
+            List<String> csvDataList = targetEntry.getValue();
+            try (PrintWriter writer = new PrintWriter(new FileWriter(targetFile.toFile()))) {
+                for (int i = 0; i < csvDataList.size(); i++) {
+                    String csvData = csvDataList.get(i);
+                    String[] lines = csvData.split("\n");
+                    for (int j = 0; j < lines.length; j++) {
+                        if (i > 0 && j == 0) {
+                            // 跳过后续CSV的表头行，避免重复
+                            continue;
+                        }
+                        writer.println(lines[j]);
+                    }
+                }
             }
-            log.info("未映射的前驱输出已写入默认输入文件: {}", defaultInputFile);
+            log.info("合并CSV数据已写入: {} (来源数: {})", targetFile, csvDataList.size());
         }
+    }
+
+    /**
+     * 根据边数据映射调整执行命令中的输入输出CSV文件名
+     * 例如：将命令中的 input.csv 替换为边映射指定的 targetInput 文件名
+     */
+    @SuppressWarnings("unchecked")
+    private String adjustCommandWithMapping(String cmd, Map<String, Object> predecessorOutputs,
+                                           AlgorithmMetaEntity algorithmMeta) {
+        String adjustedCmd = cmd;
+        String defaultInputCsv = algorithmMeta.getInputCsvName();
+        if (defaultInputCsv == null || defaultInputCsv.trim().isEmpty()) {
+            defaultInputCsv = "input.csv";
+        }
+        String defaultOutputCsv = algorithmMeta.getOutputCsvName();
+        if (defaultOutputCsv == null || defaultOutputCsv.trim().isEmpty()) {
+            defaultOutputCsv = "output.csv";
+        }
+
+        // 收集所有目标输入文件名（可能有多个前驱节点映射到不同输入文件）
+        Set<String> targetInputs = new HashSet<>();
+        for (Map.Entry<String, Object> entry : predecessorOutputs.entrySet()) {
+            if (!(entry.getValue() instanceof Map)) continue;
+            Map<String, Object> predData = (Map<String, Object>) entry.getValue();
+            String targetInput = (String) predData.get("targetInput");
+            if (targetInput != null && !targetInput.isEmpty()) {
+                targetInputs.add(targetInput);
+            }
+        }
+
+        // 如果只有一个目标输入文件，替换命令中的默认输入文件名
+        if (targetInputs.size() == 1) {
+            String targetInput = targetInputs.iterator().next();
+            adjustedCmd = adjustedCmd.replace(defaultInputCsv, targetInput);
+            log.info("命令输入文件名已替换: {} -> {}", defaultInputCsv, targetInput);
+        } else if (targetInputs.size() > 1) {
+            log.info("多个目标输入文件，不自动替换命令输入文件名: {}", targetInputs);
+        }
+
+        // 输出文件名保持使用算法档案中的配置（因为每个节点输出到自己的文件）
+        // 不需要替换，因为输出文件名由算法档案决定
+
+        return adjustedCmd;
     }
 
     /**
