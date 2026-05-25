@@ -14,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * 仿真档案控制器
@@ -153,7 +154,7 @@ public class SimulationArchiveController {
     }
 
     /**
-     * 运行仿真
+     * 运行仿真（全量执行）
      */
     @ApiOperation("运行仿真")
     @PostMapping("/archives/run")
@@ -161,6 +162,29 @@ public class SimulationArchiveController {
     @OperationLog(value = "运行仿真", type = OperationLog.OperationType.UPDATE)
     public Result<Void> runSimulation(@RequestParam("createTime") Long createTime) {
         return simulationExecutionService.runSimulation(createTime);
+    }
+
+    /**
+     * 运行仿真（选择性执行，每个节点使用自己的时间窗口）
+     */
+    @ApiOperation("选择性运行仿真")
+    @PostMapping("/archives/run-selective")
+    @RequirePermission(Permission.PARSING_RULES_CREATE)
+    @OperationLog(value = "选择性运行仿真", type = OperationLog.OperationType.UPDATE)
+    public Result<Void> runSimulationSelective(
+            @RequestParam("createTime") Long createTime,
+            @RequestBody(required = false) Map<String, Object> params) {
+        List<String> selectedNodeIds = null;
+
+        if (params != null && params.containsKey("selectedNodeIds")) {
+            Object nodeIdsObj = params.get("selectedNodeIds");
+            if (nodeIdsObj instanceof List) {
+                selectedNodeIds = ((List<?>) nodeIdsObj).stream()
+                    .map(Object::toString).collect(java.util.stream.Collectors.toList());
+            }
+        }
+
+        return simulationExecutionService.runSimulation(createTime, selectedNodeIds);
     }
 
     /**
@@ -182,5 +206,15 @@ public class SimulationArchiveController {
     @RequirePermission(Permission.PARSING_RULES_READ)
     public Result<?> getExecutionStatus(@RequestParam("createTime") Long createTime) {
         return simulationExecutionService.getExecutionStatus(createTime);
+    }
+
+    /**
+     * 获取仿真执行日志
+     */
+    @ApiOperation("获取仿真执行日志")
+    @GetMapping("/archives/execution-log")
+    @RequirePermission(Permission.PARSING_RULES_READ)
+    public Result<Map<String, Object>> getExecutionLog(@RequestParam("createTime") Long createTime) {
+        return simulationExecutionService.getExecutionLog(createTime);
     }
 }

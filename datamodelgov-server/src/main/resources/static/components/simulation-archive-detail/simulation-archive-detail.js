@@ -3,8 +3,6 @@ class SimulationArchiveDetail extends HTMLElement {
         super();
         this.attachShadow({ mode: 'open' });
         this.currentArchive = null;
-        
-        // Graph data
         this.nodes = [];
         this.edges = [];
         this.selectedNode = null;
@@ -14,6 +12,8 @@ class SimulationArchiveDetail extends HTMLElement {
         this.isAddingEdge = false;
         this.edgeStartNode = null;
         this.isEditMode = false;
+        this.executionResult = null;
+        this.isRunning = false;
     }
 
     async connectedCallback() {
@@ -36,308 +36,284 @@ class SimulationArchiveDetail extends HTMLElement {
     }
 
     bindEvents() {
-        const backBtn = this.shadowRoot.getElementById('backBtn');
-        if (backBtn) {
-            backBtn.addEventListener('click', () => {
-                this.hide();
-                const simulationArchiveList = document.getElementById('simulationArchiveList');
-                if (simulationArchiveList && simulationArchiveList.show) {
-                    simulationArchiveList.show();
-                }
-            });
-        }
+        const $ = id => this.shadowRoot.getElementById(id);
 
-        const closeBtn = this.shadowRoot.getElementById('closeBtn');
-        if (closeBtn) {
-            closeBtn.addEventListener('click', () => {
-                this.hide();
-            });
-        }
+        $('backBtn')?.addEventListener('click', () => {
+            this.hide();
+            const list = document.getElementById('simulationArchiveList');
+            if (list && list.show) list.show();
+        });
+        $('closeBtn')?.addEventListener('click', () => this.hide());
+        $('editBtn')?.addEventListener('click', () => this.startEdit());
+        $('saveBtn')?.addEventListener('click', () => this.saveArchive());
+        $('cancelBtn')?.addEventListener('click', () => this.cancelEdit());
 
-        const editBtn = this.shadowRoot.getElementById('editBtn');
-        if (editBtn) {
-            editBtn.addEventListener('click', () => {
-                this.enableEdit();
-            });
-        }
-
-        const saveBtn = this.shadowRoot.getElementById('saveBtn');
-        if (saveBtn) {
-            saveBtn.addEventListener('click', () => {
-                this.saveArchive();
-            });
-        }
-
-        const cancelBtn = this.shadowRoot.getElementById('cancelBtn');
-        if (cancelBtn) {
-            cancelBtn.addEventListener('click', () => {
-                this.cancelEdit();
-            });
-        }
-
-        // Graph toolbar buttons
-        this.shadowRoot.getElementById('addAlgorithmNode')?.addEventListener('click', () => this.addNode());
-        this.shadowRoot.getElementById('deleteNode')?.addEventListener('click', () => this.deleteSelectedNode());
-        this.shadowRoot.getElementById('addEdge')?.addEventListener('click', () => this.startAddEdge());
-        this.shadowRoot.getElementById('deleteEdge')?.addEventListener('click', () => this.deleteSelectedEdge());
-        this.shadowRoot.getElementById('clearGraph')?.addEventListener('click', () => this.clearGraph());
+        // Graph toolbar
+        $('addAlgorithmNode')?.addEventListener('click', () => this.addNode());
+        $('deleteNode')?.addEventListener('click', () => this.deleteSelectedNode());
+        $('addEdge')?.addEventListener('click', () => this.startAddEdge());
+        $('deleteEdge')?.addEventListener('click', () => this.deleteSelectedEdge());
+        $('autoLayout')?.addEventListener('click', () => this.autoLayout());
+        $('clearGraph')?.addEventListener('click', () => this.clearGraph());
 
         // Node modal
-        this.shadowRoot.getElementById('nodeModalClose')?.addEventListener('click', () => this.hideNodeModal());
-        this.shadowRoot.getElementById('nodeCancelBtn')?.addEventListener('click', () => this.hideNodeModal());
-        this.shadowRoot.getElementById('nodeSaveBtn')?.addEventListener('click', () => this.saveNodeConfig());
-    }
-
-    enableEdit() {
-        this.isEditMode = true;
-
-        // 确保节点配置弹窗是隐藏的
-        const nodeModalMask = this.shadowRoot.getElementById('nodeModalMask');
-        if (nodeModalMask) {
-            nodeModalMask.hidden = true;
-            nodeModalMask.style.display = 'none';
-        }
-
-        const fields = ['detailName', 'detailDesc', 'detailScheduleCron', 'detailOutputApiConfig', 'detailStatus'];
-        fields.forEach(field => {
-            const valueEl = this.shadowRoot.getElementById(field);
-            const inputEl = this.shadowRoot.getElementById(field + 'Input');
-            if (valueEl && inputEl) {
-                valueEl.style.display = 'none';
-                inputEl.style.display = 'inline-block';
-                inputEl.value = valueEl.textContent === '-' ? '' : valueEl.textContent;
-            }
+        $('nodeModalClose')?.addEventListener('click', () => this.hideNodeModal());
+        $('nodeCancelBtn')?.addEventListener('click', () => this.hideNodeModal());
+        $('nodeSaveBtn')?.addEventListener('click', () => this.saveNodeConfig());
+        $('editAlgorithm')?.addEventListener('click', () => this.editAlgorithmArchive());
+        $('algorithmSelect')?.addEventListener('change', () => {
+            this.loadAlgorithmVersions($('algorithmSelect').value);
+        });
+        $('nodeModalMask')?.addEventListener('click', e => {
+            if (e.target.id === 'nodeModalMask') this.hideNodeModal();
         });
 
-        const editActions = this.shadowRoot.getElementById('editActions');
-        const editBtn = this.shadowRoot.getElementById('editBtn');
-        if (editActions) editActions.style.display = 'flex';
-        if (editBtn) editBtn.style.display = 'none';
-
-        // 启用图编辑器工具栏按钮
-        this.enableGraphToolbar(true);
-    }
-
-    cancelEdit() {
-        this.isEditMode = false;
-        
-        const fields = ['detailName', 'detailDesc', 'detailScheduleCron', 'detailOutputApiConfig', 'detailStatus'];
-        fields.forEach(field => {
-            const valueEl = this.shadowRoot.getElementById(field);
-            const inputEl = this.shadowRoot.getElementById(field + 'Input');
-            if (valueEl && inputEl) {
-                valueEl.style.display = 'inline';
-                inputEl.style.display = 'none';
-            }
+        // Edge modal
+        $('edgeModalClose')?.addEventListener('click', () => this.hideEdgeModal());
+        $('edgeCancelBtn')?.addEventListener('click', () => this.hideEdgeModal());
+        $('edgeSaveBtn')?.addEventListener('click', () => this.saveEdgeConfig());
+        $('edgeModalMask')?.addEventListener('click', e => {
+            if (e.target.id === 'edgeModalMask') this.hideEdgeModal();
         });
 
-        const editActions = this.shadowRoot.getElementById('editActions');
-        const editBtn = this.shadowRoot.getElementById('editBtn');
-        if (editActions) editActions.style.display = 'none';
-        if (editBtn) editBtn.style.display = 'inline-block';
+        // Execution panel
+        $('selectAllNodes')?.addEventListener('change', e => {
+            this.shadowRoot.querySelectorAll('.node-check-item input[type="checkbox"]')
+                .forEach(cb => { cb.checked = e.target.checked; });
+        });
+        $('runBtn')?.addEventListener('click', () => this.runSimulation());
+        $('stopBtn')?.addEventListener('click', () => this.stopSimulation());
+        $('downloadResult')?.addEventListener('click', () => this.downloadResult());
+        $('copyResult')?.addEventListener('click', () => this.copyResult());
+        $('refreshLogBtn')?.addEventListener('click', () => this.refreshLog());
+        $('autoRefreshLogBtn')?.addEventListener('click', () => this.toggleAutoRefreshLog());
 
-        // 禁用图编辑器工具栏按钮
-        this.enableGraphToolbar(false);
-    }
-
-    enableGraphToolbar(enabled) {
-        const toolbarButtons = ['addAlgorithmNode', 'deleteNode', 'addEdge', 'deleteEdge', 'clearGraph'];
-        toolbarButtons.forEach(btnId => {
-            const btn = this.shadowRoot.getElementById(btnId);
-            if (btn) {
-                btn.disabled = !enabled;
-                btn.style.opacity = enabled ? '1' : '0.5';
-                btn.style.cursor = enabled ? 'pointer' : 'not-allowed';
-            }
+        // Result tab switching
+        this.shadowRoot.querySelectorAll('.result-tab').forEach(tab => {
+            tab.addEventListener('click', () => this.switchResultTab(tab.dataset.tab));
         });
     }
 
-    async saveArchive() {
-        const name = this.shadowRoot.getElementById('detailNameInput').value.trim();
-        if (!name) {
-            this.showToast('请输入档案名称', 'error');
-            return;
-        }
-
-        try {
-            if (window.showGlobalLoading) {
-                window.showGlobalLoading('正在保存...');
-            }
-
-            // 获取当前项目信息
-            const username = window.localStorage.getItem('username');
-            const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
-            const projectName = cachedProject ? cachedProject.name : '';
-            const owner = username || '';
-
-            const archiveData = {
-                createTime: this.currentArchive ? this.currentArchive.createTime : null,
-                name: name,
-                description: this.shadowRoot.getElementById('detailDescInput').value.trim(),
-                projectName: projectName,
-                owner: owner,
-                graphJson: JSON.stringify({ nodes: this.nodes, edges: this.edges }),
-                status: this.shadowRoot.getElementById('detailStatusInput').value === 'true',
-                scheduleCron: this.shadowRoot.getElementById('detailScheduleCronInput').value.trim(),
-                outputApiConfig: this.shadowRoot.getElementById('detailOutputApiConfigInput').value.trim()
-            };
-
-            const result = await window.AppConfig.post('simulationArchives', 'save', archiveData);
-
-            if (result.code === 200) {
-                this.showToast('仿真档案保存成功');
-                this.currentArchive = { ...this.currentArchive, ...archiveData };
-                this.updateDisplay();
-                this.cancelEdit();
-            } else {
-                this.showToast(result.message || '保存失败', 'error');
-            }
-        } catch (error) {
-            console.error('保存仿真档案失败:', error);
-            this.showToast('网络错误，保存失败', 'error');
-        } finally {
-            if (window.hideGlobalLoading) {
-                window.hideGlobalLoading();
-            }
-        }
+    // === Show / Display ===
+    async show(archive) {
+        this.currentArchive = archive;
+        this.style.display = 'block';
+        if (archive) this.loadArchiveData(archive);
     }
 
     showAdd() {
         this.currentArchive = null;
         this.isEditMode = true;
-        
-        // 获取当前项目信息
+        if (!this.shadowRoot) { this.style.display = 'block'; return; }
+        const $ = id => this.shadowRoot.getElementById(id);
+
         const username = window.localStorage.getItem('username');
         const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
-        const projectName = cachedProject ? cachedProject.name : '-';
-        const owner = username || '-';
-        
-        // 清空表单
-        this.shadowRoot.getElementById('detailName').textContent = '-';
-        this.shadowRoot.getElementById('detailDesc').textContent = '-';
-        this.shadowRoot.getElementById('detailProjectName').textContent = projectName;
-        this.shadowRoot.getElementById('detailOwner').textContent = owner;
-        this.shadowRoot.getElementById('detailScheduleCron').textContent = '-';
-        this.shadowRoot.getElementById('detailOutputApiConfig').textContent = '-';
-        this.shadowRoot.getElementById('detailStatus').textContent = '启用';
-        this.shadowRoot.getElementById('detailUpdateTime').textContent = '-';
-        this.shadowRoot.getElementById('detailExecutionCount').textContent = '0';
-        
-        // 清空图数据但不调用clearGraph方法（避免触发弹窗）
+
+        const setText = (id, text) => { const el = $(id); if (el) el.textContent = text; };
+        setText('detailTitle', '新建仿真档案');
+        setText('detailName', '-');
+        setText('detailDesc', '-');
+        setText('detailProjectName', cachedProject ? cachedProject.name : '-');
+        setText('detailOwner', username || '-');
+        setText('detailScheduleCron', '-');
+        setText('detailOutputApiConfig', '-');
+        setText('detailStatus', '启用');
+        setText('detailUpdateTime', '-');
+        setText('detailExecutionCount', '0');
+
         this.nodes = [];
         this.edges = [];
         this.selectedNode = null;
         this.selectedEdge = null;
         this.nodeCounter = 0;
         this.edgeCounter = 0;
+        this.executionResult = null;
+        this.isRunning = false;
         this.renderGraph();
-        
-        // 启用编辑模式
+        this.updateNodeCheckList();
+        this.updateExecStatus();
+
         const fields = ['detailName', 'detailDesc', 'detailScheduleCron', 'detailOutputApiConfig', 'detailStatus'];
         fields.forEach(field => {
-            const valueEl = this.shadowRoot.getElementById(field);
-            const inputEl = this.shadowRoot.getElementById(field + 'Input');
-            if (valueEl && inputEl) {
-                valueEl.style.display = 'none';
-                inputEl.style.display = 'inline-block';
-                inputEl.value = '';
-            }
+            const v = $(field), i = $(field + 'Input');
+            if (v && i) { v.style.display = 'none'; i.style.display = 'inline-block'; i.value = ''; }
         });
-        
-        // 设置默认值
-        this.shadowRoot.getElementById('detailStatusInput').value = 'true';
-        
-        const editActions = this.shadowRoot.getElementById('editActions');
-        const editBtn = this.shadowRoot.getElementById('editBtn');
-        const graphSection = this.shadowRoot.getElementById('graphSection');
-        if (editActions) editActions.style.display = 'flex';
-        if (editBtn) editBtn.style.display = 'none';
-        if (graphSection) graphSection.style.display = 'block';
-        
-        // 确保节点配置弹窗是隐藏的
-        const nodeModalMask = this.shadowRoot.getElementById('nodeModalMask');
-        if (nodeModalMask) {
-            nodeModalMask.hidden = true;
-            nodeModalMask.style.display = 'none';
-        }
-        
+        const dsi = $('detailStatusInput'); if (dsi) dsi.value = 'true';
+        const ea = $('editActions'), eb = $('editBtn');
+        if (ea) ea.style.display = 'flex';
+        if (eb) eb.style.display = 'none';
+
+        // Hide modals
+        const nmm = $('nodeModalMask');
+        if (nmm) { nmm.hidden = true; nmm.style.display = 'none'; }
+
         this.style.display = 'block';
     }
 
     async showDetail(createTime) {
         try {
-            if (window.showGlobalLoading) {
-                window.showGlobalLoading('正在加载仿真档案详情...');
-            }
-
-            // 确保节点配置弹窗是隐藏的
-            const nodeModalMask = this.shadowRoot.getElementById('nodeModalMask');
-            if (nodeModalMask) {
-                nodeModalMask.hidden = true;
-                nodeModalMask.style.display = 'none';
-            }
-
+            if (window.showGlobalLoading) window.showGlobalLoading('正在加载...');
             const result = await window.AppConfig.post('simulationArchives', 'query', { createTime });
-
             if (result.code === 200 && result.data && result.data.length > 0) {
                 this.currentArchive = result.data[0];
-                this.updateDisplay();
+                this.loadArchiveData(this.currentArchive);
                 this.style.display = 'block';
             } else {
                 this.showToast('未找到仿真档案', 'error');
             }
         } catch (error) {
-            console.error('加载仿真档案详情失败:', error);
-            this.showToast('加载仿真档案详情失败', 'error');
+            this.showToast('加载失败', 'error');
         } finally {
-            if (window.hideGlobalLoading) {
-                window.hideGlobalLoading();
-            }
+            if (window.hideGlobalLoading) window.hideGlobalLoading();
         }
     }
 
-    updateDisplay() {
-        if (!this.currentArchive) return;
+    loadArchiveData(archive) {
+        if (!this.shadowRoot) return;
+        const $ = id => this.shadowRoot.getElementById(id);
+        const setText = (id, text) => { const el = $(id); if (el) el.textContent = text; };
+        setText('detailTitle', archive.name || '仿真档案详情');
+        setText('detailName', archive.name || '-');
+        setText('detailDesc', archive.description || '-');
+        setText('detailProjectName', archive.projectName || '-');
+        setText('detailOwner', archive.owner || '-');
+        setText('detailScheduleCron', archive.scheduleCron || '未配置');
+        setText('detailOutputApiConfig', archive.outputApiConfig || '未配置');
+        setText('detailStatus', archive.status ? '启用' : '禁用');
+        setText('detailUpdateTime', archive.updateTime ? new Date(archive.updateTime).toLocaleString('zh-CN') : '-');
+        setText('detailExecutionCount', archive.executionCount || 0);
 
-        const archive = this.currentArchive;
-        
-        this.shadowRoot.getElementById('detailName').textContent = archive.name || '-';
-        this.shadowRoot.getElementById('detailDesc').textContent = archive.description || '-';
-        this.shadowRoot.getElementById('detailProjectName').textContent = archive.projectName || '-';
-        this.shadowRoot.getElementById('detailOwner').textContent = archive.owner || '-';
-        this.shadowRoot.getElementById('detailScheduleCron').textContent = archive.scheduleCron || '-';
-        this.shadowRoot.getElementById('detailOutputApiConfig').textContent = archive.outputApiConfig || '-';
-        this.shadowRoot.getElementById('detailStatus').textContent = archive.status ? '启用' : '禁用';
-        this.shadowRoot.getElementById('detailUpdateTime').textContent = archive.updateTime ? new Date(archive.updateTime).toLocaleString('zh-CN') : '-';
-        this.shadowRoot.getElementById('detailExecutionCount').textContent = archive.executionCount || 0;
-
-        // Load graph
         if (archive.graphJson) {
             try {
                 const graphData = JSON.parse(archive.graphJson);
                 this.nodes = graphData.nodes || [];
                 this.edges = graphData.edges || [];
-                this.renderGraph();
+                this.nodeCounter = this.nodes.reduce((max, n) => {
+                    const num = parseInt((n.nodeId || '').replace('node_', '')) || 0;
+                    return num > max ? num : max;
+                }, 0);
+                this.edgeCounter = this.edges.reduce((max, e) => {
+                    const num = parseInt((e.edgeId || '').replace('edge_', '')) || 0;
+                    return num > max ? num : max;
+                }, 0);
             } catch (e) {
-                console.error('Failed to parse graph JSON:', e);
-                this.clearGraph();
+                console.error('解析图数据失败:', e);
+                this.nodes = [];
+                this.edges = [];
             }
         } else {
-            this.clearGraph();
+            this.nodes = [];
+            this.edges = [];
         }
 
-        // 查看详情时禁用图编辑器工具栏按钮
-        this.enableGraphToolbar(false);
+        this.isRunning = archive.isRunning || false;
+        this.executionResult = null;
+        this.renderGraph();
+        this.updateNodeCheckList();
+        this.updateExecStatus();
     }
 
-    // Graph Editor Methods
+    // === Edit Mode ===
+    // Alias for backward compatibility with simulation-archive.js
+    enableEdit() { this.startEdit(); }
+
+    startEdit() {
+        this.isEditMode = true;
+        if (!this.shadowRoot) return;
+        const $ = id => this.shadowRoot.getElementById(id);
+
+        const nmm = $('nodeModalMask');
+        if (nmm) { nmm.hidden = true; nmm.style.display = 'none'; }
+
+        const fields = ['detailName', 'detailDesc', 'detailScheduleCron', 'detailOutputApiConfig', 'detailStatus'];
+        fields.forEach(field => {
+            const v = $(field), i = $(field + 'Input');
+            if (v && i) {
+                v.style.display = 'none';
+                i.style.display = 'inline-block';
+                i.value = v.textContent === '-' || v.textContent === '未配置' ? '' : v.textContent;
+            }
+        });
+
+        const ea = $('editActions'), eb = $('editBtn');
+        if (ea) ea.style.display = 'flex';
+        if (eb) eb.style.display = 'none';
+    }
+
+    cancelEdit() {
+        this.isEditMode = false;
+        if (!this.shadowRoot) return;
+        const $ = id => this.shadowRoot.getElementById(id);
+        const fields = ['detailName', 'detailDesc', 'detailScheduleCron', 'detailOutputApiConfig', 'detailStatus'];
+        fields.forEach(field => {
+            const v = $(field), i = $(field + 'Input');
+            if (v && i) { v.style.display = 'inline'; i.style.display = 'none'; }
+        });
+        const ea = $('editActions'), eb = $('editBtn');
+        if (ea) ea.style.display = 'none';
+        if (eb) eb.style.display = 'inline-block';
+    }
+
+    async saveArchive() {
+        const $ = id => this.shadowRoot.getElementById(id);
+        const name = $('detailNameInput').value.trim();
+        if (!name) { this.showToast('请输入档案名称', 'error'); return; }
+
+        try {
+            if (window.showGlobalLoading) window.showGlobalLoading('正在保存...');
+            const username = window.localStorage.getItem('username');
+            const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
+
+            const archiveData = {
+                createTime: this.currentArchive ? this.currentArchive.createTime : null,
+                name,
+                description: $('detailDescInput').value.trim(),
+                projectName: cachedProject ? cachedProject.name : '',
+                owner: username || '',
+                graphJson: JSON.stringify({ nodes: this.nodes, edges: this.edges }),
+                status: $('detailStatusInput').value === 'true',
+                scheduleCron: $('detailScheduleCronInput').value.trim(),
+                outputApiConfig: $('detailOutputApiConfigInput').value.trim()
+            };
+
+            const result = await window.AppConfig.post('simulationArchives', 'save', archiveData);
+            if (result.code === 200) {
+                this.showToast('保存成功');
+                this.currentArchive = { ...this.currentArchive, ...archiveData };
+                this.loadArchiveData(this.currentArchive);
+                this.cancelEdit();
+            } else {
+                this.showToast(result.message || '保存失败', 'error');
+            }
+        } catch (error) {
+            this.showToast('网络错误', 'error');
+        } finally {
+            if (window.hideGlobalLoading) window.hideGlobalLoading();
+        }
+    }
+
+    // === Graph Editor ===
     renderGraph() {
         const svg = this.shadowRoot.getElementById('graphSvg');
         if (!svg) return;
-
         svg.innerHTML = '';
 
-        // Add defs for arrow markers
+        // Click on canvas background to deselect and close context menu
+        svg.addEventListener('click', e => {
+            if (e.target === svg) {
+                this.selectedNode = null;
+                this.selectedEdge = null;
+                this.hideContextMenu();
+                this.renderGraph();
+            }
+        });
+        svg.addEventListener('contextmenu', e => {
+            e.preventDefault();
+            this.hideContextMenu();
+        });
+
+        // Arrow marker
         const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
         const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
         marker.setAttribute('id', 'arrowhead');
@@ -355,26 +331,35 @@ class SimulationArchiveDetail extends HTMLElement {
 
         // Render edges
         this.edges.forEach(edge => {
-            const sourceNode = this.nodes.find(n => n.nodeId === edge.sourceNodeId);
-            const targetNode = this.nodes.find(n => n.nodeId === edge.targetNodeId);
-            
-            if (sourceNode && targetNode) {
-                const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-                line.setAttribute('x1', sourceNode.positionX || 100);
-                line.setAttribute('y1', sourceNode.positionY || 100);
-                line.setAttribute('x2', targetNode.positionX || 200);
-                line.setAttribute('y2', targetNode.positionY || 100);
-                line.setAttribute('class', 'graph-edge' + (this.selectedEdge === edge.edgeId ? ' selected' : ''));
-                line.setAttribute('marker-end', 'url(#arrowhead)');
-                line.setAttribute('data-edge-id', edge.edgeId);
-                
-                line.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    this.selectEdge(edge.edgeId);
-                });
-                
-                svg.appendChild(line);
-            }
+            const sn = this.nodes.find(n => n.nodeId === edge.sourceNodeId);
+            const tn = this.nodes.find(n => n.nodeId === edge.targetNodeId);
+            if (!sn || !tn) return;
+
+            const sx = sn.positionX || 100, sy = sn.positionY || 100;
+            const tx = tn.positionX || 200, ty = tn.positionY || 100;
+            const dx = tx - sx, dy = ty - sy;
+            const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+            const r = 30;
+
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', sx + (dx / dist) * r);
+            line.setAttribute('y1', sy + (dy / dist) * r);
+            line.setAttribute('x2', tx - (dx / dist) * r);
+            line.setAttribute('y2', ty - (dy / dist) * r);
+            line.setAttribute('class', 'graph-edge' + (this.selectedEdge === edge.edgeId ? ' selected' : ''));
+            line.setAttribute('marker-end', 'url(#arrowhead)');
+            line.addEventListener('click', e => { e.stopPropagation(); this.selectEdge(edge.edgeId); });
+            line.addEventListener('dblclick', e => {
+                e.stopPropagation();
+                if (this.isEditMode) this.showEdgeModal(edge);
+            });
+            line.addEventListener('contextmenu', e => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.selectEdge(edge.edgeId);
+                this.showEdgeContextMenu(edge, e.clientX, e.clientY);
+            });
+            svg.appendChild(line);
         });
 
         // Render nodes
@@ -386,26 +371,30 @@ class SimulationArchiveDetail extends HTMLElement {
 
             const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
             circle.setAttribute('r', '30');
-            
+
             const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
             text.setAttribute('x', '0');
-            text.setAttribute('y', '45');
+            text.setAttribute('y', '5');
             text.setAttribute('text-anchor', 'middle');
             text.textContent = node.nodeName || '算法节点';
 
+            const algoLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            algoLabel.setAttribute('class', 'algo-label');
+            algoLabel.setAttribute('x', '0');
+            algoLabel.setAttribute('y', '50');
+            algoLabel.setAttribute('text-anchor', 'middle');
+            algoLabel.textContent = node.algorithmName ? `${node.algorithmName}:${node.algorithmVersion || ''}` : '未配置';
+
             g.appendChild(circle);
             g.appendChild(text);
+            g.appendChild(algoLabel);
 
-            // Make node draggable
+            // Dragging
             let isDragging = false;
             let startX, startY;
 
-            g.addEventListener('mousedown', (e) => {
-                if (this.isAddingEdge) {
-                    this.handleEdgeClick(node.nodeId);
-                    return;
-                }
-                
+            g.addEventListener('mousedown', e => {
+                if (this.isAddingEdge) { this.handleEdgeClick(node.nodeId); return; }
                 isDragging = true;
                 startX = e.clientX - (node.positionX || 100);
                 startY = e.clientY - (node.positionY || 100);
@@ -413,88 +402,112 @@ class SimulationArchiveDetail extends HTMLElement {
                 e.stopPropagation();
             });
 
-            g.addEventListener('click', (e) => {
+            g.addEventListener('click', e => {
                 if (!isDragging) {
                     this.selectNode(node.nodeId);
-                    if (!this.isAddingEdge && this.isEditMode) {
-                        this.showNodeModal(node);
-                    }
                 }
                 e.stopPropagation();
             });
 
-            svg.addEventListener('mousemove', (e) => {
+            g.addEventListener('dblclick', e => {
+                if (this.isEditMode) this.showNodeModal(node);
+                e.stopPropagation();
+            });
+
+            g.addEventListener('contextmenu', e => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.selectNode(node.nodeId);
+                this.showNodeContextMenu(node, e.clientX, e.clientY);
+            });
+
+            svg.addEventListener('mousemove', e => {
                 if (isDragging) {
-                    node.positionX = e.clientX - startX;
-                    node.positionY = e.clientY - startY;
+                    node.positionX = Math.max(30, e.clientX - startX);
+                    node.positionY = Math.max(30, e.clientY - startY);
                     g.setAttribute('transform', `translate(${node.positionX}, ${node.positionY})`);
-                    this.renderGraph();
+                    this.refreshEdges(svg);
                 }
             });
 
-            svg.addEventListener('mouseup', () => {
-                isDragging = false;
-            });
-
+            svg.addEventListener('mouseup', () => { isDragging = false; });
             svg.appendChild(g);
         });
 
-        // Update info
-        this.shadowRoot.getElementById('nodeCount').textContent = this.nodes.length;
-        this.shadowRoot.getElementById('edgeCount').textContent = this.edges.length;
+        const nc = this.shadowRoot.getElementById('nodeCount');
+        const ec = this.shadowRoot.getElementById('edgeCount');
+        if (nc) nc.textContent = this.nodes.length;
+        if (ec) ec.textContent = this.edges.length;
+    }
+
+    refreshEdges(svg) {
+        svg.querySelectorAll('.graph-edge').forEach(el => el.remove());
+        this.edges.forEach(edge => {
+            const sn = this.nodes.find(n => n.nodeId === edge.sourceNodeId);
+            const tn = this.nodes.find(n => n.nodeId === edge.targetNodeId);
+            if (!sn || !tn) return;
+            const sx = sn.positionX || 100, sy = sn.positionY || 100;
+            const tx = tn.positionX || 200, ty = tn.positionY || 100;
+            const dx = tx - sx, dy = ty - sy;
+            const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+            const r = 30;
+
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', sx + (dx / dist) * r);
+            line.setAttribute('y1', sy + (dy / dist) * r);
+            line.setAttribute('x2', tx - (dx / dist) * r);
+            line.setAttribute('y2', ty - (dy / dist) * r);
+            line.setAttribute('class', 'graph-edge' + (this.selectedEdge === edge.edgeId ? ' selected' : ''));
+            line.setAttribute('marker-end', 'url(#arrowhead)');
+            line.addEventListener('click', e => { e.stopPropagation(); this.selectEdge(edge.edgeId); });
+            line.addEventListener('dblclick', e => {
+                e.stopPropagation();
+                if (this.isEditMode) this.showEdgeModal(edge);
+            });
+            line.addEventListener('contextmenu', e => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.selectEdge(edge.edgeId);
+                this.showEdgeContextMenu(edge, e.clientX, e.clientY);
+            });
+
+            const firstNode = svg.querySelector('.graph-node');
+            if (firstNode) svg.insertBefore(line, firstNode);
+            else svg.appendChild(line);
+        });
     }
 
     addNode() {
-        if (!this.isEditMode) {
-            this.showToast('请先点击编辑按钮', 'warning');
-            return;
-        }
-
+        if (!this.isEditMode) { this.showToast('请先点击编辑按钮', 'warning'); return; }
         const node = {
             nodeId: 'node_' + (++this.nodeCounter),
             nodeName: '算法节点' + this.nodeCounter,
             algorithmName: '',
             algorithmVersion: '',
-            boundModelName: '',
-            boundModelVersion: '',
-            startTime: 0,
-            endTime: 0,
+            startTime: null,
+            endTime: null,
             executionParams: '{}',
             enabled: true,
-            positionX: 100 + Math.random() * 300,
-            positionY: 100 + Math.random() * 200
+            positionX: 80 + (this.nodes.length % 5) * 120,
+            positionY: 80 + Math.floor(this.nodes.length / 5) * 100
         };
-        
         this.nodes.push(node);
         this.renderGraph();
+        this.updateNodeCheckList();
+        this.showNodeModal(node);
     }
 
     deleteSelectedNode() {
-        if (!this.isEditMode) {
-            this.showToast('请先点击编辑按钮', 'warning');
-            return;
-        }
-
-        if (!this.selectedNode) {
-            this.showToast('请先选择要删除的节点', 'error');
-            return;
-        }
-
-        this.edges = this.edges.filter(e => 
-            e.sourceNodeId !== this.selectedNode && e.targetNodeId !== this.selectedNode
-        );
+        if (!this.isEditMode) { this.showToast('请先点击编辑按钮', 'warning'); return; }
+        if (!this.selectedNode) { this.showToast('请先选择要删除的节点', 'error'); return; }
+        this.edges = this.edges.filter(e => e.sourceNodeId !== this.selectedNode && e.targetNodeId !== this.selectedNode);
         this.nodes = this.nodes.filter(n => n.nodeId !== this.selectedNode);
         this.selectedNode = null;
-        
         this.renderGraph();
+        this.updateNodeCheckList();
     }
 
-    selectNode(nodeId) {
-        this.selectedNode = nodeId;
-        this.selectedEdge = null;
-        this.renderGraph();
-    }
-
+    selectNode(nodeId) { this.selectedNode = nodeId; this.selectedEdge = null; this.renderGraph(); }
     selectEdge(edgeId) {
         this.selectedEdge = edgeId;
         this.selectedNode = null;
@@ -502,44 +515,25 @@ class SimulationArchiveDetail extends HTMLElement {
     }
 
     startAddEdge() {
-        if (!this.isEditMode) {
-            this.showToast('请先点击编辑按钮', 'warning');
-            return;
-        }
-
+        if (!this.isEditMode) { this.showToast('请先点击编辑按钮', 'warning'); return; }
         this.isAddingEdge = true;
         this.edgeStartNode = null;
-        this.showToast('请依次点击两个节点以创建连线', 'info');
+        this.showToast('请依次点击源节点和目标节点', 'info');
     }
 
     handleEdgeClick(nodeId) {
         if (!this.edgeStartNode) {
             this.edgeStartNode = nodeId;
-            this.showToast('请选择目标节点');
+            const node = this.nodes.find(n => n.nodeId === nodeId);
+            this.showToast(`已选择源节点: ${node ? node.nodeName : nodeId}，请点击目标节点`);
         } else {
-            if (this.edgeStartNode === nodeId) {
-                this.showToast('不能连接到自身', 'error');
-                this.edgeStartNode = null;
-                return;
-            }
-
-            const exists = this.edges.some(e => 
-                e.sourceNodeId === this.edgeStartNode && e.targetNodeId === nodeId
-            );
-
-            if (exists) {
-                this.showToast('连线已存在', 'error');
-            } else {
-                const edge = {
-                    edgeId: 'edge_' + (++this.edgeCounter),
-                    sourceNodeId: this.edgeStartNode,
-                    targetNodeId: nodeId,
-                    dataMapping: '{}'
-                };
-                this.edges.push(edge);
+            if (this.edgeStartNode === nodeId) { this.showToast('不能连接到自身', 'error'); this.edgeStartNode = null; return; }
+            const exists = this.edges.some(e => e.sourceNodeId === this.edgeStartNode && e.targetNodeId === nodeId);
+            if (exists) { this.showToast('连线已存在', 'error'); }
+            else {
+                this.edges.push({ edgeId: 'edge_' + (++this.edgeCounter), sourceNodeId: this.edgeStartNode, targetNodeId: nodeId, dataMapping: '{}' });
                 this.showToast('连线创建成功');
             }
-
             this.isAddingEdge = false;
             this.edgeStartNode = null;
             this.renderGraph();
@@ -547,28 +541,29 @@ class SimulationArchiveDetail extends HTMLElement {
     }
 
     deleteSelectedEdge() {
-        if (!this.isEditMode) {
-            this.showToast('请先点击编辑按钮', 'warning');
-            return;
-        }
-
-        if (!this.selectedEdge) {
-            this.showToast('请先选择要删除的连线', 'error');
-            return;
-        }
-
+        if (!this.isEditMode) { this.showToast('请先点击编辑按钮', 'warning'); return; }
+        if (!this.selectedEdge) { this.showToast('请先选择要删除的连线', 'error'); return; }
         this.edges = this.edges.filter(e => e.edgeId !== this.selectedEdge);
         this.selectedEdge = null;
-        
         this.renderGraph();
     }
 
-    clearGraph() {
-        if (!this.isEditMode) {
-            this.showToast('请先点击编辑按钮', 'warning');
-            return;
-        }
+    autoLayout() {
+        if (this.nodes.length === 0) return;
+        const inDegree = {};
+        this.nodes.forEach(n => inDegree[n.nodeId] = 0);
+        this.edges.forEach(e => { if (inDegree[e.targetNodeId] !== undefined) inDegree[e.targetNodeId]++; });
+        const sorted = [...this.nodes].sort((a, b) => (inDegree[a.nodeId] || 0) - (inDegree[b.nodeId] || 0));
+        sorted.forEach((node, i) => {
+            node.positionX = 80 + (i % 5) * 120;
+            node.positionY = 60 + Math.floor(i / 5) * 100;
+        });
+        this.renderGraph();
+        this.showToast('自动布局完成');
+    }
 
+    clearGraph() {
+        if (!this.isEditMode) { this.showToast('请先点击编辑按钮', 'warning'); return; }
         this.nodes = [];
         this.edges = [];
         this.selectedNode = null;
@@ -576,123 +571,595 @@ class SimulationArchiveDetail extends HTMLElement {
         this.nodeCounter = 0;
         this.edgeCounter = 0;
         this.renderGraph();
+        this.updateNodeCheckList();
     }
 
+    // === Node Modal ===
     async showNodeModal(node) {
-        const modal = this.shadowRoot.getElementById('nodeModalMask');
-        const form = this.shadowRoot.getElementById('nodeForm');
-        
-        if (modal && form) {
-            this.shadowRoot.getElementById('nodeId').value = node.nodeId;
-            this.shadowRoot.getElementById('nodeName').value = node.nodeName;
-            this.shadowRoot.getElementById('startTime').value = node.startTime || '';
-            this.shadowRoot.getElementById('endTime').value = node.endTime || '';
-            this.shadowRoot.getElementById('executionParams').value = node.executionParams || '{}';
-            
-            // Load algorithms
-            await this.loadAlgorithms();
-            this.shadowRoot.getElementById('algorithmSelect').value = node.algorithmName ? `${node.algorithmName}_${node.algorithmVersion}` : '';
-            
-            // Load models
-            await this.loadModels();
-            this.shadowRoot.getElementById('modelSelect').value = node.boundModelName ? `${node.boundModelName}_${node.boundModelVersion}` : '';
-            
-            modal.hidden = false;
-            modal.style.display = 'flex';
+        const $ = id => this.shadowRoot.getElementById(id);
+        $('nodeId').value = node.nodeId;
+        $('nodeName').value = node.nodeName || '';
+        $('startTime').value = node.startTime ? this.msToDatetimeLocal(node.startTime) : '';
+        $('endTime').value = node.endTime ? this.msToDatetimeLocal(node.endTime) : '';
+
+        await this.loadAlgorithms();
+        $('algorithmSelect').value = node.algorithmName || '';
+
+        // Load versions for the selected algorithm
+        if (node.algorithmName) {
+            await this.loadAlgorithmVersions(node.algorithmName);
+            $('algorithmVersion').value = node.algorithmVersion || '';
         }
+
+        // Store current node for toolbar editAlgorithm button
+        this._editingNode = node;
+
+        $('nodeModalMask').hidden = false;
+        $('nodeModalMask').style.display = 'flex';
     }
 
     async loadAlgorithms() {
         try {
-            const result = await window.AppConfig.post('algorithm', 'metas', {});
             const select = this.shadowRoot.getElementById('algorithmSelect');
-            if (select && result.code === 200 && result.data) {
+            if (!select) return;
+
+            // 从/api/algorithm/tree接口获取算法列表
+            const result = await window.AppConfig.get('algorithm', 'tree', {});
+            if (!result || !result.data) {
+                console.warn('获取算法树失败');
                 select.innerHTML = '<option value="">请选择算法</option>';
-                if (Array.isArray(result.data)) {
-                    result.data.forEach(algo => {
-                        select.innerHTML += `<option value="${algo.name}_${algo.version}">${algo.name} (${algo.version})</option>`;
-                    });
-                } else {
-                    select.innerHTML += `<option value="${result.data.name}_${result.data.version}">${result.data.name} (${result.data.version})</option>`;
-                }
+                return;
             }
-        } catch (error) {
-            console.error('加载算法列表失败:', error);
-        }
+
+            const paths = Array.isArray(result.data) ? result.data : [result.data];
+            const algorithmNames = new Set();
+
+            paths.forEach(path => {
+                if (path && path.startsWith('algorithms_system.')) {
+                    const parts = path.split('.');
+                    if (parts.length >= 2) {
+                        // 倒数第二级是算法名，最后一级是版本
+                        const algorithmName = parts[parts.length - 2];
+                        if (algorithmName) {
+                            algorithmNames.add(algorithmName);
+                        }
+                    }
+                }
+            });
+
+            select.innerHTML = '<option value="">请选择算法</option>';
+            Array.from(algorithmNames).sort().forEach(name => {
+                const option = document.createElement('option');
+                option.value = name;
+                option.textContent = name;
+                select.appendChild(option);
+            });
+        } catch (e) { console.error('加载算法列表失败:', e); }
     }
 
-    async loadModels() {
-        try {
-            const result = await window.AppConfig.post('model', 'metas', {});
-            const select = this.shadowRoot.getElementById('modelSelect');
-            if (select && result.code === 200 && result.data) {
-                select.innerHTML = '<option value="">不绑定模型</option>';
-                if (Array.isArray(result.data)) {
-                    result.data.forEach(model => {
-                        select.innerHTML += `<option value="${model.name}_${model.version}">${model.name} (${model.version})</option>`;
-                    });
-                } else {
-                    select.innerHTML += `<option value="${result.data.name}_${result.data.version}">${result.data.name} (${result.data.version})</option>`;
-                }
-            }
-        } catch (error) {
-            console.error('加载模型列表失败:', error);
+    async loadAlgorithmVersions(algorithmName) {
+        const versionSelect = this.shadowRoot.getElementById('algorithmVersion');
+        if (!versionSelect) return;
+
+        if (!algorithmName) {
+            versionSelect.innerHTML = '<option value="">请先选择算法</option>';
+            return;
         }
+
+        try {
+            // 从/api/algorithm/tree接口获取算法版本
+            const result = await window.AppConfig.get('algorithm', 'tree', {});
+            if (!result || !result.data) {
+                console.warn('获取算法树失败');
+                versionSelect.innerHTML = '<option value="">获取版本失败</option>';
+                return;
+            }
+
+            const paths = Array.isArray(result.data) ? result.data : [result.data];
+            const versions = [];
+
+            paths.forEach(path => {
+                if (path && path.startsWith('algorithms_system.')) {
+                    const parts = path.split('.');
+                    if (parts.length >= 2) {
+                        // 倒数第二级是算法名，最后一级是版本
+                        const pathAlgorithmName = parts[parts.length - 2];
+                        const version = parts[parts.length - 1];
+                        if (pathAlgorithmName === algorithmName && version && !versions.includes(version)) {
+                            versions.push(version);
+                        }
+                    }
+                }
+            });
+
+            versionSelect.innerHTML = '<option value="">请选择版本</option>';
+            versions.sort().forEach(version => {
+                const option = document.createElement('option');
+                option.value = version;
+                option.textContent = version;
+                versionSelect.appendChild(option);
+            });
+        } catch (e) { console.error('加载算法版本失败:', e); }
     }
 
     hideNodeModal() {
-        const modal = this.shadowRoot.getElementById('nodeModalMask');
-        if (modal) {
-            modal.hidden = true;
-            modal.style.display = 'none';
-        }
+        const m = this.shadowRoot.getElementById('nodeModalMask');
+        if (m) { m.hidden = true; m.style.display = 'none'; }
+    }
+
+    msToDatetimeLocal(ms) {
+        const d = new Date(ms);
+        const pad = n => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    }
+
+    datetimeLocalToMs(str) {
+        return new Date(str).getTime();
     }
 
     saveNodeConfig() {
-        const nodeId = this.shadowRoot.getElementById('nodeId').value;
-        const nodeName = this.shadowRoot.getElementById('nodeName').value.trim();
-        const algorithmSelect = this.shadowRoot.getElementById('algorithmSelect').value;
-        const modelSelect = this.shadowRoot.getElementById('modelSelect').value;
-        const startTime = this.shadowRoot.getElementById('startTime').value;
-        const endTime = this.shadowRoot.getElementById('endTime').value;
-        const executionParams = this.shadowRoot.getElementById('executionParams').value;
+        const $ = id => this.shadowRoot.getElementById(id);
+        const node = this.nodes.find(n => n.nodeId === $('nodeId').value);
+        if (!node) return;
 
-        const node = this.nodes.find(n => n.nodeId === nodeId);
-        if (node) {
-            node.nodeName = nodeName;
-            
-            if (algorithmSelect) {
-                const [algorithmName, algorithmVersion] = algorithmSelect.split('_');
-                node.algorithmName = algorithmName;
-                node.algorithmVersion = algorithmVersion;
-            }
-            
-            if (modelSelect) {
-                const [modelName, modelVersion] = modelSelect.split('_');
-                node.boundModelName = modelName;
-                node.boundModelVersion = modelVersion;
-            }
-            
-            node.startTime = startTime ? parseInt(startTime) : 0;
-            node.endTime = endTime ? parseInt(endTime) : 0;
-            node.executionParams = executionParams || '{}';
-            
-            this.renderGraph();
-            this.hideNodeModal();
+        node.nodeName = $('nodeName').value.trim() || node.nodeName;
+        node.algorithmName = $('algorithmSelect').value || '';
+        node.algorithmVersion = $('algorithmVersion').value || '';
+
+        node.startTime = $('startTime').value ? this.datetimeLocalToMs($('startTime').value) : null;
+        node.endTime = $('endTime').value ? this.datetimeLocalToMs($('endTime').value) : null;
+
+        this.renderGraph();
+        this.updateNodeCheckList();
+        this.hideNodeModal();
+    }
+
+    editAlgorithmArchive() {
+        if (!this.selectedNode) {
+            this.showToast('请先在图中选择一个算法节点', 'warning');
+            return;
         }
+        const node = this.nodes.find(n => n.nodeId === this.selectedNode);
+        if (!node || !node.algorithmName) {
+            this.showToast('该节点未配置算法', 'warning');
+            return;
+        }
+        // Open the algorithm-edit component
+        const algoEdit = document.getElementById('algorithmEdit');
+        if (algoEdit && typeof algoEdit.show === 'function') {
+            algoEdit.show({ name: node.algorithmName, version: node.algorithmVersion });
+        } else {
+            this.showToast('算法编辑组件未加载', 'error');
+        }
+    }
+
+    // === Context Menu ===
+    hideContextMenu() {
+        const existing = this.shadowRoot.querySelector('.context-menu');
+        if (existing) existing.remove();
+    }
+
+    showNodeContextMenu(node, x, y) {
+        this.hideContextMenu();
+        const menu = document.createElement('div');
+        menu.className = 'context-menu';
+        menu.style.left = x + 'px';
+        menu.style.top = y + 'px';
+
+        const items = [
+            { label: '配置节点', action: () => { if (this.isEditMode) this.showNodeModal(node); } },
+            { label: '编辑算法档案', action: () => this.editAlgorithmArchive() },
+            { separator: true },
+            { label: '删除节点', danger: true, action: () => this.deleteSelectedNode() }
+        ];
+
+        items.forEach(item => {
+            if (item.separator) {
+                const sep = document.createElement('div');
+                sep.className = 'context-menu-separator';
+                menu.appendChild(sep);
+                return;
+            }
+            const el = document.createElement('div');
+            el.className = 'context-menu-item' + (item.danger ? ' danger' : '');
+            el.textContent = item.label;
+            el.addEventListener('click', () => { this.hideContextMenu(); item.action(); });
+            menu.appendChild(el);
+        });
+
+        this.shadowRoot.appendChild(menu);
+
+        // Close on click outside
+        const closeHandler = e => {
+            if (!menu.contains(e.target)) { this.hideContextMenu(); document.removeEventListener('click', closeHandler); }
+        };
+        setTimeout(() => document.addEventListener('click', closeHandler), 0);
+    }
+
+    showEdgeContextMenu(edge, x, y) {
+        this.hideContextMenu();
+        const menu = document.createElement('div');
+        menu.className = 'context-menu';
+        menu.style.left = x + 'px';
+        menu.style.top = y + 'px';
+
+        const items = [
+            { label: '配置数据映射', action: () => { if (this.isEditMode) this.showEdgeModal(edge); } },
+            { separator: true },
+            { label: '删除连线', danger: true, action: () => this.deleteSelectedEdge() }
+        ];
+
+        items.forEach(item => {
+            if (item.separator) {
+                const sep = document.createElement('div');
+                sep.className = 'context-menu-separator';
+                menu.appendChild(sep);
+                return;
+            }
+            const el = document.createElement('div');
+            el.className = 'context-menu-item' + (item.danger ? ' danger' : '');
+            el.textContent = item.label;
+            el.addEventListener('click', () => { this.hideContextMenu(); item.action(); });
+            menu.appendChild(el);
+        });
+
+        this.shadowRoot.appendChild(menu);
+
+        const closeHandler = e => {
+            if (!menu.contains(e.target)) { this.hideContextMenu(); document.removeEventListener('click', closeHandler); }
+        };
+        setTimeout(() => document.addEventListener('click', closeHandler), 0);
+    }
+
+    // === Edge Modal ===
+    showEdgeModal(edge) {
+        const $ = id => this.shadowRoot.getElementById(id);
+        const sourceNode = this.nodes.find(n => n.nodeId === edge.sourceNodeId);
+        const targetNode = this.nodes.find(n => n.nodeId === edge.targetNodeId);
+        $('edgeId').value = edge.edgeId;
+
+        let mapping = {};
+        if (edge.dataMapping) {
+            try { mapping = JSON.parse(edge.dataMapping); } catch (e) { /* ignore */ }
+        }
+        $('edgeSourceField').value = mapping.sourceOutput || '';
+        $('edgeTargetField').value = mapping.targetInput || '';
+
+        // Update labels to show node names
+        const sourceLabel = sourceNode ? sourceNode.nodeName : edge.sourceNodeId;
+        const targetLabel = targetNode ? targetNode.nodeName : edge.targetNodeId;
+        $('edgeSourceField').placeholder = `${sourceLabel} 的输出字段`;
+        $('edgeTargetField').placeholder = `${targetLabel} 的输入字段`;
+
+        $('edgeModalMask').hidden = false;
+        $('edgeModalMask').style.display = 'flex';
+    }
+
+    hideEdgeModal() {
+        const m = this.shadowRoot.getElementById('edgeModalMask');
+        if (m) { m.hidden = true; m.style.display = 'none'; }
+    }
+
+    saveEdgeConfig() {
+        const $ = id => this.shadowRoot.getElementById(id);
+        const edgeId = $('edgeId').value;
+        const edge = this.edges.find(e => e.edgeId === edgeId);
+        if (!edge) { this.hideEdgeModal(); return; }
+
+        const sourceOutput = $('edgeSourceField').value.trim();
+        const targetInput = $('edgeTargetField').value.trim();
+        edge.dataMapping = JSON.stringify({ sourceOutput, targetInput });
+        this.hideEdgeModal();
+    }
+
+    // === Execution Panel ===
+    updateNodeCheckList() {
+        const list = this.shadowRoot.getElementById('nodeCheckList');
+        if (!list) return;
+        if (this.nodes.length === 0) { list.innerHTML = '<div class="empty-hint">请先添加算法节点</div>'; return; }
+
+        list.innerHTML = '';
+        this.nodes.forEach(node => {
+            const item = document.createElement('div');
+            item.className = 'node-check-item';
+            const statusClass = node.executionStatus || 'pending';
+            item.innerHTML = `<label><input type="checkbox" data-node-id="${node.nodeId}" checked><span class="node-status ${statusClass}"></span>${node.nodeName || node.nodeId}</label>`;
+            list.appendChild(item);
+        });
+    }
+
+    getSelectedNodeIds() {
+        return Array.from(this.shadowRoot.querySelectorAll('.node-check-item input[type="checkbox"]:checked'))
+            .map(cb => cb.dataset.nodeId);
+    }
+
+    async runSimulation() {
+        if (!this.currentArchive) { this.showToast('请先选择仿真档案', 'error'); return; }
+        if (!this.currentArchive.createTime) { this.showToast('仿真档案ID无效，请重新加载', 'error'); return; }
+        if (this.isRunning) { this.showToast('仿真正在运行中', 'warning'); return; }
+        const selectedNodeIds = this.getSelectedNodeIds();
+        if (selectedNodeIds.length === 0) { this.showToast('请至少选择一个节点', 'error'); return; }
+
+        this.isRunning = true;
+        this.updateExecStatus();
+        this.shadowRoot.getElementById('runBtn').disabled = true;
+
+        try {
+            const baseUrl = window.AppConfig.getApiUrl('simulationArchives', 'run-selective');
+            const url = baseUrl + '?createTime=' + this.currentArchive.createTime;
+            const result = await window.AppConfig.request(url, {
+                method: 'POST',
+                body: JSON.stringify({ selectedNodeIds })
+            });
+            if (result.code === 200) {
+                this.showToast('仿真已开始运行');
+                this.pollExecutionStatus();
+            } else {
+                this.showToast('运行失败: ' + (result.message || '未知错误'), 'error');
+                this.isRunning = false;
+                this.updateExecStatus();
+                this.shadowRoot.getElementById('runBtn').disabled = false;
+            }
+        } catch (error) {
+            this.showToast('运行失败: ' + error.message, 'error');
+            this.isRunning = false;
+            this.updateExecStatus();
+            this.shadowRoot.getElementById('runBtn').disabled = false;
+        }
+    }
+
+    async stopSimulation() {
+        if (!this.isRunning) return;
+        try {
+            const baseUrl = window.AppConfig.getApiUrl('simulationArchives', 'stop');
+            const url = baseUrl + '?createTime=' + this.currentArchive.createTime;
+            const result = await window.AppConfig.request(url, { method: 'POST' });
+            if (result.code === 200) {
+                this.showToast('仿真已停止');
+                this.isRunning = false;
+                this.updateExecStatus();
+                this.shadowRoot.getElementById('runBtn').disabled = false;
+            }
+        } catch (e) { this.showToast('停止失败', 'error'); }
+    }
+
+    async pollExecutionStatus() {
+        const poll = async () => {
+            if (!this.isRunning) return;
+            try {
+                const result = await window.AppConfig.get('simulationArchives', 'execution-status', { createTime: this.currentArchive.createTime });
+                if (result.code === 200 && result.data && !result.data.isRunning) {
+                    this.isRunning = false;
+                    this.shadowRoot.getElementById('runBtn').disabled = false;
+                    if (result.data.execution && result.data.execution.result) {
+                        this.displayResult(result.data.execution.result);
+                    }
+                    this.updateExecStatus();
+                    this.stopAutoRefreshLog();
+                    this.refreshLog();
+                    return;
+                }
+                // Poll logs while running
+                this.refreshLog();
+            } catch (e) { console.error('轮询失败:', e); }
+            setTimeout(poll, 3000);
+        };
+        this.startAutoRefreshLog();
+        setTimeout(poll, 2000);
+    }
+
+    updateExecStatus() {
+        const sv = this.shadowRoot.getElementById('execStatusValue');
+        if (!sv) return;
+        if (this.isRunning) {
+            sv.textContent = '运行中';
+            sv.className = 'status-value running';
+        } else if (this.executionResult) {
+            const hasFailed = Object.values(this.executionResult.results || {}).some(r => r && r.status === 'failed');
+            sv.textContent = hasFailed ? '执行失败' : '执行完成';
+            sv.className = 'status-value ' + (hasFailed ? 'failed' : 'completed');
+        } else {
+            sv.textContent = '未运行';
+            sv.className = 'status-value';
+        }
+        // Update node statuses
+        if (this.executionResult && this.executionResult.results) {
+            Object.entries(this.executionResult.results).forEach(([nodeId, r]) => {
+                const n = this.nodes.find(n => n.nodeId === nodeId);
+                if (n) n.executionStatus = r.status;
+            });
+            this.updateNodeCheckList();
+        }
+    }
+
+    displayResult(result) {
+        this.executionResult = result;
+        const ra = this.shadowRoot.getElementById('resultArea');
+        const ract = this.shadowRoot.getElementById('resultActions');
+        const rtabs = this.shadowRoot.getElementById('resultTabs');
+        if (!ra) return;
+
+        let text = '';
+        if (result.executionOrder) text += `执行顺序: ${result.executionOrder.join(' → ')}\n\n`;
+        if (result.results) {
+            Object.entries(result.results).forEach(([nodeId, nr]) => {
+                text += `--- 节点 ${nr.nodeName || nodeId} ---\n状态: ${nr.status}\n`;
+                if (nr.output) text += `输出:\n${nr.output}\n`;
+                if (nr.error) text += `错误: ${nr.error}\n`;
+                text += '\n';
+            });
+        }
+        if (result.message) text += `总结果: ${result.message}\n`;
+
+        ra.textContent = text || '无结果数据';
+        if (ract) ract.style.display = 'flex';
+        if (rtabs) rtabs.style.display = 'flex';
+
+        // Display CSV results
+        this.displayCsvResults(result);
+        this.updateExecStatus();
+    }
+
+    displayCsvResults(result) {
+        const csvArea = this.shadowRoot.getElementById('csvResultArea');
+        const csvTabs = this.shadowRoot.getElementById('csvNodeTabs');
+        const csvWrapper = this.shadowRoot.getElementById('csvTableWrapper');
+        if (!csvArea || !csvTabs || !csvWrapper) return;
+
+        const csvData = {};
+        if (result.results) {
+            Object.entries(result.results).forEach(([nodeId, nr]) => {
+                if (nr.outputCsv) {
+                    csvData[nodeId] = { name: nr.nodeName || nodeId, csv: nr.outputCsv };
+                }
+            });
+        }
+
+        const nodeIds = Object.keys(csvData);
+        if (nodeIds.length === 0) {
+            csvArea.style.display = 'none';
+            return;
+        }
+
+        csvArea.style.display = 'block';
+        csvTabs.innerHTML = '';
+        nodeIds.forEach((nodeId, idx) => {
+            const tab = document.createElement('button');
+            tab.type = 'button';
+            tab.className = 'csv-node-tab' + (idx === 0 ? ' active' : '');
+            tab.textContent = csvData[nodeId].name;
+            tab.dataset.nodeId = nodeId;
+            tab.addEventListener('click', () => {
+                csvTabs.querySelectorAll('.csv-node-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                this.renderCsvTable(csvData[nodeId].csv);
+            });
+            csvTabs.appendChild(tab);
+        });
+
+        // Show first node's CSV
+        this.renderCsvTable(csvData[nodeIds[0]].csv);
+    }
+
+    renderCsvTable(csvText) {
+        const wrapper = this.shadowRoot.getElementById('csvTableWrapper');
+        if (!wrapper || !csvText) {
+            if (wrapper) wrapper.innerHTML = '<div class="empty-hint">暂无CSV数据</div>';
+            return;
+        }
+
+        const lines = csvText.trim().split('\n');
+        if (lines.length === 0) {
+            wrapper.innerHTML = '<div class="empty-hint">CSV数据为空</div>';
+            return;
+        }
+
+        let html = '<table>';
+        lines.forEach((line, rowIdx) => {
+            const cols = line.split(',');
+            html += '<tr>';
+            cols.forEach(col => {
+                const tag = rowIdx === 0 ? 'th' : 'td';
+                html += `<${tag}>${col.trim()}</${tag}>`;
+            });
+            html += '</tr>';
+        });
+        html += '</table>';
+        wrapper.innerHTML = html;
+    }
+
+    switchResultTab(tab) {
+        const ra = this.shadowRoot.getElementById('resultArea');
+        const csvArea = this.shadowRoot.getElementById('csvResultArea');
+        this.shadowRoot.querySelectorAll('.result-tab').forEach(t => {
+            t.classList.toggle('active', t.dataset.tab === tab);
+        });
+        if (tab === 'text') {
+            if (ra) ra.style.display = 'block';
+            if (csvArea) csvArea.style.display = 'none';
+        } else {
+            if (ra) ra.style.display = 'none';
+            if (csvArea) csvArea.style.display = 'block';
+        }
+    }
+
+    async refreshLog() {
+        if (!this.currentArchive) return;
+        try {
+            const result = await window.AppConfig.get('simulationArchives', 'execution-log', { createTime: this.currentArchive.createTime });
+            if (result.code === 200 && result.data && result.data.nodeLogs) {
+                const logEl = this.shadowRoot.querySelector('#logContent pre');
+                if (logEl) {
+                    const logs = result.data.nodeLogs;
+                    let logText = '';
+                    Object.entries(logs).forEach(([nodeId, log]) => {
+                        const node = this.nodes.find(n => n.nodeId === nodeId);
+                        const name = node ? node.nodeName : nodeId;
+                        logText += `=== 节点 ${name} ===\n${log}\n\n`;
+                    });
+                    if (!logText) logText = '暂无日志信息';
+                    logEl.textContent = logText;
+                    // Auto scroll to bottom
+                    const logContent = this.shadowRoot.getElementById('logContent');
+                    if (logContent) logContent.scrollTop = logContent.scrollHeight;
+                }
+            }
+        } catch (e) { console.error('刷新日志失败:', e); }
+    }
+
+    startAutoRefreshLog() {
+        if (this.logRefreshInterval) return;
+        this.logRefreshInterval = setInterval(() => this.refreshLog(), 2000);
+        const btn = this.shadowRoot.getElementById('autoRefreshLogBtn');
+        if (btn) { btn.textContent = '自动刷新: 开启'; btn.classList.add('active'); }
+    }
+
+    stopAutoRefreshLog() {
+        if (this.logRefreshInterval) {
+            clearInterval(this.logRefreshInterval);
+            this.logRefreshInterval = null;
+        }
+        const btn = this.shadowRoot.getElementById('autoRefreshLogBtn');
+        if (btn) { btn.textContent = '自动刷新: 关闭'; btn.classList.remove('active'); }
+    }
+
+    toggleAutoRefreshLog() {
+        if (this.logRefreshInterval) {
+            this.stopAutoRefreshLog();
+        } else {
+            this.startAutoRefreshLog();
+        }
+    }
+
+    downloadResult() {
+        const ra = this.shadowRoot.getElementById('resultArea');
+        if (!ra || !ra.textContent) return;
+        const blob = new Blob([ra.textContent], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `simulation_result_${this.currentArchive?.name || 'unknown'}_${Date.now()}.txt`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+
+    copyResult() {
+        const ra = this.shadowRoot.getElementById('resultArea');
+        if (!ra || !ra.textContent) return;
+        navigator.clipboard.writeText(ra.textContent).then(() => this.showToast('已复制')).catch(() => this.showToast('复制失败', 'error'));
     }
 
     hide() {
         this.style.display = 'none';
+        this.isEditMode = false;
+        this.isRunning = false;
+        this.stopAutoRefreshLog();
         this.cancelEdit();
     }
 
     showToast(message, type = 'success') {
-        if (window.CommonUtils && window.CommonUtils.showToast) {
-            window.CommonUtils.showToast(message, type);
-        } else {
-            console.log(`[${type}] ${message}`);
-        }
+        if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast(message, type);
+        else console.log(`[${type}] ${message}`);
     }
 }
 

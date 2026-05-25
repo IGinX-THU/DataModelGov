@@ -1,5 +1,6 @@
 package com.tsinghua.service;
 
+import cn.edu.tsinghua.iginx.session.Column;
 import cn.edu.tsinghua.iginx.session.QueryDataSet;
 import cn.edu.tsinghua.iginx.session.Session;
 import cn.edu.tsinghua.iginx.session.SessionExecuteSqlResult;
@@ -10,6 +11,7 @@ import cn.edu.tsinghua.iginx.session_v2.query.SimpleQuery;
 import cn.edu.tsinghua.iginx.session_v2.write.Point;
 import cn.edu.tsinghua.iginx.thrift.DataType;
 import com.tsinghua.auth.service.DataPermissionService;
+import com.tsinghua.dto.ColumnDto;
 import com.tsinghua.entity.AlgorithmMetaEntity;
 import com.tsinghua.dto.UploadResult;
 import com.tsinghua.util.ConvertUtil;
@@ -642,16 +644,18 @@ public class AlgorithmFileService {
             if (StringUtils.hasText(projectName)) {
                 prefix = STORAGE_PREFIX_BASE + "." + projectName;
             } else {
-                prefix = STORAGE_PREFIX_BASE;
+                prefix = STORAGE_PREFIX_BASE + "." + ProjectContext.getCurrentProject("unknown");
             }
-            String sql = String.format("SHOW TABLES LIKE '%s.*';", prefix);
-            log.info("执行SQL: {}", sql);
-            SessionExecuteSqlResult res = iginxSession.executeSql(sql.toString());
+            List<Column> columnList = iginxSession.showColumns();
+            List<ColumnDto> tree = columnList.stream()
+                    .filter(column -> column.getPath().startsWith(STORAGE_PREFIX_BASE))
+                    .map(column -> new ColumnDto(column.getPath(), column.getDataType().getValue()))
+                    .collect(Collectors.toList());
             List<String> paths = new ArrayList<>();
-            if (res.getPaths() != null) {
-                for (String path : res.getPaths()) {
-                    if (path.startsWith(prefix)) {
-                        paths.add(path);
+            if (!tree.isEmpty()) {
+                for (ColumnDto columnDto : tree) {
+                    if (columnDto.getPath().startsWith(prefix)) {
+                        paths.add(columnDto.getPath());
                     }
                 }
             }

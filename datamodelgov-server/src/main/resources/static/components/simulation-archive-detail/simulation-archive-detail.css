@@ -188,10 +188,58 @@
     border-color: #409eff;
 }
 
+.graph-btn.danger:hover {
+    background: #f56c6c;
+    border-color: #f56c6c;
+}
+
+.graph-btn.small {
+    padding: 4px 8px;
+    font-size: 11px;
+}
+
 .graph-canvas {
     height: 500px;
     background: white;
     position: relative;
+}
+
+/* Context Menu */
+.context-menu {
+    position: fixed;
+    background: white;
+    border: 1px solid #e4e7ed;
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    padding: 4px 0;
+    z-index: 2000;
+    min-width: 160px;
+}
+
+.context-menu-item {
+    padding: 8px 16px;
+    font-size: 13px;
+    cursor: pointer;
+    color: #303133;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.context-menu-item:hover {
+    background: #ecf5ff;
+    color: #409eff;
+}
+
+.context-menu-item.danger:hover {
+    background: #fef0f0;
+    color: #f56c6c;
+}
+
+.context-menu-separator {
+    height: 1px;
+    background: #e4e7ed;
+    margin: 4px 0;
 }
 
 #graphSvg {
@@ -232,16 +280,30 @@
     stroke-width: 3;
 }
 
+.graph-node:hover circle {
+    fill: #85ce6a;
+}
+
 .graph-node text {
     font-size: 12px;
     fill: #333;
     pointer-events: none;
 }
 
+.graph-node .algo-label {
+    font-size: 10px;
+    fill: #909399;
+}
+
 .graph-edge {
     stroke: #999;
     stroke-width: 2;
     fill: none;
+}
+
+.graph-edge:hover {
+    stroke: #409eff;
+    stroke-width: 3;
 }
 
 .graph-edge.selected {
@@ -257,6 +319,173 @@
     fill: #f56c6c;
 }
 
+.graph-edge:hover .graph-edge-marker {
+    fill: #409eff;
+}
+
+/* Execution Panel Styles */
+.exec-section {
+    margin-bottom: 15px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #ebeef5;
+}
+
+.exec-section:last-child {
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: none;
+}
+
+.exec-section h4 {
+    margin: 0 0 8px 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: #606266;
+}
+
+.node-check-list {
+    max-height: 120px;
+    overflow-y: auto;
+    border: 1px solid #ebeef5;
+    border-radius: 4px;
+    padding: 4px;
+    background: white;
+}
+
+.node-check-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 6px;
+    font-size: 13px;
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.node-check-item:hover {
+    background: #f5f7fa;
+}
+
+.node-check-item label {
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+}
+
+.node-check-item .node-status {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.node-check-item .node-status.pending { background: #909399; }
+.node-check-item .node-status.running { background: #e6a23c; animation: pulse 1s infinite; }
+.node-check-item .node-status.completed { background: #67c23a; }
+.node-check-item .node-status.failed { background: #f56c6c; }
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+.select-all-row {
+    margin-top: 6px;
+    font-size: 13px;
+    color: #606266;
+}
+
+.select-all-row label {
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.exec-buttons {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.exec-btn {
+    flex: 1;
+    padding: 8px 12px;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.exec-btn.run {
+    background: #67c23a;
+    color: white;
+}
+.exec-btn.run:hover { background: #5daf34; }
+.exec-btn.run:disabled { background: #a0cfff; cursor: not-allowed; }
+
+.exec-btn.stop {
+    background: #f56c6c;
+    color: white;
+}
+.exec-btn.stop:hover { background: #dd6161; }
+.exec-btn.stop:disabled { background: #fab6b6; cursor: not-allowed; }
+
+.exec-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    padding: 8px 12px;
+    background: #f5f7fa;
+    border-radius: 4px;
+}
+
+.status-label {
+    color: #909399;
+}
+
+.status-value {
+    font-weight: 600;
+    color: #303133;
+}
+
+.status-value.running { color: #e6a23c; }
+.status-value.completed { color: #67c23a; }
+.status-value.failed { color: #f56c6c; }
+
+.result-area {
+    max-height: 200px;
+    overflow-y: auto;
+    border: 1px solid #ebeef5;
+    border-radius: 4px;
+    padding: 10px;
+    background: #fafafa;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-all;
+    color: #303133;
+}
+
+.empty-hint {
+    text-align: center;
+    color: #c0c4cc;
+    font-size: 13px;
+    padding: 12px;
+}
+
+.result-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+}
+
 /* Modal Styles */
 .modal-mask {
     position: fixed;
@@ -265,10 +494,18 @@
     right: 0;
     bottom: 0;
     background: rgba(0, 0, 0, 0.5);
-    display: flex;
+    display: none;
     justify-content: center;
     align-items: center;
     z-index: 1000;
+}
+
+.modal-mask[hidden] {
+    display: none !important;
+}
+
+.modal-mask:not([hidden]) {
+    display: flex !important;
 }
 
 .modal {
@@ -278,6 +515,10 @@
     max-width: 90%;
     max-height: 90vh;
     overflow-y: auto;
+}
+
+.modal.small {
+    width: 380px;
 }
 
 .modal-header {
@@ -321,6 +562,7 @@
     border: 1px solid #ddd;
     border-radius: 4px;
     font-size: 14px;
+    box-sizing: border-box;
 }
 
 .modal-textarea {
@@ -361,4 +603,138 @@
 
 .modal-btn.secondary:hover {
     background: #f0f0f0;
+}
+
+/* 执行日志 */
+.log-container {
+    display: flex;
+    flex-direction: column;
+}
+
+.log-controls {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.auto-refresh-btn.active {
+    background: #0078d4;
+    color: white;
+    border-color: #0078d4;
+}
+
+.log-content {
+    background: #1e1e1e;
+    border: 1px solid #333;
+    border-radius: 4px;
+    padding: 12px;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.log-content pre {
+    margin: 0;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    color: #d4d4d4;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.log-content pre .log-out {
+    color: #d4d4d4;
+}
+
+.log-content pre .log-err {
+    color: #f48771;
+}
+
+.log-content pre .log-info {
+    color: #569cd6;
+}
+
+/* 结果标签页 */
+.result-tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: 8px;
+    border-bottom: 1px solid #ddd;
+}
+
+.result-tab {
+    padding: 6px 16px;
+    border: 1px solid #ddd;
+    border-bottom: none;
+    border-radius: 4px 4px 0 0;
+    background: #f5f5f5;
+    cursor: pointer;
+    font-size: 13px;
+    color: #666;
+}
+
+.result-tab.active {
+    background: white;
+    color: #0078d4;
+    border-color: #ddd;
+    font-weight: 500;
+}
+
+/* CSV结果区域 */
+.csv-result-area {
+    max-height: 400px;
+    overflow: auto;
+}
+
+.csv-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+}
+
+.csv-tabs .csv-node-tab {
+    padding: 4px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background: #f5f5f5;
+    cursor: pointer;
+    font-size: 12px;
+    color: #666;
+}
+
+.csv-tabs .csv-node-tab.active {
+    background: #0078d4;
+    color: white;
+    border-color: #0078d4;
+}
+
+.csv-table-wrapper {
+    overflow: auto;
+    max-height: 350px;
+}
+
+.csv-table-wrapper table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.csv-table-wrapper th,
+.csv-table-wrapper td {
+    padding: 4px 8px;
+    border: 1px solid #ddd;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.csv-table-wrapper th {
+    background: #f0f0f0;
+    font-weight: 500;
+    position: sticky;
+    top: 0;
+}
+
+.csv-table-wrapper tr:nth-child(even) {
+    background: #fafafa;
 }

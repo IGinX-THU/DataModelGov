@@ -1,6 +1,6 @@
 <div class="simulation-archive-detail">
     <div class="detail-header">
-        <h2>仿真档案详情</h2>
+        <h2 id="detailTitle">仿真档案详情</h2>
         <div class="header-actions">
             <button class="back-btn" id="backBtn">返回列表</button>
             <button class="edit-btn" id="editBtn">编辑</button>
@@ -61,22 +61,22 @@
                 <div class="graph-editor">
                     <div class="graph-toolbar">
                         <button type="button" class="graph-btn" id="addAlgorithmNode">+ 算法节点</button>
-                        <button type="button" class="graph-btn" id="deleteNode">删除节点</button>
+                        <button type="button" class="graph-btn" id="editAlgorithm">编辑算法档案</button>
+                        <button type="button" class="graph-btn danger" id="deleteNode">删除节点</button>
                         <button type="button" class="graph-btn" id="addEdge">添加连线</button>
-                        <button type="button" class="graph-btn" id="deleteEdge">删除连线</button>
-                        <button type="button" class="graph-btn" id="clearGraph">清空画布</button>
+                        <button type="button" class="graph-btn danger" id="deleteEdge">删除连线</button>
+                        <button type="button" class="graph-btn" id="autoLayout">自动布局</button>
+                        <button type="button" class="graph-btn danger" id="clearGraph">清空画布</button>
                     </div>
                     <div class="graph-canvas" id="graphCanvas">
                         <svg id="graphSvg" width="100%" height="500"></svg>
                     </div>
                     <div class="graph-info">
                         <div class="info-item">
-                            <span>节点数量: </span>
-                            <span id="nodeCount">0</span>
+                            <span>节点数量: </span><span id="nodeCount">0</span>
                         </div>
                         <div class="info-item">
-                            <span>连线数量: </span>
-                            <span id="edgeCount">0</span>
+                            <span>连线数量: </span><span id="edgeCount">0</span>
                         </div>
                     </div>
                 </div>
@@ -87,9 +87,66 @@
                 <button class="cancel-btn" id="cancelBtn">取消</button>
             </div>
         </div>
+
+        <div class="detail-section">
+            <h3>执行面板</h3>
+            <div class="exec-section">
+                <h4>节点选择（选择性执行）</h4>
+                <div class="node-check-list" id="nodeCheckList">
+                    <div class="empty-hint">请先添加算法节点</div>
+                </div>
+                <div class="select-all-row">
+                    <label><input type="checkbox" id="selectAllNodes" checked> 全选</label>
+                </div>
+            </div>
+            <div class="exec-section">
+                <h4>执行控制</h4>
+                <div class="exec-buttons">
+                    <button type="button" class="exec-btn run" id="runBtn">开始执行</button>
+                    <button type="button" class="exec-btn stop" id="stopBtn">停止执行</button>
+                </div>
+                <div class="exec-status" id="execStatus">
+                    <span class="status-label">状态：</span>
+                    <span class="status-value" id="execStatusValue">未运行</span>
+                </div>
+            </div>
+            <div class="exec-section">
+                <h4>执行日志</h4>
+                <div class="log-container" id="logContainer">
+                    <div class="log-controls">
+                        <button type="button" class="graph-btn small" id="refreshLogBtn">刷新日志</button>
+                        <button type="button" class="graph-btn small auto-refresh-btn" id="autoRefreshLogBtn">自动刷新: 关闭</button>
+                    </div>
+                    <div class="log-content" id="logContent">
+                        <pre>暂无日志信息</pre>
+                    </div>
+                </div>
+            </div>
+            <div class="exec-section">
+                <h4>执行结果</h4>
+                <div class="result-tabs" id="resultTabs" style="display: none;">
+                    <button type="button" class="result-tab active" data-tab="text">文本结果</button>
+                    <button type="button" class="result-tab" data-tab="csv">CSV结果</button>
+                </div>
+                <div class="result-area" id="resultArea">
+                    <div class="empty-hint">暂无执行结果</div>
+                </div>
+                <div class="csv-result-area" id="csvResultArea" style="display: none;">
+                    <div class="csv-tabs" id="csvNodeTabs"></div>
+                    <div class="csv-table-wrapper" id="csvTableWrapper">
+                        <div class="empty-hint">暂无CSV数据</div>
+                    </div>
+                </div>
+                <div class="result-actions" id="resultActions" style="display: none;">
+                    <button type="button" class="graph-btn small" id="downloadResult">下载结果</button>
+                    <button type="button" class="graph-btn small" id="copyResult">复制结果</button>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
+<!-- 节点配置模态框 -->
 <div class="modal-mask" id="nodeModalMask" hidden>
     <div class="modal">
         <div class="modal-header">
@@ -110,28 +167,51 @@
                     </select>
                 </div>
                 <div class="modal-form-row">
-                    <label class="modal-label">绑定模型（可选）</label>
-                    <select id="modelSelect" name="modelSelect" class="modal-input">
-                        <option value="">不绑定模型</option>
+                    <label class="modal-label">算法版本</label>
+                    <select id="algorithmVersion" name="algorithmVersion" class="modal-input">
+                        <option value="">请先选择算法</option>
                     </select>
                 </div>
                 <div class="modal-form-row">
-                    <label class="modal-label">开始时间（毫秒时间戳）</label>
-                    <input type="number" id="startTime" name="startTime" class="modal-input" placeholder="例如: 1704067200000">
+                    <label class="modal-label">开始时间</label>
+                    <input type="datetime-local" id="startTime" name="startTime" class="modal-input" step="1">
                 </div>
                 <div class="modal-form-row">
-                    <label class="modal-label">结束时间（毫秒时间戳）</label>
-                    <input type="number" id="endTime" name="endTime" class="modal-input" placeholder="例如: 1704153600000">
-                </div>
-                <div class="modal-form-row">
-                    <label class="modal-label">执行参数（JSON）</label>
-                    <textarea id="executionParams" name="executionParams" class="modal-textarea" rows="3" placeholder='{"param1": "value1"}'></textarea>
+                    <label class="modal-label">结束时间</label>
+                    <input type="datetime-local" id="endTime" name="endTime" class="modal-input" step="1">
                 </div>
             </form>
         </div>
         <div class="modal-footer" id="nodeModalFooter">
             <button type="button" class="modal-btn secondary" id="nodeCancelBtn">取消</button>
             <button type="button" class="modal-btn primary" id="nodeSaveBtn">确定</button>
+        </div>
+    </div>
+</div>
+
+<!-- 连线数据映射模态框 -->
+<div class="modal-mask" id="edgeModalMask" hidden>
+    <div class="modal small">
+        <div class="modal-header">
+            <span>连线数据映射</span>
+            <button class="modal-close" id="edgeModalClose">×</button>
+        </div>
+        <div class="modal-body">
+            <form id="edgeForm" class="modal-form">
+                <input type="hidden" id="edgeId">
+                <div class="modal-form-row">
+                    <label class="modal-label">源节点输出（算法输出CSV字段名）</label>
+                    <input type="text" id="edgeSourceField" class="modal-input" placeholder="源节点输出字段名">
+                </div>
+                <div class="modal-form-row">
+                    <label class="modal-label">目标节点输入（算法输入CSV字段名）</label>
+                    <input type="text" id="edgeTargetField" class="modal-input" placeholder="目标节点输入字段名">
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="modal-btn secondary" id="edgeCancelBtn">取消</button>
+            <button type="button" class="modal-btn primary" id="edgeSaveBtn">确定</button>
         </div>
     </div>
 </div>

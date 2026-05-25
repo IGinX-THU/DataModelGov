@@ -93,8 +93,10 @@ window.AppConfig = {
             'validate-name': '/api/simulation/archives/validate-name',
             copy: '/api/simulation/archives/copy',
             run: '/api/simulation/archives/run',
+            'run-selective': '/api/simulation/archives/run-selective',
             stop: '/api/simulation/archives/stop',
-            'execution-status': '/api/simulation/archives/execution-status'
+            'execution-status': '/api/simulation/archives/execution-status',
+            'execution-log': '/api/simulation/archives/execution-log'
         },
         // 数据档案相关
         dataArchive: {
