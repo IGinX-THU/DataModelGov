@@ -154,9 +154,9 @@ class SimulationArchiveDetail extends HTMLElement {
     async showDetail(createTime) {
         try {
             if (window.showGlobalLoading) window.showGlobalLoading('正在加载...');
-            const result = await window.AppConfig.post('simulationArchives', 'query', { createTime });
-            if (result.code === 200 && result.data && result.data.length > 0) {
-                this.currentArchive = result.data[0];
+            const result = await window.AppConfig.get('simulationArchives', 'detail', { createTime });
+            if (result.code === 200 && result.data) {
+                this.currentArchive = result.data;
                 this.loadArchiveData(this.currentArchive);
                 this.style.display = 'block';
             } else {
@@ -184,6 +184,12 @@ class SimulationArchiveDetail extends HTMLElement {
         setText('detailUpdateTime', archive.updateTime ? new Date(archive.updateTime).toLocaleString('zh-CN') : '-');
         setText('detailExecutionCount', archive.executionCount || 0);
 
+        // 先清空旧数据，避免残留
+        this.nodes = [];
+        this.edges = [];
+        this.nodeCounter = 0;
+        this.edgeCounter = 0;
+
         if (archive.graphJson) {
             try {
                 const graphData = JSON.parse(archive.graphJson);
@@ -202,9 +208,6 @@ class SimulationArchiveDetail extends HTMLElement {
                 this.nodes = [];
                 this.edges = [];
             }
-        } else {
-            this.nodes = [];
-            this.edges = [];
         }
 
         this.isRunning = archive.isRunning || false;
@@ -837,7 +840,7 @@ class SimulationArchiveDetail extends HTMLElement {
     }
 
     // === Edge Modal ===
-    showEdgeModal(edge) {
+    async showEdgeModal(edge) {
         const $ = id => this.shadowRoot.getElementById(id);
         const sourceNode = this.nodes.find(n => n.nodeId === edge.sourceNodeId);
         const targetNode = this.nodes.find(n => n.nodeId === edge.targetNodeId);
@@ -855,6 +858,39 @@ class SimulationArchiveDetail extends HTMLElement {
         const targetLabel = targetNode ? targetNode.nodeName : edge.targetNodeId;
         $('edgeSourceField').placeholder = `${sourceLabel} 的输出字段`;
         $('edgeTargetField').placeholder = `${targetLabel} 的输入字段`;
+
+        // 自动填充：根据算法档案获取outputCsvName和inputCsvName
+        if (sourceNode && sourceNode.algorithmName && sourceNode.algorithmVersion) {
+            try {
+                const sourceMeta = await window.AppConfig.get('algorithm', 'metas', {
+                    name: sourceNode.algorithmName,
+                    version: sourceNode.algorithmVersion
+                });
+                if (sourceMeta && sourceMeta.success && sourceMeta.data && sourceMeta.data.outputCsvName) {
+                    if (!mapping.sourceOutput) {
+                        $('edgeSourceField').value = sourceMeta.data.outputCsvName;
+                    }
+                }
+            } catch (e) {
+                console.warn('获取源节点算法元数据失败', e);
+            }
+        }
+
+        if (targetNode && targetNode.algorithmName && targetNode.algorithmVersion) {
+            try {
+                const targetMeta = await window.AppConfig.get('algorithm', 'metas', {
+                    name: targetNode.algorithmName,
+                    version: targetNode.algorithmVersion
+                });
+                if (targetMeta && targetMeta.success && targetMeta.data && targetMeta.data.inputCsvName) {
+                    if (!mapping.targetInput) {
+                        $('edgeTargetField').value = targetMeta.data.inputCsvName;
+                    }
+                }
+            } catch (e) {
+                console.warn('获取目标节点算法元数据失败', e);
+            }
+        }
 
         $('edgeModalMask').hidden = false;
         $('edgeModalMask').style.display = 'flex';

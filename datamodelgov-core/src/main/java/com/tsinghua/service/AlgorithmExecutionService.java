@@ -140,6 +140,17 @@ public class AlgorithmExecutionService {
                     cmd = adjustCommandWithMapping(cmd, predecessorOutputs, algorithmMeta);
                 }
 
+                // 如果有后继节点配置的sourceOutputMapping，替换命令中的输出文件名
+                String sourceOutputMapping = executionParams != null ? (String) executionParams.get("sourceOutputMapping") : null;
+                if (sourceOutputMapping != null && !sourceOutputMapping.isEmpty()) {
+                    String defaultOutputCsv = algorithmMeta.getOutputCsvName();
+                    if (defaultOutputCsv == null || defaultOutputCsv.trim().isEmpty()) {
+                        defaultOutputCsv = "output.csv";
+                    }
+                    cmd = cmd.replace(defaultOutputCsv, sourceOutputMapping);
+                    log.info("命令输出文件名已替换: {} -> {}", defaultOutputCsv, sourceOutputMapping);
+                }
+
                 String cmdLog = "执行命令: " + cmd + "\n";
                 processLogBuilder.append(cmdLog);
                 try { Files.write(logFile, cmdLog.getBytes(StandardCharsets.UTF_8), StandardOpenOption.APPEND); } catch (IOException e) { /* ignore */ }
@@ -150,10 +161,13 @@ public class AlgorithmExecutionService {
                 String outputText = collectOutputText(taskDir, algorithmMeta, output);
 
                 // 9. 处理输出CSV表头映射（参考RunTaskService的processOutputCsv）
-                processOutputCsvHeaderMapping(taskDir, algorithmMeta);
+                // 使用 sourceOutputMapping 指定的输出文件名
+                String actualOutputCsv = sourceOutputMapping != null && !sourceOutputMapping.isEmpty()
+                    ? sourceOutputMapping : algorithmMeta.getOutputCsvName();
+                processOutputCsvHeaderMapping(taskDir, algorithmMeta, actualOutputCsv);
 
                 // 10. 读取输出CSV文件内容
-                String outputCsvContent = readOutputCsv(taskDir, algorithmMeta);
+                String outputCsvContent = readOutputCsv(taskDir, actualOutputCsv);
 
                 String endLog = "进程结束: 退出成功, 时间=" + new Date() + "\n";
                 processLogBuilder.append(endLog);
@@ -504,8 +518,7 @@ public class AlgorithmExecutionService {
      * 处理输出CSV表头映射
      * 参考RunTaskService的processOutputCsv，将算法输出的列名映射为用户配置的目标列名
      */
-    private void processOutputCsvHeaderMapping(Path taskDir, AlgorithmMetaEntity algorithmMeta) {
-        String outputCsvName = algorithmMeta.getOutputCsvName();
+    private void processOutputCsvHeaderMapping(Path taskDir, AlgorithmMetaEntity algorithmMeta, String outputCsvName) {
         String outputsBindStr = algorithmMeta.getOutputsBind();
 
         if (outputCsvName == null || outputCsvName.trim().isEmpty() || outputsBindStr == null || outputsBindStr.trim().isEmpty()) {
@@ -575,9 +588,8 @@ public class AlgorithmExecutionService {
     /**
      * 读取输出CSV文件内容
      */
-    private String readOutputCsv(Path taskDir, AlgorithmMetaEntity algorithmMeta) {
+    private String readOutputCsv(Path taskDir, String outputCsvName) {
         try {
-            String outputCsvName = algorithmMeta.getOutputCsvName();
             if (outputCsvName != null && !outputCsvName.trim().isEmpty()) {
                 Path outputFile = taskDir.resolve(outputCsvName);
                 if (Files.exists(outputFile)) {

@@ -301,6 +301,35 @@ public class DirectedGraphExecutionEngine {
             }
         }
 
+        // 收集后继节点的边配置，获取当前节点的输出文件名映射
+        String sourceOutputMapping = null;
+        if (edges != null && edges.isArray()) {
+            for (JsonNode edge : edges) {
+                String sourceId = edge.get("sourceNodeId").asText();
+                String targetId = edge.get("targetNodeId").asText();
+                if (sourceId.equals(nodeId)) {
+                    // 这是当前节点作为源节点的边，获取sourceOutput配置
+                    if (edge.has("dataMapping") && !edge.get("dataMapping").isNull()) {
+                        try {
+                            JsonNode mapping = objectMapper.readTree(edge.get("dataMapping").asText());
+                            String mappingSourceOutput = mapping.has("sourceOutput") ? mapping.get("sourceOutput").asText() : null;
+                            if (mappingSourceOutput != null && !mappingSourceOutput.isEmpty()) {
+                                // 如果有多个后继节点，使用第一个配置的sourceOutput
+                                if (sourceOutputMapping == null) {
+                                    sourceOutputMapping = mappingSourceOutput;
+                                } else if (!sourceOutputMapping.equals(mappingSourceOutput)) {
+                                    log.warn("节点 {} 有多个后继节点配置了不同的sourceOutput: {}, {}", nodeId, sourceOutputMapping, mappingSourceOutput);
+                                }
+                            }
+                        } catch (Exception e) {
+                            log.warn("解析边数据映射失败: {}", edge.get("dataMapping"), e);
+                        }
+                    }
+                }
+            }
+        }
+        executionParams.put("sourceOutputMapping", sourceOutputMapping);
+
         // 调用算法执行服务（模型从算法档案的calledModels获取，下载到项目执行目录）
         Result<Map<String, Object>> execResult = algorithmExecutionService.executeAlgorithmTask(
             algorithmName, algorithmVersion, startTime, endTime,

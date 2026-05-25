@@ -75,7 +75,7 @@ public class SimulationArchiveService {
     public List<SimulationArchiveEntity> queryArchives(String name, String projectName, String owner, Boolean status, Integer pageNum, Integer pageSize) {
         try {
             StringBuilder sql = new StringBuilder("SELECT * FROM " + DATA_PREFIX + " WHERE 1=1");
-            
+
             if (name != null && !name.trim().isEmpty()) {
                 sql.append(" AND name LIKE '^.*").append(name.trim()).append(".*'");
             }
@@ -88,19 +88,19 @@ public class SimulationArchiveService {
             if (status != null) {
                 sql.append(" AND status = ").append(status);
             }
-            
+
             sql.append(" ORDER BY updateTime DESC");
             if (pageNum != null && pageSize != null) {
                 sql.append(" LIMIT ").append(pageSize);
                 sql.append(" OFFSET ").append((pageNum - 1) * pageSize);
             }
             sql.append(";");
-            
+
             log.info("执行SQL: {}", sql);
-            
+
             SessionExecuteSqlResult res = iginxSession.executeSql(sql.toString());
             List<Map<String, Object>> records = ConvertUtil.getRecords(res);
-            
+
             List<SimulationArchiveEntity> result = records.stream().map(record -> {
                 SimulationArchiveEntity entity = new SimulationArchiveEntity();
                 record.forEach((k, v) -> {
@@ -109,7 +109,7 @@ public class SimulationArchiveService {
                 });
                 return entity;
             }).collect(Collectors.toList());
-            
+
             log.info("查询结果: records={}", result.size());
             return result;
         } catch (Exception e) {
