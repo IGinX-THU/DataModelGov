@@ -52,6 +52,7 @@ class SimulationArchiveDetail extends HTMLElement {
         $('addAlgorithmNode')?.addEventListener('click', () => this.addNode());
         $('deleteNode')?.addEventListener('click', () => this.deleteSelectedNode());
         $('addEdge')?.addEventListener('click', () => this.startAddEdge());
+        $('configEdgeMapping')?.addEventListener('click', () => this.configEdgeMapping());
         $('deleteEdge')?.addEventListener('click', () => this.deleteSelectedEdge());
         $('autoLayout')?.addEventListener('click', () => this.autoLayout());
         $('clearGraph')?.addEventListener('click', () => this.clearGraph());
@@ -144,6 +145,14 @@ class SimulationArchiveDetail extends HTMLElement {
         if (ea) ea.style.display = 'flex';
         if (eb) eb.style.display = 'none';
 
+        // 编辑页显示工具栏
+        const toolbar = $('graphToolbar');
+        if (toolbar) toolbar.style.display = 'flex';
+
+        // 编辑页隐藏执行面板
+        const execPanel = this.shadowRoot.querySelector('.detail-section:nth-child(2)');
+        if (execPanel) execPanel.style.display = 'none';
+
         // Hide modals
         const nmm = $('nodeModalMask');
         if (nmm) { nmm.hidden = true; nmm.style.display = 'none'; }
@@ -212,9 +221,18 @@ class SimulationArchiveDetail extends HTMLElement {
 
         this.isRunning = archive.isRunning || false;
         this.executionResult = null;
+        this.isEditMode = false;
         this.renderGraph();
         this.updateNodeCheckList();
         this.updateExecStatus();
+
+        // 详情页隐藏工具栏
+        const toolbar = $('graphToolbar');
+        if (toolbar) toolbar.style.display = 'none';
+
+        // 详情页显示执行面板
+        const execPanel = this.shadowRoot.querySelector('.detail-section:nth-child(2)');
+        if (execPanel) execPanel.style.display = 'block';
 
         // Load latest execution record
         this.loadLatestExecution();
@@ -267,6 +285,14 @@ class SimulationArchiveDetail extends HTMLElement {
         const ea = $('editActions'), eb = $('editBtn');
         if (ea) ea.style.display = 'flex';
         if (eb) eb.style.display = 'none';
+
+        // 编辑页显示工具栏
+        const toolbar = $('graphToolbar');
+        if (toolbar) toolbar.style.display = 'flex';
+
+        // 编辑页隐藏执行面板
+        const execPanel = this.shadowRoot.querySelector('.detail-section:nth-child(2)');
+        if (execPanel) execPanel.style.display = 'none';
     }
 
     cancelEdit() {
@@ -281,6 +307,12 @@ class SimulationArchiveDetail extends HTMLElement {
         const ea = $('editActions'), eb = $('editBtn');
         if (ea) ea.style.display = 'none';
         if (eb) eb.style.display = 'inline-block';
+
+        // 取消编辑时隐藏工具栏，显示执行面板
+        const toolbar = $('graphToolbar');
+        if (toolbar) toolbar.style.display = 'none';
+        const execPanel = this.shadowRoot.querySelector('.detail-section:nth-child(2)');
+        if (execPanel) execPanel.style.display = 'block';
     }
 
     async saveArchive() {
@@ -549,6 +581,15 @@ class SimulationArchiveDetail extends HTMLElement {
         this.showToast('请依次点击源节点和目标节点', 'info');
     }
 
+    configEdgeMapping() {
+        if (!this.isEditMode) { this.showToast('请先点击编辑按钮', 'warning'); return; }
+        if (!this.selectedEdge) { this.showToast('请先选择一条连线', 'warning'); return; }
+        const edge = this.edges.find(e => e.edgeId === this.selectedEdge);
+        if (edge) {
+            this.showEdgeModal(edge);
+        }
+    }
+
     handleEdgeClick(nodeId) {
         if (!this.edgeStartNode) {
             this.edgeStartNode = nodeId;
@@ -768,6 +809,7 @@ class SimulationArchiveDetail extends HTMLElement {
     }
 
     showNodeContextMenu(node, x, y) {
+        if (!this.isEditMode) return; // 详情页不显示右键菜单
         this.hideContextMenu();
         const menu = document.createElement('div');
         menu.className = 'context-menu';
@@ -805,6 +847,7 @@ class SimulationArchiveDetail extends HTMLElement {
     }
 
     showEdgeContextMenu(edge, x, y) {
+        if (!this.isEditMode) return; // 详情页不显示右键菜单
         this.hideContextMenu();
         const menu = document.createElement('div');
         menu.className = 'context-menu';
