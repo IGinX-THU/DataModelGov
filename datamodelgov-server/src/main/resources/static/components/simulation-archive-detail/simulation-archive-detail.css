@@ -681,9 +681,15 @@
 }
 
 /* CSV结果区域 */
-.csv-result-area {
+.csv-result-area,
+.text-result-area {
     max-height: 400px;
     overflow: auto;
+}
+
+#textResultArea[style*="display: none"] .text-content-wrapper,
+#csvResultArea[style*="display: none"] .csv-table-wrapper {
+    display: none !important;
 }
 
 .csv-tabs {

@@ -212,6 +212,31 @@ class SimulationArchiveDetail extends HTMLElement {
         this.renderGraph();
         this.updateNodeCheckList();
         this.updateExecStatus();
+
+        // Load latest execution record
+        this.loadLatestExecution();
+    }
+
+    async loadLatestExecution() {
+        if (!this.currentArchive) return;
+        try {
+            console.log('Loading latest execution for createTime:', this.currentArchive.createTime);
+            const result = await window.AppConfig.get('simulationArchives', 'execution-status', { createTime: this.currentArchive.createTime });
+            console.log('Execution status result:', result);
+            if (result.code === 200 && result.data) {
+                console.log('Execution data:', result.data.execution);
+                if (result.data.execution && result.data.execution.result) {
+                    console.log('Displaying execution result');
+                    this.displayResult(result.data.execution.result);
+                } else {
+                    console.log('No execution result found');
+                }
+            }
+            // Load execution log
+            await this.refreshLog();
+        } catch (e) {
+            console.error('加载最新执行记录失败:', e);
+        }
     }
 
     // === Edit Mode ===
@@ -974,30 +999,103 @@ class SimulationArchiveDetail extends HTMLElement {
 
     displayResult(result) {
         this.executionResult = result;
-        const ra = this.shadowRoot.getElementById('resultArea');
         const ract = this.shadowRoot.getElementById('resultActions');
         const rtabs = this.shadowRoot.getElementById('resultTabs');
-        if (!ra) return;
-
-        let text = '';
-        if (result.executionOrder) text += `执行顺序: ${result.executionOrder.join(' → ')}\n\n`;
-        if (result.results) {
-            Object.entries(result.results).forEach(([nodeId, nr]) => {
-                text += `--- 节点 ${nr.nodeName || nodeId} ---\n状态: ${nr.status}\n`;
-                if (nr.output) text += `输出:\n${nr.output}\n`;
-                if (nr.error) text += `错误: ${nr.error}\n`;
-                text += '\n';
-            });
-        }
-        if (result.message) text += `总结果: ${result.message}\n`;
-
-        ra.textContent = text || '无结果数据';
         if (ract) ract.style.display = 'flex';
         if (rtabs) rtabs.style.display = 'flex';
 
+        // Display text results in tabbed format
+        this.displayTextResults(result);
+
         // Display CSV results
         this.displayCsvResults(result);
+
+        // Ensure only text results are shown initially
+        this.switchResultTab('text');
+
         this.updateExecStatus();
+    }
+
+    displayTextResults(result) {
+        const textArea = this.shadowRoot.getElementById('textResultArea');
+        const textTabs = this.shadowRoot.getElementById('textNodeTabs');
+        const textWrapper = this.shadowRoot.getElementById('textContentWrapper');
+        if (!textArea || !textTabs || !textWrapper) return;
+
+        const textData = {};
+        if (result.results) {
+            Object.entries(result.results).forEach(([nodeId, nr]) => {
+                if (nr.outputCsv) {
+                    textData[nodeId] = { name: nr.nodeName || nodeId, output: nr.outputCsv };
+                }
+            });
+        }
+
+        const nodeIds = Object.keys(textData);
+        if (nodeIds.length === 0) {
+            textArea.style.display = 'none';
+            return;
+        }
+
+        // Always hide initially, let tab switching control visibility
+        textArea.style.display = 'none';
+        textWrapper.innerHTML = '<div class="empty-hint">暂无输出数据</div>';
+        textTabs.innerHTML = '';
+        nodeIds.forEach((nodeId, idx) => {
+            const tab = document.createElement('button');
+            tab.type = 'button';
+            tab.className = 'csv-node-tab' + (idx === 0 ? ' active' : '');
+            tab.textContent = textData[nodeId].name;
+            tab.dataset.nodeId = nodeId;
+            tab.addEventListener('click', () => {
+                textTabs.querySelectorAll('.csv-node-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                this.renderTextContent(textData[nodeId].output);
+            });
+            textTabs.appendChild(tab);
+        });
+
+        // Store data for later rendering
+        this.textData = textData;
+    }
+
+    renderTextContent(text) {
+        const wrapper = this.shadowRoot.getElementById('textContentWrapper');
+        if (!wrapper) return;
+        if (!text) {
+            wrapper.innerHTML = '<div class="empty-hint">暂无输出数据</div>';
+            return;
+        }
+        wrapper.innerHTML = `<pre>${text}</pre>`;
+    }
+
+    switchResultTab(tab) {
+        const textArea = this.shadowRoot.getElementById('textResultArea');
+        const csvArea = this.shadowRoot.getElementById('csvResultArea');
+        this.shadowRoot.querySelectorAll('.result-tab').forEach(t => {
+            t.classList.toggle('active', t.dataset.tab === tab);
+        });
+        if (tab === 'text') {
+            if (textArea) textArea.style.display = 'block';
+            if (csvArea) csvArea.style.display = 'none';
+            // Render first text node content
+            if (this.textData) {
+                const firstNodeId = Object.keys(this.textData)[0];
+                if (firstNodeId) {
+                    this.renderTextContent(this.textData[firstNodeId].output);
+                }
+            }
+        } else {
+            if (textArea) textArea.style.display = 'none';
+            if (csvArea) csvArea.style.display = 'block';
+            // Render first CSV node content
+            if (this.csvData) {
+                const firstNodeId = Object.keys(this.csvData)[0];
+                if (firstNodeId) {
+                    this.renderCsvTable(this.csvData[firstNodeId].csv);
+                }
+            }
+        }
     }
 
     displayCsvResults(result) {
@@ -1021,7 +1119,9 @@ class SimulationArchiveDetail extends HTMLElement {
             return;
         }
 
-        csvArea.style.display = 'block';
+        // Always hide initially, let tab switching control visibility
+        csvArea.style.display = 'none';
+        csvWrapper.innerHTML = '<div class="empty-hint">暂无CSV数据</div>';
         csvTabs.innerHTML = '';
         nodeIds.forEach((nodeId, idx) => {
             const tab = document.createElement('button');
@@ -1037,8 +1137,8 @@ class SimulationArchiveDetail extends HTMLElement {
             csvTabs.appendChild(tab);
         });
 
-        // Show first node's CSV
-        this.renderCsvTable(csvData[nodeIds[0]].csv);
+        // Store data for later rendering
+        this.csvData = csvData;
     }
 
     renderCsvTable(csvText) {
@@ -1068,20 +1168,6 @@ class SimulationArchiveDetail extends HTMLElement {
         wrapper.innerHTML = html;
     }
 
-    switchResultTab(tab) {
-        const ra = this.shadowRoot.getElementById('resultArea');
-        const csvArea = this.shadowRoot.getElementById('csvResultArea');
-        this.shadowRoot.querySelectorAll('.result-tab').forEach(t => {
-            t.classList.toggle('active', t.dataset.tab === tab);
-        });
-        if (tab === 'text') {
-            if (ra) ra.style.display = 'block';
-            if (csvArea) csvArea.style.display = 'none';
-        } else {
-            if (ra) ra.style.display = 'none';
-            if (csvArea) csvArea.style.display = 'block';
-        }
-    }
 
     async refreshLog() {
         if (!this.currentArchive) return;

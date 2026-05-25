@@ -128,8 +128,11 @@
                     <button type="button" class="result-tab active" data-tab="text">文本结果</button>
                     <button type="button" class="result-tab" data-tab="csv">CSV结果</button>
                 </div>
-                <div class="result-area" id="resultArea">
-                    <div class="empty-hint">暂无执行结果</div>
+                <div class="text-result-area" id="textResultArea" style="display: none;">
+                    <div class="csv-tabs" id="textNodeTabs"></div>
+                    <div class="text-content-wrapper" id="textContentWrapper">
+                        <div class="empty-hint">暂无输出数据</div>
+                    </div>
                 </div>
                 <div class="csv-result-area" id="csvResultArea" style="display: none;">
                     <div class="csv-tabs" id="csvNodeTabs"></div>
