@@ -140,22 +140,31 @@ public class DirectedGraphExecutionEngine {
                 }
 
                 // 执行当前算法节点
-                Future<?> future = executorService.submit(() -> {
-                    try {
-                        Map<String, Object> nodeResult = executeAlgorithmNode(
-                            node, edges, executionResults, nodeOutputs, projectName);
-                        executionResults.put(nodeId, nodeResult);
-                        log.info("节点 {} 执行完成", nodeId);
-                    } catch (Exception e) {
-                        log.error("节点 {} 执行失败", nodeId, e);
-                        Map<String, Object> errorResult = new HashMap<>();
-                        errorResult.put("nodeId", nodeId);
-                        errorResult.put("status", "failed");
-                        errorResult.put("error", e.getMessage());
-                        executionResults.put(nodeId, errorResult);
-                    }
-                });
-                futures.put(nodeId, future);
+                try {
+                    Future<?> future = executorService.submit(() -> {
+                        try {
+                            Map<String, Object> nodeResult = executeAlgorithmNode(
+                                node, edges, executionResults, nodeOutputs, projectName);
+                            executionResults.put(nodeId, nodeResult);
+                            log.info("节点 {} 执行完成", nodeId);
+                        } catch (Exception e) {
+                            log.error("节点 {} 执行失败", nodeId, e);
+                            Map<String, Object> errorResult = new HashMap<>();
+                            errorResult.put("nodeId", nodeId);
+                            errorResult.put("status", "failed");
+                            errorResult.put("error", e.getMessage());
+                            executionResults.put(nodeId, errorResult);
+                        }
+                    });
+                    futures.put(nodeId, future);
+                } catch (RejectedExecutionException e) {
+                    log.error("节点 {} 提交任务失败，线程池已关闭", nodeId, e);
+                    Map<String, Object> errorResult = new HashMap<>();
+                    errorResult.put("nodeId", nodeId);
+                    errorResult.put("status", "failed");
+                    errorResult.put("error", "线程池已关闭，无法提交任务: " + e.getMessage());
+                    executionResults.put(nodeId, errorResult);
+                }
             }
 
             // 等待所有节点完成
