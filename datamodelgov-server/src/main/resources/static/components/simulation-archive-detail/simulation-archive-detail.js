@@ -567,7 +567,19 @@ class SimulationArchiveDetail extends HTMLElement {
         this.updateNodeCheckList();
     }
 
-    selectNode(nodeId) { this.selectedNode = nodeId; this.selectedEdge = null; this.renderGraph(); }
+    selectNode(nodeId) {
+        this.selectedNode = nodeId;
+        this.selectedEdge = null;
+        this.renderGraph();
+
+        // 详情模式下联动执行面板的节点选择
+        if (!this.isEditMode) {
+            const checkbox = this.shadowRoot.querySelector(`.node-check-item input[data-node-id="${nodeId}"]`);
+            if (checkbox) {
+                checkbox.checked = !checkbox.checked;
+            }
+        }
+    }
     selectEdge(edgeId) {
         this.selectedEdge = edgeId;
         this.selectedNode = null;
