@@ -117,8 +117,6 @@ public class SimulationExecutionService {
                     } catch (Exception saveEx) {
                         log.error("保存档案状态失败", saveEx);
                     }
-                } finally {
-                    runningSimulations.remove(createTime);
                 }
             }).start();
 
