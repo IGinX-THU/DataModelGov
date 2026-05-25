@@ -289,11 +289,12 @@ public class SimulationExecutionService {
     /**
      * 定时任务：检查并执行定时仿真
      * 每分钟检查一次，根据cron表达式判断是否需要执行
+     * 只查询 status=true 的档案进行调度
      */
     @Scheduled(cron = "0 * * * * ?")
     public void checkScheduledSimulations() {
         try {
-            // 查询所有启用了定时调度的仿真档案
+            // 查询所有启用状态（status=true）的仿真档案
             List<SimulationArchiveEntity> archives = simulationArchiveService.queryArchives(
                 null, null, null, true, 1, 1000);
 

@@ -82,11 +82,8 @@ class SimulationArchiveList extends HTMLElement {
                 const item = this.data.find(item => String(item.id) === String(id));
 
                 switch (action) {
-                    case 'run':
-                        this.runSimulation(id);
-                        break;
-                    case 'stop':
-                        this.stopSimulation(id);
+                    case 'toggle-status':
+                        this.toggleStatus(id, btn.dataset.status);
                         break;
                     case 'copy':
                         this.copyArchive(id);
@@ -169,7 +166,8 @@ class SimulationArchiveList extends HTMLElement {
                     updateTime: new Date(archive.updateTime).toLocaleString('zh-CN'),
                     executionCount: archive.executionCount || 0,
                     isRunning: archive.isRunning || false,
-                    createTime: archive.createTime
+                    createTime: archive.createTime,
+                    scheduleCron: archive.scheduleCron || ''
                 }));
                 this.renderTable();
                 
@@ -199,7 +197,7 @@ class SimulationArchiveList extends HTMLElement {
         tableBody.innerHTML = '';
 
         if (this.data.length === 0) {
-            tableBody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 20px;">暂无数据</td></tr>';
+            tableBody.innerHTML = '<tr><td colspan="9" style="text-align: center; padding: 20px;">暂无数据</td></tr>';
             return;
         }
 
@@ -207,28 +205,32 @@ class SimulationArchiveList extends HTMLElement {
             const row = document.createElement('tr');
             row.style.cursor = 'pointer';
             row.dataset.id = item.id;
+
+            // 处理调度配置显示
+            const scheduleCron = item.scheduleCron && item.scheduleCron.trim() !== '' ? item.scheduleCron : '-';
+
             row.innerHTML = `
                 <td>${item.name || '-'}</td>
                 <td>${item.description || '-'}</td>
                 <td>${item.projectName || '-'}</td>
                 <td>${item.owner || '-'}</td>
+                <td>${item.updateTime || '-'}</td>
+                <td>${item.executionCount || 0}</td>
+                <td>${scheduleCron}</td>
                 <td>
                     <span class="status-badge ${item.status}">
                         ${item.status === 'active' ? '启用' : '禁用'}
                     </span>
                 </td>
-                <td>${item.updateTime || '-'}</td>
-                <td>${item.executionCount || 0}</td>
                 <td>
                     <div class="action-buttons">
-                        ${item.isRunning ?
-                            `<button class="action-btn stop" data-action="stop" data-id="${item.id}">停止</button>` :
-                            `<button class="action-btn run" data-action="run" data-id="${item.id}">运行</button>`
-                        }
-                        <button class="action-btn copy" data-action="copy" data-id="${item.id}">复制</button>
-                        <button class="action-btn detail" data-action="detail" data-id="${item.id}">详情</button>
-                        <button class="action-btn edit" data-action="edit" data-id="${item.id}">编辑</button>
-                        <button class="action-btn delete" data-action="delete" data-id="${item.id}">删除</button>
+                        <button class="action-btn toggle-status" data-action="toggle-status" data-id="${item.createTime}" data-status="${item.status}">
+                            ${item.status === 'active' ? '禁用' : '启用'}
+                        </button>
+                        <button class="action-btn copy" data-action="copy" data-id="${item.createTime}">复制</button>
+                        <button class="action-btn detail" data-action="detail" data-id="${item.createTime}">详情</button>
+                        <button class="action-btn edit" data-action="edit" data-id="${item.createTime}">编辑</button>
+                        <button class="action-btn delete" data-action="delete" data-id="${item.createTime}">删除</button>
                     </div>
                 </td>
             `;
@@ -372,51 +374,23 @@ class SimulationArchiveList extends HTMLElement {
         }
     }
 
-    async runSimulation(id) {
+    async toggleStatus(id, currentStatus) {
         try {
-            if (window.showGlobalLoading) {
-                window.showGlobalLoading('正在启动仿真...');
-            }
+            const newStatus = currentStatus === 'active' ? false : true;
+            const result = await window.AppConfig.post('simulationArchives', 'save', {
+                createTime: id,
+                status: newStatus
+            });
 
-            const result = await window.AppConfig.post('simulationArchives', 'run', { createTime: id });
-            
             if (result.code === 200) {
-                this.showToast('仿真已开始运行');
+                this.showToast(newStatus ? '已启用' : '已禁用');
                 await this.loadData();
             } else {
-                this.showToast(result.message || '启动失败', 'error');
+                this.showToast(result.message || '操作失败', 'error');
             }
         } catch (error) {
-            console.error('运行仿真失败:', error);
-            this.showToast('网络错误，启动失败', 'error');
-        } finally {
-            if (window.hideGlobalLoading) {
-                window.hideGlobalLoading();
-            }
-        }
-    }
-
-    async stopSimulation(id) {
-        try {
-            if (window.showGlobalLoading) {
-                window.showGlobalLoading('正在停止仿真...');
-            }
-
-            const result = await window.AppConfig.post('simulationArchives', 'stop', { createTime: id });
-            
-            if (result.code === 200) {
-                this.showToast('仿真已停止');
-                await this.loadData();
-            } else {
-                this.showToast(result.message || '停止失败', 'error');
-            }
-        } catch (error) {
-            console.error('停止仿真失败:', error);
-            this.showToast('网络错误，停止失败', 'error');
-        } finally {
-            if (window.hideGlobalLoading) {
-                window.hideGlobalLoading();
-            }
+            console.error('切换状态失败:', error);
+            this.showToast('操作失败', 'error');
         }
     }
 
