@@ -369,7 +369,7 @@ public class DirectedGraphExecutionEngine {
      */
     public void stopExecution() {
         stopRequested.set(true);
-        executorService.shutdownNow();
-        log.info("执行引擎已停止");
+        // 不shutdown线程池，只设置停止标志，线程池在整个服务生命周期内保持活跃
+        log.info("执行引擎已请求停止");
     }
 }
