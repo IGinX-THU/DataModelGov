@@ -149,7 +149,10 @@ public class AlgorithmExecutionService {
                 // 8. 读取输出文件
                 String outputText = collectOutputText(taskDir, algorithmMeta, output);
 
-                // 9. 读取输出CSV文件内容
+                // 9. 处理输出CSV表头映射（参考RunTaskService的processOutputCsv）
+                processOutputCsvHeaderMapping(taskDir, algorithmMeta);
+
+                // 10. 读取输出CSV文件内容
                 String outputCsvContent = readOutputCsv(taskDir, algorithmMeta);
 
                 String endLog = "进程结束: 退出成功, 时间=" + new Date() + "\n";
@@ -495,6 +498,78 @@ public class AlgorithmExecutionService {
         }
 
         return outputText.toString();
+    }
+
+    /**
+     * 处理输出CSV表头映射
+     * 参考RunTaskService的processOutputCsv，将算法输出的列名映射为用户配置的目标列名
+     */
+    private void processOutputCsvHeaderMapping(Path taskDir, AlgorithmMetaEntity algorithmMeta) {
+        String outputCsvName = algorithmMeta.getOutputCsvName();
+        String outputsBindStr = algorithmMeta.getOutputsBind();
+
+        if (outputCsvName == null || outputCsvName.trim().isEmpty() || outputsBindStr == null || outputsBindStr.trim().isEmpty()) {
+            log.info("输出CSV文件名或输出映射为空，跳过输出表头处理");
+            return;
+        }
+
+        try {
+            // 解析输出绑定配置
+            List<OutputBindDto> outputs = JSONArray.parseArray(outputsBindStr, OutputBindDto.class);
+            if (outputs == null || outputs.isEmpty()) {
+                log.info("输出绑定配置为空，跳过输出表头处理");
+                return;
+            }
+
+            // 构建输出CSV文件路径
+            Path outputCsvFile = taskDir.resolve(outputCsvName);
+
+            if (!Files.exists(outputCsvFile)) {
+                log.warn("输出CSV文件不存在: {}", outputCsvFile);
+                return;
+            }
+
+            log.info("开始处理输出CSV表头映射: {}", outputCsvFile);
+
+            // 读取CSV内容并修改表头
+            List<String> lines = Files.readAllLines(outputCsvFile, StandardCharsets.UTF_8);
+            if (!lines.isEmpty()) {
+                // 修改表头：将原列名(modelOutput)换成新列名(resultTarget)
+                String originalHeader = lines.get(0);
+                String[] originalColumns = originalHeader.split(",");
+
+                // 构建新的表头映射
+                Map<String, String> columnMapping = new HashMap<>();
+                for (OutputBindDto output : outputs) {
+                    columnMapping.put(output.getModelOutput(), output.getResultTarget());
+                }
+
+                // 替换表头中的列名
+                String[] newColumns = new String[originalColumns.length];
+                for (int i = 0; i < originalColumns.length; i++) {
+                    String originalCol = originalColumns[i].trim();
+                    newColumns[i] = columnMapping.getOrDefault(originalCol, originalCol);
+                }
+
+                // 构建新表头
+                StringBuilder newHeader = new StringBuilder();
+                for (int i = 0; i < newColumns.length; i++) {
+                    newHeader.append(newColumns[i]);
+                    if (i < newColumns.length - 1) {
+                        newHeader.append(",");
+                    }
+                }
+
+                // 替换表头
+                lines.set(0, newHeader.toString());
+
+                // 写回文件
+                Files.write(outputCsvFile, lines, StandardCharsets.UTF_8);
+                log.info("输出CSV表头映射完成: {}", outputCsvFile);
+            }
+        } catch (Exception e) {
+            log.error("处理输出CSV表头映射失败", e);
+        }
     }
 
     /**
