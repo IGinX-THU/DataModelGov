@@ -55,7 +55,7 @@ public class AlgorithmFileService {
      */
     public UploadResult uploadAlgorithm(MultipartFile file, String name, String version) throws Exception {
         String projectName = ProjectContext.getCurrentProject("unknown");
-        String storagePath = buildStoragePath(name, version);
+        String storagePath = buildStoragePath(projectName, name, version);
 
         if (dataPermissionService.existTablePrefix(storagePath)) {
             throw new IllegalArgumentException("算法资产已存在");
@@ -163,7 +163,7 @@ public class AlgorithmFileService {
                 algorithmMeta.getFileName(), algorithmMeta.getChunkCount(), algorithmMeta.getStoragePath(), algorithmMeta.getFileMd5());
 
         // 2. 按chunkCount精确获取文件块
-        String storagePath = buildStoragePath(name, version);
+        String storagePath = buildStoragePath(algorithmMeta.getProjectName(), name, version);
         TreeMap<Integer, byte[]> chunkMap = new TreeMap<>();
 
         // 构建查询 - 只查询指定数量的块
@@ -598,7 +598,8 @@ public class AlgorithmFileService {
         try {
             List<String> measurements = ConvertUtil.iginxFieldNamesConvert(AlgorithmMetaEntity.class, META_PREFIX);
             if (StringUtils.hasText(version) && !"null".equals(version)) {
-                String storagePath = buildStoragePath(name, version);
+                String projectName = ProjectContext.getCurrentProject("unknown");
+                String storagePath = buildStoragePath(projectName, name, version);
                 iginxClient.getDeleteClient().deleteMeasurement(storagePath);
                 AlgorithmMetaEntity queryMeta = queryMeta(name, version);
                 if (queryMeta != null && queryMeta.getTimestamp() != null) {
@@ -610,7 +611,7 @@ public class AlgorithmFileService {
                 List<AlgorithmMetaEntity> queryMetas = queryMetaList(name);
                 List<String> storagePaths = queryMetas.stream()
                         .map(meta ->
-                                buildStoragePath(meta.getName(), meta.getVersion())
+                                buildStoragePath(meta.getProjectName(), meta.getName(), meta.getVersion())
                         )
                         .collect(Collectors.toList());
                 iginxClient.getDeleteClient().deleteMeasurements(storagePaths);
@@ -629,8 +630,8 @@ public class AlgorithmFileService {
     /**
      * 构建存储路径
      */
-    private String buildStoragePath(String name, String version) {
-        String projectName = ProjectContext.getCurrentProject("unknown");
+    private String buildStoragePath(String projectName,String name, String version) {
+        projectName = StringUtils.hasText(projectName) ? projectName : ProjectContext.getCurrentProject("unknown");
         String safeVersion = version.replace('.', '_');
         return String.format("%s.%s.%s.%s", STORAGE_PREFIX_BASE, projectName, name, safeVersion);
     }
