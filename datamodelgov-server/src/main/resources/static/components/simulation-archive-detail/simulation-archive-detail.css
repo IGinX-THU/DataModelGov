@@ -120,6 +120,25 @@
     resize: vertical;
 }
 
+.api-config-row {
+    margin-bottom: 10px;
+}
+
+.api-config-row:last-child {
+    margin-bottom: 0;
+}
+
+.api-config-label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+#detailOutputApiConfigInput .detail-input {
+    width: 100%;
+}
+
 .edit-actions {
     display: none;
     gap: 10px;

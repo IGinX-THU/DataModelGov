@@ -37,7 +37,23 @@
             <div class="detail-row">
                 <span class="detail-label">输出API配置：</span>
                 <span class="detail-value" id="detailOutputApiConfig">-</span>
-                <textarea class="detail-input" id="detailOutputApiConfigInput" style="display: none;" rows="5" placeholder='{"url": "http://example.com/api", "headers": {"Authorization": "Bearer token"}}'></textarea>
+                <div id="detailOutputApiConfigInput" style="display: none;">
+                    <div class="api-config-row">
+                        <label class="api-config-label">URL：</label>
+                        <input type="text" class="detail-input" id="outputApiUrl" placeholder="http://example.com/api">
+                    </div>
+                    <div class="api-config-row">
+                        <label class="api-config-label">方法：</label>
+                        <select class="detail-input" id="outputApiMethod">
+                            <option value="GET">GET</option>
+                            <option value="POST">POST</option>
+                        </select>
+                    </div>
+                    <div class="api-config-row">
+                        <label class="api-config-label">Headers：</label>
+                        <textarea class="detail-input" id="outputApiHeaders" rows="3" placeholder='{"Authorization": "Bearer token"}'></textarea>
+                    </div>
+                </div>
             </div>
             <div class="detail-row">
                 <span class="detail-label">状态：</span>

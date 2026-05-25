@@ -106,10 +106,32 @@ public class SimulationExecutionService {
                     archive.setExecutionCount((archive.getExecutionCount() == null ? 0 : archive.getExecutionCount()) + 1);
                     simulationArchiveService.saveArchive(archive);
 
-                    // 如果配置了输出API，发送结果
+                    // 如果配置了输出API，发送结果（JSON格式）
                     if (archive.getOutputApiConfig() != null && !archive.getOutputApiConfig().isEmpty()) {
                         try {
-                            boolean sent = outputApiSenderService.sendResult(archive.getOutputApiConfig(), executionResult);
+                            // 构建简单的JSON结果：包含节点信息和CSV文本
+                            Map<String, Object> apiResult = new HashMap<>();
+                            apiResult.put("archiveName", archive.getName());
+                            apiResult.put("createTime", archive.getCreateTime());
+                            apiResult.put("timestamp", System.currentTimeMillis());
+
+                            // 提取节点CSV结果，直接作为字符串数组
+                            List<String> dataList = new ArrayList<>();
+                            if (executionResult.containsKey("results")) {
+                                Map<String, Object> results = (Map<String, Object>) executionResult.get("results");
+                                for (Map.Entry<String, Object> entry : results.entrySet()) {
+                                    Map<String, Object> nodeResult = (Map<String, Object>) entry.getValue();
+                                    if (nodeResult.containsKey("outputCsv")) {
+                                        String nodeCsv = (String) nodeResult.get("outputCsv");
+                                        if (nodeCsv != null && !nodeCsv.isEmpty()) {
+                                            dataList.add(nodeCsv);
+                                        }
+                                    }
+                                }
+                            }
+                            apiResult.put("data", dataList);
+
+                            boolean sent = outputApiSenderService.sendResult(archive.getOutputApiConfig(), apiResult);
                             log.info("输出API发送结果: {}", sent ? "成功" : "失败");
                         } catch (Exception apiEx) {
                             log.error("输出API发送失败", apiEx);

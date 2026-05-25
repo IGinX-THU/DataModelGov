@@ -188,7 +188,22 @@ class SimulationArchiveDetail extends HTMLElement {
         setText('detailProjectName', archive.projectName || '-');
         setText('detailOwner', archive.owner || '-');
         setText('detailScheduleCron', archive.scheduleCron || '未配置');
-        setText('detailOutputApiConfig', archive.outputApiConfig || '未配置');
+
+        // 特殊处理 outputApiConfig 显示
+        const apiConfigEl = $('detailOutputApiConfig');
+        if (apiConfigEl) {
+            if (archive.outputApiConfig) {
+                try {
+                    const config = JSON.parse(archive.outputApiConfig);
+                    apiConfigEl.textContent = `${config.method || 'POST'} ${config.url || '未配置'}`;
+                } catch (e) {
+                    apiConfigEl.textContent = '配置格式错误';
+                }
+            } else {
+                apiConfigEl.textContent = '未配置';
+            }
+        }
+
         setText('detailStatus', archive.status ? '启用' : '禁用');
         setText('detailUpdateTime', archive.updateTime ? new Date(archive.updateTime).toLocaleString('zh-CN') : '-');
         setText('detailExecutionCount', archive.executionCount || 0);
@@ -272,7 +287,7 @@ class SimulationArchiveDetail extends HTMLElement {
         const nmm = $('nodeModalMask');
         if (nmm) { nmm.hidden = true; nmm.style.display = 'none'; }
 
-        const fields = ['detailName', 'detailDesc', 'detailScheduleCron', 'detailOutputApiConfig', 'detailStatus'];
+        const fields = ['detailName', 'detailDesc', 'detailScheduleCron'];
         fields.forEach(field => {
             const v = $(field), i = $(field + 'Input');
             if (v && i) {
@@ -281,6 +296,33 @@ class SimulationArchiveDetail extends HTMLElement {
                 i.value = v.textContent === '-' || v.textContent === '未配置' ? '' : v.textContent;
             }
         });
+
+        // 特殊处理 outputApiConfig
+        const apiConfigV = $('detailOutputApiConfig'), apiConfigDiv = $('detailOutputApiConfigInput');
+        if (apiConfigV && apiConfigDiv) {
+            apiConfigV.style.display = 'none';
+            apiConfigDiv.style.display = 'block';
+            // 解析JSON配置
+            let config = {};
+            try {
+                if (apiConfigV.textContent && apiConfigV.textContent !== '-' && apiConfigV.textContent !== '未配置') {
+                    config = JSON.parse(apiConfigV.textContent);
+                }
+            } catch (e) {
+                console.warn('解析API配置失败', e);
+            }
+            $('outputApiUrl').value = config.url || '';
+            $('outputApiMethod').value = config.method || 'POST';
+            $('outputApiHeaders').value = config.headers ? JSON.stringify(config.headers, null, 2) : '';
+        }
+
+        // 特殊处理 status
+        const statusV = $('detailStatus'), statusI = $('detailStatusInput');
+        if (statusV && statusI) {
+            statusV.style.display = 'none';
+            statusI.style.display = 'inline-block';
+            statusI.value = statusV.textContent === '启用' ? 'true' : 'false';
+        }
 
         const ea = $('editActions'), eb = $('editBtn');
         if (ea) ea.style.display = 'flex';
@@ -299,11 +341,27 @@ class SimulationArchiveDetail extends HTMLElement {
         this.isEditMode = false;
         if (!this.shadowRoot) return;
         const $ = id => this.shadowRoot.getElementById(id);
-        const fields = ['detailName', 'detailDesc', 'detailScheduleCron', 'detailOutputApiConfig', 'detailStatus'];
+        const fields = ['detailName', 'detailDesc', 'detailScheduleCron'];
         fields.forEach(field => {
             const v = $(field), i = $(field + 'Input');
             if (v && i) { v.style.display = 'inline'; i.style.display = 'none'; }
         });
+
+        // 特殊处理 outputApiConfig
+        const apiConfigV = $('detailOutputApiConfig'), apiConfigDiv = $('detailOutputApiConfigInput');
+        if (apiConfigV && apiConfigDiv) {
+            apiConfigV.style.display = 'inline';
+            apiConfigDiv.style.display = 'none';
+        }
+
+        // 特殊处理 status
+        const statusV = $('detailStatus'), statusI = $('detailStatusInput');
+        if (statusV && statusI) {
+            statusV.style.display = 'inline';
+            statusI.style.display = 'none';
+            statusV.textContent = statusI.value === 'true' ? '启用' : '禁用';
+        }
+
         const ea = $('editActions'), eb = $('editBtn');
         if (ea) ea.style.display = 'none';
         if (eb) eb.style.display = 'inline-block';
@@ -334,7 +392,11 @@ class SimulationArchiveDetail extends HTMLElement {
                 graphJson: JSON.stringify({ nodes: this.nodes, edges: this.edges }),
                 status: $('detailStatusInput').value === 'true',
                 scheduleCron: $('detailScheduleCronInput').value.trim(),
-                outputApiConfig: $('detailOutputApiConfigInput').value.trim()
+                outputApiConfig: JSON.stringify({
+                    url: $('outputApiUrl').value.trim(),
+                    method: $('outputApiMethod').value,
+                    headers: $('outputApiHeaders').value.trim() ? JSON.parse($('outputApiHeaders').value.trim()) : {}
+                })
             };
 
             const result = await window.AppConfig.post('simulationArchives', 'save', archiveData);
