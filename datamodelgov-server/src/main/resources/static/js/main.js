@@ -3157,6 +3157,11 @@ window.displayProjectTree = function(projectName) {
                         text-overflow: ellipsis;
                     `;
                 }
+
+                // 重新加载右侧边栏（算法库和模型资产库）
+                if (typeof loadDataSourceTree === 'function') {
+                    loadDataSourceTree();
+                }
             } else {
                 console.error('获取项目树失败:', result.message);
                 const treeContainer = document.getElementById('projectTree');
