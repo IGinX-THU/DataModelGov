@@ -545,6 +545,7 @@ class SimulationArchiveDetail extends HTMLElement {
 
             g.addEventListener('mousedown', e => {
                 if (this.isAddingEdge) { this.handleEdgeClick(node.nodeId); return; }
+                if (!this.isEditMode) { this.selectNode(node.nodeId); e.stopPropagation(); return; }
                 draggingNode = node;
                 dragStartX = e.clientX - (node.positionX || 100);
                 dragStartY = e.clientY - (node.positionY || 100);
