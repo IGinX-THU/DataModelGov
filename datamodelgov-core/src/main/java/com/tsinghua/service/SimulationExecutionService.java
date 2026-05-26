@@ -225,36 +225,9 @@ public class SimulationExecutionService {
             data.put("executionCount", archive.getExecutionCount());
             data.put("execution", execution);
 
-            // 如果执行完成，包含结果数据（限制CSV只返回前20行）
+            // 如果执行完成，包含结果数据
             if (execution != null && execution.getResult() instanceof Map) {
-                Map<String, Object> result = (Map<String, Object>) execution.getResult();
-                Map<String, Object> limitedResult = new HashMap<>(result);
-                
-                // 处理 results 中的 outputCsv，限制为前20行
-                if (result.containsKey("results") && result.get("results") instanceof Map) {
-                    Map<String, Object> results = (Map<String, Object>) result.get("results");
-                    Map<String, Object> limitedResults = new HashMap<>();
-                    
-                    for (Map.Entry<String, Object> entry : results.entrySet()) {
-                        Object nodeResult = entry.getValue();
-                        if (nodeResult instanceof Map) {
-                            Map<String, Object> nodeMap = new HashMap<>((Map<String, Object>) nodeResult);
-                            if (nodeMap.containsKey("outputCsv") && nodeMap.get("outputCsv") instanceof String) {
-                                String csv = (String) nodeMap.get("outputCsv");
-                                String[] lines = csv.split("\n");
-                                if (lines.length > 20) {
-                                    String[] limitedLines = new String[20];
-                                    System.arraycopy(lines, 0, limitedLines, 0, 20);
-                                    nodeMap.put("outputCsv", String.join("\n", limitedLines));
-                                }
-                            }
-                            limitedResults.put(entry.getKey(), nodeMap);
-                        }
-                    }
-                    limitedResult.put("results", limitedResults);
-                }
-                
-                data.put("result", limitedResult);
+                data.put("result", execution.getResult());
             }
 
             return Result.success(data);
