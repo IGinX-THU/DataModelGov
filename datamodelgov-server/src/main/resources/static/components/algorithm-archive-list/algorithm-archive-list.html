@@ -1,0 +1,53 @@
+<div class="algorithm-archive-list">
+    <div class="list-header">
+        <h2>搜索算法档案</h2>
+    </div>
+
+    <div class="filter-section">
+        <div class="filter-row">
+            <div class="filter-item">
+                <label>名称：</label>
+                <input type="text" id="nameInput" placeholder="请输入算法名称">
+            </div>
+            <div class="filter-item">
+                <label>项目名称：</label>
+                <input type="text" id="projectNameInput" placeholder="请输入项目名称">
+            </div>
+            <div class="filter-item">
+                <label>开发者：</label>
+                <input type="text" id="authorInput" placeholder="请输入开发者">
+            </div>
+            <div class="filter-actions">
+                <button class="btn-primary" id="searchBtn">查询</button>
+                <button class="btn-secondary" id="resetBtn">重置</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="table-section">
+        <table>
+            <thead>
+                <tr>
+                    <th>名称</th>
+                    <th>版本</th>
+                    <th>文件名</th>
+                    <th>项目名称</th>
+                    <th>开发者</th>
+                    <th>创建时间</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody">
+                <tr><td colspan="7" style="text-align: center; padding: 20px;">加载中...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="pagination-section">
+        <span id="paginationInfo">第 1 / 1 页，共 0 条</span>
+        <div class="pagination-actions">
+            <button class="btn-secondary" id="prevBtn">上一页</button>
+            <button class="btn-secondary" id="nextBtn">下一页</button>
+        </div>
+    </div>
+</div>

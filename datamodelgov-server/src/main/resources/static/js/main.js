@@ -92,7 +92,8 @@ document.addEventListener('DOMContentLoaded', function() {
             'algorithmEdit',
             'parsingRules',
             'associationRules',
-            'simulationArchive',
+            'simulationArchiveList',
+            'simulationArchiveDetail',
             'algorithmList',
             'databaseTable',
             'dataVisualization',
@@ -107,7 +108,8 @@ document.addEventListener('DOMContentLoaded', function() {
             'projectDetail',
             'projectCreate',
             'dataArchiveDetail',
-            'modelArchiveList'
+            'modelArchiveList',
+            'algorithmArchiveList'
         ];
         
         components.forEach(componentId => {
@@ -494,6 +496,11 @@ document.addEventListener('DOMContentLoaded', function() {
                         if (isSecondClick) clearWorkspace();
                         showComponent('modelArchiveList');
                         break;
+                    case 'showAlgorithmArchiveList':
+                        console.log('算法档案查询菜单被点击');
+                        if (isSecondClick) clearWorkspace();
+                        showComponent('algorithmArchiveList');
+                        break;
                     case 'console.log':
                         console.log('数据源管理被点击');
                         break;
@@ -602,7 +609,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     case 'showSimulationArchive':
                         console.log('仿真档案管理菜单被点击');
                         if (isSecondClick) clearWorkspace();
-                        showComponent('simulationArchive');
+                        showComponent('simulationArchiveList');
                         break;
                     case 'showAlgorithmList':
                         console.log('算法管理菜单被点击');
@@ -921,20 +928,24 @@ document.addEventListener('DOMContentLoaded', function() {
                         showComponent('registerEmbedded');
                         break;
                     case 'showModelUpload':
-                        // 检查模型侧边栏是否打开
+                        // 检查模型侧边栏是否打开，如果未打开则自动打开
                         const activeModelIconUpload = document.querySelector('.bottom-sidebar-icon.right-sidebar-icon.active[data-panel="model"]');
                         if (!activeModelIconUpload) {
-                            showWorkspaceMessage('请先打开模型侧边栏', 'warning');
-                            break;
+                            const modelIcon = document.querySelector('.bottom-sidebar-icon.right-sidebar-icon[data-panel="model"]');
+                            if (modelIcon) {
+                                modelIcon.click();
+                            }
                         }
                         showComponent('modelUpload');
                         break;
                     case 'showAlgorithmUpload':
-                        // 检查算法侧边栏是否打开
+                        // 检查算法侧边栏是否打开，如果未打开则自动打开
                         const activeAlgorithmIconUpload = document.querySelector('.bottom-sidebar-icon.right-sidebar-icon.active[data-panel="algorithm"]');
                         if (!activeAlgorithmIconUpload) {
-                            showWorkspaceMessage('请先打开算法侧边栏', 'warning');
-                            break;
+                            const algorithmIcon = document.querySelector('.bottom-sidebar-icon.right-sidebar-icon[data-panel="algorithm"]');
+                            if (algorithmIcon) {
+                                algorithmIcon.click();
+                            }
                         }
                         showComponent('algorithmUpload');
                         break;
@@ -1054,6 +1065,12 @@ document.addEventListener('DOMContentLoaded', function() {
                         break;
                     case 'showModelArchiveList':
                         showComponent('modelArchiveList');
+                        break;
+                    case 'showAlgorithmArchiveList':
+                        showComponent('algorithmArchiveList');
+                        break;
+                    case 'showSimulationArchive':
+                        showComponent('simulationArchiveList');
                         break;
                     default:
                         console.warn(`未知的按钮动作: ${action}`);
@@ -1744,6 +1761,11 @@ function showVisualAnalysis() {
         let dataViz = document.getElementById('dataVisualization');
         let isFirstLoad = false;
 
+        // 检查当前显示的组件是否是 data-visualization
+        const currentActiveComponent = document.querySelector('.workspace-content > [show]:not([hidden])');
+        const isCurrentDataViz = currentActiveComponent && currentActiveComponent.id === 'dataVisualization';
+        console.log('当前活动组件:', currentActiveComponent?.id, '是否为data-visualization:', isCurrentDataViz);
+
         if (!dataViz) {
             // 先清空工作区
             clearWorkspace();
@@ -1762,6 +1784,13 @@ function showVisualAnalysis() {
             }
         } else {
             console.log('使用现有的数据可视化组件');
+            // 只有从其他组件切换过来时才清空工作区
+            if (!isCurrentDataViz) {
+                clearWorkspace();
+                console.log('从其他组件切换，清空工作区');
+            } else {
+                console.log('在data-visualization组件内切换，不清空工作区');
+            }
             // 隐藏databaseTable组件
             const databaseTable = document.getElementById('databaseTable');
             if (databaseTable) {
@@ -1960,7 +1989,7 @@ function showVisualAnalysis() {
             'algorithmList',
             'associationRules',
             'visualAnalysis',
-            'simulationArchive'
+            'simulationArchiveList'
         ];
 
         if (componentsRequiringProject.includes(componentId)) {
@@ -2838,6 +2867,53 @@ window.expandModelNodeInRightSidebar = function(storagePath) {
     }, 500);
 };
 
+// 全局函数：在右侧算法侧边栏展开对应节点
+window.expandAlgorithmNodeInRightSidebar = function(storagePath) {
+    console.log('尝试在右侧算法侧边栏展开节点:', storagePath);
+
+    // 切换到右侧算法侧边栏
+    const activeAlgorithmIcon = document.querySelector('.bottom-sidebar-icon.right-sidebar-icon.active[data-panel="algorithm"]');
+    const rightSidebar = document.querySelector('.right-sidebar');
+    const isAlgorithmSidebarActive = !!activeAlgorithmIcon;
+    const isSidebarExpanded = rightSidebar && !rightSidebar.classList.contains('collapsed');
+
+    if (!isAlgorithmSidebarActive || !isSidebarExpanded) {
+        const algorithmIcon = document.querySelector('.bottom-sidebar-icon.right-sidebar-icon[data-panel="algorithm"]');
+        if (algorithmIcon) {
+            console.log('当前不是算法侧边栏或侧边栏未展开，点击切换');
+            algorithmIcon.click();
+        }
+    }
+
+    // 等待树加载完成后展开对应节点
+    setTimeout(() => {
+        const algorithmTree = document.getElementById('algorithmTree');
+        if (!algorithmTree) return;
+
+        const treeNodes = algorithmTree.querySelectorAll('.tree-node');
+        let found = false;
+        treeNodes.forEach(node => {
+            const fullPath = node.getAttribute('data-full-path');
+            if (fullPath === storagePath) {
+                found = true;
+                // 展开父节点
+                let parent = node.closest('.tree-children')?.parentElement;
+                while (parent && parent.classList.contains('tree-node')) {
+                    parent.classList.add('expanded');
+                    parent = parent.closest('.tree-children')?.parentElement;
+                }
+                // 模拟点击节点
+                node.click();
+                node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        });
+
+        if (!found) {
+            console.log('未找到匹配的算法树节点:', storagePath);
+        }
+    }, 500);
+};
+
 // 全局函数：显示修改密码弹窗
 window.showChangePasswordModal = function() {
     const changePasswordComponent = document.querySelector('change-password');
@@ -3097,6 +3173,11 @@ window.displayProjectTree = function(projectName) {
                         text-overflow: ellipsis;
                     `;
                 }
+
+                // 重新加载右侧边栏（算法库和模型资产库）
+                if (typeof loadDataSourceTree === 'function') {
+                    loadDataSourceTree();
+                }
             } else {
                 console.error('获取项目树失败:', result.message);
                 const treeContainer = document.getElementById('projectTree');
@@ -3182,6 +3263,25 @@ function bindProjectTreeEvents() {
                     }
                 } else if (nodeType === 'algorithm') {
                     console.log('点击算法节点:', nodeName);
+                    // 清空工作区
+                    if (window.hideAllComponents) {
+                        window.hideAllComponents();
+                    }
+                    // 显示算法详情
+                    const algorithmDetail = document.getElementById('algorithmDetail');
+                    if (algorithmDetail && algorithmDetail.show) {
+                        // nodeName是storagePath格式: algorithms_system.projectName.algorithmName.version
+                        const pathParts = nodeName.split('.');
+                        if (pathParts.length >= 4) {
+                            const algorithmName = pathParts[2];
+                            const algorithmVersion = pathParts[3];
+                            algorithmDetail.show({ name: algorithmName, version: algorithmVersion });
+                        } else {
+                            algorithmDetail.show({ name: nodeName });
+                        }
+                    }
+                    // 同时在右侧算法侧边栏展开对应节点
+                    expandAlgorithmNodeInRightSidebar(nodeName);
                 } else if (nodeType === 'model') {
                     console.log('点击模型节点:', nodeName);
                     // 清空工作区

@@ -181,7 +181,7 @@ public class DataSourceService {
                                             path.startsWith("models_system." + currentProject + ".") ||
                                             path.startsWith("algorithms_system." + currentProject + ".");
                                 }
-                                return true;
+                                return false;
                             })
                             .collect(Collectors.toList())));
             return  filteredTree;

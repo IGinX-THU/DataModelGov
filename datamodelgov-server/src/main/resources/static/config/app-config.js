@@ -93,8 +93,10 @@ window.AppConfig = {
             'validate-name': '/api/simulation/archives/validate-name',
             copy: '/api/simulation/archives/copy',
             run: '/api/simulation/archives/run',
+            'run-selective': '/api/simulation/archives/run-selective',
             stop: '/api/simulation/archives/stop',
-            'execution-status': '/api/simulation/archives/execution-status'
+            'execution-status': '/api/simulation/archives/execution-status',
+            'execution-log': '/api/simulation/archives/execution-log'
         },
         // 数据档案相关
         dataArchive: {
@@ -111,7 +113,10 @@ window.AppConfig = {
             metas: '/api/algorithm/metas',
             history: '/api/algorithm/history',
             delete: '/api/algorithm/delete',
-            extractAlgorithmFile: '/api/algorithm/extractAlgorithmFile'
+            extractAlgorithmFile: '/api/algorithm/extractAlgorithmFile',
+            tree: '/api/algorithm/tree',
+            'archive/query': '/api/algorithm/archive/query',
+            'archive/count': '/api/algorithm/archive/count'
         },
         // 用户管理相关
         userManagement: {

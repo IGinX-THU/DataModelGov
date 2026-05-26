@@ -54,7 +54,7 @@ public class ModelFileService {
      */
     public UploadResult uploadModel(MultipartFile file, String name, String version) throws Exception {
         String projectName = ProjectContext.getCurrentProject("unknown");
-        String storagePath = buildStoragePath(name, version);
+        String storagePath = buildStoragePath(projectName, name, version);
 
         if (dataPermissionService.existTablePrefix(storagePath)) {
             throw new IllegalArgumentException("模型资产已存在");
@@ -153,7 +153,7 @@ public class ModelFileService {
                 modelMeta.getFileName(), modelMeta.getChunkCount(), modelMeta.getStoragePath(), modelMeta.getFileMd5());
 
         // 2. 按chunkCount精确获取文件块
-        String storagePath = buildStoragePath(name, version);
+        String storagePath = buildStoragePath(modelMeta.getProjectName(), name, version);
         TreeMap<Integer, byte[]> chunkMap = new TreeMap<>();
 
         // 构建查询 - 只查询指定数量的块
@@ -559,9 +559,9 @@ public class ModelFileService {
         try {
             List<String> measurements = ConvertUtil.iginxFieldNamesConvert(ModelMetaEntity.class, META_PREFIX);
             if (StringUtils.hasText(version) && !"null".equals(version)) {
-                String storagePath = buildStoragePath(name, version);
-                iginxClient.getDeleteClient().deleteMeasurement(storagePath);
                 ModelMetaEntity queryMeta = queryMeta(name, version);
+                String storagePath = buildStoragePath(queryMeta.getProjectName(), name, version);
+                iginxClient.getDeleteClient().deleteMeasurement(storagePath);
                 if (queryMeta != null && queryMeta.getTimestamp() != null) {
                     long timestamp = queryMeta.getTimestamp();
                     iginxClient.getDeleteClient().deleteMeasurementsData(measurements, timestamp-1, timestamp+1);
@@ -571,7 +571,7 @@ public class ModelFileService {
                 List<ModelMetaEntity> queryMetas = queryMetaList(name);
                 List<String> storagePaths = queryMetas.stream()
                         .map(meta ->
-                                buildStoragePath(meta.getName(), meta.getVersion())
+                                buildStoragePath(meta.getProjectName(),meta.getName(), meta.getVersion())
                         )
                         .collect(Collectors.toList());
                 iginxClient.getDeleteClient().deleteMeasurements(storagePaths);
@@ -590,8 +590,8 @@ public class ModelFileService {
     /**
      * 构建存储路径（含项目名称）
      */
-    private String buildStoragePath(String name, String version) {
-        String projectName = ProjectContext.getCurrentProject("unknown");
+    private String buildStoragePath(String projectName, String name, String version) {
+        projectName = StringUtils.hasText(projectName)? projectName : ProjectContext.getCurrentProject("unknown");
         String safeVersion = version.replace('.', '_');
         return String.format("%s.%s.%s.%s", STORAGE_PREFIX_BASE, projectName, name, safeVersion);
     }

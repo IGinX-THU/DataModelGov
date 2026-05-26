@@ -198,12 +198,14 @@ class ModelDetail extends HTMLElement {
         const modelVersion = this.shadowRoot.getElementById('modelVersion');
         const developer = this.shadowRoot.getElementById('developer');
         const scene = this.shadowRoot.getElementById('scene');
+        const projectName = this.shadowRoot.getElementById('projectName');
         const createTime = this.shadowRoot.getElementById('createTime');
         
         if (modelName) modelName.textContent = modelInfo.name || '-';
         if (modelVersion) modelVersion.textContent = modelInfo.version || '-';
         if (developer) developer.textContent = modelInfo.author || '-';
         if (scene) scene.textContent = modelInfo.scene || '-';
+        if (projectName) projectName.textContent = modelInfo.projectName || '-';
         if (createTime) {
             if (modelInfo.timestamp) {
                 // 将时间戳转换为日期格式

@@ -14,6 +14,11 @@ public class SimulationExecutionEntity {
     private Long archiveId;
 
     /**
+     * 档案名称
+     */
+    private String archiveName;
+
+    /**
      * 开始时间
      */
     private Long startTime;

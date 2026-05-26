@@ -69,17 +69,17 @@ const BUTTON_ID_MAP = {
         text: '删除',
         action: 'handleDeleteAlgorithm'
     },
-    'btn-algorithm-parse': {
-        text: '解析',
-        action: 'showParsingRules'
+    'btn-algorithm-search': {
+        text: '搜索',
+        action: 'showAlgorithmArchiveList'
     },
     'btn-parse': {
         text: '搜索',
         action: 'showModelArchiveList'
     },
-    'btn-link': {
-        text: '关联',
-        action: 'showAssociationRules'
+    'btn-simulation': {
+        text: '仿真',
+        action: 'showSimulationArchive'
     }
 };
 
@@ -130,8 +130,12 @@ const MENU_ID_MAP = {
         action: 'showModelArchiveList'
     },
     'menu-edit-meta-algorithm-archive': {
-        text: '编辑元算法档案',
+        text: '编辑算法档案',
         action: 'handleEditAlgorithm'
+    },
+    'menu-algorithm-archive-query': {
+        text: '搜索算法档案',
+        action: 'showAlgorithmArchiveList'
     },
     'menu-remove-algorithm-asset': {
         text: '移除算法资产',
