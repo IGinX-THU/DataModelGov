@@ -335,42 +335,26 @@ class AlgorithmUpload extends HTMLElement {
         const algorithmNames = new Set(); // 使用Set避免重复
         
         allNodes.forEach(node => {
-            const span = node.querySelector('span');
-            if (span) {
-                const nodeName = span.textContent.trim();
-                
-                // 排除明显的路径节点
-                if (nodeName === 'algorithms_system') {
-                    return;
-                }
-
-                // 去掉存储路径前缀
-                const strippedName = this.stripStoragePrefix(nodeName);
-
-                // 检查是否是父节点（有子节点的节点）
-                const childrenContainer = node.querySelector('.tree-children');
-                if (childrenContainer && childrenContainer.children.length > 0) {
-                    // 检查子节点是否为叶子节点（没有子节点的节点）
-                    const childNodes = childrenContainer.querySelectorAll('.tree-node');
-                    let hasLeafChild = false;
-
-                    childNodes.forEach(childNode => {
-                        const childChildrenContainer = childNode.querySelector('.tree-children');
-                        // 如果子节点没有子节点，则是叶子节点
-                        if (!childChildrenContainer || childChildrenContainer.children.length === 0) {
-                            hasLeafChild = true;
-                        }
-                    });
-
-                    // 只有当子节点包含叶子节点时，才将父节点作为算法名称
-                    if (hasLeafChild) {
-                        algorithmNames.add(strippedName);
+            // 检查是否是叶子节点（没有子节点的节点，即版本号）
+            const childrenContainer = node.querySelector('.tree-children');
+            if (!childrenContainer || childrenContainer.children.length === 0) {
+                // 这是叶子节点（版本号），获取其完整路径
+                const fullPath = node.getAttribute('data-full-path');
+                if (fullPath) {
+                    console.log('叶子节点完整路径:', fullPath);
+                    // 路径格式：algorithms_system.projectName.algorithmName.version
+                    const parts = fullPath.split('.');
+                    // 倒数第二级是算法名称
+                    if (parts.length >= 3) {
+                        const algorithmName = parts[parts.length - 2];
+                        console.log('提取的算法名称:', algorithmName);
+                        algorithmNames.add(algorithmName);
                     }
                 }
             }
         });
         
-        console.log('获取到的算法名称（最后一级叶子节点的父节点）:', Array.from(algorithmNames));
+        console.log('获取到的算法名称（倒数第二级节点）:', Array.from(algorithmNames));
         
         // 清空现有选项
         algorithmNameSelect.innerHTML = '<option value="">请选择算法名称</option>';

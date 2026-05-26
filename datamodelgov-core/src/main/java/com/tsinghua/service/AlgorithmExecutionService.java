@@ -73,6 +73,7 @@ public class AlgorithmExecutionService {
             String projectName,
             Map<String, Object> predecessorOutputs,
             Map<String, Object> executionParams) {
+        StringBuilder processLogBuilder = new StringBuilder();
         try {
             // 1. 获取算法元数据
             AlgorithmMetaEntity algorithmMeta = algorithmFileService.queryMeta(algorithmName, algorithmVersion);
@@ -93,7 +94,6 @@ public class AlgorithmExecutionService {
 
             // 创建日志文件
             Path logFile = taskDir.resolve("task.log");
-            StringBuilder processLogBuilder = new StringBuilder();
             String startLog = "进程启动: 算法=" + algorithmName + " v" + algorithmVersion +
                 ", 目录=" + taskDir.toString() +
                 ", 时间=" + new Date() + "\n";
@@ -193,7 +193,9 @@ public class AlgorithmExecutionService {
             }
         } catch (Exception e) {
             log.error("算法任务执行失败: {}:{}", algorithmName, algorithmVersion, e);
-            return new Result<>(500, "算法执行失败: " + e.getMessage(), null);
+            Map<String, Object> errorData = new HashMap<>();
+            errorData.put("processLog", processLogBuilder.toString());
+            return new Result<>(500, "算法执行失败: " + e.getMessage(), errorData);
         }
     }
 
@@ -237,9 +239,8 @@ public class AlgorithmExecutionService {
 
     /**
      * 写入前驱节点的输出数据到任务目录
-     * 使用边的数据映射配置：sourceOutput指定源节点输出CSV文件名，targetInput指定当前节点输入CSV文件名
-     * 例如：A输出output.csv → B输入input.csv，则将A的output.csv内容写入B的input.csv
-     * 多个前驱输出到同一目标文件时，合并CSV数据（保留第一个表头，追加后续数据行）
+     * 每个前驱节点的输出写入独立的输入CSV文件，不合并
+     * 多个前驱节点时，命令中会有多个-i参数分别指向各输入文件
      */
     @SuppressWarnings("unchecked")
     private void writePredecessorOutputs(Path taskDir, Map<String, Object> predecessorOutputs,
@@ -249,16 +250,22 @@ public class AlgorithmExecutionService {
             defaultInputCsv = "input.csv";
         }
 
-        // 收集每个目标输入文件对应的CSV数据
-        Map<String, List<String>> targetInputData = new LinkedHashMap<>();
-        List<String> unmappedCsvData = new ArrayList<>();
-
+        // 检测targetInput冲突：多个前驱映射到同一targetInput时需要自动生成唯一文件名
+        Map<String, Integer> targetInputCount = new HashMap<>();
         for (Map.Entry<String, Object> entry : predecessorOutputs.entrySet()) {
             if (!(entry.getValue() instanceof Map)) continue;
             Map<String, Object> predData = (Map<String, Object>) entry.getValue();
-            // 使用前驱节点的outputCsv（CSV数据），而不是output（文本输出）
+            String targetInput = (String) predData.get("targetInput");
+            String inputName = (targetInput != null && !targetInput.isEmpty()) ? targetInput : defaultInputCsv;
+            targetInputCount.merge(inputName, 1, Integer::sum);
+        }
+
+        // 每个前驱节点写入独立的输入文件
+        int autoIndex = 1;
+        for (Map.Entry<String, Object> entry : predecessorOutputs.entrySet()) {
+            if (!(entry.getValue() instanceof Map)) continue;
+            Map<String, Object> predData = (Map<String, Object>) entry.getValue();
             String outputCsv = predData.get("outputCsv") != null ? predData.get("outputCsv").toString() : null;
-            String sourceOutput = (String) predData.get("sourceOutput");
             String targetInput = (String) predData.get("targetInput");
 
             if (outputCsv == null || outputCsv.trim().isEmpty()) {
@@ -266,41 +273,43 @@ public class AlgorithmExecutionService {
                 continue;
             }
 
+            // 确定输入文件名：如果有冲突则自动生成唯一文件名
+            String inputFileName;
             if (targetInput != null && !targetInput.isEmpty()) {
-                // 有明确的目标输入文件名映射
-                targetInputData.computeIfAbsent(targetInput, k -> new ArrayList<>()).add(outputCsv);
-                log.info("前驱节点 {} CSV输出将写入: {}", entry.getKey(), targetInput);
+                if (targetInputCount.getOrDefault(targetInput, 0) > 1) {
+                    // 多个前驱映射到同一targetInput，自动生成唯一文件名
+                    String baseName = targetInput.replace(".csv", "");
+                    inputFileName = baseName + "_" + entry.getKey() + ".csv";
+                    log.info("前驱节点 {} targetInput冲突，自动生成文件名: {} -> {}", entry.getKey(), targetInput, inputFileName);
+                } else {
+                    inputFileName = targetInput;
+                }
             } else {
-                // 无明确映射，使用默认输入文件
-                targetInputData.computeIfAbsent(defaultInputCsv, k -> new ArrayList<>()).add(outputCsv);
-                log.info("前驱节点 {} CSV输出将写入默认输入文件: {}", entry.getKey(), defaultInputCsv);
-            }
-        }
-
-        // 写入每个目标输入文件（合并多个前驱的CSV数据）
-        for (Map.Entry<String, List<String>> targetEntry : targetInputData.entrySet()) {
-            Path targetFile = taskDir.resolve(targetEntry.getKey());
-            List<String> csvDataList = targetEntry.getValue();
-            try (PrintWriter writer = new PrintWriter(new FileWriter(targetFile.toFile()))) {
-                for (int i = 0; i < csvDataList.size(); i++) {
-                    String csvData = csvDataList.get(i);
-                    String[] lines = csvData.split("\n");
-                    for (int j = 0; j < lines.length; j++) {
-                        if (i > 0 && j == 0) {
-                            // 跳过后续CSV的表头行，避免重复
-                            continue;
-                        }
-                        writer.println(lines[j]);
-                    }
+                if (targetInputCount.getOrDefault(defaultInputCsv, 0) > 1) {
+                    String baseName = defaultInputCsv.replace(".csv", "");
+                    inputFileName = baseName + "_" + autoIndex + ".csv";
+                    autoIndex++;
+                    log.info("前驱节点 {} 无targetInput且有冲突，自动生成文件名: {}", entry.getKey(), inputFileName);
+                } else {
+                    inputFileName = defaultInputCsv;
                 }
             }
-            log.info("合并CSV数据已写入: {} (来源数: {})", targetFile, csvDataList.size());
+
+            // 将确定的输入文件名写回predData，供adjustCommandWithMapping使用
+            predData.put("resolvedInputFile", inputFileName);
+
+            Path targetFile = taskDir.resolve(inputFileName);
+            try (PrintWriter writer = new PrintWriter(new FileWriter(targetFile.toFile()))) {
+                writer.print(outputCsv);
+            }
+            log.info("前驱节点 {} CSV数据已写入: {}", entry.getKey(), targetFile);
         }
     }
 
     /**
-     * 根据边数据映射调整执行命令中的输入输出CSV文件名
-     * 例如：将命令中的 input.csv 替换为边映射指定的 targetInput 文件名
+     * 根据边数据映射调整执行命令中的输入CSV文件名
+     * 单个前驱：替换命令中的默认输入文件名
+     * 多个前驱：将命令中的 -i input.csv 替换为 -i file1.csv -i file2.csv ...
      */
     @SuppressWarnings("unchecked")
     private String adjustCommandWithMapping(String cmd, Map<String, Object> predecessorOutputs,
@@ -310,33 +319,76 @@ public class AlgorithmExecutionService {
         if (defaultInputCsv == null || defaultInputCsv.trim().isEmpty()) {
             defaultInputCsv = "input.csv";
         }
-        String defaultOutputCsv = algorithmMeta.getOutputCsvName();
-        if (defaultOutputCsv == null || defaultOutputCsv.trim().isEmpty()) {
-            defaultOutputCsv = "output.csv";
-        }
 
-        // 收集所有目标输入文件名（可能有多个前驱节点映射到不同输入文件）
-        Set<String> targetInputs = new HashSet<>();
+        // 收集所有已解析的输入文件名（由writePredecessorOutputs写入predData的resolvedInputFile）
+        List<String> inputFiles = new ArrayList<>();
         for (Map.Entry<String, Object> entry : predecessorOutputs.entrySet()) {
             if (!(entry.getValue() instanceof Map)) continue;
             Map<String, Object> predData = (Map<String, Object>) entry.getValue();
-            String targetInput = (String) predData.get("targetInput");
-            if (targetInput != null && !targetInput.isEmpty()) {
-                targetInputs.add(targetInput);
+            String resolvedInputFile = (String) predData.get("resolvedInputFile");
+            if (resolvedInputFile != null && !resolvedInputFile.isEmpty()) {
+                inputFiles.add(resolvedInputFile);
+            } else {
+                // 兼容：如果没有resolvedInputFile，回退到targetInput或默认
+                String targetInput = (String) predData.get("targetInput");
+                if (targetInput != null && !targetInput.isEmpty()) {
+                    inputFiles.add(targetInput);
+                } else {
+                    inputFiles.add(defaultInputCsv);
+                }
             }
         }
 
-        // 如果只有一个目标输入文件，替换命令中的默认输入文件名
-        if (targetInputs.size() == 1) {
-            String targetInput = targetInputs.iterator().next();
-            adjustedCmd = adjustedCmd.replace(defaultInputCsv, targetInput);
-            log.info("命令输入文件名已替换: {} -> {}", defaultInputCsv, targetInput);
-        } else if (targetInputs.size() > 1) {
-            log.info("多个目标输入文件，不自动替换命令输入文件名: {}", targetInputs);
+        if (inputFiles.isEmpty()) {
+            return adjustedCmd;
         }
 
-        // 输出文件名保持使用算法档案中的配置（因为每个节点输出到自己的文件）
-        // 不需要替换，因为输出文件名由算法档案决定
+        if (inputFiles.size() == 1) {
+            // 单个输入文件，简单替换文件名
+            String inputFile = inputFiles.get(0);
+            if (!inputFile.equals(defaultInputCsv)) {
+                adjustedCmd = adjustedCmd.replace(defaultInputCsv, inputFile);
+                log.info("命令输入文件名已替换: {} -> {}", defaultInputCsv, inputFile);
+            }
+        } else {
+            // 多个输入文件，将 -i input.csv 替换为 -i file1.csv -i file2.csv ...
+            // 支持多种 -i 参数格式：-i input.csv, -iinput.csv, --input input.csv
+            String inputPattern = null;
+            String[] inputPatterns = {"-i " + defaultInputCsv, "-i" + defaultInputCsv, "--input " + defaultInputCsv};
+            for (String pattern : inputPatterns) {
+                if (adjustedCmd.contains(pattern)) {
+                    inputPattern = pattern;
+                    break;
+                }
+            }
+
+            if (inputPattern != null) {
+                // 找到 -i 参数格式，为每个输入文件生成 -i <file>
+                String paramPrefix;
+                if (inputPattern.startsWith("--input ")) {
+                    paramPrefix = "--input ";
+                } else if (inputPattern.startsWith("-i ")) {
+                    paramPrefix = "-i ";
+                } else {
+                    paramPrefix = "-i";
+                }
+
+                StringBuilder replacement = new StringBuilder();
+                for (int i = 0; i < inputFiles.size(); i++) {
+                    if (i > 0) replacement.append(" ");
+                    replacement.append(paramPrefix).append(inputFiles.get(i));
+                }
+                adjustedCmd = adjustedCmd.replace(inputPattern, replacement.toString());
+                log.info("命令输入参数已扩展为多个: {} -> {}", inputPattern, replacement);
+            } else {
+                // 未找到 -i 参数格式，简单替换文件名（第一个），并追加其余 -i 参数
+                adjustedCmd = adjustedCmd.replace(defaultInputCsv, inputFiles.get(0));
+                for (int i = 1; i < inputFiles.size(); i++) {
+                    adjustedCmd += " -i " + inputFiles.get(i);
+                }
+                log.info("命令输入文件名已替换并追加: {}", inputFiles);
+            }
+        }
 
         return adjustedCmd;
     }

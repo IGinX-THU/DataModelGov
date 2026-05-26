@@ -96,12 +96,14 @@ public class DirectedGraphExecutionEngine {
                 for (JsonNode edge : edges) {
                     String sourceId = edge.get("sourceNodeId").asText();
                     String targetId = edge.get("targetNodeId").asText();
+                    log.info("边: {} -> {}", sourceId, targetId);
                     if (executeNodeIds.contains(sourceId) && executeNodeIds.contains(targetId)) {
                         adjacencyList.get(sourceId).add(targetId);
                         inDegree.put(targetId, inDegree.get(targetId) + 1);
                     }
                 }
             }
+            log.info("入度表: {}", inDegree);
 
             // 拓扑排序
             List<String> executionOrder = topologicalSort(adjacencyList, inDegree);
@@ -153,6 +155,7 @@ public class DirectedGraphExecutionEngine {
                             errorResult.put("nodeId", nodeId);
                             errorResult.put("status", "failed");
                             errorResult.put("error", e.getMessage());
+                            errorResult.put("processLog", "");
                             executionResults.put(nodeId, errorResult);
                         }
                     });
@@ -172,10 +175,19 @@ public class DirectedGraphExecutionEngine {
                 future.get();
             }
 
+            // 按拓扑排序顺序构建results，保证前端日志显示顺序正确
+            Map<String, Object> orderedResults = new LinkedHashMap<>();
+            for (String nodeId : executionOrder) {
+                Object nodeResult = executionResults.get(nodeId);
+                if (nodeResult != null) {
+                    orderedResults.put(nodeId, nodeResult);
+                }
+            }
+
             result.put("success", true);
             result.put("message", "仿真执行成功");
             result.put("executionOrder", executionOrder);
-            result.put("results", executionResults);
+            result.put("results", orderedResults);
             result.put("nodeOutputs", nodeOutputs);
 
         } catch (Exception e) {
@@ -365,8 +377,11 @@ public class DirectedGraphExecutionEngine {
             nodeResult.put("timestamp", System.currentTimeMillis());
             nodeOutputs.put(nodeId, outputText);
         } else {
+            Map<String, Object> resultData = execResult.getData();
+            String processLog = resultData != null ? (String) resultData.get("processLog") : "";
             nodeResult.put("status", "failed");
             nodeResult.put("error", execResult.getMessage());
+            nodeResult.put("processLog", processLog != null ? processLog : "");
             nodeResult.put("timestamp", System.currentTimeMillis());
         }
 

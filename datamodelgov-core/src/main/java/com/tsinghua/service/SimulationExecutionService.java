@@ -258,7 +258,7 @@ public class SimulationExecutionService {
                 Map<String, Object> result = (Map<String, Object>) execution.getResult();
                 Map<String, Object> results = (Map<String, Object>) result.get("results");
                 if (results != null) {
-                    Map<String, String> nodeLogs = new HashMap<>();
+                    Map<String, String> nodeLogs = new LinkedHashMap<>();
                     for (Map.Entry<String, Object> entry : results.entrySet()) {
                         if (entry.getValue() instanceof Map) {
                             Map<String, Object> nodeResult = (Map<String, Object>) entry.getValue();

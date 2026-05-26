@@ -959,9 +959,20 @@ class SimulationArchiveDetail extends HTMLElement {
     // === Edge Modal ===
     async showEdgeModal(edge) {
         const $ = id => this.shadowRoot.getElementById(id);
-        const sourceNode = this.nodes.find(n => n.nodeId === edge.sourceNodeId);
-        const targetNode = this.nodes.find(n => n.nodeId === edge.targetNodeId);
         $('edgeId').value = edge.edgeId;
+
+        // 填充源节点和目标节点下拉列表
+        const sourceSelect = $('edgeSourceNode');
+        const targetSelect = $('edgeTargetNode');
+        sourceSelect.innerHTML = '';
+        targetSelect.innerHTML = '';
+        this.nodes.forEach(n => {
+            const label = n.nodeName || n.nodeId;
+            sourceSelect.innerHTML += `<option value="${n.nodeId}">${label}</option>`;
+            targetSelect.innerHTML += `<option value="${n.nodeId}">${label}</option>`;
+        });
+        sourceSelect.value = edge.sourceNodeId;
+        targetSelect.value = edge.targetNodeId;
 
         let mapping = {};
         if (edge.dataMapping) {
@@ -970,44 +981,45 @@ class SimulationArchiveDetail extends HTMLElement {
         $('edgeSourceField').value = mapping.sourceOutput || '';
         $('edgeTargetField').value = mapping.targetInput || '';
 
-        // Update labels to show node names
-        const sourceLabel = sourceNode ? sourceNode.nodeName : edge.sourceNodeId;
-        const targetLabel = targetNode ? targetNode.nodeName : edge.targetNodeId;
-        $('edgeSourceField').placeholder = `${sourceLabel} 的输出字段`;
-        $('edgeTargetField').placeholder = `${targetLabel} 的输入字段`;
+        // 节点切换时自动填充CSV文件名
+        const autoFillCsvNames = async () => {
+            const srcId = sourceSelect.value;
+            const tgtId = targetSelect.value;
+            const srcNode = this.nodes.find(n => n.nodeId === srcId);
+            const tgtNode = this.nodes.find(n => n.nodeId === tgtId);
+            $('edgeSourceField').placeholder = srcNode ? `${srcNode.nodeName} 的输出字段` : '源节点输出文件名';
+            $('edgeTargetField').placeholder = tgtNode ? `${tgtNode.nodeName} 的输入字段` : '目标节点输入文件名';
 
-        // 自动填充：根据算法档案获取outputCsvName和inputCsvName
-        if (sourceNode && sourceNode.algorithmName && sourceNode.algorithmVersion) {
-            try {
-                const sourceMeta = await window.AppConfig.get('algorithm', 'metas', {
-                    name: sourceNode.algorithmName,
-                    version: sourceNode.algorithmVersion
-                });
-                if (sourceMeta && sourceMeta.success && sourceMeta.data && sourceMeta.data.outputCsvName) {
-                    if (!mapping.sourceOutput) {
-                        $('edgeSourceField').value = sourceMeta.data.outputCsvName;
+            if (srcNode && srcNode.algorithmName && srcNode.algorithmVersion) {
+                try {
+                    const sourceMeta = await window.AppConfig.get('algorithm', 'metas', {
+                        name: srcNode.algorithmName,
+                        version: srcNode.algorithmVersion
+                    });
+                    if (sourceMeta && sourceMeta.success && sourceMeta.data && sourceMeta.data.outputCsvName) {
+                        if (!$('edgeSourceField').value) {
+                            $('edgeSourceField').value = sourceMeta.data.outputCsvName;
+                        }
                     }
-                }
-            } catch (e) {
-                console.warn('获取源节点算法元数据失败', e);
+                } catch (e) { console.warn('获取源节点算法元数据失败', e); }
             }
-        }
-
-        if (targetNode && targetNode.algorithmName && targetNode.algorithmVersion) {
-            try {
-                const targetMeta = await window.AppConfig.get('algorithm', 'metas', {
-                    name: targetNode.algorithmName,
-                    version: targetNode.algorithmVersion
-                });
-                if (targetMeta && targetMeta.success && targetMeta.data && targetMeta.data.inputCsvName) {
-                    if (!mapping.targetInput) {
-                        $('edgeTargetField').value = targetMeta.data.inputCsvName;
+            if (tgtNode && tgtNode.algorithmName && tgtNode.algorithmVersion) {
+                try {
+                    const targetMeta = await window.AppConfig.get('algorithm', 'metas', {
+                        name: tgtNode.algorithmName,
+                        version: tgtNode.algorithmVersion
+                    });
+                    if (targetMeta && targetMeta.success && targetMeta.data && targetMeta.data.inputCsvName) {
+                        if (!$('edgeTargetField').value) {
+                            $('edgeTargetField').value = targetMeta.data.inputCsvName;
+                        }
                     }
-                }
-            } catch (e) {
-                console.warn('获取目标节点算法元数据失败', e);
+                } catch (e) { console.warn('获取目标节点算法元数据失败', e); }
             }
-        }
+        };
+        sourceSelect.onchange = autoFillCsvNames;
+        targetSelect.onchange = autoFillCsvNames;
+        await autoFillCsvNames();
 
         $('edgeModalMask').hidden = false;
         $('edgeModalMask').style.display = 'flex';
@@ -1024,10 +1036,28 @@ class SimulationArchiveDetail extends HTMLElement {
         const edge = this.edges.find(e => e.edgeId === edgeId);
         if (!edge) { this.hideEdgeModal(); return; }
 
+        const newSourceId = $('edgeSourceNode').value;
+        const newTargetId = $('edgeTargetNode').value;
+        if (newSourceId === newTargetId) {
+            this.showToast('源节点和目标节点不能相同', 'error');
+            return;
+        }
+        // 检查是否与其他边重复（排除自身）
+        const duplicate = this.edges.some(e =>
+            e.edgeId !== edgeId && e.sourceNodeId === newSourceId && e.targetNodeId === newTargetId);
+        if (duplicate) {
+            this.showToast('该连线已存在', 'error');
+            return;
+        }
+
+        edge.sourceNodeId = newSourceId;
+        edge.targetNodeId = newTargetId;
+
         const sourceOutput = $('edgeSourceField').value.trim();
         const targetInput = $('edgeTargetField').value.trim();
         edge.dataMapping = JSON.stringify({ sourceOutput, targetInput });
         this.hideEdgeModal();
+        this.renderGraph();
     }
 
     // === Execution Panel ===
@@ -1036,14 +1066,52 @@ class SimulationArchiveDetail extends HTMLElement {
         if (!list) return;
         if (this.nodes.length === 0) { list.innerHTML = '<div class="empty-hint">请先添加算法节点</div>'; return; }
 
+        // 按拓扑排序显示节点
+        const sortedNodes = this.getTopologicalSortedNodes();
+
         list.innerHTML = '';
-        this.nodes.forEach(node => {
+        sortedNodes.forEach(node => {
             const item = document.createElement('div');
             item.className = 'node-check-item';
             const statusClass = node.executionStatus || 'pending';
-            item.innerHTML = `<label><input type="checkbox" data-node-id="${node.nodeId}" checked><span class="node-status ${statusClass}"></span>${node.nodeName || node.nodeId}</label>`;
+            // 显示前驱节点信息
+            const predecessors = this.edges
+                .filter(e => e.targetNodeId === node.nodeId)
+                .map(e => this.nodes.find(n => n.nodeId === e.sourceNodeId))
+                .filter(n => n)
+                .map(n => n.nodeName || n.nodeId);
+            const predInfo = predecessors.length > 0 ? `<span class="node-pred-info">← ${predecessors.join(', ')}</span>` : '<span class="node-pred-info">（无前驱）</span>';
+            item.innerHTML = `<label><input type="checkbox" data-node-id="${node.nodeId}" checked><span class="node-status ${statusClass}"></span>${node.nodeName || node.nodeId}${predInfo}</label>`;
             list.appendChild(item);
         });
+    }
+
+    getTopologicalSortedNodes() {
+        const inDegree = {};
+        const adj = {};
+        this.nodes.forEach(n => { inDegree[n.nodeId] = 0; adj[n.nodeId] = []; });
+        this.edges.forEach(e => {
+            if (inDegree[e.targetNodeId] !== undefined) {
+                inDegree[e.targetNodeId]++;
+                if (adj[e.sourceNodeId]) adj[e.sourceNodeId].push(e.targetNodeId);
+            }
+        });
+        const queue = [];
+        for (const [id, deg] of Object.entries(inDegree)) {
+            if (deg === 0) queue.push(id);
+        }
+        const sorted = [];
+        while (queue.length > 0) {
+            const id = queue.shift();
+            sorted.push(id);
+            (adj[id] || []).forEach(next => {
+                inDegree[next]--;
+                if (inDegree[next] === 0) queue.push(next);
+            });
+        }
+        // 如果有环，把未排序的节点也加上
+        this.nodes.forEach(n => { if (!sorted.includes(n.nodeId)) sorted.push(n.nodeId); });
+        return sorted.map(id => this.nodes.find(n => n.nodeId === id)).filter(Boolean);
     }
 
     getSelectedNodeIds() {
@@ -1054,9 +1122,27 @@ class SimulationArchiveDetail extends HTMLElement {
     async runSimulation() {
         if (!this.currentArchive) { this.showToast('请先选择仿真档案', 'error'); return; }
         if (!this.currentArchive.createTime) { this.showToast('仿真档案ID无效，请重新加载', 'error'); return; }
-        if (this.isRunning) { this.showToast('仿真正在运行中', 'warning'); return; }
+        if (this.isRunning) { this.showToast('仿正在运行中', 'warning'); return; }
         const selectedNodeIds = this.getSelectedNodeIds();
         if (selectedNodeIds.length === 0) { this.showToast('请至少选择一个节点', 'error'); return; }
+
+        // 运行前自动保存图数据，确保后端读到最新的边/节点数据
+        try {
+            const saveData = {
+                createTime: this.currentArchive.createTime,
+                name: this.currentArchive.name,
+                description: this.currentArchive.description || '',
+                projectName: this.currentArchive.projectName || '',
+                owner: this.currentArchive.owner || '',
+                graphJson: JSON.stringify({ nodes: this.nodes, edges: this.edges }),
+                status: this.currentArchive.status !== false,
+                scheduleCron: this.currentArchive.scheduleCron || '',
+                outputApiConfig: this.currentArchive.outputApiConfig || '{}'
+            };
+            await window.AppConfig.post('simulationArchives', 'save', saveData);
+        } catch (e) {
+            console.warn('运行前自动保存图数据失败:', e);
+        }
 
         this.isRunning = true;
         this.updateExecStatus();

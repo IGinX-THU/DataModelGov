@@ -928,20 +928,24 @@ document.addEventListener('DOMContentLoaded', function() {
                         showComponent('registerEmbedded');
                         break;
                     case 'showModelUpload':
-                        // 检查模型侧边栏是否打开
+                        // 检查模型侧边栏是否打开，如果未打开则自动打开
                         const activeModelIconUpload = document.querySelector('.bottom-sidebar-icon.right-sidebar-icon.active[data-panel="model"]');
                         if (!activeModelIconUpload) {
-                            showWorkspaceMessage('请先打开模型侧边栏', 'warning');
-                            break;
+                            const modelIcon = document.querySelector('.bottom-sidebar-icon.right-sidebar-icon[data-panel="model"]');
+                            if (modelIcon) {
+                                modelIcon.click();
+                            }
                         }
                         showComponent('modelUpload');
                         break;
                     case 'showAlgorithmUpload':
-                        // 检查算法侧边栏是否打开
+                        // 检查算法侧边栏是否打开，如果未打开则自动打开
                         const activeAlgorithmIconUpload = document.querySelector('.bottom-sidebar-icon.right-sidebar-icon.active[data-panel="algorithm"]');
                         if (!activeAlgorithmIconUpload) {
-                            showWorkspaceMessage('请先打开算法侧边栏', 'warning');
-                            break;
+                            const algorithmIcon = document.querySelector('.bottom-sidebar-icon.right-sidebar-icon[data-panel="algorithm"]');
+                            if (algorithmIcon) {
+                                algorithmIcon.click();
+                            }
                         }
                         showComponent('algorithmUpload');
                         break;
@@ -1757,6 +1761,11 @@ function showVisualAnalysis() {
         let dataViz = document.getElementById('dataVisualization');
         let isFirstLoad = false;
 
+        // 检查当前显示的组件是否是 data-visualization
+        const currentActiveComponent = document.querySelector('.workspace-content > [show]:not([hidden])');
+        const isCurrentDataViz = currentActiveComponent && currentActiveComponent.id === 'dataVisualization';
+        console.log('当前活动组件:', currentActiveComponent?.id, '是否为data-visualization:', isCurrentDataViz);
+
         if (!dataViz) {
             // 先清空工作区
             clearWorkspace();
@@ -1775,6 +1784,13 @@ function showVisualAnalysis() {
             }
         } else {
             console.log('使用现有的数据可视化组件');
+            // 只有从其他组件切换过来时才清空工作区
+            if (!isCurrentDataViz) {
+                clearWorkspace();
+                console.log('从其他组件切换，清空工作区');
+            } else {
+                console.log('在data-visualization组件内切换，不清空工作区');
+            }
             // 隐藏databaseTable组件
             const databaseTable = document.getElementById('databaseTable');
             if (databaseTable) {
