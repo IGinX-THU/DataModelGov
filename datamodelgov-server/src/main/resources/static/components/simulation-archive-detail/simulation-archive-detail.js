@@ -458,6 +458,31 @@ class SimulationArchiveDetail extends HTMLElement {
         defs.appendChild(marker);
         svg.appendChild(defs);
 
+        // Global drag state
+        let draggingNode = null;
+        let dragStartX, dragStartY;
+
+        // Global drag event handlers
+        svg.addEventListener('mousemove', e => {
+            if (draggingNode) {
+                draggingNode.positionX = Math.max(30, e.clientX - dragStartX);
+                draggingNode.positionY = Math.max(30, e.clientY - dragStartY);
+                const g = svg.querySelector(`[data-node-id="${draggingNode.nodeId}"]`);
+                if (g) {
+                    g.setAttribute('transform', `translate(${draggingNode.positionX}, ${draggingNode.positionY})`);
+                }
+                this.refreshEdges(svg);
+            }
+        });
+
+        svg.addEventListener('mouseup', () => {
+            draggingNode = null;
+        });
+
+        svg.addEventListener('mouseleave', () => {
+            draggingNode = null;
+        });
+
         // Render edges
         this.edges.forEach(edge => {
             const sn = this.nodes.find(n => n.nodeId === edge.sourceNodeId);
@@ -518,23 +543,17 @@ class SimulationArchiveDetail extends HTMLElement {
             g.appendChild(text);
             g.appendChild(algoLabel);
 
-            // Dragging
-            let isDragging = false;
-            let startX, startY;
-
             g.addEventListener('mousedown', e => {
                 if (this.isAddingEdge) { this.handleEdgeClick(node.nodeId); return; }
-                isDragging = true;
-                startX = e.clientX - (node.positionX || 100);
-                startY = e.clientY - (node.positionY || 100);
+                draggingNode = node;
+                dragStartX = e.clientX - (node.positionX || 100);
+                dragStartY = e.clientY - (node.positionY || 100);
                 this.selectNode(node.nodeId);
                 e.stopPropagation();
             });
 
             g.addEventListener('click', e => {
-                if (!isDragging) {
-                    this.selectNode(node.nodeId);
-                }
+                this.selectNode(node.nodeId);
                 e.stopPropagation();
             });
 
@@ -550,16 +569,6 @@ class SimulationArchiveDetail extends HTMLElement {
                 this.showNodeContextMenu(node, e.clientX, e.clientY);
             });
 
-            svg.addEventListener('mousemove', e => {
-                if (isDragging) {
-                    node.positionX = Math.max(30, e.clientX - startX);
-                    node.positionY = Math.max(30, e.clientY - startY);
-                    g.setAttribute('transform', `translate(${node.positionX}, ${node.positionY})`);
-                    this.refreshEdges(svg);
-                }
-            });
-
-            svg.addEventListener('mouseup', () => { isDragging = false; });
             svg.appendChild(g);
         });
 
