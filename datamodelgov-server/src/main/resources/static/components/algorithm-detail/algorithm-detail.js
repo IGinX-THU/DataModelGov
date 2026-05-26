@@ -120,7 +120,7 @@ class AlgorithmDetail extends HTMLElement {
         if (deleteButton) {
             deleteButton.addEventListener('click', () => this.deleteAlgorithm());
         }
-        
+
         // 绑定关联规则按钮事件
         const viewAllAssociationsBtn = this.shadowRoot.getElementById('viewAllAssociations');
         if (viewAllAssociationsBtn) {
@@ -735,7 +735,8 @@ class AlgorithmDetail extends HTMLElement {
             detailDataSource: algorithmData?.tableName || '-',
             detailCmd: algorithmData?.cmd || '-',
             detailInputCsv: algorithmData?.inputCsvName || '-',
-            detailOutputCsv: algorithmData?.outputCsvName || '-'
+            detailOutputCsv: algorithmData?.outputCsvName || '-',
+            detailOutputTable: algorithmData?.outputTable || '-'
         };
         Object.entries(ids).forEach(([id, value]) => {
             const el = this.shadowRoot.getElementById(id);
@@ -860,6 +861,7 @@ class AlgorithmDetail extends HTMLElement {
             }
         }
     }
+
 }
 
 customElements.define('algorithm-detail', AlgorithmDetail);

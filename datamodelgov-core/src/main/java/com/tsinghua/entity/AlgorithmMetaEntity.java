@@ -75,4 +75,7 @@ public class AlgorithmMetaEntity {
 
     @ApiModelProperty(value = "输出参数绑定json")
     private String outputsBind;
+
+    @ApiModelProperty(value = "结果回写路径前缀")
+    private String outputTable;
 }
