@@ -753,9 +753,17 @@ class AlgorithmEdit extends HTMLElement {
                 // 自动填充运行命令（仅在字段为空时填充）
                 const ruleCmd = this.shadowRoot.getElementById('ruleCmd');
                 if (ruleCmd && !ruleCmd.value) {
-                    // 判断文件类型，如果是matlab文件(.m扩展名)则使用matlab命令，否则使用python
-                    const command = fileName.endsWith('.m') ? 'matlab' : 'python';
-                    ruleCmd.value = `${command} ${fileName} -i input.csv -o output.csv`;
+                    // 判断文件类型，生成对应的运行命令
+                    let command;
+                    if (fileName.endsWith('.m')) {
+                        command = 'matlab';
+                    } else if (fileName.endsWith('.py')) {
+                        command = 'python';
+                    } else {
+                        // C/C++ 可执行文件或其他类型，直接执行
+                        command = '';
+                    }
+                    ruleCmd.value = command ? `${command} ${fileName} -i input.csv -o output.csv` : `${fileName} -i input.csv -o output.csv`;
                     console.log('自动填充运行命令:', ruleCmd.value);
                 }
 
