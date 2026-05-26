@@ -65,6 +65,13 @@ class SimulationArchiveDetail extends HTMLElement {
         $('algorithmSelect')?.addEventListener('change', () => {
             this.loadAlgorithmVersions($('algorithmSelect').value);
         });
+        $('algorithmVersion')?.addEventListener('change', () => {
+            const algorithmName = $('algorithmSelect').value;
+            const algorithmVersion = $('algorithmVersion').value;
+            if (algorithmName && algorithmVersion) {
+                this.loadTimeRangeForAlgorithm(algorithmName, algorithmVersion);
+            }
+        });
         $('nodeModalMask')?.addEventListener('click', e => {
             if (e.target.id === 'nodeModalMask') this.hideNodeModal();
         });
@@ -717,13 +724,24 @@ class SimulationArchiveDetail extends HTMLElement {
         this.updateNodeCheckList();
     }
 
+    getBeijingTime() {
+        const now = new Date();
+        const beijingTime = new Date(now.getTime() + (8 * 60 * 60 * 1000));
+        const year = beijingTime.getUTCFullYear();
+        const month = String(beijingTime.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(beijingTime.getUTCDate()).padStart(2, '0');
+        const hours = String(beijingTime.getUTCHours()).padStart(2, '0');
+        const minutes = String(beijingTime.getUTCMinutes()).padStart(2, '0');
+        return `${year}-${month}-${day}T${hours}:${minutes}`;
+    }
+
     // === Node Modal ===
     async showNodeModal(node) {
         const $ = id => this.shadowRoot.getElementById(id);
         $('nodeId').value = node.nodeId;
         $('nodeName').value = node.nodeName || '';
         $('startTime').value = node.startTime ? this.msToDatetimeLocal(node.startTime) : '';
-        $('endTime').value = node.endTime ? this.msToDatetimeLocal(node.endTime) : '';
+        $('endTime').value = node.endTime ? this.msToDatetimeLocal(node.endTime) : this.getBeijingTime();
 
         await this.loadAlgorithms();
         $('algorithmSelect').value = node.algorithmName || '';
@@ -732,6 +750,9 @@ class SimulationArchiveDetail extends HTMLElement {
         if (node.algorithmName) {
             await this.loadAlgorithmVersions(node.algorithmName);
             $('algorithmVersion').value = node.algorithmVersion || '';
+            
+            // 自动加载时间范围
+            await this.loadTimeRangeForAlgorithm(node.algorithmName, node.algorithmVersion);
         }
 
         // Store current node for toolbar editAlgorithm button
@@ -739,6 +760,101 @@ class SimulationArchiveDetail extends HTMLElement {
 
         $('nodeModalMask').hidden = false;
         $('nodeModalMask').style.display = 'flex';
+    }
+
+    async loadTimeRangeForAlgorithm(algorithmName, algorithmVersion) {
+        try {
+            console.log('开始获取算法时间范围:', algorithmName, algorithmVersion);
+            
+            // 获取算法元数据
+            const metaResult = await window.AppConfig.get('algorithm', 'metas', {
+                name: algorithmName,
+                version: algorithmVersion
+            });
+            
+            if (!metaResult.success || !metaResult.data) {
+                console.warn('获取算法元数据失败');
+                return;
+            }
+            
+            const algorithmMeta = metaResult.data;
+            const tableName = algorithmMeta.tableName;
+            const inputsBind = algorithmMeta.inputsBind;
+            
+            if (!tableName) {
+                console.warn('算法未配置数据源表名');
+                return;
+            }
+            
+            // 构建请求参数，inputsBind需要从字符串解析为JSON数组
+            let parsedInputsBind = [];
+            if (inputsBind) {
+                try {
+                    parsedInputsBind = typeof inputsBind === 'string' ? JSON.parse(inputsBind) : inputsBind;
+                } catch (e) {
+                    console.warn('解析inputsBind失败:', e);
+                    parsedInputsBind = [];
+                }
+            }
+            
+            const requestBody = {
+                tableName: tableName,
+                inputsBind: parsedInputsBind
+            };
+            
+            console.log('时间范围查询请求:', requestBody);
+            
+            // 调用API获取时间范围
+            const result = await window.AppConfig.post('task', 'time-range', requestBody);
+            console.log('时间范围查询结果:', result);
+            
+            if (result.success && result.data) {
+                const timeRange = result.data;
+                
+                if (timeRange.minKey && timeRange.maxKey) {
+                    const startDate = new Date(timeRange.minKey);
+                    const endDate = new Date(timeRange.maxKey);
+                    const startTime = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}-${String(startDate.getDate()).padStart(2, '0')}T${String(startDate.getHours()).padStart(2, '0')}:${String(startDate.getMinutes()).padStart(2, '0')}`;
+                    const endTime = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}T${String(endDate.getHours()).padStart(2, '0')}:${String(endDate.getMinutes()).padStart(2, '0')}`;
+                    
+                    const startTimeElement = this.shadowRoot.getElementById('startTime');
+                    const endTimeElement = this.shadowRoot.getElementById('endTime');
+                    
+                    if (startTimeElement) {
+                        startTimeElement.value = startTime;
+                        console.log('设置开始时间:', startTime);
+                    }
+                    
+                    if (endTimeElement) {
+                        endTimeElement.value = endTime;
+                        console.log('设置结束时间:', endTime);
+                    }
+                    
+                    this.showToast('时间范围已自动设置为数据范围', 'success');
+                } else {
+                    console.warn('时间范围为空，使用默认值');
+                    this.showToast('未找到数据时间范围，使用默认时间', 'warning');
+                    const startTimeElement = this.shadowRoot.getElementById('startTime');
+                    if (startTimeElement) {
+                        startTimeElement.value = '1970-01-01T08:00';
+                    }
+                }
+            } else {
+                console.warn('获取时间范围失败:', result.message);
+                this.showToast('获取时间范围失败，使用默认时间', 'warning');
+                const startTimeElement = this.shadowRoot.getElementById('startTime');
+                if (startTimeElement) {
+                    startTimeElement.value = '1970-01-01T08:00';
+                }
+            }
+        } catch (error) {
+            console.error('获取时间范围异常:', error);
+            this.showToast('获取时间范围异常，使用默认时间', 'warning');
+            const startTimeElement = this.shadowRoot.getElementById('startTime');
+            if (startTimeElement) {
+                startTimeElement.value = '1970-01-01T08:00';
+            }
+        }
     }
 
     async loadAlgorithms() {
