@@ -62,8 +62,14 @@ class SimulationArchiveDetail extends HTMLElement {
         $('nodeCancelBtn')?.addEventListener('click', () => this.hideNodeModal());
         $('nodeSaveBtn')?.addEventListener('click', () => this.saveNodeConfig());
         $('editAlgorithm')?.addEventListener('click', () => this.editAlgorithmArchive());
-        $('algorithmSelect')?.addEventListener('change', () => {
-            this.loadAlgorithmVersions($('algorithmSelect').value);
+        $('algorithmSelect')?.addEventListener('change', async () => {
+            const algorithmName = $('algorithmSelect').value;
+            await this.loadAlgorithmVersions(algorithmName);
+            // 切换算法后也自动加载时间范围
+            const algorithmVersion = $('algorithmVersion').value;
+            if (algorithmName && algorithmVersion) {
+                this.loadTimeRangeForAlgorithm(algorithmName, algorithmVersion);
+            }
         });
         $('algorithmVersion')?.addEventListener('change', () => {
             const algorithmName = $('algorithmSelect').value;
@@ -760,9 +766,6 @@ class SimulationArchiveDetail extends HTMLElement {
         if (node.algorithmName) {
             await this.loadAlgorithmVersions(node.algorithmName);
             $('algorithmVersion').value = node.algorithmVersion || '';
-            
-            // 自动加载时间范围
-            await this.loadTimeRangeForAlgorithm(node.algorithmName, node.algorithmVersion);
         }
 
         // Store current node for toolbar editAlgorithm button
