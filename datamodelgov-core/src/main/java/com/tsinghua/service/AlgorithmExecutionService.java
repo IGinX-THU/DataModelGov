@@ -614,8 +614,31 @@ public class AlgorithmExecutionService {
             // 读取CSV内容并修改表头
             List<String> lines = Files.readAllLines(outputCsvFile, StandardCharsets.UTF_8);
             if (!lines.isEmpty()) {
+                // 先过滤掉空行
+                List<String> nonEmptyLines = lines.stream()
+                    .filter(line -> line != null && !line.trim().isEmpty())
+                    .collect(Collectors.toList());
+                
+                if (nonEmptyLines.isEmpty()) {
+                    log.warn("CSV文件只有空行，跳过处理");
+                    return;
+                }
+
+                // 校验CSV格式：确保每行列数与表头一致
+                String headerLine = nonEmptyLines.get(0).trim();
+                int expectedColumnCount = headerLine.split(",").length;
+                
+                for (int i = 1; i < nonEmptyLines.size(); i++) {
+                    String line = nonEmptyLines.get(i).trim();
+                    int actualColumnCount = line.split(",").length;
+                    if (actualColumnCount != expectedColumnCount) {
+                        log.warn("CSV第{}行列数不匹配: 期望{}列，实际{}列，已跳过该行", i + 1, expectedColumnCount, actualColumnCount);
+                        nonEmptyLines.set(i, ""); // 标记为空行，后续处理时跳过
+                    }
+                }
+
                 // 修改表头：将原列名(modelOutput)换成新列名(resultTarget)
-                String originalHeader = lines.get(0);
+                String originalHeader = nonEmptyLines.get(0);
                 String[] originalColumns = originalHeader.split(",");
 
                 // 构建新的表头映射
@@ -641,10 +664,15 @@ public class AlgorithmExecutionService {
                 }
 
                 // 替换表头
-                lines.set(0, newHeader.toString());
+                nonEmptyLines.set(0, newHeader.toString());
+
+                // 过滤掉标记为空的行
+                List<String> filteredLines = nonEmptyLines.stream()
+                    .filter(line -> !line.isEmpty())
+                    .collect(Collectors.toList());
 
                 // 写回文件
-                Files.write(outputCsvFile, lines, StandardCharsets.UTF_8);
+                Files.write(outputCsvFile, filteredLines, StandardCharsets.UTF_8);
                 log.info("输出CSV表头映射完成: {}", outputCsvFile);
             }
         } catch (Exception e) {

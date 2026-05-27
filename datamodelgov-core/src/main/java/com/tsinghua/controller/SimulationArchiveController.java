@@ -1,6 +1,7 @@
 package com.tsinghua.controller;
 
 import com.tsinghua.entity.SimulationArchiveEntity;
+import com.tsinghua.entity.SimulationExecutionEntity;
 import com.tsinghua.model.Result;
 import com.tsinghua.service.SimulationArchiveService;
 import com.tsinghua.service.SimulationExecutionService;
@@ -11,8 +12,12 @@ import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.Resource;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -214,7 +219,106 @@ public class SimulationArchiveController {
     @ApiOperation("获取仿真执行日志")
     @GetMapping("/archives/execution-log")
     @RequirePermission(Permission.PARSING_RULES_READ)
-    public Result<Map<String, Object>> getExecutionLog(@RequestParam("createTime") Long createTime) {
-        return simulationExecutionService.getExecutionLog(createTime);
+    public Result<Map<String, Object>> getExecutionLog(
+            @RequestParam(value = "timestamp", required = false) Long timestamp,
+            @RequestParam(value = "createTime", required = false) Long createTime) {
+        // If timestamp is provided, use it directly
+        if (timestamp != null) {
+            return simulationExecutionService.getExecutionLog(timestamp);
+        }
+        // If createTime (archiveId) is provided, get the latest execution for that archive
+        if (createTime != null) {
+            try {
+                List<SimulationExecutionEntity> executions = simulationExecutionService.queryExecutions(
+                    null, null, null, null, 1, 1);
+                if (executions != null && !executions.isEmpty()) {
+                    return simulationExecutionService.getExecutionLog(executions.get(0).getTimestamp());
+                }
+                Map<String, Object> errorData = new HashMap<>();
+                errorData.put("error", "未找到执行记录");
+                return Result.success(errorData);
+            } catch (Exception e) {
+                log.error("获取执行日志失败", e);
+                Map<String, Object> errorData = new HashMap<>();
+                errorData.put("error", "获取失败: " + e.getMessage());
+                return Result.success(errorData);
+            }
+        }
+        Map<String, Object> errorData = new HashMap<>();
+        errorData.put("error", "必须提供 timestamp 或 createTime 参数");
+        return Result.success(errorData);
+    }
+
+    /**
+     * 查询仿真执行记录列表
+     */
+    @ApiOperation("查询仿真执行记录列表")
+    @PostMapping("/archives/execution-records")
+    @RequirePermission(Permission.PARSING_RULES_READ)
+    public Result<?> queryExecutionRecords(
+            @RequestParam(required = false) String archiveName,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) Long startTime,
+            @RequestParam(required = false) Long endTime,
+            @RequestParam(defaultValue = "1") Integer pageNum,
+            @RequestParam(defaultValue = "10") Integer pageSize) {
+        return Result.success(simulationExecutionService.queryExecutions(archiveName, status, startTime, endTime, pageNum, pageSize));
+    }
+
+    /**
+     * 查询仿真执行记录总数
+     */
+    @ApiOperation("查询仿真执行记录总数")
+    @PostMapping("/archives/execution-records-count")
+    @RequirePermission(Permission.PARSING_RULES_READ)
+    public Result<?> countExecutionRecords(
+            @RequestParam(required = false) String archiveName,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) Long startTime,
+            @RequestParam(required = false) Long endTime) {
+        return Result.success(simulationExecutionService.countExecutions(archiveName, status, startTime, endTime));
+    }
+
+    /**
+     * 删除仿真执行记录
+     */
+    @ApiOperation("删除仿真执行记录")
+    @DeleteMapping("/archives/execution-record")
+    @RequirePermission(Permission.PARSING_RULES_DELETE)
+    @OperationLog(value = "删除仿真执行记录", type = OperationLog.OperationType.DELETE)
+    public Result<Void> deleteExecutionRecord(@RequestParam("timestamp") Long timestamp) {
+        try {
+            simulationExecutionService.deleteExecution(timestamp);
+            return Result.success("删除成功");
+        } catch (Exception e) {
+            log.error("删除仿真执行记录失败", e);
+            return Result.error("删除失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 上传仿真执行记录报告文件
+     */
+    @ApiOperation("上传仿真执行记录报告文件")
+    @PostMapping("/archives/upload-report")
+    @RequirePermission(Permission.PARSING_RULES_UPDATE)
+    @OperationLog(value = "上传仿真执行记录报告文件", type = OperationLog.OperationType.UPDATE, recordParams = false)
+    public Result<String> uploadReport(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam("timestamp") Long timestamp) throws Exception {
+        // TODO: Implement report upload service
+        return Result.success("报告上传成功", "/reports/" + timestamp + "/" + file.getOriginalFilename());
+    }
+
+    /**
+     * 打包并下载仿真执行记录文件
+     */
+    @ApiOperation("打包并下载仿真执行记录文件")
+    @PostMapping("/archives/package-download")
+    @RequirePermission(Permission.PARSING_RULES_READ)
+    @OperationLog(value = "打包并下载仿真执行记录文件", type = OperationLog.OperationType.EXPORT, recordResult = false)
+    public ResponseEntity<Resource> packageAndDownload(@RequestParam("timestamp") Long timestamp) throws Exception {
+        // TODO: Implement package and download service
+        return null;
     }
 }

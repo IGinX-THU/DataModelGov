@@ -4,12 +4,19 @@ import com.tsinghua.entity.SimulationArchiveEntity;
 import com.tsinghua.entity.SimulationExecutionEntity;
 import com.tsinghua.model.Result;
 import com.tsinghua.util.ConvertUtil;
+import cn.edu.tsinghua.iginx.session.Session;
+import cn.edu.tsinghua.iginx.session.SessionExecuteSqlResult;
 import cn.edu.tsinghua.iginx.session_v2.IginXClient;
 import cn.edu.tsinghua.iginx.session_v2.write.Point;
 import cn.edu.tsinghua.iginx.session_v2.query.*;
 import cn.edu.tsinghua.iginx.session_v2.query.IginXRecord;
-import cn.edu.tsinghua.iginx.session_v2.query.IginXHeader;
 import com.alibaba.fastjson2.JSON;
+import com.alibaba.fastjson2.JSONArray;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tsinghua.dto.InputBindDto;
+import com.tsinghua.dto.OutputBindDto;
+import com.tsinghua.entity.AlgorithmMetaEntity;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -17,7 +24,6 @@ import org.springframework.scheduling.support.CronExpression;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
@@ -48,6 +54,12 @@ public class SimulationExecutionService {
 
     @Autowired
     private IginXClient iginxClient;
+
+    @Autowired
+    private Session iginxSession;
+
+    @Autowired
+    private AlgorithmFileService algorithmFileService;
 
     private static final String DATA_PREFIX = "relational_system.simulation_job";
 
@@ -84,11 +96,12 @@ public class SimulationExecutionService {
 
             // 创建执行记录
             SimulationExecutionEntity execution = new SimulationExecutionEntity();
+            execution.setTimestamp(System.currentTimeMillis());
             execution.setArchiveId(createTime);
             execution.setArchiveName(archive.getName());
             execution.setStartTime(System.currentTimeMillis());
             execution.setStatus("running");
-            runningSimulations.put(createTime, execution);
+            runningSimulations.put(execution.getTimestamp(), execution);
 
             // 异步执行仿真
             new Thread(() -> {
@@ -100,6 +113,12 @@ public class SimulationExecutionService {
                     execution.setEndTime(System.currentTimeMillis());
                     execution.setStatus(Boolean.TRUE.equals(executionResult.get("success")) ? "completed" : "failed");
                     execution.setResult(executionResult);
+
+                    // 提取首节点输入路径和末节点输出路径（用于分析时查询IginX数据）
+                    extractMeasurementsFromGraph(archive, executionResult, execution);
+
+                    // 保存执行记录（包含新提取的测点路径）
+                    saveExecution(execution);
 
                     // 更新档案信息
                     archive.setIsRunning(false);
@@ -212,11 +231,22 @@ public class SimulationExecutionService {
                 return Result.success(errorData);
             }
 
-            SimulationExecutionEntity execution = runningSimulations.get(createTime);
+            // 查找最新的执行记录
+            SimulationExecutionEntity execution = null;
+            for (SimulationExecutionEntity running : runningSimulations.values()) {
+                if (running.getArchiveId().equals(createTime)) {
+                    execution = running;
+                    break;
+                }
+            }
 
-            // 如果内存中没有，尝试从数据库加载
+            // 如果内存中没有，尝试从数据库加载最新的执行记录
             if (execution == null) {
-                execution = loadExecution(createTime);
+                List<SimulationExecutionEntity> executions = queryExecutions(
+                    archive.getName(), null, null, null, 1, 1);
+                if (executions != null && !executions.isEmpty()) {
+                    execution = executions.get(0);
+                }
             }
 
             Map<String, Object> data = new HashMap<>();
@@ -224,11 +254,6 @@ public class SimulationExecutionService {
             data.put("lastExecutionTime", archive.getLastExecutionTime());
             data.put("executionCount", archive.getExecutionCount());
             data.put("execution", execution);
-
-            // 如果执行完成，包含结果数据
-            if (execution != null && execution.getResult() instanceof Map) {
-                data.put("result", execution.getResult());
-            }
 
             return Result.success(data);
 
@@ -243,13 +268,16 @@ public class SimulationExecutionService {
     /**
      * 获取仿真执行日志
      */
-    public Result<Map<String, Object>> getExecutionLog(Long createTime) {
+    public Result<Map<String, Object>> getExecutionLog(Long timestamp) {
         try {
-            SimulationExecutionEntity execution = runningSimulations.get(createTime);
-
-            // 如果内存中没有，尝试从数据库加载
-            if (execution == null) {
-                execution = loadExecution(createTime);
+            SimulationExecutionEntity execution = null;
+            
+            // 如果内存中有，直接使用
+            if (runningSimulations.containsKey(timestamp)) {
+                execution = runningSimulations.get(timestamp);
+            } else {
+                // 否则从数据库加载
+                execution = loadExecution(timestamp);
             }
 
             Map<String, Object> data = new HashMap<>();
@@ -327,21 +355,112 @@ public class SimulationExecutionService {
     }
 
     /**
+     * 分页查询仿真执行记录
+     */
+    public List<SimulationExecutionEntity> queryExecutions(String archiveName, String status, Long startTime, Long endTime, int pageNum, int pageSize) {
+        try {
+            StringBuilder sql = new StringBuilder("SELECT * FROM " + DATA_PREFIX + " WHERE 1=1");
+
+            if (archiveName != null && !archiveName.trim().isEmpty()) {
+                sql.append(" AND archiveName LIKE '^.*").append(archiveName.trim()).append(".*'");
+            }
+            if (status != null && !status.trim().isEmpty()) {
+                sql.append(" AND status = '").append(status.trim()).append("'");
+            }
+            if (startTime != null) {
+                sql.append(" AND startTime >= ").append(startTime);
+            }
+            if (endTime != null) {
+                sql.append(" AND startTime <= ").append(endTime);
+            }
+
+            sql.append(" ORDER BY timestamp DESC");
+            sql.append(" LIMIT ").append(pageSize);
+            sql.append(" OFFSET ").append((pageNum - 1) * pageSize);
+            sql.append(";");
+
+            log.info("查询仿真执行记录SQL: {}", sql);
+
+            SessionExecuteSqlResult res = iginxSession.executeSql(sql.toString());
+            List<Map<String, Object>> records = ConvertUtil.getRecords(res);
+
+            List<SimulationExecutionEntity> result = records.stream().map(record -> {
+                SimulationExecutionEntity entity = new SimulationExecutionEntity();
+                record.forEach((k, v) -> {
+                    String fieldName = k.substring(k.lastIndexOf('.') + 1);
+                    ConvertUtil.setEntityField(entity, DATA_PREFIX, fieldName, v);
+                });
+                return entity;
+            }).collect(Collectors.toList());
+
+            log.info("查询仿真执行记录结果: records={}", result.size());
+            return result;
+        } catch (Exception e) {
+            log.error("查询仿真执行记录失败", e);
+            return new ArrayList<>();
+        }
+    }
+
+    /**
+     * 查询仿真执行记录总数
+     */
+    public long countExecutions(String archiveName, String status, Long startTime, Long endTime) {
+        try {
+            StringBuilder sql = new StringBuilder("SELECT COUNT(1) FROM " + DATA_PREFIX + " WHERE 1=1");
+
+            if (archiveName != null && !archiveName.trim().isEmpty()) {
+                sql.append(" AND archiveName LIKE '%").append(archiveName.trim()).append("%'");
+            }
+            if (status != null && !status.trim().isEmpty()) {
+                sql.append(" AND status = '").append(status.trim()).append("'");
+            }
+            if (startTime != null) {
+                sql.append(" AND startTime >= ").append(startTime);
+            }
+            if (endTime != null) {
+                sql.append(" AND startTime <= ").append(endTime);
+            }
+            sql.append(";");
+
+            log.info("统计仿真执行记录SQL: {}", sql);
+
+            SessionExecuteSqlResult res = iginxSession.executeSql(sql.toString());
+            List<Map<String, Object>> records = ConvertUtil.getRecords(res);
+
+            if (records != null && !records.isEmpty()) {
+                Map<String, Object> first = records.get(0);
+                for (Object v : first.values()) {
+                    if (v instanceof Number) return ((Number) v).longValue();
+                }
+            }
+            return 0;
+        } catch (Exception e) {
+            log.error("统计仿真执行记录失败", e);
+            return 0;
+        }
+    }
+
+    /**
      * 保存仿真执行记录到IginX
      */
     private void saveExecution(SimulationExecutionEntity execution) {
         try {
             List<Point> points = new ArrayList<>();
-            long timestamp = execution.getArchiveId();
+            long timestamp = execution.getTimestamp();
 
             String basePath = DATA_PREFIX;
 
+            points.add(ConvertUtil.createFieldPoint(basePath, "timestamp", execution.getTimestamp(), timestamp));
             points.add(ConvertUtil.createFieldPoint(basePath, "archiveId", execution.getArchiveId(), timestamp));
             points.add(ConvertUtil.createFieldPoint(basePath, "archiveName", execution.getArchiveName(), timestamp));
             points.add(ConvertUtil.createFieldPoint(basePath, "startTime", execution.getStartTime(), timestamp));
             points.add(ConvertUtil.createFieldPoint(basePath, "endTime", execution.getEndTime(), timestamp));
             points.add(ConvertUtil.createFieldPoint(basePath, "status", execution.getStatus(), timestamp));
             points.add(ConvertUtil.createFieldPoint(basePath, "error", execution.getError(), timestamp));
+            points.add(ConvertUtil.createFieldPoint(basePath, "inputMeasurements", execution.getInputMeasurements(), timestamp));
+            points.add(ConvertUtil.createFieldPoint(basePath, "outputMeasurements", execution.getOutputMeasurements(), timestamp));
+            points.add(ConvertUtil.createFieldPoint(basePath, "outputTable", execution.getOutputTable(), timestamp));
+            points.add(ConvertUtil.createFieldPoint(basePath, "processLog", execution.getProcessLog(), timestamp));
 
             // 保存result为JSON字符串
             if (execution.getResult() != null) {
@@ -350,36 +469,155 @@ public class SimulationExecutionService {
             }
 
             iginxClient.getWriteClient().writePoints(points.stream().filter(Objects::nonNull).collect(Collectors.toList()));
-            log.info("仿真执行记录已保存: archiveId={}", execution.getArchiveId());
+            log.info("仿真执行记录已保存: timestamp={}, archiveId={}", execution.getTimestamp(), execution.getArchiveId());
         } catch (Exception e) {
             log.error("保存仿真执行记录失败", e);
         }
     }
 
     /**
+     * 从有向图中提取首节点输入测点路径和末节点输出测点路径
+     * 参考RunTaskService.runTask中从AssociationRulesEntity提取inputMeasurements/outputMeasurements的模式
+     */
+    private void extractMeasurementsFromGraph(SimulationArchiveEntity archive, Map<String, Object> executionResult, SimulationExecutionEntity execution) {
+        try {
+            String graphJson = archive.getGraphJson();
+            if (graphJson == null || graphJson.isEmpty()) return;
+
+            ObjectMapper objectMapper = new ObjectMapper();
+            JsonNode graphNode = objectMapper.readTree(graphJson);
+            JsonNode nodes = graphNode.get("nodes");
+            JsonNode edges = graphNode.get("edges");
+
+            if (nodes == null || !nodes.isArray() || nodes.size() == 0) return;
+
+            // 构建节点映射
+            Map<String, JsonNode> nodeMap = new LinkedHashMap<>();
+            for (JsonNode node : nodes) {
+                String nodeId = node.get("nodeId").asText();
+                nodeMap.put(nodeId, node);
+            }
+
+            // 构建邻接表，找出入度为0的节点（首节点）和出度为0的节点（末节点）
+            Map<String, List<String>> adjacencyList = new HashMap<>();
+            Map<String, Integer> inDegree = new HashMap<>();
+            for (String nodeId : nodeMap.keySet()) {
+                adjacencyList.put(nodeId, new ArrayList<>());
+                inDegree.put(nodeId, 0);
+            }
+
+            if (edges != null && edges.isArray()) {
+                for (JsonNode edge : edges) {
+                    String sourceId = edge.get("sourceNodeId").asText();
+                    String targetId = edge.get("targetNodeId").asText();
+                    if (nodeMap.containsKey(sourceId) && nodeMap.containsKey(targetId)) {
+                        adjacencyList.get(sourceId).add(targetId);
+                        inDegree.put(targetId, inDegree.get(targetId) + 1);
+                    }
+                }
+            }
+
+            // 找首节点（入度为0）和末节点（出度为0）
+            String firstNodeId = null;
+            String lastNodeId = null;
+            for (String nodeId : nodeMap.keySet()) {
+                if (inDegree.get(nodeId) == 0) {
+                    firstNodeId = nodeId;
+                }
+                if (adjacencyList.get(nodeId).isEmpty()) {
+                    lastNodeId = nodeId;
+                }
+            }
+
+            // 提取首节点的输入测点路径和时间范围
+            if (firstNodeId != null) {
+                JsonNode firstNode = nodeMap.get(firstNodeId);
+                String algorithmName = firstNode.has("algorithmName") ? firstNode.get("algorithmName").asText() : "";
+                String algorithmVersion = firstNode.has("algorithmVersion") ? firstNode.get("algorithmVersion").asText() : "";
+
+                // 使用节点配置的时间范围
+                if (firstNode.has("startTime") && firstNode.has("endTime")) {
+                    execution.setStartTime(firstNode.get("startTime").asLong());
+                    execution.setEndTime(firstNode.get("endTime").asLong());
+                    log.info("从首节点配置提取时间范围: {} - {}", execution.getStartTime(), execution.getEndTime());
+                }
+
+                if (!algorithmName.isEmpty() && !algorithmVersion.isEmpty()) {
+                    AlgorithmMetaEntity algorithmMeta = algorithmFileService.queryMeta(algorithmName, algorithmVersion);
+                    if (algorithmMeta != null) {
+                        // 优先使用 inputData（数据源字段全路径）
+                        if (algorithmMeta.getInputData() != null && !algorithmMeta.getInputData().isEmpty()) {
+                            execution.setInputMeasurements(algorithmMeta.getInputData());
+                        }
+                        // 如果有 inputsBind，构建完整路径
+                        else if (algorithmMeta.getInputsBind() != null && !algorithmMeta.getInputsBind().isEmpty()
+                            && algorithmMeta.getTableName() != null) {
+                            List<InputBindDto> inputs = JSON.parseArray(algorithmMeta.getInputsBind(), InputBindDto.class);
+                            List<String> inputPaths = inputs.stream().map(inputBindDto ->
+                                String.format("%s.%s", algorithmMeta.getTableName(), inputBindDto.getSourceField()))
+                                .collect(Collectors.toList());
+                            execution.setInputMeasurements(JSONArray.toJSONString(inputPaths));
+                        }
+                    }
+                }
+            }
+
+            // 提取末节点的输出测点路径
+            if (lastNodeId != null) {
+                JsonNode lastNode = nodeMap.get(lastNodeId);
+                String algorithmName = lastNode.has("algorithmName") ? lastNode.get("algorithmName").asText() : "";
+                String algorithmVersion = lastNode.has("algorithmVersion") ? lastNode.get("algorithmVersion").asText() : "";
+
+                if (!algorithmName.isEmpty() && !algorithmVersion.isEmpty()) {
+                    AlgorithmMetaEntity algorithmMeta = algorithmFileService.queryMeta(algorithmName, algorithmVersion);
+                    if (algorithmMeta != null) {
+                        // 设置输出表
+                        if (algorithmMeta.getOutputTable() != null && !algorithmMeta.getOutputTable().isEmpty()) {
+                            execution.setOutputTable(algorithmMeta.getOutputTable());
+                        }
+
+                        // 构建输出测点路径
+                        if (algorithmMeta.getOutputsBind() != null && !algorithmMeta.getOutputsBind().isEmpty()
+                            && algorithmMeta.getOutputTable() != null) {
+                            List<OutputBindDto> outputs = JSON.parseArray(algorithmMeta.getOutputsBind(), OutputBindDto.class);
+                            List<String> outputPaths = outputs.stream()
+                                .map(outputBindDto -> String.format("%s.%s", algorithmMeta.getOutputTable(), outputBindDto.getResultTarget()))
+                                .collect(Collectors.toList());
+                            execution.setOutputMeasurements(JSONArray.toJSONString(outputPaths));
+                        }
+                    }
+                }
+            }
+
+        } catch (Exception e) {
+            log.error("提取测点路径失败", e);
+        }
+    }
+
+    /**
      * 从IginX加载仿真执行记录
      */
-    private SimulationExecutionEntity loadExecution(Long archiveId) {
+    private SimulationExecutionEntity loadExecution(Long timestamp) {
         try {
             List<String> measurements = ConvertUtil.iginxFieldNamesConvert(SimulationExecutionEntity.class, DATA_PREFIX);
 
             IginXTable table = iginxClient.getQueryClient().query(
                 SimpleQuery.builder()
                     .addMeasurements(new HashSet<>(measurements))
-                    .startKey(archiveId)
-                    .endKey(archiveId + 1)
+                    .startKey(timestamp)
+                    .endKey(timestamp + 1)
                     .build()
             );
 
             log.info("Query result: table={}, records={}", table != null, table != null && table.getRecords() != null ? table.getRecords().size() : 0);
 
             if (table == null || table.getRecords() == null || table.getRecords().isEmpty()) {
-                log.warn("No execution records found for archiveId: {}", archiveId);
+                log.warn("No execution records found for timestamp: {}", timestamp);
                 return null;
             }
 
             SimulationExecutionEntity execution = new SimulationExecutionEntity();
-            execution.setArchiveId(archiveId);
+            execution.setTimestamp(timestamp);
 
             // Get the first record's values
             IginXRecord record = table.getRecords().get(0);
@@ -391,6 +629,9 @@ public class SimulationExecutionService {
                     // Convert byte[] to String if needed
                     String strValue = value instanceof byte[] ? ConvertUtil.bytesToString((byte[]) value) : value.toString();
                     switch (fieldName) {
+                        case "archiveId":
+                            execution.setArchiveId(value instanceof Number ? ((Number) value).longValue() : null);
+                            break;
                         case "archiveName":
                             execution.setArchiveName(strValue);
                             break;
@@ -406,6 +647,18 @@ public class SimulationExecutionService {
                         case "error":
                             execution.setError(strValue);
                             break;
+                        case "inputMeasurements":
+                            execution.setInputMeasurements(strValue);
+                            break;
+                        case "outputMeasurements":
+                            execution.setOutputMeasurements(strValue);
+                            break;
+                        case "outputTable":
+                            execution.setOutputTable(strValue);
+                            break;
+                        case "processLog":
+                            execution.setProcessLog(strValue);
+                            break;
                         case "result":
                             try {
                                 execution.setResult(JSON.parseObject(strValue));
@@ -417,11 +670,28 @@ public class SimulationExecutionService {
                 }
             }
 
-            log.info("Loaded execution: archiveName={}, status={}", execution.getArchiveName(), execution.getStatus());
+            log.info("Loaded execution: timestamp={}, archiveName={}, status={}", execution.getTimestamp(), execution.getArchiveName(), execution.getStatus());
             return execution;
         } catch (Exception e) {
             log.error("加载仿真执行记录失败", e);
             return null;
+        }
+    }
+
+    /**
+     * 删除仿真执行记录
+     */
+    public void deleteExecution(Long timestamp) {
+        try {
+            List<String> measurements = ConvertUtil.iginxFieldNamesConvert(SimulationExecutionEntity.class, DATA_PREFIX);
+            
+            // 从IginX删除执行记录
+            iginxClient.getDeleteClient().deleteMeasurementsData(measurements, timestamp - 1, timestamp + 1);
+            
+            log.info("仿真执行记录已删除: timestamp={}", timestamp);
+        } catch (Exception e) {
+            log.error("删除仿真执行记录失败", e);
+            throw new RuntimeException("删除失败: " + e.getMessage(), e);
         }
     }
 }

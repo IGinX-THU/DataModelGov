@@ -132,7 +132,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const workspace = document.querySelector('.workspace-content');
         if (workspace) {
             // 查找所有动态创建的组件并移除（只移除没有ID的动态组件）
-            const dynamicComponents = workspace.querySelectorAll('visual-analysis:not([id]), data-visualization:not([id]), data-archive-detail:not([id]), data-archive-list:not([id])');
+            const dynamicComponents = workspace.querySelectorAll('visual-analysis:not([id]), data-visualization:not([id]), data-archive-detail:not([id]), data-archive-list:not([id]), simulation-record');
             dynamicComponents.forEach(comp => {
                 console.log(`🗑️ 移除动态组件: ${comp.tagName}`);
                 comp.remove();
@@ -608,9 +608,14 @@ document.addEventListener('DOMContentLoaded', function() {
                         break;
                     case 'showSimulationArchive':
                         console.log('仿真档案管理菜单被点击');
-                        if (isSecondClick) clearWorkspace();
+                        clearWorkspace();
                         showComponent('simulationArchiveList');
                         break;
+                    case 'showSimulationRecord':
+                        console.log('仿真记录菜单被点击');
+                        clearWorkspace();
+                        showSimulationRecord();
+                        return;
                     case 'showAlgorithmList':
                         console.log('算法管理菜单被点击');
                         if (isSecondClick) clearWorkspace();
@@ -1070,8 +1075,13 @@ document.addEventListener('DOMContentLoaded', function() {
                         showComponent('algorithmArchiveList');
                         break;
                     case 'showSimulationArchive':
+                        clearWorkspace();
                         showComponent('simulationArchiveList');
                         break;
+                    case 'showSimulationRecord':
+                        clearWorkspace();
+                        showSimulationRecord();
+                        return;
                     default:
                         console.warn(`未知的按钮动作: ${action}`);
                 }
@@ -1750,6 +1760,30 @@ function showVisualAnalysis() {
     });
     
     // 滚动到工作区
+    workspace.scrollIntoView({ behavior: 'smooth' });
+}
+
+function showSimulationRecord() {
+    console.log('showSimulationRecord() 函数被调用');
+
+    const simulationRecord = document.createElement('simulation-record');
+    
+    const workspace = document.querySelector('.workspace-content');
+    if (workspace) {
+        workspace.appendChild(simulationRecord);
+    } else {
+        console.error('未找到工作区元素');
+        return;
+    }
+    
+    setTimeout(() => {
+        simulationRecord.show();
+    }, 100);
+    
+    simulationRecord.addEventListener('close', () => {
+        workspace.removeChild(simulationRecord);
+    });
+    
     workspace.scrollIntoView({ behavior: 'smooth' });
 }
 

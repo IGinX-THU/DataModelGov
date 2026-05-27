@@ -153,6 +153,10 @@ const MENU_ID_MAP = {
         text: '仿真档案管理',
         action: 'showSimulationArchive'
     },
+    'menu-simulation-record': {
+        text: '仿真记录',
+        action: 'showSimulationRecord'
+    },
     'menu-algorithm-list': {
         text: '算法管理',
         action: 'showAlgorithmList'

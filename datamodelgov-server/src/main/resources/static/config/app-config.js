@@ -96,7 +96,10 @@ window.AppConfig = {
             'run-selective': '/api/simulation/archives/run-selective',
             stop: '/api/simulation/archives/stop',
             'execution-status': '/api/simulation/archives/execution-status',
-            'execution-log': '/api/simulation/archives/execution-log'
+            'execution-log': '/api/simulation/archives/execution-log',
+            'execution-records': '/api/simulation/archives/execution-records',
+            'execution-records-count': '/api/simulation/archives/execution-records-count',
+            'execution-record': '/api/simulation/archives/execution-record'
         },
         // 数据档案相关
         dataArchive: {
