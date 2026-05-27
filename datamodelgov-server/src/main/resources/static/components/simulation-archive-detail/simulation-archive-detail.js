@@ -8,6 +8,9 @@ class SimulationArchiveDetail extends HTMLElement {
         this.selectedNode = null;
         this.selectedEdge = null;
         this.nodeCounter = 0;
+        this.currentResultTab = 'text';
+        this.currentCsvNodeId = null;
+        this.currentTextNodeId = null;
         this.edgeCounter = 0;
         this.isAddingEdge = false;
         this.edgeStartNode = null;
@@ -1418,6 +1421,7 @@ class SimulationArchiveDetail extends HTMLElement {
             tab.addEventListener('click', () => {
                 textTabs.querySelectorAll('.csv-node-tab').forEach(t => t.classList.remove('active'));
                 tab.classList.add('active');
+                this.currentTextNodeId = nodeId;
                 this.renderTextContent(textData[nodeId].output);
             });
             textTabs.appendChild(tab);
@@ -1434,10 +1438,21 @@ class SimulationArchiveDetail extends HTMLElement {
             wrapper.innerHTML = '<div class="empty-hint">暂无输出数据</div>';
             return;
         }
-        wrapper.innerHTML = `<pre>${text}</pre>`;
+
+        const lines = text.split('\n');
+        const displayLines = lines.length > 20 ? lines.slice(0, 20) : lines;
+        const displayText = displayLines.join('\n');
+
+        let html = `<pre>${displayText}</pre>`;
+        if (lines.length > 20) {
+            html += '<div class="csv-hint">仅显示前20行数据</div>';
+        }
+
+        wrapper.innerHTML = html;
     }
 
     switchResultTab(tab) {
+        this.currentResultTab = tab;
         const textArea = this.shadowRoot.getElementById('textResultArea');
         const csvArea = this.shadowRoot.getElementById('csvResultArea');
         this.shadowRoot.querySelectorAll('.result-tab').forEach(t => {
@@ -1500,6 +1515,7 @@ class SimulationArchiveDetail extends HTMLElement {
             tab.addEventListener('click', () => {
                 csvTabs.querySelectorAll('.csv-node-tab').forEach(t => t.classList.remove('active'));
                 tab.classList.add('active');
+                this.currentCsvNodeId = nodeId;
                 this.renderCsvTable(csvData[nodeId].csv);
             });
             csvTabs.appendChild(tab);
@@ -1522,8 +1538,11 @@ class SimulationArchiveDetail extends HTMLElement {
             return;
         }
 
+        // 限制只显示前20行
+        const displayLines = lines.length > 20 ? lines.slice(0, 20) : lines;
+
         let html = '<table>';
-        lines.forEach((line, rowIdx) => {
+        displayLines.forEach((line, rowIdx) => {
             const cols = line.split(',');
             html += '<tr>';
             cols.forEach(col => {
@@ -1533,6 +1552,12 @@ class SimulationArchiveDetail extends HTMLElement {
             html += '</tr>';
         });
         html += '</table>';
+
+        // 如果数据被截断，添加提示
+        if (lines.length > 20) {
+            html += '<div class="csv-hint">仅显示前20行数据</div>';
+        }
+
         wrapper.innerHTML = html;
     }
 
@@ -1586,21 +1611,79 @@ class SimulationArchiveDetail extends HTMLElement {
     }
 
     downloadResult() {
-        const ra = this.shadowRoot.getElementById('resultArea');
-        if (!ra || !ra.textContent) return;
-        const blob = new Blob([ra.textContent], { type: 'text/plain;charset=utf-8' });
+        let content = '';
+        let mimeType = 'text/plain;charset=utf-8';
+        let extension = 'txt';
+        let nodeName = 'result';
+
+        if (this.currentResultTab === 'text') {
+            if (this.textData && this.currentTextNodeId) {
+                content = this.textData[this.currentTextNodeId].output;
+                nodeName = this.textData[this.currentTextNodeId].name;
+            } else if (this.textData) {
+                const firstNodeId = Object.keys(this.textData)[0];
+                if (firstNodeId) {
+                    content = this.textData[firstNodeId].output;
+                    nodeName = this.textData[firstNodeId].name;
+                }
+            }
+        } else {
+            if (this.csvData && this.currentCsvNodeId) {
+                content = this.csvData[this.currentCsvNodeId].csv;
+                nodeName = this.csvData[this.currentCsvNodeId].name;
+            } else if (this.csvData) {
+                const firstNodeId = Object.keys(this.csvData)[0];
+                if (firstNodeId) {
+                    content = this.csvData[firstNodeId].csv;
+                    nodeName = this.csvData[firstNodeId].name;
+                }
+            }
+            mimeType = 'text/csv;charset=utf-8';
+            extension = 'csv';
+        }
+
+        if (!content) {
+            this.showToast('没有可下载的内容', 'error');
+            return;
+        }
+
+        const blob = new Blob([content], { type: mimeType });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `simulation_result_${this.currentArchive?.name || 'unknown'}_${Date.now()}.txt`;
+        a.download = `simulation_${nodeName}_${Date.now()}.${extension}`;
         a.click();
         URL.revokeObjectURL(url);
     }
 
     copyResult() {
-        const ra = this.shadowRoot.getElementById('resultArea');
-        if (!ra || !ra.textContent) return;
-        navigator.clipboard.writeText(ra.textContent).then(() => this.showToast('已复制')).catch(() => this.showToast('复制失败', 'error'));
+        let content = '';
+
+        if (this.currentResultTab === 'text') {
+            if (this.textData && this.currentTextNodeId) {
+                content = this.textData[this.currentTextNodeId].output;
+            } else if (this.textData) {
+                const firstNodeId = Object.keys(this.textData)[0];
+                if (firstNodeId) {
+                    content = this.textData[firstNodeId].output;
+                }
+            }
+        } else {
+            if (this.csvData && this.currentCsvNodeId) {
+                content = this.csvData[this.currentCsvNodeId].csv;
+            } else if (this.csvData) {
+                const firstNodeId = Object.keys(this.csvData)[0];
+                if (firstNodeId) {
+                    content = this.csvData[firstNodeId].csv;
+                }
+            }
+        }
+
+        if (!content) {
+            this.showToast('没有可复制的内容', 'error');
+            return;
+        }
+        navigator.clipboard.writeText(content).then(() => this.showToast('已复制')).catch(() => this.showToast('复制失败', 'error'));
     }
 
     hide() {

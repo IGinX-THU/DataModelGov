@@ -14,6 +14,7 @@ import com.tsinghua.entity.AlgorithmMetaEntity;
 import com.tsinghua.entity.SimulationNodeEntity;
 import com.tsinghua.entity.SimulationEdgeEntity;
 import com.tsinghua.model.Result;
+import com.tsinghua.auth.util.AuthUtil;
 import com.tsinghua.util.ConvertUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -168,6 +169,20 @@ public class AlgorithmExecutionService {
 
                 // 10. 读取输出CSV文件内容
                 String outputCsvContent = readOutputCsv(taskDir, actualOutputCsv);
+
+                // 11. 如果配置了结果回写路径前缀，将输出CSV入库
+                String outputTable = algorithmMeta.getOutputTable();
+                if (outputTable != null && !outputTable.trim().isEmpty() && actualOutputCsv != null && !actualOutputCsv.trim().isEmpty()) {
+                    try {
+                        Path outputCsvFile = taskDir.resolve(actualOutputCsv);
+                        if (Files.exists(outputCsvFile)) {
+                            long recordsNum = dataTableService.importCsvFile(outputCsvFile, outputTable, actualOutputCsv, null, algorithmMeta.getAuthor());
+                            log.info("输出CSV已入库到 {}, 记录数: {}", outputTable, recordsNum);
+                        }
+                    } catch (Exception e) {
+                        log.error("输出CSV入库失败: {}", outputTable, e);
+                    }
+                }
 
                 String endLog = "进程结束: 退出成功, 时间=" + new Date() + "\n";
                 processLogBuilder.append(endLog);

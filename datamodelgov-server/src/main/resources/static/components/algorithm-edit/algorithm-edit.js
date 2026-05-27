@@ -225,6 +225,10 @@ class AlgorithmEdit extends HTMLElement {
 
         // 自动填充运行命令和CSV文件名（根据当前算法元数据）
         this.autoFillCommandAndCsvFields();
+
+        // 加载结果回写路径前缀
+        const outputTableInput = this.shadowRoot.getElementById('outputTable');
+        if (outputTableInput) outputTableInput.value = algorithmDetailData.outputTable || '';
     }
 
     hide() {
@@ -289,6 +293,13 @@ class AlgorithmEdit extends HTMLElement {
 
         // 加载关联绑定数据
         this.loadBindingData(algorithmInfo);
+
+        // 自动填充运行命令和CSV文件名
+        this.autoFillCommandAndCsvFields();
+
+        // 加载结果回写路径前缀
+        const outputTableInput = this.shadowRoot.getElementById('outputTable');
+        if (outputTableInput) outputTableInput.value = this.currentAlgorithmMeta?.outputTable || '';
     }
 
     loadInterfaceParamsFromData(inputsData, outputsData) {
@@ -1755,7 +1766,8 @@ class AlgorithmEdit extends HTMLElement {
             inputCsvName: this.shadowRoot.getElementById('inputCsvName')?.value?.trim() || '',
             outputCsvName: this.shadowRoot.getElementById('outputCsvName')?.value?.trim() || '',
             inputsBind: JSON.stringify(this.getInputMappings()),
-            outputsBind: JSON.stringify(this.getOutputMappings())
+            outputsBind: JSON.stringify(this.getOutputMappings()),
+            outputTable: this.shadowRoot.getElementById('outputTable')?.value?.trim() || ''
         };
 
         return formData;

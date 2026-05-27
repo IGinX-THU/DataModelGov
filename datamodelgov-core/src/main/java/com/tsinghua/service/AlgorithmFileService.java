@@ -339,6 +339,17 @@ public class AlgorithmFileService {
      * 每个字段作为独立的时序序列存储，使用相同的时间戳对齐
      */
     public void saveAlgorithmMetadata(AlgorithmMetaEntity algorithmMetaDto) throws Exception {
+
+        // 自动添加项目名称前缀
+        String projectName = com.tsinghua.util.ProjectContext.getCurrentProject("unknown");
+        if (projectName != null && !projectName.isEmpty()) {
+            String outputTable = algorithmMetaDto.getOutputTable();
+            if (outputTable != null && !outputTable.startsWith(projectName + ".")) {
+                algorithmMetaDto.setOutputTable(projectName + "." + outputTable);
+                log.info("自动添加项目名称前缀: {} -> {}", outputTable, algorithmMetaDto.getOutputTable());
+            }
+        }
+
         List<Point> metaPoints = new ArrayList<>();
         AlgorithmMetaEntity queryMeta = queryMeta(algorithmMetaDto.getName(), algorithmMetaDto.getVersion());
         long timestamp;
@@ -373,6 +384,7 @@ public class AlgorithmFileService {
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "cmd", algorithmMetaDto.getCmd() != null ? algorithmMetaDto.getCmd() : "", timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "inputCsvName", algorithmMetaDto.getInputCsvName() != null ? algorithmMetaDto.getInputCsvName() : "", timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "outputCsvName", algorithmMetaDto.getOutputCsvName() != null ? algorithmMetaDto.getOutputCsvName() : "", timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "outputTable", algorithmMetaDto.getOutputTable() != null ? algorithmMetaDto.getOutputTable() : "", timestamp));
 
         // 批量写入元数据
         iginxClient.getWriteClient().writePoints(metaPoints.stream().filter(Objects::nonNull).collect(Collectors.toList()));
@@ -560,6 +572,13 @@ public class AlgorithmFileService {
                         dto.setOutputCsvName(new String((byte[]) value, StandardCharsets.UTF_8));
                     } else if (value instanceof String) {
                         dto.setOutputCsvName((String) value);
+                    }
+                    break;
+                case META_PREFIX+"."+"outputTable":
+                    if (value instanceof byte[]) {
+                        dto.setOutputTable(new String((byte[]) value, StandardCharsets.UTF_8));
+                    } else if (value instanceof String) {
+                        dto.setOutputTable((String) value);
                     }
                     break;
                 default:
