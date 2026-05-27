@@ -90,6 +90,7 @@ window.AppConfig = {
             detail: '/api/simulation/archives/detail',
             delete: '/api/simulation/archives/delete',
             save: '/api/simulation/archives/save',
+            'upload-report': '/api/simulation/archives/upload-report',
             'validate-name': '/api/simulation/archives/validate-name',
             copy: '/api/simulation/archives/copy',
             run: '/api/simulation/archives/run',
