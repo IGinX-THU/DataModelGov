@@ -82,6 +82,29 @@ class SimulationRecord extends HTMLElement {
                 <div class="chart-section">
                     <div class="chart-header">
                         <h4 class="chart-title">分析图表</h4>
+                        <div class="chart-controls">
+                            <div class="chart-control-item">
+                                <label class="chart-control-label">图表类型:</label>
+                                <select class="chart-control-select" id="chartType">
+                                    <option value="line">曲线图</option>
+                                    <option value="bar">柱状图</option>
+                                    <option value="scatter">散点图</option>
+                                    <option value="histogram">直方图</option>
+                                </select>
+                            </div>
+                            <div class="chart-control-item">
+                                <label class="chart-control-label">X轴:</label>
+                                <select class="chart-control-select" id="xAxisSelect">
+                                    <option value="">自动选择</option>
+                                </select>
+                            </div>
+                            <div class="chart-control-item">
+                                <label class="chart-control-label">Y轴:</label>
+                                <select class="chart-control-select" id="yAxisSelect">
+                                    <option value="">自动选择</option>
+                                </select>
+                            </div>
+                        </div>
                         <div class="chart-actions">
                             <button class="toggle-btn" id="toggleInputBtn">输入数据</button>
                             <button class="toggle-btn" id="toggleOutputBtn">输出数据</button>
@@ -213,6 +236,21 @@ class SimulationRecord extends HTMLElement {
             toggleOutputBtn.addEventListener('click', () => this.toggleOutputData());
         }
 
+        const chartTypeSelect = this.shadowRoot.getElementById('chartType');
+        if (chartTypeSelect) {
+            chartTypeSelect.addEventListener('change', () => this.updateChart());
+        }
+
+        const xAxisSelect = this.shadowRoot.getElementById('xAxisSelect');
+        if (xAxisSelect) {
+            xAxisSelect.addEventListener('change', () => this.updateChart());
+        }
+
+        const yAxisSelect = this.shadowRoot.getElementById('yAxisSelect');
+        if (yAxisSelect) {
+            yAxisSelect.addEventListener('change', () => this.updateChart());
+        }
+
         const statusFilter = this.shadowRoot.getElementById('statusFilter');
         if (statusFilter) {
             statusFilter.addEventListener('change', (e) => this.handleStatusFilter(e.target.value));
@@ -275,138 +313,321 @@ class SimulationRecord extends HTMLElement {
     updateChart() {
         if (!this.chart || !this.currentChartData) return;
 
-        const series = [];
-        const colors = ['#1890ff', '#52c41a', '#faad14', '#f5222d', '#722ed1', '#13c2c2'];
+        // 对比模式走单独的更新路径
+        if (this.currentChartData.type === 'comparison') {
+            this.updateComparisonChart(this.currentChartData.data);
+            return;
+        }
 
-        // 计算数据范围用于自动缩放
-        let allDataPoints = [];
-        
-        if (this.currentChartData.tasks) {
-            this.currentChartData.tasks.forEach((task, idx) => {
-                const taskColor = colors[idx % colors.length];
+        // 更新轴下拉框选项
+        this.updateAxisDropdowns();
 
-                // 输入数据 - 使用测点路径作为图例名称
-                if (this.curveVisibility.input && task.inputData && task.inputData.length > 0) {
-                    const filteredData = task.inputData.filter(p => p && isFinite(p[0]) && isFinite(p[1]));
-                    
-                    // 如果有inputPaths，使用路径作为图例名称
-                    if (task.inputPaths && task.inputPaths.length > 0) {
-                        task.inputPaths.forEach((path, pathIdx) => {
-                            const pathColor = colors[(idx + pathIdx) % colors.length];
-                            series.push({
-                                name: `${path} (输入)`,
-                                type: 'line',
-                                data: filteredData,
-                                smooth: true,
-                                symbol: 'circle',
-                                symbolSize: 3,
-                                lineStyle: { width: 2, color: pathColor, type: 'dashed' },
-                                itemStyle: { color: pathColor }
-                            });
-                            allDataPoints = allDataPoints.concat(filteredData);
-                        });
-                    } else {
-                        // 备用方案：使用节点名称
-                        series.push({
-                            name: `${task.name} (输入)`,
-                            type: 'line',
-                            data: filteredData,
-                            smooth: true,
-                            symbol: 'circle',
-                            symbolSize: 3,
-                            lineStyle: { width: 2, color: taskColor, type: 'dashed' },
-                            itemStyle: { color: taskColor }
-                        });
-                        allDataPoints = allDataPoints.concat(filteredData);
+        const chartTypeSelect = this.shadowRoot.getElementById('chartType');
+        const selectedChartType = chartTypeSelect ? chartTypeSelect.value : 'line';
+
+        // 根据图表类型分发到不同的渲染方法
+        if (selectedChartType === 'histogram') {
+            this.renderHistogram();
+        } else if (selectedChartType === 'scatter') {
+            this.renderScatter();
+        } else {
+            this.renderLineOrBarChart(selectedChartType);
+        }
+    }
+
+    updateAxisDropdowns() {
+        if (!this.currentChartData || !this.currentChartData.tasks) return;
+
+        // 收集所有可用的列名
+        const columns = ['key']; // key代表时间轴
+        const columnSet = new Set(['key']);
+
+        this.currentChartData.tasks.forEach(task => {
+            // 从inputPaths获取列名
+            if (task.inputPaths) {
+                task.inputPaths.forEach(path => {
+                    if (!columnSet.has(path)) {
+                        columnSet.add(path);
+                        columns.push(path);
                     }
-                }
+                });
+            }
+            // 从outputPaths获取列名
+            if (task.outputPaths) {
+                task.outputPaths.forEach(path => {
+                    if (!columnSet.has(path)) {
+                        columnSet.add(path);
+                        columns.push(path);
+                    }
+                });
+            }
+            // 从rawInputRecords的keys获取列名
+            if (task.rawInputRecords && task.rawInputRecords.length > 0) {
+                Object.keys(task.rawInputRecords[0]).forEach(key => {
+                    if (!columnSet.has(key)) {
+                        columnSet.add(key);
+                        columns.push(key);
+                    }
+                });
+            }
+            // 从rawOutputRecords的keys获取列名
+            if (task.rawOutputRecords && task.rawOutputRecords.length > 0) {
+                Object.keys(task.rawOutputRecords[0]).forEach(key => {
+                    if (!columnSet.has(key)) {
+                        columnSet.add(key);
+                        columns.push(key);
+                    }
+                });
+            }
+        });
 
-                // 输出数据 - 使用CSV表头作为图例名称
-                if (this.curveVisibility.output && task.calculationResult && task.calculationResult.length > 0) {
-                    const filteredData = task.calculationResult.filter(p => p && isFinite(p[0]) && isFinite(p[1]));
-                    
-                    // 尝试从CSV表头获取列名
-                    let csvHeaders = [];
-                    let hasKeyColumn = false;
-                    if (this.currentChartData.parsedResult && this.currentChartData.parsedResult.results) {
-                        const firstNodeKey = Object.keys(this.currentChartData.parsedResult.results)[0];
-                        if (firstNodeKey) {
-                            const nodeResult = this.currentChartData.parsedResult.results[firstNodeKey];
-                            if (nodeResult.outputCsv) {
-                                // 解析CSV表头
-                                const lines = nodeResult.outputCsv.split('\n');
-                                if (lines.length > 0) {
-                                    csvHeaders = lines[0].split(',').map(h => h.trim());
-                                    // 检查是否有key列
-                                    hasKeyColumn = csvHeaders.some(h => h.toLowerCase() === 'key');
-                                }
+        // 从CSV表头获取列名（备用）
+        if (this.currentChartData.parsedResult && this.currentChartData.parsedResult.results) {
+            Object.values(this.currentChartData.parsedResult.results).forEach(nodeResult => {
+                if (nodeResult.outputCsv) {
+                    const lines = nodeResult.outputCsv.split('\n');
+                    if (lines.length > 0) {
+                        lines[0].split(',').map(h => h.trim()).forEach(header => {
+                            if (!columnSet.has(header)) {
+                                columnSet.add(header);
+                                columns.push(header);
                             }
-                        }
-                    }
-                    
-                    // 如果有CSV表头，使用表头作为图例名称
-                    if (csvHeaders.length > 0) {
-                        csvHeaders.forEach((header, headerIdx) => {
-                            // 跳过key列（如果有）
-                            if (hasKeyColumn && header.toLowerCase() === 'key') return;
-                            // 如果没有key列，跳过第一列signal列
-                            if (!hasKeyColumn && headerIdx === 0) return;
-                            
-                            const headerColor = colors[(idx + headerIdx) % colors.length];
-                            series.push({
-                                name: `${header} (输出)`,
-                                type: 'line',
-                                data: filteredData,
-                                smooth: true,
-                                symbol: 'diamond',
-                                symbolSize: 3,
-                                lineStyle: { width: 2, color: headerColor, type: 'solid' },
-                                itemStyle: { color: headerColor }
-                            });
-                            allDataPoints = allDataPoints.concat(filteredData);
                         });
-                    } else if (task.outputPaths && task.outputPaths.length > 0) {
-                        // 备用方案：使用outputPaths
-                        task.outputPaths.forEach((path, pathIdx) => {
-                            const pathColor = colors[(idx + pathIdx) % colors.length];
-                            const shortName = path.split('.').pop();
-                            series.push({
-                                name: `${shortName} (输出)`,
-                                type: 'line',
-                                data: filteredData,
-                                smooth: true,
-                                symbol: 'diamond',
-                                symbolSize: 3,
-                                lineStyle: { width: 2, color: pathColor, type: 'solid' },
-                                itemStyle: { color: pathColor }
-                            });
-                            allDataPoints = allDataPoints.concat(filteredData);
-                        });
-                    } else {
-                        // 备用方案：使用节点名称
-                        series.push({
-                            name: `${task.name} (输出)`,
-                            type: 'line',
-                            data: filteredData,
-                            smooth: true,
-                            symbol: 'diamond',
-                            symbolSize: 3,
-                            lineStyle: { width: 2, color: taskColor, type: 'solid' },
-                            itemStyle: { color: taskColor }
-                        });
-                        allDataPoints = allDataPoints.concat(filteredData);
                     }
                 }
             });
         }
 
-        // 计算数据范围用于动态调整Y轴
-        const dataRange = this.calculateDataRange({
-            inputData: this.currentChartData.parsedResult ? null : null,
-            outputData: null
+        // 检测哪些列是数值列
+        const numericColumns = this.detectNumericColumns(columns);
+
+        // 更新X轴下拉框（所有列都可以作为X轴，包括非数值列如signal用于分类）
+        const xAxisSelect = this.shadowRoot.getElementById('xAxisSelect');
+        if (xAxisSelect) {
+            const currentValue = xAxisSelect.value;
+            xAxisSelect.innerHTML = '<option value="">自动选择</option>';
+            columns.forEach(col => {
+                const option = document.createElement('option');
+                option.value = col;
+                option.textContent = col === 'key' ? '时间 (key)' : col;
+                xAxisSelect.appendChild(option);
+            });
+            if (currentValue && columnSet.has(currentValue)) {
+                xAxisSelect.value = currentValue;
+            }
+        }
+
+        // 更新Y轴下拉框（只包含数值列，排除key和非数值列）
+        const yAxisSelect = this.shadowRoot.getElementById('yAxisSelect');
+        if (yAxisSelect) {
+            const currentValue = yAxisSelect.value;
+            yAxisSelect.innerHTML = '<option value="">自动选择</option>';
+            numericColumns.forEach(col => {
+                const option = document.createElement('option');
+                option.value = col;
+                option.textContent = col;
+                yAxisSelect.appendChild(option);
+            });
+            if (currentValue && numericColumns.includes(currentValue)) {
+                yAxisSelect.value = currentValue;
+            }
+        }
+    }
+
+    // 检测哪些列包含数值数据
+    detectNumericColumns(columns) {
+        const numericCols = [];
+        columns.forEach(col => {
+            if (col === 'key') return; // key是时间轴，不算数值列
+            let hasNumeric = false;
+            this.currentChartData.tasks.forEach(task => {
+                if (task.rawInputRecords) {
+                    task.rawInputRecords.forEach(r => {
+                        if (r[col] != null && typeof r[col] === 'number') hasNumeric = true;
+                    });
+                }
+                if (task.rawOutputRecords) {
+                    task.rawOutputRecords.forEach(r => {
+                        if (r[col] != null && typeof r[col] === 'number') hasNumeric = true;
+                    });
+                }
+            });
+            if (hasNumeric) numericCols.push(col);
         });
-        
-        // 对于单个分析，数据是扁平的数组格式，需要手动计算范围
+        return numericCols;
+    }
+
+    // 获取第一个数值列作为默认Y轴
+    getFirstNumericColumn() {
+        const numericCols = this.detectNumericColumns(
+            this.currentChartData && this.currentChartData.tasks ?
+                ['key', ...this.currentChartData.tasks.flatMap(t => [
+                    ...(t.inputPaths || []),
+                    ...(t.outputPaths || []),
+                    ...(t.rawInputRecords && t.rawInputRecords[0] ? Object.keys(t.rawInputRecords[0]) : []),
+                    ...(t.rawOutputRecords && t.rawOutputRecords[0] ? Object.keys(t.rawOutputRecords[0]) : [])
+                ])] : []
+        );
+        return numericCols.length > 0 ? numericCols[0] : '';
+    }
+
+    // 获取指定task中输入/输出数据的所有数值列名
+    getNumericColumnsForTask(task, type) {
+        const records = type === 'input' ? task.rawInputRecords : task.rawOutputRecords;
+        if (!records || records.length === 0) return [];
+        const keys = Object.keys(records[0]);
+        return keys.filter(key => {
+            if (key === 'key') return false;
+            return records.some(r => r[key] != null && typeof r[key] === 'number');
+        });
+    }
+
+    // 检测指定列是否为非数值列
+    isNonNumericColumn(columnName) {
+        if (!this.currentChartData || !this.currentChartData.tasks) return false;
+        for (const task of this.currentChartData.tasks) {
+            for (const records of [task.rawInputRecords, task.rawOutputRecords]) {
+                if (records && records.length > 0 && records[0][columnName] !== undefined) {
+                    return records.some(r => r[columnName] != null && typeof r[columnName] !== 'number');
+                }
+            }
+        }
+        return false;
+    }
+
+    renderLineOrBarChart(chartType) {
+        const series = [];
+        const colors = ['#1890ff', '#52c41a', '#faad14', '#f5222d', '#722ed1', '#13c2c2'];
+
+        const xAxisSelect = this.shadowRoot.getElementById('xAxisSelect');
+        const yAxisSelect = this.shadowRoot.getElementById('yAxisSelect');
+        const selectedXAxis = xAxisSelect ? xAxisSelect.value : '';
+        const selectedYAxis = yAxisSelect ? yAxisSelect.value : '';
+
+        const xAxisColumn = selectedXAxis || 'key';
+        const isXCategory = this.isNonNumericColumn(xAxisColumn);
+
+        // 收集分类X轴的值
+        let categoryData = [];
+        if (isXCategory) {
+            const categorySet = new Set();
+            this.currentChartData.tasks.forEach(task => {
+                for (const records of [task.rawInputRecords, task.rawOutputRecords]) {
+                    if (records && records.length > 0) {
+                        records.forEach(r => { if (r[xAxisColumn] != null) categorySet.add(String(r[xAxisColumn])); });
+                    }
+                }
+            });
+            categoryData = Array.from(categorySet);
+        }
+
+        if (this.currentChartData.tasks) {
+            this.currentChartData.tasks.forEach((task, idx) => {
+                const taskColor = colors[idx % colors.length];
+
+                // 输入数据
+                if (this.curveVisibility.input) {
+                    if (task.rawInputRecords && task.rawInputRecords.length > 0) {
+                        const yAxisColumns = selectedYAxis ? [selectedYAxis] : this.getNumericColumnsForTask(task, 'input');
+                        yAxisColumns.forEach((col, colIdx) => {
+                            if (!task.rawInputRecords[0] || task.rawInputRecords[0][col] === undefined) return;
+                            const colColor = colors[(idx + colIdx) % colors.length];
+                            let data;
+                            if (isXCategory) {
+                                // 非数值X轴：用字符串分类
+                                data = task.rawInputRecords
+                                    .filter(r => r[col] != null && typeof r[col] === 'number' && r[xAxisColumn] != null)
+                                    .map(r => [String(r[xAxisColumn]), r[col]]);
+                            } else {
+                                data = task.rawInputRecords
+                                    .filter(r => r[col] != null && typeof r[col] === 'number')
+                                    .map(r => {
+                                        const xVal = xAxisColumn === 'key' ? r.key : (r[xAxisColumn] != null ? r[xAxisColumn] : r.key);
+                                        return [xVal, r[col]];
+                                    });
+                            }
+                            if (data.length === 0) return;
+                            series.push({
+                                name: `${col} (输入)`,
+                                type: chartType,
+                                data: data,
+                                smooth: chartType === 'line',
+                                symbol: 'circle',
+                                symbolSize: 3,
+                                lineStyle: chartType === 'line' ? { width: 2, color: colColor, type: 'dashed' } : undefined,
+                                itemStyle: { color: colColor }
+                            });
+                        });
+                    } else if (task.inputData && task.inputData.length > 0) {
+                        const filteredData = task.inputData.filter(p => p && isFinite(p[0]) && isFinite(p[1]));
+                        series.push({
+                            name: `${task.name} (输入)`,
+                            type: chartType,
+                            data: filteredData,
+                            smooth: chartType === 'line',
+                            symbol: 'circle',
+                            symbolSize: 3,
+                            lineStyle: chartType === 'line' ? { width: 2, color: taskColor, type: 'dashed' } : undefined,
+                            itemStyle: { color: taskColor }
+                        });
+                    }
+                }
+
+                // 输出数据
+                if (this.curveVisibility.output) {
+                    if (task.rawOutputRecords && task.rawOutputRecords.length > 0) {
+                        const yAxisColumns = selectedYAxis ? [selectedYAxis] : this.getNumericColumnsForTask(task, 'output');
+                        yAxisColumns.forEach((col, colIdx) => {
+                            if (!task.rawOutputRecords[0] || task.rawOutputRecords[0][col] === undefined) return;
+                            const colColor = colors[(idx + colIdx) % colors.length];
+                            let data;
+                            if (isXCategory) {
+                                data = task.rawOutputRecords
+                                    .filter(r => r[col] != null && typeof r[col] === 'number' && r[xAxisColumn] != null)
+                                    .map(r => [String(r[xAxisColumn]), r[col]]);
+                            } else {
+                                data = task.rawOutputRecords
+                                    .filter(r => r[col] != null && typeof r[col] === 'number')
+                                    .map(r => {
+                                        const csvKeys = Object.keys(task.rawOutputRecords[0]);
+                                        const xVal = xAxisColumn === 'key' ? (r.key != null ? r.key : r[csvKeys[0]]) : (r[xAxisColumn] != null ? r[xAxisColumn] : 0);
+                                        return [xVal, r[col]];
+                                    });
+                            }
+                            if (data.length === 0) return;
+                            series.push({
+                                name: `${col} (输出)`,
+                                type: chartType,
+                                data: data,
+                                smooth: chartType === 'line',
+                                symbol: 'diamond',
+                                symbolSize: 3,
+                                lineStyle: chartType === 'line' ? { width: 2, color: colColor, type: 'solid' } : undefined,
+                                itemStyle: { color: colColor }
+                            });
+                        });
+                    } else if (task.calculationResult && task.calculationResult.length > 0) {
+                        const filteredData = task.calculationResult.filter(p => p && isFinite(p[0]) && isFinite(p[1]));
+                        series.push({
+                            name: `${task.name} (输出)`,
+                            type: chartType,
+                            data: filteredData,
+                            smooth: chartType === 'line',
+                            symbol: 'diamond',
+                            symbolSize: 3,
+                            lineStyle: chartType === 'line' ? { width: 2, color: taskColor, type: 'solid' } : undefined,
+                            itemStyle: { color: taskColor }
+                        });
+                    }
+                }
+            });
+        }
+
+        if (series.length === 0) return;
+
+        // 计算Y轴范围
+        let allDataPoints = [];
+        series.forEach(s => { allDataPoints = allDataPoints.concat(s.data); });
         let yMin = Infinity, yMax = -Infinity;
         allDataPoints.forEach(point => {
             if (point[1] < yMin) yMin = point[1];
@@ -416,30 +637,62 @@ class SimulationRecord extends HTMLElement {
         if (yMax === -Infinity) yMax = 100;
         const yPadding = (yMax - yMin) * 0.1 || 1;
 
-        // 计算x轴范围
-        let xMin = Infinity, xMax = -Infinity;
-        allDataPoints.forEach(point => {
-            if (point[0] < xMin) xMin = point[0];
-            if (point[0] > xMax) xMax = point[0];
-        });
-        if (xMin === Infinity) xMin = 0;
-        if (xMax === -Infinity) xMax = 100;
-        const xPadding = (xMax - xMin) * 0.05 || 1;
+        const isTimeAxis = xAxisColumn === 'key';
+
+        // X轴配置：非数值列用category，数值列用value
+        let xAxisConfig;
+        if (isXCategory) {
+            xAxisConfig = {
+                type: 'category',
+                data: categoryData,
+                name: xAxisColumn,
+                nameLocation: 'middle',
+                nameGap: 30
+            };
+        } else {
+            let xMin = Infinity, xMax = -Infinity;
+            allDataPoints.forEach(point => {
+                if (typeof point[0] === 'number') {
+                    if (point[0] < xMin) xMin = point[0];
+                    if (point[0] > xMax) xMax = point[0];
+                }
+            });
+            if (xMin === Infinity) xMin = 0;
+            if (xMax === -Infinity) xMax = 100;
+            const xPadding = (xMax - xMin) * 0.05 || 1;
+            xAxisConfig = {
+                type: 'value',
+                name: isTimeAxis ? '' : xAxisColumn,
+                nameLocation: 'middle',
+                nameGap: 30,
+                min: xMin - xPadding,
+                max: xMax + xPadding,
+                axisLabel: {
+                    formatter: (value) => {
+                        if (isTimeAxis && this.isValidTimestamp(value)) {
+                            return new Date(value).toLocaleString();
+                        } else {
+                            return String(value);
+                        }
+                    }
+                }
+            };
+        }
 
         const option = {
-            title: { text: '仿真记录分析', left: 'center', top: 10, textStyle: { fontSize: 14, fontWeight: 'bold' } },
+            title: { text: chartType === 'bar' ? '仿真记录柱状图' : '仿真记录分析', left: 'center', top: 10, textStyle: { fontSize: 14, fontWeight: 'bold' } },
             tooltip: {
                 trigger: 'axis',
                 formatter: (params) => {
                     if (!params || params.length === 0) return '';
                     const xValue = params[0].value[0];
-                    let xLabel = '';
-                    if (this.isValidTimestamp(xValue)) {
+                    let xLabel;
+                    if (isTimeAxis && this.isValidTimestamp(xValue)) {
                         xLabel = new Date(xValue).toLocaleString();
                     } else {
-                        xLabel = this.formatTimeWithUnit(xValue);
+                        xLabel = String(xValue);
                     }
-                    let result = `相对时间: ${xLabel}<br/>`;
+                    let result = `${isTimeAxis ? '时间' : xAxisColumn}: ${xLabel}<br/>`;
                     params.forEach(param => {
                         result += `${param.seriesName}: ${(param.value[1] || 0).toFixed(2)}<br/>`;
                     });
@@ -448,21 +701,10 @@ class SimulationRecord extends HTMLElement {
             },
             legend: { data: series.map(s => s.name), top: 40, left: 'center', type: 'scroll' },
             grid: { left: '8%', right: '8%', bottom: '20%', top: '25%' },
-            xAxis: {
-                type: 'value',
-                name: '相对时间 (秒)',
-                nameLocation: 'middle',
-                nameGap: 30,
-                min: xMin - xPadding,
-                max: xMax + xPadding,
-                axisLabel: {
-                    formatter: (value) => {
-                        return value + 's';
-                    }
-                }
-            },
+            xAxis: xAxisConfig,
             yAxis: {
                 type: 'value',
+                name: selectedYAxis || '',
                 min: yMin - yPadding,
                 max: yMax + yPadding,
                 axisLabel: {
@@ -473,6 +715,351 @@ class SimulationRecord extends HTMLElement {
             },
             dataZoom: [{ type: 'inside', start: 0, end: 100 }, { start: 0, end: 100 }],
             toolbox: { right: 20, feature: { restore: {}, saveAsImage: {}, dataView: { readOnly: true } } },
+            series: series
+        };
+
+        this.chart.setOption(option, true);
+    }
+
+    renderScatter() {
+        if (!this.currentChartData || !this.currentChartData.tasks) return;
+
+        const colors = ['#1890ff', '#52c41a', '#faad14', '#f5222d', '#722ed1', '#13c2c2'];
+        const series = [];
+
+        const xAxisSelect = this.shadowRoot.getElementById('xAxisSelect');
+        const yAxisSelect = this.shadowRoot.getElementById('yAxisSelect');
+        const selectedXAxis = xAxisSelect ? xAxisSelect.value : '';
+        const selectedYAxis = yAxisSelect ? yAxisSelect.value : '';
+
+        const xAxisColumn = selectedXAxis || 'key';
+        const isXCategory = this.isNonNumericColumn(xAxisColumn);
+
+        // 收集分类X轴的值
+        let categoryData = [];
+        if (isXCategory) {
+            const categorySet = new Set();
+            this.currentChartData.tasks.forEach(task => {
+                for (const records of [task.rawInputRecords, task.rawOutputRecords]) {
+                    if (records && records.length > 0) {
+                        records.forEach(r => { if (r[xAxisColumn] != null) categorySet.add(String(r[xAxisColumn])); });
+                    }
+                }
+            });
+            categoryData = Array.from(categorySet);
+        }
+
+        this.currentChartData.tasks.forEach((task, idx) => {
+            const taskColor = colors[idx % colors.length];
+
+            // 输入数据
+            if (this.curveVisibility.input) {
+                if (task.rawInputRecords && task.rawInputRecords.length > 0) {
+                    const yAxisColumns = selectedYAxis ? [selectedYAxis] : this.getNumericColumnsForTask(task, 'input');
+                    yAxisColumns.forEach((col, colIdx) => {
+                        if (!task.rawInputRecords[0] || task.rawInputRecords[0][col] === undefined) return;
+                        const colColor = colors[(idx + colIdx) % colors.length];
+                        let data;
+                        if (isXCategory) {
+                            data = task.rawInputRecords
+                                .filter(r => r[col] != null && typeof r[col] === 'number' && r[xAxisColumn] != null)
+                                .map(r => [String(r[xAxisColumn]), r[col]]);
+                        } else {
+                            data = task.rawInputRecords
+                                .filter(r => r[col] != null && typeof r[col] === 'number')
+                                .map(r => {
+                                    const xVal = xAxisColumn === 'key' ? r.key : (r[xAxisColumn] != null ? r[xAxisColumn] : r.key);
+                                    return [xVal, r[col]];
+                                });
+                        }
+                        if (data.length === 0) return;
+                        series.push({
+                            name: `${col} (输入)`,
+                            type: 'scatter',
+                            data: data,
+                            symbolSize: 6,
+                            itemStyle: { color: colColor }
+                        });
+                    });
+                } else if (task.inputData && task.inputData.length > 0) {
+                    const data = task.inputData.filter(p => p && isFinite(p[0]) && isFinite(p[1]));
+                    series.push({
+                        name: `${task.name} (输入)`,
+                        type: 'scatter',
+                        data: data,
+                        symbolSize: 6,
+                        itemStyle: { color: taskColor }
+                    });
+                }
+            }
+
+            // 输出数据
+            if (this.curveVisibility.output) {
+                if (task.rawOutputRecords && task.rawOutputRecords.length > 0) {
+                    const yAxisColumns = selectedYAxis ? [selectedYAxis] : this.getNumericColumnsForTask(task, 'output');
+                    yAxisColumns.forEach((col, colIdx) => {
+                        if (!task.rawOutputRecords[0] || task.rawOutputRecords[0][col] === undefined) return;
+                        const colColor = colors[(idx + colIdx + 1) % colors.length];
+                        let data;
+                        if (isXCategory) {
+                            data = task.rawOutputRecords
+                                .filter(r => r[col] != null && typeof r[col] === 'number' && r[xAxisColumn] != null)
+                                .map(r => [String(r[xAxisColumn]), r[col]]);
+                        } else {
+                            data = task.rawOutputRecords
+                                .filter(r => r[col] != null && typeof r[col] === 'number')
+                                .map(r => {
+                                    const csvKeys = Object.keys(task.rawOutputRecords[0]);
+                                    const xVal = xAxisColumn === 'key' ? (r.key != null ? r.key : r[csvKeys[0]]) : (r[xAxisColumn] != null ? r[xAxisColumn] : 0);
+                                    return [xVal, r[col]];
+                                });
+                        }
+                        if (data.length === 0) return;
+                        series.push({
+                            name: `${col} (输出)`,
+                            type: 'scatter',
+                            data: data,
+                            symbolSize: 6,
+                            itemStyle: { color: colColor }
+                        });
+                    });
+                } else if (task.calculationResult && task.calculationResult.length > 0) {
+                    const data = task.calculationResult.filter(p => p && isFinite(p[0]) && isFinite(p[1]));
+                    series.push({
+                        name: `${task.name} (输出)`,
+                        type: 'scatter',
+                        data: data,
+                        symbolSize: 6,
+                        itemStyle: { color: colors[(idx + 1) % colors.length] }
+                    });
+                }
+            }
+        });
+
+        if (series.length === 0) return;
+
+        // 计算Y轴范围
+        let allData = [];
+        series.forEach(s => { allData = allData.concat(s.data); });
+        let yMin = Infinity, yMax = -Infinity;
+        allData.forEach(p => {
+            if (p[1] < yMin) yMin = p[1];
+            if (p[1] > yMax) yMax = p[1];
+        });
+        if (yMin === Infinity) yMin = 0;
+        if (yMax === -Infinity) yMax = 100;
+        const yPadding = (yMax - yMin) * 0.1 || 1;
+
+        const isTimeAxis = xAxisColumn === 'key';
+
+        // X轴配置
+        let xAxisConfig;
+        if (isXCategory) {
+            xAxisConfig = {
+                type: 'category',
+                data: categoryData,
+                name: xAxisColumn,
+                nameLocation: 'middle',
+                nameGap: 30
+            };
+        } else {
+            let xMin = Infinity, xMax = -Infinity;
+            allData.forEach(p => {
+                if (typeof p[0] === 'number') {
+                    if (p[0] < xMin) xMin = p[0];
+                    if (p[0] > xMax) xMax = p[0];
+                }
+            });
+            if (xMin === Infinity) xMin = 0;
+            if (xMax === -Infinity) xMax = 100;
+            const xPadding = (xMax - xMin) * 0.05 || 1;
+            xAxisConfig = {
+                type: 'value',
+                name: isTimeAxis ? '' : xAxisColumn,
+                nameLocation: 'middle',
+                nameGap: 30,
+                min: xMin - xPadding,
+                max: xMax + xPadding,
+                axisLabel: {
+                    formatter: (value) => {
+                        if (isTimeAxis && this.isValidTimestamp(value)) {
+                            return new Date(value).toLocaleString();
+                        } else {
+                            return String(value);
+                        }
+                    }
+                }
+            };
+        }
+
+        const option = {
+            title: { text: '仿真记录散点图', left: 'center', top: 10, textStyle: { fontSize: 14, fontWeight: 'bold' } },
+            tooltip: {
+                trigger: 'item',
+                formatter: (params) => {
+                    let xLabel;
+                    if (isTimeAxis && this.isValidTimestamp(params.value[0])) {
+                        xLabel = new Date(params.value[0]).toLocaleString();
+                    } else {
+                        xLabel = String(params.value[0]);
+                    }
+                    return `${params.seriesName}<br/>${isTimeAxis ? '时间' : xAxisColumn}: ${xLabel}<br/>${selectedYAxis || '数值'}: ${params.value[1].toFixed(2)}`;
+                }
+            },
+            legend: { data: series.map(s => s.name), top: 40, left: 'center' },
+            grid: { left: '10%', right: '10%', bottom: '15%', top: '20%' },
+            xAxis: xAxisConfig,
+            yAxis: {
+                type: 'value',
+                name: selectedYAxis || '',
+                nameLocation: 'middle',
+                nameGap: 40,
+                min: yMin - yPadding,
+                max: yMax + yPadding,
+                axisLabel: { formatter: (value) => value.toFixed(2) }
+            },
+            dataZoom: [{ type: 'inside', start: 0, end: 100 }, { start: 0, end: 100 }],
+            toolbox: { right: 20, feature: { restore: {}, saveAsImage: {} } },
+            series: series
+        };
+
+        this.chart.setOption(option, true);
+    }
+
+    renderHistogram() {
+        if (!this.currentChartData || !this.currentChartData.tasks) return;
+
+        const colors = ['#1890ff', '#52c41a', '#faad14', '#f5222d', '#722ed1', '#13c2c2'];
+        const series = [];
+
+        const yAxisSelect = this.shadowRoot.getElementById('yAxisSelect');
+        const selectedYAxis = yAxisSelect ? yAxisSelect.value : '';
+
+        this.currentChartData.tasks.forEach((task, idx) => {
+            // 收集输出数据的直方图
+            if (this.curveVisibility.output) {
+                let values = [];
+                let targetColumn = selectedYAxis;
+
+                if (task.rawOutputRecords && task.rawOutputRecords.length > 0) {
+                    if (!targetColumn) {
+                        const numericCols = this.getNumericColumnsForTask(task, 'output');
+                        targetColumn = numericCols.length > 0 ? numericCols[0] : null;
+                    }
+                    if (task.rawOutputRecords[0][targetColumn] !== undefined) {
+                        values = task.rawOutputRecords
+                            .map(r => r[targetColumn])
+                            .filter(v => v != null && typeof v === 'number');
+                    }
+                } else if (task.calculationResult && task.calculationResult.length > 0) {
+                    values = task.calculationResult.filter(p => p && isFinite(p[1])).map(p => p[1]);
+                    targetColumn = targetColumn || (task.outputPaths && task.outputPaths.length > 0 ? task.outputPaths[0].split('.').pop() : task.name);
+                }
+
+                if (values.length === 0) return;
+
+                const min = Math.min(...values);
+                const max = Math.max(...values);
+                const binCount = 20;
+                const binSize = (max - min) / binCount || 1;
+
+                const bins = new Array(binCount).fill(0);
+                values.forEach(value => {
+                    const binIndex = Math.min(Math.floor((value - min) / binSize), binCount - 1);
+                    bins[binIndex]++;
+                });
+
+                const data = bins.map((count, index) => ({
+                    value: [min + index * binSize + binSize / 2, count],
+                    itemStyle: { color: colors[idx % colors.length] }
+                }));
+
+                series.push({
+                    name: `${targetColumn} (输出)`,
+                    type: 'bar',
+                    data: data,
+                    barWidth: binSize * 0.8,
+                    itemStyle: { color: colors[idx % colors.length] }
+                });
+            }
+
+            // 输入数据直方图
+            if (this.curveVisibility.input) {
+                let values = [];
+                let targetColumn = selectedYAxis;
+
+                if (task.rawInputRecords && task.rawInputRecords.length > 0) {
+                    if (!targetColumn) {
+                        targetColumn = task.inputPaths && task.inputPaths[0] ? task.inputPaths[0] : 'value';
+                    }
+                    if (task.rawInputRecords[0][targetColumn] !== undefined) {
+                        values = task.rawInputRecords
+                            .map(r => r[targetColumn])
+                            .filter(v => v != null && typeof v === 'number');
+                    }
+                } else if (task.inputData && task.inputData.length > 0) {
+                    values = task.inputData.filter(p => p && isFinite(p[1])).map(p => p[1]);
+                    targetColumn = targetColumn || (task.inputPaths && task.inputPaths.length > 0 ? task.inputPaths[0] : task.name);
+                }
+
+                if (values.length === 0) return;
+
+                const min = Math.min(...values);
+                const max = Math.max(...values);
+                const binCount = 20;
+                const binSize = (max - min) / binCount || 1;
+
+                const bins = new Array(binCount).fill(0);
+                values.forEach(value => {
+                    const binIndex = Math.min(Math.floor((value - min) / binSize), binCount - 1);
+                    bins[binIndex]++;
+                });
+
+                const data = bins.map((count, index) => ({
+                    value: [min + index * binSize + binSize / 2, count],
+                    itemStyle: { color: colors[(idx + 3) % colors.length] }
+                }));
+
+                series.push({
+                    name: `${targetColumn} (输入)`,
+                    type: 'bar',
+                    data: data,
+                    barWidth: binSize * 0.8,
+                    itemStyle: { color: colors[(idx + 3) % colors.length] }
+                });
+            }
+        });
+
+        if (series.length === 0) return;
+
+        const option = {
+            title: { text: '仿真记录直方图', left: 'center', top: 10, textStyle: { fontSize: 14, fontWeight: 'bold' } },
+            tooltip: {
+                trigger: 'item',
+                formatter: (params) => {
+                    const seriesData = params.series.data;
+                    if (seriesData.length < 2) return `频数: ${params.value[1]}`;
+                    const binSize = Math.abs(seriesData[1].value[0] - seriesData[0].value[0]);
+                    const rangeStart = params.value[0] - binSize / 2;
+                    const rangeEnd = params.value[0] + binSize / 2;
+                    return `${params.seriesName}<br/>范围: ${rangeStart.toFixed(2)} - ${rangeEnd.toFixed(2)}<br/>频数: ${params.value[1]}`;
+                }
+            },
+            legend: { data: series.map(s => s.name), top: 40, left: 'center' },
+            grid: { left: '10%', right: '10%', bottom: '15%', top: '20%' },
+            xAxis: {
+                type: 'value',
+                name: selectedYAxis || '数值',
+                nameLocation: 'middle',
+                nameGap: 30
+            },
+            yAxis: {
+                type: 'value',
+                name: '频数',
+                nameLocation: 'middle',
+                nameGap: 40
+            },
+            toolbox: { right: 20, feature: { restore: {}, saveAsImage: {} } },
             series: series
         };
 
@@ -1063,6 +1650,9 @@ class SimulationRecord extends HTMLElement {
     updateComparisonChart(comparisonData) {
         if (!this.chart) return;
 
+        const chartTypeSelect = this.shadowRoot.getElementById('chartType');
+        const selectedChartType = chartTypeSelect ? chartTypeSelect.value : 'line';
+
         const series = [];
         const colors = ['#1890ff', '#52c41a', '#faad14', '#f5222d', '#722ed1', '#13c2c2'];
         const pathSeriesMap = {};
@@ -1112,21 +1702,76 @@ class SimulationRecord extends HTMLElement {
             }
         });
 
+        // 直方图模式：收集所有输出值做频数分布
+        if (selectedChartType === 'histogram') {
+            let allValues = [];
+            Object.values(pathSeriesMap).forEach(seriesData => {
+                if (seriesData.type === 'output') {
+                    seriesData.data.forEach(p => {
+                        if (p && Array.isArray(p) && p.length === 2 && typeof p[1] === 'number') {
+                            allValues.push(p[1]);
+                        }
+                    });
+                }
+            });
+            if (allValues.length === 0) {
+                // 如果没有输出数据，也收集输入数据
+                Object.values(pathSeriesMap).forEach(seriesData => {
+                    seriesData.data.forEach(p => {
+                        if (p && Array.isArray(p) && p.length === 2 && typeof p[1] === 'number') {
+                            allValues.push(p[1]);
+                        }
+                    });
+                });
+            }
+            if (allValues.length === 0) return;
+
+            const min = Math.min(...allValues);
+            const max = Math.max(...allValues);
+            const binCount = 20;
+            const binSize = (max - min) / binCount || 1;
+            const bins = new Array(binCount).fill(0);
+            allValues.forEach(value => {
+                const binIndex = Math.min(Math.floor((value - min) / binSize), binCount - 1);
+                bins[binIndex]++;
+            });
+
+            const binData = bins.map((count, i) => {
+                const binStart = min + i * binSize;
+                const binEnd = binStart + binSize;
+                return { name: `${binStart.toFixed(2)}-${binEnd.toFixed(2)}`, value: count };
+            });
+
+            const option = {
+                title: { text: '多记录对比 - 直方图', left: 'center', top: 10, textStyle: { fontSize: 14, fontWeight: 'bold' } },
+                tooltip: { trigger: 'axis' },
+                grid: { left: '8%', right: '8%', bottom: '20%', top: '25%' },
+                xAxis: { type: 'category', data: binData.map(b => b.name), axisLabel: { rotate: 45, fontSize: 10 } },
+                yAxis: { type: 'value', name: '频数' },
+                series: [{ type: 'bar', data: binData.map(b => b.value), itemStyle: { color: '#1890ff' } }],
+                toolbox: { right: 20, feature: { restore: {}, saveAsImage: {} } }
+            };
+            this.chart.setOption(option, true);
+            return;
+        }
+
+        const chartType = selectedChartType === 'scatter' ? 'scatter' : selectedChartType;
+
         Object.values(pathSeriesMap).forEach(seriesData => {
             const validData = seriesData.data.filter(p => p && Array.isArray(p) && p.length === 2 && isFinite(p[0]) && isFinite(p[1]));
             if (validData.length > 0) {
                 if (seriesData.type === 'input') {
                     series.push({
                         name: `${seriesData.pathName} (${seriesData.taskName} ${seriesData.taskTimeLabel}输入)`,
-                        type: 'line', data: validData, smooth: true, symbol: 'circle', symbolSize: 3,
-                        lineStyle: { width: 2, color: seriesData.color, type: 'dashed' },
+                        type: chartType, data: validData, smooth: chartType === 'line', symbol: 'circle', symbolSize: chartType === 'scatter' ? 6 : 3,
+                        lineStyle: chartType === 'line' ? { width: 2, color: seriesData.color, type: 'dashed' } : undefined,
                         itemStyle: { color: seriesData.color }
                     });
                 } else {
                     series.push({
                         name: `${seriesData.pathName} (${seriesData.taskName} ${seriesData.taskTimeLabel}输出)`,
-                        type: 'line', data: validData, smooth: true, symbol: 'diamond', symbolSize: 3,
-                        lineStyle: { width: 2, color: seriesData.color, type: 'solid' },
+                        type: chartType, data: validData, smooth: chartType === 'line', symbol: 'diamond', symbolSize: chartType === 'scatter' ? 6 : 3,
+                        lineStyle: chartType === 'line' ? { width: 2, color: seriesData.color, type: 'solid' } : undefined,
                         itemStyle: { color: seriesData.color }
                     });
                 }
@@ -1160,7 +1805,7 @@ class SimulationRecord extends HTMLElement {
         const yPadding = (yMax - yMin) * 0.1 || 1;
 
         const option = {
-            title: { text: '多记录对比分析 - 相对时间', left: 'center', top: 10, textStyle: { fontSize: 14, fontWeight: 'bold' } },
+            title: { text: `多记录对比分析 - ${chartType === 'scatter' ? '散点图' : chartType === 'bar' ? '柱状图' : '相对时间'}`, left: 'center', top: 10, textStyle: { fontSize: 14, fontWeight: 'bold' } },
             tooltip: {
                 trigger: 'axis',
                 formatter: function(params) {
@@ -1526,11 +2171,19 @@ class SimulationRecord extends HTMLElement {
                     });
                     flatInputData.sort((a, b) => a[0] - b[0]);
                     task.inputData = flatInputData;
+
+                    // 保存原始多列数据用于X/Y轴选择
+                    task.rawInputRecords = this.buildRawRecords(inputDataFromIginX.inputData, inputPaths);
                 }
 
                 // 处理输出数据（从CSV）
                 if (outputDataFromCsv) {
                     task.calculationResult = outputDataFromCsv;
+                }
+
+                // 保存CSV原始多列数据用于X/Y轴选择
+                if (outputCsvData && outputCsvData.headers && outputCsvData.rows) {
+                    task.rawOutputRecords = this.buildRawRecordsFromCsv(outputCsvData);
                 }
 
                 tasks.push(task);
@@ -1620,6 +2273,42 @@ class SimulationRecord extends HTMLElement {
         });
 
         return { inputData, outputData, allPathData: pathData };
+    }
+
+    // 将IginX按路径分组的输入数据转换为每行一条记录的格式（支持X/Y轴选择）
+    buildRawRecords(inputDataByPath, paths) {
+        // 收集所有时间戳
+        const timestampSet = new Set();
+        Object.values(inputDataByPath).forEach(dataPoints => {
+            dataPoints.forEach(point => timestampSet.add(point.timestamp));
+        });
+        const timestamps = Array.from(timestampSet).sort((a, b) => a - b);
+
+        // 构建每行记录: { key: timestamp, path1: value1, path2: value2, ... }
+        return timestamps.map(ts => {
+            const record = { key: ts };
+            paths.forEach(path => {
+                const dataPoints = inputDataByPath[path] || [];
+                const point = dataPoints.find(p => p.timestamp === ts);
+                record[path] = point ? point.value : null;
+            });
+            return record;
+        });
+    }
+
+    // 将CSV数据转换为每行一条记录的格式（支持X/Y轴选择）
+    buildRawRecordsFromCsv(csvData) {
+        if (!csvData || !csvData.headers || !csvData.rows) return [];
+        const { headers, rows } = csvData;
+
+        return rows.map(row => {
+            const record = {};
+            headers.forEach((header, idx) => {
+                const value = parseFloat(row[idx]);
+                record[header] = isNaN(value) ? row[idx] : value;
+            });
+            return record;
+        });
     }
 
     // 解析输出CSV数据

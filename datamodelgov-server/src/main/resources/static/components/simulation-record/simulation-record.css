@@ -126,6 +126,45 @@
     gap: var(--spacing-xs);
 }
 
+.chart-controls {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.chart-control-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.chart-control-label {
+    font-size: 12px;
+    color: #646a73;
+    white-space: nowrap;
+}
+
+.chart-control-select {
+    padding: 4px 8px;
+    border: 1px solid #e0e6ed;
+    border-radius: 4px;
+    font-size: 12px;
+    color: #1f2329;
+    background: #fff;
+    cursor: pointer;
+    min-width: 80px;
+}
+
+.chart-control-select:hover {
+    border-color: #cfd3d9;
+}
+
+.chart-control-select:focus {
+    outline: none;
+    border-color: #2969ff;
+}
+
 .toggle-btn {
     display: flex;
     align-items: center;
