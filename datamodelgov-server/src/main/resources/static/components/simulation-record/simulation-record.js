@@ -99,7 +99,7 @@ class SimulationRecord extends HTMLElement {
                                     <option value="">全部</option>
                                     <option value="running">运行中</option>
                                     <option value="stopped">已停止</option>
-                                    <option value="success">成功</option>
+                                    <option value="completed">成功</option>
                                     <option value="failed">失败</option>
                                 </select>
                                 <label for="nameSearch">名称搜索:</label>
@@ -221,7 +221,7 @@ class SimulationRecord extends HTMLElement {
         const reportLimitHelp = this.shadowRoot.getElementById('reportLimitHelp');
         if (reportLimitHelp) {
             reportLimitHelp.addEventListener('click', () => {
-                this.showToast('报告数据限制用于控制生成报告时的数据采样条数，避免数据量过大');
+                this.showReportLimitHelp();
             });
         }
 
@@ -400,36 +400,76 @@ class SimulationRecord extends HTMLElement {
             });
         }
 
-        // 计算x轴和y轴的范围
-        let xMin = Infinity, xMax = -Infinity;
-        let yMin = Infinity, yMax = -Infinity;
+        // 计算数据范围用于动态调整Y轴
+        const dataRange = this.calculateDataRange({
+            inputData: this.currentChartData.parsedResult ? null : null,
+            outputData: null
+        });
         
+        // 对于单个分析，数据是扁平的数组格式，需要手动计算范围
+        let yMin = Infinity, yMax = -Infinity;
         allDataPoints.forEach(point => {
-            if (point[0] < xMin) xMin = point[0];
-            if (point[0] > xMax) xMax = point[0];
             if (point[1] < yMin) yMin = point[1];
             if (point[1] > yMax) yMax = point[1];
         });
-
-        // 添加10%的边距
-        const xPadding = (xMax - xMin) * 0.1 || 1;
+        if (yMin === Infinity) yMin = 0;
+        if (yMax === -Infinity) yMax = 100;
         const yPadding = (yMax - yMin) * 0.1 || 1;
 
+        // 计算x轴范围
+        let xMin = Infinity, xMax = -Infinity;
+        allDataPoints.forEach(point => {
+            if (point[0] < xMin) xMin = point[0];
+            if (point[0] > xMax) xMax = point[0];
+        });
+        if (xMin === Infinity) xMin = 0;
+        if (xMax === -Infinity) xMax = 100;
+        const xPadding = (xMax - xMin) * 0.05 || 1;
+
         const option = {
-            title: { text: '仿真记录对比分析', left: 'center', top: 10, textStyle: { fontSize: 14, fontWeight: 'bold' } },
-            tooltip: { trigger: 'axis' },
+            title: { text: '仿真记录分析', left: 'center', top: 10, textStyle: { fontSize: 14, fontWeight: 'bold' } },
+            tooltip: {
+                trigger: 'axis',
+                formatter: (params) => {
+                    if (!params || params.length === 0) return '';
+                    const xValue = params[0].value[0];
+                    let xLabel = '';
+                    if (this.isValidTimestamp(xValue)) {
+                        xLabel = new Date(xValue).toLocaleString();
+                    } else {
+                        xLabel = this.formatTimeWithUnit(xValue);
+                    }
+                    let result = `相对时间: ${xLabel}<br/>`;
+                    params.forEach(param => {
+                        result += `${param.seriesName}: ${(param.value[1] || 0).toFixed(2)}<br/>`;
+                    });
+                    return result;
+                }
+            },
             legend: { data: series.map(s => s.name), top: 40, left: 'center', type: 'scroll' },
             grid: { left: '8%', right: '8%', bottom: '20%', top: '25%' },
-            xAxis: { 
+            xAxis: {
                 type: 'value',
-                min: xMin !== Infinity ? xMin - xPadding : undefined,
-                max: xMax !== -Infinity ? xMax + xPadding : undefined
+                name: '相对时间 (秒)',
+                nameLocation: 'middle',
+                nameGap: 30,
+                min: xMin - xPadding,
+                max: xMax + xPadding,
+                axisLabel: {
+                    formatter: (value) => {
+                        return value + 's';
+                    }
+                }
             },
-            yAxis: { 
-                type: 'value', 
-                axisLabel: { formatter: v => v.toFixed(2) },
-                min: yMin !== Infinity ? yMin - yPadding : undefined,
-                max: yMax !== -Infinity ? yMax + yPadding : undefined
+            yAxis: {
+                type: 'value',
+                min: yMin - yPadding,
+                max: yMax + yPadding,
+                axisLabel: {
+                    formatter: function(value) {
+                        return value.toFixed(2);
+                    }
+                }
             },
             dataZoom: [{ type: 'inside', start: 0, end: 100 }, { start: 0, end: 100 }],
             toolbox: { right: 20, feature: { restore: {}, saveAsImage: {}, dataView: { readOnly: true } } },
@@ -443,20 +483,86 @@ class SimulationRecord extends HTMLElement {
         this.curveVisibility.input = !this.curveVisibility.input;
         const btn = this.shadowRoot.getElementById('toggleInputBtn');
         if (btn) btn.classList.toggle('inactive', !this.curveVisibility.input);
-        this.updateChart();
+        // 根据当前图表类型调用正确的更新方法
+        if (this.currentChartData && this.currentChartData.type === 'comparison') {
+            this.updateComparisonChart(this.currentChartData.data);
+        } else {
+            this.updateChart();
+        }
     }
 
     toggleOutputData() {
         this.curveVisibility.output = !this.curveVisibility.output;
         const btn = this.shadowRoot.getElementById('toggleOutputBtn');
         if (btn) btn.classList.toggle('inactive', !this.curveVisibility.output);
-        this.updateChart();
+        // 根据当前图表类型调用正确的更新方法
+        if (this.currentChartData && this.currentChartData.type === 'comparison') {
+            this.updateComparisonChart(this.currentChartData.data);
+        } else {
+            this.updateChart();
+        }
     }
 
     handleStatusFilter(value) {
         this.currentFilter.status = value;
         this.currentPage = 1;
         this.loadRecordsFromAPI();
+    }
+
+    showReportLimitHelp() {
+        const modalTitle = this.shadowRoot.getElementById('modalTitle');
+        const modalBody = this.shadowRoot.getElementById('modalBody');
+        const modalFooter = this.shadowRoot.getElementById('modalFooter');
+
+        modalTitle.textContent = '报告数据限制说明';
+        modalBody.innerHTML = `
+            <div style="padding: 20px 0; line-height: 1.8;">
+                <p style="margin-bottom: 15px; font-weight: 500; color: #1f2329;">
+                    📊 报告数据限制
+                </p>
+                <p style="margin-bottom: 15px; color: #646a73;">
+                    为保证报告生成性能，报告仅显示用户指定数量的数据行（K条）。
+                </p>
+
+                <div style="background: #f0f7ff; border-left: 4px solid #2969ff; padding: 15px; margin: 20px 0; border-radius: 4px;">
+                    <p style="margin: 0 0 10px 0; font-weight: 500; color: #2969ff;">
+                        💡 如何访问完整数据集：
+                    </p>
+                    <ul style="margin: 0; padding-left: 20px; color: #646a73;">
+                        <li style="margin-bottom: 8px;">使用"导出"功能下载完整数据集</li>
+                        <li style="margin-bottom: 8px;">通过数据资源库查询直接获取完整数据</li>
+                        <li style="margin-bottom: 8px;">调整报告数据限制参数以显示更多数据</li>
+                        <li>选择合适的采样算法以优化数据展示</li>
+                    </ul>
+                </div>
+
+                <p style="margin-bottom: 15px; font-weight: 500; color: #1f2329;">
+                    📋 采样算法说明：
+                </p>
+                <ul style="margin: 0; padding-left: 20px; color: #646a73;">
+                    <li style="margin-bottom: 8px;"><strong>均匀采样</strong>：在整个数据范围内均匀采样，保持数据分布特征</li>
+                    <li style="margin-bottom: 8px;"><strong>随机采样</strong>：随机选择K条数据，适合大数据集的快速预览</li>
+                    <li style="margin-bottom: 8px;"><strong>取前N条</strong>：选择数据集的前N条，适合查看最新数据</li>
+                    <li><strong>取后N条</strong>：选择数据集的后N条，适合查看历史数据</li>
+                </ul>
+            </div>
+        `;
+
+        modalFooter.innerHTML = `
+            <button class="modal-btn secondary" id="closeHelp">关闭</button>
+        `;
+
+        this.showModal();
+
+        const closeBtn = this.shadowRoot.getElementById('closeHelp');
+        const modalClose = this.shadowRoot.getElementById('modalClose');
+
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => this.hideModal());
+        }
+        if (modalClose) {
+            modalClose.addEventListener('click', () => this.hideModal());
+        }
     }
 
     handleSelectAll(checked) {
@@ -486,7 +592,7 @@ class SimulationRecord extends HTMLElement {
 
         // 检查选中记录的状态
         const selectedRecords = this.allData.filter(record => selectedIds.includes(String(record.createTime)));
-        const nonSuccessRecords = selectedRecords.filter(r => r.status !== 'success' && r.status !== 'stopped');
+        const nonSuccessRecords = selectedRecords.filter(r => r.status !== 'completed' && r.status !== 'stopped');
 
         if (nonSuccessRecords.length > 0) {
             const names = nonSuccessRecords.map(r => `${r.name}(${this.getStatusText(r.status)})`).join(', ');
@@ -511,30 +617,10 @@ class SimulationRecord extends HTMLElement {
 
             const tasksData = [];
             for (const record of selectedRecords) {
-                const statusResult = await window.AppConfig.get('simulationArchives', 'execution-status', { createTime: record.archiveId });
-                if (statusResult.success && statusResult.data && statusResult.data.result) {
-                    const result = statusResult.data.result;
-                    const nodeTasks = [];
-                    if (result.results) {
-                        Object.entries(result.results).forEach(([nodeId, nr]) => {
-                            const inputData = (nr.inputData || []).map(p => {
-                                if (Array.isArray(p) && p.length >= 2) return [p[0], parseFloat(p[1]) || 0];
-                                return null;
-                            }).filter(Boolean);
-                            const calculationResult = (nr.calculationResult || []).map(p => {
-                                if (Array.isArray(p) && p.length >= 2) return [p[0], parseFloat(p[1]) || 0];
-                                return null;
-                            }).filter(Boolean);
-                            nodeTasks.push({
-                                name: `${record.name} - ${nr.nodeName || nodeId}`,
-                                inputData,
-                                calculationResult,
-                                inputPaths: nr.inputMeasurements || [],
-                                outputPaths: nr.outputMeasurements || []
-                            });
-                        });
-                    }
-                    tasksData.push({ id: record.createTime, name: record.name, nodes: nodeTasks });
+                // 参考handleAnalyze的实现，从IginX查询输入数据，从CSV解析输出数据
+                const taskData = await this.queryDataForComparison(record);
+                if (taskData) {
+                    tasksData.push(taskData);
                 }
             }
 
@@ -544,7 +630,7 @@ class SimulationRecord extends HTMLElement {
             }
 
             // 生成对比数据
-            const comparisonData = this.generateComparisonData(tasksData);
+            const comparisonData = this.generateComparisonDataFromQuery(tasksData);
 
             this.currentChartData = {
                 type: 'comparison',
@@ -566,6 +652,260 @@ class SimulationRecord extends HTMLElement {
         } finally {
             if (window.hideGlobalLoading) window.hideGlobalLoading();
         }
+    }
+
+    // 查询对比数据 - 参考handleAnalyze的实现
+    async queryDataForComparison(record) {
+        try {
+            let inputPaths = [];
+            let outputPaths = [];
+            let inputDataFromIginX = null;
+            let outputDataFromCsv = null;
+            let parsedResult = null;
+
+            // 从record中获取测点路径
+            if (record.inputMeasurements) {
+                try {
+                    inputPaths = JSON.parse(record.inputMeasurements);
+                } catch (e) {
+                    console.error('解析inputMeasurements失败:', e);
+                }
+            }
+
+            if (record.outputMeasurements) {
+                try {
+                    outputPaths = JSON.parse(record.outputMeasurements);
+                } catch (e) {
+                    console.error('解析outputMeasurements失败:', e);
+                }
+            }
+
+            // 解析result获取CSV表头信息
+            if (record.result) {
+                try {
+                    parsedResult = typeof record.result === 'string' ? JSON.parse(record.result) : record.result;
+                } catch (e) {
+                    console.error('解析result失败:', e);
+                }
+            }
+
+            // 查询输入数据（从IginX）
+            if (inputPaths.length > 0) {
+                try {
+                    const requestBody = {
+                        paths: inputPaths,
+                        startTime: record.startTime,
+                        endTime: record.endTime,
+                        aggregateType: null,
+                        precision: 0,
+                        align: false
+                    };
+                    
+                    const queryResult = await window.AppConfig.post('data', 'query', requestBody);
+                    
+                    if (queryResult.success && queryResult.data && queryResult.data.records) {
+                        inputDataFromIginX = this.processQueryData(queryResult.data, inputPaths, []);
+                    }
+                } catch (e) {
+                    console.error('从IginX查询输入数据失败:', e);
+                }
+            }
+
+            // 输出数据从CSV解析
+            if (parsedResult && parsedResult.results) {
+                const firstNodeKey = Object.keys(parsedResult.results)[0];
+                if (firstNodeKey) {
+                    const nodeResult = parsedResult.results[firstNodeKey];
+                    if (nodeResult.outputCsv) {
+                        const outputCsvData = this.parseOutputCsv(nodeResult.outputCsv);
+                        outputDataFromCsv = this.convertCsvToChartData(outputCsvData);
+                    }
+                }
+            }
+
+            // 构建任务数据 - 参考visual-analysis的格式，保留按路径分组的数据
+            if (inputDataFromIginX || outputDataFromCsv) {
+                return {
+                    id: record.createTime,
+                    name: record.name || '仿真任务',
+                    inputData: inputDataFromIginX ? inputDataFromIginX.inputData : {},
+                    outputData: outputDataFromCsv ? this.convertFlatToPathData(outputDataFromCsv, outputPaths) : {},
+                    inputPaths: inputPaths,
+                    outputPaths: outputPaths
+                };
+            }
+
+            return null;
+        } catch (error) {
+            console.error('数据查询异常:', error);
+            return null;
+        }
+    }
+
+    // 将扁平化的CSV数据转换为按路径分组的数据
+    convertFlatToPathData(flatData, paths) {
+        const pathData = {};
+        paths.forEach(path => {
+            pathData[path] = [];
+        });
+        
+        if (flatData && flatData.length > 0) {
+            // 假设flatData是 [timestamp, value1, value2, ...] 格式
+            flatData.forEach(point => {
+                if (Array.isArray(point) && point.length >= 2) {
+                    const timestamp = point[0];
+                    paths.forEach((path, index) => {
+                        if (point[index + 1] !== undefined && point[index + 1] !== null) {
+                            pathData[path].push({
+                                timestamp: timestamp,
+                                value: point[index + 1]
+                            });
+                        }
+                    });
+                }
+            });
+        }
+        
+        return pathData;
+    }
+
+    // 从查询数据生成对比数据 - 参考visual-analysis的generateComparisonDataFromRealData
+    generateComparisonDataFromQuery(tasksData) {
+        const comparisonData = {
+            tasks: [],
+            timePoints: [],
+            frequencyInconsistent: false,
+            targetFrequency: 10
+        };
+
+        let baseTime = null;
+        const taskFrequencies = [];
+
+        tasksData.forEach((taskData) => {
+            let taskMinTime = null;
+            let taskMaxTime = null;
+            let timePoints = [];
+
+            // 收集任务的所有时间点
+            [...Object.values(taskData.inputData || {}), ...Object.values(taskData.outputData || {})].forEach(pathData => {
+                pathData.forEach(point => {
+                    if (point.timestamp) {
+                        timePoints.push(point.timestamp);
+                        if (taskMinTime === null || point.timestamp < taskMinTime) {
+                            taskMinTime = point.timestamp;
+                        }
+                        if (taskMaxTime === null || point.timestamp > taskMaxTime) {
+                            taskMaxTime = point.timestamp;
+                        }
+                    }
+                });
+            });
+
+            // 计算任务的采样频率
+            if (timePoints.length > 1) {
+                timePoints.sort((a, b) => a - b);
+                const intervals = [];
+                for (let i = 1; i < timePoints.length; i++) {
+                    intervals.push((timePoints[i] - timePoints[i-1]) / 1000);
+                }
+                intervals.sort((a, b) => a - b);
+                const medianInterval = intervals[Math.floor(intervals.length / 2)];
+                taskFrequencies.push(medianInterval);
+
+                if (baseTime === null || taskMinTime < baseTime) {
+                    baseTime = taskMinTime;
+                }
+            }
+        });
+
+        if (baseTime === null) {
+            baseTime = Date.now();
+        }
+
+        // 检查采样频率是否一致
+        if (taskFrequencies.length > 1) {
+            const uniqueFrequencies = [...new Set(taskFrequencies.map(f => Math.round(f)))];
+            if (uniqueFrequencies.length > 1) {
+                comparisonData.frequencyInconsistent = true;
+                comparisonData.targetFrequency = Math.max(...taskFrequencies);
+            } else {
+                comparisonData.targetFrequency = taskFrequencies[0];
+            }
+        }
+
+        // 为每个任务处理真实数据
+        tasksData.forEach((taskData) => {
+            const task = {
+                id: taskData.id,
+                name: taskData.name,
+                samplingInterval: comparisonData.targetFrequency,
+                inputData: [],
+                calculationResult: [],
+                inputPaths: [], // 保存输入路径信息
+                outputPaths: []  // 保存输出路径信息
+            };
+
+            // 处理输入数据，转换为相对时间并保存路径信息
+            if (taskData.inputData) {
+                Object.keys(taskData.inputData).forEach(path => {
+                    task.inputPaths.push(path); // 保存路径名
+                    taskData.inputData[path].forEach(point => {
+                        if (point && point.timestamp !== undefined && point.timestamp !== null && point.value !== undefined && point.value !== null) {
+                            const relativeTime = (point.timestamp - baseTime) / 1000;
+                            if (isFinite(relativeTime) && isFinite(point.value)) {
+                                task.inputData.push([relativeTime, point.value]);
+                            }
+                        }
+                    });
+                });
+            }
+
+            // 处理输出数据，转换为相对时间并保存路径信息
+            if (taskData.outputData) {
+                Object.keys(taskData.outputData).forEach(path => {
+                    task.outputPaths.push(path); // 保存路径名
+                    taskData.outputData[path].forEach(point => {
+                        if (point && point.timestamp !== undefined && point.timestamp !== null && point.value !== undefined && point.value !== null) {
+                            const relativeTime = (point.timestamp - baseTime) / 1000;
+                            if (isFinite(relativeTime) && isFinite(point.value)) {
+                                task.calculationResult.push([relativeTime, point.value]);
+                            }
+                        }
+                    });
+                });
+            }
+
+            // 对数据进行频率对齐处理，并确保从0开始
+            // 对输入数据进行对齐处理
+            if (task.inputData && task.inputData.length > 0) {
+                task.inputData.sort((a, b) => a[0] - b[0]);
+                // 找到最小时间点
+                const minTime = Math.min(...task.inputData.map(point => point[0]));
+                // 将所有时间点对齐到0
+                task.inputData = task.inputData.map(point => [point[0] - minTime, point[1]]);
+
+                if (comparisonData.frequencyInconsistent) {
+                    task.inputData = this.alignDataSeries(task.inputData, comparisonData.targetFrequency);
+                }
+            }
+
+            // 对输出数据进行对齐处理
+            if (task.calculationResult && task.calculationResult.length > 0) {
+                task.calculationResult.sort((a, b) => a[0] - b[0]);
+                // 找到最小时间点
+                const minTime = Math.min(...task.calculationResult.map(point => point[0]));
+                // 将所有时间点对齐到0
+                task.calculationResult = task.calculationResult.map(point => [point[0] - minTime, point[1]]);
+
+                if (comparisonData.frequencyInconsistent) {
+                    task.calculationResult = this.alignDataSeries(task.calculationResult, comparisonData.targetFrequency);
+                }
+            }
+
+            comparisonData.tasks.push(task);
+        });
+
+        return comparisonData;
     }
 
     generateComparisonData(tasksData) {
@@ -729,6 +1069,9 @@ class SimulationRecord extends HTMLElement {
 
         comparisonData.tasks.forEach((task, taskIdx) => {
             const taskColor = colors[taskIdx % colors.length];
+            // 使用id字段作为唯一标识（id就是timestamp）
+            const taskTimestamp = task.id || Date.now();
+            const taskTimeLabel = new Date(taskTimestamp).toLocaleString();
 
             if (this.curveVisibility.input && task.inputData && task.inputData.length > 0 && task.inputPaths) {
                 task.inputPaths.forEach((pathName, pathIndex) => {
@@ -741,8 +1084,10 @@ class SimulationRecord extends HTMLElement {
                     if (!isNumeric) return;
 
                     if (pathData.length > 0) {
-                        const seriesKey = `${pathName}_input_${task.name}`;
-                        pathSeriesMap[seriesKey] = { data: pathData, color: taskColor, pathName, taskName: task.name, type: 'input' };
+                        // 按时间排序，确保曲线连续（参考单个分析）
+                        pathData.sort((a, b) => a[0] - b[0]);
+                        const seriesKey = `${pathName}_input_${taskTimestamp}`;
+                        pathSeriesMap[seriesKey] = { data: pathData, color: taskColor, pathName, taskName: task.name, taskTimeLabel, type: 'input' };
                     }
                 });
             }
@@ -758,8 +1103,10 @@ class SimulationRecord extends HTMLElement {
                     if (!isNumeric) return;
 
                     if (pathData.length > 0) {
-                        const seriesKey = `${pathName}_output_${task.name}`;
-                        pathSeriesMap[seriesKey] = { data: pathData, color: taskColor, pathName, taskName: task.name, type: 'output' };
+                        // 按时间排序，确保曲线连续（参考单个分析）
+                        pathData.sort((a, b) => a[0] - b[0]);
+                        const seriesKey = `${pathName}_output_${taskTimestamp}`;
+                        pathSeriesMap[seriesKey] = { data: pathData, color: taskColor, pathName, taskName: task.name, taskTimeLabel, type: 'output' };
                     }
                 });
             }
@@ -770,14 +1117,14 @@ class SimulationRecord extends HTMLElement {
             if (validData.length > 0) {
                 if (seriesData.type === 'input') {
                     series.push({
-                        name: `${seriesData.pathName} (${seriesData.taskName}输入)`,
+                        name: `${seriesData.pathName} (${seriesData.taskName} ${seriesData.taskTimeLabel}输入)`,
                         type: 'line', data: validData, smooth: true, symbol: 'circle', symbolSize: 3,
                         lineStyle: { width: 2, color: seriesData.color, type: 'dashed' },
                         itemStyle: { color: seriesData.color }
                     });
                 } else {
                     series.push({
-                        name: `${seriesData.pathName} (${seriesData.taskName}输出)`,
+                        name: `${seriesData.pathName} (${seriesData.taskName} ${seriesData.taskTimeLabel}输出)`,
                         type: 'line', data: validData, smooth: true, symbol: 'diamond', symbolSize: 3,
                         lineStyle: { width: 2, color: seriesData.color, type: 'solid' },
                         itemStyle: { color: seriesData.color }
@@ -786,18 +1133,67 @@ class SimulationRecord extends HTMLElement {
             }
         });
 
-        let xAxisMax = 0;
-        if (comparisonData.timePoints.length > 0) {
-            xAxisMax = Math.ceil(Math.max(...comparisonData.timePoints) / 10) * 10;
-        }
+        // 动态计算x轴和y轴的范围（参考单个分析）
+        let allDataPoints = [];
+        series.forEach(s => {
+            if (s.data) {
+                allDataPoints = allDataPoints.concat(s.data);
+            }
+        });
+
+        let xMin = Infinity, xMax = -Infinity;
+        let yMin = Infinity, yMax = -Infinity;
+        
+        allDataPoints.forEach(point => {
+            if (point[0] < xMin) xMin = point[0];
+            if (point[0] > xMax) xMax = point[0];
+            if (point[1] < yMin) yMin = point[1];
+            if (point[1] > yMax) yMax = point[1];
+        });
+
+        if (xMin === Infinity) xMin = 0;
+        if (xMax === -Infinity) xMax = 100;
+        if (yMin === Infinity) yMin = 0;
+        if (yMax === -Infinity) yMax = 100;
+
+        const xPadding = (xMax - xMin) * 0.05 || 1;
+        const yPadding = (yMax - yMin) * 0.1 || 1;
 
         const option = {
             title: { text: '多记录对比分析 - 相对时间', left: 'center', top: 10, textStyle: { fontSize: 14, fontWeight: 'bold' } },
-            tooltip: { trigger: 'axis' },
+            tooltip: {
+                trigger: 'axis',
+                formatter: function(params) {
+                    if (!params || params.length === 0) return '';
+                    const time = params[0].value[0];
+                    let result = `相对时间: ${time.toFixed(1)}s<br/>`;
+                    params.forEach(param => {
+                        result += `${param.seriesName}: ${(param.value[1] || 0).toFixed(2)}<br/>`;
+                    });
+                    return result;
+                }
+            },
             legend: { data: series.map(s => s.name), top: 40, left: 'center', type: 'scroll' },
             grid: { left: '8%', right: '8%', bottom: '20%', top: '25%' },
-            xAxis: { type: 'value', max: xAxisMax, name: '时间(秒)' },
-            yAxis: { type: 'value', axisLabel: { formatter: v => v.toFixed(2) } },
+            xAxis: {
+                type: 'value',
+                min: Math.max(0, xMin - xPadding),
+                max: xMax + xPadding,
+                name: '相对时间 (秒)',
+                nameLocation: 'middle',
+                nameGap: 30,
+                axisLabel: {
+                    formatter: function(value) {
+                        return value + 's';
+                    }
+                }
+            },
+            yAxis: {
+                type: 'value',
+                min: yMin - yPadding,
+                max: yMax + yPadding,
+                axisLabel: { formatter: v => v.toFixed(2) }
+            },
             dataZoom: [{ type: 'inside', start: 0, end: 100 }, { start: 0, end: 100 }],
             toolbox: { right: 20, feature: { restore: {}, saveAsImage: {}, dataView: { readOnly: true } } },
             series: series
@@ -828,12 +1224,6 @@ class SimulationRecord extends HTMLElement {
 
             if (result.success && result.data) {
                 this.displayData = result.data.map(execution => {
-                    let runStatus = execution.status || 'unknown';
-                    // Map backend status to frontend status
-                    if (runStatus === 'completed') runStatus = 'success';
-                    else if (runStatus === 'running') runStatus = 'running';
-                    else if (runStatus === 'failed') runStatus = 'failed';
-
                     return {
                         createTime: execution.timestamp || execution.archiveId,
                         timestamp: execution.timestamp,
@@ -841,7 +1231,7 @@ class SimulationRecord extends HTMLElement {
                         name: execution.archiveName || '-',
                         startTime: execution.startTime,
                         endTime: execution.endTime,
-                        status: runStatus,
+                        status: execution.status || 'unknown',
                         error: execution.error || '',
                         time: execution.startTime ? new Date(execution.startTime).toLocaleString() : '-',
                         inputMeasurements: execution.inputMeasurements,
@@ -896,7 +1286,7 @@ class SimulationRecord extends HTMLElement {
         if (!tbody) return;
 
         if (this.displayData.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 40px; color: #999;">暂无仿真执行记录</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 40px; color: #999;">暂无仿真执行记录</td></tr>`;
             return;
         }
 
@@ -919,6 +1309,11 @@ class SimulationRecord extends HTMLElement {
             const nameTd = document.createElement('td');
             nameTd.textContent = record.name || '-';
             tr.appendChild(nameTd);
+
+            // 执行时间列（timestamp）
+            const timestampTd = document.createElement('td');
+            timestampTd.textContent = record.timestamp ? new Date(record.timestamp).toLocaleString() : '-';
+            tr.appendChild(timestampTd);
 
             // 开始时间列
             const startTimeTd = document.createElement('td');
@@ -954,7 +1349,7 @@ class SimulationRecord extends HTMLElement {
             actionButtons.className = 'action-buttons';
 
             // 分析按钮（仅成功/已停止/已完成状态显示）
-            if (record.status === 'success' || record.status === 'stopped' || record.status === 'completed') {
+            if (record.status === 'completed' || record.status === 'stopped') {
                 const analyzeBtn = document.createElement('button');
                 analyzeBtn.className = 'action-btn analyze';
                 analyzeBtn.textContent = '分析';
@@ -1007,7 +1402,7 @@ class SimulationRecord extends HTMLElement {
     }
 
     getStatusText(status) {
-        const map = { running: '运行中', stopped: '已停止', success: '成功', failed: '失败', pending: '等待中' };
+        const map = { running: '运行中', stopped: '已停止', completed: '成功', failed: '失败', pending: '等待中' };
         return map[status] || status;
     }
 
@@ -1017,7 +1412,7 @@ class SimulationRecord extends HTMLElement {
     async handleAnalyze(record) {
         console.log('handleAnalyze被调用，record:', record);
         
-        if (record.status !== 'success' && record.status !== 'stopped' && record.status !== 'completed') {
+        if (record.status !== 'completed' && record.status !== 'stopped') {
             this.showToast('只能分析成功或已完成的仿真记录', 'warning');
             return;
         }
@@ -1296,6 +1691,150 @@ class SimulationRecord extends HTMLElement {
         return seriesData.length > 0 ? seriesData[0].data : [];
     }
 
+    // 采样数据
+    sampleData(data, maxRows = 20, samplingAlgorithm = 'uniform') {
+        console.log(`sampleData调用: data.length=${data.length}, maxRows=${maxRows}, samplingAlgorithm=${samplingAlgorithm}`);
+        
+        if (!data || data.length === 0) {
+            console.log('数据为空，直接返回');
+            return data;
+        }
+        
+        if (data.length <= maxRows) {
+            console.log('数据行数在限制范围内，无需采样');
+            return data;
+        }
+        
+        const sampledData = [];
+        
+        switch (samplingAlgorithm) {
+            case 'uniform':
+                // 均匀采样 - 简化逻辑确保严格不超过maxRows
+                console.log(`均匀采样计算: data.length=${data.length}, maxRows=${maxRows}`);
+                
+                // 计算采样间隔
+                const interval = Math.ceil(data.length / maxRows);
+                console.log(`采样间隔: ${interval}`);
+                
+                for (let i = 0; i < data.length; i += interval) {
+                    if (sampledData.length >= maxRows) {
+                        console.log(`达到maxRows ${maxRows}，停止采样`);
+                        break;
+                    }
+                    sampledData.push(data[i]);
+                    console.log(`添加索引 ${i}, 当前数量 ${sampledData.length}`);
+                }
+                
+                // 强制截断到maxRows
+                if (sampledData.length > maxRows) {
+                    console.log(`截断前数量 ${sampledData.length}, 截断到 ${maxRows}`);
+                    sampledData.length = maxRows;
+                }
+                console.log(`均匀采样完成：原始数据 ${data.length} 行，采样后 ${sampledData.length} 行`);
+                break;
+                
+            case 'random':
+                // 随机采样
+                const indices = new Set();
+                while (indices.size < maxRows) {
+                    indices.add(Math.floor(Math.random() * data.length));
+                }
+                Array.from(indices).sort((a, b) => a - b).forEach(index => {
+                    sampledData.push(data[index]);
+                });
+                console.log(`随机采样完成：原始数据 ${data.length} 行，采样后 ${sampledData.length} 行`);
+                break;
+                
+            case 'first':
+                // 取前N条
+                for (let i = 0; i < maxRows; i++) {
+                    sampledData.push(data[i]);
+                }
+                console.log(`取前N条采样完成：原始数据 ${data.length} 行，采样后 ${sampledData.length} 行`);
+                break;
+                
+            case 'last':
+                // 取后N条
+                const startIndex = Math.max(0, data.length - maxRows);
+                for (let i = startIndex; i < data.length; i++) {
+                    sampledData.push(data[i]);
+                }
+                console.log(`取后N条采样完成：原始数据 ${data.length} 行，采样后 ${sampledData.length} 行`);
+                break;
+                
+            default:
+                console.log(`未知采样算法: ${samplingAlgorithm}，使用均匀采样`);
+                const defaultInterval = Math.floor((data.length - 1) / (maxRows - 1));
+                for (let i = 0; i < data.length; i += defaultInterval) {
+                    if (sampledData.length >= maxRows) break;
+                    sampledData.push(data[i]);
+                }
+                if (sampledData[sampledData.length - 1] !== data[data.length - 1] && sampledData.length < maxRows) {
+                    sampledData.push(data[data.length - 1]);
+                }
+                if (sampledData.length > maxRows) {
+                    sampledData.length = maxRows;
+                }
+        }
+        
+        return sampledData;
+    }
+
+    // 统一采样输入和输出数据
+    sampleDataConsistently(inputData, outputData, maxRows = 100, samplingAlgorithm = 'uniform') {
+        const result = {
+            inputData: inputData ? {} : null,
+            outputData: outputData ? {} : null
+        };
+        
+        // 计算总数据量
+        const totalInputCount = inputData ? Object.values(inputData).reduce((sum, data) => sum + (data ? data.length : 0), 0) : 0;
+        const totalOutputCount = outputData ? Object.values(outputData).reduce((sum, data) => sum + (data ? data.length : 0), 0) : 0;
+        const totalCount = totalInputCount + totalOutputCount;
+        
+        console.log(`准备采样 - 输入: ${totalInputCount}, 输出: ${totalOutputCount}, 总计: ${totalCount}`);
+        
+        if (totalCount > maxRows) {
+            console.log(`数据量过大(${totalCount} > ${maxRows})，开始采样，算法: ${samplingAlgorithm}...`);
+            
+            // 对输入数据进行采样
+            if (inputData) {
+                Object.keys(inputData).forEach(path => {
+                    const data = inputData[path];
+                    if (data && data.length > 0) {
+                        result.inputData[path] = this.sampleData(data, maxRows, samplingAlgorithm);
+                    } else {
+                        result.inputData[path] = data;
+                    }
+                });
+            }
+            
+            // 对输出数据进行采样
+            if (outputData) {
+                Object.keys(outputData).forEach(path => {
+                    const data = outputData[path];
+                    if (data && data.length > 0) {
+                        result.outputData[path] = this.sampleData(data, maxRows, samplingAlgorithm);
+                    } else {
+                        result.outputData[path] = data;
+                    }
+                });
+            }
+            
+            const sampledInputCount = result.inputData ? Object.values(result.inputData).reduce((sum, data) => sum + (data ? data.length : 0), 0) : 0;
+            const sampledOutputCount = result.outputData ? Object.values(result.outputData).reduce((sum, data) => sum + (data ? data.length : 0), 0) : 0;
+            
+            console.log(`统一采样完成 - 输入: ${totalInputCount} -> ${sampledInputCount}, 输出: ${totalOutputCount} -> ${sampledOutputCount}`);
+        } else {
+            // 数据量不大，直接使用原数据
+            result.inputData = inputData;
+            result.outputData = outputData;
+            console.log('数据量在合理范围内，无需采样');
+        }
+        
+        return result;
+    }
+
     // 处理生成报告操作
     async handleGenerateReport(record) {
         // 先自动执行分析
@@ -1311,6 +1850,34 @@ class SimulationRecord extends HTMLElement {
         if (!this.currentChartData) {
             this.showToast('分析失败，无法生成报告', 'error');
             return;
+        }
+
+        // 获取用户设置的数据限制和采样算法
+        const reportDataLimitInput = this.shadowRoot.getElementById('reportDataLimit');
+        const samplingAlgorithmSelect = this.shadowRoot.getElementById('samplingAlgorithm');
+        
+        const maxRows = reportDataLimitInput ? parseInt(reportDataLimitInput.value) || 20 : 20;
+        const samplingAlgorithm = samplingAlgorithmSelect ? samplingAlgorithmSelect.value : 'uniform';
+        
+        console.log('报告数据限制设置:', maxRows, '采样算法:', samplingAlgorithm);
+
+        // 对CSV输出数据进行采样
+        let sampledOutputCsvData = this.currentChartData.outputCsvData;
+        if (this.currentChartData.outputCsvData && this.currentChartData.outputCsvData.rows) {
+            const originalRowCount = this.currentChartData.outputCsvData.rows.length;
+            console.log('输出数据原始行数:', originalRowCount);
+            if (originalRowCount > maxRows) {
+                console.log(`输出数据行数过多(${originalRowCount} > ${maxRows})，开始采样...`);
+                const sampledRows = this.sampleData(this.currentChartData.outputCsvData.rows, maxRows, samplingAlgorithm);
+                console.log('输出数据采样后行数:', sampledRows.length);
+                sampledOutputCsvData = {
+                    headers: this.currentChartData.outputCsvData.headers,
+                    rows: sampledRows
+                };
+                console.log(`输出数据采样完成：${originalRowCount} -> ${sampledRows.length} 行`);
+            } else {
+                console.log('输出数据行数在限制范围内，无需采样');
+            }
         }
 
         // 创建加载提示
@@ -1347,19 +1914,21 @@ class SimulationRecord extends HTMLElement {
             const pdfGenerator = new LocalPDFGenerator();
 
             // 1. 添加报告标题
-            pdfGenerator.addTitle('仿真分析报告');
-            pdfGenerator.addText(`仿真名称: ${record.name}`, 12);
+            pdfGenerator.addTitle('任务分析报告');
+            pdfGenerator.addText(`任务名称: ${record.name}`, 12);
             pdfGenerator.addText(`生成时间: ${new Date().toLocaleString()}`, 12);
             pdfGenerator.addSeparator();
 
-            // 2. 仿真详情
-            pdfGenerator.addSubtitle('一、仿真详情');
+            // 2. 任务详情部分
+            pdfGenerator.addSubtitle('一、任务详情');
+            pdfGenerator.addText(`档案ID: ${record.archiveId}`, 12);
             pdfGenerator.addText(`档案名称: ${record.name}`, 12);
-            pdfGenerator.addText(`执行时间: ${new Date(record.startTime).toLocaleString()}`, 12);
-            pdfGenerator.addText(`执行状态: ${record.status}`, 12);
+            pdfGenerator.addText(`当前状态: ${record.status}`, 12);
+            pdfGenerator.addText(`开始时间: ${record.startTime ? new Date(record.startTime).toLocaleString() : 'N/A'}`, 12);
+            pdfGenerator.addText(`结束时间: ${record.endTime ? new Date(record.endTime).toLocaleString() : 'N/A'}`, 12);
             pdfGenerator.addSeparator();
 
-            // 3. 添加曲线图
+            // 3. 曲线图分析
             pdfGenerator.addSubtitle('二、曲线图分析');
             const chartElement = this.shadowRoot.getElementById('analysisChart');
             if (chartElement && this.chart) {
@@ -1368,44 +1937,197 @@ class SimulationRecord extends HTMLElement {
                     pixelRatio: 2,
                     backgroundColor: '#fff'
                 });
-                await pdfGenerator.addChartImage(chartImage, '仿真曲线图', `${record.name}的趋势分析图表`);
+                await pdfGenerator.addChartImage(chartImage, '任务曲线图', `${record.name}的趋势分析图表`);
             } else {
-                pdfGenerator.addImagePlaceholder('曲线图', '当前仿真的趋势分析图表');
+                pdfGenerator.addImagePlaceholder('曲线图', '当前任务的趋势分析图表');
             }
 
             // 4. 数据视图
             pdfGenerator.addSubtitle('三、数据视图');
 
-            // 4.1 输入数据表格
+            // 4.1 输入数据表格 - 参照visual-analysis格式
             if (this.currentChartData && this.currentChartData.tasks) {
                 this.currentChartData.tasks.forEach((task, taskIndex) => {
                     if (task.inputData && task.inputData.length > 0) {
-                        pdfGenerator.addText(`输入数据 - ${task.name}`, 12, true);
+                        pdfGenerator.addText('输入数据', 12, true);
                         
-                        const inputHeaders = ['时间', '数值'];
-                        const inputRows = task.inputData.map(p => [
-                            this.isValidTimestamp(p[0]) ? new Date(p[0]).toLocaleString() : String(p[0]),
-                            typeof p[1] === 'number' ? p[1].toFixed(4) : String(p[1])
-                        ]);
+                        // 获取输入路径
+                        const inputPaths = task.inputPaths || [];
                         
-                        pdfGenerator.addTable(inputHeaders, inputRows);
+                        if (inputPaths.length > 0) {
+                            // 按路径分组数据 - 参考visual-analysis格式
+                            const inputPathInfo = {};
+                            inputPaths.forEach((path, pathIdx) => {
+                                const pointsPerPath = Math.ceil(task.inputData.length / inputPaths.length);
+                                const startIndex = pathIdx * pointsPerPath;
+                                const endIndex = Math.min(startIndex + pointsPerPath, task.inputData.length);
+                                const pathData = task.inputData.slice(startIndex, endIndex);
+                                
+                                // 直接存储数组数据，符合sampleData的期望格式
+                                inputPathInfo[path] = pathData.map(p => ({
+                                    timestamp: p[0],
+                                    value: p[1]
+                                }));
+                            });
+                            
+                            // 提取所有时间戳
+                            const inputTimestamps = new Set();
+                            Object.values(inputPathInfo).forEach(data => {
+                                if (data && data.length > 0) {
+                                    data.forEach(point => {
+                                        inputTimestamps.add(point.timestamp);
+                                    });
+                                }
+                            });
+                            
+                            const sortedInputTimestamps = Array.from(inputTimestamps).sort((a, b) => a - b);
+                            console.log('输入数据时间戳原始数量:', sortedInputTimestamps.length);
+                            
+                            // 对时间戳进行采样
+                            const sampledTimestamps = this.sampleData(sortedInputTimestamps, maxRows, samplingAlgorithm);
+                            console.log('输入数据时间戳采样后数量:', sampledTimestamps.length);
+                            
+                            const inputHeaders = ['时间', ...inputPaths];
+                            const inputRows = sampledTimestamps.map(timestamp => {
+                                let timeLabel;
+                                if (this.isValidTimestamp(timestamp)) {
+                                    timeLabel = new Date(timestamp).toLocaleString();
+                                } else {
+                                    timeLabel = String(timestamp);
+                                }
+                                const row = [timeLabel];
+                                inputPaths.forEach(path => {
+                                    const data = inputPathInfo[path];
+                                    const point = data?.find(p => p.timestamp === timestamp);
+                                    if (point && point.value !== null && point.value !== undefined) {
+                                        if (typeof point.value === 'number') {
+                                            row.push(point.value.toFixed(2));
+                                        } else {
+                                            row.push(String(point.value));
+                                        }
+                                    } else {
+                                        row.push('N/A');
+                                    }
+                                });
+                                return row;
+                            });
+                            
+                            // 检查列数是否过多
+                            const maxColumnsPerTable = 11;
+                            const totalInputColumns = inputHeaders.length;
+                            
+                            if (totalInputColumns <= maxColumnsPerTable) {
+                                pdfGenerator.addTable(inputHeaders, inputRows);
+                            } else {
+                                const pathsPerTable = maxColumnsPerTable - 1;
+                                const inputTableCount = Math.ceil(inputPaths.length / pathsPerTable);
+                                
+                                pdfGenerator.addText(`输入数据列数过多（共${inputPaths.length}列），已拆分为${inputTableCount}个表格显示：`, 10);
+                                
+                                for (let tableIndex = 0; tableIndex < inputTableCount; tableIndex++) {
+                                    const startPathIndex = tableIndex * pathsPerTable;
+                                    const endPathIndex = Math.min(startPathIndex + pathsPerTable, inputPaths.length);
+                                    const currentPaths = inputPaths.slice(startPathIndex, endPathIndex);
+                                    
+                                    const currentHeaders = ['时间', ...currentPaths];
+                                    const currentRows = inputRows.map(row => {
+                                        const currentRow = [row[0]];
+                                        currentPaths.forEach(path => {
+                                            const originalPathIdx = inputPaths.indexOf(path);
+                                            currentRow.push(row[originalPathIdx + 1]);
+                                        });
+                                        return currentRow;
+                                    });
+                                    
+                                    pdfGenerator.addText(`输入数据表格 ${tableIndex + 1}/${inputTableCount} (列 ${startPathIndex + 1}-${endPathIndex})`, 11, true);
+                                    pdfGenerator.addTable(currentHeaders, currentRows);
+                                    
+                                    if (tableIndex < inputTableCount - 1) {
+                                        pdfGenerator.addSeparator();
+                                    }
+                                }
+                            }
+                        } else {
+                            // 没有路径信息，使用简单格式
+                            const inputHeaders = ['时间', '数值'];
+                            const sampledInputData = this.sampleData(task.inputData, maxRows, samplingAlgorithm);
+                            console.log('输入数据原始行数:', task.inputData.length, '采样后行数:', sampledInputData.length);
+                            const inputRows = sampledInputData.map(p => [
+                                this.isValidTimestamp(p[0]) ? new Date(p[0]).toLocaleString() : String(p[0]),
+                                typeof p[1] === 'number' ? p[1].toFixed(2) : String(p[1])
+                            ]);
+                            
+                            pdfGenerator.addTable(inputHeaders, inputRows);
+                        }
+                        
                         pdfGenerator.addSeparator();
                     }
 
-                    // 4.2 输出数据表格 - 使用CSV原始数据
-                    if (this.currentChartData.outputCsvData && this.currentChartData.outputCsvData.headers && this.currentChartData.outputCsvData.rows) {
-                        pdfGenerator.addText(`输出数据 - ${task.name}`, 12, true);
+                    // 4.2 输出数据表格 - 使用采样后的CSV原始数据
+                    if (sampledOutputCsvData && sampledOutputCsvData.headers && sampledOutputCsvData.rows) {
+                        pdfGenerator.addText('输出数据', 12, true);
                         
-                        const outputHeaders = this.currentChartData.outputCsvData.headers;
-                        const outputRows = this.currentChartData.outputCsvData.rows;
+                        const outputHeaders = sampledOutputCsvData.headers;
+                        const outputRows = sampledOutputCsvData.rows;
                         
                         pdfGenerator.addTable(outputHeaders, outputRows);
                         pdfGenerator.addSeparator();
                     }
                 });
             }
+            
+            if ((!this.currentChartData || !this.currentChartData.tasks) && 
+                (!this.currentChartData || !this.currentChartData.outputCsvData)) {
+                pdfGenerator.addText('暂无数据', 12);
+            }
+            
+            // 检查是否进行了采样
+            pdfGenerator.addSeparator();
+            pdfGenerator.addText(`如何访问完整数据集：`, 10, true);
+            pdfGenerator.addText(`使用"导出"功能下载完整数据集（档案号：${record.archiveId}）`, 9, false);
+            
+            // 从record中获取输入和输出路径
+            const inputPaths = record.inputMeasurements ? JSON.parse(record.inputMeasurements) : [];
+            const outputPaths = record.outputMeasurements ? JSON.parse(record.outputMeasurements) : [];
+            
+            if (inputPaths.length > 0 || outputPaths.length > 0) {
+                const pathInfo = [];
+                if (inputPaths.length > 0) {
+                    pathInfo.push(`输入路径：${inputPaths.join(', ')}`);
+                }
+                if (outputPaths.length > 0) {
+                    pathInfo.push(`输出路径：${outputPaths.join(', ')}`);
+                }
+                pdfGenerator.addText(`通过数据资源库查询直接获取完整数据（${pathInfo.join('，')}）`, 9, false);
+            }
 
-            // 5. 生成HTML内容
+            // 5. 统计分析
+            pdfGenerator.addSubtitle('四、统计分析');
+            if (this.currentChartData && this.currentChartData.tasks) {
+                let totalInputCount = 0;
+                let totalOutputCount = 0;
+                
+                this.currentChartData.tasks.forEach(task => {
+                    if (task.inputData) {
+                        totalInputCount += task.inputData.length;
+                    }
+                    if (task.calculationResult) {
+                        totalOutputCount += task.calculationResult.length;
+                    }
+                });
+                
+                const statsHeaders = ['统计指标', '数值', '说明'];
+                const statsData = [
+                    ['输入数据点数量', totalInputCount, '输入数据有效数据点个数'],
+                    ['输出数据点数量', totalOutputCount, '输出数据有效数据点个数'],
+                    ['报告数据限制', maxRows, '报告中显示的最大数据行数'],
+                    ['采样算法', samplingAlgorithm === 'uniform' ? '均匀采样' : samplingAlgorithm === 'random' ? '随机采样' : samplingAlgorithm === 'first' ? '取前N条' : '取后N条', '数据采样算法']
+                ];
+                
+                pdfGenerator.addTable(statsHeaders, statsData);
+            }
+
+            // 6. 生成HTML内容
             const htmlContent = pdfGenerator.generateHTML();
 
             // 6. 上传报告到后端
@@ -1745,7 +2467,7 @@ class SimulationRecord extends HTMLElement {
                     this.stopLogAutoRefresh();
                     this.updateStatusDisplay(newStatus);
                     const statusText = this.getStatusText(newStatus);
-                    this.showToast(`仿真${statusText}`, newStatus === 'success' ? 'success' : 'warning');
+                    this.showToast(`仿真${statusText}`, newStatus === 'completed' ? 'success' : 'warning');
                 }
 
                 this.currentLogTask.status = newStatus;
@@ -1939,6 +2661,120 @@ class SimulationRecord extends HTMLElement {
     isValidTimestamp(value) {
         if (typeof value !== 'number') return false;
         return value > 1e12 && value < 1e13;
+    }
+
+    formatTimeWithUnit(value) {
+        if (value == null || isNaN(value)) {
+            return String(value);
+        }
+        
+        const absValue = Math.abs(value);
+        
+        // 根据数值大小自动选择合适的单位
+        if (absValue >= 86400000) {
+            return (value / 86400000).toFixed(1) + 'd';
+        } else if (absValue >= 3600000) {
+            return (value / 3600000).toFixed(1) + 'h';
+        } else if (absValue >= 60000) {
+            return (value / 60000).toFixed(1) + 'min';
+        } else if (absValue >= 1000) {
+            return (value / 1000).toFixed(1) + 's';
+        } else {
+            return value.toFixed(0) + 'ms';
+        }
+    }
+
+    calculateDataRange(chartData) {
+        let minValue = Infinity;
+        let maxValue = -Infinity;
+        let hasData = false;
+
+        // 检查输入数据
+        if (chartData && chartData.inputData) {
+            Object.values(chartData.inputData).forEach(dataArray => {
+                if (dataArray && dataArray.length > 0) {
+                    dataArray.forEach(point => {
+                        if (point.value !== null && point.value !== undefined && typeof point.value === 'number') {
+                            minValue = Math.min(minValue, point.value);
+                            maxValue = Math.max(maxValue, point.value);
+                            hasData = true;
+                        }
+                    });
+                }
+            });
+        }
+
+        // 检查输出数据
+        if (chartData && chartData.outputData) {
+            Object.values(chartData.outputData).forEach(dataArray => {
+                if (dataArray && dataArray.length > 0) {
+                    dataArray.forEach(point => {
+                        if (point.value !== null && point.value !== undefined && typeof point.value === 'number') {
+                            minValue = Math.min(minValue, point.value);
+                            maxValue = Math.max(maxValue, point.value);
+                            hasData = true;
+                        }
+                    });
+                }
+            });
+        }
+
+        if (!hasData) {
+            return { min: 0, max: 100 };
+        }
+
+        const range = maxValue - minValue;
+        const padding = range * 0.1;
+        
+        return {
+            min: minValue - padding,
+            max: maxValue + padding
+        };
+    }
+
+    calculateXAxisRange(chartData) {
+        if (!chartData) {
+            return { min: 0, max: 100 };
+        }
+
+        let minValue = Infinity;
+        let maxValue = -Infinity;
+        let hasData = false;
+
+        const processArray = (dataArray) => {
+            if (dataArray && dataArray.length > 0) {
+                dataArray.forEach(point => {
+                    if (point.timestamp !== null && point.timestamp !== undefined) {
+                        const value = typeof point.timestamp === 'number' ? point.timestamp : parseFloat(point.timestamp);
+                        if (!isNaN(value)) {
+                            minValue = Math.min(minValue, value);
+                            maxValue = Math.max(maxValue, value);
+                            hasData = true;
+                        }
+                    }
+                });
+            }
+        };
+
+        if (chartData.inputData) {
+            Object.values(chartData.inputData).forEach(processArray);
+        }
+
+        if (chartData.outputData) {
+            Object.values(chartData.outputData).forEach(processArray);
+        }
+
+        if (!hasData) {
+            return { min: 0, max: 100 };
+        }
+
+        const range = maxValue - minValue;
+        const padding = range * 0.05;
+        
+        return {
+            min: minValue - padding,
+            max: maxValue + padding
+        };
     }
 
     sampleData(data, maxRows = 20, samplingAlgorithm = 'uniform') {

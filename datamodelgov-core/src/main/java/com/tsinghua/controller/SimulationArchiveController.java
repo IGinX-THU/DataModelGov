@@ -1,5 +1,6 @@
 package com.tsinghua.controller;
 
+import com.tsinghua.dto.ExecutionRecordQueryDto;
 import com.tsinghua.entity.SimulationArchiveEntity;
 import com.tsinghua.entity.SimulationExecutionEntity;
 import com.tsinghua.model.Result;
@@ -255,14 +256,15 @@ public class SimulationArchiveController {
     @ApiOperation("查询仿真执行记录列表")
     @PostMapping("/archives/execution-records")
     @RequirePermission(Permission.PARSING_RULES_READ)
-    public Result<?> queryExecutionRecords(
-            @RequestParam(required = false) String archiveName,
-            @RequestParam(required = false) String status,
-            @RequestParam(required = false) Long startTime,
-            @RequestParam(required = false) Long endTime,
-            @RequestParam(defaultValue = "1") Integer pageNum,
-            @RequestParam(defaultValue = "10") Integer pageSize) {
-        return Result.success(simulationExecutionService.queryExecutions(archiveName, status, startTime, endTime, pageNum, pageSize));
+    public Result<?> queryExecutionRecords(@RequestBody ExecutionRecordQueryDto queryDto) {
+        return Result.success(simulationExecutionService.queryExecutions(
+            queryDto.getArchiveName(), 
+            queryDto.getStatus(), 
+            queryDto.getStartTime(), 
+            queryDto.getEndTime(), 
+            queryDto.getPageNum() != null ? queryDto.getPageNum() : 1,
+            queryDto.getPageSize() != null ? queryDto.getPageSize() : 10
+        ));
     }
 
     /**
@@ -271,12 +273,13 @@ public class SimulationArchiveController {
     @ApiOperation("查询仿真执行记录总数")
     @PostMapping("/archives/execution-records-count")
     @RequirePermission(Permission.PARSING_RULES_READ)
-    public Result<?> countExecutionRecords(
-            @RequestParam(required = false) String archiveName,
-            @RequestParam(required = false) String status,
-            @RequestParam(required = false) Long startTime,
-            @RequestParam(required = false) Long endTime) {
-        return Result.success(simulationExecutionService.countExecutions(archiveName, status, startTime, endTime));
+    public Result<?> countExecutionRecords(@RequestBody ExecutionRecordQueryDto queryDto) {
+        return Result.success(simulationExecutionService.countExecutions(
+            queryDto.getArchiveName(), 
+            queryDto.getStatus(), 
+            queryDto.getStartTime(), 
+            queryDto.getEndTime()
+        ));
     }
 
     /**
