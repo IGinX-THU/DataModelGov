@@ -80,6 +80,10 @@ const BUTTON_ID_MAP = {
     'btn-simulation': {
         text: '仿真',
         action: 'showSimulationArchive'
+    },
+    'btn-simulation-analyze': {
+        text: '分析',
+        action: 'showSimulationRecord'
     }
 };
 
