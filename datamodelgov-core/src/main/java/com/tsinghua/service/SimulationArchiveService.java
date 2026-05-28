@@ -5,6 +5,7 @@ import cn.edu.tsinghua.iginx.session.SessionExecuteSqlResult;
 import cn.edu.tsinghua.iginx.session_v2.IginXClient;
 import cn.edu.tsinghua.iginx.session_v2.write.Point;
 import com.tsinghua.auth.service.DataPermissionService;
+import com.tsinghua.auth.util.AuthUtil;
 import com.tsinghua.entity.SimulationArchiveEntity;
 import com.tsinghua.util.ConvertUtil;
 import lombok.extern.slf4j.Slf4j;
@@ -47,6 +48,10 @@ public class SimulationArchiveService {
             archive.setCreateTime(timestamp);
         }
         archive.setUpdateTime(System.currentTimeMillis());
+        // 默认将所有者设置为当前用户（如果未提供）
+        if (archive.getOwner() == null || archive.getOwner().trim().isEmpty()) {
+            archive.setOwner(AuthUtil.getCurrentUsername());
+        }
         String metaBasePath = DATA_PREFIX;
 
         // 创建各个字段的数据点
@@ -82,8 +87,13 @@ public class SimulationArchiveService {
             if (projectName != null && !projectName.trim().isEmpty()) {
                 sql.append(" AND projectName LIKE '^.*").append(projectName.trim()).append(".*'");
             }
-            if (owner != null && !owner.trim().isEmpty()) {
-                sql.append(" AND owner LIKE '^.*").append(owner.trim()).append(".*'");
+            // 非管理员默认按当前用户过滤所有者
+            String effectiveOwner = owner;
+            if (!AuthUtil.isAdmin()) {
+                effectiveOwner = AuthUtil.getCurrentUsername("unknown");
+            }
+            if (effectiveOwner != null && !effectiveOwner.trim().isEmpty()) {
+                sql.append(" AND owner = '").append(effectiveOwner.trim()).append("'");
             }
             if (status != null) {
                 sql.append(" AND status = ").append(status);
@@ -131,8 +141,13 @@ public class SimulationArchiveService {
             if (projectName != null && !projectName.trim().isEmpty()) {
                 sql.append(" AND projectName LIKE '%").append(projectName.trim()).append("%'");
             }
-            if (owner != null && !owner.trim().isEmpty()) {
-                sql.append(" AND owner LIKE '%").append(owner.trim()).append("%'");
+            // 非管理员默认按当前用户过滤所有者
+            String effectiveOwner = owner;
+            if (!AuthUtil.isAdmin()) {
+                effectiveOwner = AuthUtil.getCurrentUsername("unknown");
+            }
+            if (effectiveOwner != null && !effectiveOwner.trim().isEmpty()) {
+                sql.append(" AND owner = '").append(effectiveOwner.trim()).append("'");
             }
             if (status != null) {
                 sql.append(" AND status = ").append(status);

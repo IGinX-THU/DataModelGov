@@ -6,6 +6,7 @@ import com.tsinghua.entity.SimulationExecutionEntity;
 import com.tsinghua.model.Result;
 import com.tsinghua.service.SimulationArchiveService;
 import com.tsinghua.service.SimulationExecutionService;
+import com.tsinghua.auth.util.AuthUtil;
 import com.tsinghua.auth.annotation.RequirePermission;
 import com.tsinghua.auth.enums.Permission;
 import com.tsinghua.auth.annotation.OperationLog;
@@ -21,6 +22,9 @@ import org.springframework.web.multipart.MultipartFile;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.ArrayList;
+import java.util.stream.Collectors;
 
 /**
  * 仿真档案控制器
@@ -257,14 +261,49 @@ public class SimulationArchiveController {
     @PostMapping("/archives/execution-records")
     @RequirePermission(Permission.PARSING_RULES_READ)
     public Result<?> queryExecutionRecords(@RequestBody ExecutionRecordQueryDto queryDto) {
-        return Result.success(simulationExecutionService.queryExecutions(
-            queryDto.getArchiveName(), 
-            queryDto.getStatus(), 
-            queryDto.getStartTime(), 
-            queryDto.getEndTime(), 
-            queryDto.getPageNum() != null ? queryDto.getPageNum() : 1,
-            queryDto.getPageSize() != null ? queryDto.getPageSize() : 10
-        ));
+        // 管理员不过滤，普通用户仅能查看自己拥有的档案对应的执行记录
+        if (AuthUtil.isAdmin()) {
+            return Result.success(simulationExecutionService.queryExecutions(
+                queryDto.getArchiveName(),
+                queryDto.getStatus(),
+                queryDto.getStartTime(),
+                queryDto.getEndTime(),
+                queryDto.getPageNum() != null ? queryDto.getPageNum() : 1,
+                queryDto.getPageSize() != null ? queryDto.getPageSize() : 10
+            ));
+        }
+
+        String currentUser = AuthUtil.getCurrentUsername("unknown");
+        List<SimulationArchiveEntity> owned = simulationArchiveService.queryArchives(
+            null, null, currentUser, null, 1, 10000);
+        Set<Long> ownedIds = owned == null ? java.util.Collections.emptySet() :
+            owned.stream().map(SimulationArchiveEntity::getCreateTime)
+                .filter(java.util.Objects::nonNull).collect(Collectors.toSet());
+        if (ownedIds.isEmpty()) {
+            return Result.success(new ArrayList<>());
+        }
+
+        // 先拉取较大的结果集再按所有者过滤并手动分页
+        int reqPage = queryDto.getPageNum() != null ? queryDto.getPageNum() : 1;
+        int reqSize = queryDto.getPageSize() != null ? queryDto.getPageSize() : 10;
+        List<SimulationExecutionEntity> all = simulationExecutionService.queryExecutions(
+            queryDto.getArchiveName(),
+            queryDto.getStatus(),
+            queryDto.getStartTime(),
+            queryDto.getEndTime(),
+            1,
+            10000
+        );
+        List<SimulationExecutionEntity> filtered = all == null ? new ArrayList<>() :
+            all.stream().filter(e -> e.getArchiveId() != null && ownedIds.contains(e.getArchiveId()))
+                .collect(Collectors.toList());
+
+        int from = Math.max(0, (reqPage - 1) * reqSize);
+        if (from >= filtered.size()) {
+            return Result.success(new ArrayList<>());
+        }
+        int to = Math.min(from + reqSize, filtered.size());
+        return Result.success(new ArrayList<>(filtered.subList(from, to)));
     }
 
     /**
@@ -274,12 +313,37 @@ public class SimulationArchiveController {
     @PostMapping("/archives/execution-records-count")
     @RequirePermission(Permission.PARSING_RULES_READ)
     public Result<?> countExecutionRecords(@RequestBody ExecutionRecordQueryDto queryDto) {
-        return Result.success(simulationExecutionService.countExecutions(
-            queryDto.getArchiveName(), 
-            queryDto.getStatus(), 
-            queryDto.getStartTime(), 
-            queryDto.getEndTime()
-        ));
+        if (AuthUtil.isAdmin()) {
+            return Result.success(simulationExecutionService.countExecutions(
+                queryDto.getArchiveName(),
+                queryDto.getStatus(),
+                queryDto.getStartTime(),
+                queryDto.getEndTime()
+            ));
+        }
+
+        String currentUser = AuthUtil.getCurrentUsername("unknown");
+        List<SimulationArchiveEntity> owned = simulationArchiveService.queryArchives(
+            null, null, currentUser, null, 1, 10000);
+        Set<Long> ownedIds = owned == null ? java.util.Collections.emptySet() :
+            owned.stream().map(SimulationArchiveEntity::getCreateTime)
+                .filter(java.util.Objects::nonNull).collect(Collectors.toSet());
+        if (ownedIds.isEmpty()) {
+            return Result.success(0L);
+        }
+
+        List<SimulationExecutionEntity> all = simulationExecutionService.queryExecutions(
+            queryDto.getArchiveName(),
+            queryDto.getStatus(),
+            queryDto.getStartTime(),
+            queryDto.getEndTime(),
+            1,
+            10000
+        );
+        long count = all == null ? 0L : all.stream()
+            .filter(e -> e.getArchiveId() != null && ownedIds.contains(e.getArchiveId()))
+            .count();
+        return Result.success(count);
     }
 
     /**
