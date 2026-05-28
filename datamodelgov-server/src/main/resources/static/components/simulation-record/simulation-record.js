@@ -1097,13 +1097,16 @@ class SimulationRecord extends HTMLElement {
 
             // 输出数据从CSV解析，不从IginX查询
             let outputDataFromCsv = null;
+            let outputCsvData = null; // 保存CSV原始数据用于报告
             if (parsedResult && parsedResult.results) {
                 const firstNodeKey = Object.keys(parsedResult.results)[0];
                 if (firstNodeKey) {
                     const nodeResult = parsedResult.results[firstNodeKey];
                     if (nodeResult.outputCsv) {
-                        outputDataFromCsv = this.parseOutputCsv(nodeResult.outputCsv);
+                        outputCsvData = this.parseOutputCsv(nodeResult.outputCsv);
+                        outputDataFromCsv = this.convertCsvToChartData(outputCsvData);
                         console.log('从CSV解析的输出数据:', outputDataFromCsv);
+                        console.log('CSV原始数据:', outputCsvData);
                     }
                 }
             }
@@ -1138,7 +1141,7 @@ class SimulationRecord extends HTMLElement {
                 tasks.push(task);
             }
 
-            this.currentChartData = { tasks, record, parsedResult };
+            this.currentChartData = { tasks, record, parsedResult, outputCsvData };
 
             if (!this.chart) {
                 this.initChart();
@@ -1226,16 +1229,13 @@ class SimulationRecord extends HTMLElement {
 
     // 解析输出CSV数据
     parseOutputCsv(csvText) {
-        if (!csvText) return [];
+        if (!csvText) return { headers: [], rows: [] };
         
         const lines = csvText.trim().split('\n');
-        if (lines.length < 2) return [];
+        if (lines.length < 2) return { headers: [], rows: [] };
         
         // 解析表头
         const headers = lines[0].split(',').map(h => h.trim());
-        
-        // 检查是否有key列
-        const hasKeyColumn = headers.some(h => h.toLowerCase() === 'key');
         
         // 解析数据行
         const dataRows = [];
@@ -1246,16 +1246,23 @@ class SimulationRecord extends HTMLElement {
             const values = line.split(',').map(v => v.trim());
             if (values.length !== headers.length) continue;
             
-            const row = {};
-            headers.forEach((header, idx) => {
-                row[header] = values[idx];
-            });
-            dataRows.push(row);
+            dataRows.push(values);
         }
+        
+        return { headers, rows: dataRows };
+    }
+
+    // 将CSV数据转换为图表数据格式
+    convertCsvToChartData(csvData) {
+        if (!csvData || !csvData.headers || csvData.headers.length === 0) return [];
+        
+        const { headers, rows } = csvData;
+        
+        // 检查是否有key列
+        const hasKeyColumn = headers.some(h => h.toLowerCase() === 'key');
         
         // 转换为图表格式：每列作为一个系列
         const seriesData = [];
-        const startTime = Date.now();
         
         headers.forEach((header, headerIdx) => {
             // 跳过key列（如果有）
@@ -1264,8 +1271,8 @@ class SimulationRecord extends HTMLElement {
             if (!hasKeyColumn && headerIdx === 0) return;
             
             const series = [];
-            dataRows.forEach((row, rowIdx) => {
-                const value = parseFloat(row[header]);
+            rows.forEach((row, rowIdx) => {
+                const value = parseFloat(row[headerIdx]);
                 if (!isNaN(value)) {
                     // 使用索引作为x轴（因为没有时间戳）
                     series.push([rowIdx, value]);
@@ -1286,7 +1293,6 @@ class SimulationRecord extends HTMLElement {
         }
         
         // 如果有多个系列，返回第一个系列的数据（简化处理）
-        // 实际应该根据需要返回多个系列
         return seriesData.length > 0 ? seriesData[0].data : [];
     }
 
@@ -1347,27 +1353,54 @@ class SimulationRecord extends HTMLElement {
             pdfGenerator.addSeparator();
 
             // 2. 仿真详情
-            pdfGenerator.addSubtitle('仿真详情');
+            pdfGenerator.addSubtitle('一、仿真详情');
+            pdfGenerator.addText(`档案名称: ${record.name}`, 12);
             pdfGenerator.addText(`执行时间: ${new Date(record.startTime).toLocaleString()}`, 12);
             pdfGenerator.addText(`执行状态: ${record.status}`, 12);
             pdfGenerator.addSeparator();
 
-            // 3. 添加图表
-            if (this.chart) {
-                pdfGenerator.addSubtitle('数据可视化');
-                const chartContainer = this.shadowRoot.querySelector('#chartContainer');
-                if (chartContainer) {
-                    pdfGenerator.addChart(chartContainer);
-                }
+            // 3. 添加曲线图
+            pdfGenerator.addSubtitle('二、曲线图分析');
+            const chartElement = this.shadowRoot.getElementById('analysisChart');
+            if (chartElement && this.chart) {
+                const chartImage = this.chart.getDataURL({
+                    type: 'png',
+                    pixelRatio: 2,
+                    backgroundColor: '#fff'
+                });
+                await pdfGenerator.addChartImage(chartImage, '仿真曲线图', `${record.name}的趋势分析图表`);
+            } else {
+                pdfGenerator.addImagePlaceholder('曲线图', '当前仿真的趋势分析图表');
             }
 
-            // 4. 添加数据表格
+            // 4. 数据视图
+            pdfGenerator.addSubtitle('三、数据视图');
+
+            // 4.1 输入数据表格
             if (this.currentChartData && this.currentChartData.tasks) {
-                pdfGenerator.addSubtitle('节点数据');
-                this.currentChartData.tasks.forEach((task, index) => {
-                    pdfGenerator.addText(`节点 ${index + 1}: ${task.name}`, 12);
-                    if (task.calculationResult && task.calculationResult.length > 0) {
-                        pdfGenerator.addText(`计算结果数据点数: ${task.calculationResult.length}`, 10);
+                this.currentChartData.tasks.forEach((task, taskIndex) => {
+                    if (task.inputData && task.inputData.length > 0) {
+                        pdfGenerator.addText(`输入数据 - ${task.name}`, 12, true);
+                        
+                        const inputHeaders = ['时间', '数值'];
+                        const inputRows = task.inputData.map(p => [
+                            this.isValidTimestamp(p[0]) ? new Date(p[0]).toLocaleString() : String(p[0]),
+                            typeof p[1] === 'number' ? p[1].toFixed(4) : String(p[1])
+                        ]);
+                        
+                        pdfGenerator.addTable(inputHeaders, inputRows);
+                        pdfGenerator.addSeparator();
+                    }
+
+                    // 4.2 输出数据表格 - 使用CSV原始数据
+                    if (this.currentChartData.outputCsvData && this.currentChartData.outputCsvData.headers && this.currentChartData.outputCsvData.rows) {
+                        pdfGenerator.addText(`输出数据 - ${task.name}`, 12, true);
+                        
+                        const outputHeaders = this.currentChartData.outputCsvData.headers;
+                        const outputRows = this.currentChartData.outputCsvData.rows;
+                        
+                        pdfGenerator.addTable(outputHeaders, outputRows);
+                        pdfGenerator.addSeparator();
                     }
                 });
             }
@@ -1384,6 +1417,19 @@ class SimulationRecord extends HTMLElement {
 
             if (uploadResult.success) {
                 this.showToast('报告生成并上传成功', 'success');
+                
+                // 7. 打开新窗口显示报告
+                const reportWindow = window.open('', '_blank');
+                if (reportWindow) {
+                    reportWindow.document.write(htmlContent);
+                    reportWindow.document.close();
+                    // 自动弹出打印对话框
+                    setTimeout(() => {
+                        reportWindow.print();
+                    }, 500);
+                } else {
+                    this.showToast('无法打开报告窗口，请检查浏览器弹窗设置', 'warning');
+                }
             } else {
                 this.showToast('报告上传失败: ' + (uploadResult.message || '未知错误'), 'error');
             }
