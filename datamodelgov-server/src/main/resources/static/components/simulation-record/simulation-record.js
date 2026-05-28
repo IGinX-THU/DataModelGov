@@ -1852,6 +1852,68 @@ class SimulationRecord extends HTMLElement {
             return;
         }
 
+        // 创建加载提示
+        const loadingOverlay = document.createElement('div');
+        loadingOverlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            font-family: Arial, sans-serif;
+        `;
+        loadingOverlay.innerHTML = `
+            <div style="font-size: 24px; margin-bottom: 10px;">⏳</div>
+            <div style="font-size: 16px;">正在生成报告，请稍候...</div>
+        `;
+        document.body.appendChild(loadingOverlay);
+
+        try {
+            // 生成报告HTML（与导出使用相同逻辑）
+            const htmlContent = await this.generateReportHTML(record);
+
+            // 上传报告到后端
+            const formData = new FormData();
+            formData.append('file', new Blob([htmlContent], { type: 'text/html;charset=utf-8' }), '仿真分析报告.html');
+            formData.append('timestamp', record.timestamp || record.createTime);
+
+            const uploadResult = await window.AppConfig.upload('simulationArchives', 'upload-report', formData);
+
+            if (uploadResult.success) {
+                this.showToast('报告生成并上传成功', 'success');
+                
+                // 打开新窗口显示报告
+                const reportWindow = window.open('', '_blank');
+                if (reportWindow) {
+                    reportWindow.document.write(htmlContent);
+                    reportWindow.document.close();
+                    // 自动弹出打印对话框
+                    setTimeout(() => {
+                        reportWindow.print();
+                    }, 500);
+                } else {
+                    this.showToast('无法打开报告窗口，请检查浏览器弹窗设置', 'warning');
+                }
+            } else {
+                this.showToast('报告上传失败: ' + (uploadResult.message || '未知错误'), 'error');
+            }
+        } catch (error) {
+            console.error('生成报告失败:', error);
+            this.showToast('生成报告出现错误，请重试', 'error');
+        } finally {
+            document.body.removeChild(loadingOverlay);
+        }
+    }
+
+    // 生成报告HTML内容（生成报告和导出共用）
+    async generateReportHTML(record) {
         // 获取用户设置的数据限制和采样算法
         const reportDataLimitInput = this.shadowRoot.getElementById('reportDataLimit');
         const samplingAlgorithmSelect = this.shadowRoot.getElementById('samplingAlgorithm');
@@ -1880,6 +1942,259 @@ class SimulationRecord extends HTMLElement {
             }
         }
 
+        // 确保图表完全渲染
+        if (this.chart) {
+            this.chart.resize();
+            await new Promise(resolve => setTimeout(resolve, 500));
+        }
+
+        // 创建PDF生成器实例
+        const pdfGenerator = new LocalPDFGenerator();
+
+        // 1. 添加报告标题
+        pdfGenerator.addTitle('任务分析报告');
+        pdfGenerator.addText(`任务名称: ${record.name}`, 12);
+        pdfGenerator.addText(`生成时间: ${new Date().toLocaleString()}`, 12);
+        pdfGenerator.addSeparator();
+
+        // 2. 任务详情部分
+        pdfGenerator.addSubtitle('一、任务详情');
+        pdfGenerator.addText(`档案ID: ${record.archiveId}`, 12);
+        pdfGenerator.addText(`档案名称: ${record.name}`, 12);
+        pdfGenerator.addText(`当前状态: ${record.status}`, 12);
+        pdfGenerator.addText(`开始时间: ${record.startTime ? new Date(record.startTime).toLocaleString() : 'N/A'}`, 12);
+        pdfGenerator.addText(`结束时间: ${record.endTime ? new Date(record.endTime).toLocaleString() : 'N/A'}`, 12);
+        
+        // 添加算法节点信息
+        if (this.currentChartData.parsedResult && this.currentChartData.parsedResult.results) {
+            const nodeKeys = Object.keys(this.currentChartData.parsedResult.results);
+            if (nodeKeys.length > 0) {
+                pdfGenerator.addText('算法节点信息:', 12, true);
+                nodeKeys.forEach(nodeKey => {
+                    const nodeResult = this.currentChartData.parsedResult.results[nodeKey];
+                    const nodeName = nodeResult.nodeName || nodeKey;
+                    const algorithm = nodeResult.algorithm || 'N/A';
+                    const version = nodeResult.version || 'N/A';
+                    const calledModels = nodeResult.calledModels;
+                    
+                    let modelInfo = '';
+                    if (calledModels) {
+                        try {
+                            const models = typeof calledModels === 'string' ? JSON.parse(calledModels) : calledModels;
+                            if (Array.isArray(models) && models.length > 0) {
+                                const modelNames = models.map(m => `${m.modelName || m.name} 版本: ${m.version}`).join(', ');
+                                modelInfo = `, 模型: ${modelNames}`;
+                            }
+                        } catch (e) {
+                            console.warn('解析calledModels失败:', e);
+                        }
+                    }
+                    
+                    pdfGenerator.addText(`  - 节点: ${nodeName}, 算法: ${algorithm}, 版本: ${version}${modelInfo}`, 12);
+                });
+            }
+        }
+        pdfGenerator.addSeparator();
+
+        // 3. 曲线图分析
+        pdfGenerator.addSubtitle('二、曲线图分析');
+        const chartElement = this.shadowRoot.getElementById('analysisChart');
+        if (chartElement && this.chart) {
+            const chartImage = this.chart.getDataURL({
+                type: 'png',
+                pixelRatio: 2,
+                backgroundColor: '#fff'
+            });
+            await pdfGenerator.addChartImage(chartImage, '任务曲线图', `${record.name}的趋势分析图表`);
+        } else {
+            pdfGenerator.addImagePlaceholder('曲线图', '当前任务的趋势分析图表');
+        }
+
+        // 4. 数据视图
+        pdfGenerator.addSubtitle('三、数据视图');
+
+        // 4.1 输入数据表格
+        if (this.currentChartData && this.currentChartData.tasks) {
+            this.currentChartData.tasks.forEach((task, taskIndex) => {
+                if (task.inputData && task.inputData.length > 0) {
+                    pdfGenerator.addText('输入数据', 12, true);
+                    
+                    const inputPaths = task.inputPaths || [];
+                    
+                    if (inputPaths.length > 0) {
+                        // 按路径分组数据
+                        const inputPathInfo = {};
+                        inputPaths.forEach((path, pathIdx) => {
+                            const pointsPerPath = Math.ceil(task.inputData.length / inputPaths.length);
+                            const startIndex = pathIdx * pointsPerPath;
+                            const endIndex = Math.min(startIndex + pointsPerPath, task.inputData.length);
+                            const pathData = task.inputData.slice(startIndex, endIndex);
+                            
+                            inputPathInfo[path] = pathData.map(p => ({
+                                timestamp: p[0],
+                                value: p[1]
+                            }));
+                        });
+                        
+                        // 提取所有时间戳
+                        const inputTimestamps = new Set();
+                        Object.values(inputPathInfo).forEach(data => {
+                            if (data && data.length > 0) {
+                                data.forEach(point => {
+                                    inputTimestamps.add(point.timestamp);
+                                });
+                            }
+                        });
+                        
+                        const sortedInputTimestamps = Array.from(inputTimestamps).sort((a, b) => a - b);
+                        const sampledTimestamps = this.sampleData(sortedInputTimestamps, maxRows, samplingAlgorithm);
+                        
+                        const inputHeaders = ['时间', ...inputPaths];
+                        const inputRows = sampledTimestamps.map(timestamp => {
+                            let timeLabel;
+                            if (this.isValidTimestamp(timestamp)) {
+                                timeLabel = new Date(timestamp).toLocaleString();
+                            } else {
+                                timeLabel = String(timestamp);
+                            }
+                            const row = [timeLabel];
+                            inputPaths.forEach(path => {
+                                const data = inputPathInfo[path];
+                                const point = data?.find(p => p.timestamp === timestamp);
+                                if (point && point.value !== null && point.value !== undefined) {
+                                    if (typeof point.value === 'number') {
+                                        row.push(point.value.toFixed(2));
+                                    } else {
+                                        row.push(String(point.value));
+                                    }
+                                } else {
+                                    row.push('N/A');
+                                }
+                            });
+                            return row;
+                        });
+                        
+                        const maxColumnsPerTable = 11;
+                        const totalInputColumns = inputHeaders.length;
+                        
+                        if (totalInputColumns <= maxColumnsPerTable) {
+                            pdfGenerator.addTable(inputHeaders, inputRows);
+                        } else {
+                            const pathsPerTable = maxColumnsPerTable - 1;
+                            const inputTableCount = Math.ceil(inputPaths.length / pathsPerTable);
+                            
+                            pdfGenerator.addText(`输入数据列数过多（共${inputPaths.length}列），已拆分为${inputTableCount}个表格显示：`, 10);
+                            
+                            for (let tableIndex = 0; tableIndex < inputTableCount; tableIndex++) {
+                                const startPathIndex = tableIndex * pathsPerTable;
+                                const endPathIndex = Math.min(startPathIndex + pathsPerTable, inputPaths.length);
+                                const currentPaths = inputPaths.slice(startPathIndex, endPathIndex);
+                                
+                                const currentHeaders = ['时间', ...currentPaths];
+                                const currentRows = inputRows.map(row => {
+                                    const currentRow = [row[0]];
+                                    currentPaths.forEach(path => {
+                                        const originalPathIdx = inputPaths.indexOf(path);
+                                        currentRow.push(row[originalPathIdx + 1]);
+                                    });
+                                    return currentRow;
+                                });
+                                
+                                pdfGenerator.addText(`输入数据表格 ${tableIndex + 1}/${inputTableCount} (列 ${startPathIndex + 1}-${endPathIndex})`, 11, true);
+                                pdfGenerator.addTable(currentHeaders, currentRows);
+                                
+                                if (tableIndex < inputTableCount - 1) {
+                                    pdfGenerator.addSeparator();
+                                }
+                            }
+                        }
+                    } else {
+                        // 没有路径信息，使用简单格式
+                        const inputHeaders = ['时间', '数值'];
+                        const sampledInputData = this.sampleData(task.inputData, maxRows, samplingAlgorithm);
+                        const inputRows = sampledInputData.map(p => [
+                            this.isValidTimestamp(p[0]) ? new Date(p[0]).toLocaleString() : String(p[0]),
+                            typeof p[1] === 'number' ? p[1].toFixed(2) : String(p[1])
+                        ]);
+                        
+                        pdfGenerator.addTable(inputHeaders, inputRows);
+                    }
+                    
+                    pdfGenerator.addSeparator();
+                }
+
+                // 4.2 输出数据表格
+                if (sampledOutputCsvData && sampledOutputCsvData.headers && sampledOutputCsvData.rows) {
+                    pdfGenerator.addText('输出数据', 12, true);
+                    
+                    const outputHeaders = sampledOutputCsvData.headers;
+                    const outputRows = sampledOutputCsvData.rows;
+                    
+                    pdfGenerator.addTable(outputHeaders, outputRows);
+                    pdfGenerator.addSeparator();
+                }
+            });
+        }
+        
+        if ((!this.currentChartData || !this.currentChartData.tasks) && 
+            (!this.currentChartData || !this.currentChartData.outputCsvData)) {
+            pdfGenerator.addText('暂无数据', 12);
+        }
+        
+        // 检查是否进行了采样
+        pdfGenerator.addSeparator();
+        pdfGenerator.addText(`如何访问完整数据集：`, 10, true);
+        pdfGenerator.addText(`使用"导出"功能下载完整数据集（档案号：${record.archiveId}）`, 9, false);
+        
+        // 从record中获取输入和输出路径
+        const inputPaths = record.inputMeasurements ? JSON.parse(record.inputMeasurements) : [];
+        const outputPaths = record.outputMeasurements ? JSON.parse(record.outputMeasurements) : [];
+        
+        if (inputPaths.length > 0 || outputPaths.length > 0) {
+            const pathInfo = [];
+            if (inputPaths.length > 0) {
+                pathInfo.push(`输入路径：${inputPaths.join(', ')}`);
+            }
+            if (outputPaths.length > 0) {
+                pathInfo.push(`输出路径：${outputPaths.join(', ')}`);
+            }
+            pdfGenerator.addText(`通过数据资源库查询直接获取完整数据（${pathInfo.join('，')}）`, 9, false);
+        }
+
+        // 5. 统计分析
+        pdfGenerator.addSubtitle('四、统计分析');
+        if (this.currentChartData && this.currentChartData.tasks) {
+            let totalInputCount = 0;
+            let totalOutputCount = 0;
+            
+            this.currentChartData.tasks.forEach(task => {
+                if (task.inputData) {
+                    totalInputCount += task.inputData.length;
+                }
+                if (task.calculationResult) {
+                    totalOutputCount += task.calculationResult.length;
+                }
+            });
+            
+            const statsHeaders = ['统计指标', '数值', '说明'];
+            const statsData = [
+                ['输入数据点数量', totalInputCount, '输入数据有效数据点个数'],
+                ['输出数据点数量', totalOutputCount, '输出数据有效数据点个数'],
+                ['报告数据限制', maxRows, '报告中显示的最大数据行数'],
+                ['采样算法', samplingAlgorithm === 'uniform' ? '均匀采样' : samplingAlgorithm === 'random' ? '随机采样' : samplingAlgorithm === 'first' ? '取前N条' : '取后N条', '数据采样算法']
+            ];
+            
+            pdfGenerator.addTable(statsHeaders, statsData);
+        }
+
+        pdfGenerator.addWatermark();
+        return pdfGenerator.generateHTML();
+    }
+
+    // 处理导出操作
+    async handleExport(record) {
+        this.showToast(`正在导出仿真数据: ${record.name}`, 'info');
+
         // 创建加载提示
         const loadingOverlay = document.createElement('div');
         loadingOverlay.style.cssText = `
@@ -1899,303 +2214,9 @@ class SimulationRecord extends HTMLElement {
         `;
         loadingOverlay.innerHTML = `
             <div style="font-size: 24px; margin-bottom: 10px;">⏳</div>
-            <div style="font-size: 16px;">正在生成报告，请稍候...</div>
+            <div style="font-size: 16px;">正在导出，请稍候...</div>
         `;
         document.body.appendChild(loadingOverlay);
-
-        try {
-            // 确保图表完全渲染
-            if (this.chart) {
-                this.chart.resize();
-                await new Promise(resolve => setTimeout(resolve, 500));
-            }
-
-            // 创建PDF生成器实例
-            const pdfGenerator = new LocalPDFGenerator();
-
-            // 1. 添加报告标题
-            pdfGenerator.addTitle('任务分析报告');
-            pdfGenerator.addText(`任务名称: ${record.name}`, 12);
-            pdfGenerator.addText(`生成时间: ${new Date().toLocaleString()}`, 12);
-            pdfGenerator.addSeparator();
-
-            // 2. 任务详情部分
-            pdfGenerator.addSubtitle('一、任务详情');
-            pdfGenerator.addText(`档案ID: ${record.archiveId}`, 12);
-            pdfGenerator.addText(`档案名称: ${record.name}`, 12);
-            pdfGenerator.addText(`当前状态: ${record.status}`, 12);
-            pdfGenerator.addText(`开始时间: ${record.startTime ? new Date(record.startTime).toLocaleString() : 'N/A'}`, 12);
-            pdfGenerator.addText(`结束时间: ${record.endTime ? new Date(record.endTime).toLocaleString() : 'N/A'}`, 12);
-            
-            // 添加算法节点信息
-            if (this.currentChartData.parsedResult && this.currentChartData.parsedResult.results) {
-                const nodeKeys = Object.keys(this.currentChartData.parsedResult.results);
-                if (nodeKeys.length > 0) {
-                    pdfGenerator.addText('算法节点信息:', 12, true);
-                    nodeKeys.forEach(nodeKey => {
-                        const nodeResult = this.currentChartData.parsedResult.results[nodeKey];
-                        const nodeName = nodeResult.nodeName || nodeKey;
-                        const algorithm = nodeResult.algorithm || 'N/A';
-                        const version = nodeResult.version || 'N/A';
-                        const calledModels = nodeResult.calledModels;
-                        
-                        let modelInfo = '';
-                        if (calledModels) {
-                            try {
-                                const models = typeof calledModels === 'string' ? JSON.parse(calledModels) : calledModels;
-                                if (Array.isArray(models) && models.length > 0) {
-                                    const modelNames = models.map(m => `${m.modelName || m.name} 版本: ${m.version}`).join(', ');
-                                    modelInfo = `, 模型: ${modelNames}`;
-                                }
-                            } catch (e) {
-                                console.warn('解析calledModels失败:', e);
-                            }
-                        }
-                        
-                        pdfGenerator.addText(`  - 节点: ${nodeName}, 算法: ${algorithm}, 版本: ${version}${modelInfo}`, 12);
-                    });
-                }
-            }
-            pdfGenerator.addSeparator();
-
-            // 3. 曲线图分析
-            pdfGenerator.addSubtitle('二、曲线图分析');
-            const chartElement = this.shadowRoot.getElementById('analysisChart');
-            if (chartElement && this.chart) {
-                const chartImage = this.chart.getDataURL({
-                    type: 'png',
-                    pixelRatio: 2,
-                    backgroundColor: '#fff'
-                });
-                await pdfGenerator.addChartImage(chartImage, '任务曲线图', `${record.name}的趋势分析图表`);
-            } else {
-                pdfGenerator.addImagePlaceholder('曲线图', '当前任务的趋势分析图表');
-            }
-
-            // 4. 数据视图
-            pdfGenerator.addSubtitle('三、数据视图');
-
-            // 4.1 输入数据表格 - 参照visual-analysis格式
-            if (this.currentChartData && this.currentChartData.tasks) {
-                this.currentChartData.tasks.forEach((task, taskIndex) => {
-                    if (task.inputData && task.inputData.length > 0) {
-                        pdfGenerator.addText('输入数据', 12, true);
-                        
-                        // 获取输入路径
-                        const inputPaths = task.inputPaths || [];
-                        
-                        if (inputPaths.length > 0) {
-                            // 按路径分组数据 - 参考visual-analysis格式
-                            const inputPathInfo = {};
-                            inputPaths.forEach((path, pathIdx) => {
-                                const pointsPerPath = Math.ceil(task.inputData.length / inputPaths.length);
-                                const startIndex = pathIdx * pointsPerPath;
-                                const endIndex = Math.min(startIndex + pointsPerPath, task.inputData.length);
-                                const pathData = task.inputData.slice(startIndex, endIndex);
-                                
-                                // 直接存储数组数据，符合sampleData的期望格式
-                                inputPathInfo[path] = pathData.map(p => ({
-                                    timestamp: p[0],
-                                    value: p[1]
-                                }));
-                            });
-                            
-                            // 提取所有时间戳
-                            const inputTimestamps = new Set();
-                            Object.values(inputPathInfo).forEach(data => {
-                                if (data && data.length > 0) {
-                                    data.forEach(point => {
-                                        inputTimestamps.add(point.timestamp);
-                                    });
-                                }
-                            });
-                            
-                            const sortedInputTimestamps = Array.from(inputTimestamps).sort((a, b) => a - b);
-                            console.log('输入数据时间戳原始数量:', sortedInputTimestamps.length);
-                            
-                            // 对时间戳进行采样
-                            const sampledTimestamps = this.sampleData(sortedInputTimestamps, maxRows, samplingAlgorithm);
-                            console.log('输入数据时间戳采样后数量:', sampledTimestamps.length);
-                            
-                            const inputHeaders = ['时间', ...inputPaths];
-                            const inputRows = sampledTimestamps.map(timestamp => {
-                                let timeLabel;
-                                if (this.isValidTimestamp(timestamp)) {
-                                    timeLabel = new Date(timestamp).toLocaleString();
-                                } else {
-                                    timeLabel = String(timestamp);
-                                }
-                                const row = [timeLabel];
-                                inputPaths.forEach(path => {
-                                    const data = inputPathInfo[path];
-                                    const point = data?.find(p => p.timestamp === timestamp);
-                                    if (point && point.value !== null && point.value !== undefined) {
-                                        if (typeof point.value === 'number') {
-                                            row.push(point.value.toFixed(2));
-                                        } else {
-                                            row.push(String(point.value));
-                                        }
-                                    } else {
-                                        row.push('N/A');
-                                    }
-                                });
-                                return row;
-                            });
-                            
-                            // 检查列数是否过多
-                            const maxColumnsPerTable = 11;
-                            const totalInputColumns = inputHeaders.length;
-                            
-                            if (totalInputColumns <= maxColumnsPerTable) {
-                                pdfGenerator.addTable(inputHeaders, inputRows);
-                            } else {
-                                const pathsPerTable = maxColumnsPerTable - 1;
-                                const inputTableCount = Math.ceil(inputPaths.length / pathsPerTable);
-                                
-                                pdfGenerator.addText(`输入数据列数过多（共${inputPaths.length}列），已拆分为${inputTableCount}个表格显示：`, 10);
-                                
-                                for (let tableIndex = 0; tableIndex < inputTableCount; tableIndex++) {
-                                    const startPathIndex = tableIndex * pathsPerTable;
-                                    const endPathIndex = Math.min(startPathIndex + pathsPerTable, inputPaths.length);
-                                    const currentPaths = inputPaths.slice(startPathIndex, endPathIndex);
-                                    
-                                    const currentHeaders = ['时间', ...currentPaths];
-                                    const currentRows = inputRows.map(row => {
-                                        const currentRow = [row[0]];
-                                        currentPaths.forEach(path => {
-                                            const originalPathIdx = inputPaths.indexOf(path);
-                                            currentRow.push(row[originalPathIdx + 1]);
-                                        });
-                                        return currentRow;
-                                    });
-                                    
-                                    pdfGenerator.addText(`输入数据表格 ${tableIndex + 1}/${inputTableCount} (列 ${startPathIndex + 1}-${endPathIndex})`, 11, true);
-                                    pdfGenerator.addTable(currentHeaders, currentRows);
-                                    
-                                    if (tableIndex < inputTableCount - 1) {
-                                        pdfGenerator.addSeparator();
-                                    }
-                                }
-                            }
-                        } else {
-                            // 没有路径信息，使用简单格式
-                            const inputHeaders = ['时间', '数值'];
-                            const sampledInputData = this.sampleData(task.inputData, maxRows, samplingAlgorithm);
-                            console.log('输入数据原始行数:', task.inputData.length, '采样后行数:', sampledInputData.length);
-                            const inputRows = sampledInputData.map(p => [
-                                this.isValidTimestamp(p[0]) ? new Date(p[0]).toLocaleString() : String(p[0]),
-                                typeof p[1] === 'number' ? p[1].toFixed(2) : String(p[1])
-                            ]);
-                            
-                            pdfGenerator.addTable(inputHeaders, inputRows);
-                        }
-                        
-                        pdfGenerator.addSeparator();
-                    }
-
-                    // 4.2 输出数据表格 - 使用采样后的CSV原始数据
-                    if (sampledOutputCsvData && sampledOutputCsvData.headers && sampledOutputCsvData.rows) {
-                        pdfGenerator.addText('输出数据', 12, true);
-                        
-                        const outputHeaders = sampledOutputCsvData.headers;
-                        const outputRows = sampledOutputCsvData.rows;
-                        
-                        pdfGenerator.addTable(outputHeaders, outputRows);
-                        pdfGenerator.addSeparator();
-                    }
-                });
-            }
-            
-            if ((!this.currentChartData || !this.currentChartData.tasks) && 
-                (!this.currentChartData || !this.currentChartData.outputCsvData)) {
-                pdfGenerator.addText('暂无数据', 12);
-            }
-            
-            // 检查是否进行了采样
-            pdfGenerator.addSeparator();
-            pdfGenerator.addText(`如何访问完整数据集：`, 10, true);
-            pdfGenerator.addText(`使用"导出"功能下载完整数据集（档案号：${record.archiveId}）`, 9, false);
-            
-            // 从record中获取输入和输出路径
-            const inputPaths = record.inputMeasurements ? JSON.parse(record.inputMeasurements) : [];
-            const outputPaths = record.outputMeasurements ? JSON.parse(record.outputMeasurements) : [];
-            
-            if (inputPaths.length > 0 || outputPaths.length > 0) {
-                const pathInfo = [];
-                if (inputPaths.length > 0) {
-                    pathInfo.push(`输入路径：${inputPaths.join(', ')}`);
-                }
-                if (outputPaths.length > 0) {
-                    pathInfo.push(`输出路径：${outputPaths.join(', ')}`);
-                }
-                pdfGenerator.addText(`通过数据资源库查询直接获取完整数据（${pathInfo.join('，')}）`, 9, false);
-            }
-
-            // 5. 统计分析
-            pdfGenerator.addSubtitle('四、统计分析');
-            if (this.currentChartData && this.currentChartData.tasks) {
-                let totalInputCount = 0;
-                let totalOutputCount = 0;
-                
-                this.currentChartData.tasks.forEach(task => {
-                    if (task.inputData) {
-                        totalInputCount += task.inputData.length;
-                    }
-                    if (task.calculationResult) {
-                        totalOutputCount += task.calculationResult.length;
-                    }
-                });
-                
-                const statsHeaders = ['统计指标', '数值', '说明'];
-                const statsData = [
-                    ['输入数据点数量', totalInputCount, '输入数据有效数据点个数'],
-                    ['输出数据点数量', totalOutputCount, '输出数据有效数据点个数'],
-                    ['报告数据限制', maxRows, '报告中显示的最大数据行数'],
-                    ['采样算法', samplingAlgorithm === 'uniform' ? '均匀采样' : samplingAlgorithm === 'random' ? '随机采样' : samplingAlgorithm === 'first' ? '取前N条' : '取后N条', '数据采样算法']
-                ];
-                
-                pdfGenerator.addTable(statsHeaders, statsData);
-            }
-
-            // 6. 生成HTML内容
-            const htmlContent = pdfGenerator.generateHTML();
-
-            // 6. 上传报告到后端
-            const formData = new FormData();
-            formData.append('file', new Blob([htmlContent], { type: 'text/html;charset=utf-8' }), '仿真分析报告.html');
-            formData.append('timestamp', record.timestamp || record.createTime);
-
-            const uploadResult = await window.AppConfig.upload('simulationArchives', 'upload-report', formData);
-
-            if (uploadResult.success) {
-                this.showToast('报告生成并上传成功', 'success');
-                
-                // 7. 打开新窗口显示报告
-                const reportWindow = window.open('', '_blank');
-                if (reportWindow) {
-                    reportWindow.document.write(htmlContent);
-                    reportWindow.document.close();
-                    // 自动弹出打印对话框
-                    setTimeout(() => {
-                        reportWindow.print();
-                    }, 500);
-                } else {
-                    this.showToast('无法打开报告窗口，请检查浏览器弹窗设置', 'warning');
-                }
-            } else {
-                this.showToast('报告上传失败: ' + (uploadResult.message || '未知错误'), 'error');
-            }
-        } catch (error) {
-            console.error('生成报告失败:', error);
-            this.showToast('生成报告出现错误，请重试', 'error');
-        } finally {
-            document.body.removeChild(loadingOverlay);
-        }
-    }
-
-    // 处理导出操作
-    async handleExport(record) {
-        this.showToast(`正在导出仿真数据: ${record.name}`, 'info');
 
         try {
             // 1. 先执行分析获取数据
@@ -2204,9 +2225,14 @@ class SimulationRecord extends HTMLElement {
             // 等待分析完成
             await new Promise(resolve => setTimeout(resolve, 1000));
 
-            // 2. 生成报告HTML内容
-            const htmlContent = await this.generateExportHTML(record);
-            
+            if (!this.currentChartData) {
+                this.showToast('分析失败，无法导出', 'error');
+                return;
+            }
+
+            // 2. 使用与生成报告相同的逻辑生成HTML内容
+            const htmlContent = await this.generateReportHTML(record);
+
             // 3. 上传报告到后端
             await this.uploadReportToTask(record, htmlContent);
             
@@ -2216,6 +2242,8 @@ class SimulationRecord extends HTMLElement {
         } catch (error) {
             console.error('导出失败:', error);
             this.showToast('导出失败，请重试', 'error');
+        } finally {
+            document.body.removeChild(loadingOverlay);
         }
     }
 
@@ -2250,85 +2278,59 @@ class SimulationRecord extends HTMLElement {
         try {
             this.showToast('正在打包下载...', 'info');
 
-            const downloadResult = await window.AppConfig.get('simulationArchives', 'package-download', {
-                timestamp: record.timestamp || record.createTime
+            const timestamp = record.timestamp || record.createTime;
+            const url = `/api/simulation/archives/package-download?timestamp=${timestamp}`;
+
+            // 获取token并构建认证头
+            const token = localStorage.getItem('jwtToken');
+            const headers = {
+                'Authorization': token ? `Bearer ${token}` : ''
+            };
+
+            // 使用fetch发送请求（返回二进制数据）
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: headers
             });
 
-            if (downloadResult.success && downloadResult.data) {
-                // 触发下载
-                const blob = new Blob([downloadResult.data], { type: 'application/zip' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `仿真导出_${record.name}_${new Date().getTime()}.zip`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-
-                this.showToast('导出成功！', 'success');
-            } else {
-                this.showToast('打包下载失败', 'error');
+            if (!response.ok) {
+                if (response.status === 401) {
+                    throw new Error('认证失败，请重新登录');
+                } else if (response.status === 403) {
+                    throw new Error('权限不足');
+                } else {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
             }
+
+            // 获取文件名
+            const contentDisposition = response.headers.get('Content-Disposition');
+            let fileName = `仿真导出_${record.name}_${new Date().getTime()}.zip`;
+            if (contentDisposition) {
+                const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+                if (filenameMatch) {
+                    fileName = filenameMatch[1];
+                }
+            }
+
+            // 创建下载链接
+            const blob = await response.blob();
+            const downloadUrl = window.URL.createObjectURL(blob);
+            const downloadLink = document.createElement('a');
+            downloadLink.href = downloadUrl;
+            downloadLink.download = fileName;
+            document.body.appendChild(downloadLink);
+            downloadLink.click();
+            document.body.removeChild(downloadLink);
+            window.URL.revokeObjectURL(downloadUrl);
+
+            this.showToast('仿真导出包下载成功！', 'success');
+
         } catch (error) {
             console.error('打包下载失败:', error);
+            this.showToast('打包下载失败：' + error.message, 'error');
             throw error;
         }
-    }
-
-    // 生成导出报告HTML
-    async generateExportHTML(record) {
-        const pdfGenerator = new LocalPDFGenerator();
-
-        pdfGenerator.addTitle('仿真分析报告（导出版）');
-        pdfGenerator.addText(`仿真名称: ${record.name}`, 12);
-        pdfGenerator.addText(`导出时间: ${new Date().toLocaleString()}`, 12);
-        pdfGenerator.addSeparator();
-
-        pdfGenerator.addSubtitle('一、仿真详情');
-        pdfGenerator.addText(`档案名称: ${record.name}`, 12);
-        pdfGenerator.addText(`当前状态: ${this.getStatusText(record.status)}`, 12);
-        pdfGenerator.addText(`开始时间: ${record.startTime ? new Date(record.startTime).toLocaleString() : 'N/A'}`, 12);
-        pdfGenerator.addText(`结束时间: ${record.endTime ? new Date(record.endTime).toLocaleString() : 'N/A'}`, 12);
-        if (record.error) pdfGenerator.addText(`错误信息: ${record.error}`, 12);
-
-        pdfGenerator.addSubtitle('二、曲线图分析');
-        if (this.chart) {
-            const chartImage = this.chart.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: '#fff' });
-            await pdfGenerator.addChartImage(chartImage, '仿真曲线图', `${record.name}的趋势分析图表`);
-        }
-
-        pdfGenerator.addSubtitle('三、完整数据');
-        if (this.currentChartData && this.currentChartData.tasks) {
-            this.currentChartData.tasks.forEach(task => {
-                pdfGenerator.addText(`节点: ${task.name}`, 12, true);
-
-                if (task.inputData && task.inputData.length > 0) {
-                    pdfGenerator.addText('输入数据', 11, true);
-                    const inputHeaders = ['时间', '数值'];
-                    const inputRows = task.inputData.map(p => [
-                        this.isValidTimestamp(p[0]) ? new Date(p[0]).toLocaleString() : String(p[0]),
-                        typeof p[1] === 'number' ? p[1].toFixed(4) : String(p[1])
-                    ]);
-                    pdfGenerator.addTable(inputHeaders, inputRows);
-                }
-
-                if (task.calculationResult && task.calculationResult.length > 0) {
-                    pdfGenerator.addText('输出数据', 11, true);
-                    const outputHeaders = ['时间', '数值'];
-                    const outputRows = task.calculationResult.map(p => [
-                        this.isValidTimestamp(p[0]) ? new Date(p[0]).toLocaleString() : String(p[0]),
-                        typeof p[1] === 'number' ? p[1].toFixed(4) : String(p[1])
-                    ]);
-                    pdfGenerator.addTable(outputHeaders, outputRows);
-                }
-
-                pdfGenerator.addSeparator();
-            });
-        }
-
-        pdfGenerator.addWatermark();
-        return pdfGenerator.generateHTML();
     }
 
     // 处理查看日志操作

@@ -74,6 +74,32 @@ public class AlgorithmExecutionService {
             String projectName,
             Map<String, Object> predecessorOutputs,
             Map<String, Object> executionParams) {
+        // 兼容旧调用方式，自动生成时间戳
+        return executeAlgorithmTask(algorithmName, algorithmVersion, startTime, endTime,
+                projectName, predecessorOutputs, executionParams, null, null);
+    }
+
+    /**
+     * 执行算法任务（联合仿真专用，支持指定执行时间戳和节点ID）
+     * 目录结构: project/{projectName}/job/simulation/{executionTimestamp}/{nodeId}
+     *
+     * @param algorithmName 算法名称
+     * @param algorithmVersion 算法版本
+     * @param startTime 数据时间窗口开始时间
+     * @param endTime 数据时间窗口结束时间
+     * @param projectName 项目名称
+     * @param predecessorOutputs 前驱节点的输出数据
+     * @param executionParams 执行参数
+     * @param executionTimestamp 仿真执行时间戳（用于构建二级目录）
+     * @param nodeId 算法节点ID（用于构建二级目录）
+     */
+    public Result<Map<String, Object>> executeAlgorithmTask(
+            String algorithmName, String algorithmVersion,
+            Long startTime, Long endTime,
+            String projectName,
+            Map<String, Object> predecessorOutputs,
+            Map<String, Object> executionParams,
+            Long executionTimestamp, String nodeId) {
         StringBuilder processLogBuilder = new StringBuilder();
         try {
             // 1. 获取算法元数据
@@ -82,13 +108,25 @@ public class AlgorithmExecutionService {
                 return new Result<>(500, "算法元数据不存在: " + algorithmName + " " + algorithmVersion, null);
             }
 
-            // 2. 创建任务目录（使用project下对应项目的目录）
-            long timestamp = System.currentTimeMillis();
+            // 2. 创建任务目录
+            // 如果提供了executionTimestamp和nodeId，使用二级目录结构: simulation/{executionTimestamp}/{nodeId}
+            // 否则使用旧的一级目录结构: simulation/{timestamp}
             Path taskDir;
-            if (projectName != null && !projectName.isEmpty()) {
-                taskDir = Paths.get("project", projectName, "job", "simulation", String.valueOf(timestamp));
+            if (executionTimestamp != null && nodeId != null) {
+                if (projectName != null && !projectName.isEmpty()) {
+                    taskDir = Paths.get("project", projectName, "job", "simulation",
+                            String.valueOf(executionTimestamp), nodeId);
+                } else {
+                    taskDir = Paths.get("job", "simulation",
+                            String.valueOf(executionTimestamp), nodeId);
+                }
             } else {
-                taskDir = Paths.get("job", "simulation", String.valueOf(timestamp));
+                long timestamp = System.currentTimeMillis();
+                if (projectName != null && !projectName.isEmpty()) {
+                    taskDir = Paths.get("project", projectName, "job", "simulation", String.valueOf(timestamp));
+                } else {
+                    taskDir = Paths.get("job", "simulation", String.valueOf(timestamp));
+                }
             }
             Files.createDirectories(taskDir);
             log.info("创建仿真任务目录: {}", taskDir);

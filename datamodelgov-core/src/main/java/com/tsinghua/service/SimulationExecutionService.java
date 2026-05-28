@@ -23,6 +23,15 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.scheduling.support.CronExpression;
 import org.springframework.stereotype.Service;
 
+import org.springframework.web.multipart.MultipartFile;
+
+import com.itextpdf.html2pdf.HtmlConverter;
+import com.itextpdf.kernel.pdf.PdfDocument;
+import com.itextpdf.kernel.pdf.PdfWriter;
+import com.itextpdf.layout.Document;
+
+import java.io.*;
+import java.nio.file.*;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -107,7 +116,7 @@ public class SimulationExecutionService {
             new Thread(() -> {
                 try {
                     Map<String, Object> executionResult = executionEngine.executeGraph(
-                        archive, selectedNodeIds, archive.getProjectName());
+                        archive, selectedNodeIds, archive.getProjectName(), execution.getTimestamp());
 
                     // 更新执行状态
                     execution.setEndTime(System.currentTimeMillis());
@@ -693,5 +702,462 @@ public class SimulationExecutionService {
             log.error("删除仿真执行记录失败", e);
             throw new RuntimeException("删除失败: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * 上传仿真执行记录报告文件到仿真任务目录
+     * 目录结构: project/{projectName}/job/simulation/{timestamp}/报告文件
+     * 报告放在仿真任务时间戳层级，与算法节点目录同级
+     */
+    public String uploadReport(MultipartFile file, Long timestamp) throws Exception {
+        try {
+            SimulationExecutionEntity execution = loadExecution(timestamp);
+            if (execution == null) {
+                throw new RuntimeException("仿真执行记录不存在: " + timestamp);
+            }
+
+            // 获取仿真档案以确定项目名称
+            SimulationArchiveEntity archive = simulationArchiveService.queryArchive(execution.getArchiveId());
+            String projectName = archive != null ? archive.getProjectName() : null;
+
+            // 构建仿真任务目录: project/{projectName}/job/simulation/{timestamp}
+            Path simulationDir;
+            if (projectName != null && !projectName.isEmpty()) {
+                simulationDir = Paths.get("project", projectName, "job", "simulation", String.valueOf(timestamp));
+            } else {
+                simulationDir = Paths.get("job", "simulation", String.valueOf(timestamp));
+            }
+
+            if (!Files.exists(simulationDir)) {
+                Files.createDirectories(simulationDir);
+                log.info("创建仿真任务目录: {}", simulationDir);
+            }
+
+            // 保存报告文件
+            String originalFileName = file.getOriginalFilename();
+            if (originalFileName == null || originalFileName.trim().isEmpty()) {
+                originalFileName = "仿真分析报告.html";
+            }
+
+            Path reportFile = simulationDir.resolve(originalFileName);
+            Files.copy(file.getInputStream(), reportFile, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+
+            // 尝试将HTML转换为PDF（使用iText7 + html2pdf）
+            if (originalFileName.toLowerCase().endsWith(".html")) {
+                try {
+                    String pdfFileName = originalFileName.replace(".html", ".pdf");
+                    Path pdfFile = simulationDir.resolve(pdfFileName);
+                    convertHtmlToPdf(reportFile, pdfFile);
+                    log.info("HTML报告已转换为PDF: {}", pdfFile);
+                } catch (Exception pdfError) {
+                    log.warn("HTML转PDF失败，保留HTML文件: {}", pdfError.getMessage());
+                }
+            }
+
+            log.info("仿真报告文件已上传到: {}", reportFile);
+            return reportFile.toString();
+
+        } catch (Exception e) {
+            log.error("上传仿真报告文件失败", e);
+            throw new RuntimeException("上传报告文件失败: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 打包并下载仿真执行记录文件
+     * 打包结构:
+     * - data/                    (最初输入数据)
+     * - {nodeId}/                (算法节点目录)
+     *   - data/                  (节点输入数据)
+     *   - model/                 (节点依赖模型)
+     *   - algorithm/             (节点算法文件)
+     *   - result/                (节点输出结果)
+     * - result/                  (最终输出结果和报告)
+     * - manifest.json
+     */
+    public org.springframework.http.ResponseEntity<org.springframework.core.io.Resource> packageAndDownload(Long timestamp) throws Exception {
+        try {
+            SimulationExecutionEntity execution = loadExecution(timestamp);
+            if (execution == null) {
+                throw new RuntimeException("未找到指定的仿真执行记录: " + timestamp);
+            }
+
+            // 获取仿真档案以确定项目名称
+            SimulationArchiveEntity archive = simulationArchiveService.queryArchive(execution.getArchiveId());
+            String projectName = archive != null ? archive.getProjectName() : null;
+
+            // 构建仿真任务目录
+            Path simulationDir;
+            if (projectName != null && !projectName.isEmpty()) {
+                simulationDir = Paths.get("project", projectName, "job", "simulation", String.valueOf(timestamp));
+            } else {
+                simulationDir = Paths.get("job", "simulation", String.valueOf(timestamp));
+            }
+
+            if (!Files.exists(simulationDir)) {
+                throw new RuntimeException("仿真任务目录不存在: " + simulationDir);
+            }
+
+            // 创建临时目录
+            Path tempDir = Files.createTempDirectory("simulation-download-");
+            String zipFileName = String.format("simulation_%s_%d.zip", timestamp, System.currentTimeMillis());
+            Path zipFile = tempDir.resolve(zipFileName);
+
+            // 收集文件信息
+            List<Map<String, Object>> fileInfoList = new ArrayList<>();
+
+            // 解析执行结果获取节点信息
+            Map<String, Object> resultData = execution.getResult() instanceof Map ? (Map<String, Object>) execution.getResult() : null;
+            Map<String, Object> results = resultData != null && resultData.containsKey("results") ? (Map<String, Object>) resultData.get("results") : null;
+
+            // 创建ZIP文件
+            try (java.util.zip.ZipOutputStream zipOut = new java.util.zip.ZipOutputStream(Files.newOutputStream(zipFile))) {
+                // 遍历仿真任务目录下的所有文件
+                Files.walk(simulationDir)
+                    .filter(path -> !Files.isDirectory(path))
+                    .forEach(path -> {
+                        try {
+                            String relativePath = simulationDir.relativize(path).toString().replace("\\", "/");
+                            // 确定文件在ZIP中的分类路径（可能复制到多个位置）
+                            List<String> zipEntryPaths = categorizeSimulationFile(relativePath, results);
+
+                            for (String zipEntryPath : zipEntryPaths) {
+                                java.util.zip.ZipEntry zipEntry = new java.util.zip.ZipEntry(zipEntryPath);
+                                zipOut.putNextEntry(zipEntry);
+
+                                // 收集文件信息
+                                Map<String, Object> fileInfo = new HashMap<>();
+                                fileInfo.put("fileName", zipEntryPath);
+                                fileInfo.put("originalPath", relativePath);
+                                fileInfo.put("fileSize", Files.size(path));
+                                fileInfoList.add(fileInfo);
+
+                                Files.copy(path, zipOut);
+                                zipOut.closeEntry();
+                            }
+                        } catch (Exception e) {
+                            log.warn("跳过文件 {}: {}", path, e.getMessage());
+                        }
+                    });
+
+                // 生成manifest.json
+                Map<String, Object> manifest = new HashMap<>();
+                manifest.put("exportTime", new Date().toString());
+                manifest.put("executionTimestamp", timestamp);
+                manifest.put("archiveName", execution.getArchiveName());
+                manifest.put("archiveId", execution.getArchiveId());
+                manifest.put("status", execution.getStatus());
+                manifest.put("startTime", execution.getStartTime());
+                manifest.put("endTime", execution.getEndTime());
+                manifest.put("totalFiles", fileInfoList.size());
+                manifest.put("files", fileInfoList);
+
+                // 添加节点信息
+                if (results != null) {
+                    List<Map<String, Object>> nodeList = new ArrayList<>();
+                    for (Map.Entry<String, Object> entry : results.entrySet()) {
+                        Map<String, Object> nodeResult = (Map<String, Object>) entry.getValue();
+                        Map<String, Object> nodeInfo = new HashMap<>();
+                        nodeInfo.put("nodeId", entry.getKey());
+                        nodeInfo.put("nodeName", nodeResult.get("nodeName"));
+                        nodeInfo.put("algorithm", nodeResult.get("algorithm"));
+                        nodeInfo.put("version", nodeResult.get("version"));
+                        nodeInfo.put("status", nodeResult.get("status"));
+                        nodeList.add(nodeInfo);
+                    }
+                    manifest.put("nodes", nodeList);
+                }
+
+                String manifestJson = com.alibaba.fastjson2.JSON.toJSONString(manifest);
+                java.util.zip.ZipEntry manifestEntry = new java.util.zip.ZipEntry("manifest.json");
+                zipOut.putNextEntry(manifestEntry);
+                zipOut.write(manifestJson.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                zipOut.closeEntry();
+            }
+
+            log.info("仿真文件已打包到: {}", zipFile);
+
+            // 创建资源并返回下载响应
+            org.springframework.core.io.Resource resource = new org.springframework.core.io.PathResource(zipFile);
+            String fileName = "simulation_" + timestamp + "_" + System.currentTimeMillis() + ".zip";
+
+            resource.getFile().deleteOnExit();
+            tempDir.toFile().deleteOnExit();
+
+            return org.springframework.http.ResponseEntity.ok()
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fileName + "\"")
+                .contentType(org.springframework.http.MediaType.APPLICATION_OCTET_STREAM)
+                .body(resource);
+
+        } catch (Exception e) {
+            log.error("打包下载失败", e);
+            throw new RuntimeException("打包下载失败: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 根据文件路径确定在ZIP中的分类路径列表
+     * 首节点输入数据：同时复制到顶层 data/ 和节点 data/
+     * 末节点输出数据：同时复制到顶层 result/ 和节点 result/
+     * 其他节点数据：只放到节点对应目录
+     * 报告文件：放到顶层 result/
+     */
+    private List<String> categorizeSimulationFile(String relativePath, Map<String, Object> results) {
+        List<String> entries = new ArrayList<>();
+
+        // 根目录下的文件（报告等）归入 result/
+        if (!relativePath.contains("/")) {
+            entries.add("result/" + relativePath);
+            return entries;
+        }
+
+        // 解析出nodeId和文件名
+        int slashIdx = relativePath.indexOf('/');
+        String nodeId = relativePath.substring(0, slashIdx);
+        String fileName = relativePath.substring(slashIdx + 1);
+
+        boolean isFirst = isFirstNode(nodeId, results);
+        boolean isLast = isLastNode(nodeId, results);
+
+        // 输入数据
+        if (fileName.endsWith(".csv") && (fileName.contains("input") || fileName.equals("input.csv"))) {
+            // 节点内始终保留一份
+            entries.add(nodeId + "/data/" + fileName);
+            // 首节点的input.csv额外复制到顶层data/
+            if (isFirst) {
+                entries.add("data/" + fileName);
+            }
+            return entries;
+        }
+        // 输出结果
+        if (fileName.endsWith(".csv") && (fileName.contains("output") || fileName.equals("output.csv"))) {
+            // 节点内始终保留一份
+            entries.add(nodeId + "/result/" + fileName);
+            // 末节点的output.csv额外复制到顶层result/
+            if (isLast) {
+                entries.add("result/" + fileName);
+            }
+            return entries;
+        }
+        if (fileName.endsWith(".csv") && fileName.contains("_bind")) {
+            entries.add(nodeId + "/result/" + fileName);
+            return entries;
+        }
+        // 日志文件
+        if (fileName.equals("task.log")) {
+            entries.add(nodeId + "/result/" + fileName);
+            return entries;
+        }
+        // 算法文件
+        if (fileName.endsWith(".py") || fileName.endsWith(".exe") || fileName.endsWith(".sh") || fileName.endsWith(".bat")) {
+            entries.add(nodeId + "/algorithm/" + fileName);
+            return entries;
+        }
+        // 模型文件
+        if (fileName.endsWith(".dll") || fileName.endsWith(".so") || fileName.endsWith(".jar")) {
+            entries.add(nodeId + "/model/" + fileName);
+            return entries;
+        }
+        // 默认放到algorithm目录
+        entries.add(nodeId + "/algorithm/" + fileName);
+        return entries;
+    }
+
+    /**
+     * 判断节点是否为首节点（入度为0）
+     */
+    private boolean isFirstNode(String nodeId, Map<String, Object> results) {
+        if (results == null || results.isEmpty()) return false;
+        List<String> keys = new ArrayList<>(results.keySet());
+        return keys.get(0).equals(nodeId);
+    }
+
+    /**
+     * 判断节点是否为末节点（出度为0）
+     */
+    private boolean isLastNode(String nodeId, Map<String, Object> results) {
+        if (results == null || results.isEmpty()) return false;
+        if (results.size() == 1) return true;
+        List<String> keys = new ArrayList<>(results.keySet());
+        return keys.get(keys.size() - 1).equals(nodeId);
+    }
+
+    /**
+     * 使用 iText 7 + html2pdf 进行HTML转PDF转换
+     * 复制自RunTaskService，支持中文、ECharts图表、CSS样式
+     */
+    private void convertHtmlToPdf(Path htmlFile, Path pdfFile) throws Exception {
+        log.info("开始使用 iText 7 + html2pdf 进行HTML转PDF转换: {} -> {}", htmlFile, pdfFile);
+
+        try {
+            // 1. 读取并预处理HTML内容
+            String htmlContent = readFileContent(htmlFile);
+            htmlContent = preprocessHtmlForIText7(htmlContent);
+
+            // 2. 确保输出目录存在
+            Path parentDir = pdfFile.getParent();
+            if (parentDir != null && !Files.exists(parentDir)) {
+                Files.createDirectories(parentDir);
+            }
+
+            // 3. 创建PDF输出流
+            try (FileOutputStream fos = new FileOutputStream(pdfFile.toFile())) {
+                PdfWriter writer = new PdfWriter(fos);
+                PdfDocument pdfDocument = new PdfDocument(writer);
+
+                Document document = new Document(pdfDocument);
+                pdfDocument.setDefaultPageSize(com.itextpdf.kernel.geom.PageSize.A4);
+
+                com.itextpdf.html2pdf.ConverterProperties properties =
+                    new com.itextpdf.html2pdf.ConverterProperties();
+                properties.setBaseUri(htmlFile.getParent().toUri().toString());
+
+                try {
+                    com.itextpdf.html2pdf.resolver.font.DefaultFontProvider fontProvider =
+                        new com.itextpdf.html2pdf.resolver.font.DefaultFontProvider(false, false, false);
+
+                    try { fontProvider.addFont("C:/Windows/Fonts/simsun.ttc"); } catch (Exception e) { log.debug("添加宋体字体失败: {}", e.getMessage()); }
+                    try { fontProvider.addFont("C:/Windows/Fonts/msyh.ttc"); } catch (Exception e) { log.debug("添加微软雅黑字体失败: {}", e.getMessage()); }
+                    try { fontProvider.addFont("C:/Windows/Fonts/simhei.ttf"); } catch (Exception e) { log.debug("添加黑体字体失败: {}", e.getMessage()); }
+
+                    properties.setFontProvider(fontProvider);
+                } catch (Exception e) {
+                    log.warn("字体提供程序设置失败: {}", e.getMessage());
+                }
+
+                HtmlConverter.convertToPdf(htmlContent, pdfDocument, properties);
+                document.close();
+            }
+
+            if (Files.exists(pdfFile) && Files.size(pdfFile) > 0) {
+                log.info("iText 7 HTML转PDF转换成功: {} -> {} (大小: {} bytes)", htmlFile, pdfFile, Files.size(pdfFile));
+            } else {
+                throw new RuntimeException("PDF文件生成失败或为空");
+            }
+
+        } catch (Exception e) {
+            log.error("iText 7 HTML转PDF转换失败: {}", e.getMessage(), e);
+            throw new Exception("HTML转PDF转换失败: " + e.getMessage(), e);
+        }
+    }
+
+    private String preprocessHtmlForIText7(String html) {
+        html = ensureCompleteHtmlForIText7(html);
+        html = addChineseFontSupportForIText7(html);
+        html = optimizeEChartsForIText7(html);
+        html = addPrintStylesForIText7(html);
+        return html;
+    }
+
+    private String ensureCompleteHtmlForIText7(String html) {
+        if (!html.contains("<!DOCTYPE")) {
+            html = "<!DOCTYPE html>\n" + html;
+        }
+        if (!html.contains("<html")) {
+            html = html.replaceFirst("<!DOCTYPE[^>]*>", "<!DOCTYPE html>");
+            html = "<html>\n<head>\n" +
+                   "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\"/>\n" +
+                   "<meta charset=\"UTF-8\"/>\n" +
+                   "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"/>\n" +
+                   "<title>仿真分析报告</title>\n" +
+                   getIText7CssStyles() +
+                   "</head>\n<body style=\"font-family: SimSun, Microsoft YaHei, SimHei, Arial, sans-serif;\">\n" + html + "\n</body>\n</html>";
+        }
+        return html;
+    }
+
+    private String getIText7CssStyles() {
+        return "<style type=\"text/css\">\n" +
+               "@page { size: A4; margin: 2cm; }\n" +
+               "@media print {\n" +
+               "  body { font-family: SimSun, Microsoft YaHei, SimHei, Arial, sans-serif !important; }\n" +
+               "  .no-print { display: none !important; }\n" +
+               "  .chart-container { page-break-inside: avoid; }\n" +
+               "  table { page-break-inside: avoid; }\n" +
+               "  h1, h2, h3, h4, h5, h6 { page-break-after: avoid; }\n" +
+               "}\n" +
+               "body { font-family: SimSun, Microsoft YaHei, SimHei, Arial, sans-serif; font-size: 12px; line-height: 1.6; color: #333; margin: 0; padding: 20px; }\n" +
+               "h1, h2, h3, h4, h5, h6 { font-family: SimSun, Microsoft YaHei, SimHei, Arial, sans-serif; font-weight: bold; margin: 20px 0 10px 0; page-break-after: avoid; }\n" +
+               "h1 { font-size: 24px; color: #2c3e50; }\n" +
+               "h2 { font-size: 20px; color: #34495e; }\n" +
+               "h3 { font-size: 18px; color: #7f8c8d; }\n" +
+               "table { border-collapse: collapse; width: 100%; max-width: 100%; margin: 10px 0; page-break-inside: avoid; font-family: SimSun, Microsoft YaHei, SimHei, Arial, sans-serif; table-layout: fixed; }\n" +
+               "th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 11px; font-family: SimSun, Microsoft YaHei, SimHei, Arial, sans-serif; word-wrap: break-word; min-width: 0; }\n" +
+               "th { background-color: #f2f2f2; font-weight: bold; }\n" +
+               "p { margin: 10px 0; text-align: justify; font-family: SimSun, Microsoft YaHei, SimHei, Arial, sans-serif; }\n" +
+               ".chart-container { page-break-inside: avoid; margin: 20px 0; text-align: center; }\n" +
+               ".chart-container canvas, .chart-container img { max-width: 100%; height: auto; }\n" +
+               ".no-print { display: none; }\n" +
+               ".page-break { page-break-before: always; }\n" +
+               "* { font-family: SimSun, Microsoft YaHei, SimHei, Arial, sans-serif !important; }\n" +
+               "</style>\n" +
+               "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\"/>\n";
+    }
+
+    private String addChineseFontSupportForIText7(String html) {
+        html = html.replaceAll("font-family\\s*:\\s*[^;\"}]*", "font-family: SimSun, Microsoft YaHei, SimHei, Arial, sans-serif");
+
+        String forceChineseStyle = "<style>\n" +
+                "@font-face { font-family: 'SimSun'; src: local('SimSun'), local('宋体'); }\n" +
+                "@font-face { font-family: 'Microsoft YaHei'; src: local('Microsoft YaHei'), local('微软雅黑'); }\n" +
+                "@font-face { font-family: 'SimHei'; src: local('SimHei'), local('黑体'); }\n" +
+                "body, div, span, p, h1, h2, h3, h4, h5, h6, table, th, td { font-family: SimSun, Microsoft YaHei, SimHei, Arial, sans-serif !important; }\n" +
+                "</style>\n";
+
+        if (html.contains("</head>")) {
+            html = html.replace("</head>", forceChineseStyle + "</head>");
+        }
+
+        if (!html.contains("charset=UTF-8")) {
+            html = html.replace("<head>", "<head><meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\"/>");
+        }
+
+        return html;
+    }
+
+    private String optimizeEChartsForIText7(String html) {
+        java.util.regex.Pattern canvasPattern = java.util.regex.Pattern.compile(
+            "<canvas[^>]*id=[\"']([^\"']+)[\"'][^>]*></canvas>",
+            java.util.regex.Pattern.CASE_INSENSITIVE
+        );
+
+        java.util.regex.Matcher matcher = canvasPattern.matcher(html);
+        StringBuffer result = new StringBuffer();
+
+        while (matcher.find()) {
+            String canvasId = matcher.group(1);
+            String imgTag = "<div class='chart-container'><img src='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' alt='Chart " + canvasId + "' style='border: 1px solid #ddd;'/></div>";
+            matcher.appendReplacement(result, imgTag);
+        }
+        matcher.appendTail(result);
+
+        return result.toString();
+    }
+
+    private String addPrintStylesForIText7(String html) {
+        String printStyles = "<style type=\"text/css\" media=\"print\">\n" +
+                "body { font-family: 'SimSun', 'Microsoft YaHei', Arial, sans-serif !important; }\n" +
+                ".no-print { display: none !important; }\n" +
+                ".chart-container { page-break-inside: avoid !important; }\n" +
+                "table { page-break-inside: avoid !important; }\n" +
+                "h1, h2, h3, h4, h5, h6 { page-break-after: avoid !important; }\n" +
+                "</style>\n";
+
+        if (html.contains("</head>")) {
+            html = html.replace("</head>", printStyles + "</head>");
+        }
+
+        return html;
+    }
+
+    private String readFileContent(Path file) throws IOException {
+        StringBuilder content = new StringBuilder();
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(new FileInputStream(file.toFile()), java.nio.charset.StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                content.append(line).append("\n");
+            }
+        }
+        return content.toString();
     }
 }

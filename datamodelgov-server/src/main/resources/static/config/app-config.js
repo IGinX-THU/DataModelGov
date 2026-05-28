@@ -91,6 +91,7 @@ window.AppConfig = {
             delete: '/api/simulation/archives/delete',
             save: '/api/simulation/archives/save',
             'upload-report': '/api/simulation/archives/upload-report',
+            'package-download': '/api/simulation/archives/package-download',
             'validate-name': '/api/simulation/archives/validate-name',
             copy: '/api/simulation/archives/copy',
             run: '/api/simulation/archives/run',

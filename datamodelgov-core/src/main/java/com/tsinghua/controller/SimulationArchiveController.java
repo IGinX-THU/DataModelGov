@@ -309,8 +309,8 @@ public class SimulationArchiveController {
     public Result<String> uploadReport(
             @RequestParam("file") MultipartFile file,
             @RequestParam("timestamp") Long timestamp) throws Exception {
-        // TODO: Implement report upload service
-        return Result.success("报告上传成功", "/reports/" + timestamp + "/" + file.getOriginalFilename());
+        String filePath = simulationExecutionService.uploadReport(file, timestamp);
+        return Result.success("报告上传成功", filePath);
     }
 
     /**
@@ -321,7 +321,6 @@ public class SimulationArchiveController {
     @RequirePermission(Permission.PARSING_RULES_READ)
     @OperationLog(value = "打包并下载仿真执行记录文件", type = OperationLog.OperationType.EXPORT, recordResult = false)
     public ResponseEntity<Resource> packageAndDownload(@RequestParam("timestamp") Long timestamp) throws Exception {
-        // TODO: Implement package and download service
-        return null;
+        return simulationExecutionService.packageAndDownload(timestamp);
     }
 }
