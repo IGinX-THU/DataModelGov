@@ -198,6 +198,7 @@ public class AlgorithmExecutionService {
                 resultData.put("outputCsv", outputCsvContent);
                 resultData.put("processLog", processLogBuilder.toString());
                 resultData.put("taskDir", taskDir.toString());
+                resultData.put("calledModels", algorithmMeta.getCalledModels());
 
                 return Result.success(resultData);
             } catch (Exception e) {

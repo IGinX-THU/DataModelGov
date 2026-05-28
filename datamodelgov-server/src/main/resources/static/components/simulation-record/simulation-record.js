@@ -1926,6 +1926,36 @@ class SimulationRecord extends HTMLElement {
             pdfGenerator.addText(`当前状态: ${record.status}`, 12);
             pdfGenerator.addText(`开始时间: ${record.startTime ? new Date(record.startTime).toLocaleString() : 'N/A'}`, 12);
             pdfGenerator.addText(`结束时间: ${record.endTime ? new Date(record.endTime).toLocaleString() : 'N/A'}`, 12);
+            
+            // 添加算法节点信息
+            if (this.currentChartData.parsedResult && this.currentChartData.parsedResult.results) {
+                const nodeKeys = Object.keys(this.currentChartData.parsedResult.results);
+                if (nodeKeys.length > 0) {
+                    pdfGenerator.addText('算法节点信息:', 12, true);
+                    nodeKeys.forEach(nodeKey => {
+                        const nodeResult = this.currentChartData.parsedResult.results[nodeKey];
+                        const nodeName = nodeResult.nodeName || nodeKey;
+                        const algorithm = nodeResult.algorithm || 'N/A';
+                        const version = nodeResult.version || 'N/A';
+                        const calledModels = nodeResult.calledModels;
+                        
+                        let modelInfo = '';
+                        if (calledModels) {
+                            try {
+                                const models = typeof calledModels === 'string' ? JSON.parse(calledModels) : calledModels;
+                                if (Array.isArray(models) && models.length > 0) {
+                                    const modelNames = models.map(m => `${m.modelName || m.name} 版本: ${m.version}`).join(', ');
+                                    modelInfo = `, 模型: ${modelNames}`;
+                                }
+                            } catch (e) {
+                                console.warn('解析calledModels失败:', e);
+                            }
+                        }
+                        
+                        pdfGenerator.addText(`  - 节点: ${nodeName}, 算法: ${algorithm}, 版本: ${version}${modelInfo}`, 12);
+                    });
+                }
+            }
             pdfGenerator.addSeparator();
 
             // 3. 曲线图分析

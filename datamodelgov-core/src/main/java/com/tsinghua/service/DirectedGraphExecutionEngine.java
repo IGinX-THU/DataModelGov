@@ -368,12 +368,14 @@ public class DirectedGraphExecutionEngine {
             String outputCsv = resultData != null ? (String) resultData.get("outputCsv") : null;
             String processLog = resultData != null ? (String) resultData.get("processLog") : "";
             String taskDir = resultData != null ? (String) resultData.get("taskDir") : "";
+            String calledModels = resultData != null ? (String) resultData.get("calledModels") : null;
 
             nodeResult.put("status", "completed");
             nodeResult.put("output", outputText);
             nodeResult.put("outputCsv", outputCsv);
             nodeResult.put("processLog", processLog);
             nodeResult.put("taskDir", taskDir);
+            nodeResult.put("calledModels", calledModels);
             nodeResult.put("timestamp", System.currentTimeMillis());
             nodeOutputs.put(nodeId, outputText);
         } else {
