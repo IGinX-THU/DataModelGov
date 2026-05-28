@@ -2685,18 +2685,44 @@ class SimulationRecord extends HTMLElement {
         }
         pdfGenerator.addSeparator();
 
-        // 3. 曲线图分析
-        pdfGenerator.addSubtitle('二、曲线图分析');
+        // 3. 图表分析 - 渲染所有图表类型
+        pdfGenerator.addSubtitle('二、图表分析');
         const chartElement = this.shadowRoot.getElementById('analysisChart');
+        const chartTypeSelect = this.shadowRoot.getElementById('chartType');
+        const originalChartType = chartTypeSelect ? chartTypeSelect.value : 'line';
+        const chartTypes = [
+            { type: 'line', label: '折线图', desc: '趋势分析' },
+            { type: 'bar', label: '柱状图', desc: '数值对比' },
+            { type: 'scatter', label: '散点图', desc: '分布分析' },
+            { type: 'histogram', label: '直方图', desc: '频数分布' }
+        ];
+
         if (chartElement && this.chart) {
-            const chartImage = this.chart.getDataURL({
-                type: 'png',
-                pixelRatio: 2,
-                backgroundColor: '#fff'
-            });
-            await pdfGenerator.addChartImage(chartImage, '任务曲线图', `${record.name}的趋势分析图表`);
+            for (const ct of chartTypes) {
+                try {
+                    // 切换图表类型并渲染
+                    if (chartTypeSelect) chartTypeSelect.value = ct.type;
+                    this.updateChart();
+                    await new Promise(resolve => setTimeout(resolve, 300));
+
+                    const chartImage = this.chart.getDataURL({
+                        type: 'png',
+                        pixelRatio: 2,
+                        backgroundColor: '#fff'
+                    });
+                    await pdfGenerator.addChartImage(chartImage, ct.label, `${record.name}的${ct.desc}`);
+                } catch (e) {
+                    console.warn(`渲染${ct.label}失败:`, e);
+                    pdfGenerator.addImagePlaceholder(ct.label, `${record.name}的${ct.desc}`);
+                }
+            }
+            // 恢复原始图表类型
+            if (chartTypeSelect) chartTypeSelect.value = originalChartType;
+            this.updateChart();
         } else {
-            pdfGenerator.addImagePlaceholder('曲线图', '当前任务的趋势分析图表');
+            chartTypes.forEach(ct => {
+                pdfGenerator.addImagePlaceholder(ct.label, `${record.name}的${ct.desc}`);
+            });
         }
 
         // 4. 数据视图
