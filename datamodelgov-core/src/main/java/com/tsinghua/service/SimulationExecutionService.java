@@ -459,7 +459,7 @@ public class SimulationExecutionService {
     /**
      * 保存仿真执行记录到IginX
      */
-    private void saveExecution(SimulationExecutionEntity execution) {
+    public void saveExecution(SimulationExecutionEntity execution) {
         try {
             List<Point> points = new ArrayList<>();
             long timestamp = execution.getTimestamp();
@@ -620,7 +620,7 @@ public class SimulationExecutionService {
             IginXTable table = iginxClient.getQueryClient().query(
                 SimpleQuery.builder()
                     .addMeasurements(new HashSet<>(measurements))
-                    .startKey(timestamp)
+                    .startKey(timestamp - 1)
                     .endKey(timestamp + 1)
                     .build()
             );
@@ -699,8 +699,36 @@ public class SimulationExecutionService {
      */
     public void deleteExecution(Long timestamp) {
         try {
+
+            // 删除对应的任务目录
+            SimulationExecutionEntity execution = loadExecution(timestamp);
+            if (execution != null && execution.getArchiveId() != null) {
+                SimulationArchiveEntity archive = simulationArchiveService.queryArchive(execution.getArchiveId());
+                String projectName = archive != null ? archive.getProjectName() : null;
+
+                // 构建仿真任务目录
+                Path simulationDir;
+                if (projectName != null && !projectName.isEmpty()) {
+                    simulationDir = Paths.get("project", projectName, "job", "simulation", String.valueOf(timestamp));
+                } else {
+                    simulationDir = Paths.get("job", "simulation", String.valueOf(timestamp));
+                }
+
+                log.info("准备删除仿真任务目录: {}, exists: {}", simulationDir, Files.exists(simulationDir));
+
+                // 删除目录及其内容
+                if (Files.exists(simulationDir)) {
+                    deleteDirectory(simulationDir);
+                    log.info("仿真任务目录已删除: {}", simulationDir);
+                } else {
+                    log.warn("仿真任务目录不存在: {}", simulationDir);
+                }
+            } else {
+                log.warn("无法获取执行记录或档案信息，跳过目录删除");
+            }
+
             List<String> measurements = ConvertUtil.iginxFieldNamesConvert(SimulationExecutionEntity.class, DATA_PREFIX);
-            
+
             // 从IginX删除执行记录
             iginxClient.getDeleteClient().deleteMeasurementsData(measurements, timestamp - 1, timestamp + 1);
             
@@ -708,6 +736,26 @@ public class SimulationExecutionService {
         } catch (Exception e) {
             log.error("删除仿真执行记录失败", e);
             throw new RuntimeException("删除失败: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 递归删除目录及其内容
+     */
+    private void deleteDirectory(Path path) throws IOException {
+        if (Files.isDirectory(path)) {
+            try (java.util.stream.Stream<Path> stream = Files.walk(path)) {
+                stream.sorted(java.util.Comparator.reverseOrder())
+                      .forEach(p -> {
+                          try {
+                              Files.delete(p);
+                          } catch (IOException e) {
+                              log.warn("删除文件失败: {}", p, e);
+                          }
+                      });
+            }
+        } else {
+            Files.delete(path);
         }
     }
 

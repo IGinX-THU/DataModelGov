@@ -173,6 +173,14 @@ const MENU_ID_MAP = {
         text: '打开项目',
         action: 'showProjectList'
     },
+    'menu-project-export': {
+        text: '导出项目',
+        action: 'showProjectExport'
+    },
+    'menu-project-import': {
+        text: '导入项目',
+        action: 'showProjectImport'
+    },
     'menu-numerical-and-curve-analysis': {
         text: '数值与曲线分析',
         action: 'showVisualAnalysis'

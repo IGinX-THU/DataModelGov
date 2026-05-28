@@ -107,6 +107,8 @@ document.addEventListener('DOMContentLoaded', function() {
             'projectList',
             'projectDetail',
             'projectCreate',
+            'projectExport',
+            'projectImport',
             'dataArchiveDetail',
             'modelArchiveList',
             'algorithmArchiveList'
@@ -481,6 +483,14 @@ document.addEventListener('DOMContentLoaded', function() {
                         console.log('打开项目菜单被点击');
                         showComponent('projectList');
                         break;
+                    case 'showProjectExport':
+                        console.log('导出项目菜单被点击');
+                        showComponent('projectExport');
+                        break;
+                    case 'showProjectImport':
+                        console.log('导入项目菜单被点击');
+                        showComponent('projectImport');
+                        break;
                     case 'showDataSourceList':
                         console.log('异构数据源管理菜单被点击');
                         if (isSecondClick) clearWorkspace();
@@ -631,6 +641,16 @@ document.addEventListener('DOMContentLoaded', function() {
                         if (isSecondClick) clearWorkspace();
                         showComponent('projectCreate');
                         break;
+                    case 'showProjectExport':
+                        console.log('导出项目菜单被点击');
+                        if (isSecondClick) clearWorkspace();
+                        showComponent('projectExport');
+                        break;
+                    case 'showProjectImport':
+                        console.log('导入项目菜单被点击');
+                        if (isSecondClick) clearWorkspace();
+                        showComponent('projectImport');
+                        break;
                     case 'showVisualAnalysis':
                         console.log('数值与曲线分析菜单被点击');
                         if (isSecondClick) clearWorkspace();
@@ -706,6 +726,14 @@ document.addEventListener('DOMContentLoaded', function() {
                     console.log('新增项目菜单被点击');
                     if (isSecondClick) clearWorkspace();
                     showComponent('projectCreate');
+                } else if (menuId === 'menu-project-export') {
+                    console.log('导出项目菜单被点击');
+                    if (isSecondClick) clearWorkspace();
+                    showComponent('projectExport');
+                } else if (menuId === 'menu-project-import') {
+                    console.log('导入项目菜单被点击');
+                    if (isSecondClick) clearWorkspace();
+                    showComponent('projectImport');
                 } else {
                     console.warn(`未找到菜单ID ${menuId} 的对应动作`);
                 }
@@ -1000,6 +1028,12 @@ document.addEventListener('DOMContentLoaded', function() {
                         break;
                     case 'showProjectList':
                         showComponent('projectList');
+                        break;
+                    case 'showProjectExport':
+                        showComponent('projectExport');
+                        break;
+                    case 'showProjectImport':
+                        showComponent('projectImport');
                         break;
                     case 'handleDownload':
                         // 检查模型侧边栏是否打开
@@ -1765,6 +1799,16 @@ function showVisualAnalysis() {
 
 function showSimulationRecord() {
     console.log('showSimulationRecord() 函数被调用');
+
+    // 检查是否已打开项目
+    const username = window.localStorage.getItem('username');
+    const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
+    if (!cachedProject) {
+        if (window.CommonUtils && window.CommonUtils.showToast) {
+            window.CommonUtils.showToast('请先选择或创建项目', 'error');
+        }
+        return;
+    }
 
     const simulationRecord = document.createElement('simulation-record');
     

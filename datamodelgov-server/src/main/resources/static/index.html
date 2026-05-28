@@ -160,6 +160,8 @@
                 <ul class="dropdown-menu">
                     <li id="menu-project-new">新建项目</li>
                     <li id="menu-project-list">打开项目</li>
+<!--                    <li id="menu-project-export">导出项目</li>-->
+<!--                    <li id="menu-project-import">导入项目</li>-->
                 </ul>
             </span>
         <span class="tab dropdown" id="dataDropdown">
@@ -494,6 +496,10 @@
             <project-detail id="projectDetail"></project-detail>
             <!-- 项目创建组件 -->
             <project-create id="projectCreate"></project-create>
+            <!-- 项目导出组件 -->
+            <project-export id="projectExport" style="display: none;"></project-export>
+            <!-- 项目导入组件 -->
+            <project-import id="projectImport" style="display: none;"></project-import>
             <!-- 数据档案列表组件 -->
             <data-archive-list id="dataArchiveList" style="display: none;"></data-archive-list>
             <!-- 数据档案详情组件 -->
@@ -562,6 +568,8 @@
 <script src="./components/project-list/project-list.js"></script>
 <script src="./components/project-detail/project-detail.js"></script>
 <script src="./components/project-create/project-create.js"></script>
+<script src="./components/project-export/project-export.js"></script>
+<script src="./components/project-import/project-import.js"></script>
 <script src="./components/data-archive-list/data-archive-list.js"></script>
 <script src="./components/data-archive-detail/data-archive-detail.js"></script>
 <script src="./components/model-archive-list/model-archive-list.js"></script>

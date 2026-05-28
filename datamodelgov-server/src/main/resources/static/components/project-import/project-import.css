@@ -1,0 +1,199 @@
+.project-import {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 20px;
+    min-height: 400px;
+}
+
+.import-card {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+    width: 520px;
+    overflow: hidden;
+}
+
+.import-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #fff;
+    padding: 16px 24px;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.import-body {
+    padding: 24px;
+}
+
+.import-field {
+    margin-bottom: 20px;
+}
+
+.import-label {
+    display: block;
+    font-size: 14px;
+    font-weight: 500;
+    color: #333;
+    margin-bottom: 8px;
+}
+
+.import-input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #dcdfe6;
+    border-radius: 6px;
+    font-size: 14px;
+    color: #333;
+    background: #fff;
+    box-sizing: border-box;
+    transition: border-color 0.2s;
+}
+
+.import-input:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+.import-input::placeholder {
+    color: #c0c4cc;
+}
+
+.import-file-area {
+    border: 2px dashed #dcdfe6;
+    border-radius: 8px;
+    padding: 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    min-height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.import-file-area:hover {
+    border-color: #667eea;
+    background: #f5f7ff;
+}
+
+.import-file-area.dragover {
+    border-color: #667eea;
+    background: #ecf0ff;
+}
+
+.import-file-hint {
+    color: #909399;
+    font-size: 14px;
+}
+
+.import-file-name {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #333;
+    font-size: 14px;
+}
+
+.import-file-remove {
+    background: none;
+    border: none;
+    color: #f56c6c;
+    font-size: 18px;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+}
+
+.import-file-remove:hover {
+    color: #e04040;
+}
+
+.import-info {
+    background: #f5f7fa;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 20px;
+}
+
+.import-info-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #606266;
+    margin-bottom: 8px;
+}
+
+.import-info-content {
+    font-size: 13px;
+    color: #909399;
+    line-height: 1.8;
+}
+
+.import-progress {
+    margin-bottom: 20px;
+}
+
+.import-progress-bar {
+    height: 6px;
+    background: #e9ecef;
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 8px;
+}
+
+.import-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #667eea, #764ba2);
+    border-radius: 3px;
+    width: 0%;
+    transition: width 0.3s;
+}
+
+.import-progress-text {
+    font-size: 13px;
+    color: #909399;
+    text-align: center;
+}
+
+.import-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 16px 24px;
+    border-top: 1px solid #ebeef5;
+}
+
+.import-btn {
+    padding: 10px 24px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: none;
+}
+
+.import-btn.outline {
+    background: #fff;
+    color: #606266;
+    border: 1px solid #dcdfe6;
+}
+
+.import-btn.outline:hover {
+    color: #667eea;
+    border-color: #667eea;
+}
+
+.import-btn.solid {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #fff;
+}
+
+.import-btn.solid:hover:not(:disabled) {
+    opacity: 0.9;
+}
+
+.import-btn.solid:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}

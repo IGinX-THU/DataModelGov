@@ -482,6 +482,95 @@ class SimulationRecord extends HTMLElement {
         });
     }
 
+    // 智能Y轴分组：将所有数值列按值域重叠分组，分配到左/右Y轴
+    // 返回 { groups: [{ cols, range, yAxisIndex }], leftRange, rightRange }
+    getSmartYAxisColumns(task, type) {
+        const records = type === 'input' ? task.rawInputRecords : task.rawOutputRecords;
+        if (!records || records.length === 0) return { groups: [], leftRange: null, rightRange: null };
+
+        const keys = Object.keys(records[0]);
+        const colStats = {};
+
+        // 计算每列的值域范围
+        keys.forEach(key => {
+            if (key === 'key') return;
+            const values = records.map(r => r[key]).filter(v => v != null && typeof v === 'number' && isFinite(v));
+            if (values.length === 0) return;
+            const min = Math.min(...values);
+            const max = Math.max(...values);
+            if (min === 0 && max === 0) return;
+            colStats[key] = { min, max, range: max - min, mid: (min + max) / 2 };
+        });
+
+        const colNames = Object.keys(colStats);
+        if (colNames.length === 0) return { groups: [], leftRange: null, rightRange: null };
+
+        // 按中值排序
+        const sorted = [...colNames].sort((a, b) => colStats[a].mid - colStats[b].mid);
+
+        // 按值域重叠分组
+        const groups = [];
+        let currentGroup = [sorted[0]];
+        let groupMin = colStats[sorted[0]].min;
+        let groupMax = colStats[sorted[0]].max;
+
+        for (let i = 1; i < sorted.length; i++) {
+            const cMin = colStats[sorted[i]].min;
+            const cMax = colStats[sorted[i]].max;
+            const cMid = colStats[sorted[i]].mid;
+            const groupMid = (groupMin + groupMax) / 2;
+            const groupRange = groupMax - groupMin;
+            const cRange = cMax - cMin;
+            const largerRange = Math.max(groupRange, cRange);
+
+            // 中值差距 > 较大范围的50% → 不重叠，新组
+            if (largerRange > 0 && Math.abs(cMid - groupMid) > largerRange * 0.5) {
+                groups.push({ cols: currentGroup, min: groupMin, max: groupMax });
+                currentGroup = [sorted[i]];
+                groupMin = cMin;
+                groupMax = cMax;
+            } else {
+                currentGroup.push(sorted[i]);
+                groupMin = Math.min(groupMin, cMin);
+                groupMax = Math.max(groupMax, cMax);
+            }
+        }
+        groups.push({ cols: currentGroup, min: groupMin, max: groupMax });
+
+        // 分配Y轴：列数最多的组→左Y轴(index 0)，次多→右Y轴(index 1)
+        // 其余组分配到值域更近的轴
+        groups.sort((a, b) => b.cols.length - a.cols.length);
+
+        const leftGroup = groups[0];
+        leftGroup.yAxisIndex = 0;
+        let leftRange = { min: leftGroup.min, max: leftGroup.max };
+
+        let rightRange = null;
+        if (groups.length > 1) {
+            const rightGroup = groups[1];
+            rightGroup.yAxisIndex = 1;
+            rightRange = { min: rightGroup.min, max: rightGroup.max };
+
+            // 其余组分配到更近的Y轴
+            for (let i = 2; i < groups.length; i++) {
+                const g = groups[i];
+                const gMid = (g.min + g.max) / 2;
+                const leftDist = Math.abs(gMid - (leftRange.min + leftRange.max) / 2);
+                const rightDist = Math.abs(gMid - (rightRange.min + rightRange.max) / 2);
+                g.yAxisIndex = leftDist <= rightDist ? 0 : 1;
+                if (g.yAxisIndex === 0) {
+                    leftRange.min = Math.min(leftRange.min, g.min);
+                    leftRange.max = Math.max(leftRange.max, g.max);
+                } else {
+                    rightRange.min = Math.min(rightRange.min, g.min);
+                    rightRange.max = Math.max(rightRange.max, g.max);
+                }
+            }
+        }
+
+        return { groups, leftRange, rightRange };
+    }
+
     // 检测指定列是否为非数值列
     isNonNumericColumn(columnName) {
         if (!this.currentChartData || !this.currentChartData.tasks) return false;
@@ -506,6 +595,7 @@ class SimulationRecord extends HTMLElement {
 
         const xAxisColumn = selectedXAxis || 'key';
         const isXCategory = this.isNonNumericColumn(xAxisColumn);
+        const isAutoY = !selectedYAxis;
 
         // 收集分类X轴的值
         let categoryData = [];
@@ -521,6 +611,62 @@ class SimulationRecord extends HTMLElement {
             categoryData = Array.from(categorySet);
         }
 
+        // 智能Y轴：收集所有task的分组结果，确定是否需要双Y轴
+        let useDualY = false;
+        let globalLeftCols = [];
+        let globalRightCols = [];
+        let globalLeftRange = null;
+        let globalRightRange = null;
+
+        if (isAutoY && this.currentChartData.tasks) {
+            const leftSet = new Set();
+            const rightSet = new Set();
+            let leftMin = Infinity, leftMax = -Infinity;
+            let rightMin = Infinity, rightMax = -Infinity;
+
+            this.currentChartData.tasks.forEach(task => {
+                for (const type of ['input', 'output']) {
+                    const smart = this.getSmartYAxisColumns(task, type);
+                    smart.groups.forEach(g => {
+                        if (g.yAxisIndex === 0) {
+                            g.cols.forEach(c => leftSet.add(c));
+                            leftMin = Math.min(leftMin, g.min);
+                            leftMax = Math.max(leftMax, g.max);
+                        } else {
+                            g.cols.forEach(c => rightSet.add(c));
+                            rightMin = Math.min(rightMin, g.min);
+                            rightMax = Math.max(rightMax, g.max);
+                        }
+                    });
+                }
+            });
+            globalLeftCols = Array.from(leftSet);
+            globalRightCols = Array.from(rightSet);
+            if (leftMin !== Infinity) globalLeftRange = { min: leftMin, max: leftMax };
+            if (rightMin !== Infinity) globalRightRange = { min: rightMin, max: rightMax };
+            useDualY = globalRightCols.length > 0;
+        }
+
+        // 辅助函数：从分组中获取列的yAxisIndex
+        const getColYAxisIndex = (colName, groups) => {
+            for (const g of groups) {
+                if (g.cols.includes(colName)) return g.yAxisIndex;
+            }
+            return 0;
+        };
+
+        // 辅助函数：获取某task某type的所有Y轴列（按yAxisIndex分组）
+        const getSmartColumns = (task, type) => {
+            const smart = this.getSmartYAxisColumns(task, type);
+            const leftCols = [];
+            const rightCols = [];
+            smart.groups.forEach(g => {
+                if (g.yAxisIndex === 0) leftCols.push(...g.cols);
+                else rightCols.push(...g.cols);
+            });
+            return { leftCols, rightCols, groups: smart.groups };
+        };
+
         if (this.currentChartData.tasks) {
             this.currentChartData.tasks.forEach((task, idx) => {
                 const taskColor = colors[idx % colors.length];
@@ -528,13 +674,20 @@ class SimulationRecord extends HTMLElement {
                 // 输入数据
                 if (this.curveVisibility.input) {
                     if (task.rawInputRecords && task.rawInputRecords.length > 0) {
-                        const yAxisColumns = selectedYAxis ? [selectedYAxis] : this.getNumericColumnsForTask(task, 'input');
-                        yAxisColumns.forEach((col, colIdx) => {
+                        let allYCols;
+                        if (isAutoY) {
+                            const smart = getSmartColumns(task, 'input');
+                            allYCols = [...smart.leftCols, ...smart.rightCols];
+                        } else {
+                            allYCols = [selectedYAxis];
+                        }
+
+                        allYCols.forEach((col, colIdx) => {
                             if (!task.rawInputRecords[0] || task.rawInputRecords[0][col] === undefined) return;
                             const colColor = colors[(idx + colIdx) % colors.length];
+                            const yIdx = isAutoY ? getColYAxisIndex(col, getSmartColumns(task, 'input').groups) : 0;
                             let data;
                             if (isXCategory) {
-                                // 非数值X轴：用字符串分类
                                 data = task.rawInputRecords
                                     .filter(r => r[col] != null && typeof r[col] === 'number' && r[xAxisColumn] != null)
                                     .map(r => [String(r[xAxisColumn]), r[col]]);
@@ -547,14 +700,16 @@ class SimulationRecord extends HTMLElement {
                                     });
                             }
                             if (data.length === 0) return;
+                            const isRight = yIdx === 1;
                             series.push({
                                 name: `${col} (输入)`,
                                 type: chartType,
+                                yAxisIndex: yIdx,
                                 data: data,
                                 smooth: chartType === 'line',
                                 symbol: 'circle',
                                 symbolSize: 3,
-                                lineStyle: chartType === 'line' ? { width: 2, color: colColor, type: 'dashed' } : undefined,
+                                lineStyle: chartType === 'line' ? { width: 2, color: colColor, type: isRight ? 'dotted' : 'dashed' } : undefined,
                                 itemStyle: { color: colColor }
                             });
                         });
@@ -563,6 +718,7 @@ class SimulationRecord extends HTMLElement {
                         series.push({
                             name: `${task.name} (输入)`,
                             type: chartType,
+                            yAxisIndex: 0,
                             data: filteredData,
                             smooth: chartType === 'line',
                             symbol: 'circle',
@@ -576,10 +732,18 @@ class SimulationRecord extends HTMLElement {
                 // 输出数据
                 if (this.curveVisibility.output) {
                     if (task.rawOutputRecords && task.rawOutputRecords.length > 0) {
-                        const yAxisColumns = selectedYAxis ? [selectedYAxis] : this.getNumericColumnsForTask(task, 'output');
-                        yAxisColumns.forEach((col, colIdx) => {
+                        let allYCols;
+                        if (isAutoY) {
+                            const smart = getSmartColumns(task, 'output');
+                            allYCols = [...smart.leftCols, ...smart.rightCols];
+                        } else {
+                            allYCols = [selectedYAxis];
+                        }
+
+                        allYCols.forEach((col, colIdx) => {
                             if (!task.rawOutputRecords[0] || task.rawOutputRecords[0][col] === undefined) return;
                             const colColor = colors[(idx + colIdx) % colors.length];
+                            const yIdx = isAutoY ? getColYAxisIndex(col, getSmartColumns(task, 'output').groups) : 0;
                             let data;
                             if (isXCategory) {
                                 data = task.rawOutputRecords
@@ -595,14 +759,16 @@ class SimulationRecord extends HTMLElement {
                                     });
                             }
                             if (data.length === 0) return;
+                            const isRight = yIdx === 1;
                             series.push({
                                 name: `${col} (输出)`,
                                 type: chartType,
+                                yAxisIndex: yIdx,
                                 data: data,
                                 smooth: chartType === 'line',
                                 symbol: 'diamond',
                                 symbolSize: 3,
-                                lineStyle: chartType === 'line' ? { width: 2, color: colColor, type: 'solid' } : undefined,
+                                lineStyle: chartType === 'line' ? { width: 2, color: colColor, type: isRight ? 'dotted' : 'solid' } : undefined,
                                 itemStyle: { color: colColor }
                             });
                         });
@@ -611,6 +777,7 @@ class SimulationRecord extends HTMLElement {
                         series.push({
                             name: `${task.name} (输出)`,
                             type: chartType,
+                            yAxisIndex: 0,
                             data: filteredData,
                             smooth: chartType === 'line',
                             symbol: 'diamond',
@@ -625,21 +792,35 @@ class SimulationRecord extends HTMLElement {
 
         if (series.length === 0) return;
 
-        // 计算Y轴范围
-        let allDataPoints = [];
-        series.forEach(s => { allDataPoints = allDataPoints.concat(s.data); });
+        // 计算主/副Y轴范围
+        const primarySeries = series.filter(s => s.yAxisIndex === 0);
+        const secondarySeries = series.filter(s => s.yAxisIndex === 1);
+
         let yMin = Infinity, yMax = -Infinity;
-        allDataPoints.forEach(point => {
-            if (point[1] < yMin) yMin = point[1];
-            if (point[1] > yMax) yMax = point[1];
+        primarySeries.forEach(s => {
+            (s.data || []).forEach(point => {
+                if (point[1] < yMin) yMin = point[1];
+                if (point[1] > yMax) yMax = point[1];
+            });
         });
         if (yMin === Infinity) yMin = 0;
         if (yMax === -Infinity) yMax = 100;
         const yPadding = (yMax - yMin) * 0.1 || 1;
 
+        let y2Min = Infinity, y2Max = -Infinity;
+        secondarySeries.forEach(s => {
+            (s.data || []).forEach(point => {
+                if (point[1] < y2Min) y2Min = point[1];
+                if (point[1] > y2Max) y2Max = point[1];
+            });
+        });
+        if (y2Min === Infinity) y2Min = 0;
+        if (y2Max === -Infinity) y2Max = 100;
+        const y2Padding = (y2Max - y2Min) * 0.1 || 1;
+
         const isTimeAxis = xAxisColumn === 'key';
 
-        // X轴配置：非数值列用category，数值列用value
+        // X轴配置
         let xAxisConfig;
         if (isXCategory) {
             xAxisConfig = {
@@ -651,11 +832,13 @@ class SimulationRecord extends HTMLElement {
             };
         } else {
             let xMin = Infinity, xMax = -Infinity;
-            allDataPoints.forEach(point => {
-                if (typeof point[0] === 'number') {
-                    if (point[0] < xMin) xMin = point[0];
-                    if (point[0] > xMax) xMax = point[0];
-                }
+            series.forEach(s => {
+                (s.data || []).forEach(point => {
+                    if (typeof point[0] === 'number') {
+                        if (point[0] < xMin) xMin = point[0];
+                        if (point[0] > xMax) xMax = point[0];
+                    }
+                });
             });
             if (xMin === Infinity) xMin = 0;
             if (xMax === -Infinity) xMax = 100;
@@ -679,6 +862,34 @@ class SimulationRecord extends HTMLElement {
             };
         }
 
+        // Y轴配置：有右轴时用双Y轴
+        const hasRightSeries = series.some(s => s.yAxisIndex === 1);
+        const effectiveDualY = useDualY && hasRightSeries;
+        const yAxisConfig = effectiveDualY ? [
+            {
+                type: 'value',
+                name: globalLeftCols.join(', '),
+                min: yMin - yPadding,
+                max: yMax + yPadding,
+                axisLabel: { formatter: v => v.toFixed(2) }
+            },
+            {
+                type: 'value',
+                name: globalRightCols.join(', '),
+                min: y2Min - y2Padding,
+                max: y2Max + y2Padding,
+                axisLabel: { formatter: v => v.toFixed(2) }
+            }
+        ] : [
+            {
+                type: 'value',
+                name: selectedYAxis || '',
+                min: yMin - yPadding,
+                max: yMax + yPadding,
+                axisLabel: { formatter: v => v.toFixed(2) }
+            }
+        ];
+
         const option = {
             title: { text: chartType === 'bar' ? '仿真记录柱状图' : '仿真记录分析', left: 'center', top: 10, textStyle: { fontSize: 14, fontWeight: 'bold' } },
             tooltip: {
@@ -694,25 +905,16 @@ class SimulationRecord extends HTMLElement {
                     }
                     let result = `${isTimeAxis ? '时间' : xAxisColumn}: ${xLabel}<br/>`;
                     params.forEach(param => {
-                        result += `${param.seriesName}: ${(param.value[1] || 0).toFixed(2)}<br/>`;
+                        const axisLabel = param.seriesName;
+                        result += `${axisLabel}: ${(param.value[1] || 0).toFixed(2)}<br/>`;
                     });
                     return result;
                 }
             },
             legend: { data: series.map(s => s.name), top: 40, left: 'center', type: 'scroll' },
-            grid: { left: '8%', right: '8%', bottom: '20%', top: '25%' },
+            grid: { left: effectiveDualY ? '10%' : '8%', right: effectiveDualY ? '10%' : '8%', bottom: '20%', top: '25%' },
             xAxis: xAxisConfig,
-            yAxis: {
-                type: 'value',
-                name: selectedYAxis || '',
-                min: yMin - yPadding,
-                max: yMax + yPadding,
-                axisLabel: {
-                    formatter: function(value) {
-                        return value.toFixed(2);
-                    }
-                }
-            },
+            yAxis: yAxisConfig,
             dataZoom: [{ type: 'inside', start: 0, end: 100 }, { start: 0, end: 100 }],
             toolbox: { right: 20, feature: { restore: {}, saveAsImage: {}, dataView: { readOnly: true } } },
             series: series
@@ -755,7 +957,8 @@ class SimulationRecord extends HTMLElement {
             // 输入数据
             if (this.curveVisibility.input) {
                 if (task.rawInputRecords && task.rawInputRecords.length > 0) {
-                    const yAxisColumns = selectedYAxis ? [selectedYAxis] : this.getNumericColumnsForTask(task, 'input');
+                    const smartInput = this.getSmartYAxisColumns(task, 'input');
+                    const yAxisColumns = selectedYAxis ? [selectedYAxis] : smartInput.groups.flatMap(g => g.cols);
                     yAxisColumns.forEach((col, colIdx) => {
                         if (!task.rawInputRecords[0] || task.rawInputRecords[0][col] === undefined) return;
                         const colColor = colors[(idx + colIdx) % colors.length];
@@ -776,6 +979,7 @@ class SimulationRecord extends HTMLElement {
                         series.push({
                             name: `${col} (输入)`,
                             type: 'scatter',
+                            yAxisIndex: 0,
                             data: data,
                             symbolSize: 6,
                             itemStyle: { color: colColor }
@@ -796,7 +1000,8 @@ class SimulationRecord extends HTMLElement {
             // 输出数据
             if (this.curveVisibility.output) {
                 if (task.rawOutputRecords && task.rawOutputRecords.length > 0) {
-                    const yAxisColumns = selectedYAxis ? [selectedYAxis] : this.getNumericColumnsForTask(task, 'output');
+                    const smartOutput = this.getSmartYAxisColumns(task, 'output');
+                    const yAxisColumns = selectedYAxis ? [selectedYAxis] : smartOutput.groups.flatMap(g => g.cols);
                     yAxisColumns.forEach((col, colIdx) => {
                         if (!task.rawOutputRecords[0] || task.rawOutputRecords[0][col] === undefined) return;
                         const colColor = colors[(idx + colIdx + 1) % colors.length];
@@ -943,8 +1148,9 @@ class SimulationRecord extends HTMLElement {
 
                 if (task.rawOutputRecords && task.rawOutputRecords.length > 0) {
                     if (!targetColumn) {
-                        const numericCols = this.getNumericColumnsForTask(task, 'output');
-                        targetColumn = numericCols.length > 0 ? numericCols[0] : null;
+                        const smartCols = this.getSmartYAxisColumns(task, 'output');
+                        const allCols = smartCols.groups.flatMap(g => g.cols);
+                        targetColumn = allCols.length > 0 ? allCols[0] : null;
                     }
                     if (task.rawOutputRecords[0][targetColumn] !== undefined) {
                         values = task.rawOutputRecords
