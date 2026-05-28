@@ -84,10 +84,10 @@ public class DirectedGraphExecutionEngine {
             Set<String> executeNodeIds;
             if (selectedNodeIds != null && !selectedNodeIds.isEmpty()) {
                 executeNodeIds = new HashSet<>(selectedNodeIds);
-                // 自动加入选中节点的前驱节点（保证数据流完整）
-                addPredecessorNodes(edges, executeNodeIds, nodeMap);
+                log.info("用户选中的节点（选择性执行）: {}", selectedNodeIds);
             } else {
                 executeNodeIds = nodeMap.keySet();
+                log.info("全量执行所有节点");
             }
 
             // 构建邻接表和入度表（仅包含要执行的节点）

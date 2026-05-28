@@ -255,6 +255,13 @@ public class SimulationExecutionService {
                     archive.getName(), null, null, null, 1, 1);
                 if (executions != null && !executions.isEmpty()) {
                     execution = executions.get(0);
+                    // 从IginX加载完整的result字段（queryExecutions可能不包含完整result）
+                    if (execution != null && execution.getTimestamp() != null) {
+                        SimulationExecutionEntity fullExecution = loadExecution(execution.getTimestamp());
+                        if (fullExecution != null) {
+                            execution = fullExecution;
+                        }
+                    }
                 }
             }
 
