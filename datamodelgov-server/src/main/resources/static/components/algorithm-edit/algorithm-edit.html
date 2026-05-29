@@ -1,13 +1,13 @@
 <div class="algorithm-edit">
     <div class="form-container">
         <div class="form-header">
-            <h2>编辑元算法档案</h2>
+            <h2>编辑算法档案</h2>
             <button class="close-btn" id="closeBtn">×</button>
         </div>
         
         <div class="form-content">
-            <!-- 基本信息 -->
-            <div class="basic-info-section">
+            <!-- 1. 基本信息 -->
+            <div class="section-card">
                 <div class="section-title">基本信息</div>
                 <div class="info-grid">
                     <div class="info-item">
@@ -16,7 +16,7 @@
                     </div>
                     <div class="info-item">
                         <label>开发者</label>
-                        <input type="text" id="developer" placeholder="请输入开发者">
+                        <input type="text" id="developer" placeholder="请输入开发者" readonly>
                     </div>
                     <div class="info-item">
                         <label>版本号</label>
@@ -26,63 +26,59 @@
                         <label>场景</label>
                         <input type="text" id="scene" placeholder="请输入场景">
                     </div>
+                    <div class="info-item full-width">
+                        <label>描述信息</label>
+                        <textarea id="description" placeholder="请输入算法描述信息" rows="3"></textarea>
+                    </div>
                 </div>
             </div>
-            
-            <!-- 接口信息 -->
-            <div class="interface-section">
-                <!-- 第一个card：档案生成 -->
-                <div class="params-block parse-config-card">
-                    <div class="card-header">
-                        <span class="card-title">档案生成</span>
+
+            <!-- 2. 参数解析与数据绑定 -->
+            <div class="section-card">
+                <div class="section-title">参数解析与数据绑定</div>
+                <!-- 自动解析工具栏 -->
+                <div class="parse-toolbar">
+                    <div class="toolbar-left">
+                        <label>解析规则：</label>
+                        <select class="parse-rules-select" id="parseRulesSelect">
+                            <option value="">请选择解析规则</option>
+                        </select>
+                        <label class="second-label">源文件：</label>
+                        <select class="source-file-select" id="sourceFileSelect">
+                            <option value="">请选择源文件</option>
+                        </select>
                     </div>
-                    <div class="card-content">
-                        <div class="config-row">
-                            <label>解析规则：</label>
-                            <select class="parse-rules-select" id="parseRulesSelect">
-                                <option value="default">默认规则</option>
-                                <option value="strict">严格规则</option>
-                                <option value="custom">自定义规则</option>
+                    <div class="toolbar-right">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="forceOverrideCheck" checked>
+                            <span>强制覆盖</span>
+                        </label>
+                        <button class="auto-parse-btn" id="autoParseBtn">从代码自动解析</button>
+                        <button class="advanced-config-btn" id="advancedConfigBtn">高级配置</button>
+                    </div>
+                </div>
+                <div class="annotation-spec-section" id="annotationSpecSection" style="display: none;">
+                    <div class="spec-title">注释规范示例：</div>
+                    <div class="spec-content" id="specContent"></div>
+                </div>
+
+                <!-- 数据绑定配置 -->
+                <div class="binding-config data-binding-section">
+                    <div class="binding-config-header">数据绑定</div>
+                    <div class="binding-config-row">
+                        <div class="binding-field">
+                            <label>数据源</label>
+                            <select id="dataSource" class="data-source-select">
+                                <option value="">请选择数据源</option>
                             </select>
-                            <label class="second-label">源文件：</label>
-                            <select class="source-file-select" id="sourceFileSelect">
-                                <option value="">请选择源文件</option>
-                                <option value="algorithm.py">algorithm.py</option>
-                                <option value="config.json">config.json</option>
-                                <option value="interface.h">interface.h</option>
-                            </select>
-                        </div>
-                        <div class="config-row config-row-space-between">
-                            <button class="advanced-config-btn" id="advancedConfigBtn">
-                                <span class="btn-icon">⚙️</span>
-                                <span class="btn-text">高级配置</span>
-                            </button>
-                            <div class="center-group">
-                                <label>强制覆盖：</label>
-                                <div class="checkbox-group checkbox-group-compact">
-                                    <label class="checkbox-item">
-                                        <input type="checkbox" id="forceOverrideCheck" checked>
-                                        <span class="checkmark"></span>
-                                    </label>
-                                    <span class="checkbox-text">覆盖用户已经手动填写且保存过的内容</span>
-                                </div>
-                            </div>
-                            <button class="auto-parse-btn" id="autoParseBtn">
-                                <span class="btn-icon">🔍</span>
-                                <span class="btn-text">从代码自动解析</span>
-                            </button>
-                        </div>
-                        <div class="annotation-spec-section" id="annotationSpecSection" style="display: none;">
-                            <div class="spec-title">注释规范示例：</div>
-                            <div class="spec-content" id="specContent"></div>
                         </div>
                     </div>
                 </div>
-                
-                <!-- 第二个card：参数表格 -->
+
+                <!-- Inputs（含数据源字段绑定列） -->
                 <div class="params-block">
                     <div class="params-header">
-                        <span>Inputs</span>
+                        <span>Inputs（输入参数）</span>
                         <button class="add-btn" id="addInputBtn">+</button>
                     </div>
                     <div class="params-table">
@@ -90,19 +86,18 @@
                             <div class="col-name">参数名</div>
                             <div class="col-type">数据类型</div>
                             <div class="col-unit">物理单位</div>
+                            <div class="col-bind">← 数据源字段</div>
                             <div class="col-desc">说明</div>
                             <div class="col-action">操作</div>
                         </div>
                         <div class="table-body" id="inputsBody">
-                            <!-- 动态生成的输入参数 -->
                         </div>
                     </div>
                 </div>
-                
-                <!-- 第三个card：参数表格 -->
+                <!-- Outputs（含回写目标列） -->
                 <div class="params-block">
                     <div class="params-header">
-                        <span>Outputs</span>
+                        <span>Outputs（输出参数）</span>
                         <button class="add-btn" id="addOutputBtn">+</button>
                     </div>
                     <div class="params-table">
@@ -110,13 +105,68 @@
                             <div class="col-name">参数名</div>
                             <div class="col-type">数据类型</div>
                             <div class="col-unit">物理单位</div>
+                            <div class="col-bind">→ 回写目标</div>
                             <div class="col-desc">说明</div>
                             <div class="col-action">操作</div>
                         </div>
                         <div class="table-body" id="outputsBody">
-                            <!-- 动态生成的输出参数 -->
                         </div>
                     </div>
+                </div>
+
+                <!-- 结果回写路径前缀 -->
+                <div class="binding-config">
+                    <div class="binding-config-header">结果回写路径前缀</div>
+                    <div class="binding-config-row">
+                        <div class="binding-field full-width">
+                            <input type="text" id="outputTable" placeholder="root.result.job01">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 输出格式预览 -->
+                <div class="output-format-section">
+                    <div class="format-preview">
+                        <div class="preview-header">
+                            <span>输出格式预览（根据输出参数回写目标自动生成）</span>
+                            <button class="preview-btn" id="previewBtn">刷新预览</button>
+                        </div>
+                        <div class="preview-content" id="previewContent">
+                            <pre>点击"刷新预览"查看输出格式</pre>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 运行配置 -->
+                <div class="binding-config run-config-section">
+                    <div class="binding-config-header">运行配置</div>
+                    <div class="binding-config-row">
+                        <div class="binding-field">
+                            <label>运行命令</label>
+                            <input type="text" id="ruleCmd" placeholder="python3 model_runner.py --input-file raw_data.csv --output-file result.csv">
+                        </div>
+                    </div>
+                    <div class="binding-config-row">
+                        <div class="binding-field">
+                            <label>输入CSV文件名</label>
+                            <input type="text" id="inputCsvName" placeholder="raw_data.csv">
+                        </div>
+                        <div class="binding-field">
+                            <label>输出CSV文件名</label>
+                            <input type="text" id="outputCsvName" placeholder="result.csv">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 4. 模型绑定 -->
+            <div class="section-card">
+                <div class="section-title">模型绑定</div>
+                <div class="model-binding-section">
+                    <div class="model-bind-list" id="modelBindList">
+                        <!-- 动态添加模型绑定行 -->
+                    </div>
+                    <button type="button" class="add-model-bind-btn" id="addModelBindBtn">+ 添加模型</button>
                 </div>
             </div>
         </div>

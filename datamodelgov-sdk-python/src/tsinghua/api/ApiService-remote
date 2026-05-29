@@ -29,11 +29,14 @@ if len(sys.argv) <= 1 or sys.argv[1] == '--help':
     print('  Result countAssociationRules(AssociationRulesQueryRequest request)')
     print('  Result getAssociationRule(i64 createTime)')
     print('  Result deleteAssociationRule(i64 createTime)')
+    print('  Result validateAssociationRuleName(string name)')
     print('  Result saveParsingRule(ParsingRule rule)')
     print('  Result queryParsingRules(ParsingRulesQueryRequest request)')
     print('  Result countParsingRules(ParsingRulesQueryRequest request)')
     print('  Result getParsingRule(i64 createTime)')
     print('  Result deleteParsingRule(i64 createTime)')
+    print('  Result validateParsingRuleName(string name)')
+    print('  Result autoParseSourceCode(AutoParseRequest request)')
     print('  Result runTask(RunTaskRequest runTaskRequest)')
     print('  Result validateTaskUniqueness(RunTaskRequest request)')
     print('  Result stopTask(i64 timestamp)')
@@ -42,8 +45,9 @@ if len(sys.argv) <= 1 or sys.argv[1] == '--help':
     print('  Result countTasks(RunTaskQueryRequest request)')
     print('  Result getTask(i64 timestamp)')
     print('  Result deleteTask(i64 timestamp)')
-    print('  Result uploadReport(string file)')
+    print('  Result uploadReport(string file, i64 timestamp)')
     print('  Result packageDownload(i64 timestamp)')
+    print('  Result getTimeRange(TimeRangeRequest request)')
     print('  Result registerDataSource(string jsonBody)')
     print('  Result removeDataSource(StorageEngineInfo storageEngineInfo)')
     print('  Result listDataSources()')
@@ -55,13 +59,74 @@ if len(sys.argv) <= 1 or sys.argv[1] == '--help':
     print('  Result queryRelationalData(RelationalQueryRequest request)')
     print('  Result countRelationalData(RelationalQueryRequest request)')
     print('  Result exportRelationalData(RelationalQueryRequest request)')
-    print('  Result uploadModel(string file)')
+    print('  Result uploadModel(string file, string name, string version)')
     print('  Result downloadModel(string name, string version)')
     print('  Result getModelMeta(string name, string version)')
     print('  Result saveModelMeta(ModelMeta modelMeta)')
     print('  Result getModelHistory(string name)')
     print('  Result deleteModel(string name, string version)')
+    print('  Result getModelTree(string projectName)')
+    print('  Result queryModelArchives(ModelArchiveQueryRequest request)')
+    print('  Result countModelArchives(ModelArchiveQueryRequest request)')
     print('  Result extractModelFile(ExtractModelFileRequest request)')
+    print('  Result uploadAlgorithm(string file, string name, string version)')
+    print('  Result downloadAlgorithm(string name, string version)')
+    print('  Result getAlgorithmMeta(string name, string version)')
+    print('  Result saveAlgorithmMeta(AlgorithmMeta algorithmMeta)')
+    print('  Result getAlgorithmHistory(string name)')
+    print('  Result deleteAlgorithm(string name, string version)')
+    print('  Result getAlgorithmTree(string projectName)')
+    print('  Result queryAlgorithmArchives(AlgorithmArchiveQueryRequest request)')
+    print('  Result countAlgorithmArchives(AlgorithmArchiveQueryRequest request)')
+    print('  Result extractAlgorithmFile(ExtractAlgorithmFileRequest request)')
+    print('  Result queryDataArchives(DataArchiveQueryRequest request)')
+    print('  Result getDataArchiveDetail(string name)')
+    print('  Result countDataArchives(DataArchiveQueryRequest request)')
+    print('  Result deleteDataArchive(DataArchiveQueryRequest request)')
+    print('  Result updateDataArchive(DataArchive archive)')
+    print('  Result createProject(Project project)')
+    print('  Result queryProjects(ProjectsQueryRequest request)')
+    print('  Result countProjects(ProjectsQueryRequest request)')
+    print('  Result getProject(i64 createTime)')
+    print('  Result getProjectTree(string name)')
+    print('  Result importProject(string file, string projectName)')
+    print('  Result exportProject(ProjectExportRequest request)')
+    print('  Result saveSimulationArchive(SimulationArchive archive)')
+    print('  Result querySimulationArchives(string name, string projectName, string owner, bool status, i32 pageNum, i32 pageSize)')
+    print('  Result countSimulationArchives(string name, string projectName, string owner, bool status)')
+    print('  Result getSimulationArchive(i64 createTime)')
+    print('  Result deleteSimulationArchive(i64 createTime)')
+    print('  Result validateSimulationArchiveName(string name)')
+    print('  Result copySimulationArchive(i64 createTime, string newName)')
+    print('  Result runSimulation(i64 createTime)')
+    print('  Result runSimulationSelective(RunSimulationSelectiveRequest request)')
+    print('  Result stopSimulation(i64 createTime)')
+    print('  Result getSimulationExecutionStatus(i64 createTime)')
+    print('  Result getSimulationExecutionLog(i64 timestamp)')
+    print('  Result querySimulationExecutionRecords(ExecutionRecordQueryRequest request)')
+    print('  Result countSimulationExecutionRecords(ExecutionRecordQueryRequest request)')
+    print('  Result deleteSimulationExecutionRecord(i64 timestamp)')
+    print('  Result uploadSimulationReport(string file, i64 timestamp)')
+    print('  Result simulationPackageDownload(i64 timestamp)')
+    print('  Result login(LoginRequest loginRequest)')
+    print('  Result refreshToken(RefreshTokenRequest request)')
+    print('  Result verifyToken(string token)')
+    print('  Result logout()')
+    print('  Result getCurrentAuthUser()')
+    print('  Result saveUser(User user)')
+    print('  Result queryUsers(UserQueryRequest request)')
+    print('  Result countUsers(UserQueryRequest request)')
+    print('  Result allUsers()')
+    print('  Result getUser(string username)')
+    print('  Result deleteUser(string username)')
+    print('  Result updateUser(User user)')
+    print('  Result getRoles()')
+    print('  Result changePassword(ChangePasswordRequest request)')
+    print('  Result getCurrentUser()')
+    print('  Result listOwnerTables()')
+    print('  Result queryDataPermissions(DataPermissionQueryRequest request)')
+    print('  Result countDataPermissions(DataPermissionQueryRequest request)')
+    print('  Result updateDataPermission(DataPermissionUpdateRequest request)')
     print('')
     sys.exit(0)
 
@@ -171,6 +236,12 @@ elif cmd == 'deleteAssociationRule':
         sys.exit(1)
     pp.pprint(client.deleteAssociationRule(eval(args[0]),))
 
+elif cmd == 'validateAssociationRuleName':
+    if len(args) != 1:
+        print('validateAssociationRuleName requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.validateAssociationRuleName(args[0],))
+
 elif cmd == 'saveParsingRule':
     if len(args) != 1:
         print('saveParsingRule requires 1 args')
@@ -200,6 +271,18 @@ elif cmd == 'deleteParsingRule':
         print('deleteParsingRule requires 1 args')
         sys.exit(1)
     pp.pprint(client.deleteParsingRule(eval(args[0]),))
+
+elif cmd == 'validateParsingRuleName':
+    if len(args) != 1:
+        print('validateParsingRuleName requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.validateParsingRuleName(args[0],))
+
+elif cmd == 'autoParseSourceCode':
+    if len(args) != 1:
+        print('autoParseSourceCode requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.autoParseSourceCode(eval(args[0]),))
 
 elif cmd == 'runTask':
     if len(args) != 1:
@@ -250,16 +333,22 @@ elif cmd == 'deleteTask':
     pp.pprint(client.deleteTask(eval(args[0]),))
 
 elif cmd == 'uploadReport':
-    if len(args) != 1:
-        print('uploadReport requires 1 args')
+    if len(args) != 2:
+        print('uploadReport requires 2 args')
         sys.exit(1)
-    pp.pprint(client.uploadReport(args[0],))
+    pp.pprint(client.uploadReport(args[0], eval(args[1]),))
 
 elif cmd == 'packageDownload':
     if len(args) != 1:
         print('packageDownload requires 1 args')
         sys.exit(1)
     pp.pprint(client.packageDownload(eval(args[0]),))
+
+elif cmd == 'getTimeRange':
+    if len(args) != 1:
+        print('getTimeRange requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.getTimeRange(eval(args[0]),))
 
 elif cmd == 'registerDataSource':
     if len(args) != 1:
@@ -328,10 +417,10 @@ elif cmd == 'exportRelationalData':
     pp.pprint(client.exportRelationalData(eval(args[0]),))
 
 elif cmd == 'uploadModel':
-    if len(args) != 1:
-        print('uploadModel requires 1 args')
+    if len(args) != 3:
+        print('uploadModel requires 3 args')
         sys.exit(1)
-    pp.pprint(client.uploadModel(args[0],))
+    pp.pprint(client.uploadModel(args[0], args[1], args[2],))
 
 elif cmd == 'downloadModel':
     if len(args) != 2:
@@ -363,11 +452,377 @@ elif cmd == 'deleteModel':
         sys.exit(1)
     pp.pprint(client.deleteModel(args[0], args[1],))
 
+elif cmd == 'getModelTree':
+    if len(args) != 1:
+        print('getModelTree requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.getModelTree(args[0],))
+
+elif cmd == 'queryModelArchives':
+    if len(args) != 1:
+        print('queryModelArchives requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.queryModelArchives(eval(args[0]),))
+
+elif cmd == 'countModelArchives':
+    if len(args) != 1:
+        print('countModelArchives requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.countModelArchives(eval(args[0]),))
+
 elif cmd == 'extractModelFile':
     if len(args) != 1:
         print('extractModelFile requires 1 args')
         sys.exit(1)
     pp.pprint(client.extractModelFile(eval(args[0]),))
+
+elif cmd == 'uploadAlgorithm':
+    if len(args) != 3:
+        print('uploadAlgorithm requires 3 args')
+        sys.exit(1)
+    pp.pprint(client.uploadAlgorithm(args[0], args[1], args[2],))
+
+elif cmd == 'downloadAlgorithm':
+    if len(args) != 2:
+        print('downloadAlgorithm requires 2 args')
+        sys.exit(1)
+    pp.pprint(client.downloadAlgorithm(args[0], args[1],))
+
+elif cmd == 'getAlgorithmMeta':
+    if len(args) != 2:
+        print('getAlgorithmMeta requires 2 args')
+        sys.exit(1)
+    pp.pprint(client.getAlgorithmMeta(args[0], args[1],))
+
+elif cmd == 'saveAlgorithmMeta':
+    if len(args) != 1:
+        print('saveAlgorithmMeta requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.saveAlgorithmMeta(eval(args[0]),))
+
+elif cmd == 'getAlgorithmHistory':
+    if len(args) != 1:
+        print('getAlgorithmHistory requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.getAlgorithmHistory(args[0],))
+
+elif cmd == 'deleteAlgorithm':
+    if len(args) != 2:
+        print('deleteAlgorithm requires 2 args')
+        sys.exit(1)
+    pp.pprint(client.deleteAlgorithm(args[0], args[1],))
+
+elif cmd == 'getAlgorithmTree':
+    if len(args) != 1:
+        print('getAlgorithmTree requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.getAlgorithmTree(args[0],))
+
+elif cmd == 'queryAlgorithmArchives':
+    if len(args) != 1:
+        print('queryAlgorithmArchives requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.queryAlgorithmArchives(eval(args[0]),))
+
+elif cmd == 'countAlgorithmArchives':
+    if len(args) != 1:
+        print('countAlgorithmArchives requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.countAlgorithmArchives(eval(args[0]),))
+
+elif cmd == 'extractAlgorithmFile':
+    if len(args) != 1:
+        print('extractAlgorithmFile requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.extractAlgorithmFile(eval(args[0]),))
+
+elif cmd == 'queryDataArchives':
+    if len(args) != 1:
+        print('queryDataArchives requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.queryDataArchives(eval(args[0]),))
+
+elif cmd == 'getDataArchiveDetail':
+    if len(args) != 1:
+        print('getDataArchiveDetail requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.getDataArchiveDetail(args[0],))
+
+elif cmd == 'countDataArchives':
+    if len(args) != 1:
+        print('countDataArchives requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.countDataArchives(eval(args[0]),))
+
+elif cmd == 'deleteDataArchive':
+    if len(args) != 1:
+        print('deleteDataArchive requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.deleteDataArchive(eval(args[0]),))
+
+elif cmd == 'updateDataArchive':
+    if len(args) != 1:
+        print('updateDataArchive requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.updateDataArchive(eval(args[0]),))
+
+elif cmd == 'createProject':
+    if len(args) != 1:
+        print('createProject requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.createProject(eval(args[0]),))
+
+elif cmd == 'queryProjects':
+    if len(args) != 1:
+        print('queryProjects requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.queryProjects(eval(args[0]),))
+
+elif cmd == 'countProjects':
+    if len(args) != 1:
+        print('countProjects requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.countProjects(eval(args[0]),))
+
+elif cmd == 'getProject':
+    if len(args) != 1:
+        print('getProject requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.getProject(eval(args[0]),))
+
+elif cmd == 'getProjectTree':
+    if len(args) != 1:
+        print('getProjectTree requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.getProjectTree(args[0],))
+
+elif cmd == 'importProject':
+    if len(args) != 2:
+        print('importProject requires 2 args')
+        sys.exit(1)
+    pp.pprint(client.importProject(args[0], args[1],))
+
+elif cmd == 'exportProject':
+    if len(args) != 1:
+        print('exportProject requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.exportProject(eval(args[0]),))
+
+elif cmd == 'saveSimulationArchive':
+    if len(args) != 1:
+        print('saveSimulationArchive requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.saveSimulationArchive(eval(args[0]),))
+
+elif cmd == 'querySimulationArchives':
+    if len(args) != 6:
+        print('querySimulationArchives requires 6 args')
+        sys.exit(1)
+    pp.pprint(client.querySimulationArchives(args[0], args[1], args[2], eval(args[3]), eval(args[4]), eval(args[5]),))
+
+elif cmd == 'countSimulationArchives':
+    if len(args) != 4:
+        print('countSimulationArchives requires 4 args')
+        sys.exit(1)
+    pp.pprint(client.countSimulationArchives(args[0], args[1], args[2], eval(args[3]),))
+
+elif cmd == 'getSimulationArchive':
+    if len(args) != 1:
+        print('getSimulationArchive requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.getSimulationArchive(eval(args[0]),))
+
+elif cmd == 'deleteSimulationArchive':
+    if len(args) != 1:
+        print('deleteSimulationArchive requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.deleteSimulationArchive(eval(args[0]),))
+
+elif cmd == 'validateSimulationArchiveName':
+    if len(args) != 1:
+        print('validateSimulationArchiveName requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.validateSimulationArchiveName(args[0],))
+
+elif cmd == 'copySimulationArchive':
+    if len(args) != 2:
+        print('copySimulationArchive requires 2 args')
+        sys.exit(1)
+    pp.pprint(client.copySimulationArchive(eval(args[0]), args[1],))
+
+elif cmd == 'runSimulation':
+    if len(args) != 1:
+        print('runSimulation requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.runSimulation(eval(args[0]),))
+
+elif cmd == 'runSimulationSelective':
+    if len(args) != 1:
+        print('runSimulationSelective requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.runSimulationSelective(eval(args[0]),))
+
+elif cmd == 'stopSimulation':
+    if len(args) != 1:
+        print('stopSimulation requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.stopSimulation(eval(args[0]),))
+
+elif cmd == 'getSimulationExecutionStatus':
+    if len(args) != 1:
+        print('getSimulationExecutionStatus requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.getSimulationExecutionStatus(eval(args[0]),))
+
+elif cmd == 'getSimulationExecutionLog':
+    if len(args) != 1:
+        print('getSimulationExecutionLog requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.getSimulationExecutionLog(eval(args[0]),))
+
+elif cmd == 'querySimulationExecutionRecords':
+    if len(args) != 1:
+        print('querySimulationExecutionRecords requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.querySimulationExecutionRecords(eval(args[0]),))
+
+elif cmd == 'countSimulationExecutionRecords':
+    if len(args) != 1:
+        print('countSimulationExecutionRecords requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.countSimulationExecutionRecords(eval(args[0]),))
+
+elif cmd == 'deleteSimulationExecutionRecord':
+    if len(args) != 1:
+        print('deleteSimulationExecutionRecord requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.deleteSimulationExecutionRecord(eval(args[0]),))
+
+elif cmd == 'uploadSimulationReport':
+    if len(args) != 2:
+        print('uploadSimulationReport requires 2 args')
+        sys.exit(1)
+    pp.pprint(client.uploadSimulationReport(args[0], eval(args[1]),))
+
+elif cmd == 'simulationPackageDownload':
+    if len(args) != 1:
+        print('simulationPackageDownload requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.simulationPackageDownload(eval(args[0]),))
+
+elif cmd == 'login':
+    if len(args) != 1:
+        print('login requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.login(eval(args[0]),))
+
+elif cmd == 'refreshToken':
+    if len(args) != 1:
+        print('refreshToken requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.refreshToken(eval(args[0]),))
+
+elif cmd == 'verifyToken':
+    if len(args) != 1:
+        print('verifyToken requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.verifyToken(args[0],))
+
+elif cmd == 'logout':
+    if len(args) != 0:
+        print('logout requires 0 args')
+        sys.exit(1)
+    pp.pprint(client.logout())
+
+elif cmd == 'getCurrentAuthUser':
+    if len(args) != 0:
+        print('getCurrentAuthUser requires 0 args')
+        sys.exit(1)
+    pp.pprint(client.getCurrentAuthUser())
+
+elif cmd == 'saveUser':
+    if len(args) != 1:
+        print('saveUser requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.saveUser(eval(args[0]),))
+
+elif cmd == 'queryUsers':
+    if len(args) != 1:
+        print('queryUsers requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.queryUsers(eval(args[0]),))
+
+elif cmd == 'countUsers':
+    if len(args) != 1:
+        print('countUsers requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.countUsers(eval(args[0]),))
+
+elif cmd == 'allUsers':
+    if len(args) != 0:
+        print('allUsers requires 0 args')
+        sys.exit(1)
+    pp.pprint(client.allUsers())
+
+elif cmd == 'getUser':
+    if len(args) != 1:
+        print('getUser requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.getUser(args[0],))
+
+elif cmd == 'deleteUser':
+    if len(args) != 1:
+        print('deleteUser requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.deleteUser(args[0],))
+
+elif cmd == 'updateUser':
+    if len(args) != 1:
+        print('updateUser requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.updateUser(eval(args[0]),))
+
+elif cmd == 'getRoles':
+    if len(args) != 0:
+        print('getRoles requires 0 args')
+        sys.exit(1)
+    pp.pprint(client.getRoles())
+
+elif cmd == 'changePassword':
+    if len(args) != 1:
+        print('changePassword requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.changePassword(eval(args[0]),))
+
+elif cmd == 'getCurrentUser':
+    if len(args) != 0:
+        print('getCurrentUser requires 0 args')
+        sys.exit(1)
+    pp.pprint(client.getCurrentUser())
+
+elif cmd == 'listOwnerTables':
+    if len(args) != 0:
+        print('listOwnerTables requires 0 args')
+        sys.exit(1)
+    pp.pprint(client.listOwnerTables())
+
+elif cmd == 'queryDataPermissions':
+    if len(args) != 1:
+        print('queryDataPermissions requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.queryDataPermissions(eval(args[0]),))
+
+elif cmd == 'countDataPermissions':
+    if len(args) != 1:
+        print('countDataPermissions requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.countDataPermissions(eval(args[0]),))
+
+elif cmd == 'updateDataPermission':
+    if len(args) != 1:
+        print('updateDataPermission requires 1 args')
+        sys.exit(1)
+    pp.pprint(client.updateDataPermission(eval(args[0]),))
 
 else:
     print('Unrecognized method %s' % cmd)

@@ -5,6 +5,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.ComponentScan;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
  * 数据治理平台启动类
@@ -12,6 +13,7 @@ import org.springframework.context.annotation.ComponentScan;
 @SpringBootApplication
 @ComponentScan(basePackages = {"com.tsinghua", "com.tsinghua.auth"})
 @EnableConfigurationProperties(JwtProperties.class)
+@EnableScheduling
 public class DataModelGovApplication {
 
     public static void main(String[] args) {

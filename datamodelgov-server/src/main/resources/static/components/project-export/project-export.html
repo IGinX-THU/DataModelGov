@@ -1,0 +1,39 @@
+<div class="project-export">
+    <div class="export-card">
+        <div class="export-header">导出向导</div>
+        <div class="export-body">
+            <div class="export-field">
+                <span class="export-label">项目名称</span>
+                <select class="export-select" id="projectSelect">
+                    <option value="">请选择项目</option>
+                </select>
+            </div>
+
+            <div class="export-section">
+                <div class="export-section-title">选择导出资源类型</div>
+                <div class="export-checkbox-group">
+                    <label class="export-checkbox-label">
+                        <input type="checkbox" id="includeAlgorithms" checked />
+                        <span>算法文件</span>
+                    </label>
+                    <label class="export-checkbox-label">
+                        <input type="checkbox" id="includeModels" checked />
+                        <span>模型文件</span>
+                    </label>
+                    <label class="export-checkbox-label">
+                        <input type="checkbox" id="includeDataCsv" checked />
+                        <span>数据CSV文件</span>
+                    </label>
+<!--                    <label class="export-checkbox-label">-->
+<!--                        <input type="checkbox" id="includeSimulationArchives" checked />-->
+<!--                        <span>仿真档案及记录</span>-->
+<!--                    </label>-->
+                </div>
+            </div>
+        </div>
+        <div class="export-actions">
+            <button class="export-btn outline" type="button" id="cancelBtn">取消</button>
+            <button class="export-btn solid" type="button" id="exportBtn">导出</button>
+        </div>
+    </div>
+</div>

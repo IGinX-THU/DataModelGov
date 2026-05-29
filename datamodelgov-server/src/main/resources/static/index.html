@@ -160,6 +160,8 @@
                 <ul class="dropdown-menu">
                     <li id="menu-project-new">新建项目</li>
                     <li id="menu-project-list">打开项目</li>
+<!--                    <li id="menu-project-export">导出项目</li>-->
+<!--                    <li id="menu-project-import">导入项目</li>-->
                 </ul>
             </span>
         <span class="tab dropdown" id="dataDropdown">
@@ -180,7 +182,8 @@
                     <li id="menu-download-model-file">下载模型文件</li>
                     <li id="menu-remove-model-asset">移除模型资产</li>
                     <li id="menu-edit-meta-model-archive">编辑元模型档案</li>
-                    <li id="menu-configure-parsing-rules">配置解析规则</li>
+                    <li id="menu-model-archive-query">搜索模型档案</li>
+<!--                    <li id="menu-configure-parsing-rules">配置解析规则</li>-->
                 </ul>
             </span>
         <span class="tab dropdown" id="algorithmDropdown">
@@ -189,24 +192,24 @@
                     <li id="menu-upload-algorithm-file">上传算法文件</li>
                     <li id="menu-download-algorithm-file">下载算法文件</li>
                     <li id="menu-remove-algorithm-asset">移除算法资产</li>
-                    <li id="menu-edit-meta-algorithm-archive">编辑元算法档案</li>
-                    <li id="menu-configure-parsing-rules">配置解析规则</li>
+                    <li id="menu-edit-meta-algorithm-archive">编辑算法档案</li>
+                    <li id="menu-algorithm-archive-query">搜索算法档案</li>
                 </ul>
             </span>
-        <span class="tab dropdown" id="scheduleDropdown">
+        <span class="tab dropdown" id="scheduleDropdown" style="display: none;">
                 <span class="dropdown-trigger">关联</span>
                 <ul class="dropdown-menu">
                     <li id="menu-association-rule-configuration">关联规则配置</li>
                 </ul>
             </span>
-        <span class="tab dropdown" id="simulationDropdown" style="display: none;">
+        <span class="tab dropdown" id="simulationDropdown" >
                 <span class="dropdown-trigger">仿真</span>
                 <ul class="dropdown-menu">
-                    <li id="menu-simulation-archive">仿真档案管理</li>
-                    <li id="menu-algorithm-list">算法管理</li>
+                    <li id="menu-simulation-archive">联合仿真</li>
+                    <li id="menu-simulation-record">仿真记录</li>
                 </ul>
             </span>
-        <span class="tab dropdown" id="analysisDropdown">
+        <span class="tab dropdown" id="analysisDropdown" style="display: none;">
                 <span class="dropdown-trigger">分析</span>
                 <ul class="dropdown-menu">
                     <li id="menu-numerical-and-curve-analysis">数值与曲线分析</li>
@@ -224,7 +227,16 @@
         <span class="tab dropdown" id="toolDropdown">
                 <span class="dropdown-trigger">工具</span>
                 <ul class="dropdown-menu">
-                    <li id="menu-clear-workspace">清空工作区</li>
+                    <li id="menu-configure-parsing-rules">配置解析规则</li>
+                    <li class="has-submenu" id="menu-import-wizard">
+                        导入向导 ▸
+                        <ul class="submenu">
+                            <li id="menu-import-wizard-data">数据文件</li>
+                            <li id="menu-import-wizard-model">模型文件</li>
+                            <li id="menu-import-wizard-algorithm">算法文件</li>
+                        </ul>
+                    </li>
+                    <li id="menu-project-export">导出向导</li>
                     <li class="has-submenu" id="menu-window">
                         窗口 ▸
                         <ul class="submenu">
@@ -232,6 +244,7 @@
                             <li id="menu-toggle-right-sidebar">右侧边栏</li>
                         </ul>
                     </li>
+                    <li id="menu-clear-workspace">清空工作区</li>
                 </ul>
             </span>
         <span class="tab dropdown" id="settingsDropdown">
@@ -342,8 +355,8 @@
                     <span class="ribbon-btn-text">编辑</span>
                 </button>
                 <button class="ribbon-btn" id="btn-parse">
-                    <svg class="ribbon-btn-icon"><use href="#icon-parse"></use></svg>
-                    <span class="ribbon-btn-text">解析</span>
+                    <svg class="ribbon-btn-icon"><use href="#icon-search"></use></svg>
+                    <span class="ribbon-btn-text">搜索</span>
                 </button>
             </div>
         </div>
@@ -370,22 +383,26 @@
                     <svg class="ribbon-btn-icon"><use href="#icon-edit"></use></svg>
                     <span class="ribbon-btn-text">编辑</span>
                 </button>
-                <button class="ribbon-btn" id="btn-algorithm-parse">
-                    <svg class="ribbon-btn-icon"><use href="#icon-parse"></use></svg>
-                    <span class="ribbon-btn-text">解析</span>
+                <button class="ribbon-btn" id="btn-algorithm-search">
+                    <svg class="ribbon-btn-icon"><use href="#icon-search"></use></svg>
+                    <span class="ribbon-btn-text">搜索</span>
                 </button>
             </div>
         </div>
 
         <div class="ribbon-separator"></div>
 
-        <!-- 关联调度引擎组 -->
+        <!-- 联合仿真组 -->
         <div class="ribbon-group">
-            <div class="ribbon-group-title">关联调度引擎</div>
+            <div class="ribbon-group-title">联合仿真</div>
             <div class="ribbon-buttons">
-                <button class="ribbon-btn" id="btn-link">
-                    <svg class="ribbon-btn-icon"><use href="#icon-link"></use></svg>
-                    <span class="ribbon-btn-text">关联</span>
+                <button class="ribbon-btn" id="btn-simulation">
+                    <svg class="ribbon-btn-icon"><use href="#icon-run"></use></svg>
+                    <span class="ribbon-btn-text">仿真</span>
+                </button>
+                <button class="ribbon-btn" id="btn-simulation-analyze">
+                    <svg class="ribbon-btn-icon"><use href="#icon-analyze"></use></svg>
+                    <span class="ribbon-btn-text">分析</span>
                 </button>
             </div>
         </div>
@@ -393,7 +410,7 @@
         <div class="ribbon-separator"></div>
         
         <!-- 可视化分析组 -->
-        <div class="ribbon-group">
+        <div class="ribbon-group" style="display: none;">
             <div class="ribbon-group-title">可视化分析</div>
             <div class="ribbon-buttons">
                 <button class="ribbon-btn" id="btn-analyze">
@@ -472,8 +489,10 @@
             <parsing-rules id="parsingRules"></parsing-rules>
             <!-- 关联规则配置组件 -->
             <association-rules id="associationRules"></association-rules>
-            <!-- 仿真档案管理组件 -->
-            <simulation-archive id="simulationArchive"></simulation-archive>
+            <!-- 仿真档案列表组件 -->
+            <simulation-archive-list id="simulationArchiveList" style="display: none;"></simulation-archive-list>
+            <!-- 仿真档案详情组件 -->
+            <simulation-archive-detail id="simulationArchiveDetail" style="display: none;"></simulation-archive-detail>
             <!-- 算法列表组件 -->
             <algorithm-list id="algorithmList"></algorithm-list>
             <!-- 用户管理组件 -->
@@ -486,10 +505,18 @@
             <project-detail id="projectDetail"></project-detail>
             <!-- 项目创建组件 -->
             <project-create id="projectCreate"></project-create>
+            <!-- 项目导出组件 -->
+            <project-export id="projectExport" style="display: none;"></project-export>
+            <!-- 项目导入组件 -->
+            <project-import id="projectImport" style="display: none;"></project-import>
             <!-- 数据档案列表组件 -->
             <data-archive-list id="dataArchiveList" style="display: none;"></data-archive-list>
             <!-- 数据档案详情组件 -->
             <data-archive-detail id="dataArchiveDetail" style="display: none;"></data-archive-detail>
+            <!-- 模型档案列表组件 -->
+            <model-archive-list id="modelArchiveList" style="display: none;"></model-archive-list>
+            <!-- 算法档案列表组件 -->
+            <algorithm-archive-list id="algorithmArchiveList" style="display: none;"></algorithm-archive-list>
         </div>
     </div>
 
@@ -543,13 +570,19 @@
 <script src="./components/parsing-rules/parsing-rules.js"></script>
 <script src="./components/association-rules/association-rules.js"></script>
 <script src="./components/simulation-archive/simulation-archive.js"></script>
+<script src="./components/simulation-archive-detail/simulation-archive-detail.js"></script>
+<script src="./components/simulation-record/simulation-record.js"></script>
 <script src="./components/algorithm-list/algorithm-list.js"></script>
 <script src="./components/visual-analysis/visual-analysis.js"></script>
 <script src="./components/project-list/project-list.js"></script>
 <script src="./components/project-detail/project-detail.js"></script>
 <script src="./components/project-create/project-create.js"></script>
+<script src="./components/project-export/project-export.js"></script>
+<script src="./components/project-import/project-import.js"></script>
 <script src="./components/data-archive-list/data-archive-list.js"></script>
 <script src="./components/data-archive-detail/data-archive-detail.js"></script>
+<script src="./components/model-archive-list/model-archive-list.js"></script>
+<script src="./components/algorithm-archive-list/algorithm-archive-list.js"></script>
     <script src="./components/user-management/user-management.js"></script>
     <script src="./components/permission-management/permission-management.js"></script>
     <script src="./components/change-password/change-password.js"></script>

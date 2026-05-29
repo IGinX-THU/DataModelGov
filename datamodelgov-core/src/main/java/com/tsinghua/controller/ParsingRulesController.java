@@ -1,6 +1,7 @@
 package com.tsinghua.controller;
 
 import com.tsinghua.dto.ParsingRulesQueryRequest;
+import com.tsinghua.dto.AutoParseRequest;
 import com.tsinghua.entity.ParsingRulesEntity;
 import com.tsinghua.model.Result;
 import com.tsinghua.service.ParsingRulesService;
@@ -13,7 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Objects;
+import java.util.Map;
 
 @Api(tags = "解析规则配置")
 @RestController
@@ -85,6 +86,29 @@ public class ParsingRulesController {
         } catch (Exception e) {
             return Result.paramError(e.getMessage());
         }
+    }
+
+    // ========== 通用解析接口 ==========
+
+    @ApiOperation("自动解析源码提取API信息")
+    @PostMapping("/autoParse")
+    @RequirePermission(Permission.PARSING_RULES_READ)
+    public Result<?> autoParseSourceCode(@RequestBody AutoParseRequest request) {
+        String fileContent = request.getFileContent();
+        String fileName = request.getFileName();
+
+        if (fileContent == null || fileContent.trim().isEmpty() || fileName == null) {
+            return Result.error("参数fileContent和fileName不能为空");
+        }
+
+        String parseType = request.getParseType() != null ? request.getParseType() : "regex";
+        String regexPattern = request.getRegexPattern();
+        int maxLines = request.getMaxLines() != null ? request.getMaxLines() : 50;
+
+        Map<String, Object> parseResult = parsingRulesService.headerScanner(
+            fileContent, fileName, regexPattern, parseType, maxLines);
+
+        return Result.success(parseResult);
     }
 
 }

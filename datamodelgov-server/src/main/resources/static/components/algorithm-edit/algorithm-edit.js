@@ -5,6 +5,14 @@ class AlgorithmEdit extends HTMLElement {
         this.currentAlgorithm = null;
         this.inputs = [];
         this.outputs = [];
+        this._dataSourceFields = [];
+        this._modelBindings = [];
+        this.parsingRulesData = [];
+        this.extractedFileList = [];
+        this.cachedDataSourceData = null;
+        this.dataSourceEventBound = false;
+        this._isInitializingEdit = false;
+        this.dataSourceFieldTypes = new Map();
     }
 
     async connectedCallback() {
@@ -93,6 +101,21 @@ class AlgorithmEdit extends HTMLElement {
             addOutputBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 this.addOutputParam();
+            });
+        }
+
+        // 添加模型绑定按钮
+        const addModelBindBtn = this.shadowRoot.getElementById('addModelBindBtn');
+        if (addModelBindBtn) {
+            addModelBindBtn.addEventListener('click', () => this.addModelBindRow());
+        }
+
+        // 预览按钮
+        const previewBtn = this.shadowRoot.getElementById('previewBtn');
+        if (previewBtn) {
+            previewBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.refreshPreview();
             });
         }
 
@@ -189,8 +212,23 @@ class AlgorithmEdit extends HTMLElement {
         if (versionInput) versionInput.value = algorithmDetailData.version || '';
         if (sceneInput) sceneInput.value = algorithmDetailData.scene || '';
 
+        // 加载档案描述字段
+        const descriptionInput = this.shadowRoot.getElementById('description');
+
+        if (descriptionInput) descriptionInput.value = algorithmDetailData.description || '';
+
         // 使用接口返回的inputs和outputs数据
         this.loadInterfaceParamsFromData(algorithmDetailData.inputs, algorithmDetailData.outputs);
+
+        // 加载关联绑定数据
+        this.loadBindingData(algorithmInfo);
+
+        // 自动填充运行命令和CSV文件名（根据当前算法元数据）
+        this.autoFillCommandAndCsvFields();
+
+        // 加载结果回写路径前缀
+        const outputTableInput = this.shadowRoot.getElementById('outputTable');
+        if (outputTableInput) outputTableInput.value = algorithmDetailData.outputTable || '';
     }
 
     hide() {
@@ -240,6 +278,11 @@ class AlgorithmEdit extends HTMLElement {
         if (versionInput) versionInput.value = algorithmInfo.version || '';
         if (sceneInput) sceneInput.value = algorithmInfo.scene || '';
 
+        // 加载档案描述字段
+        const descriptionInput = this.shadowRoot.getElementById('description');
+
+        if (descriptionInput) descriptionInput.value = this.currentAlgorithmMeta?.description || '';
+
         // 加载接口参数（使用从API获取的数据）
         if (this.currentAlgorithmMeta && this.currentAlgorithmMeta.inputs) {
             this.loadInterfaceParamsFromData(this.currentAlgorithmMeta.inputs, this.currentAlgorithmMeta.outputs);
@@ -247,6 +290,16 @@ class AlgorithmEdit extends HTMLElement {
             // 如果没有数据，使用默认参数
             this.loadInterfaceParams();
         }
+
+        // 加载关联绑定数据
+        this.loadBindingData(algorithmInfo);
+
+        // 自动填充运行命令和CSV文件名
+        this.autoFillCommandAndCsvFields();
+
+        // 加载结果回写路径前缀
+        const outputTableInput = this.shadowRoot.getElementById('outputTable');
+        if (outputTableInput) outputTableInput.value = this.currentAlgorithmMeta?.outputTable || '';
     }
 
     loadInterfaceParamsFromData(inputsData, outputsData) {
@@ -347,6 +400,11 @@ class AlgorithmEdit extends HTMLElement {
                                 ).join('')}
                             </select>
                         </div>
+                        <div class="col-bind">
+                            <select class="data-field-select" data-index="${index}" data-bind-field="${input.bindField || ''}">
+                                <option value="">请选择字段</option>
+                            </select>
+                        </div>
                         <div class="col-desc">
                             <input type="text" value="${input.desc || ''}" data-field="desc" data-type="input" placeholder="说明">
                         </div>
@@ -383,6 +441,9 @@ class AlgorithmEdit extends HTMLElement {
                                 ).join('')}
                             </select>
                         </div>
+                        <div class="col-bind">
+                            <input type="text" class="result-target-input" value="${output.bindTarget || output.name || ''}" data-index="${index}" placeholder="回写目标字段">
+                        </div>
                         <div class="col-desc">
                             <input type="text" value="${output.desc || ''}" data-field="desc" data-type="output" placeholder="说明">
                         </div>
@@ -396,6 +457,9 @@ class AlgorithmEdit extends HTMLElement {
 
         // 绑定删除按钮事件
         this.bindDeleteEvents();
+
+        // 刷新数据源字段下拉选项
+        this.updateBindFieldOptions();
     }
 
     bindDeleteEvents() {
@@ -474,6 +538,8 @@ class AlgorithmEdit extends HTMLElement {
                 if (typeSelect) this.inputs[index].type = typeSelect.value;
                 if (unitSelect) this.inputs[index].unit = unitSelect.value;
                 if (descInput) this.inputs[index].desc = descInput.value;
+                const bindSelect = row.querySelector('.data-field-select');
+                if (bindSelect) this.inputs[index].bindField = bindSelect.value;
                 
                 console.log(`保存输入参数[${index}]:`, this.inputs[index]);
             }
@@ -498,6 +564,8 @@ class AlgorithmEdit extends HTMLElement {
                 if (typeSelect) this.outputs[index].type = typeSelect.value;
                 if (unitSelect) this.outputs[index].unit = unitSelect.value;
                 if (descInput) this.outputs[index].desc = descInput.value;
+                const bindInput = row.querySelector('.result-target-input');
+                if (bindInput) this.outputs[index].bindTarget = bindInput.value;
                 
                 console.log(`保存输出参数[${index}]:`, this.outputs[index]);
             }
@@ -505,248 +573,136 @@ class AlgorithmEdit extends HTMLElement {
     }
 
     async autoParseFromCode() {
-        // 获取当前选择的配置
         const parseRulesSelect = this.shadowRoot.getElementById('parseRulesSelect');
         const sourceFileSelect = this.shadowRoot.getElementById('sourceFileSelect');
         const forceOverrideCheck = this.shadowRoot.getElementById('forceOverrideCheck');
-        
-        const selectedRule = parseRulesSelect?.value || '';
+
+        const selectedRuleId = parseRulesSelect?.value || '';
         const selectedFile = sourceFileSelect?.value || '';
         const forceOverride = forceOverrideCheck?.checked || false;
-        
-        if (!selectedRule) {
+
+        if (!selectedRuleId) {
             this.showErrorMessage('请先选择解析规则');
             return;
         }
-        
+
+        if (!selectedFile) {
+            this.showErrorMessage('请从下拉列表中选择源文件');
+            return;
+        }
+
         try {
             // 获取解析规则配置
-            const parsingRule = this.getParsingRuleConfig(selectedRule);
-            
-            if (!parsingRule || !parsingRule.pattern) {
-                this.showErrorMessage('解析规则配置无效');
-                return;
-            }
-            
-            console.log('开始解析代码文件，使用解析规则:', parsingRule);
-            
+            const ruleData = this.parsingRulesData.find(r => String(r.createTime) === String(selectedRuleId));
+            const parseType = ruleData?.parseType || 'regex';
+            const regexPattern = ruleData?.regexPattern || '';
+            const pythonModule = ruleData?.pythonModule || '';
+            const pythonFunction = ruleData?.pythonFunction || '';
+
             // 获取算法名称和版本
             const algorithmName = this.currentAlgorithm?.name || this.currentAlgorithmMeta?.name;
             const version = this.currentAlgorithm?.version || this.currentAlgorithmMeta?.version;
-            
-            console.log('使用的参数 - algorithmName:', algorithmName, 'version:', version);
-            
+
             if (!algorithmName || !version) {
                 this.showErrorMessage('算法名称或版本为空，无法解析代码');
                 return;
             }
-            
-            // 调用AlgorithmFileService的extractAlgorithmFile方法
-            const extractResponse = await window.AppConfig.post('algorithm', 'extractAlgorithmFile', {
-                name: algorithmName,
-                version: version
+
+            // 从fileList中查找目标文件内容
+            const targetFile = (this.extractedFileList || []).find(f => {
+                const path = f.path || '';
+                const name = f.name || '';
+                return selectedFile === path || selectedFile === name || path.endsWith(selectedFile);
             });
-            
-            if (!extractResponse.success) {
-                this.showErrorMessage('提取算法文件失败: ' + extractResponse.message);
+
+            if (!targetFile || !targetFile.content) {
+                this.showErrorMessage('未找到文件内容: ' + selectedFile);
                 return;
             }
-            
-            console.log('算法文件提取成功:', extractResponse.data);
-            
-            // 动态填充源文件下拉选择框（每次点击都重新加载）
-            this.populateSourceFileSelect(extractResponse.data);
-            
-            // 如果没有选择文件，提示用户选择
-            if (!selectedFile) {
-                this.showErrorMessage('请从下拉列表中选择源文件');
+
+            // 调用后端autoParse端点
+            if (window.showGlobalLoading) window.showGlobalLoading('正在解析代码...');
+
+            const parseResponse = await window.AppConfig.post('parsingRules', 'autoParse', {
+                fileContent: targetFile.content,
+                fileName: targetFile.name,
+                parseType: parseType,
+                regexPattern: regexPattern,
+                pythonModule: pythonModule,
+                pythonFunction: pythonFunction,
+                maxLines: 50
+            });
+
+            if (window.hideGlobalLoading) window.hideGlobalLoading();
+
+            console.log('解析响应:', parseResponse);
+
+            if (!parseResponse.success || !parseResponse.data) {
+                this.showErrorMessage('代码解析失败: ' + (parseResponse.message || '未知错误'));
                 return;
             }
-            
-            // 执行代码分析
-            const codeAnalysis = this.performRealCodeAnalysis(selectedFile, parsingRule, extractResponse.data);
-            
-            if (!codeAnalysis || (!codeAnalysis.inputs || codeAnalysis.inputs.length === 0) && (!codeAnalysis.outputs || codeAnalysis.outputs.length === 0)) {
+
+            const parseResult = parseResponse.data;
+            console.log('解析结果数据:', parseResult);
+
+            const parsedApis = parseResult.apis || [];
+
+            if (parsedApis.length === 0) {
                 this.showErrorMessage('未解析到数据，请确认代码注释是否符合规范');
                 return;
             }
-            
+
+            // 从第一个 API 获取 inputs/outputs（与模型编辑保持一致）
+            const firstApi = parsedApis[0];
+            const parsedInputs = (firstApi.inputs || []).map(p => ({
+                name: p.name || '',
+                type: this.normalizeDataType(p.type || ''),
+                unit: p.unit || '',
+                desc: p.desc || ''
+            }));
+            const parsedOutputs = (firstApi.outputs || []).map(p => ({
+                name: p.name || '',
+                type: this.normalizeDataType(p.type || ''),
+                unit: p.unit || '',
+                desc: p.desc || ''
+            }));
+
+            console.log('解析到的输入参数:', parsedInputs);
+            console.log('解析到的输出参数:', parsedOutputs);
+
             // 处理强制覆盖逻辑
             if (forceOverride) {
                 // 强制覆盖：完全替换现有参数
-                this.inputs = codeAnalysis.inputs || [];
-                this.outputs = codeAnalysis.outputs || [];
+                this.inputs = parsedInputs;
+                this.outputs = parsedOutputs;
                 this.showSuccessMessage(`已强制覆盖解析结果（${this.inputs.length}个输入，${this.outputs.length}个输出）`);
             } else {
                 // 非强制覆盖：只填充未输入的内容
-                this.mergeParameters(codeAnalysis);
+                this.mergeParameters({ inputs: parsedInputs, outputs: parsedOutputs });
                 this.showSuccessMessage(`已智能合并解析结果（保留已有内容，填充空白项）`);
             }
-            
+
             this.renderParams();
-            
+
+            // 自动刷新CSV预览
+            this.refreshPreview();
+
         } catch (error) {
             console.error('代码解析失败:', error);
             this.showErrorMessage('代码解析失败: ' + error.message);
         }
     }
-    
-    getParsingRuleConfig(ruleType) {
-        // 从下拉选择框获取选中的解析规则配置
-        const parseRulesSelect = this.shadowRoot.getElementById('parseRulesSelect');
-        if (parseRulesSelect) {
-            const selectedOption = parseRulesSelect.querySelector(`option[value="${ruleType}"]`);
-            if (selectedOption) {
-                const regexPattern = selectedOption.dataset.regexPattern;
-                if (regexPattern) {
-                    return {
-                        type: 'regex',
-                        pattern: regexPattern,
-                        pythonModule: '',
-                        pythonFunction: ''
-                    };
-                }
-            }
-        }
-        
-        // 默认返回空配置
-        return {
-            type: 'regex',
-            pattern: '',
-            pythonModule: '',
-            pythonFunction: ''
-        };
-    }
-    
-    performRealCodeAnalysis(sourceFile, parsingRule, extractedFiles) {
-        console.log('开始真实代码分析:', sourceFile, parsingRule, extractedFiles);
-        
-        const results = {
-            inputs: [],
-            outputs: []
-        };
-        
-        try {
-            // 查找选择的源文件
-            const fileInfo = extractedFiles.find(file => file.name === sourceFile || file.path?.includes(sourceFile));
-            
-            console.log('查找的源文件:', sourceFile);
-            console.log('提取的文件列表:', extractedFiles);
-            console.log('找到的文件信息:', fileInfo);
-            
-            if (!fileInfo) {
-                console.warn('未找到源文件:', sourceFile);
-                return results;
-            }
-            
-            // 获取文件内容（这里假设文件内容已提取，实际可能需要读取临时文件）
-            let fileContent = '';
-            
-            console.log('fileInfo.content存在?', !!fileInfo.content);
-            console.log('fileInfo.path存在?', !!fileInfo.path);
-            
-            // 如果是文本文件内容直接使用
-            if (fileInfo.content) {
-                fileContent = fileInfo.content;
-                console.log('使用文件内容，长度:', fileContent.length);
-            } else if (fileInfo.path) {
-                // 否则尝试从临时路径读取（这里简化处理）
-                console.log('文件路径:', fileInfo.path);
-                fileContent = this.getMockFileContent(sourceFile); // 临时使用mock内容
-                console.log('使用mock内容，长度:', fileContent.length);
-            } else {
-                console.warn('文件信息中没有content和path字段');
-                fileContent = this.getMockFileContent(sourceFile); // 临时使用mock内容
-                console.log('强制使用mock内容，长度:', fileContent.length);
-            }
-            
-            if (!fileContent) {
-                console.warn('无法获取文件内容');
-                return results;
-            }
-            
-            console.log('完整文件内容:');
-            console.log(fileContent);
-            
-            // 按行分割文件内容，只读取前50行
-            const lines = fileContent.split('\n').slice(0, 50);
-            console.log('读取文件前50行，总行数:', lines.length);
-            
-            // 输出前10行内容用于调试
-            console.log('文件前10行内容:');
-            lines.slice(0, 10).forEach((line, index) => {
-                console.log(`第${index + 1}行: "${line}"`);
-            });
-            
-            // 创建正则表达式对象
-            const regex = new RegExp(parsingRule.pattern, 'gm');
-            console.log('使用的正则表达式:', parsingRule.pattern);
-            
-            // 遍历每一行，用正则表达式匹配
-            lines.forEach((line, index) => {
-                const matches = [...line.matchAll(regex)];
-                
-                if (matches.length > 0) {
-                    console.log(`第${index + 1}行匹配到 ${matches.length} 个结果:`, matches);
-                }
-                
-                matches.forEach(match => {
-                    console.log('匹配详情:', match);
-                    
-                    // 由于JavaScript的matchAll不直接支持命名捕获组，我们手动提取
-                    if (match.length >= 5) {
-                        const paramType = match[1];      // Input/Output
-                        const paramName = match[2];     // speed/gear/power
-                        const dataType = match[3];      // float/int
-                        const description = match[4];   // 车速/档位/功率
-                        
-                        console.log('提取的组:', { paramType, paramName, dataType, description });
-                        
-                        if (paramName && dataType) {
-                            const param = {
-                                name: paramName.trim(),
-                                type: this.normalizeDataType(dataType.trim()),
-                                unit: this.extractUnit(dataType.trim()),
-                                desc: (description || '').trim(),
-                                line: index + 1
-                            };
-                            
-                            console.log('解析到参数:', param);
-                            
-                            // 根据类型分类
-                            if (paramType.toLowerCase().includes('input') || paramType.toLowerCase().includes('param')) {
-                                results.inputs.push(param);
-                            } else if (paramType.toLowerCase().includes('output') || paramType.toLowerCase().includes('return')) {
-                                results.outputs.push(param);
-                            }
-                        } else {
-                            console.warn('参数名或数据类型为空:', { paramName, dataType });
-                        }
-                    } else {
-                        console.warn('匹配结果长度不足:', match);
-                    }
-                });
-            });
-            
-            console.log('解析结果:', results);
-            
-        } catch (error) {
-            console.error('真实代码分析失败:', error);
-        }
-        
-        return results;
-    }
-    
+
     normalizeDataType(dataType) {
         console.log('normalizeDataType 输入:', dataType);
-        
+
         // UI中的数据类型选项（与association-rules保持一致）
         const uiDataTypes = ['Boolean', 'Integer', 'Long', 'Float', 'Double', 'String'];
-        
+
         // 标准化数据类型映射
         const typeMap = {
             'float': 'Float',
-            'double': 'Double', 
+            'double': 'Double',
             'int': 'Integer',
             'integer': 'Integer',
             'long': 'Long',
@@ -757,99 +713,146 @@ class AlgorithmEdit extends HTMLElement {
             'vector': 'String',  // 向量暂用String表示
             'array': 'String'   // 数组暂用String表示
         };
-        
+
         const cleanType = dataType.toLowerCase().replace(/[\[\]()]/g, '');
-        
+
         // 首先尝试精确匹配
         let result = typeMap[cleanType];
-        
+
         if (!result) {
             // 如果精确匹配失败，尝试不区分大小写的模糊匹配
-            result = uiDataTypes.find(uiType => 
+            result = uiDataTypes.find(uiType =>
                 uiType.toLowerCase() === cleanType
             );
         }
-        
+
         // 如果还是没匹配到，使用默认值
         if (!result) {
             result = 'String';
             console.warn(`未知数据类型 "${dataType}"，使用默认值 String`);
         }
-        
+
         console.log('normalizeDataType 输出:', result);
         return result;
     }
-    
-    extractUnit(dataType) {
-        // 从数据类型中提取物理单位
-        const unitMatch = dataType.match(/\[([^\]]+)\]/);
-        return unitMatch ? unitMatch[1] : '';
-    }
-    
-    getMockFileContent(fileName) {
-        // 临时mock文件内容，实际应该从提取的文件读取
-        const mockContents = {
-            'algorithm.py': `# @Input: speed (float) - 车速
-# @Input: gear (int) - 档位
-# @Input: temperature (float) - 发动机温度
-# @Output: power (float) - 功率
-# @Output: torque (float) - 扭矩
 
-def calculate_engine_performance():
-    pass`,
-            'control.m': `% @Input: reference (double) - 参考值
-% @Input: feedback (double) - 反馈值
-% @Output: control_signal (double) - 控制信号
+    // 自动填充运行命令和CSV文件名（根据当前算法元数据）
+    async autoFillCommandAndCsvFields() {
+        try {
+            // 获取当前算法名称和版本
+            const algorithmName = this.currentAlgorithm?.name || this.currentAlgorithmMeta?.name;
+            const version = this.currentAlgorithm?.version || this.currentAlgorithmMeta?.version;
 
-function control_signal = pid_controller(reference, feedback)
-    % Implementation here`,
-            'processor.cpp': `/**
- * @param input_data (vector<double>) - 输入数据向量
- * @param threshold (double) - 阈值参数
- * @Output: result (int) - 处理结果
- */
-int process_data() {
-    // Implementation here
-    return 0;
-}`
-        };
-        
-        return mockContents[fileName] || '';
+            if (!algorithmName || !version) {
+                console.warn('算法名称或版本为空，无法自动填充');
+                return;
+            }
+
+            console.log('自动填充运行命令和CSV文件名:', algorithmName, version);
+
+            // 调用算法元数据API获取fileName
+            const result = await window.AppConfig.get('algorithm', 'metas', { name: algorithmName, version: version });
+
+            if (result.success && result.data) {
+                const algorithmData = result.data;
+                console.log('获取算法元数据成功:', algorithmData);
+
+                // 获取fileName，如果没有则使用algorithmName作为默认值
+                const fileName = algorithmData.fileName || `${algorithmName}.py`;
+                console.log('使用fileName:', fileName);
+
+                // 自动填充运行命令（仅在字段为空时填充）
+                const ruleCmd = this.shadowRoot.getElementById('ruleCmd');
+                if (ruleCmd && !ruleCmd.value) {
+                    // 判断文件类型，生成对应的运行命令
+                    let command;
+                    if (fileName.endsWith('.m')) {
+                        command = 'matlab';
+                    } else if (fileName.endsWith('.py')) {
+                        command = 'python';
+                    } else {
+                        // C/C++ 可执行文件或其他类型，直接执行
+                        command = '';
+                    }
+                    ruleCmd.value = command ? `${command} ${fileName} -i input.csv -o output.csv` : `${fileName} -i input.csv -o output.csv`;
+                    console.log('自动填充运行命令:', ruleCmd.value);
+                }
+
+                // 自动填充输入CSV文件名（仅在字段为空时填充）
+                const inputCsvName = this.shadowRoot.getElementById('inputCsvName');
+                if (inputCsvName && !inputCsvName.value) {
+                    inputCsvName.value = 'input.csv';
+                    console.log('自动填充输入CSV文件名:', inputCsvName.value);
+                }
+
+                // 自动填充输出CSV文件名（仅在字段为空时填充）
+                const outputCsvName = this.shadowRoot.getElementById('outputCsvName');
+                if (outputCsvName && !outputCsvName.value) {
+                    outputCsvName.value = 'output.csv';
+                    console.log('自动填充输出CSV文件名:', outputCsvName.value);
+                }
+            }
+        } catch (error) {
+            console.error('自动填充运行命令和CSV文件名失败:', error);
+        }
     }
-    
+
+    // 清空自动填充的字段
+    clearAutoFilledFields() {
+        // 清空运行命令
+        const ruleCmd = this.shadowRoot.getElementById('ruleCmd');
+        if (ruleCmd) {
+            ruleCmd.value = '';
+        }
+
+        // 清空输入CSV文件名
+        const inputCsvName = this.shadowRoot.getElementById('inputCsvName');
+        if (inputCsvName) {
+            inputCsvName.value = '';
+        }
+
+        // 清空输出CSV文件名
+        const outputCsvName = this.shadowRoot.getElementById('outputCsvName');
+        if (outputCsvName) {
+            outputCsvName.value = '';
+        }
+
+        console.log('已清空自动填充的字段');
+    }
+
     async loadSourceFiles() {
         try {
             console.log('开始加载源文件列表...');
             console.log('当前算法信息:', this.currentAlgorithm);
             console.log('当前算法元数据:', this.currentAlgorithmMeta);
-            
+
             // 获取算法名称和版本
             const algorithmName = this.currentAlgorithm?.name || this.currentAlgorithmMeta?.name;
             const version = this.currentAlgorithm?.version || this.currentAlgorithmMeta?.version;
-            
+
             console.log('使用的参数 - algorithmName:', algorithmName, 'version:', version);
-            
+
             if (!algorithmName || !version) {
                 console.warn('算法名称或版本为空，跳过源文件加载');
                 return;
             }
-            
-            // 调用AlgorithmFileService的extractAlgorithmFile方法
+
+            // 调用extractAlgorithmFile接口获取文件列表
             const extractResponse = await window.AppConfig.post('algorithm', 'extractAlgorithmFile', {
                 name: algorithmName,
                 version: version
             });
-            
+
             if (extractResponse.success) {
+                // 保存fileList供autoParse使用
+                this.extractedFileList = extractResponse.data || [];
                 console.log('源文件加载成功:', extractResponse.data);
-                this.populateSourceFileSelect(extractResponse.data);
+                this.populateSourceFileSelect(this.extractedFileList);
             } else {
                 console.warn('加载源文件失败:', extractResponse.message);
-                // 不显示错误消息，只是不填充下拉框
             }
         } catch (error) {
             console.error('加载源文件时发生错误:', error);
-            // 不显示错误消息，只是不填充下拉框
         }
     }
     
@@ -958,17 +961,17 @@ int process_data() {
             console.warn('未找到parseRulesSelect元素');
             return;
         }
-        
+
         // 清空现有选项
         parseRulesSelect.innerHTML = '';
         console.log('已清空现有选项');
-        
+
         // 添加默认选项
         const defaultOption = document.createElement('option');
         defaultOption.value = '';
         defaultOption.textContent = '请选择解析规则';
         parseRulesSelect.appendChild(defaultOption);
-        
+
         try {
             // 通过API动态查询解析规则
             console.log('正在调用API查询解析规则...');
@@ -976,11 +979,12 @@ int process_data() {
                 pageNum: 1,
                 pageSize: 100 // 获取所有规则
             });
-            
+
             console.log('API响应:', response);
-            
+
             if (response.success && response.data) {
                 console.log('解析规则数据:', response.data);
+                this.parsingRulesData = response.data;
                 response.data.forEach(rule => {
                     const option = document.createElement('option');
                     option.value = rule.createTime; // 使用createTime作为唯一标识
@@ -990,7 +994,7 @@ int process_data() {
                     parseRulesSelect.appendChild(option);
                     console.log('添加解析规则选项:', rule.name, rule.createTime);
                 });
-                
+
                 console.log('已加载解析规则:', response.data.length, '个规则');
             } else {
                 console.warn('加载解析规则失败:', response.message);
@@ -1107,6 +1111,585 @@ int process_data() {
         console.log('已应用解析规则:', ruleType);
     }
 
+    // === 数据绑定 ===
+
+    async loadDataSourceOptions() {
+        const dataSource = this.shadowRoot.getElementById('dataSource');
+        if (!dataSource) return;
+
+        // 调用tree接口获取数据源数据（与association-rules保持一致）
+        try {
+            const data = await window.AppConfig.get('datasource', 'tree');
+            if (!data || !data.data) {
+                console.warn('未获取到数据源树数据');
+                return;
+            }
+
+            // 缓存数据供后续使用
+            this.cachedDataSourceData = data.data;
+
+            const tableNames = new Set();
+
+            // 处理扁平的路径列表数据
+            data.data.forEach(item => {
+                if (item.path) {
+                    // 过滤掉算法系统和模型系统的路径
+                    if (!item.path.startsWith('algorithms_system.') && !item.path.startsWith('models_system.')) {
+                        // 提取表名（最后一部分）
+                        const parts = item.path.split('.');
+                        const tableName = parts[parts.length - 1];
+                        // 提取表路径（去掉字段名）
+                        const tablePath = parts.slice(0, -1).join('.');
+                        tableNames.add(tablePath);
+                    }
+                }
+            });
+
+            console.log('获取到的数据源表名:', Array.from(tableNames));
+
+            // 清空现有选项
+            dataSource.innerHTML = '<option value="">请选择数据源</option>';
+
+            // 添加表名选项
+            Array.from(tableNames).forEach(tableName => {
+                const option = document.createElement('option');
+                option.value = tableName;
+                option.textContent = tableName;
+                dataSource.appendChild(option);
+            });
+
+            // 监听数据源变化，加载字段
+            if (!this.dataSourceEventBound) {
+                dataSource.addEventListener('change', () => {
+                    this.loadDataSourceFields(dataSource.value);
+                });
+                this.dataSourceEventBound = true;
+            }
+        } catch (error) {
+            console.error('加载数据源列表失败:', error);
+        }
+    }
+
+    async loadDataSourceFields() {
+        const dataSource = this.shadowRoot.getElementById('dataSource')?.value;
+        this._dataSourceFields = [];
+
+        if (!dataSource) {
+            this.updateBindFieldOptions();
+            return;
+        }
+
+        console.log('加载表字段:', dataSource);
+
+        // 使用缓存的数据源数据（与association-rules保持一致）
+        if (!this.cachedDataSourceData) {
+            console.warn('数据源数据未缓存，请先加载数据源选项');
+            return;
+        }
+
+        const fields = new Map();
+
+        // 处理扁平的路径列表数据，提取字段
+        this.cachedDataSourceData.forEach(item => {
+            if (item.path) {
+                // 过滤掉算法系统和模型系统的路径
+                if (!item.path.startsWith('algorithms_system.') && !item.path.startsWith('models_system.')) {
+                    // 提取表路径和字段名
+                    const parts = item.path.split('.');
+                    const fieldPath = parts.slice(0, -1).join('.');
+                    const fieldName = parts[parts.length - 1];
+
+                    // 如果表路径匹配选择的表名，添加字段
+                    if (fieldPath === dataSource) {
+                        fields.set(fieldName, item.dataType);
+                    }
+                }
+            }
+        });
+
+        console.log('获取到的字段和类型代码:', Array.from(fields.entries()));
+
+        // 存储字段类型信息供验证使用
+        this.dataSourceFieldTypes = fields;
+
+        // 转换为数组格式
+        this._dataSourceFields = Array.from(fields.entries()).map(([name, typeCode]) => ({
+            name: name,
+            dataType: typeCode,
+            readableType: this.convertDataTypeCode(typeCode)
+        }));
+
+        console.log('设置_dataSourceFields:', this._dataSourceFields);
+
+        // 更新绑定字段选项
+        this.updateBindFieldOptions();
+    }
+
+    getModelNames() {
+        const modelNames = [];
+        // 从模型树获取数据，而不是算法树
+        const modelTree = document.getElementById('modelTree');
+        if (!modelTree) {
+            console.warn('未找到模型树');
+            return modelNames;
+        }
+        const seen = new Set();
+        modelTree.querySelectorAll('.tree-node').forEach(node => {
+            const span = node.querySelector('span');
+            if (!span) return;
+            const name = span.textContent.trim();
+            if (name === 'models_system' || name === 'models' || seen.has(name)) return;
+            const hasChildren = node.querySelector('.tree-children');
+            if (hasChildren) {
+                const childNodes = hasChildren.querySelectorAll(':scope > .tree-node');
+                const hasLeaf = Array.from(childNodes).some(c => !c.querySelector('.tree-children'));
+                if (hasLeaf) { modelNames.push(name); seen.add(name); }
+            }
+        });
+        return modelNames;
+    }
+
+    getModelVersions(modelName) {
+        const versions = [];
+        // 从模型树获取数据，而不是右侧边栏树
+        const modelTree = document.getElementById('modelTree');
+        if (!modelTree) return versions;
+        modelTree.querySelectorAll('.tree-node').forEach(node => {
+            const span = node.querySelector('span');
+            if (!span || span.textContent.trim() !== modelName) return;
+            const children = node.querySelector('.tree-children');
+            if (!children) return;
+            children.querySelectorAll(':scope > .tree-node').forEach(child => {
+                const childSpan = child.querySelector('span');
+                if (childSpan && !child.querySelector('.tree-children')) {
+                    versions.push(childSpan.textContent.trim());
+                }
+            });
+        });
+        return versions;
+    }
+
+    addModelBindRow(data = null) {
+        const modelBindList = this.shadowRoot.getElementById('modelBindList');
+        if (!modelBindList) return;
+
+        // 如果是手动添加（没有传入data），清除初始化标志
+        if (!data) {
+            this._isInitializingEdit = false;
+        }
+
+        const row = document.createElement('div');
+        row.className = 'model-bind-row';
+
+        const modelNames = this.getModelNames();
+        const selectedModel = data?.modelName || '';
+        const versions = selectedModel ? this.getModelVersions(selectedModel) : [];
+
+        row.innerHTML = `
+            <select class="model-bind-name">
+                <option value="">请选择模型</option>
+                ${modelNames.map(n => `<option value="${n}" ${n === selectedModel ? 'selected' : ''}>${n}</option>`).join('')}
+            </select>
+            <select class="model-bind-version">
+                <option value="">请选择版本</option>
+                ${versions.map(v => `<option value="${v}" ${v === data?.version ? 'selected' : ''}>${v}</option>`).join('')}
+            </select>
+            <button type="button" class="remove-model-bind">×</button>
+        `;
+
+        const nameSelect = row.querySelector('.model-bind-name');
+        const versionSelect = row.querySelector('.model-bind-version');
+        nameSelect.addEventListener('change', () => {
+            const vers = this.getModelVersions(nameSelect.value);
+            versionSelect.innerHTML = '<option value="">请选择版本</option>' +
+                vers.map(v => `<option value="${v}">${v}</option>`).join('');
+        });
+        versionSelect.addEventListener('change', () => {
+            if (!this._isInitializingEdit) {
+                this.loadModelStoragePath(nameSelect.value, versionSelect.value, row);
+            }
+        });
+        row.querySelector('.remove-model-bind').addEventListener('click', () => row.remove());
+
+        modelBindList.appendChild(row);
+        return row;
+    }
+
+    getModelBindings() {
+        const bindings = [];
+        this.shadowRoot.querySelectorAll('#modelBindList .model-bind-row').forEach(row => {
+            const modelName = row.querySelector('.model-bind-name')?.value;
+            const version = row.querySelector('.model-bind-version')?.value;
+            const storagePath = row.dataset.storagePath || '';
+            if (modelName) bindings.push({ modelName, version: version || '', storagePath });
+        });
+        return bindings;
+    }
+
+    async loadModelStoragePath(modelName, version, row) {
+        try {
+            console.log('加载模型storagePath:', modelName, version);
+            const result = await window.AppConfig.get('model', 'metas', { name: modelName, version: version });
+            if (result.success && result.data) {
+                const modelData = result.data;
+                row.dataset.storagePath = modelData.storagePath || '';
+                console.log('模型storagePath:', modelData.storagePath);
+            }
+        } catch (error) {
+            console.error('加载模型storagePath失败:', error);
+        }
+    }
+
+    updateBindFieldOptions() {
+        const fields = this._dataSourceFields || [];
+        // 更新输入参数表中的数据源字段下拉
+        this.shadowRoot.querySelectorAll('.data-field-select').forEach(select => {
+            const current = select.dataset.bindField || select.value;
+            select.innerHTML = '<option value="">请选择字段</option>';
+            fields.forEach(f => {
+                const name = f.name || f.fieldName || f;
+                const readableType = f.readableType || this.convertDataTypeCode(f.dataType);
+                const option = document.createElement('option');
+                option.value = name;
+                option.textContent = `${name} (${readableType})`;
+                select.appendChild(option);
+            });
+            if (current) {
+                select.value = current;
+                select.dataset.bindField = current;
+            }
+
+            // 添加类型校验事件
+            if (!select.dataset.validationBound) {
+                select.addEventListener('change', () => {
+                    this.validateFieldTypeCompatibility(select);
+                    select.dataset.bindField = select.value;
+                });
+                select.dataset.validationBound = 'true';
+            }
+        });
+    }
+
+    // 验证字段类型与参数类型的兼容性
+    validateFieldTypeCompatibility(fieldSelect) {
+        const fieldName = fieldSelect.value;
+        if (!fieldName) return;
+
+        // 获取数据源字段类型
+        const sourceType = this.getDataSourceFieldType(fieldName);
+
+        // 获取对应的输入参数类型
+        const row = fieldSelect.closest('.param-row');
+        if (!row) return;
+
+        const typeSelect = row.querySelector('select[data-field="type"][data-type="input"]');
+        if (!typeSelect) return;
+
+        const targetType = typeSelect.value;
+
+        // 检查类型兼容性
+        if (!this.areTypesCompatible(sourceType, targetType)) {
+            // 显示错误提示
+            this.showErrorMessage(`数据源字段类型 ${sourceType} 与参数类型 ${targetType} 不兼容`);
+
+            // 添加错误样式
+            fieldSelect.style.borderColor = '#ff4444';
+            setTimeout(() => {
+                fieldSelect.style.borderColor = '';
+            }, 3000);
+        }
+    }
+
+    // 将数值dataType转换为可读类型名称
+    convertDataTypeCode(dataType) {
+        const typeCode = parseInt(dataType);
+
+        switch(typeCode) {
+            case 0:
+                return 'Boolean';
+            case 1:
+                return 'Integer';
+            case 2:
+                return 'Long';
+            case 3:
+                return 'Float';
+            case 4:
+                return 'Double';
+            case 5:
+                return 'String'; // Binary或String，统一按String处理
+            default:
+                console.warn('未知的dataType代码:', dataType);
+                return 'String'; // 默认为String
+        }
+    }
+
+    // 获取数据源字段的实际类型
+    getDataSourceFieldType(fieldName) {
+        // 从存储的字段类型Map中获取类型
+        if (this.dataSourceFieldTypes && this.dataSourceFieldTypes.has(fieldName)) {
+            const dataType = this.dataSourceFieldTypes.get(fieldName);
+            return this.convertDataTypeCode(dataType);
+        }
+
+        // 如果没有找到，尝试从树节点中实时获取
+        const leftSidebarTree = document.querySelector('.left-sidebar .tree');
+        if (leftSidebarTree) {
+            const allNodes = leftSidebarTree.querySelectorAll('.tree-node');
+            for (const node of allNodes) {
+                const span = node.querySelector('span');
+                if (span && span.textContent.trim() === fieldName) {
+                    const dataType = node.getAttribute('data-type') || node.dataset.type || '1';
+                    return this.convertDataTypeCode(dataType);
+                }
+            }
+        }
+
+        // 默认返回Integer (dataType=1)
+        return 'Integer';
+    }
+
+    // 检查两种类型是否兼容
+    areTypesCompatible(sourceType, targetType) {
+        // 类型相同则兼容
+        if (sourceType === targetType) {
+            return true;
+        }
+
+        // 定义所有数值类型
+        const numericTypes = ['Integer', 'Long', 'Float', 'Double'];
+
+        // 所有数值类型之间可以互相转换
+        if (numericTypes.includes(sourceType) && numericTypes.includes(targetType)) {
+            return true;
+        }
+
+        // String类型与字节数组的转换（字节数组在系统中可能显示为String或Binary）
+        if ((sourceType === 'String' && targetType === 'Binary') ||
+            (sourceType === 'Binary' && targetType === 'String')) {
+            return true;
+        }
+
+        // 其他情况不兼容
+        return false;
+    }
+
+    async loadBindingData(algorithmInfo) {
+        // 设置初始化标志，防止自动填充覆盖已有数据
+        this._isInitializingEdit = true;
+
+        // 加载数据源选项
+        await this.loadDataSourceOptions();
+
+        // 从算法元数据加载绑定数据
+        try {
+            const result = await window.AppConfig.get('algorithm', 'metas', {
+                name: algorithmInfo.name,
+                version: algorithmInfo.version
+            });
+
+            if (result.success && result.data) {
+                const algorithmData = result.data;
+
+                // 加载数据源
+                const dataSource = this.shadowRoot.getElementById('dataSource');
+                if (dataSource && algorithmData.tableName) {
+                    dataSource.value = algorithmData.tableName;
+                    await this.loadDataSourceFields();
+                }
+
+                // 加载运行配置
+                const ruleCmd = this.shadowRoot.getElementById('ruleCmd');
+                const inputCsvName = this.shadowRoot.getElementById('inputCsvName');
+                const outputCsvName = this.shadowRoot.getElementById('outputCsvName');
+                if (ruleCmd && algorithmData.cmd) ruleCmd.value = algorithmData.cmd;
+                if (inputCsvName && algorithmData.inputCsvName) inputCsvName.value = algorithmData.inputCsvName;
+                if (outputCsvName && algorithmData.outputCsvName) outputCsvName.value = algorithmData.outputCsvName;
+
+                // 加载模型绑定
+                const modelBindList = this.shadowRoot.getElementById('modelBindList');
+                if (modelBindList) modelBindList.innerHTML = '';
+                if (algorithmData.calledModels) {
+                    try {
+                        const modelBindings = typeof algorithmData.calledModels === 'string'
+                            ? JSON.parse(algorithmData.calledModels)
+                            : algorithmData.calledModels;
+                        const loadPromises = modelBindings.map(async (binding) => {
+                            const row = this.addModelBindRow({ modelName: binding.modelName, version: binding.version || '' });
+                            if (binding.storagePath) {
+                                row.dataset.storagePath = binding.storagePath;
+                            } else if (binding.modelName && binding.version) {
+                                await this.loadModelStoragePath(binding.modelName, binding.version, row);
+                            }
+                        });
+                        await Promise.all(loadPromises);
+                    } catch (e) {
+                        console.error('解析模型绑定数据失败:', e);
+                    }
+                }
+
+                // 加载输入输出映射
+                if (algorithmData.inputData) {
+                    try {
+                        const mappings = typeof algorithmData.inputData === 'string'
+                            ? JSON.parse(algorithmData.inputData)
+                            : algorithmData.inputData;
+                        this._inputMappings = mappings;
+                        this.applyInputMappings();
+                    } catch (e) { this._inputMappings = []; }
+                }
+                if (algorithmData.inputsBind) {
+                    try {
+                        const mappings = typeof algorithmData.inputsBind === 'string'
+                            ? JSON.parse(algorithmData.inputsBind)
+                            : algorithmData.inputsBind;
+                        this._inputMappings = mappings;
+                        this.applyInputMappings();
+                    } catch (e) { this._inputMappings = []; }
+                }
+                if (algorithmData.outputsBind) {
+                    try {
+                        const resultMappings = typeof algorithmData.outputsBind === 'string'
+                            ? JSON.parse(algorithmData.outputsBind)
+                            : algorithmData.outputsBind;
+                        this._outputMappings = resultMappings;
+                        this.applyOutputMappings();
+                    } catch (e) { this._outputMappings = []; }
+                }
+            }
+        } catch (error) {
+            console.error('加载绑定数据失败:', error);
+        }
+
+        // 延迟清除初始化标志，确保所有数据加载完成
+        setTimeout(() => {
+            this._isInitializingEdit = false;
+        }, 500);
+    }
+
+    applyInputMappings() {
+        if (!this._inputMappings) return;
+        this._inputMappings.forEach(mapping => {
+            const paramName = mapping.targetField;
+            const rows = this.shadowRoot.querySelectorAll('#inputsBody .param-row');
+            rows.forEach(row => {
+                const nameInput = row.querySelector('input[data-field="name"]');
+                if (nameInput && nameInput.value === paramName) {
+                    const bindSelect = row.querySelector('.data-field-select');
+                    if (bindSelect) bindSelect.value = mapping.sourceField || '';
+                }
+            });
+        });
+    }
+
+    applyOutputMappings() {
+        if (!this._outputMappings) return;
+        this._outputMappings.forEach(mapping => {
+            const paramName = mapping.modelOutput;
+            const rows = this.shadowRoot.querySelectorAll('#outputsBody .param-row');
+            rows.forEach(row => {
+                const nameInput = row.querySelector('input[data-field="name"]');
+                if (nameInput && nameInput.value === paramName) {
+                    const bindInput = row.querySelector('.result-target-input');
+                    if (bindInput) bindInput.value = mapping.resultTarget || '';
+                }
+            });
+        });
+    }
+
+    getInputFieldPaths() {
+        const paths = [];
+        const dataSource = this.shadowRoot.getElementById('dataSource')?.value;
+        const rows = this.shadowRoot.querySelectorAll('#inputsBody .param-row');
+        rows.forEach(row => {
+            const sourceField = row.querySelector('.data-field-select')?.value;
+            if (sourceField && dataSource) {
+                paths.push(`${dataSource}.${sourceField}`);
+            }
+        });
+        return paths;
+    }
+
+    getInputMappings() {
+        const mappings = [];
+        const rows = this.shadowRoot.querySelectorAll('#inputsBody .param-row');
+        rows.forEach(row => {
+            const paramName = row.querySelector('input[data-field="name"]')?.value;
+            const sourceField = row.querySelector('.data-field-select')?.value;
+            if (paramName && sourceField) {
+                mappings.push({ sourceField, targetField: paramName });
+            }
+        });
+        return mappings;
+    }
+
+    getOutputMappings() {
+        const mappings = [];
+        const rows = this.shadowRoot.querySelectorAll('#outputsBody .param-row');
+        rows.forEach(row => {
+            const paramName = row.querySelector('input[data-field="name"]')?.value;
+            const resultTarget = row.querySelector('.result-target-input')?.value;
+            if (paramName && resultTarget) {
+                mappings.push({ modelOutput: paramName, resultTarget });
+            }
+        });
+        return mappings;
+    }
+
+    // === 输出格式预览 ===
+    refreshPreview() {
+        const previewContent = this.shadowRoot.getElementById('previewContent');
+        if (!previewContent) return;
+
+        // 保存当前参数值
+        this.saveAllCurrentValues();
+
+        // 从输出参数的回写目标生成CSV表头
+        const headers = this.outputs.map(o => o.bindTarget || o.name || '').filter(h => h);
+
+        if (headers.length === 0) {
+            previewContent.innerHTML = '<pre>请先添加输出参数并设置回写目标</pre>';
+            return;
+        }
+
+        // 生成CSV表头
+        const csvHeader = headers.join(',');
+
+        // 生成模拟数据行（3行）
+        const mockRows = [];
+        for (let i = 0; i < 3; i++) {
+            const row = headers.map(header => {
+                // 根据数据类型生成模拟值
+                const output = this.outputs.find(o => (o.bindTarget || o.name) === header);
+                if (!output) return '';
+
+                const type = (output.type || 'string').toLowerCase();
+                switch (type) {
+                    case 'int':
+                    case 'integer':
+                        return Math.floor(Math.random() * 100);
+                    case 'float':
+                    case 'double':
+                        return (Math.random() * 100).toFixed(2);
+                    case 'bool':
+                    case 'boolean':
+                        return Math.random() > 0.5 ? 'true' : 'false';
+                    default:
+                        return `sample_${i + 1}`;
+                }
+            });
+            mockRows.push(row.join(','));
+        }
+
+        const csvContent = csvHeader + '\n' + mockRows.join('\n');
+        previewContent.innerHTML = `<pre>${csvContent}</pre>`;
+    }
+
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
     collectFormData() {
         // 收集基本信息
         const algorithmName = this.shadowRoot.getElementById('algorithmName').value.trim();
@@ -1173,7 +1756,18 @@ int process_data() {
             scene: scene,
             inputs: JSON.stringify(inputsData),
             outputs: JSON.stringify(outputsData),
-            timestamp: this.currentAlgorithmMeta?.timestamp || Date.now()
+            timestamp: this.currentAlgorithmMeta?.timestamp || Date.now(),
+            projectName: this.currentAlgorithmMeta?.projectName || '',
+            description: this.shadowRoot.getElementById('description')?.value?.trim() || '',
+            tableName: this.shadowRoot.getElementById('dataSource')?.value || '',
+            inputData: JSON.stringify(this.getInputFieldPaths()),
+            calledModels: JSON.stringify(this.getModelBindings()),
+            cmd: this.shadowRoot.getElementById('ruleCmd')?.value?.trim() || '',
+            inputCsvName: this.shadowRoot.getElementById('inputCsvName')?.value?.trim() || '',
+            outputCsvName: this.shadowRoot.getElementById('outputCsvName')?.value?.trim() || '',
+            inputsBind: JSON.stringify(this.getInputMappings()),
+            outputsBind: JSON.stringify(this.getOutputMappings()),
+            outputTable: this.shadowRoot.getElementById('outputTable')?.value?.trim() || ''
         };
 
         return formData;

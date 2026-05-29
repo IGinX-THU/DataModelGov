@@ -80,7 +80,8 @@ window.AppConfig = {
             detail: '/api/parsing/rules/detail',
             delete: '/api/parsing/rules/delete',
             save: '/api/parsing/rules/save',
-            'validate-name': '/api/parsing/rules/validate-name'
+            'validate-name': '/api/parsing/rules/validate-name',
+            autoParse: '/api/parsing/autoParse'
         },
         // 仿真档案相关
         simulationArchives: {
@@ -89,11 +90,18 @@ window.AppConfig = {
             detail: '/api/simulation/archives/detail',
             delete: '/api/simulation/archives/delete',
             save: '/api/simulation/archives/save',
+            'upload-report': '/api/simulation/archives/upload-report',
+            'package-download': '/api/simulation/archives/package-download',
             'validate-name': '/api/simulation/archives/validate-name',
             copy: '/api/simulation/archives/copy',
             run: '/api/simulation/archives/run',
+            'run-selective': '/api/simulation/archives/run-selective',
             stop: '/api/simulation/archives/stop',
-            'execution-status': '/api/simulation/archives/execution-status'
+            'execution-status': '/api/simulation/archives/execution-status',
+            'execution-log': '/api/simulation/archives/execution-log',
+            'execution-records': '/api/simulation/archives/execution-records',
+            'execution-records-count': '/api/simulation/archives/execution-records-count',
+            'execution-record': '/api/simulation/archives/execution-record'
         },
         // 数据档案相关
         dataArchive: {
@@ -110,7 +118,10 @@ window.AppConfig = {
             metas: '/api/algorithm/metas',
             history: '/api/algorithm/history',
             delete: '/api/algorithm/delete',
-            extractAlgorithmFile: '/api/algorithm/extractAlgorithmFile'
+            extractAlgorithmFile: '/api/algorithm/extractAlgorithmFile',
+            tree: '/api/algorithm/tree',
+            'archive/query': '/api/algorithm/archive/query',
+            'archive/count': '/api/algorithm/archive/count'
         },
         // 用户管理相关
         userManagement: {
@@ -136,7 +147,11 @@ window.AppConfig = {
             metas: '/api/model/metas',
             history: '/api/model/history',
             delete: '/api/model/delete',
-            extractModelFile: '/api/model/extractModelFile'
+            extractModelFile: '/api/model/extractModelFile',
+            autoParse: '/api/parsing/autoParse',
+            tree: '/api/model/tree',
+            'archive/query': '/api/model/archive/query',
+            'archive/count': '/api/model/archive/count'
         },
         // 任务相关
         task: {

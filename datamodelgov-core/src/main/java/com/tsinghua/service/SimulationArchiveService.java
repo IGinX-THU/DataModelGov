@@ -5,6 +5,7 @@ import cn.edu.tsinghua.iginx.session.SessionExecuteSqlResult;
 import cn.edu.tsinghua.iginx.session_v2.IginXClient;
 import cn.edu.tsinghua.iginx.session_v2.write.Point;
 import com.tsinghua.auth.service.DataPermissionService;
+import com.tsinghua.auth.util.AuthUtil;
 import com.tsinghua.entity.SimulationArchiveEntity;
 import com.tsinghua.util.ConvertUtil;
 import lombok.extern.slf4j.Slf4j;
@@ -47,6 +48,10 @@ public class SimulationArchiveService {
             archive.setCreateTime(timestamp);
         }
         archive.setUpdateTime(System.currentTimeMillis());
+        // 默认将所有者设置为当前用户（如果未提供）
+        if (archive.getOwner() == null || archive.getOwner().trim().isEmpty()) {
+            archive.setOwner(AuthUtil.getCurrentUsername());
+        }
         String metaBasePath = DATA_PREFIX;
 
         // 创建各个字段的数据点
@@ -57,6 +62,7 @@ public class SimulationArchiveService {
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "createTime", archive.getCreateTime(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "updateTime", archive.getUpdateTime(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "owner", archive.getOwner(), timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "projectName", archive.getProjectName(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "scheduleCron", archive.getScheduleCron(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "outputApiConfig", archive.getOutputApiConfig(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "lastExecutionTime", archive.getLastExecutionTime(), timestamp));
@@ -71,29 +77,40 @@ public class SimulationArchiveService {
     /**
      * 分页查询仿真档案
      */
-    public List<SimulationArchiveEntity> queryArchives(String name, Boolean status, Integer pageNum, Integer pageSize) {
+    public List<SimulationArchiveEntity> queryArchives(String name, String projectName, String owner, Boolean status, Integer pageNum, Integer pageSize) {
         try {
             StringBuilder sql = new StringBuilder("SELECT * FROM " + DATA_PREFIX + " WHERE 1=1");
-            
+
             if (name != null && !name.trim().isEmpty()) {
                 sql.append(" AND name LIKE '^.*").append(name.trim()).append(".*'");
+            }
+            if (projectName != null && !projectName.trim().isEmpty()) {
+                sql.append(" AND projectName LIKE '^.*").append(projectName.trim()).append(".*'");
+            }
+            // 非管理员默认按当前用户过滤所有者
+            String effectiveOwner = owner;
+            if (!AuthUtil.isAdmin()) {
+                effectiveOwner = AuthUtil.getCurrentUsername("unknown");
+            }
+            if (effectiveOwner != null && !effectiveOwner.trim().isEmpty()) {
+                sql.append(" AND owner = '").append(effectiveOwner.trim()).append("'");
             }
             if (status != null) {
                 sql.append(" AND status = ").append(status);
             }
-            
+
             sql.append(" ORDER BY updateTime DESC");
             if (pageNum != null && pageSize != null) {
                 sql.append(" LIMIT ").append(pageSize);
                 sql.append(" OFFSET ").append((pageNum - 1) * pageSize);
             }
             sql.append(";");
-            
+
             log.info("执行SQL: {}", sql);
-            
+
             SessionExecuteSqlResult res = iginxSession.executeSql(sql.toString());
             List<Map<String, Object>> records = ConvertUtil.getRecords(res);
-            
+
             List<SimulationArchiveEntity> result = records.stream().map(record -> {
                 SimulationArchiveEntity entity = new SimulationArchiveEntity();
                 record.forEach((k, v) -> {
@@ -102,7 +119,7 @@ public class SimulationArchiveService {
                 });
                 return entity;
             }).collect(Collectors.toList());
-            
+
             log.info("查询结果: records={}", result.size());
             return result;
         } catch (Exception e) {
@@ -114,12 +131,23 @@ public class SimulationArchiveService {
     /**
      * 查询仿真档案总数
      */
-    public Object countArchives(String name, Boolean status) {
+    public Object countArchives(String name, String projectName, String owner, Boolean status) {
         try {
             StringBuilder sql = new StringBuilder("SELECT COUNT(1) FROM " + DATA_PREFIX + " WHERE 1=1");
             
             if (name != null && !name.trim().isEmpty()) {
                 sql.append(" AND name LIKE '%").append(name.trim()).append("%'");
+            }
+            if (projectName != null && !projectName.trim().isEmpty()) {
+                sql.append(" AND projectName LIKE '%").append(projectName.trim()).append("%'");
+            }
+            // 非管理员默认按当前用户过滤所有者
+            String effectiveOwner = owner;
+            if (!AuthUtil.isAdmin()) {
+                effectiveOwner = AuthUtil.getCurrentUsername("unknown");
+            }
+            if (effectiveOwner != null && !effectiveOwner.trim().isEmpty()) {
+                sql.append(" AND owner = '").append(effectiveOwner.trim()).append("'");
             }
             if (status != null) {
                 sql.append(" AND status = ").append(status);
@@ -214,6 +242,7 @@ public class SimulationArchiveService {
         copy.setGraphJson(original.getGraphJson());
         copy.setStatus(false); // 复制的档案默认禁用
         copy.setOwner(original.getOwner());
+        copy.setProjectName(original.getProjectName());
         copy.setScheduleCron(original.getScheduleCron());
         copy.setOutputApiConfig(original.getOutputApiConfig());
         copy.setExecutionCount(0L);

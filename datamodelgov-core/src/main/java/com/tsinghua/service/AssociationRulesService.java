@@ -55,8 +55,8 @@ public class AssociationRulesService {
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "name", associationRulesEntity.getName(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "description", associationRulesEntity.getDescription(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "tableName", associationRulesEntity.getTableName(), timestamp));
-        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "modelName", associationRulesEntity.getModelName(), timestamp));
-        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "modelVersion", associationRulesEntity.getModelVersion(), timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "algorithmName", associationRulesEntity.getAlgorithmName(), timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "algorithmVersion", associationRulesEntity.getAlgorithmVersion(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "status", associationRulesEntity.getStatus(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "createTime", associationRulesEntity.getCreateTime(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "updateTime", associationRulesEntity.getUpdateTime(), timestamp));
@@ -87,11 +87,11 @@ public class AssociationRulesService {
                 boolean statusValue = "active".equals(request.getStatus());
                 sql.append(" AND status = ").append(statusValue);
             }
-            if (request.getModelName() != null && !request.getModelName().trim().isEmpty()) {
-                sql.append(" AND modelName = '").append(request.getModelName().trim()).append("'");
+            if (request.getAlgorithmName() != null && !request.getAlgorithmName().trim().isEmpty()) {
+                sql.append(" AND algorithmName = '").append(request.getAlgorithmName().trim()).append("'");
             }
-            if (request.getModelVersion() != null && !request.getModelVersion().trim().isEmpty()) {
-                sql.append(" AND modelVersion = '").append(request.getModelVersion().trim()).append("'");
+            if (request.getAlgorithmVersion() != null && !request.getAlgorithmVersion().trim().isEmpty()) {
+                sql.append(" AND algorithmVersion = '").append(request.getAlgorithmVersion().trim()).append("'");
             }
 
             if (!AuthUtil.isAdmin()) {
@@ -148,11 +148,11 @@ public class AssociationRulesService {
                 boolean statusValue = "active".equals(request.getStatus());
                 sql.append(" AND status = ").append(statusValue);
             }
-            if (request.getModelName() != null && !request.getModelName().trim().isEmpty()) {
-                sql.append(" AND modelName = '").append(request.getModelName().trim()).append("'");
+            if (request.getAlgorithmName() != null && !request.getAlgorithmName().trim().isEmpty()) {
+                sql.append(" AND algorithmName = '").append(request.getAlgorithmName().trim()).append("'");
             }
-            if (request.getModelVersion() != null && !request.getModelVersion().trim().isEmpty()) {
-                sql.append(" AND modelVersion = '").append(request.getModelVersion().trim()).append("'");
+            if (request.getAlgorithmVersion() != null && !request.getAlgorithmVersion().trim().isEmpty()) {
+                sql.append(" AND algorithmVersion = '").append(request.getAlgorithmVersion().trim()).append("'");
             }
 
             if (!AuthUtil.isAdmin()) {

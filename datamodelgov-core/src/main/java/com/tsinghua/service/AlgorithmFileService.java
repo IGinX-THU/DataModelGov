@@ -1,5 +1,6 @@
 package com.tsinghua.service;
 
+import cn.edu.tsinghua.iginx.session.Column;
 import cn.edu.tsinghua.iginx.session.QueryDataSet;
 import cn.edu.tsinghua.iginx.session.Session;
 import cn.edu.tsinghua.iginx.session.SessionExecuteSqlResult;
@@ -10,9 +11,11 @@ import cn.edu.tsinghua.iginx.session_v2.query.SimpleQuery;
 import cn.edu.tsinghua.iginx.session_v2.write.Point;
 import cn.edu.tsinghua.iginx.thrift.DataType;
 import com.tsinghua.auth.service.DataPermissionService;
+import com.tsinghua.dto.ColumnDto;
 import com.tsinghua.entity.AlgorithmMetaEntity;
 import com.tsinghua.dto.UploadResult;
 import com.tsinghua.util.ConvertUtil;
+import com.tsinghua.util.ProjectContext;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -31,7 +34,7 @@ import java.util.stream.Collectors;
 public class AlgorithmFileService {
 
     private static final int CHUNK_SIZE = 65536; // 64KB
-    private static final String STORAGE_PREFIX = "algorithms_system";
+    private static final String STORAGE_PREFIX_BASE = "algorithms_system";
     private static final String META_PREFIX = "relational_system.algorithms_meta";
 
     @Autowired
@@ -43,12 +46,16 @@ public class AlgorithmFileService {
     @Autowired
     private IginXClient iginxClient;
 
+    @Autowired
+    private ProjectService projectService;
+
     /**
      * 上传算法文件
      * 直接将二进制分块数据写入 IGinX，无需 Base64 编码
      */
     public UploadResult uploadAlgorithm(MultipartFile file, String name, String version) throws Exception {
-        String storagePath = buildStoragePath(name, version);
+        String projectName = ProjectContext.getCurrentProject("unknown");
+        String storagePath = buildStoragePath(projectName, name, version);
 
         if (dataPermissionService.existTablePrefix(storagePath)) {
             throw new IllegalArgumentException("算法资产已存在");
@@ -99,10 +106,30 @@ public class AlgorithmFileService {
         algorithmMetaDto.setChunkCount(totalChunks);
         algorithmMetaDto.setStoragePath(storagePath);
         algorithmMetaDto.setFileMd5(fileMd5);
+        algorithmMetaDto.setProjectName(projectName);
+        algorithmMetaDto.setAuthor(com.tsinghua.auth.util.AuthUtil.getCurrentUsername());
+        // 初始化新增字段为空
+        algorithmMetaDto.setTableName("");
+        algorithmMetaDto.setInputData("");
+        algorithmMetaDto.setCalledModels("");
+        algorithmMetaDto.setInputsBind("");
+        algorithmMetaDto.setOutputsBind("");
+        algorithmMetaDto.setCmd("");
+        algorithmMetaDto.setInputCsvName("");
+        algorithmMetaDto.setOutputCsvName("");
         saveAlgorithmMetadata(algorithmMetaDto);
 
         dataPermissionService.saveTablePrefix(storagePath);
         log.info("算法文件上传成功。storagePath: {}", storagePath);
+
+        // 添加到项目的algorithms字段
+        if (projectName != null && !projectName.isEmpty()) {
+            try {
+                projectService.addToProject(projectName, storagePath, "algorithms");
+            } catch (Exception e) {
+                log.error("添加算法路径到项目失败", e);
+            }
+        }
 
         return new UploadResult(name, version, file.getOriginalFilename(),
                 file.getSize(), totalChunks, storagePath, fileMd5);
@@ -136,7 +163,7 @@ public class AlgorithmFileService {
                 algorithmMeta.getFileName(), algorithmMeta.getChunkCount(), algorithmMeta.getStoragePath(), algorithmMeta.getFileMd5());
 
         // 2. 按chunkCount精确获取文件块
-        String storagePath = buildStoragePath(name, version);
+        String storagePath = buildStoragePath(algorithmMeta.getProjectName(), name, version);
         TreeMap<Integer, byte[]> chunkMap = new TreeMap<>();
 
         // 构建查询 - 只查询指定数量的块
@@ -312,6 +339,17 @@ public class AlgorithmFileService {
      * 每个字段作为独立的时序序列存储，使用相同的时间戳对齐
      */
     public void saveAlgorithmMetadata(AlgorithmMetaEntity algorithmMetaDto) throws Exception {
+
+        // 自动添加项目名称前缀
+        String projectName = com.tsinghua.util.ProjectContext.getCurrentProject("unknown");
+        if (projectName != null && !projectName.isEmpty()) {
+            String outputTable = algorithmMetaDto.getOutputTable();
+            if (outputTable != null && !outputTable.startsWith(projectName + ".")) {
+                algorithmMetaDto.setOutputTable(projectName + "." + outputTable);
+                log.info("自动添加项目名称前缀: {} -> {}", outputTable, algorithmMetaDto.getOutputTable());
+            }
+        }
+
         List<Point> metaPoints = new ArrayList<>();
         AlgorithmMetaEntity queryMeta = queryMeta(algorithmMetaDto.getName(), algorithmMetaDto.getVersion());
         long timestamp;
@@ -336,6 +374,17 @@ public class AlgorithmFileService {
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "inputs", algorithmMetaDto.getInputs(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "outputs", algorithmMetaDto.getOutputs(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "timestamp", timestamp, timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "projectName", algorithmMetaDto.getProjectName(), timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "description", algorithmMetaDto.getDescription(), timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "tableName", algorithmMetaDto.getTableName() != null ? algorithmMetaDto.getTableName() : "", timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "inputData", algorithmMetaDto.getInputData() != null ? algorithmMetaDto.getInputData() : "", timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "calledModels", algorithmMetaDto.getCalledModels() != null ? algorithmMetaDto.getCalledModels() : "", timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "inputsBind", algorithmMetaDto.getInputsBind() != null ? algorithmMetaDto.getInputsBind() : "", timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "outputsBind", algorithmMetaDto.getOutputsBind() != null ? algorithmMetaDto.getOutputsBind() : "", timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "cmd", algorithmMetaDto.getCmd() != null ? algorithmMetaDto.getCmd() : "", timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "inputCsvName", algorithmMetaDto.getInputCsvName() != null ? algorithmMetaDto.getInputCsvName() : "", timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "outputCsvName", algorithmMetaDto.getOutputCsvName() != null ? algorithmMetaDto.getOutputCsvName() : "", timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "outputTable", algorithmMetaDto.getOutputTable() != null ? algorithmMetaDto.getOutputTable() : "", timestamp));
 
         // 批量写入元数据
         iginxClient.getWriteClient().writePoints(metaPoints.stream().filter(Objects::nonNull).collect(Collectors.toList()));
@@ -455,6 +504,83 @@ public class AlgorithmFileService {
                         dto.setTimestamp((Long) value);
                     }
                     break;
+                case META_PREFIX+"."+"projectName":
+                    if (value instanceof byte[]) {
+                        dto.setProjectName(new String((byte[]) value, StandardCharsets.UTF_8));
+                    } else if (value instanceof String) {
+                        dto.setProjectName((String) value);
+                    }
+                    break;
+                case META_PREFIX+"."+"description":
+                    if (value instanceof byte[]) {
+                        dto.setDescription(new String((byte[]) value, StandardCharsets.UTF_8));
+                    } else if (value instanceof String) {
+                        dto.setDescription((String) value);
+                    }
+                    break;
+                case META_PREFIX+"."+"tableName":
+                    if (value instanceof byte[]) {
+                        dto.setTableName(new String((byte[]) value, StandardCharsets.UTF_8));
+                    } else if (value instanceof String) {
+                        dto.setTableName((String) value);
+                    }
+                    break;
+                case META_PREFIX+"."+"inputData":
+                    if (value instanceof byte[]) {
+                        dto.setInputData(new String((byte[]) value, StandardCharsets.UTF_8));
+                    } else if (value instanceof String) {
+                        dto.setInputData((String) value);
+                    }
+                    break;
+                case META_PREFIX+"."+"calledModels":
+                    if (value instanceof byte[]) {
+                        dto.setCalledModels(new String((byte[]) value, StandardCharsets.UTF_8));
+                    } else if (value instanceof String) {
+                        dto.setCalledModels((String) value);
+                    }
+                    break;
+                case META_PREFIX+"."+"inputsBind":
+                    if (value instanceof byte[]) {
+                        dto.setInputsBind(new String((byte[]) value, StandardCharsets.UTF_8));
+                    } else if (value instanceof String) {
+                        dto.setInputsBind((String) value);
+                    }
+                    break;
+                case META_PREFIX+"."+"outputsBind":
+                    if (value instanceof byte[]) {
+                        dto.setOutputsBind(new String((byte[]) value, StandardCharsets.UTF_8));
+                    } else if (value instanceof String) {
+                        dto.setOutputsBind((String) value);
+                    }
+                    break;
+                case META_PREFIX+"."+"cmd":
+                    if (value instanceof byte[]) {
+                        dto.setCmd(new String((byte[]) value, StandardCharsets.UTF_8));
+                    } else if (value instanceof String) {
+                        dto.setCmd((String) value);
+                    }
+                    break;
+                case META_PREFIX+"."+"inputCsvName":
+                    if (value instanceof byte[]) {
+                        dto.setInputCsvName(new String((byte[]) value, StandardCharsets.UTF_8));
+                    } else if (value instanceof String) {
+                        dto.setInputCsvName((String) value);
+                    }
+                    break;
+                case META_PREFIX+"."+"outputCsvName":
+                    if (value instanceof byte[]) {
+                        dto.setOutputCsvName(new String((byte[]) value, StandardCharsets.UTF_8));
+                    } else if (value instanceof String) {
+                        dto.setOutputCsvName((String) value);
+                    }
+                    break;
+                case META_PREFIX+"."+"outputTable":
+                    if (value instanceof byte[]) {
+                        dto.setOutputTable(new String((byte[]) value, StandardCharsets.UTF_8));
+                    } else if (value instanceof String) {
+                        dto.setOutputTable((String) value);
+                    }
+                    break;
                 default:
                     log.debug("忽略未知字段: {}", fieldName);
             }
@@ -491,7 +617,8 @@ public class AlgorithmFileService {
         try {
             List<String> measurements = ConvertUtil.iginxFieldNamesConvert(AlgorithmMetaEntity.class, META_PREFIX);
             if (StringUtils.hasText(version) && !"null".equals(version)) {
-                String storagePath = buildStoragePath(name, version);
+                String projectName = ProjectContext.getCurrentProject("unknown");
+                String storagePath = buildStoragePath(projectName, name, version);
                 iginxClient.getDeleteClient().deleteMeasurement(storagePath);
                 AlgorithmMetaEntity queryMeta = queryMeta(name, version);
                 if (queryMeta != null && queryMeta.getTimestamp() != null) {
@@ -503,7 +630,7 @@ public class AlgorithmFileService {
                 List<AlgorithmMetaEntity> queryMetas = queryMetaList(name);
                 List<String> storagePaths = queryMetas.stream()
                         .map(meta ->
-                                buildStoragePath(meta.getName(), meta.getVersion())
+                                buildStoragePath(meta.getProjectName(), meta.getName(), meta.getVersion())
                         )
                         .collect(Collectors.toList());
                 iginxClient.getDeleteClient().deleteMeasurements(storagePaths);
@@ -522,9 +649,75 @@ public class AlgorithmFileService {
     /**
      * 构建存储路径
      */
-    private String buildStoragePath(String name, String version) {
+    private String buildStoragePath(String projectName,String name, String version) {
+        projectName = StringUtils.hasText(projectName) ? projectName : ProjectContext.getCurrentProject("unknown");
         String safeVersion = version.replace('.', '_');
-        return String.format("%s.%s.%s", STORAGE_PREFIX, name, safeVersion);
+        return String.format("%s.%s.%s.%s", STORAGE_PREFIX_BASE, projectName, name, safeVersion);
+    }
+
+    /**
+     * 查询算法资产树（按项目名过滤）
+     */
+    public List<String> queryAlgorithmTree(String projectName) {
+        try {
+            String prefix;
+            if (StringUtils.hasText(projectName)) {
+                prefix = STORAGE_PREFIX_BASE + "." + projectName;
+            } else {
+                prefix = STORAGE_PREFIX_BASE + "." + ProjectContext.getCurrentProject("unknown");
+            }
+            List<Column> columnList = iginxSession.showColumns();
+            List<ColumnDto> tree = columnList.stream()
+                    .filter(column -> column.getPath().startsWith(STORAGE_PREFIX_BASE))
+                    .map(column -> new ColumnDto(column.getPath(), column.getDataType().getValue()))
+                    .collect(Collectors.toList());
+            List<String> paths = new ArrayList<>();
+            if (!tree.isEmpty()) {
+                for (ColumnDto columnDto : tree) {
+                    if (columnDto.getPath().startsWith(prefix)) {
+                        paths.add(columnDto.getPath());
+                    }
+                }
+            }
+            return paths;
+        } catch (Exception e) {
+            log.error("查询算法资产树失败", e);
+            return new ArrayList<>();
+        }
+    }
+
+    /**
+     * 分页查询算法元数据（按项目名过滤）
+     */
+    public List<AlgorithmMetaEntity> queryAlgorithmArchives(String name, String projectName, String author, Integer pageNum, Integer pageSize) {
+        try {
+            StringBuilder sql = new StringBuilder("SELECT * FROM " + META_PREFIX + " WHERE 1=1");
+            if (name != null && !name.trim().isEmpty()) {
+                sql.append(" AND name LIKE '^.*").append(name.trim()).append(".*'");
+            }
+            if (projectName != null && !projectName.trim().isEmpty()) {
+                sql.append(" AND projectName LIKE '^.*").append(projectName.trim()).append(".*'");
+            }
+            if (author != null && !author.trim().isEmpty()) {
+                sql.append(" AND author LIKE '^.*").append(author.trim()).append(".*'");
+            }
+            if (pageNum != null && pageSize != null) {
+                sql.append(" LIMIT ").append(pageSize);
+                sql.append(" OFFSET ").append((pageNum - 1) * pageSize);
+            }
+            sql.append(";");
+            log.info("执行SQL: {}", sql);
+            SessionExecuteSqlResult res = iginxSession.executeSql(sql.toString());
+            List<Map<String, Object>> records = ConvertUtil.getRecords(res);
+            return records.stream().map(rs -> {
+                AlgorithmMetaEntity dto = new AlgorithmMetaEntity();
+                rs.forEach((k, v) -> setDtoField(dto, k, v));
+                return dto;
+            }).collect(Collectors.toList());
+        } catch (Exception e) {
+            log.error("查询算法档案列表失败", e);
+            return new ArrayList<>();
+        }
     }
 
     /**

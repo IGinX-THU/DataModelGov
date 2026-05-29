@@ -13,6 +13,25 @@ class ModelUpload extends HTMLElement {
         this.selectedFile = null;
     }
 
+    // 去掉存储路径前缀（如 models_system.projectName.）
+    stripStoragePrefix(path) {
+        if (!path) return path;
+        const prefixes = ['models_system.', 'algorithms_system.'];
+        for (const prefix of prefixes) {
+            if (path.startsWith(prefix)) {
+                // 去掉前缀后，再去掉项目名部分
+                const withoutPrefix = path.substring(prefix.length);
+                const parts = withoutPrefix.split('.');
+                if (parts.length > 1) {
+                    // 返回去掉项目名后的部分（即模型/算法名称）
+                    return parts.slice(1).join('.');
+                }
+                return withoutPrefix;
+            }
+        }
+        return path;
+    }
+
     async connectedCallback() {
         await this.loadResources();
         this.render();
@@ -140,17 +159,7 @@ class ModelUpload extends HTMLElement {
     }
 
     bindEvents() {
-        // 关闭按钮
-        const closeBtn = this.shadowRoot.getElementById('closeBtn');
-        if (closeBtn) {
-            closeBtn.addEventListener('click', () => {
-                if (this._closeDialog) {
-                    this._closeDialog();
-                } else {
-                    this.hide();
-                }
-            });
-        }
+        // 关闭按钮由bindModalEvents处理，这里不重复绑定
 
         // 取消按钮
         const cancelBtn = this.shadowRoot.getElementById('cancelBtn');
@@ -303,52 +312,39 @@ class ModelUpload extends HTMLElement {
             console.error('❌ 未找到modelNameSelect元素');
             return;
         }
-        
+
         // 获取右侧模型资产库的根节点
-        const rightSidebarTree = document.querySelector('.right-sidebar .tree');
-        if (!rightSidebarTree) {
-            console.warn('未找到右侧模型资产库');
+        const modelTree = document.getElementById('modelTree');
+        if (!modelTree) {
+            console.warn('未找到模型树');
             return;
         }
-        
+
         // 获取所有节点，包括嵌套的子节点
-        const allNodes = rightSidebarTree.querySelectorAll('.tree-node');
+        const allNodes = modelTree.querySelectorAll('.tree-node');
         const modelNames = new Set(); // 使用Set避免重复
         
         allNodes.forEach(node => {
-            const span = node.querySelector('span');
-            if (span) {
-                const nodeName = span.textContent.trim();
-                
-                // 排除明显的路径节点
-                if (nodeName === 'models_system') {
-                    return;
-                }
-                
-                // 检查是否是父节点（有子节点的节点）
-                const childrenContainer = node.querySelector('.tree-children');
-                if (childrenContainer && childrenContainer.children.length > 0) {
-                    // 检查子节点是否为叶子节点（没有子节点的节点）
-                    const childNodes = childrenContainer.querySelectorAll('.tree-node');
-                    let hasLeafChild = false;
-                    
-                    childNodes.forEach(childNode => {
-                        const childChildrenContainer = childNode.querySelector('.tree-children');
-                        // 如果子节点没有子节点，则是叶子节点
-                        if (!childChildrenContainer || childChildrenContainer.children.length === 0) {
-                            hasLeafChild = true;
-                        }
-                    });
-                    
-                    // 只有当子节点包含叶子节点时，才将父节点作为模型名称
-                    if (hasLeafChild) {
-                        modelNames.add(nodeName);
+            // 检查是否是叶子节点（没有子节点的节点，即版本号）
+            const childrenContainer = node.querySelector('.tree-children');
+            if (!childrenContainer || childrenContainer.children.length === 0) {
+                // 这是叶子节点（版本号），获取其完整路径
+                const fullPath = node.getAttribute('data-full-path');
+                if (fullPath) {
+                    console.log('叶子节点完整路径:', fullPath);
+                    // 路径格式：models_system.projectName.modelName.version
+                    const parts = fullPath.split('.');
+                    // 倒数第二级是模型名称
+                    if (parts.length >= 3) {
+                        const modelName = parts[parts.length - 2];
+                        console.log('提取的模型名称:', modelName);
+                        modelNames.add(modelName);
                     }
                 }
             }
         });
         
-        console.log('获取到的模型名称（最后一级叶子节点的父节点）:', Array.from(modelNames));
+        console.log('获取到的模型名称（倒数第二级节点）:', Array.from(modelNames));
         
         // 清空现有选项
         modelNameSelect.innerHTML = '<option value="">请选择模型名称</option>';
@@ -379,7 +375,7 @@ class ModelUpload extends HTMLElement {
 
         console.log('🔍 开始验证文件类型');
         // 验证文件类型
-        const allowedTypes = ['.py', '.m', '.dll', '.so', '.pyd', '.ame', '.fmu', '.mat', '.zip'];
+        const allowedTypes = ['.py', '.m', '.dll', '.so', '.pyd', '.ame', '.fmu', '.mat', '.zip', '.cpp', '.c', '.h', '.hpp', '.cc', '.cxx', '.java', '.tar', '.gz'];
         const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
         console.log('🔍 文件扩展名:', fileExtension, '允许的扩展名:', allowedTypes);
         
@@ -534,14 +530,14 @@ class ModelUpload extends HTMLElement {
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     }
 
-    show() {
+    async show() {
         console.log('🔍 model-upload show() 被调用');
-        
+
         // 使用通用弹窗管理器
-        const modal = window.modalManager.show(this, {
+        const modal = await window.modalManager.show(this, {
             maxWidth: '600px'
         });
-        
+
         // 绑定组件内部事件
         this.bindModalEvents(modal);
         

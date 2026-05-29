@@ -1,0 +1,158 @@
+.project-export {
+    padding: 20px;
+    max-width: 700px;
+    margin: 0 auto;
+}
+
+.export-card {
+    background: var(--card-bg, #fff);
+    border-radius: 8px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+    overflow: hidden;
+}
+
+.export-header {
+    font-size: 18px;
+    font-weight: 600;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border-color, #ebeef5);
+    color: var(--text-primary, #303133);
+}
+
+.export-body {
+    padding: 24px;
+}
+
+.export-field {
+    margin-bottom: 20px;
+}
+
+.export-label {
+    display: block;
+    font-size: 14px;
+    color: var(--text-regular, #606266);
+    margin-bottom: 8px;
+    font-weight: 500;
+}
+
+.export-select {
+    width: 100%;
+    height: 36px;
+    padding: 0 12px;
+    border: 1px solid var(--border-color, #dcdfe6);
+    border-radius: 4px;
+    font-size: 14px;
+    color: var(--text-primary, #303133);
+    background: var(--input-bg, #fff);
+    box-sizing: border-box;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.export-select:focus {
+    border-color: var(--primary-color, #409eff);
+}
+
+.export-section {
+    margin-bottom: 20px;
+    padding: 16px;
+    background: var(--bg-light, #f5f7fa);
+    border-radius: 6px;
+}
+
+.export-section-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary, #303133);
+    margin-bottom: 12px;
+}
+
+.export-checkbox-group {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+}
+
+.export-checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    color: var(--text-regular, #606266);
+    user-select: none;
+}
+
+.export-checkbox-label input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: var(--primary-color, #409eff);
+}
+
+.export-hint {
+    font-size: 12px;
+    color: var(--text-secondary, #909399);
+    margin-bottom: 8px;
+}
+
+.export-textarea {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color, #dcdfe6);
+    border-radius: 4px;
+    font-size: 13px;
+    font-family: monospace;
+    color: var(--text-primary, #303133);
+    background: var(--input-bg, #fff);
+    box-sizing: border-box;
+    outline: none;
+    resize: vertical;
+    transition: border-color 0.2s;
+}
+
+.export-textarea:focus {
+    border-color: var(--primary-color, #409eff);
+}
+
+.export-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 16px 24px;
+    border-top: 1px solid var(--border-color, #ebeef5);
+}
+
+.export-btn {
+    padding: 8px 20px;
+    border-radius: 4px;
+    font-size: 14px;
+    cursor: pointer;
+    border: 1px solid var(--border-color, #dcdfe6);
+    transition: all 0.2s;
+}
+
+.export-btn.outline {
+    background: var(--input-bg, #fff);
+    color: var(--text-regular, #606266);
+}
+
+.export-btn.outline:hover {
+    color: var(--primary-color, #409eff);
+    border-color: var(--primary-color, #409eff);
+}
+
+.export-btn.solid {
+    background: var(--primary-color, #409eff);
+    color: #fff;
+    border-color: var(--primary-color, #409eff);
+}
+
+.export-btn.solid:hover {
+    opacity: 0.85;
+}
+
+.export-btn.solid:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}

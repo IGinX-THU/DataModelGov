@@ -77,11 +77,29 @@ class AlgorithmDetail extends HTMLElement {
 
     bindEvents() {
         // 绑定事件
+        const backBtn = this.shadowRoot.getElementById('backBtn');
+        const closeBtn = this.shadowRoot.getElementById('closeBtn');
         const downloadBtn = this.shadowRoot.getElementById('downloadBtn');
         const editBtn = this.shadowRoot.getElementById('editBtn');
         const deleteBtn = this.shadowRoot.getElementById('deleteBtn');
         const editButton = this.shadowRoot.querySelector('.edit-button');
         const deleteButton = this.shadowRoot.querySelector('.delete-button');
+
+        if (backBtn) {
+            backBtn.addEventListener('click', () => {
+                this.hide();
+                const algorithmArchiveList = document.getElementById('algorithmArchiveList');
+                if (algorithmArchiveList && algorithmArchiveList.show) {
+                    algorithmArchiveList.show();
+                }
+            });
+        }
+
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => {
+                this.hide();
+            });
+        }
         
         if (downloadBtn) {
             downloadBtn.addEventListener('click', () => this.download());
@@ -102,7 +120,7 @@ class AlgorithmDetail extends HTMLElement {
         if (deleteButton) {
             deleteButton.addEventListener('click', () => this.deleteAlgorithm());
         }
-        
+
         // 绑定关联规则按钮事件
         const viewAllAssociationsBtn = this.shadowRoot.getElementById('viewAllAssociations');
         if (viewAllAssociationsBtn) {
@@ -203,17 +221,79 @@ class AlgorithmDetail extends HTMLElement {
                 createTime.textContent = '-';
             }
         }
+
+        // 填充档案描述字段
+        const projectName = this.shadowRoot.getElementById('projectName');
+        const description = this.shadowRoot.getElementById('description');
+
+        if (projectName) projectName.textContent = algorithmInfo.projectName || '-';
+        if (description) description.textContent = algorithmInfo.description || '-';
         
+        // 渲染输出格式预览
+        this.renderOutputFormatPreview(algorithmInfo);
+
         // 更新版本历史
         this.updateVersionHistory(algorithmInfo);
         
         // 更新UML图数据
         this.updateUMLDiagram(algorithmInfo);
         
-        // 加载关联规则信息
-        this.loadAssociationRules(algorithmInfo);
+        // 加载数据绑定信息
+        this.loadBindingData(algorithmInfo);
     }
     
+    renderOutputFormatPreview(algorithmInfo) {
+        const previewEl = this.shadowRoot.getElementById('outputFormatPreview');
+        if (!previewEl) return;
+
+        // 从输出参数的回写目标生成CSV表头
+        let outputs = [];
+        if (algorithmInfo.outputs) {
+            try {
+                outputs = typeof algorithmInfo.outputs === 'string' ? JSON.parse(algorithmInfo.outputs) : algorithmInfo.outputs;
+            } catch (e) { outputs = []; }
+        }
+
+        const headers = outputs.map(o => o.bindTarget || o.name || '').filter(h => h);
+
+        if (headers.length === 0) {
+            previewEl.innerHTML = '<pre>暂无输出格式</pre>';
+            return;
+        }
+
+        // 生成CSV表头
+        const csvHeader = headers.join(',');
+
+        // 生成模拟数据行（3行）
+        const mockRows = [];
+        for (let i = 0; i < 3; i++) {
+            const row = headers.map(header => {
+                // 根据数据类型生成模拟值
+                const output = outputs.find(o => (o.bindTarget || o.name) === header);
+                if (!output) return '';
+
+                const type = (output.type || 'string').toLowerCase();
+                switch (type) {
+                    case 'int':
+                    case 'integer':
+                        return Math.floor(Math.random() * 100);
+                    case 'float':
+                    case 'double':
+                        return (Math.random() * 100).toFixed(2);
+                    case 'bool':
+                    case 'boolean':
+                        return Math.random() > 0.5 ? 'true' : 'false';
+                    default:
+                        return `sample_${i + 1}`;
+                }
+            });
+            mockRows.push(row.join(','));
+        }
+
+        const csvContent = csvHeader + '\n' + mockRows.join('\n');
+        previewEl.innerHTML = `<pre>${csvContent}</pre>`;
+    }
+
     updateVersionHistory(algorithmInfo) {
         // 调用接口获取版本历史数据
         this.loadVersionHistory(algorithmInfo);
@@ -622,108 +702,166 @@ class AlgorithmDetail extends HTMLElement {
         }
     }
 
-    async loadAssociationRules(algorithmInfo) {
+    async loadBindingData(algorithmInfo) {
         try {
-            console.log('开始加载关联规则信息:', algorithmInfo);
-
-            // 显示全局loading
             if (window.showGlobalLoading) {
-                window.showGlobalLoading('正在加载关联规则...');
+                window.showGlobalLoading('正在加载数据绑定...');
             }
 
-            // 使用关联规则API查询当前算法的关联规则
-            const result = await window.AppConfig.post('associationRules', 'query', {
-                pageNum: 1,
-                pageSize: 10, // 只获取前10条数据
-                modelName: algorithmInfo.name,
-                modelVersion: algorithmInfo.version,
-                name: null,
-                status: null
+            // 从算法元数据API加载绑定数据
+            const result = await window.AppConfig.get('algorithm', 'metas', {
+                name: algorithmInfo.name,
+                version: algorithmInfo.version
             });
 
             if (result.success && result.data) {
-                const rules = result.data;
-                console.log('获取关联规则成功:', rules);
-                this.updateAssociationCard(rules);
+                this.renderBindingData(result.data);
             } else {
-                console.error('获取关联规则失败:', result.message);
-                this.updateAssociationCard([]);
+                this.renderBindingData({});
             }
         } catch (error) {
-            console.error('加载关联规则失败:', error);
-            this.updateAssociationCard([]);
+            console.error('加载数据绑定失败:', error);
+            this.renderBindingData({});
         } finally {
-            // 隐藏全局loading
             if (window.hideGlobalLoading) {
                 window.hideGlobalLoading();
             }
         }
     }
 
-    updateAssociationCard(rules) {
-        const associationCount = this.shadowRoot.getElementById('associationCount');
-        const associationList = this.shadowRoot.getElementById('associationList');
-        const noAssociations = this.shadowRoot.getElementById('noAssociations');
-        
-        if (associationCount) {
-            associationCount.textContent = rules.length;
-        }
-        
-        // 更新关联规则列表（显示所有规则）
-        if (associationList && noAssociations) {
-            console.log('更新关联规则列表，规则数据:', rules);
-            if (!rules || rules.length === 0) {
-                console.log('没有规则数据，显示空状态');
-                noAssociations.style.display = 'block';
-                associationList.innerHTML = '';
+    renderBindingData(algorithmData) {
+        // 填充基本绑定信息
+        const ids = {
+            detailDataSource: algorithmData?.tableName || '-',
+            detailCmd: algorithmData?.cmd || '-',
+            detailInputCsv: algorithmData?.inputCsvName || '-',
+            detailOutputCsv: algorithmData?.outputCsvName || '-',
+            detailOutputTable: algorithmData?.outputTable || '-'
+        };
+        Object.entries(ids).forEach(([id, value]) => {
+            const el = this.shadowRoot.getElementById(id);
+            if (el) el.textContent = value;
+        });
+
+        // 渲染模型绑定列表
+        const modelBindEl = this.shadowRoot.getElementById('detailModelBindings');
+        if (modelBindEl) {
+            const header = modelBindEl.querySelector('.binding-mapping-header');
+            modelBindEl.innerHTML = '';
+            if (header) modelBindEl.appendChild(header);
+            
+            let modelBindings = [];
+            if (algorithmData?.calledModels) {
+                try {
+                    modelBindings = typeof algorithmData.calledModels === 'string'
+                        ? JSON.parse(algorithmData.calledModels)
+                        : algorithmData.calledModels;
+                } catch (e) { modelBindings = []; }
+            }
+            
+            if (!modelBindings || modelBindings.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'binding-mapping-row binding-mapping-empty';
+                empty.innerHTML = '<span>暂无绑定模型</span>';
+                modelBindEl.appendChild(empty);
             } else {
-                console.log('有规则数据，数量:', rules.length);
-                noAssociations.style.display = 'none';
-                const listHTML = rules.map(rule => `
-                    <div class="association-item">
-                        <div class="association-time">${rule.updateTime || '-'}</div>
-                        <div class="association-name">${rule.name || rule.ruleName || '-'}</div>
-                        <div class="association-action">
-                            <button class="association-link-btn" data-rule-name="${rule.name || rule.ruleName}">详情</button>
-                        </div>
-                    </div>
-                `).join('');
-                console.log('生成的HTML:', listHTML);
-                associationList.innerHTML = listHTML;
+                modelBindings.forEach(binding => {
+                    const row = document.createElement('div');
+                    row.className = 'binding-mapping-row binding-model-row';
+                    row.innerHTML = `<span>${binding.modelName || '-'}</span><span>${binding.version || '-'}</span><span>${binding.storagePath || '-'}</span>`;
+                    modelBindEl.appendChild(row);
+                });
+            }
+        }
+
+        // 渲染数据源字段全路径
+        const inputFieldPathsEl = this.shadowRoot.getElementById('detailInputFieldPaths');
+        if (inputFieldPathsEl) {
+            let fieldPaths = [];
+            if (algorithmData?.inputData) {
+                try {
+                    fieldPaths = typeof algorithmData.inputData === 'string'
+                        ? JSON.parse(algorithmData.inputData)
+                        : algorithmData.inputData;
+                } catch (e) { fieldPaths = []; }
+            }
+            const header = inputFieldPathsEl.querySelector('.binding-mapping-header');
+            inputFieldPathsEl.innerHTML = '';
+            if (header) inputFieldPathsEl.appendChild(header);
+            if (!fieldPaths || fieldPaths.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'binding-mapping-row binding-mapping-empty';
+                empty.innerHTML = '<span>暂无数据源字段</span>';
+                inputFieldPathsEl.appendChild(empty);
+            } else {
+                fieldPaths.forEach(path => {
+                    const row = document.createElement('div');
+                    row.className = 'binding-mapping-row';
+                    row.innerHTML = `<span>${path || '-'}</span>`;
+                    inputFieldPathsEl.appendChild(row);
+                });
+            }
+        }
+
+        // 渲染输入映射
+        const inputMappingsEl = this.shadowRoot.getElementById('detailInputMappings');
+        if (inputMappingsEl) {
+            let mappings = [];
+            if (algorithmData?.inputsBind) {
+                try {
+                    mappings = typeof algorithmData.inputsBind === 'string'
+                        ? JSON.parse(algorithmData.inputsBind)
+                        : algorithmData.inputsBind;
+                } catch (e) { mappings = []; }
+            }
+            const header = inputMappingsEl.querySelector('.binding-mapping-header');
+            inputMappingsEl.innerHTML = '';
+            if (header) inputMappingsEl.appendChild(header);
+            if (mappings.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'binding-mapping-row binding-mapping-empty';
+                empty.innerHTML = '<span>暂无输入映射</span>';
+                inputMappingsEl.appendChild(empty);
+            } else {
+                mappings.forEach(m => {
+                    const row = document.createElement('div');
+                    row.className = 'binding-mapping-row';
+                    row.innerHTML = `<span>${m.sourceField || '-'}</span><span class="mapping-arrow">→</span><span>${m.targetField || '-'}</span>`;
+                    inputMappingsEl.appendChild(row);
+                });
+            }
+        }
+
+        // 渲染输出映射
+        const outputMappingsEl = this.shadowRoot.getElementById('detailOutputMappings');
+        if (outputMappingsEl) {
+            let mappings = [];
+            if (algorithmData?.outputsBind) {
+                try {
+                    mappings = typeof algorithmData.outputsBind === 'string'
+                        ? JSON.parse(algorithmData.outputsBind)
+                        : algorithmData.outputsBind;
+                } catch (e) { mappings = []; }
+            }
+            const header = outputMappingsEl.querySelector('.binding-mapping-header');
+            outputMappingsEl.innerHTML = '';
+            if (header) outputMappingsEl.appendChild(header);
+            if (mappings.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'binding-mapping-row binding-mapping-empty';
+                empty.innerHTML = '<span>暂无输出映射</span>';
+                outputMappingsEl.appendChild(empty);
+            } else {
+                mappings.forEach(m => {
+                    const row = document.createElement('div');
+                    row.className = 'binding-mapping-row';
+                    row.innerHTML = `<span>${m.modelOutput || '-'}</span><span class="mapping-arrow">→</span><span>${m.resultTarget || '-'}</span>`;
+                    outputMappingsEl.appendChild(row);
+                });
             }
         }
     }
 
-    navigateToRule(ruleName) {
-        console.log('跳转到关联规则页面，规则名:', ruleName);
-        
-        // 使用 showComponent 跳转到关联规则页面，并传递规则名参数用于筛选
-        if (window.showComponent) {
-            window.showComponent('associationRules', { ruleName });
-        } else {
-            console.error('showComponent 函数不可用');
-            this.showErrorMessage('无法跳转到关联规则页面');
-        }
-    }
-
-    viewAllAssociations() {
-        if (!this.currentAlgorithm) {
-            console.warn('没有选中的算法');
-            return;
-        }
-        
-        console.log('跳转到关联规则页面，算法:', this.currentAlgorithm);
-        
-        // 使用 showComponent 跳转到关联规则页面，并传递算法参数
-        if (window.showComponent) {
-            window.showComponent('associationRules', {
-                modelName: this.currentAlgorithm.name,
-                modelVersion: this.currentAlgorithm.version
-            });
-        } else {
-            console.error('showComponent 函数不可用');
-        }
-    }
 }
 
 customElements.define('algorithm-detail', AlgorithmDetail);

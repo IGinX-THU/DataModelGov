@@ -4,6 +4,9 @@
 class ModalManager {
     constructor() {
         this.currentModal = null;
+        this.isClosing = false;
+        this.pendingShow = null;
+        this.pendingResolve = null;
     }
 
     /**
@@ -12,10 +15,26 @@ class ModalManager {
      * @param {Object} options - 弹窗选项
      */
     show(component, options = {}) {
-        // 如果已有弹窗，先关闭
-        if (this.currentModal) {
-            this.hide();
+        // 如果正在关闭，保存待打开的请求
+        if (this.isClosing) {
+            this.pendingShow = { component, options };
+            return new Promise((resolve) => {
+                this.pendingResolve = resolve;
+            });
         }
+
+        // 如果已有弹窗，先关闭并等待完成
+        if (this.currentModal) {
+            this.pendingShow = { component, options };
+            this.hide();
+            return new Promise((resolve) => {
+                this.pendingResolve = resolve;
+            });
+        }
+        return this._showModal(component, options);
+    }
+
+    _showModal(component, options = {}) {
 
         // 创建遮罩层
         const overlay = document.createElement('div');
@@ -77,6 +96,18 @@ class ModalManager {
                     overlay.parentNode.removeChild(overlay);
                 }
                 this.currentModal = null;
+                this.isClosing = false;
+
+                // 如果有待打开的请求，执行它
+                if (this.pendingShow) {
+                    const { component: pendingComponent, options: pendingOptions } = this.pendingShow;
+                    this.pendingShow = null;
+                    const modal = this._showModal(pendingComponent, pendingOptions);
+                    if (this.pendingResolve) {
+                        this.pendingResolve(modal);
+                        this.pendingResolve = null;
+                    }
+                }
             }, 300);
         };
 
@@ -111,7 +142,8 @@ class ModalManager {
      * 隐藏当前弹窗
      */
     hide() {
-        if (this.currentModal) {
+        if (this.currentModal && !this.isClosing) {
+            this.isClosing = true;
             this.currentModal.close();
         }
     }

@@ -4,10 +4,12 @@ import com.tsinghua.entity.AlgorithmMetaEntity;
 import com.tsinghua.model.Result;
 import com.tsinghua.dto.UploadResult;
 import com.tsinghua.dto.ExtractAlgorithmFileRequest;
+import com.tsinghua.dto.AlgorithmArchiveQueryRequest;
 import com.tsinghua.service.AlgorithmFileService;
 import com.tsinghua.auth.annotation.RequirePermission;
 import com.tsinghua.auth.enums.Permission;
 import com.tsinghua.auth.annotation.OperationLog;
+import com.tsinghua.util.ProjectContext;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -111,6 +113,47 @@ public class AlgorithmFileController {
             @RequestParam(value = "version", required = false) String version) throws Exception {
         algorithmFileService.deleteAlgorithm(name, version);
         return Result.success("操作成功");
+    }
+
+    @ApiOperation("算法资产树")
+    @GetMapping("/tree")
+    @RequirePermission(Permission.READ)
+    public Result<?> queryAlgorithmTree(
+            @RequestParam(value = "projectName", required = false) String projectName) {
+        String effectiveProjectName = projectName;
+        if (effectiveProjectName == null || effectiveProjectName.trim().isEmpty()) {
+            effectiveProjectName = ProjectContext.getCurrentProject();
+        }
+        List<String> tree = algorithmFileService.queryAlgorithmTree(effectiveProjectName);
+        return Result.success(tree);
+    }
+
+    @ApiOperation("分页查询算法档案")
+    @PostMapping("/archive/query")
+    @RequirePermission(Permission.READ)
+    public Result<List<AlgorithmMetaEntity>> queryAlgorithmArchives(@RequestBody AlgorithmArchiveQueryRequest request) {
+        List<AlgorithmMetaEntity> result = algorithmFileService.queryAlgorithmArchives(
+            request.getName(),
+            request.getProjectName(),
+            request.getAuthor(),
+            request.getPageNum(),
+            request.getPageSize()
+        );
+        return Result.success(result);
+    }
+
+    @ApiOperation("查询算法档案总数")
+    @PostMapping("/archive/count")
+    @RequirePermission(Permission.READ)
+    public Result<Object> countAlgorithmArchives(@RequestBody AlgorithmArchiveQueryRequest request) {
+        List<AlgorithmMetaEntity> allArchives = algorithmFileService.queryAlgorithmArchives(
+            request.getName(),
+            request.getProjectName(),
+            request.getAuthor(),
+            null,
+            null
+        );
+        return Result.success(allArchives.size());
     }
 
     @ApiOperation("提取算法文件用于解析")

@@ -1,0 +1,38 @@
+<div class="project-import">
+    <div class="import-card">
+        <div class="import-header">导入项目</div>
+        <div class="import-body">
+            <div class="import-field">
+                <span class="import-label">目标项目名称</span>
+                <input type="text" class="import-input" id="targetProjectName" placeholder="留空则使用导出时的项目名" />
+            </div>
+            <div class="import-field">
+                <span class="import-label">选择导出文件</span>
+                <div class="import-file-area" id="fileDropArea">
+                    <input type="file" id="importFile" accept=".zip" style="display: none;" />
+                    <div class="import-file-hint" id="fileHint">
+                        <span>点击或拖拽ZIP文件到此处</span>
+                    </div>
+                    <div class="import-file-name" id="fileName" style="display: none;">
+                        <span id="fileNameText"></span>
+                        <button class="import-file-remove" id="removeFileBtn">&times;</button>
+                    </div>
+                </div>
+            </div>
+            <div class="import-info" id="importInfo" style="display: none;">
+                <div class="import-info-title">导出文件信息</div>
+                <div class="import-info-content" id="importInfoContent"></div>
+            </div>
+            <div class="import-progress" id="importProgress" style="display: none;">
+                <div class="import-progress-bar">
+                    <div class="import-progress-fill" id="progressFill"></div>
+                </div>
+                <div class="import-progress-text" id="progressText">正在导入...</div>
+            </div>
+        </div>
+        <div class="import-actions">
+            <button class="import-btn outline" type="button" id="cancelBtn">取消</button>
+            <button class="import-btn solid" type="button" id="importBtn" disabled>导入</button>
+        </div>
+    </div>
+</div>

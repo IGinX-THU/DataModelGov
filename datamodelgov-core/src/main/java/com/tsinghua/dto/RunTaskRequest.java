@@ -28,11 +28,11 @@ public class RunTaskRequest {
     @NotNull(message = "规则ID不能为空")
     private Long ruleId;
 
-    @ApiModelProperty(value = "目标模型")
-    private String modelName;
+    @ApiModelProperty(value = "目标算法")
+    private String algorithmName;
 
-    @ApiModelProperty(value = "模型版本号")
-    private String modelVersion;
+    @ApiModelProperty(value = "算法版本号")
+    private String algorithmVersion;
 
     @ApiModelProperty(value = "结果回写路径前缀")
     private String outputTable;

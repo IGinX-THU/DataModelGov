@@ -1,7 +1,10 @@
 package com.tsinghua.service;
 
+import com.alibaba.fastjson2.JSONArray;
+import com.alibaba.fastjson2.JSONObject;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tsinghua.entity.AlgorithmMetaEntity;
 import com.tsinghua.entity.SimulationArchiveEntity;
 import com.tsinghua.model.Result;
 import lombok.extern.slf4j.Slf4j;
@@ -10,10 +13,12 @@ import org.springframework.stereotype.Service;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * 有向图执行引擎
  * 用于执行仿真档案中的有向图
+ * 所有节点均为算法任务节点，按拓扑排序顺序执行
  */
 @Slf4j
 @Service
@@ -21,15 +26,35 @@ public class DirectedGraphExecutionEngine {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final ExecutorService executorService = Executors.newFixedThreadPool(10);
+    private final AtomicBoolean stopRequested = new AtomicBoolean(false);
 
     @Autowired
     private AlgorithmExecutionService algorithmExecutionService;
 
     /**
-     * 执行仿真图
+     * 执行仿真图（全量执行）
      */
     public Map<String, Object> executeGraph(SimulationArchiveEntity archive) {
+        return executeGraph(archive, null, archive.getProjectName(), null);
+    }
+
+    public Map<String, Object> executeGraph(SimulationArchiveEntity archive, List<String> selectedNodeIds,
+                                             String projectName) {
+        return executeGraph(archive, selectedNodeIds, projectName, null);
+    }
+
+    /**
+     * 执行仿真图（支持选择性执行，每个节点使用自己的时间窗口）
+     * @param archive 仿真档案
+     * @param selectedNodeIds 选中的节点ID列表（null表示全量执行）
+     * @param projectName 项目名称
+     * @param executionTimestamp 仿真执行时间戳（用于构建二级目录，null则自动生成）
+     */
+    public Map<String, Object> executeGraph(SimulationArchiveEntity archive, List<String> selectedNodeIds,
+                                             String projectName, Long executionTimestamp) {
         Map<String, Object> result = new HashMap<>();
+        stopRequested.set(false);
+
         try {
             String graphJson = archive.getGraphJson();
             if (graphJson == null || graphJson.isEmpty()) {
@@ -39,8 +64,6 @@ public class DirectedGraphExecutionEngine {
             }
 
             JsonNode graphNode = objectMapper.readTree(graphJson);
-            
-            // 解析节点和边
             JsonNode nodes = graphNode.get("nodes");
             JsonNode edges = graphNode.get("edges");
 
@@ -50,33 +73,46 @@ public class DirectedGraphExecutionEngine {
                 return result;
             }
 
-            // 构建邻接表和入度表
-            Map<String, List<String>> adjacencyList = new HashMap<>();
-            Map<String, Integer> inDegree = new HashMap<>();
-            Map<String, JsonNode> nodeMap = new HashMap<>();
-
-            // 初始化
+            // 构建节点映射
+            Map<String, JsonNode> nodeMap = new LinkedHashMap<>();
             for (JsonNode node : nodes) {
                 String nodeId = node.get("nodeId").asText();
-                adjacencyList.put(nodeId, new ArrayList<>());
-                inDegree.put(nodeId, 0);
                 nodeMap.put(nodeId, node);
             }
 
-            // 构建边关系
+            // 确定要执行的节点集合
+            Set<String> executeNodeIds;
+            if (selectedNodeIds != null && !selectedNodeIds.isEmpty()) {
+                executeNodeIds = new HashSet<>(selectedNodeIds);
+                log.info("用户选中的节点（选择性执行）: {}", selectedNodeIds);
+            } else {
+                executeNodeIds = nodeMap.keySet();
+                log.info("全量执行所有节点");
+            }
+
+            // 构建邻接表和入度表（仅包含要执行的节点）
+            Map<String, List<String>> adjacencyList = new HashMap<>();
+            Map<String, Integer> inDegree = new HashMap<>();
+            for (String nodeId : executeNodeIds) {
+                adjacencyList.put(nodeId, new ArrayList<>());
+                inDegree.put(nodeId, 0);
+            }
+
             if (edges != null && edges.isArray()) {
                 for (JsonNode edge : edges) {
                     String sourceId = edge.get("sourceNodeId").asText();
                     String targetId = edge.get("targetNodeId").asText();
-                    
-                    adjacencyList.get(sourceId).add(targetId);
-                    inDegree.put(targetId, inDegree.get(targetId) + 1);
+                    log.info("边: {} -> {}", sourceId, targetId);
+                    if (executeNodeIds.contains(sourceId) && executeNodeIds.contains(targetId)) {
+                        adjacencyList.get(sourceId).add(targetId);
+                        inDegree.put(targetId, inDegree.get(targetId) + 1);
+                    }
                 }
             }
+            log.info("入度表: {}", inDegree);
 
             // 拓扑排序
             List<String> executionOrder = topologicalSort(adjacencyList, inDegree);
-            
             if (executionOrder == null) {
                 result.put("success", false);
                 result.put("message", "仿真图存在环，无法执行");
@@ -86,13 +122,19 @@ public class DirectedGraphExecutionEngine {
             log.info("执行顺序: {}", executionOrder);
 
             // 按拓扑顺序执行节点
-            Map<String, Object> executionResults = new HashMap<>();
+            Map<String, Object> executionResults = new ConcurrentHashMap<>();
+            Map<String, String> nodeOutputs = new ConcurrentHashMap<>(); // 节点输出的txt文本
             Map<String, Future<?>> futures = new HashMap<>();
 
             for (String nodeId : executionOrder) {
+                if (stopRequested.get()) {
+                    result.put("success", false);
+                    result.put("message", "仿真已被停止");
+                    return result;
+                }
+
                 JsonNode node = nodeMap.get(nodeId);
-                String nodeType = node.get("nodeType").asText();
-                
+
                 // 等待前置节点完成
                 if (edges != null && edges.isArray()) {
                     for (JsonNode edge : edges) {
@@ -105,19 +147,33 @@ public class DirectedGraphExecutionEngine {
                     }
                 }
 
-                // 执行当前节点
-                Future<?> future = executorService.submit(() -> {
-                    try {
-                        Object nodeResult = executeNode(node, executionResults);
-                        executionResults.put(nodeId, nodeResult);
-                        log.info("节点 {} 执行完成", nodeId);
-                    } catch (Exception e) {
-                        log.error("节点 {} 执行失败", nodeId, e);
-                        throw new RuntimeException("节点执行失败: " + nodeId, e);
-                    }
-                });
-                
-                futures.put(nodeId, future);
+                // 执行当前算法节点
+                try {
+                    Future<?> future = executorService.submit(() -> {
+                        try {
+                            Map<String, Object> nodeResult = executeAlgorithmNode(
+                                node, edges, executionResults, nodeOutputs, projectName, executionTimestamp);
+                            executionResults.put(nodeId, nodeResult);
+                            log.info("节点 {} 执行完成", nodeId);
+                        } catch (Exception e) {
+                            log.error("节点 {} 执行失败", nodeId, e);
+                            Map<String, Object> errorResult = new HashMap<>();
+                            errorResult.put("nodeId", nodeId);
+                            errorResult.put("status", "failed");
+                            errorResult.put("error", e.getMessage());
+                            errorResult.put("processLog", "");
+                            executionResults.put(nodeId, errorResult);
+                        }
+                    });
+                    futures.put(nodeId, future);
+                } catch (RejectedExecutionException e) {
+                    log.error("节点 {} 提交任务失败，线程池已关闭", nodeId, e);
+                    Map<String, Object> errorResult = new HashMap<>();
+                    errorResult.put("nodeId", nodeId);
+                    errorResult.put("status", "failed");
+                    errorResult.put("error", "线程池已关闭，无法提交任务: " + e.getMessage());
+                    executionResults.put(nodeId, errorResult);
+                }
             }
 
             // 等待所有节点完成
@@ -125,10 +181,20 @@ public class DirectedGraphExecutionEngine {
                 future.get();
             }
 
+            // 按拓扑排序顺序构建results，保证前端日志显示顺序正确
+            Map<String, Object> orderedResults = new LinkedHashMap<>();
+            for (String nodeId : executionOrder) {
+                Object nodeResult = executionResults.get(nodeId);
+                if (nodeResult != null) {
+                    orderedResults.put(nodeId, nodeResult);
+                }
+            }
+
             result.put("success", true);
             result.put("message", "仿真执行成功");
             result.put("executionOrder", executionOrder);
-            result.put("results", executionResults);
+            result.put("results", orderedResults);
+            result.put("nodeOutputs", nodeOutputs);
 
         } catch (Exception e) {
             log.error("执行仿真图失败", e);
@@ -140,14 +206,34 @@ public class DirectedGraphExecutionEngine {
     }
 
     /**
+     * 递归添加前驱节点（保证数据流完整性）
+     */
+    private void addPredecessorNodes(JsonNode edges, Set<String> executeNodeIds, Map<String, JsonNode> nodeMap) {
+        if (edges == null || !edges.isArray()) return;
+        boolean added = true;
+        while (added) {
+            added = false;
+            for (JsonNode edge : edges) {
+                String sourceId = edge.get("sourceNodeId").asText();
+                String targetId = edge.get("targetNodeId").asText();
+                if (executeNodeIds.contains(targetId) && !executeNodeIds.contains(sourceId) && nodeMap.containsKey(sourceId)) {
+                    executeNodeIds.add(sourceId);
+                    added = true;
+                }
+            }
+        }
+    }
+
+    /**
      * 拓扑排序
      */
     private List<String> topologicalSort(Map<String, List<String>> adjacencyList, Map<String, Integer> inDegree) {
+        // 使用副本避免修改原始数据
+        Map<String, Integer> inDegreeCopy = new HashMap<>(inDegree);
         List<String> result = new ArrayList<>();
         Queue<String> queue = new LinkedList<>();
 
-        // 找到所有入度为0的节点
-        for (Map.Entry<String, Integer> entry : inDegree.entrySet()) {
+        for (Map.Entry<String, Integer> entry : inDegreeCopy.entrySet()) {
             if (entry.getValue() == 0) {
                 queue.offer(entry.getKey());
             }
@@ -158,150 +244,165 @@ public class DirectedGraphExecutionEngine {
             result.add(node);
 
             for (String neighbor : adjacencyList.get(node)) {
-                inDegree.put(neighbor, inDegree.get(neighbor) - 1);
-                if (inDegree.get(neighbor) == 0) {
+                inDegreeCopy.put(neighbor, inDegreeCopy.get(neighbor) - 1);
+                if (inDegreeCopy.get(neighbor) == 0) {
                     queue.offer(neighbor);
                 }
             }
         }
 
-        // 检查是否所有节点都已访问（检测环）
         if (result.size() != inDegree.size()) {
-            return null; // 存在环
+            return null;
         }
 
         return result;
     }
 
     /**
-     * 执行单个节点
+     * 执行算法任务节点
+     * 参考RunTaskService的执行逻辑：下载算法文件、导出数据、执行命令
+     * 每个节点使用自己配置的startTime/endTime作为数据时间窗口
      */
-    private Object executeNode(JsonNode node, Map<String, Object> executionResults) throws Exception {
-        String nodeType = node.get("nodeType").asText();
-        String resourceName = node.has("resourceName") ? node.get("resourceName").asText() : "";
-        String resourceVersion = node.has("resourceVersion") ? node.get("resourceVersion").asText() : "";
-        
-        log.info("执行节点: type={}, resource={}, version={}", nodeType, resourceName, resourceVersion);
-
-        switch (nodeType) {
-            case "algorithm":
-                return executeAlgorithmNode(node, executionResults);
-            case "model":
-                return executeModelNode(node, executionResults);
-            case "data":
-                return executeDataNode(node, executionResults);
-            default:
-                throw new Exception("未知的节点类型: " + nodeType);
-        }
-    }
-
-    /**
-     * 执行算法节点
-     */
-    private Object executeAlgorithmNode(JsonNode node, Map<String, Object> executionResults) throws Exception {
-        String algorithmName = node.has("resourceName") ? node.get("resourceName").asText() : "";
-        String algorithmVersion = node.has("resourceVersion") ? node.get("resourceVersion").asText() : "";
-        String algorithmType = node.has("algorithmType") ? node.get("algorithmType").asText() : "python";
-        
-        log.info("执行算法: {} version: {} type: {}", algorithmName, algorithmVersion, algorithmType);
-        
-        // 准备输入数据
-        Map<String, Object> inputData = new HashMap<>();
-        
-        // 添加前驱节点的输出
+    private Map<String, Object> executeAlgorithmNode(JsonNode node, JsonNode edges,
+                                                      Map<String, Object> executionResults,
+                                                      Map<String, String> nodeOutputs,
+                                                      String projectName,
+                                                      Long executionTimestamp) throws Exception {
         String nodeId = node.get("nodeId").asText();
-        for (Map.Entry<String, Object> entry : executionResults.entrySet()) {
-            if (!entry.getKey().equals(nodeId)) {
-                inputData.put(entry.getKey(), entry.getValue());
+        String nodeName = node.has("nodeName") ? node.get("nodeName").asText() : "";
+        String algorithmName = node.has("algorithmName") ? node.get("algorithmName").asText() : "";
+        String algorithmVersion = node.has("algorithmVersion") ? node.get("algorithmVersion").asText() : "";
+
+        log.info("执行算法任务节点: nodeId={}, name={}, algorithm={}:{}", nodeId, nodeName, algorithmName, algorithmVersion);
+
+        if (algorithmName.isEmpty() || algorithmVersion.isEmpty()) {
+            throw new Exception("节点 " + nodeName + " 未配置算法");
+        }
+
+        // 使用节点自己配置的时间窗口
+        Long startTime = node.has("startTime") && !node.get("startTime").isNull() ? node.get("startTime").asLong() : null;
+        Long endTime = node.has("endTime") && !node.get("endTime").isNull() ? node.get("endTime").asLong() : null;
+
+        // 构造执行参数
+        Map<String, Object> executionParams = new HashMap<>();
+        executionParams.put("nodeId", nodeId);
+        executionParams.put("nodeName", nodeName);
+        executionParams.put("algorithmName", algorithmName);
+        executionParams.put("algorithmVersion", algorithmVersion);
+        executionParams.put("startTime", startTime);
+        executionParams.put("endTime", endTime);
+
+        // 收集前驱节点的输出，使用边的数据映射配置
+        // dataMapping格式: {"sourceOutput": "output.csv", "targetInput": "input.csv"}
+        Map<String, Object> predecessorOutputs = new HashMap<>();
+        if (edges != null && edges.isArray()) {
+            for (JsonNode edge : edges) {
+                String sourceId = edge.get("sourceNodeId").asText();
+                String targetId = edge.get("targetNodeId").asText();
+                if (targetId.equals(nodeId) && executionResults.containsKey(sourceId)) {
+                    Object predResult = executionResults.get(sourceId);
+                    if (predResult instanceof Map) {
+                        Map<?, ?> predMap = (Map<?, ?>) predResult;
+                        if ("completed".equals(predMap.get("status"))) {
+                            // 解析边的数据映射
+                            String sourceOutput = null;
+                            String targetInput = null;
+                            if (edge.has("dataMapping") && !edge.get("dataMapping").isNull()) {
+                                try {
+                                    JsonNode mapping = objectMapper.readTree(edge.get("dataMapping").asText());
+                                    sourceOutput = mapping.has("sourceOutput") ? mapping.get("sourceOutput").asText() : null;
+                                    targetInput = mapping.has("targetInput") ? mapping.get("targetInput").asText() : null;
+                                } catch (Exception e) {
+                                    log.warn("解析边数据映射失败: {}", edge.get("dataMapping"), e);
+                                }
+                            }
+                            Map<String, Object> outputEntry = new HashMap<>();
+                            outputEntry.put("output", predMap.get("output"));
+                            outputEntry.put("outputCsv", predMap.get("outputCsv"));
+                            outputEntry.put("sourceOutput", sourceOutput);
+                            outputEntry.put("targetInput", targetInput);
+                            outputEntry.put("taskDir", predMap.get("taskDir"));
+                            predecessorOutputs.put(sourceId, outputEntry);
+                        }
+                    }
+                }
             }
         }
-        
-        // 调用算法执行服务
-        try {
-            // 构造SimulationNodeEntity
-            com.tsinghua.entity.SimulationNodeEntity simNode = new com.tsinghua.entity.SimulationNodeEntity();
-            simNode.setNodeId(nodeId);
-            simNode.setNodeName(node.has("nodeName") ? node.get("nodeName").asText() : algorithmName);
-            simNode.setNodeType("algorithm");
-            simNode.setResourceName(algorithmName);
-            simNode.setResourceVersion(algorithmVersion);
-            simNode.setAlgorithmName(algorithmName);
-            simNode.setAlgorithmVersion(algorithmVersion);
-            
-            // 执行算法
-            Result<String> result = algorithmExecutionService.executeAlgorithm(simNode, inputData);
-            
-            if (result.getSuccess()) {
-                String executionId = result.getData();
-                Result<String> outputResult = algorithmExecutionService.getExecutionResult(executionId);
-                
-                Map<String, Object> nodeResult = new HashMap<>();
-                nodeResult.put("algorithm", algorithmName);
-                nodeResult.put("version", algorithmVersion);
-                nodeResult.put("status", "completed");
-                nodeResult.put("output", outputResult.getData());
-                nodeResult.put("timestamp", System.currentTimeMillis());
-                
-                return nodeResult;
-            } else {
-                throw new Exception("算法执行失败: " + result.getMessage());
+
+        // 收集后继节点的边配置，获取当前节点的输出文件名映射
+        String sourceOutputMapping = null;
+        if (edges != null && edges.isArray()) {
+            for (JsonNode edge : edges) {
+                String sourceId = edge.get("sourceNodeId").asText();
+                String targetId = edge.get("targetNodeId").asText();
+                if (sourceId.equals(nodeId)) {
+                    // 这是当前节点作为源节点的边，获取sourceOutput配置
+                    if (edge.has("dataMapping") && !edge.get("dataMapping").isNull()) {
+                        try {
+                            JsonNode mapping = objectMapper.readTree(edge.get("dataMapping").asText());
+                            String mappingSourceOutput = mapping.has("sourceOutput") ? mapping.get("sourceOutput").asText() : null;
+                            if (mappingSourceOutput != null && !mappingSourceOutput.isEmpty()) {
+                                // 如果有多个后继节点，使用第一个配置的sourceOutput
+                                if (sourceOutputMapping == null) {
+                                    sourceOutputMapping = mappingSourceOutput;
+                                } else if (!sourceOutputMapping.equals(mappingSourceOutput)) {
+                                    log.warn("节点 {} 有多个后继节点配置了不同的sourceOutput: {}, {}", nodeId, sourceOutputMapping, mappingSourceOutput);
+                                }
+                            }
+                        } catch (Exception e) {
+                            log.warn("解析边数据映射失败: {}", edge.get("dataMapping"), e);
+                        }
+                    }
+                }
             }
-        } catch (Exception e) {
-            log.error("算法执行失败: {}", algorithmName, e);
-            Map<String, Object> errorResult = new HashMap<>();
-            errorResult.put("algorithm", algorithmName);
-            errorResult.put("status", "failed");
-            errorResult.put("error", e.getMessage());
-            errorResult.put("timestamp", System.currentTimeMillis());
-            return errorResult;
         }
-    }
+        executionParams.put("sourceOutputMapping", sourceOutputMapping);
 
-    /**
-     * 执行模型节点
-     */
-    private Object executeModelNode(JsonNode node, Map<String, Object> executionResults) throws Exception {
-        // TODO: 实现模型执行逻辑
-        // 这里需要调用模型文件服务来提取和运行模型
-        String modelName = node.has("resourceName") ? node.get("resourceName").asText() : "";
-        String modelVersion = node.has("resourceVersion") ? node.get("resourceVersion").asText() : "";
-        
-        log.info("执行模型: {} version: {}", modelName, modelVersion);
-        
-        Map<String, Object> result = new HashMap<>();
-        result.put("model", modelName);
-        result.put("version", modelVersion);
-        result.put("status", "completed");
-        result.put("output", "模型执行结果数据");
-        result.put("timestamp", System.currentTimeMillis());
-        
-        return result;
-    }
+        // 调用算法执行服务（模型从算法档案的calledModels获取，下载到项目执行目录）
+        Result<Map<String, Object>> execResult = algorithmExecutionService.executeAlgorithmTask(
+            algorithmName, algorithmVersion, startTime, endTime,
+            projectName, predecessorOutputs, executionParams, executionTimestamp, nodeId);
 
-    /**
-     * 执行数据节点
-     */
-    private Object executeDataNode(JsonNode node, Map<String, Object> executionResults) throws Exception {
-        // TODO: 实现数据节点逻辑
-        // 数据节点主要用于提供输入数据
-        String dataSource = node.has("resourceName") ? node.get("resourceName").asText() : "";
-        
-        log.info("读取数据源: {}", dataSource);
-        
-        Map<String, Object> result = new HashMap<>();
-        result.put("dataSource", dataSource);
-        result.put("status", "completed");
-        result.put("data", "数据内容");
-        result.put("timestamp", System.currentTimeMillis());
-        
-        return result;
+        Map<String, Object> nodeResult = new HashMap<>();
+        nodeResult.put("nodeId", nodeId);
+        nodeResult.put("nodeName", nodeName);
+        nodeResult.put("algorithm", algorithmName);
+        nodeResult.put("version", algorithmVersion);
+
+        if (execResult.getSuccess()) {
+            Map<String, Object> resultData = execResult.getData();
+            String outputText = resultData != null ? (String) resultData.get("output") : "";
+            String outputCsv = resultData != null ? (String) resultData.get("outputCsv") : null;
+            String processLog = resultData != null ? (String) resultData.get("processLog") : "";
+            String taskDir = resultData != null ? (String) resultData.get("taskDir") : "";
+            String calledModels = resultData != null ? (String) resultData.get("calledModels") : null;
+
+            nodeResult.put("status", "completed");
+            nodeResult.put("output", outputText);
+            nodeResult.put("outputCsv", outputCsv);
+            nodeResult.put("processLog", processLog);
+            nodeResult.put("taskDir", taskDir);
+            nodeResult.put("calledModels", calledModels);
+            nodeResult.put("timestamp", System.currentTimeMillis());
+            nodeOutputs.put(nodeId, outputText);
+        } else {
+            Map<String, Object> resultData = execResult.getData();
+            String processLog = resultData != null ? (String) resultData.get("processLog") : "";
+            nodeResult.put("status", "failed");
+            nodeResult.put("error", execResult.getMessage());
+            nodeResult.put("processLog", processLog != null ? processLog : "");
+            nodeResult.put("timestamp", System.currentTimeMillis());
+        }
+
+        return nodeResult;
     }
 
     /**
      * 停止执行
      */
     public void stopExecution() {
-        executorService.shutdownNow();
-        log.info("执行引擎已停止");
+        stopRequested.set(true);
+        // 不shutdown线程池，只设置停止标志，线程池在整个服务生命周期内保持活跃
+        log.info("执行引擎已请求停止");
     }
 }

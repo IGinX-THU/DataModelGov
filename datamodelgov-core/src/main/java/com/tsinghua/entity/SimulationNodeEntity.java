@@ -5,27 +5,34 @@ import lombok.Data;
 
 /**
  * 仿真节点实体
- * 表示仿真图中的节点（算法、模型、数据）
+ * 表示仿真图中的算法任务节点
+ * 每个节点对应一个具体的算法执行任务
  */
 @Data
 public class SimulationNodeEntity {
     @ApiModelProperty(value = "节点ID")
     private String nodeId;
 
-    @ApiModelProperty(value = "节点名称")
+    @ApiModelProperty(value = "节点显示名称")
     private String nodeName;
 
-    @ApiModelProperty(value = "节点类型：algorithm-算法，model-模型，data-数据")
-    private String nodeType;
+    @ApiModelProperty(value = "引用的算法名称")
+    private String algorithmName;
 
-    @ApiModelProperty(value = "关联的资源名称（算法名称、模型名称、数据表名等）")
-    private String resourceName;
+    @ApiModelProperty(value = "引用的算法版本")
+    private String algorithmVersion;
 
-    @ApiModelProperty(value = "关联的资源版本（模型版本等）")
-    private String resourceVersion;
+    @ApiModelProperty(value = "数据时间窗口开始时间（毫秒时间戳）")
+    private Long startTime;
 
-    @ApiModelProperty(value = "节点配置（JSON格式）")
-    private String nodeConfig;
+    @ApiModelProperty(value = "数据时间窗口结束时间（毫秒时间戳）")
+    private Long endTime;
+
+    @ApiModelProperty(value = "节点执行参数（JSON格式）")
+    private String executionParams;
+
+    @ApiModelProperty(value = "是否启用该节点")
+    private Boolean enabled;
 
     @ApiModelProperty(value = "节点位置X坐标")
     private Integer positionX;
@@ -33,18 +40,12 @@ public class SimulationNodeEntity {
     @ApiModelProperty(value = "节点位置Y坐标")
     private Integer positionY;
 
-    @ApiModelProperty(value = "所属仿真档案ID")
-    private Long archiveId;
+    @ApiModelProperty(value = "节点执行状态：pending/running/completed/failed")
+    private String executionStatus;
 
-    @ApiModelProperty(value = "算法名称（当nodeType为algorithm时使用）")
-    private String algorithmName;
+    @ApiModelProperty(value = "节点执行结果（输出txt文本数据）")
+    private String executionOutput;
 
-    @ApiModelProperty(value = "算法版本（当nodeType为algorithm时使用）")
-    private String algorithmVersion;
-
-    @ApiModelProperty(value = "输入数据源（当nodeType为algorithm时使用）")
-    private String inputDataSource;
-
-    @ApiModelProperty(value = "输入数据表（当nodeType为algorithm时使用）")
-    private String inputDataTable;
+    @ApiModelProperty(value = "节点执行错误信息")
+    private String executionError;
 }

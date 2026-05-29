@@ -76,7 +76,7 @@ public class RunTaskService {
     private IginXClient iginxClient;
 
     @Autowired
-    private ModelFileService modelFileService;
+    private AlgorithmFileService algorithmFileService;
 
     @Autowired
     private DataTableService dataTableService;
@@ -554,8 +554,8 @@ public class RunTaskService {
             Files.createDirectories(taskDir);
             log.info("创建任务目录: {}", taskDir);
 
-            // 3. 下载模型文件
-            modelFileService.extractModelFile(associationRulesEntity.getModelName(), associationRulesEntity.getModelVersion(), taskDir);
+            // 3. 下载算法文件
+            algorithmFileService.extractAlgorithmFile(associationRulesEntity.getAlgorithmName(), associationRulesEntity.getAlgorithmVersion(), taskDir);
 
             // 4. 导出数据
             downloadData(associationRulesEntity, inputs, taskDir, runTaskEntity);
@@ -649,8 +649,8 @@ public class RunTaskService {
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "timestamp", runTaskEntity.getTimestamp(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "processId", runTaskEntity.getProcessId(), timestamp));
         metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "processLog", runTaskEntity.getProcessLog(), timestamp));
-        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "modelName", runTaskEntity.getModelName(), timestamp));
-        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "modelVersion", runTaskEntity.getModelVersion(), timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "algorithmName", runTaskEntity.getAlgorithmName(), timestamp));
+        metaPoints.add(ConvertUtil.createFieldPoint(metaBasePath, "algorithmVersion", runTaskEntity.getAlgorithmVersion(), timestamp));
 
         // 批量写入元数据
         iginxClient.getWriteClient().writePoints(metaPoints.stream().filter(Objects::nonNull).collect(Collectors.toList()));
@@ -1490,8 +1490,8 @@ public class RunTaskService {
                 manifest.put("dataStartTime", task.getStartTime());
                 manifest.put("dataEndTime", task.getEndTime());
                 manifest.put("ruleName", task.getRuleName());
-                manifest.put("modelName", task.getModelName());
-                manifest.put("modelVersion", task.getModelVersion());
+                manifest.put("algorithmName", task.getAlgorithmName());
+                manifest.put("algorithmVersion", task.getAlgorithmVersion());
                 manifest.put("totalFiles", fileInfoList.size());
                 manifest.put("files", fileInfoList);
                 

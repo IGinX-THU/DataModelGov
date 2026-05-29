@@ -251,15 +251,15 @@ public class ProjectService {
     }
 
     /**
-     * 添加数据路径到项目
+     * 添加路径到项目（通用方法，支持datas/models/algorithms）
      */
-    public void addDataToProject(String projectName, String dataPath) throws Exception {
+    public void addToProject(String projectName, String path, String fieldType) throws Exception {
         if (projectName == null || projectName.isEmpty()) {
-            log.warn("项目名称为空，跳过添加数据路径");
+            log.warn("项目名称为空，跳过添加路径");
             return;
         }
-        if (dataPath == null || dataPath.isEmpty()) {
-            log.warn("数据路径为空，跳过添加");
+        if (path == null || path.isEmpty()) {
+            log.warn("路径为空，跳过添加");
             return;
         }
 
@@ -269,37 +269,36 @@ public class ProjectService {
             return;
         }
 
-        String currentDatas = project.getDatas();
-        String newDatas;
-        if (currentDatas == null || currentDatas.isEmpty()) {
-            newDatas = dataPath;
+        String currentValue = getFieldValue(project, fieldType);
+        String newValue;
+        if (currentValue == null || currentValue.isEmpty()) {
+            newValue = path;
         } else {
-            // 检查是否已存在
-            String[] existingDatas = currentDatas.split(",");
-            for (String existing : existingDatas) {
-                if (existing.trim().equals(dataPath)) {
-                    log.info("数据路径已存在: {}", dataPath);
+            String[] existingItems = currentValue.split(",");
+            for (String existing : existingItems) {
+                if (existing.trim().equals(path)) {
+                    log.info("路径已存在: {} (字段: {})", path, fieldType);
                     return;
                 }
             }
-            newDatas = currentDatas + "," + dataPath;
+            newValue = currentValue + "," + path;
         }
 
-        project.setDatas(newDatas);
+        setFieldValue(project, fieldType, newValue);
         saveProjectMetadata(project);
-        log.info("已添加数据路径到项目: {}, 路径: {}", projectName, dataPath);
+        log.info("已添加路径到项目: {}, 字段: {}, 路径: {}", projectName, fieldType, path);
     }
 
     /**
-     * 从项目移除数据路径
+     * 从项目移除路径（通用方法，支持datas/models/algorithms）
      */
-    public void removeDataFromProject(String projectName, String dataPath) throws Exception {
+    public void removeFromProject(String projectName, String path, String fieldType) throws Exception {
         if (projectName == null || projectName.isEmpty()) {
-            log.warn("项目名称为空，跳过移除数据路径");
+            log.warn("项目名称为空，跳过移除路径");
             return;
         }
-        if (dataPath == null || dataPath.isEmpty()) {
-            log.warn("数据路径为空，跳过移除");
+        if (path == null || path.isEmpty()) {
+            log.warn("路径为空，跳过移除");
             return;
         }
 
@@ -309,25 +308,41 @@ public class ProjectService {
             return;
         }
 
-        String currentDatas = project.getDatas();
-        if (currentDatas == null || currentDatas.isEmpty()) {
-            log.info("项目的datas字段为空，无需移除");
+        String currentValue = getFieldValue(project, fieldType);
+        if (currentValue == null || currentValue.isEmpty()) {
+            log.info("项目的{}字段为空，无需移除", fieldType);
             return;
         }
 
-        // 移除指定的数据路径
-        String[] existingDatas = currentDatas.split(",");
-        List<String> newDatasList = new ArrayList<>();
-        for (String existing : existingDatas) {
-            if (!existing.trim().equals(dataPath)) {
-                newDatasList.add(existing.trim());
+        String[] existingItems = currentValue.split(",");
+        List<String> newList = new ArrayList<>();
+        for (String existing : existingItems) {
+            if (!existing.trim().equals(path)) {
+                newList.add(existing.trim());
             }
         }
 
-        String newDatas = String.join(",", newDatasList);
-        project.setDatas(newDatas);
+        String newValue = String.join(",", newList);
+        setFieldValue(project, fieldType, newValue);
         saveProjectMetadata(project);
-        log.info("已从项目移除数据路径: {}, 路径: {}", projectName, dataPath);
+        log.info("已从项目移除路径: {}, 字段: {}, 路径: {}", projectName, fieldType, path);
+    }
+
+    private String getFieldValue(ProjectEntity project, String fieldType) {
+        switch (fieldType) {
+            case "datas": return project.getDatas();
+            case "models": return project.getModels();
+            case "algorithms": return project.getAlgorithms();
+            default: return null;
+        }
+    }
+
+    private void setFieldValue(ProjectEntity project, String fieldType, String value) {
+        switch (fieldType) {
+            case "datas": project.setDatas(value); break;
+            case "models": project.setModels(value); break;
+            case "algorithms": project.setAlgorithms(value); break;
+        }
     }
 
 }

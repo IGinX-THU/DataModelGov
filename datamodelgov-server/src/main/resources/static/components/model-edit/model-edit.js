@@ -5,6 +5,9 @@ class ModelEdit extends HTMLElement {
         this.currentModel = null;
         this.inputs = [];
         this.outputs = [];
+        this.apis = []; // 多API列表
+        this.currentApiIndex = 0; // 当前选中的API索引
+        this.parsingRulesData = []; // 缓存解析规则数据
     }
 
     async connectedCallback() {
@@ -88,6 +91,34 @@ class ModelEdit extends HTMLElement {
             addOutputBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 this.addOutputParam();
+            });
+        }
+
+        // 新增API按钮
+        const addApiBtn = this.shadowRoot.getElementById('addApiBtn');
+        if (addApiBtn) {
+            addApiBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.addApi();
+            });
+        }
+
+        // API标签页点击事件（事件委托）
+        const apiTabs = this.shadowRoot.getElementById('apiTabs');
+        if (apiTabs) {
+            apiTabs.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const tab = e.target.closest('.api-tab');
+                if (!tab) return;
+                // 点击删除按钮
+                if (e.target.classList.contains('api-tab-delete')) {
+                    const idx = parseInt(tab.dataset.index);
+                    this.removeApi(idx);
+                    return;
+                }
+                // 切换API标签
+                const idx = parseInt(tab.dataset.index);
+                this.switchApi(idx);
             });
         }
 
@@ -192,7 +223,7 @@ class ModelEdit extends HTMLElement {
         if (sceneInput) sceneInput.value = modelDetailData.scene || '';
 
         // 使用接口返回的inputs和outputs数据
-        this.loadInterfaceParamsFromData(modelDetailData.inputs, modelDetailData.outputs);
+        this.loadInterfaceParamsFromData(modelDetailData.inputs, modelDetailData.outputs, modelDetailData.apis);
     }
 
     hide() {
@@ -243,49 +274,72 @@ class ModelEdit extends HTMLElement {
         if (sceneInput) sceneInput.value = modelInfo.scene || '';
 
         // 加载接口参数（使用从API获取的数据）
-        if (this.currentModelMeta && this.currentModelMeta.inputs) {
-            this.loadInterfaceParamsFromData(this.currentModelMeta.inputs, this.currentModelMeta.outputs);
+        if (this.currentModelMeta && (this.currentModelMeta.inputs || this.currentModelMeta.apis)) {
+            this.loadInterfaceParamsFromData(this.currentModelMeta.inputs, this.currentModelMeta.outputs, this.currentModelMeta.apis);
         } else {
-            // 如果没有数据，使用默认参数
             this.loadInterfaceParams();
         }
     }
 
-    loadInterfaceParamsFromData(inputsData, outputsData) {
-        console.log('loadInterfaceParamsFromData - inputsData:', inputsData);
-        console.log('loadInterfaceParamsFromData - outputsData:', outputsData);
+    loadInterfaceParamsFromData(inputsData, outputsData, apisData) {
+        console.log('loadInterfaceParamsFromData - inputsData:', inputsData, 'outputsData:', outputsData, 'apisData:', apisData);
         
-        // 解析inputs数据
+        // 优先使用apis数据（多API模式）
+        if (apisData) {
+            try {
+                const apis = typeof apisData === 'string' ? JSON.parse(apisData) : apisData;
+                if (Array.isArray(apis) && apis.length > 0) {
+                    this.apis = apis.map(api => ({
+                        name: api.name || '默认API',
+                        description: api.description || '',
+                        inputs: Array.isArray(api.inputs) ? api.inputs : [],
+                        outputs: Array.isArray(api.outputs) ? api.outputs : []
+                    }));
+                    this.currentApiIndex = 0;
+                    this.inputs = this.apis[0].inputs || [];
+                    this.outputs = this.apis[0].outputs || [];
+                    this.renderApiTabs();
+                    this.renderApiInfo();
+                    this.renderParams();
+                    return;
+                }
+            } catch (error) {
+                console.error('解析apis数据失败:', error);
+            }
+        }
+        
+        // 降级到单API模式（兼容旧数据）
         let inputs = [];
         if (inputsData) {
             try {
                 inputs = typeof inputsData === 'string' ? JSON.parse(inputsData) : inputsData;
-                console.log('解析后的inputs:', inputs);
             } catch (error) {
                 console.error('解析inputs参数数据失败:', error);
                 inputs = [];
             }
         }
         
-        // 解析outputs数据
         let outputs = [];
         if (outputsData) {
             try {
                 outputs = typeof outputsData === 'string' ? JSON.parse(outputsData) : outputsData;
-                console.log('解析后的outputs:', outputs);
             } catch (error) {
                 console.error('解析outputs参数数据失败:', error);
                 outputs = [];
             }
         }
         
-        // 如果没有数据，使用空数组
         this.inputs = inputs || [];
         this.outputs = outputs || [];
-        
-        console.log('设置后的this.inputs:', this.inputs);
-        console.log('设置后的this.outputs:', this.outputs);
-        
+        this.apis = [{
+            name: '默认API',
+            description: '',
+            inputs: this.inputs,
+            outputs: this.outputs
+        }];
+        this.currentApiIndex = 0;
+        this.renderApiTabs();
+        this.renderApiInfo();
         this.renderParams();
     }
 
@@ -304,6 +358,15 @@ class ModelEdit extends HTMLElement {
             { name: 'efficiency', type: 'float', unit: '%', desc: '效率' }
         ];
 
+        this.apis = [{
+            name: '默认API',
+            description: '',
+            inputs: this.inputs,
+            outputs: this.outputs
+        }];
+        this.currentApiIndex = 0;
+        this.renderApiTabs();
+        this.renderApiInfo();
         this.renderParams();
     }
 
@@ -590,87 +653,134 @@ class ModelEdit extends HTMLElement {
     }
 
     async autoParseFromCode() {
-        // 获取当前选择的配置
         const parseRulesSelect = this.shadowRoot.getElementById('parseRulesSelect');
         const sourceFileSelect = this.shadowRoot.getElementById('sourceFileSelect');
         const forceOverrideCheck = this.shadowRoot.getElementById('forceOverrideCheck');
         
-        const selectedRule = parseRulesSelect?.value || '';
+        const selectedRuleId = parseRulesSelect?.value || '';
         const selectedFile = sourceFileSelect?.value || '';
         const forceOverride = forceOverrideCheck?.checked || false;
         
-        if (!selectedRule) {
+        if (!selectedRuleId) {
             this.showErrorMessage('请先选择解析规则');
+            return;
+        }
+        
+        if (!selectedFile) {
+            this.showErrorMessage('请从下拉列表中选择源文件');
             return;
         }
         
         try {
             // 获取解析规则配置
-            const parsingRule = this.getParsingRuleConfig(selectedRule);
-            
-            if (!parsingRule || !parsingRule.pattern) {
-                this.showErrorMessage('解析规则配置无效');
-                return;
-            }
-            
-            console.log('开始解析代码文件，使用解析规则:', parsingRule);
+            const ruleData = this.parsingRulesData.find(r => String(r.createTime) === String(selectedRuleId));
+            const parseType = ruleData?.parseType || 'regex';
+            const regexPattern = ruleData?.regexPattern || '';
+            const pythonModule = ruleData?.pythonModule || '';
+            const pythonFunction = ruleData?.pythonFunction || '';
             
             // 获取模型名称和版本
             const modelName = this.currentModel?.name || this.currentModelMeta?.name;
             const version = this.currentModel?.version || this.currentModelMeta?.version;
-            
-            console.log('使用的参数 - modelName:', modelName, 'version:', version);
             
             if (!modelName || !version) {
                 this.showErrorMessage('模型名称或版本为空，无法解析代码');
                 return;
             }
             
-            // 调用ModelFileService的extractModelFile方法
-            const extractResponse = await window.AppConfig.post('model', 'extractModelFile', {
-                name: modelName,
-                version: version
+            // 从fileList中查找目标文件内容
+            const targetFile = (this.extractedFileList || []).find(f => {
+                const path = f.path || '';
+                const name = f.name || '';
+                return selectedFile === path || selectedFile === name || path.endsWith(selectedFile);
             });
             
-            if (!extractResponse.success) {
-                this.showErrorMessage('提取模型文件失败: ' + extractResponse.message);
+            if (!targetFile || !targetFile.content) {
+                this.showErrorMessage('未找到文件内容: ' + selectedFile);
                 return;
             }
             
-            console.log('模型文件提取成功:', extractResponse.data);
+            // 调用后端autoParse端点
+            if (window.showGlobalLoading) window.showGlobalLoading('正在解析代码...');
             
-            // 动态填充源文件下拉选择框（每次点击都重新加载）
-            this.populateSourceFileSelect(extractResponse.data);
+            const parseResponse = await window.AppConfig.post('parsingRules', 'autoParse', {
+                fileContent: targetFile.content,
+                fileName: targetFile.name,
+                parseType: parseType,
+                regexPattern: regexPattern,
+                pythonModule: pythonModule,
+                pythonFunction: pythonFunction,
+                maxLines: 50
+            });
             
-            // 如果没有选择文件，提示用户选择
-            if (!selectedFile) {
-                this.showErrorMessage('请从下拉列表中选择源文件');
+            if (window.hideGlobalLoading) window.hideGlobalLoading();
+            
+            if (!parseResponse.success || !parseResponse.data) {
+                this.showErrorMessage('代码解析失败: ' + (parseResponse.message || '未知错误'));
                 return;
             }
             
-            // 执行代码分析
-            const codeAnalysis = this.performRealCodeAnalysis(selectedFile, parsingRule, extractResponse.data);
+            const parseResult = parseResponse.data;
+            const parsedApis = parseResult.apis || [];
             
-            if (!codeAnalysis || (!codeAnalysis.inputs || codeAnalysis.inputs.length === 0) && (!codeAnalysis.outputs || codeAnalysis.outputs.length === 0)) {
+            if (parsedApis.length === 0) {
                 this.showErrorMessage('未解析到数据，请确认代码注释是否符合规范');
                 return;
             }
             
             // 处理强制覆盖逻辑
             if (forceOverride) {
-                // 强制覆盖：完全替换现有参数
-                this.inputs = codeAnalysis.inputs || [];
-                this.outputs = codeAnalysis.outputs || [];
-                this.showSuccessMessage(`已强制覆盖解析结果（${this.inputs.length}个输入，${this.outputs.length}个输出）`);
+                // 将解析结果作为新的API列表
+                this.apis = parsedApis.map(api => ({
+                    name: api.name || 'API',
+                    description: api.description || '',
+                    inputs: (api.inputs || []).map(p => ({
+                        name: p.name || '',
+                        type: this.normalizeDataType(p.type || ''),
+                        unit: p.unit || '',
+                        desc: p.desc || ''
+                    })),
+                    outputs: (api.outputs || []).map(p => ({
+                        name: p.name || '',
+                        type: this.normalizeDataType(p.type || ''),
+                        unit: p.unit || '',
+                        desc: p.desc || ''
+                    }))
+                }));
+                this.currentApiIndex = 0;
+                this.inputs = this.apis[0].inputs || [];
+                this.outputs = this.apis[0].outputs || [];
+                this.renderApiTabs();
+                this.renderApiInfo();
+                this.renderParams();
+                this.showSuccessMessage(`已解析${this.apis.length}个API，共${this.apis.reduce((s, a) => s + a.inputs.length, 0)}个输入，${this.apis.reduce((s, a) => s + a.outputs.length, 0)}个输出`);
             } else {
-                // 非强制覆盖：只填充未输入的内容
-                this.mergeParameters(codeAnalysis);
-                this.showSuccessMessage(`已智能合并解析结果（保留已有内容，填充空白项）`);
+                // 合并到当前API
+                const currentApi = this.apis[this.currentApiIndex];
+                const firstParsedApi = parsedApis[0];
+                if (firstParsedApi) {
+                    const codeAnalysis = {
+                        inputs: (firstParsedApi.inputs || []).map(p => ({
+                            name: p.name || '',
+                            type: this.normalizeDataType(p.type || ''),
+                            unit: p.unit || '',
+                            desc: p.desc || ''
+                        })),
+                        outputs: (firstParsedApi.outputs || []).map(p => ({
+                            name: p.name || '',
+                            type: this.normalizeDataType(p.type || ''),
+                            unit: p.unit || '',
+                            desc: p.desc || ''
+                        }))
+                    };
+                    this.mergeParameters(codeAnalysis);
+                    this.renderParams();
+                    this.showSuccessMessage('已智能合并解析结果');
+                }
             }
             
-            this.renderParams();
-            
         } catch (error) {
+            if (window.hideGlobalLoading) window.hideGlobalLoading();
             console.error('代码解析失败:', error);
             this.showErrorMessage('代码解析失败: ' + error.message);
         }
@@ -1016,18 +1126,19 @@ int process_data() {
                 return;
             }
             
-            // 调用ModelFileService的extractModelFile方法
+            // 调用extractModelFile接口获取文件列表
             const extractResponse = await window.AppConfig.post('model', 'extractModelFile', {
                 name: modelName,
                 version: version
             });
             
             if (extractResponse.success) {
+                // 保存fileList供autoParse使用
+                this.extractedFileList = extractResponse.data || [];
                 console.log('源文件加载成功:', extractResponse.data);
-                this.populateSourceFileSelect(extractResponse.data);
+                this.populateSourceFileSelect(this.extractedFileList);
             } else {
                 console.warn('加载源文件失败:', extractResponse.message);
-                // 不显示错误消息，只是不填充下拉框
             }
         } catch (error) {
             console.error('加载源文件时发生错误:', error);
@@ -1298,41 +1409,31 @@ int process_data() {
             return;
         }
         
-        // 清空现有选项
-        parseRulesSelect.innerHTML = '';
-        console.log('已清空现有选项');
-        
-        // 添加默认选项
-        const defaultOption = document.createElement('option');
-        defaultOption.value = '';
-        defaultOption.textContent = '请选择解析规则';
-        parseRulesSelect.appendChild(defaultOption);
+        parseRulesSelect.innerHTML = '<option value="">请选择解析规则</option>';
         
         try {
-            // 通过API动态查询解析规则
-            console.log('正在调用API查询解析规则...');
             const response = await window.AppConfig.post('parsingRules', 'query', {
                 pageNum: 1,
-                pageSize: 100 // 获取所有规则
+                pageSize: 100
             });
             
-            console.log('API响应:', response);
-            
             if (response.success && response.data) {
-                console.log('解析规则数据:', response.data);
+                this.parsingRulesData = response.data; // 缓存完整规则数据
+                const parseTypeLabels = { regex: '正则', typehint: 'TypeHint', inspect: 'Inspect' };
+                const languageLabels = { python: 'Python', matlab: 'MATLAB', cpp: 'C/C++', generic: '通用' };
                 response.data.forEach(rule => {
                     const option = document.createElement('option');
-                    option.value = rule.createTime; // 使用createTime作为唯一标识
-                    option.textContent = rule.name;
-                    option.dataset.regexPattern = rule.regexPattern || ''; // 存储正则表达式模式
-                    option.dataset.example = rule.example || ''; // 存储example字段
+                    option.value = rule.createTime;
+                    const typeLabel = parseTypeLabels[rule.parseType] || '正则';
+                    const langLabel = languageLabels[rule.language] || '';
+                    option.textContent = `${rule.name} [${typeLabel}${langLabel ? '/' + langLabel : ''}]`;
+                    option.dataset.regexPattern = rule.regexPattern || '';
+                    option.dataset.example = rule.example || '';
+                    option.dataset.parseType = rule.parseType || 'regex';
+                    option.dataset.language = rule.language || '';
                     parseRulesSelect.appendChild(option);
-                    console.log('添加解析规则选项:', rule.name, rule.createTime);
                 });
-                
                 console.log('已加载解析规则:', response.data.length, '个规则');
-            } else {
-                console.warn('加载解析规则失败:', response.message);
             }
         } catch (error) {
             console.error('加载解析规则时发生错误:', error);
@@ -1432,6 +1533,9 @@ int process_data() {
     }
 
     collectFormData() {
+        // 保存当前API的参数到apis数组
+        this.saveCurrentApiData();
+        
         // 收集基本信息
         const modelName = this.shadowRoot.getElementById('modelName').value.trim();
         const developer = this.shadowRoot.getElementById('developer').value.trim();
@@ -1484,7 +1588,7 @@ int process_data() {
             outputsData.push({...currentOutput});
         }
 
-        // 构建完整的表单数据对象，包含ModelFileService.saveModelMetadata需要的所有字段
+        // 构建完整的表单数据对象
         const formData = {
             name: modelName,
             version: version,
@@ -1497,6 +1601,7 @@ int process_data() {
             scene: scene,
             inputs: JSON.stringify(inputsData),
             outputs: JSON.stringify(outputsData),
+            apis: JSON.stringify(this.apis),
             timestamp: this.currentModelMeta?.timestamp || Date.now()
         };
 
@@ -1636,8 +1741,86 @@ int process_data() {
         }
     }
 
+    // ========== 多API管理方法 ==========
+    
+    addApi() {
+        this.saveCurrentApiData();
+        const newApi = {
+            name: `API${this.apis.length + 1}`,
+            description: '',
+            inputs: [],
+            outputs: []
+        };
+        this.apis.push(newApi);
+        this.currentApiIndex = this.apis.length - 1;
+        this.inputs = newApi.inputs;
+        this.outputs = newApi.outputs;
+        this.renderApiTabs();
+        this.renderApiInfo();
+        this.renderParams();
+    }
+    
+    removeApi(index) {
+        if (this.apis.length <= 1) {
+            this.showErrorMessage('至少保留一个API');
+            return;
+        }
+        this.apis.splice(index, 1);
+        if (this.currentApiIndex >= this.apis.length) {
+            this.currentApiIndex = this.apis.length - 1;
+        } else if (this.currentApiIndex > index) {
+            this.currentApiIndex--;
+        }
+        this.inputs = this.apis[this.currentApiIndex].inputs;
+        this.outputs = this.apis[this.currentApiIndex].outputs;
+        this.renderApiTabs();
+        this.renderApiInfo();
+        this.renderParams();
+    }
+    
+    switchApi(index) {
+        if (index === this.currentApiIndex) return;
+        this.saveCurrentApiData();
+        this.currentApiIndex = index;
+        this.inputs = this.apis[index].inputs || [];
+        this.outputs = this.apis[index].outputs || [];
+        this.renderApiTabs();
+        this.renderApiInfo();
+        this.renderParams();
+    }
+    
+    saveCurrentApiData() {
+        this.saveAllCurrentValues();
+        const apiNameInput = this.shadowRoot.getElementById('apiName');
+        const apiDescInput = this.shadowRoot.getElementById('apiDescription');
+        if (this.apis[this.currentApiIndex]) {
+            this.apis[this.currentApiIndex].name = apiNameInput?.value?.trim() || this.apis[this.currentApiIndex].name;
+            this.apis[this.currentApiIndex].description = apiDescInput?.value?.trim() || '';
+            this.apis[this.currentApiIndex].inputs = [...this.inputs];
+            this.apis[this.currentApiIndex].outputs = [...this.outputs];
+        }
+    }
+    
+    renderApiTabs() {
+        const apiTabs = this.shadowRoot.getElementById('apiTabs');
+        if (!apiTabs) return;
+        apiTabs.innerHTML = this.apis.map((api, index) => `
+            <div class="api-tab ${index === this.currentApiIndex ? 'active' : ''}" data-index="${index}">
+                <span class="api-tab-name">${api.name || 'API' + (index + 1)}</span>
+                ${this.apis.length > 1 ? '<span class="api-tab-delete" title="删除此API">×</span>' : ''}
+            </div>
+        `).join('');
+    }
+    
+    renderApiInfo() {
+        const apiNameInput = this.shadowRoot.getElementById('apiName');
+        const apiDescInput = this.shadowRoot.getElementById('apiDescription');
+        const currentApi = this.apis[this.currentApiIndex];
+        if (apiNameInput && currentApi) apiNameInput.value = currentApi.name || '';
+        if (apiDescInput && currentApi) apiDescInput.value = currentApi.description || '';
+    }
+
     refreshModelTree() {
-        // 这里可以添加刷新右侧树的逻辑
         console.log('刷新模型树');
     }
 

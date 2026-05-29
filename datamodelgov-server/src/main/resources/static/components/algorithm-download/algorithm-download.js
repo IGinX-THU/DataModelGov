@@ -7,6 +7,25 @@ class AlgorithmDownload extends HTMLElement {
         this.style.display = 'none';
     }
 
+    // 去掉存储路径前缀（如 algorithms_system.projectName.）
+    stripStoragePrefix(path) {
+        if (!path) return path;
+        const prefixes = ['models_system.', 'algorithms_system.'];
+        for (const prefix of prefixes) {
+            if (path.startsWith(prefix)) {
+                // 去掉前缀后，再去掉项目名部分
+                const withoutPrefix = path.substring(prefix.length);
+                const parts = withoutPrefix.split('.');
+                if (parts.length > 1) {
+                    // 返回去掉项目名后的部分（即模型/算法名称）
+                    return parts.slice(1).join('.');
+                }
+                return withoutPrefix;
+            }
+        }
+        return path;
+    }
+
     async connectedCallback() {
         await this.loadResources();
         // 等待CSS加载完成后再渲染HTML
@@ -332,16 +351,16 @@ class AlgorithmDownload extends HTMLElement {
     loadAlgorithmNames() {
         const algorithmName = this.shadowRoot.getElementById('algorithmName');
         if (!algorithmName) return;
-        
+
         // 获取右侧算法资产库的根节点
-        const rightSidebarTree = document.querySelector('.right-sidebar .tree');
-        if (!rightSidebarTree) {
-            console.warn('未找到右侧算法资产库');
+        const algorithmTree = document.getElementById('algorithmTree');
+        if (!algorithmTree) {
+            console.warn('未找到算法树');
             return;
         }
-        
+
         // 获取所有节点，包括嵌套的子节点
-        const allNodes = rightSidebarTree.querySelectorAll('.tree-node');
+        const allNodes = algorithmTree.querySelectorAll('.tree-node');
         const algorithmNames = new Set(); // 使用Set避免重复
         
         allNodes.forEach(node => {
@@ -353,14 +372,17 @@ class AlgorithmDownload extends HTMLElement {
                 if (nodeName === 'algorithms_system') {
                     return;
                 }
-                
+
+                // 去掉存储路径前缀
+                const strippedName = this.stripStoragePrefix(nodeName);
+
                 // 检查是否是父节点（有子节点的节点）
                 const childrenContainer = node.querySelector('.tree-children');
                 if (childrenContainer && childrenContainer.children.length > 0) {
                     // 检查子节点是否为叶子节点（没有子节点的节点）
                     const childNodes = childrenContainer.querySelectorAll('.tree-node');
                     let hasLeafChild = false;
-                    
+
                     childNodes.forEach(childNode => {
                         const childChildrenContainer = childNode.querySelector('.tree-children');
                         // 如果子节点没有子节点，则是叶子节点
@@ -368,10 +390,10 @@ class AlgorithmDownload extends HTMLElement {
                             hasLeafChild = true;
                         }
                     });
-                    
+
                     // 只有当子节点包含叶子节点时，才将父节点作为算法名称
                     if (hasLeafChild) {
-                        algorithmNames.add(nodeName);
+                        algorithmNames.add(strippedName);
                     }
                 }
             }

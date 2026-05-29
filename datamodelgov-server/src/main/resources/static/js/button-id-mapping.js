@@ -69,17 +69,21 @@ const BUTTON_ID_MAP = {
         text: '删除',
         action: 'handleDeleteAlgorithm'
     },
-    'btn-algorithm-parse': {
-        text: '解析',
-        action: 'showParsingRules'
+    'btn-algorithm-search': {
+        text: '搜索',
+        action: 'showAlgorithmArchiveList'
     },
     'btn-parse': {
-        text: '解析',
-        action: 'showParsingRules'
+        text: '搜索',
+        action: 'showModelArchiveList'
     },
-    'btn-link': {
-        text: '关联',
-        action: 'showAssociationRules'
+    'btn-simulation': {
+        text: '仿真',
+        action: 'showSimulationArchive'
+    },
+    'btn-simulation-analyze': {
+        text: '分析',
+        action: 'showSimulationRecord'
     }
 };
 
@@ -125,9 +129,17 @@ const MENU_ID_MAP = {
         text: '编辑元模型档案',
         action: 'handleEditModel'
     },
+    'menu-model-archive-query': {
+        text: '搜索模型档案',
+        action: 'showModelArchiveList'
+    },
     'menu-edit-meta-algorithm-archive': {
-        text: '编辑元算法档案',
+        text: '编辑算法档案',
         action: 'handleEditAlgorithm'
+    },
+    'menu-algorithm-archive-query': {
+        text: '搜索算法档案',
+        action: 'showAlgorithmArchiveList'
     },
     'menu-remove-algorithm-asset': {
         text: '移除算法资产',
@@ -145,6 +157,10 @@ const MENU_ID_MAP = {
         text: '仿真档案管理',
         action: 'showSimulationArchive'
     },
+    'menu-simulation-record': {
+        text: '仿真记录',
+        action: 'showSimulationRecord'
+    },
     'menu-algorithm-list': {
         text: '算法管理',
         action: 'showAlgorithmList'
@@ -156,6 +172,14 @@ const MENU_ID_MAP = {
     'menu-project-list': {
         text: '打开项目',
         action: 'showProjectList'
+    },
+    'menu-project-export': {
+        text: '导出项目',
+        action: 'showProjectExport'
+    },
+    'menu-project-import': {
+        text: '导入项目',
+        action: 'showProjectImport'
     },
     'menu-numerical-and-curve-analysis': {
         text: '数值与曲线分析',
@@ -176,6 +200,18 @@ const MENU_ID_MAP = {
     'menu-about': {
         text: '关于',
         action: 'showAbout'
+    },
+    'menu-import-wizard-data': {
+        text: '数据',
+        action: 'showImportData'
+    },
+    'menu-import-wizard-model': {
+        text: '模型',
+        action: 'showModelUpload'
+    },
+    'menu-import-wizard-algorithm': {
+        text: '算法',
+        action: 'showAlgorithmUpload'
     }
 };
 
