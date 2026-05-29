@@ -2081,9 +2081,19 @@ function showSimulationRecord() {
             }
         }
 
-        // 弹窗组件不需要清空工作区
+        // 弹窗组件不需要清空工作区，但需要隐藏其他弹窗
         const modalComponents = ['registerEmbedded', 'importData', 'modelUpload', 'modelDownload', 'modelEdit', 'algorithmUpload', 'algorithmDownload', 'algorithmEdit'];
-        if (!modalComponents.includes(componentId)) {
+        if (modalComponents.includes(componentId)) {
+            // 隐藏其他弹窗组件
+            modalComponents.forEach(modalId => {
+                if (modalId !== componentId) {
+                    const modal = document.getElementById(modalId);
+                    if (modal && typeof modal.hide === 'function') {
+                        modal.hide();
+                    }
+                }
+            });
+        } else {
             // 先清空工作区
             clearWorkspace();
         }

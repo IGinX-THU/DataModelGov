@@ -228,7 +228,15 @@
                 <span class="dropdown-trigger">工具</span>
                 <ul class="dropdown-menu">
                     <li id="menu-configure-parsing-rules">配置解析规则</li>
-                    <li id="menu-clear-workspace">清空工作区</li>
+                    <li class="has-submenu" id="menu-import-wizard">
+                        导入向导 ▸
+                        <ul class="submenu">
+                            <li id="menu-import-wizard-data">数据</li>
+                            <li id="menu-import-wizard-model">模型</li>
+                            <li id="menu-import-wizard-algorithm">算法</li>
+                        </ul>
+                    </li>
+                    <li id="menu-project-export">导出向导</li>
                     <li class="has-submenu" id="menu-window">
                         窗口 ▸
                         <ul class="submenu">
@@ -236,6 +244,7 @@
                             <li id="menu-toggle-right-sidebar">右侧边栏</li>
                         </ul>
                     </li>
+                    <li id="menu-clear-workspace">清空工作区</li>
                 </ul>
             </span>
         <span class="tab dropdown" id="settingsDropdown">

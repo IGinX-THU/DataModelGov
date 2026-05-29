@@ -200,6 +200,18 @@ const MENU_ID_MAP = {
     'menu-about': {
         text: '关于',
         action: 'showAbout'
+    },
+    'menu-import-wizard-data': {
+        text: '数据',
+        action: 'showImportData'
+    },
+    'menu-import-wizard-model': {
+        text: '模型',
+        action: 'showModelUpload'
+    },
+    'menu-import-wizard-algorithm': {
+        text: '算法',
+        action: 'showAlgorithmUpload'
     }
 };
 

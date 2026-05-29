@@ -159,17 +159,7 @@ class ModelUpload extends HTMLElement {
     }
 
     bindEvents() {
-        // 关闭按钮
-        const closeBtn = this.shadowRoot.getElementById('closeBtn');
-        if (closeBtn) {
-            closeBtn.addEventListener('click', () => {
-                if (this._closeDialog) {
-                    this._closeDialog();
-                } else {
-                    this.hide();
-                }
-            });
-        }
+        // 关闭按钮由bindModalEvents处理，这里不重复绑定
 
         // 取消按钮
         const cancelBtn = this.shadowRoot.getElementById('cancelBtn');
@@ -540,14 +530,14 @@ class ModelUpload extends HTMLElement {
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     }
 
-    show() {
+    async show() {
         console.log('🔍 model-upload show() 被调用');
-        
+
         // 使用通用弹窗管理器
-        const modal = window.modalManager.show(this, {
+        const modal = await window.modalManager.show(this, {
             maxWidth: '600px'
         });
-        
+
         // 绑定组件内部事件
         this.bindModalEvents(modal);
         
