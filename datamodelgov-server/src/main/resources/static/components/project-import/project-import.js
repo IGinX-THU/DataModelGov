@@ -211,9 +211,15 @@ class ProjectImport extends HTMLElement {
             if (progressText) progressText.textContent = '正在上传文件...';
             if (importBtn) importBtn.disabled = true;
 
+            const authHeaders = window.AppConfig?.getAuthHeaders?.() || {};
+            const headers = {};
+            if (authHeaders['Authorization']) {
+                headers['Authorization'] = authHeaders['Authorization'];
+            }
+
             const response = await fetch('/api/project/import', {
                 method: 'POST',
-                headers: window.AppConfig?.getAuthHeaders?.() || {},
+                headers: headers,
                 body: formData
             });
 

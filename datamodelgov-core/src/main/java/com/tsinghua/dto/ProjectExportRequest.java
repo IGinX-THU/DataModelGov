@@ -26,5 +26,5 @@ public class ProjectExportRequest {
     private Boolean includeDataCsv = true;
 
     @ApiModelProperty(value = "是否导出仿真档案及执行记录")
-    private Boolean includeSimulationArchives = true;
+    private Boolean includeSimulationArchives = false;
 }
