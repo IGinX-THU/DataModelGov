@@ -11,7 +11,7 @@ class ModelArchiveList extends HTMLElement {
     async connectedCallback() {
         await this.loadResources();
         this.bindEvents();
-        this.loadData();
+        // 不在初始化时自动加载数据，只在显示时加载
     }
 
     async loadResources() {
@@ -248,7 +248,9 @@ class ModelArchiveList extends HTMLElement {
 
     show() {
         this.style.display = 'block';
-        this.loadData();
+        if (!this.data || this.data.length === 0) {
+            this.loadData();
+        }
     }
 
     hide() {

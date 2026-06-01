@@ -482,33 +482,69 @@ class SimulationRecord extends HTMLElement {
         });
     }
 
-    // 智能Y轴分组：将所有数值列按值域重叠分组，分配到左/右Y轴
-    // 返回 { groups: [{ cols, range, yAxisIndex }], leftRange, rightRange }
+    // 智能Y轴分组（单个记录集）：按值域重叠分组，分配到左/右Y轴
+    // 返回 { groups: [{ cols, min, max, yAxisIndex }], leftRange, rightRange }
     getSmartYAxisColumns(task, type) {
         const records = type === 'input' ? task.rawInputRecords : task.rawOutputRecords;
         if (!records || records.length === 0) return { groups: [], leftRange: null, rightRange: null };
 
-        const keys = Object.keys(records[0]);
         const colStats = {};
-
-        // 计算每列的值域范围
-        keys.forEach(key => {
+        Object.keys(records[0]).forEach(key => {
             if (key === 'key') return;
             const values = records.map(r => r[key]).filter(v => v != null && typeof v === 'number' && isFinite(v));
             if (values.length === 0) return;
             const min = Math.min(...values);
             const max = Math.max(...values);
             if (min === 0 && max === 0) return;
-            colStats[key] = { min, max, range: max - min, mid: (min + max) / 2 };
+            colStats[key] = { min, max };
         });
 
+        return this._groupColStatsByRange(colStats);
+    }
+
+    // 智能Y轴分组（全局）：汇总所有可见任务的输入+输出列一起分组
+    // 这样不同来源但同量级的列会合并到同一轴，避免某轴量级跨度过大导致数据被压到底部
+    getGlobalSmartYAxisColumns() {
+        const colStats = {};
+        const addRecords = (records) => {
+            if (!records || records.length === 0) return;
+            Object.keys(records[0]).forEach(key => {
+                if (key === 'key') return;
+                const values = records.map(r => r[key]).filter(v => v != null && typeof v === 'number' && isFinite(v));
+                if (values.length === 0) return;
+                const mn = Math.min(...values);
+                const mx = Math.max(...values);
+                if (mn === 0 && mx === 0) return;
+                if (colStats[key]) {
+                    colStats[key].min = Math.min(colStats[key].min, mn);
+                    colStats[key].max = Math.max(colStats[key].max, mx);
+                } else {
+                    colStats[key] = { min: mn, max: mx };
+                }
+            });
+        };
+
+        const tasks = (this.currentChartData && this.currentChartData.tasks) ? this.currentChartData.tasks : [];
+        tasks.forEach(task => {
+            if (this.curveVisibility.input) addRecords(task.rawInputRecords);
+            if (this.curveVisibility.output) addRecords(task.rawOutputRecords);
+        });
+
+        return this._groupColStatsByRange(colStats);
+    }
+
+    // 分组核心：将列统计按值域重叠分组、过滤不可见列，并仅保留列数最多的两组分配到左/右轴
+    _groupColStatsByRange(colStats) {
         const colNames = Object.keys(colStats);
         if (colNames.length === 0) return { groups: [], leftRange: null, rightRange: null };
 
-        // 按中值排序
-        const sorted = [...colNames].sort((a, b) => colStats[a].mid - colStats[b].mid);
+        colNames.forEach(k => {
+            colStats[k].range = colStats[k].max - colStats[k].min;
+            colStats[k].mid = (colStats[k].min + colStats[k].max) / 2;
+        });
 
-        // 按值域重叠分组
+        // 按中值排序后按值域重叠分组
+        const sorted = [...colNames].sort((a, b) => colStats[a].mid - colStats[b].mid);
         const groups = [];
         let currentGroup = [sorted[0]];
         let groupMin = colStats[sorted[0]].min;
@@ -523,8 +559,10 @@ class SimulationRecord extends HTMLElement {
             const cRange = cMax - cMin;
             const largerRange = Math.max(groupRange, cRange);
 
-            // 中值差距 > 较大范围的50% → 不重叠，新组
-            if (largerRange > 0 && Math.abs(cMid - groupMid) > largerRange * 0.5) {
+            const shouldSplit = largerRange > 0
+                ? Math.abs(cMid - groupMid) > largerRange * 0.5
+                : (groupRange === 0 && cRange === 0 && Math.abs(cMid - groupMid) > 0);
+            if (shouldSplit) {
                 groups.push({ cols: currentGroup, min: groupMin, max: groupMax });
                 currentGroup = [sorted[i]];
                 groupMin = cMin;
@@ -537,38 +575,41 @@ class SimulationRecord extends HTMLElement {
         }
         groups.push({ cols: currentGroup, min: groupMin, max: groupMax });
 
-        // 分配Y轴：列数最多的组→左Y轴(index 0)，次多→右Y轴(index 1)
-        // 其余组分配到值域更近的轴
-        groups.sort((a, b) => b.cols.length - a.cols.length);
-
-        const leftGroup = groups[0];
-        leftGroup.yAxisIndex = 0;
-        let leftRange = { min: leftGroup.min, max: leftGroup.max };
-
-        let rightRange = null;
-        if (groups.length > 1) {
-            const rightGroup = groups[1];
-            rightGroup.yAxisIndex = 1;
-            rightRange = { min: rightGroup.min, max: rightGroup.max };
-
-            // 其余组分配到更近的Y轴
-            for (let i = 2; i < groups.length; i++) {
-                const g = groups[i];
-                const gMid = (g.min + g.max) / 2;
-                const leftDist = Math.abs(gMid - (leftRange.min + leftRange.max) / 2);
-                const rightDist = Math.abs(gMid - (rightRange.min + rightRange.max) / 2);
-                g.yAxisIndex = leftDist <= rightDist ? 0 : 1;
-                if (g.yAxisIndex === 0) {
-                    leftRange.min = Math.min(leftRange.min, g.min);
-                    leftRange.max = Math.max(leftRange.max, g.max);
-                } else {
-                    rightRange.min = Math.min(rightRange.min, g.min);
-                    rightRange.max = Math.max(rightRange.max, g.max);
-                }
-            }
+        // 可见性过滤
+        // 1. 排除常量列组（range=0，显示为水平线，无信息量）
+        let visibleGroups = groups.filter(g => g.max > g.min);
+        if (visibleGroups.length === 0) {
+            // 全部为常量列：退回原始分组，至少能显示
+            groups.forEach((g, i) => { g.yAxisIndex = i === 0 ? 0 : 1; });
+            const lr = groups[0] ? { min: groups[0].min, max: groups[0].max } : null;
+            return { groups, leftRange: lr, rightRange: null };
         }
 
-        return { groups, leftRange, rightRange };
+        // 2. 以列数最多的组为参考，排除极端离群组（中值相差1000倍以上）
+        visibleGroups.sort((a, b) => b.cols.length - a.cols.length);
+        const refMid = (visibleGroups[0].min + visibleGroups[0].max) / 2;
+        if (refMid > 0) {
+            visibleGroups = visibleGroups.filter(g => {
+                const gMid = (g.min + g.max) / 2;
+                const ratio = Math.max(gMid / refMid, refMid / gMid);
+                return ratio <= 1000;
+            });
+        }
+
+        // 3. 仅保留列数最多的前两组（左/右轴各一）
+        //    双轴最多承载两个量级，多余的组若强行塞入会压缩可见度，故排除
+        visibleGroups.sort((a, b) => b.cols.length - a.cols.length);
+        const keptGroups = visibleGroups.slice(0, 2);
+
+        keptGroups[0].yAxisIndex = 0;
+        const leftRange = { min: keptGroups[0].min, max: keptGroups[0].max };
+        let rightRange = null;
+        if (keptGroups.length > 1) {
+            keptGroups[1].yAxisIndex = 1;
+            rightRange = { min: keptGroups[1].min, max: keptGroups[1].max };
+        }
+
+        return { groups: keptGroups, leftRange, rightRange };
     }
 
     // 检测指定列是否为非数值列
@@ -584,6 +625,69 @@ class SimulationRecord extends HTMLElement {
         return false;
     }
 
+    // 智能X轴选择：自动选择最适合作为X轴的列
+    // 优先选择分类列（如signal），其次选择key（时间轴）
+    getSmartXAxisColumn() {
+        if (!this.currentChartData || !this.currentChartData.tasks) return 'key';
+
+        // 仅考虑当前可见的记录类型（输入/输出）
+        const getVisibleRecordSets = (task) => {
+            const sets = [];
+            if (this.curveVisibility.input && task.rawInputRecords && task.rawInputRecords.length > 0) {
+                sets.push(task.rawInputRecords);
+            }
+            if (this.curveVisibility.output && task.rawOutputRecords && task.rawOutputRecords.length > 0) {
+                sets.push(task.rawOutputRecords);
+            }
+            return sets;
+        };
+
+        // 收集所有非key列（仅来自可见记录集）
+        const colNames = new Set();
+        this.currentChartData.tasks.forEach(task => {
+            getVisibleRecordSets(task).forEach(records => {
+                Object.keys(records[0]).forEach(k => {
+                    if (k !== 'key') colNames.add(k);
+                });
+            });
+        });
+
+        // 找分类列（非数值列，且唯一值数量少）
+        // 关键约束：分类列必须存在于所有将被绘制的可见记录集中，
+        // 否则缺少该列的数据集（如时序输入数据没有signal列）会丢失全部数据点
+        let bestCategory = null;
+        let bestCategoryCount = Infinity;
+        for (const col of colNames) {
+            if (!this.isNonNumericColumn(col)) continue;
+
+            // 检查该列是否存在于每个可见记录集中
+            let existsInAll = true;
+            const uniqueValues = new Set();
+            this.currentChartData.tasks.forEach(task => {
+                getVisibleRecordSets(task).forEach(records => {
+                    if (records[0][col] === undefined) {
+                        existsInAll = false;
+                    } else {
+                        records.forEach(r => {
+                            if (r[col] != null) uniqueValues.add(String(r[col]));
+                        });
+                    }
+                });
+            });
+            if (!existsInAll) continue;
+
+            // 选择唯一值数量适中的分类列（2-20个唯一值最佳）
+            const count = uniqueValues.size;
+            if (count >= 2 && count <= 20 && count < bestCategoryCount) {
+                bestCategory = col;
+                bestCategoryCount = count;
+            }
+        }
+
+        if (bestCategory) return bestCategory;
+        return 'key';
+    }
+
     renderLineOrBarChart(chartType) {
         const series = [];
         const colors = ['#1890ff', '#52c41a', '#faad14', '#f5222d', '#722ed1', '#13c2c2'];
@@ -593,7 +697,7 @@ class SimulationRecord extends HTMLElement {
         const selectedXAxis = xAxisSelect ? xAxisSelect.value : '';
         const selectedYAxis = yAxisSelect ? yAxisSelect.value : '';
 
-        const xAxisColumn = selectedXAxis || 'key';
+        const xAxisColumn = selectedXAxis || this.getSmartXAxisColumn();
         const isXCategory = this.isNonNumericColumn(xAxisColumn);
         const isAutoY = !selectedYAxis;
 
@@ -611,61 +715,36 @@ class SimulationRecord extends HTMLElement {
             categoryData = Array.from(categorySet);
         }
 
-        // 智能Y轴：收集所有task的分组结果，确定是否需要双Y轴
+        // 智能Y轴：全局分组（输入+输出一起），确定左右轴列与范围
         let useDualY = false;
         let globalLeftCols = [];
         let globalRightCols = [];
         let globalLeftRange = null;
         let globalRightRange = null;
+        let globalGroups = [];
 
-        if (isAutoY && this.currentChartData.tasks) {
-            const leftSet = new Set();
-            const rightSet = new Set();
-            let leftMin = Infinity, leftMax = -Infinity;
-            let rightMin = Infinity, rightMax = -Infinity;
-
-            this.currentChartData.tasks.forEach(task => {
-                for (const type of ['input', 'output']) {
-                    const smart = this.getSmartYAxisColumns(task, type);
-                    smart.groups.forEach(g => {
-                        if (g.yAxisIndex === 0) {
-                            g.cols.forEach(c => leftSet.add(c));
-                            leftMin = Math.min(leftMin, g.min);
-                            leftMax = Math.max(leftMax, g.max);
-                        } else {
-                            g.cols.forEach(c => rightSet.add(c));
-                            rightMin = Math.min(rightMin, g.min);
-                            rightMax = Math.max(rightMax, g.max);
-                        }
-                    });
-                }
+        if (isAutoY) {
+            const g = this.getGlobalSmartYAxisColumns();
+            globalGroups = g.groups;
+            g.groups.forEach(grp => {
+                if (grp.yAxisIndex === 0) globalLeftCols.push(...grp.cols);
+                else globalRightCols.push(...grp.cols);
             });
-            globalLeftCols = Array.from(leftSet);
-            globalRightCols = Array.from(rightSet);
-            if (leftMin !== Infinity) globalLeftRange = { min: leftMin, max: leftMax };
-            if (rightMin !== Infinity) globalRightRange = { min: rightMin, max: rightMax };
+            globalLeftRange = g.leftRange;
+            globalRightRange = g.rightRange;
             useDualY = globalRightCols.length > 0;
         }
 
-        // 辅助函数：从分组中获取列的yAxisIndex
-        const getColYAxisIndex = (colName, groups) => {
-            for (const g of groups) {
-                if (g.cols.includes(colName)) return g.yAxisIndex;
+        // 辅助函数：从全局分组中获取列的yAxisIndex；不在任何保留组中则返回-1（跳过）
+        const getColYAxisIndex = (colName) => {
+            for (const grp of globalGroups) {
+                if (grp.cols.includes(colName)) return grp.yAxisIndex;
             }
-            return 0;
+            return -1;
         };
 
-        // 辅助函数：获取某task某type的所有Y轴列（按yAxisIndex分组）
-        const getSmartColumns = (task, type) => {
-            const smart = this.getSmartYAxisColumns(task, type);
-            const leftCols = [];
-            const rightCols = [];
-            smart.groups.forEach(g => {
-                if (g.yAxisIndex === 0) leftCols.push(...g.cols);
-                else rightCols.push(...g.cols);
-            });
-            return { leftCols, rightCols, groups: smart.groups };
-        };
+        // 全局保留的所有Y轴列（已过滤不可见列）
+        const allKeptCols = globalGroups.flatMap(grp => grp.cols);
 
         if (this.currentChartData.tasks) {
             this.currentChartData.tasks.forEach((task, idx) => {
@@ -676,8 +755,7 @@ class SimulationRecord extends HTMLElement {
                     if (task.rawInputRecords && task.rawInputRecords.length > 0) {
                         let allYCols;
                         if (isAutoY) {
-                            const smart = getSmartColumns(task, 'input');
-                            allYCols = [...smart.leftCols, ...smart.rightCols];
+                            allYCols = allKeptCols.filter(c => task.rawInputRecords[0][c] !== undefined);
                         } else {
                             allYCols = [selectedYAxis];
                         }
@@ -685,7 +763,8 @@ class SimulationRecord extends HTMLElement {
                         allYCols.forEach((col, colIdx) => {
                             if (!task.rawInputRecords[0] || task.rawInputRecords[0][col] === undefined) return;
                             const colColor = colors[(idx + colIdx) % colors.length];
-                            const yIdx = isAutoY ? getColYAxisIndex(col, getSmartColumns(task, 'input').groups) : 0;
+                            const yIdx = isAutoY ? getColYAxisIndex(col) : 0;
+                            if (yIdx === -1) return;
                             let data;
                             if (isXCategory) {
                                 data = task.rawInputRecords
@@ -734,8 +813,7 @@ class SimulationRecord extends HTMLElement {
                     if (task.rawOutputRecords && task.rawOutputRecords.length > 0) {
                         let allYCols;
                         if (isAutoY) {
-                            const smart = getSmartColumns(task, 'output');
-                            allYCols = [...smart.leftCols, ...smart.rightCols];
+                            allYCols = allKeptCols.filter(c => task.rawOutputRecords[0][c] !== undefined);
                         } else {
                             allYCols = [selectedYAxis];
                         }
@@ -743,7 +821,8 @@ class SimulationRecord extends HTMLElement {
                         allYCols.forEach((col, colIdx) => {
                             if (!task.rawOutputRecords[0] || task.rawOutputRecords[0][col] === undefined) return;
                             const colColor = colors[(idx + colIdx) % colors.length];
-                            const yIdx = isAutoY ? getColYAxisIndex(col, getSmartColumns(task, 'output').groups) : 0;
+                            const yIdx = isAutoY ? getColYAxisIndex(col) : 0;
+                            if (yIdx === -1) return;
                             let data;
                             if (isXCategory) {
                                 data = task.rawOutputRecords
@@ -934,8 +1013,9 @@ class SimulationRecord extends HTMLElement {
         const selectedXAxis = xAxisSelect ? xAxisSelect.value : '';
         const selectedYAxis = yAxisSelect ? yAxisSelect.value : '';
 
-        const xAxisColumn = selectedXAxis || 'key';
+        const xAxisColumn = selectedXAxis || this.getSmartXAxisColumn();
         const isXCategory = this.isNonNumericColumn(xAxisColumn);
+        const isAutoY = !selectedYAxis;
 
         // 收集分类X轴的值
         let categoryData = [];
@@ -951,17 +1031,49 @@ class SimulationRecord extends HTMLElement {
             categoryData = Array.from(categorySet);
         }
 
+        // 智能Y轴：全局分组（输入+输出一起）
+        let useDualY = false;
+        let globalLeftCols = [];
+        let globalRightCols = [];
+        let globalGroups = [];
+
+        if (isAutoY) {
+            const g = this.getGlobalSmartYAxisColumns();
+            globalGroups = g.groups;
+            g.groups.forEach(grp => {
+                if (grp.yAxisIndex === 0) globalLeftCols.push(...grp.cols);
+                else globalRightCols.push(...grp.cols);
+            });
+            useDualY = globalRightCols.length > 0;
+        }
+
+        // 辅助函数：从全局分组中获取列的yAxisIndex；不在保留组中返回-1
+        const getColYAxisIndex = (colName) => {
+            for (const grp of globalGroups) {
+                if (grp.cols.includes(colName)) return grp.yAxisIndex;
+            }
+            return -1;
+        };
+
+        const allKeptCols = globalGroups.flatMap(grp => grp.cols);
+
         this.currentChartData.tasks.forEach((task, idx) => {
             const taskColor = colors[idx % colors.length];
 
             // 输入数据
             if (this.curveVisibility.input) {
                 if (task.rawInputRecords && task.rawInputRecords.length > 0) {
-                    const smartInput = this.getSmartYAxisColumns(task, 'input');
-                    const yAxisColumns = selectedYAxis ? [selectedYAxis] : smartInput.groups.flatMap(g => g.cols);
+                    let yAxisColumns;
+                    if (isAutoY) {
+                        yAxisColumns = allKeptCols.filter(c => task.rawInputRecords[0][c] !== undefined);
+                    } else {
+                        yAxisColumns = [selectedYAxis];
+                    }
                     yAxisColumns.forEach((col, colIdx) => {
                         if (!task.rawInputRecords[0] || task.rawInputRecords[0][col] === undefined) return;
                         const colColor = colors[(idx + colIdx) % colors.length];
+                        const yIdx = isAutoY ? getColYAxisIndex(col) : 0;
+                        if (yIdx === -1) return;
                         let data;
                         if (isXCategory) {
                             data = task.rawInputRecords
@@ -979,7 +1091,7 @@ class SimulationRecord extends HTMLElement {
                         series.push({
                             name: `${col} (输入)`,
                             type: 'scatter',
-                            yAxisIndex: 0,
+                            yAxisIndex: yIdx,
                             data: data,
                             symbolSize: 6,
                             itemStyle: { color: colColor }
@@ -990,6 +1102,7 @@ class SimulationRecord extends HTMLElement {
                     series.push({
                         name: `${task.name} (输入)`,
                         type: 'scatter',
+                        yAxisIndex: 0,
                         data: data,
                         symbolSize: 6,
                         itemStyle: { color: taskColor }
@@ -1000,11 +1113,17 @@ class SimulationRecord extends HTMLElement {
             // 输出数据
             if (this.curveVisibility.output) {
                 if (task.rawOutputRecords && task.rawOutputRecords.length > 0) {
-                    const smartOutput = this.getSmartYAxisColumns(task, 'output');
-                    const yAxisColumns = selectedYAxis ? [selectedYAxis] : smartOutput.groups.flatMap(g => g.cols);
+                    let yAxisColumns;
+                    if (isAutoY) {
+                        yAxisColumns = allKeptCols.filter(c => task.rawOutputRecords[0][c] !== undefined);
+                    } else {
+                        yAxisColumns = [selectedYAxis];
+                    }
                     yAxisColumns.forEach((col, colIdx) => {
                         if (!task.rawOutputRecords[0] || task.rawOutputRecords[0][col] === undefined) return;
                         const colColor = colors[(idx + colIdx + 1) % colors.length];
+                        const yIdx = isAutoY ? getColYAxisIndex(col) : 0;
+                        if (yIdx === -1) return;
                         let data;
                         if (isXCategory) {
                             data = task.rawOutputRecords
@@ -1023,6 +1142,7 @@ class SimulationRecord extends HTMLElement {
                         series.push({
                             name: `${col} (输出)`,
                             type: 'scatter',
+                            yAxisIndex: yIdx,
                             data: data,
                             symbolSize: 6,
                             itemStyle: { color: colColor }
@@ -1033,6 +1153,7 @@ class SimulationRecord extends HTMLElement {
                     series.push({
                         name: `${task.name} (输出)`,
                         type: 'scatter',
+                        yAxisIndex: 0,
                         data: data,
                         symbolSize: 6,
                         itemStyle: { color: colors[(idx + 1) % colors.length] }
@@ -1043,19 +1164,35 @@ class SimulationRecord extends HTMLElement {
 
         if (series.length === 0) return;
 
-        // 计算Y轴范围
-        let allData = [];
-        series.forEach(s => { allData = allData.concat(s.data); });
+        // 计算左/右Y轴范围
+        const leftSeries = series.filter(s => s.yAxisIndex === 0);
+        const rightSeries = series.filter(s => s.yAxisIndex === 1);
+
         let yMin = Infinity, yMax = -Infinity;
-        allData.forEach(p => {
-            if (p[1] < yMin) yMin = p[1];
-            if (p[1] > yMax) yMax = p[1];
+        leftSeries.forEach(s => {
+            (s.data || []).forEach(p => {
+                if (p[1] < yMin) yMin = p[1];
+                if (p[1] > yMax) yMax = p[1];
+            });
         });
         if (yMin === Infinity) yMin = 0;
         if (yMax === -Infinity) yMax = 100;
         const yPadding = (yMax - yMin) * 0.1 || 1;
 
+        let y2Min = Infinity, y2Max = -Infinity;
+        rightSeries.forEach(s => {
+            (s.data || []).forEach(p => {
+                if (p[1] < y2Min) y2Min = p[1];
+                if (p[1] > y2Max) y2Max = p[1];
+            });
+        });
+        if (y2Min === Infinity) y2Min = 0;
+        if (y2Max === -Infinity) y2Max = 100;
+        const y2Padding = (y2Max - y2Min) * 0.1 || 1;
+
         const isTimeAxis = xAxisColumn === 'key';
+        const hasRightSeries = rightSeries.length > 0;
+        const effectiveDualY = useDualY && hasRightSeries;
 
         // X轴配置
         let xAxisConfig;
@@ -1069,11 +1206,13 @@ class SimulationRecord extends HTMLElement {
             };
         } else {
             let xMin = Infinity, xMax = -Infinity;
-            allData.forEach(p => {
-                if (typeof p[0] === 'number') {
-                    if (p[0] < xMin) xMin = p[0];
-                    if (p[0] > xMax) xMax = p[0];
-                }
+            series.forEach(s => {
+                (s.data || []).forEach(p => {
+                    if (typeof p[0] === 'number') {
+                        if (p[0] < xMin) xMin = p[0];
+                        if (p[0] > xMax) xMax = p[0];
+                    }
+                });
             });
             if (xMin === Infinity) xMin = 0;
             if (xMax === -Infinity) xMax = 100;
@@ -1097,6 +1236,38 @@ class SimulationRecord extends HTMLElement {
             };
         }
 
+        // Y轴配置
+        const yAxisConfig = effectiveDualY ? [
+            {
+                type: 'value',
+                name: globalLeftCols.join(', '),
+                nameLocation: 'middle',
+                nameGap: 40,
+                min: yMin - yPadding,
+                max: yMax + yPadding,
+                axisLabel: { formatter: v => v.toFixed(2) }
+            },
+            {
+                type: 'value',
+                name: globalRightCols.join(', '),
+                nameLocation: 'middle',
+                nameGap: 40,
+                min: y2Min - y2Padding,
+                max: y2Max + y2Padding,
+                axisLabel: { formatter: v => v.toFixed(2) }
+            }
+        ] : [
+            {
+                type: 'value',
+                name: selectedYAxis || '',
+                nameLocation: 'middle',
+                nameGap: 40,
+                min: yMin - yPadding,
+                max: yMax + yPadding,
+                axisLabel: { formatter: v => v.toFixed(2) }
+            }
+        ];
+
         const option = {
             title: { text: '仿真记录散点图', left: 'center', top: 10, textStyle: { fontSize: 14, fontWeight: 'bold' } },
             tooltip: {
@@ -1112,17 +1283,9 @@ class SimulationRecord extends HTMLElement {
                 }
             },
             legend: { data: series.map(s => s.name), top: 40, left: 'center' },
-            grid: { left: '10%', right: '10%', bottom: '15%', top: '20%' },
+            grid: { left: effectiveDualY ? '10%' : '10%', right: effectiveDualY ? '10%' : '10%', bottom: '15%', top: '20%' },
             xAxis: xAxisConfig,
-            yAxis: {
-                type: 'value',
-                name: selectedYAxis || '',
-                nameLocation: 'middle',
-                nameGap: 40,
-                min: yMin - yPadding,
-                max: yMax + yPadding,
-                axisLabel: { formatter: (value) => value.toFixed(2) }
-            },
+            yAxis: yAxisConfig,
             dataZoom: [{ type: 'inside', start: 0, end: 100 }, { start: 0, end: 100 }],
             toolbox: { right: 20, feature: { restore: {}, saveAsImage: {} } },
             series: series
@@ -1139,123 +1302,196 @@ class SimulationRecord extends HTMLElement {
 
         const yAxisSelect = this.shadowRoot.getElementById('yAxisSelect');
         const selectedYAxis = yAxisSelect ? yAxisSelect.value : '';
+        const isAutoY = !selectedYAxis;
 
         this.currentChartData.tasks.forEach((task, idx) => {
             // 收集输出数据的直方图
             if (this.curveVisibility.output) {
-                let values = [];
-                let targetColumn = selectedYAxis;
+                let targetColumns = [];
 
                 if (task.rawOutputRecords && task.rawOutputRecords.length > 0) {
-                    if (!targetColumn) {
-                        const smartCols = this.getSmartYAxisColumns(task, 'output');
-                        const allCols = smartCols.groups.flatMap(g => g.cols);
-                        targetColumn = allCols.length > 0 ? allCols[0] : null;
+                    if (selectedYAxis) {
+                        targetColumns = [selectedYAxis];
+                    } else if (isAutoY) {
+                        const smart = this.getSmartYAxisColumns(task, 'output');
+                        // 为每个组的第一列生成直方图
+                        targetColumns = smart.groups.map(g => g.cols[0]).filter(c => c);
+                    } else {
+                        const numericCols = this.getNumericColumnsForTask(task, 'output');
+                        targetColumns = numericCols.length > 0 ? [numericCols[0]] : [];
                     }
-                    if (task.rawOutputRecords[0][targetColumn] !== undefined) {
-                        values = task.rawOutputRecords
+
+                    targetColumns.forEach((targetColumn, colIdx) => {
+                        if (!targetColumn || task.rawOutputRecords[0][targetColumn] === undefined) return;
+                        const values = task.rawOutputRecords
                             .map(r => r[targetColumn])
                             .filter(v => v != null && typeof v === 'number');
-                    }
+
+                        if (values.length === 0) return;
+
+                        const min = Math.min(...values);
+                        const max = Math.max(...values);
+                        const binCount = 20;
+                        const binSize = (max - min) / binCount || 1;
+
+                        const bins = new Array(binCount).fill(0);
+                        values.forEach(value => {
+                            const binIndex = Math.min(Math.floor((value - min) / binSize), binCount - 1);
+                            bins[binIndex]++;
+                        });
+
+                        const data = bins.map((count, index) => ({
+                            value: count,
+                            binLabel: `${(min + index * binSize).toFixed(2)} ~ ${(min + (index + 1) * binSize).toFixed(2)}`
+                        }));
+
+                        series.push({
+                            name: `${targetColumn} (输出)`,
+                            type: 'bar',
+                            data: data,
+                            itemStyle: { color: colors[(idx + colIdx) % colors.length] }
+                        });
+                    });
                 } else if (task.calculationResult && task.calculationResult.length > 0) {
-                    values = task.calculationResult.filter(p => p && isFinite(p[1])).map(p => p[1]);
-                    targetColumn = targetColumn || (task.outputPaths && task.outputPaths.length > 0 ? task.outputPaths[0].split('.').pop() : task.name);
+                    const values = task.calculationResult.filter(p => p && isFinite(p[1])).map(p => p[1]);
+                    const targetColumn = selectedYAxis || (task.outputPaths && task.outputPaths.length > 0 ? task.outputPaths[0].split('.').pop() : task.name);
+
+                    if (values.length === 0) return;
+
+                    const min = Math.min(...values);
+                    const max = Math.max(...values);
+                    const binCount = 20;
+                    const binSize = (max - min) / binCount || 1;
+
+                    const bins = new Array(binCount).fill(0);
+                    values.forEach(value => {
+                        const binIndex = Math.min(Math.floor((value - min) / binSize), binCount - 1);
+                        bins[binIndex]++;
+                    });
+
+                    const data = bins.map((count, index) => ({
+                        value: count,
+                        binLabel: `${(min + index * binSize).toFixed(2)} ~ ${(min + (index + 1) * binSize).toFixed(2)}`
+                    }));
+
+                    series.push({
+                        name: `${targetColumn} (输出)`,
+                        type: 'bar',
+                        data: data,
+                        itemStyle: { color: colors[idx % colors.length] }
+                    });
                 }
-
-                if (values.length === 0) return;
-
-                const min = Math.min(...values);
-                const max = Math.max(...values);
-                const binCount = 20;
-                const binSize = (max - min) / binCount || 1;
-
-                const bins = new Array(binCount).fill(0);
-                values.forEach(value => {
-                    const binIndex = Math.min(Math.floor((value - min) / binSize), binCount - 1);
-                    bins[binIndex]++;
-                });
-
-                const data = bins.map((count, index) => ({
-                    value: [min + index * binSize + binSize / 2, count],
-                    itemStyle: { color: colors[idx % colors.length] }
-                }));
-
-                series.push({
-                    name: `${targetColumn} (输出)`,
-                    type: 'bar',
-                    data: data,
-                    barWidth: binSize * 0.8,
-                    itemStyle: { color: colors[idx % colors.length] }
-                });
             }
 
             // 输入数据直方图
             if (this.curveVisibility.input) {
-                let values = [];
-                let targetColumn = selectedYAxis;
+                let targetColumns = [];
 
                 if (task.rawInputRecords && task.rawInputRecords.length > 0) {
-                    if (!targetColumn) {
-                        targetColumn = task.inputPaths && task.inputPaths[0] ? task.inputPaths[0] : 'value';
+                    if (selectedYAxis) {
+                        targetColumns = [selectedYAxis];
+                    } else if (isAutoY) {
+                        const smart = this.getSmartYAxisColumns(task, 'input');
+                        targetColumns = smart.groups.map(g => g.cols[0]).filter(c => c);
+                    } else {
+                        targetColumns = task.inputPaths && task.inputPaths[0] ? [task.inputPaths[0]] : ['value'];
                     }
-                    if (task.rawInputRecords[0][targetColumn] !== undefined) {
-                        values = task.rawInputRecords
+
+                    targetColumns.forEach((targetColumn, colIdx) => {
+                        if (!targetColumn || task.rawInputRecords[0][targetColumn] === undefined) return;
+                        const values = task.rawInputRecords
                             .map(r => r[targetColumn])
                             .filter(v => v != null && typeof v === 'number');
-                    }
+
+                        if (values.length === 0) return;
+
+                        const min = Math.min(...values);
+                        const max = Math.max(...values);
+                        const binCount = 20;
+                        const binSize = (max - min) / binCount || 1;
+
+                        const bins = new Array(binCount).fill(0);
+                        values.forEach(value => {
+                            const binIndex = Math.min(Math.floor((value - min) / binSize), binCount - 1);
+                            bins[binIndex]++;
+                        });
+
+                        const data = bins.map((count, index) => ({
+                            value: count,
+                            binLabel: `${(min + index * binSize).toFixed(2)} ~ ${(min + (index + 1) * binSize).toFixed(2)}`
+                        }));
+
+                        series.push({
+                            name: `${targetColumn} (输入)`,
+                            type: 'bar',
+                            data: data,
+                            itemStyle: { color: colors[(idx + colIdx + 3) % colors.length] }
+                        });
+                    });
                 } else if (task.inputData && task.inputData.length > 0) {
-                    values = task.inputData.filter(p => p && isFinite(p[1])).map(p => p[1]);
-                    targetColumn = targetColumn || (task.inputPaths && task.inputPaths.length > 0 ? task.inputPaths[0] : task.name);
+                    const values = task.inputData.filter(p => p && isFinite(p[1])).map(p => p[1]);
+                    const targetColumn = selectedYAxis || (task.inputPaths && task.inputPaths.length > 0 ? task.inputPaths[0] : task.name);
+
+                    if (values.length === 0) return;
+
+                    const min = Math.min(...values);
+                    const max = Math.max(...values);
+                    const binCount = 20;
+                    const binSize = (max - min) / binCount || 1;
+
+                    const bins = new Array(binCount).fill(0);
+                    values.forEach(value => {
+                        const binIndex = Math.min(Math.floor((value - min) / binSize), binCount - 1);
+                        bins[binIndex]++;
+                    });
+
+                    const data = bins.map((count, index) => ({
+                        value: count,
+                        binLabel: `${(min + index * binSize).toFixed(2)} ~ ${(min + (index + 1) * binSize).toFixed(2)}`
+                    }));
+
+                    series.push({
+                        name: `${targetColumn} (输入)`,
+                        type: 'bar',
+                        data: data,
+                        itemStyle: { color: colors[(idx + 3) % colors.length] }
+                    });
                 }
-
-                if (values.length === 0) return;
-
-                const min = Math.min(...values);
-                const max = Math.max(...values);
-                const binCount = 20;
-                const binSize = (max - min) / binCount || 1;
-
-                const bins = new Array(binCount).fill(0);
-                values.forEach(value => {
-                    const binIndex = Math.min(Math.floor((value - min) / binSize), binCount - 1);
-                    bins[binIndex]++;
-                });
-
-                const data = bins.map((count, index) => ({
-                    value: [min + index * binSize + binSize / 2, count],
-                    itemStyle: { color: colors[(idx + 3) % colors.length] }
-                }));
-
-                series.push({
-                    name: `${targetColumn} (输入)`,
-                    type: 'bar',
-                    data: data,
-                    barWidth: binSize * 0.8,
-                    itemStyle: { color: colors[(idx + 3) % colors.length] }
-                });
             }
         });
 
         if (series.length === 0) return;
+
+        // 使用按bin索引的分类X轴，使不同量级的分组各自占满整个宽度
+        const binCount = 20;
+        const categories = Array.from({ length: binCount }, (_, i) => String(i + 1));
+
+        // 计算Y轴范围（频数）
+        let yMax = -Infinity;
+        series.forEach(s => {
+            (s.data || []).forEach(d => {
+                const count = typeof d === 'object' ? d.value : d;
+                if (count > yMax) yMax = count;
+            });
+        });
+        if (yMax === -Infinity) yMax = 10;
+        const yPadding = yMax * 0.1 || 1;
 
         const option = {
             title: { text: '仿真记录直方图', left: 'center', top: 10, textStyle: { fontSize: 14, fontWeight: 'bold' } },
             tooltip: {
                 trigger: 'item',
                 formatter: (params) => {
-                    const seriesData = params.series.data;
-                    if (seriesData.length < 2) return `频数: ${params.value[1]}`;
-                    const binSize = Math.abs(seriesData[1].value[0] - seriesData[0].value[0]);
-                    const rangeStart = params.value[0] - binSize / 2;
-                    const rangeEnd = params.value[0] + binSize / 2;
-                    return `${params.seriesName}<br/>范围: ${rangeStart.toFixed(2)} - ${rangeEnd.toFixed(2)}<br/>频数: ${params.value[1]}`;
+                    const binLabel = params.data && params.data.binLabel ? params.data.binLabel : '';
+                    return `${params.seriesName}<br/>区间: ${binLabel}<br/>频数: ${params.value}`;
                 }
             },
-            legend: { data: series.map(s => s.name), top: 40, left: 'center' },
+            legend: { data: series.map(s => s.name), top: 40, left: 'center', type: 'scroll' },
             grid: { left: '10%', right: '10%', bottom: '15%', top: '20%' },
             xAxis: {
-                type: 'value',
-                name: selectedYAxis || '数值',
+                type: 'category',
+                data: categories,
+                name: '区间',
                 nameLocation: 'middle',
                 nameGap: 30
             },
@@ -1263,7 +1499,9 @@ class SimulationRecord extends HTMLElement {
                 type: 'value',
                 name: '频数',
                 nameLocation: 'middle',
-                nameGap: 40
+                nameGap: 40,
+                min: 0,
+                max: yMax + yPadding
             },
             toolbox: { right: 20, feature: { restore: {}, saveAsImage: {} } },
             series: series
@@ -2345,14 +2583,34 @@ class SimulationRecord extends HTMLElement {
             let outputDataFromCsv = null;
             let outputCsvData = null; // 保存CSV原始数据用于报告
             if (parsedResult && parsedResult.results) {
-                const firstNodeKey = Object.keys(parsedResult.results)[0];
-                if (firstNodeKey) {
-                    const nodeResult = parsedResult.results[firstNodeKey];
+                // 使用执行顺序中的最后一个节点（最终输出节点）
+                const executionOrder = parsedResult.executionOrder || Object.keys(parsedResult.results);
+                const finalNodeKey = executionOrder[executionOrder.length - 1];
+                if (finalNodeKey && parsedResult.results[finalNodeKey]) {
+                    const nodeResult = parsedResult.results[finalNodeKey];
                     if (nodeResult.outputCsv) {
                         outputCsvData = this.parseOutputCsv(nodeResult.outputCsv);
                         outputDataFromCsv = this.convertCsvToChartData(outputCsvData);
-                        console.log('从CSV解析的输出数据:', outputDataFromCsv);
+                        console.log('从results.outputCsv解析的输出数据:', outputDataFromCsv);
                         console.log('CSV原始数据:', outputCsvData);
+                    }
+                }
+            }
+
+            // 如果results中没有outputCsv，尝试从nodeOutputs中提取
+            if (!outputCsvData && parsedResult && parsedResult.nodeOutputs) {
+                const nodeKeys = Object.keys(parsedResult.nodeOutputs);
+                const lastNodeKey = nodeKeys[nodeKeys.length - 1];
+                if (lastNodeKey && parsedResult.nodeOutputs[lastNodeKey]) {
+                    const nodeOutput = parsedResult.nodeOutputs[lastNodeKey];
+                    if (typeof nodeOutput === 'string') {
+                        const csvMatch = nodeOutput.match(/=== 输出文件内容 \(output\.csv\) ===\s*\r?\n([\s\S]*?)(?=\r?\n\r?\n|$)/);
+                        if (csvMatch && csvMatch[1]) {
+                            outputCsvData = this.parseOutputCsv(csvMatch[1]);
+                            outputDataFromCsv = this.convertCsvToChartData(outputCsvData);
+                            console.log('从nodeOutputs解析的输出数据:', outputDataFromCsv);
+                            console.log('CSV原始数据:', outputCsvData);
+                        }
                     }
                 }
             }
@@ -2909,6 +3167,10 @@ class SimulationRecord extends HTMLElement {
                     // 切换图表类型并渲染
                     if (chartTypeSelect) chartTypeSelect.value = ct.type;
                     this.updateChart();
+                    // 重新应用完整配置并关闭动画，强制立即完整渲染（修复散点入场动画未完成导致截图空白）
+                    const fullOpt = this.chart.getOption();
+                    fullOpt.animation = false;
+                    this.chart.setOption(fullOpt, true);
                     await new Promise(resolve => setTimeout(resolve, 300));
 
                     const chartImage = this.chart.getDataURL({

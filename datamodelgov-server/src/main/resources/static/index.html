@@ -160,8 +160,8 @@
                 <ul class="dropdown-menu">
                     <li id="menu-project-new">新建项目</li>
                     <li id="menu-project-list">打开项目</li>
-<!--                    <li id="menu-project-export">导出项目</li>-->
-<!--                    <li id="menu-project-import">导入项目</li>-->
+                    <li id="menu-project-export">导出项目</li>
+                    <li id="menu-project-import">导入项目</li>
                 </ul>
             </span>
         <span class="tab dropdown" id="dataDropdown">
@@ -228,15 +228,15 @@
                 <span class="dropdown-trigger">工具</span>
                 <ul class="dropdown-menu">
                     <li id="menu-configure-parsing-rules">配置解析规则</li>
-                    <li class="has-submenu" id="menu-import-wizard">
-                        导入向导 ▸
-                        <ul class="submenu">
-                            <li id="menu-import-wizard-data">数据文件</li>
-                            <li id="menu-import-wizard-model">模型文件</li>
-                            <li id="menu-import-wizard-algorithm">算法文件</li>
-                        </ul>
-                    </li>
-                    <li id="menu-project-export">导出向导</li>
+<!--                    <li class="has-submenu" id="menu-import-wizard">-->
+<!--                        导入向导 ▸-->
+<!--                        <ul class="submenu">-->
+<!--                            <li id="menu-import-wizard-data">数据文件</li>-->
+<!--                            <li id="menu-import-wizard-model">模型文件</li>-->
+<!--                            <li id="menu-import-wizard-algorithm">算法文件</li>-->
+<!--                        </ul>-->
+<!--                    </li>-->
+<!--                    <li id="menu-project-export">导出向导</li>-->
                     <li class="has-submenu" id="menu-window">
                         窗口 ▸
                         <ul class="submenu">
@@ -303,6 +303,14 @@
                 <button class="ribbon-btn" id="btn-open-project">
                     <svg class="ribbon-btn-icon"><use href="#icon-folder-open"></use></svg>
                     <span class="ribbon-btn-text">打开</span>
+                </button>
+                <button class="ribbon-btn" id="btn-import-project">
+                    <svg class="ribbon-btn-icon"><use href="#icon-import"></use></svg>
+                    <span class="ribbon-btn-text">导入</span>
+                </button>
+                <button class="ribbon-btn" id="btn-export-project">
+                    <svg class="ribbon-btn-icon"><use href="#icon-export"></use></svg>
+                    <span class="ribbon-btn-text">导出</span>
                 </button>
             </div>
         </div>

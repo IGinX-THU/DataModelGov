@@ -13,6 +13,14 @@ const BUTTON_ID_MAP = {
         text: '打开',
         action: 'showProjectList'
     },
+    'btn-import-project': {
+        text: '导入',
+        action: 'showProjectImport'
+    },
+    'btn-export-project': {
+        text: '导出',
+        action: 'showProjectExport'
+    },
     'btn-analyze': {
         text: '分析',
         action: 'showVisualAnalysis'

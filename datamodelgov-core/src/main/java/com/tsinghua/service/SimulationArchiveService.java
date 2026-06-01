@@ -44,7 +44,7 @@ public class SimulationArchiveService {
         if (queryArchive != null && queryArchive.getCreateTime() != null) {
             timestamp = queryArchive.getCreateTime();
         } else {
-            timestamp = System.currentTimeMillis();
+            timestamp = archive.getCreateTime() == null ? System.currentTimeMillis() : archive.getCreateTime();
             archive.setCreateTime(timestamp);
         }
         archive.setUpdateTime(System.currentTimeMillis());

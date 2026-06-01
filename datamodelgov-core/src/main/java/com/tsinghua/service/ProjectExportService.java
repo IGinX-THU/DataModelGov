@@ -95,9 +95,7 @@ public class ProjectExportService {
         response.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
 
         // 3. 创建ZIP输出流
-        ZipOutputStream zos = new ZipOutputStream(new BufferedOutputStream(response.getOutputStream()));
-
-        try {
+        try (ZipOutputStream zos = new ZipOutputStream(new BufferedOutputStream(response.getOutputStream()))) {
             // 4. 写入清单文件
             writeManifest(zos, project, request);
 
@@ -127,6 +125,7 @@ public class ProjectExportService {
                 log.warn("项目 {} 导出时未选择任何资源类型", projectName);
             }
 
+            zos.flush();
             zos.finish();
             log.info("项目 {} 导出完成，共导出 {} 项资源", projectName, exportedCount);
 
@@ -459,6 +458,23 @@ public class ProjectExportService {
                             Path taskDir = java.nio.file.Paths.get("project", projectName, "job", "simulation", String.valueOf(execution.getTimestamp()));
                             if (java.nio.file.Files.exists(taskDir)) {
                                 exportDirectoryToZip(zos, taskDir, archiveDir + "/executions/" + execution.getTimestamp() + "_files");
+                            } else {
+                                // 尝试检查是否是旧的一级目录结构（兼容性）
+                                Path oldTaskDir = java.nio.file.Paths.get("project", projectName, "job", "simulation");
+                                if (java.nio.file.Files.exists(oldTaskDir)) {
+                                    try (java.util.stream.Stream<Path> stream = java.nio.file.Files.list(oldTaskDir)) {
+                                        stream.filter(path -> path.getFileName().toString().equals(String.valueOf(execution.getTimestamp())))
+                                              .forEach(dir -> {
+                                                  try {
+                                                      exportDirectoryToZip(zos, dir, archiveDir + "/executions/" + execution.getTimestamp() + "_files");
+                                                  } catch (IOException e) {
+                                                      log.warn("导出任务目录失败: {}", dir, e);
+                                                  }
+                                              });
+                                    } catch (IOException e) {
+                                        log.warn("列出任务目录失败", e);
+                                    }
+                                }
                             }
                         }
                     }
