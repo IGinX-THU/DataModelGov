@@ -136,7 +136,11 @@ class ProjectExport extends HTMLElement {
         const root = this.shadowRoot;
         const projectName = root.getElementById('projectSelect')?.value;
         if (!projectName) {
-            this.showToast('请选择项目', 'error');
+            if (window.CommonUtils && window.CommonUtils.showToast) {
+                window.CommonUtils.showToast('请选择项目', 'error');
+            } else {
+                this.showToast('请选择项目', 'error');
+            }
             return;
         }
 
@@ -146,7 +150,11 @@ class ProjectExport extends HTMLElement {
         const includeSimulationArchives = root.getElementById('includeSimulationArchives')?.checked || false;
 
         if (!includeAlgorithms && !includeModels && !includeDataCsv && !includeSimulationArchives) {
-            this.showToast('请至少选择一种导出资源类型', 'error');
+            if (window.CommonUtils && window.CommonUtils.showToast) {
+                window.CommonUtils.showToast('请至少选择一种导出资源类型', 'error');
+            } else {
+                this.showToast('请至少选择一种导出资源类型', 'error');
+            }
             return;
         }
 
@@ -190,7 +198,11 @@ class ProjectExport extends HTMLElement {
                 window.URL.revokeObjectURL(url);
                 document.body.removeChild(a);
 
-                this.showToast('导出成功');
+                if (window.CommonUtils && window.CommonUtils.showToast) {
+                    window.CommonUtils.showToast('导出成功');
+                } else {
+                    this.showToast('导出成功');
+                }
                 this.hide();
             } else {
                 // Try to parse error response
@@ -199,11 +211,19 @@ class ProjectExport extends HTMLElement {
                     const errorData = await response.json();
                     errorMsg = errorData.message || errorMsg;
                 } catch (e) {}
-                this.showToast(errorMsg, 'error');
+                if (window.CommonUtils && window.CommonUtils.showToast) {
+                    window.CommonUtils.showToast(errorMsg, 'error');
+                } else {
+                    this.showToast(errorMsg, 'error');
+                }
             }
         } catch (error) {
             console.error('导出项目失败:', error);
-            this.showToast('网络错误，导出失败', 'error');
+            if (window.CommonUtils && window.CommonUtils.showToast) {
+                window.CommonUtils.showToast('网络错误，导出失败', 'error');
+            } else {
+                this.showToast('网络错误，导出失败', 'error');
+            }
         } finally {
             if (window.hideGlobalLoading) {
                 window.hideGlobalLoading();

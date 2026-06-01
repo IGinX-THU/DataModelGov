@@ -278,13 +278,21 @@ class ProjectImport extends HTMLElement {
                 }, 1500);
             } else {
                 if (progress) progress.style.display = 'none';
-                this.showToast(result.message || '导入失败', 'error');
+                if (window.CommonUtils && window.CommonUtils.showToast) {
+                    window.CommonUtils.showToast(result.message || '导入失败', 'error');
+                } else {
+                    this.showToast(result.message || '导入失败', 'error');
+                }
                 if (importBtn) importBtn.disabled = false;
             }
         } catch (error) {
             console.error('导入项目失败:', error);
             if (progress) progress.style.display = 'none';
-            this.showToast('网络错误，导入失败', 'error');
+            if (window.CommonUtils && window.CommonUtils.showToast) {
+                window.CommonUtils.showToast('网络错误，导入失败', 'error');
+            } else {
+                this.showToast('网络错误，导入失败', 'error');
+            }
             if (importBtn) importBtn.disabled = false;
         }
     }

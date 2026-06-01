@@ -252,8 +252,7 @@ public class ProjectImportService {
             log.info("已创建项目: {}", targetProjectName);
             return 1;
         } else {
-            log.info("项目已存在: {}", targetProjectName);
-            return 0;
+            throw new IllegalArgumentException("项目已存在: " + targetProjectName);
         }
     }
 
