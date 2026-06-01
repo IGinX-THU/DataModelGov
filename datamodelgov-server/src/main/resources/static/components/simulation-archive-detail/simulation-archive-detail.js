@@ -1198,6 +1198,9 @@ class SimulationArchiveDetail extends HTMLElement {
         if (!list) return;
         if (this.nodes.length === 0) { list.innerHTML = '<div class="empty-hint">请先添加算法节点</div>'; return; }
 
+        // 保存当前选择状态
+        const currentSelection = this.getSelectedNodeIds();
+
         // 按拓扑排序显示节点
         const sortedNodes = this.getTopologicalSortedNodes();
 
@@ -1213,7 +1216,9 @@ class SimulationArchiveDetail extends HTMLElement {
                 .filter(n => n)
                 .map(n => n.nodeName || n.nodeId);
             const predInfo = predecessors.length > 0 ? `<span class="node-pred-info">← ${predecessors.join(', ')}</span>` : '<span class="node-pred-info">（无前驱）</span>';
-            item.innerHTML = `<label><input type="checkbox" data-node-id="${node.nodeId}" checked><span class="node-status ${statusClass}"></span>${node.nodeName || node.nodeId}${predInfo}</label>`;
+            // 如果之前有选择状态，恢复选择；否则默认全选
+            const isChecked = currentSelection.length > 0 ? currentSelection.includes(node.nodeId) : true;
+            item.innerHTML = `<label><input type="checkbox" data-node-id="${node.nodeId}" ${isChecked ? 'checked' : ''}><span class="node-status ${statusClass}"></span>${node.nodeName || node.nodeId}${predInfo}</label>`;
             list.appendChild(item);
         });
     }
@@ -1256,6 +1261,7 @@ class SimulationArchiveDetail extends HTMLElement {
         if (!this.currentArchive.createTime) { this.showToast('仿真档案ID无效，请重新加载', 'error'); return; }
         if (this.isRunning) { this.showToast('仿正在运行中', 'warning'); return; }
         const selectedNodeIds = this.getSelectedNodeIds();
+        console.log('选中的节点ID:', selectedNodeIds);
         if (selectedNodeIds.length === 0) { this.showToast('请至少选择一个节点', 'error'); return; }
 
         // 运行前自动保存图数据，确保后端读到最新的边/节点数据
@@ -1283,10 +1289,13 @@ class SimulationArchiveDetail extends HTMLElement {
         try {
             const baseUrl = window.AppConfig.getApiUrl('simulationArchives', 'run-selective');
             const url = baseUrl + '?createTime=' + this.currentArchive.createTime;
+            const requestBody = { selectedNodeIds };
+            console.log('发送到后端的请求体:', requestBody);
             const result = await window.AppConfig.request(url, {
                 method: 'POST',
-                body: JSON.stringify({ selectedNodeIds })
+                body: JSON.stringify(requestBody)
             });
+            console.log('后端返回结果:', result);
             if (result.code === 200) {
                 this.showToast('仿真已开始运行');
                 this.pollExecutionStatus();

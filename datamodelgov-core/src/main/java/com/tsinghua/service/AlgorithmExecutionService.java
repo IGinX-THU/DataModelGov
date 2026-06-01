@@ -74,6 +74,32 @@ public class AlgorithmExecutionService {
             String projectName,
             Map<String, Object> predecessorOutputs,
             Map<String, Object> executionParams) {
+        // 兼容旧调用方式，自动生成时间戳
+        return executeAlgorithmTask(algorithmName, algorithmVersion, startTime, endTime,
+                projectName, predecessorOutputs, executionParams, null, null);
+    }
+
+    /**
+     * 执行算法任务（联合仿真专用，支持指定执行时间戳和节点ID）
+     * 目录结构: project/{projectName}/job/simulation/{executionTimestamp}/{nodeId}
+     *
+     * @param algorithmName 算法名称
+     * @param algorithmVersion 算法版本
+     * @param startTime 数据时间窗口开始时间
+     * @param endTime 数据时间窗口结束时间
+     * @param projectName 项目名称
+     * @param predecessorOutputs 前驱节点的输出数据
+     * @param executionParams 执行参数
+     * @param executionTimestamp 仿真执行时间戳（用于构建二级目录）
+     * @param nodeId 算法节点ID（用于构建二级目录）
+     */
+    public Result<Map<String, Object>> executeAlgorithmTask(
+            String algorithmName, String algorithmVersion,
+            Long startTime, Long endTime,
+            String projectName,
+            Map<String, Object> predecessorOutputs,
+            Map<String, Object> executionParams,
+            Long executionTimestamp, String nodeId) {
         StringBuilder processLogBuilder = new StringBuilder();
         try {
             // 1. 获取算法元数据
@@ -82,13 +108,25 @@ public class AlgorithmExecutionService {
                 return new Result<>(500, "算法元数据不存在: " + algorithmName + " " + algorithmVersion, null);
             }
 
-            // 2. 创建任务目录（使用project下对应项目的目录）
-            long timestamp = System.currentTimeMillis();
+            // 2. 创建任务目录
+            // 如果提供了executionTimestamp和nodeId，使用二级目录结构: simulation/{executionTimestamp}/{nodeId}
+            // 否则使用旧的一级目录结构: simulation/{timestamp}
             Path taskDir;
-            if (projectName != null && !projectName.isEmpty()) {
-                taskDir = Paths.get("project", projectName, "job", "simulation", String.valueOf(timestamp));
+            if (executionTimestamp != null && nodeId != null) {
+                if (projectName != null && !projectName.isEmpty()) {
+                    taskDir = Paths.get("project", projectName, "job", "simulation",
+                            String.valueOf(executionTimestamp), nodeId);
+                } else {
+                    taskDir = Paths.get("job", "simulation",
+                            String.valueOf(executionTimestamp), nodeId);
+                }
             } else {
-                taskDir = Paths.get("job", "simulation", String.valueOf(timestamp));
+                long timestamp = System.currentTimeMillis();
+                if (projectName != null && !projectName.isEmpty()) {
+                    taskDir = Paths.get("project", projectName, "job", "simulation", String.valueOf(timestamp));
+                } else {
+                    taskDir = Paths.get("job", "simulation", String.valueOf(timestamp));
+                }
             }
             Files.createDirectories(taskDir);
             log.info("创建仿真任务目录: {}", taskDir);
@@ -198,6 +236,7 @@ public class AlgorithmExecutionService {
                 resultData.put("outputCsv", outputCsvContent);
                 resultData.put("processLog", processLogBuilder.toString());
                 resultData.put("taskDir", taskDir.toString());
+                resultData.put("calledModels", algorithmMeta.getCalledModels());
 
                 return Result.success(resultData);
             } catch (Exception e) {
@@ -614,8 +653,31 @@ public class AlgorithmExecutionService {
             // 读取CSV内容并修改表头
             List<String> lines = Files.readAllLines(outputCsvFile, StandardCharsets.UTF_8);
             if (!lines.isEmpty()) {
+                // 先过滤掉空行
+                List<String> nonEmptyLines = lines.stream()
+                    .filter(line -> line != null && !line.trim().isEmpty())
+                    .collect(Collectors.toList());
+                
+                if (nonEmptyLines.isEmpty()) {
+                    log.warn("CSV文件只有空行，跳过处理");
+                    return;
+                }
+
+                // 校验CSV格式：确保每行列数与表头一致
+                String headerLine = nonEmptyLines.get(0).trim();
+                int expectedColumnCount = headerLine.split(",").length;
+                
+                for (int i = 1; i < nonEmptyLines.size(); i++) {
+                    String line = nonEmptyLines.get(i).trim();
+                    int actualColumnCount = line.split(",").length;
+                    if (actualColumnCount != expectedColumnCount) {
+                        log.warn("CSV第{}行列数不匹配: 期望{}列，实际{}列，已跳过该行", i + 1, expectedColumnCount, actualColumnCount);
+                        nonEmptyLines.set(i, ""); // 标记为空行，后续处理时跳过
+                    }
+                }
+
                 // 修改表头：将原列名(modelOutput)换成新列名(resultTarget)
-                String originalHeader = lines.get(0);
+                String originalHeader = nonEmptyLines.get(0);
                 String[] originalColumns = originalHeader.split(",");
 
                 // 构建新的表头映射
@@ -641,10 +703,15 @@ public class AlgorithmExecutionService {
                 }
 
                 // 替换表头
-                lines.set(0, newHeader.toString());
+                nonEmptyLines.set(0, newHeader.toString());
+
+                // 过滤掉标记为空的行
+                List<String> filteredLines = nonEmptyLines.stream()
+                    .filter(line -> !line.isEmpty())
+                    .collect(Collectors.toList());
 
                 // 写回文件
-                Files.write(outputCsvFile, lines, StandardCharsets.UTF_8);
+                Files.write(outputCsvFile, filteredLines, StandardCharsets.UTF_8);
                 log.info("输出CSV表头映射完成: {}", outputCsvFile);
             }
         } catch (Exception e) {

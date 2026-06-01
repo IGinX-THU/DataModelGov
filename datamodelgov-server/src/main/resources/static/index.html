@@ -160,6 +160,8 @@
                 <ul class="dropdown-menu">
                     <li id="menu-project-new">新建项目</li>
                     <li id="menu-project-list">打开项目</li>
+<!--                    <li id="menu-project-export">导出项目</li>-->
+<!--                    <li id="menu-project-import">导入项目</li>-->
                 </ul>
             </span>
         <span class="tab dropdown" id="dataDropdown">
@@ -204,6 +206,7 @@
                 <span class="dropdown-trigger">仿真</span>
                 <ul class="dropdown-menu">
                     <li id="menu-simulation-archive">联合仿真</li>
+                    <li id="menu-simulation-record">仿真记录</li>
                 </ul>
             </span>
         <span class="tab dropdown" id="analysisDropdown" style="display: none;">
@@ -225,7 +228,15 @@
                 <span class="dropdown-trigger">工具</span>
                 <ul class="dropdown-menu">
                     <li id="menu-configure-parsing-rules">配置解析规则</li>
-                    <li id="menu-clear-workspace">清空工作区</li>
+                    <li class="has-submenu" id="menu-import-wizard">
+                        导入向导 ▸
+                        <ul class="submenu">
+                            <li id="menu-import-wizard-data">数据文件</li>
+                            <li id="menu-import-wizard-model">模型文件</li>
+                            <li id="menu-import-wizard-algorithm">算法文件</li>
+                        </ul>
+                    </li>
+                    <li id="menu-project-export">导出向导</li>
                     <li class="has-submenu" id="menu-window">
                         窗口 ▸
                         <ul class="submenu">
@@ -233,6 +244,7 @@
                             <li id="menu-toggle-right-sidebar">右侧边栏</li>
                         </ul>
                     </li>
+                    <li id="menu-clear-workspace">清空工作区</li>
                 </ul>
             </span>
         <span class="tab dropdown" id="settingsDropdown">
@@ -388,6 +400,10 @@
                     <svg class="ribbon-btn-icon"><use href="#icon-run"></use></svg>
                     <span class="ribbon-btn-text">仿真</span>
                 </button>
+                <button class="ribbon-btn" id="btn-simulation-analyze">
+                    <svg class="ribbon-btn-icon"><use href="#icon-analyze"></use></svg>
+                    <span class="ribbon-btn-text">分析</span>
+                </button>
             </div>
         </div>
         
@@ -489,6 +505,10 @@
             <project-detail id="projectDetail"></project-detail>
             <!-- 项目创建组件 -->
             <project-create id="projectCreate"></project-create>
+            <!-- 项目导出组件 -->
+            <project-export id="projectExport" style="display: none;"></project-export>
+            <!-- 项目导入组件 -->
+            <project-import id="projectImport" style="display: none;"></project-import>
             <!-- 数据档案列表组件 -->
             <data-archive-list id="dataArchiveList" style="display: none;"></data-archive-list>
             <!-- 数据档案详情组件 -->
@@ -551,11 +571,14 @@
 <script src="./components/association-rules/association-rules.js"></script>
 <script src="./components/simulation-archive/simulation-archive.js"></script>
 <script src="./components/simulation-archive-detail/simulation-archive-detail.js"></script>
+<script src="./components/simulation-record/simulation-record.js"></script>
 <script src="./components/algorithm-list/algorithm-list.js"></script>
 <script src="./components/visual-analysis/visual-analysis.js"></script>
 <script src="./components/project-list/project-list.js"></script>
 <script src="./components/project-detail/project-detail.js"></script>
 <script src="./components/project-create/project-create.js"></script>
+<script src="./components/project-export/project-export.js"></script>
+<script src="./components/project-import/project-import.js"></script>
 <script src="./components/data-archive-list/data-archive-list.js"></script>
 <script src="./components/data-archive-detail/data-archive-detail.js"></script>
 <script src="./components/model-archive-list/model-archive-list.js"></script>

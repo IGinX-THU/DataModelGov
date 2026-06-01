@@ -35,7 +35,12 @@ public class DirectedGraphExecutionEngine {
      * 执行仿真图（全量执行）
      */
     public Map<String, Object> executeGraph(SimulationArchiveEntity archive) {
-        return executeGraph(archive, null, archive.getProjectName());
+        return executeGraph(archive, null, archive.getProjectName(), null);
+    }
+
+    public Map<String, Object> executeGraph(SimulationArchiveEntity archive, List<String> selectedNodeIds,
+                                             String projectName) {
+        return executeGraph(archive, selectedNodeIds, projectName, null);
     }
 
     /**
@@ -43,9 +48,10 @@ public class DirectedGraphExecutionEngine {
      * @param archive 仿真档案
      * @param selectedNodeIds 选中的节点ID列表（null表示全量执行）
      * @param projectName 项目名称
+     * @param executionTimestamp 仿真执行时间戳（用于构建二级目录，null则自动生成）
      */
     public Map<String, Object> executeGraph(SimulationArchiveEntity archive, List<String> selectedNodeIds,
-                                             String projectName) {
+                                             String projectName, Long executionTimestamp) {
         Map<String, Object> result = new HashMap<>();
         stopRequested.set(false);
 
@@ -78,10 +84,10 @@ public class DirectedGraphExecutionEngine {
             Set<String> executeNodeIds;
             if (selectedNodeIds != null && !selectedNodeIds.isEmpty()) {
                 executeNodeIds = new HashSet<>(selectedNodeIds);
-                // 自动加入选中节点的前驱节点（保证数据流完整）
-                addPredecessorNodes(edges, executeNodeIds, nodeMap);
+                log.info("用户选中的节点（选择性执行）: {}", selectedNodeIds);
             } else {
                 executeNodeIds = nodeMap.keySet();
+                log.info("全量执行所有节点");
             }
 
             // 构建邻接表和入度表（仅包含要执行的节点）
@@ -146,7 +152,7 @@ public class DirectedGraphExecutionEngine {
                     Future<?> future = executorService.submit(() -> {
                         try {
                             Map<String, Object> nodeResult = executeAlgorithmNode(
-                                node, edges, executionResults, nodeOutputs, projectName);
+                                node, edges, executionResults, nodeOutputs, projectName, executionTimestamp);
                             executionResults.put(nodeId, nodeResult);
                             log.info("节点 {} 执行完成", nodeId);
                         } catch (Exception e) {
@@ -260,7 +266,8 @@ public class DirectedGraphExecutionEngine {
     private Map<String, Object> executeAlgorithmNode(JsonNode node, JsonNode edges,
                                                       Map<String, Object> executionResults,
                                                       Map<String, String> nodeOutputs,
-                                                      String projectName) throws Exception {
+                                                      String projectName,
+                                                      Long executionTimestamp) throws Exception {
         String nodeId = node.get("nodeId").asText();
         String nodeName = node.has("nodeName") ? node.get("nodeName").asText() : "";
         String algorithmName = node.has("algorithmName") ? node.get("algorithmName").asText() : "";
@@ -354,7 +361,7 @@ public class DirectedGraphExecutionEngine {
         // 调用算法执行服务（模型从算法档案的calledModels获取，下载到项目执行目录）
         Result<Map<String, Object>> execResult = algorithmExecutionService.executeAlgorithmTask(
             algorithmName, algorithmVersion, startTime, endTime,
-            projectName, predecessorOutputs, executionParams);
+            projectName, predecessorOutputs, executionParams, executionTimestamp, nodeId);
 
         Map<String, Object> nodeResult = new HashMap<>();
         nodeResult.put("nodeId", nodeId);
@@ -368,12 +375,14 @@ public class DirectedGraphExecutionEngine {
             String outputCsv = resultData != null ? (String) resultData.get("outputCsv") : null;
             String processLog = resultData != null ? (String) resultData.get("processLog") : "";
             String taskDir = resultData != null ? (String) resultData.get("taskDir") : "";
+            String calledModels = resultData != null ? (String) resultData.get("calledModels") : null;
 
             nodeResult.put("status", "completed");
             nodeResult.put("output", outputText);
             nodeResult.put("outputCsv", outputCsv);
             nodeResult.put("processLog", processLog);
             nodeResult.put("taskDir", taskDir);
+            nodeResult.put("calledModels", calledModels);
             nodeResult.put("timestamp", System.currentTimeMillis());
             nodeOutputs.put(nodeId, outputText);
         } else {

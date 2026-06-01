@@ -1414,7 +1414,7 @@ class DataVisualization extends HTMLElement {
     }
 
     // 计算x轴范围，用于动态调整x坐标轴
-    calculateXAxisRange() {
+    calculateXAxisRange(xAxisColumn = 'key') {
         if (!this.displayData || this.displayData.length === 0) {
             return { min: 0, max: 100 };
         }
@@ -1423,11 +1423,17 @@ class DataVisualization extends HTMLElement {
         let maxValue = -Infinity;
 
         this.displayData.forEach(record => {
-            if (record.timestamp !== null && record.timestamp !== undefined) {
-                const value = typeof record.timestamp === 'number' ? record.timestamp : parseFloat(record.timestamp);
-                if (!isNaN(value)) {
-                    minValue = Math.min(minValue, value);
-                    maxValue = Math.max(maxValue, value);
+            let value;
+            if (xAxisColumn === 'key') {
+                value = record.timestamp;
+            } else {
+                value = record[xAxisColumn] !== undefined ? record[xAxisColumn] : (record.values && record.values[xAxisColumn] !== undefined ? record.values[xAxisColumn] : null);
+            }
+            if (value !== null && value !== undefined) {
+                const numValue = typeof value === 'number' ? value : parseFloat(value);
+                if (!isNaN(numValue)) {
+                    minValue = Math.min(minValue, numValue);
+                    maxValue = Math.max(maxValue, numValue);
                 }
             }
         });
@@ -1628,7 +1634,7 @@ class DataVisualization extends HTMLElement {
         const dataRange = this.calculateDataRange();
         
         // 使用计算得到的X轴范围，如果没有则使用默认值
-        const xAxisRange = xAxisMin === Infinity ? this.calculateXAxisRange() : { min: xAxisMin, max: xAxisMax };
+        const xAxisRange = xAxisMin === Infinity ? this.calculateXAxisRange(xAxisColumn) : { min: xAxisMin, max: xAxisMax };
         console.log('X轴范围:', xAxisRange, 'X轴列:', xAxisColumn);
 
         const option = {
@@ -1648,12 +1654,12 @@ class DataVisualization extends HTMLElement {
 
                     const xValue = params[0].value[0];
                     let xLabel = '';
-                    if (this.isValidTimestamp(xValue)) {
+                    if (xAxisColumn === 'key' && this.isValidTimestamp(xValue)) {
                         xLabel = new Date(xValue).toLocaleString();
                     } else {
                         xLabel = String(xValue);
                     }
-                    let result = `X: ${xLabel}<br/>`;
+                    let result = `${xAxisColumn === 'key' ? '时间' : xAxisColumn}: ${xLabel}<br/>`;
                     params.forEach(param => {
                         if (param.value[1] !== null && param.value[1] !== undefined) {
                             result += `${param.seriesName}: ${param.value[1].toFixed(2)}<br/>`;
@@ -1687,7 +1693,6 @@ class DataVisualization extends HTMLElement {
                 nameGap: 30,
                 axisLabel: {
                     formatter: (value) => {
-                        // 只有当X轴是key（时间）时才使用时间格式化
                         if (xAxisColumn === 'key' && this.isValidTimestamp(value)) {
                             return new Date(value).toLocaleString();
                         } else {
@@ -1758,10 +1763,16 @@ class DataVisualization extends HTMLElement {
             return;
         }
 
-        const data = this.displayData.map(record => [
-            record[xAxisColumn] !== undefined ? record[xAxisColumn] : 0,
-            record[yAxisColumn] !== undefined ? record[yAxisColumn] : 0
-        ]);
+        const data = this.displayData.map(record => {
+            let xValue;
+            if (xAxisColumn === 'key') {
+                xValue = record.timestamp;
+            } else {
+                xValue = record[xAxisColumn] !== undefined ? record[xAxisColumn] : (record.values && record.values[xAxisColumn] !== undefined ? record.values[xAxisColumn] : 0);
+            }
+            const yValue = record[yAxisColumn] !== undefined ? record[yAxisColumn] : (record.values && record.values[yAxisColumn] !== undefined ? record.values[yAxisColumn] : 0);
+            return [xValue, yValue];
+        });
 
         const option = {
             title: {
@@ -1776,7 +1787,13 @@ class DataVisualization extends HTMLElement {
             tooltip: {
                 trigger: 'item',
                 formatter: (params) => {
-                    return `${xAxisColumn}: ${params.value[0].toFixed(2)}<br/>${yAxisColumn}: ${params.value[1].toFixed(2)}`;
+                    let xLabel;
+                    if (xAxisColumn === 'key' && this.isValidTimestamp(params.value[0])) {
+                        xLabel = new Date(params.value[0]).toLocaleString();
+                    } else {
+                        xLabel = params.value[0].toFixed(2);
+                    }
+                    return `${xAxisColumn === 'key' ? '时间' : xAxisColumn}: ${xLabel}<br/>${yAxisColumn}: ${params.value[1].toFixed(2)}`;
                 }
             },
             grid: {
@@ -1787,9 +1804,18 @@ class DataVisualization extends HTMLElement {
             },
             xAxis: {
                 type: 'value',
-                name: xAxisColumn,
+                name: xAxisColumn === 'key' ? '' : xAxisColumn,
                 nameLocation: 'middle',
-                nameGap: 30
+                nameGap: 30,
+                axisLabel: {
+                    formatter: (value) => {
+                        if (xAxisColumn === 'key' && this.isValidTimestamp(value)) {
+                            return new Date(value).toLocaleString();
+                        } else {
+                            return String(value);
+                        }
+                    }
+                }
             },
             yAxis: {
                 type: 'value',

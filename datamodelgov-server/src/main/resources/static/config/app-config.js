@@ -90,13 +90,18 @@ window.AppConfig = {
             detail: '/api/simulation/archives/detail',
             delete: '/api/simulation/archives/delete',
             save: '/api/simulation/archives/save',
+            'upload-report': '/api/simulation/archives/upload-report',
+            'package-download': '/api/simulation/archives/package-download',
             'validate-name': '/api/simulation/archives/validate-name',
             copy: '/api/simulation/archives/copy',
             run: '/api/simulation/archives/run',
             'run-selective': '/api/simulation/archives/run-selective',
             stop: '/api/simulation/archives/stop',
             'execution-status': '/api/simulation/archives/execution-status',
-            'execution-log': '/api/simulation/archives/execution-log'
+            'execution-log': '/api/simulation/archives/execution-log',
+            'execution-records': '/api/simulation/archives/execution-records',
+            'execution-records-count': '/api/simulation/archives/execution-records-count',
+            'execution-record': '/api/simulation/archives/execution-record'
         },
         // 数据档案相关
         dataArchive: {

@@ -107,6 +107,8 @@ document.addEventListener('DOMContentLoaded', function() {
             'projectList',
             'projectDetail',
             'projectCreate',
+            'projectExport',
+            'projectImport',
             'dataArchiveDetail',
             'modelArchiveList',
             'algorithmArchiveList'
@@ -132,7 +134,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const workspace = document.querySelector('.workspace-content');
         if (workspace) {
             // 查找所有动态创建的组件并移除（只移除没有ID的动态组件）
-            const dynamicComponents = workspace.querySelectorAll('visual-analysis:not([id]), data-visualization:not([id]), data-archive-detail:not([id]), data-archive-list:not([id])');
+            const dynamicComponents = workspace.querySelectorAll('visual-analysis:not([id]), data-visualization:not([id]), data-archive-detail:not([id]), data-archive-list:not([id]), simulation-record');
             dynamicComponents.forEach(comp => {
                 console.log(`🗑️ 移除动态组件: ${comp.tagName}`);
                 comp.remove();
@@ -481,6 +483,14 @@ document.addEventListener('DOMContentLoaded', function() {
                         console.log('打开项目菜单被点击');
                         showComponent('projectList');
                         break;
+                    case 'showProjectExport':
+                        console.log('导出项目菜单被点击');
+                        showComponent('projectExport');
+                        break;
+                    case 'showProjectImport':
+                        console.log('导入项目菜单被点击');
+                        showComponent('projectImport');
+                        break;
                     case 'showDataSourceList':
                         console.log('异构数据源管理菜单被点击');
                         if (isSecondClick) clearWorkspace();
@@ -608,9 +618,14 @@ document.addEventListener('DOMContentLoaded', function() {
                         break;
                     case 'showSimulationArchive':
                         console.log('仿真档案管理菜单被点击');
-                        if (isSecondClick) clearWorkspace();
+                        clearWorkspace();
                         showComponent('simulationArchiveList');
                         break;
+                    case 'showSimulationRecord':
+                        console.log('仿真记录菜单被点击');
+                        clearWorkspace();
+                        showSimulationRecord();
+                        return;
                     case 'showAlgorithmList':
                         console.log('算法管理菜单被点击');
                         if (isSecondClick) clearWorkspace();
@@ -625,6 +640,16 @@ document.addEventListener('DOMContentLoaded', function() {
                         console.log('新增项目菜单被点击');
                         if (isSecondClick) clearWorkspace();
                         showComponent('projectCreate');
+                        break;
+                    case 'showProjectExport':
+                        console.log('导出项目菜单被点击');
+                        if (isSecondClick) clearWorkspace();
+                        showComponent('projectExport');
+                        break;
+                    case 'showProjectImport':
+                        console.log('导入项目菜单被点击');
+                        if (isSecondClick) clearWorkspace();
+                        showComponent('projectImport');
                         break;
                     case 'showVisualAnalysis':
                         console.log('数值与曲线分析菜单被点击');
@@ -701,6 +726,14 @@ document.addEventListener('DOMContentLoaded', function() {
                     console.log('新增项目菜单被点击');
                     if (isSecondClick) clearWorkspace();
                     showComponent('projectCreate');
+                } else if (menuId === 'menu-project-export') {
+                    console.log('导出项目菜单被点击');
+                    if (isSecondClick) clearWorkspace();
+                    showComponent('projectExport');
+                } else if (menuId === 'menu-project-import') {
+                    console.log('导入项目菜单被点击');
+                    if (isSecondClick) clearWorkspace();
+                    showComponent('projectImport');
                 } else {
                     console.warn(`未找到菜单ID ${menuId} 的对应动作`);
                 }
@@ -996,6 +1029,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     case 'showProjectList':
                         showComponent('projectList');
                         break;
+                    case 'showProjectExport':
+                        showComponent('projectExport');
+                        break;
+                    case 'showProjectImport':
+                        showComponent('projectImport');
+                        break;
                     case 'handleDownload':
                         // 检查模型侧边栏是否打开
                         const activeModelIcon = document.querySelector('.bottom-sidebar-icon.right-sidebar-icon.active[data-panel="model"]');
@@ -1070,8 +1109,13 @@ document.addEventListener('DOMContentLoaded', function() {
                         showComponent('algorithmArchiveList');
                         break;
                     case 'showSimulationArchive':
+                        clearWorkspace();
                         showComponent('simulationArchiveList');
                         break;
+                    case 'showSimulationRecord':
+                        clearWorkspace();
+                        showSimulationRecord();
+                        return;
                     default:
                         console.warn(`未知的按钮动作: ${action}`);
                 }
@@ -1753,6 +1797,40 @@ function showVisualAnalysis() {
     workspace.scrollIntoView({ behavior: 'smooth' });
 }
 
+function showSimulationRecord() {
+    console.log('showSimulationRecord() 函数被调用');
+
+    // 检查是否已打开项目
+    const username = window.localStorage.getItem('username');
+    const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
+    if (!cachedProject) {
+        if (window.CommonUtils && window.CommonUtils.showToast) {
+            window.CommonUtils.showToast('请先选择或创建项目', 'error');
+        }
+        return;
+    }
+
+    const simulationRecord = document.createElement('simulation-record');
+    
+    const workspace = document.querySelector('.workspace-content');
+    if (workspace) {
+        workspace.appendChild(simulationRecord);
+    } else {
+        console.error('未找到工作区元素');
+        return;
+    }
+    
+    setTimeout(() => {
+        simulationRecord.show();
+    }, 100);
+    
+    simulationRecord.addEventListener('close', () => {
+        workspace.removeChild(simulationRecord);
+    });
+    
+    workspace.scrollIntoView({ behavior: 'smooth' });
+}
+
 // 显示数据可视化
     function showDataVisualization(dataSource) {
         console.log('显示数据可视化:', dataSource);
@@ -2003,9 +2081,19 @@ function showVisualAnalysis() {
             }
         }
 
-        // 弹窗组件不需要清空工作区
+        // 弹窗组件不需要清空工作区，但需要隐藏其他弹窗
         const modalComponents = ['registerEmbedded', 'importData', 'modelUpload', 'modelDownload', 'modelEdit', 'algorithmUpload', 'algorithmDownload', 'algorithmEdit'];
-        if (!modalComponents.includes(componentId)) {
+        if (modalComponents.includes(componentId)) {
+            // 隐藏其他弹窗组件
+            modalComponents.forEach(modalId => {
+                if (modalId !== componentId) {
+                    const modal = document.getElementById(modalId);
+                    if (modal && typeof modal.hide === 'function') {
+                        modal.hide();
+                    }
+                }
+            });
+        } else {
             // 先清空工作区
             clearWorkspace();
         }

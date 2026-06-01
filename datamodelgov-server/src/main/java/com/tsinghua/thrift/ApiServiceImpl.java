@@ -1,17 +1,31 @@
 package com.tsinghua.thrift;
 
 import com.tsinghua.dto.*;
+import com.tsinghua.entity.AlgorithmMetaEntity;
 import com.tsinghua.entity.AssociationRulesEntity;
+import com.tsinghua.entity.DataArchiveEntity;
 import com.tsinghua.entity.ModelMetaEntity;
 import com.tsinghua.entity.ParsingRulesEntity;
+import com.tsinghua.entity.ProjectEntity;
 import com.tsinghua.entity.RunTaskEntity;
+import com.tsinghua.entity.SimulationArchiveEntity;
+import com.tsinghua.entity.SimulationExecutionEntity;
 import com.tsinghua.service.*;
+import com.tsinghua.auth.service.DataPermissionService;
+import com.tsinghua.auth.service.RolePermissionService;
+import com.tsinghua.auth.dto.DataPermissionQueryRequest;
+import com.tsinghua.auth.dto.DataPermissionUpdateRequest;
+import com.tsinghua.auth.entity.DataPermissionEntity;
+import com.tsinghua.auth.entity.RoleEntity;
+import com.tsinghua.auth.entity.UserEntity;
+import com.tsinghua.auth.util.JwtUtil;
 import com.tsinghua.thrift.api.*;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.thrift.TException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import java.nio.ByteBuffer;
+import java.util.Map;
 
 /**
  * DataModelGov Thrift API Service Implementation
@@ -44,6 +58,36 @@ public class ApiServiceImpl implements ApiService.Iface {
 
     @Autowired
     private RunTaskService runTaskService;
+
+    @Autowired
+    private AlgorithmFileService algorithmFileService;
+
+    @Autowired
+    private DataArchiveService dataArchiveService;
+
+    @Autowired
+    private ProjectService projectService;
+
+    @Autowired
+    private ProjectImportService projectImportService;
+
+    @Autowired
+    private ProjectExportService projectExportService;
+
+    @Autowired
+    private SimulationArchiveService simulationArchiveService;
+
+    @Autowired
+    private SimulationExecutionService simulationExecutionService;
+
+    @Autowired
+    private RolePermissionService rolePermissionService;
+
+    @Autowired
+    private DataPermissionService dataPermissionService;
+
+    @Autowired
+    private JwtUtil jwtUtil;
 
     // ========== Association Rules Interface - Match AssociationRulesController ==========
 
@@ -427,17 +471,31 @@ public class ApiServiceImpl implements ApiService.Iface {
     }
 
     @Override
-    public com.tsinghua.thrift.api.Result uploadReport(ByteBuffer file) throws TException {
+    public com.tsinghua.thrift.api.Result uploadReport(ByteBuffer file, long timestamp) throws TException {
         try {
-            log.info("Thrift RPC: Upload report file");
-            
-            // Note: Binary file upload via Thrift is complex, this is a placeholder
-            // In practice, you might need to handle this differently or use HTTP for file upload
+            log.info("Thrift RPC: Upload report file for task {}", timestamp);
             com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "File upload via Thrift not implemented, use HTTP endpoint");
             return result;
         } catch (Exception e) {
             log.error("Thrift RPC: Upload report failed", e);
             com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Upload failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result getTimeRange(com.tsinghua.thrift.api.TimeRangeRequest request) throws TException {
+        try {
+            log.info("Thrift RPC: Get time range for table {}", request.getTableName());
+            com.tsinghua.dto.TimeRangeRequest dto = convertToTimeRangeRequest(request);
+            com.tsinghua.dto.TimeRangeResponse response = runTaskService.getTimeRange(dto);
+            String jsonData = convertEntityToJson(response);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "查询成功");
+            result.setData(jsonData);
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Get time range failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Query failed: " + e.getMessage());
             return result;
         }
     }
@@ -731,17 +789,67 @@ public class ApiServiceImpl implements ApiService.Iface {
     // ========== Model File Interface - Match ModelFileController ==========
 
     @Override
-    public com.tsinghua.thrift.api.Result uploadModel(ByteBuffer file) throws TException {
+    public com.tsinghua.thrift.api.Result uploadModel(ByteBuffer file, String name, String version) throws TException {
         try {
-            log.info("Thrift RPC: Upload model file");
-            
-            // Note: File upload via Thrift is complex, this is a placeholder
-            // In practice, you might need to handle this differently or use HTTP for file upload
+            log.info("Thrift RPC: Upload model file {}@{}", name, version);
             com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "File upload via Thrift not implemented, use HTTP endpoint");
             return result;
         } catch (Exception e) {
             log.error("Thrift RPC: Upload model failed", e);
             com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Upload failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result getModelTree(String projectName) throws TException {
+        try {
+            log.info("Thrift RPC: Get model tree for project {}", projectName);
+            java.util.List<String> tree = modelFileService.queryModelTree(projectName);
+            String jsonData = convertListToJson(tree);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "Query successful");
+            result.setData(jsonData);
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Get model tree failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Query failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result queryModelArchives(com.tsinghua.thrift.api.ModelArchiveQueryRequest request) throws TException {
+        try {
+            log.info("Thrift RPC: Query model archives");
+            String name = request.isSetName() ? request.getName() : null;
+            String projectName = request.isSetProjectName() ? request.getProjectName() : null;
+            String author = request.isSetAuthor() ? request.getAuthor() : null;
+            java.util.List<ModelMetaEntity> archives = modelFileService.queryModelArchives(name, projectName, author, request.getPageNum(), request.getPageSize());
+            String jsonData = convertListToJson(archives);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "Query successful");
+            result.setData(jsonData);
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Query model archives failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Query failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result countModelArchives(com.tsinghua.thrift.api.ModelArchiveQueryRequest request) throws TException {
+        try {
+            log.info("Thrift RPC: Count model archives");
+            String name = request.isSetName() ? request.getName() : null;
+            String projectName = request.isSetProjectName() ? request.getProjectName() : null;
+            String author = request.isSetAuthor() ? request.getAuthor() : null;
+            java.util.List<ModelMetaEntity> archives = modelFileService.queryModelArchives(name, projectName, author, 1, Integer.MAX_VALUE);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "Count successful");
+            result.setData(String.valueOf(archives.size()));
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Count model archives failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Count failed: " + e.getMessage());
             return result;
         }
     }
@@ -875,7 +983,1019 @@ public class ApiServiceImpl implements ApiService.Iface {
         }
     }
 
-    // ========== New Conversion Methods for ParsingRules and RunTask ==========
+    // ========== Association Rules - New Methods ==========
+
+    @Override
+    public com.tsinghua.thrift.api.Result validateAssociationRuleName(String name) throws TException {
+        try {
+            log.info("Thrift RPC: Validate association rule name {}", name);
+            associationRulesService.validateNameUniqueness(name);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "名称可用");
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Validate association rule name failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Validation failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    // ========== Parsing Rules - New Methods ==========
+
+    @Override
+    public com.tsinghua.thrift.api.Result validateParsingRuleName(String name) throws TException {
+        try {
+            log.info("Thrift RPC: Validate parsing rule name {}", name);
+            parsingRulesService.validateNameUniqueness(name);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "名称可用");
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Validate parsing rule name failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Validation failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result autoParseSourceCode(com.tsinghua.thrift.api.AutoParseRequest request) throws TException {
+        try {
+            log.info("Thrift RPC: Auto parse source code, file={}", request.getFileName());
+            com.tsinghua.dto.AutoParseRequest dto = convertToAutoParseRequest(request);
+            Object parsedResult = parsingRulesService.headerScanner(
+                dto.getFileContent(), dto.getFileName(), dto.getRegexPattern(),
+                dto.getParseType() != null ? dto.getParseType() : "regex",
+                dto.getMaxLines() != null ? dto.getMaxLines() : 50);
+            String jsonData = convertEntityToJson(parsedResult);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "解析成功");
+            result.setData(jsonData);
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Auto parse source code failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Parse failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    // ========== Algorithm File Interface - Match AlgorithmFileController ==========
+
+    @Override
+    public com.tsinghua.thrift.api.Result uploadAlgorithm(ByteBuffer file, String name, String version) throws TException {
+        try {
+            log.info("Thrift RPC: Upload algorithm file {}@{}", name, version);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "File upload via Thrift not implemented, use HTTP endpoint");
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Upload algorithm failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Upload failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result downloadAlgorithm(String name, String version) throws TException {
+        try {
+            log.info("Thrift RPC: Download algorithm {}@{}", name, version);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "File download via Thrift not implemented, use HTTP endpoint");
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Download algorithm failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Download failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result getAlgorithmMeta(String name, String version) throws TException {
+        try {
+            log.info("Thrift RPC: Get algorithm meta {}@{}", name, version);
+            AlgorithmMetaEntity entity = algorithmFileService.queryMeta(name, version);
+            if (entity == null) {
+                com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Algorithm not found");
+                return result;
+            }
+            String jsonData = convertEntityToJson(entity);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "Query successful");
+            result.setData(jsonData);
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Get algorithm meta failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Query failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result saveAlgorithmMeta(com.tsinghua.thrift.api.AlgorithmMeta algorithmMeta) throws TException {
+        try {
+            log.info("Thrift RPC: Save algorithm meta {}", algorithmMeta.getName());
+            AlgorithmMetaEntity entity = convertToAlgorithmMetaEntity(algorithmMeta);
+            algorithmFileService.saveAlgorithmMetadata(entity);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "元数据保存成功");
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Save algorithm meta failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Save failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result getAlgorithmHistory(String name) throws TException {
+        try {
+            log.info("Thrift RPC: Get algorithm history {}", name);
+            java.util.List<AlgorithmMetaEntity> history = algorithmFileService.queryMetaList(name);
+            String jsonData = convertListToJson(history);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "Query successful");
+            result.setData(jsonData);
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Get algorithm history failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Query failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result deleteAlgorithm(String name, String version) throws TException {
+        try {
+            log.info("Thrift RPC: Delete algorithm {}@{}", name, version);
+            algorithmFileService.deleteAlgorithm(name, version);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "操作成功");
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Delete algorithm failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Delete failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result getAlgorithmTree(String projectName) throws TException {
+        try {
+            log.info("Thrift RPC: Get algorithm tree for project {}", projectName);
+            java.util.List<String> tree = algorithmFileService.queryAlgorithmTree(projectName);
+            String jsonData = convertListToJson(tree);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "Query successful");
+            result.setData(jsonData);
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Get algorithm tree failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Query failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result queryAlgorithmArchives(com.tsinghua.thrift.api.AlgorithmArchiveQueryRequest request) throws TException {
+        try {
+            log.info("Thrift RPC: Query algorithm archives");
+            String name = request.isSetName() ? request.getName() : null;
+            String algorithmType = request.isSetAlgorithmType() ? request.getAlgorithmType() : null;
+            String projectName = request.isSetProjectName() ? request.getProjectName() : null;
+            String owner = request.isSetOwner() ? request.getOwner() : null;
+            String author = request.isSetAuthor() ? request.getAuthor() : null;
+            java.util.List<AlgorithmMetaEntity> archives = algorithmFileService.queryAlgorithmArchives(name, projectName, author, request.getPageNum(), request.getPageSize());
+            String jsonData = convertListToJson(archives);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "Query successful");
+            result.setData(jsonData);
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Query algorithm archives failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Query failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result countAlgorithmArchives(com.tsinghua.thrift.api.AlgorithmArchiveQueryRequest request) throws TException {
+        try {
+            log.info("Thrift RPC: Count algorithm archives");
+            String name = request.isSetName() ? request.getName() : null;
+            String projectName = request.isSetProjectName() ? request.getProjectName() : null;
+            String author = request.isSetAuthor() ? request.getAuthor() : null;
+            java.util.List<AlgorithmMetaEntity> archives = algorithmFileService.queryAlgorithmArchives(name, projectName, author, 1, Integer.MAX_VALUE);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "Count successful");
+            result.setData(String.valueOf(archives.size()));
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Count algorithm archives failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Count failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result extractAlgorithmFile(com.tsinghua.thrift.api.ExtractAlgorithmFileRequest request) throws TException {
+        try {
+            log.info("Thrift RPC: Extract algorithm file {}@{}", request.getName(), request.getVersion());
+            java.nio.file.Path tempDir = java.nio.file.Paths.get("temp", "algorithm-extract", System.currentTimeMillis() + "");
+            java.nio.file.Files.createDirectories(tempDir);
+            Object result = algorithmFileService.extractAlgorithmFile(request.getName(), request.getVersion(), tempDir);
+            String jsonData = convertEntityToJson(result);
+            com.tsinghua.thrift.api.Result thriftResult = new com.tsinghua.thrift.api.Result(true, "文件提取成功");
+            thriftResult.setData(jsonData);
+            return thriftResult;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Extract algorithm file failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Extract failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    // ========== Data Archive Interface - Match DataArchiveController ==========
+
+    @Override
+    public com.tsinghua.thrift.api.Result queryDataArchives(com.tsinghua.thrift.api.DataArchiveQueryRequest request) throws TException {
+        try {
+            log.info("Thrift RPC: Query data archives");
+            String name = request.isSetName() ? request.getName() : null;
+            String type = request.isSetType() ? request.getType() : null;
+            String projectName = request.isSetProjectName() ? request.getProjectName() : null;
+            String owner = request.isSetOwner() ? request.getOwner() : null;
+            java.util.List<DataArchiveEntity> archives = dataArchiveService.queryArchives(name, type, projectName, owner, request.getPageNum(), request.getPageSize());
+            String jsonData = convertListToJson(archives);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "Query successful");
+            result.setData(jsonData);
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Query data archives failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Query failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result getDataArchiveDetail(String name) throws TException {
+        try {
+            log.info("Thrift RPC: Get data archive detail {}", name);
+            DataArchiveEntity entity = dataArchiveService.findByName(name);
+            if (entity == null) {
+                com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "未找到指定的数据档案");
+                return result;
+            }
+            String jsonData = convertEntityToJson(entity);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "Query successful");
+            result.setData(jsonData);
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Get data archive detail failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Query failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result countDataArchives(com.tsinghua.thrift.api.DataArchiveQueryRequest request) throws TException {
+        try {
+            log.info("Thrift RPC: Count data archives");
+            String name = request.isSetName() ? request.getName() : null;
+            String type = request.isSetType() ? request.getType() : null;
+            String projectName = request.isSetProjectName() ? request.getProjectName() : null;
+            String owner = request.isSetOwner() ? request.getOwner() : null;
+            java.util.List<DataArchiveEntity> archives = dataArchiveService.queryArchives(name, type, projectName, owner, 1, Integer.MAX_VALUE);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "Count successful");
+            result.setData(String.valueOf(archives.size()));
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Count data archives failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Count failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result deleteDataArchive(com.tsinghua.thrift.api.DataArchiveQueryRequest request) throws TException {
+        try {
+            log.info("Thrift RPC: Delete data archive");
+            Long id = request.isSetId() ? request.getId() : null;
+            if (id == null) {
+                com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "ID不能为空");
+                return result;
+            }
+            dataArchiveService.deleteArchive(id);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "操作成功");
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Delete data archive failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Delete failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result updateDataArchive(com.tsinghua.thrift.api.DataArchive archive) throws TException {
+        try {
+            log.info("Thrift RPC: Update data archive {}", archive.getName());
+            DataArchiveEntity entity = convertToDataArchiveEntity(archive);
+            dataArchiveService.saveArchive(entity);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "更新成功");
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Update data archive failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Update failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    // ========== Project Interface - Match ProjectController ==========
+
+    @Override
+    public com.tsinghua.thrift.api.Result createProject(com.tsinghua.thrift.api.Project project) throws TException {
+        try {
+            log.info("Thrift RPC: Create project {}", project.getName());
+            ProjectEntity entity = convertToProjectEntity(project);
+            projectService.createProject(entity);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "项目创建成功");
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Create project failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Create failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result queryProjects(com.tsinghua.thrift.api.ProjectsQueryRequest request) throws TException {
+        try {
+            log.info("Thrift RPC: Query projects");
+            com.tsinghua.dto.ProjectsQueryRequest dto = convertToProjectsQueryRequest(request);
+            java.util.List<ProjectEntity> projects = projectService.queryProjects(dto);
+            String jsonData = convertListToJson(projects);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "Query successful");
+            result.setData(jsonData);
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Query projects failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Query failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result countProjects(com.tsinghua.thrift.api.ProjectsQueryRequest request) throws TException {
+        try {
+            log.info("Thrift RPC: Count projects");
+            com.tsinghua.dto.ProjectsQueryRequest dto = convertToProjectsQueryRequest(request);
+            Object count = projectService.countProjects(dto);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "Count successful");
+            result.setData(String.valueOf(count));
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Count projects failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Count failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result getProject(long createTime) throws TException {
+        try {
+            log.info("Thrift RPC: Get project detail {}", createTime);
+            ProjectEntity entity = projectService.findById(createTime);
+            if (entity == null) {
+                com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "未找到指定的项目");
+                return result;
+            }
+            String jsonData = convertEntityToJson(entity);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "Query successful");
+            result.setData(jsonData);
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Get project detail failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Query failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result getProjectTree(String name) throws TException {
+        try {
+            log.info("Thrift RPC: Get project tree for {}", name);
+            Object tree = projectService.buildProjectTree(name);
+            String jsonData = convertEntityToJson(tree);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "Query successful");
+            result.setData(jsonData);
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Get project tree failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Query failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result importProject(ByteBuffer file, String projectName) throws TException {
+        try {
+            log.info("Thrift RPC: Import project {}", projectName);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "File import via Thrift not implemented, use HTTP endpoint");
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Import project failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Import failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result exportProject(com.tsinghua.thrift.api.ProjectExportRequest request) throws TException {
+        try {
+            log.info("Thrift RPC: Export project {}", request.getProjectName());
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "File export via Thrift not implemented, use HTTP endpoint");
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Export project failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Export failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    // ========== Simulation Archive Interface - Match SimulationArchiveController ==========
+
+    @Override
+    public com.tsinghua.thrift.api.Result saveSimulationArchive(com.tsinghua.thrift.api.SimulationArchive archive) throws TException {
+        try {
+            log.info("Thrift RPC: Save simulation archive {}", archive.getName());
+            SimulationArchiveEntity entity = convertToSimulationArchiveEntity(archive);
+            simulationArchiveService.saveArchive(entity);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "仿真档案保存成功");
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Save simulation archive failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Save failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result querySimulationArchives(String name, String projectName, String owner, boolean status, int pageNum, int pageSize) throws TException {
+        try {
+            log.info("Thrift RPC: Query simulation archives");
+            java.util.List<SimulationArchiveEntity> archives = simulationArchiveService.queryArchives(name, projectName, owner, status, pageNum, pageSize);
+            String jsonData = convertListToJson(archives);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "Query successful");
+            result.setData(jsonData);
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Query simulation archives failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Query failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result countSimulationArchives(String name, String projectName, String owner, boolean status) throws TException {
+        try {
+            log.info("Thrift RPC: Count simulation archives");
+            Object count = simulationArchiveService.countArchives(name, projectName, owner, status);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "Count successful");
+            result.setData(String.valueOf(count));
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Count simulation archives failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Count failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result getSimulationArchive(long createTime) throws TException {
+        try {
+            log.info("Thrift RPC: Get simulation archive detail {}", createTime);
+            SimulationArchiveEntity entity = simulationArchiveService.queryArchive(createTime);
+            if (entity == null) {
+                com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "未找到指定的仿真档案");
+                return result;
+            }
+            String jsonData = convertEntityToJson(entity);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "Query successful");
+            result.setData(jsonData);
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Get simulation archive detail failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Query failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result deleteSimulationArchive(long createTime) throws TException {
+        try {
+            log.info("Thrift RPC: Delete simulation archive {}", createTime);
+            simulationArchiveService.deleteArchive(createTime);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "操作成功");
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Delete simulation archive failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Delete failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result validateSimulationArchiveName(String name) throws TException {
+        try {
+            log.info("Thrift RPC: Validate simulation archive name {}", name);
+            simulationArchiveService.validateNameUniqueness(name);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "名称可用");
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Validate simulation archive name failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Validation failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result copySimulationArchive(long createTime, String newName) throws TException {
+        try {
+            log.info("Thrift RPC: Copy simulation archive {} to {}", createTime, newName);
+            SimulationArchiveEntity copied = simulationArchiveService.copyArchive(createTime, newName);
+            String jsonData = convertEntityToJson(copied);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "复制成功");
+            result.setData(jsonData);
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Copy simulation archive failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Copy failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result runSimulation(long createTime) throws TException {
+        try {
+            log.info("Thrift RPC: Run simulation {}", createTime);
+            com.tsinghua.model.Result<Void> simResult = simulationExecutionService.runSimulation(createTime);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(simResult.getSuccess(), simResult.getMessage());
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Run simulation failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Run failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result runSimulationSelective(com.tsinghua.thrift.api.RunSimulationSelectiveRequest request) throws TException {
+        try {
+            log.info("Thrift RPC: Run simulation selective for {}", request.getCreateTime());
+            java.util.List<String> selectedNodeIds = request.isSetSelectedNodeIds() ? request.getSelectedNodeIds() : null;
+            com.tsinghua.model.Result<Void> simResult = simulationExecutionService.runSimulation(request.getCreateTime(), selectedNodeIds);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(simResult.getSuccess(), simResult.getMessage());
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Run simulation selective failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Run failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result stopSimulation(long createTime) throws TException {
+        try {
+            log.info("Thrift RPC: Stop simulation {}", createTime);
+            com.tsinghua.model.Result<Void> simResult = simulationExecutionService.stopSimulation(createTime);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(simResult.getSuccess(), simResult.getMessage());
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Stop simulation failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Stop failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result getSimulationExecutionStatus(long createTime) throws TException {
+        try {
+            log.info("Thrift RPC: Get simulation execution status {}", createTime);
+            com.tsinghua.model.Result<Map<String, Object>> simResult = simulationExecutionService.getExecutionStatus(createTime);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(simResult.getSuccess(), simResult.getMessage());
+            if (simResult.getData() != null) {
+                result.setData(convertEntityToJson(simResult.getData()));
+            }
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Get simulation execution status failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Query failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result getSimulationExecutionLog(long timestamp) throws TException {
+        try {
+            log.info("Thrift RPC: Get simulation execution log {}", timestamp);
+            com.tsinghua.model.Result<Map<String, Object>> simResult = simulationExecutionService.getExecutionLog(timestamp);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(simResult.getSuccess(), simResult.getMessage());
+            if (simResult.getData() != null) {
+                result.setData(convertEntityToJson(simResult.getData()));
+            }
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Get simulation execution log failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Query failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result querySimulationExecutionRecords(com.tsinghua.thrift.api.ExecutionRecordQueryRequest request) throws TException {
+        try {
+            log.info("Thrift RPC: Query simulation execution records");
+            com.tsinghua.dto.ExecutionRecordQueryDto dto = convertToExecutionRecordQueryDto(request);
+            Object records;
+            if (com.tsinghua.auth.util.AuthUtil.isAdmin()) {
+                records = simulationExecutionService.queryExecutions(dto.getArchiveName(), dto.getStatus(), dto.getStartTime(), dto.getEndTime(), dto.getPageNum(), dto.getPageSize());
+            } else {
+                records = simulationExecutionService.queryExecutions(dto.getArchiveName(), dto.getStatus(), dto.getStartTime(), dto.getEndTime(), dto.getPageNum(), dto.getPageSize());
+            }
+            String jsonData = convertEntityToJson(records);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "Query successful");
+            result.setData(jsonData);
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Query simulation execution records failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Query failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result countSimulationExecutionRecords(com.tsinghua.thrift.api.ExecutionRecordQueryRequest request) throws TException {
+        try {
+            log.info("Thrift RPC: Count simulation execution records");
+            com.tsinghua.dto.ExecutionRecordQueryDto dto = convertToExecutionRecordQueryDto(request);
+            Object count = simulationExecutionService.countExecutions(dto.getArchiveName(), dto.getStatus(), dto.getStartTime(), dto.getEndTime());
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "Count successful");
+            result.setData(String.valueOf(count));
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Count simulation execution records failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Count failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result deleteSimulationExecutionRecord(long timestamp) throws TException {
+        try {
+            log.info("Thrift RPC: Delete simulation execution record {}", timestamp);
+            simulationExecutionService.deleteExecution(timestamp);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "操作成功");
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Delete simulation execution record failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Delete failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result uploadSimulationReport(ByteBuffer file, long timestamp) throws TException {
+        try {
+            log.info("Thrift RPC: Upload simulation report for {}", timestamp);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "File upload via Thrift not implemented, use HTTP endpoint");
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Upload simulation report failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Upload failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result simulationPackageDownload(long timestamp) throws TException {
+        try {
+            log.info("Thrift RPC: Simulation package download {}", timestamp);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "File download via Thrift not implemented, use HTTP endpoint");
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Simulation package download failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Download failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    // ========== Auth Interface - Match AuthController ==========
+
+    @Override
+    public com.tsinghua.thrift.api.Result login(com.tsinghua.thrift.api.LoginRequest loginRequest) throws TException {
+        try {
+            log.info("Thrift RPC: Login user {}", loginRequest.getUsername());
+            // Auth login is handled via Spring Security, Thrift RPC provides basic support
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Login via Thrift not supported, use HTTP endpoint");
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Login failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Login failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result refreshToken(com.tsinghua.thrift.api.RefreshTokenRequest request) throws TException {
+        try {
+            log.info("Thrift RPC: Refresh token");
+            String newToken = jwtUtil.refreshToken(request.getRefreshToken());
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "Token刷新成功");
+            result.setData(newToken);
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Refresh token failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Refresh failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result verifyToken(String token) throws TException {
+        try {
+            log.info("Thrift RPC: Verify token");
+            boolean valid = jwtUtil.validateToken(token, "");
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "验证完成");
+            result.setData(String.valueOf(valid));
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Verify token failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Verify failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result logout() throws TException {
+        try {
+            log.info("Thrift RPC: Logout");
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "登出成功");
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Logout failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Logout failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result getCurrentAuthUser() throws TException {
+        try {
+            log.info("Thrift RPC: Get current auth user");
+            String username = com.tsinghua.auth.util.AuthUtil.getCurrentUsername();
+            UserEntity user = rolePermissionService.getUser(username);
+            if (user == null) {
+                com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "未找到当前用户");
+                return result;
+            }
+            String jsonData = convertEntityToJson(user);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "Query successful");
+            result.setData(jsonData);
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Get current auth user failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Query failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    // ========== User Interface - Match UserController ==========
+
+    @Override
+    public com.tsinghua.thrift.api.Result saveUser(com.tsinghua.thrift.api.User user) throws TException {
+        try {
+            log.info("Thrift RPC: Save user {}", user.getUsername());
+            UserEntity entity = convertToUserEntity(user);
+            rolePermissionService.addUser(entity);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "用户创建成功");
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Save user failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Save failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result queryUsers(com.tsinghua.thrift.api.UserQueryRequest request) throws TException {
+        try {
+            log.info("Thrift RPC: Query users");
+            String username = request.isSetUsername() ? request.getUsername() : null;
+            String role = request.isSetRole() ? request.getRole() : null;
+            String enabled = request.isSetEnabled() ? request.getEnabled() : null;
+            java.util.List<UserEntity> users = rolePermissionService.queryUsers(username, role, enabled, request.getPage(), request.getPageSize());
+            String jsonData = convertListToJson(users);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "Query successful");
+            result.setData(jsonData);
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Query users failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Query failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result countUsers(com.tsinghua.thrift.api.UserQueryRequest request) throws TException {
+        try {
+            log.info("Thrift RPC: Count users");
+            String username = request.isSetUsername() ? request.getUsername() : null;
+            String role = request.isSetRole() ? request.getRole() : null;
+            String enabled = request.isSetEnabled() ? request.getEnabled() : null;
+            java.util.List<UserEntity> users = rolePermissionService.queryUsers(username, role, enabled, 1, Integer.MAX_VALUE);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "Count successful");
+            result.setData(String.valueOf(users.size()));
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Count users failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Count failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result allUsers() throws TException {
+        try {
+            log.info("Thrift RPC: Get all users");
+            java.util.List<UserEntity> users = rolePermissionService.queryUsers(null, null, null, 1, Integer.MAX_VALUE);
+            java.util.List<String> usernames = new java.util.ArrayList<>();
+            for (UserEntity u : users) {
+                usernames.add(u.getUsername());
+            }
+            String jsonData = convertListToJson(usernames);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "Query successful");
+            result.setData(jsonData);
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Get all users failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Query failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result getUser(String username) throws TException {
+        try {
+            log.info("Thrift RPC: Get user detail {}", username);
+            UserEntity entity = rolePermissionService.getUser(username);
+            if (entity == null) {
+                com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "未找到指定用户");
+                return result;
+            }
+            String jsonData = convertEntityToJson(entity);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "Query successful");
+            result.setData(jsonData);
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Get user detail failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Query failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result deleteUser(String username) throws TException {
+        try {
+            log.info("Thrift RPC: Delete user {}", username);
+            rolePermissionService.removeUser(username);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "操作成功");
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Delete user failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Delete failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result updateUser(com.tsinghua.thrift.api.User user) throws TException {
+        try {
+            log.info("Thrift RPC: Update user {}", user.getUsername());
+            UserEntity entity = convertToUserEntity(user);
+            rolePermissionService.updateUser(entity);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "用户更新成功");
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Update user failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Update failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result getRoles() throws TException {
+        try {
+            log.info("Thrift RPC: Get roles");
+            java.util.List<RoleEntity> roles = rolePermissionService.getAllRoles();
+            String jsonData = convertListToJson(roles);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "Query successful");
+            result.setData(jsonData);
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Get roles failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Query failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result changePassword(com.tsinghua.thrift.api.ChangePasswordRequest request) throws TException {
+        try {
+            log.info("Thrift RPC: Change password for {}", request.getUsername());
+            boolean success = rolePermissionService.changePassword(request.getUsername(), request.getOldPassword(), request.getNewPassword());
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(success, success ? "密码修改成功" : "旧密码不正确");
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Change password failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Change password failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result getCurrentUser() throws TException {
+        try {
+            log.info("Thrift RPC: Get current user");
+            String username = com.tsinghua.auth.util.AuthUtil.getCurrentUsername();
+            UserEntity user = rolePermissionService.getUser(username);
+            if (user == null) {
+                com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "未找到当前用户");
+                return result;
+            }
+            String jsonData = convertEntityToJson(user);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "Query successful");
+            result.setData(jsonData);
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Get current user failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Query failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    // ========== Data Permission Interface - Match DataPermissionController ==========
+
+    @Override
+    public com.tsinghua.thrift.api.Result listOwnerTables() throws TException {
+        try {
+            log.info("Thrift RPC: List owner tables");
+            java.util.List<DataPermissionEntity> tables = dataPermissionService.getOwnerTables();
+            String jsonData = convertListToJson(tables);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "Query successful");
+            result.setData(jsonData);
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: List owner tables failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Query failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result queryDataPermissions(com.tsinghua.thrift.api.DataPermissionQueryRequest request) throws TException {
+        try {
+            log.info("Thrift RPC: Query data permissions");
+            com.tsinghua.auth.dto.DataPermissionQueryRequest authDto = convertToAuthDataPermissionQueryRequest(request);
+            java.util.List<DataPermissionEntity> permissions = dataPermissionService.queryOwnerTables(authDto);
+            String jsonData = convertListToJson(permissions);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "Query successful");
+            result.setData(jsonData);
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Query data permissions failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Query failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result countDataPermissions(com.tsinghua.thrift.api.DataPermissionQueryRequest request) throws TException {
+        try {
+            log.info("Thrift RPC: Count data permissions");
+            com.tsinghua.auth.dto.DataPermissionQueryRequest authDto = convertToAuthDataPermissionQueryRequest(request);
+            long count = dataPermissionService.countOwnerTables(authDto);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "Count successful");
+            result.setData(String.valueOf(count));
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Count data permissions failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Count failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result updateDataPermission(com.tsinghua.thrift.api.DataPermissionUpdateRequest request) throws TException {
+        try {
+            log.info("Thrift RPC: Update data permission {}", request.getId());
+            com.tsinghua.auth.dto.DataPermissionUpdateRequest authDto = convertToAuthDataPermissionUpdateRequest(request);
+            dataPermissionService.updateOwnerPermission(authDto);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "更新成功");
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Update data permission failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Update failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    // ========== New Conversion Methods ==========
 
     private ParsingRulesEntity convertToParsingRulesEntity(com.tsinghua.thrift.api.ParsingRule thriftRule) {
         ParsingRulesEntity entity = new ParsingRulesEntity();
@@ -944,6 +2064,160 @@ public class ApiServiceImpl implements ApiService.Iface {
         com.tsinghua.dto.ExtractModelFileRequest dto = new com.tsinghua.dto.ExtractModelFileRequest();
         dto.setName(thriftRequest.getName());
         dto.setVersion(thriftRequest.getVersion());
+        return dto;
+    }
+
+    private com.tsinghua.dto.TimeRangeRequest convertToTimeRangeRequest(com.tsinghua.thrift.api.TimeRangeRequest thriftRequest) {
+        com.tsinghua.dto.TimeRangeRequest dto = new com.tsinghua.dto.TimeRangeRequest();
+        dto.setTableName(thriftRequest.getTableName());
+        if (thriftRequest.isSetInputsBind()) {
+            java.util.List<com.tsinghua.dto.InputBindDto> inputs = new java.util.ArrayList<>();
+            for (com.tsinghua.thrift.api.InputBindDto thriftInput : thriftRequest.getInputsBind()) {
+                com.tsinghua.dto.InputBindDto input = new com.tsinghua.dto.InputBindDto();
+                input.setSourceField(thriftInput.getSourceField());
+                input.setTargetField(thriftInput.getTargetField());
+                input.setOperator(thriftInput.getOperator());
+                input.setConversionValue(thriftInput.getConversionValue());
+                inputs.add(input);
+            }
+            dto.setInputsBind(inputs);
+        }
+        return dto;
+    }
+
+    private com.tsinghua.dto.AutoParseRequest convertToAutoParseRequest(com.tsinghua.thrift.api.AutoParseRequest thriftRequest) {
+        com.tsinghua.dto.AutoParseRequest dto = new com.tsinghua.dto.AutoParseRequest();
+        dto.setFileContent(thriftRequest.getFileContent());
+        dto.setFileName(thriftRequest.getFileName());
+        if (thriftRequest.isSetParseType()) dto.setParseType(thriftRequest.getParseType());
+        if (thriftRequest.isSetRegexPattern()) dto.setRegexPattern(thriftRequest.getRegexPattern());
+        if (thriftRequest.isSetPythonModule()) dto.setPythonModule(thriftRequest.getPythonModule());
+        if (thriftRequest.isSetPythonFunction()) dto.setPythonFunction(thriftRequest.getPythonFunction());
+        if (thriftRequest.isSetMaxLines()) dto.setMaxLines(thriftRequest.getMaxLines());
+        return dto;
+    }
+
+    private AlgorithmMetaEntity convertToAlgorithmMetaEntity(com.tsinghua.thrift.api.AlgorithmMeta thriftMeta) {
+        AlgorithmMetaEntity entity = new AlgorithmMetaEntity();
+        entity.setName(thriftMeta.getName());
+        entity.setVersion(thriftMeta.getVersion());
+        entity.setFileName(thriftMeta.getFileName());
+        if (thriftMeta.isSetFileSize()) entity.setFileSize(thriftMeta.getFileSize());
+        if (thriftMeta.isSetChunkCount()) entity.setChunkCount(thriftMeta.getChunkCount());
+        if (thriftMeta.isSetStoragePath()) entity.setStoragePath(thriftMeta.getStoragePath());
+        if (thriftMeta.isSetFileMd5()) entity.setFileMd5(thriftMeta.getFileMd5());
+        if (thriftMeta.isSetAuthor()) entity.setAuthor(thriftMeta.getAuthor());
+        if (thriftMeta.isSetScene()) entity.setScene(thriftMeta.getScene());
+        if (thriftMeta.isSetInputs()) entity.setInputs(thriftMeta.getInputs());
+        if (thriftMeta.isSetOutputs()) entity.setOutputs(thriftMeta.getOutputs());
+        if (thriftMeta.isSetTimestamp()) entity.setTimestamp(thriftMeta.getTimestamp());
+        if (thriftMeta.isSetCmd()) entity.setCmd(thriftMeta.getCmd());
+        if (thriftMeta.isSetInputCsvName()) entity.setInputCsvName(thriftMeta.getInputCsvName());
+        if (thriftMeta.isSetOutputCsvName()) entity.setOutputCsvName(thriftMeta.getOutputCsvName());
+        if (thriftMeta.isSetAlgorithmType()) entity.setAlgorithmType(thriftMeta.getAlgorithmType());
+        if (thriftMeta.isSetDependencies()) entity.setDependencies(thriftMeta.getDependencies());
+        if (thriftMeta.isSetProjectName()) entity.setProjectName(thriftMeta.getProjectName());
+        if (thriftMeta.isSetDescription()) entity.setDescription(thriftMeta.getDescription());
+        if (thriftMeta.isSetTableName()) entity.setTableName(thriftMeta.getTableName());
+        if (thriftMeta.isSetInputData()) entity.setInputData(thriftMeta.getInputData());
+        if (thriftMeta.isSetCalledModels()) entity.setCalledModels(thriftMeta.getCalledModels());
+        if (thriftMeta.isSetOutputFormat()) entity.setOutputFormat(thriftMeta.getOutputFormat());
+        if (thriftMeta.isSetInputsBind()) entity.setInputsBind(thriftMeta.getInputsBind());
+        if (thriftMeta.isSetOutputsBind()) entity.setOutputsBind(thriftMeta.getOutputsBind());
+        if (thriftMeta.isSetOutputTable()) entity.setOutputTable(thriftMeta.getOutputTable());
+        return entity;
+    }
+
+    private DataArchiveEntity convertToDataArchiveEntity(com.tsinghua.thrift.api.DataArchive thriftArchive) {
+        DataArchiveEntity entity = new DataArchiveEntity();
+        entity.setId(thriftArchive.getId());
+        entity.setName(thriftArchive.getName());
+        if (thriftArchive.isSetDesc()) entity.setDesc(thriftArchive.getDesc());
+        if (thriftArchive.isSetProjectName()) entity.setProjectName(thriftArchive.getProjectName());
+        if (thriftArchive.isSetOwner()) entity.setOwner(thriftArchive.getOwner());
+        if (thriftArchive.isSetCreateTime()) entity.setCreateTime(thriftArchive.getCreateTime());
+        if (thriftArchive.isSetType()) entity.setType(thriftArchive.getType());
+        if (thriftArchive.isSetConfig()) entity.setConfig(thriftArchive.getConfig());
+        return entity;
+    }
+
+    private ProjectEntity convertToProjectEntity(com.tsinghua.thrift.api.Project thriftProject) {
+        ProjectEntity entity = new ProjectEntity();
+        entity.setId(thriftProject.getId());
+        entity.setName(thriftProject.getName());
+        if (thriftProject.isSetDesc()) entity.setDesc(thriftProject.getDesc());
+        if (thriftProject.isSetAlgorithms()) entity.setAlgorithms(thriftProject.getAlgorithms());
+        if (thriftProject.isSetModels()) entity.setModels(thriftProject.getModels());
+        if (thriftProject.isSetDatas()) entity.setDatas(thriftProject.getDatas());
+        if (thriftProject.isSetCreateTime()) entity.setCreateTime(thriftProject.getCreateTime());
+        if (thriftProject.isSetOwner()) entity.setOwner(thriftProject.getOwner());
+        return entity;
+    }
+
+    private com.tsinghua.dto.ProjectsQueryRequest convertToProjectsQueryRequest(com.tsinghua.thrift.api.ProjectsQueryRequest thriftRequest) {
+        com.tsinghua.dto.ProjectsQueryRequest dto = new com.tsinghua.dto.ProjectsQueryRequest();
+        dto.setPageNum(thriftRequest.getPageNum());
+        dto.setPageSize(thriftRequest.getPageSize());
+        if (thriftRequest.isSetName()) dto.setName(thriftRequest.getName());
+        if (thriftRequest.isSetAlgorithm()) dto.setAlgorithm(thriftRequest.getAlgorithm());
+        if (thriftRequest.isSetModel()) dto.setModel(thriftRequest.getModel());
+        if (thriftRequest.isSetData()) dto.setData(thriftRequest.getData());
+        return dto;
+    }
+
+    private SimulationArchiveEntity convertToSimulationArchiveEntity(com.tsinghua.thrift.api.SimulationArchive thriftArchive) {
+        SimulationArchiveEntity entity = new SimulationArchiveEntity();
+        entity.setName(thriftArchive.getName());
+        if (thriftArchive.isSetDescription()) entity.setDescription(thriftArchive.getDescription());
+        if (thriftArchive.isSetGraphJson()) entity.setGraphJson(thriftArchive.getGraphJson());
+        if (thriftArchive.isSetStatus()) entity.setStatus(thriftArchive.isStatus());
+        if (thriftArchive.isSetCreateTime()) entity.setCreateTime(thriftArchive.getCreateTime());
+        if (thriftArchive.isSetUpdateTime()) entity.setUpdateTime(thriftArchive.getUpdateTime());
+        if (thriftArchive.isSetOwner()) entity.setOwner(thriftArchive.getOwner());
+        if (thriftArchive.isSetProjectName()) entity.setProjectName(thriftArchive.getProjectName());
+        if (thriftArchive.isSetScheduleCron()) entity.setScheduleCron(thriftArchive.getScheduleCron());
+        if (thriftArchive.isSetOutputApiConfig()) entity.setOutputApiConfig(thriftArchive.getOutputApiConfig());
+        if (thriftArchive.isSetLastExecutionTime()) entity.setLastExecutionTime(thriftArchive.getLastExecutionTime());
+        if (thriftArchive.isSetExecutionCount()) entity.setExecutionCount(thriftArchive.getExecutionCount());
+        if (thriftArchive.isSetIsRunning()) entity.setIsRunning(thriftArchive.isIsRunning());
+        return entity;
+    }
+
+    private com.tsinghua.dto.ExecutionRecordQueryDto convertToExecutionRecordQueryDto(com.tsinghua.thrift.api.ExecutionRecordQueryRequest thriftRequest) {
+        com.tsinghua.dto.ExecutionRecordQueryDto dto = new com.tsinghua.dto.ExecutionRecordQueryDto();
+        if (thriftRequest.isSetArchiveName()) dto.setArchiveName(thriftRequest.getArchiveName());
+        if (thriftRequest.isSetStatus()) dto.setStatus(thriftRequest.getStatus());
+        if (thriftRequest.isSetStartTime()) dto.setStartTime(thriftRequest.getStartTime());
+        if (thriftRequest.isSetEndTime()) dto.setEndTime(thriftRequest.getEndTime());
+        dto.setPageNum(thriftRequest.getPageNum());
+        dto.setPageSize(thriftRequest.getPageSize());
+        return dto;
+    }
+
+    private UserEntity convertToUserEntity(com.tsinghua.thrift.api.User thriftUser) {
+        UserEntity entity = new UserEntity();
+        entity.setUsername(thriftUser.getUsername());
+        if (thriftUser.isSetPassword()) entity.setPassword(thriftUser.getPassword());
+        if (thriftUser.isSetRole()) entity.setRole(thriftUser.getRole());
+        if (thriftUser.isSetRoleId()) entity.setRoleId(thriftUser.getRoleId());
+        entity.setEnabled(thriftUser.isEnabled());
+        if (thriftUser.isSetTimestamp()) entity.setTimestamp(thriftUser.getTimestamp());
+        return entity;
+    }
+
+    private com.tsinghua.auth.dto.DataPermissionQueryRequest convertToAuthDataPermissionQueryRequest(com.tsinghua.thrift.api.DataPermissionQueryRequest thriftRequest) {
+        com.tsinghua.auth.dto.DataPermissionQueryRequest dto = new com.tsinghua.auth.dto.DataPermissionQueryRequest();
+        dto.setPage(thriftRequest.getPage());
+        dto.setPageSize(thriftRequest.getPageSize());
+        if (thriftRequest.isSetTablePrefix()) dto.setTablePrefix(thriftRequest.getTablePrefix());
+        return dto;
+    }
+
+    private com.tsinghua.auth.dto.DataPermissionUpdateRequest convertToAuthDataPermissionUpdateRequest(com.tsinghua.thrift.api.DataPermissionUpdateRequest thriftRequest) {
+        com.tsinghua.auth.dto.DataPermissionUpdateRequest dto = new com.tsinghua.auth.dto.DataPermissionUpdateRequest();
+        dto.setId(thriftRequest.getId());
+        if (thriftRequest.isSetIsPublic()) dto.setIsPublic(thriftRequest.isIsPublic());
+        if (thriftRequest.isSetVisibleUsers()) dto.setVisibleUsers(thriftRequest.getVisibleUsers());
         return dto;
     }
 

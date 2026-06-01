@@ -80,6 +80,10 @@ const BUTTON_ID_MAP = {
     'btn-simulation': {
         text: '仿真',
         action: 'showSimulationArchive'
+    },
+    'btn-simulation-analyze': {
+        text: '分析',
+        action: 'showSimulationRecord'
     }
 };
 
@@ -153,6 +157,10 @@ const MENU_ID_MAP = {
         text: '仿真档案管理',
         action: 'showSimulationArchive'
     },
+    'menu-simulation-record': {
+        text: '仿真记录',
+        action: 'showSimulationRecord'
+    },
     'menu-algorithm-list': {
         text: '算法管理',
         action: 'showAlgorithmList'
@@ -164,6 +172,14 @@ const MENU_ID_MAP = {
     'menu-project-list': {
         text: '打开项目',
         action: 'showProjectList'
+    },
+    'menu-project-export': {
+        text: '导出项目',
+        action: 'showProjectExport'
+    },
+    'menu-project-import': {
+        text: '导入项目',
+        action: 'showProjectImport'
     },
     'menu-numerical-and-curve-analysis': {
         text: '数值与曲线分析',
@@ -184,6 +200,18 @@ const MENU_ID_MAP = {
     'menu-about': {
         text: '关于',
         action: 'showAbout'
+    },
+    'menu-import-wizard-data': {
+        text: '数据',
+        action: 'showImportData'
+    },
+    'menu-import-wizard-model': {
+        text: '模型',
+        action: 'showModelUpload'
+    },
+    'menu-import-wizard-algorithm': {
+        text: '算法',
+        action: 'showAlgorithmUpload'
     }
 };
 
