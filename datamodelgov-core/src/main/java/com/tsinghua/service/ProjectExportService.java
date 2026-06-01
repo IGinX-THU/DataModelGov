@@ -95,9 +95,7 @@ public class ProjectExportService {
         response.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
 
         // 3. 创建ZIP输出流
-        ZipOutputStream zos = new ZipOutputStream(new BufferedOutputStream(response.getOutputStream()));
-
-        try {
+        try (ZipOutputStream zos = new ZipOutputStream(new BufferedOutputStream(response.getOutputStream()))) {
             // 4. 写入清单文件
             writeManifest(zos, project, request);
 
@@ -127,6 +125,7 @@ public class ProjectExportService {
                 log.warn("项目 {} 导出时未选择任何资源类型", projectName);
             }
 
+            zos.flush();
             zos.finish();
             log.info("项目 {} 导出完成，共导出 {} 项资源", projectName, exportedCount);
 

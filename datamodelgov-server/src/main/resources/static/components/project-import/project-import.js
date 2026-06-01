@@ -37,11 +37,7 @@ class ProjectImport extends HTMLElement {
         <div class="import-header">导入项目</div>
         <div class="import-body">
             <div class="import-field">
-                <span class="import-label">目标项目名称</span>
-                <input type="text" class="import-input" id="targetProjectName" placeholder="留空则使用导出时的项目名" />
-            </div>
-            <div class="import-field">
-                <span class="import-label">选择导出文件</span>
+                <span class="import-label">选择项目资源包</span>
                 <div class="import-file-area" id="fileDropArea">
                     <input type="file" id="importFile" accept=".zip" style="display: none;" />
                     <div class="import-file-hint" id="fileHint">
@@ -90,8 +86,6 @@ class ProjectImport extends HTMLElement {
         if (importBtn) importBtn.disabled = true;
         const progress = root.getElementById('importProgress');
         if (progress) progress.style.display = 'none';
-        const projectName = root.getElementById('targetProjectName');
-        if (projectName) projectName.value = '';
     }
 
     bindEvents() {
@@ -192,13 +186,9 @@ class ProjectImport extends HTMLElement {
         }
 
         const root = this.shadowRoot;
-        const projectName = root.getElementById('targetProjectName')?.value?.trim() || '';
 
         const formData = new FormData();
         formData.append('file', this._selectedFile);
-        if (projectName) {
-            formData.append('projectName', projectName);
-        }
 
         const progress = root.getElementById('importProgress');
         const progressFill = root.getElementById('progressFill');
@@ -233,6 +223,7 @@ class ProjectImport extends HTMLElement {
             if (result.code === 200) {
                 if (progressText) progressText.textContent = '导入成功！';
                 const data = result.data || {};
+                const targetProjectName = data.targetProjectName;
                 const summary = [
                     data.targetProjectName ? '项目: ' + data.targetProjectName : '',
                     data.algorithmCount ? '算法: ' + data.algorithmCount + ' 个' : '',
@@ -240,8 +231,51 @@ class ProjectImport extends HTMLElement {
                     data.dataCount ? '数据: ' + data.dataCount + ' 个' : '',
                     data.simulationCount ? '仿真: ' + data.simulationCount + ' 个' : ''
                 ].filter(s => s).join('，');
-                this.showToast('导入成功！' + (summary ? ' ' + summary : ''));
-                setTimeout(() => this.hide(), 1500);
+                if (window.CommonUtils && window.CommonUtils.showToast) {
+                    window.CommonUtils.showToast('导入成功' + (summary ? '，' + summary : ''));
+                } else {
+                    this.showToast('导入成功' + (summary ? '，' + summary : ''));
+                }
+                setTimeout(async () => {
+                    this.hide();
+                    // 打开导入的项目
+                    if (targetProjectName) {
+                        try {
+                            // 先查询项目获取createTime
+                            const queryResult = await window.AppConfig.post('project', 'query', { name: targetProjectName, pageNum: 1, pageSize: 1 });
+                            if (queryResult.code === 200 && queryResult.data && queryResult.data.length > 0) {
+                                const project = queryResult.data[0];
+                                const createTime = project.createTime;
+                                // 再获取项目详情
+                                const detailResult = await window.AppConfig.get('project', 'detail', { createTime });
+                                if (detailResult.code === 200 && detailResult.data) {
+                                    const projectDetail = detailResult.data;
+                                    // 缓存项目信息（按用户隔离）
+                                    if (window.localStorage) {
+                                        const username = window.AppConfig.getUsername();
+                                        if (username) {
+                                            window.localStorage.setItem('currentProject_' + username, JSON.stringify({
+                                                name: projectDetail.name,
+                                                createTime: projectDetail.createTime
+                                            }));
+                                        }
+                                    }
+                                    // 调用displayProjectTree显示项目树
+                                    if (window.displayProjectTree) {
+                                        window.displayProjectTree(projectDetail.name);
+                                    }
+                                }
+                            }
+                        } catch (error) {
+                            console.error('打开项目失败:', error);
+                        }
+                    }
+                    // Refresh project list if visible
+                    const projectList = document.querySelector('project-list');
+                    if (projectList && projectList.style.display !== 'none') {
+                        projectList.loadProjectsFromAPI();
+                    }
+                }, 1500);
             } else {
                 if (progress) progress.style.display = 'none';
                 this.showToast(result.message || '导入失败', 'error');

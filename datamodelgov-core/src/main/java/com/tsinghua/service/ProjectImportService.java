@@ -3,6 +3,7 @@ package com.tsinghua.service;
 import cn.edu.tsinghua.iginx.session_v2.IginXClient;
 import cn.edu.tsinghua.iginx.session_v2.write.Point;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tsinghua.auth.service.DataPermissionService;
 import com.tsinghua.auth.util.AuthUtil;
 import com.tsinghua.entity.AlgorithmMetaEntity;
 import com.tsinghua.entity.DataArchiveEntity;
@@ -17,11 +18,18 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.*;
+import java.io.BufferedInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -44,6 +52,9 @@ public class ProjectImportService {
 
     @Autowired
     private DataTableService dataTableService;
+
+    @Autowired
+    private DataPermissionService dataPermissionService;
 
     @Autowired
     private DataArchiveService dataArchiveService;
@@ -74,6 +85,13 @@ public class ProjectImportService {
             throw new IllegalArgumentException("导入文件不能为空");
         }
 
+        // 检查文件大小
+        long fileSize = file.getSize();
+        if (fileSize == 0) {
+            throw new IllegalArgumentException("导入文件大小为0，文件可能未正确上传");
+        }
+        log.info("开始导入项目，文件大小: {} bytes", fileSize);
+
         Map<String, Object> result = new LinkedHashMap<>();
         int algorithmCount = 0;
         int modelCount = 0;
@@ -83,7 +101,23 @@ public class ProjectImportService {
         // 先将ZIP保存到临时文件
         Path tempZipPath = Files.createTempFile("project_import_", ".zip");
         try {
-            file.transferTo(tempZipPath.toFile());
+            // 使用InputStream复制文件内容到临时文件
+            try (InputStream is = file.getInputStream();
+                 java.io.FileOutputStream fos = new java.io.FileOutputStream(tempZipPath.toFile())) {
+                byte[] buffer = new byte[8192];
+                int bytesRead;
+                while ((bytesRead = is.read(buffer)) != -1) {
+                    fos.write(buffer, 0, bytesRead);
+                }
+                fos.getFD().sync();
+            }
+
+            // 验证临时文件大小是否匹配
+            long tempFileSize = Files.size(tempZipPath);
+            if (tempFileSize != fileSize) {
+                throw new IllegalArgumentException(String.format("文件传输不完整：期望 %d bytes，实际 %d bytes", fileSize, tempFileSize));
+            }
+            log.info("临时文件已保存并同步到磁盘，大小: {} bytes", tempFileSize);
 
             try (ZipInputStream zis = new ZipInputStream(new BufferedInputStream(Files.newInputStream(tempZipPath)), StandardCharsets.UTF_8)) {
                 ZipEntry entry;
@@ -124,7 +158,7 @@ public class ProjectImportService {
                         modelFileMap.put(entryName, content);
                     } else if (entryName.startsWith("data/") && entryName.endsWith(".csv")) {
                         dataCsvMap.put(entryName, content);
-                    } else if (entryName.startsWith("data/") && entryName.endsWith("_archive.json")) {
+                    } else if (entryName.startsWith("data/") && entryName.endsWith("/archive.json")) {
                         dataArchiveMap.put(entryName, content);
                     } else if (entryName.startsWith("simulation/archives/") && entryName.endsWith("/archive.json")) {
                         simulationArchiveMap.put(entryName, content);
@@ -179,6 +213,7 @@ public class ProjectImportService {
 
                 // 导入数据CSV
                 if (!dataCsvMap.isEmpty()) {
+                    log.info("开始导入数据CSV，共 {} 个文件，数据档案共 {} 个", dataCsvMap.size(), dataArchiveMap.size());
                     dataCount = importDataCsv(dataCsvMap, dataArchiveMap, targetProjectName);
                     result.put("dataCount", dataCount);
                 }
@@ -281,6 +316,9 @@ public class ProjectImportService {
 
                 iginxClient.getWriteClient().writePoints(points);
 
+                // 分配数据权限
+                dataPermissionService.saveTablePrefix(storagePath, false, AuthUtil.getCurrentUsername());
+
                 // 保存元数据（更新项目名称为目标项目）
                 meta.setProjectName(projectName);
                 meta.setStoragePath(storagePath);
@@ -360,6 +398,9 @@ public class ProjectImportService {
 
                 iginxClient.getWriteClient().writePoints(points);
 
+                // 分配数据权限
+                dataPermissionService.saveTablePrefix(storagePath, false, AuthUtil.getCurrentUsername());
+
                 // 保存元数据
                 meta.setProjectName(projectName);
                 meta.setStoragePath(storagePath);
@@ -398,7 +439,36 @@ public class ProjectImportService {
                 // 保存CSV到临时文件
                 Path tempCsvPath = Files.createTempFile("import_data_", ".csv");
                 try {
-                    Files.write(tempCsvPath, csvData);
+                    // 去除UTF-8 BOM (EF BB BF)
+                    byte[] csvDataWithoutBom = csvData;
+                    if (csvData.length >= 3 && csvData[0] == (byte) 0xEF && csvData[1] == (byte) 0xBB && csvData[2] == (byte) 0xBF) {
+                        csvDataWithoutBom = new byte[csvData.length - 3];
+                        System.arraycopy(csvData, 3, csvDataWithoutBom, 0, csvData.length - 3);
+                    }
+
+                    // 处理CSV表头：去掉表前缀只保留字段名
+                    String csvContent = new String(csvDataWithoutBom, StandardCharsets.UTF_8);
+                    String[] lines = csvContent.split("\n");
+                    if (lines.length > 0) {
+                        String header = lines[0];
+                        String[] columns = header.split(",");
+                        StringBuilder newHeader = new StringBuilder();
+                        for (int i = 0; i < columns.length; i++) {
+                            String column = columns[i].trim();
+                            // 去掉表前缀，只保留字段名（最后一个点之后的部分）
+                            int lastDotIndex = column.lastIndexOf('.');
+                            if (lastDotIndex > 0) {
+                                column = column.substring(lastDotIndex + 1);
+                            }
+                            if (i > 0) {
+                                newHeader.append(",");
+                            }
+                            newHeader.append(column);
+                        }
+                        lines[0] = newHeader.toString();
+                        csvContent = String.join("\n", lines);
+                    }
+                    Files.write(tempCsvPath, csvContent.getBytes(StandardCharsets.UTF_8));
 
                     // 使用DataTableService的导入方法
                     String uploadedFileName = System.currentTimeMillis() + ".csv";
@@ -414,7 +484,7 @@ public class ProjectImportService {
                     projectService.addToProject(projectName, dataPath, "datas");
 
                     // 导入数据档案元数据（如果有）
-                    String archiveKey = entryName.replace(".csv", "_archive.json");
+                    String archiveKey = entryName.replace(".csv", "/archive.json");
                     byte[] archiveData = archiveMap.get(archiveKey);
                     if (archiveData != null) {
                         try {
@@ -422,9 +492,12 @@ public class ProjectImportService {
                             archive.setProjectName(projectName);
                             archive.setOwner(AuthUtil.getCurrentUsername());
                             dataArchiveService.saveArchive(archive);
+                            log.info("已导入数据档案: {}", archive.getName());
                         } catch (Exception e) {
                             log.warn("导入数据档案元数据失败: {}", archiveKey, e);
                         }
+                    } else {
+                        log.warn("未找到数据档案: {}", archiveKey);
                     }
 
                     count++;

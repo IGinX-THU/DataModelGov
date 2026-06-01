@@ -2583,13 +2583,15 @@ class SimulationRecord extends HTMLElement {
             let outputDataFromCsv = null;
             let outputCsvData = null; // 保存CSV原始数据用于报告
             if (parsedResult && parsedResult.results) {
-                const firstNodeKey = Object.keys(parsedResult.results)[0];
-                if (firstNodeKey) {
-                    const nodeResult = parsedResult.results[firstNodeKey];
+                // 使用执行顺序中的最后一个节点（最终输出节点）
+                const executionOrder = parsedResult.executionOrder || Object.keys(parsedResult.results);
+                const finalNodeKey = executionOrder[executionOrder.length - 1];
+                if (finalNodeKey && parsedResult.results[finalNodeKey]) {
+                    const nodeResult = parsedResult.results[finalNodeKey];
                     if (nodeResult.outputCsv) {
                         outputCsvData = this.parseOutputCsv(nodeResult.outputCsv);
                         outputDataFromCsv = this.convertCsvToChartData(outputCsvData);
-                        console.log('从CSV解析的输出数据:', outputDataFromCsv);
+                        console.log('从CSV解析的输出数据（最终节点）:', outputDataFromCsv);
                         console.log('CSV原始数据:', outputCsvData);
                     }
                 }
