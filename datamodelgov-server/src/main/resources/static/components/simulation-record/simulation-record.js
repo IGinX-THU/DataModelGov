@@ -2591,8 +2591,26 @@ class SimulationRecord extends HTMLElement {
                     if (nodeResult.outputCsv) {
                         outputCsvData = this.parseOutputCsv(nodeResult.outputCsv);
                         outputDataFromCsv = this.convertCsvToChartData(outputCsvData);
-                        console.log('从CSV解析的输出数据（最终节点）:', outputDataFromCsv);
+                        console.log('从results.outputCsv解析的输出数据:', outputDataFromCsv);
                         console.log('CSV原始数据:', outputCsvData);
+                    }
+                }
+            }
+
+            // 如果results中没有outputCsv，尝试从nodeOutputs中提取
+            if (!outputCsvData && parsedResult && parsedResult.nodeOutputs) {
+                const nodeKeys = Object.keys(parsedResult.nodeOutputs);
+                const lastNodeKey = nodeKeys[nodeKeys.length - 1];
+                if (lastNodeKey && parsedResult.nodeOutputs[lastNodeKey]) {
+                    const nodeOutput = parsedResult.nodeOutputs[lastNodeKey];
+                    if (typeof nodeOutput === 'string') {
+                        const csvMatch = nodeOutput.match(/=== 输出文件内容 \(output\.csv\) ===\s*\r?\n([\s\S]*?)(?=\r?\n\r?\n|$)/);
+                        if (csvMatch && csvMatch[1]) {
+                            outputCsvData = this.parseOutputCsv(csvMatch[1]);
+                            outputDataFromCsv = this.convertCsvToChartData(outputCsvData);
+                            console.log('从nodeOutputs解析的输出数据:', outputDataFromCsv);
+                            console.log('CSV原始数据:', outputCsvData);
+                        }
                     }
                 }
             }

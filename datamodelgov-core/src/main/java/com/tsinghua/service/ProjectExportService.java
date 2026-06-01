@@ -458,6 +458,23 @@ public class ProjectExportService {
                             Path taskDir = java.nio.file.Paths.get("project", projectName, "job", "simulation", String.valueOf(execution.getTimestamp()));
                             if (java.nio.file.Files.exists(taskDir)) {
                                 exportDirectoryToZip(zos, taskDir, archiveDir + "/executions/" + execution.getTimestamp() + "_files");
+                            } else {
+                                // 尝试检查是否是旧的一级目录结构（兼容性）
+                                Path oldTaskDir = java.nio.file.Paths.get("project", projectName, "job", "simulation");
+                                if (java.nio.file.Files.exists(oldTaskDir)) {
+                                    try (java.util.stream.Stream<Path> stream = java.nio.file.Files.list(oldTaskDir)) {
+                                        stream.filter(path -> path.getFileName().toString().equals(String.valueOf(execution.getTimestamp())))
+                                              .forEach(dir -> {
+                                                  try {
+                                                      exportDirectoryToZip(zos, dir, archiveDir + "/executions/" + execution.getTimestamp() + "_files");
+                                                  } catch (IOException e) {
+                                                      log.warn("导出任务目录失败: {}", dir, e);
+                                                  }
+                                              });
+                                    } catch (IOException e) {
+                                        log.warn("列出任务目录失败", e);
+                                    }
+                                }
                             }
                         }
                     }

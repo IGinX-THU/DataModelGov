@@ -539,6 +539,18 @@ public class ProjectImportService {
                             // 更新档案ID和名称
                             execution.setArchiveId(archive.getCreateTime());
                             execution.setArchiveName(archive.getName());
+
+                            // 修复result字段双重序列化问题：如果result是字符串，解析为JSON对象
+                            Object result = execution.getResult();
+                            if (result instanceof String) {
+                                try {
+                                    execution.setResult(objectMapper.readValue((String) result, Object.class));
+                                    log.info("已修复result字段双重序列化问题");
+                                } catch (Exception e) {
+                                    log.warn("解析result字段失败，保持原样", e);
+                                }
+                            }
+
                             // 保存执行记录
                             simulationExecutionService.saveExecution(execution);
 
@@ -552,6 +564,7 @@ public class ProjectImportService {
                             for (Map.Entry<String, byte[]> fileEntry : taskFilesMap.entrySet()) {
                                 if (fileEntry.getKey().startsWith(taskFilesPrefix)) {
                                     String relativePath = fileEntry.getKey().substring(taskFilesPrefix.length() + 1);
+                                    // 保持原有的目录结构（包括nodeId子目录）
                                     Path targetFile = taskDir.resolve(relativePath.replace("/", java.io.File.separator));
                                     java.nio.file.Files.createDirectories(targetFile.getParent());
                                     java.nio.file.Files.write(targetFile, fileEntry.getValue());
