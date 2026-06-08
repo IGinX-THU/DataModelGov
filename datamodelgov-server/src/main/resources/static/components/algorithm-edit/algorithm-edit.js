@@ -194,13 +194,13 @@ class AlgorithmEdit extends HTMLElement {
         this.currentAlgorithm = algorithmInfo;
         this.currentAlgorithmMeta = algorithmDetailData;
         this.removeAttribute('hidden');
-        
+
         // 确保加载解析规则
         await this.loadParsingRules();
-        
+
         // 加载源文件列表
         await this.loadSourceFiles();
-        
+
         // 直接使用algorithm-detail的数据填充表单，完全使用接口数据
         const algorithmNameInput = this.shadowRoot.getElementById('algorithmName');
         const developerInput = this.shadowRoot.getElementById('developer');
@@ -220,8 +220,8 @@ class AlgorithmEdit extends HTMLElement {
         // 使用接口返回的inputs和outputs数据
         this.loadInterfaceParamsFromData(algorithmDetailData.inputs, algorithmDetailData.outputs);
 
-        // 加载关联绑定数据
-        this.loadBindingData(algorithmInfo);
+        // 加载关联绑定数据（直接使用传入的数据，不重新调用API）
+        await this.loadBindingDataFromDetail(algorithmDetailData);
 
         // 自动填充运行命令和CSV文件名（根据当前算法元数据）
         this.autoFillCommandAndCsvFields();
@@ -1558,6 +1558,89 @@ class AlgorithmEdit extends HTMLElement {
             }
         } catch (error) {
             console.error('加载绑定数据失败:', error);
+        }
+
+        // 延迟清除初始化标志，确保所有数据加载完成
+        setTimeout(() => {
+            this._isInitializingEdit = false;
+        }, 500);
+    }
+
+    // 新增方法：直接使用传入的算法详情数据，不重新调用API
+    async loadBindingDataFromDetail(algorithmDetailData) {
+        // 设置初始化标志，防止自动填充覆盖已有数据
+        this._isInitializingEdit = true;
+
+        // 加载数据源选项
+        await this.loadDataSourceOptions();
+
+        // 直接使用传入的算法详情数据
+        const algorithmData = algorithmDetailData;
+
+        // 加载数据源
+        const dataSource = this.shadowRoot.getElementById('dataSource');
+        if (dataSource && algorithmData.tableName) {
+            dataSource.value = algorithmData.tableName;
+            await this.loadDataSourceFields();
+        }
+
+        // 加载运行配置
+        const ruleCmd = this.shadowRoot.getElementById('ruleCmd');
+        const inputCsvName = this.shadowRoot.getElementById('inputCsvName');
+        const outputCsvName = this.shadowRoot.getElementById('outputCsvName');
+        if (ruleCmd && algorithmData.cmd) ruleCmd.value = algorithmData.cmd;
+        if (inputCsvName && algorithmData.inputCsvName) inputCsvName.value = algorithmData.inputCsvName;
+        if (outputCsvName && algorithmData.outputCsvName) outputCsvName.value = algorithmData.outputCsvName;
+
+        // 加载模型绑定
+        const modelBindList = this.shadowRoot.getElementById('modelBindList');
+        if (modelBindList) modelBindList.innerHTML = '';
+        if (algorithmData.calledModels) {
+            try {
+                const modelBindings = typeof algorithmData.calledModels === 'string'
+                    ? JSON.parse(algorithmData.calledModels)
+                    : algorithmData.calledModels;
+                const loadPromises = modelBindings.map(async (binding) => {
+                    const row = this.addModelBindRow({ modelName: binding.modelName, version: binding.version || '' });
+                    if (binding.storagePath) {
+                        row.dataset.storagePath = binding.storagePath;
+                    } else if (binding.modelName && binding.version) {
+                        await this.loadModelStoragePath(binding.modelName, binding.version, row);
+                    }
+                });
+                await Promise.all(loadPromises);
+            } catch (e) {
+                console.error('解析模型绑定数据失败:', e);
+            }
+        }
+
+        // 加载输入输出映射
+        if (algorithmData.inputData) {
+            try {
+                const mappings = typeof algorithmData.inputData === 'string'
+                    ? JSON.parse(algorithmData.inputData)
+                    : algorithmData.inputData;
+                this._inputMappings = mappings;
+                this.applyInputMappings();
+            } catch (e) { this._inputMappings = []; }
+        }
+        if (algorithmData.inputsBind) {
+            try {
+                const mappings = typeof algorithmData.inputsBind === 'string'
+                    ? JSON.parse(algorithmData.inputsBind)
+                    : algorithmData.inputsBind;
+                this._inputMappings = mappings;
+                this.applyInputMappings();
+            } catch (e) { this._inputMappings = []; }
+        }
+        if (algorithmData.outputsBind) {
+            try {
+                const resultMappings = typeof algorithmData.outputsBind === 'string'
+                    ? JSON.parse(algorithmData.outputsBind)
+                    : algorithmData.outputsBind;
+                this._outputMappings = resultMappings;
+                this.applyOutputMappings();
+            } catch (e) { this._outputMappings = []; }
         }
 
         // 延迟清除初始化标志，确保所有数据加载完成
