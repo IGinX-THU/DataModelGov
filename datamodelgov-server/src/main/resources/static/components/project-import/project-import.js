@@ -111,7 +111,7 @@ class ProjectImport extends HTMLElement {
             algorithm: '算法',
             model: '模型',
             data: '数据',
-            simulation: '仿真档案'
+            simulation: '仿真'
         }[type] || '';
     }
 

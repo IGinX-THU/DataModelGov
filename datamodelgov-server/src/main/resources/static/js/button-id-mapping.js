@@ -110,7 +110,7 @@ const MENU_ID_MAP = {
         action: 'showRegisterEmbedded'
     },
     'menu-import-data': {
-        text: '导入数据',
+        text: '上传数据文件',
         action: 'showImportData'
     },
     'menu-upload-model-file': {
@@ -210,7 +210,7 @@ const MENU_ID_MAP = {
         action: 'showProjectExportAlgorithm'
     },
     'menu-export-wizard-simulation': {
-        text: '仿真档案',
+        text: '仿真',
         action: 'showProjectExportSimulation'
     },
     'menu-numerical-and-curve-analysis': {
@@ -246,7 +246,7 @@ const MENU_ID_MAP = {
         action: 'showProjectImportAlgorithm'
     },
     'menu-import-wizard-simulation': {
-        text: '仿真档案',
+        text: '仿真',
         action: 'showProjectImportSimulation'
     }
 };

@@ -59,7 +59,7 @@ class ProjectExport extends HTMLElement {
                     </label>
 <!--                    <label class="export-checkbox-label">-->
 <!--                        <input type="checkbox" id="includeSimulationArchives" checked />-->
-<!--                        <span>仿真档案及记录</span>-->
+<!--                        <span>仿真及记录</span>-->
 <!--                    </label>-->
                 </div>
             </div>
@@ -141,7 +141,7 @@ class ProjectExport extends HTMLElement {
         const header = root.getElementById('exportHeader');
         const section = root.getElementById('resourceSection');
         if (header) header.textContent = typeName ? `导出${typeName}` : '导出项目';
-        if (section) section.style.display = this.resourceType ? 'none' : '';
+        if (section) section.style.display = 'none';
         const map = {
             algorithm: 'includeAlgorithms',
             model: 'includeModels',
@@ -159,7 +159,7 @@ class ProjectExport extends HTMLElement {
             algorithm: '算法',
             model: '模型',
             data: '数据',
-            simulation: '仿真档案'
+            simulation: '仿真'
         }[type] || '';
     }
 
