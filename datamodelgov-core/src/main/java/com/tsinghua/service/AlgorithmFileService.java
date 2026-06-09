@@ -351,9 +351,11 @@ public class AlgorithmFileService {
         }
 
         List<Point> metaPoints = new ArrayList<>();
-        AlgorithmMetaEntity queryMeta = queryMeta(algorithmMetaDto.getName(), algorithmMetaDto.getVersion());
+        AlgorithmMetaEntity queryMeta = queryMeta(algorithmMetaDto.getName(), algorithmMetaDto.getVersion(), algorithmMetaDto.getProjectName());
         long timestamp;
-        if (queryMeta != null && queryMeta.getTimestamp() != null) {
+        if (algorithmMetaDto.getTimestamp() != null) {
+            timestamp = algorithmMetaDto.getTimestamp();
+        } else if (queryMeta != null && queryMeta.getTimestamp() != null) {
             timestamp = queryMeta.getTimestamp();
         } else {
             timestamp = System.currentTimeMillis();
@@ -392,12 +394,23 @@ public class AlgorithmFileService {
     }
 
     public AlgorithmMetaEntity queryMeta(String name, String version) {
+        return queryMeta(name, version, ProjectContext.getCurrentProject(null));
+    }
+
+    public AlgorithmMetaEntity queryMeta(String name, String version, String projectName) {
         try {
-            String sql = "select * from %s where name = '%s' and version='%s';";
+            String sql;
+            if (StringUtils.hasText(projectName)) {
+                sql = "select * from %s where name = '%s' and version='%s' and projectName='%s';";
+            } else {
+                sql = "select * from %s where name = '%s' and version='%s';";
+            }
         String metaBasePath = META_PREFIX;
         String safeVersion = version.replace('.', '_');
         // iginxSession.openSession();
-        QueryDataSet res =  iginxSession.executeQuery(String.format(sql, metaBasePath, name, safeVersion));
+        QueryDataSet res = StringUtils.hasText(projectName)
+                ? iginxSession.executeQuery(String.format(sql, metaBasePath, name, safeVersion, projectName))
+                : iginxSession.executeQuery(String.format(sql, metaBasePath, name, safeVersion));
         List<String> head = res.getColumnList();
         Object[] row = res.nextRow();
         Map<String, Object> rs = new LinkedHashMap<>();

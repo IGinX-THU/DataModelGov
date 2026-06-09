@@ -358,7 +358,7 @@ public class ProjectExportService {
             List<String> measurements = entry.getValue();
 
             // 导出该前缀对应的数据档案元数据
-            DataArchiveEntity archive = dataArchiveService.findByName(prefix);
+            DataArchiveEntity archive = findDataArchiveForExport(project.getName(), prefix);
             if (archive != null) {
                 try {
                     String archiveJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(archive);
@@ -396,6 +396,21 @@ public class ProjectExportService {
             }
         }
         return count;
+    }
+
+    private DataArchiveEntity findDataArchiveForExport(String projectName, String dataPath) {
+        try {
+            List<DataArchiveEntity> archives = dataArchiveService.queryArchives(null, null, projectName, null, null, null);
+            for (DataArchiveEntity archive : archives) {
+                if (dataPath.equals(archive.getName())
+                        || (archive.getConfig() != null && archive.getConfig().contains(dataPath))) {
+                    return archive;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("按项目查询数据档案失败: project={}, dataPath={}", projectName, dataPath, e);
+        }
+        return dataArchiveService.findByName(dataPath);
     }
 
     /**
