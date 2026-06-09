@@ -73,6 +73,48 @@ public class ProjectExportService {
     /**
      * 导出项目资源为ZIP压缩包
      */
+    public void exportAllProject(ProjectExportRequest request, HttpServletResponse response) throws Exception {
+        request.setIncludeAlgorithms(true);
+        request.setIncludeModels(true);
+        request.setIncludeDataCsv(true);
+        request.setIncludeSimulationArchives(true);
+        exportProject(request, response);
+    }
+
+    public void exportResource(String projectName, String resourceType, HttpServletResponse response) throws Exception {
+        ProjectExportRequest request = new ProjectExportRequest();
+        request.setProjectName(projectName);
+        request.setIncludeAlgorithms(false);
+        request.setIncludeModels(false);
+        request.setIncludeDataCsv(false);
+        request.setIncludeSimulationArchives(false);
+
+        String normalizedType = resourceType == null ? "" : resourceType.trim().toLowerCase(Locale.ROOT);
+        switch (normalizedType) {
+            case "algorithm":
+            case "algorithms":
+                request.setIncludeAlgorithms(true);
+                break;
+            case "model":
+            case "models":
+                request.setIncludeModels(true);
+                break;
+            case "data":
+            case "datas":
+                request.setIncludeDataCsv(true);
+                break;
+            case "simulation":
+            case "simulations":
+                request.setIncludeSimulationArchives(true);
+                break;
+            default:
+                throw new IllegalArgumentException("不支持的资源类型: " + resourceType);
+        }
+
+        request.setResourceType(normalizedType);
+        exportProject(request, response);
+    }
+
     public void exportProject(ProjectExportRequest request, HttpServletResponse response) throws Exception {
         String projectName = request.getProjectName();
 
@@ -87,7 +129,9 @@ public class ProjectExportService {
         }
 
         // 2. 设置响应头
-        String zipFileName = projectName + "_export_" + System.currentTimeMillis() + ".zip";
+        String resourceType = request.getResourceType();
+        String typeSuffix = (resourceType != null && !resourceType.isEmpty()) ? "_" + resourceType : "";
+        String zipFileName = projectName + typeSuffix + "_export_" + System.currentTimeMillis() + ".zip";
         response.setContentType("application/zip");
         response.setCharacterEncoding("UTF-8");
         response.setHeader("Content-Disposition",
@@ -145,6 +189,7 @@ public class ProjectExportService {
         manifest.put("projectName", project.getName());
         manifest.put("originalOwner", project.getOwner());
         manifest.put("exportUser", AuthUtil.getCurrentUsername());
+        manifest.put("resourceType", request.getResourceType());
         manifest.put("includeAlgorithms", request.getIncludeAlgorithms());
         manifest.put("includeModels", request.getIncludeModels());
         manifest.put("includeDataCsv", request.getIncludeDataCsv());

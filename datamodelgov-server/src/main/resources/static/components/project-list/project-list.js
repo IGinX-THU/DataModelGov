@@ -312,6 +312,12 @@ class ProjectList extends HTMLElement {
                 case 'addProjectBtn':
                     this.showCreateProject();
                     break;
+                case 'importProjectBtn':
+                    window.showComponent?.('projectImport');
+                    break;
+                case 'exportProjectBtn':
+                    window.showComponent?.('projectExport');
+                    break;
             }
         });
 

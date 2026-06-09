@@ -29,6 +29,13 @@ class DataArchiveList extends HTMLElement {
     }
 
     bindEvents() {
+        this.shadowRoot.getElementById('importDataResourceBtn')?.addEventListener('click', () => {
+            window.showProjectImportWizard?.('data');
+        });
+        this.shadowRoot.getElementById('exportDataResourceBtn')?.addEventListener('click', () => {
+            window.showProjectExportWizard?.('data');
+        });
+
         const searchBtn = this.shadowRoot.getElementById('searchBtn');
         if (searchBtn) {
             searchBtn.addEventListener('click', () => {

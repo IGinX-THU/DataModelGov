@@ -2,6 +2,7 @@ class ProjectExport extends HTMLElement {
     constructor() {
         super();
         this.attachShadow({ mode: 'open' });
+        this.resourceType = null;
     }
 
     async connectedCallback() {
@@ -71,8 +72,10 @@ class ProjectExport extends HTMLElement {
 </div>`;
     }
 
-    async show() {
+    async show(options = {}) {
+        this.resourceType = options.resourceType || null;
         this.style.display = 'block';
+        this.applyMode();
         await this.loadProjectList();
     }
 
@@ -132,6 +135,34 @@ class ProjectExport extends HTMLElement {
         root.getElementById('exportBtn')?.addEventListener('click', () => this.handleExport());
     }
 
+    applyMode() {
+        const root = this.shadowRoot;
+        const typeName = this.getResourceTypeName(this.resourceType);
+        const header = root.getElementById('exportHeader');
+        const section = root.getElementById('resourceSection');
+        if (header) header.textContent = typeName ? `导出${typeName}` : '导出项目';
+        if (section) section.style.display = this.resourceType ? 'none' : '';
+        const map = {
+            algorithm: 'includeAlgorithms',
+            model: 'includeModels',
+            data: 'includeDataCsv',
+            simulation: 'includeSimulationArchives'
+        };
+        ['includeAlgorithms', 'includeModels', 'includeDataCsv', 'includeSimulationArchives'].forEach(id => {
+            const checkbox = root.getElementById(id);
+            if (checkbox) checkbox.checked = !this.resourceType || map[this.resourceType] === id;
+        });
+    }
+
+    getResourceTypeName(type) {
+        return {
+            algorithm: '算法',
+            model: '模型',
+            data: '数据',
+            simulation: '仿真档案'
+        }[type] || '';
+    }
+
     async handleExport() {
         const root = this.shadowRoot;
         const projectName = root.getElementById('projectSelect')?.value;
@@ -171,13 +202,16 @@ class ProjectExport extends HTMLElement {
                 window.showGlobalLoading('正在导出项目...');
             }
 
-            const response = await fetch('/api/project/export', {
+            const exportUrl = this.resourceType
+                ? `/api/project/export/${this.resourceType}?projectName=${encodeURIComponent(projectName)}`
+                : '/api/project/export';
+            const response = await fetch(exportUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     ...window.AppConfig?.getAuthHeaders?.()
                 },
-                body: JSON.stringify(requestBody)
+                body: this.resourceType ? null : JSON.stringify(requestBody)
             });
 
             if (response.ok) {

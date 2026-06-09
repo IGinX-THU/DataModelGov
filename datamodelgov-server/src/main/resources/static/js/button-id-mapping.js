@@ -189,6 +189,30 @@ const MENU_ID_MAP = {
         text: '导入项目',
         action: 'showProjectImport'
     },
+    'menu-import-wizard-project': {
+        text: '项目',
+        action: 'showProjectImport'
+    },
+    'menu-export-wizard-project': {
+        text: '项目',
+        action: 'showProjectExport'
+    },
+    'menu-export-wizard-data': {
+        text: '数据',
+        action: 'showProjectExportData'
+    },
+    'menu-export-wizard-model': {
+        text: '模型',
+        action: 'showProjectExportModel'
+    },
+    'menu-export-wizard-algorithm': {
+        text: '算法',
+        action: 'showProjectExportAlgorithm'
+    },
+    'menu-export-wizard-simulation': {
+        text: '仿真档案',
+        action: 'showProjectExportSimulation'
+    },
     'menu-numerical-and-curve-analysis': {
         text: '数值与曲线分析',
         action: 'showVisualAnalysis'
@@ -211,15 +235,19 @@ const MENU_ID_MAP = {
     },
     'menu-import-wizard-data': {
         text: '数据',
-        action: 'showImportData'
+        action: 'showProjectImportData'
     },
     'menu-import-wizard-model': {
         text: '模型',
-        action: 'showModelUpload'
+        action: 'showProjectImportModel'
     },
     'menu-import-wizard-algorithm': {
         text: '算法',
-        action: 'showAlgorithmUpload'
+        action: 'showProjectImportAlgorithm'
+    },
+    'menu-import-wizard-simulation': {
+        text: '仿真档案',
+        action: 'showProjectImportSimulation'
     }
 };
 

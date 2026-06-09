@@ -29,6 +29,13 @@ class ModelArchiveList extends HTMLElement {
     }
 
     bindEvents() {
+        this.shadowRoot.getElementById('importModelResourceBtn')?.addEventListener('click', () => {
+            window.showProjectImportWizard?.('model');
+        });
+        this.shadowRoot.getElementById('exportModelResourceBtn')?.addEventListener('click', () => {
+            window.showProjectExportWizard?.('model');
+        });
+
         const searchBtn = this.shadowRoot.getElementById('searchBtn');
         if (searchBtn) {
             searchBtn.addEventListener('click', () => {

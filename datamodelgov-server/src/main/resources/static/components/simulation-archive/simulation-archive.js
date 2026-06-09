@@ -29,6 +29,13 @@ class SimulationArchiveList extends HTMLElement {
     }
 
     bindEvents() {
+        this.shadowRoot.getElementById('importSimulationResourceBtn')?.addEventListener('click', () => {
+            window.showProjectImportWizard?.('simulation');
+        });
+        this.shadowRoot.getElementById('exportSimulationResourceBtn')?.addEventListener('click', () => {
+            window.showProjectExportWizard?.('simulation');
+        });
+
         const addBtn = this.shadowRoot.getElementById('addBtn');
         if (addBtn) {
             addBtn.addEventListener('click', () => {

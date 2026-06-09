@@ -81,6 +81,25 @@ public class ProjectImportService {
      * @return 导入结果摘要
      */
     public Map<String, Object> importProject(MultipartFile file, String projectName) throws Exception {
+        return importProject(file, projectName, true);
+    }
+
+    public Map<String, Object> importProjectResource(MultipartFile file, String projectName) throws Exception {
+        return importProjectResource(file, projectName, null);
+    }
+
+    public Map<String, Object> importProjectResource(MultipartFile file, String projectName, String resourceType) throws Exception {
+        if (!StringUtils.hasText(projectName)) {
+            throw new IllegalArgumentException("目标项目不能为空");
+        }
+        return importProject(file, projectName, false, resourceType);
+    }
+
+    private Map<String, Object> importProject(MultipartFile file, String projectName, boolean importProjectMetadata) throws Exception {
+        return importProject(file, projectName, importProjectMetadata, null);
+    }
+
+    private Map<String, Object> importProject(MultipartFile file, String projectName, boolean importProjectMetadata, String expectedResourceType) throws Exception {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("导入文件不能为空");
         }
@@ -179,6 +198,12 @@ public class ProjectImportService {
                 @SuppressWarnings("unchecked")
                 Map<String, Object> manifest = objectMapper.readValue(manifestJson, Map.class);
                 String originalProjectName = (String) manifest.get("projectName");
+                String manifestResourceType = (String) manifest.get("resourceType");
+                if (expectedResourceType != null && !expectedResourceType.isEmpty()) {
+                    if (manifestResourceType == null || !manifestResourceType.equals(expectedResourceType)) {
+                        throw new IllegalArgumentException("资源包类型不匹配：期望 " + expectedResourceType + "，实际 " + (manifestResourceType != null ? manifestResourceType : "未指定"));
+                    }
+                }
                 String targetProjectName = StringUtils.hasText(projectName) ? projectName : originalProjectName;
 
                 result.put("originalProjectName", originalProjectName);
@@ -188,7 +213,7 @@ public class ProjectImportService {
                 ProjectContext.setCurrentProject(targetProjectName);
 
                 // 解析并创建/验证项目
-                if (projectJson != null) {
+                if (importProjectMetadata && projectJson != null) {
                     ProjectEntity projectEntity = objectMapper.readValue(projectJson, ProjectEntity.class);
                     algorithmCount += importProjectEntity(projectEntity, targetProjectName);
                 } else {

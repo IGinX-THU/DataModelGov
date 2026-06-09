@@ -29,6 +29,13 @@ class AlgorithmArchiveList extends HTMLElement {
     }
 
     bindEvents() {
+        this.shadowRoot.getElementById('importAlgorithmResourceBtn')?.addEventListener('click', () => {
+            window.showProjectImportWizard?.('algorithm');
+        });
+        this.shadowRoot.getElementById('exportAlgorithmResourceBtn')?.addEventListener('click', () => {
+            window.showProjectExportWizard?.('algorithm');
+        });
+
         const searchBtn = this.shadowRoot.getElementById('searchBtn');
         if (searchBtn) {
             searchBtn.addEventListener('click', () => {

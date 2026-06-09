@@ -1,7 +1,13 @@
 <div class="project-import">
     <div class="import-card">
-        <div class="import-header">导入项目</div>
+        <div class="import-header" id="importHeader">导入项目</div>
         <div class="import-body">
+            <div class="import-field" id="targetProjectField" style="display: none;">
+                <span class="import-label">目标项目</span>
+                <select class="import-select" id="targetProjectSelect">
+                    <option value="">使用资源包内项目名</option>
+                </select>
+            </div>
             <div class="import-field">
                 <span class="import-label">选择项目资源包</span>
                 <div class="import-file-area" id="fileDropArea">

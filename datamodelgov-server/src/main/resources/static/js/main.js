@@ -511,6 +511,30 @@ document.addEventListener('DOMContentLoaded', function() {
                         if (isSecondClick) clearWorkspace();
                         showComponent('algorithmArchiveList');
                         break;
+                    case 'showProjectImportData':
+                        window.showProjectImportWizard('data');
+                        break;
+                    case 'showProjectImportModel':
+                        window.showProjectImportWizard('model');
+                        break;
+                    case 'showProjectImportAlgorithm':
+                        window.showProjectImportWizard('algorithm');
+                        break;
+                    case 'showProjectImportSimulation':
+                        window.showProjectImportWizard('simulation');
+                        break;
+                    case 'showProjectExportData':
+                        window.showProjectExportWizard('data');
+                        break;
+                    case 'showProjectExportModel':
+                        window.showProjectExportWizard('model');
+                        break;
+                    case 'showProjectExportAlgorithm':
+                        window.showProjectExportWizard('algorithm');
+                        break;
+                    case 'showProjectExportSimulation':
+                        window.showProjectExportWizard('simulation');
+                        break;
                     case 'console.log':
                         console.log('数据源管理被点击');
                         break;
@@ -1107,6 +1131,36 @@ document.addEventListener('DOMContentLoaded', function() {
                         break;
                     case 'showAlgorithmArchiveList':
                         showComponent('algorithmArchiveList');
+                        break;
+                    case 'showProjectImport':
+                        showComponent('projectImport');
+                        break;
+                    case 'showProjectExport':
+                        showComponent('projectExport');
+                        break;
+                    case 'showProjectImportData':
+                        window.showProjectImportWizard('data');
+                        break;
+                    case 'showProjectImportModel':
+                        window.showProjectImportWizard('model');
+                        break;
+                    case 'showProjectImportAlgorithm':
+                        window.showProjectImportWizard('algorithm');
+                        break;
+                    case 'showProjectImportSimulation':
+                        window.showProjectImportWizard('simulation');
+                        break;
+                    case 'showProjectExportData':
+                        window.showProjectExportWizard('data');
+                        break;
+                    case 'showProjectExportModel':
+                        window.showProjectExportWizard('model');
+                        break;
+                    case 'showProjectExportAlgorithm':
+                        window.showProjectExportWizard('algorithm');
+                        break;
+                    case 'showProjectExportSimulation':
+                        window.showProjectExportWizard('simulation');
                         break;
                     case 'showSimulationArchive':
                         clearWorkspace();
@@ -2128,6 +2182,12 @@ function showSimulationRecord() {
 
     // 将showComponent暴露到全局作用域
     window.showComponent = showComponent;
+    window.showProjectImportWizard = function(resourceType) {
+        showComponent('projectImport', { resourceType });
+    };
+    window.showProjectExportWizard = function(resourceType) {
+        showComponent('projectExport', { resourceType });
+    };
 
     function showDatabaseTable(tableName) {
         showComponent('databaseTable', tableName);
