@@ -49,13 +49,13 @@ public class SimulationArchiveController {
     @PostMapping("/archives/save")
     @RequirePermission(Permission.PARSING_RULES_CREATE)
     @OperationLog(value = "保存仿真档案", type = OperationLog.OperationType.CREATE)
-    public Result<Void> saveArchive(@RequestBody SimulationArchiveEntity archive) {
+    public Result<SimulationArchiveEntity> saveArchive(@RequestBody SimulationArchiveEntity archive) {
         try {
             simulationArchiveService.saveArchive(archive);
-            return Result.success("仿真档案保存成功");
+            return Result.success("仿真档案保存成功", archive);
         } catch (Exception e) {
             log.error("保存仿真档案失败", e);
-            return Result.error("保存失败: " + e.getMessage());
+            return Result.<SimulationArchiveEntity>error("保存失败: " + e.getMessage());
         }
     }
 

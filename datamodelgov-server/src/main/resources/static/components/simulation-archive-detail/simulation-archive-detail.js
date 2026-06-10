@@ -418,7 +418,7 @@ class SimulationArchiveDetail extends HTMLElement {
             const result = await window.AppConfig.post('simulationArchives', 'save', archiveData);
             if (result.code === 200) {
                 this.showToast('保存成功');
-                this.currentArchive = { ...this.currentArchive, ...archiveData };
+                this.currentArchive = result.data; // 使用后端返回的数据，包含正确的createTime
                 this.loadArchiveData(this.currentArchive);
                 this.cancelEdit();
             } else {
@@ -1221,6 +1221,14 @@ class SimulationArchiveDetail extends HTMLElement {
             item.innerHTML = `<label><input type="checkbox" data-node-id="${node.nodeId}" ${isChecked ? 'checked' : ''}><span class="node-status ${statusClass}"></span>${node.nodeName || node.nodeId}${predInfo}</label>`;
             list.appendChild(item);
         });
+
+        // 同步全选checkbox的状态
+        const selectAllCheckbox = this.shadowRoot.getElementById('selectAllNodes');
+        if (selectAllCheckbox) {
+            const allCheckboxes = this.shadowRoot.querySelectorAll('.node-check-item input[type="checkbox"]');
+            const allChecked = allCheckboxes.length > 0 && Array.from(allCheckboxes).every(cb => cb.checked);
+            selectAllCheckbox.checked = allChecked;
+        }
     }
 
     getTopologicalSortedNodes() {
