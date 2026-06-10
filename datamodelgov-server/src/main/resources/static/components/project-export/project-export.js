@@ -142,16 +142,52 @@ class ProjectExport extends HTMLElement {
         const section = root.getElementById('resourceSection');
         if (header) header.textContent = typeName ? `导出${typeName}` : '导出项目';
         if (section) section.style.display = 'none';
-        const map = {
-            algorithm: 'includeAlgorithms',
-            model: 'includeModels',
-            data: 'includeDataCsv',
-            simulation: 'includeSimulationArchives'
+
+        // 根据资源类型设置依赖关系
+        const checkboxes = {
+            includeAlgorithms: root.getElementById('includeAlgorithms'),
+            includeModels: root.getElementById('includeModels'),
+            includeDataCsv: root.getElementById('includeDataCsv'),
+            includeSimulationArchives: root.getElementById('includeSimulationArchives')
         };
-        ['includeAlgorithms', 'includeModels', 'includeDataCsv', 'includeSimulationArchives'].forEach(id => {
-            const checkbox = root.getElementById(id);
-            if (checkbox) checkbox.checked = !this.resourceType || map[this.resourceType] === id;
-        });
+
+        switch (this.resourceType) {
+            case 'algorithm':
+                // 算法依赖数据和模型
+                checkboxes.includeAlgorithms.checked = true;
+                checkboxes.includeModels.checked = true;
+                checkboxes.includeDataCsv.checked = true;
+                checkboxes.includeSimulationArchives.checked = false;
+                break;
+            case 'model':
+                // 模型单独导出
+                checkboxes.includeAlgorithms.checked = false;
+                checkboxes.includeModels.checked = true;
+                checkboxes.includeDataCsv.checked = false;
+                checkboxes.includeSimulationArchives.checked = false;
+                break;
+            case 'data':
+                // 数据单独导出
+                checkboxes.includeAlgorithms.checked = false;
+                checkboxes.includeModels.checked = false;
+                checkboxes.includeDataCsv.checked = true;
+                checkboxes.includeSimulationArchives.checked = false;
+                break;
+            case 'simulation':
+                // 仿真全选
+                checkboxes.includeAlgorithms.checked = true;
+                checkboxes.includeModels.checked = true;
+                checkboxes.includeDataCsv.checked = true;
+                checkboxes.includeSimulationArchives.checked = true;
+                break;
+            default:
+                // 项目全选
+                checkboxes.includeAlgorithms.checked = true;
+                checkboxes.includeModels.checked = true;
+                checkboxes.includeDataCsv.checked = true;
+                checkboxes.includeSimulationArchives.checked = true;
+                break;
+        }
     }
 
     getResourceTypeName(type) {

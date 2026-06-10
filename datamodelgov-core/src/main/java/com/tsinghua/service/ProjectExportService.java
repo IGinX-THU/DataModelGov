@@ -93,18 +93,27 @@ public class ProjectExportService {
         switch (normalizedType) {
             case "algorithm":
             case "algorithms":
+                // 算法依赖数据和模型
                 request.setIncludeAlgorithms(true);
+                request.setIncludeModels(true);
+                request.setIncludeDataCsv(true);
                 break;
             case "model":
             case "models":
+                // 模型单独导出
                 request.setIncludeModels(true);
                 break;
             case "data":
             case "datas":
+                // 数据单独导出
                 request.setIncludeDataCsv(true);
                 break;
             case "simulation":
             case "simulations":
+                // 仿真全选
+                request.setIncludeAlgorithms(true);
+                request.setIncludeModels(true);
+                request.setIncludeDataCsv(true);
                 request.setIncludeSimulationArchives(true);
                 break;
             default:
