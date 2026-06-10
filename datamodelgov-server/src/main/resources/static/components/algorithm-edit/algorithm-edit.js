@@ -185,6 +185,7 @@ class AlgorithmEdit extends HTMLElement {
     async show(algorithmInfo) {
         this.currentAlgorithm = algorithmInfo;
         this.removeAttribute('hidden');
+        this.clearAutoFilledFields(); // 清空之前自动填充的字段
         await this.loadAlgorithmData(algorithmInfo);
         await this.loadParsingRules(); // 确保加载解析规则
     }
@@ -194,6 +195,7 @@ class AlgorithmEdit extends HTMLElement {
         this.currentAlgorithm = algorithmInfo;
         this.currentAlgorithmMeta = algorithmDetailData;
         this.removeAttribute('hidden');
+        this.clearAutoFilledFields(); // 清空之前自动填充的字段
 
         // 确保加载解析规则
         await this.loadParsingRules();
