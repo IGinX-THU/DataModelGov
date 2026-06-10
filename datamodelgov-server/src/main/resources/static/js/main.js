@@ -2497,6 +2497,50 @@ function showSimulationRecord() {
         if (spacerElement) {
             spacerElement.textContent = '当前项目：无';
         }
+
+        // 清空工作区
+        if (typeof window.hideAllComponents === 'function') {
+            window.hideAllComponents();
+        }
+
+        // 清空左侧数据源树
+        const dataSourceTree = document.getElementById('dataSourceTree');
+        if (dataSourceTree) {
+            dataSourceTree.innerHTML = `
+                <div style="padding: 20px; text-align: center; color: #999;">
+                    <div style="font-size: 48px; margin-bottom: 16px;">📊</div>
+                    <div style="font-size: 14px; margin-bottom: 12px;">暂无数据源</div>
+                    <div style="font-size: 12px; color: #aaa;">请在数据管理中注册或导入数据源</div>
+                </div>
+            `;
+        }
+
+        // 清空右侧模型资产库
+        const modelTree = document.getElementById('modelTree');
+        if (modelTree) {
+            modelTree.innerHTML = `
+                <div style="padding: 20px; text-align: center; color: #999;">
+                    <div style="font-size: 48px; margin-bottom: 16px;">📦</div>
+                    <div style="font-size: 14px; margin-bottom: 12px;">暂无模型资产</div>
+                    <div style="font-size: 12px; color: #aaa;">请在模型管理中上传模型文件</div>
+                </div>
+            `;
+        }
+
+        // 清空右侧算法资产库
+        const algorithmTree = document.getElementById('algorithmTree');
+        if (algorithmTree) {
+            algorithmTree.innerHTML = `
+                <div style="padding: 20px; text-align: center; color: #999;">
+                    <div style="font-size: 48px; margin-bottom: 16px;">🧮</div>
+                    <div style="font-size: 14px; margin-bottom: 12px;">暂无算法资产</div>
+                    <div style="font-size: 12px; color: #aaa;">请在算法管理中上传算法文件</div>
+                </div>
+            `;
+        }
+
+        // 清除选中的数据源
+        selectedDataSource = null;
     };
 
     // 绑定关闭项目按钮事件
