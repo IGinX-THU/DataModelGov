@@ -188,6 +188,8 @@ class AlgorithmEdit extends HTMLElement {
         this.clearAutoFilledFields(); // 清空之前自动填充的字段
         await this.loadAlgorithmData(algorithmInfo);
         await this.loadParsingRules(); // 确保加载解析规则
+        // 自动填充运行命令和CSV文件名
+        this.autoFillCommandAndCsvFields();
     }
 
     // 新增方法：直接接收algorithm-detail的数据，不重复调用接口
@@ -225,7 +227,7 @@ class AlgorithmEdit extends HTMLElement {
         // 加载关联绑定数据（直接使用传入的数据，不重新调用API）
         await this.loadBindingDataFromDetail(algorithmDetailData);
 
-        // 自动填充运行命令和CSV文件名（根据当前算法元数据）
+        // 自动填充运行命令和CSV文件名
         this.autoFillCommandAndCsvFields();
 
         // 加载结果回写路径前缀
@@ -672,6 +674,9 @@ class AlgorithmEdit extends HTMLElement {
             console.log('解析到的输入参数:', parsedInputs);
             console.log('解析到的输出参数:', parsedOutputs);
 
+            // 根据选择的源文件更新运行命令
+            this.autoFillCommandFromFileName(selectedFile);
+
             // 处理强制覆盖逻辑
             if (forceOverride) {
                 // 强制覆盖：完全替换现有参数
@@ -1054,7 +1059,31 @@ class AlgorithmEdit extends HTMLElement {
 
     onSourceFileChange(value) {
         console.log('源文件变更:', value);
-        // 不显示提示信息，避免干扰用户
+        // 不自动填充运行命令，等待用户点击"从代码自动解析"按钮
+    }
+
+    // 根据文件名自动填充运行命令
+    autoFillCommandFromFileName(fileName) {
+        if (!fileName) {
+            return;
+        }
+
+        // 判断文件类型，生成对应的运行命令
+        let command;
+        if (fileName.endsWith('.m')) {
+            command = 'matlab';
+        } else if (fileName.endsWith('.py')) {
+            command = 'python';
+        } else {
+            // C/C++ 可执行文件或其他类型，直接执行
+            command = '';
+        }
+
+        const ruleCmd = this.shadowRoot.getElementById('ruleCmd');
+        if (ruleCmd) {
+            ruleCmd.value = command ? `${command} ${fileName} -i input.csv -o output.csv` : `${fileName} -i input.csv -o output.csv`;
+            console.log('根据源文件自动填充运行命令:', ruleCmd.value);
+        }
     }
 
     onForceOverrideChange(checked) {
