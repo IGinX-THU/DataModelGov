@@ -112,7 +112,7 @@ document.addEventListener('DOMContentLoaded', function() {
             'dataArchiveDetail',
             'modelArchiveList',
             'algorithmArchiveList',
-            'userManualViewer'
+            'userManual'
         ];
         
         components.forEach(componentId => {
@@ -723,7 +723,11 @@ document.addEventListener('DOMContentLoaded', function() {
                         break;
                     case 'showUserManual':
                         console.log('用户手册菜单被点击');
-                        showUserManual();
+                        if (typeof window.showComponent === 'function') {
+                            window.showComponent('userManual');
+                        } else {
+                            console.error('window.showComponent函数未找到');
+                        }
                         break;
                     default:
                         console.warn(`未知的菜单动作: ${action}`);
@@ -3120,128 +3124,6 @@ window.showChangePasswordModal = function() {
 };
 
 // 用户头像点击事件（修改密码）- 已移至 change-password 组件内部处理
-
-// 全局函数：显示用户手册
-window.showUserManual = function() {
-    if (typeof window.hideAllComponents === 'function') {
-        window.hideAllComponents();
-    }
-
-    const workspace = document.querySelector('.workspace-content');
-    if (!workspace) {
-        console.error('找不到workspace-content容器');
-        return;
-    }
-
-    let manualViewer = document.getElementById('userManualViewer');
-    if (!manualViewer) {
-        manualViewer = document.createElement('div');
-        manualViewer.id = 'userManualViewer';
-        manualViewer.className = 'user-manual-workspace-viewer';
-        manualViewer.hide = function() {
-            this.removeAttribute('show');
-            this.setAttribute('hidden', '');
-            this.innerHTML = '';
-        };
-        workspace.appendChild(manualViewer);
-    }
-
-    manualViewer.removeAttribute('hidden');
-    manualViewer.setAttribute('show', '');
-    manualViewer.innerHTML = `
-        <div class="user-manual-toolbar">
-            <div class="user-manual-title">用户手册</div>
-            <button type="button" class="user-manual-download-btn">下载用户手册</button>
-        </div>
-        <div class="user-manual-content">
-            <div class="user-manual-loading">正在加载用户手册...</div>
-        </div>
-    `;
-
-    if (!window.docx || typeof window.docx.renderAsync !== 'function') {
-        const content = manualViewer.querySelector('.user-manual-content');
-        if (content) {
-            content.innerHTML = `
-                <div class="user-manual-error">
-                    <h3>用户手册预览插件加载失败</h3>
-                    <p>请检查网络连接或将 docx-preview 插件放入本地静态资源目录。</p>
-                </div>
-            `;
-        }
-        return;
-    }
-
-    const manualUrl = `${window.AppConfig.api.baseURL}/api/doc/user-manual/file`;
-    const downloadButton = manualViewer.querySelector('.user-manual-download-btn');
-    if (downloadButton) {
-        downloadButton.addEventListener('click', function() {
-            fetch(manualUrl, {
-                headers: window.AppConfig.getAuthHeaders()
-            })
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error(`下载用户手册失败，HTTP状态码：${response.status}`);
-                    }
-                    return response.blob();
-                })
-                .then(blob => {
-                    const url = URL.createObjectURL(blob);
-                    const link = document.createElement('a');
-                    link.href = url;
-                    link.download = '数据与模型一体化管理软件-用户手册.docx';
-                    document.body.appendChild(link);
-                    link.click();
-                    link.remove();
-                    URL.revokeObjectURL(url);
-                })
-                .catch(error => {
-                    console.error('下载用户手册失败:', error);
-                    alert(error.message);
-                });
-        });
-    }
-
-    fetch(manualUrl, {
-        headers: window.AppConfig.getAuthHeaders()
-    })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`无法加载用户手册，HTTP状态码：${response.status}`);
-            }
-            return response.arrayBuffer();
-        })
-        .then(arrayBuffer => {
-            const content = manualViewer.querySelector('.user-manual-content');
-            if (content) {
-                content.innerHTML = '';
-                return window.docx.renderAsync(arrayBuffer, content, null, {
-                    className: 'user-manual-docx',
-                    inWrapper: true,
-                    ignoreWidth: false,
-                    ignoreHeight: false,
-                    ignoreFonts: false,
-                    breakPages: true,
-                    renderHeaders: true,
-                    renderFooters: true,
-                    renderFootnotes: true,
-                    renderEndnotes: true
-                });
-            }
-        })
-        .catch(error => {
-            console.error('加载用户手册失败:', error);
-            const content = manualViewer.querySelector('.user-manual-content');
-            if (content) {
-                content.innerHTML = `
-                    <div class="user-manual-error">
-                        <h3>加载用户手册失败</h3>
-                        <p>${error.message}</p>
-                        <p>请确认已登录、后端已重启，并且 doc 目录下存在用户手册文档。</p>
-                    </div>
-                `;
-            }
-        });
-};
 
 // 全局函数：关闭关于对话框
 window.closeAbout = function() {
