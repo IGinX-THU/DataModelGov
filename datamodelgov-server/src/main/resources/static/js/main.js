@@ -111,7 +111,8 @@ document.addEventListener('DOMContentLoaded', function() {
             'projectImport',
             'dataArchiveDetail',
             'modelArchiveList',
-            'algorithmArchiveList'
+            'algorithmArchiveList',
+            'userManualViewer'
         ];
         
         components.forEach(componentId => {
@@ -719,6 +720,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     case 'showAbout':
                         console.log('关于菜单被点击');
                         showAbout();
+                        break;
+                    case 'showUserManual':
+                        console.log('用户手册菜单被点击');
+                        showUserManual();
                         break;
                     default:
                         console.warn(`未知的菜单动作: ${action}`);
@@ -3118,101 +3123,124 @@ window.showChangePasswordModal = function() {
 
 // 全局函数：显示用户手册
 window.showUserManual = function() {
-    // 创建模态框
-    const modalOverlay = document.createElement('div');
-    modalOverlay.className = 'modal-overlay';
-    modalOverlay.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0, 0, 0, 0.5);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 10000;
+    if (typeof window.hideAllComponents === 'function') {
+        window.hideAllComponents();
+    }
+
+    const workspace = document.querySelector('.workspace-content');
+    if (!workspace) {
+        console.error('找不到workspace-content容器');
+        return;
+    }
+
+    let manualViewer = document.getElementById('userManualViewer');
+    if (!manualViewer) {
+        manualViewer = document.createElement('div');
+        manualViewer.id = 'userManualViewer';
+        manualViewer.className = 'user-manual-workspace-viewer';
+        manualViewer.hide = function() {
+            this.removeAttribute('show');
+            this.setAttribute('hidden', '');
+            this.innerHTML = '';
+        };
+        workspace.appendChild(manualViewer);
+    }
+
+    manualViewer.removeAttribute('hidden');
+    manualViewer.setAttribute('show', '');
+    manualViewer.innerHTML = `
+        <div class="user-manual-toolbar">
+            <div class="user-manual-title">用户手册</div>
+            <button type="button" class="user-manual-download-btn">下载用户手册</button>
+        </div>
+        <div class="user-manual-content">
+            <div class="user-manual-loading">正在加载用户手册...</div>
+        </div>
     `;
-    
-    // 创建模态框内容容器
-    const modalContainer = document.createElement('div');
-    modalContainer.style.cssText = `
-        width: 90%;
-        height: 90%;
-        max-width: 1400px;
-        max-height: 900px;
-        background: white;
-        border-radius: 8px;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-        overflow: hidden;
-        position: relative;
-        display: flex;
-        flex-direction: column;
-    `;
-    
-    // 加载用户手册内容
-    fetch('./components/user-manual/user-manual.html')
-        .then(response => response.text())
-        .then(html => {
-            modalContainer.innerHTML = html;
-            
-            // 获取用户手册容器并确保可以滚动
-            const userManualContainer = modalContainer.querySelector('.user-manual-container');
-            if (userManualContainer) {
-                userManualContainer.style.overflowY = 'auto';
-                userManualContainer.style.height = '100%';
+
+    if (!window.docx || typeof window.docx.renderAsync !== 'function') {
+        const content = manualViewer.querySelector('.user-manual-content');
+        if (content) {
+            content.innerHTML = `
+                <div class="user-manual-error">
+                    <h3>用户手册预览插件加载失败</h3>
+                    <p>请检查网络连接或将 docx-preview 插件放入本地静态资源目录。</p>
+                </div>
+            `;
+        }
+        return;
+    }
+
+    const manualUrl = `${window.AppConfig.api.baseURL}/api/doc/user-manual/file`;
+    const downloadButton = manualViewer.querySelector('.user-manual-download-btn');
+    if (downloadButton) {
+        downloadButton.addEventListener('click', function() {
+            fetch(manualUrl, {
+                headers: window.AppConfig.getAuthHeaders()
+            })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`下载用户手册失败，HTTP状态码：${response.status}`);
+                    }
+                    return response.blob();
+                })
+                .then(blob => {
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = '数据与模型一体化管理软件-用户手册.docx';
+                    document.body.appendChild(link);
+                    link.click();
+                    link.remove();
+                    URL.revokeObjectURL(url);
+                })
+                .catch(error => {
+                    console.error('下载用户手册失败:', error);
+                    alert(error.message);
+                });
+        });
+    }
+
+    fetch(manualUrl, {
+        headers: window.AppConfig.getAuthHeaders()
+    })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`无法加载用户手册，HTTP状态码：${response.status}`);
             }
-            
-            // 适配暗黑模式
-            if (document.documentElement.classList.contains('dark-mode')) {
-                modalContainer.querySelector('.user-manual-container').classList.add('dark-mode');
+            return response.arrayBuffer();
+        })
+        .then(arrayBuffer => {
+            const content = manualViewer.querySelector('.user-manual-content');
+            if (content) {
+                content.innerHTML = '';
+                return window.docx.renderAsync(arrayBuffer, content, null, {
+                    className: 'user-manual-docx',
+                    inWrapper: true,
+                    ignoreWidth: false,
+                    ignoreHeight: false,
+                    ignoreFonts: false,
+                    breakPages: true,
+                    renderHeaders: true,
+                    renderFooters: true,
+                    renderFootnotes: true,
+                    renderEndnotes: true
+                });
             }
         })
         .catch(error => {
             console.error('加载用户手册失败:', error);
-            modalContainer.innerHTML = `
-                <div style="padding: 40px; text-align: center;">
-                    <h3>加载用户手册失败</h3>
-                    <p>请检查网络连接或稍后重试</p>
-                    <button onclick="this.closest('.modal-overlay').remove()" style="
-                        padding: 8px 16px;
-                        background: #1890ff;
-                        color: white;
-                        border: none;
-                        border-radius: 4px;
-                        cursor: pointer;
-                    ">关闭</button>
-                </div>
-            `;
+            const content = manualViewer.querySelector('.user-manual-content');
+            if (content) {
+                content.innerHTML = `
+                    <div class="user-manual-error">
+                        <h3>加载用户手册失败</h3>
+                        <p>${error.message}</p>
+                        <p>请确认已登录、后端已重启，并且 doc 目录下存在用户手册文档。</p>
+                    </div>
+                `;
+            }
         });
-    
-    // 点击遮罩关闭
-    modalOverlay.addEventListener('click', function(e) {
-        if (e.target === modalOverlay) {
-            modalOverlay.remove();
-        }
-    });
-    
-    // 添加到页面
-    modalOverlay.appendChild(modalContainer);
-    document.body.appendChild(modalOverlay);
-    
-    // ESC键关闭
-    const escHandler = function(e) {
-        if (e.key === 'Escape') {
-            modalOverlay.remove();
-            document.removeEventListener('keydown', escHandler);
-        }
-    };
-    document.addEventListener('keydown', escHandler);
-};
-
-// 全局函数：关闭用户手册
-window.closeUserManual = function() {
-    const modal = document.querySelector('.modal-overlay');
-    if (modal) {
-        modal.remove();
-    }
 };
 
 // 全局函数：关闭关于对话框

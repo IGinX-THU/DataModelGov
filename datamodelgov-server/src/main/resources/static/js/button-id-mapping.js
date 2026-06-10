@@ -233,6 +233,10 @@ const MENU_ID_MAP = {
         text: '关于',
         action: 'showAbout'
     },
+    'menu-user-manual': {
+        text: '用户手册',
+        action: 'showUserManual'
+    },
     'menu-import-wizard-data': {
         text: '数据',
         action: 'showProjectImportData'

@@ -23,6 +23,6 @@ public class WebMvcConfig implements WebMvcConfigurer {
         // 注册权限拦截器
         registry.addInterceptor(permissionInterceptor)
                 .addPathPatterns("/api/**") // 拦截所有API接口进行权限检查
-                .excludePathPatterns("/api/auth/**", "/api/rbac/**", "/api/test/**"); // 排除认证、RBAC测试和测试接口
+                .excludePathPatterns("/api/auth/**", "/api/rbac/**", "/api/test/**", "/api/doc/**"); // 排除认证、RBAC测试、测试接口和文档接口
     }
 }
