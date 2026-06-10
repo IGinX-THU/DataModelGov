@@ -567,8 +567,7 @@ public class ProjectImportService {
                             // 更新档案ID和名称
                             long executionTimestamp = nextImportTimestamp();
                             execution.setTimestamp(executionTimestamp);
-                            execution.setStartTime(executionTimestamp);
-                            execution.setEndTime(executionTimestamp);
+                            // 保持原始的开始时间和结束时间
                             execution.setArchiveId(archiveCreateTime);
                             execution.setArchiveName(archive.getName());
                             execution.setInputMeasurements(rewriteProjectReferences(execution.getInputMeasurements(), originalProjectName, projectName));
