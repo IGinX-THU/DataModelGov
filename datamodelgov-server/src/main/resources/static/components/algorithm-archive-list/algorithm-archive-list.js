@@ -255,9 +255,7 @@ class AlgorithmArchiveList extends HTMLElement {
 
     show() {
         this.style.display = 'block';
-        if (!this.data || this.data.length === 0) {
-            this.loadData();
-        }
+        this.loadData();
     }
 
     hide() {
