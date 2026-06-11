@@ -304,6 +304,20 @@ public class DataTableService {
     }
 
     /**
+     * 执行 DELETE COLUMNS 语句删除时间序列
+     */
+    public void deleteColumns(String path) {
+        try {
+            String sql = "DELETE COLUMNS " + path + ";";
+            log.info("执行删除时间序列SQL: {}", sql);
+            iginxSession.executeSql(sql);
+        } catch (Exception e) {
+            log.error("删除时间序列失败: {}", path, e);
+            throw new RuntimeException("删除时间序列失败: " + e.getMessage());
+        }
+    }
+
+    /**
      * 保存数据导入档案
      */
     private void saveDataImportArchive(DataImportRequest importConfig) {

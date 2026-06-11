@@ -2670,7 +2670,13 @@ function showSimulationRecord() {
             treeNodes.forEach(node => {
                 node.addEventListener('click', function(e) {
                     e.stopPropagation();
-                    
+
+                    // 隐藏右键菜单
+                    const contextMenu = document.getElementById('dataSourceContextMenu');
+                    if (contextMenu) {
+                        contextMenu.style.display = 'none';
+                    }
+
                     // 确保只处理左侧的节点
                     if (!this.closest('.left-sidebar')) {
                         return;
@@ -2712,10 +2718,200 @@ function showSimulationRecord() {
                         this.classList.toggle('expanded');
                     }
                 });
+
+                // 添加右键菜单事件
+                node.addEventListener('contextmenu', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    // 确保只处理左侧的节点
+                    if (!this.closest('.left-sidebar')) {
+                        return;
+                    }
+
+                    // 先隐藏现有的右键菜单
+                    const existingMenu = document.getElementById('dataSourceContextMenu');
+                    if (existingMenu) {
+                        existingMenu.style.display = 'none';
+                    }
+
+                    const fullPath = this.getAttribute('data-full-path');
+                    const isLeaf = this.getAttribute('data-is-leaf') === 'true';
+
+                    // 禁止删除根节点（第一级节点）
+                    const pathParts = fullPath.split('.');
+                    if (pathParts.length === 1) {
+                        return; // 根节点不显示右键菜单
+                    }
+
+                    // 显示右键菜单
+                    const contextMenu = document.getElementById('dataSourceContextMenu');
+                    if (contextMenu) {
+                        contextMenu.style.display = 'block';
+                        // 使用鼠标位置，添加偏移量避免菜单被鼠标遮挡
+                        contextMenu.style.left = (e.clientX + 5) + 'px';
+                        contextMenu.style.top = (e.clientY + 5) + 'px';
+
+                        // 保存当前节点信息到菜单元素
+                        contextMenu.dataset.fullPath = fullPath;
+                        contextMenu.dataset.isLeaf = isLeaf;
+                    }
+                });
+            });
+        }
+
+        // 点击其他地方隐藏右键菜单
+        document.addEventListener('click', function(e) {
+            const contextMenu = document.getElementById('dataSourceContextMenu');
+            if (contextMenu && contextMenu.style.display === 'block') {
+                // 如果点击的不是右键菜单本身，则隐藏
+                if (!contextMenu.contains(e.target)) {
+                    contextMenu.style.display = 'none';
+                }
+            }
+        });
+
+        // 绑定删除菜单项点击事件
+        const deleteMenuItem = document.getElementById('deleteDataNode');
+        if (deleteMenuItem) {
+            deleteMenuItem.addEventListener('click', function() {
+                const contextMenu = document.getElementById('dataSourceContextMenu');
+                if (!contextMenu) return;
+
+                const fullPath = contextMenu.dataset.fullPath;
+                const isLeaf = contextMenu.dataset.isLeaf === 'true';
+
+                if (!fullPath) return;
+
+                // 构造删除路径
+                let deletePath;
+                if (isLeaf) {
+                    // 叶子节点：全路径
+                    deletePath = fullPath;
+                } else {
+                    // 非叶子节点：通配符
+                    deletePath = fullPath + '.*';
+                }
+
+                // 隐藏菜单
+                contextMenu.style.display = 'none';
+
+                // 显示确认对话框
+                showConfirmDialog(`确定要删除 ${deletePath} 吗？`, () => {
+                    deleteDataSourceData(deletePath);
+                });
             });
         }
     }
-    
+
+    // 显示确认对话框
+    function showConfirmDialog(message, onConfirm) {
+        // 先移除所有已存在的确认对话框
+        const existingOverlays = document.querySelectorAll('.confirm-dialog-overlay');
+        existingOverlays.forEach(overlay => {
+            if (overlay.parentNode) {
+                overlay.parentNode.removeChild(overlay);
+            }
+        });
+
+        const overlay = document.createElement('div');
+        overlay.className = 'confirm-dialog-overlay';
+        overlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 3000;
+        `;
+
+        const dialog = document.createElement('div');
+        dialog.className = 'confirm-dialog';
+        dialog.style.cssText = `
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+            padding: 24px;
+            min-width: 320px;
+            max-width: 400px;
+        `;
+
+        dialog.innerHTML = `
+            <div style="font-size: 16px; font-weight: 500; margin-bottom: 16px; color: #303133;">确认删除</div>
+            <div style="font-size: 14px; color: #606266; margin-bottom: 24px;">${message}</div>
+            <div style="display: flex; justify-content: flex-end; gap: 12px;">
+                <button class="confirm-dialog-btn cancel" style="padding: 8px 16px; border: 1px solid #dcdfe6; background: white; border-radius: 4px; cursor: pointer; font-size: 14px; color: #606266;">取消</button>
+                <button class="confirm-dialog-btn confirm" style="padding: 8px 16px; border: none; background: #f56c6c; border-radius: 4px; cursor: pointer; font-size: 14px; color: white;">确定</button>
+            </div>
+        `;
+
+        overlay.appendChild(dialog);
+        document.body.appendChild(overlay);
+
+        const cancelBtn = dialog.querySelector('.cancel');
+        const confirmBtn = dialog.querySelector('.confirm');
+
+        cancelBtn.addEventListener('click', () => {
+            document.body.removeChild(overlay);
+        });
+
+        confirmBtn.addEventListener('click', () => {
+            document.body.removeChild(overlay);
+            if (onConfirm) onConfirm();
+        });
+
+        // 阻止事件冒泡，避免触发overlay的点击事件
+        dialog.addEventListener('click', (e) => {
+            e.stopPropagation();
+        });
+
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) {
+                document.body.removeChild(overlay);
+            }
+        });
+    }
+
+    // 删除数据源数据
+    async function deleteDataSourceData(path) {
+        try {
+            if (window.showGlobalLoading) window.showGlobalLoading('正在删除数据...');
+
+            const url = `${window.AppConfig.api.baseURL}/api/data/deleteColumns/${encodeURIComponent(path)}`;
+            const response = await fetch(url, {
+                method: 'DELETE',
+                headers: window.AppConfig.getAuthHeaders()
+            });
+
+            const result = await response.json();
+
+            if (result.success || result.code === 200) {
+                if (window.CommonUtils && window.CommonUtils.showToast) {
+                    window.CommonUtils.showToast('删除成功', 'success');
+                }
+                // 重新加载数据源树
+                if (window.loadDataSourceTree) {
+                    window.loadDataSourceTree();
+                }
+            } else {
+                if (window.CommonUtils && window.CommonUtils.showToast) {
+                    window.CommonUtils.showToast('删除失败: ' + (result.message || '未知错误'), 'error');
+                }
+            }
+        } catch (error) {
+            console.error('删除数据失败:', error);
+            if (window.CommonUtils && window.CommonUtils.showToast) {
+                window.CommonUtils.showToast('删除失败: ' + error.message, 'error');
+            }
+        } finally {
+            if (window.hideGlobalLoading) window.hideGlobalLoading();
+        }
+    }
+
     // 同步filesystem数据到右侧模型资产库
     function syncFilesystemToModelAssets(allData) {
         try {

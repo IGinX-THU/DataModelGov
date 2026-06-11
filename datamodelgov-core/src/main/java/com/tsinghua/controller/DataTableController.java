@@ -119,6 +119,21 @@ public class DataTableController {
     }
 
     /**
+     * 删除时间序列（DELETE COLUMNS）
+     */
+    @ApiOperation("删除时间序列")
+    @DeleteMapping("/deleteColumns/{path}")
+    @RequirePermission(Permission.DATA_DELETE)
+    @OperationLog(value = "删除时间序列", type = OperationLog.OperationType.DELETE)
+    public com.tsinghua.model.Result<Void> deleteColumns(@PathVariable String path) {
+        if (path == null || path.trim().isEmpty()) {
+            return com.tsinghua.model.Result.error("路径不能为空");
+        }
+        dataTableService.deleteColumns(path);
+        return com.tsinghua.model.Result.success("删除成功");
+    }
+
+    /**
      * 关系数据查询
      */
     @ApiOperation("关系数据查询")
