@@ -21,6 +21,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import javax.servlet.ServletOutputStream;
 import javax.servlet.http.HttpServletResponse;
 import java.io.BufferedOutputStream;
 import java.nio.file.Files;
@@ -147,8 +148,9 @@ public class ProjectExportService {
                 "attachment; filename=\"" + zipFileName + "\"");
         response.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
 
-        // 3. 创建ZIP输出流
-        try (ZipOutputStream zos = new ZipOutputStream(new BufferedOutputStream(response.getOutputStream()))) {
+        // 3. 获取输出流并创建ZIP输出流
+        ServletOutputStream outputStream = response.getOutputStream();
+        try (ZipOutputStream zos = new ZipOutputStream(new BufferedOutputStream(outputStream))) {
             // 4. 写入清单文件
             writeManifest(zos, project, request);
 

@@ -1,5 +1,6 @@
 package com.tsinghua.controller;
 
+import com.tsinghua.auth.util.AuthUtil;
 import com.tsinghua.dto.ProjectExportRequest;
 import com.tsinghua.dto.ProjectTree;
 import com.tsinghua.dto.ProjectsQueryRequest;
@@ -131,13 +132,33 @@ public class ProjectController {
     @OperationLog(value = "导出项目", type = OperationLog.OperationType.EXPORT, recordResult = false)
     public void exportProject(@RequestBody ProjectExportRequest request, HttpServletResponse response) {
         try {
+            // 在开始写入响应之前先进行验证
+            String projectName = request.getProjectName();
+            if (projectName == null || projectName.trim().isEmpty()) {
+                throw new IllegalArgumentException("项目名称不能为空");
+            }
+
+            // 验证项目存在且当前用户有权限
+            ProjectEntity project = projectService.findByName(projectName);
+            if (project == null) {
+                throw new IllegalArgumentException("项目不存在: " + projectName);
+            }
+
+            if (!AuthUtil.isAdmin() && !AuthUtil.getCurrentUsername().equals(project.getOwner())) {
+                throw new SecurityException("无权导出该项目，只有项目所有者或管理员可以导出");
+            }
+
+            // 验证通过后才开始导出
             projectExportService.exportAllProject(request, response);
         } catch (IllegalArgumentException | SecurityException e) {
             log.error("项目导出参数或权限错误", e);
             writeExportError(response, HttpServletResponse.SC_BAD_REQUEST, e.getMessage());
         } catch (Exception e) {
             log.error("项目导出失败", e);
-            writeExportError(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "项目导出失败: " + e.getMessage());
+            // 如果已经开始写入响应，无法再写入错误信息
+            if (!response.isCommitted()) {
+                writeExportError(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "项目导出失败: " + e.getMessage());
+            }
         }
     }
 
@@ -150,15 +171,35 @@ public class ProjectController {
             @RequestParam("projectName") String projectName,
             HttpServletResponse response) {
         try {
-            // 先获取 OutputStream 确保响应未被提交
-            response.getOutputStream();
+            // 在开始写入响应之前先进行验证
+            validateResourceType(resourceType);
+
+            if (projectName == null || projectName.trim().isEmpty()) {
+                throw new IllegalArgumentException("项目名称不能为空");
+            }
+
+            // 验证项目存在且当前用户有权限
+            ProjectEntity project = projectService.findByName(projectName);
+            if (project == null) {
+                throw new IllegalArgumentException("项目不存在: " + projectName);
+            }
+
+            if (!AuthUtil.isAdmin() && !AuthUtil.getCurrentUsername().equals(project.getOwner())) {
+                throw new SecurityException("无权导出该项目，只有项目所有者或管理员可以导出");
+            }
+
+            // 验证通过后才开始导出
             projectExportService.exportResource(projectName, resourceType, response);
         } catch (IllegalArgumentException | SecurityException e) {
             log.error("项目资源导出参数或权限错误", e);
-            writeExportError(response, HttpServletResponse.SC_BAD_REQUEST, e.getMessage());
+            if (!response.isCommitted()) {
+                writeExportError(response, HttpServletResponse.SC_BAD_REQUEST, e.getMessage());
+            }
         } catch (Exception e) {
             log.error("项目资源导出失败", e);
-            writeExportError(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "项目资源导出失败: " + e.getMessage());
+            if (!response.isCommitted()) {
+                writeExportError(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "项目资源导出失败: " + e.getMessage());
+            }
         }
     }
 
