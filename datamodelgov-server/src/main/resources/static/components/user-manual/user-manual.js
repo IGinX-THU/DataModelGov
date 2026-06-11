@@ -167,7 +167,9 @@ class UserManual extends HTMLElement {
             })
             .catch(error => {
                 console.error('下载用户手册失败:', error);
-                alert(error.message);
+                if (window.CommonUtils && window.CommonUtils.showToast) {
+                    window.CommonUtils.showToast('下载失败: ' + error.message, 'error');
+                }
             });
     }
 }

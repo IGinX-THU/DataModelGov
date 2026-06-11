@@ -366,22 +366,12 @@ class ProjectImport extends HTMLElement {
     }
 
     showToast(message, type = 'success') {
-        const toast = document.createElement('div');
-        toast.className = `toast toast-${type}`;
-        toast.textContent = message;
-        toast.style.cssText = `
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            padding: 12px 24px;
-            background: ${type === 'success' ? '#67c23a' : '#f56c6c'};
-            color: white;
-            border-radius: 4px;
-            z-index: 10000;
-            animation: slideIn 0.3s ease;
-        `;
-        document.body.appendChild(toast);
-        setTimeout(() => toast.remove(), 3000);
+        if (window.CommonUtils && window.CommonUtils.showToast) {
+            window.CommonUtils.showToast(message, type);
+        } else {
+            // 降级处理
+            console.log(`[${type.toUpperCase()}] ${message}`);
+        }
     }
 }
 

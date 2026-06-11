@@ -1634,7 +1634,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // 显示确认对话框
-    function showConfirmDialog(title, message, onConfirm) {
+    window.showConfirmDialog = function(title, message, onConfirm) {
         // 移除已存在的对话框
         const existingDialog = document.querySelector('.confirm-dialog-overlay');
         if (existingDialog) {
@@ -1694,7 +1694,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     cursor: pointer;
                     font-size: 14px;
                     transition: all 0.2s;
-                ">确认删除</button>
+                ">确定</button>
             </div>
         `;
 
@@ -2797,83 +2797,11 @@ function showSimulationRecord() {
                 contextMenu.style.display = 'none';
 
                 // 显示确认对话框
-                showConfirmDialog(`确定要删除 ${deletePath} 吗？`, () => {
+                window.showConfirmDialog('确认删除', `确定要删除 ${deletePath} 吗？`, () => {
                     deleteDataSourceData(deletePath);
                 });
             });
         }
-    }
-
-    // 显示确认对话框
-    function showConfirmDialog(message, onConfirm) {
-        // 先移除所有已存在的确认对话框
-        const existingOverlays = document.querySelectorAll('.confirm-dialog-overlay');
-        existingOverlays.forEach(overlay => {
-            if (overlay.parentNode) {
-                overlay.parentNode.removeChild(overlay);
-            }
-        });
-
-        const overlay = document.createElement('div');
-        overlay.className = 'confirm-dialog-overlay';
-        overlay.style.cssText = `
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.5);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 3000;
-        `;
-
-        const dialog = document.createElement('div');
-        dialog.className = 'confirm-dialog';
-        dialog.style.cssText = `
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-            padding: 24px;
-            min-width: 320px;
-            max-width: 400px;
-        `;
-
-        dialog.innerHTML = `
-            <div style="font-size: 16px; font-weight: 500; margin-bottom: 16px; color: #303133;">确认删除</div>
-            <div style="font-size: 14px; color: #606266; margin-bottom: 24px;">${message}</div>
-            <div style="display: flex; justify-content: flex-end; gap: 12px;">
-                <button class="confirm-dialog-btn cancel" style="padding: 8px 16px; border: 1px solid #dcdfe6; background: white; border-radius: 4px; cursor: pointer; font-size: 14px; color: #606266;">取消</button>
-                <button class="confirm-dialog-btn confirm" style="padding: 8px 16px; border: none; background: #f56c6c; border-radius: 4px; cursor: pointer; font-size: 14px; color: white;">确定</button>
-            </div>
-        `;
-
-        overlay.appendChild(dialog);
-        document.body.appendChild(overlay);
-
-        const cancelBtn = dialog.querySelector('.cancel');
-        const confirmBtn = dialog.querySelector('.confirm');
-
-        cancelBtn.addEventListener('click', () => {
-            document.body.removeChild(overlay);
-        });
-
-        confirmBtn.addEventListener('click', () => {
-            document.body.removeChild(overlay);
-            if (onConfirm) onConfirm();
-        });
-
-        // 阻止事件冒泡，避免触发overlay的点击事件
-        dialog.addEventListener('click', (e) => {
-            e.stopPropagation();
-        });
-
-        overlay.addEventListener('click', (e) => {
-            if (e.target === overlay) {
-                document.body.removeChild(overlay);
-            }
-        });
     }
 
     // 删除数据源数据
