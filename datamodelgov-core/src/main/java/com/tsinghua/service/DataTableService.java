@@ -308,12 +308,36 @@ public class DataTableService {
      */
     public void deleteColumns(String path) {
         try {
+            // 先删除对应的数据档案
+            deleteRelatedDataArchives(path);
+
+            // 再删除时间序列
             String sql = "DELETE COLUMNS " + path + ";";
             log.info("执行删除时间序列SQL: {}", sql);
             iginxSession.executeSql(sql);
         } catch (Exception e) {
             log.error("删除时间序列失败: {}", path, e);
             throw new RuntimeException("删除时间序列失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 删除与路径相关的数据档案
+     */
+    private void deleteRelatedDataArchives(String path) {
+        try {
+            // 如果路径包含通配符，需要查找所有匹配的档案
+            String prefix = path.endsWith(".*") ? path.substring(0, path.length() - 2) : path;
+            List<DataArchiveEntity> archives = dataArchiveService.queryArchives(null, null, null, null, null, null);
+            for (DataArchiveEntity archive : archives) {
+                if (archive.getName() != null && archive.getName().startsWith(prefix)) {
+                    log.info("删除数据档案: name={}, id={}", archive.getName(), archive.getId());
+                    dataArchiveService.deleteArchive(archive.getCreateTime());
+                }
+            }
+        } catch (Exception e) {
+            log.error("删除数据档案失败: {}", path, e);
+            // 不抛出异常，继续删除时间序列
         }
     }
 

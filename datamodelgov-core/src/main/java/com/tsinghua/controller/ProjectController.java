@@ -79,7 +79,7 @@ public class ProjectController {
     @GetMapping("/tree")
     @RequirePermission(Permission.READ)
     public Result<ProjectTree> getProjectTree(
-            @RequestParam("name") String name) {
+            @RequestParam("name") String name) throws Exception {
         // 在后端构建树结构
         return Result.success(projectService.buildProjectTree(name));
     }

@@ -5,6 +5,7 @@ import cn.edu.tsinghua.iginx.session.SessionExecuteSqlResult;
 import cn.edu.tsinghua.iginx.session_v2.IginXClient;
 import cn.edu.tsinghua.iginx.session_v2.WriteClient;
 import com.tsinghua.entity.DataArchiveEntity;
+import com.tsinghua.entity.ModelMetaEntity;
 import com.tsinghua.util.ConvertUtil;
 import com.tsinghua.util.ProjectContext;
 import lombok.extern.slf4j.Slf4j;
@@ -170,13 +171,12 @@ public class DataArchiveService {
     /**
      * 删除数据档案
      */
-    public void deleteArchive(Long id) throws Exception {
-        if (id == null) {
+    public void deleteArchive(Long timestamp) throws Exception {
+        if (timestamp == null) {
             throw new IllegalArgumentException("ID不能为空");
         }
-        String sql = String.format("DELETE FROM %s WHERE id = %s;", DATA_ARCHIVE_PREFIX, id);
-        log.info("执行删除SQL: {}", sql);
-        iginxSession.executeSql(sql);
-        log.info("数据档案已删除。ID: {}", id);
+        List<String> measurements = ConvertUtil.iginxFieldNamesConvert(ModelMetaEntity.class, DATA_ARCHIVE_PREFIX);
+        iginxClient.getDeleteClient().deleteMeasurementsData(measurements, timestamp-1, timestamp+1);
+        log.info("数据档案已删除。ID: {}", timestamp);
     }
 }
