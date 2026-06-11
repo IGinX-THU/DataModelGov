@@ -514,7 +514,7 @@ public class ProjectExportService {
                 // 查询该档案的执行记录
                 List<com.tsinghua.entity.SimulationExecutionEntity> executions =
                         simulationExecutionService.queryExecutions(
-                                archive.getName(), null, null, null, 1, 10000);
+                                archive.getName(), null, null, null, null, 1, 10000);
 
                 if (executions != null && !executions.isEmpty()) {
                     for (com.tsinghua.entity.SimulationExecutionEntity execution : executions) {

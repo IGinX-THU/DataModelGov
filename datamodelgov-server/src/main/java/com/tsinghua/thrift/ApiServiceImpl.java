@@ -1604,9 +1604,9 @@ public class ApiServiceImpl implements ApiService.Iface {
             com.tsinghua.dto.ExecutionRecordQueryDto dto = convertToExecutionRecordQueryDto(request);
             Object records;
             if (com.tsinghua.auth.util.AuthUtil.isAdmin()) {
-                records = simulationExecutionService.queryExecutions(dto.getArchiveName(), dto.getStatus(), dto.getStartTime(), dto.getEndTime(), dto.getPageNum(), dto.getPageSize());
+                records = simulationExecutionService.queryExecutions(dto.getArchiveName(), null, dto.getStatus(), dto.getStartTime(), dto.getEndTime(), dto.getPageNum(), dto.getPageSize());
             } else {
-                records = simulationExecutionService.queryExecutions(dto.getArchiveName(), dto.getStatus(), dto.getStartTime(), dto.getEndTime(), dto.getPageNum(), dto.getPageSize());
+                records = simulationExecutionService.queryExecutions(dto.getArchiveName(), null, dto.getStatus(), dto.getStartTime(), dto.getEndTime(), dto.getPageNum(), dto.getPageSize());
             }
             String jsonData = convertEntityToJson(records);
             com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "Query successful");

@@ -234,8 +234,9 @@ public class SimulationArchiveController {
         // If createTime (archiveId) is provided, get the latest execution for that archive
         if (createTime != null) {
             try {
+                // 使用archiveId查询该档案的执行记录
                 List<SimulationExecutionEntity> executions = simulationExecutionService.queryExecutions(
-                    null, null, null, null, 1, 1);
+                    null, createTime, null, null, null, 1, 1);
                 if (executions != null && !executions.isEmpty()) {
                     return simulationExecutionService.getExecutionLog(executions.get(0).getTimestamp());
                 }
@@ -265,6 +266,7 @@ public class SimulationArchiveController {
         if (AuthUtil.isAdmin()) {
             return Result.success(simulationExecutionService.queryExecutions(
                 queryDto.getArchiveName(),
+                null,
                 queryDto.getStatus(),
                 queryDto.getStartTime(),
                 queryDto.getEndTime(),
@@ -288,6 +290,7 @@ public class SimulationArchiveController {
         int reqSize = queryDto.getPageSize() != null ? queryDto.getPageSize() : 10;
         List<SimulationExecutionEntity> all = simulationExecutionService.queryExecutions(
             queryDto.getArchiveName(),
+            null,
             queryDto.getStatus(),
             queryDto.getStartTime(),
             queryDto.getEndTime(),
@@ -334,6 +337,7 @@ public class SimulationArchiveController {
 
         List<SimulationExecutionEntity> all = simulationExecutionService.queryExecutions(
             queryDto.getArchiveName(),
+            null,
             queryDto.getStatus(),
             queryDto.getStartTime(),
             queryDto.getEndTime(),
