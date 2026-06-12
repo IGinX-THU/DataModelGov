@@ -1,5 +1,6 @@
 package com.tsinghua.controller;
 
+import com.tsinghua.auth.util.AuthUtil;
 import com.tsinghua.entity.AlgorithmMetaEntity;
 import com.tsinghua.model.Result;
 import com.tsinghua.dto.UploadResult;
@@ -132,6 +133,9 @@ public class AlgorithmFileController {
     @PostMapping("/archive/query")
     @RequirePermission(Permission.READ)
     public Result<List<AlgorithmMetaEntity>> queryAlgorithmArchives(@RequestBody AlgorithmArchiveQueryRequest request) {
+        if (!AuthUtil.isAdmin()) {
+            request.setAuthor(AuthUtil.getCurrentUsername());
+        }
         List<AlgorithmMetaEntity> result = algorithmFileService.queryAlgorithmArchives(
             request.getName(),
             request.getProjectName(),
@@ -146,6 +150,9 @@ public class AlgorithmFileController {
     @PostMapping("/archive/count")
     @RequirePermission(Permission.READ)
     public Result<Object> countAlgorithmArchives(@RequestBody AlgorithmArchiveQueryRequest request) {
+        if (!AuthUtil.isAdmin()) {
+            request.setAuthor(AuthUtil.getCurrentUsername());
+        }
         List<AlgorithmMetaEntity> allArchives = algorithmFileService.queryAlgorithmArchives(
             request.getName(),
             request.getProjectName(),

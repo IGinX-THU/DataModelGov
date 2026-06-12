@@ -304,8 +304,8 @@ window.AppConfig = {
                         // 显示后端返回的详细权限错误信息
                         if (window.CommonUtils && window.CommonUtils.showError) {
                             window.CommonUtils.showError(errorData.message, 8000); // 显示8秒
-                        } else {
-                            alert(errorData.message);
+                        } else if (window.CommonUtils && window.CommonUtils.showToast) {
+                            window.CommonUtils.showToast(errorData.message, 'error');
                         }
                         throw new Error(errorData.message);
                     }
@@ -314,8 +314,8 @@ window.AppConfig = {
                     const errorMsg = '权限不足，无法访问该资源。请联系管理员分配相应权限。';
                     if (window.CommonUtils && window.CommonUtils.showError) {
                         window.CommonUtils.showError(errorMsg, 8000);
-                    } else {
-                        alert(errorMsg);
+                    } else if (window.CommonUtils && window.CommonUtils.showToast) {
+                        window.CommonUtils.showToast(errorMsg, 'error');
                     }
                     throw new Error(errorMsg);
                 }
@@ -611,8 +611,8 @@ window.AppConfig = {
                         // 显示后端返回的详细权限错误信息
                         if (window.CommonUtils && window.CommonUtils.showError) {
                             window.CommonUtils.showError(errorData.message, 8000); // 显示8秒
-                        } else {
-                            alert(errorData.message);
+                        } else if (window.CommonUtils && window.CommonUtils.showToast) {
+                            window.CommonUtils.showToast(errorData.message, 'error');
                         }
                         throw new Error(errorData.message);
                     }
@@ -621,8 +621,8 @@ window.AppConfig = {
                     const errorMsg = '权限不足，无法访问该资源。请联系管理员分配相应权限。';
                     if (window.CommonUtils && window.CommonUtils.showError) {
                         window.CommonUtils.showError(errorMsg, 8000);
-                    } else {
-                        alert(errorMsg);
+                    } else if (window.CommonUtils && window.CommonUtils.showToast) {
+                        window.CommonUtils.showToast(errorMsg, 'error');
                     }
                     throw new Error(errorMsg);
                 }
@@ -686,8 +686,8 @@ window.AppConfig = {
                         // 显示后端返回的详细权限错误信息
                         if (window.CommonUtils && window.CommonUtils.showError) {
                             window.CommonUtils.showError(errorData.message, 8000); // 显示8秒
-                        } else {
-                            alert(errorData.message);
+                        } else if (window.CommonUtils && window.CommonUtils.showToast) {
+                            window.CommonUtils.showToast(errorData.message, 'error');
                         }
                         throw new Error(errorData.message);
                     }
@@ -696,8 +696,8 @@ window.AppConfig = {
                     const errorMsg = '权限不足，无法访问该资源。请联系管理员分配相应权限。';
                     if (window.CommonUtils && window.CommonUtils.showError) {
                         window.CommonUtils.showError(errorMsg, 8000);
-                    } else {
-                        alert(errorMsg);
+                    } else if (window.CommonUtils && window.CommonUtils.showToast) {
+                        window.CommonUtils.showToast(errorMsg, 'error');
                     }
                     throw new Error(errorMsg);
                 }

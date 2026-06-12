@@ -119,9 +119,30 @@ class SimulationArchiveDetail extends HTMLElement {
     }
 
     showAdd() {
+        // 立即停止自动刷新和清除当前档案
+        this.stopAutoRefreshLog();
         this.currentArchive = null;
         this.isEditMode = true;
-        if (!this.shadowRoot) { this.style.display = 'block'; return; }
+
+        if (!this.shadowRoot) {
+            this.style.display = 'block';
+            // 如果shadowRoot还未加载，等待加载后再初始化
+            setTimeout(() => {
+                if (this.shadowRoot) {
+                    this.initializeAddMode();
+                }
+            }, 100);
+            return;
+        }
+        this.initializeAddMode();
+    }
+
+    initializeAddMode() {
+        if (!this.shadowRoot) return;
+
+        // 停止自动刷新日志
+        this.stopAutoRefreshLog();
+
         const $ = id => this.shadowRoot.getElementById(id);
 
         const username = window.localStorage.getItem('username');
@@ -147,9 +168,40 @@ class SimulationArchiveDetail extends HTMLElement {
         this.edgeCounter = 0;
         this.executionResult = null;
         this.isRunning = false;
+        this.currentResultTab = 'text';
+        this.currentCsvNodeId = null;
+        this.currentTextNodeId = null;
         this.renderGraph();
         this.updateNodeCheckList();
         this.updateExecStatus();
+
+        // 重置全选复选框为选中状态
+        const selectAllCheckbox = $('selectAllNodes');
+        if (selectAllCheckbox) selectAllCheckbox.checked = true;
+
+        // 清除执行日志和结果
+        const logContentPre = this.shadowRoot.querySelector('#logContent pre');
+        if (logContentPre) logContentPre.textContent = '暂无日志信息';
+
+        // 隐藏执行结果相关区域
+        const resultTabs = $('resultTabs');
+        if (resultTabs) resultTabs.style.display = 'none';
+        const resultActions = $('resultActions');
+        if (resultActions) resultActions.style.display = 'none';
+        const textResultArea = $('textResultArea');
+        if (textResultArea) textResultArea.style.display = 'none';
+        const csvResultArea = $('csvResultArea');
+        if (csvResultArea) csvResultArea.style.display = 'none';
+
+        // 清空结果内容
+        const textContentWrapper = $('textContentWrapper');
+        if (textContentWrapper) textContentWrapper.innerHTML = '<div class="empty-hint">暂无输出数据</div>';
+        const csvTableWrapper = $('csvTableWrapper');
+        if (csvTableWrapper) csvTableWrapper.innerHTML = '<div class="empty-hint">暂无CSV数据</div>';
+        const textNodeTabs = $('textNodeTabs');
+        if (textNodeTabs) textNodeTabs.innerHTML = '';
+        const csvNodeTabs = $('csvNodeTabs');
+        if (csvNodeTabs) csvNodeTabs.innerHTML = '';
 
         const fields = ['detailName', 'detailDesc', 'detailScheduleCron', 'detailOutputApiConfig', 'detailStatus'];
         fields.forEach(field => {
@@ -269,6 +321,80 @@ class SimulationArchiveDetail extends HTMLElement {
         this.loadLatestExecution();
     }
 
+    loadArchiveDataWithoutExecution(archive) {
+        if (!this.shadowRoot) return;
+        const $ = id => this.shadowRoot.getElementById(id);
+        const setText = (id, text) => { const el = $(id); if (el) el.textContent = text; };
+        setText('detailTitle', archive.name || '仿真档案详情');
+        setText('detailName', archive.name || '-');
+        setText('detailDesc', archive.description || '-');
+        setText('detailProjectName', archive.projectName || '-');
+        setText('detailOwner', archive.owner || '-');
+        setText('detailScheduleCron', archive.scheduleCron || '未配置');
+
+        // 特殊处理 outputApiConfig 显示
+        const apiConfigEl = $('detailOutputApiConfig');
+        if (apiConfigEl) {
+            if (archive.outputApiConfig) {
+                try {
+                    const config = JSON.parse(archive.outputApiConfig);
+                    apiConfigEl.textContent = `${config.method || 'POST'} ${config.url || '未配置'}`;
+                } catch (e) {
+                    apiConfigEl.textContent = '配置格式错误';
+                }
+            } else {
+                apiConfigEl.textContent = '未配置';
+            }
+        }
+
+        setText('detailStatus', archive.status ? '启用' : '禁用');
+        setText('detailUpdateTime', archive.updateTime ? new Date(archive.updateTime).toLocaleString('zh-CN') : '-');
+        setText('detailExecutionCount', archive.executionCount || 0);
+
+        // 先清空旧数据，避免残留
+        this.nodes = [];
+        this.edges = [];
+        this.nodeCounter = 0;
+        this.edgeCounter = 0;
+
+        if (archive.graphJson) {
+            try {
+                const graphData = JSON.parse(archive.graphJson);
+                this.nodes = graphData.nodes || [];
+                this.edges = graphData.edges || [];
+                this.nodeCounter = this.nodes.reduce((max, n) => {
+                    const num = parseInt((n.nodeId || '').replace('node_', '')) || 0;
+                    return num > max ? num : max;
+                }, 0);
+                this.edgeCounter = this.edges.reduce((max, e) => {
+                    const num = parseInt((e.edgeId || '').replace('edge_', '')) || 0;
+                    return num > max ? num : max;
+                }, 0);
+            } catch (e) {
+                console.error('解析图数据失败:', e);
+                this.nodes = [];
+                this.edges = [];
+            }
+        }
+
+        this.isRunning = archive.isRunning || false;
+        this.executionResult = null;
+        this.isEditMode = false;
+        this.renderGraph();
+        this.updateNodeCheckList();
+        this.updateExecStatus();
+
+        // 详情页隐藏工具栏
+        const toolbar = $('graphToolbar');
+        if (toolbar) toolbar.style.display = 'none';
+
+        // 详情页显示执行面板
+        const execPanel = this.shadowRoot.querySelector('.detail-section:nth-child(2)');
+        if (execPanel) execPanel.style.display = 'block';
+
+        // 不加载执行记录和日志
+    }
+
     async loadLatestExecution() {
         if (!this.currentArchive) return;
         try {
@@ -282,13 +408,45 @@ class SimulationArchiveDetail extends HTMLElement {
                     this.displayResult(result.data.execution.result);
                 } else {
                     console.log('No execution result found');
+                    // 未找到执行结果，清除结果显示
+                    this.clearResultDisplay();
                 }
+            } else {
+                // 接口返回错误，清除结果显示
+                this.clearResultDisplay();
             }
             // Load execution log
             await this.refreshLog();
         } catch (e) {
             console.error('加载最新执行记录失败:', e);
+            // 发生错误时也清除结果显示
+            this.clearResultDisplay();
         }
+    }
+
+    clearResultDisplay() {
+        if (!this.shadowRoot) return;
+        const $ = id => this.shadowRoot.getElementById(id);
+
+        // 隐藏执行结果相关区域
+        const resultTabs = $('resultTabs');
+        if (resultTabs) resultTabs.style.display = 'none';
+        const resultActions = $('resultActions');
+        if (resultActions) resultActions.style.display = 'none';
+        const textResultArea = $('textResultArea');
+        if (textResultArea) textResultArea.style.display = 'none';
+        const csvResultArea = $('csvResultArea');
+        if (csvResultArea) csvResultArea.style.display = 'none';
+
+        // 清空结果内容
+        const textContentWrapper = $('textContentWrapper');
+        if (textContentWrapper) textContentWrapper.innerHTML = '<div class="empty-hint">暂无输出数据</div>';
+        const csvTableWrapper = $('csvTableWrapper');
+        if (csvTableWrapper) csvTableWrapper.innerHTML = '<div class="empty-hint">暂无CSV数据</div>';
+        const textNodeTabs = $('textNodeTabs');
+        if (textNodeTabs) textNodeTabs.innerHTML = '';
+        const csvNodeTabs = $('csvNodeTabs');
+        if (csvNodeTabs) csvNodeTabs.innerHTML = '';
     }
 
     // === Edit Mode ===
@@ -418,8 +576,9 @@ class SimulationArchiveDetail extends HTMLElement {
             const result = await window.AppConfig.post('simulationArchives', 'save', archiveData);
             if (result.code === 200) {
                 this.showToast('保存成功');
-                this.currentArchive = { ...this.currentArchive, ...archiveData };
-                this.loadArchiveData(this.currentArchive);
+                this.currentArchive = result.data; // 使用后端返回的数据，包含正确的createTime
+                // 新增保存后不加载执行记录，只加载基本信息
+                this.loadArchiveDataWithoutExecution(this.currentArchive);
                 this.cancelEdit();
             } else {
                 this.showToast(result.message || '保存失败', 'error');
@@ -1216,11 +1375,19 @@ class SimulationArchiveDetail extends HTMLElement {
                 .filter(n => n)
                 .map(n => n.nodeName || n.nodeId);
             const predInfo = predecessors.length > 0 ? `<span class="node-pred-info">← ${predecessors.join(', ')}</span>` : '<span class="node-pred-info">（无前驱）</span>';
-            // 如果之前有选择状态，恢复选择；否则默认全选
-            const isChecked = currentSelection.length > 0 ? currentSelection.includes(node.nodeId) : true;
+            // 如果之前有选择状态且节点在之前的选择中，恢复选择；否则默认全选
+            const isChecked = currentSelection.length > 0 && currentSelection.includes(node.nodeId) ? true : true;
             item.innerHTML = `<label><input type="checkbox" data-node-id="${node.nodeId}" ${isChecked ? 'checked' : ''}><span class="node-status ${statusClass}"></span>${node.nodeName || node.nodeId}${predInfo}</label>`;
             list.appendChild(item);
         });
+
+        // 同步全选checkbox的状态
+        const selectAllCheckbox = this.shadowRoot.getElementById('selectAllNodes');
+        if (selectAllCheckbox) {
+            const allCheckboxes = this.shadowRoot.querySelectorAll('.node-check-item input[type="checkbox"]');
+            const allChecked = allCheckboxes.length > 0 && Array.from(allCheckboxes).every(cb => cb.checked);
+            selectAllCheckbox.checked = allChecked;
+        }
     }
 
     getTopologicalSortedNodes() {
@@ -1573,10 +1740,12 @@ class SimulationArchiveDetail extends HTMLElement {
 
     async refreshLog() {
         if (!this.currentArchive) return;
+        // 如果处于新增模式，不加载日志
+        if (this.currentArchive === null) return;
         try {
             const result = await window.AppConfig.get('simulationArchives', 'execution-log', { createTime: this.currentArchive.createTime });
+            const logEl = this.shadowRoot.querySelector('#logContent pre');
             if (result.code === 200 && result.data && result.data.nodeLogs) {
-                const logEl = this.shadowRoot.querySelector('#logContent pre');
                 if (logEl) {
                     const logs = result.data.nodeLogs;
                     let logText = '';
@@ -1591,8 +1760,20 @@ class SimulationArchiveDetail extends HTMLElement {
                     const logContent = this.shadowRoot.getElementById('logContent');
                     if (logContent) logContent.scrollTop = logContent.scrollHeight;
                 }
+            } else {
+                // 未找到执行记录或返回错误，清除日志显示
+                if (logEl) {
+                    logEl.textContent = '暂无日志信息';
+                }
             }
-        } catch (e) { console.error('刷新日志失败:', e); }
+        } catch (e) {
+            console.error('刷新日志失败:', e);
+            // 发生错误时也清除日志显示
+            const logEl = this.shadowRoot.querySelector('#logContent pre');
+            if (logEl) {
+                logEl.textContent = '暂无日志信息';
+            }
+        }
     }
 
     startAutoRefreshLog() {
@@ -1607,8 +1788,10 @@ class SimulationArchiveDetail extends HTMLElement {
             clearInterval(this.logRefreshInterval);
             this.logRefreshInterval = null;
         }
-        const btn = this.shadowRoot.getElementById('autoRefreshLogBtn');
-        if (btn) { btn.textContent = '自动刷新: 关闭'; btn.classList.remove('active'); }
+        if (this.shadowRoot) {
+            const btn = this.shadowRoot.getElementById('autoRefreshLogBtn');
+            if (btn) { btn.textContent = '自动刷新: 关闭'; btn.classList.remove('active'); }
+        }
     }
 
     toggleAutoRefreshLog() {

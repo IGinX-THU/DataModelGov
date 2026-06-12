@@ -1,5 +1,6 @@
 package com.tsinghua.controller;
 
+import com.tsinghua.auth.util.AuthUtil;
 import com.tsinghua.dto.DataArchiveQueryRequest;
 import com.tsinghua.entity.DataArchiveEntity;
 import com.tsinghua.model.Result;
@@ -25,6 +26,9 @@ public class DataArchiveController {
     @PostMapping("/query")
     @RequirePermission(Permission.READ)
     public Result<List<DataArchiveEntity>> queryArchives(@RequestBody DataArchiveQueryRequest request) {
+        if (!AuthUtil.isAdmin()) {
+            request.setOwner(AuthUtil.getCurrentUsername());
+        }
         List<DataArchiveEntity> result = dataArchiveService.queryArchives(
             request.getName(),
             request.getType(),
@@ -48,6 +52,9 @@ public class DataArchiveController {
     @PostMapping("/count")
     @RequirePermission(Permission.READ)
     public Result<Object> countArchives(@RequestBody DataArchiveQueryRequest request) {
+        if (!AuthUtil.isAdmin()) {
+            request.setOwner(AuthUtil.getCurrentUsername());
+        }
         List<DataArchiveEntity> allArchives = dataArchiveService.queryArchives(
             request.getName(),
             request.getType(),

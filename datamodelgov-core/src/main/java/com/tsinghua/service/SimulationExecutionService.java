@@ -252,7 +252,7 @@ public class SimulationExecutionService {
             // 如果内存中没有，尝试从数据库加载最新的执行记录
             if (execution == null) {
                 List<SimulationExecutionEntity> executions = queryExecutions(
-                    archive.getName(), null, null, null, 1, 1);
+                    archive.getName(), null, null, null, null, 1, 1);
                 if (executions != null && !executions.isEmpty()) {
                     execution = executions.get(0);
                     // 从IginX加载完整的result字段（queryExecutions可能不包含完整result）
@@ -373,11 +373,13 @@ public class SimulationExecutionService {
     /**
      * 分页查询仿真执行记录
      */
-    public List<SimulationExecutionEntity> queryExecutions(String archiveName, String status, Long startTime, Long endTime, int pageNum, int pageSize) {
+    public List<SimulationExecutionEntity> queryExecutions(String archiveName, Long archiveId, String status, Long startTime, Long endTime, int pageNum, int pageSize) {
         try {
             StringBuilder sql = new StringBuilder("SELECT * FROM " + DATA_PREFIX + " WHERE 1=1");
 
-            if (archiveName != null && !archiveName.trim().isEmpty()) {
+            if (archiveId != null) {
+                sql.append(" AND archiveId = ").append(archiveId);
+            } else if (archiveName != null && !archiveName.trim().isEmpty()) {
                 sql.append(" AND archiveName LIKE '^.*").append(archiveName.trim()).append(".*'");
             }
             if (status != null && !status.trim().isEmpty()) {

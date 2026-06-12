@@ -111,7 +111,8 @@ document.addEventListener('DOMContentLoaded', function() {
             'projectImport',
             'dataArchiveDetail',
             'modelArchiveList',
-            'algorithmArchiveList'
+            'algorithmArchiveList',
+            'userManual'
         ];
         
         components.forEach(componentId => {
@@ -511,6 +512,30 @@ document.addEventListener('DOMContentLoaded', function() {
                         if (isSecondClick) clearWorkspace();
                         showComponent('algorithmArchiveList');
                         break;
+                    case 'showProjectImportData':
+                        window.showProjectImportWizard('data');
+                        break;
+                    case 'showProjectImportModel':
+                        window.showProjectImportWizard('model');
+                        break;
+                    case 'showProjectImportAlgorithm':
+                        window.showProjectImportWizard('algorithm');
+                        break;
+                    case 'showProjectImportSimulation':
+                        window.showProjectImportWizard('simulation');
+                        break;
+                    case 'showProjectExportData':
+                        window.showProjectExportWizard('data');
+                        break;
+                    case 'showProjectExportModel':
+                        window.showProjectExportWizard('model');
+                        break;
+                    case 'showProjectExportAlgorithm':
+                        window.showProjectExportWizard('algorithm');
+                        break;
+                    case 'showProjectExportSimulation':
+                        window.showProjectExportWizard('simulation');
+                        break;
                     case 'console.log':
                         console.log('数据源管理被点击');
                         break;
@@ -695,6 +720,14 @@ document.addEventListener('DOMContentLoaded', function() {
                     case 'showAbout':
                         console.log('关于菜单被点击');
                         showAbout();
+                        break;
+                    case 'showUserManual':
+                        console.log('用户手册菜单被点击');
+                        if (typeof window.showComponent === 'function') {
+                            window.showComponent('userManual');
+                        } else {
+                            console.error('window.showComponent函数未找到');
+                        }
                         break;
                     default:
                         console.warn(`未知的菜单动作: ${action}`);
@@ -1107,6 +1140,36 @@ document.addEventListener('DOMContentLoaded', function() {
                         break;
                     case 'showAlgorithmArchiveList':
                         showComponent('algorithmArchiveList');
+                        break;
+                    case 'showProjectImport':
+                        showComponent('projectImport');
+                        break;
+                    case 'showProjectExport':
+                        showComponent('projectExport');
+                        break;
+                    case 'showProjectImportData':
+                        window.showProjectImportWizard('data');
+                        break;
+                    case 'showProjectImportModel':
+                        window.showProjectImportWizard('model');
+                        break;
+                    case 'showProjectImportAlgorithm':
+                        window.showProjectImportWizard('algorithm');
+                        break;
+                    case 'showProjectImportSimulation':
+                        window.showProjectImportWizard('simulation');
+                        break;
+                    case 'showProjectExportData':
+                        window.showProjectExportWizard('data');
+                        break;
+                    case 'showProjectExportModel':
+                        window.showProjectExportWizard('model');
+                        break;
+                    case 'showProjectExportAlgorithm':
+                        window.showProjectExportWizard('algorithm');
+                        break;
+                    case 'showProjectExportSimulation':
+                        window.showProjectExportWizard('simulation');
                         break;
                     case 'showSimulationArchive':
                         clearWorkspace();
@@ -1571,7 +1634,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // 显示确认对话框
-    function showConfirmDialog(title, message, onConfirm) {
+    window.showConfirmDialog = function(title, message, onConfirm) {
         // 移除已存在的对话框
         const existingDialog = document.querySelector('.confirm-dialog-overlay');
         if (existingDialog) {
@@ -1631,7 +1694,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     cursor: pointer;
                     font-size: 14px;
                     transition: all 0.2s;
-                ">确认删除</button>
+                ">确定</button>
             </div>
         `;
 
@@ -2128,6 +2191,12 @@ function showSimulationRecord() {
 
     // 将showComponent暴露到全局作用域
     window.showComponent = showComponent;
+    window.showProjectImportWizard = function(resourceType) {
+        showComponent('projectImport', { resourceType });
+    };
+    window.showProjectExportWizard = function(resourceType) {
+        showComponent('projectExport', { resourceType });
+    };
 
     function showDatabaseTable(tableName) {
         showComponent('databaseTable', tableName);
@@ -2437,6 +2506,50 @@ function showSimulationRecord() {
         if (spacerElement) {
             spacerElement.textContent = '当前项目：无';
         }
+
+        // 清空工作区
+        if (typeof window.hideAllComponents === 'function') {
+            window.hideAllComponents();
+        }
+
+        // 清空左侧数据源树
+        const dataSourceTree = document.getElementById('dataSourceTree');
+        if (dataSourceTree) {
+            dataSourceTree.innerHTML = `
+                <div style="padding: 20px; text-align: center; color: #999;">
+                    <div style="font-size: 48px; margin-bottom: 16px;">📊</div>
+                    <div style="font-size: 14px; margin-bottom: 12px;">暂无数据源</div>
+                    <div style="font-size: 12px; color: #aaa;">请在数据管理中注册或导入数据源</div>
+                </div>
+            `;
+        }
+
+        // 清空右侧模型资产库
+        const modelTree = document.getElementById('modelTree');
+        if (modelTree) {
+            modelTree.innerHTML = `
+                <div style="padding: 20px; text-align: center; color: #999;">
+                    <div style="font-size: 48px; margin-bottom: 16px;">📦</div>
+                    <div style="font-size: 14px; margin-bottom: 12px;">暂无模型资产</div>
+                    <div style="font-size: 12px; color: #aaa;">请在模型管理中上传模型文件</div>
+                </div>
+            `;
+        }
+
+        // 清空右侧算法资产库
+        const algorithmTree = document.getElementById('algorithmTree');
+        if (algorithmTree) {
+            algorithmTree.innerHTML = `
+                <div style="padding: 20px; text-align: center; color: #999;">
+                    <div style="font-size: 48px; margin-bottom: 16px;">🧮</div>
+                    <div style="font-size: 14px; margin-bottom: 12px;">暂无算法资产</div>
+                    <div style="font-size: 12px; color: #aaa;">请在算法管理中上传算法文件</div>
+                </div>
+            `;
+        }
+
+        // 清除选中的数据源
+        selectedDataSource = null;
     };
 
     // 绑定关闭项目按钮事件
@@ -2557,7 +2670,13 @@ function showSimulationRecord() {
             treeNodes.forEach(node => {
                 node.addEventListener('click', function(e) {
                     e.stopPropagation();
-                    
+
+                    // 隐藏右键菜单
+                    const contextMenu = document.getElementById('dataSourceContextMenu');
+                    if (contextMenu) {
+                        contextMenu.style.display = 'none';
+                    }
+
                     // 确保只处理左侧的节点
                     if (!this.closest('.left-sidebar')) {
                         return;
@@ -2599,10 +2718,128 @@ function showSimulationRecord() {
                         this.classList.toggle('expanded');
                     }
                 });
+
+                // 添加右键菜单事件
+                node.addEventListener('contextmenu', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    // 确保只处理左侧的节点
+                    if (!this.closest('.left-sidebar')) {
+                        return;
+                    }
+
+                    // 先隐藏现有的右键菜单
+                    const existingMenu = document.getElementById('dataSourceContextMenu');
+                    if (existingMenu) {
+                        existingMenu.style.display = 'none';
+                    }
+
+                    const fullPath = this.getAttribute('data-full-path');
+                    const isLeaf = this.getAttribute('data-is-leaf') === 'true';
+
+                    // 禁止删除根节点（第一级节点）
+                    const pathParts = fullPath.split('.');
+                    if (pathParts.length === 1) {
+                        return; // 根节点不显示右键菜单
+                    }
+
+                    // 显示右键菜单
+                    const contextMenu = document.getElementById('dataSourceContextMenu');
+                    if (contextMenu) {
+                        contextMenu.style.display = 'block';
+                        // 使用鼠标位置，添加偏移量避免菜单被鼠标遮挡
+                        contextMenu.style.left = (e.clientX + 5) + 'px';
+                        contextMenu.style.top = (e.clientY + 5) + 'px';
+
+                        // 保存当前节点信息到菜单元素
+                        contextMenu.dataset.fullPath = fullPath;
+                        contextMenu.dataset.isLeaf = isLeaf;
+                    }
+                });
+            });
+        }
+
+        // 点击其他地方隐藏右键菜单
+        document.addEventListener('click', function(e) {
+            const contextMenu = document.getElementById('dataSourceContextMenu');
+            if (contextMenu && contextMenu.style.display === 'block') {
+                // 如果点击的不是右键菜单本身，则隐藏
+                if (!contextMenu.contains(e.target)) {
+                    contextMenu.style.display = 'none';
+                }
+            }
+        });
+
+        // 绑定删除菜单项点击事件
+        const deleteMenuItem = document.getElementById('deleteDataNode');
+        if (deleteMenuItem) {
+            deleteMenuItem.addEventListener('click', function() {
+                const contextMenu = document.getElementById('dataSourceContextMenu');
+                if (!contextMenu) return;
+
+                const fullPath = contextMenu.dataset.fullPath;
+                const isLeaf = contextMenu.dataset.isLeaf === 'true';
+
+                if (!fullPath) return;
+
+                // 构造删除路径
+                let deletePath;
+                if (isLeaf) {
+                    // 叶子节点：全路径
+                    deletePath = fullPath;
+                } else {
+                    // 非叶子节点：通配符
+                    deletePath = fullPath + '.*';
+                }
+
+                // 隐藏菜单
+                contextMenu.style.display = 'none';
+
+                // 显示确认对话框
+                window.showConfirmDialog('确认删除', `确定要删除 ${deletePath} 吗？`, () => {
+                    deleteDataSourceData(deletePath);
+                });
             });
         }
     }
-    
+
+    // 删除数据源数据
+    async function deleteDataSourceData(path) {
+        try {
+            if (window.showGlobalLoading) window.showGlobalLoading('正在删除数据...');
+
+            const url = `${window.AppConfig.api.baseURL}/api/data/deleteColumns/${encodeURIComponent(path)}`;
+            const response = await fetch(url, {
+                method: 'DELETE',
+                headers: window.AppConfig.getAuthHeaders()
+            });
+
+            const result = await response.json();
+
+            if (result.success || result.code === 200) {
+                if (window.CommonUtils && window.CommonUtils.showToast) {
+                    window.CommonUtils.showToast('删除成功', 'success');
+                }
+                // 重新加载数据源树
+                if (window.loadDataSourceTree) {
+                    window.loadDataSourceTree();
+                }
+            } else {
+                if (window.CommonUtils && window.CommonUtils.showToast) {
+                    window.CommonUtils.showToast('删除失败: ' + (result.message || '未知错误'), 'error');
+                }
+            }
+        } catch (error) {
+            console.error('删除数据失败:', error);
+            if (window.CommonUtils && window.CommonUtils.showToast) {
+                window.CommonUtils.showToast('删除失败: ' + error.message, 'error');
+            }
+        } finally {
+            if (window.hideGlobalLoading) window.hideGlobalLoading();
+        }
+    }
+
     // 同步filesystem数据到右侧模型资产库
     function syncFilesystemToModelAssets(allData) {
         try {
@@ -3011,105 +3248,6 @@ window.showChangePasswordModal = function() {
 };
 
 // 用户头像点击事件（修改密码）- 已移至 change-password 组件内部处理
-
-// 全局函数：显示用户手册
-window.showUserManual = function() {
-    // 创建模态框
-    const modalOverlay = document.createElement('div');
-    modalOverlay.className = 'modal-overlay';
-    modalOverlay.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0, 0, 0, 0.5);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 10000;
-    `;
-    
-    // 创建模态框内容容器
-    const modalContainer = document.createElement('div');
-    modalContainer.style.cssText = `
-        width: 90%;
-        height: 90%;
-        max-width: 1400px;
-        max-height: 900px;
-        background: white;
-        border-radius: 8px;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-        overflow: hidden;
-        position: relative;
-        display: flex;
-        flex-direction: column;
-    `;
-    
-    // 加载用户手册内容
-    fetch('./components/user-manual/user-manual.html')
-        .then(response => response.text())
-        .then(html => {
-            modalContainer.innerHTML = html;
-            
-            // 获取用户手册容器并确保可以滚动
-            const userManualContainer = modalContainer.querySelector('.user-manual-container');
-            if (userManualContainer) {
-                userManualContainer.style.overflowY = 'auto';
-                userManualContainer.style.height = '100%';
-            }
-            
-            // 适配暗黑模式
-            if (document.documentElement.classList.contains('dark-mode')) {
-                modalContainer.querySelector('.user-manual-container').classList.add('dark-mode');
-            }
-        })
-        .catch(error => {
-            console.error('加载用户手册失败:', error);
-            modalContainer.innerHTML = `
-                <div style="padding: 40px; text-align: center;">
-                    <h3>加载用户手册失败</h3>
-                    <p>请检查网络连接或稍后重试</p>
-                    <button onclick="this.closest('.modal-overlay').remove()" style="
-                        padding: 8px 16px;
-                        background: #1890ff;
-                        color: white;
-                        border: none;
-                        border-radius: 4px;
-                        cursor: pointer;
-                    ">关闭</button>
-                </div>
-            `;
-        });
-    
-    // 点击遮罩关闭
-    modalOverlay.addEventListener('click', function(e) {
-        if (e.target === modalOverlay) {
-            modalOverlay.remove();
-        }
-    });
-    
-    // 添加到页面
-    modalOverlay.appendChild(modalContainer);
-    document.body.appendChild(modalOverlay);
-    
-    // ESC键关闭
-    const escHandler = function(e) {
-        if (e.key === 'Escape') {
-            modalOverlay.remove();
-            document.removeEventListener('keydown', escHandler);
-        }
-    };
-    document.addEventListener('keydown', escHandler);
-};
-
-// 全局函数：关闭用户手册
-window.closeUserManual = function() {
-    const modal = document.querySelector('.modal-overlay');
-    if (modal) {
-        modal.remove();
-    }
-};
 
 // 全局函数：关闭关于对话框
 window.closeAbout = function() {

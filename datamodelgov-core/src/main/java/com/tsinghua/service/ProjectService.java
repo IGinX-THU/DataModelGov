@@ -1,5 +1,7 @@
 package com.tsinghua.service;
 
+import cn.edu.tsinghua.iginx.exception.SessionException;
+import cn.edu.tsinghua.iginx.session.Column;
 import cn.edu.tsinghua.iginx.session.Session;
 import cn.edu.tsinghua.iginx.session.SessionExecuteSqlResult;
 import cn.edu.tsinghua.iginx.session_v2.IginXClient;
@@ -134,21 +136,29 @@ public class ProjectService {
         }
     }
 
-    public ProjectTree buildProjectTree(String name) {
+    public ProjectTree buildProjectTree(String name) throws Exception {
         ProjectTree projectTree = new ProjectTree();
         ProjectEntity project = findByName(name);
         if (project == null) {
             return null;
         }
+        List<Column> columnList = iginxSession.showColumns();
+        List<String> accessiblePaths = columnList.stream().map(Column::getPath).collect(Collectors.toList());
         projectTree.setName(project.getName());
         if (StringUtils.hasText(project.getAlgorithms())) {
-            projectTree.setAlgorithms(Arrays.stream(project.getAlgorithms().split(",")).distinct().collect(Collectors.toList()));
+            projectTree.setAlgorithms(Arrays.stream(project.getAlgorithms().split(","))
+                    .filter(path -> accessiblePaths.stream().anyMatch(accessiblePath -> accessiblePath.startsWith(path)))
+                    .distinct().collect(Collectors.toList()));
         }
         if (StringUtils.hasText(project.getModels())) {
-            projectTree.setModels(Arrays.stream(project.getModels().split(",")).distinct().collect(Collectors.toList()));
+            projectTree.setModels(Arrays.stream(project.getModels().split(","))
+                    .filter(path -> accessiblePaths.stream().anyMatch(accessiblePath -> accessiblePath.startsWith(path)))
+                    .distinct().collect(Collectors.toList()));
         }
         if (StringUtils.hasText(project.getDatas())) {
-            projectTree.setDatas(Arrays.stream(project.getDatas().split(",")).collect(Collectors.toList()));
+            projectTree.setDatas(Arrays.stream(project.getDatas().split(","))
+                    .filter(path -> accessiblePaths.stream().anyMatch(accessiblePath -> accessiblePath.startsWith(path)))
+                    .distinct().collect(Collectors.toList()));
         }
         return projectTree;
     }

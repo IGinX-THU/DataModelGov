@@ -29,6 +29,13 @@ class DataArchiveList extends HTMLElement {
     }
 
     bindEvents() {
+        this.shadowRoot.getElementById('importDataResourceBtn')?.addEventListener('click', () => {
+            window.showProjectImportWizard?.('data');
+        });
+        this.shadowRoot.getElementById('exportDataResourceBtn')?.addEventListener('click', () => {
+            window.showProjectExportWizard?.('data');
+        });
+
         const searchBtn = this.shadowRoot.getElementById('searchBtn');
         if (searchBtn) {
             searchBtn.addEventListener('click', () => {
@@ -147,10 +154,10 @@ class DataArchiveList extends HTMLElement {
                 <td></td>
             `;
             
-            // 整行点击事件：切换到数据资源库左侧栏并展开对应的树节点
+            // 整行点击事件：跳转详情页并展开左侧边栏
             row.style.cursor = 'pointer';
             row.addEventListener('click', () => {
-                this.expandTreeByArchiveName(item.name);
+                this.showDetail(item.name);
             });
             
             const actionCell = row.querySelector('td:last-child');
@@ -202,6 +209,8 @@ class DataArchiveList extends HTMLElement {
         if (dataArchiveDetail && dataArchiveDetail.showDetail) {
             dataArchiveDetail.style.display = 'block';
             await dataArchiveDetail.showDetail(name);
+            // 展开左侧边栏对应的树节点
+            this.expandTreeByArchiveName(name);
         }
     }
 
@@ -245,36 +254,59 @@ class DataArchiveList extends HTMLElement {
             const treeNodes = document.querySelectorAll('.tree-node');
             console.log('找到树节点数量:', treeNodes.length);
             
-            let found = false;
+            let targetNode = null;
             treeNodes.forEach(node => {
                 // 获取节点的data-full-path属性
                 const fullPath = node.getAttribute('data-full-path');
-                console.log('检查节点path:', fullPath);
                 
                 // 精确匹配archiveName
                 if (fullPath === archiveName) {
-                    console.log('找到匹配的节点，模拟点击');
-                    found = true;
-                    
-                    // 模拟点击节点，让树自己处理展开逻辑
-                    node.click();
-                    
-                    // 滚动到视图中心
-                    node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    console.log('找到匹配的节点:', fullPath);
+                    targetNode = node;
                 }
             });
             
-            if (!found) {
+            if (targetNode) {
+                // 递归展开所有父节点
+                this.expandParentNodes(targetNode);
+                
+                // 滚动到视图中心
+                targetNode.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                
+                // 模拟点击节点
+                targetNode.click();
+            } else {
                 console.log('未找到匹配的树节点:', archiveName);
             }
         }, 500);
     }
 
+    expandParentNodes(node) {
+        // 向上遍历父节点，逐个展开
+        let currentNode = node;
+        while (currentNode) {
+            const parentChildren = currentNode.parentElement;
+            if (parentChildren && parentChildren.classList.contains('tree-children')) {
+                const parentNode = parentChildren.parentElement;
+                if (parentNode && parentNode.classList.contains('tree-node')) {
+                    // 展开父节点
+                    if (!parentNode.classList.contains('expanded')) {
+                        parentNode.classList.add('expanded');
+                        console.log('展开父节点:', parentNode.getAttribute('data-full-path'));
+                    }
+                    currentNode = parentNode;
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+    }
+
     show() {
         this.style.display = 'block';
-        if (!this.data || this.data.length === 0) {
-            this.loadData();
-        }
+        this.loadData();
     }
 
     hide() {

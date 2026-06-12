@@ -81,6 +81,25 @@ public class ProjectImportService {
      * @return 导入结果摘要
      */
     public Map<String, Object> importProject(MultipartFile file, String projectName) throws Exception {
+        return importProject(file, projectName, true);
+    }
+
+    public Map<String, Object> importProjectResource(MultipartFile file, String projectName) throws Exception {
+        return importProjectResource(file, projectName, null);
+    }
+
+    public Map<String, Object> importProjectResource(MultipartFile file, String projectName, String resourceType) throws Exception {
+        if (!StringUtils.hasText(projectName)) {
+            throw new IllegalArgumentException("目标项目不能为空");
+        }
+        return importProject(file, projectName, false, resourceType);
+    }
+
+    private Map<String, Object> importProject(MultipartFile file, String projectName, boolean importProjectMetadata) throws Exception {
+        return importProject(file, projectName, importProjectMetadata, null);
+    }
+
+    private Map<String, Object> importProject(MultipartFile file, String projectName, boolean importProjectMetadata, String expectedResourceType) throws Exception {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("导入文件不能为空");
         }
@@ -179,6 +198,12 @@ public class ProjectImportService {
                 @SuppressWarnings("unchecked")
                 Map<String, Object> manifest = objectMapper.readValue(manifestJson, Map.class);
                 String originalProjectName = (String) manifest.get("projectName");
+                String manifestResourceType = (String) manifest.get("resourceType");
+                if (expectedResourceType != null && !expectedResourceType.isEmpty()) {
+                    if (manifestResourceType == null || !manifestResourceType.equals(expectedResourceType)) {
+                        throw new IllegalArgumentException("资源包类型不匹配：期望 " + expectedResourceType + "，实际 " + (manifestResourceType != null ? manifestResourceType : "未指定"));
+                    }
+                }
                 String targetProjectName = StringUtils.hasText(projectName) ? projectName : originalProjectName;
 
                 result.put("originalProjectName", originalProjectName);
@@ -188,7 +213,7 @@ public class ProjectImportService {
                 ProjectContext.setCurrentProject(targetProjectName);
 
                 // 解析并创建/验证项目
-                if (projectJson != null) {
+                if (importProjectMetadata && projectJson != null) {
                     ProjectEntity projectEntity = objectMapper.readValue(projectJson, ProjectEntity.class);
                     algorithmCount += importProjectEntity(projectEntity, targetProjectName);
                 } else {
@@ -201,26 +226,26 @@ public class ProjectImportService {
 
                 // 导入算法
                 if (!algorithmMetaMap.isEmpty()) {
-                    algorithmCount = importAlgorithms(algorithmMetaMap, algorithmFileMap, targetProjectName);
+                    algorithmCount = importAlgorithms(algorithmMetaMap, algorithmFileMap, originalProjectName, targetProjectName);
                     result.put("algorithmCount", algorithmCount);
                 }
 
                 // 导入模型
                 if (!modelMetaMap.isEmpty()) {
-                    modelCount = importModels(modelMetaMap, modelFileMap, targetProjectName);
+                    modelCount = importModels(modelMetaMap, modelFileMap, originalProjectName, targetProjectName);
                     result.put("modelCount", modelCount);
                 }
 
                 // 导入数据CSV
                 if (!dataCsvMap.isEmpty()) {
                     log.info("开始导入数据CSV，共 {} 个文件，数据档案共 {} 个", dataCsvMap.size(), dataArchiveMap.size());
-                    dataCount = importDataCsv(dataCsvMap, dataArchiveMap, targetProjectName);
+                    dataCount = importDataCsv(dataCsvMap, dataArchiveMap, originalProjectName, targetProjectName);
                     result.put("dataCount", dataCount);
                 }
 
                 // 导入仿真档案及执行记录
                 if (!simulationArchiveMap.isEmpty()) {
-                    simulationCount = importSimulationArchives(simulationArchiveMap, simulationExecutionMap, simulationTaskFilesMap, targetProjectName);
+                    simulationCount = importSimulationArchives(simulationArchiveMap, simulationExecutionMap, simulationTaskFilesMap, originalProjectName, targetProjectName);
                     result.put("simulationCount", simulationCount);
                 }
             }
@@ -259,7 +284,7 @@ public class ProjectImportService {
     /**
      * 导入算法文件和元数据
      */
-    private int importAlgorithms(Map<String, byte[]> metaMap, Map<String, byte[]> fileMap, String projectName) throws Exception {
+    private int importAlgorithms(Map<String, byte[]> metaMap, Map<String, byte[]> fileMap, String originalProjectName, String projectName) throws Exception {
         int count = 0;
 
         for (Map.Entry<String, byte[]> metaEntry : metaMap.entrySet()) {
@@ -268,17 +293,6 @@ public class ProjectImportService {
                 String name = meta.getName();
                 String version = meta.getVersion();
                 String fileName = meta.getFileName();
-
-                // 检查是否已存在
-                try {
-                    AlgorithmMetaEntity existing = algorithmFileService.queryMeta(name, version);
-                    if (existing != null) {
-                        log.warn("算法已存在，跳过: {} v{}", name, version);
-                        continue;
-                    }
-                } catch (Exception e) {
-                    // 查询失败，继续导入
-                }
 
                 // 查找对应的二进制文件
                 byte[] fileData = null;
@@ -319,11 +333,13 @@ public class ProjectImportService {
                 dataPermissionService.saveTablePrefix(storagePath, false, AuthUtil.getCurrentUsername());
 
                 // 保存元数据（更新项目名称为目标项目）
+                rewriteAlgorithmMetaProject(meta, originalProjectName, projectName);
                 meta.setProjectName(projectName);
                 meta.setStoragePath(storagePath);
                 meta.setChunkCount(totalChunks);
                 meta.setFileSize((long) fileData.length);
                 meta.setAuthor(AuthUtil.getCurrentUsername());
+                meta.setTimestamp(nextImportTimestamp());
                 algorithmFileService.saveAlgorithmMetadata(meta);
 
                 // 添加到项目
@@ -341,7 +357,7 @@ public class ProjectImportService {
     /**
      * 导入模型文件和元数据
      */
-    private int importModels(Map<String, byte[]> metaMap, Map<String, byte[]> fileMap, String projectName) throws Exception {
+    private int importModels(Map<String, byte[]> metaMap, Map<String, byte[]> fileMap, String originalProjectName, String projectName) throws Exception {
         int count = 0;
 
         for (Map.Entry<String, byte[]> metaEntry : metaMap.entrySet()) {
@@ -350,17 +366,6 @@ public class ProjectImportService {
                 String name = meta.getName();
                 String version = meta.getVersion();
                 String fileName = meta.getFileName();
-
-                // 检查是否已存在
-                try {
-                    ModelMetaEntity existing = modelFileService.queryMeta(name, version);
-                    if (existing != null) {
-                        log.warn("模型已存在，跳过: {} v{}", name, version);
-                        continue;
-                    }
-                } catch (Exception e) {
-                    // 查询失败，继续导入
-                }
 
                 // 查找对应的二进制文件
                 byte[] fileData = null;
@@ -401,11 +406,13 @@ public class ProjectImportService {
                 dataPermissionService.saveTablePrefix(storagePath, false, AuthUtil.getCurrentUsername());
 
                 // 保存元数据
+                rewriteModelMetaProject(meta, originalProjectName, projectName);
                 meta.setProjectName(projectName);
                 meta.setStoragePath(storagePath);
                 meta.setChunkCount(totalChunks);
                 meta.setFileSize((long) fileData.length);
                 meta.setAuthor(AuthUtil.getCurrentUsername());
+                meta.setTimestamp(nextImportTimestamp());
                 modelFileService.saveModelMetadata(meta);
 
                 // 添加到项目
@@ -423,7 +430,7 @@ public class ProjectImportService {
     /**
      * 导入数据CSV文件
      */
-    private int importDataCsv(Map<String, byte[]> csvMap, Map<String, byte[]> archiveMap, String projectName) throws Exception {
+    private int importDataCsv(Map<String, byte[]> csvMap, Map<String, byte[]> archiveMap, String originalProjectName, String projectName) throws Exception {
         int count = 0;
 
         for (Map.Entry<String, byte[]> csvEntry : csvMap.entrySet()) {
@@ -434,6 +441,12 @@ public class ProjectImportService {
                 // 从文件名还原数据路径: data/project1_device1.csv -> project1.device1
                 String csvFileName = entryName.substring(entryName.lastIndexOf('/') + 1);
                 String dataPath = csvFileName.replace(".csv", "").replace("_", ".");
+                int firstDotIndex = dataPath.indexOf('.');
+                if (firstDotIndex >= 0) {
+                    dataPath = projectName + dataPath.substring(firstDotIndex);
+                } else {
+                    dataPath = projectName + "." + dataPath;
+                }
 
                 // 保存CSV到临时文件
                 Path tempCsvPath = Files.createTempFile("import_data_", ".csv");
@@ -485,11 +498,19 @@ public class ProjectImportService {
                     // 导入数据档案元数据（如果有）
                     String archiveKey = entryName.replace(".csv", "/archive.json");
                     byte[] archiveData = archiveMap.get(archiveKey);
+                    if (archiveData == null) {
+                        archiveData = findDataArchiveByPath(archiveMap, dataPath, originalProjectName, projectName);
+                    }
                     if (archiveData != null) {
                         try {
                             DataArchiveEntity archive = objectMapper.readValue(archiveData, DataArchiveEntity.class);
+                            long archiveTimestamp = nextImportTimestamp();
+                            archive.setId(archiveTimestamp);
+                            archive.setName(dataPath);
                             archive.setProjectName(projectName);
                             archive.setOwner(AuthUtil.getCurrentUsername());
+                            archive.setCreateTime(archiveTimestamp);
+                            archive.setConfig(rewriteProjectReferences(archive.getConfig(), originalProjectName, projectName));
                             dataArchiveService.saveArchive(archive);
                             log.info("已导入数据档案: {}", archive.getName());
                         } catch (Exception e) {
@@ -514,7 +535,7 @@ public class ProjectImportService {
     /**
      * 导入仿真档案及执行记录
      */
-    private int importSimulationArchives(Map<String, byte[]> archiveMap, Map<String, byte[]> executionMap, Map<String, byte[]> taskFilesMap, String projectName) throws Exception {
+    private int importSimulationArchives(Map<String, byte[]> archiveMap, Map<String, byte[]> executionMap, Map<String, byte[]> taskFilesMap, String originalProjectName, String projectName) throws Exception {
         int count = 0;
 
         for (Map.Entry<String, byte[]> archiveEntry : archiveMap.entrySet()) {
@@ -522,8 +543,15 @@ public class ProjectImportService {
                 SimulationArchiveEntity archive = objectMapper.readValue(archiveEntry.getValue(), SimulationArchiveEntity.class);
 
                 // 更新项目名称为目标项目
+                long archiveCreateTime = nextImportTimestamp();
                 archive.setProjectName(projectName);
                 archive.setOwner(AuthUtil.getCurrentUsername());
+                archive.setCreateTime(archiveCreateTime);
+                archive.setUpdateTime(archiveCreateTime);
+                archive.setGraphJson(rewriteProjectReferences(archive.getGraphJson(), originalProjectName, projectName));
+                archive.setOutputApiConfig(rewriteProjectReferences(archive.getOutputApiConfig(), originalProjectName, projectName));
+                archive.setLastExecutionTime(null);
+                archive.setExecutionCount(0L);
                 // 重置运行状态
                 archive.setIsRunning(false);
 
@@ -537,8 +565,14 @@ public class ProjectImportService {
                         try {
                             SimulationExecutionEntity execution = objectMapper.readValue(execEntry.getValue(), SimulationExecutionEntity.class);
                             // 更新档案ID和名称
-                            execution.setArchiveId(archive.getCreateTime());
+                            long executionTimestamp = nextImportTimestamp();
+                            execution.setTimestamp(executionTimestamp);
+                            // 保持原始的开始时间和结束时间
+                            execution.setArchiveId(archiveCreateTime);
                             execution.setArchiveName(archive.getName());
+                            execution.setInputMeasurements(rewriteProjectReferences(execution.getInputMeasurements(), originalProjectName, projectName));
+                            execution.setOutputMeasurements(rewriteProjectReferences(execution.getOutputMeasurements(), originalProjectName, projectName));
+                            execution.setOutputTable(rewriteProjectReferences(execution.getOutputTable(), originalProjectName, projectName));
 
                             // 修复result字段双重序列化问题：如果result是字符串，解析为JSON对象
                             Object result = execution.getResult();
@@ -555,7 +589,7 @@ public class ProjectImportService {
                             simulationExecutionService.saveExecution(execution);
 
                             // 恢复任务目录文件
-                            String execTimestamp = execEntry.getKey().substring(execEntry.getKey().lastIndexOf('/') + 1).replace(".json", "");
+                            String execTimestamp = String.valueOf(executionTimestamp);
                             String taskFilesPrefix = archivePrefix + "/executions/" + execTimestamp + "_files";
                             Path taskDir = java.nio.file.Paths.get("project", projectName, "job", "simulation", execTimestamp);
                             if (!java.nio.file.Files.exists(taskDir)) {
@@ -583,6 +617,65 @@ public class ProjectImportService {
             }
         }
         return count;
+    }
+
+    private long nextImportTimestamp() {
+        try {
+            Thread.sleep(1);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        return System.currentTimeMillis();
+    }
+
+    private byte[] findDataArchiveByPath(Map<String, byte[]> archiveMap, String targetDataPath, String originalProjectName, String targetProjectName) {
+        String originalDataPath = targetDataPath;
+        if (originalProjectName != null && targetProjectName != null && targetDataPath.startsWith(targetProjectName + ".")) {
+            originalDataPath = originalProjectName + targetDataPath.substring(targetProjectName.length());
+        }
+        for (Map.Entry<String, byte[]> entry : archiveMap.entrySet()) {
+            try {
+                DataArchiveEntity archive = objectMapper.readValue(entry.getValue(), DataArchiveEntity.class);
+                String rewrittenName = rewriteProjectReferences(archive.getName(), originalProjectName, targetProjectName);
+                String rewrittenConfig = rewriteProjectReferences(archive.getConfig(), originalProjectName, targetProjectName);
+                if (targetDataPath.equals(rewrittenName)
+                        || originalDataPath.equals(archive.getName())
+                        || (rewrittenConfig != null && rewrittenConfig.contains(targetDataPath))
+                        || (archive.getConfig() != null && archive.getConfig().contains(originalDataPath))) {
+                    return entry.getValue();
+                }
+            } catch (Exception e) {
+                log.warn("解析数据档案用于匹配失败: {}", entry.getKey(), e);
+            }
+        }
+        return null;
+    }
+
+    private String rewriteProjectReferences(String value, String originalProjectName, String targetProjectName) {
+        if (value == null || originalProjectName == null || targetProjectName == null || originalProjectName.equals(targetProjectName)) {
+            return value;
+        }
+        return value
+                .replace("algorithms_system." + originalProjectName + ".", "algorithms_system." + targetProjectName + ".")
+                .replace("models_system." + originalProjectName + ".", "models_system." + targetProjectName + ".")
+                .replace("\"" + originalProjectName + ".", "\"" + targetProjectName + ".")
+                .replace("'" + originalProjectName + ".", "'" + targetProjectName + ".")
+                .replace(originalProjectName + ".", targetProjectName + ".");
+    }
+
+    private void rewriteAlgorithmMetaProject(AlgorithmMetaEntity meta, String originalProjectName, String targetProjectName) {
+        meta.setTableName(rewriteProjectReferences(meta.getTableName(), originalProjectName, targetProjectName));
+        meta.setInputData(rewriteProjectReferences(meta.getInputData(), originalProjectName, targetProjectName));
+        meta.setCalledModels(rewriteProjectReferences(meta.getCalledModels(), originalProjectName, targetProjectName));
+        meta.setInputsBind(rewriteProjectReferences(meta.getInputsBind(), originalProjectName, targetProjectName));
+        meta.setOutputsBind(rewriteProjectReferences(meta.getOutputsBind(), originalProjectName, targetProjectName));
+        meta.setOutputTable(rewriteProjectReferences(meta.getOutputTable(), originalProjectName, targetProjectName));
+    }
+
+    private void rewriteModelMetaProject(ModelMetaEntity meta, String originalProjectName, String targetProjectName) {
+        meta.setInputs(rewriteProjectReferences(meta.getInputs(), originalProjectName, targetProjectName));
+        meta.setOutputs(rewriteProjectReferences(meta.getOutputs(), originalProjectName, targetProjectName));
+        meta.setApis(rewriteProjectReferences(meta.getApis(), originalProjectName, targetProjectName));
     }
 
     /**

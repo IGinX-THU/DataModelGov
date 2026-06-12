@@ -3,6 +3,7 @@ class ProjectImport extends HTMLElement {
         super();
         this.attachShadow({ mode: 'open' });
         this._selectedFile = null;
+        this.resourceType = null;
     }
 
     async connectedCallback() {
@@ -64,9 +65,14 @@ class ProjectImport extends HTMLElement {
 </div>`;
     }
 
-    show() {
+    show(options = {}) {
+        this.resourceType = options.resourceType || null;
         this.style.display = 'block';
+        this.applyMode();
         this.resetForm();
+        if (this.resourceType) {
+            this.loadProjectList();
+        }
     }
 
     hide() {
@@ -86,6 +92,59 @@ class ProjectImport extends HTMLElement {
         if (importBtn) importBtn.disabled = true;
         const progress = root.getElementById('importProgress');
         if (progress) progress.style.display = 'none';
+        const targetProjectSelect = root.getElementById('targetProjectSelect');
+        if (targetProjectSelect) targetProjectSelect.value = '';
+    }
+
+    applyMode() {
+        const header = this.shadowRoot.getElementById('importHeader');
+        const select = this.shadowRoot.getElementById('targetProjectSelect');
+        const field = this.shadowRoot.getElementById('targetProjectField');
+        const typeName = this.getResourceTypeName(this.resourceType);
+        if (header) header.textContent = typeName ? `导入${typeName}` : '导入项目';
+        if (field) field.style.display = this.resourceType ? '' : 'none';
+        if (select) select.options[0].textContent = this.resourceType ? '请选择目标项目' : '使用资源包内项目名';
+    }
+
+    getResourceTypeName(type) {
+        return {
+            algorithm: '算法',
+            model: '模型',
+            data: '数据',
+            simulation: '仿真'
+        }[type] || '';
+    }
+
+    async loadProjectList() {
+        try {
+            const result = await window.AppConfig.post('project', 'query', {
+                pageNum: 1,
+                pageSize: 100
+            });
+            const select = this.shadowRoot.getElementById('targetProjectSelect');
+            if (!select) return;
+            while (select.options.length > 1) {
+                select.remove(1);
+            }
+            if (result.code === 200 && result.data) {
+                result.data.forEach(project => {
+                    const option = document.createElement('option');
+                    option.value = project.name;
+                    option.textContent = project.name + (project.desc ? ' - ' + project.desc : '');
+                    select.appendChild(option);
+                });
+                const username = window.AppConfig?.getUsername?.();
+                const cached = window.localStorage?.getItem('currentProject_' + username);
+                if (cached) {
+                    try {
+                        const current = JSON.parse(cached);
+                        select.value = current.name;
+                    } catch (e) {}
+                }
+            }
+        } catch (error) {
+            console.error('加载项目列表失败:', error);
+        }
     }
 
     bindEvents() {
@@ -186,9 +245,17 @@ class ProjectImport extends HTMLElement {
         }
 
         const root = this.shadowRoot;
+        const targetProjectName = root.getElementById('targetProjectSelect')?.value || '';
+        if (this.resourceType && !targetProjectName) {
+            this.showToast('请选择目标项目', 'error');
+            return;
+        }
 
         const formData = new FormData();
         formData.append('file', this._selectedFile);
+        if (targetProjectName) {
+            formData.append('projectName', targetProjectName);
+        }
 
         const progress = root.getElementById('importProgress');
         const progressFill = root.getElementById('progressFill');
@@ -207,7 +274,8 @@ class ProjectImport extends HTMLElement {
                 headers['Authorization'] = authHeaders['Authorization'];
             }
 
-            const response = await fetch('/api/project/import', {
+            const importUrl = this.resourceType ? `/api/project/import/${this.resourceType}` : '/api/project/import';
+            const response = await fetch(importUrl, {
                 method: 'POST',
                 headers: headers,
                 body: formData
@@ -298,22 +366,12 @@ class ProjectImport extends HTMLElement {
     }
 
     showToast(message, type = 'success') {
-        const toast = document.createElement('div');
-        toast.className = `toast toast-${type}`;
-        toast.textContent = message;
-        toast.style.cssText = `
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            padding: 12px 24px;
-            background: ${type === 'success' ? '#67c23a' : '#f56c6c'};
-            color: white;
-            border-radius: 4px;
-            z-index: 10000;
-            animation: slideIn 0.3s ease;
-        `;
-        document.body.appendChild(toast);
-        setTimeout(() => toast.remove(), 3000);
+        if (window.CommonUtils && window.CommonUtils.showToast) {
+            window.CommonUtils.showToast(message, type);
+        } else {
+            // 降级处理
+            console.log(`[${type.toUpperCase()}] ${message}`);
+        }
     }
 }
 

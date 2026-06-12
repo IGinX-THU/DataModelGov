@@ -29,6 +29,13 @@ class ModelArchiveList extends HTMLElement {
     }
 
     bindEvents() {
+        this.shadowRoot.getElementById('importModelResourceBtn')?.addEventListener('click', () => {
+            window.showProjectImportWizard?.('model');
+        });
+        this.shadowRoot.getElementById('exportModelResourceBtn')?.addEventListener('click', () => {
+            window.showProjectExportWizard?.('model');
+        });
+
         const searchBtn = this.shadowRoot.getElementById('searchBtn');
         if (searchBtn) {
             searchBtn.addEventListener('click', () => {
@@ -248,9 +255,7 @@ class ModelArchiveList extends HTMLElement {
 
     show() {
         this.style.display = 'block';
-        if (!this.data || this.data.length === 0) {
-            this.loadData();
-        }
+        this.loadData();
     }
 
     hide() {

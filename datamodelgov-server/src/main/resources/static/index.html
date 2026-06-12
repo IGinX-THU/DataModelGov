@@ -170,7 +170,7 @@
                     <li id="menu-data-source-management">异构数据源管理</li>
                     <li id="menu-register-heterogeneous-data-source">注册异构数据源</li>
 <!--                    <li>移除异构数据源</li>-->
-                    <li id="menu-import-data">导入数据</li>
+                    <li id="menu-import-data">上传数据文件</li>
                     <li id="menu-data-archive-query">数据档案查询</li>
 <!--                    <li>导出数据</li>-->
                 </ul>
@@ -227,16 +227,27 @@
         <span class="tab dropdown" id="toolDropdown">
                 <span class="dropdown-trigger">工具</span>
                 <ul class="dropdown-menu">
-                    <li id="menu-configure-parsing-rules">配置解析规则</li>
-<!--                    <li class="has-submenu" id="menu-import-wizard">-->
-<!--                        导入向导 ▸-->
-<!--                        <ul class="submenu">-->
-<!--                            <li id="menu-import-wizard-data">数据文件</li>-->
-<!--                            <li id="menu-import-wizard-model">模型文件</li>-->
-<!--                            <li id="menu-import-wizard-algorithm">算法文件</li>-->
-<!--                        </ul>-->
-<!--                    </li>-->
-<!--                    <li id="menu-project-export">导出向导</li>-->
+                    <li id="menu-configure-parsing-rules">通用解析规则</li>
+                    <li class="has-submenu" id="menu-import-wizard">
+                        导入向导 ▸
+                        <ul class="submenu">
+                            <li id="menu-import-wizard-project">项目</li>
+                            <li id="menu-import-wizard-data">数据</li>
+                            <li id="menu-import-wizard-model">模型</li>
+                            <li id="menu-import-wizard-algorithm">算法</li>
+                            <li id="menu-import-wizard-simulation">仿真</li>
+                        </ul>
+                    </li>
+                    <li class="has-submenu" id="menu-export-wizard">
+                        导出向导 ▸
+                        <ul class="submenu">
+                            <li id="menu-export-wizard-project">项目</li>
+                            <li id="menu-export-wizard-data">数据</li>
+                            <li id="menu-export-wizard-model">模型</li>
+                            <li id="menu-export-wizard-algorithm">算法</li>
+                            <li id="menu-export-wizard-simulation">仿真</li>
+                        </ul>
+                    </li>
                     <li class="has-submenu" id="menu-window">
                         窗口 ▸
                         <ul class="submenu">
@@ -271,6 +282,7 @@
         <span class="tab dropdown" id="helpDropdown">
                 <span class="dropdown-trigger">帮助</span>
                 <ul class="dropdown-menu">
+                    <li id="menu-user-manual">用户手册</li>
                     <li id="menu-about">关于</li>
                 </ul>
             </span>
@@ -330,12 +342,20 @@
                     <span class="ribbon-btn-text">管理</span>
                 </button>
                 <button class="ribbon-btn" id="btn-import">
-                    <svg class="ribbon-btn-icon"><use href="#icon-import"></use></svg>
-                    <span class="ribbon-btn-text">导入</span>
+                    <svg class="ribbon-btn-icon"><use href="#icon-upload"></use></svg>
+                    <span class="ribbon-btn-text">上传</span>
                 </button>
                 <button class="ribbon-btn" id="btn-query">
                     <svg class="ribbon-btn-icon"><use href="#icon-search"></use></svg>
                     <span class="ribbon-btn-text">查询</span>
+                </button>
+                <button class="ribbon-btn" id="btn-data-import">
+                    <svg class="ribbon-btn-icon"><use href="#icon-import"></use></svg>
+                    <span class="ribbon-btn-text">导入</span>
+                </button>
+                <button class="ribbon-btn" id="btn-data-export">
+                    <svg class="ribbon-btn-icon"><use href="#icon-export"></use></svg>
+                    <span class="ribbon-btn-text">导出</span>
                 </button>
             </div>
         </div>
@@ -366,6 +386,14 @@
                     <svg class="ribbon-btn-icon"><use href="#icon-search"></use></svg>
                     <span class="ribbon-btn-text">搜索</span>
                 </button>
+                <button class="ribbon-btn" id="btn-model-import">
+                    <svg class="ribbon-btn-icon"><use href="#icon-import"></use></svg>
+                    <span class="ribbon-btn-text">导入</span>
+                </button>
+                <button class="ribbon-btn" id="btn-model-export">
+                    <svg class="ribbon-btn-icon"><use href="#icon-export"></use></svg>
+                    <span class="ribbon-btn-text">导出</span>
+                </button>
             </div>
         </div>
 
@@ -395,6 +423,14 @@
                     <svg class="ribbon-btn-icon"><use href="#icon-search"></use></svg>
                     <span class="ribbon-btn-text">搜索</span>
                 </button>
+                <button class="ribbon-btn" id="btn-algorithm-import">
+                    <svg class="ribbon-btn-icon"><use href="#icon-import"></use></svg>
+                    <span class="ribbon-btn-text">导入</span>
+                </button>
+                <button class="ribbon-btn" id="btn-algorithm-export">
+                    <svg class="ribbon-btn-icon"><use href="#icon-export"></use></svg>
+                    <span class="ribbon-btn-text">导出</span>
+                </button>
             </div>
         </div>
 
@@ -411,6 +447,14 @@
                 <button class="ribbon-btn" id="btn-simulation-analyze">
                     <svg class="ribbon-btn-icon"><use href="#icon-analyze"></use></svg>
                     <span class="ribbon-btn-text">分析</span>
+                </button>
+                <button class="ribbon-btn" id="btn-simulation-import">
+                    <svg class="ribbon-btn-icon"><use href="#icon-import"></use></svg>
+                    <span class="ribbon-btn-text">导入</span>
+                </button>
+                <button class="ribbon-btn" id="btn-simulation-export">
+                    <svg class="ribbon-btn-icon"><use href="#icon-export"></use></svg>
+                    <span class="ribbon-btn-text">导出</span>
                 </button>
             </div>
         </div>
@@ -463,6 +507,11 @@
         </div>
     </div>
 
+    <!-- 数据资源库右键菜单 -->
+    <div id="dataSourceContextMenu" class="context-menu" style="display: none;">
+        <div class="context-menu-item" id="deleteDataNode">删除</div>
+    </div>
+
     <!-- 中间工作区 -->
     <div class="workspace">
         <div class="workspace-title">工作区</div>
@@ -489,6 +538,8 @@
             <algorithm-edit id="algorithmEdit"></algorithm-edit>
             <!-- 数据可视化组件 -->
             <data-visualization id="dataVisualization"></data-visualization>
+            <!-- 用户手册组件 -->
+            <user-manual id="userManual"></user-manual>
             <!-- 数据库表格组件 -->
             <database-table id="databaseTable"></database-table>
             <!-- 数据源管理组件 -->
@@ -591,12 +642,15 @@
 <script src="./components/data-archive-detail/data-archive-detail.js"></script>
 <script src="./components/model-archive-list/model-archive-list.js"></script>
 <script src="./components/algorithm-archive-list/algorithm-archive-list.js"></script>
+<script src="./components/user-manual/user-manual.js"></script>
     <script src="./components/user-management/user-management.js"></script>
     <script src="./components/permission-management/permission-management.js"></script>
     <script src="./components/change-password/change-password.js"></script>
 <script src="./js/localdb.js"></script>
 <script src="./js/state-manager.js"></script>
 <script src="./js/desktop-shell.js"></script>
+<script src="./lib/jszip/jszip.min.js"></script>
+<script src="./lib/docx-preview/docx-preview.min.js"></script>
 <script src="./js/main.js"></script>
 
 <!-- Service Worker Registration -->

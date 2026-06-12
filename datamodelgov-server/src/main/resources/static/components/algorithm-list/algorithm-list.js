@@ -270,10 +270,20 @@ class AlgorithmList extends HTMLElement {
     }
 
     async deleteAlgorithm(id) {
-        if (!confirm('确定要删除该算法吗？')) {
-            return;
+        if (window.showConfirmDialog) {
+            window.showConfirmDialog('确定要删除该算法吗？', () => {
+                this.executeDeleteAlgorithm(id);
+            });
+        } else {
+            // 降级处理
+            if (!confirm('确定要删除该算法吗？')) {
+                return;
+            }
+            this.executeDeleteAlgorithm(id);
         }
+    }
 
+    async executeDeleteAlgorithm(id) {
         const [name, version] = id.split('_');
         
         try {

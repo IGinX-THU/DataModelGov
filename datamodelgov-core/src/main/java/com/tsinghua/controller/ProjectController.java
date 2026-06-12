@@ -1,5 +1,6 @@
 package com.tsinghua.controller;
 
+import com.tsinghua.auth.util.AuthUtil;
 import com.tsinghua.dto.ProjectExportRequest;
 import com.tsinghua.dto.ProjectTree;
 import com.tsinghua.dto.ProjectsQueryRequest;
@@ -79,7 +80,7 @@ public class ProjectController {
     @GetMapping("/tree")
     @RequirePermission(Permission.READ)
     public Result<ProjectTree> getProjectTree(
-            @RequestParam("name") String name) {
+            @RequestParam("name") String name) throws Exception {
         // 在后端构建树结构
         return Result.success(projectService.buildProjectTree(name));
     }
@@ -103,37 +104,128 @@ public class ProjectController {
         }
     }
 
+    @ApiOperation("导入项目资源")
+    @PostMapping(value = "/import/{resourceType}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @RequirePermission(Permission.CREATE)
+    @OperationLog(value = "导入项目资源", type = OperationLog.OperationType.IMPORT)
+    public Result<?> importProjectResource(
+            @PathVariable("resourceType") String resourceType,
+            @RequestPart("file") MultipartFile file,
+            @RequestParam(value = "projectName", required = false) String projectName) {
+        try {
+            validateResourceType(resourceType);
+            Map<String, Object> result = projectImportService.importProjectResource(file, projectName, resourceType);
+            result.put("resourceType", resourceType);
+            return Result.success("项目资源导入成功", result);
+        } catch (IllegalArgumentException e) {
+            log.error("项目资源导入参数错误", e);
+            return Result.paramError(e.getMessage());
+        } catch (Exception e) {
+            log.error("项目资源导入失败", e);
+            return Result.error("项目资源导入失败: " + e.getMessage());
+        }
+    }
+
     @ApiOperation("导出项目")
     @PostMapping("/export")
     @RequirePermission(Permission.READ)
     @OperationLog(value = "导出项目", type = OperationLog.OperationType.EXPORT, recordResult = false)
     public void exportProject(@RequestBody ProjectExportRequest request, HttpServletResponse response) {
         try {
-            projectExportService.exportProject(request, response);
+            // 在开始写入响应之前先进行验证
+            String projectName = request.getProjectName();
+            if (projectName == null || projectName.trim().isEmpty()) {
+                throw new IllegalArgumentException("项目名称不能为空");
+            }
+
+            // 验证项目存在且当前用户有权限
+            ProjectEntity project = projectService.findByName(projectName);
+            if (project == null) {
+                throw new IllegalArgumentException("项目不存在: " + projectName);
+            }
+
+            if (!AuthUtil.isAdmin() && !AuthUtil.getCurrentUsername().equals(project.getOwner())) {
+                throw new SecurityException("无权导出该项目，只有项目所有者或管理员可以导出");
+            }
+
+            // 验证通过后才开始导出
+            projectExportService.exportAllProject(request, response);
         } catch (IllegalArgumentException | SecurityException e) {
             log.error("项目导出参数或权限错误", e);
-            response.reset();
-            response.setContentType("application/json;charset=UTF-8");
-            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            try {
-                response.getOutputStream().write(
-                        ("{\"success\":false,\"message\":\"" + e.getMessage() + "\"}").getBytes("UTF-8"));
-                response.getOutputStream().flush();
-            } catch (Exception ex) {
-                log.error("写入错误响应失败", ex);
-            }
+            writeExportError(response, HttpServletResponse.SC_BAD_REQUEST, e.getMessage());
         } catch (Exception e) {
             log.error("项目导出失败", e);
-            response.reset();
-            response.setContentType("application/json;charset=UTF-8");
-            response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-            try {
-                response.getOutputStream().write(
-                        ("{\"success\":false,\"message\":\"项目导出失败: " + e.getMessage() + "\"}").getBytes("UTF-8"));
-                response.getOutputStream().flush();
-            } catch (Exception ex) {
-                log.error("写入错误响应失败", ex);
+            // 如果已经开始写入响应，无法再写入错误信息
+            if (!response.isCommitted()) {
+                writeExportError(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "项目导出失败: " + e.getMessage());
             }
+        }
+    }
+
+    @ApiOperation("导出项目资源")
+    @PostMapping("/export/{resourceType}")
+    @RequirePermission(Permission.READ)
+    @OperationLog(value = "导出项目资源", type = OperationLog.OperationType.EXPORT, recordResult = false)
+    public void exportProjectResource(
+            @PathVariable("resourceType") String resourceType,
+            @RequestParam("projectName") String projectName,
+            HttpServletResponse response) {
+        try {
+            // 在开始写入响应之前先进行验证
+            validateResourceType(resourceType);
+
+            if (projectName == null || projectName.trim().isEmpty()) {
+                throw new IllegalArgumentException("项目名称不能为空");
+            }
+
+            // 验证项目存在且当前用户有权限
+            ProjectEntity project = projectService.findByName(projectName);
+            if (project == null) {
+                throw new IllegalArgumentException("项目不存在: " + projectName);
+            }
+
+            if (!AuthUtil.isAdmin() && !AuthUtil.getCurrentUsername().equals(project.getOwner())) {
+                throw new SecurityException("无权导出该项目，只有项目所有者或管理员可以导出");
+            }
+
+            // 验证通过后才开始导出
+            projectExportService.exportResource(projectName, resourceType, response);
+        } catch (IllegalArgumentException | SecurityException e) {
+            log.error("项目资源导出参数或权限错误", e);
+            if (!response.isCommitted()) {
+                writeExportError(response, HttpServletResponse.SC_BAD_REQUEST, e.getMessage());
+            }
+        } catch (Exception e) {
+            log.error("项目资源导出失败", e);
+            if (!response.isCommitted()) {
+                writeExportError(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "项目资源导出失败: " + e.getMessage());
+            }
+        }
+    }
+
+    private void validateResourceType(String resourceType) {
+        if (resourceType == null) {
+            throw new IllegalArgumentException("资源类型不能为空");
+        }
+        String type = resourceType.trim().toLowerCase();
+        if (!"algorithm".equals(type) && !"algorithms".equals(type)
+                && !"model".equals(type) && !"models".equals(type)
+                && !"data".equals(type) && !"datas".equals(type)
+                && !"simulation".equals(type) && !"simulations".equals(type)) {
+            throw new IllegalArgumentException("不支持的资源类型: " + resourceType);
+        }
+    }
+
+    private void writeExportError(HttpServletResponse response, int status, String message) {
+        response.reset();
+        response.setContentType("application/json;charset=UTF-8");
+        response.setStatus(status);
+        try {
+            response.getOutputStream().write(
+                    ("{\"success\":false,\"message\":\"" + message + "\"}").getBytes("UTF-8"));
+            response.getOutputStream().flush();
+        } catch (Exception ex) {
+            log.error("写入错误响应失败", ex);
         }
     }
 

@@ -77,6 +77,17 @@
             <fileMode>0755</fileMode>
         </fileSet>
 
+        <!-- 文档 -->
+        <fileSet>
+            <directory>../doc</directory>
+            <outputDirectory>doc</outputDirectory>
+            <includes>
+                <include>*.docx</include>
+                <include>*.pdf</include>
+                <include>*.md</include>
+            </includes>
+        </fileSet>
+
         <!-- README -->
         <fileSet>
             <directory>..</directory>

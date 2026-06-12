@@ -352,9 +352,20 @@ class ProjectDetail extends HTMLElement {
     }
 
     async deleteProject() {
-        if (!confirm('确定要删除该项目吗？此操作不可恢复。')) {
-            return;
+        if (window.showConfirmDialog) {
+            window.showConfirmDialog('确定要删除该项目吗？此操作不可恢复。', () => {
+                this.executeDeleteProject();
+            });
+        } else {
+            // 降级处理
+            if (!confirm('确定要删除该项目吗？此操作不可恢复。')) {
+                return;
+            }
+            this.executeDeleteProject();
         }
+    }
+
+    async executeDeleteProject() {
 
         try {
             if (window.showGlobalLoading) {

@@ -49,13 +49,13 @@ public class SimulationArchiveController {
     @PostMapping("/archives/save")
     @RequirePermission(Permission.PARSING_RULES_CREATE)
     @OperationLog(value = "保存仿真档案", type = OperationLog.OperationType.CREATE)
-    public Result<Void> saveArchive(@RequestBody SimulationArchiveEntity archive) {
+    public Result<SimulationArchiveEntity> saveArchive(@RequestBody SimulationArchiveEntity archive) {
         try {
             simulationArchiveService.saveArchive(archive);
-            return Result.success("仿真档案保存成功");
+            return Result.success("仿真档案保存成功", archive);
         } catch (Exception e) {
             log.error("保存仿真档案失败", e);
-            return Result.error("保存失败: " + e.getMessage());
+            return Result.<SimulationArchiveEntity>error("保存失败: " + e.getMessage());
         }
     }
 
@@ -234,8 +234,9 @@ public class SimulationArchiveController {
         // If createTime (archiveId) is provided, get the latest execution for that archive
         if (createTime != null) {
             try {
+                // 使用archiveId查询该档案的执行记录
                 List<SimulationExecutionEntity> executions = simulationExecutionService.queryExecutions(
-                    null, null, null, null, 1, 1);
+                    null, createTime, null, null, null, 1, 1);
                 if (executions != null && !executions.isEmpty()) {
                     return simulationExecutionService.getExecutionLog(executions.get(0).getTimestamp());
                 }
@@ -265,6 +266,7 @@ public class SimulationArchiveController {
         if (AuthUtil.isAdmin()) {
             return Result.success(simulationExecutionService.queryExecutions(
                 queryDto.getArchiveName(),
+                null,
                 queryDto.getStatus(),
                 queryDto.getStartTime(),
                 queryDto.getEndTime(),
@@ -288,6 +290,7 @@ public class SimulationArchiveController {
         int reqSize = queryDto.getPageSize() != null ? queryDto.getPageSize() : 10;
         List<SimulationExecutionEntity> all = simulationExecutionService.queryExecutions(
             queryDto.getArchiveName(),
+            null,
             queryDto.getStatus(),
             queryDto.getStartTime(),
             queryDto.getEndTime(),
@@ -334,6 +337,7 @@ public class SimulationArchiveController {
 
         List<SimulationExecutionEntity> all = simulationExecutionService.queryExecutions(
             queryDto.getArchiveName(),
+            null,
             queryDto.getStatus(),
             queryDto.getStartTime(),
             queryDto.getEndTime(),

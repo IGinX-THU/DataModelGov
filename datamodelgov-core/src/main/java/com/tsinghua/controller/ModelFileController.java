@@ -1,5 +1,6 @@
 package com.tsinghua.controller;
 
+import com.tsinghua.auth.util.AuthUtil;
 import com.tsinghua.entity.ModelMetaEntity;
 import com.tsinghua.model.Result;
 import com.tsinghua.dto.UploadResult;
@@ -130,6 +131,9 @@ public class ModelFileController {
     @PostMapping("/archive/query")
     @RequirePermission(Permission.MODEL_READ)
     public Result<List<ModelMetaEntity>> queryModelArchives(@RequestBody ModelArchiveQueryRequest request) {
+        if (!AuthUtil.isAdmin()) {
+            request.setAuthor(AuthUtil.getCurrentUsername());
+        }
         List<ModelMetaEntity> result = modelFileService.queryModelArchives(
             request.getName(),
             request.getProjectName(),
@@ -144,6 +148,9 @@ public class ModelFileController {
     @PostMapping("/archive/count")
     @RequirePermission(Permission.MODEL_READ)
     public Result<Object> countModelArchives(@RequestBody ModelArchiveQueryRequest request) {
+        if (!AuthUtil.isAdmin()) {
+            request.setAuthor(AuthUtil.getCurrentUsername());
+        }
         List<ModelMetaEntity> allArchives = modelFileService.queryModelArchives(
             request.getName(),
             request.getProjectName(),
