@@ -283,19 +283,13 @@ class DataVisualization extends HTMLElement {
                     
                     // 时间单位固定为MS（值为7），只计算间隔数值
                     const precision = intervalMs;
-                    const timePrecision = 7; // MS
+                    const timePrecision = 7; // MS（固定值）
                     
                     const precisionElement = this.shadowRoot.getElementById('precision');
-                    const timePrecisionElement = this.shadowRoot.getElementById('timePrecision');
                     
                     if (precisionElement) {
                         precisionElement.value = precision;
                         console.log('设置时间间隔:', precision);
-                    }
-                    
-                    if (timePrecisionElement) {
-                        timePrecisionElement.value = timePrecision;
-                        console.log('设置时间单位:', timePrecision, '(MS)');
                     }
                     
                     console.log(`数据量${totalCount}条超过100条，自动设置降采样间隔: ${precision}ms`);
@@ -853,12 +847,6 @@ class DataVisualization extends HTMLElement {
             precisionInput.value = '';
         }
 
-        // 重置时间单位为毫秒
-        const timePrecisionSelect = this.shadowRoot.getElementById('timePrecision');
-        if (timePrecisionSelect) {
-            timePrecisionSelect.value = '7'; // 默认毫秒
-        }
-
         // 清除快速选择按钮的选中状态
         const quickTimeBtns = this.shadowRoot.querySelectorAll('.quick-time-btn');
         quickTimeBtns.forEach(btn => {
@@ -1196,13 +1184,12 @@ class DataVisualization extends HTMLElement {
             const endTimeInput = this.shadowRoot.getElementById('endTime');
             const aggregationSelect = this.shadowRoot.getElementById('aggregationFunction');
             const precisionInput = this.shadowRoot.getElementById('precision');
-            const timePrecisionSelect = this.shadowRoot.getElementById('timePrecision');
 
             let startTime = null;
             let endTime = null;
             let aggregateType = null;
             let precision = null; // 不设置默认值，让后端处理
-            let timePrecision = 7; // 默认毫秒
+            let timePrecision = 7; // 固定为毫秒
 
             // 处理时间参数
             if (startTimeInput && startTimeInput.value) {
@@ -1251,10 +1238,7 @@ class DataVisualization extends HTMLElement {
                 precision = parseInt(precisionInput.value);
             }
 
-            // 处理时间单位参数
-            if (timePrecisionSelect && timePrecisionSelect.value) {
-                timePrecision = parseInt(timePrecisionSelect.value);
-            }
+            // 时间单位固定为毫秒，不再读取下拉框
 
             console.log('查询参数:', { startTime, endTime, aggregateType, precision, timePrecision });
 
@@ -1320,13 +1304,12 @@ class DataVisualization extends HTMLElement {
             const endTimeInput = this.shadowRoot.getElementById('endTime');
             const aggregationSelect = this.shadowRoot.getElementById('aggregationFunction');
             const precisionInput = this.shadowRoot.getElementById('precision');
-            const timePrecisionSelect = this.shadowRoot.getElementById('timePrecision');
 
             let startTime = null;
             let endTime = null;
             let aggregateType = null;
             let precision = null;
-            let timePrecision = 7;
+            let timePrecision = 7; // 固定为毫秒
 
             // 处理时间参数（与loadData方法相同的逻辑）
             if (startTimeInput && startTimeInput.value) {
@@ -1374,10 +1357,7 @@ class DataVisualization extends HTMLElement {
                 precision = parseInt(precisionInput.value);
             }
 
-            // 处理时间单位参数
-            if (timePrecisionSelect && timePrecisionSelect.value) {
-                timePrecision = parseInt(timePrecisionSelect.value);
-            }
+            // 时间单位固定为毫秒，不再读取下拉框
 
             console.log('导出参数:', { startTime, endTime, aggregateType, precision, timePrecision });
 
