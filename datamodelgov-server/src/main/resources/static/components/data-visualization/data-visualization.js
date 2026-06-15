@@ -242,6 +242,9 @@ class DataVisualization extends HTMLElement {
                         endTimeElement.value = endTime;
                         console.log('设置结束时间:', endTime);
                     }
+                    
+                    // 获取数据量并自动计算时间间隔
+                    await this.autoCalculatePrecision(tableName, timeRange.minKey, timeRange.maxKey);
                 } else {
                     console.warn('时间范围为空，使用默认值');
                     this.setFallbackTimeRange(startTimeElement, endTimeElement);
@@ -253,6 +256,55 @@ class DataVisualization extends HTMLElement {
         } catch (error) {
             console.error('获取时间范围异常:', error);
             this.setFallbackTimeRange(startTimeElement, endTimeElement);
+        }
+    }
+
+    async autoCalculatePrecision(tableName, minKey, maxKey) {
+        try {
+            // 调用count接口获取数据量
+            const countResult = await window.AppConfig.post('data', 'relational/count', {
+                tableName: tableName,
+                filters: null,
+                sortField: null,
+                sortDirection: null
+            });
+            
+            console.log('数据量查询结果:', countResult);
+            
+            if (countResult.success && countResult.data !== undefined) {
+                const totalCount = countResult.data;
+                console.log('数据总量:', totalCount);
+                
+                // 如果数据量超过100条，需要降采样
+                if (totalCount > 100) {
+                    const timeSpan = maxKey - minKey; // 毫秒
+                    const targetCount = 100;
+                    const intervalMs = Math.ceil(timeSpan / targetCount);
+                    
+                    // 时间单位固定为MS（值为7），只计算间隔数值
+                    const precision = intervalMs;
+                    const timePrecision = 7; // MS
+                    
+                    const precisionElement = this.shadowRoot.getElementById('precision');
+                    const timePrecisionElement = this.shadowRoot.getElementById('timePrecision');
+                    
+                    if (precisionElement) {
+                        precisionElement.value = precision;
+                        console.log('设置时间间隔:', precision);
+                    }
+                    
+                    if (timePrecisionElement) {
+                        timePrecisionElement.value = timePrecision;
+                        console.log('设置时间单位:', timePrecision, '(MS)');
+                    }
+                    
+                    console.log(`数据量${totalCount}条超过100条，自动设置降采样间隔: ${precision}ms`);
+                } else {
+                    console.log(`数据量${totalCount}条在100条以内，不需要降采样`);
+                }
+            }
+        } catch (error) {
+            console.error('获取数据量失败:', error);
         }
     }
 
@@ -277,7 +329,7 @@ class DataVisualization extends HTMLElement {
         }
     }
 
-    show(dataSource, points = [], tableData = null, keepQueryConditions = false) {
+    async show(dataSource, points = [], tableData = null, keepQueryConditions = false) {
         console.log('显示数据可视化:', dataSource, points, tableData, '保持查询条件:', keepQueryConditions);
         this.setAttribute('show', '');
         this.dataSource = dataSource;
@@ -299,7 +351,7 @@ class DataVisualization extends HTMLElement {
 
         // 如果不保持查询条件，自动设置默认时间
         if (!keepQueryConditions) {
-            this.setDefaultTimeRange();
+            await this.setDefaultTimeRange();
         }
 
         console.log('组件已显示，开始初始化...');
@@ -308,9 +360,6 @@ class DataVisualization extends HTMLElement {
         setTimeout(() => {
             // 更新已选测点列表
             this.updateSelectedPointsList();
-
-            // 不设置默认时间范围，让用户手动选择
-            console.log('🔍 不设置默认时间范围，等待用户手动选择');
 
             // 如果有传入的数据，处理它
             if (tableData) {
