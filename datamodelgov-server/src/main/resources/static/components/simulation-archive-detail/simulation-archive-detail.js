@@ -713,21 +713,23 @@ class SimulationArchiveDetail extends HTMLElement {
 
             g.addEventListener('mousedown', e => {
                 if (this.isAddingEdge) { this.handleEdgeClick(node.nodeId); return; }
-                if (!this.isEditMode) { this.selectNode(node.nodeId); e.stopPropagation(); return; }
-                draggingNode = node;
-                dragStartX = e.clientX - (node.positionX || 100);
-                dragStartY = e.clientY - (node.positionY || 100);
-                this.selectNode(node.nodeId);
-                e.stopPropagation();
+                if (this.isEditMode) {
+                    draggingNode = node;
+                    dragStartX = e.clientX - (node.positionX || 100);
+                    dragStartY = e.clientY - (node.positionY || 100);
+                    this.selectNode(node.nodeId);
+                    e.stopPropagation();
+                }
+                // 详情模式下不处理mousedown，让click事件处理
             });
 
             g.addEventListener('click', e => {
-                this.selectNode(node.nodeId);
-                e.stopPropagation();
-            });
-
-            g.addEventListener('dblclick', e => {
-                if (this.isEditMode) this.showNodeModal(node);
+                if (this.isEditMode) {
+                    this.selectNode(node.nodeId);
+                } else {
+                    // 详情模式下单击节点跳转到算法详情页
+                    this.navigateToAlgorithmDetail(node);
+                }
                 e.stopPropagation();
             });
 
@@ -825,6 +827,30 @@ class SimulationArchiveDetail extends HTMLElement {
             if (checkbox) {
                 checkbox.checked = !checkbox.checked;
             }
+        }
+    }
+
+    navigateToAlgorithmDetail(node) {
+        if (!node.algorithmName) {
+            this.showToast('该节点未配置算法', 'warning');
+            return;
+        }
+
+        const algorithmInfo = {
+            name: node.algorithmName,
+            version: node.algorithmVersion || 'latest'
+        };
+
+        // 先隐藏当前组件
+        this.hide();
+
+        const algorithmDetail = document.getElementById('algorithmDetail');
+        if (algorithmDetail && typeof algorithmDetail.show === 'function') {
+            algorithmDetail.show(algorithmInfo);
+        } else {
+            this.showToast('算法详情组件未找到', 'error');
+            // 如果失败，重新显示当前组件
+            this.show(this.currentArchive);
         }
     }
     selectEdge(edgeId) {
