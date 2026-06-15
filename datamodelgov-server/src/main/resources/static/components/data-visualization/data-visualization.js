@@ -433,6 +433,7 @@ class DataVisualization extends HTMLElement {
         this.updateTableHeader(tableData.header);
 
         // 保存实际的数据列（用于表格显示）
+        // 过滤掉key列，但保留window_start和window_end（时间窗口信息）
         this.actualDataColumns = tableData.header.filter(col => col !== 'key');
 
         // 保存表头信息（用于时间列检测）
@@ -456,6 +457,34 @@ class DataVisualization extends HTMLElement {
                 } catch (error) {
                     // 解析异常，保留原始值
                     processedRecord.timestamp = record.key;
+                }
+            }
+
+            // 如果有window_start列，尝试转换为时间戳
+            if (record.window_start !== undefined) {
+                try {
+                    const parsedTimestamp = new Date(record.window_start).getTime();
+                    if (this.isValidTimestamp(parsedTimestamp)) {
+                        processedRecord.window_start_timestamp = parsedTimestamp;
+                    } else {
+                        processedRecord.window_start_timestamp = record.window_start;
+                    }
+                } catch (error) {
+                    processedRecord.window_start_timestamp = record.window_start;
+                }
+            }
+
+            // 如果有window_end列，尝试转换为时间戳
+            if (record.window_end !== undefined) {
+                try {
+                    const parsedTimestamp = new Date(record.window_end).getTime();
+                    if (this.isValidTimestamp(parsedTimestamp)) {
+                        processedRecord.window_end_timestamp = parsedTimestamp;
+                    } else {
+                        processedRecord.window_end_timestamp = record.window_end;
+                    }
+                } catch (error) {
+                    processedRecord.window_end_timestamp = record.window_end;
                 }
             }
 
@@ -1684,21 +1713,42 @@ class DataVisualization extends HTMLElement {
         // 遍历显示数据中的所有数据点
         this.displayData.forEach(record => {
             this.selectedPoints.forEach(pointName => {
-                if (record[pointName] !== null && record[pointName] !== undefined && typeof record[pointName] === 'number') {
-                    minValue = Math.min(minValue, record[pointName]);
-                    maxValue = Math.max(maxValue, record[pointName]);
-                    hasData = true;
+                // 尝试各种可能的列名格式
+                const possibleColumns = [
+                    pointName,
+                    `first_value(${pointName})`,
+                    `max(${pointName})`,
+                    `min(${pointName})`,
+                    `sum(${pointName})`,
+                    `avg(${pointName})`,
+                    `count(${pointName})`,
+                    `last_value(${pointName})`,
+                    `first(${pointName})`,
+                    `last(${pointName})`
+                ];
+                
+                for (const col of possibleColumns) {
+                    const value = record[col] !== undefined ? record[col] : record.values && record.values[col] !== undefined ? record.values[col] : null;
+                    if (value !== null && value !== undefined && typeof value === 'number') {
+                        minValue = Math.min(minValue, value);
+                        maxValue = Math.max(maxValue, value);
+                        hasData = true;
+                        break; // 找到值后跳出循环
+                    }
                 }
             });
         });
 
         if (!hasData) {
+            console.warn('未找到数值数据，使用默认Y轴范围');
             return { min: 0, max: 100 }; // 默认范围
         }
 
         // 添加10%的边距，避免数据贴边
         const range = maxValue - minValue;
         const padding = range * 0.1;
+        
+        console.log('Y轴数据范围:', { minValue, maxValue, range, padding, finalMin: minValue - padding, finalMax: maxValue + padding });
         
         return {
             min: minValue - padding,
@@ -1872,9 +1922,30 @@ class DataVisualization extends HTMLElement {
             console.log('处理列:', column);
             
             // 检查该列是否为数值类型
+            // 优先检查聚合后的列名（如 first_value(project2.data.daoju.current.Z1)）
+            // 如果找不到，再检查原始列名
             const isNumericColumn = this.displayData.some(record => {
-                const value = record[column] !== undefined ? record[column] : record.values && record.values[column] !== undefined ? record.values[column] : null;
-                return typeof value === 'number';
+                // 尝试各种可能的列名格式
+                const possibleColumns = [
+                    column,
+                    `first_value(${column})`,
+                    `max(${column})`,
+                    `min(${column})`,
+                    `sum(${column})`,
+                    `avg(${column})`,
+                    `count(${column})`,
+                    `last_value(${column})`,
+                    `first(${column})`,
+                    `last(${column})`
+                ];
+                
+                for (const col of possibleColumns) {
+                    const value = record[col] !== undefined ? record[col] : record.values && record.values[col] !== undefined ? record.values[col] : null;
+                    if (typeof value === 'number') {
+                        return true;
+                    }
+                }
+                return false;
             });
 
             if (!isNumericColumn) {
@@ -1883,6 +1954,31 @@ class DataVisualization extends HTMLElement {
             }
 
             console.log('✅ 数值列检查通过:', column, '准备创建数据系列');
+            
+            // 找到实际存在的列名
+            let actualColumn = column;
+            const possibleColumns = [
+                column,
+                `first_value(${column})`,
+                `max(${column})`,
+                `min(${column})`,
+                `sum(${column})`,
+                `avg(${column})`,
+                `count(${column})`,
+                `last_value(${column})`,
+                `first(${column})`,
+                `last(${column})`
+            ];
+            
+            for (const col of possibleColumns) {
+                if (this.displayData.some(record => record[col] !== undefined || (record.values && record.values[col] !== undefined))) {
+                    actualColumn = col;
+                    break;
+                }
+            }
+            
+            console.log('🔍 实际使用的列名:', actualColumn);
+
             const data = this.displayData.map(record => {
                 let xValue;
                 if (xAxisColumn === 'key') {
@@ -1890,7 +1986,7 @@ class DataVisualization extends HTMLElement {
                 } else {
                     xValue = record[xAxisColumn] !== undefined ? record[xAxisColumn] : record.values && record.values[xAxisColumn] !== undefined ? record.values[xAxisColumn] : 0;
                 }
-                const yValue = record[column] !== undefined ? record[column] : record.values && record.values[column] !== undefined ? record.values[column] : 0;
+                const yValue = record[actualColumn] !== undefined ? record[actualColumn] : record.values && record.values[actualColumn] !== undefined ? record.values[actualColumn] : 0;
                 
                 // 收集X轴范围
                 if (typeof xValue === 'number' && !isNaN(xValue)) {
@@ -1904,7 +2000,7 @@ class DataVisualization extends HTMLElement {
 
             const color = this.getColorForPoint(column);
             const seriesItem = {
-                name: column,
+                name: actualColumn, // 使用实际列名作为系列名称
                 type: chartType,
                 data: data,
                 smooth: chartType === 'line',
@@ -1964,7 +2060,7 @@ class DataVisualization extends HTMLElement {
                 }
             },
             legend: {
-                data: yAxisColumns,
+                data: series.map(s => s.name), // 使用实际列名
                 top: 40,
                 left: 'center',
                 textStyle: {
@@ -2040,11 +2136,23 @@ class DataVisualization extends HTMLElement {
     }
 
     renderScatter(selectedXAxis, selectedYAxis) {
-        const actualColumns = this.actualDataColumns || [];
+        // 过滤掉window_start和window_end，只使用实际数据列
+        const actualColumns = this.actualDataColumns.filter(col => 
+            col !== 'window_start' && 
+            col !== 'window_end'
+        );
         
         // 确定X轴和Y轴列
-        const xAxisColumn = selectedXAxis || actualColumns[0];
-        const yAxisColumn = selectedYAxis || (actualColumns.length > 1 ? actualColumns[1] : actualColumns[0]);
+        // 如果只有一列数据，使用key作为X轴，数据列作为Y轴
+        let xAxisColumn, yAxisColumn;
+        
+        if (actualColumns.length === 1) {
+            xAxisColumn = 'key'; // 使用时间作为X轴
+            yAxisColumn = actualColumns[0]; // 使用唯一的数据列作为Y轴
+        } else {
+            xAxisColumn = selectedXAxis || actualColumns[0];
+            yAxisColumn = selectedYAxis || actualColumns[1];
+        }
 
         if (!xAxisColumn || !yAxisColumn) {
             this.showChartOverlay(`
@@ -2056,6 +2164,8 @@ class DataVisualization extends HTMLElement {
             return;
         }
 
+        console.log('散点图坐标轴:', { xAxisColumn, yAxisColumn });
+
         const data = this.displayData.map(record => {
             let xValue;
             if (xAxisColumn === 'key') {
@@ -2066,6 +2176,45 @@ class DataVisualization extends HTMLElement {
             const yValue = record[yAxisColumn] !== undefined ? record[yAxisColumn] : (record.values && record.values[yAxisColumn] !== undefined ? record.values[yAxisColumn] : 0);
             return [xValue, yValue];
         });
+
+        // 去重：如果有相同坐标的点，只保留一个
+        const uniqueData = [];
+        const seen = new Set();
+        data.forEach(([x, y]) => {
+            const key = `${x},${y}`;
+            if (!seen.has(key)) {
+                seen.add(key);
+                uniqueData.push([x, y]);
+            }
+        });
+
+        console.log(`散点图原始数据点: ${data.length}, 去重后: ${uniqueData.length}`);
+
+        // 计算X轴和Y轴的数据范围
+        let xMin = Infinity, xMax = -Infinity;
+        let yMin = Infinity, yMax = -Infinity;
+        
+        uniqueData.forEach(([x, y]) => {
+            if (typeof x === 'number' && !isNaN(x)) {
+                xMin = Math.min(xMin, x);
+                xMax = Math.max(xMax, x);
+            }
+            if (typeof y === 'number' && !isNaN(y)) {
+                yMin = Math.min(yMin, y);
+                yMax = Math.max(yMax, y);
+            }
+        });
+
+        // 添加10%的边距
+        const xRange = xMax - xMin;
+        const yRange = yMax - yMin;
+        const xPadding = xRange * 0.1;
+        const yPadding = yRange * 0.1;
+
+        const xAxisRange = xMin === Infinity ? { min: 0, max: 100 } : { min: xMin - xPadding, max: xMax + xPadding };
+        const yAxisRange = yMin === Infinity ? { min: 0, max: 100 } : { min: yMin - yPadding, max: yMax + yPadding };
+
+        console.log('散点图坐标轴范围:', { xAxisRange, yAxisRange });
 
         const option = {
             title: {
@@ -2087,7 +2236,9 @@ class DataVisualization extends HTMLElement {
                         xLabel = params.value[0].toFixed(2);
                     }
                     return `${xAxisColumn === 'key' ? '时间' : xAxisColumn}: ${xLabel}<br/>${yAxisColumn}: ${params.value[1].toFixed(2)}`;
-                }
+                },
+                confine: true,
+                appendToBody: false
             },
             grid: {
                 left: '10%',
@@ -2097,6 +2248,8 @@ class DataVisualization extends HTMLElement {
             },
             xAxis: {
                 type: 'value',
+                min: xAxisRange.min,
+                max: xAxisRange.max,
                 name: xAxisColumn === 'key' ? '' : xAxisColumn,
                 nameLocation: 'middle',
                 nameGap: 30,
@@ -2112,13 +2265,15 @@ class DataVisualization extends HTMLElement {
             },
             yAxis: {
                 type: 'value',
+                min: yAxisRange.min,
+                max: yAxisRange.max,
                 name: yAxisColumn,
                 nameLocation: 'middle',
                 nameGap: 40
             },
             series: [{
                 type: 'scatter',
-                data: data,
+                data: uniqueData,
                 symbolSize: 6,
                 itemStyle: {
                     color: '#3370ff'
@@ -2138,7 +2293,11 @@ class DataVisualization extends HTMLElement {
     }
 
     renderHistogram(selectedXAxis, selectedYAxis) {
-        const actualColumns = this.actualDataColumns || [];
+        // 过滤掉window_start和window_end，只使用实际数据列
+        const actualColumns = this.actualDataColumns.filter(col => 
+            col !== 'window_start' && 
+            col !== 'window_end'
+        );
         
         // 确定要统计的列
         const targetColumn = selectedYAxis || actualColumns.find(col => col !== 'key') || actualColumns[0];
@@ -2153,8 +2312,30 @@ class DataVisualization extends HTMLElement {
             return;
         }
 
-        // 收集数值数据
-        const values = this.displayData.map(record => record[targetColumn] !== undefined ? record[targetColumn] : 0).filter(v => typeof v === 'number');
+        // 收集数值数据（支持聚合列名）
+        const values = this.displayData.map(record => {
+            // 尝试各种可能的列名格式
+            const possibleColumns = [
+                targetColumn,
+                `first_value(${targetColumn})`,
+                `max(${targetColumn})`,
+                `min(${targetColumn})`,
+                `sum(${targetColumn})`,
+                `avg(${targetColumn})`,
+                `count(${targetColumn})`,
+                `last_value(${targetColumn})`,
+                `first(${targetColumn})`,
+                `last(${targetColumn})`
+            ];
+            
+            for (const col of possibleColumns) {
+                const value = record[col] !== undefined ? record[col] : record.values && record.values[col] !== undefined ? record.values[col] : null;
+                if (value !== null && value !== undefined && typeof value === 'number') {
+                    return value;
+                }
+            }
+            return 0;
+        }).filter(v => typeof v === 'number');
 
         if (values.length === 0) {
             this.showChartOverlay(`
@@ -2324,8 +2505,22 @@ class DataVisualization extends HTMLElement {
             // 实际数据列（不是选中测点）
             actualColumns.forEach(column => {
                 const td = document.createElement('td');
-                const value = record[column] !== undefined ? record[column] : record.values && record.values[column] !== undefined ? record.values[column] : '-';
-                td.textContent = typeof value === 'number' ? value.toFixed(2) : value;
+                let value = record[column] !== undefined ? record[column] : record.values && record.values[column] !== undefined ? record.values[column] : '-';
+                
+                // 对window_start和window_end列进行时间转换显示
+                if (column === 'window_start' && record.window_start_timestamp !== undefined) {
+                    if (this.isValidTimestamp(record.window_start_timestamp)) {
+                        value = new Date(record.window_start_timestamp).toLocaleString();
+                    }
+                } else if (column === 'window_end' && record.window_end_timestamp !== undefined) {
+                    if (this.isValidTimestamp(record.window_end_timestamp)) {
+                        value = new Date(record.window_end_timestamp).toLocaleString();
+                    }
+                } else if (typeof value === 'number') {
+                    value = value.toFixed(2);
+                }
+                
+                td.textContent = value;
                 tr.appendChild(td);
             });
 
