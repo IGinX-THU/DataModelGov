@@ -171,6 +171,10 @@ class ModelDetail extends HTMLElement {
                 console.log('获取模型元数据成功:', meta);
                 // 保存完整的接口数据
                 this.currentModelMeta = meta;
+                // 将fullPath合并到meta中，以便后续使用
+                if (modelInfo.fullPath) {
+                    meta.fullPath = modelInfo.fullPath;
+                }
                 this.updateContent(meta);
             } else {
                 console.error('获取元数据失败:', result.message);
@@ -235,7 +239,12 @@ class ModelDetail extends HTMLElement {
     
     updateVersionHistory(modelInfo) {
         // 调用接口获取版本历史数据
-        this.loadVersionHistory(modelInfo);
+        // 如果modelInfo中有fullPath，使用它；否则使用this.currentModel中的fullPath
+        const modelInfoWithPath = {
+            ...modelInfo,
+            fullPath: modelInfo.fullPath || (this.currentModel ? this.currentModel.fullPath : null)
+        };
+        this.loadVersionHistory(modelInfoWithPath);
     }
 
     async loadVersionHistory(modelInfo) {
@@ -245,16 +254,30 @@ class ModelDetail extends HTMLElement {
                 window.showGlobalLoading('正在加载版本历史...');
             }
 
-            // 获取当前项目名称
-            const username = window.localStorage.getItem('username');
-            const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
-            const projectName = cachedProject ? cachedProject.name : null;
+            // 从右侧资源树路径中提取项目名称
+            let projectName = null;
+            console.log('modelInfo.fullPath:', modelInfo.fullPath);
+            console.log('window.extractProjectNameFromPath存在:', typeof window.extractProjectNameFromPath);
+            if (modelInfo.fullPath && window.extractProjectNameFromPath) {
+                projectName = window.extractProjectNameFromPath(modelInfo.fullPath);
+                console.log('从路径提取的项目名称:', projectName);
+            }
+
+            // 如果没有从路径中提取到项目名称，尝试从localStorage获取
+            if (!projectName) {
+                const username = window.localStorage.getItem('username');
+                const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
+                projectName = cachedProject ? cachedProject.name : null;
+                console.log('从localStorage获取的项目名称:', projectName);
+            }
 
             // 使用新的API配置，传递项目名称
             const params = { name: modelInfo.name };
             if (projectName) {
                 params.projectName = projectName;
             }
+
+            console.log('版本历史查询参数:', params);
 
             const result = await window.AppConfig.get('model', 'history', params);
 

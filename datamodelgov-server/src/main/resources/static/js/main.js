@@ -807,9 +807,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 // 再次检查父节点也不是路径节点
                 if (modelName !== 'filesystem' && modelName !== 'models') {
                     console.log('找到模型名称（最后一级叶子节点的父节点）:', modelName, '版本号（最后一级叶子节点）:', nodeName);
+                    // 从当前选中节点（版本号节点）的data-full-path属性获取完整路径
+                    const fullPath = activeNode.getAttribute('data-full-path');
+                    console.log('版本历史使用的完整路径:', fullPath);
                     return {
                         name: modelName,
-                        version: nodeName
+                        version: nodeName,
+                        fullPath: fullPath // 保存完整路径用于提取项目名称
                     };
                 }
             }
@@ -866,6 +870,26 @@ document.addEventListener('DOMContentLoaded', function() {
         return path;
     }
 
+    // 从存储路径中提取项目名称
+    function extractProjectNameFromPath(path) {
+        if (!path) return null;
+        const prefixes = ['models_system.', 'algorithms_system.'];
+        for (const prefix of prefixes) {
+            if (path.startsWith(prefix)) {
+                // 去掉前缀后，第一部分就是项目名称
+                const withoutPrefix = path.substring(prefix.length);
+                const parts = withoutPrefix.split('.');
+                if (parts.length > 0) {
+                    return parts[0];
+                }
+            }
+        }
+        return null;
+    }
+
+    // 将提取项目名称的函数暴露到全局作用域
+    window.extractProjectNameFromPath = extractProjectNameFromPath;
+
     // 5. 右侧树节点单击事件 - 显示模型详情
     document.querySelectorAll('#modelTree .tree-node').forEach(node => {
         node.addEventListener('click', function() {
@@ -914,9 +938,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 // 再次检查父节点也不是路径节点
                 if (algorithmName !== 'filesystem' && algorithmName !== 'algorithms') {
                     console.log('找到算法名称（最后一级叶子节点的父节点）:', algorithmName, '版本号（最后一级叶子节点）:', nodeName);
+                    // 从当前选中节点（版本号节点）的data-full-path属性获取完整路径
+                    const fullPath = activeNode.getAttribute('data-full-path');
+                    console.log('版本历史使用的完整路径:', fullPath);
                     return {
                         name: algorithmName,
-                        version: nodeName
+                        version: nodeName,
+                        fullPath: fullPath // 保存完整路径用于提取项目名称
                     };
                 }
             }

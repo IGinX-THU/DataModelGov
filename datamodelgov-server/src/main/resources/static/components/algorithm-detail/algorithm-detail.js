@@ -193,6 +193,10 @@ class AlgorithmDetail extends HTMLElement {
                 console.log('获取算法元数据成功:', meta);
                 // 保存完整的接口数据
                 this.currentAlgorithmMeta = meta;
+                // 将fullPath合并到meta中，以便后续使用
+                if (algorithmInfo.fullPath) {
+                    meta.fullPath = algorithmInfo.fullPath;
+                }
                 this.updateContent(meta);
             } else {
                 console.error('获取元数据失败:', result.message);
@@ -326,7 +330,12 @@ class AlgorithmDetail extends HTMLElement {
 
     updateVersionHistory(algorithmInfo) {
         // 调用接口获取版本历史数据
-        this.loadVersionHistory(algorithmInfo);
+        // 如果algorithmInfo中有fullPath，使用它；否则使用this.currentAlgorithm中的fullPath
+        const algorithmInfoWithPath = {
+            ...algorithmInfo,
+            fullPath: algorithmInfo.fullPath || (this.currentAlgorithm ? this.currentAlgorithm.fullPath : null)
+        };
+        this.loadVersionHistory(algorithmInfoWithPath);
     }
 
     async loadVersionHistory(algorithmInfo) {
@@ -336,10 +345,18 @@ class AlgorithmDetail extends HTMLElement {
                 window.showGlobalLoading('正在加载版本历史...');
             }
 
-            // 获取当前项目名称
-            const username = window.localStorage.getItem('username');
-            const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
-            const projectName = cachedProject ? cachedProject.name : null;
+            // 从右侧资源树路径中提取项目名称
+            let projectName = null;
+            if (algorithmInfo.fullPath && window.extractProjectNameFromPath) {
+                projectName = window.extractProjectNameFromPath(algorithmInfo.fullPath);
+            }
+
+            // 如果没有从路径中提取到项目名称，尝试从localStorage获取
+            if (!projectName) {
+                const username = window.localStorage.getItem('username');
+                const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
+                projectName = cachedProject ? cachedProject.name : null;
+            }
 
             // 使用新的API配置，传递项目名称
             const params = { name: algorithmInfo.name };
