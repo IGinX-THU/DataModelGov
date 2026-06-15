@@ -160,6 +160,11 @@ class AlgorithmDetail extends HTMLElement {
         this.fromSimulationArchive = fromSimulationArchive;
         this.setAttribute('show', '');
         
+        // 保存仿真档案详情页的引用，以便返回时使用
+        if (fromSimulationArchive) {
+            this.simulationArchiveDetail = document.getElementById('simulationArchiveDetail');
+        }
+        
         // 隐藏仿真档案详情页
         const simulationArchiveDetail = document.getElementById('simulationArchiveDetail');
         if (simulationArchiveDetail) {
@@ -192,11 +197,20 @@ class AlgorithmDetail extends HTMLElement {
             } else {
                 console.error('获取元数据失败:', result.message);
                 this.showErrorMessage('获取算法信息失败');
+                // 如果是从仿真档案详情页跳转过来的，返回仿真档案详情页
+                if (this.fromSimulationArchive && this.simulationArchiveDetail) {
+                    this.hide();
+                    this.simulationArchiveDetail.style.display = 'block';
+                }
             }
         } catch (error) {
             console.error('加载算法数据失败:', error);
-            // 如果接口失败，使用默认值
-            this.updateContent(algorithmInfo);
+            this.showErrorMessage('获取算法信息失败');
+            // 如果是从仿真档案详情页跳转过来的，返回仿真档案详情页
+            if (this.fromSimulationArchive && this.simulationArchiveDetail) {
+                this.hide();
+                this.simulationArchiveDetail.style.display = 'block';
+            }
         } finally {
             // 隐藏全局loading
             if (window.hideGlobalLoading) {
