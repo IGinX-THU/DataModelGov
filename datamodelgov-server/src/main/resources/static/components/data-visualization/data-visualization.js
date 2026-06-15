@@ -877,10 +877,16 @@ class DataVisualization extends HTMLElement {
                 <div class="modal-body">
                     <div class="point-selector">
                         <label class="query-label">选择测点 (${parentPath}):</label>
+                        <div class="select-all-container" style="padding: 8px 0; border-bottom: 1px solid #e8e8e8; margin-bottom: 8px;">
+                            <label class="checkbox-item" style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" id="selectAllCheckbox" style="margin-right: 8px;">
+                                <span>全选</span>
+                            </label>
+                        </div>
                         <div class="checkbox-list" id="checkboxList" style="max-height: 300px; overflow-y: auto; border: 1px solid #d9d9d9; border-radius: 4px; padding: 12px;">
                             ${allSiblingPoints.map(point => `
                                 <label class="checkbox-item" style="display: flex; align-items: center; padding: 8px 0; cursor: pointer;">
-                                    <input type="checkbox" value="${point}" ${this.selectedPoints.has(point) ? 'checked' : ''} style="margin-right: 8px;">
+                                    <input type="checkbox" value="${point}" class="point-checkbox" ${this.selectedPoints.has(point) ? 'checked' : ''} style="margin-right: 8px;">
                                     <span>${point}</span>
                                 </label>
                             `).join('')}
@@ -901,6 +907,8 @@ class DataVisualization extends HTMLElement {
         const cancelBtn = modal.querySelector('#cancelBtn');
         const confirmBtn = modal.querySelector('#confirmBtn');
         const checkboxList = modal.querySelector('#checkboxList');
+        const selectAllCheckbox = modal.querySelector('#selectAllCheckbox');
+        const pointCheckboxes = modal.querySelectorAll('.point-checkbox');
 
         const closeModalHandler = () => {
             document.body.removeChild(modal);
@@ -908,6 +916,22 @@ class DataVisualization extends HTMLElement {
 
         closeModal.addEventListener('click', closeModalHandler);
         cancelBtn.addEventListener('click', closeModalHandler);
+
+        // 全选功能
+        selectAllCheckbox.addEventListener('change', (e) => {
+            const isChecked = e.target.checked;
+            pointCheckboxes.forEach(checkbox => {
+                checkbox.checked = isChecked;
+            });
+        });
+
+        // 当单个复选框变化时，更新全选复选框状态
+        pointCheckboxes.forEach(checkbox => {
+            checkbox.addEventListener('change', () => {
+                const allChecked = Array.from(pointCheckboxes).every(cb => cb.checked);
+                selectAllCheckbox.checked = allChecked;
+            });
+        });
 
         confirmBtn.addEventListener('click', () => {
             // 获取所有选中的复选框
