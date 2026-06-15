@@ -184,6 +184,99 @@ class DataVisualization extends HTMLElement {
         </div>`;
     }
 
+    getBeijingTime() {
+        const now = new Date();
+        const beijingTime = new Date(now.getTime() + (8 * 60 * 60 * 1000));
+        const year = beijingTime.getUTCFullYear();
+        const month = String(beijingTime.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(beijingTime.getUTCDate()).padStart(2, '0');
+        const hours = String(beijingTime.getUTCHours()).padStart(2, '0');
+        const minutes = String(beijingTime.getUTCMinutes()).padStart(2, '0');
+        const seconds = String(beijingTime.getUTCSeconds()).padStart(2, '0');
+        return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+    }
+
+    async setDefaultTimeRange() {
+        const startTimeElement = this.shadowRoot.getElementById('startTime');
+        const endTimeElement = this.shadowRoot.getElementById('endTime');
+        
+        // 从选中的测点中提取父级路径作为tableName
+        let tableName = null;
+        if (this.selectedPoints && this.selectedPoints.size > 0) {
+            const firstPoint = Array.from(this.selectedPoints)[0];
+            const pathParts = firstPoint.split('.');
+            // 去掉最后一级（测点名称），保留父级路径
+            tableName = pathParts.slice(0, -1).join('.');
+        }
+        
+        if (!tableName) {
+            console.warn('无法从测点提取tableName，使用默认时间');
+            this.setFallbackTimeRange(startTimeElement, endTimeElement);
+            return;
+        }
+
+        try {
+            // 调用接口获取数据源的时间范围
+            const result = await window.AppConfig.post('task', 'time-range', {
+                tableName: tableName,
+                inputsBind: []
+            });
+            
+            console.log('时间范围查询结果:', result);
+            
+            if (result.success && result.data) {
+                const timeRange = result.data;
+                
+                if (timeRange.minKey && timeRange.maxKey) {
+                    const startDate = new Date(timeRange.minKey);
+                    const endDate = new Date(timeRange.maxKey);
+                    const startTime = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}-${String(startDate.getDate()).padStart(2, '0')}T${String(startDate.getHours()).padStart(2, '0')}:${String(startDate.getMinutes()).padStart(2, '0')}:${String(startDate.getSeconds()).padStart(2, '0')}`;
+                    const endTime = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}T${String(endDate.getHours()).padStart(2, '0')}:${String(endDate.getMinutes()).padStart(2, '0')}:${String(endDate.getSeconds()).padStart(2, '0')}`;
+                    
+                    if (startTimeElement) {
+                        startTimeElement.value = startTime;
+                        console.log('设置开始时间:', startTime);
+                    }
+                    
+                    if (endTimeElement) {
+                        endTimeElement.value = endTime;
+                        console.log('设置结束时间:', endTime);
+                    }
+                } else {
+                    console.warn('时间范围为空，使用默认值');
+                    this.setFallbackTimeRange(startTimeElement, endTimeElement);
+                }
+            } else {
+                console.warn('获取时间范围失败:', result.message);
+                this.setFallbackTimeRange(startTimeElement, endTimeElement);
+            }
+        } catch (error) {
+            console.error('获取时间范围异常:', error);
+            this.setFallbackTimeRange(startTimeElement, endTimeElement);
+        }
+    }
+
+    setFallbackTimeRange(startTimeElement, endTimeElement) {
+        if (startTimeElement) {
+            // 开始时间设置为24小时前
+            const now = new Date();
+            const beijingTime = new Date(now.getTime() + (8 * 60 * 60 * 1000));
+            const dayAgo = new Date(beijingTime.getTime() - (24 * 60 * 60 * 1000));
+            const year = dayAgo.getUTCFullYear();
+            const month = String(dayAgo.getUTCMonth() + 1).padStart(2, '0');
+            const day = String(dayAgo.getUTCDate()).padStart(2, '0');
+            const hours = String(dayAgo.getUTCHours()).padStart(2, '0');
+            const minutes = String(dayAgo.getUTCMinutes()).padStart(2, '0');
+            const seconds = String(dayAgo.getUTCSeconds()).padStart(2, '0');
+            startTimeElement.value = `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+        }
+        
+        if (endTimeElement) {
+            // 结束时间设置为当前北京时间
+            endTimeElement.value = this.getBeijingTime();
+        }
+    }
+
     show(dataSource, points = [], tableData = null, keepQueryConditions = false) {
         console.log('显示数据可视化:', dataSource, points, tableData, '保持查询条件:', keepQueryConditions);
         this.setAttribute('show', '');
@@ -202,6 +295,11 @@ class DataVisualization extends HTMLElement {
         const dataSourceNameEl = this.shadowRoot.getElementById('dataSourceName');
         if (dataSourceNameEl) {
             dataSourceNameEl.textContent = '时序数据查询';
+        }
+
+        // 如果不保持查询条件，自动设置默认时间
+        if (!keepQueryConditions) {
+            this.setDefaultTimeRange();
         }
 
         console.log('组件已显示，开始初始化...');
