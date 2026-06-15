@@ -1,5 +1,6 @@
 package com.tsinghua.thrift;
 
+import com.tsinghua.util.ProjectContext;
 import com.tsinghua.dto.*;
 import com.tsinghua.entity.AlgorithmMetaEntity;
 import com.tsinghua.entity.AssociationRulesEntity;
@@ -950,8 +951,11 @@ public class ApiServiceImpl implements ApiService.Iface {
         try {
             log.info("Thrift RPC: Get model history {}", name);
             
+            // Get current project name
+            String projectName = com.tsinghua.util.ProjectContext.getCurrentProject("unknown");
+            
             // Call your existing service method directly
-            java.util.List<ModelMetaEntity> history = modelFileService.queryMetaList(name);
+            java.util.List<ModelMetaEntity> history = modelFileService.queryMetaList(name, projectName);
             
             // Convert result to JSON string
             String jsonData = convertListToJson(history);
@@ -1102,7 +1106,11 @@ public class ApiServiceImpl implements ApiService.Iface {
     public com.tsinghua.thrift.api.Result getAlgorithmHistory(String name) throws TException {
         try {
             log.info("Thrift RPC: Get algorithm history {}", name);
-            java.util.List<AlgorithmMetaEntity> history = algorithmFileService.queryMetaList(name);
+            
+            // Get current project name
+            String projectName = com.tsinghua.util.ProjectContext.getCurrentProject("unknown");
+            
+            java.util.List<AlgorithmMetaEntity> history = algorithmFileService.queryMetaList(name, projectName);
             String jsonData = convertListToJson(history);
             com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "Query successful");
             result.setData(jsonData);

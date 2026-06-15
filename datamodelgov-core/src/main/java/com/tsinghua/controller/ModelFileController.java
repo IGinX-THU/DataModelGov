@@ -99,8 +99,9 @@ public class ModelFileController {
     @GetMapping( "/history")
     @RequirePermission(Permission.MODEL_READ)
     public Result<?> queryMetaList(
-            @RequestParam("name") String name) {
-        return Result.success(modelFileService.queryMetaList(name));
+            @RequestParam("name") String name,
+            @RequestParam(value = "projectName", required = false) String projectName) {
+        return Result.success(modelFileService.queryMetaList(name, projectName));
     }
 
     @ApiOperation("移除模型资产")

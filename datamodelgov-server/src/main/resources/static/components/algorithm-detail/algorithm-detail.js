@@ -322,8 +322,18 @@ class AlgorithmDetail extends HTMLElement {
                 window.showGlobalLoading('正在加载版本历史...');
             }
 
-            // 使用新的API配置
-            const result = await window.AppConfig.get('algorithm', 'history', { name: algorithmInfo.name });
+            // 获取当前项目名称
+            const username = window.localStorage.getItem('username');
+            const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
+            const projectName = cachedProject ? cachedProject.name : null;
+
+            // 使用新的API配置，传递项目名称
+            const params = { name: algorithmInfo.name };
+            if (projectName) {
+                params.projectName = projectName;
+            }
+
+            const result = await window.AppConfig.get('algorithm', 'history', params);
 
             if (result.success && result.data) {
                 const historyData = result.data;

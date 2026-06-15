@@ -101,8 +101,9 @@ public class AlgorithmFileController {
     @GetMapping( "/history")
     @RequirePermission(Permission.READ)
     public Result<List<AlgorithmMetaEntity>> queryMetaList(
-            @RequestParam("name") String name) {
-        return Result.success(algorithmFileService.queryMetaList(name));
+            @RequestParam("name") String name,
+            @RequestParam(value = "projectName", required = false) String projectName) {
+        return Result.success(algorithmFileService.queryMetaList(name, projectName));
     }
 
     @ApiOperation("移除算法资产")

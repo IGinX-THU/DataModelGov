@@ -245,8 +245,18 @@ class ModelDetail extends HTMLElement {
                 window.showGlobalLoading('正在加载版本历史...');
             }
 
-            // 使用新的API配置
-            const result = await window.AppConfig.get('model', 'history', { name: modelInfo.name });
+            // 获取当前项目名称
+            const username = window.localStorage.getItem('username');
+            const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
+            const projectName = cachedProject ? cachedProject.name : null;
+
+            // 使用新的API配置，传递项目名称
+            const params = { name: modelInfo.name };
+            if (projectName) {
+                params.projectName = projectName;
+            }
+
+            const result = await window.AppConfig.get('model', 'history', params);
 
             if (result.success && result.data) {
                 const historyData = result.data;
