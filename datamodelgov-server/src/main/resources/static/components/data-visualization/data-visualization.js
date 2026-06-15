@@ -194,18 +194,9 @@ class DataVisualization extends HTMLElement {
         this._oldSize = this.selectedPoints ? this.selectedPoints.size : 0;
         this._wasShowingInappropriate = this.isShowingInappropriateState();
         
-        // 如果是新的显示，使用传入的测点；如果是已存在的组件，保持当前选中的测点
-        if (!this.selectedPoints || this.selectedPoints.size === 0) {
-            this.selectedPoints = new Set(points);
-        } else {
-            // 检查是否有新增测点
-            const newPoints = points.filter(p => !this.selectedPoints.has(p));
-            if (newPoints.length > 0) {
-                console.log('检测到新增测点:', newPoints);
-                // 添加新测点
-                newPoints.forEach(p => this.selectedPoints.add(p));
-            }
-        }
+        // 直接使用传入的测点，不累积添加
+        // 点击哪个就展示哪个，而不是累积多个测点
+        this.selectedPoints = new Set(points);
 
         // 设置数据源名称
         const dataSourceNameEl = this.shadowRoot.getElementById('dataSourceName');
@@ -523,6 +514,14 @@ class DataVisualization extends HTMLElement {
             });
         }
 
+        // 添加测点按钮
+        const addPointBtn = this.shadowRoot.getElementById('addPointBtn');
+        if (addPointBtn) {
+            addPointBtn.addEventListener('click', () => {
+                this.showAddPointModal();
+            });
+        }
+
         // 分页按钮事件绑定
         const prevBtn = this.shadowRoot.getElementById('prevBtn');
         if (prevBtn) {
@@ -821,6 +820,129 @@ class DataVisualization extends HTMLElement {
         if (overlay) {
             overlay.style.display = 'none';
         }
+    }
+
+    // 显示添加测点模态框
+    showAddPointModal() {
+        // 获取数据源树中的所有测点
+        const dataSourceTree = document.getElementById('dataSourceTree');
+        if (!dataSourceTree) {
+            console.error('数据源树不存在');
+            return;
+        }
+
+        // 获取当前选中的测点
+        const currentPoints = Array.from(this.selectedPoints);
+        if (currentPoints.length === 0) {
+            alert('当前没有选中的测点');
+            return;
+        }
+
+        // 获取当前选中测点的父节点路径
+        const currentPoint = currentPoints[0];
+        const pathParts = currentPoint.split('.');
+        const parentPath = pathParts.slice(0, -1).join('.');
+
+        // 获取当前数据源下的所有测点
+        const treeNodes = dataSourceTree.querySelectorAll('.tree-node');
+        const allSiblingPoints = [];
+
+        treeNodes.forEach(node => {
+            const fullPath = node.getAttribute('data-full-path');
+            const isLeaf = node.getAttribute('data-is-leaf') === 'true';
+            if (fullPath && isLeaf) {
+                // 检查是否是当前测点的兄弟节点（同一父节点）
+                const nodePathParts = fullPath.split('.');
+                const nodeParentPath = nodePathParts.slice(0, -1).join('.');
+                if (nodeParentPath === parentPath) {
+                    allSiblingPoints.push(fullPath);
+                }
+            }
+        });
+
+        if (allSiblingPoints.length === 0) {
+            alert('当前测点没有兄弟测点');
+            return;
+        }
+
+        // 创建模态框
+        const modal = document.createElement('div');
+        modal.className = 'modal-overlay';
+        modal.innerHTML = `
+            <div class="modal">
+                <div class="modal-header">
+                    <h3 class="modal-title">选择测点</h3>
+                    <button class="modal-close" id="closeModal">×</button>
+                </div>
+                <div class="modal-body">
+                    <div class="point-selector">
+                        <label class="query-label">选择测点 (${parentPath}):</label>
+                        <div class="checkbox-list" id="checkboxList" style="max-height: 300px; overflow-y: auto; border: 1px solid #d9d9d9; border-radius: 4px; padding: 12px;">
+                            ${allSiblingPoints.map(point => `
+                                <label class="checkbox-item" style="display: flex; align-items: center; padding: 8px 0; cursor: pointer;">
+                                    <input type="checkbox" value="${point}" ${this.selectedPoints.has(point) ? 'checked' : ''} style="margin-right: 8px;">
+                                    <span>${point}</span>
+                                </label>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="modal-btn" id="cancelBtn">取消</button>
+                    <button class="modal-btn primary" id="confirmBtn">确定</button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+
+        // 绑定事件
+        const closeModal = modal.querySelector('#closeModal');
+        const cancelBtn = modal.querySelector('#cancelBtn');
+        const confirmBtn = modal.querySelector('#confirmBtn');
+        const checkboxList = modal.querySelector('#checkboxList');
+
+        const closeModalHandler = () => {
+            document.body.removeChild(modal);
+        };
+
+        closeModal.addEventListener('click', closeModalHandler);
+        cancelBtn.addEventListener('click', closeModalHandler);
+
+        confirmBtn.addEventListener('click', () => {
+            // 获取所有选中的复选框
+            const checkedBoxes = checkboxList.querySelectorAll('input[type="checkbox"]:checked');
+            const selectedPoints = Array.from(checkedBoxes).map(checkbox => checkbox.value);
+
+            if (selectedPoints.length === 0) {
+                alert('请至少选择一个测点');
+                return;
+            }
+
+            // 更新选中的测点
+            this.selectedPoints = new Set(selectedPoints);
+            
+            // 更新全局选中的测点
+            if (window.selectedDataPoints) {
+                window.selectedDataPoints.clear();
+                selectedPoints.forEach(point => window.selectedDataPoints.add(point));
+            }
+
+            // 更新显示
+            this.updateSelectedPointsList();
+            
+            // 重新加载数据
+            this.loadData();
+            
+            closeModalHandler();
+        });
+
+        // 点击模态框外部关闭
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                closeModalHandler();
+            }
+        });
     }
 
     // 检查是否正在显示"数据不适合图表展示"状态

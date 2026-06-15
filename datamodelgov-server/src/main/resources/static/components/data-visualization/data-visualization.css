@@ -489,6 +489,28 @@
     color: white;
 }
 
+.add-point-btn {
+    background: #3370ff;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    font-size: 18px;
+    font-weight: bold;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    flex-shrink: 0;
+}
+
+.add-point-btn:hover {
+    background: #1e5fcc;
+    transform: scale(1.1);
+}
+
 .table-wrapper {
     overflow-x: auto; /* 表格容器添加横向滚动条 */
     position: relative;

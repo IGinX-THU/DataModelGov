@@ -1957,8 +1957,10 @@ function showSimulationRecord() {
         console.log('是否为测点:', isDataPoint);
         
         if (isDataPoint) {
+            // 直接替换为当前点击的测点，不累积
+            window.selectedDataPoints.clear();
             window.selectedDataPoints.add(dataSource);
-            console.log('添加测点到已选列表:', dataSource);
+            console.log('设置当前测点:', dataSource);
         } else {
             console.log('跳过非测点节点:', dataSource);
         }
