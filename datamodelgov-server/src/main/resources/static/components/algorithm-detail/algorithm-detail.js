@@ -3,6 +3,7 @@ class AlgorithmDetail extends HTMLElement {
         super();
         this.attachShadow({ mode: 'open' });
         this.currentAlgorithm = null;
+        this.fromSimulationArchive = false; // 标记是否从仿真档案详情页跳转过来
     }
 
     async connectedCallback() {
@@ -98,6 +99,13 @@ class AlgorithmDetail extends HTMLElement {
         if (closeBtn) {
             closeBtn.addEventListener('click', () => {
                 this.hide();
+                // 如果是从仿真档案详情页跳转过来的，返回仿真档案详情页
+                if (this.fromSimulationArchive) {
+                    const simulationArchiveDetail = document.getElementById('simulationArchiveDetail');
+                    if (simulationArchiveDetail && simulationArchiveDetail.currentArchive) {
+                        simulationArchiveDetail.show(simulationArchiveDetail.currentArchive);
+                    }
+                }
             });
         }
         
@@ -147,9 +155,17 @@ class AlgorithmDetail extends HTMLElement {
         });
     }
 
-    show(algorithmInfo) {
+    show(algorithmInfo, fromSimulationArchive = false) {
         this.currentAlgorithm = algorithmInfo;
+        this.fromSimulationArchive = fromSimulationArchive;
         this.setAttribute('show', '');
+        
+        // 隐藏仿真档案详情页
+        const simulationArchiveDetail = document.getElementById('simulationArchiveDetail');
+        if (simulationArchiveDetail) {
+            simulationArchiveDetail.style.display = 'none';
+        }
+        
         // 调用接口获取算法元数据
         this.loadAlgorithmData(algorithmInfo);
     }

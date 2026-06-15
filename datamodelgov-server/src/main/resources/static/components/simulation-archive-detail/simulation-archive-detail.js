@@ -841,16 +841,12 @@ class SimulationArchiveDetail extends HTMLElement {
             version: node.algorithmVersion || 'latest'
         };
 
-        // 先隐藏当前组件
-        this.hide();
-
         const algorithmDetail = document.getElementById('algorithmDetail');
         if (algorithmDetail && typeof algorithmDetail.show === 'function') {
-            algorithmDetail.show(algorithmInfo);
+            // 传入true表示从仿真档案详情页跳转过来
+            algorithmDetail.show(algorithmInfo, true);
         } else {
             this.showToast('算法详情组件未找到', 'error');
-            // 如果失败，重新显示当前组件
-            this.show(this.currentArchive);
         }
     }
     selectEdge(edgeId) {
