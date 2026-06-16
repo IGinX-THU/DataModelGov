@@ -321,7 +321,7 @@ public class ProjectImportService {
                 AlgorithmMetaEntity existing = algorithmFileService.queryMeta(name, version, projectName);
                 if (existing != null) {
                     log.warn("算法 {} v{} 已存在于项目 {} 中，跳过导入", name, version, projectName);
-                    skippedList.add(name + " v" + version);
+                    skippedList.add(name + " " + version);
                     continue;
                 }
 
@@ -402,7 +402,7 @@ public class ProjectImportService {
                 ModelMetaEntity existing = modelFileService.queryMeta(name, version, projectName);
                 if (existing != null) {
                     log.warn("模型 {} v{} 已存在于项目 {} 中，跳过导入", name, version, projectName);
-                    skippedList.add(name + " v" + version);
+                    skippedList.add(name + " " + version);
                     continue;
                 }
 
