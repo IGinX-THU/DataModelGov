@@ -713,21 +713,23 @@ class SimulationArchiveDetail extends HTMLElement {
 
             g.addEventListener('mousedown', e => {
                 if (this.isAddingEdge) { this.handleEdgeClick(node.nodeId); return; }
-                if (!this.isEditMode) { this.selectNode(node.nodeId); e.stopPropagation(); return; }
-                draggingNode = node;
-                dragStartX = e.clientX - (node.positionX || 100);
-                dragStartY = e.clientY - (node.positionY || 100);
-                this.selectNode(node.nodeId);
-                e.stopPropagation();
+                if (this.isEditMode) {
+                    draggingNode = node;
+                    dragStartX = e.clientX - (node.positionX || 100);
+                    dragStartY = e.clientY - (node.positionY || 100);
+                    this.selectNode(node.nodeId);
+                    e.stopPropagation();
+                }
+                // 详情模式下不处理mousedown，让click事件处理
             });
 
             g.addEventListener('click', e => {
-                this.selectNode(node.nodeId);
-                e.stopPropagation();
-            });
-
-            g.addEventListener('dblclick', e => {
-                if (this.isEditMode) this.showNodeModal(node);
+                if (this.isEditMode) {
+                    this.selectNode(node.nodeId);
+                } else {
+                    // 详情模式下单击节点跳转到算法详情页
+                    this.navigateToAlgorithmDetail(node);
+                }
                 e.stopPropagation();
             });
 
@@ -825,6 +827,27 @@ class SimulationArchiveDetail extends HTMLElement {
             if (checkbox) {
                 checkbox.checked = !checkbox.checked;
             }
+        }
+    }
+
+    navigateToAlgorithmDetail(node) {
+        if (!node.algorithmName) {
+            this.showToast('该节点未配置算法', 'warning');
+            return;
+        }
+
+        const algorithmInfo = {
+            name: node.algorithmName,
+            version: node.algorithmVersion || 'latest',
+            fullPath: this.currentArchive?.projectName ? `algorithms_system.${this.currentArchive.projectName}.${node.algorithmName}.${node.algorithmVersion}` : null
+        };
+
+        const algorithmDetail = document.getElementById('algorithmDetail');
+        if (algorithmDetail && typeof algorithmDetail.show === 'function') {
+            // 传入true表示从仿真档案详情页跳转过来
+            algorithmDetail.show(algorithmInfo, true);
+        } else {
+            this.showToast('算法详情组件未找到', 'error');
         }
     }
     selectEdge(edgeId) {
@@ -940,11 +963,15 @@ class SimulationArchiveDetail extends HTMLElement {
     async loadTimeRangeForAlgorithm(algorithmName, algorithmVersion) {
         try {
             console.log('开始获取算法时间范围:', algorithmName, algorithmVersion);
-            
+
+            // 从当前档案中获取projectName
+            const projectName = this.currentArchive?.projectName || null;
+
             // 获取算法元数据
             const metaResult = await window.AppConfig.get('algorithm', 'metas', {
                 name: algorithmName,
-                version: algorithmVersion
+                version: algorithmVersion,
+                projectName: projectName
             });
             
             if (!metaResult.success || !metaResult.data) {
@@ -1148,7 +1175,7 @@ class SimulationArchiveDetail extends HTMLElement {
         this.hideNodeModal();
     }
 
-    editAlgorithmArchive() {
+    async editAlgorithmArchive() {
         if (!this.selectedNode) {
             this.showToast('请先在图中选择一个算法节点', 'warning');
             return;
@@ -1158,12 +1185,51 @@ class SimulationArchiveDetail extends HTMLElement {
             this.showToast('该节点未配置算法', 'warning');
             return;
         }
-        // Open the algorithm-edit component
-        const algoEdit = document.getElementById('algorithmEdit');
-        if (algoEdit && typeof algoEdit.show === 'function') {
-            algoEdit.show({ name: node.algorithmName, version: node.algorithmVersion });
-        } else {
-            this.showToast('算法编辑组件未加载', 'error');
+        
+        try {
+            // 显示loading
+            if (window.showGlobalLoading) {
+                window.showGlobalLoading('正在加载算法信息...');
+            }
+            
+            // 先获取完整的算法元数据
+            const algorithmInfo = {
+                name: node.algorithmName,
+                version: node.algorithmVersion,
+                fullPath: this.currentArchive?.projectName ? `algorithms_system.${this.currentArchive.projectName}.${node.algorithmName}.${node.algorithmVersion}` : null
+            };
+            
+            // 从fullPath中提取projectName
+            let projectName = null;
+            if (algorithmInfo.fullPath && window.extractProjectNameFromPath) {
+                projectName = window.extractProjectNameFromPath(algorithmInfo.fullPath);
+            }
+            
+            // 调用API获取完整的算法元数据
+            const result = await window.AppConfig.get('algorithm', 'metas', {
+                name: algorithmInfo.name,
+                version: algorithmInfo.version,
+                projectName: projectName
+            });
+            
+            if (result.success && result.data) {
+                // 使用showWithAlgorithmData方法，传递完整的算法元数据
+                const algoEdit = document.getElementById('algorithmEdit');
+                if (algoEdit && typeof algoEdit.showWithAlgorithmData === 'function') {
+                    algoEdit.showWithAlgorithmData(algorithmInfo, result.data);
+                } else {
+                    this.showToast('算法编辑组件未加载', 'error');
+                }
+            } else {
+                this.showToast('获取算法信息失败: ' + (result.message || '未知错误'), 'error');
+            }
+        } catch (error) {
+            console.error('加载算法信息失败:', error);
+            this.showToast('加载算法信息失败', 'error');
+        } finally {
+            if (window.hideGlobalLoading) {
+                window.hideGlobalLoading();
+            }
         }
     }
 
@@ -1281,11 +1347,15 @@ class SimulationArchiveDetail extends HTMLElement {
             $('edgeSourceField').placeholder = srcNode ? `${srcNode.nodeName} 的输出字段` : '源节点输出文件名';
             $('edgeTargetField').placeholder = tgtNode ? `${tgtNode.nodeName} 的输入字段` : '目标节点输入文件名';
 
+            // 从当前档案中获取projectName
+            const projectName = this.currentArchive?.projectName || null;
+
             if (srcNode && srcNode.algorithmName && srcNode.algorithmVersion) {
                 try {
                     const sourceMeta = await window.AppConfig.get('algorithm', 'metas', {
                         name: srcNode.algorithmName,
-                        version: srcNode.algorithmVersion
+                        version: srcNode.algorithmVersion,
+                        projectName: projectName
                     });
                     if (sourceMeta && sourceMeta.success && sourceMeta.data && sourceMeta.data.outputCsvName) {
                         if (!$('edgeSourceField').value) {
@@ -1298,7 +1368,8 @@ class SimulationArchiveDetail extends HTMLElement {
                 try {
                     const targetMeta = await window.AppConfig.get('algorithm', 'metas', {
                         name: tgtNode.algorithmName,
-                        version: tgtNode.algorithmVersion
+                        version: tgtNode.algorithmVersion,
+                        projectName: projectName
                     });
                     if (targetMeta && targetMeta.success && targetMeta.data && targetMeta.data.inputCsvName) {
                         if (!$('edgeTargetField').value) {

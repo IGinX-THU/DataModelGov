@@ -154,7 +154,7 @@ const MENU_ID_MAP = {
         action: 'handleDeleteAlgorithm'
     },
     'menu-configure-parsing-rules': {
-        text: '通用解析规则',
+        text: '算法/模型解析规则',
         action: 'showParsingRules'
     },
     'menu-association-rule-configuration': {

@@ -83,8 +83,9 @@ public class AlgorithmFileController {
     @RequirePermission(Permission.READ)
     public Result<AlgorithmMetaEntity> queryMeta(
             @RequestParam("name") String name,
-            @RequestParam("version") String version) throws Exception {
-        AlgorithmMetaEntity result = algorithmFileService.queryMeta(name, version);
+            @RequestParam("version") String version,
+            @RequestParam(value = "projectName", required = false) String projectName) throws Exception {
+        AlgorithmMetaEntity result = algorithmFileService.queryMeta(name, version, projectName);
         return Result.success(result);
     }
 
@@ -101,8 +102,9 @@ public class AlgorithmFileController {
     @GetMapping( "/history")
     @RequirePermission(Permission.READ)
     public Result<List<AlgorithmMetaEntity>> queryMetaList(
-            @RequestParam("name") String name) {
-        return Result.success(algorithmFileService.queryMetaList(name));
+            @RequestParam("name") String name,
+            @RequestParam(value = "projectName", required = false) String projectName) {
+        return Result.success(algorithmFileService.queryMetaList(name, projectName));
     }
 
     @ApiOperation("移除算法资产")
@@ -111,8 +113,9 @@ public class AlgorithmFileController {
     @OperationLog(value = "移除算法资产", type = OperationLog.OperationType.DELETE)
     public Result<Void> handleDelete(
             @RequestParam("name") String name,
-            @RequestParam(value = "version", required = false) String version) throws Exception {
-        algorithmFileService.deleteAlgorithm(name, version);
+            @RequestParam(value = "version", required = false) String version,
+            @RequestParam(value = "projectName", required = false) String projectName) throws Exception {
+        algorithmFileService.deleteAlgorithm(name, version, projectName);
         return Result.success("操作成功");
     }
 

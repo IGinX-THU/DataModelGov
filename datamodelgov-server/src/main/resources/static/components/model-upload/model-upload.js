@@ -226,6 +226,22 @@ class ModelUpload extends HTMLElement {
             });
         }
 
+        // 模型名称输入框变化时自动生成版本号
+        const modelNameInput = this.shadowRoot.getElementById('modelName');
+        if (modelNameInput) {
+            modelNameInput.addEventListener('input', () => {
+                this.generateSuggestedVersion();
+            });
+        }
+
+        // 模型名称下拉框变化时自动生成版本号
+        const modelNameSelect = this.shadowRoot.getElementById('modelNameSelect');
+        if (modelNameSelect) {
+            modelNameSelect.addEventListener('change', () => {
+                this.generateSuggestedVersion();
+            });
+        }
+
         // 是否关联已有模型变化事件
         const isRelatedModelYes = this.shadowRoot.getElementById('isRelatedModelYes');
         const isRelatedModelNo = this.shadowRoot.getElementById('isRelatedModelNo');
@@ -248,6 +264,106 @@ class ModelUpload extends HTMLElement {
                 this.hide();
             }
         });
+    }
+
+    async generateSuggestedVersion() {
+        try {
+            // 获取当前模型名称
+            let modelName = '';
+            
+            // 优先从弹窗中获取元素
+            const modal = document.querySelector('.modal-overlay');
+            if (modal) {
+                const modalContainer = modal.querySelector('.modal-container');
+                if (modalContainer) {
+                    const isRelatedModelYes = modalContainer.querySelector('#isRelatedModelYes');
+                    const modelNameInput = modalContainer.querySelector('#modelName');
+                    const modelNameSelect = modalContainer.querySelector('#modelNameSelect');
+                    
+                    if (isRelatedModelYes && isRelatedModelYes.checked && modelNameSelect) {
+                        modelName = modelNameSelect.value;
+                    } else if (modelNameInput) {
+                        modelName = modelNameInput.value;
+                    }
+                }
+            }
+            
+            // 如果弹窗中没有找到，尝试从Shadow DOM中获取
+            if (!modelName) {
+                const isRelatedModelYes = this.shadowRoot.getElementById('isRelatedModelYes');
+                const modelNameInput = this.shadowRoot.getElementById('modelName');
+                const modelNameSelect = this.shadowRoot.getElementById('modelNameSelect');
+                
+                if (isRelatedModelYes && isRelatedModelYes.checked && modelNameSelect) {
+                    modelName = modelNameSelect.value;
+                } else if (modelNameInput) {
+                    modelName = modelNameInput.value;
+                }
+            }
+            
+            if (!modelName) {
+                return; // 没有模型名称，不生成版本号
+            }
+            
+            // 获取当前项目名称
+            const username = window.localStorage.getItem('username');
+            const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
+            const projectName = cachedProject ? cachedProject.name : null;
+            
+            // 调用后端API获取版本历史
+            const params = { name: modelName };
+            if (projectName) {
+                params.projectName = projectName;
+            }
+            
+            const result = await window.AppConfig.get('model', 'history', params);
+            
+            if (result.success && result.data && result.data.length > 0) {
+                // 获取最新版本号
+                const latestVersion = result.data[0].version;
+                if (latestVersion) {
+                    // 解析版本号并累加小版本号
+                    // 支持两种格式：v1_0_0 或 1.0.0
+                    let parts;
+                    if (latestVersion.startsWith('v')) {
+                        parts = latestVersion.substring(1).split('_');
+                    } else {
+                        parts = latestVersion.split('.');
+                    }
+                    
+                    if (parts.length >= 3) {
+                        try {
+                            const major = parseInt(parts[0]);
+                            const minor = parseInt(parts[1]);
+                            const patch = parseInt(parts[2]);
+                            const newVersion = `v${major}_${minor}_${patch + 1}`;
+                            
+                            // 填充到版本号输入框
+                            const modelVersion = modal ? 
+                                modal.querySelector('.modal-container #modelVersion') : 
+                                this.shadowRoot.getElementById('modelVersion');
+                            
+                            if (modelVersion) {
+                                modelVersion.value = newVersion;
+                            }
+                        } catch (e) {
+                            console.warn('版本号解析失败:', e);
+                        }
+                    }
+                }
+            } else {
+                // 没有版本历史，使用默认版本v1_0_0
+                const modelVersion = modal ? 
+                    modal.querySelector('.modal-container #modelVersion') : 
+                    this.shadowRoot.getElementById('modelVersion');
+                
+                if (modelVersion) {
+                    modelVersion.value = 'v1_0_0';
+                }
+            }
+        } catch (error) {
+            console.error('生成建议版本号失败:', error);
+        }
     }
 
     handleRelatedModelChange() {
@@ -589,6 +705,21 @@ class ModelUpload extends HTMLElement {
             
             // 绑定单选按钮事件
             this.bindRadioEvents(modalElement);
+            
+            // 绑定模型名称输入框和下拉框事件，用于自动生成版本号
+            const modelNameInput = modalElement.querySelector('#modelName');
+            if (modelNameInput) {
+                modelNameInput.addEventListener('input', () => {
+                    this.generateSuggestedVersion();
+                });
+            }
+            
+            const modelNameSelect = modalElement.querySelector('#modelNameSelect');
+            if (modelNameSelect) {
+                modelNameSelect.addEventListener('change', () => {
+                    this.generateSuggestedVersion();
+                });
+            }
             
             // 在DOM完全准备好后预加载模型名称数据
             this.loadModelNames();

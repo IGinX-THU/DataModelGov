@@ -3,6 +3,7 @@ class AlgorithmDetail extends HTMLElement {
         super();
         this.attachShadow({ mode: 'open' });
         this.currentAlgorithm = null;
+        this.fromSimulationArchive = false; // 标记是否从仿真档案详情页跳转过来
     }
 
     async connectedCallback() {
@@ -98,6 +99,13 @@ class AlgorithmDetail extends HTMLElement {
         if (closeBtn) {
             closeBtn.addEventListener('click', () => {
                 this.hide();
+                // 如果是从仿真档案详情页跳转过来的，返回仿真档案详情页
+                if (this.fromSimulationArchive) {
+                    const simulationArchiveDetail = document.getElementById('simulationArchiveDetail');
+                    if (simulationArchiveDetail && simulationArchiveDetail.currentArchive) {
+                        simulationArchiveDetail.show(simulationArchiveDetail.currentArchive);
+                    }
+                }
             });
         }
         
@@ -147,9 +155,22 @@ class AlgorithmDetail extends HTMLElement {
         });
     }
 
-    show(algorithmInfo) {
+    show(algorithmInfo, fromSimulationArchive = false) {
         this.currentAlgorithm = algorithmInfo;
+        this.fromSimulationArchive = fromSimulationArchive;
         this.setAttribute('show', '');
+        
+        // 保存仿真档案详情页的引用，以便返回时使用
+        if (fromSimulationArchive) {
+            this.simulationArchiveDetail = document.getElementById('simulationArchiveDetail');
+        }
+        
+        // 隐藏仿真档案详情页
+        const simulationArchiveDetail = document.getElementById('simulationArchiveDetail');
+        if (simulationArchiveDetail) {
+            simulationArchiveDetail.style.display = 'none';
+        }
+        
         // 调用接口获取算法元数据
         this.loadAlgorithmData(algorithmInfo);
     }
@@ -161,10 +182,17 @@ class AlgorithmDetail extends HTMLElement {
                 window.showGlobalLoading('正在加载算法信息...');
             }
 
+            // 从fullPath中提取projectName
+            let projectName = null;
+            if (algorithmInfo.fullPath && window.extractProjectNameFromPath) {
+                projectName = window.extractProjectNameFromPath(algorithmInfo.fullPath);
+            }
+
             // 使用新的API配置
             const result = await window.AppConfig.get('algorithm', 'metas', {
                 name: algorithmInfo.name,
-                version: algorithmInfo.version
+                version: algorithmInfo.version,
+                projectName: projectName
             });
 
             if (result.success && result.data) {
@@ -172,15 +200,28 @@ class AlgorithmDetail extends HTMLElement {
                 console.log('获取算法元数据成功:', meta);
                 // 保存完整的接口数据
                 this.currentAlgorithmMeta = meta;
+                // 将fullPath合并到meta中，以便后续使用
+                if (algorithmInfo.fullPath) {
+                    meta.fullPath = algorithmInfo.fullPath;
+                }
                 this.updateContent(meta);
             } else {
                 console.error('获取元数据失败:', result.message);
                 this.showErrorMessage('获取算法信息失败');
+                // 如果是从仿真档案详情页跳转过来的，返回仿真档案详情页
+                if (this.fromSimulationArchive && this.simulationArchiveDetail) {
+                    this.hide();
+                    this.simulationArchiveDetail.style.display = 'block';
+                }
             }
         } catch (error) {
             console.error('加载算法数据失败:', error);
-            // 如果接口失败，使用默认值
-            this.updateContent(algorithmInfo);
+            this.showErrorMessage('获取算法信息失败');
+            // 如果是从仿真档案详情页跳转过来的，返回仿真档案详情页
+            if (this.fromSimulationArchive && this.simulationArchiveDetail) {
+                this.hide();
+                this.simulationArchiveDetail.style.display = 'block';
+            }
         } finally {
             // 隐藏全局loading
             if (window.hideGlobalLoading) {
@@ -296,7 +337,12 @@ class AlgorithmDetail extends HTMLElement {
 
     updateVersionHistory(algorithmInfo) {
         // 调用接口获取版本历史数据
-        this.loadVersionHistory(algorithmInfo);
+        // 如果algorithmInfo中有fullPath，使用它；否则使用this.currentAlgorithm中的fullPath
+        const algorithmInfoWithPath = {
+            ...algorithmInfo,
+            fullPath: algorithmInfo.fullPath || (this.currentAlgorithm ? this.currentAlgorithm.fullPath : null)
+        };
+        this.loadVersionHistory(algorithmInfoWithPath);
     }
 
     async loadVersionHistory(algorithmInfo) {
@@ -306,8 +352,26 @@ class AlgorithmDetail extends HTMLElement {
                 window.showGlobalLoading('正在加载版本历史...');
             }
 
-            // 使用新的API配置
-            const result = await window.AppConfig.get('algorithm', 'history', { name: algorithmInfo.name });
+            // 从右侧资源树路径中提取项目名称
+            let projectName = null;
+            if (algorithmInfo.fullPath && window.extractProjectNameFromPath) {
+                projectName = window.extractProjectNameFromPath(algorithmInfo.fullPath);
+            }
+
+            // 如果没有从路径中提取到项目名称，尝试从localStorage获取
+            if (!projectName) {
+                const username = window.localStorage.getItem('username');
+                const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
+                projectName = cachedProject ? cachedProject.name : null;
+            }
+
+            // 使用新的API配置，传递项目名称
+            const params = { name: algorithmInfo.name };
+            if (projectName) {
+                params.projectName = projectName;
+            }
+
+            const result = await window.AppConfig.get('algorithm', 'history', params);
 
             if (result.success && result.data) {
                 const historyData = result.data;
@@ -450,7 +514,9 @@ class AlgorithmDetail extends HTMLElement {
         // 显示编辑对话框，传递当前算法数据和完整的接口数据
         const algorithmEdit = document.getElementById('algorithmEdit');
         if (algorithmEdit && algorithmEdit.showWithAlgorithmData) {
-            algorithmEdit.showWithAlgorithmData(this.currentAlgorithm, this.currentAlgorithmMeta || this.currentAlgorithm);
+            // 合并fullPath到传递的数据中
+            const algorithmData = { ...this.currentAlgorithm, fullPath: this.currentAlgorithm.fullPath };
+            algorithmEdit.showWithAlgorithmData(algorithmData, this.currentAlgorithmMeta || this.currentAlgorithm);
         } else {
             console.error('未找到algorithmEdit组件或showWithAlgorithmData方法');
         }
@@ -585,16 +651,17 @@ class AlgorithmDetail extends HTMLElement {
                 return;
             }
             
-            // 构建查询参数
-            const params = new URLSearchParams({
-                name: this.currentAlgorithm.name,
-                version: version
-            });
+            // 从fullPath中提取projectName
+            let projectName = null;
+            if (this.currentAlgorithm.fullPath && window.extractProjectNameFromPath) {
+                projectName = window.extractProjectNameFromPath(this.currentAlgorithm.fullPath);
+            }
             
             // 使用新的API配置
             const result = await window.AppConfig.delete('algorithm', 'delete', {
                 name: this.currentAlgorithm.name,
-                version: version
+                version: version,
+                projectName: projectName
             });
             
             console.log('删除响应:', result);
@@ -708,14 +775,9 @@ class AlgorithmDetail extends HTMLElement {
                 window.showGlobalLoading('正在加载数据绑定...');
             }
 
-            // 从算法元数据API加载绑定数据
-            const result = await window.AppConfig.get('algorithm', 'metas', {
-                name: algorithmInfo.name,
-                version: algorithmInfo.version
-            });
-
-            if (result.success && result.data) {
-                this.renderBindingData(result.data);
+            // 直接使用已加载的算法元数据，避免重复调用API
+            if (this.currentAlgorithmMeta) {
+                this.renderBindingData(this.currentAlgorithmMeta);
             } else {
                 this.renderBindingData({});
             }

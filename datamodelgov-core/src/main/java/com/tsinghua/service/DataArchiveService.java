@@ -175,7 +175,7 @@ public class DataArchiveService {
         if (timestamp == null) {
             throw new IllegalArgumentException("ID不能为空");
         }
-        List<String> measurements = ConvertUtil.iginxFieldNamesConvert(ModelMetaEntity.class, DATA_ARCHIVE_PREFIX);
+        List<String> measurements = ConvertUtil.iginxFieldNamesConvert(DataArchiveEntity.class, DATA_ARCHIVE_PREFIX);
         iginxClient.getDeleteClient().deleteMeasurementsData(measurements, timestamp-1, timestamp+1);
         log.info("数据档案已删除。ID: {}", timestamp);
     }

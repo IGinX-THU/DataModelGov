@@ -540,7 +540,7 @@ service ApiService {
     Result uploadModel(1: binary file, 2: string name, 3: string version),
 
     // POST /api/model/download -> handleFileDownload(String name, String version)
-    Result downloadModel(1: string name, 2: string version),
+    Result downloadModel(1: string name, 2: string version, 3: string projectName),
 
     // GET /api/model/metas?name=xxx&version=xxx -> queryMeta(String name, String version)
     Result getModelMeta(1: string name, 2: string version),
@@ -549,10 +549,10 @@ service ApiService {
     Result saveModelMeta(1: ModelMeta modelMeta),
 
     // GET /api/model/history?name=xxx -> queryMetaList(String name)
-    Result getModelHistory(1: string name),
+    Result getModelHistory(1: string name, 2: string projectName),
 
     // DELETE /api/model/delete?name=xxx&version=xxx -> deleteModel(String name, String version)
-    Result deleteModel(1: string name, 2: string version),
+    Result deleteModel(1: string name, 2: string version, 3: string projectName),
 
     // GET /api/model/tree?projectName=xxx -> queryModelTree(String projectName)
     Result getModelTree(1: string projectName),
@@ -571,7 +571,7 @@ service ApiService {
     Result uploadAlgorithm(1: binary file, 2: string name, 3: string version),
 
     // POST /api/algorithm/download -> handleFileDownload(String name, String version)
-    Result downloadAlgorithm(1: string name, 2: string version),
+    Result downloadAlgorithm(1: string name, 2: string version, 3: string projectName),
 
     // GET /api/algorithm/metas?name=xxx&version=xxx -> queryMeta(String name, String version)
     Result getAlgorithmMeta(1: string name, 2: string version),
@@ -580,10 +580,10 @@ service ApiService {
     Result saveAlgorithmMeta(1: AlgorithmMeta algorithmMeta),
 
     // GET /api/algorithm/history?name=xxx -> queryMetaList(String name)
-    Result getAlgorithmHistory(1: string name),
+    Result getAlgorithmHistory(1: string name, 2: string projectName),
 
     // DELETE /api/algorithm/delete?name=xxx&version=xxx -> deleteAlgorithm(String name, String version)
-    Result deleteAlgorithm(1: string name, 2: string version),
+    Result deleteAlgorithm(1: string name, 2: string version, 3: string projectName),
 
     // GET /api/algorithm/tree?projectName=xxx -> queryAlgorithmTree(String projectName)
     Result getAlgorithmTree(1: string projectName),

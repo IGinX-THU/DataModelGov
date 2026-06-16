@@ -807,9 +807,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 // 再次检查父节点也不是路径节点
                 if (modelName !== 'filesystem' && modelName !== 'models') {
                     console.log('找到模型名称（最后一级叶子节点的父节点）:', modelName, '版本号（最后一级叶子节点）:', nodeName);
+                    // 从当前选中节点（版本号节点）的data-full-path属性获取完整路径
+                    const fullPath = activeNode.getAttribute('data-full-path');
+                    console.log('版本历史使用的完整路径:', fullPath);
                     return {
                         name: modelName,
-                        version: nodeName
+                        version: nodeName,
+                        fullPath: fullPath // 保存完整路径用于提取项目名称
                     };
                 }
             }
@@ -866,6 +870,26 @@ document.addEventListener('DOMContentLoaded', function() {
         return path;
     }
 
+    // 从存储路径中提取项目名称
+    function extractProjectNameFromPath(path) {
+        if (!path) return null;
+        const prefixes = ['models_system.', 'algorithms_system.'];
+        for (const prefix of prefixes) {
+            if (path.startsWith(prefix)) {
+                // 去掉前缀后，第一部分就是项目名称
+                const withoutPrefix = path.substring(prefix.length);
+                const parts = withoutPrefix.split('.');
+                if (parts.length > 0) {
+                    return parts[0];
+                }
+            }
+        }
+        return null;
+    }
+
+    // 将提取项目名称的函数暴露到全局作用域
+    window.extractProjectNameFromPath = extractProjectNameFromPath;
+
     // 5. 右侧树节点单击事件 - 显示模型详情
     document.querySelectorAll('#modelTree .tree-node').forEach(node => {
         node.addEventListener('click', function() {
@@ -914,9 +938,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 // 再次检查父节点也不是路径节点
                 if (algorithmName !== 'filesystem' && algorithmName !== 'algorithms') {
                     console.log('找到算法名称（最后一级叶子节点的父节点）:', algorithmName, '版本号（最后一级叶子节点）:', nodeName);
+                    // 从当前选中节点（版本号节点）的data-full-path属性获取完整路径
+                    const fullPath = activeNode.getAttribute('data-full-path');
+                    console.log('版本历史使用的完整路径:', fullPath);
                     return {
                         name: algorithmName,
-                        version: nodeName
+                        version: nodeName,
+                        fullPath: fullPath // 保存完整路径用于提取项目名称
                     };
                 }
             }
@@ -1380,10 +1408,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 params.append('version', selectedModel.version);
             }
             
+            // 从树结构fullPath中提取projectName
+            let projectName = null;
+            if (selectedModel.fullPath && window.extractProjectNameFromPath) {
+                projectName = window.extractProjectNameFromPath(selectedModel.fullPath);
+            }
+            
             // 使用新的API配置
             const result = await window.AppConfig.delete('model', 'delete', {
                 name: selectedModel.name,
-                version: selectedModel.version
+                version: selectedModel.version,
+                projectName: projectName
             });
             
             console.log('删除响应:', result);
@@ -1541,10 +1576,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 params.append('version', selectedAlgorithm.version);
             }
 
+            // 从树结构fullPath中提取projectName
+            let projectName = null;
+            if (selectedAlgorithm.fullPath && window.extractProjectNameFromPath) {
+                projectName = window.extractProjectNameFromPath(selectedAlgorithm.fullPath);
+            }
+
             // 使用新的API配置
             const result = await window.AppConfig.delete('algorithm', 'delete', {
                 name: selectedAlgorithm.name,
-                version: selectedAlgorithm.version
+                version: selectedAlgorithm.version,
+                projectName: projectName
             });
 
             console.log('删除响应:', result);
@@ -1957,8 +1999,10 @@ function showSimulationRecord() {
         console.log('是否为测点:', isDataPoint);
         
         if (isDataPoint) {
+            // 直接替换为当前点击的测点，不累积
+            window.selectedDataPoints.clear();
             window.selectedDataPoints.add(dataSource);
-            console.log('添加测点到已选列表:', dataSource);
+            console.log('设置当前测点:', dataSource);
         } else {
             console.log('跳过非测点节点:', dataSource);
         }

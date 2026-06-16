@@ -1,5 +1,6 @@
 package com.tsinghua.thrift;
 
+import com.tsinghua.util.ProjectContext;
 import com.tsinghua.dto.*;
 import com.tsinghua.entity.AlgorithmMetaEntity;
 import com.tsinghua.entity.AssociationRulesEntity;
@@ -855,9 +856,9 @@ public class ApiServiceImpl implements ApiService.Iface {
     }
 
     @Override
-    public com.tsinghua.thrift.api.Result downloadModel(String name, String version) throws TException {
+    public com.tsinghua.thrift.api.Result downloadModel(String name, String version, String projectName) throws TException {
         try {
-            log.info("Thrift RPC: Download model {}@{}", name, version);
+            log.info("Thrift RPC: Download model {}@{}, projectName: {}", name, version, projectName);
             
             // Note: File download via Thrift is complex, this is a placeholder
             // In practice, you might need to handle this differently or use HTTP for file download
@@ -946,12 +947,17 @@ public class ApiServiceImpl implements ApiService.Iface {
     }
 
     @Override
-    public com.tsinghua.thrift.api.Result getModelHistory(String name) throws TException {
+    public com.tsinghua.thrift.api.Result getModelHistory(String name, String projectName) throws TException {
         try {
-            log.info("Thrift RPC: Get model history {}", name);
+            log.info("Thrift RPC: Get model history {}, projectName: {}", name, projectName);
+            
+            // Use provided projectName or fallback to current project
+            String actualProjectName = (projectName != null && !projectName.isEmpty()) 
+                ? projectName 
+                : com.tsinghua.util.ProjectContext.getCurrentProject("unknown");
             
             // Call your existing service method directly
-            java.util.List<ModelMetaEntity> history = modelFileService.queryMetaList(name);
+            java.util.List<ModelMetaEntity> history = modelFileService.queryMetaList(name, actualProjectName);
             
             // Convert result to JSON string
             String jsonData = convertListToJson(history);
@@ -967,12 +973,17 @@ public class ApiServiceImpl implements ApiService.Iface {
     }
 
     @Override
-    public com.tsinghua.thrift.api.Result deleteModel(String name, String version) throws TException {
+    public com.tsinghua.thrift.api.Result deleteModel(String name, String version, String projectName) throws TException {
         try {
-            log.info("Thrift RPC: Delete model {}@{}", name, version);
+            log.info("Thrift RPC: Delete model {}@{}, projectName: {}", name, version, projectName);
             
-            // Call your existing service method directly
-            modelFileService.deleteModel(name, version);
+            // Use provided projectName or fallback to current project
+            String actualProjectName = (projectName != null && !projectName.isEmpty()) 
+                ? projectName 
+                : com.tsinghua.util.ProjectContext.getCurrentProject("unknown");
+            
+            // Call your existing service method directly with projectName
+            modelFileService.deleteModel(name, version, actualProjectName);
             
             com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "操作成功");
             return result;
@@ -1051,9 +1062,9 @@ public class ApiServiceImpl implements ApiService.Iface {
     }
 
     @Override
-    public com.tsinghua.thrift.api.Result downloadAlgorithm(String name, String version) throws TException {
+    public com.tsinghua.thrift.api.Result downloadAlgorithm(String name, String version, String projectName) throws TException {
         try {
-            log.info("Thrift RPC: Download algorithm {}@{}", name, version);
+            log.info("Thrift RPC: Download algorithm {}@{}, projectName: {}", name, version, projectName);
             com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "File download via Thrift not implemented, use HTTP endpoint");
             return result;
         } catch (Exception e) {
@@ -1099,10 +1110,16 @@ public class ApiServiceImpl implements ApiService.Iface {
     }
 
     @Override
-    public com.tsinghua.thrift.api.Result getAlgorithmHistory(String name) throws TException {
+    public com.tsinghua.thrift.api.Result getAlgorithmHistory(String name, String projectName) throws TException {
         try {
-            log.info("Thrift RPC: Get algorithm history {}", name);
-            java.util.List<AlgorithmMetaEntity> history = algorithmFileService.queryMetaList(name);
+            log.info("Thrift RPC: Get algorithm history {}, projectName: {}", name, projectName);
+            
+            // Use provided projectName or fallback to current project
+            String actualProjectName = (projectName != null && !projectName.isEmpty()) 
+                ? projectName 
+                : com.tsinghua.util.ProjectContext.getCurrentProject("unknown");
+            
+            java.util.List<AlgorithmMetaEntity> history = algorithmFileService.queryMetaList(name, actualProjectName);
             String jsonData = convertListToJson(history);
             com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "Query successful");
             result.setData(jsonData);
@@ -1115,10 +1132,16 @@ public class ApiServiceImpl implements ApiService.Iface {
     }
 
     @Override
-    public com.tsinghua.thrift.api.Result deleteAlgorithm(String name, String version) throws TException {
+    public com.tsinghua.thrift.api.Result deleteAlgorithm(String name, String version, String projectName) throws TException {
         try {
-            log.info("Thrift RPC: Delete algorithm {}@{}", name, version);
-            algorithmFileService.deleteAlgorithm(name, version);
+            log.info("Thrift RPC: Delete algorithm {}@{}, projectName: {}", name, version, projectName);
+            
+            // Use provided projectName or fallback to current project
+            String actualProjectName = (projectName != null && !projectName.isEmpty()) 
+                ? projectName 
+                : com.tsinghua.util.ProjectContext.getCurrentProject("unknown");
+            
+            algorithmFileService.deleteAlgorithm(name, version, actualProjectName);
             com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "操作成功");
             return result;
         } catch (Exception e) {

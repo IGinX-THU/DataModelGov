@@ -299,10 +299,26 @@ class ProjectImport extends HTMLElement {
                     data.dataCount ? '数据: ' + data.dataCount + ' 个' : '',
                     data.simulationCount ? '仿真: ' + data.simulationCount + ' 个' : ''
                 ].filter(s => s).join('，');
+                
+                // 构建跳过资源的提示信息
+                let skippedInfo = '';
+                if (data.skippedAlgorithms && data.skippedAlgorithms.length > 0) {
+                    skippedInfo += '，跳过算法(已存在): ' + data.skippedAlgorithms.join(', ');
+                }
+                if (data.skippedModels && data.skippedModels.length > 0) {
+                    skippedInfo += '，跳过模型(已存在): ' + data.skippedModels.join(', ');
+                }
+                if (data.skippedData && data.skippedData.length > 0) {
+                    skippedInfo += '，跳过数据(已存在): ' + data.skippedData.join(', ');
+                }
+                if (data.skippedSimulations && data.skippedSimulations.length > 0) {
+                    skippedInfo += '，跳过仿真(已存在): ' + data.skippedSimulations.join(', ');
+                }
+                
                 if (window.CommonUtils && window.CommonUtils.showToast) {
-                    window.CommonUtils.showToast('导入成功' + (summary ? '，' + summary : ''));
+                    window.CommonUtils.showToast('导入成功' + (summary ? '，' + summary : '') + skippedInfo);
                 } else {
-                    this.showToast('导入成功' + (summary ? '，' + summary : ''));
+                    this.showToast('导入成功' + (summary ? '，' + summary : '') + skippedInfo);
                 }
                 setTimeout(async () => {
                     this.hide();

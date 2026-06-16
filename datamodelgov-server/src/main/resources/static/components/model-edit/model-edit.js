@@ -232,10 +232,17 @@ class ModelEdit extends HTMLElement {
 
     async loadModelData(modelInfo) {
         try {
+            // 从fullPath中提取projectName
+            let projectName = null;
+            if (modelInfo.fullPath && window.extractProjectNameFromPath) {
+                projectName = window.extractProjectNameFromPath(modelInfo.fullPath);
+            }
+
             // 调用API获取完整的模型元数据
             const result = await window.AppConfig.get('model', 'metas', {
                 name: modelInfo.name,
-                version: modelInfo.version
+                version: modelInfo.version,
+                projectName: projectName
             });
             
             if (result.success && result.data) {

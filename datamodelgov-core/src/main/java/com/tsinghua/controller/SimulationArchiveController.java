@@ -1,6 +1,7 @@
 package com.tsinghua.controller;
 
 import com.tsinghua.dto.ExecutionRecordQueryDto;
+import com.tsinghua.dto.SimulationArchiveQueryRequest;
 import com.tsinghua.entity.SimulationArchiveEntity;
 import com.tsinghua.entity.SimulationExecutionEntity;
 import com.tsinghua.model.Result;
@@ -65,14 +66,15 @@ public class SimulationArchiveController {
     @ApiOperation("查询仿真档案列表")
     @PostMapping("/archives/query")
     @RequirePermission(Permission.PARSING_RULES_READ)
-    public Result<List<SimulationArchiveEntity>> queryArchives(
-            @RequestParam(required = false) String name,
-            @RequestParam(required = false) String projectName,
-            @RequestParam(required = false) String owner,
-            @RequestParam(required = false) Boolean status,
-            @RequestParam(defaultValue = "1") Integer pageNum,
-            @RequestParam(defaultValue = "10") Integer pageSize) {
-        List<SimulationArchiveEntity> archives = simulationArchiveService.queryArchives(name, projectName, owner, status, pageNum, pageSize);
+    public Result<List<SimulationArchiveEntity>> queryArchives(@RequestBody SimulationArchiveQueryRequest request) {
+        List<SimulationArchiveEntity> archives = simulationArchiveService.queryArchives(
+            request.getName(),
+            request.getProjectName(),
+            request.getOwner(),
+            request.getStatus(),
+            request.getPageNum() != null ? request.getPageNum() : 1,
+            request.getPageSize() != null ? request.getPageSize() : 10
+        );
         return Result.success(archives);
     }
 
@@ -82,12 +84,13 @@ public class SimulationArchiveController {
     @ApiOperation("查询仿真档案总数")
     @PostMapping("/archives/count")
     @RequirePermission(Permission.PARSING_RULES_READ)
-    public Result<Object> countArchives(
-            @RequestParam(required = false) String name,
-            @RequestParam(required = false) String projectName,
-            @RequestParam(required = false) String owner,
-            @RequestParam(required = false) Boolean status) {
-        Object count = simulationArchiveService.countArchives(name, projectName, owner, status);
+    public Result<Object> countArchives(@RequestBody SimulationArchiveQueryRequest request) {
+        Object count = simulationArchiveService.countArchives(
+            request.getName(),
+            request.getProjectName(),
+            request.getOwner(),
+            request.getStatus()
+        );
         return Result.success(count);
     }
 
@@ -262,7 +265,7 @@ public class SimulationArchiveController {
     @PostMapping("/archives/execution-records")
     @RequirePermission(Permission.PARSING_RULES_READ)
     public Result<?> queryExecutionRecords(@RequestBody ExecutionRecordQueryDto queryDto) {
-        // 管理员不过滤，普通用户仅能查看自己拥有的档案对应的执行记录
+        // 管理员可以查询所有记录
         if (AuthUtil.isAdmin()) {
             return Result.success(simulationExecutionService.queryExecutions(
                 queryDto.getArchiveName(),
@@ -275,17 +278,23 @@ public class SimulationArchiveController {
             ));
         }
 
-        String currentUser = AuthUtil.getCurrentUsername("unknown");
-        List<SimulationArchiveEntity> owned = simulationArchiveService.queryArchives(
-            null, null, currentUser, null, 1, 10000);
-        Set<Long> ownedIds = owned == null ? java.util.Collections.emptySet() :
-            owned.stream().map(SimulationArchiveEntity::getCreateTime)
-                .filter(java.util.Objects::nonNull).collect(Collectors.toSet());
-        if (ownedIds.isEmpty()) {
+        // 普通用户只能查询当前项目档案对应的执行记录
+        String projectName = queryDto.getProjectName();
+        if (projectName == null || projectName.trim().isEmpty()) {
             return Result.success(new ArrayList<>());
         }
 
-        // 先拉取较大的结果集再按所有者过滤并手动分页
+        // 查询当前项目的所有档案
+        List<SimulationArchiveEntity> projectArchives = simulationArchiveService.queryArchives(
+            null, projectName, null, null, 1, 10000);
+        Set<Long> archiveIds = projectArchives == null ? java.util.Collections.emptySet() :
+            projectArchives.stream().map(SimulationArchiveEntity::getCreateTime)
+                .filter(java.util.Objects::nonNull).collect(Collectors.toSet());
+        if (archiveIds.isEmpty()) {
+            return Result.success(new ArrayList<>());
+        }
+
+        // 先拉取较大的结果集再按archiveId过滤并手动分页
         int reqPage = queryDto.getPageNum() != null ? queryDto.getPageNum() : 1;
         int reqSize = queryDto.getPageSize() != null ? queryDto.getPageSize() : 10;
         List<SimulationExecutionEntity> all = simulationExecutionService.queryExecutions(
@@ -298,7 +307,7 @@ public class SimulationArchiveController {
             10000
         );
         List<SimulationExecutionEntity> filtered = all == null ? new ArrayList<>() :
-            all.stream().filter(e -> e.getArchiveId() != null && ownedIds.contains(e.getArchiveId()))
+            all.stream().filter(e -> e.getArchiveId() != null && archiveIds.contains(e.getArchiveId()))
                 .collect(Collectors.toList());
 
         int from = Math.max(0, (reqPage - 1) * reqSize);
@@ -316,6 +325,7 @@ public class SimulationArchiveController {
     @PostMapping("/archives/execution-records-count")
     @RequirePermission(Permission.PARSING_RULES_READ)
     public Result<?> countExecutionRecords(@RequestBody ExecutionRecordQueryDto queryDto) {
+        // 管理员可以查询所有记录
         if (AuthUtil.isAdmin()) {
             return Result.success(simulationExecutionService.countExecutions(
                 queryDto.getArchiveName(),
@@ -325,13 +335,19 @@ public class SimulationArchiveController {
             ));
         }
 
-        String currentUser = AuthUtil.getCurrentUsername("unknown");
-        List<SimulationArchiveEntity> owned = simulationArchiveService.queryArchives(
-            null, null, currentUser, null, 1, 10000);
-        Set<Long> ownedIds = owned == null ? java.util.Collections.emptySet() :
-            owned.stream().map(SimulationArchiveEntity::getCreateTime)
+        // 普通用户只能查询当前项目档案对应的执行记录
+        String projectName = queryDto.getProjectName();
+        if (projectName == null || projectName.trim().isEmpty()) {
+            return Result.success(0L);
+        }
+
+        // 查询当前项目的所有档案
+        List<SimulationArchiveEntity> projectArchives = simulationArchiveService.queryArchives(
+            null, projectName, null, null, 1, 10000);
+        Set<Long> archiveIds = projectArchives == null ? java.util.Collections.emptySet() :
+            projectArchives.stream().map(SimulationArchiveEntity::getCreateTime)
                 .filter(java.util.Objects::nonNull).collect(Collectors.toSet());
-        if (ownedIds.isEmpty()) {
+        if (archiveIds.isEmpty()) {
             return Result.success(0L);
         }
 
@@ -345,7 +361,7 @@ public class SimulationArchiveController {
             10000
         );
         long count = all == null ? 0L : all.stream()
-            .filter(e -> e.getArchiveId() != null && ownedIds.contains(e.getArchiveId()))
+            .filter(e -> e.getArchiveId() != null && archiveIds.contains(e.getArchiveId()))
             .count();
         return Result.success(count);
     }
