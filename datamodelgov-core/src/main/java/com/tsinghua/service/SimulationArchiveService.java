@@ -84,14 +84,20 @@ public class SimulationArchiveService {
             if (name != null && !name.trim().isEmpty()) {
                 sql.append(" AND name LIKE '^.*").append(name.trim()).append(".*'");
             }
+            
+            // 处理项目名称过滤
             if (projectName != null && !projectName.trim().isEmpty()) {
-                sql.append(" AND projectName LIKE '^.*").append(projectName.trim()).append(".*'");
+                if (AuthUtil.isAdmin()) {
+                    // 管理员可以模糊查询
+                    sql.append(" AND projectName LIKE '^.*").append(projectName.trim()).append(".*'");
+                } else {
+                    // 非管理员必须精确匹配项目名称
+                    sql.append(" AND projectName = '").append(projectName.trim()).append("'");
+                }
             }
-            // 非管理员默认按当前用户过滤所有者
+            
+            // 处理所有者过滤
             String effectiveOwner = owner;
-            if (!AuthUtil.isAdmin()) {
-                effectiveOwner = AuthUtil.getCurrentUsername("unknown");
-            }
             if (effectiveOwner != null && !effectiveOwner.trim().isEmpty()) {
                 sql.append(" AND owner = '").append(effectiveOwner.trim()).append("'");
             }
@@ -138,14 +144,20 @@ public class SimulationArchiveService {
             if (name != null && !name.trim().isEmpty()) {
                 sql.append(" AND name LIKE '%").append(name.trim()).append("%'");
             }
+            
+            // 处理项目名称过滤
             if (projectName != null && !projectName.trim().isEmpty()) {
-                sql.append(" AND projectName LIKE '%").append(projectName.trim()).append("%'");
+                if (AuthUtil.isAdmin()) {
+                    // 管理员可以模糊查询
+                    sql.append(" AND projectName LIKE '%").append(projectName.trim()).append("%'");
+                } else {
+                    // 非管理员必须精确匹配项目名称
+                    sql.append(" AND projectName = '").append(projectName.trim()).append("'");
+                }
             }
-            // 非管理员默认按当前用户过滤所有者
+            
+            // 处理所有者过滤
             String effectiveOwner = owner;
-            if (!AuthUtil.isAdmin()) {
-                effectiveOwner = AuthUtil.getCurrentUsername("unknown");
-            }
             if (effectiveOwner != null && !effectiveOwner.trim().isEmpty()) {
                 sql.append(" AND owner = '").append(effectiveOwner.trim()).append("'");
             }

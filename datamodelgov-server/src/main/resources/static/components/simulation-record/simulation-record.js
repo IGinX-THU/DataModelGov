@@ -2300,8 +2300,26 @@ class SimulationRecord extends HTMLElement {
             const startTime = this.shadowRoot.getElementById('startTime')?.value;
             const endTime = this.shadowRoot.getElementById('endTime')?.value;
 
+            // 检查用户角色，如果是普通用户则自动添加当前项目筛选
+            let userRole = window.localStorage.getItem('userRole');
+            if (!userRole && window.MenuPermission) {
+                userRole = window.MenuPermission.getCurrentRole();
+            }
+            const isAdmin = userRole === 'ADMIN';
+            
+            let projectNameValue = null;
+            if (!isAdmin) {
+                // 普通用户只能查询当前项目的档案对应的执行记录
+                const username = window.localStorage.getItem('username');
+                const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
+                if (cachedProject && cachedProject.name) {
+                    projectNameValue = cachedProject.name;
+                }
+            }
+
             const requestParams = {
                 archiveName: nameFilter || null,
+                projectName: projectNameValue,
                 status: statusFilter || null,
                 startTime: startTime ? new Date(startTime).getTime() : null,
                 endTime: endTime ? new Date(endTime).getTime() : null,
@@ -2351,8 +2369,26 @@ class SimulationRecord extends HTMLElement {
 
     async loadRecordsCount(name, status, startTime, endTime) {
         try {
+            // 检查用户角色，如果是普通用户则自动添加当前项目筛选
+            let userRole = window.localStorage.getItem('userRole');
+            if (!userRole && window.MenuPermission) {
+                userRole = window.MenuPermission.getCurrentRole();
+            }
+            const isAdmin = userRole === 'ADMIN';
+            
+            let projectNameValue = null;
+            if (!isAdmin) {
+                // 普通用户只能查询当前项目的档案对应的执行记录
+                const username = window.localStorage.getItem('username');
+                const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
+                if (cachedProject && cachedProject.name) {
+                    projectNameValue = cachedProject.name;
+                }
+            }
+
             const requestParams = {
                 archiveName: name || null,
+                projectName: projectNameValue,
                 status: status || null,
                 startTime: startTime ? new Date(startTime).getTime() : null,
                 endTime: endTime ? new Date(endTime).getTime() : null

@@ -1175,7 +1175,7 @@ class SimulationArchiveDetail extends HTMLElement {
         this.hideNodeModal();
     }
 
-    editAlgorithmArchive() {
+    async editAlgorithmArchive() {
         if (!this.selectedNode) {
             this.showToast('请先在图中选择一个算法节点', 'warning');
             return;
@@ -1185,17 +1185,51 @@ class SimulationArchiveDetail extends HTMLElement {
             this.showToast('该节点未配置算法', 'warning');
             return;
         }
-        // Open the algorithm-edit component
-        const algoEdit = document.getElementById('algorithmEdit');
-        if (algoEdit && typeof algoEdit.show === 'function') {
+        
+        try {
+            // 显示loading
+            if (window.showGlobalLoading) {
+                window.showGlobalLoading('正在加载算法信息...');
+            }
+            
+            // 先获取完整的算法元数据
             const algorithmInfo = {
                 name: node.algorithmName,
                 version: node.algorithmVersion,
                 fullPath: this.currentArchive?.projectName ? `algorithms_system.${this.currentArchive.projectName}.${node.algorithmName}.${node.algorithmVersion}` : null
             };
-            algoEdit.show(algorithmInfo);
-        } else {
-            this.showToast('算法编辑组件未加载', 'error');
+            
+            // 从fullPath中提取projectName
+            let projectName = null;
+            if (algorithmInfo.fullPath && window.extractProjectNameFromPath) {
+                projectName = window.extractProjectNameFromPath(algorithmInfo.fullPath);
+            }
+            
+            // 调用API获取完整的算法元数据
+            const result = await window.AppConfig.get('algorithm', 'metas', {
+                name: algorithmInfo.name,
+                version: algorithmInfo.version,
+                projectName: projectName
+            });
+            
+            if (result.success && result.data) {
+                // 使用showWithAlgorithmData方法，传递完整的算法元数据
+                const algoEdit = document.getElementById('algorithmEdit');
+                if (algoEdit && typeof algoEdit.showWithAlgorithmData === 'function') {
+                    algoEdit.showWithAlgorithmData(algorithmInfo, result.data);
+                } else {
+                    this.showToast('算法编辑组件未加载', 'error');
+                }
+            } else {
+                this.showToast('获取算法信息失败: ' + (result.message || '未知错误'), 'error');
+            }
+        } catch (error) {
+            console.error('加载算法信息失败:', error);
+            this.showToast('加载算法信息失败', 'error');
+        } finally {
+            if (window.hideGlobalLoading) {
+                window.hideGlobalLoading();
+            }
         }
     }
 
