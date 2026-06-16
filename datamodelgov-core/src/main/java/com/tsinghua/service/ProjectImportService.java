@@ -1,5 +1,7 @@
 package com.tsinghua.service;
 
+import cn.edu.tsinghua.iginx.session.Session;
+import cn.edu.tsinghua.iginx.session.SessionExecuteSqlResult;
 import cn.edu.tsinghua.iginx.session_v2.IginXClient;
 import cn.edu.tsinghua.iginx.session_v2.write.Point;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -69,6 +71,9 @@ public class ProjectImportService {
     private IginXClient iginxClient;
 
     @Autowired
+    private Session iginxSession;
+
+    @Autowired
     private ObjectMapper objectMapper;
 
     private static final int CHUNK_SIZE = 65536; // 64KB，与上传一致
@@ -116,6 +121,10 @@ public class ProjectImportService {
         int modelCount = 0;
         int dataCount = 0;
         int simulationCount = 0;
+        List<String> skippedAlgorithms = new ArrayList<>();
+        List<String> skippedModels = new ArrayList<>();
+        List<String> skippedData = new ArrayList<>();
+        List<String> skippedSimulations = new ArrayList<>();
 
         // 先将ZIP保存到临时文件
         Path tempZipPath = Files.createTempFile("project_import_", ".zip");
@@ -226,26 +235,26 @@ public class ProjectImportService {
 
                 // 导入算法
                 if (!algorithmMetaMap.isEmpty()) {
-                    algorithmCount = importAlgorithms(algorithmMetaMap, algorithmFileMap, originalProjectName, targetProjectName);
+                    algorithmCount = importAlgorithms(algorithmMetaMap, algorithmFileMap, originalProjectName, targetProjectName, skippedAlgorithms);
                     result.put("algorithmCount", algorithmCount);
                 }
 
                 // 导入模型
                 if (!modelMetaMap.isEmpty()) {
-                    modelCount = importModels(modelMetaMap, modelFileMap, originalProjectName, targetProjectName);
+                    modelCount = importModels(modelMetaMap, modelFileMap, originalProjectName, targetProjectName, skippedModels);
                     result.put("modelCount", modelCount);
                 }
 
                 // 导入数据CSV
                 if (!dataCsvMap.isEmpty()) {
                     log.info("开始导入数据CSV，共 {} 个文件，数据档案共 {} 个", dataCsvMap.size(), dataArchiveMap.size());
-                    dataCount = importDataCsv(dataCsvMap, dataArchiveMap, originalProjectName, targetProjectName);
+                    dataCount = importDataCsv(dataCsvMap, dataArchiveMap, originalProjectName, targetProjectName, skippedData);
                     result.put("dataCount", dataCount);
                 }
 
                 // 导入仿真档案及执行记录
                 if (!simulationArchiveMap.isEmpty()) {
-                    simulationCount = importSimulationArchives(simulationArchiveMap, simulationExecutionMap, simulationTaskFilesMap, originalProjectName, targetProjectName);
+                    simulationCount = importSimulationArchives(simulationArchiveMap, simulationExecutionMap, simulationTaskFilesMap, originalProjectName, targetProjectName, skippedSimulations);
                     result.put("simulationCount", simulationCount);
                 }
             }
@@ -253,6 +262,20 @@ public class ProjectImportService {
             log.info("项目导入完成: 算法={}, 模型={}, 数据={}, 仿真={}", algorithmCount, modelCount, dataCount, simulationCount);
             result.put("success", true);
             result.put("message", "项目导入成功");
+            
+            // 添加跳过的资源信息
+            if (!skippedAlgorithms.isEmpty()) {
+                result.put("skippedAlgorithms", skippedAlgorithms);
+            }
+            if (!skippedModels.isEmpty()) {
+                result.put("skippedModels", skippedModels);
+            }
+            if (!skippedData.isEmpty()) {
+                result.put("skippedData", skippedData);
+            }
+            if (!skippedSimulations.isEmpty()) {
+                result.put("skippedSimulations", skippedSimulations);
+            }
 
         } finally {
             Files.deleteIfExists(tempZipPath);
@@ -284,7 +307,7 @@ public class ProjectImportService {
     /**
      * 导入算法文件和元数据
      */
-    private int importAlgorithms(Map<String, byte[]> metaMap, Map<String, byte[]> fileMap, String originalProjectName, String projectName) throws Exception {
+    private int importAlgorithms(Map<String, byte[]> metaMap, Map<String, byte[]> fileMap, String originalProjectName, String projectName, List<String> skippedList) throws Exception {
         int count = 0;
 
         for (Map.Entry<String, byte[]> metaEntry : metaMap.entrySet()) {
@@ -293,6 +316,14 @@ public class ProjectImportService {
                 String name = meta.getName();
                 String version = meta.getVersion();
                 String fileName = meta.getFileName();
+
+                // 检查是否已存在相同算法，防止重复导入
+                AlgorithmMetaEntity existing = algorithmFileService.queryMeta(name, version, projectName);
+                if (existing != null) {
+                    log.warn("算法 {} v{} 已存在于项目 {} 中，跳过导入", name, version, projectName);
+                    skippedList.add(name + " v" + version);
+                    continue;
+                }
 
                 // 查找对应的二进制文件
                 byte[] fileData = null;
@@ -357,7 +388,7 @@ public class ProjectImportService {
     /**
      * 导入模型文件和元数据
      */
-    private int importModels(Map<String, byte[]> metaMap, Map<String, byte[]> fileMap, String originalProjectName, String projectName) throws Exception {
+    private int importModels(Map<String, byte[]> metaMap, Map<String, byte[]> fileMap, String originalProjectName, String projectName, List<String> skippedList) throws Exception {
         int count = 0;
 
         for (Map.Entry<String, byte[]> metaEntry : metaMap.entrySet()) {
@@ -366,6 +397,14 @@ public class ProjectImportService {
                 String name = meta.getName();
                 String version = meta.getVersion();
                 String fileName = meta.getFileName();
+
+                // 检查是否已存在相同模型，防止重复导入
+                ModelMetaEntity existing = modelFileService.queryMeta(name, version, projectName);
+                if (existing != null) {
+                    log.warn("模型 {} v{} 已存在于项目 {} 中，跳过导入", name, version, projectName);
+                    skippedList.add(name + " v" + version);
+                    continue;
+                }
 
                 // 查找对应的二进制文件
                 byte[] fileData = null;
@@ -430,7 +469,7 @@ public class ProjectImportService {
     /**
      * 导入数据CSV文件
      */
-    private int importDataCsv(Map<String, byte[]> csvMap, Map<String, byte[]> archiveMap, String originalProjectName, String projectName) throws Exception {
+    private int importDataCsv(Map<String, byte[]> csvMap, Map<String, byte[]> archiveMap, String originalProjectName, String projectName, List<String> skippedList) throws Exception {
         int count = 0;
 
         for (Map.Entry<String, byte[]> csvEntry : csvMap.entrySet()) {
@@ -446,6 +485,15 @@ public class ProjectImportService {
                     dataPath = projectName + dataPath.substring(firstDotIndex);
                 } else {
                     dataPath = projectName + "." + dataPath;
+                }
+
+                // 检查数据档案是否已存在，防止重复导入
+                List<DataArchiveEntity> existingArchives = dataArchiveService.queryArchives(
+                    dataPath, null, projectName, null, 1, 1);
+                if (existingArchives != null && !existingArchives.isEmpty()) {
+                    log.warn("数据路径 {} 的档案已存在于项目 {} 中，跳过导入", dataPath, projectName);
+                    skippedList.add(dataPath);
+                    continue;
                 }
 
                 // 保存CSV到临时文件
@@ -535,12 +583,21 @@ public class ProjectImportService {
     /**
      * 导入仿真档案及执行记录
      */
-    private int importSimulationArchives(Map<String, byte[]> archiveMap, Map<String, byte[]> executionMap, Map<String, byte[]> taskFilesMap, String originalProjectName, String projectName) throws Exception {
+    private int importSimulationArchives(Map<String, byte[]> archiveMap, Map<String, byte[]> executionMap, Map<String, byte[]> taskFilesMap, String originalProjectName, String projectName, List<String> skippedList) throws Exception {
         int count = 0;
 
         for (Map.Entry<String, byte[]> archiveEntry : archiveMap.entrySet()) {
             try {
                 SimulationArchiveEntity archive = objectMapper.readValue(archiveEntry.getValue(), SimulationArchiveEntity.class);
+
+                // 检查是否已存在相同名称的仿真档案，防止重复导入
+                List<SimulationArchiveEntity> existingArchives = simulationArchiveService.queryArchives(
+                    archive.getName(), projectName, null, null, 1, 1);
+                if (existingArchives != null && !existingArchives.isEmpty()) {
+                    log.warn("仿真档案 {} 已存在于项目 {} 中，跳过导入", archive.getName(), projectName);
+                    skippedList.add(archive.getName());
+                    continue;
+                }
 
                 // 更新项目名称为目标项目
                 long archiveCreateTime = nextImportTimestamp();
