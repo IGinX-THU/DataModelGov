@@ -838,7 +838,8 @@ class SimulationArchiveDetail extends HTMLElement {
 
         const algorithmInfo = {
             name: node.algorithmName,
-            version: node.algorithmVersion || 'latest'
+            version: node.algorithmVersion || 'latest',
+            fullPath: this.currentArchive?.projectName ? `algorithms_system.${this.currentArchive.projectName}.${node.algorithmName}.${node.algorithmVersion}` : null
         };
 
         const algorithmDetail = document.getElementById('algorithmDetail');
@@ -962,11 +963,15 @@ class SimulationArchiveDetail extends HTMLElement {
     async loadTimeRangeForAlgorithm(algorithmName, algorithmVersion) {
         try {
             console.log('开始获取算法时间范围:', algorithmName, algorithmVersion);
-            
+
+            // 从当前档案中获取projectName
+            const projectName = this.currentArchive?.projectName || null;
+
             // 获取算法元数据
             const metaResult = await window.AppConfig.get('algorithm', 'metas', {
                 name: algorithmName,
-                version: algorithmVersion
+                version: algorithmVersion,
+                projectName: projectName
             });
             
             if (!metaResult.success || !metaResult.data) {
@@ -1183,7 +1188,12 @@ class SimulationArchiveDetail extends HTMLElement {
         // Open the algorithm-edit component
         const algoEdit = document.getElementById('algorithmEdit');
         if (algoEdit && typeof algoEdit.show === 'function') {
-            algoEdit.show({ name: node.algorithmName, version: node.algorithmVersion });
+            const algorithmInfo = {
+                name: node.algorithmName,
+                version: node.algorithmVersion,
+                fullPath: this.currentArchive?.projectName ? `algorithms_system.${this.currentArchive.projectName}.${node.algorithmName}.${node.algorithmVersion}` : null
+            };
+            algoEdit.show(algorithmInfo);
         } else {
             this.showToast('算法编辑组件未加载', 'error');
         }
@@ -1303,11 +1313,15 @@ class SimulationArchiveDetail extends HTMLElement {
             $('edgeSourceField').placeholder = srcNode ? `${srcNode.nodeName} 的输出字段` : '源节点输出文件名';
             $('edgeTargetField').placeholder = tgtNode ? `${tgtNode.nodeName} 的输入字段` : '目标节点输入文件名';
 
+            // 从当前档案中获取projectName
+            const projectName = this.currentArchive?.projectName || null;
+
             if (srcNode && srcNode.algorithmName && srcNode.algorithmVersion) {
                 try {
                     const sourceMeta = await window.AppConfig.get('algorithm', 'metas', {
                         name: srcNode.algorithmName,
-                        version: srcNode.algorithmVersion
+                        version: srcNode.algorithmVersion,
+                        projectName: projectName
                     });
                     if (sourceMeta && sourceMeta.success && sourceMeta.data && sourceMeta.data.outputCsvName) {
                         if (!$('edgeSourceField').value) {
@@ -1320,7 +1334,8 @@ class SimulationArchiveDetail extends HTMLElement {
                 try {
                     const targetMeta = await window.AppConfig.get('algorithm', 'metas', {
                         name: tgtNode.algorithmName,
-                        version: tgtNode.algorithmVersion
+                        version: tgtNode.algorithmVersion,
+                        projectName: projectName
                     });
                     if (targetMeta && targetMeta.success && targetMeta.data && targetMeta.data.inputCsvName) {
                         if (!$('edgeTargetField').value) {

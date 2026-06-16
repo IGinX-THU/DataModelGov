@@ -528,6 +528,14 @@ class ModelDownload extends HTMLElement {
                 fileName: `${formData.modelName}_${formData.modelVersion}.zip`
             };
             
+            // 从树结构fullPath中提取projectName
+            if (this.selectedModel && this.selectedModel.fullPath && window.extractProjectNameFromPath) {
+                const projectName = window.extractProjectNameFromPath(this.selectedModel.fullPath);
+                if (projectName) {
+                    downloadData.projectName = projectName;
+                }
+            }
+            
             const result = await window.AppConfig.download('model', 'download', downloadData, null, true);
             
             if (result.success) {

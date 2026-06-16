@@ -81,8 +81,9 @@ public class ModelFileController {
     @RequirePermission(Permission.MODEL_READ)
     public Result<ModelMetaEntity> queryMeta(
             @RequestParam("name") String name,
-            @RequestParam("version") String version) throws Exception {
-        ModelMetaEntity result = modelFileService.queryMeta(name, version);
+            @RequestParam("version") String version,
+            @RequestParam(value = "projectName", required = false) String projectName) throws Exception {
+        ModelMetaEntity result = modelFileService.queryMeta(name, version, projectName);
         return Result.success(result);
     }
 
@@ -110,8 +111,9 @@ public class ModelFileController {
     @OperationLog(value = "移除模型资产", type = OperationLog.OperationType.DELETE)
     public Result<Void> handleDelete(
             @RequestParam("name") String name,
-            @RequestParam(value = "version", required = false) String version) throws Exception {
-        modelFileService.deleteModel(name, version);
+            @RequestParam(value = "version", required = false) String version,
+            @RequestParam(value = "projectName", required = false) String projectName) throws Exception {
+        modelFileService.deleteModel(name, version, projectName);
         return Result.success("操作成功");
     }
 

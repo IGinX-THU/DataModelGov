@@ -241,10 +241,17 @@ class AlgorithmEdit extends HTMLElement {
 
     async loadAlgorithmData(algorithmInfo) {
         try {
+            // 从fullPath中提取projectName
+            let projectName = null;
+            if (algorithmInfo.fullPath && window.extractProjectNameFromPath) {
+                projectName = window.extractProjectNameFromPath(algorithmInfo.fullPath);
+            }
+
             // 调用API获取完整的算法元数据
             const result = await window.AppConfig.get('algorithm', 'metas', {
                 name: algorithmInfo.name,
-                version: algorithmInfo.version
+                version: algorithmInfo.version,
+                projectName: projectName
             });
             
             if (result.success && result.data) {
@@ -757,8 +764,19 @@ class AlgorithmEdit extends HTMLElement {
 
             console.log('自动填充运行命令和CSV文件名:', algorithmName, version);
 
+            // 从fullPath中提取projectName
+            let projectName = null;
+            const fullPath = this.currentAlgorithm?.fullPath || this.currentAlgorithmMeta?.fullPath;
+            if (fullPath && window.extractProjectNameFromPath) {
+                projectName = window.extractProjectNameFromPath(fullPath);
+            }
+
             // 调用算法元数据API获取fileName
-            const result = await window.AppConfig.get('algorithm', 'metas', { name: algorithmName, version: version });
+            const result = await window.AppConfig.get('algorithm', 'metas', { 
+                name: algorithmName, 
+                version: version,
+                projectName: projectName
+            });
 
             if (result.success && result.data) {
                 const algorithmData = result.data;
@@ -1513,9 +1531,16 @@ class AlgorithmEdit extends HTMLElement {
 
         // 从算法元数据加载绑定数据
         try {
+            // 从fullPath中提取projectName
+            let projectName = null;
+            if (algorithmInfo.fullPath && window.extractProjectNameFromPath) {
+                projectName = window.extractProjectNameFromPath(algorithmInfo.fullPath);
+            }
+
             const result = await window.AppConfig.get('algorithm', 'metas', {
                 name: algorithmInfo.name,
-                version: algorithmInfo.version
+                version: algorithmInfo.version,
+                projectName: projectName
             });
 
             if (result.success && result.data) {

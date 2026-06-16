@@ -197,7 +197,11 @@ class AlgorithmArchiveList extends HTMLElement {
         }
         const algorithmDetail = document.getElementById('algorithmDetail');
         if (algorithmDetail && algorithmDetail.show) {
-            algorithmDetail.show({ name: item.name, version: item.version });
+            algorithmDetail.show({ 
+                name: item.name, 
+                version: item.version,
+                fullPath: item.storagePath
+            });
         }
     }
 

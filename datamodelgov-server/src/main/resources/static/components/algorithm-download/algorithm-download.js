@@ -528,6 +528,14 @@ class AlgorithmDownload extends HTMLElement {
                 fileName: `${formData.algorithmName}_${formData.algorithmVersion}.zip`
             };
             
+            // 从树结构fullPath中提取projectName
+            if (this.selectedAlgorithm && this.selectedAlgorithm.fullPath && window.extractProjectNameFromPath) {
+                const projectName = window.extractProjectNameFromPath(this.selectedAlgorithm.fullPath);
+                if (projectName) {
+                    downloadData.projectName = projectName;
+                }
+            }
+            
             const result = await window.AppConfig.download('algorithm', 'download', downloadData, null, true);
             
             if (result.success) {

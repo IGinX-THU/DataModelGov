@@ -1408,10 +1408,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 params.append('version', selectedModel.version);
             }
             
+            // 从树结构fullPath中提取projectName
+            let projectName = null;
+            if (selectedModel.fullPath && window.extractProjectNameFromPath) {
+                projectName = window.extractProjectNameFromPath(selectedModel.fullPath);
+            }
+            
             // 使用新的API配置
             const result = await window.AppConfig.delete('model', 'delete', {
                 name: selectedModel.name,
-                version: selectedModel.version
+                version: selectedModel.version,
+                projectName: projectName
             });
             
             console.log('删除响应:', result);
@@ -1569,10 +1576,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 params.append('version', selectedAlgorithm.version);
             }
 
+            // 从树结构fullPath中提取projectName
+            let projectName = null;
+            if (selectedAlgorithm.fullPath && window.extractProjectNameFromPath) {
+                projectName = window.extractProjectNameFromPath(selectedAlgorithm.fullPath);
+            }
+
             // 使用新的API配置
             const result = await window.AppConfig.delete('algorithm', 'delete', {
                 name: selectedAlgorithm.name,
-                version: selectedAlgorithm.version
+                version: selectedAlgorithm.version,
+                projectName: projectName
             });
 
             console.log('删除响应:', result);

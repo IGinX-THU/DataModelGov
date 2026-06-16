@@ -579,12 +579,12 @@ public class ModelFileService {
     /**
      * 移除模型资产
      */
-    public void deleteModel(String name, String version) {
+    public void deleteModel(String name, String version, String projectName) {
         try {
             List<String> measurements = ConvertUtil.iginxFieldNamesConvert(ModelMetaEntity.class, META_PREFIX);
             if (StringUtils.hasText(version) && !"null".equals(version)) {
                 ModelMetaEntity queryMeta = queryMeta(name, version);
-                String storagePath = buildStoragePath(queryMeta.getProjectName(), name, version);
+                String storagePath = buildStoragePath(projectName != null ? projectName : (queryMeta != null ? queryMeta.getProjectName() : null), name, version);
                 iginxClient.getDeleteClient().deleteMeasurement(storagePath);
                 if (queryMeta != null && queryMeta.getTimestamp() != null) {
                     long timestamp = queryMeta.getTimestamp();
@@ -592,8 +592,8 @@ public class ModelFileService {
                 }
                 dataPermissionService.deleteByTablePrefix(storagePath);
             } else {
-                String projectName = ProjectContext.getCurrentProject("unknown");
-                List<ModelMetaEntity> queryMetas = queryMetaList(name, projectName);
+                String actualProjectName = StringUtils.hasText(projectName) ? projectName : ProjectContext.getCurrentProject("unknown");
+                List<ModelMetaEntity> queryMetas = queryMetaList(name, actualProjectName);
                 List<String> storagePaths = queryMetas.stream()
                         .map(meta ->
                                 buildStoragePath(meta.getProjectName(),meta.getName(), meta.getVersion())
@@ -610,6 +610,13 @@ public class ModelFileService {
         } catch (Exception e) {
             log.error("移除模型资产失败", e);
         }
+    }
+
+    /**
+     * 移除模型资产（兼容旧版本）
+     */
+    public void deleteModel(String name, String version) {
+        deleteModel(name, version, null);
     }
 
     /**

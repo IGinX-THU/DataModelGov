@@ -341,7 +341,7 @@ public class AlgorithmFileService {
     public void saveAlgorithmMetadata(AlgorithmMetaEntity algorithmMetaDto) throws Exception {
 
         // 自动添加项目名称前缀
-        String projectName = com.tsinghua.util.ProjectContext.getCurrentProject("unknown");
+        String projectName = StringUtils.hasText(algorithmMetaDto.getProjectName()) ? algorithmMetaDto.getProjectName() : com.tsinghua.util.ProjectContext.getCurrentProject("unknown");
         if (projectName != null && !projectName.isEmpty()) {
             String outputTable = algorithmMetaDto.getOutputTable();
             if (outputTable != null && !outputTable.startsWith(projectName + ".")) {
@@ -637,12 +637,12 @@ public class AlgorithmFileService {
     /**
      * 移除算法资产
      */
-    public void deleteAlgorithm(String name, String version) {
+    public void deleteAlgorithm(String name, String version, String projectName) {
         try {
             List<String> measurements = ConvertUtil.iginxFieldNamesConvert(AlgorithmMetaEntity.class, META_PREFIX);
             if (StringUtils.hasText(version) && !"null".equals(version)) {
-                String projectName = ProjectContext.getCurrentProject("unknown");
-                String storagePath = buildStoragePath(projectName, name, version);
+                String actualProjectName = StringUtils.hasText(projectName) ? projectName : ProjectContext.getCurrentProject("unknown");
+                String storagePath = buildStoragePath(actualProjectName, name, version);
                 iginxClient.getDeleteClient().deleteMeasurement(storagePath);
                 AlgorithmMetaEntity queryMeta = queryMeta(name, version);
                 if (queryMeta != null && queryMeta.getTimestamp() != null) {
@@ -651,8 +651,8 @@ public class AlgorithmFileService {
                 }
                 dataPermissionService.deleteByTablePrefix(storagePath);
             } else {
-                String projectName = ProjectContext.getCurrentProject("unknown");
-                List<AlgorithmMetaEntity> queryMetas = queryMetaList(name, projectName);
+                String actualProjectName = StringUtils.hasText(projectName) ? projectName : ProjectContext.getCurrentProject("unknown");
+                List<AlgorithmMetaEntity> queryMetas = queryMetaList(name, actualProjectName);
                 List<String> storagePaths = queryMetas.stream()
                         .map(meta ->
                                 buildStoragePath(meta.getProjectName(), meta.getName(), meta.getVersion())
@@ -669,6 +669,13 @@ public class AlgorithmFileService {
         } catch (Exception e) {
             log.error("移除算法资产失败", e);
         }
+    }
+
+    /**
+     * 移除算法资产（兼容旧版本）
+     */
+    public void deleteAlgorithm(String name, String version) {
+        deleteAlgorithm(name, version, null);
     }
 
     /**

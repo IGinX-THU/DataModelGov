@@ -160,10 +160,17 @@ class ModelDetail extends HTMLElement {
                 window.showGlobalLoading('正在加载模型信息...');
             }
 
+            // 从fullPath中提取projectName
+            let projectName = null;
+            if (modelInfo.fullPath && window.extractProjectNameFromPath) {
+                projectName = window.extractProjectNameFromPath(modelInfo.fullPath);
+            }
+
             // 使用新的API配置
             const result = await window.AppConfig.get('model', 'metas', {
                 name: modelInfo.name,
-                version: modelInfo.version
+                version: modelInfo.version,
+                projectName: projectName
             });
 
             if (result.success && result.data) {
@@ -479,7 +486,9 @@ class ModelDetail extends HTMLElement {
         // 显示编辑对话框，传递当前模型数据和完整的接口数据
         const modelEdit = document.getElementById('modelEdit');
         if (modelEdit && modelEdit.showWithModelData) {
-            modelEdit.showWithModelData(this.currentModel, this.currentModelMeta || this.currentModel);
+            // 合并fullPath到传递的数据中
+            const modelData = { ...this.currentModel, fullPath: this.currentModel.fullPath };
+            modelEdit.showWithModelData(modelData, this.currentModelMeta || this.currentModel);
         } else {
             console.error('未找到modelEdit组件或showWithModelData方法');
         }
@@ -614,17 +623,23 @@ class ModelDetail extends HTMLElement {
                 return;
             }
             
-            // 构建查询参数
-            const params = new URLSearchParams({
-                name: this.currentModel.name,
-                version: version
-            });
+            // 从fullPath中提取projectName
+            let projectName = null;
+            if (this.currentModel.fullPath && window.extractProjectNameFromPath) {
+                projectName = window.extractProjectNameFromPath(this.currentModel.fullPath);
+                console.log('🔍 提取的projectName:', projectName);
+            } else {
+                console.log('⚠️ 无法提取projectName - fullPath:', this.currentModel.fullPath, '函数存在:', !!window.extractProjectNameFromPath);
+            }
             
             // 使用新的API配置
             const result = await window.AppConfig.delete('model', 'delete', {
                 name: this.currentModel.name,
-                version: version
+                version: version,
+                projectName: projectName
             });
+            
+            console.log('📤 删除请求参数:', { name: this.currentModel.name, version: version, projectName: projectName });
             
             console.log('删除响应:', result);
             
