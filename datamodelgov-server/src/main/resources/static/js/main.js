@@ -557,20 +557,26 @@ document.addEventListener('DOMContentLoaded', function() {
                         break;
                     case 'handleDownload':
                         console.log('下载模型文件菜单被点击');
+                        // 检查模型侧边栏是否打开，如果未打开则自动打开
                         const activeModelIconDownloadMenu = document.querySelector('.bottom-sidebar-icon.right-sidebar-icon.active[data-panel="model"]');
                         if (!activeModelIconDownloadMenu) {
-                            showWorkspaceMessage('请先打开模型侧边栏', 'warning');
-                            break;
+                            const modelIcon = document.querySelector('.bottom-sidebar-icon.right-sidebar-icon[data-panel="model"]');
+                            if (modelIcon) {
+                                modelIcon.click();
+                            }
                         }
                         const selectedModel = getSelectedModel();
                         showComponent('modelDownload', selectedModel);
                         break;
                     case 'handleAlgorithmDownload':
                         console.log('下载算法文件菜单被点击');
+                        // 检查算法侧边栏是否打开，如果未打开则自动打开
                         const activeAlgorithmIconDownloadMenu = document.querySelector('.bottom-sidebar-icon.right-sidebar-icon.active[data-panel="algorithm"]');
                         if (!activeAlgorithmIconDownloadMenu) {
-                            showWorkspaceMessage('请先打开算法侧边栏', 'warning');
-                            break;
+                            const algorithmIcon = document.querySelector('.bottom-sidebar-icon.right-sidebar-icon[data-panel="algorithm"]');
+                            if (algorithmIcon) {
+                                algorithmIcon.click();
+                            }
                         }
                         const selectedAlgorithm = getSelectedAlgorithm();
                         showComponent('algorithmDownload', selectedAlgorithm);
@@ -1044,11 +1050,13 @@ document.addEventListener('DOMContentLoaded', function() {
                         showComponent('algorithmUpload');
                         break;
                     case 'handleAlgorithmDownload':
-                        // 检查算法侧边栏是否打开
+                        // 检查算法侧边栏是否打开，如果未打开则自动打开
                         const activeAlgorithmIconDownload = document.querySelector('.bottom-sidebar-icon.right-sidebar-icon.active[data-panel="algorithm"]');
                         if (!activeAlgorithmIconDownload) {
-                            showWorkspaceMessage('请先打开算法侧边栏', 'warning');
-                            break;
+                            const algorithmIcon = document.querySelector('.bottom-sidebar-icon.right-sidebar-icon[data-panel="algorithm"]');
+                            if (algorithmIcon) {
+                                algorithmIcon.click();
+                            }
                         }
                         const selectedAlgorithmRibbon = getSelectedAlgorithm();
                         showComponent('algorithmDownload', selectedAlgorithmRibbon);
@@ -1097,18 +1105,16 @@ document.addEventListener('DOMContentLoaded', function() {
                         showComponent('projectImport');
                         break;
                     case 'handleDownload':
-                        // 检查模型侧边栏是否打开
+                        // 检查模型侧边栏是否打开，如果未打开则自动打开
                         const activeModelIcon = document.querySelector('.bottom-sidebar-icon.right-sidebar-icon.active[data-panel="model"]');
                         if (!activeModelIcon) {
-                            showWorkspaceMessage('请先打开模型侧边栏', 'warning');
-                            break;
+                            const modelIcon = document.querySelector('.bottom-sidebar-icon.right-sidebar-icon[data-panel="model"]');
+                            if (modelIcon) {
+                                modelIcon.click();
+                            }
                         }
                         const selectedModel = getSelectedModel();
-                        if (selectedModel) {
-                            showComponent('modelDownload', selectedModel);
-                        } else {
-                            showWorkspaceMessage('请先选择要下载的模型版本', 'warning');
-                        }
+                        showComponent('modelDownload', selectedModel);
                         break;
                     case 'handleDeleteModel':
                         // 检查模型侧边栏是否打开

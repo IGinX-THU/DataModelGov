@@ -379,19 +379,19 @@ class ModelDownload extends HTMLElement {
                 // 检查是否是父节点（有子节点的节点）
                 const childrenContainer = node.querySelector('.tree-children');
                 if (childrenContainer && childrenContainer.children.length > 0) {
-                    // 检查子节点是否为叶子节点（没有子节点的节点）
-                    const childNodes = childrenContainer.querySelectorAll('.tree-node');
+                    // 只检查直接子节点是否为叶子节点（避免误将更上层节点加入）
                     let hasLeafChild = false;
-
-                    childNodes.forEach(childNode => {
+                    for (const childNode of childrenContainer.children) {
+                        if (!childNode.classList.contains('tree-node')) continue;
                         const childChildrenContainer = childNode.querySelector('.tree-children');
                         // 如果子节点没有子节点，则是叶子节点
                         if (!childChildrenContainer || childChildrenContainer.children.length === 0) {
                             hasLeafChild = true;
+                            break;
                         }
-                    });
+                    }
 
-                    // 只有当子节点包含叶子节点时，才将父节点作为模型名称
+                    // 只有当直接子节点包含叶子节点时，才将父节点作为模型名称
                     if (hasLeafChild) {
                         modelNames.add(strippedName);
                     }
@@ -425,8 +425,8 @@ class ModelDownload extends HTMLElement {
             return;
         }
         
-        // 获取右侧模型资产库的所有节点
-        const rightSidebarTree = document.querySelector('.right-sidebar .tree');
+        // 获取模型资产库的所有节点（不能用.querySelector('.right-sidebar .tree')，会匹配到algorithmTree）
+        const rightSidebarTree = document.getElementById('modelTree');
         if (!rightSidebarTree) return;
         
         const allNodes = rightSidebarTree.querySelectorAll('.tree-node');
