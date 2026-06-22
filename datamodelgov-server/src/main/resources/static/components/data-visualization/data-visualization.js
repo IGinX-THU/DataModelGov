@@ -197,16 +197,23 @@ class DataVisualization extends HTMLElement {
     }
 
     async setDefaultTimeRange() {
+        console.log('setDefaultTimeRange() 开始执行');
         const startTimeElement = this.shadowRoot.getElementById('startTime');
         const endTimeElement = this.shadowRoot.getElementById('endTime');
         
-        // 从选中的测点中提取父级路径作为tableName
+        console.log('DOM元素:', { startTimeElement, endTimeElement });
+        
+        // 从选中的测点中提取父级路径作为tableName和sourceField
         let tableName = null;
+        let sourceField = null;
         if (this.selectedPoints && this.selectedPoints.size > 0) {
             const firstPoint = Array.from(this.selectedPoints)[0];
             const pathParts = firstPoint.split('.');
             // 去掉最后一级（测点名称），保留父级路径
             tableName = pathParts.slice(0, -1).join('.');
+            // 最后一级作为sourceField
+            sourceField = pathParts[pathParts.length - 1];
+            console.log('提取tableName:', tableName, 'sourceField:', sourceField, 'from:', firstPoint);
         }
         
         if (!tableName) {
@@ -219,31 +226,50 @@ class DataVisualization extends HTMLElement {
             // 调用接口获取数据源的时间范围
             const result = await window.AppConfig.post('task', 'time-range', {
                 tableName: tableName,
-                inputsBind: []
+                inputsBind: sourceField ? [{sourceField: sourceField}] : []
             });
             
             console.log('时间范围查询结果:', result);
+            console.log('result.data详情:', result.data);
             
             if (result.success && result.data) {
                 const timeRange = result.data;
+                console.log('timeRange对象:', timeRange);
+                console.log('minKey:', timeRange.minKey, 'maxKey:', timeRange.maxKey);
                 
-                if (timeRange.minKey && timeRange.maxKey) {
-                    const startDate = new Date(timeRange.minKey);
-                    const endDate = new Date(timeRange.maxKey);
-                    const startTime = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}-${String(startDate.getDate()).padStart(2, '0')}T${String(startDate.getHours()).padStart(2, '0')}:${String(startDate.getMinutes()).padStart(2, '0')}:${String(startDate.getSeconds()).padStart(2, '0')}`;
-                    const endTime = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}T${String(endDate.getHours()).padStart(2, '0')}:${String(endDate.getMinutes()).padStart(2, '0')}:${String(endDate.getSeconds()).padStart(2, '0')}`;
-                    
-                    if (startTimeElement) {
-                        startTimeElement.value = startTime;
-                        console.log('设置开始时间:', startTime);
+                if (timeRange.minKey != null || timeRange.maxKey != null) {
+                    // 分别检查minKey和maxKey，哪个有效就设置哪个
+                    if (timeRange.minKey != null && this.isValidTimestamp(timeRange.minKey)) {
+                        const startDate = new Date(timeRange.minKey);
+                        const startTime = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}-${String(startDate.getDate()).padStart(2, '0')}T${String(startDate.getHours()).padStart(2, '0')}:${String(startDate.getMinutes()).padStart(2, '0')}:${String(startDate.getSeconds()).padStart(2, '0')}`;
+                        if (startTimeElement) {
+                            startTimeElement.value = startTime;
+                            console.log('设置开始时间:', startTime);
+                        }
+                    } else {
+                        // 不是有效时间戳，清空输入框
+                        if (startTimeElement) {
+                            startTimeElement.value = '';
+                            console.log('清空开始时间');
+                        }
                     }
                     
-                    if (endTimeElement) {
-                        endTimeElement.value = endTime;
-                        console.log('设置结束时间:', endTime);
+                    if (timeRange.maxKey != null && this.isValidTimestamp(timeRange.maxKey)) {
+                        const endDate = new Date(timeRange.maxKey);
+                        const endTime = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}T${String(endDate.getHours()).padStart(2, '0')}:${String(endDate.getMinutes()).padStart(2, '0')}:${String(endDate.getSeconds()).padStart(2, '0')}`;
+                        if (endTimeElement) {
+                            endTimeElement.value = endTime;
+                            console.log('设置结束时间:', endTime);
+                        }
+                    } else {
+                        // 不是有效时间戳，清空输入框
+                        if (endTimeElement) {
+                            endTimeElement.value = '';
+                            console.log('清空结束时间');
+                        }
                     }
                     
-                    // 获取数据量并自动计算时间间隔
+                    // 无论是否有效时间戳，都计算时间间隔
                     await this.autoCalculatePrecision(tableName, timeRange.minKey, timeRange.maxKey);
                 } else {
                     console.warn('时间范围为空，使用默认值');
@@ -393,19 +419,15 @@ class DataVisualization extends HTMLElement {
         // 毫秒级时间戳：13位数字（如 1704067200000）
         // 秒级时间戳：10位数字（如 1704067200）
         const timestampStr = String(Math.floor(Math.abs(numValue)));
-        const isValidLength = timestampStr.length === 13 || timestampStr.length === 10;
+        const isValidLength = timestampStr.length >= 10; // 至少10位
         
         if (!isValidLength) {
             return false;
         }
         
+        // 尝试转换为日期
         const date = new Date(numValue);
-        if (isNaN(date.getTime())) {
-            return false;
-        }
-        
-        const year = date.getFullYear();
-        return year >= 1970 && year <= 2100;
+        return !isNaN(date.getTime());
     }
 
     
@@ -439,46 +461,63 @@ class DataVisualization extends HTMLElement {
 
             // 如果有key列，尝试转换为时间戳
             if (record.key) {
-                try {
-                    const parsedTimestamp = new Date(record.key).getTime();
-                    // 检查是否是有效时间戳
-                    if (this.isValidTimestamp(parsedTimestamp)) {
-                        processedRecord.timestamp = parsedTimestamp;
-                    } else {
-                        // 不是有效时间戳，保留原始值
-                        processedRecord.timestamp = record.key;
+                let timestamp = record.key;
+                // 如果是字符串，尝试解析；如果是数字，直接使用
+                if (typeof record.key === 'string') {
+                    try {
+                        timestamp = new Date(record.key).getTime();
+                    } catch (error) {
+                        timestamp = record.key;
                     }
-                } catch (error) {
-                    // 解析异常，保留原始值
+                }
+                // 检查是否是有效时间戳
+                if (this.isValidTimestamp(timestamp)) {
+                    processedRecord.timestamp = timestamp;
+                    console.log('key转换成功:', record.key, '->', timestamp);
+                } else {
+                    // 不是有效时间戳，保留原始值
                     processedRecord.timestamp = record.key;
+                    console.log('key不是有效时间戳:', record.key);
                 }
             }
 
             // 如果有window_start列，尝试转换为时间戳
             if (record.window_start !== undefined) {
-                try {
-                    const parsedTimestamp = new Date(record.window_start).getTime();
-                    if (this.isValidTimestamp(parsedTimestamp)) {
-                        processedRecord.window_start_timestamp = parsedTimestamp;
-                    } else {
-                        processedRecord.window_start_timestamp = record.window_start;
+                let timestamp = record.window_start;
+                // 如果是字符串，尝试解析；如果是数字，直接使用
+                if (typeof record.window_start === 'string') {
+                    try {
+                        timestamp = new Date(record.window_start).getTime();
+                    } catch (error) {
+                        timestamp = record.window_start;
                     }
-                } catch (error) {
+                }
+                if (this.isValidTimestamp(timestamp)) {
+                    processedRecord.window_start_timestamp = timestamp;
+                    console.log('window_start转换成功:', record.window_start, '->', timestamp);
+                } else {
                     processedRecord.window_start_timestamp = record.window_start;
+                    console.log('window_start不是有效时间戳:', record.window_start);
                 }
             }
 
             // 如果有window_end列，尝试转换为时间戳
             if (record.window_end !== undefined) {
-                try {
-                    const parsedTimestamp = new Date(record.window_end).getTime();
-                    if (this.isValidTimestamp(parsedTimestamp)) {
-                        processedRecord.window_end_timestamp = parsedTimestamp;
-                    } else {
-                        processedRecord.window_end_timestamp = record.window_end;
+                let timestamp = record.window_end;
+                // 如果是字符串，尝试解析；如果是数字，直接使用
+                if (typeof record.window_end === 'string') {
+                    try {
+                        timestamp = new Date(record.window_end).getTime();
+                    } catch (error) {
+                        timestamp = record.window_end;
                     }
-                } catch (error) {
+                }
+                if (this.isValidTimestamp(timestamp)) {
+                    processedRecord.window_end_timestamp = timestamp;
+                    console.log('window_end转换成功:', record.window_end, '->', timestamp);
+                } else {
                     processedRecord.window_end_timestamp = record.window_end;
+                    console.log('window_end不是有效时间戳:', record.window_end);
                 }
             }
 
