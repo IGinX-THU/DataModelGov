@@ -19,6 +19,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
+import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -59,7 +60,11 @@ public class DataSourceService {
             }
         }
 
-        if (dataPermissionService.existTablePrefix(request.getSchemaPrefix())) {
+        String tablePrefix = StringUtils.hasText(request.getDataPrefix()) ?
+                request.getSchemaPrefix() + "." + request.getDataPrefix() :
+                request.getSchemaPrefix();
+
+        if (dataPermissionService.existTablePrefix(tablePrefix)) {
             throw new IllegalArgumentException("数据资源已存在");
         }
         // iginxSession.openSession();
@@ -68,16 +73,16 @@ public class DataSourceService {
                 StorageEngineType.findByValue(request.getStorageEngineType()),
                 request.buildExtraParams());
         // iginxSession.closeSession();
-        dataPermissionService.saveTablePrefix(request.getSchemaPrefix());
+        dataPermissionService.saveTablePrefix(tablePrefix);
         log.info("成功注册数据源: {}", request);
 
         // 保存数据档案
-        saveDataSourceArchive(request);
+        saveDataSourceArchive(request, tablePrefix);
 
         // 添加到项目的datas字段
         if (projectName != null && !projectName.isEmpty()) {
             try {
-                projectService.addToProject(projectName, request.getSchemaPrefix(), "datas");
+                projectService.addToProject(projectName, tablePrefix, "datas");
             } catch (Exception e) {
                 log.error("添加数据路径到项目失败", e);
             }
@@ -193,10 +198,10 @@ public class DataSourceService {
     /**
      * 保存数据源档案
      */
-    private void saveDataSourceArchive(BaseStorageEngineRequest request) {
+    private void saveDataSourceArchive(BaseStorageEngineRequest request, String tablePrefix) {
         try {
             DataArchiveEntity archive = new DataArchiveEntity();
-            archive.setName(request.getSchemaPrefix());
+            archive.setName(tablePrefix);
             archive.setType("datasource");
             archive.setDesc(request.getDescription());
             
@@ -213,7 +218,7 @@ public class DataSourceService {
             archive.setConfig(configJson);
 
             dataArchiveService.saveArchive(archive);
-            log.info("数据源档案已保存: {}, desc={}", request.getSchemaPrefix(), archive.getDesc());
+            log.info("数据源档案已保存: {}, desc={}", tablePrefix, archive.getDesc());
         } catch (Exception e) {
             log.error("保存数据源档案失败", e);
             // 不抛出异常，避免影响主流程
