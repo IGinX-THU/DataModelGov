@@ -905,28 +905,50 @@ tr:hover td {
 }
 
 .toolbar-btn {
-    width: 32px;
-    height: 32px;
-    border: 1px solid transparent;
-    background: transparent;
+    width: auto;
+    height: auto;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
     cursor: pointer;
-    display: flex;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    border-radius: 2px;
-    font-size: 16px;
-    color: #333;
-    transition: all 0.1s;
+    color: white;
+    transition: all 0.3s;
 }
 
 .toolbar-btn:hover {
-    background: #e8f4fd;
-    border-color: #b3d9f2;
+    opacity: 0.9;
+}
+
+.toolbar-btn.green {
+    background: #10b981;
+}
+
+.toolbar-btn.green:hover {
+    background: #059669;
+}
+
+.toolbar-btn.orange {
+    background: #f59e0b;
+}
+
+.toolbar-btn.orange:hover {
+    background: #d97706;
+}
+
+.toolbar-btn.blue {
+    background: #3b82f6;
+}
+
+.toolbar-btn.blue:hover {
+    background: #2563eb;
 }
 
 .toolbar-btn.active {
-    background: #cce8ff;
-    border-color: #0078d4;
+    opacity: 0.7;
 }
 
 .toolbar-btn:disabled {
@@ -935,8 +957,7 @@ tr:hover td {
 }
 
 .toolbar-btn:disabled:hover {
-    background: transparent;
-    border-color: transparent;
+    opacity: 0.4;
 }
 
 .toolbar-separator {
