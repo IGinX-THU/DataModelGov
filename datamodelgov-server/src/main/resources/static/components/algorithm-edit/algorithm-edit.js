@@ -862,10 +862,18 @@ class AlgorithmEdit extends HTMLElement {
                 return;
             }
 
+            // 从fullPath中提取projectName
+            let projectName = null;
+            const fullPath = this.currentAlgorithm?.fullPath || this.currentAlgorithmMeta?.fullPath;
+            if (fullPath && window.extractProjectNameFromPath) {
+                projectName = window.extractProjectNameFromPath(fullPath);
+            }
+
             // 调用extractAlgorithmFile接口获取文件列表
             const extractResponse = await window.AppConfig.post('algorithm', 'extractAlgorithmFile', {
                 name: algorithmName,
-                version: version
+                version: version,
+                projectName: projectName
             });
 
             if (extractResponse.success) {
@@ -1282,17 +1290,31 @@ class AlgorithmEdit extends HTMLElement {
             console.warn('未找到模型树');
             return modelNames;
         }
+
+        // 从算法档案的fullPath中提取项目名
+        let algorithmProjectName = null;
+        const fullPath = this.currentAlgorithm?.fullPath || this.currentAlgorithmMeta?.fullPath;
+        if (fullPath && window.extractProjectNameFromPath) {
+            algorithmProjectName = window.extractProjectNameFromPath(fullPath);
+        }
+        console.log('算法档案所属项目:', algorithmProjectName);
+
         const seen = new Set();
         modelTree.querySelectorAll('.tree-node').forEach(node => {
-            const span = node.querySelector('span');
-            if (!span) return;
-            const name = span.textContent.trim();
-            if (name === 'models_system' || name === 'models' || seen.has(name)) return;
-            const hasChildren = node.querySelector('.tree-children');
-            if (hasChildren) {
-                const childNodes = hasChildren.querySelectorAll(':scope > .tree-node');
-                const hasLeaf = Array.from(childNodes).some(c => !c.querySelector('.tree-children'));
-                if (hasLeaf) { modelNames.push(name); seen.add(name); }
+            const nodeFullPath = node.getAttribute('data-full-path');
+            if (!nodeFullPath) return;
+
+            // 路径格式：models_system.projectName.modelName.version
+            const parts = nodeFullPath.split('.');
+            if (parts.length >= 4) {
+                const projectName = parts[1];
+                const modelName = parts[2];
+
+                // 只添加属于算法档案所属项目的模型
+                if (algorithmProjectName && projectName === algorithmProjectName && modelName && !seen.has(modelName)) {
+                    modelNames.push(modelName);
+                    seen.add(modelName);
+                }
             }
         });
         return modelNames;
@@ -1303,17 +1325,31 @@ class AlgorithmEdit extends HTMLElement {
         // 从模型树获取数据，而不是右侧边栏树
         const modelTree = document.getElementById('modelTree');
         if (!modelTree) return versions;
+
+        // 从算法档案的fullPath中提取项目名
+        let algorithmProjectName = null;
+        const fullPath = this.currentAlgorithm?.fullPath || this.currentAlgorithmMeta?.fullPath;
+        if (fullPath && window.extractProjectNameFromPath) {
+            algorithmProjectName = window.extractProjectNameFromPath(fullPath);
+        }
+        console.log('算法档案所属项目:', algorithmProjectName);
+
         modelTree.querySelectorAll('.tree-node').forEach(node => {
-            const span = node.querySelector('span');
-            if (!span || span.textContent.trim() !== modelName) return;
-            const children = node.querySelector('.tree-children');
-            if (!children) return;
-            children.querySelectorAll(':scope > .tree-node').forEach(child => {
-                const childSpan = child.querySelector('span');
-                if (childSpan && !child.querySelector('.tree-children')) {
-                    versions.push(childSpan.textContent.trim());
+            const nodeFullPath = node.getAttribute('data-full-path');
+            if (!nodeFullPath) return;
+
+            // 路径格式：models_system.projectName.modelName.version
+            const parts = nodeFullPath.split('.');
+            if (parts.length >= 4) {
+                const projectName = parts[1];
+                const pathModelName = parts[2];
+                const version = parts[3];
+
+                // 只添加属于算法档案所属项目的模型版本
+                if (algorithmProjectName && projectName === algorithmProjectName && pathModelName === modelName && version && !versions.includes(version)) {
+                    versions.push(version);
                 }
-            });
+            }
         });
         return versions;
     }
@@ -1378,7 +1414,15 @@ class AlgorithmEdit extends HTMLElement {
     async loadModelStoragePath(modelName, version, row) {
         try {
             console.log('加载模型storagePath:', modelName, version);
-            const result = await window.AppConfig.get('model', 'metas', { name: modelName, version: version });
+
+            // 从算法档案的fullPath中提取项目名
+            let algorithmProjectName = null;
+            const fullPath = this.currentAlgorithm?.fullPath || this.currentAlgorithmMeta?.fullPath;
+            if (fullPath && window.extractProjectNameFromPath) {
+                algorithmProjectName = window.extractProjectNameFromPath(fullPath);
+            }
+
+            const result = await window.AppConfig.get('model', 'metas', { name: modelName, version: version, projectName: algorithmProjectName });
             if (result.success && result.data) {
                 const modelData = result.data;
                 row.dataset.storagePath = modelData.storagePath || '';

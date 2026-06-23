@@ -142,12 +142,16 @@ public class AlgorithmFileService {
      * 3. 校验MD5确保文件完整性
      */
     public byte[] downloadAlgorithm(String name, String version) throws Exception {
-        log.info("开始下载算法: {} v{}", name, version);
+        return downloadAlgorithm(name, version, null);
+    }
+
+    public byte[] downloadAlgorithm(String name, String version, String projectName) throws Exception {
+        log.info("开始下载算法: {} v{} 项目名: {}", name, version, projectName);
 
         // 1. 先查询元数据验证算法信息
-        AlgorithmMetaEntity algorithmMeta = queryMeta(name, version);
+        AlgorithmMetaEntity algorithmMeta = queryMeta(name, version, projectName);
         if (algorithmMeta == null) {
-            throw new Exception("未找到指定的算法元数据: " + name + " v" + version);
+            throw new Exception("未找到指定的算法元数据: " + name + " v" + version + " 项目 " + projectName);
         }
 
         // 验证元数据完整性
@@ -229,19 +233,26 @@ public class AlgorithmFileService {
      * 提取算法文件（返回文件列表给前端）
      */
     public List<Map<String, Object>> extractAlgorithmFile(String algorithmName, String algorithmVersion, Path taskDir) throws Exception {
+        return extractAlgorithmFile(algorithmName, algorithmVersion, null, taskDir);
+    }
+
+    /**
+     * 提取算法文件（返回文件列表给前端，带项目名）
+     */
+    public List<Map<String, Object>> extractAlgorithmFile(String algorithmName, String algorithmVersion, String projectName, Path taskDir) throws Exception {
         if (!StringUtils.hasText(algorithmName) || !StringUtils.hasText(algorithmVersion)) {
             throw new RuntimeException("算法名称或版本为空");
         }
 
-        log.info("开始下载算法: {} 版本 {}", algorithmName, algorithmVersion);
+        log.info("开始下载算法: {} 版本 {} 项目名: {}", algorithmName, algorithmVersion, projectName);
 
         // 获取算法元数据以获取正确的文件名
-        AlgorithmMetaEntity algorithmMeta = queryMeta(algorithmName, algorithmVersion);
+        AlgorithmMetaEntity algorithmMeta = queryMeta(algorithmName, algorithmVersion, projectName);
         if (algorithmMeta == null) {
-            throw new RuntimeException("未找到算法元数据: " + algorithmName + " 版本 " + algorithmVersion);
+            throw new RuntimeException("未找到算法元数据: " + algorithmName + " 版本 " + algorithmVersion + " 项目 " + projectName);
         }
 
-        byte[] algorithmData = downloadAlgorithm(algorithmName, algorithmVersion);
+        byte[] algorithmData = downloadAlgorithm(algorithmName, algorithmVersion, projectName);
         String fileName = algorithmMeta.getFileName();
         if (fileName == null || fileName.trim().isEmpty()) {
             throw new RuntimeException("算法文件名为空: " + algorithmName + " 版本 " + algorithmVersion);

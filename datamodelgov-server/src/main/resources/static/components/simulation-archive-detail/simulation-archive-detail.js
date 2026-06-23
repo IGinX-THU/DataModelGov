@@ -1064,8 +1064,12 @@ class SimulationArchiveDetail extends HTMLElement {
             const select = this.shadowRoot.getElementById('algorithmSelect');
             if (!select) return;
 
-            // 从/api/algorithm/tree接口获取算法列表
-            const result = await window.AppConfig.get('algorithm', 'tree', {});
+            // 获取仿真档案所属项目
+            const archiveProjectName = this.currentArchive?.projectName || null;
+            console.log('仿真档案所属项目:', archiveProjectName);
+
+            // 从/api/algorithm/tree接口获取算法列表，传入projectName参数
+            const result = await window.AppConfig.get('algorithm', 'tree', { projectName: archiveProjectName });
             if (!result || !result.data) {
                 console.warn('获取算法树失败');
                 select.innerHTML = '<option value="">请选择算法</option>';
@@ -1078,10 +1082,12 @@ class SimulationArchiveDetail extends HTMLElement {
             paths.forEach(path => {
                 if (path && path.startsWith('algorithms_system.')) {
                     const parts = path.split('.');
-                    if (parts.length >= 2) {
-                        // 倒数第二级是算法名，最后一级是版本
-                        const algorithmName = parts[parts.length - 2];
-                        if (algorithmName) {
+                    if (parts.length >= 4) {
+                        // 路径格式：algorithms_system.projectName.algorithmName.version
+                        const projectName = parts[1];
+                        const algorithmName = parts[2];
+                        // 只添加属于仿真档案所属项目的算法
+                        if (archiveProjectName && projectName === archiveProjectName && algorithmName) {
                             algorithmNames.add(algorithmName);
                         }
                     }
@@ -1108,8 +1114,12 @@ class SimulationArchiveDetail extends HTMLElement {
         }
 
         try {
-            // 从/api/algorithm/tree接口获取算法版本
-            const result = await window.AppConfig.get('algorithm', 'tree', {});
+            // 获取仿真档案所属项目
+            const archiveProjectName = this.currentArchive?.projectName || null;
+            console.log('仿真档案所属项目:', archiveProjectName);
+
+            // 从/api/algorithm/tree接口获取算法版本，传入projectName参数
+            const result = await window.AppConfig.get('algorithm', 'tree', { projectName: archiveProjectName });
             if (!result || !result.data) {
                 console.warn('获取算法树失败');
                 versionSelect.innerHTML = '<option value="">获取版本失败</option>';
@@ -1122,11 +1132,13 @@ class SimulationArchiveDetail extends HTMLElement {
             paths.forEach(path => {
                 if (path && path.startsWith('algorithms_system.')) {
                     const parts = path.split('.');
-                    if (parts.length >= 2) {
-                        // 倒数第二级是算法名，最后一级是版本
-                        const pathAlgorithmName = parts[parts.length - 2];
-                        const version = parts[parts.length - 1];
-                        if (pathAlgorithmName === algorithmName && version && !versions.includes(version)) {
+                    if (parts.length >= 4) {
+                        // 路径格式：algorithms_system.projectName.algorithmName.version
+                        const projectName = parts[1];
+                        const pathAlgorithmName = parts[2];
+                        const version = parts[3];
+                        // 只添加属于仿真档案所属项目的算法版本
+                        if (archiveProjectName && projectName === archiveProjectName && pathAlgorithmName === algorithmName && version && !versions.includes(version)) {
                             versions.push(version);
                         }
                     }
