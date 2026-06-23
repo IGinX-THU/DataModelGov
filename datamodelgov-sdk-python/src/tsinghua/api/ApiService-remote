@@ -54,27 +54,27 @@ if len(sys.argv) <= 1 or sys.argv[1] == '--help':
     print('  Result getDataSourceTree()')
     print('  Result queryData(DataQueryRequest request)')
     print('  Result importData(string config, string file)')
-    print('  Result exportData(DataQueryRequest request)')
     print('  Result deleteData(DataQueryRequest request)')
     print('  Result queryRelationalData(RelationalQueryRequest request)')
     print('  Result countRelationalData(RelationalQueryRequest request)')
-    print('  Result exportRelationalData(RelationalQueryRequest request)')
+    print('  Result deleteColumns(string path)')
+    print('  Result getUserManualFile()')
     print('  Result uploadModel(string file, string name, string version)')
-    print('  Result downloadModel(string name, string version)')
-    print('  Result getModelMeta(string name, string version)')
+    print('  Result downloadModel(string name, string version, string projectName)')
+    print('  Result getModelMeta(string name, string version, string projectName)')
     print('  Result saveModelMeta(ModelMeta modelMeta)')
-    print('  Result getModelHistory(string name)')
-    print('  Result deleteModel(string name, string version)')
+    print('  Result getModelHistory(string name, string projectName)')
+    print('  Result deleteModel(string name, string version, string projectName)')
     print('  Result getModelTree(string projectName)')
     print('  Result queryModelArchives(ModelArchiveQueryRequest request)')
     print('  Result countModelArchives(ModelArchiveQueryRequest request)')
     print('  Result extractModelFile(ExtractModelFileRequest request)')
     print('  Result uploadAlgorithm(string file, string name, string version)')
-    print('  Result downloadAlgorithm(string name, string version)')
-    print('  Result getAlgorithmMeta(string name, string version)')
+    print('  Result downloadAlgorithm(string name, string version, string projectName)')
+    print('  Result getAlgorithmMeta(string name, string version, string projectName)')
     print('  Result saveAlgorithmMeta(AlgorithmMeta algorithmMeta)')
-    print('  Result getAlgorithmHistory(string name)')
-    print('  Result deleteAlgorithm(string name, string version)')
+    print('  Result getAlgorithmHistory(string name, string projectName)')
+    print('  Result deleteAlgorithm(string name, string version, string projectName)')
     print('  Result getAlgorithmTree(string projectName)')
     print('  Result queryAlgorithmArchives(AlgorithmArchiveQueryRequest request)')
     print('  Result countAlgorithmArchives(AlgorithmArchiveQueryRequest request)')
@@ -90,7 +90,7 @@ if len(sys.argv) <= 1 or sys.argv[1] == '--help':
     print('  Result getProject(i64 createTime)')
     print('  Result getProjectTree(string name)')
     print('  Result importProject(string file, string projectName)')
-    print('  Result exportProject(ProjectExportRequest request)')
+    print('  Result importProjectResource(string file, string projectName, string resourceType)')
     print('  Result saveSimulationArchive(SimulationArchive archive)')
     print('  Result querySimulationArchives(string name, string projectName, string owner, bool status, i32 pageNum, i32 pageSize)')
     print('  Result countSimulationArchives(string name, string projectName, string owner, bool status)')
@@ -99,15 +99,14 @@ if len(sys.argv) <= 1 or sys.argv[1] == '--help':
     print('  Result validateSimulationArchiveName(string name)')
     print('  Result copySimulationArchive(i64 createTime, string newName)')
     print('  Result runSimulation(i64 createTime)')
-    print('  Result runSimulationSelective(RunSimulationSelectiveRequest request)')
+    print('  Result runSimulationSelective(i64 createTime,  params)')
     print('  Result stopSimulation(i64 createTime)')
     print('  Result getSimulationExecutionStatus(i64 createTime)')
-    print('  Result getSimulationExecutionLog(i64 timestamp)')
+    print('  Result getSimulationExecutionLog(i64 timestamp, i64 createTime)')
     print('  Result querySimulationExecutionRecords(ExecutionRecordQueryRequest request)')
     print('  Result countSimulationExecutionRecords(ExecutionRecordQueryRequest request)')
     print('  Result deleteSimulationExecutionRecord(i64 timestamp)')
     print('  Result uploadSimulationReport(string file, i64 timestamp)')
-    print('  Result simulationPackageDownload(i64 timestamp)')
     print('  Result login(LoginRequest loginRequest)')
     print('  Result refreshToken(RefreshTokenRequest request)')
     print('  Result verifyToken(string token)')
@@ -386,12 +385,6 @@ elif cmd == 'importData':
         sys.exit(1)
     pp.pprint(client.importData(args[0], args[1],))
 
-elif cmd == 'exportData':
-    if len(args) != 1:
-        print('exportData requires 1 args')
-        sys.exit(1)
-    pp.pprint(client.exportData(eval(args[0]),))
-
 elif cmd == 'deleteData':
     if len(args) != 1:
         print('deleteData requires 1 args')
@@ -410,11 +403,17 @@ elif cmd == 'countRelationalData':
         sys.exit(1)
     pp.pprint(client.countRelationalData(eval(args[0]),))
 
-elif cmd == 'exportRelationalData':
+elif cmd == 'deleteColumns':
     if len(args) != 1:
-        print('exportRelationalData requires 1 args')
+        print('deleteColumns requires 1 args')
         sys.exit(1)
-    pp.pprint(client.exportRelationalData(eval(args[0]),))
+    pp.pprint(client.deleteColumns(args[0],))
+
+elif cmd == 'getUserManualFile':
+    if len(args) != 0:
+        print('getUserManualFile requires 0 args')
+        sys.exit(1)
+    pp.pprint(client.getUserManualFile())
 
 elif cmd == 'uploadModel':
     if len(args) != 3:
@@ -423,16 +422,16 @@ elif cmd == 'uploadModel':
     pp.pprint(client.uploadModel(args[0], args[1], args[2],))
 
 elif cmd == 'downloadModel':
-    if len(args) != 2:
-        print('downloadModel requires 2 args')
+    if len(args) != 3:
+        print('downloadModel requires 3 args')
         sys.exit(1)
-    pp.pprint(client.downloadModel(args[0], args[1],))
+    pp.pprint(client.downloadModel(args[0], args[1], args[2],))
 
 elif cmd == 'getModelMeta':
-    if len(args) != 2:
-        print('getModelMeta requires 2 args')
+    if len(args) != 3:
+        print('getModelMeta requires 3 args')
         sys.exit(1)
-    pp.pprint(client.getModelMeta(args[0], args[1],))
+    pp.pprint(client.getModelMeta(args[0], args[1], args[2],))
 
 elif cmd == 'saveModelMeta':
     if len(args) != 1:
@@ -441,16 +440,16 @@ elif cmd == 'saveModelMeta':
     pp.pprint(client.saveModelMeta(eval(args[0]),))
 
 elif cmd == 'getModelHistory':
-    if len(args) != 1:
-        print('getModelHistory requires 1 args')
+    if len(args) != 2:
+        print('getModelHistory requires 2 args')
         sys.exit(1)
-    pp.pprint(client.getModelHistory(args[0],))
+    pp.pprint(client.getModelHistory(args[0], args[1],))
 
 elif cmd == 'deleteModel':
-    if len(args) != 2:
-        print('deleteModel requires 2 args')
+    if len(args) != 3:
+        print('deleteModel requires 3 args')
         sys.exit(1)
-    pp.pprint(client.deleteModel(args[0], args[1],))
+    pp.pprint(client.deleteModel(args[0], args[1], args[2],))
 
 elif cmd == 'getModelTree':
     if len(args) != 1:
@@ -483,16 +482,16 @@ elif cmd == 'uploadAlgorithm':
     pp.pprint(client.uploadAlgorithm(args[0], args[1], args[2],))
 
 elif cmd == 'downloadAlgorithm':
-    if len(args) != 2:
-        print('downloadAlgorithm requires 2 args')
+    if len(args) != 3:
+        print('downloadAlgorithm requires 3 args')
         sys.exit(1)
-    pp.pprint(client.downloadAlgorithm(args[0], args[1],))
+    pp.pprint(client.downloadAlgorithm(args[0], args[1], args[2],))
 
 elif cmd == 'getAlgorithmMeta':
-    if len(args) != 2:
-        print('getAlgorithmMeta requires 2 args')
+    if len(args) != 3:
+        print('getAlgorithmMeta requires 3 args')
         sys.exit(1)
-    pp.pprint(client.getAlgorithmMeta(args[0], args[1],))
+    pp.pprint(client.getAlgorithmMeta(args[0], args[1], args[2],))
 
 elif cmd == 'saveAlgorithmMeta':
     if len(args) != 1:
@@ -501,16 +500,16 @@ elif cmd == 'saveAlgorithmMeta':
     pp.pprint(client.saveAlgorithmMeta(eval(args[0]),))
 
 elif cmd == 'getAlgorithmHistory':
-    if len(args) != 1:
-        print('getAlgorithmHistory requires 1 args')
+    if len(args) != 2:
+        print('getAlgorithmHistory requires 2 args')
         sys.exit(1)
-    pp.pprint(client.getAlgorithmHistory(args[0],))
+    pp.pprint(client.getAlgorithmHistory(args[0], args[1],))
 
 elif cmd == 'deleteAlgorithm':
-    if len(args) != 2:
-        print('deleteAlgorithm requires 2 args')
+    if len(args) != 3:
+        print('deleteAlgorithm requires 3 args')
         sys.exit(1)
-    pp.pprint(client.deleteAlgorithm(args[0], args[1],))
+    pp.pprint(client.deleteAlgorithm(args[0], args[1], args[2],))
 
 elif cmd == 'getAlgorithmTree':
     if len(args) != 1:
@@ -602,11 +601,11 @@ elif cmd == 'importProject':
         sys.exit(1)
     pp.pprint(client.importProject(args[0], args[1],))
 
-elif cmd == 'exportProject':
-    if len(args) != 1:
-        print('exportProject requires 1 args')
+elif cmd == 'importProjectResource':
+    if len(args) != 3:
+        print('importProjectResource requires 3 args')
         sys.exit(1)
-    pp.pprint(client.exportProject(eval(args[0]),))
+    pp.pprint(client.importProjectResource(args[0], args[1], args[2],))
 
 elif cmd == 'saveSimulationArchive':
     if len(args) != 1:
@@ -657,10 +656,10 @@ elif cmd == 'runSimulation':
     pp.pprint(client.runSimulation(eval(args[0]),))
 
 elif cmd == 'runSimulationSelective':
-    if len(args) != 1:
-        print('runSimulationSelective requires 1 args')
+    if len(args) != 2:
+        print('runSimulationSelective requires 2 args')
         sys.exit(1)
-    pp.pprint(client.runSimulationSelective(eval(args[0]),))
+    pp.pprint(client.runSimulationSelective(eval(args[0]), eval(args[1]),))
 
 elif cmd == 'stopSimulation':
     if len(args) != 1:
@@ -675,10 +674,10 @@ elif cmd == 'getSimulationExecutionStatus':
     pp.pprint(client.getSimulationExecutionStatus(eval(args[0]),))
 
 elif cmd == 'getSimulationExecutionLog':
-    if len(args) != 1:
-        print('getSimulationExecutionLog requires 1 args')
+    if len(args) != 2:
+        print('getSimulationExecutionLog requires 2 args')
         sys.exit(1)
-    pp.pprint(client.getSimulationExecutionLog(eval(args[0]),))
+    pp.pprint(client.getSimulationExecutionLog(eval(args[0]), eval(args[1]),))
 
 elif cmd == 'querySimulationExecutionRecords':
     if len(args) != 1:
@@ -703,12 +702,6 @@ elif cmd == 'uploadSimulationReport':
         print('uploadSimulationReport requires 2 args')
         sys.exit(1)
     pp.pprint(client.uploadSimulationReport(args[0], eval(args[1]),))
-
-elif cmd == 'simulationPackageDownload':
-    if len(args) != 1:
-        print('simulationPackageDownload requires 1 args')
-        sys.exit(1)
-    pp.pprint(client.simulationPackageDownload(eval(args[0]),))
 
 elif cmd == 'login':
     if len(args) != 1:

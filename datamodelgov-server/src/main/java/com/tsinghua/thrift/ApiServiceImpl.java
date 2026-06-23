@@ -740,6 +740,44 @@ public class ApiServiceImpl implements ApiService.Iface {
     }
 
     @Override
+    public com.tsinghua.thrift.api.Result deleteColumns(String path) throws TException {
+        try {
+            log.info("Thrift RPC: Delete columns for path {}", path);
+            
+            if (path == null || path.trim().isEmpty()) {
+                com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "路径不能为空");
+                return result;
+            }
+            
+            // Call your existing service method directly
+            dataTableService.deleteColumns(path);
+            
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "删除成功");
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Delete columns failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Delete failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public com.tsinghua.thrift.api.Result getUserManualFile() throws TException {
+        try {
+            log.info("Thrift RPC: Get user manual file");
+            
+            // Note: File download via Thrift is complex, this is a placeholder
+            // In practice, you might need to handle this differently or use HTTP for file download
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "File download via Thrift not implemented, use HTTP endpoint");
+            return result;
+        } catch (Exception e) {
+            log.error("Thrift RPC: Get user manual file failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Get file failed: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
     public com.tsinghua.thrift.api.Result importData(String config, ByteBuffer file) throws TException {
         try {
             log.info("Thrift RPC: Import data");
@@ -755,37 +793,6 @@ public class ApiServiceImpl implements ApiService.Iface {
         }
     }
 
-    @Override
-    public com.tsinghua.thrift.api.Result exportData(com.tsinghua.thrift.api.DataQueryRequest request) throws TException {
-        try {
-            log.info("Thrift RPC: Export data");
-            
-            // Note: File export via Thrift is complex, this is a placeholder
-            // In practice, you might need to handle this differently or use HTTP for file download
-            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Data export via Thrift not implemented, use HTTP endpoint");
-            return result;
-        } catch (Exception e) {
-            log.error("Thrift RPC: Export data failed", e);
-            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Export failed: " + e.getMessage());
-            return result;
-        }
-    }
-
-    @Override
-    public com.tsinghua.thrift.api.Result exportRelationalData(com.tsinghua.thrift.api.RelationalQueryRequest request) throws TException {
-        try {
-            log.info("Thrift RPC: Export relational data");
-            
-            // Note: File export via Thrift is complex, this is a placeholder
-            // In practice, you might need to handle this differently or use HTTP for file download
-            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Data export via Thrift not implemented, use HTTP endpoint");
-            return result;
-        } catch (Exception e) {
-            log.error("Thrift RPC: Export relational data failed", e);
-            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Export failed: " + e.getMessage());
-            return result;
-        }
-    }
 
     // ========== Model File Interface - Match ModelFileController ==========
 
@@ -922,12 +929,12 @@ public class ApiServiceImpl implements ApiService.Iface {
     }
 
     @Override
-    public com.tsinghua.thrift.api.Result getModelMeta(String name, String version) throws TException {
+    public com.tsinghua.thrift.api.Result getModelMeta(String name, String version, String projectName) throws TException {
         try {
-            log.info("Thrift RPC: Get model meta {}@{}", name, version);
+            log.info("Thrift RPC: Get model meta {}@{}@{}", name, version, projectName);
             
             // Call your existing service method directly
-            ModelMetaEntity entity = modelFileService.queryMeta(name, version);
+            ModelMetaEntity entity = modelFileService.queryMeta(name, version, projectName);
             
             if (entity == null) {
                 com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Model not found");
@@ -982,8 +989,8 @@ public class ApiServiceImpl implements ApiService.Iface {
                 ? projectName 
                 : com.tsinghua.util.ProjectContext.getCurrentProject("unknown");
             
-            // Call your existing service method directly with projectName
-            modelFileService.deleteModel(name, version, actualProjectName);
+            // Call your existing service method directly
+            modelFileService.deleteModel(name, version);
             
             com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "操作成功");
             return result;
@@ -1075,10 +1082,10 @@ public class ApiServiceImpl implements ApiService.Iface {
     }
 
     @Override
-    public com.tsinghua.thrift.api.Result getAlgorithmMeta(String name, String version) throws TException {
+    public com.tsinghua.thrift.api.Result getAlgorithmMeta(String name, String version, String projectName) throws TException {
         try {
-            log.info("Thrift RPC: Get algorithm meta {}@{}", name, version);
-            AlgorithmMetaEntity entity = algorithmFileService.queryMeta(name, version);
+            log.info("Thrift RPC: Get algorithm meta {}@{}@{}", name, version, projectName);
+            AlgorithmMetaEntity entity = algorithmFileService.queryMeta(name, version, projectName);
             if (entity == null) {
                 com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Algorithm not found");
                 return result;
@@ -1141,7 +1148,7 @@ public class ApiServiceImpl implements ApiService.Iface {
                 ? projectName 
                 : com.tsinghua.util.ProjectContext.getCurrentProject("unknown");
             
-            algorithmFileService.deleteAlgorithm(name, version, actualProjectName);
+            algorithmFileService.deleteAlgorithm(name, version);
             com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(true, "操作成功");
             return result;
         } catch (Exception e) {
@@ -1419,17 +1426,18 @@ public class ApiServiceImpl implements ApiService.Iface {
     }
 
     @Override
-    public com.tsinghua.thrift.api.Result exportProject(com.tsinghua.thrift.api.ProjectExportRequest request) throws TException {
+    public com.tsinghua.thrift.api.Result importProjectResource(ByteBuffer file, String projectName, String resourceType) throws TException {
         try {
-            log.info("Thrift RPC: Export project {}", request.getProjectName());
-            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "File export via Thrift not implemented, use HTTP endpoint");
+            log.info("Thrift RPC: Import project resource {} for project {}", resourceType, projectName);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "File import via Thrift not implemented, use HTTP endpoint");
             return result;
         } catch (Exception e) {
-            log.error("Thrift RPC: Export project failed", e);
-            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Export failed: " + e.getMessage());
+            log.error("Thrift RPC: Import project resource failed", e);
+            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Import failed: " + e.getMessage());
             return result;
         }
     }
+
 
     // ========== Simulation Archive Interface - Match SimulationArchiveController ==========
 
@@ -1558,11 +1566,13 @@ public class ApiServiceImpl implements ApiService.Iface {
     }
 
     @Override
-    public com.tsinghua.thrift.api.Result runSimulationSelective(com.tsinghua.thrift.api.RunSimulationSelectiveRequest request) throws TException {
+    public com.tsinghua.thrift.api.Result runSimulationSelective(long createTime, java.util.Map<String, String> params) throws TException {
         try {
-            log.info("Thrift RPC: Run simulation selective for {}", request.getCreateTime());
-            java.util.List<String> selectedNodeIds = request.isSetSelectedNodeIds() ? request.getSelectedNodeIds() : null;
-            com.tsinghua.model.Result<Void> simResult = simulationExecutionService.runSimulation(request.getCreateTime(), selectedNodeIds);
+            log.info("Thrift RPC: Run simulation selective for {}", createTime);
+            java.util.List<String> selectedNodeIds = params != null && params.containsKey("selectedNodeIds") 
+                ? java.util.Arrays.asList(params.get("selectedNodeIds").split(",")) 
+                : null;
+            com.tsinghua.model.Result<Void> simResult = simulationExecutionService.runSimulation(createTime, selectedNodeIds);
             com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(simResult.getSuccess(), simResult.getMessage());
             return result;
         } catch (Exception e) {
@@ -1604,9 +1614,9 @@ public class ApiServiceImpl implements ApiService.Iface {
     }
 
     @Override
-    public com.tsinghua.thrift.api.Result getSimulationExecutionLog(long timestamp) throws TException {
+    public com.tsinghua.thrift.api.Result getSimulationExecutionLog(long timestamp, long createTime) throws TException {
         try {
-            log.info("Thrift RPC: Get simulation execution log {}", timestamp);
+            log.info("Thrift RPC: Get simulation execution log timestamp={}, createTime={}", timestamp, createTime);
             com.tsinghua.model.Result<Map<String, Object>> simResult = simulationExecutionService.getExecutionLog(timestamp);
             com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(simResult.getSuccess(), simResult.getMessage());
             if (simResult.getData() != null) {
@@ -1685,18 +1695,6 @@ public class ApiServiceImpl implements ApiService.Iface {
         }
     }
 
-    @Override
-    public com.tsinghua.thrift.api.Result simulationPackageDownload(long timestamp) throws TException {
-        try {
-            log.info("Thrift RPC: Simulation package download {}", timestamp);
-            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "File download via Thrift not implemented, use HTTP endpoint");
-            return result;
-        } catch (Exception e) {
-            log.error("Thrift RPC: Simulation package download failed", e);
-            com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(false, "Download failed: " + e.getMessage());
-            return result;
-        }
-    }
 
     // ========== Auth Interface - Match AuthController ==========
 
