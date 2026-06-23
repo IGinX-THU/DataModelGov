@@ -170,20 +170,21 @@ public class AlgorithmFileController {
     @PostMapping("/extractAlgorithmFile")
     @RequirePermission(Permission.READ)
     public Result<?> extractAlgorithmFileForParsing(@RequestBody ExtractAlgorithmFileRequest request) throws Exception {
-        
+
         String algorithmName = request.getName();
         String version = request.getVersion();
-        
+        String projectName = request.getProjectName();
+
         if (algorithmName == null || version == null) {
             return Result.error("参数name和version不能为空");
         }
-        
+
         // 创建临时目录
         Path tempDir = Files.createTempDirectory("algorithm_parsing_");
-        
+
         try {
-            // 调用修改后的extractAlgorithmFile方法
-            List<Map<String, Object>> fileList = algorithmFileService.extractAlgorithmFile(algorithmName, version, tempDir);
+            // 调用修改后的extractAlgorithmFile方法，传入projectName
+            List<Map<String, Object>> fileList = algorithmFileService.extractAlgorithmFile(algorithmName, version, projectName, tempDir);
             return Result.success(fileList);
         } finally {
             // 清理临时目录

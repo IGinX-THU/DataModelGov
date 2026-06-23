@@ -429,6 +429,12 @@ class ModelUpload extends HTMLElement {
             return;
         }
 
+        // 获取当前项目
+        const username = window.localStorage.getItem('username');
+        const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
+        const currentProjectName = cachedProject ? cachedProject.name : null;
+        console.log('当前项目:', currentProjectName);
+
         // 获取右侧模型资产库的根节点
         const modelTree = document.getElementById('modelTree');
         if (!modelTree) {
@@ -450,11 +456,14 @@ class ModelUpload extends HTMLElement {
                     console.log('叶子节点完整路径:', fullPath);
                     // 路径格式：models_system.projectName.modelName.version
                     const parts = fullPath.split('.');
-                    // 倒数第二级是模型名称
-                    if (parts.length >= 3) {
-                        const modelName = parts[parts.length - 2];
-                        console.log('提取的模型名称:', modelName);
-                        modelNames.add(modelName);
+                    if (parts.length >= 4) {
+                        const projectName = parts[1];
+                        const modelName = parts[2];
+                        // 只添加属于当前项目的模型
+                        if (currentProjectName && projectName === currentProjectName && modelName) {
+                            console.log('提取的模型名称:', modelName);
+                            modelNames.add(modelName);
+                        }
                     }
                 }
             }
