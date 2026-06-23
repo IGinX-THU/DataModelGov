@@ -26,6 +26,30 @@ class ModelDownload extends HTMLElement {
         return path;
     }
 
+    // 检查节点是否属于当前项目
+    isNodeInCurrentProject(node, currentProjectName) {
+        if (!currentProjectName) return true; // 如果没有项目，不过滤
+        
+        // 向上遍历查找项目节点
+        let currentNode = node;
+        while (currentNode) {
+            const span = currentNode.querySelector('span');
+            if (span) {
+                const nodeName = span.textContent.trim();
+                if (nodeName === currentProjectName) {
+                    return true;
+                }
+                // 如果遇到 models_system，说明已经到顶层了
+                if (nodeName === 'models_system') {
+                    return false;
+                }
+            }
+            // 向上查找父节点
+            currentNode = currentNode.parentElement?.closest('.tree-node');
+        }
+        return false;
+    }
+
     async connectedCallback() {
         await this.loadResources();
         // 等待CSS加载完成后再渲染HTML
@@ -352,6 +376,12 @@ class ModelDownload extends HTMLElement {
         const modelName = this.shadowRoot.getElementById('modelName');
         if (!modelName) return;
 
+        // 获取当前项目
+        const username = window.localStorage.getItem('username');
+        const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
+        const currentProjectName = cachedProject ? cachedProject.name : null;
+        console.log('当前项目:', currentProjectName);
+
         // 获取右侧模型资产库的根节点
         const modelTree = document.getElementById('modelTree');
         if (!modelTree) {
@@ -393,7 +423,10 @@ class ModelDownload extends HTMLElement {
 
                     // 只有当直接子节点包含叶子节点时，才将父节点作为模型名称
                     if (hasLeafChild) {
-                        modelNames.add(strippedName);
+                        // 检查该节点是否属于当前项目
+                        if (this.isNodeInCurrentProject(node, currentProjectName)) {
+                            modelNames.add(strippedName);
+                        }
                     }
                 }
             }
@@ -418,6 +451,11 @@ class ModelDownload extends HTMLElement {
         const modelVersion = this.shadowRoot.getElementById('modelVersion');
         
         if (!modelName || !modelVersion) return;
+        
+        // 获取当前项目
+        const username = window.localStorage.getItem('username');
+        const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
+        const currentProjectName = cachedProject ? cachedProject.name : null;
         
         const selectedModelName = modelName.value;
         if (!selectedModelName) {
@@ -450,7 +488,10 @@ class ModelDownload extends HTMLElement {
                     if (parentNode) {
                         const parentSpan = parentNode.querySelector('span');
                         if (parentSpan && parentSpan.textContent.trim() === selectedModelName) {
-                            versions.push(nodeName);
+                            // 检查该节点是否属于当前项目
+                            if (this.isNodeInCurrentProject(node, currentProjectName)) {
+                                versions.push(nodeName);
+                            }
                         }
                     }
                 }

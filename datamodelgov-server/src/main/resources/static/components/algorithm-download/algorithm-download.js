@@ -26,6 +26,30 @@ class AlgorithmDownload extends HTMLElement {
         return path;
     }
 
+    // 检查节点是否属于当前项目
+    isNodeInCurrentProject(node, currentProjectName) {
+        if (!currentProjectName) return true; // 如果没有项目，不过滤
+        
+        // 向上遍历查找项目节点
+        let currentNode = node;
+        while (currentNode) {
+            const span = currentNode.querySelector('span');
+            if (span) {
+                const nodeName = span.textContent.trim();
+                if (nodeName === currentProjectName) {
+                    return true;
+                }
+                // 如果遇到 algorithms_system，说明已经到顶层了
+                if (nodeName === 'algorithms_system') {
+                    return false;
+                }
+            }
+            // 向上查找父节点
+            currentNode = currentNode.parentElement?.closest('.tree-node');
+        }
+        return false;
+    }
+
     async connectedCallback() {
         await this.loadResources();
         // 等待CSS加载完成后再渲染HTML
@@ -352,6 +376,12 @@ class AlgorithmDownload extends HTMLElement {
         const algorithmName = this.shadowRoot.getElementById('algorithmName');
         if (!algorithmName) return;
 
+        // 获取当前项目
+        const username = window.localStorage.getItem('username');
+        const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
+        const currentProjectName = cachedProject ? cachedProject.name : null;
+        console.log('当前项目:', currentProjectName);
+
         // 获取右侧算法资产库的根节点
         const algorithmTree = document.getElementById('algorithmTree');
         if (!algorithmTree) {
@@ -393,7 +423,10 @@ class AlgorithmDownload extends HTMLElement {
 
                     // 只有当直接子节点包含叶子节点时，才将父节点作为算法名称
                     if (hasLeafChild) {
-                        algorithmNames.add(strippedName);
+                        // 检查该节点是否属于当前项目
+                        if (this.isNodeInCurrentProject(node, currentProjectName)) {
+                            algorithmNames.add(strippedName);
+                        }
                     }
                 }
             }
@@ -418,6 +451,11 @@ class AlgorithmDownload extends HTMLElement {
         const algorithmVersion = this.shadowRoot.getElementById('algorithmVersion');
         
         if (!algorithmName || !algorithmVersion) return;
+        
+        // 获取当前项目
+        const username = window.localStorage.getItem('username');
+        const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
+        const currentProjectName = cachedProject ? cachedProject.name : null;
         
         const selectedAlgorithmName = algorithmName.value;
         if (!selectedAlgorithmName) {
@@ -450,7 +488,10 @@ class AlgorithmDownload extends HTMLElement {
                     if (parentNode) {
                         const parentSpan = parentNode.querySelector('span');
                         if (parentSpan && parentSpan.textContent.trim() === selectedAlgorithmName) {
-                            versions.push(nodeName);
+                            // 检查该节点是否属于当前项目
+                            if (this.isNodeInCurrentProject(node, currentProjectName)) {
+                                versions.push(nodeName);
+                            }
                         }
                     }
                 }
