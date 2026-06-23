@@ -429,6 +429,12 @@ class AlgorithmUpload extends HTMLElement {
             return;
         }
 
+        // 获取当前项目
+        const username = window.localStorage.getItem('username');
+        const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
+        const currentProjectName = cachedProject ? cachedProject.name : null;
+        console.log('当前项目:', currentProjectName);
+
         // 获取右侧算法资产库的根节点
         const algorithmTree = document.getElementById('algorithmTree');
         if (!algorithmTree) {
@@ -450,11 +456,14 @@ class AlgorithmUpload extends HTMLElement {
                     console.log('叶子节点完整路径:', fullPath);
                     // 路径格式：algorithms_system.projectName.algorithmName.version
                     const parts = fullPath.split('.');
-                    // 倒数第二级是算法名称
-                    if (parts.length >= 3) {
-                        const algorithmName = parts[parts.length - 2];
-                        console.log('提取的算法名称:', algorithmName);
-                        algorithmNames.add(algorithmName);
+                    if (parts.length >= 4) {
+                        const projectName = parts[1];
+                        const algorithmName = parts[2];
+                        // 只添加属于当前项目的算法
+                        if (currentProjectName && projectName === currentProjectName && algorithmName) {
+                            console.log('提取的算法名称:', algorithmName);
+                            algorithmNames.add(algorithmName);
+                        }
                     }
                 }
             }
