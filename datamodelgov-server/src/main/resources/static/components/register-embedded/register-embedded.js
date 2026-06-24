@@ -45,6 +45,11 @@ class RegisterDataResourceEmbedded extends HTMLElement {
     }
 
     bindEvents() {
+        // 禁用所有number类型input的鼠标滚轮改变值功能
+        this.shadowRoot.querySelectorAll('input[type="number"]').forEach(input => {
+            input.addEventListener('wheel', (e) => e.preventDefault());
+        });
+
         // 关闭按钮
         const closeBtn = this.shadowRoot.getElementById('closeBtn');
         if (closeBtn) {
