@@ -1167,6 +1167,59 @@ html.light-mode .dark-mode .empty-placeholder {
     color: #f56c6c;
 }
 
+/* 页面初始化Loading遮罩层样式 */
+.page-loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.95);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+}
+
+.page-loading-overlay .global-loading-spinner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.page-loading-overlay .global-spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #3370ff;
+    border-radius: 50%;
+    animation: global-spin 1s linear infinite;
+    margin-bottom: 16px;
+}
+
+.page-loading-overlay .global-loading-text {
+    color: #666;
+    font-weight: 500;
+    font-size: 14px;
+}
+
+html.dark-mode .page-loading-overlay,
+html.light-mode .dark-mode .page-loading-overlay {
+    background: rgba(0, 0, 0, 0.9);
+}
+
+html.dark-mode .page-loading-overlay .global-spinner,
+html.light-mode .dark-mode .page-loading-overlay .global-spinner {
+    border: 4px solid #444;
+    border-top: 4px solid #3370ff;
+}
+
+html.dark-mode .page-loading-overlay .global-loading-text,
+html.light-mode .dark-mode .page-loading-overlay .global-loading-text {
+    color: #ccc;
+}
+
 /* 全局Loading遮罩层样式 */
 .global-loading-overlay {
     position: absolute;

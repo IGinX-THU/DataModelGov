@@ -138,7 +138,8 @@ window.AppConfig = {
             ownerTables: '/api/data-permission/owner-tables',
             query: '/api/data-permission/query',
             count: '/api/data-permission/count',
-            update: '/api/data-permission/update'
+            update: '/api/data-permission/update',
+            delete: '/api/data-permission/delete'
         },
         // 模型相关
         model: {
