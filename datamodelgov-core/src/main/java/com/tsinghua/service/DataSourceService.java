@@ -100,14 +100,18 @@ public class DataSourceService {
         List<RemovedStorageEngineInfo> removedStorageEngineList = Collections.singletonList(removedStorageEngineInfo);
         iginxSession.removeStorageEngine(removedStorageEngineList);
         // iginxSession.closeSession();
-        dataPermissionService.deleteByTablePrefix(storageEngineInfoDto.getSchemaPrefix());
 
         // 删除对应的数据档案元数据
+        String tablePrefix = StringUtils.hasText(storageEngineInfoDto.getDataPrefix()) ?
+                storageEngineInfoDto.getSchemaPrefix() + "." + storageEngineInfoDto.getDataPrefix() :
+                storageEngineInfoDto.getSchemaPrefix();
+        dataPermissionService.deleteByTablePrefix(tablePrefix);
+
         try {
-            DataArchiveEntity archive = dataArchiveService.findByName(storageEngineInfoDto.getSchemaPrefix());
+            DataArchiveEntity archive = dataArchiveService.findByName(tablePrefix);
             if (archive != null && archive.getId() != null) {
                 dataArchiveService.deleteArchive(archive.getId());
-                log.info("已删除数据源档案元数据: {}", storageEngineInfoDto.getSchemaPrefix());
+                log.info("已删除数据源档案元数据: {}", tablePrefix);
             }
         } catch (Exception e) {
             log.error("删除数据源档案元数据失败", e);
@@ -117,7 +121,7 @@ public class DataSourceService {
         String projectName = ProjectContext.getCurrentProject("unknown");
         if (projectName != null && !projectName.isEmpty()) {
             try {
-                projectService.removeFromProject(projectName, storageEngineInfoDto.getSchemaPrefix(), "datas");
+                projectService.removeFromProject(projectName, tablePrefix, "datas");
             } catch (Exception e) {
                 log.error("从项目移除数据路径失败", e);
             }
@@ -141,8 +145,12 @@ public class DataSourceService {
             }
             String currentProject = ProjectContext.getCurrentProject(null);
             accessibleTables.forEach(accessibleTable -> filteredList.addAll(
-                    storageEngineInfoDtos.stream().filter(storageEngineInfoDto ->
-                                    accessibleTable.equalsIgnoreCase(storageEngineInfoDto.getSchemaPrefix()))
+                    storageEngineInfoDtos.stream().filter(storageEngineInfoDto -> {
+                                String tablePrefix = StringUtils.hasText(storageEngineInfoDto.getDataPrefix()) ?
+                                        storageEngineInfoDto.getSchemaPrefix() + "." + storageEngineInfoDto.getDataPrefix() :
+                                        storageEngineInfoDto.getSchemaPrefix();
+                                return accessibleTable.equalsIgnoreCase(tablePrefix);
+                    })
                             .filter(column -> {
                                 // 如果有当前项目，只返回该项目相关的路径
                                 if (currentProject != null && !currentProject.isEmpty()) {
