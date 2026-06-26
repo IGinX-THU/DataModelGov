@@ -1560,6 +1560,13 @@ class SimulationArchiveDetail extends HTMLElement {
             return;
         }
 
+        // 检查是否有重复的执行记录（相同档案、相同时间范围、执行成功）
+        const hasDuplicate = await this.checkDuplicateExecution(selectedNodeIds);
+        if (hasDuplicate) {
+            this.showToast('该仿真档案在相同时间范围内已有成功执行记录，请勿重复提交', 'error');
+            return;
+        }
+
         // 运行前自动保存图数据，确保后端读到最新的边/节点数据
         try {
             const saveData = {
@@ -1672,6 +1679,48 @@ class SimulationArchiveDetail extends HTMLElement {
         } catch (e) {
             console.error('检查算法存在性失败:', e);
             return [];
+        }
+    }
+
+    async checkDuplicateExecution(selectedNodeIds) {
+        try {
+            // 获取选中节点的时间范围
+            const timeRanges = selectedNodeIds.map(nodeId => {
+                const node = this.nodes.find(n => n.nodeId === nodeId);
+                return node ? { startTime: node.startTime, endTime: node.endTime } : null;
+            }).filter(tr => tr !== null);
+
+            if (timeRanges.length === 0) return false;
+
+            // 查询该仿真档案的执行记录（使用POST请求）
+            const baseUrl = window.AppConfig.getApiUrl('simulationArchives', 'execution-records');
+            const result = await window.AppConfig.request(baseUrl, {
+                method: 'POST',
+                body: JSON.stringify({
+                    archiveId: this.currentArchive.createTime,
+                    status: 'completed',
+                    pageNum: 1,
+                    pageSize: 100
+                })
+            });
+
+            if (!result || !result.data || result.data.length === 0) return false;
+
+            // 检查是否有相同时间范围的执行记录
+            for (const record of result.data) {
+                if (record.startTime && record.endTime) {
+                    for (const tr of timeRanges) {
+                        if (tr.startTime === record.startTime && tr.endTime === record.endTime) {
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            return false;
+        } catch (e) {
+            console.error('检查重复执行记录失败:', e);
+            return false;
         }
     }
 
