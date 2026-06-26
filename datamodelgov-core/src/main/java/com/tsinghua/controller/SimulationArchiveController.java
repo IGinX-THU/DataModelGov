@@ -269,7 +269,7 @@ public class SimulationArchiveController {
         if (AuthUtil.isAdmin()) {
             return Result.success(simulationExecutionService.queryExecutions(
                 queryDto.getArchiveName(),
-                null,
+                queryDto.getArchiveId(),
                 queryDto.getStatus(),
                 queryDto.getStartTime(),
                 queryDto.getEndTime(),
