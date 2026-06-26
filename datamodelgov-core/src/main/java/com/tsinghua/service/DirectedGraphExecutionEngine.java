@@ -183,15 +183,23 @@ public class DirectedGraphExecutionEngine {
 
             // 按拓扑排序顺序构建results，保证前端日志显示顺序正确
             Map<String, Object> orderedResults = new LinkedHashMap<>();
+            boolean hasFailedNode = false;
             for (String nodeId : executionOrder) {
                 Object nodeResult = executionResults.get(nodeId);
                 if (nodeResult != null) {
                     orderedResults.put(nodeId, nodeResult);
+                    // 检查是否有节点执行失败
+                    if (nodeResult instanceof Map) {
+                        Map<?, ?> nodeResultMap = (Map<?, ?>) nodeResult;
+                        if ("failed".equals(nodeResultMap.get("status"))) {
+                            hasFailedNode = true;
+                        }
+                    }
                 }
             }
 
-            result.put("success", true);
-            result.put("message", "仿真执行成功");
+            result.put("success", !hasFailedNode);
+            result.put("message", hasFailedNode ? "仿真执行完成，但有节点失败" : "仿真执行成功");
             result.put("executionOrder", executionOrder);
             result.put("results", orderedResults);
             result.put("nodeOutputs", nodeOutputs);
