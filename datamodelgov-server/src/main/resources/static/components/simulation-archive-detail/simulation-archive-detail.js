@@ -836,10 +836,18 @@ class SimulationArchiveDetail extends HTMLElement {
             return;
         }
 
+        // 获取projectName，新建模式下从localStorage获取当前项目
+        let projectName = this.currentArchive?.projectName || null;
+        if (!projectName) {
+            const username = window.localStorage.getItem('username');
+            const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
+            projectName = cachedProject?.name || null;
+        }
+
         const algorithmInfo = {
             name: node.algorithmName,
             version: node.algorithmVersion || 'latest',
-            fullPath: this.currentArchive?.projectName ? `algorithms_system.${this.currentArchive.projectName}.${node.algorithmName}.${node.algorithmVersion}` : null
+            fullPath: projectName ? `algorithms_system.${projectName}.${node.algorithmName}.${node.algorithmVersion}` : null
         };
 
         const algorithmDetail = document.getElementById('algorithmDetail');
@@ -964,8 +972,13 @@ class SimulationArchiveDetail extends HTMLElement {
         try {
             console.log('开始获取算法时间范围:', algorithmName, algorithmVersion);
 
-            // 从当前档案中获取projectName
-            const projectName = this.currentArchive?.projectName || null;
+            // 从当前档案中获取projectName，新建模式下从localStorage获取当前项目
+            let projectName = this.currentArchive?.projectName || null;
+            if (!projectName) {
+                const username = window.localStorage.getItem('username');
+                const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
+                projectName = cachedProject?.name || null;
+            }
 
             // 获取算法元数据
             const metaResult = await window.AppConfig.get('algorithm', 'metas', {
@@ -1214,18 +1227,20 @@ class SimulationArchiveDetail extends HTMLElement {
                 window.showGlobalLoading('正在加载算法信息...');
             }
             
+            // 获取projectName，新建模式下从localStorage获取当前项目
+            let projectName = this.currentArchive?.projectName || null;
+            if (!projectName) {
+                const username = window.localStorage.getItem('username');
+                const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
+                projectName = cachedProject?.name || null;
+            }
+
             // 先获取完整的算法元数据
             const algorithmInfo = {
                 name: node.algorithmName,
                 version: node.algorithmVersion,
-                fullPath: this.currentArchive?.projectName ? `algorithms_system.${this.currentArchive.projectName}.${node.algorithmName}.${node.algorithmVersion}` : null
+                fullPath: projectName ? `algorithms_system.${projectName}.${node.algorithmName}.${node.algorithmVersion}` : null
             };
-            
-            // 从fullPath中提取projectName
-            let projectName = null;
-            if (algorithmInfo.fullPath && window.extractProjectNameFromPath) {
-                projectName = window.extractProjectNameFromPath(algorithmInfo.fullPath);
-            }
             
             // 调用API获取完整的算法元数据
             const result = await window.AppConfig.get('algorithm', 'metas', {
@@ -1369,8 +1384,13 @@ class SimulationArchiveDetail extends HTMLElement {
             $('edgeSourceField').placeholder = srcNode ? `${srcNode.nodeName} 的输出字段` : '源节点输出文件名';
             $('edgeTargetField').placeholder = tgtNode ? `${tgtNode.nodeName} 的输入字段` : '目标节点输入文件名';
 
-            // 从当前档案中获取projectName
-            const projectName = this.currentArchive?.projectName || null;
+            // 从当前档案中获取projectName，新建模式下从localStorage获取当前项目
+            let projectName = this.currentArchive?.projectName || null;
+            if (!projectName) {
+                const username = window.localStorage.getItem('username');
+                const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
+                projectName = cachedProject?.name || null;
+            }
 
             if (srcNode && srcNode.algorithmName && srcNode.algorithmVersion) {
                 try {
