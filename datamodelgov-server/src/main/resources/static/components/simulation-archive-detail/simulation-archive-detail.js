@@ -1064,8 +1064,13 @@ class SimulationArchiveDetail extends HTMLElement {
             const select = this.shadowRoot.getElementById('algorithmSelect');
             if (!select) return;
 
-            // 获取仿真档案所属项目
-            const archiveProjectName = this.currentArchive?.projectName || null;
+            // 获取仿真档案所属项目，新建模式下从localStorage获取当前项目
+            let archiveProjectName = this.currentArchive?.projectName || null;
+            if (!archiveProjectName) {
+                const username = window.localStorage.getItem('username');
+                const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
+                archiveProjectName = cachedProject?.name || null;
+            }
             console.log('仿真档案所属项目:', archiveProjectName);
 
             // 从/api/algorithm/tree接口获取算法列表，传入projectName参数
@@ -1114,8 +1119,13 @@ class SimulationArchiveDetail extends HTMLElement {
         }
 
         try {
-            // 获取仿真档案所属项目
-            const archiveProjectName = this.currentArchive?.projectName || null;
+            // 获取仿真档案所属项目，新建模式下从localStorage获取当前项目
+            let archiveProjectName = this.currentArchive?.projectName || null;
+            if (!archiveProjectName) {
+                const username = window.localStorage.getItem('username');
+                const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
+                archiveProjectName = cachedProject?.name || null;
+            }
             console.log('仿真档案所属项目:', archiveProjectName);
 
             // 从/api/algorithm/tree接口获取算法版本，传入projectName参数
