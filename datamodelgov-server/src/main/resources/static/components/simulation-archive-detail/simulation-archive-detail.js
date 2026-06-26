@@ -1553,6 +1553,13 @@ class SimulationArchiveDetail extends HTMLElement {
         console.log('选中的节点ID:', selectedNodeIds);
         if (selectedNodeIds.length === 0) { this.showToast('请至少选择一个节点', 'error'); return; }
 
+        // 检查选中节点的算法是否存在
+        const missingAlgorithms = await this.checkAlgorithmsExist(selectedNodeIds);
+        if (missingAlgorithms.length > 0) {
+            this.showToast('关联算法缺失: ' + missingAlgorithms.join(', '), 'error');
+            return;
+        }
+
         // 运行前自动保存图数据，确保后端读到最新的边/节点数据
         try {
             const saveData = {
@@ -1615,6 +1622,57 @@ class SimulationArchiveDetail extends HTMLElement {
                 this.shadowRoot.getElementById('runBtn').disabled = false;
             }
         } catch (e) { this.showToast('停止失败', 'error'); }
+    }
+
+    async checkAlgorithmsExist(selectedNodeIds) {
+        try {
+            // 获取当前项目名称
+            let projectName = this.currentArchive?.projectName || null;
+            if (!projectName) {
+                const username = window.localStorage.getItem('username');
+                const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
+                projectName = cachedProject?.name || null;
+            }
+
+            // 获取算法树
+            const result = await window.AppConfig.get('algorithm', 'tree', { projectName: projectName });
+            if (!result || !result.data) {
+                console.warn('获取算法树失败');
+                return [];
+            }
+
+            const paths = Array.isArray(result.data) ? result.data : [result.data];
+            const existingAlgorithms = new Set();
+
+            // 构建已存在的算法集合
+            paths.forEach(path => {
+                if (path && path.startsWith('algorithms_system.')) {
+                    const parts = path.split('.');
+                    if (parts.length >= 4) {
+                        const algoName = parts[2];
+                        const algoVersion = parts[3];
+                        existingAlgorithms.add(`${algoName}:${algoVersion}`);
+                    }
+                }
+            });
+
+            // 检查选中节点的算法是否存在
+            const missingAlgorithms = [];
+            selectedNodeIds.forEach(nodeId => {
+                const node = this.nodes.find(n => n.nodeId === nodeId);
+                if (node && node.algorithmName && node.algorithmVersion) {
+                    const key = `${node.algorithmName}:${node.algorithmVersion}`;
+                    if (!existingAlgorithms.has(key)) {
+                        missingAlgorithms.push(`${node.algorithmName}(${node.algorithmVersion})`);
+                    }
+                }
+            });
+
+            return missingAlgorithms;
+        } catch (e) {
+            console.error('检查算法存在性失败:', e);
+            return [];
+        }
     }
 
     async pollExecutionStatus() {
