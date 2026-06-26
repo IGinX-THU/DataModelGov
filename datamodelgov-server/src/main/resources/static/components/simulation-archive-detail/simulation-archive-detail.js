@@ -1752,20 +1752,24 @@ class SimulationArchiveDetail extends HTMLElement {
     updateExecStatus() {
         const sv = this.shadowRoot.getElementById('execStatusValue');
         const stopBtn = this.shadowRoot.getElementById('stopBtn');
+        const runBtn = this.shadowRoot.getElementById('runBtn');
         if (!sv) return;
         if (this.isRunning) {
             sv.textContent = '运行中';
             sv.className = 'status-value running';
             if (stopBtn) stopBtn.disabled = false;
+            if (runBtn) runBtn.disabled = true;
         } else if (this.executionResult) {
             const hasFailed = Object.values(this.executionResult.results || {}).some(r => r && r.status === 'failed');
             sv.textContent = hasFailed ? '执行失败' : '执行完成';
             sv.className = 'status-value ' + (hasFailed ? 'failed' : 'completed');
             if (stopBtn) stopBtn.disabled = true;
+            if (runBtn) runBtn.disabled = false;
         } else {
             sv.textContent = '未运行';
             sv.className = 'status-value';
             if (stopBtn) stopBtn.disabled = true;
+            if (runBtn) runBtn.disabled = false;
         }
         // Update node statuses
         if (this.executionResult && this.executionResult.results) {
