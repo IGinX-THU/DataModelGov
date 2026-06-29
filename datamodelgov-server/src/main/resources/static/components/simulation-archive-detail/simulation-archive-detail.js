@@ -1698,6 +1698,7 @@ class SimulationArchiveDetail extends HTMLElement {
                 method: 'POST',
                 body: JSON.stringify({
                     archiveId: this.currentArchive.createTime,
+                    projectName: this.currentArchive.projectName,
                     status: 'completed',
                     pageNum: 1,
                     pageSize: 100
