@@ -373,7 +373,13 @@ class ProjectList extends HTMLElement {
             </tr>
         `).join('');
 
-        tbody.addEventListener('click', (e) => {
+        // 移除旧的事件监听器（如果有）
+        if (this._tbodyClickHandler) {
+            tbody.removeEventListener('click', this._tbodyClickHandler);
+        }
+
+        // 创建并保存新的事件监听器
+        this._tbodyClickHandler = (e) => {
             const btn = e.target.closest('.action-btn');
             if (!btn) return;
 
@@ -388,7 +394,8 @@ class ProjectList extends HTMLElement {
                     this.viewProjectDetail(createTime);
                     break;
             }
-        });
+        };
+        tbody.addEventListener('click', this._tbodyClickHandler);
 
         this.updatePagination();
     }
