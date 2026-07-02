@@ -3202,8 +3202,8 @@ window.loadDataSourceTree = async function() {
 };
 
 // 全局函数：在右侧模型侧边栏展开对应节点
-window.expandModelNodeInRightSidebar = function(storagePath) {
-    console.log('尝试在右侧模型侧边栏展开节点:', storagePath);
+window.expandModelNodeInRightSidebar = function(storagePath, syncOnly = false) {
+    console.log('尝试在右侧模型侧边栏展开节点:', storagePath, syncOnly ? '(仅同步选中)' : '');
     
     // 切换到右侧模型侧边栏
     const activeModelIcon = document.querySelector('.bottom-sidebar-icon.right-sidebar-icon.active[data-panel="model"]');
@@ -3236,8 +3236,13 @@ window.expandModelNodeInRightSidebar = function(storagePath) {
                     parent.classList.add('expanded');
                     parent = parent.closest('.tree-children')?.parentElement;
                 }
-                // 模拟点击节点
-                node.click();
+                if (syncOnly) {
+                    // 仅同步选中状态，避免重复触发详情加载
+                    modelTree.querySelectorAll('.tree-node.active').forEach(n => n.classList.remove('active'));
+                    node.classList.add('active');
+                } else {
+                    node.click();
+                }
                 node.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }
         });
@@ -3249,8 +3254,8 @@ window.expandModelNodeInRightSidebar = function(storagePath) {
 };
 
 // 全局函数：在右侧算法侧边栏展开对应节点
-window.expandAlgorithmNodeInRightSidebar = function(storagePath) {
-    console.log('尝试在右侧算法侧边栏展开节点:', storagePath);
+window.expandAlgorithmNodeInRightSidebar = function(storagePath, syncOnly = false) {
+    console.log('尝试在右侧算法侧边栏展开节点:', storagePath, syncOnly ? '(仅同步选中)' : '');
 
     // 切换到右侧算法侧边栏
     const activeAlgorithmIcon = document.querySelector('.bottom-sidebar-icon.right-sidebar-icon.active[data-panel="algorithm"]');
@@ -3283,8 +3288,13 @@ window.expandAlgorithmNodeInRightSidebar = function(storagePath) {
                     parent.classList.add('expanded');
                     parent = parent.closest('.tree-children')?.parentElement;
                 }
-                // 模拟点击节点
-                node.click();
+                if (syncOnly) {
+                    // 仅同步选中状态，避免重复触发详情加载
+                    algorithmTree.querySelectorAll('.tree-node.active').forEach(n => n.classList.remove('active'));
+                    node.classList.add('active');
+                } else {
+                    node.click();
+                }
                 node.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }
         });
@@ -3505,8 +3515,13 @@ window.displayProjectTree = function(projectName) {
 // 绑定项目树节点点击事件
 function bindProjectTreeEvents() {
     const projectTree = document.getElementById('projectTree');
-    if (projectTree) {
-        projectTree.addEventListener('click', function(e) {
+    if (!projectTree) return;
+
+    if (projectTree._projectTreeClickHandler) {
+        projectTree.removeEventListener('click', projectTree._projectTreeClickHandler);
+    }
+
+    projectTree._projectTreeClickHandler = function(e) {
             const node = e.target.closest('.tree-node');
             if (node) {
                 e.stopPropagation();
@@ -3566,8 +3581,8 @@ function bindProjectTreeEvents() {
                             algorithmDetail.show({ name: nodeName, fullPath: nodeName });
                         }
                     }
-                    // 同时在右侧算法侧边栏展开对应节点
-                    expandAlgorithmNodeInRightSidebar(nodeName);
+                    // 同步右侧算法侧边栏选中状态（不再模拟点击，避免重复加载）
+                    expandAlgorithmNodeInRightSidebar(nodeName, true);
                 } else if (nodeType === 'model') {
                     console.log('点击模型节点:', nodeName);
                     // 清空工作区
@@ -3591,12 +3606,13 @@ function bindProjectTreeEvents() {
                             modelDetail.show({ name: nodeName, fullPath: nodeName });
                         }
                     }
-                    // 同时在右侧模型侧边栏展开对应节点
-                    expandModelNodeInRightSidebar(nodeName);
+                    // 同步右侧模型侧边栏选中状态（不再模拟点击，避免重复加载）
+                    expandModelNodeInRightSidebar(nodeName, true);
                 }
             }
-        });
-    }
+    };
+
+    projectTree.addEventListener('click', projectTree._projectTreeClickHandler);
 }
 
 // 渲染ProjectTree结构
