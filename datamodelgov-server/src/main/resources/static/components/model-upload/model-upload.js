@@ -720,6 +720,7 @@ class ModelUpload extends HTMLElement {
             if (modelNameInput) {
                 modelNameInput.addEventListener('input', () => {
                     this.generateSuggestedVersion();
+                    this.clearFieldError('modelName');
                 });
             }
             
@@ -727,6 +728,15 @@ class ModelUpload extends HTMLElement {
             if (modelNameSelect) {
                 modelNameSelect.addEventListener('change', () => {
                     this.generateSuggestedVersion();
+                    this.clearFieldError('modelNameSelect');
+                });
+            }
+            
+            // 绑定版本号输入框的输入事件，用于清除错误提示
+            const modelVersionInput = modalElement.querySelector('#modelVersion');
+            if (modelVersionInput) {
+                modelVersionInput.addEventListener('input', () => {
+                    this.clearFieldError('modelVersion');
                 });
             }
             
@@ -833,7 +843,7 @@ class ModelUpload extends HTMLElement {
             hasError = true;
         }
         
-        // 验证模型名称
+        // 验证模型名称（只允许字母、数字、下划线和中文）
         if (!formData.modelName) {
             if (formData.isRelatedModel === 'yes') {
                 this.showFieldError('modelNameSelect', '请选择模型名称');
@@ -841,11 +851,19 @@ class ModelUpload extends HTMLElement {
                 this.showFieldError('modelName', '请输入模型名称');
             }
             hasError = true;
+        } else if (!/^[a-zA-Z0-9_\u4e00-\u9fa5]+$/.test(formData.modelName)) {
+            this.showFieldError('modelName', '模型名称只能包含字母、数字、下划线和中文');
+            window.CommonUtils.showToast('模型名称只能包含字母、数字、下划线和中文', 'error');
+            hasError = true;
         }
         
-        // 验证版本号
+        // 验证版本号（只允许字母、数字、下划线）
         if (!formData.modelVersion) {
             this.showFieldError('modelVersion', '请输入版本号');
+            hasError = true;
+        } else if (!/^[a-zA-Z0-9_]+$/.test(formData.modelVersion)) {
+            this.showFieldError('modelVersion', '版本号只能包含字母、数字和下划线');
+            window.CommonUtils.showToast('版本号只能包含字母、数字和下划线', 'error');
             hasError = true;
         }
         
@@ -856,7 +874,6 @@ class ModelUpload extends HTMLElement {
         }
         
         if (hasError) {
-            this.showMessage('请填写必填字段', 'error');
             return;
         }
 
@@ -1247,13 +1264,56 @@ class ModelUpload extends HTMLElement {
 
     clearValidationErrors() {
         // 清除所有错误状态
-        const errorFields = this.shadowRoot.querySelectorAll('.form-control.error');
-        const errorMessages = this.shadowRoot.querySelectorAll('.error-message.show');
-        const errorGroups = this.shadowRoot.querySelectorAll('.form-group.error');
+        // 优先从弹窗中清除（用于modal manager）
+        const modal = document.querySelector('.modal-overlay');
+        if (modal) {
+            const modalContainer = modal.querySelector('.modal-container');
+            if (modalContainer) {
+                const errorFields = modalContainer.querySelectorAll('.form-control.error');
+                const errorMessages = modalContainer.querySelectorAll('.error-message.show');
+                const errorGroups = modalContainer.querySelectorAll('.form-group.error');
+                
+                errorFields.forEach(field => field.classList.remove('error'));
+                errorMessages.forEach(msg => msg.classList.remove('show'));
+                errorGroups.forEach(group => group.classList.remove('error'));
+            }
+        }
         
-        errorFields.forEach(field => field.classList.remove('error'));
-        errorMessages.forEach(msg => msg.classList.remove('show'));
-        errorGroups.forEach(group => group.classList.remove('error'));
+        // 同时清除Shadow DOM中的错误状态（用于直接渲染）
+        const shadowErrorFields = this.shadowRoot.querySelectorAll('.form-control.error');
+        const shadowErrorMessages = this.shadowRoot.querySelectorAll('.error-message.show');
+        const shadowErrorGroups = this.shadowRoot.querySelectorAll('.form-group.error');
+        
+        shadowErrorFields.forEach(field => field.classList.remove('error'));
+        shadowErrorMessages.forEach(msg => msg.classList.remove('show'));
+        shadowErrorGroups.forEach(group => group.classList.remove('error'));
+    }
+    
+    // 清除单个字段的错误提示
+    clearFieldError(fieldId) {
+        // 优先从弹窗中清除（用于modal manager）
+        const modal = document.querySelector('.modal-overlay');
+        if (modal) {
+            const modalContainer = modal.querySelector('.modal-container');
+            if (modalContainer) {
+                const field = modalContainer.querySelector('#' + fieldId);
+                const errorElement = modalContainer.querySelector('#' + fieldId + 'Error');
+                const formGroup = field?.closest('.form-group');
+                
+                if (field) field.classList.remove('error');
+                if (errorElement) errorElement.classList.remove('show');
+                if (formGroup) formGroup.classList.remove('error');
+            }
+        }
+        
+        // 同时清除Shadow DOM中的错误状态（用于直接渲染）
+        const shadowField = this.shadowRoot.getElementById(fieldId);
+        const shadowErrorElement = this.shadowRoot.getElementById(fieldId + 'Error');
+        const shadowFormGroup = shadowField?.closest('.form-group');
+        
+        if (shadowField) shadowField.classList.remove('error');
+        if (shadowErrorElement) shadowErrorElement.classList.remove('show');
+        if (shadowFormGroup) shadowFormGroup.classList.remove('error');
     }
 
     async apiCall(url, method = 'GET', data = null, isFormData = false) {

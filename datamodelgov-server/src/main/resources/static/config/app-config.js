@@ -221,7 +221,8 @@ window.AppConfig = {
                 try {
                     const project = JSON.parse(currentProject);
                     if (project && project.name) {
-                        headers['X-Current-Project'] = project.name;
+                        // HTTP header 仅支持 ISO-8859-1，中文等项目名需 URL 编码
+                        headers['X-Current-Project'] = encodeURIComponent(project.name);
                     }
                 } catch (e) {
                     console.error('解析当前项目失败:', e);

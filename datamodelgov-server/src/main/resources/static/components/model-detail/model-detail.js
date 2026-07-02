@@ -165,6 +165,11 @@ class ModelDetail extends HTMLElement {
             if (modelInfo.fullPath && window.extractProjectNameFromPath) {
                 projectName = window.extractProjectNameFromPath(modelInfo.fullPath);
             }
+            if (!projectName) {
+                const username = window.AppConfig.getUsername();
+                const cachedProject = username ? JSON.parse(localStorage.getItem('currentProject_' + username) || 'null') : null;
+                projectName = cachedProject ? cachedProject.name : null;
+            }
 
             // 使用新的API配置
             const result = await window.AppConfig.get('model', 'metas', {
@@ -173,7 +178,7 @@ class ModelDetail extends HTMLElement {
                 projectName: projectName
             });
 
-            if (result.success && result.data) {
+            if ((result.code === 200 || result.success) && result.data) {
                 const meta = result.data;
                 console.log('获取模型元数据成功:', meta);
                 // 保存完整的接口数据
