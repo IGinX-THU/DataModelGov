@@ -3557,9 +3557,13 @@ function bindProjectTreeEvents() {
                         if (pathParts.length >= 4) {
                             const algorithmName = pathParts[2];
                             const algorithmVersion = pathParts[3];
-                            algorithmDetail.show({ name: algorithmName, version: algorithmVersion });
+                            algorithmDetail.show({
+                                name: algorithmName,
+                                version: algorithmVersion,
+                                fullPath: nodeName
+                            });
                         } else {
-                            algorithmDetail.show({ name: nodeName });
+                            algorithmDetail.show({ name: nodeName, fullPath: nodeName });
                         }
                     }
                     // 同时在右侧算法侧边栏展开对应节点
@@ -3578,9 +3582,13 @@ function bindProjectTreeEvents() {
                         if (pathParts.length >= 4) {
                             const modelName = pathParts[2];
                             const modelVersion = pathParts[3];
-                            modelDetail.show({ name: modelName, version: modelVersion });
+                            modelDetail.show({
+                                name: modelName,
+                                version: modelVersion,
+                                fullPath: nodeName
+                            });
                         } else {
-                            modelDetail.show({ name: nodeName });
+                            modelDetail.show({ name: nodeName, fullPath: nodeName });
                         }
                     }
                     // 同时在右侧模型侧边栏展开对应节点
@@ -3613,7 +3621,7 @@ function renderProjectTree(treeData) {
         `;
         treeData.algorithms.forEach((algo, index) => {
             html += `
-                <div class="tree-node" data-node-type="algorithm" data-full-path="0-algorithms-${index}">
+                <div class="tree-node" data-node-type="algorithm" data-full-path="${algo}">
                     <span class="tree-icon algorithm-icon">🧮</span>
                     <span class="tree-node-text">${algo}</span>
                 </div>

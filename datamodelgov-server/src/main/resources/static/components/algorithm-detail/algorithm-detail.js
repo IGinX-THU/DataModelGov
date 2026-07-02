@@ -187,6 +187,11 @@ class AlgorithmDetail extends HTMLElement {
             if (algorithmInfo.fullPath && window.extractProjectNameFromPath) {
                 projectName = window.extractProjectNameFromPath(algorithmInfo.fullPath);
             }
+            if (!projectName) {
+                const username = window.AppConfig.getUsername();
+                const cachedProject = username ? JSON.parse(localStorage.getItem('currentProject_' + username) || 'null') : null;
+                projectName = cachedProject ? cachedProject.name : null;
+            }
 
             // 使用新的API配置
             const result = await window.AppConfig.get('algorithm', 'metas', {
@@ -195,7 +200,7 @@ class AlgorithmDetail extends HTMLElement {
                 projectName: projectName
             });
 
-            if (result.success && result.data) {
+            if ((result.code === 200 || result.success) && result.data) {
                 const meta = result.data;
                 console.log('获取算法元数据成功:', meta);
                 // 保存完整的接口数据
