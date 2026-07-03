@@ -1001,6 +1001,7 @@ class SimulationArchiveDetail extends HTMLElement {
             
             if (!metaResult.success || !metaResult.data) {
                 console.warn('获取算法元数据失败');
+                this.showToast('请先编辑算法档案', 'warning');
                 return;
             }
             
@@ -1009,7 +1010,7 @@ class SimulationArchiveDetail extends HTMLElement {
             const inputsBind = algorithmMeta.inputsBind;
             
             if (!tableName) {
-                console.warn('算法未配置数据源表名');
+                this.showToast('算法未绑定数据源，请编辑算法档案', 'warning');
                 return;
             }
             
