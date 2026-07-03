@@ -452,6 +452,22 @@ class RegisterDataResourceEmbedded extends HTMLElement {
             return false;
         }
         
+        // 模式前缀格式验证（与目标存储路径前缀规则一致）
+        if (data.schemaPrefix && data.schemaPrefix.trim() !== '') {
+            if (/^\d+$/.test(data.schemaPrefix)) {
+                this.showMessage('模式前缀不允许为纯数字', 'error');
+                return false;
+            }
+            if (/^_+$/.test(data.schemaPrefix)) {
+                this.showMessage('模式前缀不允许为纯下划线', 'error');
+                return false;
+            }
+            if (!/^([a-zA-Z][a-zA-Z0-9_]*|_[a-zA-Z0-9][a-zA-Z0-9_]*)(\.([a-zA-Z][a-zA-Z0-9_]*|_[a-zA-Z0-9][a-zA-Z0-9_]*))*$/.test(data.schemaPrefix)) {
+                this.showMessage('模式前缀格式不正确，支持字母、数字、下划线，不能纯数字，不能纯下划线，不能数字开头', 'error');
+                return false;
+            }
+        }
+        
         // 特定类型验证
         switch(data.storageEngineType) {
             case 2: // InfluxDB - URL必填

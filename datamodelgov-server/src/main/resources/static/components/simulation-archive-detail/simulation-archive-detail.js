@@ -564,6 +564,13 @@ class SimulationArchiveDetail extends HTMLElement {
             }
         }
 
+        // 验证 Cron 表达式格式
+        const scheduleCron = $('detailScheduleCronInput').value.trim();
+        if (scheduleCron && !this.isValidCronExpression(scheduleCron)) {
+            this.showToast('调度配置的Cron表达式格式不正确', 'error');
+            return;
+        }
+
         try {
             if (window.showGlobalLoading) window.showGlobalLoading('正在保存...');
             const username = window.localStorage.getItem('username');
@@ -2140,6 +2147,61 @@ class SimulationArchiveDetail extends HTMLElement {
     showToast(message, type = 'success') {
         if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast(message, type);
         else console.log(`[${type}] ${message}`);
+    }
+
+    isValidCronExpression(cron) {
+        if (!cron || typeof cron !== 'string') return false;
+        
+        const parts = cron.trim().split(/\s+/);
+        if (parts.length !== 6 && parts.length !== 7) return false;
+        
+        const seconds = parts[0];
+        const minutes = parts[1];
+        const hours = parts[2];
+        const dayOfMonth = parts[3];
+        const month = parts[4];
+        const dayOfWeek = parts[5];
+        const year = parts.length === 7 ? parts[6] : null;
+        
+        const isValidPart = (value, min, max, allowWildcard = true, allowStep = true) => {
+            if (value === '*') return allowWildcard;
+            if (value.includes('/')) {
+                const [base, step] = value.split('/');
+                if (!this.isValidPart(base, min, max, allowWildcard, false)) return false;
+                if (!/^\d+$/.test(step)) return false;
+                const stepNum = parseInt(step, 10);
+                return stepNum > 0;
+            }
+            if (value.includes(',')) {
+                return value.split(',').every(v => this.isValidPart(v, min, max, false, false));
+            }
+            if (value.includes('-')) {
+                const [start, end] = value.split('-');
+                if (!/^\d+$/.test(start) || !/^\d+$/.test(end)) return false;
+                const startNum = parseInt(start, 10);
+                const endNum = parseInt(end, 10);
+                return startNum >= min && endNum <= max && startNum <= endNum;
+            }
+            if (/^\d+$/.test(value)) {
+                const num = parseInt(value, 10);
+                return num >= min && num <= max;
+            }
+            if (dayOfWeek === value && ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN', '1', '2', '3', '4', '5', '6', '7'].includes(value)) {
+                return true;
+            }
+            if (month === value && ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'].includes(value)) {
+                return true;
+            }
+            return false;
+        };
+        
+        return isValidPart(seconds, 0, 59) &&
+               isValidPart(minutes, 0, 59) &&
+               isValidPart(hours, 0, 23) &&
+               isValidPart(dayOfMonth, 1, 31) &&
+               isValidPart(month, 1, 12) &&
+               isValidPart(dayOfWeek, 1, 7) &&
+               (year === null || isValidPart(year, 1970, 2099));
     }
 }
 
