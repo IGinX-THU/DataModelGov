@@ -2163,17 +2163,18 @@ class SimulationArchiveDetail extends HTMLElement {
         const dayOfWeek = parts[5];
         const year = parts.length === 7 ? parts[6] : null;
         
-        const isValidPart = (value, min, max, allowWildcard = true, allowStep = true) => {
+        const isValidPart = (value, min, max, allowWildcard = true, allowQuestion = false, allowStep = true) => {
             if (value === '*') return allowWildcard;
+            if (value === '?' && allowQuestion) return true;
             if (value.includes('/')) {
                 const [base, step] = value.split('/');
-                if (!this.isValidPart(base, min, max, allowWildcard, false)) return false;
+                if (!isValidPart(base, min, max, allowWildcard, allowQuestion, false)) return false;
                 if (!/^\d+$/.test(step)) return false;
                 const stepNum = parseInt(step, 10);
                 return stepNum > 0;
             }
             if (value.includes(',')) {
-                return value.split(',').every(v => this.isValidPart(v, min, max, false, false));
+                return value.split(',').every(v => isValidPart(v, min, max, false, allowQuestion, false));
             }
             if (value.includes('-')) {
                 const [start, end] = value.split('-');
@@ -2186,10 +2187,10 @@ class SimulationArchiveDetail extends HTMLElement {
                 const num = parseInt(value, 10);
                 return num >= min && num <= max;
             }
-            if (dayOfWeek === value && ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN', '1', '2', '3', '4', '5', '6', '7'].includes(value)) {
+            if (['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'].includes(value.toUpperCase())) {
                 return true;
             }
-            if (month === value && ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'].includes(value)) {
+            if (['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'].includes(value.toUpperCase())) {
                 return true;
             }
             return false;
@@ -2198,9 +2199,9 @@ class SimulationArchiveDetail extends HTMLElement {
         return isValidPart(seconds, 0, 59) &&
                isValidPart(minutes, 0, 59) &&
                isValidPart(hours, 0, 23) &&
-               isValidPart(dayOfMonth, 1, 31) &&
+               isValidPart(dayOfMonth, 1, 31, true, true) &&
                isValidPart(month, 1, 12) &&
-               isValidPart(dayOfWeek, 1, 7) &&
+               isValidPart(dayOfWeek, 1, 7, true, true) &&
                (year === null || isValidPart(year, 1970, 2099));
     }
 }
