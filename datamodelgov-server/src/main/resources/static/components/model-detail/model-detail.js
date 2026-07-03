@@ -661,6 +661,15 @@ class ModelDetail extends HTMLElement {
                     console.error('❌ window.loadDataSourceTree 不存在');
                 }
                 
+                // 重新加载project tree
+                console.log('🔄 模型删除成功，准备调用 loadProjectTree');
+                if (window.loadProjectTree) {
+                    console.log('🔄 调用 window.loadProjectTree');
+                    window.loadProjectTree();
+                } else {
+                    console.error('❌ window.loadProjectTree 不存在');
+                }
+                
                 // 从右侧树中移除该版本节点
                 this.removeVersionFromTree({ ...this.currentModel, version });
                 

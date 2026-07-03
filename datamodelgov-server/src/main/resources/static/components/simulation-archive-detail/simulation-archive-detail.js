@@ -552,6 +552,18 @@ class SimulationArchiveDetail extends HTMLElement {
         const name = $('detailNameInput').value.trim();
         if (!name) { this.showToast('请输入档案名称', 'error'); return; }
 
+        // 验证 Headers 格式
+        let headers = {};
+        const headersInput = $('outputApiHeaders').value.trim();
+        if (headersInput) {
+            try {
+                headers = JSON.parse(headersInput);
+            } catch (e) {
+                this.showToast('输出API配置的Headers格式不正确，请输入有效的JSON格式', 'error');
+                return;
+            }
+        }
+
         try {
             if (window.showGlobalLoading) window.showGlobalLoading('正在保存...');
             const username = window.localStorage.getItem('username');
@@ -569,7 +581,7 @@ class SimulationArchiveDetail extends HTMLElement {
                 outputApiConfig: JSON.stringify({
                     url: $('outputApiUrl').value.trim(),
                     method: $('outputApiMethod').value,
-                    headers: $('outputApiHeaders').value.trim() ? JSON.parse($('outputApiHeaders').value.trim()) : {}
+                    headers: headers
                 })
             };
 
