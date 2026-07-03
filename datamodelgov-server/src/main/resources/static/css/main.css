@@ -576,7 +576,7 @@ html.font-scale-1-5 .ribbon-btn-icon {
 /* 主内容区 */
 .main-container {
     display: flex;
-    height: calc(100vh - 30px - 68px);
+    height: calc(100vh - 80px - 68px);
 }
 
 /* 侧边栏通用样式 */
