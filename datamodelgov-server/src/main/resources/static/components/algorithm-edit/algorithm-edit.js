@@ -183,13 +183,8 @@ class AlgorithmEdit extends HTMLElement {
     }
 
     async show(algorithmInfo) {
-        this.currentAlgorithm = algorithmInfo;
-        this.removeAttribute('hidden');
-        this.clearAutoFilledFields(); // 清空之前自动填充的字段
         await this.loadAlgorithmData(algorithmInfo);
-        await this.loadParsingRules(); // 确保加载解析规则
-        // 自动填充运行命令和CSV文件名
-        this.autoFillCommandAndCsvFields();
+        await this.showWithAlgorithmData(algorithmInfo, this.currentAlgorithmMeta);
     }
 
     // 新增方法：直接接收algorithm-detail的数据，不重复调用接口
@@ -222,7 +217,11 @@ class AlgorithmEdit extends HTMLElement {
         if (descriptionInput) descriptionInput.value = algorithmDetailData.description || '';
 
         // 使用接口返回的inputs和outputs数据
-        this.loadInterfaceParamsFromData(algorithmDetailData.inputs, algorithmDetailData.outputs);
+        if (algorithmDetailData.inputs) {
+            this.loadInterfaceParamsFromData(algorithmDetailData.inputs, algorithmDetailData.outputs);
+        } else {
+            this.loadInterfaceParams();
+        }
 
         // 加载关联绑定数据（直接使用传入的数据，不重新调用API）
         await this.loadBindingDataFromDetail(algorithmDetailData);
@@ -241,13 +240,11 @@ class AlgorithmEdit extends HTMLElement {
 
     async loadAlgorithmData(algorithmInfo) {
         try {
-            // 从fullPath中提取projectName
             let projectName = null;
             if (algorithmInfo.fullPath && window.extractProjectNameFromPath) {
                 projectName = window.extractProjectNameFromPath(algorithmInfo.fullPath);
             }
 
-            // 调用API获取完整的算法元数据
             const result = await window.AppConfig.get('algorithm', 'metas', {
                 name: algorithmInfo.name,
                 version: algorithmInfo.version,
@@ -259,7 +256,6 @@ class AlgorithmEdit extends HTMLElement {
                 console.log('获取到完整算法元数据:', this.currentAlgorithmMeta);
             } else {
                 console.error('获取算法元数据失败:', result.message);
-                // 如果获取失败，至少保存基本信息
                 this.currentAlgorithmMeta = {
                     name: algorithmInfo.name,
                     version: algorithmInfo.version,
@@ -269,7 +265,6 @@ class AlgorithmEdit extends HTMLElement {
             }
         } catch (error) {
             console.error('获取算法元数据异常:', error);
-            // 如果获取失败，至少保存基本信息
             this.currentAlgorithmMeta = {
                 name: algorithmInfo.name,
                 version: algorithmInfo.version,
@@ -277,40 +272,6 @@ class AlgorithmEdit extends HTMLElement {
                 scene: algorithmInfo.scene
             };
         }
-        
-        // 加载基本信息到表单
-        const algorithmNameInput = this.shadowRoot.getElementById('algorithmName');
-        const developerInput = this.shadowRoot.getElementById('developer');
-        const versionInput = this.shadowRoot.getElementById('version');
-        const sceneInput = this.shadowRoot.getElementById('scene');
-
-        if (algorithmNameInput) algorithmNameInput.value = algorithmInfo.name || '';
-        if (developerInput) developerInput.value = algorithmInfo.author || '';
-        if (versionInput) versionInput.value = algorithmInfo.version || '';
-        if (sceneInput) sceneInput.value = algorithmInfo.scene || '';
-
-        // 加载档案描述字段
-        const descriptionInput = this.shadowRoot.getElementById('description');
-
-        if (descriptionInput) descriptionInput.value = this.currentAlgorithmMeta?.description || '';
-
-        // 加载接口参数（使用从API获取的数据）
-        if (this.currentAlgorithmMeta && this.currentAlgorithmMeta.inputs) {
-            this.loadInterfaceParamsFromData(this.currentAlgorithmMeta.inputs, this.currentAlgorithmMeta.outputs);
-        } else {
-            // 如果没有数据，使用默认参数
-            this.loadInterfaceParams();
-        }
-
-        // 加载关联绑定数据
-        this.loadBindingData(algorithmInfo);
-
-        // 自动填充运行命令和CSV文件名
-        this.autoFillCommandAndCsvFields();
-
-        // 加载结果回写路径前缀
-        const outputTableInput = this.shadowRoot.getElementById('outputTable');
-        if (outputTableInput) outputTableInput.value = this.currentAlgorithmMeta?.outputTable || '';
     }
 
     loadInterfaceParamsFromData(inputsData, outputsData) {

@@ -160,6 +160,15 @@ class SimulationArchiveDetail extends HTMLElement {
         setText('detailUpdateTime', '-');
         setText('detailExecutionCount', '0');
 
+        // 清空输入框，避免残留上一个档案的数据
+        const nameInput = $('detailNameInput'); if (nameInput) nameInput.value = '';
+        const descInput = $('detailDescInput'); if (descInput) descInput.value = '';
+        const cronInput = $('detailScheduleCronInput'); if (cronInput) cronInput.value = '';
+        const urlInput = $('outputApiUrl'); if (urlInput) urlInput.value = '';
+        const methodInput = $('outputApiMethod'); if (methodInput) methodInput.value = 'POST';
+        const headersInput = $('outputApiHeaders'); if (headersInput) headersInput.value = '';
+        const statusInput = $('detailStatusInput'); if (statusInput) statusInput.value = 'true';
+
         this.nodes = [];
         this.edges = [];
         this.selectedNode = null;
@@ -476,11 +485,11 @@ class SimulationArchiveDetail extends HTMLElement {
         if (apiConfigV && apiConfigDiv) {
             apiConfigV.style.display = 'none';
             apiConfigDiv.style.display = 'block';
-            // 解析JSON配置
+            // 直接从currentArchive获取原始JSON配置，而不是从显示文本解析
             let config = {};
             try {
-                if (apiConfigV.textContent && apiConfigV.textContent !== '-' && apiConfigV.textContent !== '未配置') {
-                    config = JSON.parse(apiConfigV.textContent);
+                if (this.currentArchive && this.currentArchive.outputApiConfig) {
+                    config = JSON.parse(this.currentArchive.outputApiConfig);
                 }
             } catch (e) {
                 console.warn('解析API配置失败', e);
@@ -1580,12 +1589,12 @@ class SimulationArchiveDetail extends HTMLElement {
             return;
         }
 
-        // 检查是否有重复的执行记录（相同档案、相同时间范围、执行成功）
-        const hasDuplicate = await this.checkDuplicateExecution(selectedNodeIds);
-        if (hasDuplicate) {
-            this.showToast('该仿真档案在相同时间范围内已有成功执行记录，请勿重复提交', 'error');
-            return;
-        }
+        // 检查是否有重复的执行记录（相同档案、相同时间范围、执行成功）- 已注释
+        // const hasDuplicate = await this.checkDuplicateExecution(selectedNodeIds);
+        // if (hasDuplicate) {
+        //     this.showToast('该仿真档案在相同时间范围内已有成功执行记录，请勿重复提交', 'error');
+        //     return;
+        // }
 
         // 运行前自动保存图数据，确保后端读到最新的边/节点数据
         try {
