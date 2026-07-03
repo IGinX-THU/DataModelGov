@@ -296,6 +296,15 @@ class AlgorithmList extends HTMLElement {
             if (result.code === 200) {
                 this.showToast('删除成功');
                 await this.loadAlgorithmsFromAPI();
+                
+                // 重新加载project tree
+                console.log('🔄 算法删除成功，准备调用 loadProjectTree');
+                if (window.loadProjectTree) {
+                    console.log('🔄 调用 window.loadProjectTree');
+                    window.loadProjectTree();
+                } else {
+                    console.error('❌ window.loadProjectTree 不存在');
+                }
             } else {
                 this.showToast(result.message || '删除失败', 'error');
             }

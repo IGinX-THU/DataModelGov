@@ -1440,6 +1440,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // 从右侧树中移除该节点
                 removeModelFromTree(selectedModel);
+                
+                // 重新加载project tree
+                window.loadProjectTree();
 
                 // 清除选中状态
                 const modelTree = document.getElementById('modelTree');
@@ -1608,6 +1611,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 // 从右侧树中移除该节点
                 removeAlgorithmFromTree(selectedAlgorithm);
+                
+                // 重新加载project tree
+                window.loadProjectTree();
 
                 // 清除选中状态
                 const algorithmTree = document.getElementById('algorithmTree');
@@ -1836,6 +1842,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 showWorkspaceMessage(`数据源 "${alias}" 删除成功`, 'success');
                 // 重新加载数据源树
                 loadDataSourceTree();
+                // 重新加载project tree
+                window.loadProjectTree();
                 // 清除选中状态
                 selectedDataSource = null;
                 if (leftSidebarTree) {
@@ -2881,6 +2889,10 @@ function showSimulationRecord() {
                 if (window.loadDataSourceTree) {
                     window.loadDataSourceTree();
                 }
+                // 重新加载project tree
+                if (window.loadProjectTree) {
+                    window.loadProjectTree();
+                }
             } else {
                 if (window.CommonUtils && window.CommonUtils.showToast) {
                     window.CommonUtils.showToast('删除失败: ' + (result.message || '未知错误'), 'error');
@@ -3156,6 +3168,8 @@ function showSimulationRecord() {
 
     // 将loadDataSourceTree函数暴露到全局作用域，供其他组件调用
     window.loadDataSourceTree = loadDataSourceTree;
+    // 将loadProjectTree函数暴露到全局作用域，供其他组件调用
+    window.loadProjectTree = loadProjectTree;
 });
 
 // 确保函数在全局作用域可用
@@ -3467,8 +3481,8 @@ window.displayProjectTree = function(projectName) {
                 }
 
                 // 重新加载右侧边栏（算法库和模型资产库）
-                if (typeof loadDataSourceTree === 'function') {
-                    loadDataSourceTree();
+                if (typeof window.loadDataSourceTree === 'function') {
+                    window.loadDataSourceTree();
                 }
             } else {
                 console.error('获取项目树失败:', result.message);

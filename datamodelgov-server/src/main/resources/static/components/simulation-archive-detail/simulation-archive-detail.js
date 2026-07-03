@@ -160,6 +160,15 @@ class SimulationArchiveDetail extends HTMLElement {
         setText('detailUpdateTime', '-');
         setText('detailExecutionCount', '0');
 
+        // 清空输入框，避免残留上一个档案的数据
+        const nameInput = $('detailNameInput'); if (nameInput) nameInput.value = '';
+        const descInput = $('detailDescInput'); if (descInput) descInput.value = '';
+        const cronInput = $('detailScheduleCronInput'); if (cronInput) cronInput.value = '';
+        const urlInput = $('outputApiUrl'); if (urlInput) urlInput.value = '';
+        const methodInput = $('outputApiMethod'); if (methodInput) methodInput.value = 'POST';
+        const headersInput = $('outputApiHeaders'); if (headersInput) headersInput.value = '';
+        const statusInput = $('detailStatusInput'); if (statusInput) statusInput.value = 'true';
+
         this.nodes = [];
         this.edges = [];
         this.selectedNode = null;
@@ -476,11 +485,11 @@ class SimulationArchiveDetail extends HTMLElement {
         if (apiConfigV && apiConfigDiv) {
             apiConfigV.style.display = 'none';
             apiConfigDiv.style.display = 'block';
-            // 解析JSON配置
+            // 直接从currentArchive获取原始JSON配置，而不是从显示文本解析
             let config = {};
             try {
-                if (apiConfigV.textContent && apiConfigV.textContent !== '-' && apiConfigV.textContent !== '未配置') {
-                    config = JSON.parse(apiConfigV.textContent);
+                if (this.currentArchive && this.currentArchive.outputApiConfig) {
+                    config = JSON.parse(this.currentArchive.outputApiConfig);
                 }
             } catch (e) {
                 console.warn('解析API配置失败', e);
@@ -552,6 +561,25 @@ class SimulationArchiveDetail extends HTMLElement {
         const name = $('detailNameInput').value.trim();
         if (!name) { this.showToast('请输入档案名称', 'error'); return; }
 
+        // 验证 Headers 格式
+        let headers = {};
+        const headersInput = $('outputApiHeaders').value.trim();
+        if (headersInput) {
+            try {
+                headers = JSON.parse(headersInput);
+            } catch (e) {
+                this.showToast('输出API配置的Headers格式不正确，请输入有效的JSON格式', 'error');
+                return;
+            }
+        }
+
+        // 验证 Cron 表达式格式
+        const scheduleCron = $('detailScheduleCronInput').value.trim();
+        if (scheduleCron && !this.isValidCronExpression(scheduleCron)) {
+            this.showToast('调度配置的Cron表达式格式不正确', 'error');
+            return;
+        }
+
         try {
             if (window.showGlobalLoading) window.showGlobalLoading('正在保存...');
             const username = window.localStorage.getItem('username');
@@ -569,7 +597,7 @@ class SimulationArchiveDetail extends HTMLElement {
                 outputApiConfig: JSON.stringify({
                     url: $('outputApiUrl').value.trim(),
                     method: $('outputApiMethod').value,
-                    headers: $('outputApiHeaders').value.trim() ? JSON.parse($('outputApiHeaders').value.trim()) : {}
+                    headers: headers
                 })
             };
 
@@ -989,6 +1017,7 @@ class SimulationArchiveDetail extends HTMLElement {
             
             if (!metaResult.success || !metaResult.data) {
                 console.warn('获取算法元数据失败');
+                this.showToast('请先编辑算法档案', 'warning');
                 return;
             }
             
@@ -997,7 +1026,7 @@ class SimulationArchiveDetail extends HTMLElement {
             const inputsBind = algorithmMeta.inputsBind;
             
             if (!tableName) {
-                console.warn('算法未配置数据源表名');
+                this.showToast('算法未绑定数据源，请编辑算法档案', 'warning');
                 return;
             }
             
@@ -1498,7 +1527,7 @@ class SimulationArchiveDetail extends HTMLElement {
                 .map(n => n.nodeName || n.nodeId);
             const predInfo = predecessors.length > 0 ? `<span class="node-pred-info">← ${predecessors.join(', ')}</span>` : '<span class="node-pred-info">（无前驱）</span>';
             // 如果之前有选择状态且节点在之前的选择中，恢复选择；否则默认全选
-            const isChecked = currentSelection.length > 0 && currentSelection.includes(node.nodeId) ? true : true;
+            const isChecked = currentSelection.length === 0 || currentSelection.includes(node.nodeId);
             item.innerHTML = `<label><input type="checkbox" data-node-id="${node.nodeId}" ${isChecked ? 'checked' : ''}><span class="node-status ${statusClass}"></span>${node.nodeName || node.nodeId}${predInfo}</label>`;
             list.appendChild(item);
         });
@@ -1553,6 +1582,10 @@ class SimulationArchiveDetail extends HTMLElement {
         console.log('选中的节点ID:', selectedNodeIds);
         if (selectedNodeIds.length === 0) { this.showToast('请至少选择一个节点', 'error'); return; }
 
+        // 保存本次执行的节点ID和执行ID，用于判断结果是否属于本次执行和避免竞态条件
+        this.currentExecutionNodeIds = [...selectedNodeIds];
+        this.currentExecutionId = Date.now();
+
         // 检查选中节点的算法是否存在
         const missingAlgorithms = await this.checkAlgorithmsExist(selectedNodeIds);
         if (missingAlgorithms.length > 0) {
@@ -1560,12 +1593,23 @@ class SimulationArchiveDetail extends HTMLElement {
             return;
         }
 
-        // 检查是否有重复的执行记录（相同档案、相同时间范围、执行成功）
-        const hasDuplicate = await this.checkDuplicateExecution(selectedNodeIds);
-        if (hasDuplicate) {
-            this.showToast('该仿真档案在相同时间范围内已有成功执行记录，请勿重复提交', 'error');
-            return;
-        }
+        // 检查是否有重复的执行记录（相同档案、相同时间范围、执行成功）- 已注释
+        // const hasDuplicate = await this.checkDuplicateExecution(selectedNodeIds);
+        // if (hasDuplicate) {
+        //     this.showToast('该仿真档案在相同时间范围内已有成功执行记录，请勿重复提交', 'error');
+        //     return;
+        // }
+
+        // 清空上一次的执行结果，避免残留
+        this.executionResult = null;
+        const textContentWrapper = this.shadowRoot.getElementById('textContentWrapper');
+        if (textContentWrapper) textContentWrapper.innerHTML = '<div class="empty-hint">暂无输出数据</div>';
+        const csvTableWrapper = this.shadowRoot.getElementById('csvTableWrapper');
+        if (csvTableWrapper) csvTableWrapper.innerHTML = '<div class="empty-hint">暂无CSV数据</div>';
+        const textNodeTabs = this.shadowRoot.getElementById('textNodeTabs');
+        if (textNodeTabs) textNodeTabs.innerHTML = '';
+        const csvNodeTabs = this.shadowRoot.getElementById('csvNodeTabs');
+        if (csvNodeTabs) csvNodeTabs.innerHTML = '';
 
         // 运行前自动保存图数据，确保后端读到最新的边/节点数据
         try {
@@ -1726,11 +1770,23 @@ class SimulationArchiveDetail extends HTMLElement {
     }
 
     async pollExecutionStatus() {
+        const executionId = this.currentExecutionId;
         const poll = async () => {
             if (!this.isRunning) return;
+            if (executionId !== this.currentExecutionId) return;
             try {
                 const result = await window.AppConfig.get('simulationArchives', 'execution-status', { createTime: this.currentArchive.createTime });
                 if (result.code === 200 && result.data && !result.data.isRunning) {
+                    if (executionId !== this.currentExecutionId) return;
+                    // 检查结果是否包含本次执行的节点
+                    const hasCurrentNodeResults = result.data.execution && result.data.execution.result && result.data.execution.result.results
+                        ? this.currentExecutionNodeIds.some(nodeId => result.data.execution.result.results[nodeId])
+                        : false;
+                    // 如果结果不包含本次执行的节点，说明新执行还没完成，继续轮询
+                    if (!hasCurrentNodeResults) {
+                        setTimeout(poll, 3000);
+                        return;
+                    }
                     this.isRunning = false;
                     this.shadowRoot.getElementById('runBtn').disabled = false;
                     if (result.data.execution && result.data.execution.result) {
@@ -1741,7 +1797,6 @@ class SimulationArchiveDetail extends HTMLElement {
                     this.refreshLog();
                     return;
                 }
-                // Poll logs while running
                 this.refreshLog();
             } catch (e) { console.error('轮询失败:', e); }
             setTimeout(poll, 3000);
@@ -1783,6 +1838,7 @@ class SimulationArchiveDetail extends HTMLElement {
     }
 
     displayResult(result) {
+        console.log('displayResult:', 'currentExecutionNodeIds:', this.currentExecutionNodeIds, 'result keys:', result.results ? Object.keys(result.results) : 'none');
         this.executionResult = result;
         const ract = this.shadowRoot.getElementById('resultActions');
         const rtabs = this.shadowRoot.getElementById('resultTabs');
@@ -1810,6 +1866,8 @@ class SimulationArchiveDetail extends HTMLElement {
         const textData = {};
         if (result.results) {
             Object.entries(result.results).forEach(([nodeId, nr]) => {
+                // 只显示本次执行的节点结果
+                if (this.currentExecutionNodeIds && !this.currentExecutionNodeIds.includes(nodeId)) return;
                 if (nr.outputCsv) {
                     textData[nodeId] = { name: nr.nodeName || nodeId, output: nr.outputCsv };
                 }
@@ -1904,6 +1962,8 @@ class SimulationArchiveDetail extends HTMLElement {
         const csvData = {};
         if (result.results) {
             Object.entries(result.results).forEach(([nodeId, nr]) => {
+                // 只显示本次执行的节点结果
+                if (this.currentExecutionNodeIds && !this.currentExecutionNodeIds.includes(nodeId)) return;
                 if (nr.outputCsv) {
                     csvData[nodeId] = { name: nr.nodeName || nodeId, csv: nr.outputCsv };
                 }
@@ -2127,6 +2187,62 @@ class SimulationArchiveDetail extends HTMLElement {
     showToast(message, type = 'success') {
         if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast(message, type);
         else console.log(`[${type}] ${message}`);
+    }
+
+    isValidCronExpression(cron) {
+        if (!cron || typeof cron !== 'string') return false;
+        
+        const parts = cron.trim().split(/\s+/);
+        if (parts.length !== 6 && parts.length !== 7) return false;
+        
+        const seconds = parts[0];
+        const minutes = parts[1];
+        const hours = parts[2];
+        const dayOfMonth = parts[3];
+        const month = parts[4];
+        const dayOfWeek = parts[5];
+        const year = parts.length === 7 ? parts[6] : null;
+        
+        const isValidPart = (value, min, max, allowWildcard = true, allowQuestion = false, allowStep = true) => {
+            if (value === '*') return allowWildcard;
+            if (value === '?' && allowQuestion) return true;
+            if (value.includes('/')) {
+                const [base, step] = value.split('/');
+                if (!isValidPart(base, min, max, allowWildcard, allowQuestion, false)) return false;
+                if (!/^\d+$/.test(step)) return false;
+                const stepNum = parseInt(step, 10);
+                return stepNum > 0;
+            }
+            if (value.includes(',')) {
+                return value.split(',').every(v => isValidPart(v, min, max, false, allowQuestion, false));
+            }
+            if (value.includes('-')) {
+                const [start, end] = value.split('-');
+                if (!/^\d+$/.test(start) || !/^\d+$/.test(end)) return false;
+                const startNum = parseInt(start, 10);
+                const endNum = parseInt(end, 10);
+                return startNum >= min && endNum <= max && startNum <= endNum;
+            }
+            if (/^\d+$/.test(value)) {
+                const num = parseInt(value, 10);
+                return num >= min && num <= max;
+            }
+            if (['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'].includes(value.toUpperCase())) {
+                return true;
+            }
+            if (['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'].includes(value.toUpperCase())) {
+                return true;
+            }
+            return false;
+        };
+        
+        return isValidPart(seconds, 0, 59) &&
+               isValidPart(minutes, 0, 59) &&
+               isValidPart(hours, 0, 23) &&
+               isValidPart(dayOfMonth, 1, 31, true, true) &&
+               isValidPart(month, 1, 12) &&
+               isValidPart(dayOfWeek, 1, 7, true, true) &&
+               (year === null || isValidPart(year, 1970, 2099));
     }
 }
 

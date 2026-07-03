@@ -908,6 +908,15 @@ class AlgorithmUpload extends HTMLElement {
                     console.error('❌ window.loadDataSourceTree 不存在');
                 }
                 
+                // 重新加载project tree
+                console.log('🔄 算法上传成功，准备调用 loadProjectTree');
+                if (window.loadProjectTree) {
+                    console.log('🔄 调用 window.loadProjectTree');
+                    window.loadProjectTree();
+                } else {
+                    console.error('❌ window.loadProjectTree 不存在');
+                }
+                
                 // 延迟关闭窗口
                 setTimeout(() => {
                     if (this._closeDialog) {
