@@ -2040,6 +2040,29 @@ class AlgorithmEdit extends HTMLElement {
                 return;
             }
 
+            // 验证结果回写路径前缀格式
+            if (formData.outputTable) {
+                if (formData.outputTable.includes('_system')) {
+                    this.showErrorMessage('结果回写路径前缀不能包含"_system"');
+                    return;
+                }
+                
+                if (/^\d+$/.test(formData.outputTable)) {
+                    this.showErrorMessage('结果回写路径前缀不允许为纯数字');
+                    return;
+                }
+                
+                if (/^_+$/.test(formData.outputTable)) {
+                    this.showErrorMessage('结果回写路径前缀不允许为纯下划线');
+                    return;
+                }
+                
+                if (!/^[a-zA-Z_][a-zA-Z0-9_.]*$/.test(formData.outputTable)) {
+                    this.showErrorMessage('结果回写路径前缀格式不正确，支持字母、数字、下划线，不能纯数字，不能纯下划线，不能数字开头');
+                    return;
+                }
+            }
+
             // 验证参数名重复
             const duplicateValidation = this.validateParameterNames(formData);
             if (!duplicateValidation.valid) {

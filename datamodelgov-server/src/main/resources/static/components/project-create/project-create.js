@@ -144,7 +144,7 @@ class ProjectCreate extends HTMLElement {
                             <h4>项目详情</h4>
                             <div class="vs-form-row">
                                 <label class="vs-form-label">项目名称 <span class="vs-required">*</span></label>
-                                <input type="text" id="projectName" name="projectName" class="vs-form-input" required placeholder="输入项目名称">
+                                <input type="text" id="projectName" name="projectName" class="vs-form-input" required placeholder="仅含字母、数字、下划线">
                             </div>
                             <div class="vs-form-row">
                                 <label class="vs-form-label">项目描述</label>
@@ -220,7 +220,6 @@ class ProjectCreate extends HTMLElement {
             return;
         }
 
-        // 项目名称验证：只允许拉丁字符、下划线和数字的组合，不允许包含'.'，不允许纯数字或纯下划线
         if (name.includes('.')) {
             window.CommonUtils.showToast('项目名称不允许包含点号(.)', 'error');
             return;
@@ -236,8 +235,8 @@ class ProjectCreate extends HTMLElement {
             return;
         }
 
-        if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(name)) {
-            window.CommonUtils.showToast('项目名称只能包含拉丁字符、数字和下划线，且必须以拉丁字符开头', 'error');
+        if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) {
+            window.CommonUtils.showToast('项目名称只能包含字母、数字和下划线，且不能以数字开头', 'error');
             return;
         }
 

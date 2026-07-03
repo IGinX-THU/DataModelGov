@@ -68,6 +68,17 @@ class ImportDataComponent extends HTMLElement {
             fileInput.addEventListener('change', (e) => this.handleFileSelect(e));
         }
 
+        // 目标存储路径前缀输入事件：用户输入时清除错误提示
+        const targetPathInput = this.shadowRoot.getElementById('targetPath');
+        if (targetPathInput) {
+            targetPathInput.addEventListener('input', () => {
+                const targetPathError = this.shadowRoot.getElementById('targetPathError');
+                if (targetPathError) {
+                    targetPathError.classList.remove('show');
+                }
+            });
+        }
+
         // 拖拽事件
         this.setupDragAndDrop();
     }
@@ -197,6 +208,27 @@ class ImportDataComponent extends HTMLElement {
         // 目标存储路径前缀不能包含"_system"
         if (targetPath.includes('_system')) {
             targetPathError.textContent = '目标存储路径前缀不能包含"_system"';
+            targetPathError.classList.add('show');
+            return;
+        }
+
+        // 不能纯数字
+        if (/^\d+$/.test(targetPath)) {
+            targetPathError.textContent = '目标存储路径前缀不允许为纯数字';
+            targetPathError.classList.add('show');
+            return;
+        }
+
+        // 不能纯下划线
+        if (/^_+$/.test(targetPath)) {
+            targetPathError.textContent = '目标存储路径前缀不允许为纯下划线';
+            targetPathError.classList.add('show');
+            return;
+        }
+
+        // 目标存储路径前缀格式验证：以.分割，每个节点只能包含字母、数字、下划线，且不能以数字开头，每个节点不能是纯下划线
+        if (!/^([a-zA-Z][a-zA-Z0-9_]*|_[a-zA-Z0-9][a-zA-Z0-9_]*)(\.([a-zA-Z][a-zA-Z0-9_]*|_[a-zA-Z0-9][a-zA-Z0-9_]*))*$/.test(targetPath)) {
+            targetPathError.textContent = '目标存储路径前缀格式不正确，支持字母、数字、下划线，不能纯数字，不能纯下划线，不能数字开头';
             targetPathError.classList.add('show');
             return;
         }
