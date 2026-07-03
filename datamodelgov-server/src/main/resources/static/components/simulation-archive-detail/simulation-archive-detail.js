@@ -1527,7 +1527,7 @@ class SimulationArchiveDetail extends HTMLElement {
                 .map(n => n.nodeName || n.nodeId);
             const predInfo = predecessors.length > 0 ? `<span class="node-pred-info">← ${predecessors.join(', ')}</span>` : '<span class="node-pred-info">（无前驱）</span>';
             // 如果之前有选择状态且节点在之前的选择中，恢复选择；否则默认全选
-            const isChecked = currentSelection.length > 0 && currentSelection.includes(node.nodeId) ? true : true;
+            const isChecked = currentSelection.length === 0 || currentSelection.includes(node.nodeId);
             item.innerHTML = `<label><input type="checkbox" data-node-id="${node.nodeId}" ${isChecked ? 'checked' : ''}><span class="node-status ${statusClass}"></span>${node.nodeName || node.nodeId}${predInfo}</label>`;
             list.appendChild(item);
         });
@@ -1582,6 +1582,10 @@ class SimulationArchiveDetail extends HTMLElement {
         console.log('选中的节点ID:', selectedNodeIds);
         if (selectedNodeIds.length === 0) { this.showToast('请至少选择一个节点', 'error'); return; }
 
+        // 保存本次执行的节点ID和执行ID，用于判断结果是否属于本次执行和避免竞态条件
+        this.currentExecutionNodeIds = [...selectedNodeIds];
+        this.currentExecutionId = Date.now();
+
         // 检查选中节点的算法是否存在
         const missingAlgorithms = await this.checkAlgorithmsExist(selectedNodeIds);
         if (missingAlgorithms.length > 0) {
@@ -1595,6 +1599,17 @@ class SimulationArchiveDetail extends HTMLElement {
         //     this.showToast('该仿真档案在相同时间范围内已有成功执行记录，请勿重复提交', 'error');
         //     return;
         // }
+
+        // 清空上一次的执行结果，避免残留
+        this.executionResult = null;
+        const textContentWrapper = this.shadowRoot.getElementById('textContentWrapper');
+        if (textContentWrapper) textContentWrapper.innerHTML = '<div class="empty-hint">暂无输出数据</div>';
+        const csvTableWrapper = this.shadowRoot.getElementById('csvTableWrapper');
+        if (csvTableWrapper) csvTableWrapper.innerHTML = '<div class="empty-hint">暂无CSV数据</div>';
+        const textNodeTabs = this.shadowRoot.getElementById('textNodeTabs');
+        if (textNodeTabs) textNodeTabs.innerHTML = '';
+        const csvNodeTabs = this.shadowRoot.getElementById('csvNodeTabs');
+        if (csvNodeTabs) csvNodeTabs.innerHTML = '';
 
         // 运行前自动保存图数据，确保后端读到最新的边/节点数据
         try {
@@ -1755,11 +1770,23 @@ class SimulationArchiveDetail extends HTMLElement {
     }
 
     async pollExecutionStatus() {
+        const executionId = this.currentExecutionId;
         const poll = async () => {
             if (!this.isRunning) return;
+            if (executionId !== this.currentExecutionId) return;
             try {
                 const result = await window.AppConfig.get('simulationArchives', 'execution-status', { createTime: this.currentArchive.createTime });
                 if (result.code === 200 && result.data && !result.data.isRunning) {
+                    if (executionId !== this.currentExecutionId) return;
+                    // 检查结果是否包含本次执行的节点
+                    const hasCurrentNodeResults = result.data.execution && result.data.execution.result && result.data.execution.result.results
+                        ? this.currentExecutionNodeIds.some(nodeId => result.data.execution.result.results[nodeId])
+                        : false;
+                    // 如果结果不包含本次执行的节点，说明新执行还没完成，继续轮询
+                    if (!hasCurrentNodeResults) {
+                        setTimeout(poll, 3000);
+                        return;
+                    }
                     this.isRunning = false;
                     this.shadowRoot.getElementById('runBtn').disabled = false;
                     if (result.data.execution && result.data.execution.result) {
@@ -1770,7 +1797,6 @@ class SimulationArchiveDetail extends HTMLElement {
                     this.refreshLog();
                     return;
                 }
-                // Poll logs while running
                 this.refreshLog();
             } catch (e) { console.error('轮询失败:', e); }
             setTimeout(poll, 3000);
@@ -1812,6 +1838,7 @@ class SimulationArchiveDetail extends HTMLElement {
     }
 
     displayResult(result) {
+        console.log('displayResult:', 'currentExecutionNodeIds:', this.currentExecutionNodeIds, 'result keys:', result.results ? Object.keys(result.results) : 'none');
         this.executionResult = result;
         const ract = this.shadowRoot.getElementById('resultActions');
         const rtabs = this.shadowRoot.getElementById('resultTabs');
@@ -1839,6 +1866,8 @@ class SimulationArchiveDetail extends HTMLElement {
         const textData = {};
         if (result.results) {
             Object.entries(result.results).forEach(([nodeId, nr]) => {
+                // 只显示本次执行的节点结果
+                if (this.currentExecutionNodeIds && !this.currentExecutionNodeIds.includes(nodeId)) return;
                 if (nr.outputCsv) {
                     textData[nodeId] = { name: nr.nodeName || nodeId, output: nr.outputCsv };
                 }
@@ -1933,6 +1962,8 @@ class SimulationArchiveDetail extends HTMLElement {
         const csvData = {};
         if (result.results) {
             Object.entries(result.results).forEach(([nodeId, nr]) => {
+                // 只显示本次执行的节点结果
+                if (this.currentExecutionNodeIds && !this.currentExecutionNodeIds.includes(nodeId)) return;
                 if (nr.outputCsv) {
                     csvData[nodeId] = { name: nr.nodeName || nodeId, csv: nr.outputCsv };
                 }
