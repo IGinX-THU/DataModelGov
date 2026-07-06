@@ -173,7 +173,7 @@ public class SimulationArchiveController {
     @PostMapping("/archives/run")
     @RequirePermission(Permission.CREATE)
     @OperationLog(value = "运行仿真", type = OperationLog.OperationType.UPDATE)
-    public Result<Void> runSimulation(@RequestParam("createTime") Long createTime) {
+    public Result<Long> runSimulation(@RequestParam("createTime") Long createTime) {
         return simulationExecutionService.runSimulation(createTime);
     }
 
@@ -184,7 +184,7 @@ public class SimulationArchiveController {
     @PostMapping("/archives/run-selective")
     @RequirePermission(Permission.CREATE)
     @OperationLog(value = "选择性运行仿真", type = OperationLog.OperationType.UPDATE)
-    public Result<Void> runSimulationSelective(
+    public Result<Long> runSimulationSelective(
             @RequestParam("createTime") Long createTime,
             @RequestBody(required = false) Map<String, Object> params) {
         List<String> selectedNodeIds = null;
@@ -217,8 +217,10 @@ public class SimulationArchiveController {
     @ApiOperation("获取仿真执行状态")
     @GetMapping("/archives/execution-status")
     @RequirePermission(Permission.READ)
-    public Result<?> getExecutionStatus(@RequestParam("createTime") Long createTime) {
-        return simulationExecutionService.getExecutionStatus(createTime);
+    public Result<?> getExecutionStatus(
+            @RequestParam("createTime") Long createTime,
+            @RequestParam(value = "timestamp", required = false) Long timestamp) {
+        return simulationExecutionService.getExecutionStatus(createTime, timestamp);
     }
 
     /**
