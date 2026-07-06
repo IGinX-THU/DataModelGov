@@ -77,7 +77,7 @@ public class SimulationExecutionService {
 
     /**
      * 运行仿真（全量执行）
-     * @return Result<Long> 包含执行记录的时间戳
+     * @return 包含执行记录时间戳的Result
      */
     public Result<Long> runSimulation(Long createTime) {
         return runSimulation(createTime, null);
@@ -87,7 +87,7 @@ public class SimulationExecutionService {
      * 运行仿真（支持选择性执行，每个节点使用自己的时间窗口）
      * @param createTime 仿真档案创建时间（作为ID）
      * @param selectedNodeIds 选中的节点ID列表（null表示全量执行）
-     * @return Result<Long> 包含执行记录的时间戳
+     * @return 包含执行记录时间戳的Result
      */
     public Result<Long> runSimulation(Long createTime, List<String> selectedNodeIds) {
         try {
