@@ -319,8 +319,8 @@ class ModelUpload extends HTMLElement {
             const result = await window.AppConfig.get('model', 'history', params);
             
             if (result.success && result.data && result.data.length > 0) {
-                // 获取最新版本号
-                const latestVersion = result.data[0].version;
+                // 获取最新版本号（取最后一个，确保是最新版本）
+                const latestVersion = result.data[result.data.length - 1].version;
                 if (latestVersion) {
                     // 解析版本号并累加小版本号
                     // 支持两种格式：v1_0_0 或 1.0.0

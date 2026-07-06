@@ -331,26 +331,9 @@ class ModelEdit extends HTMLElement {
     }
 
     loadInterfaceParams() {
-        // 默认输入参数
-        this.inputs = [
-            { name: 'temperature', type: 'float', unit: '°C', desc: '环境温度' },
-            { name: 'pressure', type: 'float', unit: 'kPa', desc: '压力值' },
-            { name: 'flow_rate', type: 'float', unit: 'm³/h', desc: '流量' }
-        ];
-
-        // 默认输出参数
-        this.outputs = [
-            { name: 'control_signal', type: 'float', unit: '%', desc: '控制信号' },
-            { name: 'status', type: 'int', unit: '-', desc: '状态码' },
-            { name: 'efficiency', type: 'float', unit: '%', desc: '效率' }
-        ];
-
-        this.apis = [{
-            name: '默认API',
-            description: '',
-            inputs: this.inputs,
-            outputs: this.outputs
-        }];
+        this.inputs = [];
+        this.outputs = [];
+        this.apis = [];
         this.currentApiIndex = 0;
         this.renderApiTabs();
         this.renderApiInfo();

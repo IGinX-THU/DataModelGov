@@ -244,9 +244,6 @@ class AlgorithmEdit extends HTMLElement {
         // 加载关联绑定数据（直接使用传入的数据，不重新调用API）
         await this.loadBindingDataFromDetail(algorithmDetailData);
 
-        // 自动填充运行命令和CSV文件名
-        this.autoFillCommandAndCsvFields();
-
         // 加载结果回写路径前缀
         const outputTableInput = this.shadowRoot.getElementById('outputTable');
         if (outputTableInput) outputTableInput.value = algorithmDetailData.outputTable || '';
@@ -331,20 +328,8 @@ class AlgorithmEdit extends HTMLElement {
     }
 
     loadInterfaceParams() {
-        // 默认输入参数
-        this.inputs = [
-            { name: 'temperature', type: 'float', unit: '°C', desc: '环境温度' },
-            { name: 'pressure', type: 'float', unit: 'kPa', desc: '压力值' },
-            { name: 'flow_rate', type: 'float', unit: 'm³/h', desc: '流量' }
-        ];
-
-        // 默认输出参数
-        this.outputs = [
-            { name: 'control_signal', type: 'float', unit: '%', desc: '控制信号' },
-            { name: 'status', type: 'int', unit: '-', desc: '状态码' },
-            { name: 'efficiency', type: 'float', unit: '%', desc: '效率' }
-        ];
-
+        this.inputs = [];
+        this.outputs = [];
         this.renderParams();
     }
 
@@ -625,6 +610,21 @@ class AlgorithmEdit extends HTMLElement {
 
             if (window.hideGlobalLoading) window.hideGlobalLoading();
 
+            // 自动填充输入CSV文件名（仅在字段为空时填充）
+            const inputCsvName = this.shadowRoot.getElementById('inputCsvName');
+            if (inputCsvName && !inputCsvName.value) {
+                inputCsvName.value = 'input.csv';
+            }
+
+            // 自动填充输出CSV文件名（仅在字段为空时填充）
+            const outputCsvName = this.shadowRoot.getElementById('outputCsvName');
+            if (outputCsvName && !outputCsvName.value) {
+                outputCsvName.value = 'output.csv';
+            }
+
+            // 根据选择的源文件更新运行命令
+            this.autoFillCommandFromFileName(selectedFile);
+
             console.log('解析响应:', parseResponse);
 
             if (!parseResponse.success || !parseResponse.data) {
@@ -638,7 +638,7 @@ class AlgorithmEdit extends HTMLElement {
             const parsedApis = parseResult.apis || [];
 
             if (parsedApis.length === 0) {
-                this.showErrorMessage('未解析到数据，请确认代码注释是否符合规范');
+                this.showInfoMessage('未解析到参数数据，请确认代码注释是否符合规范。运行命令和CSV文件名已自动填充。');
                 return;
             }
 
@@ -659,9 +659,6 @@ class AlgorithmEdit extends HTMLElement {
 
             console.log('解析到的输入参数:', parsedInputs);
             console.log('解析到的输出参数:', parsedOutputs);
-
-            // 根据选择的源文件更新运行命令
-            this.autoFillCommandFromFileName(selectedFile);
 
             // 处理强制覆盖逻辑
             if (forceOverride) {
@@ -2194,6 +2191,35 @@ class AlgorithmEdit extends HTMLElement {
             document.body.insertAdjacentHTML('beforeend', messageHtml);
             
             const messageEl = document.querySelector('.workspace-message.error');
+            setTimeout(() => {
+                if (messageEl) messageEl.remove();
+            }, 3000);
+        }
+    }
+
+    showInfoMessage(message) {
+        if (window.CommonUtils && window.CommonUtils.showToast) {
+            window.CommonUtils.showToast(message, 'info');
+        } else {
+            const messageHtml = `
+                <div class="workspace-message info" style="
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    background: #3b82f6;
+                    color: white;
+                    padding: 12px 20px;
+                    border-radius: 4px;
+                    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+                    z-index: 10001;
+                ">
+                    ${message}
+                </div>
+            `;
+            
+            document.body.insertAdjacentHTML('beforeend', messageHtml);
+            
+            const messageEl = document.querySelector('.workspace-message.info');
             setTimeout(() => {
                 if (messageEl) messageEl.remove();
             }, 3000);
