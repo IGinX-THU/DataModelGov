@@ -60,8 +60,8 @@ public class ModelFileController {
             @RequestParam(value = "fileName", required = false) String fileName,
             HttpServletResponse response) throws Exception {
 
-        byte[] fileData = modelFileService.downloadModel(name, version);
-        ModelMetaEntity queryMeta = modelFileService.queryMeta(name, version);
+        byte[] fileData = modelFileService.downloadModel(name, version, ProjectContext.getCurrentProject(null));
+        ModelMetaEntity queryMeta = modelFileService.queryMeta(name, version, ProjectContext.getCurrentProject(null));
         fileName = queryMeta.getFileName();
 
         String encodedFilename = URLEncoder.encode(fileName, StandardCharsets.UTF_8.name())

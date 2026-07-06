@@ -281,7 +281,7 @@ public class DirectedGraphExecutionEngine {
         String algorithmName = node.has("algorithmName") ? node.get("algorithmName").asText() : "";
         String algorithmVersion = node.has("algorithmVersion") ? node.get("algorithmVersion").asText() : "";
 
-        log.info("执行算法任务节点: nodeId={}, name={}, algorithm={}:{}", nodeId, nodeName, algorithmName, algorithmVersion);
+        log.info("执行算法任务节点: nodeId={}, name={}, projectName={}, algorithm={}:{}", nodeId, nodeName, projectName, algorithmName, algorithmVersion);
 
         if (algorithmName.isEmpty() || algorithmVersion.isEmpty()) {
             throw new Exception("节点 " + nodeName + " 未配置算法");
@@ -295,6 +295,7 @@ public class DirectedGraphExecutionEngine {
         Map<String, Object> executionParams = new HashMap<>();
         executionParams.put("nodeId", nodeId);
         executionParams.put("nodeName", nodeName);
+        executionParams.put("projectName", projectName);
         executionParams.put("algorithmName", algorithmName);
         executionParams.put("algorithmVersion", algorithmVersion);
         executionParams.put("startTime", startTime);
@@ -374,6 +375,7 @@ public class DirectedGraphExecutionEngine {
         Map<String, Object> nodeResult = new HashMap<>();
         nodeResult.put("nodeId", nodeId);
         nodeResult.put("nodeName", nodeName);
+        nodeResult.put("projectName", projectName);
         nodeResult.put("algorithm", algorithmName);
         nodeResult.put("version", algorithmVersion);
 

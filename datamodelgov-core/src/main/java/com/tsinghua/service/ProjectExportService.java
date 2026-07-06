@@ -299,7 +299,7 @@ public class ProjectExportService {
                 String version = parts[3].replace('_', '.');
 
                 // 查询元数据
-                ModelMetaEntity meta = modelFileService.queryMeta(name, version);
+                ModelMetaEntity meta = modelFileService.queryMeta(name, version, project.getName());
                 if (meta == null) {
                     log.warn("模型元数据不存在: {} v{}", name, version);
                     continue;
@@ -311,7 +311,7 @@ public class ProjectExportService {
                         metaJson.getBytes(StandardCharsets.UTF_8));
 
                 // 下载并写入模型二进制文件
-                byte[] fileData = modelFileService.downloadModel(name, version);
+                byte[] fileData = modelFileService.downloadModel(name, version, project.getName());
                 writeZipEntry(zos, "models/files/" + meta.getFileName(), fileData);
 
                 count++;

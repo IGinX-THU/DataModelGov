@@ -233,7 +233,7 @@ public class AlgorithmFileService {
      * 提取算法文件（返回文件列表给前端）
      */
     public List<Map<String, Object>> extractAlgorithmFile(String algorithmName, String algorithmVersion, Path taskDir) throws Exception {
-        return extractAlgorithmFile(algorithmName, algorithmVersion, null, taskDir);
+        return extractAlgorithmFile(algorithmName, algorithmVersion, ProjectContext.getCurrentProject(null), taskDir);
     }
 
     /**

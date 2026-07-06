@@ -131,13 +131,13 @@ public class ModelFileService {
      * 2. 按chunkCount精确获取文件块
      * 3. 校验MD5确保文件完整性
      */
-    public byte[] downloadModel(String name, String version) throws Exception {
-        log.info("开始下载模型: {} v{}", name, version);
+    public byte[] downloadModel(String name, String version, String projectName) throws Exception {
+        log.info("开始下载模型: {} v{} 项目 {}", name, version, projectName);
 
         // 1. 先查询元数据验证模型信息
-        ModelMetaEntity modelMeta = queryMeta(name, version);
+        ModelMetaEntity modelMeta = queryMeta(name, version, projectName);
         if (modelMeta == null) {
-            throw new Exception("未找到指定的模型元数据: " + name + " v" + version);
+            throw new Exception("未找到指定的模型元数据: " + name + " v" + version + " 项目 " + projectName);
         }
 
         // 验证元数据完整性
@@ -215,23 +215,27 @@ public class ModelFileService {
         return fileBytes;
     }
 
-    /**
-     * 提取模型文件（返回文件列表给前端）
-     */
     public List<Map<String, Object>> extractModelFile(String modelName, String modelVersion, Path taskDir) throws Exception {
+        return extractModelFile(modelName, modelVersion, ProjectContext.getCurrentProject(null), taskDir);
+    }
+
+        /**
+         * 提取模型文件（返回文件列表给前端）
+         */
+    public List<Map<String, Object>> extractModelFile(String modelName, String modelVersion, String projectName, Path taskDir) throws Exception {
         if (!StringUtils.hasText(modelName) || !StringUtils.hasText(modelVersion)) {
             throw new RuntimeException("模型名称或版本为空");
         }
 
-        log.info("开始下载模型: {} 版本 {}", modelName, modelVersion);
+        log.info("开始下载项目 {} 模型: {} 版本 {}", projectName, modelName, modelVersion);
 
         // 获取模型元数据以获取正确的文件名
-        ModelMetaEntity modelMeta = queryMeta(modelName, modelVersion);
+        ModelMetaEntity modelMeta = queryMeta(modelName, modelVersion, projectName);
         if (modelMeta == null) {
-            throw new RuntimeException("未找到模型元数据: " + modelName + " 版本 " + modelVersion);
+            throw new RuntimeException("未找到模型元数据: " + modelName + " 版本 " + modelVersion + " 项目 " + projectName);
         }
 
-        byte[] modelData = downloadModel(modelName, modelVersion);
+        byte[] modelData = downloadModel(modelName, modelVersion, projectName);
         String fileName = modelMeta.getFileName();
         if (fileName == null || fileName.trim().isEmpty()) {
             throw new RuntimeException("模型文件名为空: " + modelName + " 版本 " + modelVersion);
@@ -583,7 +587,7 @@ public class ModelFileService {
         try {
             List<String> measurements = ConvertUtil.iginxFieldNamesConvert(ModelMetaEntity.class, META_PREFIX);
             if (StringUtils.hasText(version) && !"null".equals(version)) {
-                ModelMetaEntity queryMeta = queryMeta(name, version);
+                ModelMetaEntity queryMeta = queryMeta(name, version, projectName);
                 String storagePath = buildStoragePath(projectName != null ? projectName : (queryMeta != null ? queryMeta.getProjectName() : null), name, version);
                 iginxClient.getDeleteClient().deleteMeasurement(storagePath);
                 if (queryMeta != null && queryMeta.getTimestamp() != null) {

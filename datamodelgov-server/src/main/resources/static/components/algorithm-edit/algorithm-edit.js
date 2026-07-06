@@ -164,6 +164,24 @@ class AlgorithmEdit extends HTMLElement {
             });
         }
 
+        // 输入CSV文件名变化时更新运行命令
+        const inputCsvName = this.shadowRoot.getElementById('inputCsvName');
+        if (inputCsvName) {
+            inputCsvName.addEventListener('change', (e) => {
+                e.stopPropagation();
+                this.updateRuleCmdFromCsvNames();
+            });
+        }
+
+        // 输出CSV文件名变化时更新运行命令
+        const outputCsvName = this.shadowRoot.getElementById('outputCsvName');
+        if (outputCsvName) {
+            outputCsvName.addEventListener('change', (e) => {
+                e.stopPropagation();
+                this.updateRuleCmdFromCsvNames();
+            });
+        }
+
         // 阻止表单容器内的点击事件冒泡
         const formContainer = this.shadowRoot.querySelector('.form-container');
         if (formContainer) {
@@ -747,23 +765,6 @@ class AlgorithmEdit extends HTMLElement {
                 const fileName = algorithmData.fileName || `${algorithmName}.py`;
                 console.log('使用fileName:', fileName);
 
-                // 自动填充运行命令（仅在字段为空时填充）
-                const ruleCmd = this.shadowRoot.getElementById('ruleCmd');
-                if (ruleCmd && !ruleCmd.value) {
-                    // 判断文件类型，生成对应的运行命令
-                    let command;
-                    if (fileName.endsWith('.m')) {
-                        command = 'matlab';
-                    } else if (fileName.endsWith('.py')) {
-                        command = 'python';
-                    } else {
-                        // C/C++ 可执行文件或其他类型，直接执行
-                        command = '';
-                    }
-                    ruleCmd.value = command ? `${command} ${fileName} -i input.csv -o output.csv` : `${fileName} -i input.csv -o output.csv`;
-                    console.log('自动填充运行命令:', ruleCmd.value);
-                }
-
                 // 自动填充输入CSV文件名（仅在字段为空时填充）
                 const inputCsvName = this.shadowRoot.getElementById('inputCsvName');
                 if (inputCsvName && !inputCsvName.value) {
@@ -776,6 +777,27 @@ class AlgorithmEdit extends HTMLElement {
                 if (outputCsvName && !outputCsvName.value) {
                     outputCsvName.value = 'output.csv';
                     console.log('自动填充输出CSV文件名:', outputCsvName.value);
+                }
+
+                // 自动填充运行命令（仅在字段为空时填充）
+                const ruleCmd = this.shadowRoot.getElementById('ruleCmd');
+                if (ruleCmd && !ruleCmd.value) {
+                    const inputFile = inputCsvName ? inputCsvName.value || 'input.csv' : 'input.csv';
+                    const outputFile = outputCsvName ? outputCsvName.value || 'output.csv' : 'output.csv';
+                    let command;
+                    if (fileName.endsWith('.m')) {
+                        command = 'matlab';
+                    } else if (fileName.endsWith('.py')) {
+                        command = 'python';
+                    } else {
+                        command = '';
+                    }
+                    if (command === 'matlab') {
+                        ruleCmd.value = `matlab -batch "input_file='${inputFile}';output_file='${outputFile}';run('${fileName}')"`;
+                    } else {
+                        ruleCmd.value = command ? `${command} ${fileName} --input_file ${inputFile} --output_file ${outputFile}` : `${fileName} --input_file ${inputFile} --output_file ${outputFile}`;
+                    }
+                    console.log('自动填充运行命令:', ruleCmd.value);
                 }
             }
         } catch (error) {
@@ -1055,22 +1077,62 @@ class AlgorithmEdit extends HTMLElement {
             return;
         }
 
-        // 判断文件类型，生成对应的运行命令
+        const inputCsvName = this.shadowRoot.getElementById('inputCsvName');
+        const outputCsvName = this.shadowRoot.getElementById('outputCsvName');
+        const inputFile = inputCsvName ? inputCsvName.value || 'input.csv' : 'input.csv';
+        const outputFile = outputCsvName ? outputCsvName.value || 'output.csv' : 'output.csv';
+
         let command;
         if (fileName.endsWith('.m')) {
             command = 'matlab';
         } else if (fileName.endsWith('.py')) {
             command = 'python';
         } else {
-            // C/C++ 可执行文件或其他类型，直接执行
             command = '';
         }
 
         const ruleCmd = this.shadowRoot.getElementById('ruleCmd');
         if (ruleCmd) {
-            ruleCmd.value = command ? `${command} ${fileName} -i input.csv -o output.csv` : `${fileName} -i input.csv -o output.csv`;
+            if (command === 'matlab') {
+            ruleCmd.value = `matlab -batch "input_file='${inputFile}';output_file='${outputFile}';run('${fileName}')"`;
+        } else {
+            ruleCmd.value = command ? `${command} ${fileName} --input_file ${inputFile} --output_file ${outputFile}` : `${fileName} --input_file ${inputFile} --output_file ${outputFile}`;
+        }
             console.log('根据源文件自动填充运行命令:', ruleCmd.value);
         }
+    }
+
+    // 根据CSV文件名更新运行命令
+    updateRuleCmdFromCsvNames() {
+        const ruleCmd = this.shadowRoot.getElementById('ruleCmd');
+        const inputCsvName = this.shadowRoot.getElementById('inputCsvName');
+        const outputCsvName = this.shadowRoot.getElementById('outputCsvName');
+        if (!ruleCmd || !ruleCmd.value) return;
+
+        const inputFile = inputCsvName ? inputCsvName.value || 'input.csv' : 'input.csv';
+        const outputFile = outputCsvName ? outputCsvName.value || 'output.csv' : 'output.csv';
+        const currentValue = ruleCmd.value;
+
+        if (currentValue.includes('matlab')) {
+            const fileNameMatch = currentValue.match(/run\('([^']+)'\)/);
+            if (fileNameMatch) {
+                const fileName = fileNameMatch[1];
+                ruleCmd.value = `matlab -batch "input_file='${inputFile}';output_file='${outputFile}';run('${fileName}')"`;
+            }
+        } else {
+            const fileNameMatch = currentValue.match(/(\S+\.(?:py|m|sh|exe))/);
+            if (fileNameMatch) {
+                const fileName = fileNameMatch[1];
+                const commandMatch = currentValue.match(/^(python|python3|java)\s+/);
+                const command = commandMatch ? commandMatch[1] : '';
+                if (command) {
+                    ruleCmd.value = `${command} ${fileName} --input_file ${inputFile} --output_file ${outputFile}`;
+                } else {
+                    ruleCmd.value = `${fileName} --input_file ${inputFile} --output_file ${outputFile}`;
+                }
+            }
+        }
+        console.log('根据CSV文件名更新运行命令:', ruleCmd.value);
     }
 
     onForceOverrideChange(checked) {
