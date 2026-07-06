@@ -1555,7 +1555,7 @@ public class ApiServiceImpl implements ApiService.Iface {
     public com.tsinghua.thrift.api.Result runSimulation(long createTime) throws TException {
         try {
             log.info("Thrift RPC: Run simulation {}", createTime);
-            com.tsinghua.model.Result<Void> simResult = simulationExecutionService.runSimulation(createTime);
+            com.tsinghua.model.Result<Long> simResult = simulationExecutionService.runSimulation(createTime);
             com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(simResult.getSuccess(), simResult.getMessage());
             return result;
         } catch (Exception e) {
@@ -1572,7 +1572,7 @@ public class ApiServiceImpl implements ApiService.Iface {
             java.util.List<String> selectedNodeIds = params != null && params.containsKey("selectedNodeIds") 
                 ? java.util.Arrays.asList(params.get("selectedNodeIds").split(",")) 
                 : null;
-            com.tsinghua.model.Result<Void> simResult = simulationExecutionService.runSimulation(createTime, selectedNodeIds);
+            com.tsinghua.model.Result<Long> simResult = simulationExecutionService.runSimulation(createTime, selectedNodeIds);
             com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(simResult.getSuccess(), simResult.getMessage());
             return result;
         } catch (Exception e) {
@@ -1600,7 +1600,7 @@ public class ApiServiceImpl implements ApiService.Iface {
     public com.tsinghua.thrift.api.Result getSimulationExecutionStatus(long createTime) throws TException {
         try {
             log.info("Thrift RPC: Get simulation execution status {}", createTime);
-            com.tsinghua.model.Result<Map<String, Object>> simResult = simulationExecutionService.getExecutionStatus(createTime);
+            com.tsinghua.model.Result<Map<String, Object>> simResult = simulationExecutionService.getExecutionStatus(createTime, null);
             com.tsinghua.thrift.api.Result result = new com.tsinghua.thrift.api.Result(simResult.getSuccess(), simResult.getMessage());
             if (simResult.getData() != null) {
                 result.setData(convertEntityToJson(simResult.getData()));

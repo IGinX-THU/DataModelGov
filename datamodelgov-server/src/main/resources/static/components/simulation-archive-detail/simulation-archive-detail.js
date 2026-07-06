@@ -17,6 +17,7 @@ class SimulationArchiveDetail extends HTMLElement {
         this.isEditMode = false;
         this.executionResult = null;
         this.isRunning = false;
+        this.currentExecutionTimestamp = null;
     }
 
     async connectedCallback() {
@@ -177,6 +178,7 @@ class SimulationArchiveDetail extends HTMLElement {
         this.edgeCounter = 0;
         this.executionResult = null;
         this.isRunning = false;
+        this.currentExecutionTimestamp = null;
         this.currentResultTab = 'text';
         this.currentCsvNodeId = null;
         this.currentTextNodeId = null;
@@ -313,6 +315,7 @@ class SimulationArchiveDetail extends HTMLElement {
 
         this.isRunning = archive.isRunning || false;
         this.executionResult = null;
+        this.currentExecutionTimestamp = null;
         this.isEditMode = false;
         this.renderGraph();
         this.updateNodeCheckList();
@@ -388,6 +391,7 @@ class SimulationArchiveDetail extends HTMLElement {
 
         this.isRunning = archive.isRunning || false;
         this.executionResult = null;
+        this.currentExecutionTimestamp = null;
         this.isEditMode = false;
         this.renderGraph();
         this.updateNodeCheckList();
@@ -1611,24 +1615,6 @@ class SimulationArchiveDetail extends HTMLElement {
         const csvNodeTabs = this.shadowRoot.getElementById('csvNodeTabs');
         if (csvNodeTabs) csvNodeTabs.innerHTML = '';
 
-        // 运行前自动保存图数据，确保后端读到最新的边/节点数据
-        try {
-            const saveData = {
-                createTime: this.currentArchive.createTime,
-                name: this.currentArchive.name,
-                description: this.currentArchive.description || '',
-                projectName: this.currentArchive.projectName || '',
-                owner: this.currentArchive.owner || '',
-                graphJson: JSON.stringify({ nodes: this.nodes, edges: this.edges }),
-                status: this.currentArchive.status !== false,
-                scheduleCron: this.currentArchive.scheduleCron || '',
-                outputApiConfig: this.currentArchive.outputApiConfig || '{}'
-            };
-            await window.AppConfig.post('simulationArchives', 'save', saveData);
-        } catch (e) {
-            console.warn('运行前自动保存图数据失败:', e);
-        }
-
         this.isRunning = true;
         this.updateExecStatus();
         this.shadowRoot.getElementById('runBtn').disabled = true;
@@ -1644,6 +1630,7 @@ class SimulationArchiveDetail extends HTMLElement {
             });
             console.log('后端返回结果:', result);
             if (result.code === 200) {
+                this.currentExecutionTimestamp = result.data;
                 this.showToast('仿真已开始运行');
                 this.pollExecutionStatus();
             } else {
@@ -1775,7 +1762,9 @@ class SimulationArchiveDetail extends HTMLElement {
             if (!this.isRunning) return;
             if (executionId !== this.currentExecutionId) return;
             try {
-                const result = await window.AppConfig.get('simulationArchives', 'execution-status', { createTime: this.currentArchive.createTime });
+                const params = { createTime: this.currentArchive.createTime };
+                if (this.currentExecutionTimestamp) params.timestamp = this.currentExecutionTimestamp;
+                const result = await window.AppConfig.get('simulationArchives', 'execution-status', params);
                 if (result.code === 200 && result.data && !result.data.isRunning) {
                     if (executionId !== this.currentExecutionId) return;
                     // 检查结果是否包含本次执行的节点
@@ -2041,7 +2030,9 @@ class SimulationArchiveDetail extends HTMLElement {
         // 如果处于新增模式，不加载日志
         if (this.currentArchive === null) return;
         try {
-            const result = await window.AppConfig.get('simulationArchives', 'execution-log', { createTime: this.currentArchive.createTime });
+            const params = { createTime: this.currentArchive.createTime };
+            if (this.currentExecutionTimestamp) params.timestamp = this.currentExecutionTimestamp;
+            const result = await window.AppConfig.get('simulationArchives', 'execution-log', params);
             const logEl = this.shadowRoot.querySelector('#logContent pre');
             if (result.code === 200 && result.data && result.data.nodeLogs) {
                 if (logEl) {
