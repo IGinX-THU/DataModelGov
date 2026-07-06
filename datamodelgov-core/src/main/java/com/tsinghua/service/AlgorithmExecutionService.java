@@ -103,9 +103,9 @@ public class AlgorithmExecutionService {
         StringBuilder processLogBuilder = new StringBuilder();
         try {
             // 1. 获取算法元数据
-            AlgorithmMetaEntity algorithmMeta = algorithmFileService.queryMeta(algorithmName, algorithmVersion);
+            AlgorithmMetaEntity algorithmMeta = algorithmFileService.queryMeta(algorithmName, algorithmVersion, projectName);
             if (algorithmMeta == null) {
-                return new Result<>(500, "算法元数据不存在: " + algorithmName + " " + algorithmVersion, null);
+                return new Result<>(500, "算法元数据不存在: " + projectName + " " + algorithmName + " " + algorithmVersion, null);
             }
 
             // 2. 创建任务目录
@@ -141,7 +141,7 @@ public class AlgorithmExecutionService {
 
             try {
                 // 3. 下载算法文件
-                algorithmFileService.extractAlgorithmFile(algorithmName, algorithmVersion, taskDir);
+                algorithmFileService.extractAlgorithmFile(algorithmName, algorithmVersion, projectName, taskDir);
                 log.info("算法文件已提取到: {}", taskDir);
                 String extractLog = "算法文件已提取完成\n";
                 processLogBuilder.append(extractLog);
@@ -279,7 +279,7 @@ public class AlgorithmExecutionService {
 
                 if (modelName != null && modelVersion != null) {
                     try {
-                        modelFileService.extractModelFile(modelName, modelVersion, taskDir);
+                        modelFileService.extractModelFile(modelName, modelVersion, algorithmMeta.getProjectName(), taskDir);
                         log.info("模型 {} v{} 已下载到执行目录: {}", modelName, modelVersion, taskDir);
                     } catch (Exception e) {
                         log.error("下载模型 {} v{} 失败", modelName, modelVersion, e);
