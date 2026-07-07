@@ -95,18 +95,11 @@ public class DataSourceService {
      * 移除异构数据源
      */
     public boolean removeDataSource(StorageEngineInfoDto storageEngineInfoDto) throws Exception {
-        // iginxSession.openSession();
-        RemovedStorageEngineInfo removedStorageEngineInfo = new RemovedStorageEngineInfo(storageEngineInfoDto.getIp(), storageEngineInfoDto.getPort(), storageEngineInfoDto.getSchemaPrefix(), storageEngineInfoDto.getDataPrefix());
-        List<RemovedStorageEngineInfo> removedStorageEngineList = Collections.singletonList(removedStorageEngineInfo);
-        iginxSession.removeStorageEngine(removedStorageEngineList);
-        // iginxSession.closeSession();
 
         // 删除对应的数据档案元数据
         String tablePrefix = StringUtils.hasText(storageEngineInfoDto.getDataPrefix()) ?
                 storageEngineInfoDto.getSchemaPrefix() + "." + storageEngineInfoDto.getDataPrefix() :
                 storageEngineInfoDto.getSchemaPrefix();
-        dataPermissionService.deleteByTablePrefix(tablePrefix);
-
         try {
             DataArchiveEntity archive = dataArchiveService.findByName(tablePrefix);
             if (archive != null && archive.getCreateTime() != null) {
@@ -126,6 +119,14 @@ public class DataSourceService {
                 log.error("从项目移除数据路径失败", e);
             }
         }
+
+        // iginxSession.openSession();
+        RemovedStorageEngineInfo removedStorageEngineInfo = new RemovedStorageEngineInfo(storageEngineInfoDto.getIp(), storageEngineInfoDto.getPort(), storageEngineInfoDto.getSchemaPrefix(), storageEngineInfoDto.getDataPrefix());
+        List<RemovedStorageEngineInfo> removedStorageEngineList = Collections.singletonList(removedStorageEngineInfo);
+        iginxSession.removeStorageEngine(removedStorageEngineList);
+        // iginxSession.closeSession();
+
+        dataPermissionService.deleteByTablePrefix(tablePrefix);
 
         return true;
     }

@@ -99,7 +99,7 @@ public class DataArchiveService {
             if (name == null || name.trim().isEmpty()) {
                 return null;
             }
-            String sql = String.format("SELECT * FROM %s WHERE name = '%s';", DATA_ARCHIVE_PREFIX, name.trim());
+            String sql = String.format("SELECT * FROM %s WHERE name = '%s' LIMIT 1;", DATA_ARCHIVE_PREFIX, name.trim());
             log.info("执行SQL: {}", sql);
 
             SessionExecuteSqlResult res = iginxSession.executeSql(sql);
