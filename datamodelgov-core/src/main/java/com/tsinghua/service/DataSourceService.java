@@ -109,8 +109,8 @@ public class DataSourceService {
 
         try {
             DataArchiveEntity archive = dataArchiveService.findByName(tablePrefix);
-            if (archive != null && archive.getId() != null) {
-                dataArchiveService.deleteArchive(archive.getId());
+            if (archive != null && archive.getCreateTime() != null) {
+                dataArchiveService.deleteArchive(archive.getCreateTime());
                 log.info("已删除数据源档案元数据: {}", tablePrefix);
             }
         } catch (Exception e) {
