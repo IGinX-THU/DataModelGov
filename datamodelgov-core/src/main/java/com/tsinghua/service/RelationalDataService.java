@@ -306,7 +306,7 @@ public class RelationalDataService {
      */
     public String buildWhereClause(List<RelationalQueryRequest.FilterCondition> filters) {
         if (filters == null || filters.isEmpty()) {
-            return "";
+            return " 1=1 ";
         }
         
         StringBuilder whereClause = new StringBuilder();
@@ -351,11 +351,9 @@ public class RelationalDataService {
         StringBuilder sql = new StringBuilder("SELECT * FROM ").append(request.getTableName());
         
         // 添加WHERE条件
-        if (request.getFilters() != null && !request.getFilters().isEmpty()) {
-            String whereClause = buildWhereClause(request.getFilters());
-            if (StringUtils.hasText(whereClause)) {
-                sql.append(" WHERE ").append(whereClause);
-            }
+        String whereClause = buildWhereClause(request.getFilters());
+        if (StringUtils.hasText(whereClause)) {
+            sql.append(" WHERE ").append(whereClause);
         }
         
         // 添加ORDER BY排序条件
@@ -498,11 +496,9 @@ public class RelationalDataService {
         StringBuilder sql = new StringBuilder("SELECT COUNT(1) FROM ").append(request.getTableName());
         
         // 添加WHERE条件（与查询相同的逻辑）
-        if (request.getFilters() != null && !request.getFilters().isEmpty()) {
-            String whereClause = buildWhereClause(request.getFilters());
-            if (StringUtils.hasText(whereClause)) {
-                sql.append(" WHERE ").append(whereClause);
-            }
+        String whereClause = buildWhereClause(request.getFilters());
+        if (StringUtils.hasText(whereClause)) {
+            sql.append(" WHERE ").append(whereClause);
         }
         
         // COUNT查询不需要排序，直接返回

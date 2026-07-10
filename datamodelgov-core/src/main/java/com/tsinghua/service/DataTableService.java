@@ -261,9 +261,10 @@ public class DataTableService {
         QueryClient queryClient = iginxClient.getQueryClient();
 
         Set<String> paths = new HashSet<>(request.getPaths());
+        // 最小时间（1970-01-01）
         long startKey = Optional.ofNullable(request.getStartTime()).orElse(0L);
-        long endKey = Optional.ofNullable(request.getEndTime()).orElse(Long.MAX_VALUE);
-
+        //最大时间（10000-01-01 23:59:59.999） 足够大，但不会导致查询 OOM
+        long endKey = Optional.ofNullable(request.getEndTime()).orElse(253402300799999L);
         long precision = request.getPrecision();
         if (precision <= 0L) {
             precision = 1000L;
