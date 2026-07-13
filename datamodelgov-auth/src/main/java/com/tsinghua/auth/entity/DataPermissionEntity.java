@@ -2,6 +2,7 @@ package com.tsinghua.auth.entity;
 
 import cn.edu.tsinghua.iginx.session_v2.annotations.Field;
 import cn.edu.tsinghua.iginx.session_v2.annotations.Measurement;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 import lombok.Builder;
 import lombok.AllArgsConstructor;
@@ -47,6 +48,7 @@ public class DataPermissionEntity {
     /**
      * 是否公开（true表示所有用户可见）
      */
+    @JsonProperty("isPublic")
     @Field(name = "isPublic")
     private boolean isPublic;
 
