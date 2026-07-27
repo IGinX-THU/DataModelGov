@@ -2671,14 +2671,19 @@ function showSimulationRecord() {
 
                     // 项目节点点击：当前项目切换展开/收起，其他项目弹出切换确认
                     if (nodeType === 'project') {
-                        const isExpanded = node.classList.contains('expanded');
-                        if (isExpanded) {
-                            node.classList.remove('expanded');
+                        const projectName = node.getAttribute('data-project-name');
+                        const username = window.AppConfig.getUsername();
+                        let currentProjectName = null;
+                        if (username && window.localStorage) {
+                            const cached = JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null');
+                            if (cached) currentProjectName = cached.name;
+                        }
+                        if (projectName === currentProjectName) {
+                            // 当前项目：直接切换展开/收起
+                            node.classList.toggle('expanded');
                         } else {
-                            const projectName = node.getAttribute('data-project-name');
-                            if (projectName) {
-                                showSwitchProjectConfirmDialog(projectName);
-                            }
+                            // 其他项目：弹出切换确认
+                            showSwitchProjectConfirmDialog(projectName);
                         }
                         return;
                     }
@@ -2698,10 +2703,51 @@ function showSimulationRecord() {
                     // 根据节点类型执行不同操作
                     if (nodeType === 'data') {
                         console.log('点击数据节点:', nodeName);
+                        if (window.hideAllComponents) {
+                            window.hideAllComponents();
+                        }
+                        const dataArchiveDetail = document.getElementById('dataArchiveDetail');
+                        if (dataArchiveDetail) {
+                            dataArchiveDetail.showDetail(nodeName);
+                        }
                     } else if (nodeType === 'algorithm') {
                         console.log('点击算法节点:', nodeName);
+                        if (window.hideAllComponents) {
+                            window.hideAllComponents();
+                        }
+                        const algorithmDetail = document.getElementById('algorithmDetail');
+                        if (algorithmDetail && algorithmDetail.show) {
+                            const pathParts = nodeName.split('.');
+                            if (pathParts.length >= 4) {
+                                algorithmDetail.show({
+                                    name: pathParts[2],
+                                    version: pathParts[3],
+                                    fullPath: nodeName
+                                });
+                            } else {
+                                algorithmDetail.show({ name: nodeName, fullPath: nodeName });
+                            }
+                        }
+                        expandAlgorithmNodeInRightSidebar(nodeName, true);
                     } else if (nodeType === 'model') {
                         console.log('点击模型节点:', nodeName);
+                        if (window.hideAllComponents) {
+                            window.hideAllComponents();
+                        }
+                        const modelDetail = document.getElementById('modelDetail');
+                        if (modelDetail && modelDetail.show) {
+                            const pathParts = nodeName.split('.');
+                            if (pathParts.length >= 4) {
+                                modelDetail.show({
+                                    name: pathParts[2],
+                                    version: pathParts[3],
+                                    fullPath: nodeName
+                                });
+                            } else {
+                                modelDetail.show({ name: nodeName, fullPath: nodeName });
+                            }
+                        }
+                        expandModelNodeInRightSidebar(nodeName, true);
                     }
                 }
             };
@@ -3527,14 +3573,18 @@ function bindProjectTreeEvents() {
 
                 // 项目节点点击：当前项目切换展开/收起，其他项目弹出切换确认
                 if (nodeType === 'project') {
-                    const isExpanded = node.classList.contains('expanded');
-                    if (isExpanded) {
-                        node.classList.remove('expanded');
+                    const projectName = node.getAttribute('data-project-name');
+                    const username = window.AppConfig.getUsername();
+                    let currentProjectName = null;
+                    if (username && window.localStorage) {
+                        const cached = JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null');
+                        if (cached) currentProjectName = cached.name;
+                    }
+                    if (projectName === currentProjectName) {
+                        // 当前项目：直接切换展开/收起
+                        node.classList.toggle('expanded');
                     } else {
-                        const projectName = node.getAttribute('data-project-name');
-                        if (projectName) {
-                            showSwitchProjectConfirmDialog(projectName);
-                        }
+                        showSwitchProjectConfirmDialog(projectName);
                     }
                     return;
                 }
@@ -3554,59 +3604,44 @@ function bindProjectTreeEvents() {
                 // 根据节点类型执行不同操作
                 if (nodeType === 'data') {
                     console.log('点击数据节点:', nodeName);
-                    // 清空工作区
                     if (window.hideAllComponents) {
                         window.hideAllComponents();
                     }
-                    // 跳转到数据档案详情页
                     const dataArchiveDetail = document.getElementById('dataArchiveDetail');
                     if (dataArchiveDetail) {
                         dataArchiveDetail.showDetail(nodeName);
-                    } else {
-                        console.error('数据档案详情组件未找到');
                     }
                 } else if (nodeType === 'algorithm') {
                     console.log('点击算法节点:', nodeName);
-                    // 清空工作区
                     if (window.hideAllComponents) {
                         window.hideAllComponents();
                     }
-                    // 显示算法详情
                     const algorithmDetail = document.getElementById('algorithmDetail');
                     if (algorithmDetail && algorithmDetail.show) {
-                        // nodeName是storagePath格式: algorithms_system.projectName.algorithmName.version
                         const pathParts = nodeName.split('.');
                         if (pathParts.length >= 4) {
-                            const algorithmName = pathParts[2];
-                            const algorithmVersion = pathParts[3];
                             algorithmDetail.show({
-                                name: algorithmName,
-                                version: algorithmVersion,
+                                name: pathParts[2],
+                                version: pathParts[3],
                                 fullPath: nodeName
                             });
                         } else {
                             algorithmDetail.show({ name: nodeName, fullPath: nodeName });
                         }
                     }
-                    // 同步右侧算法侧边栏选中状态（不再模拟点击，避免重复加载）
                     expandAlgorithmNodeInRightSidebar(nodeName, true);
                 } else if (nodeType === 'model') {
                     console.log('点击模型节点:', nodeName);
-                    // 清空工作区
                     if (window.hideAllComponents) {
                         window.hideAllComponents();
                     }
-                    // 显示模型详情
                     const modelDetail = document.getElementById('modelDetail');
                     if (modelDetail && modelDetail.show) {
-                        // nodeName是storagePath格式: models_system.projectName.modelName.version
                         const pathParts = nodeName.split('.');
                         if (pathParts.length >= 4) {
-                            const modelName = pathParts[2];
-                            const modelVersion = pathParts[3];
                             modelDetail.show({
-                                name: modelName,
-                                version: modelVersion,
+                                name: pathParts[2],
+                                version: pathParts[3],
                                 fullPath: nodeName
                             });
                         } else {
