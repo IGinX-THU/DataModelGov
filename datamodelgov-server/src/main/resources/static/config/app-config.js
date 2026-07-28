@@ -185,8 +185,10 @@ window.AppConfig = {
             tree: '/api/program/tree',
             list: '/api/program/list',
             run: '/api/program/run',
+            stop: '/api/program/stop',
             results: '/api/program/results',
-            'update-config': '/api/program/update-config'
+            'update-config': '/api/program/update-config',
+            files: '/api/program/files'
         }
     },
     

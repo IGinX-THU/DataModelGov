@@ -3,7 +3,7 @@ class ProgramRun extends HTMLElement {
     super();
     this.attachShadow({ mode: 'open' });
     this.charts = [];
-    this.currentTime = 12.5;
+    this.currentTime = 0;
     this.duration = 30;
     this.speed = 1;
     this.playing = false;
@@ -62,6 +62,11 @@ class ProgramRun extends HTMLElement {
     this.timeMark = root.querySelector('.time-mark');
     this.cursorVal = root.querySelector('.cursor-val');
     this.timeBox = root.querySelector('.time-box');
+    this.statusBox = root.querySelector('.status-box');
+    this.statusDot = root.querySelector('.status-box .dot');
+    this.runBtn = root.querySelector('.btn-run');
+    this.stopBtn = root.querySelector('.btn-stop');
+    this.closeBtn = root.querySelector('#closeBtn');
     const playWrap = root.querySelector('.play');
     this.prevBtn = playWrap.querySelector('button:nth-child(1)');
     this.playBtn = playWrap.querySelector('button:nth-child(2)');
@@ -74,6 +79,7 @@ class ProgramRun extends HTMLElement {
   }
 
   bindEvents() {
+    if (this.closeBtn) this.closeBtn.addEventListener('click', () => this.hide());
     this.tabs.forEach(t => t.addEventListener('click', () => this.renderTab(t.textContent.trim())));
     this.playBtn.addEventListener('click', () => this.togglePlay());
     this.prevBtn.addEventListener('click', () => this.updateCursor(this.currentTime - 1));
@@ -83,6 +89,9 @@ class ProgramRun extends HTMLElement {
       this.speedBtns.forEach(b => b.classList.toggle('active', b === s));
       if (this.playing) { this.stopPlay(); this.startPlay(); }
     }));
+
+    if (this.runBtn) this.runBtn.addEventListener('click', () => this.handleRun());
+    if (this.stopBtn) this.stopBtn.addEventListener('click', () => this.handleStop());
 
     this.timeTrack.addEventListener('click', (e) => {
       if (this.timeCursor.contains(e.target)) return;
@@ -200,7 +209,163 @@ class ProgramRun extends HTMLElement {
     if (this.charts) this.charts.forEach(c => c && c.resize());
   }
 
-  hide() { this.style.display = 'none'; }
+  hide() {
+    this.style.display = 'none';
+    this.stopPolling();
+  }
+
+  async handleRun() {
+    const name = this.getAttribute('data-name');
+    const version = this.getAttribute('data-version');
+    if (!name || !version) return;
+    try {
+      this.updateStatusUI('RUNNING');
+      const url = window.AppConfig.getApiUrl('program', 'run')
+        + '?name=' + encodeURIComponent(name) + '&version=' + encodeURIComponent(version);
+      const result = await window.AppConfig.request(url, { method: 'POST' });
+      if (result && result.code === 200) {
+        this.startPolling(name, version);
+      } else {
+        this.updateStatusUI('ERROR', result ? result.msg : '启动失败');
+      }
+    } catch (e) {
+      console.error('启动运行失败:', e);
+      this.updateStatusUI('ERROR', e.message);
+    }
+  }
+
+  async handleStop() {
+    const name = this.getAttribute('data-name');
+    const version = this.getAttribute('data-version');
+    if (!name || !version) return;
+    try {
+      const url = window.AppConfig.getApiUrl('program', 'stop')
+        + '?name=' + encodeURIComponent(name) + '&version=' + encodeURIComponent(version);
+      const result = await window.AppConfig.request(url, { method: 'POST' });
+      if (result && result.code === 200) {
+        this.stopPolling();
+        this.updateStatusUI('STOPPED');
+      }
+    } catch (e) {
+      console.error('停止运行失败:', e);
+    }
+  }
+
+  startPolling(name, version) {
+    this.stopPolling();
+    this._pollTimer = setInterval(async () => {
+      try {
+        const result = await window.AppConfig.get('program', 'results', { name, version });
+        if (!result || result.code !== 200 || !result.data) return;
+        const data = result.data;
+        const status = data.status || 'UNKNOWN';
+        this.updateStatusUI(status, data.lastError);
+        if (status === 'SUCCESS' || status === 'ERROR' || status === 'STOPPED') {
+          this.stopPolling();
+        }
+      } catch (e) {
+        console.error('轮询状态失败:', e);
+      }
+    }, 10000);
+  }
+
+  stopPolling() {
+    if (this._pollTimer) {
+      clearInterval(this._pollTimer);
+      this._pollTimer = null;
+    }
+  }
+
+  updateStatusUI(status, errorMsg) {
+    const statusTexts = {
+      'IDLE': '就绪',
+      'RUNNING': '仿真运行中',
+      'SUCCESS': '运行完成',
+      'ERROR': '运行错误',
+      'STOPPED': '已停止',
+      'UNKNOWN': '未知状态'
+    };
+    const statusColors = {
+      'IDLE': '#9ca3af',
+      'RUNNING': '#22c55e',
+      'SUCCESS': '#3b82f6',
+      'ERROR': '#ef4444',
+      'STOPPED': '#9ca3af',
+      'UNKNOWN': '#9ca3af'
+    };
+    if (this.statusBox) {
+      const text = statusTexts[status] || status;
+      this.statusBox.innerHTML = `<span class="dot" style="background:${statusColors[status] || '#9ca3af'}"></span>${text}`;
+    }
+  }
+
+  async queryStatus(name, version) {
+    try {
+      const result = await window.AppConfig.get('program', 'results', { name, version });
+      if (!result || result.code !== 200 || !result.data) {
+        this.updateStatusUI('IDLE');
+        return;
+      }
+      const data = result.data;
+      const status = data.status || 'IDLE';
+      this.updateStatusUI(status, data.lastError);
+      if (status === 'RUNNING') {
+        this.startPolling(name, version);
+      }
+    } catch (e) {
+      this.updateStatusUI('IDLE');
+    }
+  }
+
+  async loadProgramFiles(name, version) {
+    try {
+      const result = await window.AppConfig.get('program', 'files', { name, version });
+      if (!result || result.code !== 200 || !result.data) {
+        console.warn('获取程序文件列表失败', result);
+        return;
+      }
+      const data = result.data;
+      if (!data.found) {
+        console.warn('程序目录不存在:', data.message);
+        return;
+      }
+      this.programFilesData = data;
+
+      const root = this.shadowRoot;
+      const modelFileSelect = root.querySelectorAll('.field-row .input-box select')[0];
+      if (modelFileSelect && data.modelFiles) {
+        modelFileSelect.innerHTML = data.modelFiles.map(f =>
+          `<option value="${f}">${f}</option>`
+        ).join('');
+
+        const updateModelTag = () => {
+          const tag = root.querySelector('.model-tag');
+          if (tag) {
+            const mn = this.programFilesData && this.programFilesData.params
+              ? this.programFilesData.params.modelName : '';
+            tag.textContent = mn || modelFileSelect.value.replace(/\.(slx|mdl)$/i, '');
+          }
+        };
+        modelFileSelect.removeEventListener('change', this._modelSelectHandler);
+        this._modelSelectHandler = updateModelTag;
+        modelFileSelect.addEventListener('change', updateModelTag);
+        updateModelTag();
+      }
+
+      if (data.params) {
+        const p = data.params;
+        const inputs = root.querySelectorAll('.field-row .input-box input');
+        if (inputs.length >= 1 && p.stopTime) inputs[0].value = p.stopTime;
+        if (inputs.length >= 2 && p.fixedStep) inputs[1].value = p.fixedStep;
+        if (inputs.length >= 3 && p.npCommand) inputs[2].value = p.npCommand;
+        if (inputs.length >= 4 && p.loadPower) inputs[3].value = p.loadPower;
+      }
+
+      this.queryStatus(name, version);
+    } catch (e) {
+      console.error('加载程序文件列表失败:', e);
+    }
+  }
 }
 
 customElements.define('program-run', ProgramRun);

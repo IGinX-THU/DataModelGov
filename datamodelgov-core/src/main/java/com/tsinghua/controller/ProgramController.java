@@ -115,6 +115,14 @@ public class ProgramController {
         return programService.run(name, version);
     }
 
+    @ApiOperation("停止仿真程序")
+    @PostMapping("/stop")
+    @RequirePermission(Permission.UPDATE)
+    public Result<Map<String, Object>> stop(@RequestParam("name") String name,
+                                            @RequestParam("version") String version) {
+        return programService.stop(name, version);
+    }
+
     @ApiOperation("运行结果")
     @GetMapping("/results")
     @RequirePermission(Permission.READ)
@@ -130,5 +138,15 @@ public class ProgramController {
                                               @RequestParam("version") String version,
                                               @RequestBody String configJson) {
         return programService.updateConfig(name, version, configJson);
+    }
+
+    @ApiOperation("获取程序目录文件列表")
+    @GetMapping("/files")
+    @RequirePermission(Permission.READ)
+    public Result<Map<String, Object>> getProgramFiles(
+            @RequestParam("name") String name,
+            @RequestParam("version") String version,
+            @RequestParam(value = "projectName", required = false) String projectName) {
+        return Result.success(programService.getProgramFiles(name, version, projectName));
     }
 }

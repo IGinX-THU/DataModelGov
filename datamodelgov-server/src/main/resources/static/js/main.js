@@ -3387,13 +3387,24 @@ function showSimulationRecord() {
                             if (parts.length >= 4 && parts[0] === 'programs_system') {
                                 const programName = parts[parts.length - 2];
                                 const programVersion = parts[parts.length - 1].replace(/_/g, '.');
-                                const programRun = document.getElementById('programRun');
-                                if (programRun) {
-                                    programRun.setAttribute('data-name', programName);
-                                    programRun.setAttribute('data-version', programVersion);
+
+                                const oldEl = document.getElementById('programRun');
+                                const parent = oldEl ? oldEl.parentElement : null;
+                                if (oldEl && parent) {
+                                    oldEl.remove();
                                 }
+                                const programRun = document.createElement('program-run');
+                                programRun.id = 'programRun';
+                                programRun.style.display = 'none';
+                                if (parent) parent.appendChild(programRun);
+                                programRun.setAttribute('data-name', programName);
+                                programRun.setAttribute('data-version', programVersion);
+
                                 clearWorkspace();
                                 showComponent('programRun');
+                                if (programRun.loadProgramFiles) {
+                                    programRun.loadProgramFiles(programName, programVersion);
+                                }
                             }
                         }
                     });

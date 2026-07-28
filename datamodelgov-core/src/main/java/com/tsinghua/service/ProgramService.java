@@ -55,6 +55,7 @@ public class ProgramService {
     private static final String TASK_BASE_DIR = "project";
     private final ObjectMapper mapper = new ObjectMapper();
     private final Map<String, ProgramEntity> runtimeStatus = new ConcurrentHashMap<>();
+    private final Map<String, Process> processMap = new ConcurrentHashMap<>();
     private static final Set<String> SUPPORTED_ARCHIVE = new HashSet<>(Arrays.asList(".zip", ".rar", ".7z", ".tar", ".tar.gz", ".tgz"));
     private static final boolean SEVENZIP_AVAILABLE;
 
@@ -742,6 +743,27 @@ public class ProgramService {
         return Result.success("运行已启动", data);
     }
 
+    public Result<Map<String, Object>> stop(String name, String version) {
+        ProgramEntity entity = queryMeta(name, version);
+        if (entity == null) return Result.error("程序不存在");
+        String key = runtimeKey(entity);
+        Process process = processMap.remove(key);
+        if (process != null && process.isAlive()) {
+            process.destroyForcibly();
+        }
+        entity.setStatus("STOPPED");
+        entity.setLastError(null);
+        try {
+            saveProgramMetadata(entity);
+        } catch (Exception e) {
+            log.error("保存停止状态失败", e);
+        }
+        runtimeStatus.remove(key);
+        Map<String, Object> data = new HashMap<>();
+        data.put("status", "STOPPED");
+        return Result.success("已停止", data);
+    }
+
     private void doRun(String key, ProgramEntity entity) {
         String taskId = key + "_" + System.currentTimeMillis();
         File taskDir = new File(getTaskBaseDir(entity.getProjectName()), taskId);
@@ -778,7 +800,9 @@ public class ProgramService {
             pb.redirectOutput(logFile);
 
             Process process = pb.start();
+            processMap.put(key, process);
             boolean finished = process.waitFor(300, TimeUnit.SECONDS);
+            processMap.remove(key);
             if (!finished) {
                 process.destroyForcibly();
                 entity.setStatus("ERROR");
@@ -936,6 +960,117 @@ public class ProgramService {
             return Result.success("配置更新成功", entity);
         } catch (Exception e) {
             return Result.error("配置更新失败: " + e.getMessage());
+        }
+    }
+
+    public Map<String, Object> getProgramFiles(String name, String version, String projectName) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        File programDir = getProgramDir(
+                projectName != null ? projectName : ProjectContext.getCurrentProject("unknown"),
+                name, version);
+        if (!programDir.exists() || !programDir.isDirectory()) {
+            result.put("found", false);
+            result.put("message", "程序目录不存在: " + programDir.getAbsolutePath());
+            return result;
+        }
+        result.put("found", true);
+        result.put("programDir", programDir.getAbsolutePath());
+
+        List<String> modelFiles = new ArrayList<>();
+        List<String> scriptFiles = new ArrayList<>();
+        List<String> mapFiles = new ArrayList<>();
+        List<String> headerFiles = new ArrayList<>();
+        List<String> dllFiles = new ArrayList<>();
+        List<String> otherFiles = new ArrayList<>();
+
+        scanProgramDir(programDir, programDir, modelFiles, scriptFiles, mapFiles, headerFiles, dllFiles, otherFiles);
+
+        result.put("modelFiles", modelFiles);
+        result.put("scriptFiles", scriptFiles);
+        result.put("mapFiles", mapFiles);
+        result.put("headerFiles", headerFiles);
+        result.put("dllFiles", dllFiles);
+        result.put("otherFiles", otherFiles);
+
+        Map<String, Object> params = parseProgramParams(programDir, scriptFiles);
+        result.put("params", params);
+        return result;
+    }
+
+    private Map<String, Object> parseProgramParams(File programDir, List<String> scriptFiles) {
+        Map<String, Object> params = new LinkedHashMap<>();
+        String stopTime = null;
+        String fixedStep = null;
+        String npCommand = null;
+        String loadPower = null;
+        String modelName = null;
+
+        for (String relPath : scriptFiles) {
+            File scriptFile = new File(programDir, relPath);
+            try {
+                String content = new String(Files.readAllBytes(scriptFile.toPath()), StandardCharsets.UTF_8);
+
+                if (relPath.endsWith("RunCtrlSysModelSHT.m")) {
+                    java.util.regex.Matcher m = java.util.regex.Pattern.compile(
+                            "NpReferenceRpm\\s*=\\s*([0-9.]+)").matcher(content);
+                    if (m.find()) npCommand = m.group(1);
+
+                    m = java.util.regex.Pattern.compile(
+                            "MkpReferenceNm\\s*=\\s*([0-9.]+)").matcher(content);
+                    if (m.find()) loadPower = m.group(1);
+
+                    m = java.util.regex.Pattern.compile(
+                            "Ts\\s*=\\s*([0-9.]+)").matcher(content);
+                    if (m.find()) fixedStep = m.group(1);
+                }
+
+                if (relPath.endsWith("configure_afo_v1disp_reference_point.m")) {
+                    java.util.regex.Matcher m = java.util.regex.Pattern.compile(
+                            "modelName\\s*=\\s*'([^']+)'").matcher(content);
+                    if (m.find()) modelName = m.group(1);
+                }
+            } catch (Exception e) {
+                log.warn("解析脚本参数失败: {}", relPath, e);
+            }
+        }
+
+        params.put("stopTime", stopTime != null ? stopTime : "30");
+        params.put("fixedStep", fixedStep != null ? fixedStep : "0.025");
+        params.put("npCommand", npCommand != null ? npCommand : "21000");
+        params.put("loadPower", loadPower != null ? loadPower : "1000");
+        params.put("modelName", modelName != null ? modelName : "");
+        return params;
+    }
+
+    private void scanProgramDir(File baseDir, File dir,
+                                List<String> modelFiles, List<String> scriptFiles,
+                                List<String> mapFiles, List<String> headerFiles,
+                                List<String> dllFiles, List<String> otherFiles) {
+        File[] files = dir.listFiles();
+        if (files == null) return;
+        for (File f : files) {
+            if (f.isDirectory()) {
+                if (!"slprj".equals(f.getName())) {
+                    scanProgramDir(baseDir, f, modelFiles, scriptFiles, mapFiles, headerFiles, dllFiles, otherFiles);
+                }
+            } else {
+                String relPath = baseDir.toPath().relativize(f.toPath()).toString().replace('\\', '/');
+                String lower = f.getName().toLowerCase();
+                if (lower.endsWith(".slx") || lower.endsWith(".mdl")) {
+                    modelFiles.add(relPath);
+                } else if (lower.endsWith(".m")) {
+                    scriptFiles.add(relPath);
+                } else if (lower.endsWith(".map")) {
+                    mapFiles.add(relPath);
+                } else if (lower.endsWith(".h") || lower.endsWith(".hh")) {
+                    headerFiles.add(relPath);
+                } else if (lower.endsWith(".dll")) {
+                    dllFiles.add(relPath);
+                } else if (!lower.endsWith(".slxc") && !lower.endsWith(".slx.r2019b")
+                        && !lower.endsWith(".md") && !lower.endsWith(".docx")) {
+                    otherFiles.add(relPath);
+                }
+            }
         }
     }
 

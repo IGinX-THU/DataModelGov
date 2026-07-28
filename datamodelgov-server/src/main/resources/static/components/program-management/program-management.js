@@ -10,7 +10,6 @@ class ProgramManagement extends HTMLElement {
     async connectedCallback() {
         await this.loadResources();
         this.bindEvents();
-        this.loadPrograms();
     }
 
     async loadResources() {
