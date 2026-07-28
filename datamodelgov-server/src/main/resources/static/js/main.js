@@ -113,6 +113,7 @@ document.addEventListener('DOMContentLoaded', function() {
             'modelArchiveList',
             'algorithmArchiveList',
             'programManagement',
+            'programRun',
             'userManual'
         ];
         

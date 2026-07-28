@@ -24,7 +24,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
-import javax.annotation.PostConstruct;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
@@ -84,8 +83,15 @@ public class ProgramService {
 
     private File getTaskBaseDir(String projectName) {
         String proj = (projectName != null && !projectName.isEmpty()) ? projectName : ProjectContext.getCurrentProject("unknown");
-        File dir = new File(TASK_BASE_DIR + "/" + proj + "/program-tasks");
+        File dir = new File(TASK_BASE_DIR + "/" + proj + "/job/program-tasks");
         if (!dir.exists()) dir.mkdirs();
+        return dir;
+    }
+
+    private File getProgramDir(String projectName, String name, String version) {
+        String proj = (projectName != null && !projectName.isEmpty()) ? projectName : ProjectContext.getCurrentProject("unknown");
+        String safeVersion = version.replace('.', '_');
+        File dir = new File(TASK_BASE_DIR + "/" + proj + "/program/" + name + "_" + safeVersion);
         return dir;
     }
 
@@ -414,7 +420,25 @@ public class ProgramService {
             throw new IllegalArgumentException("仿真程序资产已存在");
         }
 
+        // 先解压到项目目录验证能否成功
         byte[] fileBytes = file.getBytes();
+        File programDir = getProgramDir(projectName, programName, programVersion);
+        if (programDir.exists()) {
+            deleteDirectory(programDir);
+        }
+        programDir.mkdirs();
+        File tempArchive = new File(programDir, originalName);
+        Files.write(tempArchive.toPath(), fileBytes);
+        try {
+            extractArchive(tempArchive, programDir);
+            log.info("仿真程序解压验证成功。目录: {}", programDir.getAbsolutePath());
+        } catch (Exception e) {
+            deleteDirectory(programDir);
+            throw new IllegalArgumentException("程序包解压失败: " + e.getMessage(), e);
+        } finally {
+            if (tempArchive.exists()) tempArchive.delete();
+        }
+
         int totalChunks = (int) Math.ceil((double) fileBytes.length / CHUNK_SIZE);
 
         // 准备数据点列表
