@@ -343,6 +343,7 @@ public class ProjectService {
             case "datas": return project.getDatas();
             case "models": return project.getModels();
             case "algorithms": return project.getAlgorithms();
+            case "programs": return project.getPrograms();
             default: return null;
         }
     }
@@ -352,6 +353,7 @@ public class ProjectService {
             case "datas": project.setDatas(value); break;
             case "models": project.setModels(value); break;
             case "algorithms": project.setAlgorithms(value); break;
+            case "programs": project.setPrograms(value); break;
         }
     }
 

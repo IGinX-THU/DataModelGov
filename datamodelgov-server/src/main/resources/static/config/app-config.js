@@ -175,6 +175,18 @@ window.AppConfig = {
             count: '/api/project/count',
             detail: '/api/project/detail',
             tree: '/api/project/tree'
+        },
+        // 程序管理相关
+        program: {
+            upload: '/api/program/upload',
+            metas: '/api/program/metas',
+            history: '/api/program/history',
+            delete: '/api/program/delete',
+            tree: '/api/program/tree',
+            list: '/api/program/list',
+            run: '/api/program/run',
+            results: '/api/program/results',
+            'update-config': '/api/program/update-config'
         }
     },
     

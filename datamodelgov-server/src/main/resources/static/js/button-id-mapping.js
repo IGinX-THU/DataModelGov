@@ -37,6 +37,14 @@ const BUTTON_ID_MAP = {
         text: '算法上传',
         action: 'showAlgorithmUpload'
     },
+    'btn-program-upload': {
+        text: '仿真程序上传',
+        action: 'showProgramUpload'
+    },
+    'btn-program-management': {
+        text: '程序管理',
+        action: 'showProgramManagement'
+    },
     'btn-import': {
         text: '导入',
         action: 'showImportData'
@@ -168,6 +176,18 @@ const MENU_ID_MAP = {
     'menu-simulation-record': {
         text: '仿真记录',
         action: 'showSimulationRecord'
+    },
+    'menu-program-upload': {
+        text: '仿真程序上传',
+        action: 'showProgramUpload'
+    },
+    'menu-program-management': {
+        text: '程序管理',
+        action: 'showProgramManagement'
+    },
+    'menu-program-run': {
+        text: '运行结果',
+        action: 'showProgramRun'
     },
     'menu-algorithm-list': {
         text: '算法管理',
