@@ -349,10 +349,27 @@ public class ProgramService {
         }
     }
 
-    public List<ProgramEntity> queryProgramList() {
+    public List<ProgramEntity> queryProgramList(String name, String projectName, String author, Integer pageNum, Integer pageSize) {
         try {
-            String sql = String.format("SELECT * FROM %s;", META_PREFIX);
-            SessionExecuteSqlResult res = iginxSession.executeSql(sql);
+            StringBuilder sql = new StringBuilder("SELECT * FROM " + META_PREFIX + " WHERE 1=1");
+            if (name != null && !name.trim().isEmpty()) {
+                sql.append(" AND name LIKE '^.*").append(name.trim()).append(".*'");
+            }
+            if (projectName != null && !projectName.trim().isEmpty()) {
+                sql.append(" AND projectName LIKE '^.*").append(projectName.trim()).append(".*'");
+            }
+            if (author != null && !author.trim().isEmpty()) {
+                sql.append(" AND author = '").append(author.trim()).append("'");
+            } else if (!AuthUtil.isAdmin()) {
+                sql.append(" AND author = '").append(AuthUtil.getCurrentUsername()).append("'");
+            }
+            if (pageNum != null && pageSize != null) {
+                sql.append(" LIMIT ").append(pageSize);
+                sql.append(" OFFSET ").append((pageNum - 1) * pageSize);
+            }
+            sql.append(";");
+            log.info("执行SQL: {}", sql);
+            SessionExecuteSqlResult res = iginxSession.executeSql(sql.toString());
             List<Map<String, Object>> records = ConvertUtil.getRecords(res);
             if (records == null) return new ArrayList<>();
             List<ProgramEntity> list = new ArrayList<>();
@@ -365,6 +382,38 @@ public class ProgramService {
         } catch (Exception e) {
             log.error("查询程序列表失败", e);
             return new ArrayList<>();
+        }
+    }
+
+    public List<ProgramEntity> queryProgramList() {
+        return queryProgramList(null, null, null, null, null);
+    }
+
+    public long countProgramList(String name, String projectName, String author) {
+        try {
+            StringBuilder sql = new StringBuilder("SELECT COUNT(1) FROM " + META_PREFIX + " WHERE 1=1");
+            if (name != null && !name.trim().isEmpty()) {
+                sql.append(" AND name LIKE '^.*").append(name.trim()).append(".*'");
+            }
+            if (projectName != null && !projectName.trim().isEmpty()) {
+                sql.append(" AND projectName LIKE '^.*").append(projectName.trim()).append(".*'");
+            }
+            if (author != null && !author.trim().isEmpty()) {
+                sql.append(" AND author = '").append(author.trim()).append("'");
+            } else if (!AuthUtil.isAdmin()) {
+                sql.append(" AND author = '").append(AuthUtil.getCurrentUsername()).append("'");
+            }
+            sql.append(";");
+            log.info("执行SQL: {}", sql);
+            SessionExecuteSqlResult res = iginxSession.executeSql(sql.toString());
+            List<Map<String, Object>> records = ConvertUtil.getRecords(res);
+            if (records == null || records.isEmpty()) return 0;
+            Object count = records.get(0).values().iterator().next();
+            if (count instanceof Number) return ((Number) count).longValue();
+            return 0;
+        } catch (Exception e) {
+            log.error("查询程序总数失败", e);
+            return 0;
         }
     }
 
@@ -710,13 +759,28 @@ public class ProgramService {
             List<String> measurements = ConvertUtil.iginxFieldNamesConvert(ProgramEntity.class, META_PREFIX);
             if (StringUtils.hasText(version) && !"null".equals(version)) {
                 ProgramEntity queryMeta = queryMeta(name, version, projectName);
-                String storagePath = buildStoragePath(projectName != null ? projectName : (queryMeta != null ? queryMeta.getProjectName() : null), name, version);
+                String actualProjectName = projectName != null ? projectName : (queryMeta != null ? queryMeta.getProjectName() : null);
+                String storagePath = buildStoragePath(actualProjectName, name, version);
                 iginxClient.getDeleteClient().deleteMeasurement(storagePath);
                 if (queryMeta != null && queryMeta.getTimestamp() != null) {
                     long timestamp = queryMeta.getTimestamp();
                     iginxClient.getDeleteClient().deleteMeasurementsData(measurements, timestamp - 1, timestamp + 1);
                 }
                 dataPermissionService.deleteByTablePrefix(storagePath);
+                // 从项目的programs字段移除
+                if (actualProjectName != null) {
+                    try {
+                        projectService.removeFromProject(actualProjectName, storagePath, "programs");
+                    } catch (Exception e) {
+                        log.error("从项目移除程序路径失败", e);
+                    }
+                }
+                // 删除磁盘上的程序解压目录
+                File programDir = getProgramDir(actualProjectName, name, version);
+                if (programDir.exists()) {
+                    deleteDirectory(programDir);
+                    log.info("已删除程序目录: {}", programDir.getAbsolutePath());
+                }
             } else {
                 String actualProjectName = StringUtils.hasText(projectName) ? projectName : ProjectContext.getCurrentProject("unknown");
                 List<ProgramEntity> queryMetas = queryMetaList(name, actualProjectName);
@@ -732,6 +796,20 @@ public class ProgramService {
                                 iginxClient.getDeleteClient().deleteMeasurementsData(measurements, timestamp - 1, timestamp + 1)
                         );
                 storagePaths.forEach(storagePath -> dataPermissionService.deleteByTablePrefix(storagePath));
+                // 从项目的programs字段移除并删除磁盘目录
+                for (ProgramEntity meta : queryMetas) {
+                    String sp = buildStoragePath(meta.getProjectName(), meta.getName(), meta.getVersion());
+                    try {
+                        projectService.removeFromProject(meta.getProjectName(), sp, "programs");
+                    } catch (Exception e) {
+                        log.error("从项目移除程序路径失败: {}", sp, e);
+                    }
+                    File programDir = getProgramDir(meta.getProjectName(), meta.getName(), meta.getVersion());
+                    if (programDir.exists()) {
+                        deleteDirectory(programDir);
+                        log.info("已删除程序目录: {}", programDir.getAbsolutePath());
+                    }
+                }
             }
         } catch (Exception e) {
             log.error("移除仿真程序资产失败", e);

@@ -184,6 +184,7 @@ window.AppConfig = {
             delete: '/api/program/delete',
             tree: '/api/program/tree',
             list: '/api/program/list',
+            count: '/api/program/count',
             run: '/api/program/run',
             stop: '/api/program/stop',
             results: '/api/program/results',

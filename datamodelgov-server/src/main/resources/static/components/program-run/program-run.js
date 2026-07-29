@@ -514,7 +514,6 @@ class ProgramRun extends HTMLElement {
     const version = this.getAttribute('data-version');
     if (!name || !version) return;
     try {
-      this.updateStatusUI('RUNNING');
       const root = this.shadowRoot;
       const inputs = root.querySelectorAll('.field-row .input-box input');
       const select = root.querySelector('.field-row .input-box select');
@@ -534,6 +533,7 @@ class ProgramRun extends HTMLElement {
       const result = await window.AppConfig.request(url, { method: 'POST' });
       if (result && result.code === 200) {
         this.duration = 30;
+        this.updateStatusUI('RUNNING');
         this.startPolling(name, version);
         this.startRunTimer(Date.now());
       } else {
@@ -562,6 +562,7 @@ class ProgramRun extends HTMLElement {
       }
     } catch (e) {
       console.error('停止运行失败:', e);
+      this.showToast('停止运行失败: ' + e.message, 'error');
     }
   }
 
@@ -857,6 +858,17 @@ class ProgramRun extends HTMLElement {
       this.runBtn.disabled = running;
       this.stopBtn.disabled = !running;
     }
+    if (this._lastStatus && this._lastStatus !== status) {
+      const toastMap = {
+        'RUNNING': { msg: '运行已开始', type: 'info' },
+        'SUCCESS': { msg: '运行完成', type: 'success' },
+        'STOPPED': { msg: '运行已停止', type: 'info' },
+        'ERROR': { msg: errorMsg ? '运行失败: ' + errorMsg : '运行失败', type: 'error' }
+      };
+      const toast = toastMap[status];
+      if (toast) this.showToast(toast.msg, toast.type);
+    }
+    this._lastStatus = status;
   }
 
   async queryStatus(name, version) {

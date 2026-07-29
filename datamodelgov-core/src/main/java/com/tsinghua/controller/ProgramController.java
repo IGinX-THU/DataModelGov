@@ -101,11 +101,26 @@ public class ProgramController {
         return Result.success(tree);
     }
 
-    @ApiOperation("仿真程序列表")
+    @ApiOperation("仿真程序列表（分页）")
     @GetMapping("/list")
     @RequirePermission(Permission.READ)
-    public Result<List<ProgramEntity>> list() {
-        return Result.success(programService.queryProgramList());
+    public Result<List<ProgramEntity>> list(
+            @RequestParam(value = "name", required = false) String name,
+            @RequestParam(value = "projectName", required = false) String projectName,
+            @RequestParam(value = "author", required = false) String author,
+            @RequestParam(value = "pageNum", required = false, defaultValue = "1") Integer pageNum,
+            @RequestParam(value = "pageSize", required = false, defaultValue = "10") Integer pageSize) {
+        return Result.success(programService.queryProgramList(name, projectName, author, pageNum, pageSize));
+    }
+
+    @ApiOperation("仿真程序总数")
+    @GetMapping("/count")
+    @RequirePermission(Permission.READ)
+    public Result<Long> count(
+            @RequestParam(value = "name", required = false) String name,
+            @RequestParam(value = "projectName", required = false) String projectName,
+            @RequestParam(value = "author", required = false) String author) {
+        return Result.success(programService.countProgramList(name, projectName, author));
     }
 
     @ApiOperation("运行仿真程序")

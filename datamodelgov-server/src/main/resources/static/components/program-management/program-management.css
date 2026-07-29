@@ -158,3 +158,40 @@
     resize: vertical;
     box-sizing: border-box;
 }
+
+.toolbar-filters {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.filter-input {
+    padding: 4px 8px;
+    border: 1px solid var(--border-primary, #d1d5db);
+    border-radius: var(--radius-sm, 4px);
+    font-size: 13px;
+    width: 140px;
+}
+.filter-btn.primary {
+    background: var(--color-primary, #2563eb);
+    color: #fff;
+    border-color: var(--color-primary, #2563eb);
+}
+.pagination-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0 4px;
+    font-size: 13px;
+}
+.page-info { color: var(--text-secondary, #6b7280); }
+.page-buttons { display: flex; align-items: center; gap: 4px; }
+.page-buttons .filter-btn { min-width: 32px; }
+.page-buttons .filter-btn.active {
+    background: var(--color-primary, #2563eb);
+    color: #fff;
+    border-color: var(--color-primary, #2563eb);
+}
+.page-buttons .filter-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}

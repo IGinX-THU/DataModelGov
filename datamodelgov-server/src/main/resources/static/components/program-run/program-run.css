@@ -51,7 +51,7 @@ aside.right { border-left:1px solid var(--grid); border-right:none; }
 .play { display:flex; align-items:center; gap:4px; margin-top:8px; }
 .play button, .play span { background:#1a2740; border:1px solid #24344D; color:var(--muted); border-radius:4px; padding:3px 6px; font-size:11px; cursor:pointer; }
 .play span.active { color:#fff; background:#2563eb; border-color:#2563eb; }
-main { flex:1; display:block; min-width:0; padding:10px; }
+main { flex:1; display:block; min-width:0; padding:10px; background:var(--bg); }
 .tabs { display:flex; gap:8px; margin-bottom:10px; border-bottom:1px solid var(--grid); padding-bottom:8px; }
 .tab { background:transparent; border:none; color:var(--muted); padding:6px 12px; font-size:12px; cursor:pointer; border-radius:4px; }
 .tab.active { background:#2563eb; color:#fff; }

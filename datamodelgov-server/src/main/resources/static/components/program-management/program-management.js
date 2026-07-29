@@ -3,8 +3,11 @@ class ProgramManagement extends HTMLElement {
         super();
         this.attachShadow({ mode: 'open' });
         this.programs = [];
+        this.pageNum = 1;
+        this.pageSize = 10;
+        this.total = 0;
         this.filterName = '';
-        this.selectedFile = null;
+        this.filterProject = '';
     }
 
     async connectedCallback() {
@@ -28,40 +31,39 @@ class ProgramManagement extends HTMLElement {
     }
 
     bindEvents() {
-        const uploadBtn = this.shadowRoot.getElementById('uploadBtn');
-        const resetBtn = this.shadowRoot.getElementById('resetBtn');
         const tbody = this.shadowRoot.getElementById('tableBody');
-        const fileInput = this.shadowRoot.getElementById('uploadFile');
-        const fileUploadArea = this.shadowRoot.getElementById('fileUploadArea');
-        const removeFileBtn = this.shadowRoot.getElementById('removeFileBtn');
+        const showUploadBtn = this.shadowRoot.getElementById('showUploadBtn');
+        const searchBtn = this.shadowRoot.getElementById('searchBtn');
+        const resetFilterBtn = this.shadowRoot.getElementById('resetFilterBtn');
+        const filterNameInput = this.shadowRoot.getElementById('filterName');
+        const filterProjectInput = this.shadowRoot.getElementById('filterProject');
+        const prevPageBtn = this.shadowRoot.getElementById('prevPageBtn');
+        const nextPageBtn = this.shadowRoot.getElementById('nextPageBtn');
 
-        if (uploadBtn) uploadBtn.addEventListener('click', () => this.handleUpload());
-        if (resetBtn) resetBtn.addEventListener('click', () => this.resetUploadForm());
-        if (removeFileBtn) removeFileBtn.addEventListener('click', () => this.removeFile());
-
-        if (fileInput) {
-            fileInput.addEventListener('change', (e) => {
-                this.handleFileSelect(e.target.files[0]);
-            });
-        }
-
-        if (fileUploadArea) {
-            fileUploadArea.addEventListener('dragover', (e) => {
-                e.preventDefault();
-                fileUploadArea.classList.add('dragover');
-            });
-            fileUploadArea.addEventListener('dragleave', (e) => {
-                e.preventDefault();
-                fileUploadArea.classList.remove('dragover');
-            });
-            fileUploadArea.addEventListener('drop', (e) => {
-                e.preventDefault();
-                fileUploadArea.classList.remove('dragover');
-                if (e.dataTransfer.files.length > 0) {
-                    this.handleFileSelect(e.dataTransfer.files[0]);
-                }
-            });
-        }
+        if (showUploadBtn) showUploadBtn.addEventListener('click', () => {
+            if (window.showComponent) window.showComponent('programUpload');
+        });
+        if (searchBtn) searchBtn.addEventListener('click', () => {
+            this.filterName = filterNameInput ? filterNameInput.value.trim() : '';
+            this.filterProject = filterProjectInput ? filterProjectInput.value.trim() : '';
+            this.pageNum = 1;
+            this.loadPrograms();
+        });
+        if (resetFilterBtn) resetFilterBtn.addEventListener('click', () => {
+            this.filterName = '';
+            this.filterProject = '';
+            if (filterNameInput) filterNameInput.value = '';
+            if (filterProjectInput) filterProjectInput.value = '';
+            this.pageNum = 1;
+            this.loadPrograms();
+        });
+        if (prevPageBtn) prevPageBtn.addEventListener('click', () => {
+            if (this.pageNum > 1) { this.pageNum--; this.loadPrograms(); }
+        });
+        if (nextPageBtn) nextPageBtn.addEventListener('click', () => {
+            const maxPage = Math.ceil(this.total / this.pageSize);
+            if (this.pageNum < maxPage) { this.pageNum++; this.loadPrograms(); }
+        });
 
         if (tbody) {
             tbody.addEventListener('click', (e) => {
@@ -70,15 +72,17 @@ class ProgramManagement extends HTMLElement {
                 if (btn) {
                     const name = btn.dataset.name;
                     const version = btn.dataset.version;
+                    const projectName = btn.dataset.project;
                     if (!name || !version) return;
-                    if (btn.classList.contains('run-btn')) this.openProgramRun(name, version);
+                    if (btn.classList.contains('run-btn')) this.openProgramRun(name, version, projectName);
                     if (btn.classList.contains('delete-btn')) this.deleteProgram(name, version);
                     return;
                 }
                 if (row) {
                     const name = row.dataset.name;
                     const version = row.dataset.version;
-                    if (name && version) this.openProgramRun(name, version);
+                    const projectName = row.dataset.project;
+                    if (name && version) this.openProgramRun(name, version, projectName);
                 }
             });
         }
@@ -285,9 +289,18 @@ class ProgramManagement extends HTMLElement {
 
     async loadPrograms() {
         try {
-            const result = await window.AppConfig.get('program', 'list');
+            const params = { pageNum: this.pageNum, pageSize: this.pageSize };
+            if (this.filterName) params.name = this.filterName;
+            if (this.filterProject) params.projectName = this.filterProject;
+            const result = await window.AppConfig.get('program', 'list', params);
             this.programs = (result && result.data) || [];
+            const countResult = await window.AppConfig.get('program', 'count', {
+                ...(this.filterName ? { name: this.filterName } : {}),
+                ...(this.filterProject ? { projectName: this.filterProject } : {})
+            });
+            this.total = (countResult && countResult.data) || 0;
             this.renderTable();
+            this.renderPagination();
         } catch (e) {
             console.error('加载程序列表失败:', e);
             if (window.CommonUtils && window.CommonUtils.showToast) {
@@ -299,20 +312,17 @@ class ProgramManagement extends HTMLElement {
     renderTable() {
         const tbody = this.shadowRoot.getElementById('tableBody');
         const emptyHint = this.shadowRoot.getElementById('emptyHint');
-        const filtered = this.filterName
-            ? this.programs.filter(p => (p.name || '').toLowerCase().includes(this.filterName))
-            : this.programs;
-        if (!filtered.length) {
+        if (!this.programs.length) {
             tbody.innerHTML = '';
             emptyHint.hidden = false;
             return;
         }
         emptyHint.hidden = true;
-        tbody.innerHTML = filtered.map(p => {
+        tbody.innerHTML = this.programs.map(p => {
             const time = p.timestamp ? new Date(p.timestamp).toLocaleString() : '-';
             const statusClass = p.status === 'RUNNING' ? 'running' : p.status === 'ERROR' ? 'error' : 'ready';
             return `
-                <tr data-name="${p.name || ''}" data-version="${p.version || ''}">
+                <tr data-name="${p.name || ''}" data-version="${p.version || ''}" data-project="${p.projectName || ''}">
                     <td>${p.name || '-'}</td>
                     <td>${p.version || '-'}</td>
                     <td>${p.projectName || '-'}</td>
@@ -320,12 +330,39 @@ class ProgramManagement extends HTMLElement {
                     <td>${time}</td>
                     <td><span class="status ${statusClass}">${p.status || 'READY'}</span></td>
                     <td class="actions">
-                        <button class="run-btn filter-btn outline" data-name="${p.name || ''}" data-version="${p.version || ''}">运行</button>
-                        <button class="delete-btn filter-btn outline" data-name="${p.name || ''}" data-version="${p.version || ''}">删除</button>
+                        <button class="run-btn filter-btn outline" data-name="${p.name || ''}" data-version="${p.version || ''}" data-project="${p.projectName || ''}">运行</button>
+                        <button class="delete-btn filter-btn outline" data-name="${p.name || ''}" data-version="${p.version || ''}" data-project="${p.projectName || ''}">删除</button>
                     </td>
                 </tr>
             `;
         }).join('');
+    }
+
+    renderPagination() {
+        const pageInfo = this.shadowRoot.getElementById('pageInfo');
+        const pageNumbers = this.shadowRoot.getElementById('pageNumbers');
+        const prevPageBtn = this.shadowRoot.getElementById('prevPageBtn');
+        const nextPageBtn = this.shadowRoot.getElementById('nextPageBtn');
+        const maxPage = Math.max(1, Math.ceil(this.total / this.pageSize));
+        if (pageInfo) pageInfo.textContent = `共 ${this.total} 条，第 ${this.pageNum}/${maxPage} 页`;
+        if (prevPageBtn) prevPageBtn.disabled = this.pageNum <= 1;
+        if (nextPageBtn) nextPageBtn.disabled = this.pageNum >= maxPage;
+        if (pageNumbers) {
+            let html = '';
+            const start = Math.max(1, this.pageNum - 2);
+            const end = Math.min(maxPage, this.pageNum + 2);
+            for (let i = start; i <= end; i++) {
+                const cls = i === this.pageNum ? 'filter-btn active' : 'filter-btn';
+                html += `<button class="${cls}" data-page="${i}">${i}</button>`;
+            }
+            pageNumbers.innerHTML = html;
+            pageNumbers.querySelectorAll('button[data-page]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    this.pageNum = parseInt(btn.dataset.page);
+                    this.loadPrograms();
+                });
+            });
+        }
     }
 
     async handleUpload() {
@@ -463,7 +500,28 @@ class ProgramManagement extends HTMLElement {
         }
     }
 
-    openProgramRun(name, version) {
+    openProgramRun(name, version, programProjectName) {
+        const currentProject = this.getProjectName();
+        if (programProjectName && programProjectName !== currentProject) {
+            const doSwitch = () => {
+                this.switchProject(programProjectName);
+                this._doShowProgramRun(name, version);
+            };
+            if (window.showConfirmDialog) {
+                window.showConfirmDialog(
+                    '切换项目确认',
+                    `程序 "${name}" 属于项目 ${programProjectName}，当前项目为 ${currentProject || '未选择'}，是否先切换项目？`,
+                    doSwitch
+                );
+            } else if (confirm(`程序 "${name}" 属于项目 ${programProjectName}，当前项目为 ${currentProject || '未选择'}，是否切换项目？`)) {
+                doSwitch();
+            }
+        } else {
+            this._doShowProgramRun(name, version);
+        }
+    }
+
+    _doShowProgramRun(name, version) {
         const programRun = document.getElementById('programRun');
         if (!programRun) {
             console.error('未找到 program-run 组件');
@@ -473,6 +531,14 @@ class ProgramManagement extends HTMLElement {
         programRun.setAttribute('data-version', version);
         if (window.showComponent) window.showComponent('programRun');
         if (programRun.loadProgramFiles) programRun.loadProgramFiles(name, version);
+    }
+
+    switchProject(projectName) {
+        const username = window.AppConfig.getUsername ? window.AppConfig.getUsername() : localStorage.getItem('username');
+        if (username && projectName) {
+            localStorage.setItem('currentProject_' + username, JSON.stringify({ name: projectName }));
+        }
+        if (window.loadProjectTree) window.loadProjectTree();
     }
 
     async loadResults(name, version) {
@@ -507,10 +573,19 @@ class ProgramManagement extends HTMLElement {
     }
 
     async deleteProgram(name, version) {
-        if (!confirm('确定删除该程序？')) return;
+        if (window.showConfirmDialog) {
+            window.showConfirmDialog('确认删除', `确定要删除程序 ${name}@${version} 吗？删除后无法恢复。`, () => this._doDeleteProgram(name, version));
+        } else {
+            this._doDeleteProgram(name, version);
+        }
+    }
+
+    async _doDeleteProgram(name, version) {
         try {
-            const result = await window.AppConfig.delete('program', 'delete', { name, version });
+            const pn = this.getProjectName();
+            const result = await window.AppConfig.delete('program', 'delete', { name, version, ...(pn ? { projectName: pn } : {}) });
             if (result && (result.success || result.code === 200)) {
+                if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('删除成功', 'success');
                 this.loadPrograms();
             } else {
                 throw new Error(result.message || '删除失败');

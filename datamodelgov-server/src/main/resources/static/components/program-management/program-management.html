@@ -2,7 +2,15 @@
     <div class="parsing-table-card">
         <div class="table-toolbar">
             <span class="toolbar-title">程序管理</span>
+            <div class="toolbar-filters">
+                <input type="text" id="filterName" placeholder="程序名称" class="filter-input">
+                <input type="text" id="filterProject" placeholder="项目名称" class="filter-input">
+                <button class="filter-btn" id="searchBtn">查询</button>
+                <button class="filter-btn" id="resetFilterBtn">重置</button>
+                <button class="filter-btn primary" id="showUploadBtn">上传程序</button>
+            </div>
         </div>
+
         <div class="table-wrapper">
             <table class="data-table" id="programTable">
                 <thead>
@@ -19,6 +27,15 @@
                 <tbody id="tableBody"></tbody>
             </table>
             <div class="empty-hint" id="emptyHint" hidden>暂无程序数据</div>
+        </div>
+
+        <div class="pagination-bar" id="paginationBar">
+            <span class="page-info" id="pageInfo"></span>
+            <div class="page-buttons">
+                <button class="filter-btn" id="prevPageBtn">上一页</button>
+                <span id="pageNumbers"></span>
+                <button class="filter-btn" id="nextPageBtn">下一页</button>
+            </div>
         </div>
     </div>
 

@@ -160,6 +160,11 @@ public class ProjectService {
                     .filter(path -> accessiblePaths.stream().anyMatch(accessiblePath -> accessiblePath.startsWith(path)))
                     .distinct().collect(Collectors.toList()));
         }
+        if (StringUtils.hasText(project.getPrograms())) {
+            projectTree.setPrograms(Arrays.stream(project.getPrograms().split(","))
+                    .filter(path -> accessiblePaths.stream().anyMatch(accessiblePath -> accessiblePath.startsWith(path)))
+                    .distinct().collect(Collectors.toList()));
+        }
         return projectTree;
     }
 

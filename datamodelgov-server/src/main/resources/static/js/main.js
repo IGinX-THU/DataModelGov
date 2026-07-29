@@ -2793,6 +2793,39 @@ function showSimulationRecord() {
                             }
                         }
                         expandModelNodeInRightSidebar(nodeName, true);
+                    } else if (nodeType === 'program') {
+                        const programName = node.getAttribute('data-program-name');
+                        const programVersion = node.getAttribute('data-program-version');
+                        console.log('点击程序节点:', programName, programVersion);
+                        if (window.hideAllComponents) {
+                            window.hideAllComponents();
+                        }
+                        const oldEl = document.getElementById('programRun');
+                        const parent = oldEl ? oldEl.parentElement : null;
+                        if (oldEl) oldEl.remove();
+                        const programRun = document.createElement('program-run');
+                        programRun.id = 'programRun';
+                        programRun.style.display = 'none';
+                        if (parent) parent.appendChild(programRun);
+                        programRun.setAttribute('data-name', programName);
+                        programRun.setAttribute('data-version', programVersion);
+                        if (window.showComponent) {
+                            window.showComponent('programRun');
+                        }
+                        // 等待组件初始化完成后再加载数据
+                        const waitForInit = () => {
+                            if (programRun.charts && programRun.charts.length > 0) {
+                                if (programRun.loadProgramFiles) {
+                                    programRun.loadProgramFiles(programName, programVersion);
+                                }
+                                if (programRun.queryStatus) {
+                                    programRun.queryStatus(programName, programVersion);
+                                }
+                            } else {
+                                setTimeout(waitForInit, 100);
+                            }
+                        };
+                        setTimeout(waitForInit, 100);
                     }
                 }
             };
@@ -3832,6 +3865,31 @@ function bindProjectTreeEvents() {
                     }
                     // 同步右侧模型侧边栏选中状态（不再模拟点击，避免重复加载）
                     expandModelNodeInRightSidebar(nodeName, true);
+                } else if (nodeType === 'program') {
+                    const programName = node.getAttribute('data-program-name');
+                    const programVersion = node.getAttribute('data-program-version');
+                    console.log('点击程序节点:', programName, programVersion);
+                    if (window.hideAllComponents) {
+                        window.hideAllComponents();
+                    }
+                    const oldEl = document.getElementById('programRun');
+                    const parent = oldEl ? oldEl.parentElement : null;
+                    if (oldEl) oldEl.remove();
+                    const programRun = document.createElement('program-run');
+                    programRun.id = 'programRun';
+                    programRun.style.display = 'none';
+                    if (parent) parent.appendChild(programRun);
+                    programRun.setAttribute('data-name', programName);
+                    programRun.setAttribute('data-version', programVersion);
+                    if (window.showComponent) {
+                        window.showComponent('programRun');
+                    }
+                    if (programRun.loadProgramFiles) {
+                        programRun.loadProgramFiles(programName, programVersion);
+                    }
+                    if (programRun.queryStatus) {
+                        programRun.queryStatus(programName, programVersion);
+                    }
                 }
             }
     };
@@ -3937,6 +3995,27 @@ function renderAllProjectsTree(allProjects, currentProjectName, currentProjectTr
                         <div class="tree-node" data-node-type="data" data-full-path="0-datas-${index}">
                             <span class="tree-icon data-icon">📊</span>
                             <span class="tree-node-text">${data}</span>
+                        </div>
+                    `;
+                });
+                html += `</div></div>`;
+            }
+
+            if (currentProjectTree.programs && currentProjectTree.programs.length > 0) {
+                html += `
+                    <div class="tree-node expanded" data-node-type="folder" data-full-path="0-programs">
+                        <span class="tree-icon folder-icon">📂</span>
+                        <span class="tree-node-text">programs</span>
+                        <div class="tree-children">
+                `;
+                currentProjectTree.programs.forEach(program => {
+                    const parts = program.split('.');
+                    const programName = parts.length >= 4 ? parts[parts.length - 2] : (parts.length >= 2 ? parts[1] : program);
+                    const programVersion = parts.length >= 4 ? parts[parts.length - 1] : '';
+                    html += `
+                        <div class="tree-node" data-node-type="program" data-full-path="${program}" data-program-name="${programName}" data-program-version="${programVersion}">
+                            <span class="tree-icon program-icon">🔧</span>
+                            <span class="tree-node-text">${program}</span>
                         </div>
                     `;
                 });
