@@ -131,6 +131,9 @@ class ProgramRun extends HTMLElement {
     this.charts = [];
     this.currentConfigs = cfgs;
     this.currentDatas = cfgs.map(buildChartData);
+    if (this.csvHeaders && this.csvRows) {
+      this.applyCsvToCharts(this.csvHeaders, this.csvRows);
+    }
     this.chartGrid.innerHTML = '';
     this.chartGrid.classList.toggle('single', cfgs.length === 1);
 
@@ -329,6 +332,31 @@ class ProgramRun extends HTMLElement {
   }
 
   loadCsvData(headers, rows) {
+    this.csvHeaders = headers;
+    this.csvRows = rows;
+    this.applyCsvToCharts(headers, rows);
+    const colIdx = {};
+    headers.forEach((h, i) => colIdx[h] = i);
+    const timeCol = colIdx['time'] != null ? colIdx['time'] : 0;
+    const timeData = rows.map(r => parseFloat(r[timeCol]));
+    const getLastVal = (colName) => {
+      if (!colName || colIdx[colName] == null) return null;
+      return parseFloat(rows[rows.length - 1][colIdx[colName]]);
+    };
+    this.updateKpiCards(colIdx, rows, getLastVal);
+    this.updateAlertSummary(colIdx, rows, timeData, getLastVal);
+  }
+
+  _makeGetLastVal(headers, rows) {
+    const colIdx = {};
+    headers.forEach((h, i) => colIdx[h] = i);
+    return (colName) => {
+      if (!colName || colIdx[colName] == null) return null;
+      return parseFloat(rows[rows.length - 1][colIdx[colName]]);
+    };
+  }
+
+  applyCsvToCharts(headers, rows) {
     const colIdx = {};
     headers.forEach((h, i) => colIdx[h] = i);
     const timeCol = colIdx['time'] != null ? colIdx['time'] : 0;
@@ -337,29 +365,22 @@ class ProgramRun extends HTMLElement {
     this.duration = tMax;
 
     const getSeries = (colName) => {
-      if (colIdx[colName] == null) return null;
+      if (!colName || colIdx[colName] == null) return null;
       return timeData.map((t, i) => [t, parseFloat(rows[i][colIdx[colName]])]);
     };
 
-    const SIGNAL_MAP = {
-      'Np': null, 'Ng': null, 'T45 (K)': 'HPC_T4_out', 'Mkp (N·m)': null,
-      'Wf实际': null, 'Wf指令': null,
-      'Pt3 (kPa)': 'Pt3', 'Pt45 (kPa)': 'Pt45', 'Error': null,
-      'ToutA': 'OilBoundary_1', 'ToutB': 'OilBoundary_2',
-      '空滑出口油温': 'OilBoundary_3',
-      'G01': 'AirBoundaryTP16_1', 'G02': 'AirBoundaryTP16_3', 'G03': 'AirBoundaryTP16_5',
-      'G04': 'AirBoundaryTP16_7', 'G05': 'AirBoundaryTP16_9', 'G06': 'AirBoundaryTP16_11',
-      'G07': 'AirBoundaryTP16_13', 'G08': 'AirBoundaryTP16_15',
+    const getLastVal = (colName) => {
+      if (!colName || colIdx[colName] == null) return null;
+      return parseFloat(rows[rows.length - 1][colIdx[colName]]);
     };
 
     this.currentDatas = this.currentConfigs.map(cfg => ({
       yMin: cfg.yMin, yMax: cfg.yMax, y2Min: cfg.y2Min, y2Max: cfg.y2Max,
       seriesData: cfg.series.map(s => {
-        const csvCol = SIGNAL_MAP[s.name];
-        const realData = csvCol ? getSeries(csvCol) : null;
+        const realData = getSeries(s.csv);
         return {
           name: s.name, color: s.color, dashed: s.dashed, axis: s.axis,
-          data: realData || TIME.map(t => [t, s.fn(t)])
+          data: realData || []
         };
       })
     }));
@@ -370,6 +391,84 @@ class ProgramRun extends HTMLElement {
       }
     });
     this.updateCursor(0, true);
+  }
+
+  updateKpiCards(colIdx, rows, getLastVal) {
+    const kpiMap = [
+      { name: 'Np', csv: null, unit: 'rpm', fmt: v => v ? v.toLocaleString() : '--' },
+      { name: 'Ng', csv: null, unit: 'rpm', fmt: v => v ? v.toLocaleString() : '--' },
+      { name: 'T45', csv: 'HPC_T4_out', unit: 'K', fmt: v => v ? v.toFixed(1) : '--' },
+      { name: 'Mkp', csv: null, unit: 'N·m', fmt: v => v ? v.toFixed(1) : '--' },
+      { name: 'Wf', csv: null, unit: 'kg/s', fmt: v => v ? v.toFixed(4) : '--' },
+      { name: 'Error', csv: null, unit: '-', fmt: v => v != null ? v.toExponential(2) : '--' }
+    ];
+    const kpiGrid = this.shadowRoot.querySelector('.kpi-grid');
+    if (!kpiGrid) return;
+    kpiGrid.innerHTML = kpiMap.map(k => {
+      const val = k.csv ? getLastVal(k.csv) : null;
+      return `<div class="kpi-card"><div class="kpi-head"><span class="kpi-name">${k.name}</span><span class="kpi-icon"></span></div><div class="kpi-value">${k.fmt(val)}</div><div class="kpi-unit">${k.unit}</div></div>`;
+    }).join('');
+  }
+
+  updateAlertSummary(colIdx, rows, timeData, getLastVal) {
+    const alerts = [];
+    const ALERT_LIMITS = [
+      { name: 'T45', csv: 'HPC_T4_out', warn: 1200, danger: 1400, unit: 'K', desc: '燃气涡轮后温度超限' },
+      { name: 'Pt3', csv: 'Pt3', warn: 3000000, danger: 3500000, unit: 'Pa', desc: '压气机出口压力超限' },
+      { name: 'Pt45', csv: 'Pt45', warn: 800000, danger: 1000000, unit: 'Pa', desc: '涡轮后压力超限' },
+    ];
+    ALERT_LIMITS.forEach(al => {
+      if (!al.csv || colIdx[al.csv] == null) return;
+      const colI = colIdx[al.csv];
+      for (let i = 0; i < rows.length; i++) {
+        const v = parseFloat(rows[i][colI]);
+        if (v >= al.danger) {
+          alerts.push({ time: timeData[i], level: '一级', desc: `${al.name} ${al.desc} — ${al.name}=${v.toFixed(1)}${al.unit} ≥ ${al.danger}${al.unit}` });
+          break;
+        } else if (v >= al.warn) {
+          alerts.push({ time: timeData[i], level: '二级', desc: `${al.name} ${al.desc} — ${al.name}=${v.toFixed(1)}${al.unit} ≥ ${al.warn}${al.unit}` });
+          break;
+        }
+      }
+    });
+
+    const alertPanel = this.shadowRoot.querySelector('.alert-title');
+    if (alertPanel) {
+      const countSpan = alertPanel.querySelector('.alert-count');
+      if (countSpan) countSpan.textContent = alerts.length;
+    }
+    const alertContainer = this.shadowRoot.querySelector('.alert-list');
+    if (alertContainer) {
+      if (alerts.length === 0) {
+        alertContainer.innerHTML = '<div class="alert-empty">暂无告警</div>';
+      } else {
+        alertContainer.innerHTML = alerts.map(a =>
+          `<div class="alert ${a.level === '一级' ? 'alert-danger' : 'alert-warn'}"><span class="alert-time">${a.time.toFixed(2)} s</span><span class="alert-icon">${a.level === '一级' ? '🔴' : '🟡'}</span>${a.desc} — ${a.level}告警</div>`
+        ).join('');
+      }
+    }
+
+    const statusTbody = this.shadowRoot.querySelector('.status-table tbody');
+    if (statusTbody) {
+      const modules = [
+        { icon: '🖥', name: '控制系统', csv: null },
+        { icon: '⛽', name: '燃油系统', csv: null },
+        { icon: '⚙', name: '发动机总体性能', csv: 'HPC_T4_out' },
+        { icon: '🛢', name: '滑油系统', csv: 'OilBoundary_1' },
+        { icon: '🌬', name: '空气系统', csv: 'AirBoundaryTP16_1' },
+        { icon: '🔔', name: '信号与告警', csv: null },
+      ];
+      statusTbody.innerHTML = modules.map(m => {
+        if (m.csv === null) {
+          const isAlert = m.name === '信号与告警';
+          const tag = isAlert ? (alerts.length > 0 ? 'warn' : 'ok') : 'warn';
+          const tagText = isAlert ? (alerts.length > 0 ? `${alerts.length}项告警` : '正常') : '未接线';
+          return `<tr><td class="sys-name">${m.icon} ${m.name}</td><td><span class="status-tag ${tag}">${tagText}</span></td><td class="status-desc">${isAlert ? (alerts.length > 0 ? alerts[0].desc : '无告警') : '信号未接出'}</td></tr>`;
+        }
+        const connected = colIdx[m.csv] != null;
+        return `<tr><td class="sys-name">${m.icon} ${m.name}</td><td><span class="status-tag ${connected ? 'ok' : 'warn'}">${connected ? '已接' : '未接线'}</span></td><td class="status-desc">${connected ? '数据正常' : '信号未接出'}</td></tr>`;
+      }).join('');
+    }
   }
 
   updateStatusUI(status, errorMsg) {
@@ -468,24 +567,6 @@ class ProgramRun extends HTMLElement {
         if (inputs.length >= 2 && p.fixedStep) inputs[1].value = p.fixedStep;
         if (inputs.length >= 3 && p.npCommand) inputs[2].value = p.npCommand;
         if (inputs.length >= 4 && p.loadPower) inputs[3].value = p.loadPower;
-
-        if (p.kpiParams) {
-          const kpiGrid = root.querySelector('.kpi-grid');
-          if (kpiGrid) {
-            kpiGrid.innerHTML = p.kpiParams.map(k =>
-              `<div class="kpi-card"><div class="kpi-head"><span class="kpi-name">${k.name}</span><span class="kpi-icon"></span></div><div class="kpi-value">${k.value}</div><div class="kpi-unit">${k.unit}</div></div>`
-            ).join('');
-          }
-        }
-
-        if (p.systemModules) {
-          const tbody = root.querySelector('.status-table tbody');
-          if (tbody) {
-            tbody.innerHTML = p.systemModules.map(m =>
-              `<tr><td class="sys-name">${m.icon} ${m.name}</td><td><span class="status-tag ${m.status}">${m.statusText}</span></td><td class="status-desc">${m.desc}</td></tr>`
-            ).join('');
-          }
-        }
       }
 
       this.queryStatus(name, version);
@@ -497,28 +578,14 @@ class ProgramRun extends HTMLElement {
 
 customElements.define('program-run', ProgramRun);
 
-const TIME = Array.from({ length: 61 }, (_, i) => i * 0.5);
-
 const colors = {
   yellow: '#f59e0b', green: '#22c55e', cyan: '#06b6d4', red: '#ef4444',
   blue: '#3b82f6', orange: '#d97706', purple: '#a855f7', pink: '#ec4899',
   teal: '#14b8a6', lime: '#84cc16', indigo: '#6366f1'
 };
 
-function sStep(name, color, low, high, delay) {
-  return { name, color, dashed: true, fn: x => x < delay ? low : high };
-}
-function sRise(name, color, start, target, delay, tau) {
-  return { name, color, fn: x => start + (target - start) * (1 - Math.exp(-Math.max(0, x - delay) / tau)) };
-}
-function sRightRise(name, color, start, target, delay, tau) {
-  return { name, color, axis: 'right', fn: x => start + (target - start) * (1 - Math.exp(-Math.max(0, x - delay) / tau)) };
-}
-function sSine(name, color, base, amp, freq, phase) {
-  return { name, color, fn: x => base + amp * Math.sin(freq * x + phase) };
-}
-function sConst(name, color, val) {
-  return { name, color, fn: x => val };
+function sig(name, color, opts = {}) {
+  return { name, color, dashed: !!opts.dashed, axis: opts.axis || null, csv: opts.csv || null };
 }
 function chart(title, yMin, yMax, ...series) {
   return { title, yMin, yMax, series };
@@ -529,59 +596,109 @@ function chart2(title, yMin, yMax, y2Min, y2Max, ...series) {
 
 const OVERVIEW_CHARTS = [
   chart('转速响应', 12000, 48000,
-    sStep('Np指令', colors.yellow, 21000, 25000, 5),
-    sRise('Np', colors.green, 12000, 20812, 5, 3),
-    sRise('Ng', colors.cyan, 12000, 38046, 6, 4)
+    sig('Np指令', colors.yellow, { dashed: true }),
+    sig('Np', colors.green),
+    sig('Ng', colors.cyan)
   ),
   chart('温度与扭矩', 0, 2400,
-    sRise('T45 (K)', colors.red, 600, 1182, 6, 4),
-    sRise('Mkp (N·m)', colors.blue, 0, 1046, 6, 4)
+    sig('T45 (K)', colors.red, { csv: 'HPC_T4_out' }),
+    sig('Mkp (N·m)', colors.blue)
   ),
   chart('燃油系统', 0, 0.25,
-    sStep('Wf指令', colors.yellow, 0, 0.20, 2),
-    sRise('Wf实际', colors.orange, 0, 0.153, 2, 3)
+    sig('Wf指令', colors.yellow, { dashed: true }),
+    sig('Wf实际', colors.orange)
   ),
   chart('滑油热管理', 0, 120,
-    sRise('ToutA', colors.green, 30, 100, 6, 4),
-    sRise('ToutB', colors.cyan, 30, 95, 7, 4),
-    sRise('空滑出口油温', colors.yellow, 30, 110, 5, 3)
+    sig('ToutA', colors.green, { csv: 'OilBoundary_1' }),
+    sig('ToutB', colors.cyan, { csv: 'OilBoundary_2' }),
+    sig('空滑出口油温', colors.yellow, { csv: 'OilBoundary_3' })
   ),
   chart('空气流量 G01-G08', 0, 100,
-    sRise('G01', colors.red, 10, 35, 5, 3),
-    sRise('G02', colors.orange, 15, 45, 6, 3),
-    sRise('G03', colors.yellow, 20, 55, 5, 3),
-    sRise('G04', colors.green, 25, 65, 7, 3),
-    sRise('G05', colors.cyan, 30, 75, 5, 3),
-    sRise('G06', colors.blue, 35, 85, 6, 3),
-    sRise('G07', colors.purple, 40, 85, 5, 3),
-    sRise('G08', colors.pink, 45, 85, 7, 3)
+    sig('G01', colors.red, { csv: 'AirBoundaryTP16_1' }),
+    sig('G02', colors.orange, { csv: 'AirBoundaryTP16_3' }),
+    sig('G03', colors.yellow, { csv: 'AirBoundaryTP16_5' }),
+    sig('G04', colors.green, { csv: 'AirBoundaryTP16_7' }),
+    sig('G05', colors.cyan, { csv: 'AirBoundaryTP16_9' }),
+    sig('G06', colors.blue, { csv: 'AirBoundaryTP16_11' }),
+    sig('G07', colors.purple, { csv: 'AirBoundaryTP16_13' }),
+    sig('G08', colors.pink, { csv: 'AirBoundaryTP16_15' })
   ),
   chart2('压力与收敛', 0, 4500, 0, 1e-6,
-    sRise('Pt3 (kPa)', colors.blue, 1000, 2500, 4, 2),
-    sRise('Pt45 (kPa)', colors.cyan, 500, 1000, 4, 3),
-    sRightRise('Error', colors.yellow, 0, 2.1e-7, 8, 3)
+    sig('Pt3 (kPa)', colors.blue, { csv: 'Pt3' }),
+    sig('Pt45 (kPa)', colors.cyan, { csv: 'Pt45' }),
+    sig('Error', colors.yellow, { axis: 'right' })
   )
 ];
 
 const CHARTS_BY_TAB = {
   '综合总览': OVERVIEW_CHARTS,
   '总体性能': [
-    chart('发动机总体性能', 0, 45000, sRise('Np (rpm)', colors.green, 0, 20812, 5, 3), sRise('Ng (rpm)', colors.cyan, 0, 38046, 6, 4))
+    chart('转速响应', 12000, 48000,
+      sig('Np', colors.green),
+      sig('Ng', colors.cyan)
+    ),
+    chart('温度与扭矩', 0, 2400,
+      sig('T45 (K)', colors.red, { csv: 'HPC_T4_out' }),
+      sig('Mkp (N·m)', colors.blue)
+    ),
+    chart('温度参数', 0, 1500,
+      sig('Tt1 (K)', colors.red, { csv: 'Tt1' }),
+      sig('Tt3 (K)', colors.orange, { csv: 'Tt3' }),
+      sig('Tt45 (K)', colors.yellow, { csv: 'Tt45' }),
+      sig('T45 (K)', colors.pink, { csv: 'HPC_T4_out' })
+    ),
+    chart('压力参数', 0, 3500000,
+      sig('Pt1 (Pa)', colors.blue, { csv: 'Pt1' }),
+      sig('Pt3 (Pa)', colors.cyan, { csv: 'Pt3' }),
+      sig('Pt45 (Pa)', colors.green, { csv: 'Pt45' }),
+      sig('Pt5 (Pa)', colors.purple, { csv: 'Pt5' })
+    )
   ],
   '控制': [
-    chart('控制系统响应', 0, 25000, sStep('Np指令', colors.yellow, 21000, 25000, 5), sRise('Np实际', colors.green, 0, 20812, 5, 3))
+    chart('转速响应', 12000, 48000,
+      sig('Np指令', colors.yellow, { dashed: true }),
+      sig('Np', colors.green),
+      sig('Ng', colors.cyan)
+    )
   ],
   '燃油': [
-    chart('燃油系统', 0, 0.25, sStep('Wf指令', colors.yellow, 0, 0.20, 2), sRise('Wf实际', colors.orange, 0, 0.153, 2, 3))
+    chart('燃油系统', 0, 0.25,
+      sig('Wf指令', colors.yellow, { dashed: true }),
+      sig('Wf实际', colors.orange)
+    )
   ],
   '滑油': [
-    chart('滑油系统', 0, 120, sRise('ToutA (°C)', colors.green, 30, 100, 6, 4), sRise('ToutB (°C)', colors.cyan, 30, 95, 7, 4))
+    chart('滑油热管理', 0, 120,
+      sig('ToutA', colors.green, { csv: 'OilBoundary_1' }),
+      sig('ToutB', colors.cyan, { csv: 'OilBoundary_2' }),
+      sig('空滑出口油温', colors.yellow, { csv: 'OilBoundary_3' }),
+      sig('OilBoundary_4', colors.red, { csv: 'OilBoundary_4' })
+    )
   ],
   '空气': [
-    chart2('空气系统', 0, 3000, 0, 1600, sRise('Pc2 (kPa)', colors.blue, 200, 2500, 5, 3), sRightRise('T41 (K)', colors.orange, 600, 1300, 5, 4))
+    chart('空气流量 G01-G08', 0, 100,
+      sig('G01', colors.red, { csv: 'AirBoundaryTP16_1' }),
+      sig('G02', colors.orange, { csv: 'AirBoundaryTP16_3' }),
+      sig('G03', colors.yellow, { csv: 'AirBoundaryTP16_5' }),
+      sig('G04', colors.green, { csv: 'AirBoundaryTP16_7' }),
+      sig('G05', colors.cyan, { csv: 'AirBoundaryTP16_9' }),
+      sig('G06', colors.blue, { csv: 'AirBoundaryTP16_11' }),
+      sig('G07', colors.purple, { csv: 'AirBoundaryTP16_13' }),
+      sig('G08', colors.pink, { csv: 'AirBoundaryTP16_15' })
+    ),
+    chart2('压力与收敛', 0, 3500000, 0, 1e-6,
+      sig('Pt1 (Pa)', colors.blue, { csv: 'Pt1' }),
+      sig('Pt3 (Pa)', colors.cyan, { csv: 'Pt3' }),
+      sig('Pt45 (Pa)', colors.green, { csv: 'Pt45' }),
+      sig('Pt5 (Pa)', colors.purple, { csv: 'Pt5' }),
+      sig('Error', colors.yellow, { axis: 'right' })
+    )
   ],
   '信号与告警': [
-    chart('告警统计', 0, 5, sStep('一级告警', colors.red, 0, 1, 12), sStep('二级告警', colors.orange, 0, 2, 12))
+    chart('告警统计', 0, 5,
+      sig('一级告警', colors.red),
+      sig('二级告警', colors.orange)
+    )
   ]
 };
 
@@ -596,14 +713,15 @@ function buildChartData(cfg) {
       color: s.color,
       dashed: s.dashed,
       axis: s.axis,
-      data: TIME.map(t => [t, s.fn(t)])
+      data: []
     }))
   };
 }
 
 function buildEChartsOptions(data, time) {
-  const xMax = data.seriesData.length && data.seriesData[0].data.length
-    ? data.seriesData[0].data[data.seriesData[0].data.length - 1][0]
+  const hasData = data.seriesData.some(s => s.data.length > 0);
+  const xMax = hasData
+    ? data.seriesData.find(s => s.data.length > 0).data[data.seriesData.find(s => s.data.length > 0).data.length - 1][0]
     : 30;
   const yAxis = data.y2Min != null
     ? [
@@ -612,7 +730,7 @@ function buildEChartsOptions(data, time) {
       ]
     : { type: 'value', min: data.yMin, max: data.yMax, axisLabel: { color: '#9ca3af', fontSize: 10 }, splitLine: { lineStyle: { color: '#24344D' } }, axisLine: { lineStyle: { color: '#24344D' } } };
 
-  return {
+  const opts = {
     backgroundColor: 'transparent',
     tooltip: { trigger: 'axis', backgroundColor: 'rgba(15,23,42,.9)', borderColor: '#24344D', textStyle: { color: '#e5e7eb' } },
     grid: { left: 40, right: data.y2Min != null ? 55 : 40, top: 8, bottom: 18 },
@@ -626,15 +744,26 @@ function buildEChartsOptions(data, time) {
       yAxisIndex: s.axis === 'right' ? 1 : 0,
       lineStyle: { color: s.color, width: 2, type: s.dashed ? 'dashed' : 'solid' },
       data: s.data,
-      markLine: {
+      markLine: s.data.length > 0 ? {
         silent: true,
         animation: false,
         symbol: 'none',
         lineStyle: { color: '#10b981', type: 'dashed', width: 1 },
         data: [{ xAxis: time, label: { show: false } }]
-      }
+      } : undefined
     }))
   };
+
+  if (!hasData) {
+    opts.graphic = {
+      type: 'text',
+      left: 'center',
+      top: 'middle',
+      style: { text: '暂无数据', fill: '#6b7280', fontSize: 14 }
+    };
+  }
+
+  return opts;
 }
 
 function buildLegend(card, cfg) {
