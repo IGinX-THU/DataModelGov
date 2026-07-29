@@ -32,6 +32,9 @@ public class ProgramEntity {
     @ApiModelProperty(value = "最近一次结果CSV路径")
     private String lastResultCsv;
 
+    @ApiModelProperty(value = "最近一次运行日志路径")
+    private String lastLogPath;
+
     @ApiModelProperty(value = "原始压缩包文件名")
     private String fileName;
 

@@ -13,6 +13,7 @@ header { display:flex; align-items:center; justify-content:space-between; height
 .model-tag { background:#1a2740; color:#4D8DFF; padding:3px 10px; border-radius:4px; font-size:12px; border:1px solid #24344D; }
 .head-right { display:flex; align-items:center; gap:8px; }
 .btn { border:none; border-radius:4px; padding:5px 12px; font-size:12px; color:#fff; cursor:pointer; display:flex; align-items:center; gap:4px; }
+.btn:disabled { opacity:0.5; cursor:not-allowed; }
 .ico { font-size:10px; }
 .btn-run { background:var(--green); }
 .btn-pause { background:var(--yellow); color:#000; }

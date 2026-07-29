@@ -1300,6 +1300,17 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    // 监听程序上传成功事件
+    const programUpload = document.getElementById('programUpload');
+    if (programUpload) {
+        programUpload.addEventListener('upload-success', function(e) {
+            console.log('程序上传成功:', e.detail);
+            if (window.loadProjectTree) window.loadProjectTree();
+            const pm = document.getElementById('programManagement');
+            if (pm && pm.loadPrograms) pm.loadPrograms();
+        });
+    }
+
     // 监听模型下载成功事件
     const modelDownload = document.getElementById('modelDownload');
     if (modelDownload) {
@@ -3386,7 +3397,7 @@ function showSimulationRecord() {
                             const parts = fullPath.split('.');
                             if (parts.length >= 4 && parts[0] === 'programs_system') {
                                 const programName = parts[parts.length - 2];
-                                const programVersion = parts[parts.length - 1].replace(/_/g, '.');
+                                const programVersion = parts[parts.length - 1];
 
                                 const oldEl = document.getElementById('programRun');
                                 const parent = oldEl ? oldEl.parentElement : null;

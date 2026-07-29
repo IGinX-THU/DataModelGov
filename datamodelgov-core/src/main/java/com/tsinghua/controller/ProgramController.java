@@ -111,8 +111,13 @@ public class ProgramController {
     @PostMapping("/run")
     @RequirePermission(Permission.UPDATE)
     public Result<Map<String, Object>> run(@RequestParam("name") String name,
-                                           @RequestParam("version") String version) {
-        return programService.run(name, version);
+                                           @RequestParam("version") String version,
+                                           @RequestParam(value = "stopTime", required = false, defaultValue = "") String stopTime,
+                                           @RequestParam(value = "fixedStep", required = false, defaultValue = "") String fixedStep,
+                                           @RequestParam(value = "npCommand", required = false, defaultValue = "") String npCommand,
+                                           @RequestParam(value = "loadPower", required = false, defaultValue = "") String loadPower,
+                                           @RequestParam(value = "modelFile", required = false, defaultValue = "") String modelFile) {
+        return programService.run(name, version, stopTime, fixedStep, npCommand, loadPower, modelFile);
     }
 
     @ApiOperation("停止仿真程序")

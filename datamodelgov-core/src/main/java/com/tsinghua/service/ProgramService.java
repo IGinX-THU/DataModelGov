@@ -25,6 +25,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.*;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.*;
@@ -82,17 +83,22 @@ public class ProgramService {
     @Autowired
     private ProjectService projectService;
 
-    private File getTaskBaseDir(String projectName) {
+    private String safeProjectName(String projectName) {
         String proj = (projectName != null && !projectName.isEmpty()) ? projectName : ProjectContext.getCurrentProject("unknown");
-        File dir = new File(TASK_BASE_DIR + "/" + proj + "/job/program-tasks");
+        return proj.replaceAll("[^A-Za-z0-9\\-.]+", "undefined");
+    }
+
+    private File getTaskBaseDir(String projectName) {
+        String safeProj = safeProjectName(projectName);
+        File dir = new File(TASK_BASE_DIR + "/" + safeProj + "/job/program-tasks");
         if (!dir.exists()) dir.mkdirs();
         return dir;
     }
 
     private File getProgramDir(String projectName, String name, String version) {
-        String proj = (projectName != null && !projectName.isEmpty()) ? projectName : ProjectContext.getCurrentProject("unknown");
+        String safeProj = safeProjectName(projectName);
         String safeVersion = version.replace('.', '_');
-        File dir = new File(TASK_BASE_DIR + "/" + proj + "/program/" + name + "_" + safeVersion);
+        File dir = new File(TASK_BASE_DIR + "/" + safeProj + "/program/" + name + "_" + safeVersion);
         return dir;
     }
 
@@ -204,6 +210,13 @@ public class ProgramService {
                         dto.setLastResultCsv(new String((byte[]) value, StandardCharsets.UTF_8));
                     } else if (value instanceof String) {
                         dto.setLastResultCsv((String) value);
+                    }
+                    break;
+                case META_PREFIX + "." + "lastLogPath":
+                    if (value instanceof byte[]) {
+                        dto.setLastLogPath(new String((byte[]) value, StandardCharsets.UTF_8));
+                    } else if (value instanceof String) {
+                        dto.setLastLogPath((String) value);
                     }
                     break;
                 case META_PREFIX + "." + "fileName":
@@ -360,6 +373,7 @@ public class ProgramService {
         entity.setLastError(runtime.getLastError());
         entity.setLastRunTime(runtime.getLastRunTime());
         entity.setLastResultCsv(runtime.getLastResultCsv());
+        entity.setLastLogPath(runtime.getLastLogPath());
         return entity;
     }
 
@@ -388,6 +402,7 @@ public class ProgramService {
         points.add(ConvertUtil.createFieldPoint(META_PREFIX, "lastError", entity.getLastError(), timestamp));
         points.add(ConvertUtil.createFieldPoint(META_PREFIX, "lastRunTime", entity.getLastRunTime(), timestamp));
         points.add(ConvertUtil.createFieldPoint(META_PREFIX, "lastResultCsv", entity.getLastResultCsv(), timestamp));
+        points.add(ConvertUtil.createFieldPoint(META_PREFIX, "lastLogPath", entity.getLastLogPath(), timestamp));
         points.add(ConvertUtil.createFieldPoint(META_PREFIX, "fileName", entity.getFileName(), timestamp));
         points.add(ConvertUtil.createFieldPoint(META_PREFIX, "fileSize", entity.getFileSize(), timestamp));
         points.add(ConvertUtil.createFieldPoint(META_PREFIX, "chunkCount", entity.getChunkCount(), timestamp));
@@ -664,7 +679,7 @@ public class ProgramService {
         config.put("programName", programName);
         ObjectNode runtime = config.putObject("runtime");
         runtime.put("preRunScript", "RunCtrlSysModelSHT");
-        runtime.put("simulinkModel", "");
+        runtime.put("simulinkModel", "Dll_Control_AFO_V8_2_R2019b.slx");
         runtime.put("stopTime", 30);
         config.putArray("outputs");
         return config;
@@ -722,11 +737,11 @@ public class ProgramService {
         deleteProgram(name, version, null);
     }
 
-    public Result<Map<String, Object>> run(String name, String version) {
+    public Result<Map<String, Object>> run(String name, String version, String stopTime, String fixedStep, String npCommand, String loadPower, String modelFile) {
         ProgramEntity entity = queryMeta(name, version);
         if (entity == null) return Result.error("程序不存在");
         entity.setStatus("RUNNING");
-        entity.setLastError(null);
+        entity.setLastError("");
         entity.setLastRunTime(System.currentTimeMillis());
         try {
             saveProgramMetadata(entity);
@@ -736,7 +751,7 @@ public class ProgramService {
 
         String key = runtimeKey(entity);
         runtimeStatus.put(key, entity);
-        new Thread(() -> doRun(key, entity), "program-run-" + key).start();
+        new Thread(() -> doRun(key, entity, stopTime, fixedStep, npCommand, loadPower, modelFile), "program-run-" + key).start();
 
         Map<String, Object> data = new HashMap<>();
         data.put("status", "RUNNING");
@@ -764,8 +779,8 @@ public class ProgramService {
         return Result.success("已停止", data);
     }
 
-    private void doRun(String key, ProgramEntity entity) {
-        String taskId = key + "_" + System.currentTimeMillis();
+    private void doRun(String key, ProgramEntity entity, String stopTimeParam, String fixedStepParam, String npCommandParam, String loadPowerParam, String modelFileParam) {
+        String taskId = "task_" + System.currentTimeMillis();
         File taskDir = new File(getTaskBaseDir(entity.getProjectName()), taskId);
         try {
             taskDir.mkdirs();
@@ -785,21 +800,37 @@ public class ProgramService {
             JsonNode config = mapper.readTree(configFile);
             JsonNode runtime = config.get("runtime");
             String preRunScript = runtime.path("preRunScript").asText("RunCtrlSysModelSHT");
-            String modelName = runtime.path("simulinkModel").asText("");
-            int stopTime = runtime.path("stopTime").asInt(30);
+            String modelFile = StringUtils.hasText(modelFileParam) ? modelFileParam : runtime.path("simulinkModel").asText("");
+            int stopTime = StringUtils.hasText(stopTimeParam) ? Integer.parseInt(stopTimeParam) : runtime.path("stopTime").asInt(30);
 
             String programDir = findProgramDir(taskDir, preRunScript);
+            if (modelFile.isEmpty()) {
+                File programDirFile = new File(programDir);
+                File[] slxFiles = programDirFile.listFiles((d, n) ->
+                        n.toLowerCase().endsWith(".slx") && !n.toLowerCase().endsWith(".slxc"));
+                if (slxFiles != null && slxFiles.length > 0) {
+                    modelFile = slxFiles[0].getName();
+                    log.info("自动检测 Simulink 模型: {}", modelFile);
+                }
+            }
+            String shortTaskDir = getShortPath(taskDir);
+            String shortProgramDir = getShortPath(new File(programDir));
+            log.info("MATLAB 运行目录: 原始={}, 短路径={}", taskDir.getAbsolutePath(), shortTaskDir);
+            log.info("MATLAB 程序目录: 原始={}, 短路径={}", programDir, shortProgramDir);
             File wrapper = new File(taskDir, "run_wrapper.m");
-            writeWrapper(wrapper, taskDir.getAbsolutePath(), programDir, preRunScript, modelName, stopTime);
+            writeWrapper(wrapper, shortTaskDir, shortProgramDir, preRunScript, modelFile, stopTime, fixedStepParam, npCommandParam, loadPowerParam);
 
             ProcessBuilder pb = new ProcessBuilder();
             pb.directory(taskDir);
-            pb.command("matlab", "-batch", "cd('" + escape(taskDir.getAbsolutePath()) + "'); run_wrapper; exit;", "-nosplash", "-nodesktop");
+            pb.command("cmd", "/c", "chcp 65001 && matlab -batch \"cd('"
+                    + escape(shortTaskDir) + "'); run_wrapper; exit;\" -nosplash -nodesktop");
             pb.redirectErrorStream(true);
             File logFile = new File(taskDir, "run.log");
             pb.redirectOutput(logFile);
 
             Process process = pb.start();
+            entity.setLastLogPath(logFile.getAbsolutePath());
+            try { saveProgramMetadata(entity); } catch (Exception ignored) {}
             processMap.put(key, process);
             boolean finished = process.waitFor(300, TimeUnit.SECONDS);
             processMap.remove(key);
@@ -811,6 +842,8 @@ public class ProgramService {
                 return;
             }
             int exitCode = process.exitValue();
+            String fullLog = readLastLines(logFile, 200);
+            log.info("程序运行结束，退出码: {}，日志:\n{}", exitCode, fullLog);
             if (exitCode != 0) {
                 String err = readLastLines(logFile, 20);
                 entity.setStatus("ERROR");
@@ -828,6 +861,7 @@ public class ProgramService {
             }
             entity.setStatus("SUCCESS");
             entity.setLastResultCsv(csv.getAbsolutePath());
+            log.info("程序运行成功，结果文件: {}", csv.getAbsolutePath());
             saveProgramMetadata(entity);
         } catch (Exception e) {
             log.error("运行程序失败", e);
@@ -838,6 +872,8 @@ public class ProgramService {
             } catch (Exception ex) {
                 log.error("保存运行状态失败", ex);
             }
+        } finally {
+            runtimeStatus.remove(key);
         }
     }
 
@@ -852,27 +888,41 @@ public class ProgramService {
         }
     }
 
-    private void writeWrapper(File f, String taskDir, String programDir, String preRun, String model, int stopTime) throws IOException {
+    private void writeWrapper(File f, String taskDir, String programDir, String preRun, String modelFile, int stopTime,
+                              String fixedStep, String npCommand, String loadPower) throws IOException {
         StringBuilder sb = new StringBuilder();
-        sb.append("workDir = '").append(escape(taskDir)).append("';\n");
-        sb.append("programDir = '").append(escape(programDir)).append("';\n");
-        sb.append("cd(workDir);\n");
-        sb.append("addpath(programDir);\n");
+        sb.append("cd('").append(escape(programDir)).append("');\n");
+        if (StringUtils.hasText(npCommand)) {
+            sb.append("NpReferenceRpm = ").append(npCommand).append(";\n");
+        }
+        if (StringUtils.hasText(loadPower)) {
+            sb.append("MkpReferenceNm = ").append(loadPower).append(";\n");
+        }
+        if (StringUtils.hasText(fixedStep)) {
+            sb.append("Ts = ").append(fixedStep).append(";\n");
+        }
         sb.append("try\n");
         sb.append("    ").append(preRun).append(";\n");
-        if (model != null && !model.isEmpty()) {
-            sb.append("    load_system('").append(escape(model)).append("');\n");
-            sb.append("    simOut = sim('").append(escape(model)).append("', 'ReturnWorkspaceOutputs', 'on', 'StopTime', '").append(stopTime).append("');\n");
-            sb.append("    save('simOut.mat', 'simOut');\n");
-            sb.append("    tout = simOut.tout;\n");
-            sb.append("    writematrix(tout, 'results.csv');\n");
-        }
         sb.append("catch ME\n");
         sb.append("    fid = fopen('error.txt', 'w');\n");
         sb.append("    fprintf(fid, '%s\\n', ME.message);\n");
         sb.append("    fclose(fid);\n");
         sb.append("    rethrow(ME);\n");
         sb.append("end\n");
+        if (modelFile != null && !modelFile.isEmpty()) {
+            sb.append("try\n");
+            sb.append("    load_system('").append(escape(modelFile)).append("');\n");
+            sb.append("    simOut = sim('").append(escape(modelFile)).append("', 'ReturnWorkspaceOutputs', 'on', 'StopTime', '").append(stopTime).append("');\n");
+            sb.append("    save('").append(escape(taskDir)).append("/simOut.mat', 'simOut');\n");
+            sb.append("    tout = simOut.tout;\n");
+            sb.append("    writematrix(tout, '").append(escape(taskDir)).append("/results.csv');\n");
+            sb.append("catch ME\n");
+            sb.append("    fid = fopen('").append(escape(taskDir)).append("/error.txt', 'w');\n");
+            sb.append("    fprintf(fid, '%s\\n', ME.message);\n");
+            sb.append("    fclose(fid);\n");
+            sb.append("    rethrow(ME);\n");
+            sb.append("end\n");
+        }
         Files.write(f.toPath(), sb.toString().getBytes(StandardCharsets.UTF_8));
     }
 
@@ -919,6 +969,26 @@ public class ProgramService {
         return s.replace("\\", "\\\\").replace("'", "''");
     }
 
+    private String getShortPath(File file) {
+        if (!file.exists()) return file.getAbsolutePath();
+        try {
+            Process p = new ProcessBuilder("cmd", "/c", "for %I in (\""
+                    + file.getAbsolutePath() + "\") do @echo %~sI").redirectErrorStream(true).start();
+            java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[1024];
+            int n;
+            while ((n = p.getInputStream().read(buf)) != -1) baos.write(buf, 0, n);
+            p.waitFor(5, TimeUnit.SECONDS);
+            String output = new String(baos.toByteArray(), StandardCharsets.UTF_8).trim();
+            if (!output.isEmpty() && output.matches("^[A-Za-z]:\\\\.*")) {
+                return output;
+            }
+        } catch (Exception e) {
+            log.warn("获取短路径失败: {}", file.getAbsolutePath(), e);
+        }
+        return file.getAbsolutePath();
+    }
+
     public Result<Map<String, Object>> results(String name, String version) {
         ProgramEntity entity = queryMeta(name, version);
         if (entity == null) return Result.error("程序不存在");
@@ -926,6 +996,20 @@ public class ProgramService {
         data.put("status", entity.getStatus());
         data.put("lastError", entity.getLastError());
         data.put("lastRunTime", entity.getLastRunTime());
+        if (entity.getLastLogPath() != null) {
+            File logFile = new File(entity.getLastLogPath());
+            if (logFile.exists()) {
+                try {
+                    String logContent = new String(Files.readAllBytes(logFile.toPath()), Charset.forName("GBK"));
+                    if (logContent.length() > 20000) {
+                        logContent = logContent.substring(logContent.length() - 20000);
+                    }
+                    data.put("runLog", logContent);
+                } catch (Exception e) {
+                    log.error("读取运行日志失败", e);
+                }
+            }
+        }
         if (entity.getLastResultCsv() != null) {
             File csv = new File(entity.getLastResultCsv());
             if (csv.exists()) {
@@ -1004,6 +1088,14 @@ public class ProgramService {
         String npCommand = null;
         String loadPower = null;
         String modelName = null;
+        String ngReferenceRpm = null;
+        String wfReferenceKgps = null;
+        String t45Max = null;
+        String mkpMax = null;
+        String wfMax = null;
+        String wfMin = null;
+        String wfRateLim = null;
+        String ngMax = null;
 
         for (String relPath : scriptFiles) {
             File scriptFile = new File(programDir, relPath);
@@ -1011,17 +1103,51 @@ public class ProgramService {
                 String content = new String(Files.readAllBytes(scriptFile.toPath()), StandardCharsets.UTF_8);
 
                 if (relPath.endsWith("RunCtrlSysModelSHT.m")) {
-                    java.util.regex.Matcher m = java.util.regex.Pattern.compile(
+                    java.util.regex.Matcher m;
+
+                    m = java.util.regex.Pattern.compile(
                             "NpReferenceRpm\\s*=\\s*([0-9.]+)").matcher(content);
                     if (m.find()) npCommand = m.group(1);
+
+                    m = java.util.regex.Pattern.compile(
+                            "NgReferenceRpm\\s*=\\s*([0-9.]+)").matcher(content);
+                    if (m.find()) ngReferenceRpm = m.group(1);
 
                     m = java.util.regex.Pattern.compile(
                             "MkpReferenceNm\\s*=\\s*([0-9.]+)").matcher(content);
                     if (m.find()) loadPower = m.group(1);
 
                     m = java.util.regex.Pattern.compile(
+                            "WfReferenceKgps\\s*=\\s*([0-9.]+)").matcher(content);
+                    if (m.find()) wfReferenceKgps = m.group(1);
+
+                    m = java.util.regex.Pattern.compile(
                             "Ts\\s*=\\s*([0-9.]+)").matcher(content);
                     if (m.find()) fixedStep = m.group(1);
+
+                    m = java.util.regex.Pattern.compile(
+                            "T45Max\\s*=\\s*([0-9.]+)").matcher(content);
+                    if (m.find()) t45Max = m.group(1);
+
+                    m = java.util.regex.Pattern.compile(
+                            "MkpMax\\s*=\\s*([0-9.]+)").matcher(content);
+                    if (m.find()) mkpMax = m.group(1);
+
+                    m = java.util.regex.Pattern.compile(
+                            "WfMax\\s*=\\s*WfReferenceKgps\\*([0-9.]+)").matcher(content);
+                    if (m.find()) wfMax = m.group(1);
+
+                    m = java.util.regex.Pattern.compile(
+                            "WfMin\\s*=\\s*WfReferenceKgps\\*([0-9.]+)").matcher(content);
+                    if (m.find()) wfMin = m.group(1);
+
+                    m = java.util.regex.Pattern.compile(
+                            "WfRateLim\\s*=\\s*([0-9.]+)").matcher(content);
+                    if (m.find()) wfRateLim = m.group(1);
+
+                    m = java.util.regex.Pattern.compile(
+                            "NgMax\\s*=\\s*NgReferenceRpm\\*([0-9.]+)").matcher(content);
+                    if (m.find()) ngMax = m.group(1);
                 }
 
                 if (relPath.endsWith("configure_afo_v1disp_reference_point.m")) {
@@ -1039,7 +1165,54 @@ public class ProgramService {
         params.put("npCommand", npCommand != null ? npCommand : "21000");
         params.put("loadPower", loadPower != null ? loadPower : "1000");
         params.put("modelName", modelName != null ? modelName : "");
+        params.put("ngReferenceRpm", ngReferenceRpm != null ? ngReferenceRpm : "36000");
+        params.put("wfReferenceKgps", wfReferenceKgps != null ? wfReferenceKgps : "0.15");
+        params.put("t45Max", t45Max != null ? t45Max : "1400");
+        params.put("mkpMax", mkpMax != null ? mkpMax : "1200");
+        params.put("wfMax", wfMax != null ? wfMax : "2");
+        params.put("wfMin", wfMin != null ? wfMin : "0.01");
+        params.put("wfRateLim", wfRateLim != null ? wfRateLim : "1.5");
+        params.put("ngMaxRatio", ngMax != null ? ngMax : "1.05");
+
+        List<Map<String, String>> kpiParams = new ArrayList<>();
+        kpiParams.add(makeKpi("Np", "npCommand", npCommand != null ? npCommand : "21000", "rpm"));
+        kpiParams.add(makeKpi("Ng", "ngReferenceRpm", ngReferenceRpm != null ? ngReferenceRpm : "36000", "rpm"));
+        kpiParams.add(makeKpi("T45", "t45Max", t45Max != null ? t45Max : "1400", "K"));
+        kpiParams.add(makeKpi("Mkp", "loadPower", loadPower != null ? loadPower : "850", "N·m"));
+        kpiParams.add(makeKpi("Wf", "wfReferenceKgps", wfReferenceKgps != null ? wfReferenceKgps : "0.15", "kg/s"));
+        kpiParams.add(makeKpi("Error", "referenceErrMax", "0", "-"));
+        params.put("kpiParams", kpiParams);
+
+        List<Map<String, String>> systemModules = new ArrayList<>();
+        systemModules.add(makeModule("1", "控制系统", "🖥", "ok", "已接", "数据正常"));
+        systemModules.add(makeModule("2", "燃油系统", "⛽", "ok", "已接", "数据正常"));
+        systemModules.add(makeModule("3", "发动机总体性能", "⚙", "ok", "已接", "数据正常"));
+        systemModules.add(makeModule("4", "滑油系统", "🛢", "ok", "已接", "数据正常"));
+        systemModules.add(makeModule("5", "空气系统", "🌬", "ok", "已接", "数据正常"));
+        systemModules.add(makeModule("6", "信号与告警", "🔔", "warn", "未连接", "待接入"));
+        params.put("systemModules", systemModules);
+
         return params;
+    }
+
+    private Map<String, String> makeKpi(String name, String key, String value, String unit) {
+        Map<String, String> kpi = new LinkedHashMap<>();
+        kpi.put("name", name);
+        kpi.put("key", key);
+        kpi.put("value", value);
+        kpi.put("unit", unit);
+        return kpi;
+    }
+
+    private Map<String, String> makeModule(String id, String name, String icon, String status, String statusText, String desc) {
+        Map<String, String> mod = new LinkedHashMap<>();
+        mod.put("id", id);
+        mod.put("name", name);
+        mod.put("icon", icon);
+        mod.put("status", status);
+        mod.put("statusText", statusText);
+        mod.put("desc", desc);
+        return mod;
     }
 
     private void scanProgramDir(File baseDir, File dir,

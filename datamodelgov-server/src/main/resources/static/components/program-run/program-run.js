@@ -12,6 +12,8 @@ class ProgramRun extends HTMLElement {
     this.dragging = false;
     this.currentConfigs = [];
     this.currentDatas = [];
+    this._runTimer = null;
+    this._runStartTime = null;
   }
 
   async connectedCallback() {
@@ -76,6 +78,7 @@ class ProgramRun extends HTMLElement {
     this.bindEvents();
     this.renderTab(this.activeTab);
     this.updateCursor(this.currentTime, true);
+    this.updateStatusUI('IDLE');
   }
 
   bindEvents() {
@@ -177,9 +180,10 @@ class ProgramRun extends HTMLElement {
   }
 
   updateCursor(time, skipCharts) {
-    time = Math.max(0, Math.min(this.duration, time));
+    time = Math.max(0, time);
     this.currentTime = time;
-    const pct = (time / this.duration) * 100;
+    const cappedTime = Math.min(time, this.duration);
+    const pct = (cappedTime / this.duration) * 100;
     this.timeProgress.style.width = pct + '%';
     this.timeCursor.style.left = pct + '%';
     this.timeMark.style.left = pct + '%';
@@ -193,7 +197,7 @@ class ProgramRun extends HTMLElement {
         animation: false,
         symbol: 'none',
         lineStyle: { color: '#10b981', type: 'dashed', width: 1 },
-        data: [{ xAxis: time, label: { show: false } }]
+        data: [{ xAxis: cappedTime, label: { show: false } }]
       };
       this.charts.forEach((chart, i) => {
         const data = this.currentDatas[i];
@@ -212,6 +216,25 @@ class ProgramRun extends HTMLElement {
   hide() {
     this.style.display = 'none';
     this.stopPolling();
+    this.stopRunTimer();
+  }
+
+  startRunTimer(serverStartTime) {
+    this.stopRunTimer();
+    this._runStartTime = serverStartTime || Date.now();
+    this._runTimer = setInterval(() => {
+      if (!this._runStartTime) return;
+      const elapsed = (Date.now() - this._runStartTime) / 1000;
+      this.updateCursor(elapsed);
+    }, 100);
+  }
+
+  stopRunTimer() {
+    if (this._runTimer) {
+      clearInterval(this._runTimer);
+      this._runTimer = null;
+    }
+    this._runStartTime = null;
   }
 
   async handleRun() {
@@ -220,11 +243,25 @@ class ProgramRun extends HTMLElement {
     if (!name || !version) return;
     try {
       this.updateStatusUI('RUNNING');
-      const url = window.AppConfig.getApiUrl('program', 'run')
-        + '?name=' + encodeURIComponent(name) + '&version=' + encodeURIComponent(version);
+      const root = this.shadowRoot;
+      const inputs = root.querySelectorAll('.field-row .input-box input');
+      const select = root.querySelector('.field-row .input-box select');
+      const params = new URLSearchParams();
+      params.set('name', name);
+      params.set('version', version);
+      if (inputs.length >= 1 && inputs[0].value) params.set('stopTime', inputs[0].value);
+      if (inputs.length >= 2 && inputs[1].value) params.set('fixedStep', inputs[1].value);
+      if (inputs.length >= 3 && inputs[2].value) params.set('npCommand', inputs[2].value);
+      if (inputs.length >= 4 && inputs[3].value) params.set('loadPower', inputs[3].value);
+      if (select && select.value) {
+        params.set('modelFile', select.value);
+      }
+      const url = window.AppConfig.getApiUrl('program', 'run') + '?' + params.toString();
       const result = await window.AppConfig.request(url, { method: 'POST' });
       if (result && result.code === 200) {
+        this.duration = 10;
         this.startPolling(name, version);
+        this.startRunTimer(Date.now());
       } else {
         this.updateStatusUI('ERROR', result ? result.msg : '启动失败');
       }
@@ -244,6 +281,7 @@ class ProgramRun extends HTMLElement {
       const result = await window.AppConfig.request(url, { method: 'POST' });
       if (result && result.code === 200) {
         this.stopPolling();
+        this.stopRunTimer();
         this.updateStatusUI('STOPPED');
       }
     } catch (e) {
@@ -260,8 +298,15 @@ class ProgramRun extends HTMLElement {
         const data = result.data;
         const status = data.status || 'UNKNOWN';
         this.updateStatusUI(status, data.lastError);
+        if (data.runLog) {
+          console.log('[运行日志]', data.runLog);
+        }
+        if (status === 'RUNNING') {
+          this.duration += 10;
+        }
         if (status === 'SUCCESS' || status === 'ERROR' || status === 'STOPPED') {
           this.stopPolling();
+          this.stopRunTimer();
         }
       } catch (e) {
         console.error('轮询状态失败:', e);
@@ -297,6 +342,11 @@ class ProgramRun extends HTMLElement {
       const text = statusTexts[status] || status;
       this.statusBox.innerHTML = `<span class="dot" style="background:${statusColors[status] || '#9ca3af'}"></span>${text}`;
     }
+    if (this.runBtn && this.stopBtn) {
+      const running = status === 'RUNNING';
+      this.runBtn.disabled = running;
+      this.stopBtn.disabled = !running;
+    }
   }
 
   async queryStatus(name, version) {
@@ -311,6 +361,7 @@ class ProgramRun extends HTMLElement {
       this.updateStatusUI(status, data.lastError);
       if (status === 'RUNNING') {
         this.startPolling(name, version);
+        this.startRunTimer(data.lastRunTime);
       }
     } catch (e) {
       this.updateStatusUI('IDLE');
@@ -354,11 +405,33 @@ class ProgramRun extends HTMLElement {
 
       if (data.params) {
         const p = data.params;
+        if (p.stopTime) {
+          this.duration = parseFloat(p.stopTime) || 30;
+          this.updateCursor(0, true);
+        }
         const inputs = root.querySelectorAll('.field-row .input-box input');
         if (inputs.length >= 1 && p.stopTime) inputs[0].value = p.stopTime;
         if (inputs.length >= 2 && p.fixedStep) inputs[1].value = p.fixedStep;
         if (inputs.length >= 3 && p.npCommand) inputs[2].value = p.npCommand;
         if (inputs.length >= 4 && p.loadPower) inputs[3].value = p.loadPower;
+
+        if (p.kpiParams) {
+          const kpiGrid = root.querySelector('.kpi-grid');
+          if (kpiGrid) {
+            kpiGrid.innerHTML = p.kpiParams.map(k =>
+              `<div class="kpi-card"><div class="kpi-head"><span class="kpi-name">${k.name}</span><span class="kpi-icon"></span></div><div class="kpi-value">${k.value}</div><div class="kpi-unit">${k.unit}</div></div>`
+            ).join('');
+          }
+        }
+
+        if (p.systemModules) {
+          const tbody = root.querySelector('.status-table tbody');
+          if (tbody) {
+            tbody.innerHTML = p.systemModules.map(m =>
+              `<tr><td class="sys-name">${m.icon} ${m.name}</td><td><span class="status-tag ${m.status}">${m.statusText}</span></td><td class="status-desc">${m.desc}</td></tr>`
+            ).join('');
+          }
+        }
       }
 
       this.queryStatus(name, version);
