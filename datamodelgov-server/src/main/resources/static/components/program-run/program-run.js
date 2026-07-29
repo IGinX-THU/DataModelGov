@@ -451,22 +451,24 @@ class ProgramRun extends HTMLElement {
     const statusTbody = this.shadowRoot.querySelector('.status-table tbody');
     if (statusTbody) {
       const modules = [
-        { icon: '🖥', name: '控制系统', csv: null },
-        { icon: '⛽', name: '燃油系统', csv: null },
-        { icon: '⚙', name: '发动机总体性能', csv: 'HPC_T4_out' },
-        { icon: '🛢', name: '滑油系统', csv: 'OilBoundary_1' },
-        { icon: '🌬', name: '空气系统', csv: 'AirBoundaryTP16_1' },
-        { icon: '🔔', name: '信号与告警', csv: null },
+        { icon: '🖥', name: '控制系统', csvs: [] },
+        { icon: '⛽', name: '燃油系统', csvs: [] },
+        { icon: '⚙', name: '发动机总体性能', csvs: ['HPC_T4_out', 'HPC_P4_out1', 'HPC_T5_out1'] },
+        { icon: '🛢', name: '滑油系统', csvs: ['OilBoundary_1', 'OilBoundary_2', 'OilBoundary_3', 'OilBoundary_4'] },
+        { icon: '🌬', name: '空气系统', csvs: ['Pt1', 'Pt3', 'Pt45', 'Pt5', 'Tt1', 'Tt3', 'Tt45', 'AirBoundaryTP16_1'] },
+        { icon: '🔔', name: '信号与告警', csvs: [] },
       ];
       statusTbody.innerHTML = modules.map(m => {
-        if (m.csv === null) {
+        if (m.csvs.length === 0) {
           const isAlert = m.name === '信号与告警';
           const tag = isAlert ? (alerts.length > 0 ? 'warn' : 'ok') : 'warn';
           const tagText = isAlert ? (alerts.length > 0 ? `${alerts.length}项告警` : '正常') : '未接线';
           return `<tr><td class="sys-name">${m.icon} ${m.name}</td><td><span class="status-tag ${tag}">${tagText}</span></td><td class="status-desc">${isAlert ? (alerts.length > 0 ? alerts[0].desc : '无告警') : '信号未接出'}</td></tr>`;
         }
-        const connected = colIdx[m.csv] != null;
-        return `<tr><td class="sys-name">${m.icon} ${m.name}</td><td><span class="status-tag ${connected ? 'ok' : 'warn'}">${connected ? '已接' : '未接线'}</span></td><td class="status-desc">${connected ? '数据正常' : '信号未接出'}</td></tr>`;
+        const connectedCount = m.csvs.filter(c => colIdx[c] != null).length;
+        const connected = connectedCount > 0;
+        const tagText = connected ? '已接' : '未接线';
+        return `<tr><td class="sys-name">${m.icon} ${m.name}</td><td><span class="status-tag ${connected ? 'ok' : 'warn'}">${tagText}</span></td><td class="status-desc">${connected ? '数据正常' : '信号未接出'}</td></tr>`;
       }).join('');
     }
   }
@@ -608,12 +610,12 @@ const OVERVIEW_CHARTS = [
     sig('Wf指令', colors.yellow, { dashed: true }),
     sig('Wf实际', colors.orange)
   ),
-  chart('滑油热管理', 0, 120,
+  chart('滑油热管理', 0, 1200,
     sig('ToutA', colors.green, { csv: 'OilBoundary_1' }),
     sig('ToutB', colors.cyan, { csv: 'OilBoundary_2' }),
     sig('空滑出口油温', colors.yellow, { csv: 'OilBoundary_3' })
   ),
-  chart('空气流量 G01-G08', 0, 100,
+  chart('空气流量 G01-G08', 0, 1500,
     sig('G01', colors.red, { csv: 'AirBoundaryTP16_1' }),
     sig('G02', colors.orange, { csv: 'AirBoundaryTP16_3' }),
     sig('G03', colors.yellow, { csv: 'AirBoundaryTP16_5' }),
@@ -623,7 +625,7 @@ const OVERVIEW_CHARTS = [
     sig('G07', colors.purple, { csv: 'AirBoundaryTP16_13' }),
     sig('G08', colors.pink, { csv: 'AirBoundaryTP16_15' })
   ),
-  chart2('压力与收敛', 0, 4500, 0, 1e-6,
+  chart2('压力与收敛', 0, 2000000, 0, 1e-6,
     sig('Pt3 (kPa)', colors.blue, { csv: 'Pt3' }),
     sig('Pt45 (kPa)', colors.cyan, { csv: 'Pt45' }),
     sig('Error', colors.yellow, { axis: 'right' })
@@ -668,7 +670,7 @@ const CHARTS_BY_TAB = {
     )
   ],
   '滑油': [
-    chart('滑油热管理', 0, 120,
+    chart('滑油热管理', 0, 1200,
       sig('ToutA', colors.green, { csv: 'OilBoundary_1' }),
       sig('ToutB', colors.cyan, { csv: 'OilBoundary_2' }),
       sig('空滑出口油温', colors.yellow, { csv: 'OilBoundary_3' }),
@@ -676,7 +678,7 @@ const CHARTS_BY_TAB = {
     )
   ],
   '空气': [
-    chart('空气流量 G01-G08', 0, 100,
+    chart('空气流量 G01-G08', 0, 1500,
       sig('G01', colors.red, { csv: 'AirBoundaryTP16_1' }),
       sig('G02', colors.orange, { csv: 'AirBoundaryTP16_3' }),
       sig('G03', colors.yellow, { csv: 'AirBoundaryTP16_5' }),
