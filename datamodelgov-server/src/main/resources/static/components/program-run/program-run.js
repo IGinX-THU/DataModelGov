@@ -304,7 +304,14 @@ class ProgramRun extends HTMLElement {
         if (status === 'RUNNING') {
           this.duration += 10;
         }
-        if (status === 'SUCCESS' || status === 'ERROR' || status === 'STOPPED') {
+        if (status === 'SUCCESS') {
+          this.stopPolling();
+          this.stopRunTimer();
+          if (data.headers && data.rows) {
+            this.loadCsvData(data.headers, data.rows);
+          }
+        }
+        if (status === 'ERROR' || status === 'STOPPED') {
           this.stopPolling();
           this.stopRunTimer();
         }
@@ -319,6 +326,50 @@ class ProgramRun extends HTMLElement {
       clearInterval(this._pollTimer);
       this._pollTimer = null;
     }
+  }
+
+  loadCsvData(headers, rows) {
+    const colIdx = {};
+    headers.forEach((h, i) => colIdx[h] = i);
+    const timeCol = colIdx['time'] != null ? colIdx['time'] : 0;
+    const timeData = rows.map(r => parseFloat(r[timeCol]));
+    const tMax = timeData.length ? timeData[timeData.length - 1] : 30;
+    this.duration = tMax;
+
+    const getSeries = (colName) => {
+      if (colIdx[colName] == null) return null;
+      return timeData.map((t, i) => [t, parseFloat(rows[i][colIdx[colName]])]);
+    };
+
+    const SIGNAL_MAP = {
+      'Np': null, 'Ng': null, 'T45 (K)': 'HPC_T4_out', 'Mkp (N·m)': null,
+      'Wf实际': null, 'Wf指令': null,
+      'Pt3 (kPa)': 'Pt3', 'Pt45 (kPa)': 'Pt45', 'Error': null,
+      'ToutA': 'OilBoundary_1', 'ToutB': 'OilBoundary_2',
+      '空滑出口油温': 'OilBoundary_3',
+      'G01': 'AirBoundaryTP16_1', 'G02': 'AirBoundaryTP16_3', 'G03': 'AirBoundaryTP16_5',
+      'G04': 'AirBoundaryTP16_7', 'G05': 'AirBoundaryTP16_9', 'G06': 'AirBoundaryTP16_11',
+      'G07': 'AirBoundaryTP16_13', 'G08': 'AirBoundaryTP16_15',
+    };
+
+    this.currentDatas = this.currentConfigs.map(cfg => ({
+      yMin: cfg.yMin, yMax: cfg.yMax, y2Min: cfg.y2Min, y2Max: cfg.y2Max,
+      seriesData: cfg.series.map(s => {
+        const csvCol = SIGNAL_MAP[s.name];
+        const realData = csvCol ? getSeries(csvCol) : null;
+        return {
+          name: s.name, color: s.color, dashed: s.dashed, axis: s.axis,
+          data: realData || TIME.map(t => [t, s.fn(t)])
+        };
+      })
+    }));
+
+    this.charts.forEach((chart, i) => {
+      if (this.currentDatas[i]) {
+        chart.setOption(buildEChartsOptions(this.currentDatas[i], this.currentTime), true);
+      }
+    });
+    this.updateCursor(0, true);
   }
 
   updateStatusUI(status, errorMsg) {
@@ -362,6 +413,9 @@ class ProgramRun extends HTMLElement {
       if (status === 'RUNNING') {
         this.startPolling(name, version);
         this.startRunTimer(data.lastRunTime);
+      }
+      if (status === 'SUCCESS' && data.headers && data.rows) {
+        this.loadCsvData(data.headers, data.rows);
       }
     } catch (e) {
       this.updateStatusUI('IDLE');
@@ -548,6 +602,9 @@ function buildChartData(cfg) {
 }
 
 function buildEChartsOptions(data, time) {
+  const xMax = data.seriesData.length && data.seriesData[0].data.length
+    ? data.seriesData[0].data[data.seriesData[0].data.length - 1][0]
+    : 30;
   const yAxis = data.y2Min != null
     ? [
         { type: 'value', min: data.yMin, max: data.yMax, axisLabel: { color: '#9ca3af', fontSize: 10 }, splitLine: { lineStyle: { color: '#24344D' } }, axisLine: { lineStyle: { color: '#24344D' } } },
@@ -559,7 +616,7 @@ function buildEChartsOptions(data, time) {
     backgroundColor: 'transparent',
     tooltip: { trigger: 'axis', backgroundColor: 'rgba(15,23,42,.9)', borderColor: '#24344D', textStyle: { color: '#e5e7eb' } },
     grid: { left: 40, right: data.y2Min != null ? 55 : 40, top: 8, bottom: 18 },
-    xAxis: { type: 'value', min: 0, max: 30, interval: 5, axisLabel: { color: '#9ca3af', fontSize: 10 }, splitLine: { lineStyle: { color: '#24344D' } }, axisLine: { lineStyle: { color: '#24344D' } } },
+    xAxis: { type: 'value', min: 0, max: xMax, interval: xMax / 6, axisLabel: { color: '#9ca3af', fontSize: 10 }, splitLine: { lineStyle: { color: '#24344D' } }, axisLine: { lineStyle: { color: '#24344D' } } },
     yAxis,
     series: data.seriesData.map(s => ({
       name: s.name,

@@ -819,6 +819,8 @@ public class ProgramService {
             log.info("MATLAB 程序目录: 原始={}, 短路径={}", programDir, shortProgramDir);
             File wrapper = new File(taskDir, "run_wrapper.m");
             writeWrapper(wrapper, shortTaskDir, shortProgramDir, preRunScript, modelFile, stopTime, fixedStepParam, npCommandParam, loadPowerParam);
+            File oldCsv = new File(taskDir, "results.csv");
+            if (oldCsv.exists()) oldCsv.delete();
 
             ProcessBuilder pb = new ProcessBuilder();
             pb.directory(taskDir);
@@ -832,7 +834,7 @@ public class ProgramService {
             entity.setLastLogPath(logFile.getAbsolutePath());
             try { saveProgramMetadata(entity); } catch (Exception ignored) {}
             processMap.put(key, process);
-            boolean finished = process.waitFor(300, TimeUnit.SECONDS);
+            boolean finished = process.waitFor(1200, TimeUnit.SECONDS);
             processMap.remove(key);
             if (!finished) {
                 process.destroyForcibly();
@@ -915,7 +917,34 @@ public class ProgramService {
             sb.append("    simOut = sim('").append(escape(modelFile)).append("', 'ReturnWorkspaceOutputs', 'on', 'StopTime', '").append(stopTime).append("');\n");
             sb.append("    save('").append(escape(taskDir)).append("/simOut.mat', 'simOut');\n");
             sb.append("    tout = simOut.tout;\n");
-            sb.append("    writematrix(tout, '").append(escape(taskDir)).append("/results.csv');\n");
+            sb.append("    colNames = {'time'};\n");
+            sb.append("    colData = tout;\n");
+            sb.append("    tsVars = {'Pt1','Pt3','Pt45','Pt5','Tt1','Tt3','Tt45','HPC_T4_out','HPC_P4_out1','HPC_T5_out1'};\n");
+            sb.append("    for i = 1:length(tsVars)\n");
+            sb.append("        try\n");
+            sb.append("            v = simOut.(tsVars{i});\n");
+            sb.append("            if isa(v, 'timeseries') && size(v.Data,2) == 1\n");
+            sb.append("                colNames{end+1} = tsVars{i};\n");
+            sb.append("                colData = [colData, v.Data];\n");
+            sb.append("            end\n");
+            sb.append("        catch\n");
+            sb.append("        end\n");
+            sb.append("    end\n");
+            sb.append("    numVars = {'AirBoundaryTP16_out','G04_OilBoundary_Source4'};\n");
+            sb.append("    for i = 1:length(numVars)\n");
+            sb.append("        try\n");
+            sb.append("            v = simOut.(numVars{i});\n");
+            sb.append("            if isnumeric(v) && size(v,1) == length(tout)\n");
+            sb.append("                for j = 1:size(v,2)\n");
+            sb.append("                    colNames{end+1} = sprintf('%s_%d', numVars{i}, j);\n");
+            sb.append("                    colData = [colData, v(:,j)];\n");
+            sb.append("                end\n");
+            sb.append("            end\n");
+            sb.append("        catch\n");
+            sb.append("        end\n");
+            sb.append("    end\n");
+            sb.append("    T = array2table(colData, 'VariableNames', colNames);\n");
+            sb.append("    writetable(T, '").append(escape(taskDir)).append("/results.csv');\n");
             sb.append("catch ME\n");
             sb.append("    fid = fopen('").append(escape(taskDir)).append("/error.txt', 'w');\n");
             sb.append("    fprintf(fid, '%s\\n', ME.message);\n");
