@@ -66,14 +66,20 @@ class ProgramManagement extends HTMLElement {
         if (tbody) {
             tbody.addEventListener('click', (e) => {
                 const btn = e.target.closest('button');
-                if (!btn) return;
-                const name = btn.dataset.name;
-                const version = btn.dataset.version;
-                if (!name || !version) return;
-                if (btn.classList.contains('run-btn')) this.runProgram(name, version);
-                if (btn.classList.contains('result-btn')) this.loadResults(name, version);
-                if (btn.classList.contains('delete-btn')) this.deleteProgram(name, version);
-                if (btn.classList.contains('config-btn')) this.openConfig(name, version);
+                const row = e.target.closest('tr');
+                if (btn) {
+                    const name = btn.dataset.name;
+                    const version = btn.dataset.version;
+                    if (!name || !version) return;
+                    if (btn.classList.contains('run-btn')) this.openProgramRun(name, version);
+                    if (btn.classList.contains('delete-btn')) this.deleteProgram(name, version);
+                    return;
+                }
+                if (row) {
+                    const name = row.dataset.name;
+                    const version = row.dataset.version;
+                    if (name && version) this.openProgramRun(name, version);
+                }
             });
         }
 
@@ -258,7 +264,8 @@ class ProgramManagement extends HTMLElement {
     async saveConfig() {
         const config = this.collectConfig(false);
         try {
-            const url = window.AppConfig.getApiUrl('program', 'update-config') + '?name=' + encodeURIComponent(this.configProgramName) + '&version=' + encodeURIComponent(this.configProgramVersion);
+            const pn = this.getProjectName();
+            const url = window.AppConfig.getApiUrl('program', 'update-config') + '?name=' + encodeURIComponent(this.configProgramName) + '&version=' + encodeURIComponent(this.configProgramVersion) + (pn ? '&projectName=' + encodeURIComponent(pn) : '');
             const result = await window.AppConfig.request(url, {
                 method: 'POST',
                 body: JSON.stringify(config)
@@ -305,14 +312,15 @@ class ProgramManagement extends HTMLElement {
             const time = p.timestamp ? new Date(p.timestamp).toLocaleString() : '-';
             const statusClass = p.status === 'RUNNING' ? 'running' : p.status === 'ERROR' ? 'error' : 'ready';
             return `
-                <tr>
+                <tr data-name="${p.name || ''}" data-version="${p.version || ''}">
                     <td>${p.name || '-'}</td>
                     <td>${p.version || '-'}</td>
+                    <td>${p.projectName || '-'}</td>
                     <td>${p.description || '-'}</td>
                     <td>${time}</td>
                     <td><span class="status ${statusClass}">${p.status || 'READY'}</span></td>
                     <td class="actions">
-                        <button class="config-btn filter-btn outline" data-name="${p.name || ''}" data-version="${p.version || ''}">配置</button>
+                        <button class="run-btn filter-btn outline" data-name="${p.name || ''}" data-version="${p.version || ''}">运行</button>
                         <button class="delete-btn filter-btn outline" data-name="${p.name || ''}" data-version="${p.version || ''}">删除</button>
                     </td>
                 </tr>
@@ -440,7 +448,8 @@ class ProgramManagement extends HTMLElement {
 
     async runProgram(name, version) {
         try {
-            const url = window.AppConfig.getApiUrl('program', 'run') + '?name=' + encodeURIComponent(name) + '&version=' + encodeURIComponent(version);
+            const pn = this.getProjectName();
+            const url = window.AppConfig.getApiUrl('program', 'run') + '?name=' + encodeURIComponent(name) + '&version=' + encodeURIComponent(version) + (pn ? '&projectName=' + encodeURIComponent(pn) : '');
             const result = await window.AppConfig.request(url, { method: 'POST' });
             if (result && (result.success || result.code === 200)) {
                 if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('运行已开始', 'success');
@@ -454,6 +463,18 @@ class ProgramManagement extends HTMLElement {
         }
     }
 
+    openProgramRun(name, version) {
+        const programRun = document.getElementById('programRun');
+        if (!programRun) {
+            console.error('未找到 program-run 组件');
+            return;
+        }
+        programRun.setAttribute('data-name', name);
+        programRun.setAttribute('data-version', version);
+        if (window.showComponent) window.showComponent('programRun');
+        if (programRun.loadProgramFiles) programRun.loadProgramFiles(name, version);
+    }
+
     async loadResults(name, version) {
         const resultPanel = this.shadowRoot.getElementById('resultPanel');
         const statusText = this.shadowRoot.getElementById('statusText');
@@ -462,7 +483,8 @@ class ProgramManagement extends HTMLElement {
         statusText.textContent = '加载中...';
         csvPreview.innerHTML = '';
         try {
-            const result = await window.AppConfig.get('program', 'results', { name, version });
+            const pn = this.getProjectName();
+            const result = await window.AppConfig.get('program', 'results', { name, version, ...(pn ? { projectName: pn } : {}) });
             if (result && result.code === 200 && result.data) {
                 statusText.textContent = `状态: ${result.data.status || 'UNKNOWN'}`;
                 if (result.data.rows && result.data.headers) {
@@ -497,6 +519,15 @@ class ProgramManagement extends HTMLElement {
             console.error('删除失败:', e);
             if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('删除失败: ' + e.message, 'error');
         }
+    }
+
+    getProjectName() {
+        const username = window.AppConfig.getUsername ? window.AppConfig.getUsername() : localStorage.getItem('username');
+        if (username) {
+            const cached = JSON.parse(localStorage.getItem('currentProject_' + username) || 'null');
+            if (cached) return cached.name;
+        }
+        return null;
     }
 }
 

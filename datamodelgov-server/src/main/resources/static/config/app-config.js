@@ -188,7 +188,10 @@ window.AppConfig = {
             stop: '/api/program/stop',
             results: '/api/program/results',
             'update-config': '/api/program/update-config',
-            files: '/api/program/files'
+            files: '/api/program/files',
+            'download-result': '/api/program/download-result',
+            'upload-overview': '/api/program/upload-overview',
+            'download-signal': '/api/program/download-signal'
         }
     },
     

@@ -108,7 +108,12 @@ footer .play { margin-top:0; flex-shrink:0; }
 .cursor-val { color:var(--text); }
 .footer-actions { display:flex; gap:8px; }
 .footer-actions button { background:#1a2740; border:1px solid #24344D; color:var(--text); padding:5px 10px; border-radius:4px; font-size:12px; cursor:pointer; }
+.footer-actions button:hover { background:#24344D; }
 .content::-webkit-scrollbar { width:6px; height:6px; }
 .content::-webkit-scrollbar-track { background:var(--panel); border-radius:3px; }
 .content::-webkit-scrollbar-thumb { background:var(--grid); border-radius:3px; }
 .content::-webkit-scrollbar-thumb:hover { background:var(--muted); }
+
+.export-dropdown { position:fixed; background:#0f172a; border:1px solid var(--grid); border-radius:6px; box-shadow:0 4px 12px rgba(0,0,0,.5); overflow:hidden; min-width:200px; }
+.export-item { padding:10px 14px; font-size:12px; color:var(--text); cursor:pointer; display:flex; align-items:center; gap:6px; }
+.export-item:hover { background:#1e293b; }

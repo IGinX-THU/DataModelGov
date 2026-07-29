@@ -13,6 +13,7 @@ import io.swagger.annotations.ApiOperation;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -116,24 +117,27 @@ public class ProgramController {
                                            @RequestParam(value = "fixedStep", required = false, defaultValue = "") String fixedStep,
                                            @RequestParam(value = "npCommand", required = false, defaultValue = "") String npCommand,
                                            @RequestParam(value = "loadPower", required = false, defaultValue = "") String loadPower,
-                                           @RequestParam(value = "modelFile", required = false, defaultValue = "") String modelFile) {
-        return programService.run(name, version, stopTime, fixedStep, npCommand, loadPower, modelFile);
+                                           @RequestParam(value = "modelFile", required = false, defaultValue = "") String modelFile,
+                                           @RequestParam(value = "projectName", required = false) String projectName) {
+        return programService.run(name, version, stopTime, fixedStep, npCommand, loadPower, modelFile, projectName);
     }
 
     @ApiOperation("停止仿真程序")
     @PostMapping("/stop")
     @RequirePermission(Permission.UPDATE)
     public Result<Map<String, Object>> stop(@RequestParam("name") String name,
-                                            @RequestParam("version") String version) {
-        return programService.stop(name, version);
+                                            @RequestParam("version") String version,
+                                            @RequestParam(value = "projectName", required = false) String projectName) {
+        return programService.stop(name, version, projectName);
     }
 
     @ApiOperation("运行结果")
     @GetMapping("/results")
     @RequirePermission(Permission.READ)
     public Result<Map<String, Object>> results(@RequestParam("name") String name,
-                                                @RequestParam("version") String version) {
-        return programService.results(name, version);
+                                                @RequestParam("version") String version,
+                                                @RequestParam(value = "projectName", required = false) String projectName) {
+        return programService.results(name, version, projectName);
     }
 
     @ApiOperation("更新配置")
@@ -141,8 +145,9 @@ public class ProgramController {
     @RequirePermission(Permission.UPDATE)
     public Result<ProgramEntity> updateConfig(@RequestParam("name") String name,
                                               @RequestParam("version") String version,
-                                              @RequestBody String configJson) {
-        return programService.updateConfig(name, version, configJson);
+                                              @RequestBody String configJson,
+                                              @RequestParam(value = "projectName", required = false) String projectName) {
+        return programService.updateConfig(name, version, configJson, projectName);
     }
 
     @ApiOperation("获取程序目录文件列表")
@@ -153,5 +158,65 @@ public class ProgramController {
             @RequestParam("version") String version,
             @RequestParam(value = "projectName", required = false) String projectName) {
         return Result.success(programService.getProgramFiles(name, version, projectName));
+    }
+
+    @ApiOperation("下载结果包")
+    @GetMapping("/download-result")
+    @RequirePermission(Permission.READ)
+    public ResponseEntity<byte[]> downloadResult(
+            @RequestParam("name") String name,
+            @RequestParam("version") String version,
+            @RequestParam(value = "projectName", required = false) String projectName) {
+        try {
+            byte[] zipBytes = programService.downloadResultPackage(name, version, projectName);
+            String ts = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss").format(new java.util.Date());
+            String filename = "Result_" + ts + ".zip";
+            return ResponseEntity.ok()
+                    .header("Content-Disposition", "attachment; filename=\"" + filename + "\"")
+                    .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                    .body(zipBytes);
+        } catch (Exception e) {
+            log.error("下载结果包失败", e);
+            return ResponseEntity.internalServerError().body(null);
+        }
+    }
+
+    @ApiOperation("上传概览图")
+    @PostMapping("/upload-overview")
+    @RequirePermission(Permission.UPDATE)
+    public Result<Void> uploadOverview(
+            @RequestParam("name") String name,
+            @RequestParam("version") String version,
+            @RequestParam(value = "projectName", required = false) String projectName,
+            @RequestBody byte[] pngData) {
+        try {
+            programService.uploadOverview(name, version, projectName, pngData);
+            return Result.success("概览图已上传");
+        } catch (Exception e) {
+            log.error("上传概览图失败", e);
+            return Result.error(e.getMessage());
+        }
+    }
+
+    @ApiOperation("导出信号数据")
+    @GetMapping("/download-signal")
+    @RequirePermission(Permission.READ)
+    public ResponseEntity<byte[]> downloadSignal(
+            @RequestParam("name") String name,
+            @RequestParam("version") String version,
+            @RequestParam("format") String format,
+            @RequestParam(value = "projectName", required = false) String projectName) {
+        try {
+            byte[] data = programService.downloadSignalFile(name, version, format, projectName);
+            String filename = "signals." + format.toLowerCase();
+            String contentType = "mat".equalsIgnoreCase(format) ? MediaType.APPLICATION_OCTET_STREAM_VALUE : "text/csv";
+            return ResponseEntity.ok()
+                    .header("Content-Disposition", "attachment; filename=\"" + filename + "\"")
+                    .header("Content-Type", contentType)
+                    .body(data);
+        } catch (Exception e) {
+            log.error("导出信号数据失败", e);
+            return ResponseEntity.internalServerError().body(null);
+        }
     }
 }

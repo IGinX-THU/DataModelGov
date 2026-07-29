@@ -75,6 +75,7 @@ class ProgramRun extends HTMLElement {
     this.nextBtn = playWrap.querySelector('button:nth-child(3)');
     this.speedBtns = Array.from(playWrap.querySelectorAll('span'));
     this.exportBtn = root.querySelector('.footer-actions button:nth-child(1)');
+    this.saveBtn = root.querySelector('.footer-actions button:nth-child(2)');
 
     this.bindEvents();
     this.renderTab(this.activeTab);
@@ -123,6 +124,7 @@ class ProgramRun extends HTMLElement {
     const viewDetailBtn = this.shadowRoot.querySelector('.view-detail');
     if (viewDetailBtn) viewDetailBtn.addEventListener('click', () => this.showAlertDetail());
     if (this.exportBtn) this.exportBtn.addEventListener('click', () => this.exportData());
+    if (this.saveBtn) this.saveBtn.addEventListener('click', () => this.saveResults());
 
     window.addEventListener('resize', () => this.charts.forEach(c => c && c.resize()));
   }
@@ -166,21 +168,227 @@ class ProgramRun extends HTMLElement {
 
   exportData() {
     if (!this.csvHeaders || !this.csvRows) {
-      alert('暂无数据可导出');
+      this.showToast('暂无数据可导出', 'warning');
       return;
     }
-    const csvContent = [this.csvHeaders.join(',')].concat(
-      this.csvRows.map(r => r.join(','))
-    ).join('\n');
-    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'signals.csv';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    const name = this.getAttribute('data-name');
+    const version = this.getAttribute('data-version');
+    if (!name || !version) {
+      this.showToast('无法获取程序信息', 'error');
+      return;
+    }
+
+    const existing = this.shadowRoot.querySelector('.export-dropdown');
+    if (existing) { existing.remove(); return; }
+
+    const dd = document.createElement('div');
+    dd.className = 'export-dropdown';
+    dd.innerHTML = `
+      <div class="export-item" data-format="csv">📄 导出 CSV</div>
+      <div class="export-item" data-format="mat">📊 导出 MAT</div>
+    `;
+    const btnRect = this.exportBtn.getBoundingClientRect();
+    dd.style.cssText = `position:fixed;left:${btnRect.left}px;top:${btnRect.bottom + 4}px;z-index:9999;background:#0f172a;border:1px solid #24344D;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.5);overflow:hidden;min-width:200px;`;
+    dd.querySelectorAll('.export-item').forEach(item => {
+      item.style.cssText = 'padding:10px 14px;font-size:12px;color:#e5e7eb;cursor:pointer;display:flex;align-items:center;gap:6px;';
+      item.addEventListener('mouseenter', () => { item.style.background = '#1e293b'; });
+      item.addEventListener('mouseleave', () => { item.style.background = ''; });
+    });
+    document.body.appendChild(dd);
+
+    const close = () => dd.remove();
+    dd.querySelectorAll('.export-item').forEach(item => {
+      item.addEventListener('click', async () => {
+        close();
+        const format = item.getAttribute('data-format');
+        await this.downloadSignal(name, version, format);
+      });
+    });
+    setTimeout(() => {
+      document.addEventListener('click', close, { once: true });
+    }, 0);
+  }
+
+  async downloadSignal(name, version, format) {
+    const token = localStorage.getItem('jwtToken');
+    const pn = this.getProjectName();
+    const authHeaders = { 'Authorization': token ? `Bearer ${token}` : '' };
+    try {
+      this.showToast(`正在导出 ${format.toUpperCase()} 文件...`, 'info');
+      const baseUrl = window.AppConfig.getApiUrl('program', 'download-signal');
+      const url = `${baseUrl}?name=${encodeURIComponent(name)}&version=${encodeURIComponent(version)}&format=${format}${pn ? '&projectName=' + encodeURIComponent(pn) : ''}`;
+      const resp = await fetch(url, { headers: authHeaders });
+      if (!resp.ok) {
+        if (resp.status === 401) {
+          this.showToast('认证失败，请重新登录', 'error');
+          return;
+        }
+        const text = await resp.text();
+        this.showToast('导出失败: ' + (text || resp.statusText), 'error');
+        return;
+      }
+      const blob = await resp.blob();
+      const disposition = resp.headers.get('Content-Disposition') || '';
+      let filename = `signals.${format}`;
+      const match = disposition.match(/filename="?(.+?)"?$/);
+      if (match) filename = match[1];
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+      this.showToast(`${format.toUpperCase()} 导出成功！`, 'success');
+    } catch (e) {
+      console.error('导出失败:', e);
+      this.showToast('导出失败: ' + e.message, 'error');
+    }
+  }
+
+  async saveResults() {
+    const name = this.getAttribute('data-name');
+    const version = this.getAttribute('data-version');
+    if (!name || !version) {
+      this.showToast('无法获取程序信息', 'error');
+      return;
+    }
+    if (!this.csvHeaders || !this.csvRows) {
+      this.showToast('暂无仿真数据，无法保存结果', 'warning');
+      return;
+    }
+    const token = localStorage.getItem('jwtToken');
+    const authHeaders = { 'Authorization': token ? `Bearer ${token}` : '' };
+    const pn = this.getProjectName();
+    try {
+      this.showToast('正在保存结果...', 'info');
+
+      // 1. 截取综合总览所有图表，合成一张带标题和图例的 overview.png
+      if (this.charts.length > 0 && this.currentConfigs) {
+        const cols = 2;
+        const cfgs = this.currentConfigs;
+        const rows = Math.ceil(this.charts.length / cols);
+        const chartW = 600;
+        const chartH = 260;
+        const titleH = 20;
+        const legendH = 20;
+        const cellH = chartH + titleH + legendH;
+        const padding = 10;
+        const canvas = document.createElement('canvas');
+        canvas.width = cols * chartW + (cols + 1) * padding;
+        canvas.height = rows * cellH + (rows + 1) * padding;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#0b1220';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        for (let i = 0; i < this.charts.length; i++) {
+          const chart = this.charts[i];
+          if (!chart) continue;
+          const cfg = cfgs[i];
+          const col = i % cols;
+          const row = Math.floor(i / cols);
+          const x = padding + col * (chartW + padding);
+          const y = padding + row * (cellH + padding);
+
+          // 绘制标题
+          ctx.fillStyle = '#e5e7eb';
+          ctx.font = 'bold 14px sans-serif';
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(cfg.title, x + 4, y + titleH / 2);
+
+          // 绘制图例
+          let legendX = x + 4;
+          const legendY = y + titleH + legendH / 2;
+          ctx.font = '11px sans-serif';
+          ctx.textBaseline = 'middle';
+          for (const s of cfg.series) {
+            // 色块
+            ctx.fillStyle = s.color;
+            if (s.dashed) {
+              ctx.fillRect(legendX, legendY - 3, 8, 2);
+              ctx.fillRect(legendX + 10, legendY - 3, 8, 2);
+            } else {
+              ctx.fillRect(legendX, legendY - 4, 12, 4);
+            }
+            legendX += 16;
+            // 文字
+            ctx.fillStyle = '#9ca3af';
+            ctx.fillText(s.name, legendX, legendY);
+            legendX += ctx.measureText(s.name).width + 16;
+          }
+
+          // 截取图表
+          const dataUrl = chart.getDataURL({
+            type: 'png', pixelRatio: 1, backgroundColor: '#0b1220'
+          });
+          const img = new Image();
+          img.src = dataUrl;
+          await new Promise(resolve => { img.onload = resolve; img.onerror = resolve; });
+          ctx.drawImage(img, x, y + titleH + legendH, chartW, chartH);
+        }
+
+        const compositeDataUrl = canvas.toDataURL('image/png');
+        const base64 = compositeDataUrl.split(',')[1];
+        const pngBytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+        const uploadUrl = window.AppConfig.getApiUrl('program', 'upload-overview');
+        await fetch(`${uploadUrl}?name=${encodeURIComponent(name)}&version=${encodeURIComponent(version)}${pn ? '&projectName=' + encodeURIComponent(pn) : ''}`, {
+          method: 'POST',
+          headers: { ...authHeaders, 'Content-Type': 'image/png' },
+          body: pngBytes
+        });
+      }
+
+      // 2. 下载结果包
+      const baseUrl = window.AppConfig.getApiUrl('program', 'download-result');
+      const url = `${baseUrl}?name=${encodeURIComponent(name)}&version=${encodeURIComponent(version)}${pn ? '&projectName=' + encodeURIComponent(pn) : ''}`;
+      const resp = await fetch(url, { headers: authHeaders });
+      if (!resp.ok) {
+        if (resp.status === 401) {
+          this.showToast('认证失败，请重新登录', 'error');
+          return;
+        }
+        const text = await resp.text();
+        this.showToast('下载结果包失败: ' + (text || resp.statusText), 'error');
+        return;
+      }
+      const blob = await resp.blob();
+      const disposition = resp.headers.get('Content-Disposition') || '';
+      let filename = 'Result.zip';
+      const match = disposition.match(/filename="?(.+?)"?$/);
+      if (match) filename = match[1];
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+
+      this.showToast('结果包下载成功！', 'success');
+    } catch (e) {
+      console.error('保存结果失败:', e);
+      this.showToast('保存结果失败: ' + e.message, 'error');
+    }
+  }
+
+  getProjectName() {
+    const username = window.AppConfig.getUsername ? window.AppConfig.getUsername() : localStorage.getItem('username');
+    if (username) {
+      const cached = JSON.parse(localStorage.getItem('currentProject_' + username) || 'null');
+      if (cached) return cached.name;
+    }
+    return null;
+  }
+
+  showToast(message, type = 'success') {
+    if (window.CommonUtils && window.CommonUtils.showToast) {
+      window.CommonUtils.showToast(message, type);
+    } else {
+      console[type === 'error' ? 'error' : type === 'warning' ? 'warn' : 'log'](`[${type}] ${message}`);
+    }
   }
 
   renderTab(tab) {
@@ -320,10 +528,12 @@ class ProgramRun extends HTMLElement {
       if (select && select.value) {
         params.set('modelFile', select.value);
       }
+      const pn = this.getProjectName();
+      if (pn) params.set('projectName', pn);
       const url = window.AppConfig.getApiUrl('program', 'run') + '?' + params.toString();
       const result = await window.AppConfig.request(url, { method: 'POST' });
       if (result && result.code === 200) {
-        this.duration = 10;
+        this.duration = 30;
         this.startPolling(name, version);
         this.startRunTimer(Date.now());
       } else {
@@ -340,8 +550,10 @@ class ProgramRun extends HTMLElement {
     const version = this.getAttribute('data-version');
     if (!name || !version) return;
     try {
+      const pn = this.getProjectName();
       const url = window.AppConfig.getApiUrl('program', 'stop')
-        + '?name=' + encodeURIComponent(name) + '&version=' + encodeURIComponent(version);
+        + '?name=' + encodeURIComponent(name) + '&version=' + encodeURIComponent(version)
+        + (pn ? '&projectName=' + encodeURIComponent(pn) : '');
       const result = await window.AppConfig.request(url, { method: 'POST' });
       if (result && result.code === 200) {
         this.stopPolling();
@@ -357,16 +569,20 @@ class ProgramRun extends HTMLElement {
     this.stopPolling();
     this._pollTimer = setInterval(async () => {
       try {
-        const result = await window.AppConfig.get('program', 'results', { name, version });
+        const pn = this.getProjectName();
+        const result = await window.AppConfig.get('program', 'results', { name, version, ...(pn ? { projectName: pn } : {}) });
         if (!result || result.code !== 200 || !result.data) return;
         const data = result.data;
         const status = data.status || 'UNKNOWN';
         this.updateStatusUI(status, data.lastError);
         if (data.runLog) {
-          console.log('[运行日志]', data.runLog);
+          this.runLog = data.runLog;
         }
+        this.runStatus = status;
+        this.runError = data.lastError || null;
+        this.runTimestamp = data.lastRunTime || null;
         if (status === 'RUNNING') {
-          this.duration += 10;
+          this.duration += 30;
         }
         if (status === 'SUCCESS') {
           this.stopPolling();
@@ -382,7 +598,7 @@ class ProgramRun extends HTMLElement {
       } catch (e) {
         console.error('轮询状态失败:', e);
       }
-    }, 10000);
+    }, 30000);
   }
 
   stopPolling() {
@@ -435,16 +651,51 @@ class ProgramRun extends HTMLElement {
       return parseFloat(rows[rows.length - 1][colIdx[colName]]);
     };
 
-    this.currentDatas = this.currentConfigs.map(cfg => ({
-      yMin: cfg.yMin, yMax: cfg.yMax, y2Min: cfg.y2Min, y2Max: cfg.y2Max,
-      seriesData: cfg.series.map(s => {
-        const realData = getSeries(s.csv);
+    this.currentDatas = this.currentConfigs.map(cfg => {
+      // 信号与告警页签：用告警统计数据填充
+      if (cfg.title === '告警统计') {
+        const ALERT_LIMITS = [
+          { csv: 'HPC_T4_out', danger: 1400, warn: 1200 },
+          { csv: 'Pt3', danger: 3500000, warn: 3000000 },
+          { csv: 'Pt45', danger: 1000000, warn: 800000 },
+        ];
+        const dangerCounts = timeData.map((t, i) => {
+          let c = 0;
+          for (const al of ALERT_LIMITS) {
+            if (colIdx[al.csv] == null) continue;
+            const v = parseFloat(rows[i][colIdx[al.csv]]);
+            if (v >= al.danger) c++;
+          }
+          return [t, c];
+        });
+        const warnCounts = timeData.map((t, i) => {
+          let c = 0;
+          for (const al of ALERT_LIMITS) {
+            if (colIdx[al.csv] == null) continue;
+            const v = parseFloat(rows[i][colIdx[al.csv]]);
+            if (v >= al.warn && v < al.danger) c++;
+          }
+          return [t, c];
+        });
         return {
-          name: s.name, color: s.color, dashed: s.dashed, axis: s.axis,
-          data: realData || []
+          yMin: cfg.yMin, yMax: cfg.yMax, y2Min: cfg.y2Min, y2Max: cfg.y2Max,
+          seriesData: [
+            { name: '一级告警', color: cfg.series[0].color, dashed: false, data: dangerCounts },
+            { name: '二级告警', color: cfg.series[1].color, dashed: false, data: warnCounts },
+          ]
         };
-      })
-    }));
+      }
+      return {
+        yMin: cfg.yMin, yMax: cfg.yMax, y2Min: cfg.y2Min, y2Max: cfg.y2Max,
+        seriesData: cfg.series.map(s => {
+          const realData = getSeries(s.csv);
+          return {
+            name: s.name, color: s.color, dashed: s.dashed, axis: s.axis,
+            data: realData || []
+          };
+        })
+      };
+    });
 
     this.charts.forEach((chart, i) => {
       if (this.currentDatas[i]) {
@@ -517,7 +768,7 @@ class ProgramRun extends HTMLElement {
         { icon: '⚙', name: '发动机总体性能', csvs: ['HPC_T4_out', 'HPC_P4_out1', 'HPC_T5_out1'] },
         { icon: '🛢', name: '滑油系统', csvs: ['OilBoundary_1', 'OilBoundary_2', 'OilBoundary_3', 'OilBoundary_4'] },
         { icon: '🌬', name: '空气系统', csvs: ['Pt1', 'Pt3', 'Pt45', 'Pt5', 'Tt1', 'Tt3', 'Tt45', 'AirBoundaryTP16_1'] },
-        { icon: '🔔', name: '信号与告警', csvs: [] },
+        { icon: '🔔', name: '信号与告警', csvs: ['HPC_T4_out', 'Pt3', 'Pt45'] },
         { icon: '⚖', name: '单位一致性检查', csvs: [] },
       ];
       statusTbody.innerHTML = modules.map(m => {
@@ -529,10 +780,9 @@ class ProgramRun extends HTMLElement {
             const desc = issues.length > 0 ? issues.join('; ') : '单位一致';
             return `<tr><td class="sys-name">${m.icon} ${m.name}</td><td><span class="status-tag ${tag}">${tagText}</span></td><td class="status-desc">${desc}</td></tr>`;
           }
-          const isAlert = m.name === '信号与告警';
-          const tag = isAlert ? (alerts.length > 0 ? 'warn' : 'ok') : 'warn';
-          const tagText = isAlert ? (alerts.length > 0 ? `${alerts.length}项告警` : '正常') : '未接线';
-          return `<tr><td class="sys-name">${m.icon} ${m.name}</td><td><span class="status-tag ${tag}">${tagText}</span></td><td class="status-desc">${isAlert ? (alerts.length > 0 ? alerts[0].desc : '无告警') : '信号未接出'}</td></tr>`;
+          const tag = 'warn';
+          const tagText = '未接线';
+          return `<tr><td class="sys-name">${m.icon} ${m.name}</td><td><span class="status-tag ${tag}">${tagText}</span></td><td class="status-desc">信号未接出</td></tr>`;
         }
         const connectedCount = m.csvs.filter(c => colIdx[c] != null).length;
         const connected = connectedCount > 0;
@@ -611,7 +861,8 @@ class ProgramRun extends HTMLElement {
 
   async queryStatus(name, version) {
     try {
-      const result = await window.AppConfig.get('program', 'results', { name, version });
+      const pn = this.getProjectName();
+      const result = await window.AppConfig.get('program', 'results', { name, version, ...(pn ? { projectName: pn } : {}) });
       if (!result || result.code !== 200 || !result.data) {
         this.updateStatusUI('IDLE');
         return;
@@ -633,7 +884,8 @@ class ProgramRun extends HTMLElement {
 
   async loadProgramFiles(name, version) {
     try {
-      const result = await window.AppConfig.get('program', 'files', { name, version });
+      const pn = this.getProjectName();
+      const result = await window.AppConfig.get('program', 'files', { name, version, ...(pn ? { projectName: pn } : {}) });
       if (!result || result.code !== 200 || !result.data) {
         console.warn('获取程序文件列表失败', result);
         return;
@@ -843,8 +1095,10 @@ function buildEChartsOptions(data, time) {
   const opts = {
     backgroundColor: 'transparent',
     tooltip: { trigger: 'axis', backgroundColor: 'rgba(15,23,42,.9)', borderColor: '#24344D', textStyle: { color: '#e5e7eb' } },
-    grid: { left: 40, right: data.y2Min != null ? 55 : 40, top: 8, bottom: 18 },
-    xAxis: { type: 'value', min: 0, max: xMax, interval: xMax / 6, axisLabel: { color: '#9ca3af', fontSize: 10 }, splitLine: { lineStyle: { color: '#24344D' } }, axisLine: { lineStyle: { color: '#24344D' } } },
+    grid: { left: 40, right: data.y2Min != null ? 55 : 40, top: 32, bottom: 18 },
+    toolbox: { right: 8, top: 4, iconStyle: { borderColor: '#9ca3af' }, emphasis: { iconStyle: { borderColor: '#fff' } }, feature: { restore: { title: '还原' } } },
+    dataZoom: [{ type: 'inside', xAxisIndex: [0], filterMode: 'filter', start: 0, end: 100 }],
+    xAxis: { type: 'value', min: 0, splitNumber: 6, axisLabel: { color: '#9ca3af', fontSize: 10 }, splitLine: { lineStyle: { color: '#24344D' } }, axisLine: { lineStyle: { color: '#24344D' } } },
     yAxis,
     series: data.seriesData.map(s => ({
       name: s.name,

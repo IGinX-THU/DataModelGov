@@ -85,7 +85,7 @@ public class ProgramService {
 
     private String safeProjectName(String projectName) {
         String proj = (projectName != null && !projectName.isEmpty()) ? projectName : ProjectContext.getCurrentProject("unknown");
-        return proj.replaceAll("[^A-Za-z0-9\\-.]+", "undefined");
+        return proj.replaceAll("[^\\x00-\\x7F]+", "undefined");
     }
 
     private File getTaskBaseDir(String projectName) {
@@ -217,6 +217,13 @@ public class ProgramService {
                         dto.setLastLogPath(new String((byte[]) value, StandardCharsets.UTF_8));
                     } else if (value instanceof String) {
                         dto.setLastLogPath((String) value);
+                    }
+                    break;
+                case META_PREFIX + "." + "lastResultDir":
+                    if (value instanceof byte[]) {
+                        dto.setLastResultDir(new String((byte[]) value, StandardCharsets.UTF_8));
+                    } else if (value instanceof String) {
+                        dto.setLastResultDir((String) value);
                     }
                     break;
                 case META_PREFIX + "." + "fileName":
@@ -403,6 +410,7 @@ public class ProgramService {
         points.add(ConvertUtil.createFieldPoint(META_PREFIX, "lastRunTime", entity.getLastRunTime(), timestamp));
         points.add(ConvertUtil.createFieldPoint(META_PREFIX, "lastResultCsv", entity.getLastResultCsv(), timestamp));
         points.add(ConvertUtil.createFieldPoint(META_PREFIX, "lastLogPath", entity.getLastLogPath(), timestamp));
+        points.add(ConvertUtil.createFieldPoint(META_PREFIX, "lastResultDir", entity.getLastResultDir(), timestamp));
         points.add(ConvertUtil.createFieldPoint(META_PREFIX, "fileName", entity.getFileName(), timestamp));
         points.add(ConvertUtil.createFieldPoint(META_PREFIX, "fileSize", entity.getFileSize(), timestamp));
         points.add(ConvertUtil.createFieldPoint(META_PREFIX, "chunkCount", entity.getChunkCount(), timestamp));
@@ -737,8 +745,8 @@ public class ProgramService {
         deleteProgram(name, version, null);
     }
 
-    public Result<Map<String, Object>> run(String name, String version, String stopTime, String fixedStep, String npCommand, String loadPower, String modelFile) {
-        ProgramEntity entity = queryMeta(name, version);
+    public Result<Map<String, Object>> run(String name, String version, String stopTime, String fixedStep, String npCommand, String loadPower, String modelFile, String projectName) {
+        ProgramEntity entity = queryMeta(name, version, projectName);
         if (entity == null) return Result.error("程序不存在");
         entity.setStatus("RUNNING");
         entity.setLastError("");
@@ -758,8 +766,8 @@ public class ProgramService {
         return Result.success("运行已启动", data);
     }
 
-    public Result<Map<String, Object>> stop(String name, String version) {
-        ProgramEntity entity = queryMeta(name, version);
+    public Result<Map<String, Object>> stop(String name, String version, String projectName) {
+        ProgramEntity entity = queryMeta(name, version, projectName);
         if (entity == null) return Result.error("程序不存在");
         String key = runtimeKey(entity);
         Process process = processMap.remove(key);
@@ -863,7 +871,11 @@ public class ProgramService {
             }
             entity.setStatus("SUCCESS");
             entity.setLastResultCsv(csv.getAbsolutePath());
+            entity.setLastResultDir(taskDir.getAbsolutePath());
             log.info("程序运行成功，结果文件: {}", csv.getAbsolutePath());
+
+            generateResultFiles(taskDir, entity, modelFile, stopTimeParam, fixedStepParam, npCommandParam, loadPowerParam, logFile);
+
             saveProgramMetadata(entity);
         } catch (Exception e) {
             log.error("运行程序失败", e);
@@ -945,6 +957,7 @@ public class ProgramService {
             sb.append("    end\n");
             sb.append("    T = array2table(colData, 'VariableNames', colNames);\n");
             sb.append("    writetable(T, '").append(escape(taskDir)).append("/signals.csv');\n");
+            sb.append("    save('").append(escape(taskDir)).append("/signals.mat', 'T');\n");
             sb.append("catch ME\n");
             sb.append("    fid = fopen('").append(escape(taskDir)).append("/error.txt', 'w');\n");
             sb.append("    fprintf(fid, '%s\\n', ME.message);\n");
@@ -953,6 +966,175 @@ public class ProgramService {
             sb.append("end\n");
         }
         Files.write(f.toPath(), sb.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
+    private void generateResultFiles(File taskDir, ProgramEntity entity, String modelFile,
+                                     String stopTime, String fixedStep, String npCommand, String loadPower,
+                                     File logFile) {
+        try {
+            // metadata.json
+            ObjectNode metadata = mapper.createObjectNode();
+            metadata.put("softwareVersion", "AFO V1.0");
+            metadata.put("modelPath", modelFile != null ? modelFile : "");
+            metadata.put("modelHash", "");
+            metadata.put("matlabVersion", "R2019b");
+            metadata.put("solver", "ode4 (Runge-Kutta)");
+            metadata.put("fixedStep", fixedStep != null && !fixedStep.isEmpty() ? fixedStep : "0.025");
+            metadata.put("stopTime", stopTime != null && !stopTime.isEmpty() ? stopTime : "30");
+            metadata.put("signalDictVersion", "1.0");
+            metadata.put("runStatus", entity.getStatus());
+            metadata.put("runError", entity.getLastError() != null ? entity.getLastError() : "");
+            metadata.put("runTimestamp", entity.getLastRunTime() != null ? entity.getLastRunTime() : System.currentTimeMillis());
+            metadata.put("exportTime", new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX").format(new Date()));
+            Files.write(new File(taskDir, "metadata.json").toPath(),
+                    mapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(metadata));
+
+            // scenario.json
+            ObjectNode scenario = mapper.createObjectNode();
+            scenario.put("stopTime", stopTime != null && !stopTime.isEmpty() ? stopTime : "30");
+            scenario.put("fixedStep", fixedStep != null && !fixedStep.isEmpty() ? fixedStep : "0.025");
+            scenario.put("npCommand", npCommand != null && !npCommand.isEmpty() ? npCommand : "20800");
+            scenario.put("loadPower", loadPower != null && !loadPower.isEmpty() ? loadPower : "2176600");
+            scenario.put("modelFile", modelFile != null ? modelFile : "");
+            ObjectNode defaults = scenario.putObject("defaults");
+            defaults.put("Np0", 20800);
+            defaults.put("Ng0", 38000);
+            defaults.put("Wf0", 0.1519140445);
+            defaults.put("A80", 0.10573);
+            defaults.put("power0", 2176600);
+            defaults.put("Ts", 0.025);
+            Files.write(new File(taskDir, "scenario.json").toPath(),
+                    mapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(scenario));
+
+            // events.json — basic alert detection from CSV
+            File csvFile = new File(taskDir, "signals.csv");
+            List<ObjectNode> events = new ArrayList<>();
+            if (csvFile.exists()) {
+                List<String[]> rows = new ArrayList<>();
+                try (BufferedReader br = Files.newBufferedReader(csvFile.toPath(), StandardCharsets.UTF_8)) {
+                    String line;
+                    while ((line = br.readLine()) != null) {
+                        rows.add(line.split(","));
+                    }
+                }
+                if (!rows.isEmpty()) {
+                    String[] headers = rows.remove(0);
+                    Map<String, Integer> colIdx = new HashMap<>();
+                    for (int i = 0; i < headers.length; i++) colIdx.put(headers[i].trim(), i);
+
+                    String[][] alertRules = {
+                        {"HPC_T4_out", "1400", "K", "燃气涡轮后温度超限"},
+                        {"Pt3", "3500000", "Pa", "压气机出口压力超限"},
+                        {"Pt45", "1000000", "Pa", "涡轮后压力超限"}
+                    };
+                    for (String[] rule : alertRules) {
+                        String col = rule[0];
+                        double limit = Double.parseDouble(rule[1]);
+                        String unit = rule[2];
+                        String desc = rule[3];
+                        if (!colIdx.containsKey(col)) continue;
+                        int ci = colIdx.get(col);
+                        for (int i = 0; i < rows.size(); i++) {
+                            try {
+                                double v = Double.parseDouble(rows.get(i)[ci].trim());
+                                if (v >= limit) {
+                                    ObjectNode ev = mapper.createObjectNode();
+                                    ev.put("time", Double.parseDouble(rows.get(i)[0].trim()));
+                                    ev.put("level", "一级");
+                                    ev.put("signal", col);
+                                    ev.put("value", v);
+                                    ev.put("limit", limit);
+                                    ev.put("unit", unit);
+                                    ev.put("desc", col + " " + desc + " — " + col + "=" + String.format("%.1f", v) + unit + " >= " + (int)limit + unit);
+                                    events.add(ev);
+                                    break;
+                                }
+                            } catch (NumberFormatException ignored) {}
+                        }
+                    }
+                }
+            }
+            Files.write(new File(taskDir, "events.json").toPath(),
+                    mapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(events));
+
+            // run.log — copy if not already in taskDir
+            File runLogInTask = new File(taskDir, "run.log");
+            if (logFile != null && logFile.exists() && !runLogInTask.exists()) {
+                Files.copy(logFile.toPath(), runLogInTask.toPath());
+            }
+
+            log.info("结果文件已生成: metadata.json, scenario.json, events.json, run.log");
+        } catch (Exception e) {
+            log.error("生成结果文件失败", e);
+        }
+    }
+
+    public byte[] downloadResultPackage(String name, String version, String projectName) throws Exception {
+        ProgramEntity entity = queryMeta(name, version, projectName);
+        if (entity == null) throw new Exception("程序不存在");
+        String resultDirPath = entity.getLastResultDir();
+        if (resultDirPath == null && entity.getLastResultCsv() != null) {
+            resultDirPath = new File(entity.getLastResultCsv()).getParent();
+        }
+        if (resultDirPath == null) throw new Exception("无运行结果目录，请先运行仿真");
+        File resultDir = new File(resultDirPath);
+        if (!resultDir.exists()) throw new Exception("结果目录不存在: " + resultDir.getAbsolutePath());
+
+        // 如果 metadata.json 不存在，说明是旧运行结果，补充生成
+        File metadataFile = new File(resultDir, "metadata.json");
+        if (!metadataFile.exists()) {
+            File logFile = entity.getLastLogPath() != null ? new File(entity.getLastLogPath()) : null;
+            generateResultFiles(resultDir, entity, "", "", "", "", "", logFile);
+        }
+
+        String ts = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
+        String folderName = "Result_" + ts;
+
+        java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+        try (java.util.zip.ZipOutputStream zos = new java.util.zip.ZipOutputStream(baos)) {
+            String[] fileNames = {"metadata.json", "scenario.json", "signals.mat", "signals.csv", "events.json", "run.log", "overview.png"};
+            for (String fn : fileNames) {
+                File f = new File(resultDir, fn);
+                if (f.exists()) {
+                    zos.putNextEntry(new java.util.zip.ZipEntry(folderName + "/" + fn));
+                    Files.copy(f.toPath(), zos);
+                    zos.closeEntry();
+                }
+            }
+        }
+        return baos.toByteArray();
+    }
+
+    public void uploadOverview(String name, String version, String projectName, byte[] pngData) throws Exception {
+        ProgramEntity entity = queryMeta(name, version, projectName);
+        if (entity == null) throw new Exception("程序不存在");
+        String resultDirPath = entity.getLastResultDir();
+        if (resultDirPath == null && entity.getLastResultCsv() != null) {
+            resultDirPath = new File(entity.getLastResultCsv()).getParent();
+        }
+        if (resultDirPath == null) throw new Exception("无运行结果目录，请先运行仿真");
+        File resultDir = new File(resultDirPath);
+        if (!resultDir.exists()) throw new Exception("结果目录不存在: " + resultDir.getAbsolutePath());
+        File overviewFile = new File(resultDir, "overview.png");
+        Files.write(overviewFile.toPath(), pngData);
+        log.info("overview.png 已保存到结果目录: {}", overviewFile.getAbsolutePath());
+    }
+
+    public byte[] downloadSignalFile(String name, String version, String format, String projectName) throws Exception {
+        ProgramEntity entity = queryMeta(name, version, projectName);
+        if (entity == null) throw new Exception("程序不存在");
+        String resultDirPath = entity.getLastResultDir();
+        if (resultDirPath == null && entity.getLastResultCsv() != null) {
+            resultDirPath = new File(entity.getLastResultCsv()).getParent();
+        }
+        if (resultDirPath == null) throw new Exception("无运行结果目录，请先运行仿真");
+        File resultDir = new File(resultDirPath);
+        if (!resultDir.exists()) throw new Exception("结果目录不存在: " + resultDir.getAbsolutePath());
+
+        String fileName = "mat".equalsIgnoreCase(format) ? "signals.mat" : "signals.csv";
+        File signalFile = new File(resultDir, fileName);
+        if (!signalFile.exists()) throw new Exception("信号文件不存在: " + fileName + "，请先运行仿真");
+        return Files.readAllBytes(signalFile.toPath());
     }
 
     private byte[] downloadFromIginx(String storagePath, Integer chunkCount, String expectedMd5) throws Exception {
@@ -1018,8 +1200,8 @@ public class ProgramService {
         return file.getAbsolutePath();
     }
 
-    public Result<Map<String, Object>> results(String name, String version) {
-        ProgramEntity entity = queryMeta(name, version);
+    public Result<Map<String, Object>> results(String name, String version, String projectName) {
+        ProgramEntity entity = queryMeta(name, version, projectName);
         if (entity == null) return Result.error("程序不存在");
         Map<String, Object> data = new HashMap<>();
         data.put("status", entity.getStatus());
@@ -1063,8 +1245,8 @@ public class ProgramService {
         return Result.success(data);
     }
 
-    public Result<ProgramEntity> updateConfig(String name, String version, String configJson) {
-        ProgramEntity entity = queryMeta(name, version);
+    public Result<ProgramEntity> updateConfig(String name, String version, String configJson, String projectName) {
+        ProgramEntity entity = queryMeta(name, version, projectName);
         if (entity == null) return Result.error("程序不存在");
         try {
             mapper.readTree(configJson);
@@ -1097,6 +1279,41 @@ public class ProgramService {
         List<String> otherFiles = new ArrayList<>();
 
         scanProgramDir(programDir, programDir, modelFiles, scriptFiles, mapFiles, headerFiles, dllFiles, otherFiles);
+
+        // 如果所有文件都在同一个子目录下，则将 programDir 调整为该子目录
+        List<List<String>> allLists = Arrays.asList(modelFiles, scriptFiles, mapFiles, headerFiles, dllFiles, otherFiles);
+        String commonPrefix = null;
+        boolean hasCommonPrefix = true;
+        for (List<String> list : allLists) {
+            for (String path : list) {
+                int slashIdx = path.indexOf('/');
+                if (slashIdx < 0) {
+                    hasCommonPrefix = false;
+                    break;
+                }
+                String prefix = path.substring(0, slashIdx);
+                if (commonPrefix == null) {
+                    commonPrefix = prefix;
+                } else if (!commonPrefix.equals(prefix)) {
+                    hasCommonPrefix = false;
+                    break;
+                }
+            }
+            if (!hasCommonPrefix) break;
+        }
+        if (hasCommonPrefix && commonPrefix != null) {
+            File subDir = new File(programDir, commonPrefix);
+            if (subDir.isDirectory()) {
+                programDir = subDir;
+                result.put("programDir", programDir.getAbsolutePath());
+                String prefix = commonPrefix + "/";
+                for (List<String> list : allLists) {
+                    for (int i = 0; i < list.size(); i++) {
+                        list.set(i, list.get(i).substring(prefix.length()));
+                    }
+                }
+            }
+        }
 
         result.put("modelFiles", modelFiles);
         result.put("scriptFiles", scriptFiles);
