@@ -50,8 +50,11 @@
             <div class="bottom-sidebar-icon right-sidebar-icon" data-target="right" data-panel="algorithm" title="算法">
                 <span class="sidebar-tab-icon">🧮</span>
             </div>
-            <div class="bottom-sidebar-icon right-sidebar-icon active" data-target="right" data-panel="model" title="models_system">
+            <div class="bottom-sidebar-icon right-sidebar-icon" data-target="right" data-panel="model" title="models_system">
                 <span class="sidebar-tab-icon">📦</span>
+            </div>
+            <div class="bottom-sidebar-icon right-sidebar-icon active" data-target="right" data-panel="program" title="仿真程序">
+                <span class="sidebar-tab-icon">💻</span>
             </div>
         </div>
     </div>
@@ -156,6 +159,11 @@
     <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z" fill="#673AB7"/>
     <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z" fill="none" stroke="#512DA8" stroke-width="0.5"/>
   </symbol>
+  
+  <!-- 列表图标 - Material Design List -->
+  <symbol id="icon-list" viewBox="0 0 24 24">
+    <path d="M3 5h2v2H3V5zm0 6h2v2H3v-2zm0 6h2v2H3v-2zM7 5h14v2H7V5zm0 6h14v2H7v-2zm0 6h14v2H7v-2z" fill="#607D8B"/>
+  </symbol>
 </svg>
 
 <!-- 顶部导航栏（修复下拉标签嵌套，确保点击区域完整） -->
@@ -214,6 +222,14 @@
                 <ul class="dropdown-menu">
                     <li id="menu-simulation-archive">联合仿真</li>
                     <li id="menu-simulation-record">仿真记录</li>
+                </ul>
+            </span>
+        <span class="tab dropdown" id="programDropdown">
+                <span class="dropdown-trigger">程序</span>
+                <ul class="dropdown-menu">
+                    <li id="menu-program-upload">仿真程序上传</li>
+                    <li id="menu-program-management">程序管理</li>
+                    <li id="menu-program-run">运行结果</li>
                 </ul>
             </span>
         <span class="tab dropdown" id="analysisDropdown" style="display: none;">
@@ -467,6 +483,23 @@
         </div>
         
         <div class="ribbon-separator"></div>
+
+        <!-- 仿真程序组 -->
+        <div class="ribbon-group">
+            <div class="ribbon-group-title">仿真程序</div>
+            <div class="ribbon-buttons">
+                <button class="ribbon-btn" id="btn-program-upload">
+                    <svg class="ribbon-btn-icon"><use href="#icon-upload"></use></svg>
+                    <span class="ribbon-btn-text">上传</span>
+                </button>
+                <button class="ribbon-btn" id="btn-program-management">
+                    <svg class="ribbon-btn-icon"><use href="#icon-list"></use></svg>
+                    <span class="ribbon-btn-text">管理</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="ribbon-separator"></div>
         
         <!-- 可视化分析组 -->
         <div class="ribbon-group" style="display: none;">
@@ -583,6 +616,12 @@
             <model-archive-list id="modelArchiveList" style="display: none;"></model-archive-list>
             <!-- 算法档案列表组件 -->
             <algorithm-archive-list id="algorithmArchiveList" style="display: none;"></algorithm-archive-list>
+            <!-- 程序上传组件 -->
+            <program-upload id="programUpload" style="display: none;"></program-upload>
+            <!-- 程序管理组件 -->
+            <program-management id="programManagement" style="display: none;"></program-management>
+            <!-- 程序运行结果组件 -->
+            <program-run id="programRun" style="display: none;"></program-run>
         </div>
     </div>
 
@@ -601,12 +640,22 @@
             </div>
 
             <!-- 模型面板 -->
-            <div class="sidebar-panel right-sidebar-panel active" data-panel="model">
+            <div class="sidebar-panel right-sidebar-panel" data-panel="model">
                 <div class="sidebar-title">
                     <span>模型资产库</span>
                 </div>
                 <div class="tree" id="modelTree">
                     <div class="loading-placeholder">正在加载模型资产...</div>
+                </div>
+            </div>
+
+            <!-- 仿真程序面板 -->
+            <div class="sidebar-panel right-sidebar-panel active" data-panel="program">
+                <div class="sidebar-title">
+                    <span>仿真程序</span>
+                </div>
+                <div class="tree" id="programTree">
+                    <div class="loading-placeholder">正在加载仿真程序...</div>
                 </div>
             </div>
         </div>
@@ -649,6 +698,9 @@
 <script src="./components/data-archive-detail/data-archive-detail.js"></script>
 <script src="./components/model-archive-list/model-archive-list.js"></script>
 <script src="./components/algorithm-archive-list/algorithm-archive-list.js"></script>
+<script src="./components/program-management/program-management.js"></script>
+<script src="./components/program-upload/program-upload.js"></script>
+<script src="./components/program-run/program-run.js"></script>
 <script src="./components/user-manual/user-manual.js"></script>
     <script src="./components/user-management/user-management.js"></script>
     <script src="./components/permission-management/permission-management.js"></script>

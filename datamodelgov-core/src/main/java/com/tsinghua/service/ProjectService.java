@@ -160,6 +160,11 @@ public class ProjectService {
                     .filter(path -> accessiblePaths.stream().anyMatch(accessiblePath -> accessiblePath.startsWith(path)))
                     .distinct().collect(Collectors.toList()));
         }
+        if (StringUtils.hasText(project.getPrograms())) {
+            projectTree.setPrograms(Arrays.stream(project.getPrograms().split(","))
+                    .filter(path -> accessiblePaths.stream().anyMatch(accessiblePath -> accessiblePath.startsWith(path)))
+                    .distinct().collect(Collectors.toList()));
+        }
         return projectTree;
     }
 
@@ -343,6 +348,7 @@ public class ProjectService {
             case "datas": return project.getDatas();
             case "models": return project.getModels();
             case "algorithms": return project.getAlgorithms();
+            case "programs": return project.getPrograms();
             default: return null;
         }
     }
@@ -352,6 +358,7 @@ public class ProjectService {
             case "datas": project.setDatas(value); break;
             case "models": project.setModels(value); break;
             case "algorithms": project.setAlgorithms(value); break;
+            case "programs": project.setPrograms(value); break;
         }
     }
 

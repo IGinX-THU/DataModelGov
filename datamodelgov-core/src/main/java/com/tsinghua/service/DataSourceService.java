@@ -193,7 +193,8 @@ public class DataSourceService {
                                     String path = column.getPath();
                                     return path.startsWith(currentProject + ".") ||
                                             path.startsWith("models_system." + currentProject + ".") ||
-                                            path.startsWith("algorithms_system." + currentProject + ".");
+                                            path.startsWith("algorithms_system." + currentProject + ".") ||
+                                            path.startsWith("programs_system." + currentProject + ".");
                                 }
                                 return false;
                             })

@@ -112,6 +112,8 @@ document.addEventListener('DOMContentLoaded', function() {
             'dataArchiveDetail',
             'modelArchiveList',
             'algorithmArchiveList',
+            'programManagement',
+            'programRun',
             'userManual'
         ];
         
@@ -662,6 +664,21 @@ document.addEventListener('DOMContentLoaded', function() {
                         console.log('仿真记录菜单被点击');
                         clearWorkspace();
                         showSimulationRecord();
+                        return;
+                    case 'showProgramUpload':
+                        console.log('仿真程序上传菜单被点击');
+                        clearWorkspace();
+                        showComponent('programUpload');
+                        return;
+                    case 'showProgramManagement':
+                        console.log('程序管理菜单被点击');
+                        clearWorkspace();
+                        showComponent('programManagement');
+                        return;
+                    case 'showProgramRun':
+                        console.log('运行结果菜单被点击');
+                        clearWorkspace();
+                        showComponent('programRun');
                         return;
                     case 'showAlgorithmList':
                         console.log('算法管理菜单被点击');
@@ -1219,6 +1236,14 @@ document.addEventListener('DOMContentLoaded', function() {
                         clearWorkspace();
                         showSimulationRecord();
                         return;
+                    case 'showProgramUpload':
+                        clearWorkspace();
+                        showComponent('programUpload');
+                        return;
+                    case 'showProgramManagement':
+                        clearWorkspace();
+                        showComponent('programManagement');
+                        return;
                     default:
                         console.warn(`未知的按钮动作: ${action}`);
                 }
@@ -1272,6 +1297,17 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // 只使用公共的toast提示，不在工作区显示HTML提示
             // 上传组件内部已经调用了showMessage，这里不需要重复显示
+        });
+    }
+
+    // 监听程序上传成功事件
+    const programUpload = document.getElementById('programUpload');
+    if (programUpload) {
+        programUpload.addEventListener('upload-success', function(e) {
+            console.log('程序上传成功:', e.detail);
+            if (window.loadProjectTree) window.loadProjectTree();
+            const pm = document.getElementById('programManagement');
+            if (pm && pm.loadPrograms) pm.loadPrograms();
         });
     }
 
@@ -2194,7 +2230,9 @@ function showSimulationRecord() {
             'algorithmList',
             'associationRules',
             'visualAnalysis',
-            'simulationArchiveList'
+            'simulationArchiveList',
+            'programUpload',
+            'programRun'
         ];
 
         if (componentsRequiringProject.includes(componentId)) {
@@ -2209,7 +2247,7 @@ function showSimulationRecord() {
         }
 
         // 弹窗组件不需要清空工作区，但需要隐藏其他弹窗
-        const modalComponents = ['registerEmbedded', 'importData', 'modelUpload', 'modelDownload', 'modelEdit', 'algorithmUpload', 'algorithmDownload', 'algorithmEdit'];
+        const modalComponents = ['registerEmbedded', 'importData', 'modelUpload', 'modelDownload', 'modelEdit', 'algorithmUpload', 'algorithmDownload', 'algorithmEdit', 'programUpload'];
         if (modalComponents.includes(componentId)) {
             // 隐藏其他弹窗组件
             modalComponents.forEach(modalId => {
@@ -2389,6 +2427,11 @@ function showSimulationRecord() {
                 algorithmTree.innerHTML = '<div class="loading-placeholder">正在加载算法资产...</div>';
             }
 
+            const programTree = document.getElementById('programTree');
+            if (programTree) {
+                programTree.innerHTML = '<div class="loading-placeholder">正在加载仿真程序...</div>';
+            }
+
             // 使用新的API配置
             const result = await window.AppConfig.get('datasource', 'tree');
             console.log('🔄 loadDataSourceTree API响应:', result);
@@ -2399,6 +2442,8 @@ function showSimulationRecord() {
                 syncFilesystemToModelAssets(result.data);
                 // 同步filesystem数据到右侧算法资产库
                 syncFilesystemToAlgorithmAssets(result.data);
+                // 同步filesystem数据到右侧仿真程序树
+                syncFilesystemToProgramAssets(result.data);
             } else {
                 console.error('加载数据源树失败:', result.message);
                 document.getElementById('dataSourceTree').innerHTML = '<div class="error-placeholder">加载数据源失败</div>';
@@ -2748,6 +2793,39 @@ function showSimulationRecord() {
                             }
                         }
                         expandModelNodeInRightSidebar(nodeName, true);
+                    } else if (nodeType === 'program') {
+                        const programName = node.getAttribute('data-program-name');
+                        const programVersion = node.getAttribute('data-program-version');
+                        console.log('点击程序节点:', programName, programVersion);
+                        if (window.hideAllComponents) {
+                            window.hideAllComponents();
+                        }
+                        const oldEl = document.getElementById('programRun');
+                        const parent = oldEl ? oldEl.parentElement : null;
+                        if (oldEl) oldEl.remove();
+                        const programRun = document.createElement('program-run');
+                        programRun.id = 'programRun';
+                        programRun.style.display = 'none';
+                        if (parent) parent.appendChild(programRun);
+                        programRun.setAttribute('data-name', programName);
+                        programRun.setAttribute('data-version', programVersion);
+                        if (window.showComponent) {
+                            window.showComponent('programRun');
+                        }
+                        // 等待组件初始化完成后再加载数据
+                        const waitForInit = () => {
+                            if (programRun.charts && programRun.charts.length > 0) {
+                                if (programRun.loadProgramFiles) {
+                                    programRun.loadProgramFiles(programName, programVersion);
+                                }
+                                if (programRun.queryStatus) {
+                                    programRun.queryStatus(programName, programVersion);
+                                }
+                            } else {
+                                setTimeout(waitForInit, 100);
+                            }
+                        };
+                        setTimeout(waitForInit, 100);
                     }
                 }
             };
@@ -2779,7 +2857,7 @@ function showSimulationRecord() {
         // 过滤掉 models_system 和 algorithms_system 开头的数据源（这些数据源会移动到右侧显示）
         const filteredDataSources = dataSources.filter(item => {
             const path = typeof item === 'string' ? item : item.path;
-            return !path || (!path.startsWith('models_system') && !path.startsWith('algorithms_system'));
+            return !path || (!path.startsWith('models_system') && !path.startsWith('algorithms_system') && !path.startsWith('programs_system'));
         });
         console.log('🔄 过滤后的数据源数量:', filteredDataSources.length);
         
@@ -3259,6 +3337,136 @@ function showSimulationRecord() {
         }
     }
 
+    // 同步filesystem数据到仿真程序树
+    function syncFilesystemToProgramAssets(allData) {
+        try {
+            const filesystemData = allData.filter(item => {
+                const path = typeof item === 'string' ? item : item.path;
+                return path && path.startsWith('programs_system');
+            });
+
+            console.log('过滤出的programs_system数据:', filesystemData);
+
+            const programTree = document.getElementById('programTree');
+            if (!programTree) return;
+
+            if (filesystemData.length > 0) {
+                const treeMap = {};
+                filesystemData.forEach(item => {
+                    const path = typeof item === 'string' ? item : item.path;
+                    const parts = path.split('.');
+
+                    let current = treeMap;
+                    for (let i = 0; i < parts.length; i++) {
+                        const part = parts[i];
+                        if (!current[part]) {
+                            current[part] = {
+                                name: part,
+                                children: {},
+                                fullPath: parts.slice(0, i + 1).join('.'),
+                                isLeaf: i === parts.length - 1,
+                                level: i
+                            };
+                        }
+                        current = current[part].children;
+                    }
+                });
+
+                function createTreeNodes(nodes, container, level = 0) {
+                    Object.values(nodes).forEach(node => {
+                        const hasChildren = Object.keys(node.children).length > 0;
+
+                        const treeNode = document.createElement('div');
+                        treeNode.className = hasChildren ? 'tree-node expanded' : 'tree-node';
+                        treeNode.setAttribute('data-full-path', node.fullPath);
+                        treeNode.setAttribute('data-is-leaf', node.isLeaf.toString());
+
+                        if (hasChildren) {
+                            const icon = document.createElement('i');
+                            icon.className = 'icon folder-icon';
+                            treeNode.appendChild(icon);
+                        }
+
+                        const span = document.createElement('span');
+                        span.className = 'tree-node-text';
+                        span.textContent = node.name;
+                        treeNode.appendChild(span);
+
+                        if (hasChildren) {
+                            const childrenContainer = document.createElement('div');
+                            childrenContainer.className = 'tree-children';
+                            createTreeNodes(node.children, childrenContainer, level + 1);
+                            treeNode.appendChild(childrenContainer);
+                        }
+
+                        container.appendChild(treeNode);
+                    });
+                }
+
+                programTree.innerHTML = '';
+                createTreeNodes(treeMap, programTree);
+
+                const rightTreeNodes = programTree.querySelectorAll('.tree-node');
+                rightTreeNodes.forEach(node => {
+                    node.addEventListener('click', function(e) {
+                        e.stopPropagation();
+
+                        if (!this.closest('.right-sidebar')) {
+                            return;
+                        }
+
+                        programTree.querySelectorAll('.tree-node.active').forEach(n => n.classList.remove('active'));
+                        this.classList.add('active');
+
+                        if (this.querySelector('.tree-children')) {
+                            this.classList.toggle('expanded');
+                        }
+
+                        const fullPath = this.getAttribute('data-full-path');
+                        const isLeaf = this.getAttribute('data-is-leaf') === 'true';
+                        console.log('点击仿真程序节点:', fullPath, isLeaf);
+
+                        if (isLeaf && fullPath) {
+                            const parts = fullPath.split('.');
+                            if (parts.length >= 4 && parts[0] === 'programs_system') {
+                                const programName = parts[parts.length - 2];
+                                const programVersion = parts[parts.length - 1];
+
+                                const oldEl = document.getElementById('programRun');
+                                const parent = oldEl ? oldEl.parentElement : null;
+                                if (oldEl && parent) {
+                                    oldEl.remove();
+                                }
+                                const programRun = document.createElement('program-run');
+                                programRun.id = 'programRun';
+                                programRun.style.display = 'none';
+                                if (parent) parent.appendChild(programRun);
+                                programRun.setAttribute('data-name', programName);
+                                programRun.setAttribute('data-version', programVersion);
+
+                                clearWorkspace();
+                                showComponent('programRun');
+                                if (programRun.loadProgramFiles) {
+                                    programRun.loadProgramFiles(programName, programVersion);
+                                }
+                            }
+                        }
+                    });
+                });
+
+            } else {
+                programTree.innerHTML = '<div class="empty-placeholder">暂无仿真程序</div>';
+            }
+
+        } catch (error) {
+            console.error('同步filesystem数据到仿真程序树失败:', error);
+            const programTree = document.getElementById('programTree');
+            if (programTree) {
+                programTree.innerHTML = '<div class="error-placeholder">加载仿真程序失败</div>';
+            }
+        }
+    }
+
     // 将loadDataSourceTree函数暴露到全局作用域，供其他组件调用
     window.loadDataSourceTree = loadDataSourceTree;
     // 将loadProjectTree函数暴露到全局作用域，供其他组件调用
@@ -3282,7 +3490,12 @@ window.loadDataSourceTree = async function() {
         if (algorithmTree) {
             algorithmTree.innerHTML = '<div class="loading-placeholder">正在加载算法资产...</div>';
         }
-        
+
+        const programTree = document.getElementById('programTree');
+        if (programTree) {
+            programTree.innerHTML = '<div class="loading-placeholder">正在加载仿真程序...</div>';
+        }
+
         console.log('🔄 调用接口:', window.AppConfig.getApiUrl('datasource', 'tree'));
         const result = await window.AppConfig.get('datasource', 'tree');
         
@@ -3294,6 +3507,8 @@ window.loadDataSourceTree = async function() {
             syncFilesystemToModelAssets(result.data);
             // 同步filesystem数据到右侧算法资产库
             syncFilesystemToAlgorithmAssets(result.data);
+            // 同步filesystem数据到右侧仿真程序树
+            syncFilesystemToProgramAssets(result.data);
             console.log('🔄 数据源树重新加载完成');
         } else {
             console.error('加载数据源树失败:', result.message);
@@ -3650,6 +3865,31 @@ function bindProjectTreeEvents() {
                     }
                     // 同步右侧模型侧边栏选中状态（不再模拟点击，避免重复加载）
                     expandModelNodeInRightSidebar(nodeName, true);
+                } else if (nodeType === 'program') {
+                    const programName = node.getAttribute('data-program-name');
+                    const programVersion = node.getAttribute('data-program-version');
+                    console.log('点击程序节点:', programName, programVersion);
+                    if (window.hideAllComponents) {
+                        window.hideAllComponents();
+                    }
+                    const oldEl = document.getElementById('programRun');
+                    const parent = oldEl ? oldEl.parentElement : null;
+                    if (oldEl) oldEl.remove();
+                    const programRun = document.createElement('program-run');
+                    programRun.id = 'programRun';
+                    programRun.style.display = 'none';
+                    if (parent) parent.appendChild(programRun);
+                    programRun.setAttribute('data-name', programName);
+                    programRun.setAttribute('data-version', programVersion);
+                    if (window.showComponent) {
+                        window.showComponent('programRun');
+                    }
+                    if (programRun.loadProgramFiles) {
+                        programRun.loadProgramFiles(programName, programVersion);
+                    }
+                    if (programRun.queryStatus) {
+                        programRun.queryStatus(programName, programVersion);
+                    }
                 }
             }
     };
@@ -3755,6 +3995,27 @@ function renderAllProjectsTree(allProjects, currentProjectName, currentProjectTr
                         <div class="tree-node" data-node-type="data" data-full-path="0-datas-${index}">
                             <span class="tree-icon data-icon">📊</span>
                             <span class="tree-node-text">${data}</span>
+                        </div>
+                    `;
+                });
+                html += `</div></div>`;
+            }
+
+            if (currentProjectTree.programs && currentProjectTree.programs.length > 0) {
+                html += `
+                    <div class="tree-node expanded" data-node-type="folder" data-full-path="0-programs">
+                        <span class="tree-icon folder-icon">📂</span>
+                        <span class="tree-node-text">programs</span>
+                        <div class="tree-children">
+                `;
+                currentProjectTree.programs.forEach(program => {
+                    const parts = program.split('.');
+                    const programName = parts.length >= 4 ? parts[parts.length - 2] : (parts.length >= 2 ? parts[1] : program);
+                    const programVersion = parts.length >= 4 ? parts[parts.length - 1] : '';
+                    html += `
+                        <div class="tree-node" data-node-type="program" data-full-path="${program}" data-program-name="${programName}" data-program-version="${programVersion}">
+                            <span class="tree-icon program-icon">🔧</span>
+                            <span class="tree-node-text">${program}</span>
                         </div>
                     `;
                 });
