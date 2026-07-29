@@ -74,6 +74,7 @@ class ProgramRun extends HTMLElement {
     this.playBtn = playWrap.querySelector('button:nth-child(2)');
     this.nextBtn = playWrap.querySelector('button:nth-child(3)');
     this.speedBtns = Array.from(playWrap.querySelectorAll('span'));
+    this.exportBtn = root.querySelector('.footer-actions button:nth-child(1)');
 
     this.bindEvents();
     this.renderTab(this.activeTab);
@@ -121,6 +122,7 @@ class ProgramRun extends HTMLElement {
 
     const viewDetailBtn = this.shadowRoot.querySelector('.view-detail');
     if (viewDetailBtn) viewDetailBtn.addEventListener('click', () => this.showAlertDetail());
+    if (this.exportBtn) this.exportBtn.addEventListener('click', () => this.exportData());
 
     window.addEventListener('resize', () => this.charts.forEach(c => c && c.resize()));
   }
@@ -160,6 +162,25 @@ class ProgramRun extends HTMLElement {
     modal.appendChild(box);
     modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
     root.appendChild(modal);
+  }
+
+  exportData() {
+    if (!this.csvHeaders || !this.csvRows) {
+      alert('暂无数据可导出');
+      return;
+    }
+    const csvContent = [this.csvHeaders.join(',')].concat(
+      this.csvRows.map(r => r.join(','))
+    ).join('\n');
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'signals.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }
 
   renderTab(tab) {

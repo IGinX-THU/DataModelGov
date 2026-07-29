@@ -819,7 +819,7 @@ public class ProgramService {
             log.info("MATLAB 程序目录: 原始={}, 短路径={}", programDir, shortProgramDir);
             File wrapper = new File(taskDir, "run_wrapper.m");
             writeWrapper(wrapper, shortTaskDir, shortProgramDir, preRunScript, modelFile, stopTime, fixedStepParam, npCommandParam, loadPowerParam);
-            File oldCsv = new File(taskDir, "results.csv");
+            File oldCsv = new File(taskDir, "signals.csv");
             if (oldCsv.exists()) oldCsv.delete();
 
             ProcessBuilder pb = new ProcessBuilder();
@@ -854,10 +854,10 @@ public class ProgramService {
                 return;
             }
 
-            File csv = new File(taskDir, "results.csv");
+            File csv = new File(taskDir, "signals.csv");
             if (!csv.exists()) {
                 entity.setStatus("ERROR");
-                entity.setLastError("未生成 results.csv");
+                entity.setLastError("未生成 signals.csv");
                 saveProgramMetadata(entity);
                 return;
             }
@@ -944,7 +944,7 @@ public class ProgramService {
             sb.append("        end\n");
             sb.append("    end\n");
             sb.append("    T = array2table(colData, 'VariableNames', colNames);\n");
-            sb.append("    writetable(T, '").append(escape(taskDir)).append("/results.csv');\n");
+            sb.append("    writetable(T, '").append(escape(taskDir)).append("/signals.csv');\n");
             sb.append("catch ME\n");
             sb.append("    fid = fopen('").append(escape(taskDir)).append("/error.txt', 'w');\n");
             sb.append("    fprintf(fid, '%s\\n', ME.message);\n");
