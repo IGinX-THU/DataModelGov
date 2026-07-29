@@ -119,7 +119,47 @@ class ProgramRun extends HTMLElement {
       this.timeCursor.releasePointerCapture(e.pointerId);
     });
 
+    const viewDetailBtn = this.shadowRoot.querySelector('.view-detail');
+    if (viewDetailBtn) viewDetailBtn.addEventListener('click', () => this.showAlertDetail());
+
     window.addEventListener('resize', () => this.charts.forEach(c => c && c.resize()));
+  }
+
+  showAlertDetail() {
+    const root = this.shadowRoot;
+    let modal = root.querySelector('.alert-modal');
+    if (modal) modal.remove();
+    modal = document.createElement('div');
+    modal.className = 'alert-modal';
+    modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    const box = document.createElement('div');
+    box.style.cssText = 'background:#0f172a;border:1px solid #24344D;border-radius:8px;padding:24px;max-width:500px;max-height:400px;overflow:auto;color:#e5e7eb;font-size:13px;';
+    const title = document.createElement('div');
+    title.style.cssText = 'font-size:15px;font-weight:600;margin-bottom:16px;color:#f59e0b;';
+    title.textContent = '告警详情';
+    box.appendChild(title);
+    const list = root.querySelector('.alert-list');
+    if (list && list.querySelector('.alert-empty')) {
+      const empty = document.createElement('div');
+      empty.style.cssText = 'color:#6b7280;text-align:center;padding:20px;';
+      empty.textContent = '当前无告警记录';
+      box.appendChild(empty);
+    } else if (list) {
+      Array.from(list.querySelectorAll('.alert')).forEach(a => {
+        const item = document.createElement('div');
+        item.style.cssText = 'padding:8px 0;border-bottom:1px solid #24344D;';
+        item.textContent = a.textContent;
+        box.appendChild(item);
+      });
+    }
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = '关闭';
+    closeBtn.style.cssText = 'margin-top:16px;padding:6px 16px;background:#1e293b;border:1px solid #24344D;border-radius:4px;color:#e5e7eb;cursor:pointer;';
+    closeBtn.addEventListener('click', () => modal.remove());
+    box.appendChild(closeBtn);
+    modal.appendChild(box);
+    modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+    root.appendChild(modal);
   }
 
   renderTab(tab) {
@@ -457,9 +497,17 @@ class ProgramRun extends HTMLElement {
         { icon: '🛢', name: '滑油系统', csvs: ['OilBoundary_1', 'OilBoundary_2', 'OilBoundary_3', 'OilBoundary_4'] },
         { icon: '🌬', name: '空气系统', csvs: ['Pt1', 'Pt3', 'Pt45', 'Pt5', 'Tt1', 'Tt3', 'Tt45', 'AirBoundaryTP16_1'] },
         { icon: '🔔', name: '信号与告警', csvs: [] },
+        { icon: '⚖', name: '单位一致性检查', csvs: [] },
       ];
       statusTbody.innerHTML = modules.map(m => {
         if (m.csvs.length === 0) {
+          if (m.name === '单位一致性检查') {
+            const issues = this.checkUnitConsistency(colIdx, rows);
+            const tag = issues.length > 0 ? 'warn' : 'ok';
+            const tagText = issues.length > 0 ? `${issues.length}项待确认` : '通过';
+            const desc = issues.length > 0 ? issues.join('; ') : '单位一致';
+            return `<tr><td class="sys-name">${m.icon} ${m.name}</td><td><span class="status-tag ${tag}">${tagText}</span></td><td class="status-desc">${desc}</td></tr>`;
+          }
           const isAlert = m.name === '信号与告警';
           const tag = isAlert ? (alerts.length > 0 ? 'warn' : 'ok') : 'warn';
           const tagText = isAlert ? (alerts.length > 0 ? `${alerts.length}项告警` : '正常') : '未接线';
@@ -471,6 +519,45 @@ class ProgramRun extends HTMLElement {
         return `<tr><td class="sys-name">${m.icon} ${m.name}</td><td><span class="status-tag ${connected ? 'ok' : 'warn'}">${tagText}</span></td><td class="status-desc">${connected ? '数据正常' : '信号未接出'}</td></tr>`;
       }).join('');
     }
+  }
+
+  checkUnitConsistency(colIdx, rows) {
+    const issues = [];
+    const UNIT_EXPECT = {
+      'Pt1': { unit: 'Pa', min: 50000, max: 500000 },
+      'Pt3': { unit: 'Pa', min: 500000, max: 5000000 },
+      'Pt45': { unit: 'Pa', min: 100000, max: 2000000 },
+      'Pt5': { unit: 'Pa', min: 50000, max: 500000 },
+      'Tt1': { unit: 'K', min: 200, max: 400 },
+      'Tt3': { unit: 'K', min: 300, max: 1200 },
+      'Tt45': { unit: 'K', min: 500, max: 1500 },
+      'HPC_T4_out': { unit: 'K', min: 500, max: 2000 },
+      'HPC_P4_out1': { unit: 'Pa', min: 500000, max: 5000000 },
+      'HPC_T5_out1': { unit: 'K', min: 300, max: 1200 },
+      'OilBoundary_1': { unit: 'K', min: 200, max: 500 },
+      'OilBoundary_2': { unit: 'K', min: 200, max: 500 },
+      'OilBoundary_3': { unit: 'K', min: 200, max: 500 },
+      'OilBoundary_4': { unit: 'Pa', min: 50000, max: 500000 },
+    };
+    Object.keys(UNIT_EXPECT).forEach(col => {
+      if (colIdx[col] == null) return;
+      const ci = colIdx[col];
+      const expect = UNIT_EXPECT[col];
+      const firstVal = parseFloat(rows[0][ci]);
+      const lastVal = parseFloat(rows[rows.length - 1][ci]);
+      const vals = [firstVal, lastVal];
+      for (const v of vals) {
+        if (isNaN(v)) {
+          issues.push(`${col} 含非数值`);
+          break;
+        }
+        if (v < expect.min || v > expect.max) {
+          issues.push(`${col} 值${v.toFixed(1)}超出${expect.unit}预期范围[${expect.min},${expect.max}]`);
+          break;
+        }
+      }
+    });
+    return issues;
   }
 
   updateStatusUI(status, errorMsg) {
