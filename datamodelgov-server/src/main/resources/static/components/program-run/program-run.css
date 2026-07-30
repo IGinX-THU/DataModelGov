@@ -140,6 +140,7 @@ footer .play { margin-top:0; flex-shrink:0; }
 .var-item:hover { color:var(--text); }
 .var-item input[type="checkbox"] { width:12px; height:12px; accent-color:#2563eb; cursor:pointer; }
 .var-item .var-name { font-size:10px; }
+.var-item .var-cn { font-size:10px; color:var(--muted); }
 .var-item .var-unit { font-size:9px; color:#6b7280; margin-left:auto; }
 
 /* 可滚动图表区域 */

@@ -796,80 +796,70 @@ class ProgramRun extends HTMLElement {
 
     this.activeTab = tab;
 
-    this.customVarMode = false;
-
     this.tabs.forEach(t => t.classList.toggle('active', t.textContent.trim() === tab));
 
     this.flow.style.display = tab === '综合总览' ? '' : 'none';
 
     this.renderVarTree();
 
-    const cfgs = CHARTS_BY_TAB[tab] || CHARTS_BY_TAB['综合总览'];
-
-    this.charts.forEach(c => c.dispose());
-
-    this.charts = [];
-
-    this.currentConfigs = cfgs;
-
-    this.currentDatas = cfgs.map(buildChartData);
-
-    if (this.csvHeaders && this.csvRows) {
-
-      this.applyCsvToCharts(this.csvHeaders, this.csvRows);
-
+    if (tab === '信号与告警') {
+      this.selectedVars = new Set();
+      this.renderAlertChart();
+      return;
     }
 
+    this.selectAllVarsForTab(tab);
+
+    this.renderCustomCharts();
+
+  }
+
+  renderAlertChart() {
+    const cfgs = CHARTS_BY_TAB['信号与告警'] || [];
+    this.charts.forEach(c => c.dispose());
+    this.charts = [];
+    this.currentConfigs = cfgs;
+    this.currentDatas = cfgs.map(buildChartData);
+    if (this.csvHeaders && this.csvRows) {
+      this.applyCsvToCharts(this.csvHeaders, this.csvRows);
+    }
     this.chartGrid.innerHTML = '';
-
     this.chartGrid.classList.toggle('single', cfgs.length === 1);
-
     this.chartGrid.classList.remove('chart-scroll');
-
-
-
     cfgs.forEach((cfg, i) => {
-
       const card = document.createElement('div');
-
       card.className = 'chart-card';
-
       const head = document.createElement('div');
-
       head.className = 'chart-head';
-
       const title = document.createElement('span');
-
       title.className = 'chart-title';
-
       title.textContent = cfg.title;
-
       head.appendChild(title);
-
       card.appendChild(head);
-
       const dom = document.createElement('div');
-
       dom.className = 'chart-dom';
-
       card.appendChild(dom);
-
       this.chartGrid.appendChild(card);
-
       buildLegend(card, cfg);
-
-
-
       const chart = this.echarts.init(dom, null, { renderer: 'canvas', backgroundColor: 'transparent' });
-
       chart.setOption(buildEChartsOptions(this.currentDatas[i], this.currentTime), true);
-
       this.charts.push(chart);
-
     });
-
     requestAnimationFrame(() => this.charts.forEach(c => c && c.resize()));
+  }
 
+  selectAllVarsForTab(tab) {
+    this.selectedVars = new Set();
+    VARIABLE_CATALOG.forEach((grp, gi) => {
+      if (grp.tab !== tab) return;
+      grp.vars.forEach((v, vi) => {
+        this.selectedVars.add(`${gi}_${vi}`);
+      });
+    });
+    const root = this.shadowRoot;
+    if (root) {
+      root.querySelectorAll('.var-tree input[type="checkbox"]').forEach(cb => { cb.checked = true; });
+    }
   }
 
 
@@ -989,9 +979,11 @@ class ProgramRun extends HTMLElement {
       grp.vars.forEach((v, vi) => {
         const id = `var_${gi}_${vi}`;
         const checked = this.selectedVars && this.selectedVars.has(`${gi}_${vi}`) ? 'checked' : '';
+        const cn = v.cnName ? `<span class="var-cn">${v.cnName}</span>` : '';
         html += `<li class="var-item" data-gi="${gi}" data-vi="${vi}">
           <input type="checkbox" id="${id}" data-gi="${gi}" data-vi="${vi}" ${checked}>
           <span class="var-name">${v.name}</span>
+          ${cn}
           <span class="var-unit">${v.unit || ''}</span>
         </li>`;
       });
@@ -1029,8 +1021,8 @@ class ProgramRun extends HTMLElement {
       this.selectedVars.add(`${gi}_${vi}`);
     });
     if (this.selectedVars.size === 0) {
-      this.customVarMode = false;
-      this.renderTab(this.activeTab);
+      this.selectAllVarsForTab(this.activeTab);
+      this.renderCustomCharts();
       return;
     }
     this.customVarMode = true;
@@ -1046,11 +1038,12 @@ class ProgramRun extends HTMLElement {
       if (!grp || !grp.vars[vi]) return;
       const v = grp.vars[vi];
       const series = v.csvs.map((csv, si) => {
-        const subName = v.csvs.length > 1 ? v.csvs[si] : v.name;
-        return sig(subName, VAR_COLORS[colorIdx % VAR_COLORS.length], { csv });
+        const subName = v.csvs.length > 1 ? csv : (v.cnName || v.name);
+        const color = VAR_COLORS[colorIdx % VAR_COLORS.length];
+        colorIdx++;
+        return sig(subName, color, { csv });
       });
-      colorIdx += v.csvs.length;
-      cfgs.push(chart(v.name, null, null, ...series));
+      cfgs.push(chartUnit(v.cnName || v.name, v.unit, ...series));
     });
     this.charts.forEach(c => c.dispose());
     this.charts = [];
@@ -1434,27 +1427,28 @@ class ProgramRun extends HTMLElement {
 
       if (cfg.title === '告警统计') {
 
-        const ALERT_LIMITS = [
-
-          { csv: 'HPC_T4_out', danger: 1400, warn: 1200 },
-
-          { csv: 'Pt3', danger: 3500000, warn: 3000000 },
-
-          { csv: 'Pt45', danger: 1000000, warn: 800000 },
-
+        const ALERT_ITEMS = [
+          { csv: 'T45', limitCsv: 'T45Max' },
+          { csv: 'Mkp', limitCsv: 'MkpMax' },
+          { csv: 'Ng', limitCsv: 'NgMax' },
         ];
+
+        const limits = ALERT_ITEMS.map(al => {
+          if (colIdx[al.csv] == null || colIdx[al.limitCsv] == null) return null;
+          const limitVal = parseFloat(rows[rows.length - 1][colIdx[al.limitCsv]]);
+          if (!limitVal || !isFinite(limitVal)) return null;
+          return { csv: al.csv, limit: limitVal };
+        }).filter(Boolean);
 
         const dangerCounts = timeData.map((t, i) => {
 
           let c = 0;
 
-          for (const al of ALERT_LIMITS) {
-
-            if (colIdx[al.csv] == null) continue;
+          for (const al of limits) {
 
             const v = parseFloat(rows[i][colIdx[al.csv]]);
 
-            if (v >= al.danger) c++;
+            if (v >= al.limit) c++;
 
           }
 
@@ -1466,13 +1460,11 @@ class ProgramRun extends HTMLElement {
 
           let c = 0;
 
-          for (const al of ALERT_LIMITS) {
-
-            if (colIdx[al.csv] == null) continue;
+          for (const al of limits) {
 
             const v = parseFloat(rows[i][colIdx[al.csv]]);
 
-            if (v >= al.warn && v < al.danger) c++;
+            if (v >= al.limit * 0.9 && v < al.limit) c++;
 
           }
 
@@ -1498,7 +1490,7 @@ class ProgramRun extends HTMLElement {
 
       return {
 
-        yMin: cfg.yMin, yMax: cfg.yMax, y2Min: cfg.y2Min, y2Max: cfg.y2Max,
+        yMin: cfg.yMin, yMax: cfg.yMax, y2Min: cfg.y2Min, y2Max: cfg.y2Max, unit: cfg.unit || null,
 
         seriesData: cfg.series.map(s => {
 
@@ -1540,17 +1532,17 @@ class ProgramRun extends HTMLElement {
 
     const kpiMap = [
 
-      { name: 'Np', csv: null, unit: 'rpm', fmt: v => v ? v.toLocaleString() : '--' },
+      { name: 'Np', csv: 'Np', unit: 'rpm', fmt: v => v ? v.toLocaleString() : '--' },
 
-      { name: 'Ng', csv: null, unit: 'rpm', fmt: v => v ? v.toLocaleString() : '--' },
+      { name: 'Ng', csv: 'Ng', unit: 'rpm', fmt: v => v ? v.toLocaleString() : '--' },
 
-      { name: 'T45', csv: 'HPC_T4_out', unit: 'K', fmt: v => v ? v.toFixed(1) : '--' },
+      { name: 'T45', csv: 'T45', unit: 'K', fmt: v => v ? v.toFixed(1) : '--' },
 
-      { name: 'Mkp', csv: null, unit: 'N·m', fmt: v => v ? v.toFixed(1) : '--' },
+      { name: 'Mkp', csv: 'Mkp', unit: 'N·m', fmt: v => v ? v.toFixed(1) : '--' },
 
-      { name: 'Wf', csv: null, unit: 'kg/s', fmt: v => v ? v.toFixed(4) : '--' },
+      { name: 'Wf', csv: 'Wf', unit: 'kg/s', fmt: v => v ? v.toFixed(4) : '--' },
 
-      { name: 'Error', csv: null, unit: '-', fmt: v => v != null ? v.toExponential(2) : '--' }
+      { name: 'Error', csv: 'errmax', unit: '-', fmt: v => v != null ? v.toExponential(2) : '--' }
 
     ];
 
@@ -1576,11 +1568,11 @@ class ProgramRun extends HTMLElement {
 
     const ALERT_LIMITS = [
 
-      { name: 'T45', csv: 'HPC_T4_out', warn: 1200, danger: 1400, unit: 'K', desc: '燃气涡轮后温度超限' },
+      { name: 'T45', csv: 'T45', limitCsv: 'T45Max', unit: 'K', desc: '燃气涡轮后温度超限' },
 
-      { name: 'Pt3', csv: 'Pt3', warn: 3000000, danger: 3500000, unit: 'Pa', desc: '压气机出口压力超限' },
+      { name: 'Mkp', csv: 'Mkp', limitCsv: 'MkpMax', unit: 'N·m', desc: '动力涡轮扭矩超限' },
 
-      { name: 'Pt45', csv: 'Pt45', warn: 800000, danger: 1000000, unit: 'Pa', desc: '涡轮后压力超限' },
+      { name: 'Ng', csv: 'Ng', limitCsv: 'NgMax', unit: 'rpm', desc: '燃气涡轮转速超限' },
 
     ];
 
@@ -1588,21 +1580,21 @@ class ProgramRun extends HTMLElement {
 
       if (!al.csv || colIdx[al.csv] == null) return;
 
+      if (!al.limitCsv || colIdx[al.limitCsv] == null) return;
+
       const colI = colIdx[al.csv];
+
+      const limitVal = parseFloat(rows[rows.length - 1][colIdx[al.limitCsv]]);
+
+      if (!limitVal || !isFinite(limitVal)) return;
 
       for (let i = 0; i < rows.length; i++) {
 
         const v = parseFloat(rows[i][colI]);
 
-        if (v >= al.danger) {
+        if (v >= limitVal) {
 
-          alerts.push({ time: timeData[i], level: '一级', desc: `${al.name} ${al.desc} — ${al.name}=${v.toFixed(1)}${al.unit} ≥ ${al.danger}${al.unit}` });
-
-          break;
-
-        } else if (v >= al.warn) {
-
-          alerts.push({ time: timeData[i], level: '二级', desc: `${al.name} ${al.desc} — ${al.name}=${v.toFixed(1)}${al.unit} ≥ ${al.warn}${al.unit}` });
+          alerts.push({ time: timeData[i], level: '一级', desc: `${al.name} ${al.desc} — ${al.name}=${v.toFixed(1)}${al.unit} ≥ ${limitVal}${al.unit}` });
 
           break;
 
@@ -1652,15 +1644,15 @@ class ProgramRun extends HTMLElement {
 
       const modules = [
 
-        { icon: '🖥', name: '控制系统', csvs: [] },
+        { icon: '🖥', name: '控制系统', csvs: ['CLP', 'Np', 'Ng', 'T45', 'Mkp', 'Ngc', 'Wf_cmd', 'NpDem'] },
 
-        { icon: '⛽', name: '燃油系统', csvs: [] },
+        { icon: '⛽', name: '燃油系统', csvs: ['WfProxyCmd', 'Wf_kgps', 'Wf', 'Wf_cmd'] },
 
-        { icon: '⚙', name: '发动机总体性能', csvs: ['HPC_T4_out', 'HPC_P4_out1', 'HPC_T5_out1'] },
+        { icon: '⚙', name: '发动机总体性能', csvs: ['Pt1', 'Tt1', 'Pt3', 'Tt3', 'Pt45', 'Tt45', 'Pt5', 'Tt5', 'HPC_T4_out', 'HPC_P4_out1', 'HPC_T5_out1', 'Np', 'Ng', 'Mkp'] },
 
-        { icon: '🛢', name: '滑油系统', csvs: ['OilBoundary_1', 'OilBoundary_2', 'OilBoundary_3', 'OilBoundary_4'] },
+        { icon: '🛢', name: '滑油系统', csvs: ['Q_BearingA', 'Q_BearingB', 'Q_AirOil', 'Q_Accessory', 'QA', 'QB', 'PA', 'PB', 'ToutA', 'ToutB', 'QretA', 'QretB', 'QgenA', 'QgenB', 'FuelOilCooler_Q', 'FuelOilCooler_FuelTout', 'AirOilCooler_Pin_Pa', 'AirOilCooler_Pout_Pa', 'FuelOilCooler_Pin_Pa', 'FuelOilCooler_Pout_Pa', 'CavityState8_PaK_1', 'SealLeak4_kgps_1', 'VentFlow3_kgps_1', 'SealDeltaP4_Pa_1', 'VentDeltaP2_Pa_1', 'MassResidual2_kgps_1', 'FuelOil2_ToutC_QkW_1', 'AirOil2_ToutC_QkW_1'] },
 
-        { icon: '🌬', name: '空气系统', csvs: ['Pt1', 'Pt3', 'Pt45', 'Pt5', 'Tt1', 'Tt3', 'Tt45', 'AirBoundaryTP16_1'] },
+        { icon: '🌬', name: '空气系统', csvs: ['Pt1', 'Tt1', 'Pt3', 'Tt3', 'Pt45', 'Tt45', 'Pt5', 'Tt5', 'G01_GT1_IN_W_kgps', 'G02_GT1_OUT_W_kgps', 'G03_GT2_IN_W_kgps', 'G04_GT2_OUT_W_kgps', 'G05_PT1_IN_ROOT_W_kgps', 'G06_PT1_OUT_ROOT_W_kgps', 'G07_PT2_IN_TIP_W_kgps', 'G08_PT2_OUT_TIP_W_kgps'] },
 
         { icon: '🔔', name: '信号与告警', csvs: ['HPC_T4_out', 'Pt3', 'Pt45'] },
 
@@ -1686,11 +1678,7 @@ class ProgramRun extends HTMLElement {
 
           }
 
-          const tag = 'warn';
-
-          const tagText = '未接线';
-
-          return `<tr><td class="sys-name">${m.icon} ${m.name}</td><td><span class="status-tag ${tag}">${tagText}</span></td><td class="status-desc">信号未接出</td></tr>`;
+          return `<tr><td class="sys-name">${m.icon} ${m.name}</td><td><span class="status-tag warn">未接线</span></td><td class="status-desc">信号未接出</td></tr>`;
 
         }
 
@@ -1956,6 +1944,22 @@ class ProgramRun extends HTMLElement {
 
 
 
+        const lastModelFile = data.params && data.params.modelFile
+
+          ? data.params.modelFile : null;
+
+        if (lastModelFile && data.modelFiles.includes(lastModelFile)) {
+
+          modelFileSelect.value = lastModelFile;
+
+        } else if (data.modelFiles.length > 0) {
+
+          modelFileSelect.value = data.modelFiles[0];
+
+        }
+
+
+
         const updateModelTag = () => {
 
           const tag = root.querySelector('.model-tag');
@@ -2033,109 +2037,128 @@ const VARIABLE_CATALOG = [
   {
     group: '综合总览', tab: '综合总览',
     vars: [
-      { name: 'NpDem+Np_fbk', csvs: ['NpDem', 'Np'], unit: 'rpm' },
-      { name: 'Ng_fbk', csvs: ['Ng'], unit: 'rpm' },
-      { name: 'T45_fbk', csvs: ['T45', 'HPC_T4_out'], unit: 'K' },
-      { name: 'Mkp_fbk', csvs: ['Mkp'], unit: 'N·m' },
-      { name: 'Wfcmd', csvs: ['Wf_cmd', 'Wf'], unit: 'kg/s' },
+      { name: 'NpDem+Np_fbk', cnName: '动力涡轮转速指令+反馈', csvs: ['NpDem', 'Np'], unit: 'rpm' },
+      { name: 'Ng_fbk', cnName: '燃气涡轮转速反馈', csvs: ['Ng'], unit: 'rpm' },
+      { name: 'T45_fbk', cnName: '燃气涡轮后温度反馈', csvs: ['T45', 'HPC_T4_out'], unit: 'K' },
+      { name: 'Mkp_fbk', cnName: '动力涡轮扭矩反馈', csvs: ['Mkp'], unit: 'N·m' },
+      { name: 'Wfcmd', cnName: '燃油流量指令', csvs: ['Wf_cmd', 'Wf'], unit: 'kg/s' },
     ]
   },
   {
     group: '控制系统', tab: '控制',
     vars: [
-      { name: 'CLP', csvs: ['CLP'], unit: '-' },
-      { name: 'NpDem+Np_fbk', csvs: ['NpDem', 'Np'], unit: 'rpm' },
-      { name: 'Ng_fbk', csvs: ['Ng'], unit: 'rpm' },
-      { name: 'T45_fbk', csvs: ['T45', 'HPC_T4_out'], unit: 'K' },
-      { name: 'Mkp_fbk', csvs: ['Mkp'], unit: 'N·m' },
-      { name: 'Ngc', csvs: ['Ngc'], unit: 'rpm' },
-      { name: 'Wfcmd', csvs: ['Wf_cmd', 'Wf'], unit: 'kg/s' },
+      { name: 'CLP', cnName: '综合控制逻辑', csvs: ['CLP'], unit: '-' },
+      { name: 'NpDem+Np_fbk', cnName: '动力涡轮转速指令+反馈', csvs: ['NpDem', 'Np'], unit: 'rpm' },
+      { name: 'NgMax+Ng_fbk', cnName: '燃气涡轮转速限制+反馈', csvs: ['NgMax', 'Ng'], unit: 'rpm' },
+      { name: 'T45Max+T45_fbk', cnName: '燃气涡轮后温度限制+反馈', csvs: ['T45Max', 'T45'], unit: 'K' },
+      { name: 'MkpMax+Mkp_fbk', cnName: '动力涡轮扭矩限制+反馈', csvs: ['MkpMax', 'Mkp'], unit: 'N·m' },
+      { name: 'Ngc', cnName: '燃气涡轮参考转速', csvs: ['Ngc'], unit: 'rpm' },
+      { name: 'Wfcmd', cnName: '燃油流量指令', csvs: ['Wf_cmd', 'Wf'], unit: 'kg/s' },
     ]
   },
   {
     group: '发动机总体性能', tab: '总体性能',
     vars: [
-      { name: 'Wf', csvs: ['Wf', 'Wf_kgps'], unit: 'kg/s' },
-      { name: 'Pt1/P1', csvs: ['Pt1', 'P1'], unit: 'Pa' },
-      { name: 'Tt1/T1', csvs: ['Tt1', 'T1'], unit: 'K' },
-      { name: 'Pt3', csvs: ['Pt3', 'Pt3_fbk'], unit: 'Pa' },
-      { name: 'Tt3', csvs: ['Tt3', 'Tt3_fbk'], unit: 'K' },
-      { name: 'Pt45/P45', csvs: ['Pt45', 'P45'], unit: 'Pa' },
-      { name: 'Tt45/T45', csvs: ['Tt45', 'T45', 'HPC_T4_out'], unit: 'K' },
-      { name: 'Pt5/P5', csvs: ['Pt5', 'P5'], unit: 'Pa' },
-      { name: 'Tt5/T5', csvs: ['Tt5', 'T5'], unit: 'K' },
-      { name: 'Np', csvs: ['Np'], unit: 'rpm' },
-      { name: 'Ng', csvs: ['Ng'], unit: 'rpm' },
-      { name: 'Mkp', csvs: ['Mkp'], unit: 'N·m' },
-      { name: 'Pt4/P4', csvs: ['HPC_P4_out1', 'P4'], unit: 'Pa' },
-      { name: 'Tt4/T4', csvs: ['HPC_T4_out', 'T4'], unit: 'K' },
+      { name: 'Wf', cnName: '实际燃油流量', csvs: ['Wf', 'Wf_kgps'], unit: 'kg/s' },
+      { name: 'Power', cnName: '负载/输出功率指令', csvs: ['Power'], unit: 'W' },
+      { name: 'HP_PowerExtract', cnName: '高压轴功率提取保留槽', csvs: ['HP_PowerExtract'], unit: 'W' },
+      { name: 'Pt1/P1', cnName: '发动机进口总压', csvs: ['Pt1', 'P1'], unit: 'Pa' },
+      { name: 'Tt1/T1', cnName: '发动机进口总温', csvs: ['Tt1', 'T1'], unit: 'K' },
+      { name: 'Pt3', cnName: '压气机出口总压', csvs: ['Pt3', 'Pt3_fbk'], unit: 'Pa' },
+      { name: 'Tt3', cnName: '压气机出口总温', csvs: ['Tt3', 'Tt3_fbk'], unit: 'K' },
+      { name: 'Pt45/P45', cnName: '燃气涡轮后总压', csvs: ['Pt45', 'P45'], unit: 'Pa' },
+      { name: 'Tt45/T45', cnName: '燃气涡轮后总温', csvs: ['Tt45', 'T45', 'HPC_T4_out'], unit: 'K' },
+      { name: 'Pt5/P5', cnName: '动力涡轮出口总压', csvs: ['Pt5', 'P5'], unit: 'Pa' },
+      { name: 'Tt5/T5', cnName: '动力涡轮出口总温', csvs: ['Tt5', 'T5'], unit: 'K' },
+      { name: 'Np', cnName: '动力涡轮机械转速', csvs: ['Np'], unit: 'rpm' },
+      { name: 'Ng', cnName: '燃气涡轮机械转速', csvs: ['Ng'], unit: 'rpm' },
+      { name: 'SM_HPC', cnName: '高压压气机裕度类监测量', csvs: ['SM_HPC'], unit: '-' },
+      { name: 'Mkp', cnName: '动力涡轮扭矩', csvs: ['Mkp'], unit: 'N·m' },
+      { name: 'HPC_u6', cnName: 'HPC附加监测量', csvs: ['HPC_u6'], unit: '-' },
+      { name: 'HPT_y16', cnName: 'HPT附加监测量', csvs: ['HPT_y16'], unit: '-' },
+      { name: 'LPT_y16', cnName: 'LPT附加监测量', csvs: ['LPT_y16'], unit: '-' },
+      { name: 'Error', cnName: '总体收敛误差最大值', csvs: ['errmax'], unit: '-' },
+      { name: 'Pt4/P4', cnName: '燃烧室出口总压', csvs: ['HPC_P4_out1', 'P4'], unit: 'Pa' },
+      { name: 'Tt4/T4', cnName: '燃烧室出口总温', csvs: ['HPC_T4_out', 'T4'], unit: 'K' },
     ]
   },
   {
     group: '燃油模块', tab: '燃油',
     vars: [
-      { name: 'WfProxyCmd+Wf_kgps', csvs: ['WfProxyCmd', 'Wf_kgps'], unit: 'kg/s' },
-      { name: 'Wfcmd', csvs: ['Wf_cmd'], unit: 'kg/s' },
-      { name: 'Wf', csvs: ['Wf', 'Wf_kgps'], unit: 'kg/s' },
-      { name: 'Oil_AirTemp_C', csvs: ['Oil_AirTemp_C'], unit: '℃' },
+      { name: 'WfProxyCmd+Wf_kgps', cnName: '计量燃油指令', csvs: ['WfProxyCmd', 'Wf_kgps'], unit: 'kg/s' },
+      { name: 'Wfcmd', cnName: '燃油流量指令', csvs: ['Wf_cmd'], unit: 'kg/s' },
+      { name: 'Wf', cnName: '计量燃油质量流量', csvs: ['Wf', 'Wf_kgps'], unit: 'kg/s' },
+      { name: 'xm', cnName: '计量活门位移输出', csvs: ['xm'], unit: 'm' },
+      { name: 'xd', cnName: '导叶活门位移输出', csvs: ['xd'], unit: 'm' },
+      { name: 'Δp_fuel', cnName: '油压/计量压差', csvs: ['dp_fuel'], unit: 'MPa' },
+      { name: 'lock_meter', cnName: '计量活门闭锁信号', csvs: ['lock_meter'], unit: '0/1' },
+      { name: 'xm_ref_sb', cnName: '计量位移台架激励', csvs: ['xm_ref_sb'], unit: 'm' },
+      { name: 'xm_cmd_m', cnName: '计量位移联仿指令', csvs: ['xm_cmd_m'], unit: 'm' },
+      { name: 'lock_igv', cnName: '导叶活门闭锁信号', csvs: ['lock_igv'], unit: '0/1' },
+      { name: 'xd_cmd', cnName: '导叶位移指令', csvs: ['xd_cmd'], unit: 'm' },
+      { name: 'shutdown', cnName: '停车信号', csvs: ['shutdown'], unit: '0/1' },
+      { name: 'Oil_AirTemp_C', cnName: '空滑有效空气温度', csvs: ['Oil_AirTemp_C'], unit: '℃' },
     ]
   },
   {
     group: '滑油模块', tab: '滑油',
     vars: [
-      { name: 'Ng_fbk', csvs: ['Ng'], unit: 'rpm' },
-      { name: 'Np_fbk', csvs: ['Np'], unit: 'rpm' },
-      { name: 'AirOil_Teff_C', csvs: ['Oil_AirTemp_C'], unit: '℃' },
-      { name: 'Wf_kgps', csvs: ['Wf_kgps'], unit: 'kg/s' },
-      { name: 'Q_BearingA', csvs: ['Q_BearingA'], unit: 'W' },
-      { name: 'Q_BearingB', csvs: ['Q_BearingB'], unit: 'W' },
-      { name: 'Q_AirOil', csvs: ['Q_AirOil'], unit: 'W' },
-      { name: 'Q_Accessory', csvs: ['Q_Accessory'], unit: 'W' },
-      { name: 'QA', csvs: ['QA'], unit: 'm³/s' },
-      { name: 'QB', csvs: ['QB'], unit: 'm³/s' },
-      { name: 'PA', csvs: ['PA'], unit: 'Pa' },
-      { name: 'PB', csvs: ['PB'], unit: 'Pa' },
-      { name: 'ToutA', csvs: ['ToutA'], unit: 'K' },
-      { name: 'ToutB', csvs: ['ToutB'], unit: 'K' },
-      { name: 'QretA', csvs: ['QretA'], unit: 'm³/s' },
-      { name: 'QretB', csvs: ['QretB'], unit: 'm³/s' },
-      { name: 'QgenA', csvs: ['QgenA'], unit: 'W' },
-      { name: 'QgenB', csvs: ['QgenB'], unit: 'W' },
-      { name: 'FuelOilCooler_Q', csvs: ['FuelOilCooler_Q'], unit: 'W' },
-      { name: 'FuelOilCooler_FuelTout', csvs: ['FuelOilCooler_FuelTout'], unit: 'K' },
-      { name: 'AirOilCooler_Pin', csvs: ['AirOilCooler_Pin_Pa'], unit: 'Pa' },
-      { name: 'AirOilCooler_Pout', csvs: ['AirOilCooler_Pout_Pa'], unit: 'Pa' },
-      { name: 'FuelOilCooler_Pin', csvs: ['FuelOilCooler_Pin_Pa'], unit: 'Pa' },
-      { name: 'FuelOilCooler_Pout', csvs: ['FuelOilCooler_Pout_Pa'], unit: 'Pa' },
-      { name: 'CavityState8', csvs: ['CavityState8_PaK_1','CavityState8_PaK_2','CavityState8_PaK_3','CavityState8_PaK_4','CavityState8_PaK_5','CavityState8_PaK_6','CavityState8_PaK_7','CavityState8_PaK_8'], unit: 'Pa/K' },
-      { name: 'SealLeak4', csvs: ['SealLeak4_kgps_1','SealLeak4_kgps_2','SealLeak4_kgps_3','SealLeak4_kgps_4'], unit: 'kg/s' },
-      { name: 'VentFlow3', csvs: ['VentFlow3_kgps_1','VentFlow3_kgps_2','VentFlow3_kgps_3'], unit: 'kg/s' },
-      { name: 'SealDeltaP4', csvs: ['SealDeltaP4_Pa_1','SealDeltaP4_Pa_2','SealDeltaP4_Pa_3','SealDeltaP4_Pa_4'], unit: 'Pa' },
-      { name: 'VentDeltaP2', csvs: ['VentDeltaP2_Pa_1','VentDeltaP2_Pa_2'], unit: 'Pa' },
-      { name: 'MassResidual2', csvs: ['MassResidual2_kgps_1','MassResidual2_kgps_2'], unit: 'kg/s' },
-      { name: 'FuelOil2_ToutC_QkW', csvs: ['FuelOil2_ToutC_QkW_1','FuelOil2_ToutC_QkW_2'], unit: '℃/kW' },
-      { name: 'AirOil2_ToutC_QkW', csvs: ['AirOil2_ToutC_QkW_1','AirOil2_ToutC_QkW_2'], unit: '℃/kW' },
+      { name: 'Ng_fbk', cnName: '燃气涡轮转速', csvs: ['Ng'], unit: 'rpm' },
+      { name: 'Np_fbk', cnName: '动力涡轮转速', csvs: ['Np'], unit: 'rpm' },
+      { name: 'AirOil_Teff_C', cnName: '空滑有效空气温度', csvs: ['Oil_AirTemp_C'], unit: '℃' },
+      { name: 'OilPump_Displacement_cc_rev', cnName: '滑油泵排量', csvs: ['OilPump_Displacement_cc_rev'], unit: 'cc/rev' },
+      { name: 'Wf_kgps', cnName: '计量燃油量', csvs: ['Wf_kgps'], unit: 'kg/s' },
+      { name: 'VentBoundary10', cnName: '通风边界向量', csvs: ['VentBoundary10_1','VentBoundary10_2','VentBoundary10_3','VentBoundary10_4','VentBoundary10_5','VentBoundary10_6','VentBoundary10_7','VentBoundary10_8','VentBoundary10_9','VentBoundary10_10'], unit: 'Pa/K' },
+      { name: 'OilInlet2_C', cnName: '燃滑/空滑入口油温向量', csvs: ['OilInlet2_C_1','OilInlet2_C_2'], unit: '℃' },
+      { name: 'Q_BearingA', cnName: '甲轴承腔换热量', csvs: ['Q_BearingA'], unit: 'W' },
+      { name: 'Q_BearingB', cnName: '乙轴承腔换热量', csvs: ['Q_BearingB'], unit: 'W' },
+      { name: 'Q_AirOil', cnName: '空滑换热量', csvs: ['Q_AirOil'], unit: 'W' },
+      { name: 'Q_Accessory', cnName: '机匣附件换热量', csvs: ['Q_Accessory'], unit: 'W' },
+      { name: 'QA', cnName: '甲轴承腔供油流量', csvs: ['QA'], unit: 'm³/s' },
+      { name: 'QB', cnName: '乙轴承腔供油流量', csvs: ['QB'], unit: 'm³/s' },
+      { name: 'PA', cnName: '甲轴承腔油路压力', csvs: ['PA'], unit: 'Pa' },
+      { name: 'PB', cnName: '乙轴承腔油路压力', csvs: ['PB'], unit: 'Pa' },
+      { name: 'ToutA', cnName: '甲轴承腔出口油温', csvs: ['ToutA'], unit: 'K' },
+      { name: 'ToutB', cnName: '乙轴承腔出口油温', csvs: ['ToutB'], unit: 'K' },
+      { name: 'QretA', cnName: 'A腔回油流量', csvs: ['QretA'], unit: 'm³/s' },
+      { name: 'QretB', cnName: 'B腔回油流量', csvs: ['QretB'], unit: 'm³/s' },
+      { name: 'QgenA', cnName: '甲轴承腔生热量', csvs: ['QgenA'], unit: 'W' },
+      { name: 'QgenB', cnName: '乙轴承腔生热量', csvs: ['QgenB'], unit: 'W' },
+      { name: 'FuelOilCooler_Q', cnName: '燃滑换热量', csvs: ['FuelOilCooler_Q'], unit: 'W' },
+      { name: 'FuelOilCooler_FuelTout', cnName: '燃滑燃油出口温度', csvs: ['FuelOilCooler_FuelTout'], unit: 'K' },
+      { name: 'AirOilCooler_Pin', cnName: '空滑入口压力', csvs: ['AirOilCooler_Pin_Pa'], unit: 'Pa' },
+      { name: 'AirOilCooler_Pout', cnName: '空滑出口压力', csvs: ['AirOilCooler_Pout_Pa'], unit: 'Pa' },
+      { name: 'FuelOilCooler_Pin', cnName: '燃滑入口压力', csvs: ['FuelOilCooler_Pin_Pa'], unit: 'Pa' },
+      { name: 'FuelOilCooler_Pout', cnName: '燃滑出口压力', csvs: ['FuelOilCooler_Pout_Pa'], unit: 'Pa' },
+      { name: 'CavityState8', cnName: 'A/B腔前后压力温度状态', csvs: ['CavityState8_PaK_1','CavityState8_PaK_2','CavityState8_PaK_3','CavityState8_PaK_4','CavityState8_PaK_5','CavityState8_PaK_6','CavityState8_PaK_7','CavityState8_PaK_8'], unit: 'Pa/K' },
+      { name: 'SealLeak4', cnName: 'A前/A后/B前/B后封严泄漏', csvs: ['SealLeak4_kgps_1','SealLeak4_kgps_2','SealLeak4_kgps_3','SealLeak4_kgps_4'], unit: 'kg/s' },
+      { name: 'VentFlow3', cnName: 'A腔/B腔/总通风流量', csvs: ['VentFlow3_kgps_1','VentFlow3_kgps_2','VentFlow3_kgps_3'], unit: 'kg/s' },
+      { name: 'SealDeltaP4', cnName: '四路封严压差', csvs: ['SealDeltaP4_Pa_1','SealDeltaP4_Pa_2','SealDeltaP4_Pa_3','SealDeltaP4_Pa_4'], unit: 'Pa' },
+      { name: 'VentDeltaP2', cnName: 'A/B腔通风压损', csvs: ['VentDeltaP2_Pa_1','VentDeltaP2_Pa_2'], unit: 'Pa' },
+      { name: 'MassResidual2', cnName: 'A/B腔质量残差', csvs: ['MassResidual2_kgps_1','MassResidual2_kgps_2'], unit: 'kg/s' },
+      { name: 'FuelOil2_ToutC_QkW', cnName: '燃滑出口油温/散热量', csvs: ['FuelOil2_ToutC_QkW_1','FuelOil2_ToutC_QkW_2'], unit: '℃/kW' },
+      { name: 'AirOil2_ToutC_QkW', cnName: '空滑出口油温/散热量', csvs: ['AirOil2_ToutC_QkW_1','AirOil2_ToutC_QkW_2'], unit: '℃/kW' },
     ]
   },
   {
     group: '空气模块', tab: '空气',
     vars: [
-      { name: 'Pt1', csvs: ['Pt1'], unit: 'Pa' },
-      { name: 'Tt1', csvs: ['Tt1'], unit: 'K' },
-      { name: 'Pt3', csvs: ['Pt3'], unit: 'Pa' },
-      { name: 'Tt3', csvs: ['Tt3'], unit: 'K' },
-      { name: 'Pt45', csvs: ['Pt45'], unit: 'Pa' },
-      { name: 'Tt45', csvs: ['Tt45'], unit: 'K' },
-      { name: 'Pt5', csvs: ['Pt5'], unit: 'Pa' },
-      { name: 'Tt5', csvs: ['Tt5'], unit: 'K' },
-      { name: 'G01', csvs: ['G01_GT1_IN_W_kgps'], unit: 'kg/s' },
-      { name: 'G02', csvs: ['G02_GT1_OUT_W_kgps'], unit: 'kg/s' },
-      { name: 'G03', csvs: ['G03_GT2_IN_W_kgps'], unit: 'kg/s' },
-      { name: 'G04', csvs: ['G04_GT2_OUT_W_kgps'], unit: 'kg/s' },
-      { name: 'G05', csvs: ['G05_PT1_IN_ROOT_W_kgps'], unit: 'kg/s' },
-      { name: 'G06', csvs: ['G06_PT1_OUT_ROOT_W_kgps'], unit: 'kg/s' },
-      { name: 'G07', csvs: ['G07_PT2_IN_TIP_W_kgps'], unit: 'kg/s' },
-      { name: 'G08', csvs: ['G08_PT2_OUT_TIP_W_kgps'], unit: 'kg/s' },
+      { name: 'Pt1', cnName: '发动机进口总压', csvs: ['Pt1'], unit: 'Pa' },
+      { name: 'Tt1', cnName: '发动机进口总温', csvs: ['Tt1'], unit: 'K' },
+      { name: 'Pt3', cnName: '压气机出口总压', csvs: ['Pt3'], unit: 'Pa' },
+      { name: 'Tt3', cnName: '压气机出口总温', csvs: ['Tt3'], unit: 'K' },
+      { name: 'Pt45', cnName: '燃气涡轮后总压', csvs: ['Pt45'], unit: 'Pa' },
+      { name: 'Tt45', cnName: '燃气涡轮后总温', csvs: ['Tt45'], unit: 'K' },
+      { name: 'Pt5', cnName: '动力涡轮出口总压', csvs: ['Pt5'], unit: 'Pa' },
+      { name: 'Tt5', cnName: '动力涡轮出口总温', csvs: ['Tt5'], unit: 'K' },
+      { name: 'G01', cnName: 'GT1进气流量', csvs: ['G01_GT1_IN_W_kgps'], unit: 'kg/s' },
+      { name: 'G02', cnName: 'GT1出气流量', csvs: ['G02_GT1_OUT_W_kgps'], unit: 'kg/s' },
+      { name: 'G03', cnName: 'GT2进气流量', csvs: ['G03_GT2_IN_W_kgps'], unit: 'kg/s' },
+      { name: 'G04', cnName: 'GT2出气流量', csvs: ['G04_GT2_OUT_W_kgps'], unit: 'kg/s' },
+      { name: 'G05', cnName: 'PT1根部进气流量', csvs: ['G05_PT1_IN_ROOT_W_kgps'], unit: 'kg/s' },
+      { name: 'G06', cnName: 'PT1根部出气流量', csvs: ['G06_PT1_OUT_ROOT_W_kgps'], unit: 'kg/s' },
+      { name: 'G07', cnName: 'PT2叶尖进气流量', csvs: ['G07_PT2_IN_TIP_W_kgps'], unit: 'kg/s' },
+      { name: 'G08', cnName: 'PT2叶尖出气流量', csvs: ['G08_PT2_OUT_TIP_W_kgps'], unit: 'kg/s' },
     ]
   },
 ];
@@ -2175,6 +2198,12 @@ function chart(title, yMin, yMax, ...series) {
 function chart2(title, yMin, yMax, y2Min, y2Max, ...series) {
 
   return { title, yMin, yMax, y2Min, y2Max, series };
+
+}
+
+function chartUnit(title, unit, ...series) {
+
+  return { title, yMin: null, yMax: null, series, unit };
 
 }
 
@@ -2408,6 +2437,8 @@ function buildChartData(cfg) {
 
     y2Max: cfg.y2Max,
 
+    unit: cfg.unit || null,
+
     seriesData: cfg.series.map(s => ({
 
       name: s.name,
@@ -2442,13 +2473,13 @@ function buildEChartsOptions(data, time) {
 
     ? [
 
-        { type: 'value', min: data.yMin ?? null, max: data.yMax ?? null, axisLabel: { color: '#9ca3af', fontSize: 10 }, splitLine: { lineStyle: { color: '#24344D' } }, axisLine: { lineStyle: { color: '#24344D' } } },
+        { type: 'value', min: data.yMin ?? null, max: data.yMax ?? null, name: data.unit || '', nameTextStyle: { color: '#9ca3af', fontSize: 10 }, axisLabel: { color: '#9ca3af', fontSize: 10 }, splitLine: { lineStyle: { color: '#24344D' } }, axisLine: { lineStyle: { color: '#24344D' } } },
 
-        { type: 'value', min: data.y2Min, max: data.y2Max, position: 'right', axisLabel: { color: '#9ca3af', fontSize: 10, formatter: v => v !== 0 && Math.abs(v) < 1e-4 ? v.toExponential(1) : v.toFixed(0) }, splitLine: { show: false }, axisLine: { lineStyle: { color: '#24344D' } } }
+        { type: 'value', min: data.y2Min, max: data.y2Max, position: 'right', name: data.unit2 || '', nameTextStyle: { color: '#9ca3af', fontSize: 10 }, axisLabel: { color: '#9ca3af', fontSize: 10, formatter: v => v !== 0 && Math.abs(v) < 1e-4 ? v.toExponential(1) : v.toFixed(0) }, splitLine: { show: false }, axisLine: { lineStyle: { color: '#24344D' } } }
 
       ]
 
-    : { type: 'value', min: data.yMin ?? null, max: data.yMax ?? null, axisLabel: { color: '#9ca3af', fontSize: 10 }, splitLine: { lineStyle: { color: '#24344D' } }, axisLine: { lineStyle: { color: '#24344D' } } };
+    : { type: 'value', min: data.yMin ?? null, max: data.yMax ?? null, name: data.unit || '', nameTextStyle: { color: '#9ca3af', fontSize: 10 }, axisLabel: { color: '#9ca3af', fontSize: 10 }, splitLine: { lineStyle: { color: '#24344D' } }, axisLine: { lineStyle: { color: '#24344D' } } };
 
 
 
@@ -2458,13 +2489,13 @@ function buildEChartsOptions(data, time) {
 
     tooltip: { trigger: 'axis', backgroundColor: 'rgba(15,23,42,.9)', borderColor: '#24344D', textStyle: { color: '#e5e7eb' } },
 
-    grid: { left: 40, right: data.y2Min != null ? 55 : 40, top: 32, bottom: 18 },
+    grid: { left: 55, right: data.y2Min != null ? 65 : 45, top: 32, bottom: 25 },
 
     toolbox: { right: 8, top: 4, iconStyle: { borderColor: '#9ca3af' }, emphasis: { iconStyle: { borderColor: '#fff' } }, feature: { restore: { title: '还原' } } },
 
     dataZoom: [{ type: 'inside', xAxisIndex: [0], filterMode: 'filter', start: 0, end: 100 }],
 
-    xAxis: { type: 'value', min: 0, splitNumber: 6, axisLabel: { color: '#9ca3af', fontSize: 10 }, splitLine: { lineStyle: { color: '#24344D' } }, axisLine: { lineStyle: { color: '#24344D' } } },
+    xAxis: { type: 'value', min: 0, splitNumber: 6, name: '时间 (s)', nameTextStyle: { color: '#9ca3af', fontSize: 10 }, axisLabel: { color: '#9ca3af', fontSize: 10 }, splitLine: { lineStyle: { color: '#24344D' } }, axisLine: { lineStyle: { color: '#24344D' } } },
 
     yAxis,
 

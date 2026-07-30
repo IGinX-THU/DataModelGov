@@ -1258,6 +1258,20 @@ public class ProgramService {
             sb.append("        catch\n");
             sb.append("        end\n");
             sb.append("    end\n");
+            // 6c. Extract workspace scalar variables (limits, error) as constant columns
+            sb.append("    wsScalars = {'NgMax','T45Max','MkpMax','WfMax','WfMin','errmax'};\n");
+            sb.append("    for i = 1:length(wsScalars)\n");
+            sb.append("        try\n");
+            sb.append("            sn = wsScalars{i};\n");
+            sb.append("            if exist(sn, 'var') == 1\n");
+            sb.append("                v = eval(sn);\n");
+            sb.append("                if isnumeric(v) && isscalar(v) && ~any(strcmp(colNames, sn))\n");
+            sb.append("                    colNames{end+1} = sn; colData = [colData, repmat(v, length(tout), 1)];\n");
+            sb.append("                end\n");
+            sb.append("            end\n");
+            sb.append("        catch\n");
+            sb.append("        end\n");
+            sb.append("    end\n");
             // 7. Scan simOut fields for any remaining numeric outputs
             sb.append("    try\n");
             sb.append("        allNames = fieldnames(simOut);\n");
@@ -1652,6 +1666,18 @@ public class ProgramService {
         result.put("otherFiles", otherFiles);
 
         Map<String, Object> params = parseProgramParams(programDir, scriptFiles);
+        if (params.get("modelName") != null && !((String)params.get("modelName")).isEmpty()) {
+            String mn = (String)params.get("modelName");
+            for (String mf : modelFiles) {
+                if (mf.startsWith(mn + ".") || mf.equals(mn)) {
+                    params.put("modelFile", mf);
+                    break;
+                }
+            }
+        }
+        if (!params.containsKey("modelFile") && !modelFiles.isEmpty()) {
+            params.put("modelFile", modelFiles.get(0));
+        }
         result.put("params", params);
         return result;
     }
