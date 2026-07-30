@@ -973,26 +973,74 @@ class ProgramRun extends HTMLElement {
     let html = '';
     VARIABLE_CATALOG.forEach((grp, gi) => {
       if (grp.tab !== activeTab) return;
+      const hasIO = grp.vars.some(v => v.io);
+      const allChecked = grp.vars.every((v, vi) => this.selectedVars && this.selectedVars.has(`${gi}_${vi}`));
       html += `<div class="var-group" data-group="${gi}">`;
-      html += `<div class="var-group-header" data-gi="${gi}"><span class="arrow">▾</span>${grp.group}</div>`;
-      html += '<ul class="var-group-items">';
-      grp.vars.forEach((v, vi) => {
+      html += `<div class="var-group-header" data-gi="${gi}"><input type="checkbox" class="var-group-check" data-gi="${gi}" ${allChecked ? 'checked' : ''}>${grp.group}</div>`;
+      const renderVarItem = (v, vi) => {
         const id = `var_${gi}_${vi}`;
         const checked = this.selectedVars && this.selectedVars.has(`${gi}_${vi}`) ? 'checked' : '';
         const cn = v.cnName ? `<span class="var-cn">${v.cnName}</span>` : '';
-        html += `<li class="var-item" data-gi="${gi}" data-vi="${vi}">
+        return `<li class="var-item" data-gi="${gi}" data-vi="${vi}">
           <input type="checkbox" id="${id}" data-gi="${gi}" data-vi="${vi}" ${checked}>
           <span class="var-name">${v.name}</span>
           ${cn}
           <span class="var-unit">${v.unit || ''}</span>
         </li>`;
-      });
-      html += '</ul></div>';
+      };
+      if (hasIO) {
+        const plainVars = grp.vars.map((v, vi) => ({ v, vi })).filter(x => !x.v.io);
+        const inputVars = grp.vars.map((v, vi) => ({ v, vi })).filter(x => x.v.io === 'input');
+        const outputVars = grp.vars.map((v, vi) => ({ v, vi })).filter(x => x.v.io === 'output');
+        html += '<div class="var-group-body">';
+        if (plainVars.length > 0) {
+          html += '<ul class="var-group-items">';
+          plainVars.forEach(({ v, vi }) => { html += renderVarItem(v, vi); });
+          html += '</ul>';
+        }
+        const renderSubGroup = (label, vars) => {
+          if (vars.length === 0) return;
+          const subAllChecked = vars.every(({ vi }) => this.selectedVars && this.selectedVars.has(`${gi}_${vi}`));
+          html += `<div class="var-io-group"><div class="var-io-header"><input type="checkbox" class="var-io-check" data-gi="${gi}" data-io="${label === '输入' ? 'input' : 'output'}" ${subAllChecked ? 'checked' : ''}>${label}</div><ul class="var-group-items">`;
+          vars.forEach(({ v, vi }) => { html += renderVarItem(v, vi); });
+          html += '</ul></div>';
+        };
+        renderSubGroup('输入', inputVars);
+        renderSubGroup('输出', outputVars);
+        html += '</div>';
+      } else {
+        html += '<ul class="var-group-items">';
+        grp.vars.forEach((v, vi) => { html += renderVarItem(v, vi); });
+        html += '</ul>';
+      }
+      html += '</div>';
     });
     container.innerHTML = html;
-    container.querySelectorAll('.var-group-header').forEach(h => {
-      h.addEventListener('click', () => {
-        h.parentElement.classList.toggle('collapsed');
+    container.querySelectorAll('.var-group-check').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const gi = parseInt(cb.dataset.gi);
+        const grp = VARIABLE_CATALOG[gi];
+        grp.vars.forEach((v, vi) => {
+          if (cb.checked) this.selectedVars.add(`${gi}_${vi}`);
+          else this.selectedVars.delete(`${gi}_${vi}`);
+        });
+        this.renderVarTree();
+        this.renderCustomCharts();
+      });
+    });
+    container.querySelectorAll('.var-io-check').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const gi = parseInt(cb.dataset.gi);
+        const ioType = cb.dataset.io;
+        const grp = VARIABLE_CATALOG[gi];
+        grp.vars.forEach((v, vi) => {
+          if (v.io === ioType) {
+            if (cb.checked) this.selectedVars.add(`${gi}_${vi}`);
+            else this.selectedVars.delete(`${gi}_${vi}`);
+          }
+        });
+        this.renderVarTree();
+        this.renderCustomCharts();
       });
     });
   }
@@ -1038,7 +1086,7 @@ class ProgramRun extends HTMLElement {
       if (!grp || !grp.vars[vi]) return;
       const v = grp.vars[vi];
       const series = v.csvs.map((csv, si) => {
-        const subName = v.csvs.length > 1 ? csv : (v.cnName || v.name);
+        const subName = v.csvs.length > 1 ? csv : v.name;
         const color = VAR_COLORS[colorIdx % VAR_COLORS.length];
         colorIdx++;
         return sig(subName, color, { csv });
@@ -1287,17 +1335,17 @@ class ProgramRun extends HTMLElement {
 
         }
 
+        if (data.headers && data.rows) {
+
+          this.loadCsvData(data.headers, data.rows);
+
+        }
+
         if (status === 'SUCCESS') {
 
           this.stopPolling();
 
           this.stopRunTimer();
-
-          if (data.headers && data.rows) {
-
-            this.loadCsvData(data.headers, data.rows);
-
-          }
 
         }
 
@@ -1884,7 +1932,7 @@ class ProgramRun extends HTMLElement {
 
       }
 
-      if (status === 'SUCCESS' && data.headers && data.rows) {
+      if (data.headers && data.rows) {
 
         this.loadCsvData(data.headers, data.rows);
 
@@ -2032,7 +2080,7 @@ customElements.define('program-run', ProgramRun);
 
 
 
-// ── 变量目录（按文档章节分类） ──
+// ── 变量目录（按文档章节分类，区分输入/输出） ──
 const VARIABLE_CATALOG = [
   {
     group: '综合总览', tab: '综合总览',
@@ -2052,7 +2100,7 @@ const VARIABLE_CATALOG = [
       { name: 'NgMax+Ng_fbk', cnName: '燃气涡轮转速限制+反馈', csvs: ['NgMax', 'Ng'], unit: 'rpm' },
       { name: 'T45Max+T45_fbk', cnName: '燃气涡轮后温度限制+反馈', csvs: ['T45Max', 'T45'], unit: 'K' },
       { name: 'MkpMax+Mkp_fbk', cnName: '动力涡轮扭矩限制+反馈', csvs: ['MkpMax', 'Mkp'], unit: 'N·m' },
-      { name: 'Ngc', cnName: '燃气涡轮参考转速', csvs: ['Ngc'], unit: 'rpm' },
+      { name: 'Ngc', cnName: '燃气涡轮换算转速', csvs: ['Ngc'], unit: '-' },
       { name: 'Wfcmd', cnName: '燃油流量指令', csvs: ['Wf_cmd', 'Wf'], unit: 'kg/s' },
     ]
   },
@@ -2086,71 +2134,64 @@ const VARIABLE_CATALOG = [
     group: '燃油模块', tab: '燃油',
     vars: [
       { name: 'WfProxyCmd+Wf_kgps', cnName: '计量燃油指令', csvs: ['WfProxyCmd', 'Wf_kgps'], unit: 'kg/s' },
-      { name: 'Wfcmd', cnName: '燃油流量指令', csvs: ['Wf_cmd'], unit: 'kg/s' },
-      { name: 'Wf', cnName: '计量燃油质量流量', csvs: ['Wf', 'Wf_kgps'], unit: 'kg/s' },
-      { name: 'xm', cnName: '计量活门位移输出', csvs: ['xm'], unit: 'm' },
-      { name: 'xd', cnName: '导叶活门位移输出', csvs: ['xd'], unit: 'm' },
-      { name: 'Δp_fuel', cnName: '油压/计量压差', csvs: ['dp_fuel'], unit: 'MPa' },
-      { name: 'lock_meter', cnName: '计量活门闭锁信号', csvs: ['lock_meter'], unit: '0/1' },
-      { name: 'xm_ref_sb', cnName: '计量位移台架激励', csvs: ['xm_ref_sb'], unit: 'm' },
-      { name: 'xm_cmd_m', cnName: '计量位移联仿指令', csvs: ['xm_cmd_m'], unit: 'm' },
-      { name: 'lock_igv', cnName: '导叶活门闭锁信号', csvs: ['lock_igv'], unit: '0/1' },
-      { name: 'xd_cmd', cnName: '导叶位移指令', csvs: ['xd_cmd'], unit: 'm' },
-      { name: 'shutdown', cnName: '停车信号', csvs: ['shutdown'], unit: '0/1' },
-      { name: 'Oil_AirTemp_C', cnName: '空滑有效空气温度', csvs: ['Oil_AirTemp_C'], unit: '℃' },
+      { name: 'Δp_fuel', cnName: '油压/计量压差', csvs: ['dp_fuel'], unit: 'MPa', io: 'input' },
+      { name: 'lock_meter', cnName: '计量活门闭锁信号', csvs: ['lock_meter'], unit: '0/1', io: 'input' },
+      { name: 'xm_ref_sb', cnName: '计量位移台架激励', csvs: ['xm_ref_sb'], unit: 'm', io: 'input' },
+      { name: 'xm_cmd_m', cnName: '计量位移联仿指令', csvs: ['xm_cmd_m'], unit: 'm', io: 'input' },
+      { name: 'lock_igv', cnName: '导叶活门闭锁信号', csvs: ['lock_igv'], unit: '0/1', io: 'input' },
+      { name: 'xd_cmd', cnName: '导叶位移指令', csvs: ['xd_cmd'], unit: 'm', io: 'input' },
+      { name: 'shutdown', cnName: '停车信号', csvs: ['shutdown'], unit: '0/1', io: 'input' },
+      { name: 'xm', cnName: '计量活门位移输出', csvs: ['xm'], unit: 'm', io: 'output' },
+      { name: 'Wf', cnName: '计量燃油质量流量', csvs: ['Wf', 'Wf_kgps'], unit: 'kg/s', io: 'output' },
+      { name: 'xd', cnName: '导叶活门位移输出', csvs: ['xd'], unit: 'm', io: 'output' },
     ]
   },
   {
     group: '滑油模块', tab: '滑油',
     vars: [
-      { name: 'Ng_fbk', cnName: '燃气涡轮转速', csvs: ['Ng'], unit: 'rpm' },
-      { name: 'Np_fbk', cnName: '动力涡轮转速', csvs: ['Np'], unit: 'rpm' },
-      { name: 'AirOil_Teff_C', cnName: '空滑有效空气温度', csvs: ['Oil_AirTemp_C'], unit: '℃' },
-      { name: 'OilPump_Displacement_cc_rev', cnName: '滑油泵排量', csvs: ['OilPump_Displacement_cc_rev'], unit: 'cc/rev' },
-      { name: 'Wf_kgps', cnName: '计量燃油量', csvs: ['Wf_kgps'], unit: 'kg/s' },
-      { name: 'VentBoundary10', cnName: '通风边界向量', csvs: ['VentBoundary10_1','VentBoundary10_2','VentBoundary10_3','VentBoundary10_4','VentBoundary10_5','VentBoundary10_6','VentBoundary10_7','VentBoundary10_8','VentBoundary10_9','VentBoundary10_10'], unit: 'Pa/K' },
-      { name: 'OilInlet2_C', cnName: '燃滑/空滑入口油温向量', csvs: ['OilInlet2_C_1','OilInlet2_C_2'], unit: '℃' },
-      { name: 'Q_BearingA', cnName: '甲轴承腔换热量', csvs: ['Q_BearingA'], unit: 'W' },
-      { name: 'Q_BearingB', cnName: '乙轴承腔换热量', csvs: ['Q_BearingB'], unit: 'W' },
-      { name: 'Q_AirOil', cnName: '空滑换热量', csvs: ['Q_AirOil'], unit: 'W' },
-      { name: 'Q_Accessory', cnName: '机匣附件换热量', csvs: ['Q_Accessory'], unit: 'W' },
-      { name: 'QA', cnName: '甲轴承腔供油流量', csvs: ['QA'], unit: 'm³/s' },
-      { name: 'QB', cnName: '乙轴承腔供油流量', csvs: ['QB'], unit: 'm³/s' },
-      { name: 'PA', cnName: '甲轴承腔油路压力', csvs: ['PA'], unit: 'Pa' },
-      { name: 'PB', cnName: '乙轴承腔油路压力', csvs: ['PB'], unit: 'Pa' },
-      { name: 'ToutA', cnName: '甲轴承腔出口油温', csvs: ['ToutA'], unit: 'K' },
-      { name: 'ToutB', cnName: '乙轴承腔出口油温', csvs: ['ToutB'], unit: 'K' },
-      { name: 'QretA', cnName: 'A腔回油流量', csvs: ['QretA'], unit: 'm³/s' },
-      { name: 'QretB', cnName: 'B腔回油流量', csvs: ['QretB'], unit: 'm³/s' },
-      { name: 'QgenA', cnName: '甲轴承腔生热量', csvs: ['QgenA'], unit: 'W' },
-      { name: 'QgenB', cnName: '乙轴承腔生热量', csvs: ['QgenB'], unit: 'W' },
-      { name: 'FuelOilCooler_Q', cnName: '燃滑换热量', csvs: ['FuelOilCooler_Q'], unit: 'W' },
-      { name: 'FuelOilCooler_FuelTout', cnName: '燃滑燃油出口温度', csvs: ['FuelOilCooler_FuelTout'], unit: 'K' },
-      { name: 'AirOilCooler_Pin', cnName: '空滑入口压力', csvs: ['AirOilCooler_Pin_Pa'], unit: 'Pa' },
-      { name: 'AirOilCooler_Pout', cnName: '空滑出口压力', csvs: ['AirOilCooler_Pout_Pa'], unit: 'Pa' },
-      { name: 'FuelOilCooler_Pin', cnName: '燃滑入口压力', csvs: ['FuelOilCooler_Pin_Pa'], unit: 'Pa' },
-      { name: 'FuelOilCooler_Pout', cnName: '燃滑出口压力', csvs: ['FuelOilCooler_Pout_Pa'], unit: 'Pa' },
-      { name: 'CavityState8', cnName: 'A/B腔前后压力温度状态', csvs: ['CavityState8_PaK_1','CavityState8_PaK_2','CavityState8_PaK_3','CavityState8_PaK_4','CavityState8_PaK_5','CavityState8_PaK_6','CavityState8_PaK_7','CavityState8_PaK_8'], unit: 'Pa/K' },
-      { name: 'SealLeak4', cnName: 'A前/A后/B前/B后封严泄漏', csvs: ['SealLeak4_kgps_1','SealLeak4_kgps_2','SealLeak4_kgps_3','SealLeak4_kgps_4'], unit: 'kg/s' },
-      { name: 'VentFlow3', cnName: 'A腔/B腔/总通风流量', csvs: ['VentFlow3_kgps_1','VentFlow3_kgps_2','VentFlow3_kgps_3'], unit: 'kg/s' },
-      { name: 'SealDeltaP4', cnName: '四路封严压差', csvs: ['SealDeltaP4_Pa_1','SealDeltaP4_Pa_2','SealDeltaP4_Pa_3','SealDeltaP4_Pa_4'], unit: 'Pa' },
-      { name: 'VentDeltaP2', cnName: 'A/B腔通风压损', csvs: ['VentDeltaP2_Pa_1','VentDeltaP2_Pa_2'], unit: 'Pa' },
-      { name: 'MassResidual2', cnName: 'A/B腔质量残差', csvs: ['MassResidual2_kgps_1','MassResidual2_kgps_2'], unit: 'kg/s' },
-      { name: 'FuelOil2_ToutC_QkW', cnName: '燃滑出口油温/散热量', csvs: ['FuelOil2_ToutC_QkW_1','FuelOil2_ToutC_QkW_2'], unit: '℃/kW' },
-      { name: 'AirOil2_ToutC_QkW', cnName: '空滑出口油温/散热量', csvs: ['AirOil2_ToutC_QkW_1','AirOil2_ToutC_QkW_2'], unit: '℃/kW' },
+      { name: 'Ng_fbk', cnName: '燃气涡轮转速', csvs: ['Ng'], unit: 'rpm', io: 'input' },
+      { name: 'Np_fbk', cnName: '动力涡轮转速', csvs: ['Np'], unit: 'rpm', io: 'input' },
+      { name: 'AirOil_Teff_C', cnName: '空滑有效空气温度', csvs: ['Oil_AirTemp_C'], unit: '℃', io: 'input' },
+      { name: 'OilPump_Displacement_cc_rev', cnName: '滑油泵排量', csvs: ['OilPump_Displacement_cc_rev'], unit: 'cc/rev', io: 'input' },
+      { name: 'Wf_kgps', cnName: '计量燃油量', csvs: ['Wf_kgps'], unit: 'kg/s', io: 'input' },
+      { name: 'VentBoundary10', cnName: '通风边界向量', csvs: ['VentBoundary10_1','VentBoundary10_2','VentBoundary10_3','VentBoundary10_4','VentBoundary10_5','VentBoundary10_6','VentBoundary10_7','VentBoundary10_8','VentBoundary10_9','VentBoundary10_10'], unit: 'Pa/K', io: 'input' },
+      { name: 'OilInlet2_C', cnName: '燃滑/空滑入口油温向量', csvs: ['OilInlet2_C_1','OilInlet2_C_2'], unit: '℃', io: 'input' },
+      { name: 'Q_BearingA', cnName: '甲轴承腔换热量', csvs: ['Q_BearingA'], unit: 'W', io: 'output' },
+      { name: 'Q_BearingB', cnName: '乙轴承腔换热量', csvs: ['Q_BearingB'], unit: 'W', io: 'output' },
+      { name: 'Q_AirOil', cnName: '空滑换热量', csvs: ['Q_AirOil'], unit: 'W', io: 'output' },
+      { name: 'Q_Accessory', cnName: '机匣附件换热量', csvs: ['Q_Accessory'], unit: 'W', io: 'output' },
+      { name: 'QA', cnName: '甲轴承腔供油流量', csvs: ['QA'], unit: 'm³/s', io: 'output' },
+      { name: 'QB', cnName: '乙轴承腔供油流量', csvs: ['QB'], unit: 'm³/s', io: 'output' },
+      { name: 'PA', cnName: '甲轴承腔油路压力', csvs: ['PA'], unit: 'Pa', io: 'output' },
+      { name: 'PB', cnName: '乙轴承腔油路压力', csvs: ['PB'], unit: 'Pa', io: 'output' },
+      { name: 'ToutA', cnName: '甲轴承腔出口油温', csvs: ['ToutA'], unit: 'K', io: 'output' },
+      { name: 'ToutB', cnName: '乙轴承腔出口油温', csvs: ['ToutB'], unit: 'K', io: 'output' },
+      { name: 'QretA', cnName: 'A腔回油流量', csvs: ['QretA'], unit: 'm³/s', io: 'output' },
+      { name: 'QretB', cnName: 'B腔回油流量', csvs: ['QretB'], unit: 'm³/s', io: 'output' },
+      { name: 'QgenA', cnName: '甲轴承腔生热量', csvs: ['QgenA'], unit: 'W', io: 'output' },
+      { name: 'QgenB', cnName: '乙轴承腔生热量', csvs: ['QgenB'], unit: 'W', io: 'output' },
+      { name: 'FuelOilCooler_Q', cnName: '燃滑换热量', csvs: ['FuelOilCooler_Q'], unit: 'W', io: 'output' },
+      { name: 'FuelOilCooler_FuelTout', cnName: '燃滑燃油出口温度', csvs: ['FuelOilCooler_FuelTout'], unit: 'K', io: 'output' },
+      { name: 'AirOilCooler_Pin', cnName: '空滑入口压力', csvs: ['AirOilCooler_Pin_Pa'], unit: 'Pa', io: 'output' },
+      { name: 'AirOilCooler_Pout', cnName: '空滑出口压力', csvs: ['AirOilCooler_Pout_Pa'], unit: 'Pa', io: 'output' },
+      { name: 'FuelOilCooler_Pin', cnName: '燃滑入口压力', csvs: ['FuelOilCooler_Pin_Pa'], unit: 'Pa', io: 'output' },
+      { name: 'FuelOilCooler_Pout', cnName: '燃滑出口压力', csvs: ['FuelOilCooler_Pout_Pa'], unit: 'Pa', io: 'output' },
+      { name: 'CavityState8', cnName: 'A/B腔前后压力温度状态', csvs: ['CavityState8_PaK_1','CavityState8_PaK_2','CavityState8_PaK_3','CavityState8_PaK_4','CavityState8_PaK_5','CavityState8_PaK_6','CavityState8_PaK_7','CavityState8_PaK_8'], unit: 'Pa/K', io: 'output' },
+      { name: 'SealLeak4', cnName: 'A前/A后/B前/B后封严泄漏', csvs: ['SealLeak4_kgps_1','SealLeak4_kgps_2','SealLeak4_kgps_3','SealLeak4_kgps_4'], unit: 'kg/s', io: 'output' },
+      { name: 'VentFlow3', cnName: 'A腔/B腔/总通风流量', csvs: ['VentFlow3_kgps_1','VentFlow3_kgps_2','VentFlow3_kgps_3'], unit: 'kg/s', io: 'output' },
+      { name: 'SealDeltaP4', cnName: '四路封严压差', csvs: ['SealDeltaP4_Pa_1','SealDeltaP4_Pa_2','SealDeltaP4_Pa_3','SealDeltaP4_Pa_4'], unit: 'Pa', io: 'output' },
+      { name: 'VentDeltaP2', cnName: 'A/B腔通风压损', csvs: ['VentDeltaP2_Pa_1','VentDeltaP2_Pa_2'], unit: 'Pa', io: 'output' },
+      { name: 'MassResidual2', cnName: 'A/B腔质量残差', csvs: ['MassResidual2_kgps_1','MassResidual2_kgps_2'], unit: 'kg/s', io: 'output' },
+      { name: 'FuelOil2_ToutC_QkW', cnName: '燃滑出口油温/散热量', csvs: ['FuelOil2_ToutC_QkW_1','FuelOil2_ToutC_QkW_2'], unit: '℃/kW', io: 'output' },
+      { name: 'AirOil2_ToutC_QkW', cnName: '空滑出口油温/散热量', csvs: ['AirOil2_ToutC_QkW_1','AirOil2_ToutC_QkW_2'], unit: '℃/kW', io: 'output' },
     ]
   },
   {
     group: '空气模块', tab: '空气',
     vars: [
-      { name: 'Pt1', cnName: '发动机进口总压', csvs: ['Pt1'], unit: 'Pa' },
-      { name: 'Tt1', cnName: '发动机进口总温', csvs: ['Tt1'], unit: 'K' },
-      { name: 'Pt3', cnName: '压气机出口总压', csvs: ['Pt3'], unit: 'Pa' },
-      { name: 'Tt3', cnName: '压气机出口总温', csvs: ['Tt3'], unit: 'K' },
-      { name: 'Pt45', cnName: '燃气涡轮后总压', csvs: ['Pt45'], unit: 'Pa' },
-      { name: 'Tt45', cnName: '燃气涡轮后总温', csvs: ['Tt45'], unit: 'K' },
-      { name: 'Pt5', cnName: '动力涡轮出口总压', csvs: ['Pt5'], unit: 'Pa' },
-      { name: 'Tt5', cnName: '动力涡轮出口总温', csvs: ['Tt5'], unit: 'K' },
+      { name: 'AirBoundaryTP16', cnName: 'G01-G08总温总压边界', csvs: ['AirBoundaryTP16_1','AirBoundaryTP16_3','AirBoundaryTP16_5','AirBoundaryTP16_7','AirBoundaryTP16_9','AirBoundaryTP16_11','AirBoundaryTP16_13','AirBoundaryTP16_15'], unit: 'K/Pa' },
+      { name: 'Ng_fbk', cnName: '燃气涡轮转速', csvs: ['Ng'], unit: 'rpm' },
+      { name: 'Np_fbk', cnName: '动力涡轮转速', csvs: ['Np'], unit: 'rpm' },
       { name: 'G01', cnName: 'GT1进气流量', csvs: ['G01_GT1_IN_W_kgps'], unit: 'kg/s' },
       { name: 'G02', cnName: 'GT1出气流量', csvs: ['G02_GT1_OUT_W_kgps'], unit: 'kg/s' },
       { name: 'G03', cnName: 'GT2进气流量', csvs: ['G03_GT2_IN_W_kgps'], unit: 'kg/s' },
