@@ -1016,8 +1016,15 @@ class ProgramRun extends HTMLElement {
       html += '</div>';
     });
     container.innerHTML = html;
-    container.querySelectorAll('.var-group-check').forEach(cb => {
-      cb.addEventListener('change', () => {
+  }
+
+  bindVarEvents() {
+    const root = this.shadowRoot;
+    const tree = root.getElementById('varTree');
+    if (!tree) return;
+    tree.addEventListener('change', (e) => {
+      const cb = e.target;
+      if (cb.classList.contains('var-group-check')) {
         const gi = parseInt(cb.dataset.gi);
         const grp = VARIABLE_CATALOG[gi];
         grp.vars.forEach((v, vi) => {
@@ -1026,10 +1033,7 @@ class ProgramRun extends HTMLElement {
         });
         this.renderVarTree();
         this.renderCustomCharts();
-      });
-    });
-    container.querySelectorAll('.var-io-check').forEach(cb => {
-      cb.addEventListener('change', () => {
+      } else if (cb.classList.contains('var-io-check')) {
         const gi = parseInt(cb.dataset.gi);
         const ioType = cb.dataset.io;
         const grp = VARIABLE_CATALOG[gi];
@@ -1041,40 +1045,15 @@ class ProgramRun extends HTMLElement {
         });
         this.renderVarTree();
         this.renderCustomCharts();
-      });
+      } else if (cb.dataset.gi !== undefined && cb.dataset.vi !== undefined) {
+        const gi = parseInt(cb.dataset.gi);
+        const vi = parseInt(cb.dataset.vi);
+        if (cb.checked) this.selectedVars.add(`${gi}_${vi}`);
+        else this.selectedVars.delete(`${gi}_${vi}`);
+        this.renderVarTree();
+        this.renderCustomCharts();
+      }
     });
-  }
-
-  bindVarEvents() {
-    const root = this.shadowRoot;
-    const selectAll = root.getElementById('selectAllVars');
-    const deselectAll = root.getElementById('deselectAllVars');
-    const applyBtn = root.getElementById('applyVars');
-    if (selectAll) selectAll.addEventListener('click', () => {
-      root.querySelectorAll('.var-tree input[type="checkbox"]').forEach(cb => { cb.checked = true; });
-    });
-    if (deselectAll) deselectAll.addEventListener('click', () => {
-      root.querySelectorAll('.var-tree input[type="checkbox"]').forEach(cb => { cb.checked = false; });
-    });
-    if (applyBtn) applyBtn.addEventListener('click', () => this.applyVarSelection());
-  }
-
-  applyVarSelection() {
-    const root = this.shadowRoot;
-    const checked = root.querySelectorAll('.var-tree input[type="checkbox"]:checked');
-    this.selectedVars = new Set();
-    checked.forEach(cb => {
-      const gi = parseInt(cb.dataset.gi);
-      const vi = parseInt(cb.dataset.vi);
-      this.selectedVars.add(`${gi}_${vi}`);
-    });
-    if (this.selectedVars.size === 0) {
-      this.selectAllVarsForTab(this.activeTab);
-      this.renderCustomCharts();
-      return;
-    }
-    this.customVarMode = true;
-    this.renderCustomCharts();
   }
 
   renderCustomCharts() {
@@ -1102,7 +1081,6 @@ class ProgramRun extends HTMLElement {
     }
     this.chartGrid.innerHTML = '';
     this.chartGrid.classList.toggle('single', cfgs.length === 1);
-    this.chartGrid.classList.add('chart-scroll');
     cfgs.forEach((cfg, i) => {
       const card = document.createElement('div');
       card.className = 'chart-card';
