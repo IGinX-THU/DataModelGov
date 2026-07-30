@@ -34,6 +34,8 @@ class ProgramRun extends HTMLElement {
 
     this.selectedVars = new Set();
 
+    this.kpiParams = null;
+
   }
 
 
@@ -1385,8 +1387,6 @@ class ProgramRun extends HTMLElement {
 
     };
 
-    this.updateKpiCards(colIdx, rows, getLastVal);
-
     this.updateAlertSummary(colIdx, rows, timeData, getLastVal);
 
   }
@@ -1554,33 +1554,28 @@ class ProgramRun extends HTMLElement {
 
 
 
-  updateKpiCards(colIdx, rows, getLastVal) {
+  renderKpiFromParams() {
 
-    const kpiMap = [
-
-      { name: 'Np', csv: 'Np', unit: 'rpm', fmt: v => v ? v.toLocaleString() : '--' },
-
-      { name: 'Ng', csv: 'Ng', unit: 'rpm', fmt: v => v ? v.toLocaleString() : '--' },
-
-      { name: 'T45', csv: 'T45', unit: 'K', fmt: v => v ? v.toFixed(1) : '--' },
-
-      { name: 'Mkp', csv: 'Mkp', unit: 'N·m', fmt: v => v ? v.toFixed(1) : '--' },
-
-      { name: 'Wf', csv: 'Wf', unit: 'kg/s', fmt: v => v ? v.toFixed(4) : '--' },
-
-      { name: 'Error', csv: 'errmax', unit: '-', fmt: v => v != null ? v.toExponential(2) : '--' }
-
-    ];
+    if (!this.kpiParams) return;
 
     const kpiGrid = this.shadowRoot.querySelector('.kpi-grid');
 
     if (!kpiGrid) return;
 
-    kpiGrid.innerHTML = kpiMap.map(k => {
+    const fmtMap = {
+      'Np': v => v ? Number(v).toLocaleString() : '--',
+      'Ng': v => v ? Number(v).toLocaleString() : '--',
+      'T45': v => v ? Number(v).toFixed(1) : '--',
+      'Mkp': v => v ? Number(v).toFixed(1) : '--',
+      'Wf': v => v ? Number(v).toFixed(4) : '--',
+      'Error': v => v != null && v !== '' ? Number(v).toString() : '--'
+    };
 
-      const val = k.csv ? getLastVal(k.csv) : null;
+    kpiGrid.innerHTML = this.kpiParams.map(k => {
 
-      return `<div class="kpi-card"><div class="kpi-head"><span class="kpi-name">${k.name}</span><span class="kpi-icon"></span></div><div class="kpi-value">${k.fmt(val)}</div><div class="kpi-unit">${k.unit}</div></div>`;
+      const fmt = fmtMap[k.name] || (v => v != null ? v : '--');
+
+      return `<div class="kpi-card"><div class="kpi-head"><span class="kpi-name">${k.name}</span><span class="kpi-icon"></span></div><div class="kpi-value">${fmt(k.value)}</div><div class="kpi-unit">${k.unit}</div></div>`;
 
     }).join('');
 
@@ -2036,6 +2031,11 @@ class ProgramRun extends HTMLElement {
 
         if (inputs.length >= 4 && p.loadPower) inputs[3].value = p.loadPower;
 
+        if (p.kpiParams) {
+          this.kpiParams = p.kpiParams;
+          this.renderKpiFromParams();
+        }
+
       }
 
 
@@ -2063,10 +2063,10 @@ const VARIABLE_CATALOG = [
   {
     group: '综合总览', tab: '综合总览',
     vars: [
-      { name: 'NpDem+Np_fbk', cnName: '动力涡轮转速指令+反馈', csvs: ['NpDem', 'Np'], unit: 'rpm' },
-      { name: 'Ng_fbk', cnName: '燃气涡轮转速反馈', csvs: ['Ng'], unit: 'rpm' },
-      { name: 'T45_fbk', cnName: '燃气涡轮后温度反馈', csvs: ['T45', 'HPC_T4_out'], unit: 'K' },
-      { name: 'Mkp_fbk', cnName: '动力涡轮扭矩反馈', csvs: ['Mkp'], unit: 'N·m' },
+      { name: 'NpDem+Np_fbk', cnName: '动力涡轮转速指令+反馈', csvs: ['NpDem', 'Np_fbk'], unit: 'rpm' },
+      { name: 'Ng_fbk', cnName: '燃气涡轮转速反馈', csvs: ['Ng_fbk'], unit: 'rpm' },
+      { name: 'T45_fbk', cnName: '燃气涡轮后温度反馈', csvs: ['T45_fbk'], unit: 'K' },
+      { name: 'Mkp_fbk', cnName: '动力涡轮扭矩反馈', csvs: ['Mkp_fbk'], unit: 'N·m' },
       { name: 'Wfcmd', cnName: '燃油流量指令', csvs: ['Wf_cmd', 'Wf'], unit: 'kg/s' },
     ]
   },
@@ -2074,10 +2074,10 @@ const VARIABLE_CATALOG = [
     group: '控制系统', tab: '控制',
     vars: [
       { name: 'CLP', cnName: '综合控制逻辑', csvs: ['CLP'], unit: '-' },
-      { name: 'NpDem+Np_fbk', cnName: '动力涡轮转速指令+反馈', csvs: ['NpDem', 'Np'], unit: 'rpm' },
-      { name: 'NgMax+Ng_fbk', cnName: '燃气涡轮转速限制+反馈', csvs: ['NgMax', 'Ng'], unit: 'rpm' },
-      { name: 'T45Max+T45_fbk', cnName: '燃气涡轮后温度限制+反馈', csvs: ['T45Max', 'T45'], unit: 'K' },
-      { name: 'MkpMax+Mkp_fbk', cnName: '动力涡轮扭矩限制+反馈', csvs: ['MkpMax', 'Mkp'], unit: 'N·m' },
+      { name: 'NpDem+Np_fbk', cnName: '动力涡轮转速指令+反馈', csvs: ['NpDem', 'Np_fbk'], unit: 'rpm' },
+      { name: 'NgMax+Ng_fbk', cnName: '燃气涡轮转速限制+反馈', csvs: ['NgMax', 'Ng_fbk'], unit: 'rpm' },
+      { name: 'T45Max+T45_fbk', cnName: '燃气涡轮后温度限制+反馈', csvs: ['T45Max', 'T45_fbk'], unit: 'K' },
+      { name: 'MkpMax+Mkp_fbk', cnName: '动力涡轮扭矩限制+反馈', csvs: ['MkpMax', 'Mkp_fbk'], unit: 'N·m' },
       { name: 'Ngc', cnName: '燃气涡轮换算转速', csvs: ['Ngc'], unit: '-' },
       { name: 'Wfcmd', cnName: '燃油流量指令', csvs: ['Wf_cmd', 'Wf'], unit: 'kg/s' },
     ]
@@ -2086,7 +2086,7 @@ const VARIABLE_CATALOG = [
     group: '发动机总体性能', tab: '总体性能',
     vars: [
       { name: 'Wf', cnName: '实际燃油流量', csvs: ['Wf', 'Wf_kgps'], unit: 'kg/s' },
-      { name: 'Power', cnName: '负载/输出功率指令', csvs: ['Power'], unit: 'W' },
+      { name: 'Power', cnName: '负载/输出功率指令', csvs: ['Power_cmd'], unit: 'W' },
       { name: 'HP_PowerExtract', cnName: '高压轴功率提取保留槽', csvs: ['HP_PowerExtract'], unit: 'W' },
       { name: 'Pt1/P1', cnName: '发动机进口总压', csvs: ['Pt1', 'P1'], unit: 'Pa' },
       { name: 'Tt1/T1', cnName: '发动机进口总温', csvs: ['Tt1', 'T1'], unit: 'K' },
@@ -2127,8 +2127,8 @@ const VARIABLE_CATALOG = [
   {
     group: '滑油模块', tab: '滑油',
     vars: [
-      { name: 'Ng_fbk', cnName: '燃气涡轮转速', csvs: ['Ng'], unit: 'rpm', io: 'input' },
-      { name: 'Np_fbk', cnName: '动力涡轮转速', csvs: ['Np'], unit: 'rpm', io: 'input' },
+      { name: 'Ng_fbk', cnName: '燃气涡轮转速', csvs: ['Ng_fbk'], unit: 'rpm', io: 'input' },
+      { name: 'Np_fbk', cnName: '动力涡轮转速', csvs: ['Np_fbk'], unit: 'rpm', io: 'input' },
       { name: 'AirOil_Teff_C', cnName: '空滑有效空气温度', csvs: ['Oil_AirTemp_C'], unit: '℃', io: 'input' },
       { name: 'OilPump_Displacement_cc_rev', cnName: '滑油泵排量', csvs: ['OilPump_Displacement_cc_rev'], unit: 'cc/rev', io: 'input' },
       { name: 'Wf_kgps', cnName: '计量燃油量', csvs: ['Wf_kgps'], unit: 'kg/s', io: 'input' },
@@ -2168,8 +2168,8 @@ const VARIABLE_CATALOG = [
     group: '空气模块', tab: '空气',
     vars: [
       { name: 'AirBoundaryTP16', cnName: 'G01-G08总温总压边界', csvs: ['AirBoundaryTP16_1','AirBoundaryTP16_3','AirBoundaryTP16_5','AirBoundaryTP16_7','AirBoundaryTP16_9','AirBoundaryTP16_11','AirBoundaryTP16_13','AirBoundaryTP16_15'], unit: 'K/Pa' },
-      { name: 'Ng_fbk', cnName: '燃气涡轮转速', csvs: ['Ng'], unit: 'rpm' },
-      { name: 'Np_fbk', cnName: '动力涡轮转速', csvs: ['Np'], unit: 'rpm' },
+      { name: 'Ng_fbk', cnName: '燃气涡轮转速', csvs: ['Ng_fbk'], unit: 'rpm' },
+      { name: 'Np_fbk', cnName: '动力涡轮转速', csvs: ['Np_fbk'], unit: 'rpm' },
       { name: 'G01', cnName: 'GT1进气流量', csvs: ['G01_GT1_IN_W_kgps'], unit: 'kg/s' },
       { name: 'G02', cnName: 'GT1出气流量', csvs: ['G02_GT1_OUT_W_kgps'], unit: 'kg/s' },
       { name: 'G03', cnName: 'GT2进气流量', csvs: ['G03_GT2_IN_W_kgps'], unit: 'kg/s' },

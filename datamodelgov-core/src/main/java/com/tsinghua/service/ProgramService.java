@@ -1060,7 +1060,10 @@ public class ProgramService {
             sb.append("        'Ngc', 'Ngc'; 'Wf_kgps', 'Wf_kgps'; 'WfProxyCmd', 'WfProxyCmd';\n");
             sb.append("        'Pt3_fbk', 'Pt3_fbk'; 'Tt3_fbk', 'Tt3_fbk';\n");
             sb.append("        'P1', 'P1'; 'T1', 'T1'; 'P45', 'P45'; 'P4', 'P4'; 'P5', 'P5'; 'T5', 'T5'; 'T4', 'T4';\n");
-            sb.append("        'Oil_AirTemp_C', 'Oil_AirTemp_C'\n");
+            sb.append("        'Oil_AirTemp_C', 'Oil_AirTemp_C';\n");
+            sb.append("        'dp_fuel', 'dp_fuel'; 'lock_meter', 'lock_meter'; 'xm_ref_sb', 'xm_ref_sb';\n");
+            sb.append("        'xm_cmd_m', 'xm_cmd_m'; 'lock_igv', 'lock_igv'; 'xd_cmd', 'xd_cmd';\n");
+            sb.append("        'shutdown', 'shutdown'; 'xm', 'xm'; 'xd', 'xd'\n");
             sb.append("    };\n");
             sb.append("    for i = 1:size(gotoSignals, 1)\n");
             sb.append("        try\n");
@@ -1162,6 +1165,40 @@ public class ProgramService {
             sb.append("        end\n");
             sb.append("    catch\n");
             sb.append("    end\n");
+            // 3e. Engine SFunc additional outputs (HPC_u6, HPT_y16, LPT_y16)
+            sb.append("    try\n");
+            sb.append("        sfuncBlocks = find_system('").append(modelName).append("', 'SearchDepth', 3, 'BlockType', 'S-Function');\n");
+            sb.append("        for i = 1:numel(sfuncBlocks)\n");
+            sb.append("            try\n");
+            sb.append("                fn = get_param(sfuncBlocks{i}, 'FunctionName');\n");
+            sb.append("                if strcmp(fn, 'SFunc_EngModel')\n");
+            sb.append("                    engPH = get_param(sfuncBlocks{i}, 'PortHandles');\n");
+            sb.append("                    engPos = get_param(sfuncBlocks{i}, 'Position');\n");
+            sb.append("                    engParent = get_param(sfuncBlocks{i}, 'Parent');\n");
+            sb.append("                    demuxName = 'ToWS_Demux_Extra'; demuxPath = [engParent '/' demuxName];\n");
+            sb.append("                    if getSimulinkBlockHandle(demuxPath) ~= -1; delete_block(demuxPath); end\n");
+            sb.append("                    add_block('simulink/Signal Routing/Demux', demuxPath, 'Outputs', '20', ...\n");
+            sb.append("                        'Position', [engPos(3)+20, engPos(2), engPos(3)+40, engPos(2)+400]);\n");
+            sb.append("                    add_line(engParent, engPH.Outport(1), get_param(demuxPath, 'PortHandles').Inport(1));\n");
+            sb.append("                    extraVars = {'HPC_u6', 'HPT_y16', 'LPT_y16'};\n");
+            sb.append("                    extraIdx = [13, 14, 15];\n");
+            sb.append("                    for j = 1:3\n");
+            sb.append("                        twName = ['ToWS_' extraVars{j}]; twPath = [engParent '/' twName];\n");
+            sb.append("                        if getSimulinkBlockHandle(twPath) ~= -1; delete_block(twPath); end\n");
+            sb.append("                        add_block('simulink/Sinks/To Workspace', twPath, ...\n");
+            sb.append("                            'VariableName', extraVars{j}, 'SaveFormat', 'Array', ...\n");
+            sb.append("                            'MaxDataPoints', '1000000', 'Decimation', '1', ...\n");
+            sb.append("                            'Position', [engPos(3)+80, engPos(2)+(j-1)*40, engPos(3)+120, engPos(2)+30+(j-1)*40]);\n");
+            sb.append("                        add_line(engParent, [demuxName '/' num2str(extraIdx(j))], [twName '/1']);\n");
+            sb.append("                        okSignals{end+1} = extraVars{j};\n");
+            sb.append("                    end\n");
+            sb.append("                    break;\n");
+            sb.append("                end\n");
+            sb.append("            catch\n");
+            sb.append("            end\n");
+            sb.append("        end\n");
+            sb.append("    catch\n");
+            sb.append("    end\n");
             // 4. Run simulation
             sb.append("    simOut = sim('").append(escape(modelName)).append("', 'ReturnWorkspaceOutputs', 'on', 'StopTime', '").append(stopTime).append("');\n");
             sb.append("    save('").append(escape(taskDir)).append("/simOut.mat', 'simOut');\n");
@@ -1178,7 +1215,8 @@ public class ProgramService {
             sb.append("              'Np_fbk','Ng_fbk','Mkp_fbk','T45_fbk', ...\n");
             sb.append("              'Ngc','Wf_kgps','WfProxyCmd', ...\n");
             sb.append("              'Pt3_fbk','Tt3_fbk','P1','T1','P45','P4','P5','T5','T4', ...\n");
-            sb.append("              'Oil_AirTemp_C'};\n");
+            sb.append("              'Oil_AirTemp_C', ...\n");
+            sb.append("              'HPC_u6','HPT_y16','LPT_y16'};\n");
             sb.append("    for i = 1:length(tsVars)\n");
             sb.append("        try\n");
             sb.append("            v = simOut.(tsVars{i});\n");
@@ -1259,7 +1297,7 @@ public class ProgramService {
             sb.append("        end\n");
             sb.append("    end\n");
             // 6c. Extract workspace scalar variables (limits, error) as constant columns
-            sb.append("    wsScalars = {'NgMax','T45Max','MkpMax','WfMax','WfMin','errmax'};\n");
+            sb.append("    wsScalars = {'NgMax','T45Max','MkpMax','WfMax','WfMin','errmax','Power_cmd'};\n");
             sb.append("    for i = 1:length(wsScalars)\n");
             sb.append("        try\n");
             sb.append("            sn = wsScalars{i};\n");
