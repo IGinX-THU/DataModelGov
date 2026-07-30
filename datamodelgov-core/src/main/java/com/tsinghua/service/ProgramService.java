@@ -984,6 +984,14 @@ public class ProgramService {
                               String fixedStep, String npCommand, String loadPower) throws IOException {
         StringBuilder sb = new StringBuilder();
         sb.append("cd('").append(escape(programDir)).append("');\n");
+        sb.append("try\n");
+        sb.append("    ").append(preRun).append(";\n");
+        sb.append("catch ME\n");
+        sb.append("    fid = fopen('error.txt', 'w');\n");
+        sb.append("    fprintf(fid, '%s\\n', ME.message);\n");
+        sb.append("    fclose(fid);\n");
+        sb.append("    rethrow(ME);\n");
+        sb.append("end\n");
         if (StringUtils.hasText(npCommand)) {
             sb.append("NpReferenceRpm = ").append(npCommand).append(";\n");
         }
@@ -993,19 +1001,14 @@ public class ProgramService {
         if (StringUtils.hasText(fixedStep)) {
             sb.append("Ts = ").append(fixedStep).append(";\n");
         }
-        sb.append("try\n");
-        sb.append("    ").append(preRun).append(";\n");
-        sb.append("catch ME\n");
-        sb.append("    fid = fopen('error.txt', 'w');\n");
-        sb.append("    fprintf(fid, '%s\\n', ME.message);\n");
-        sb.append("    fclose(fid);\n");
-        sb.append("    rethrow(ME);\n");
-        sb.append("end\n");
         if (modelFile != null && !modelFile.isEmpty()) {
             String modelName = modelFile.replaceAll("\\.(slx|mdl)$", "");
             sb.append("try\n");
             sb.append("    load_system('").append(escape(modelName)).append("');\n");
             sb.append("    set_param('").append(escape(modelName)).append("', 'StopTime', '").append(stopTime).append("');\n");
+            if (StringUtils.hasText(fixedStep)) {
+                sb.append("    set_param('").append(escape(modelName)).append("', 'FixedStep', '").append(fixedStep).append("');\n");
+            }
             // okSignals tracks successfully added To Workspace variables
             sb.append("    okSignals = {};\n");
             // 3a. Add To Workspace blocks for blocks with output ports
