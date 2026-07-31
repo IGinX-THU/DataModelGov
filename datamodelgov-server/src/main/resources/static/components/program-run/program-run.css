@@ -1,14 +1,14 @@
 :host {
-  --bg:#0B1120; --panel:#111C2E; --grid:#24344D; --text:#e5e7eb; --muted:#9ca3af;
-  --green:#22c55e; --blue:#3b82f6; --red:#ef4444; --yellow:#f59e0b; --cyan:#06b6d4;
-  --purple:#8b5cf6; --orange:#f97316;
+  --bg:#0B1220; --panel:#111C2E; --grid:#24344D; --text:#e5e7eb; --muted:#9ca3af;
+  --green:#45D483; --blue:#4D8DFF; --red:#ef4444; --yellow:#f59e0b; --cyan:#35C9FF;
+  --purple:#8B7CFF; --orange:#FFB84D;
   display:block; width:100%; height:auto; min-height:100%; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif; background:var(--bg); color:var(--text); overflow:visible; font-size:13px;
 }
 * { box-sizing:border-box; }
 .app { width:100%; height:auto; min-height:100%; display:flex; flex-direction:column; }
 header { display:flex; align-items:center; justify-content:space-between; height:46px; padding:0 16px; background:var(--panel); border-bottom:1px solid var(--grid); flex-shrink:0; }
 .head-left { display:flex; align-items:center; gap:10px; }
-.logo { width:24px; height:24px; border-radius:50%; background:linear-gradient(135deg,#3b82f6,#06b6d4); }
+.logo { width:24px; height:24px; border-radius:50%; background:linear-gradient(135deg,var(--blue),var(--cyan)); }
 .title { font-size:16px; font-weight:600; }
 .model-tag { background:#1a2740; color:#4D8DFF; padding:3px 10px; border-radius:4px; font-size:12px; border:1px solid #24344D; }
 .head-right { display:flex; align-items:center; gap:8px; }
@@ -19,7 +19,7 @@ header { display:flex; align-items:center; justify-content:space-between; height
 .btn-pause { background:var(--yellow); color:#000; }
 .btn-stop { background:var(--red); }
 .btn-close { background:#475569; }
-.time-box { padding:5px 10px; background:#1a2740; border:1px solid #24344D; border-radius:4px; color:#10b981; font-size:12px; }
+.time-box { padding:5px 10px; background:#1a2740; border:1px solid var(--grid); border-radius:4px; color:var(--green); font-size:12px; }
 .status-box { padding:5px 10px; background:#1a2740; border-radius:4px; color:var(--green); font-size:12px; display:flex; align-items:center; gap:4px; }
 .dot { width:7px; height:7px; border-radius:50%; background:var(--green); }
 .body { display:flex; overflow:visible; }
@@ -47,14 +47,14 @@ aside.right { border-left:1px solid var(--grid); border-right:none; }
 .time-track { position:relative; height:20px; background:#1a2740; border:1px solid #24344D; border-radius:4px; overflow:hidden; margin-top:4px; }
 .time-progress { position:absolute; top:0; left:0; height:100%; width:41.7%; background:rgba(37,99,235,.35); }
 .time-cursor { position:absolute; top:0; left:41.7%; width:4px; margin-left:-1px; height:100%; background:#3b82f6; cursor:ew-resize; pointer-events:auto; z-index:2; }
-.time-mark { position:absolute; top:40px; left:41.7%; transform:translateX(-50%); font-size:10px; color:#10b981; background:#0b1220; padding:1px 4px; border:1px solid #24344D; border-radius:3px; }
+.time-mark { position:absolute; top:40px; left:41.7%; transform:translateX(-50%); font-size:10px; color:var(--green); background:var(--bg); padding:1px 4px; border:1px solid var(--grid); border-radius:3px; }
 .play { display:flex; align-items:center; gap:4px; margin-top:8px; }
 .play button, .play span { background:#1a2740; border:1px solid #24344D; color:var(--muted); border-radius:4px; padding:3px 6px; font-size:11px; cursor:pointer; }
-.play span.active { color:#fff; background:#2563eb; border-color:#2563eb; }
+.play span.active { color:#fff; background:var(--blue); border-color:var(--blue); }
 main { flex:1; display:block; min-width:0; padding:10px; background:var(--bg); }
 .tabs { display:flex; gap:8px; margin-bottom:10px; border-bottom:1px solid var(--grid); padding-bottom:8px; }
 .tab { background:transparent; border:none; color:var(--muted); padding:6px 12px; font-size:12px; cursor:pointer; border-radius:4px; }
-.tab.active { background:#2563eb; color:#fff; }
+.tab.active { background:var(--blue); color:#fff; }
 .content { display:flex; flex-direction:column; gap:10px; }
 .flow { display:flex; flex-direction:column; align-items:center; gap:0; padding:10px; background:var(--panel); border:1px solid var(--grid); border-radius:6px; }
 .flow-top { display:flex; align-items:center; justify-content:center; gap:8px; width:100%; }
@@ -119,20 +119,20 @@ footer .play { margin-top:0; flex-shrink:0; }
 .var-actions { display:flex; gap:4px; }
 .var-btn { background:#1a2740; border:1px solid #24344D; color:var(--muted); border-radius:3px; padding:2px 6px; font-size:10px; cursor:pointer; }
 .var-btn:hover { background:#24344D; color:var(--text); }
-.var-btn.primary { background:#2563eb; border-color:#2563eb; color:#fff; }
+.var-btn.primary { background:var(--blue); border-color:var(--blue); color:#fff; }
 .var-btn.primary:hover { background:#1d4ed8; }
 .var-tree { font-size:11px; }
 .var-group { margin-bottom:4px; }
 .var-group-header { display:flex; align-items:center; gap:4px; padding:3px 0; color:var(--text); font-weight:500; font-size:11px; }
-.var-group-header .var-group-check { width:12px; height:12px; accent-color:#2563eb; cursor:pointer; }
+.var-group-header .var-group-check { width:12px; height:12px; accent-color:var(--blue); cursor:pointer; }
 .var-group-body { margin:0; padding:0; }
 .var-io-group { margin:0 0 2px 8px; }
 .var-io-header { font-size:10px; color:#6b7280; padding:2px 0; border-bottom:1px solid #1e293b; margin-bottom:2px; display:flex; align-items:center; gap:4px; }
-.var-io-header .var-io-check { width:11px; height:11px; accent-color:#2563eb; cursor:pointer; }
+.var-io-header .var-io-check { width:11px; height:11px; accent-color:var(--blue); cursor:pointer; }
 .var-group-items { margin:0 0 0 14px; padding:0; list-style:none; }
 .var-item { display:flex; align-items:center; gap:4px; padding:2px 0; color:var(--muted); cursor:pointer; }
 .var-item:hover { color:var(--text); }
-.var-item input[type="checkbox"] { width:12px; height:12px; accent-color:#2563eb; cursor:pointer; }
+.var-item input[type="checkbox"] { width:12px; height:12px; accent-color:var(--blue); cursor:pointer; }
 .var-item .var-name { font-size:10px; }
 .var-item .var-cn { font-size:10px; color:var(--muted); }
 .var-item .var-unit { font-size:9px; color:#6b7280; margin-left:auto; }

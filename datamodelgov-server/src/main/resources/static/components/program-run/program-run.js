@@ -1209,7 +1209,7 @@ class ProgramRun extends HTMLElement {
 
       if (result && result.code === 200) {
 
-        this.duration = 30;
+        this.duration = parseFloat(inputs[0].value) || 30;
 
         this.updateStatusUI('RUNNING');
 
@@ -1291,51 +1291,7 @@ class ProgramRun extends HTMLElement {
 
         if (!result || result.code !== 200 || !result.data) return;
 
-        const data = result.data;
-
-        const status = data.status || 'UNKNOWN';
-
-        this.updateStatusUI(status, data.lastError);
-
-        if (data.runLog) {
-
-          this.runLog = data.runLog;
-
-        }
-
-        this.runStatus = status;
-
-        this.runError = data.lastError || null;
-
-        this.runTimestamp = data.lastRunTime || null;
-
-        if (status === 'RUNNING') {
-
-          this.duration += 30;
-
-        }
-
-        if (data.headers && data.rows) {
-
-          this.loadCsvData(data.headers, data.rows);
-
-        }
-
-        if (status === 'SUCCESS') {
-
-          this.stopPolling();
-
-          this.stopRunTimer();
-
-        }
-
-        if (status === 'ERROR' || status === 'STOPPED') {
-
-          this.stopPolling();
-
-          this.stopRunTimer();
-
-        }
+        this.handleResultData(result.data, name, version);
 
       } catch (e) {
 
@@ -1423,7 +1379,7 @@ class ProgramRun extends HTMLElement {
 
     const tMax = timeData.length ? timeData[timeData.length - 1] : 30;
 
-    this.duration = tMax;
+    // keep duration from stop time input; do not override with CSV tMax
 
 
 
@@ -1621,6 +1577,14 @@ class ProgramRun extends HTMLElement {
 
         }
 
+        if (v >= limitVal * 0.9 && v < limitVal) {
+
+          alerts.push({ time: timeData[i], level: '二级', desc: `${al.name} 接近${al.desc} — ${al.name}=${v.toFixed(1)}${al.unit} ≥ ${(limitVal * 0.9).toFixed(1)}${al.unit}` });
+
+          break;
+
+        }
+
       }
 
     });
@@ -1799,6 +1763,15 @@ class ProgramRun extends HTMLElement {
 
   updateStatusUI(status, errorMsg) {
 
+    const statusMap = {
+      'running': 'RUNNING',
+      'success': 'SUCCESS',
+      'failed': 'ERROR',
+      'stopped': 'STOPPED',
+      'pending': 'IDLE'
+    };
+    status = statusMap[status] || status;
+
     const statusTexts = {
 
       'IDLE': '就绪',
@@ -1819,9 +1792,9 @@ class ProgramRun extends HTMLElement {
 
       'IDLE': '#9ca3af',
 
-      'RUNNING': '#22c55e',
+      'RUNNING': '#45D483',
 
-      'SUCCESS': '#3b82f6',
+      'SUCCESS': '#35C9FF',
 
       'ERROR': '#ef4444',
 
@@ -1867,6 +1840,12 @@ class ProgramRun extends HTMLElement {
 
       if (toast) this.showToast(toast.msg, toast.type);
 
+      if (status === 'SUCCESS') {
+        if (window.loadDataSourceTree) window.loadDataSourceTree();
+        const dataIcon = document.querySelector('.bottom-sidebar-icon.left-sidebar-icon[data-panel="data"]');
+        if (dataIcon && !dataIcon.classList.contains('active')) dataIcon.click();
+      }
+
     }
 
     this._lastStatus = status;
@@ -1891,29 +1870,76 @@ class ProgramRun extends HTMLElement {
 
       }
 
-      const data = result.data;
-
-      const status = data.status || 'IDLE';
-
-      this.updateStatusUI(status, data.lastError);
-
-      if (status === 'RUNNING') {
-
-        this.startPolling(name, version);
-
-        this.startRunTimer(data.lastRunTime);
-
-      }
-
-      if (data.headers && data.rows) {
-
-        this.loadCsvData(data.headers, data.rows);
-
-      }
+      this.handleResultData(result.data, name, version);
 
     } catch (e) {
 
       this.updateStatusUI('IDLE');
+
+    }
+
+  }
+
+
+
+  handleResultData(data, name, version) {
+
+    const statusMap = {
+      'running': 'RUNNING',
+      'success': 'SUCCESS',
+      'failed': 'ERROR',
+      'stopped': 'STOPPED',
+      'pending': 'IDLE'
+    };
+    const status = statusMap[data.status] || data.status || 'UNKNOWN';
+
+    this.updateStatusUI(status, data.lastError);
+
+    if (data.runLog) {
+
+      this.runLog = data.runLog;
+
+    }
+
+    this.runStatus = status;
+
+    this.runError = data.lastError || null;
+
+    this.runTimestamp = data.lastRunTime || null;
+
+    if (this.kpiParams) {
+
+      this.kpiParams.forEach(k => {
+
+        if (k.name === 'Np' && data.npCommand) k.value = data.npCommand;
+
+        if (k.name === 'Mkp' && data.loadPower) k.value = data.loadPower;
+
+      });
+
+      this.renderKpiFromParams();
+
+    }
+
+    if (data.headers && data.rows) {
+
+      this.loadCsvData(data.headers, data.rows);
+
+    }
+
+    if (status === 'RUNNING' && name && version) {
+
+      this.startPolling(name, version);
+
+      this.startRunTimer(data.lastRunTime);
+
+    }
+
+    if (status === 'SUCCESS' || status === 'ERROR' || status === 'STOPPED') {
+
+      this.stopPolling();
+
+      this.stopRunTimer();
 
     }
 
@@ -2183,8 +2209,8 @@ const VARIABLE_CATALOG = [
 ];
 
 const VAR_COLORS = [
-  '#f59e0b', '#22c55e', '#06b6d4', '#ef4444', '#3b82f6',
-  '#d97706', '#a855f7', '#ec4899', '#14b8a6', '#84cc16',
+  '#FFB84D', '#45D483', '#35C9FF', '#ef4444', '#4D8DFF',
+  '#d97706', '#8B7CFF', '#ec4899', '#14b8a6', '#84cc16',
   '#6366f1', '#f97316', '#10b981', '#8b5cf6', '#0ea5e9'
 ];
 
@@ -2192,9 +2218,9 @@ const VAR_COLORS = [
 
 const colors = {
 
-  yellow: '#f59e0b', green: '#22c55e', cyan: '#06b6d4', red: '#ef4444',
+  yellow: '#f59e0b', green: '#45D483', cyan: '#35C9FF', red: '#ef4444',
 
-  blue: '#3b82f6', orange: '#d97706', purple: '#a855f7', pink: '#ec4899',
+  blue: '#4D8DFF', orange: '#FFB84D', purple: '#8B7CFF', pink: '#ec4899',
 
   teal: '#14b8a6', lime: '#84cc16', indigo: '#6366f1'
 
