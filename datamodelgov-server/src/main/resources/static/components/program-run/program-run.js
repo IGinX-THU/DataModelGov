@@ -1784,9 +1784,9 @@ class ProgramRun extends HTMLElement {
 
       'IDLE': '#9ca3af',
 
-      'RUNNING': '#22c55e',
+      'RUNNING': '#45D483',
 
-      'SUCCESS': '#3b82f6',
+      'SUCCESS': '#35C9FF',
 
       'ERROR': '#ef4444',
 
@@ -2201,8 +2201,8 @@ const VARIABLE_CATALOG = [
 ];
 
 const VAR_COLORS = [
-  '#f59e0b', '#22c55e', '#06b6d4', '#ef4444', '#3b82f6',
-  '#d97706', '#a855f7', '#ec4899', '#14b8a6', '#84cc16',
+  '#FFB84D', '#45D483', '#35C9FF', '#ef4444', '#4D8DFF',
+  '#d97706', '#8B7CFF', '#ec4899', '#14b8a6', '#84cc16',
   '#6366f1', '#f97316', '#10b981', '#8b5cf6', '#0ea5e9'
 ];
 
@@ -2210,9 +2210,9 @@ const VAR_COLORS = [
 
 const colors = {
 
-  yellow: '#f59e0b', green: '#22c55e', cyan: '#06b6d4', red: '#ef4444',
+  yellow: '#f59e0b', green: '#45D483', cyan: '#35C9FF', red: '#ef4444',
 
-  blue: '#3b82f6', orange: '#d97706', purple: '#a855f7', pink: '#ec4899',
+  blue: '#4D8DFF', orange: '#FFB84D', purple: '#8B7CFF', pink: '#ec4899',
 
   teal: '#14b8a6', lime: '#84cc16', indigo: '#6366f1'
 
