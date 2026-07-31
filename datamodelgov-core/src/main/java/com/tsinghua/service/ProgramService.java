@@ -1001,6 +1001,12 @@ public class ProgramService {
         if (StringUtils.hasText(fixedStep)) {
             sb.append("Ts = ").append(fixedStep).append(";\n");
         }
+        // Recalculate derived values that depend on user input
+        sb.append("PTReferenceLoadPowerW = MkpReferenceNm * (NpReferenceRpm * pi / 30);\n");
+        sb.append("Power_cmd = PTReferenceLoadPowerW;\n");
+        sb.append("NpDem = NpReferenceRpm;\n");
+        sb.append("if exist('NgReferenceRpm', 'var'), NgMax = NgReferenceRpm * 1.05; end\n");
+        sb.append("if exist('WfReferenceKgps', 'var'), WfMax = WfReferenceKgps * 2; WfMin = WfReferenceKgps * 0.01; end\n");
         if (modelFile != null && !modelFile.isEmpty()) {
             String modelName = modelFile.replaceAll("\\.(slx|mdl)$", "");
             sb.append("try\n");
