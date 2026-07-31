@@ -1897,6 +1897,12 @@ class ProgramRun extends HTMLElement {
 
       if (toast) this.showToast(toast.msg, toast.type);
 
+      if (status === 'SUCCESS') {
+        if (window.loadDataSourceTree) window.loadDataSourceTree();
+        const dataIcon = document.querySelector('.bottom-sidebar-icon.left-sidebar-icon[data-panel="data"]');
+        if (dataIcon) dataIcon.click();
+      }
+
     }
 
     this._lastStatus = status;

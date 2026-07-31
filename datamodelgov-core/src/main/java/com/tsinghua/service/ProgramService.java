@@ -1603,7 +1603,7 @@ public class ProgramService {
             if (modelFile != null && !modelFile.isEmpty()) {
                 modelName = modelFile.replace(".", "_");
             }
-            String proj = safeProjectName(entity.getProjectName());
+            String proj = entity.getProjectName() != null ? entity.getProjectName() : ProjectContext.getCurrentProject("unknown");
             String outputTable = proj + "." + "program_result" + "." + entity.getName() + "_" + entity.getVersion() + "." + modelName + ".signals_" + taskTimestamp;
             String newFileName = "signals_keyed_" + taskTimestamp + ".csv";
             File newCsv = new File(csvFile.getParentFile(), newFileName);
