@@ -1291,72 +1291,7 @@ class ProgramRun extends HTMLElement {
 
         if (!result || result.code !== 200 || !result.data) return;
 
-        const data = result.data;
-
-        const statusMap = {
-          'running': 'RUNNING',
-          'success': 'SUCCESS',
-          'failed': 'ERROR',
-          'stopped': 'STOPPED',
-          'pending': 'IDLE'
-        };
-        const status = statusMap[data.status] || data.status || 'UNKNOWN';
-
-        this.updateStatusUI(status, data.lastError);
-
-        if (data.runLog) {
-
-          this.runLog = data.runLog;
-
-        }
-
-        this.runStatus = status;
-
-        this.runError = data.lastError || null;
-
-        this.runTimestamp = data.lastRunTime || null;
-
-        if (this.kpiParams) {
-
-          this.kpiParams.forEach(k => {
-
-            if (k.name === 'Np' && data.npCommand) k.value = data.npCommand;
-
-            if (k.name === 'Mkp' && data.loadPower) k.value = data.loadPower;
-
-          });
-
-          this.renderKpiFromParams();
-
-        }
-
-        if (status === 'RUNNING') {
-
-          // duration already set from stop time input, do not accumulate
-
-        }
-
-        if (data.headers && data.rows) {
-
-          this.loadCsvData(data.headers, data.rows);
-
-        }
-
-        if (status === 'SUCCESS') {
-
-          this.stopPolling();
-
-          this.stopRunTimer();
-
-        }
-
-        if (status === 'ERROR' || status === 'STOPPED') {
-
-          this.stopPolling();
-
-          this.stopRunTimer();
-
-        }
+        this.handleResultData(result.data, name, version);
 
       } catch (e) {
 
@@ -1900,7 +1835,7 @@ class ProgramRun extends HTMLElement {
       if (status === 'SUCCESS') {
         if (window.loadDataSourceTree) window.loadDataSourceTree();
         const dataIcon = document.querySelector('.bottom-sidebar-icon.left-sidebar-icon[data-panel="data"]');
-        if (dataIcon) dataIcon.click();
+        if (dataIcon && !dataIcon.classList.contains('active')) dataIcon.click();
       }
 
     }
@@ -1927,36 +1862,76 @@ class ProgramRun extends HTMLElement {
 
       }
 
-      const data = result.data;
-
-      const statusMap = {
-        'running': 'RUNNING',
-        'success': 'SUCCESS',
-        'failed': 'ERROR',
-        'stopped': 'STOPPED',
-        'pending': 'IDLE'
-      };
-      const status = statusMap[data.status] || data.status || 'IDLE';
-
-      this.updateStatusUI(status, data.lastError);
-
-      if (status === 'RUNNING') {
-
-        this.startPolling(name, version);
-
-        this.startRunTimer(data.lastRunTime);
-
-      }
-
-      if (data.headers && data.rows) {
-
-        this.loadCsvData(data.headers, data.rows);
-
-      }
+      this.handleResultData(result.data, name, version);
 
     } catch (e) {
 
       this.updateStatusUI('IDLE');
+
+    }
+
+  }
+
+
+
+  handleResultData(data, name, version) {
+
+    const statusMap = {
+      'running': 'RUNNING',
+      'success': 'SUCCESS',
+      'failed': 'ERROR',
+      'stopped': 'STOPPED',
+      'pending': 'IDLE'
+    };
+    const status = statusMap[data.status] || data.status || 'UNKNOWN';
+
+    this.updateStatusUI(status, data.lastError);
+
+    if (data.runLog) {
+
+      this.runLog = data.runLog;
+
+    }
+
+    this.runStatus = status;
+
+    this.runError = data.lastError || null;
+
+    this.runTimestamp = data.lastRunTime || null;
+
+    if (this.kpiParams) {
+
+      this.kpiParams.forEach(k => {
+
+        if (k.name === 'Np' && data.npCommand) k.value = data.npCommand;
+
+        if (k.name === 'Mkp' && data.loadPower) k.value = data.loadPower;
+
+      });
+
+      this.renderKpiFromParams();
+
+    }
+
+    if (data.headers && data.rows) {
+
+      this.loadCsvData(data.headers, data.rows);
+
+    }
+
+    if (status === 'RUNNING' && name && version) {
+
+      this.startPolling(name, version);
+
+      this.startRunTimer(data.lastRunTime);
+
+    }
+
+    if (status === 'SUCCESS' || status === 'ERROR' || status === 'STOPPED') {
+
+      this.stopPolling();
+
+      this.stopRunTimer();
 
     }
 

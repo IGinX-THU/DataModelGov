@@ -17,6 +17,8 @@ import com.tsinghua.entity.ProgramEntity;
 import com.tsinghua.entity.ProgramTaskEntity;
 import com.tsinghua.enums.TaskStatus;
 import com.tsinghua.dto.UploadResult;
+import com.tsinghua.dto.DataQueryRequest;
+import com.tsinghua.dto.TableDto;
 import com.tsinghua.model.Result;
 import com.tsinghua.util.ConvertUtil;
 import com.tsinghua.util.ProjectContext;
@@ -1814,6 +1816,40 @@ public class ProgramService {
             data.put("runLog", task.getRunLog());
         }
 
+        // First try to query from IGinX outputTable
+        if (task.getOutputTable() != null && !task.getOutputTable().isEmpty()) {
+            try {
+                DataQueryRequest queryReq = new DataQueryRequest();
+                queryReq.setPaths(Collections.singletonList(task.getOutputTable() + ".*"));
+                TableDto tableDto = dataTableService.queryData(queryReq);
+                if (tableDto != null && tableDto.getHeader() != null && !tableDto.getHeader().isEmpty()
+                        && tableDto.getRecords() != null && !tableDto.getRecords().isEmpty()) {
+                    // Strip full path prefix from column names
+                    String tablePrefix = task.getOutputTable() + ".";
+                    List<String> headers = new ArrayList<>();
+                    for (String col : tableDto.getHeader()) {
+                        headers.add(col.startsWith(tablePrefix) ? col.substring(tablePrefix.length()) : col);
+                    }
+                    data.put("headers", headers);
+                    List<String[]> rows = new ArrayList<>();
+                    for (Map<String, Object> record : tableDto.getRecords()) {
+                        String[] rowArr = new String[headers.size()];
+                        for (int i = 0; i < headers.size(); i++) {
+                            String fullColName = headers.get(i).equals("key") ? "key" : tablePrefix + headers.get(i);
+                            Object val = record.get(fullColName);
+                            rowArr[i] = val != null ? String.valueOf(val) : "";
+                        }
+                        rows.add(rowArr);
+                    }
+                    data.put("rows", rows);
+                    return Result.success(data);
+                }
+            } catch (Exception e) {
+                log.warn("从IGinX查询结果数据失败，尝试读取CSV文件: {}", e.getMessage());
+            }
+        }
+
+        // Fallback: read from CSV file
         if (task.getResultCsvPath() != null) {
             File csv = new File(task.getResultCsvPath());
             if (csv.exists()) {
