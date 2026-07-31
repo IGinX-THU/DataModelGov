@@ -1209,7 +1209,7 @@ class ProgramRun extends HTMLElement {
 
       if (result && result.code === 200) {
 
-        this.duration = 30;
+        this.duration = parseFloat(inputs[0].value) || 30;
 
         this.updateStatusUI('RUNNING');
 
@@ -1311,7 +1311,7 @@ class ProgramRun extends HTMLElement {
 
         if (status === 'RUNNING') {
 
-          this.duration += 30;
+          // duration already set from stop time input, do not accumulate
 
         }
 
@@ -1423,7 +1423,7 @@ class ProgramRun extends HTMLElement {
 
     const tMax = timeData.length ? timeData[timeData.length - 1] : 30;
 
-    this.duration = tMax;
+    // keep duration from stop time input; do not override with CSV tMax
 
 
 
