@@ -1293,7 +1293,14 @@ class ProgramRun extends HTMLElement {
 
         const data = result.data;
 
-        const status = data.status || 'UNKNOWN';
+        const statusMap = {
+          'running': 'RUNNING',
+          'success': 'SUCCESS',
+          'failed': 'ERROR',
+          'stopped': 'STOPPED',
+          'pending': 'IDLE'
+        };
+        const status = statusMap[data.status] || data.status || 'UNKNOWN';
 
         this.updateStatusUI(status, data.lastError);
 
@@ -1308,6 +1315,20 @@ class ProgramRun extends HTMLElement {
         this.runError = data.lastError || null;
 
         this.runTimestamp = data.lastRunTime || null;
+
+        if (this.kpiParams) {
+
+          this.kpiParams.forEach(k => {
+
+            if (k.name === 'Np' && data.npCommand) k.value = data.npCommand;
+
+            if (k.name === 'Mkp' && data.loadPower) k.value = data.loadPower;
+
+          });
+
+          this.renderKpiFromParams();
+
+        }
 
         if (status === 'RUNNING') {
 
@@ -1799,6 +1820,15 @@ class ProgramRun extends HTMLElement {
 
   updateStatusUI(status, errorMsg) {
 
+    const statusMap = {
+      'running': 'RUNNING',
+      'success': 'SUCCESS',
+      'failed': 'ERROR',
+      'stopped': 'STOPPED',
+      'pending': 'IDLE'
+    };
+    status = statusMap[status] || status;
+
     const statusTexts = {
 
       'IDLE': '就绪',
@@ -1893,7 +1923,14 @@ class ProgramRun extends HTMLElement {
 
       const data = result.data;
 
-      const status = data.status || 'IDLE';
+      const statusMap = {
+        'running': 'RUNNING',
+        'success': 'SUCCESS',
+        'failed': 'ERROR',
+        'stopped': 'STOPPED',
+        'pending': 'IDLE'
+      };
+      const status = statusMap[data.status] || data.status || 'IDLE';
 
       this.updateStatusUI(status, data.lastError);
 

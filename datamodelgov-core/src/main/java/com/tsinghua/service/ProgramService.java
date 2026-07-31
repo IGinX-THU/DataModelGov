@@ -14,6 +14,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.tsinghua.auth.service.DataPermissionService;
 import com.tsinghua.auth.util.AuthUtil;
 import com.tsinghua.entity.ProgramEntity;
+import com.tsinghua.entity.ProgramTaskEntity;
+import com.tsinghua.enums.TaskStatus;
 import com.tsinghua.dto.UploadResult;
 import com.tsinghua.model.Result;
 import com.tsinghua.util.ConvertUtil;
@@ -54,9 +56,10 @@ public class ProgramService {
     private static final String META_PREFIX = "relational_system.programs_meta";
 
     private static final String TASK_BASE_DIR = "project";
+    private static final String TASK_DATA_PREFIX = "relational_system.program_task";
     private final ObjectMapper mapper = new ObjectMapper();
-    private final Map<String, ProgramEntity> runtimeStatus = new ConcurrentHashMap<>();
-    private final Map<String, Process> processMap = new ConcurrentHashMap<>();
+    private final Map<Long, Process> processMap = new ConcurrentHashMap<>();
+    private final Map<Long, ProgramTaskEntity> runningTasks = new ConcurrentHashMap<>();
     private static final Set<String> SUPPORTED_ARCHIVE = new HashSet<>(Arrays.asList(".zip", ".rar", ".7z", ".tar", ".tar.gz", ".tgz"));
     private static final boolean SEVENZIP_AVAILABLE;
 
@@ -82,6 +85,9 @@ public class ProgramService {
 
     @Autowired
     private ProjectService projectService;
+
+    @Autowired
+    private DataTableService dataTableService;
 
     private String safeProjectName(String projectName) {
         String proj = (projectName != null && !projectName.isEmpty()) ? projectName : ProjectContext.getCurrentProject("unknown");
@@ -138,7 +144,7 @@ public class ProgramService {
 
             ProgramEntity dto = new ProgramEntity();
             rs.forEach((k, v) -> setDtoField(dto, k, v));
-            return mergeRuntimeStatus(dto);
+            return dto;
         } catch (Exception e) {
             log.error("查询失败", e);
             return null;
@@ -376,7 +382,7 @@ public class ProgramService {
             for (Map<String, Object> record : records) {
                 ProgramEntity entity = new ProgramEntity();
                 record.forEach((k, v) -> setDtoField(entity, k, v));
-                list.add(mergeRuntimeStatus(entity));
+                list.add(entity);
             }
             return list;
         } catch (Exception e) {
@@ -417,21 +423,6 @@ public class ProgramService {
         }
     }
 
-    private String runtimeKey(ProgramEntity entity) {
-        return entity.getName() + "_" + entity.getVersion() + "_" + entity.getProjectName();
-    }
-
-    private ProgramEntity mergeRuntimeStatus(ProgramEntity entity) {
-        if (entity == null) return null;
-        ProgramEntity runtime = runtimeStatus.get(runtimeKey(entity));
-        if (runtime == null) return entity;
-        entity.setStatus(runtime.getStatus());
-        entity.setLastError(runtime.getLastError());
-        entity.setLastRunTime(runtime.getLastRunTime());
-        entity.setLastResultCsv(runtime.getLastResultCsv());
-        entity.setLastLogPath(runtime.getLastLogPath());
-        return entity;
-    }
 
     /**
      * 保存仿真程序元数据
@@ -826,48 +817,51 @@ public class ProgramService {
     public Result<Map<String, Object>> run(String name, String version, String stopTime, String fixedStep, String npCommand, String loadPower, String modelFile, String projectName) {
         ProgramEntity entity = queryMeta(name, version, projectName);
         if (entity == null) return Result.error("程序不存在");
-        entity.setStatus("RUNNING");
-        entity.setLastError("");
-        entity.setLastRunTime(System.currentTimeMillis());
-        try {
-            saveProgramMetadata(entity);
-        } catch (Exception e) {
-            log.error("保存运行状态失败", e);
-        }
 
-        String key = runtimeKey(entity);
-        runtimeStatus.put(key, entity);
-        new Thread(() -> doRun(key, entity, stopTime, fixedStep, npCommand, loadPower, modelFile), "program-run-" + key).start();
+        // Create task record
+        long taskTimestamp = System.currentTimeMillis();
+        ProgramTaskEntity task = new ProgramTaskEntity();
+        task.setTimestamp(taskTimestamp);
+        task.setProgramName(name);
+        task.setProgramVersion(version);
+        task.setProjectName(projectName);
+        task.setStartTime(taskTimestamp);
+        task.setStatus(TaskStatus.RUNNING);
+        task.setStopTime(stopTime);
+        task.setFixedStep(fixedStep);
+        task.setNpCommand(npCommand);
+        task.setLoadPower(loadPower);
+        task.setModelFile(modelFile);
+        runningTasks.put(taskTimestamp, task);
+        saveTask(task);
+
+        new Thread(() -> doRun(taskTimestamp, entity, stopTime, fixedStep, npCommand, loadPower, modelFile), "program-run-" + taskTimestamp).start();
 
         Map<String, Object> data = new HashMap<>();
-        data.put("status", "RUNNING");
+        data.put("status", TaskStatus.RUNNING);
+        data.put("taskTimestamp", taskTimestamp);
         return Result.success("运行已启动", data);
     }
 
     public Result<Map<String, Object>> stop(String name, String version, String projectName) {
         ProgramEntity entity = queryMeta(name, version, projectName);
         if (entity == null) return Result.error("程序不存在");
-        String key = runtimeKey(entity);
-        Process process = processMap.remove(key);
-        if (process != null && process.isAlive()) {
-            process.destroyForcibly();
+        // Find latest running task and stop it
+        ProgramTaskEntity task = queryLatestTask(name, version, projectName);
+        if (task != null && TaskStatus.RUNNING.equals(task.getStatus())) {
+            Process process = processMap.remove(task.getTimestamp());
+            if (process != null && process.isAlive()) {
+                process.destroyForcibly();
+            }
+            updateTaskStatus(task.getTimestamp(), TaskStatus.STOPPED, null, null, null, null);
         }
-        entity.setStatus("STOPPED");
-        entity.setLastError(null);
-        try {
-            saveProgramMetadata(entity);
-        } catch (Exception e) {
-            log.error("保存停止状态失败", e);
-        }
-        runtimeStatus.remove(key);
         Map<String, Object> data = new HashMap<>();
-        data.put("status", "STOPPED");
+        data.put("status", TaskStatus.STOPPED);
         return Result.success("已停止", data);
     }
 
-    private void doRun(String key, ProgramEntity entity, String stopTimeParam, String fixedStepParam, String npCommandParam, String loadPowerParam, String modelFileParam) {
-        String taskId = "task_" + System.currentTimeMillis();
-        File taskDir = new File(getTaskBaseDir(entity.getProjectName()), taskId);
+    private void doRun(long taskTimestamp, ProgramEntity entity, String stopTimeParam, String fixedStepParam, String npCommandParam, String loadPowerParam, String modelFileParam) {
+        File taskDir = new File(getTaskBaseDir(entity.getProjectName()), String.valueOf(taskTimestamp));
         try {
             taskDir.mkdirs();
             byte[] archiveBytes = downloadFromIginx(entity.getStoragePath(), entity.getChunkCount(), entity.getFileMd5());
@@ -878,9 +872,7 @@ public class ProgramService {
 
             File configFile = new File(taskDir, "program-config.json");
             if (!configFile.exists()) {
-                entity.setStatus("ERROR");
-                entity.setLastError("缺少 program-config.json");
-                saveProgramMetadata(entity);
+                updateTaskStatus(taskTimestamp, TaskStatus.FAILED, "缺少 program-config.json", null, null, null);
                 return;
             }
             JsonNode config = mapper.readTree(configFile);
@@ -917,16 +909,12 @@ public class ProgramService {
             pb.redirectOutput(logFile);
 
             Process process = pb.start();
-            entity.setLastLogPath(logFile.getAbsolutePath());
-            try { saveProgramMetadata(entity); } catch (Exception ignored) {}
-            processMap.put(key, process);
+            processMap.put(taskTimestamp, process);
             boolean finished = process.waitFor(1200, TimeUnit.SECONDS);
-            processMap.remove(key);
+            processMap.remove(taskTimestamp);
             if (!finished) {
                 process.destroyForcibly();
-                entity.setStatus("ERROR");
-                entity.setLastError("运行超时");
-                saveProgramMetadata(entity);
+                updateTaskStatus(taskTimestamp, TaskStatus.FAILED, "运行超时", null, null, null);
                 return;
             }
             int exitCode = process.exitValue();
@@ -934,38 +922,37 @@ public class ProgramService {
             log.info("程序运行结束，退出码: {}，日志:\n{}", exitCode, fullLog);
             if (exitCode != 0) {
                 String err = readLastLines(logFile, 20);
-                entity.setStatus("ERROR");
-                entity.setLastError("MATLAB 退出码 " + exitCode + ": " + err);
-                saveProgramMetadata(entity);
+                updateTaskStatus(taskTimestamp, TaskStatus.FAILED, "MATLAB 退出码 " + exitCode + ": " + err, null, logFile.getAbsolutePath(), null);
                 return;
             }
 
             File csv = new File(taskDir, "signals.csv");
             if (!csv.exists()) {
-                entity.setStatus("ERROR");
-                entity.setLastError("未生成 signals.csv");
-                saveProgramMetadata(entity);
+                updateTaskStatus(taskTimestamp, TaskStatus.FAILED, "未生成 signals.csv", null, logFile.getAbsolutePath(), null);
                 return;
             }
-            entity.setStatus("SUCCESS");
-            entity.setLastResultCsv(csv.getAbsolutePath());
-            entity.setLastResultDir(taskDir.getAbsolutePath());
             log.info("程序运行成功，结果文件: {}", csv.getAbsolutePath());
 
             generateResultFiles(taskDir, entity, modelFile, stopTimeParam, fixedStepParam, npCommandParam, loadPowerParam, logFile);
 
-            saveProgramMetadata(entity);
+            // Import result CSV to IGinX with key column
+            String outputTable = importResultCsvToIginx(csv, entity, taskTimestamp, modelFile);
+
+            updateTaskStatus(taskTimestamp, TaskStatus.SUCCESS, null, csv.getAbsolutePath(), logFile.getAbsolutePath(), taskDir.getAbsolutePath());
+            if (outputTable != null) {
+                ProgramTaskEntity task = runningTasks.get(taskTimestamp);
+                if (task == null) task = loadTask(taskTimestamp);
+                if (task != null) {
+                    task.setOutputTable(outputTable);
+                    saveTask(task);
+                }
+            }
         } catch (Exception e) {
             log.error("运行程序失败", e);
-            entity.setStatus("ERROR");
-            entity.setLastError(e.getMessage());
-            try {
-                saveProgramMetadata(entity);
-            } catch (Exception ex) {
-                log.error("保存运行状态失败", ex);
-            }
+            updateTaskStatus(taskTimestamp, TaskStatus.FAILED, e.getMessage(), null, null, null);
         } finally {
-            runtimeStatus.remove(key);
+            processMap.remove(taskTimestamp);
+            runningTasks.remove(taskTimestamp);
         }
     }
 
@@ -1590,29 +1577,245 @@ public class ProgramService {
         return file.getAbsolutePath();
     }
 
-    public Result<Map<String, Object>> results(String name, String version, String projectName) {
-        ProgramEntity entity = queryMeta(name, version, projectName);
-        if (entity == null) return Result.error("程序不存在");
-        Map<String, Object> data = new HashMap<>();
-        data.put("status", entity.getStatus());
-        data.put("lastError", entity.getLastError());
-        data.put("lastRunTime", entity.getLastRunTime());
-        if (entity.getLastLogPath() != null) {
-            File logFile = new File(entity.getLastLogPath());
+    // ==================== Program Task IGinX persistence ====================
+
+    private String importResultCsvToIginx(File csvFile, ProgramEntity entity, long taskTimestamp, String modelFile) {
+        try {
+            // Read original CSV
+            List<String> lines = Files.readAllLines(csvFile.toPath(), StandardCharsets.UTF_8);
+            if (lines.isEmpty()) return null;
+
+            String[] headers = lines.get(0).split(",");
+            int timeColIdx = -1;
+            for (int i = 0; i < headers.length; i++) {
+                if (headers[i].trim().equalsIgnoreCase("time")) {
+                    timeColIdx = i;
+                    break;
+                }
+            }
+            if (timeColIdx == -1) {
+                log.warn("CSV中未找到time列，跳过IGinX导入");
+                return null;
+            }
+
+            // Build output table path from model file name
+            String modelName = "";
+            if (modelFile != null && !modelFile.isEmpty()) {
+                modelName = modelFile.replace(".", "_");
+            }
+            String proj = safeProjectName(entity.getProjectName());
+            String outputTable = proj + "." + "program_result" + "." + entity.getName() + "_" + entity.getVersion() + "." + modelName + ".signals_" + taskTimestamp;
+            String newFileName = "signals_keyed_" + taskTimestamp + ".csv";
+            File newCsv = new File(csvFile.getParentFile(), newFileName);
+
+            StringBuilder sb = new StringBuilder();
+            // Header: key,time,col2,col3,...
+            sb.append("key,");
+            sb.append(lines.get(0));
+            sb.append("\n");
+
+            // Data rows: convert time (seconds) to millisecond timestamp, ensure numeric columns are double
+            for (int i = 1; i < lines.size(); i++) {
+                String[] cols = lines.get(i).split(",");
+                if (cols.length <= timeColIdx) continue;
+                double timeSec;
+                try {
+                    timeSec = Double.parseDouble(cols[timeColIdx].trim());
+                } catch (NumberFormatException e) {
+                    continue;
+                }
+                long keyTs = (long) (timeSec * 1000);
+                sb.append(keyTs).append(",");
+                for (int j = 0; j < cols.length; j++) {
+                    if (j > 0) sb.append(",");
+                    String val = cols[j].trim();
+                    // Try to parse as number and format as double
+                    try {
+                        double dval = Double.parseDouble(val);
+                        sb.append(dval);
+                    } catch (NumberFormatException e) {
+                        sb.append(cols[j]);
+                    }
+                }
+                sb.append("\n");
+            }
+
+            Files.write(newCsv.toPath(), sb.toString().getBytes(StandardCharsets.UTF_8));
+            log.info("已生成带key列的CSV: {}", newCsv.getAbsolutePath());
+
+            // Import to IGinX
+//            String uploadedFileName = taskTimestamp + "_signals.csv";
+            long recordsNum = dataTableService.importCsvFile(newCsv.toPath(), outputTable, newFileName, null, entity.getAuthor());
+            log.info("结果CSV已入库到 {}, 记录数: {}", outputTable, recordsNum);
+
+            return outputTable;
+        } catch (Exception e) {
+            log.error("导入结果CSV到IGinX失败", e);
+            return null;
+        }
+    }
+
+    private void saveTask(ProgramTaskEntity task) {
+        try {
+            List<Point> points = new ArrayList<>();
+            long ts = task.getTimestamp();
+            String basePath = TASK_DATA_PREFIX;
+            points.add(ConvertUtil.createFieldPoint(basePath, "timestamp", ts, ts));
+            points.add(ConvertUtil.createFieldPoint(basePath, "programName", task.getProgramName(), ts));
+            points.add(ConvertUtil.createFieldPoint(basePath, "programVersion", task.getProgramVersion(), ts));
+            points.add(ConvertUtil.createFieldPoint(basePath, "projectName", task.getProjectName(), ts));
+            points.add(ConvertUtil.createFieldPoint(basePath, "startTime", task.getStartTime(), ts));
+            points.add(ConvertUtil.createFieldPoint(basePath, "endTime", task.getEndTime(), ts));
+            points.add(ConvertUtil.createFieldPoint(basePath, "status", task.getStatus(), ts));
+            points.add(ConvertUtil.createFieldPoint(basePath, "error", task.getError(), ts));
+            points.add(ConvertUtil.createFieldPoint(basePath, "stopTime", task.getStopTime(), ts));
+            points.add(ConvertUtil.createFieldPoint(basePath, "fixedStep", task.getFixedStep(), ts));
+            points.add(ConvertUtil.createFieldPoint(basePath, "npCommand", task.getNpCommand(), ts));
+            points.add(ConvertUtil.createFieldPoint(basePath, "loadPower", task.getLoadPower(), ts));
+            points.add(ConvertUtil.createFieldPoint(basePath, "modelFile", task.getModelFile(), ts));
+            points.add(ConvertUtil.createFieldPoint(basePath, "resultCsvPath", task.getResultCsvPath(), ts));
+            points.add(ConvertUtil.createFieldPoint(basePath, "logPath", task.getLogPath(), ts));
+            points.add(ConvertUtil.createFieldPoint(basePath, "resultDir", task.getResultDir(), ts));
+            points.add(ConvertUtil.createFieldPoint(basePath, "outputTable", task.getOutputTable(), ts));
+            points.add(ConvertUtil.createFieldPoint(basePath, "runLog", task.getRunLog(), ts));
+            iginxClient.getWriteClient().writePoints(points.stream().filter(Objects::nonNull).collect(Collectors.toList()));
+            log.info("程序任务记录已保存: timestamp={}, program={}", ts, task.getProgramName());
+        } catch (Exception e) {
+            log.error("保存程序任务记录失败", e);
+        }
+    }
+
+    private void updateTaskStatus(long taskTimestamp, String status, String error, String csvPath, String logPath, String resultDir) {
+        ProgramTaskEntity task = runningTasks.get(taskTimestamp);
+        if (task == null) task = loadTask(taskTimestamp);
+        if (task == null) return;
+        task.setStatus(status);
+        task.setError(error);
+        task.setEndTime(System.currentTimeMillis());
+        if (csvPath != null) task.setResultCsvPath(csvPath);
+        if (logPath != null) task.setLogPath(logPath);
+        if (resultDir != null) task.setResultDir(resultDir);
+        // Read log content (last 20000 chars) and save to entity
+        String actualLogPath = logPath != null ? logPath : task.getLogPath();
+        if (actualLogPath != null) {
+            File logFile = new File(actualLogPath);
             if (logFile.exists()) {
                 try {
                     String logContent = new String(Files.readAllBytes(logFile.toPath()), Charset.forName("GBK"));
                     if (logContent.length() > 20000) {
                         logContent = logContent.substring(logContent.length() - 20000);
                     }
-                    data.put("runLog", logContent);
+                    task.setRunLog(logContent);
                 } catch (Exception e) {
                     log.error("读取运行日志失败", e);
                 }
             }
         }
-        if (entity.getLastResultCsv() != null) {
-            File csv = new File(entity.getLastResultCsv());
+        saveTask(task);
+    }
+
+    private ProgramTaskEntity loadTask(Long timestamp) {
+        try {
+            List<String> measurements = ConvertUtil.iginxFieldNamesConvert(ProgramTaskEntity.class, TASK_DATA_PREFIX);
+            IginXTable table = iginxClient.getQueryClient().query(
+                SimpleQuery.builder()
+                    .addMeasurements(new HashSet<>(measurements))
+                    .startKey(timestamp - 1)
+                    .endKey(timestamp + 1)
+                    .build()
+            );
+            if (table == null || table.getRecords() == null || table.getRecords().isEmpty()) return null;
+            IginXRecord record = table.getRecords().get(0);
+            ProgramTaskEntity task = new ProgramTaskEntity();
+            task.setTimestamp(timestamp);
+            for (String path : measurements) {
+                Object value = record.getValue(path);
+                if (value == null) continue;
+                String fieldName = path.substring(path.lastIndexOf('.') + 1);
+                String strValue = value instanceof byte[] ? ConvertUtil.bytesToString((byte[]) value) : value.toString();
+                switch (fieldName) {
+                    case "programName": task.setProgramName(strValue); break;
+                    case "programVersion": task.setProgramVersion(strValue); break;
+                    case "projectName": task.setProjectName(strValue); break;
+                    case "startTime": task.setStartTime(value instanceof Number ? ((Number) value).longValue() : null); break;
+                    case "endTime": task.setEndTime(value instanceof Number ? ((Number) value).longValue() : null); break;
+                    case "status": task.setStatus(strValue); break;
+                    case "error": task.setError(strValue); break;
+                    case "stopTime": task.setStopTime(strValue); break;
+                    case "fixedStep": task.setFixedStep(strValue); break;
+                    case "npCommand": task.setNpCommand(strValue); break;
+                    case "loadPower": task.setLoadPower(strValue); break;
+                    case "modelFile": task.setModelFile(strValue); break;
+                    case "resultCsvPath": task.setResultCsvPath(strValue); break;
+                    case "logPath": task.setLogPath(strValue); break;
+                    case "resultDir": task.setResultDir(strValue); break;
+                    case "outputTable": task.setOutputTable(strValue); break;
+                    case "runLog": task.setRunLog(strValue); break;
+                }
+            }
+            return task;
+        } catch (Exception e) {
+            log.error("加载程序任务记录失败: timestamp={}", timestamp, e);
+            return null;
+        }
+    }
+
+    private ProgramTaskEntity queryLatestTask(String programName, String programVersion, String projectName) {
+        try {
+            StringBuilder sql = new StringBuilder("SELECT * FROM " + TASK_DATA_PREFIX + " WHERE 1=1");
+            if (StringUtils.hasText(programName)) sql.append(" AND programName='").append(programName).append("'");
+            if (StringUtils.hasText(programVersion)) sql.append(" AND programVersion='").append(programVersion).append("'");
+            if (StringUtils.hasText(projectName)) sql.append(" AND projectName='").append(projectName).append("'");
+            sql.append(" ORDER BY timestamp DESC LIMIT 1;");
+            log.info("查询最新程序任务SQL: {}", sql);
+            SessionExecuteSqlResult res = iginxSession.executeSql(sql.toString());
+            List<Map<String, Object>> records = ConvertUtil.getRecords(res);
+            if (records == null || records.isEmpty()) return null;
+            Map<String, Object> row = records.get(0);
+            ProgramTaskEntity task = new ProgramTaskEntity();
+            row.forEach((k, v) -> {
+                String fieldName = k.replace(TASK_DATA_PREFIX + ".", "");
+                ConvertUtil.setEntityField(task, TASK_DATA_PREFIX, fieldName, v);
+            });
+            return task;
+        } catch (Exception e) {
+            log.error("查询最新程序任务记录失败", e);
+            return null;
+        }
+    }
+
+    private List<Map<String, String>> buildKpiParamsFromTask(ProgramTaskEntity task, List<Map<String, String>> originalKpiParams) {
+        if (originalKpiParams == null) originalKpiParams = new ArrayList<>();
+        List<Map<String, String>> kpiParams = new ArrayList<>(originalKpiParams);
+        // Only override Np and Mkp from task input if present
+        for (int i = 0; i < kpiParams.size(); i++) {
+            Map<String, String> kpi = kpiParams.get(i);
+            String name = kpi.get("name");
+            if ("Np".equals(name) && task.getNpCommand() != null && !task.getNpCommand().isEmpty()) {
+                kpi.put("value", task.getNpCommand());
+            } else if ("Mkp".equals(name) && task.getLoadPower() != null && !task.getLoadPower().isEmpty()) {
+                kpi.put("value", task.getLoadPower());
+            }
+        }
+        return kpiParams;
+    }
+
+    public Result<Map<String, Object>> results(String name, String version, String projectName) {
+        ProgramTaskEntity task = queryLatestTask(name, version, projectName);
+        if (task == null) return Result.error("无运行任务记录");
+        Map<String, Object> data = new HashMap<>();
+        data.put("status", task.getStatus());
+        data.put("lastError", task.getError());
+        data.put("lastRunTime", task.getStartTime());
+        data.put("npCommand", task.getNpCommand());
+        data.put("loadPower", task.getLoadPower());
+
+        if (task.getRunLog() != null) {
+            data.put("runLog", task.getRunLog());
+        }
+
+        if (task.getResultCsvPath() != null) {
+            File csv = new File(task.getResultCsvPath());
             if (csv.exists()) {
                 try {
                     List<String[]> rows = new ArrayList<>();
