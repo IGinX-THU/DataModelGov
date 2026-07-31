@@ -1449,11 +1449,22 @@ public class ProgramService {
     }
 
     public byte[] downloadResultPackage(String name, String version, String projectName) throws Exception {
-        ProgramEntity entity = queryMeta(name, version, projectName);
-        if (entity == null) throw new Exception("程序不存在");
-        String resultDirPath = entity.getLastResultDir();
-        if (resultDirPath == null && entity.getLastResultCsv() != null) {
-            resultDirPath = new File(entity.getLastResultCsv()).getParent();
+        String resultDirPath = null;
+        ProgramEntity entity = null;
+        ProgramTaskEntity task = queryLatestTask(name, version, projectName);
+        if (task != null) {
+            resultDirPath = task.getResultDir();
+            if (resultDirPath == null && task.getResultCsvPath() != null) {
+                resultDirPath = new File(task.getResultCsvPath()).getParent();
+            }
+        }
+        if (resultDirPath == null) {
+            entity = queryMeta(name, version, projectName);
+            if (entity == null) throw new Exception("程序不存在");
+            resultDirPath = entity.getLastResultDir();
+            if (resultDirPath == null && entity.getLastResultCsv() != null) {
+                resultDirPath = new File(entity.getLastResultCsv()).getParent();
+            }
         }
         if (resultDirPath == null) throw new Exception("无运行结果目录，请先运行仿真");
         File resultDir = new File(resultDirPath);
@@ -1462,7 +1473,8 @@ public class ProgramService {
         // 如果 metadata.json 不存在，说明是旧运行结果，补充生成
         File metadataFile = new File(resultDir, "metadata.json");
         if (!metadataFile.exists()) {
-            File logFile = entity.getLastLogPath() != null ? new File(entity.getLastLogPath()) : null;
+            if (entity == null) entity = queryMeta(name, version, projectName);
+            File logFile = entity != null && entity.getLastLogPath() != null ? new File(entity.getLastLogPath()) : null;
             generateResultFiles(resultDir, entity, "", "", "", "", "", logFile);
         }
 
@@ -1485,11 +1497,21 @@ public class ProgramService {
     }
 
     public void uploadOverview(String name, String version, String projectName, byte[] pngData) throws Exception {
-        ProgramEntity entity = queryMeta(name, version, projectName);
-        if (entity == null) throw new Exception("程序不存在");
-        String resultDirPath = entity.getLastResultDir();
-        if (resultDirPath == null && entity.getLastResultCsv() != null) {
-            resultDirPath = new File(entity.getLastResultCsv()).getParent();
+        String resultDirPath = null;
+        ProgramTaskEntity task = queryLatestTask(name, version, projectName);
+        if (task != null) {
+            resultDirPath = task.getResultDir();
+            if (resultDirPath == null && task.getResultCsvPath() != null) {
+                resultDirPath = new File(task.getResultCsvPath()).getParent();
+            }
+        }
+        if (resultDirPath == null) {
+            ProgramEntity entity = queryMeta(name, version, projectName);
+            if (entity == null) throw new Exception("程序不存在");
+            resultDirPath = entity.getLastResultDir();
+            if (resultDirPath == null && entity.getLastResultCsv() != null) {
+                resultDirPath = new File(entity.getLastResultCsv()).getParent();
+            }
         }
         if (resultDirPath == null) throw new Exception("无运行结果目录，请先运行仿真");
         File resultDir = new File(resultDirPath);
@@ -1500,11 +1522,21 @@ public class ProgramService {
     }
 
     public byte[] downloadSignalFile(String name, String version, String format, String projectName) throws Exception {
-        ProgramEntity entity = queryMeta(name, version, projectName);
-        if (entity == null) throw new Exception("程序不存在");
-        String resultDirPath = entity.getLastResultDir();
-        if (resultDirPath == null && entity.getLastResultCsv() != null) {
-            resultDirPath = new File(entity.getLastResultCsv()).getParent();
+        String resultDirPath = null;
+        ProgramTaskEntity task = queryLatestTask(name, version, projectName);
+        if (task != null) {
+            resultDirPath = task.getResultDir();
+            if (resultDirPath == null && task.getResultCsvPath() != null) {
+                resultDirPath = new File(task.getResultCsvPath()).getParent();
+            }
+        }
+        if (resultDirPath == null) {
+            ProgramEntity entity = queryMeta(name, version, projectName);
+            if (entity == null) throw new Exception("程序不存在");
+            resultDirPath = entity.getLastResultDir();
+            if (resultDirPath == null && entity.getLastResultCsv() != null) {
+                resultDirPath = new File(entity.getLastResultCsv()).getParent();
+            }
         }
         if (resultDirPath == null) throw new Exception("无运行结果目录，请先运行仿真");
         File resultDir = new File(resultDirPath);
