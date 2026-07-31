@@ -1577,6 +1577,14 @@ class ProgramRun extends HTMLElement {
 
         }
 
+        if (v >= limitVal * 0.9 && v < limitVal) {
+
+          alerts.push({ time: timeData[i], level: '二级', desc: `${al.name} 接近${al.desc} — ${al.name}=${v.toFixed(1)}${al.unit} ≥ ${(limitVal * 0.9).toFixed(1)}${al.unit}` });
+
+          break;
+
+        }
+
       }
 
     });

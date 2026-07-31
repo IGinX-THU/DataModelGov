@@ -66,7 +66,7 @@ public class DataTableService {
 
             IginXHeader header = table.getHeader();
             if (header.hasTimestamp()) {
-                log.info(KEY+"\t");
+//                log.info(KEY+"\t");
                 columns.add(KEY);
             }
             for (IginXColumn column : header.getColumns()) {
