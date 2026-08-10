@@ -2014,6 +2014,58 @@ public class ProgramService {
         return result;
     }
 
+    public byte[] downloadProgram(String name, String version, String projectName) throws Exception {
+        ProgramEntity entity = queryMeta(name, version, projectName);
+        if (entity == null) {
+            throw new IllegalArgumentException("程序不存在");
+        }
+        String storagePath = entity.getStoragePath();
+        if (storagePath == null || storagePath.isEmpty()) {
+            throw new IllegalArgumentException("程序存储路径不存在");
+        }
+        
+        // Read chunks from IGinX
+        SimpleQuery query = SimpleQuery.builder()
+                .addMeasurement(storagePath)
+                .endKey(Long.MAX_VALUE)
+                .build();
+        IginXTable table = iginxClient.getQueryClient().query(query);
+        
+        if (table == null || table.getRecords().isEmpty()) {
+            throw new IllegalArgumentException("程序数据不存在");
+        }
+        
+        // Organize chunks by index
+        TreeMap<Integer, byte[]> chunkMap = new TreeMap<>();
+        for (IginXRecord record : table.getRecords()) {
+            Long timestamp = record.getKey();
+            Map<String, Object> valuesMap = record.getValues();
+            Object value = valuesMap.get(storagePath);
+            
+            if (value instanceof byte[]) {
+                byte[] chunkData = (byte[]) value;
+                int chunkIndex = timestamp.intValue();
+                chunkMap.put(chunkIndex, chunkData);
+            }
+        }
+        
+        // Calculate total size
+        int totalSize = 0;
+        for (byte[] chunk : chunkMap.values()) {
+            totalSize += chunk.length;
+        }
+        
+        // Reassemble byte array
+        byte[] result = new byte[totalSize];
+        int offset = 0;
+        for (byte[] chunk : chunkMap.values()) {
+            System.arraycopy(chunk, 0, result, offset, chunk.length);
+            offset += chunk.length;
+        }
+        
+        return result;
+    }
+
     private Map<String, Object> parseProgramParams(File programDir, List<String> scriptFiles) {
         Map<String, Object> params = new LinkedHashMap<>();
         String stopTime = null;

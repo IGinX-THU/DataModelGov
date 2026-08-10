@@ -17,6 +17,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import javax.servlet.http.HttpServletResponse;
 import java.util.List;
 import java.util.Map;
 
@@ -173,6 +174,28 @@ public class ProgramController {
             @RequestParam("version") String version,
             @RequestParam(value = "projectName", required = false) String projectName) {
         return Result.success(programService.getProgramFiles(name, version, projectName));
+    }
+
+    @ApiOperation("下载程序文件")
+    @PostMapping("/download")
+    @RequirePermission(Permission.READ)
+    @OperationLog(value = "下载程序文件", type = OperationLog.OperationType.EXPORT, recordResult = false)
+    public void downloadProgram(
+            @RequestParam("name") String name,
+            @RequestParam("version") String version,
+            @RequestParam(value = "fileName", required = false) String fileName,
+            @RequestParam(value = "projectName", required = false) String projectName,
+            HttpServletResponse response) throws Exception {
+        byte[] zipBytes = programService.downloadProgram(name, version, projectName);
+        String downloadFileName = (fileName != null && !fileName.isEmpty()) ? fileName : (name + "_" + version + ".zip");
+        String encodedFilename = java.net.URLEncoder.encode(downloadFileName, java.nio.charset.StandardCharsets.UTF_8.name())
+                .replace("+", "%20");
+        response.setContentType(MediaType.APPLICATION_OCTET_STREAM_VALUE);
+        response.setHeader("Content-Disposition",
+                "attachment; filename=\"" + encodedFilename + "\"; filename*=UTF-8''" + encodedFilename);
+        response.setContentLength(zipBytes.length);
+        response.getOutputStream().write(zipBytes);
+        response.flushBuffer();
     }
 
     @ApiOperation("下载结果包")
