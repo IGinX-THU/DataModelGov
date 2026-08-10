@@ -12,11 +12,15 @@ import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import javax.servlet.http.HttpServletResponse;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 
@@ -173,6 +177,32 @@ public class ProgramController {
             @RequestParam("version") String version,
             @RequestParam(value = "projectName", required = false) String projectName) {
         return Result.success(programService.getProgramFiles(name, version, projectName));
+    }
+
+    @ApiOperation("下载程序原始压缩包")
+    @PostMapping("/download")
+    @RequirePermission(Permission.READ)
+    @OperationLog(value = "下载程序文件", type = OperationLog.OperationType.EXPORT, recordResult = false)
+    public void handleFileDownload(
+            @RequestParam("name") String name,
+            @RequestParam("version") String version,
+            @RequestParam(value = "projectName", required = false) String projectName,
+            HttpServletResponse response) throws Exception {
+        // 从 IGinX 读取上传时存储的原始字节（含 chunkCount 完整性 + MD5 校验），
+        // 确保下载包与原始上传包一致，再上传时内容不会缺失。
+        byte[] fileData = programService.downloadProgram(name, version, projectName);
+        // 使用原始上传文件名（含扩展名），保证再上传时扩展名识别正确
+        ProgramEntity entity = programService.queryMeta(name, version, projectName);
+        String fileName = (entity != null && entity.getFileName() != null && !entity.getFileName().isEmpty())
+                ? entity.getFileName() : (name + "_" + version + ".zip");
+        String encodedFilename = URLEncoder.encode(fileName, StandardCharsets.UTF_8.name())
+                .replace("+", "%20");
+        response.setContentType(MediaType.APPLICATION_OCTET_STREAM_VALUE);
+        response.setHeader(HttpHeaders.CONTENT_DISPOSITION,
+                "attachment; filename=\"" + encodedFilename + "\"; filename*=UTF-8''" + encodedFilename);
+        response.setContentLength(fileData.length);
+        response.getOutputStream().write(fileData);
+        response.flushBuffer();
     }
 
     @ApiOperation("下载结果包")
