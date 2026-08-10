@@ -1837,6 +1837,20 @@ public class ProgramService {
     public Result<Map<String, Object>> results(String name, String version, String projectName) {
         ProgramTaskEntity task = queryLatestTask(name, version, projectName);
         if (task == null) return Result.error("无运行任务记录");
+        
+        // 如果状态为运行中，检查进程是否还在
+        if (TaskStatus.RUNNING.equals(task.getStatus())) {
+            Process process = processMap.get(task.getTimestamp());
+            if (process == null || !process.isAlive()) {
+                // 进程不存在或已结束，更新状态为失败
+                updateTaskStatus(task.getTimestamp(), TaskStatus.FAILED, "进程异常终止", null, null, null);
+                task.setStatus(TaskStatus.FAILED);
+                task.setError("进程异常终止");
+                processMap.remove(task.getTimestamp());
+                runningTasks.remove(task.getTimestamp());
+            }
+        }
+        
         Map<String, Object> data = new HashMap<>();
         data.put("status", task.getStatus());
         data.put("lastError", task.getError());
