@@ -76,6 +76,7 @@ class ProgramManagement extends HTMLElement {
                     if (!name || !version) return;
                     if (btn.classList.contains('run-btn')) this.openProgramRun(name, version, projectName);
                     if (btn.classList.contains('delete-btn')) this.deleteProgram(name, version);
+                    if (btn.classList.contains('download-btn')) this.downloadProgram(name, version, projectName);
                     return;
                 }
                 if (row) {
@@ -331,6 +332,7 @@ class ProgramManagement extends HTMLElement {
                     <td><span class="status ${statusClass}">${p.status || 'READY'}</span></td>
                     <td class="actions">
                         <button class="run-btn filter-btn outline" data-name="${p.name || ''}" data-version="${p.version || ''}" data-project="${p.projectName || ''}">运行</button>
+                        <button class="download-btn filter-btn outline" data-name="${p.name || ''}" data-version="${p.version || ''}" data-project="${p.projectName || ''}">下载</button>
                         <button class="delete-btn filter-btn outline" data-name="${p.name || ''}" data-version="${p.version || ''}" data-project="${p.projectName || ''}">删除</button>
                     </td>
                 </tr>
@@ -593,6 +595,27 @@ class ProgramManagement extends HTMLElement {
         } catch (e) {
             console.error('删除失败:', e);
             if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('删除失败: ' + e.message, 'error');
+        }
+    }
+
+    async downloadProgram(name, version, projectName) {
+        try {
+            // 仅传 name/version/projectName；文件名由后端按原始上传文件名(含扩展名)返回，
+            // 确保下载的包与原始上传字节一致，再上传时能被正确解析。
+            const downloadData = {
+                name: name,
+                version: version,
+                ...(projectName ? { projectName: projectName } : {})
+            };
+            const result = await window.AppConfig.download('program', 'download', downloadData, null, true);
+            if (result.success) {
+                if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('下载成功', 'success');
+            } else {
+                throw new Error(result.message || '下载失败');
+            }
+        } catch (e) {
+            console.error('下载失败:', e);
+            if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('下载失败: ' + e.message, 'error');
         }
     }
 

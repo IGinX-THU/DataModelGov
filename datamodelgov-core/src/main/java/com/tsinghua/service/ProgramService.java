@@ -1933,6 +1933,29 @@ public class ProgramService {
         }
     }
 
+    /**
+     * 下载仿真程序原始压缩包。
+     * 复用 downloadFromIginx 从 IGinX 读取上传时存储的原始字节流：
+     *   - 严格按 0..chunkCount-1 顺序取块，缺块即抛异常（避免错位/缺内容）
+     *   - 用 fileMd5 校验完整性，确保下载字节与原始上传包完全一致
+     * 这样下载下来的包再走 uploadProgram 解析时，内容与首次上传完全一致，
+     * 不会出现 getProgramFiles 扫描结果变少的问题。
+     * 注意：不要基于本地解压目录重新打包（会丢失 slprj/.slxc/.md 等文件）。
+     */
+    public byte[] downloadProgram(String name, String version, String projectName) throws Exception {
+        ProgramEntity entity = queryMeta(name, version, projectName);
+        if (entity == null) {
+            throw new IllegalArgumentException("程序不存在");
+        }
+        String storagePath = entity.getStoragePath();
+        Integer chunkCount = entity.getChunkCount();
+        String fileMd5 = entity.getFileMd5();
+        if (storagePath == null || storagePath.isEmpty() || chunkCount == null || chunkCount <= 0) {
+            throw new IllegalStateException("程序存储信息不完整，无法下载");
+        }
+        return downloadFromIginx(storagePath, chunkCount, fileMd5);
+    }
+
     public Map<String, Object> getProgramFiles(String name, String version, String projectName) {
         Map<String, Object> result = new LinkedHashMap<>();
         File programDir = getProgramDir(
