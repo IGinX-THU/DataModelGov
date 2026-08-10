@@ -76,6 +76,7 @@ class ProgramManagement extends HTMLElement {
                     if (!name || !version) return;
                     if (btn.classList.contains('run-btn')) this.openProgramRun(name, version, projectName);
                     if (btn.classList.contains('delete-btn')) this.deleteProgram(name, version);
+                    if (btn.classList.contains('download-btn')) this.downloadProgram(name, version, projectName);
                     return;
                 }
                 if (row) {
@@ -331,6 +332,7 @@ class ProgramManagement extends HTMLElement {
                     <td><span class="status ${statusClass}">${p.status || 'READY'}</span></td>
                     <td class="actions">
                         <button class="run-btn filter-btn outline" data-name="${p.name || ''}" data-version="${p.version || ''}" data-project="${p.projectName || ''}">运行</button>
+                        <button class="download-btn filter-btn outline" data-name="${p.name || ''}" data-version="${p.version || ''}" data-project="${p.projectName || ''}">下载</button>
                         <button class="delete-btn filter-btn outline" data-name="${p.name || ''}" data-version="${p.version || ''}" data-project="${p.projectName || ''}">删除</button>
                     </td>
                 </tr>
@@ -593,6 +595,27 @@ class ProgramManagement extends HTMLElement {
         } catch (e) {
             console.error('删除失败:', e);
             if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('删除失败: ' + e.message, 'error');
+        }
+    }
+
+    async downloadProgram(name, version, projectName) {
+        try {
+            const pn = projectName || this.getProjectName();
+            const downloadData = {
+                name: name,
+                version: version,
+                fileName: `${name}_${version}.zip`,
+                ...(pn ? { projectName: pn } : {})
+            };
+            const result = await window.AppConfig.download('program', 'download', downloadData, null, true);
+            if (result.success) {
+                if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('下载成功', 'success');
+            } else {
+                throw new Error(result.message || '下载失败');
+            }
+        } catch (e) {
+            console.error('下载失败:', e);
+            if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('下载失败: ' + e.message, 'error');
         }
     }
 

@@ -113,6 +113,7 @@ document.addEventListener('DOMContentLoaded', function() {
             'modelArchiveList',
             'algorithmArchiveList',
             'programManagement',
+            'programUpload',
             'programRun',
             'userManual'
         ];
@@ -680,6 +681,18 @@ document.addEventListener('DOMContentLoaded', function() {
                         clearWorkspace();
                         showComponent('programRun');
                         return;
+                    case 'handleProgramDownload':
+                        console.log('下载仿真程序菜单被点击');
+                        // 检查程序侧边栏是否打开，如果未打开则自动打开
+                        const activeProgramIconDownload = document.querySelector('.bottom-sidebar-icon.right-sidebar-icon.active[data-panel="program"]');
+                        if (!activeProgramIconDownload) {
+                            const programIcon = document.querySelector('.bottom-sidebar-icon.right-sidebar-icon[data-panel="program"]');
+                            if (programIcon) {
+                                programIcon.click();
+                            }
+                        }
+                        handleProgramDownload();
+                        break;
                     case 'showAlgorithmList':
                         console.log('算法管理菜单被点击');
                         if (isSecondClick) clearWorkspace();
@@ -1011,6 +1024,88 @@ document.addEventListener('DOMContentLoaded', function() {
         return null;
     }
 
+    // 下载当前选中的仿真程序节点（直接调用接口）
+    async function handleProgramDownload() {
+        const programTree = document.getElementById('programTree');
+        if (!programTree) {
+            if (window.CommonUtils && window.CommonUtils.showToast) {
+                window.CommonUtils.showToast('未找到程序树', 'error');
+            }
+            return;
+        }
+
+        const activeNode = programTree.querySelector('.tree-node.active');
+        if (!activeNode) {
+            if (window.CommonUtils && window.CommonUtils.showToast) {
+                window.CommonUtils.showToast('请先在右侧程序资产库中选择要下载的版本节点', 'warning');
+            }
+            return;
+        }
+
+        const span = activeNode.querySelector('span');
+        if (!span) {
+            if (window.CommonUtils && window.CommonUtils.showToast) {
+                window.CommonUtils.showToast('请先在右侧程序资产库中选择要下载的版本节点', 'warning');
+            }
+            return;
+        }
+
+        const version = span.textContent.trim();
+        // 必须是叶子节点（版本号节点）才有效
+        const childrenContainer = activeNode.querySelector('.tree-children');
+        if (childrenContainer && childrenContainer.children.length > 0) {
+            if (window.CommonUtils && window.CommonUtils.showToast) {
+                window.CommonUtils.showToast('请选择具体的版本节点（而非程序名称节点）', 'warning');
+            }
+            return;
+        }
+
+        // 从父节点获取程序名称
+        const parentNode = activeNode.closest('.tree-children')?.parentElement;
+        const parentSpan = parentNode?.querySelector('span');
+        if (!parentSpan) {
+            if (window.CommonUtils && window.CommonUtils.showToast) {
+                window.CommonUtils.showToast('无法解析程序名称', 'error');
+            }
+            return;
+        }
+        let name = parentSpan.textContent.trim();
+        name = stripStoragePrefix(name);
+
+        // 从fullPath提取projectName
+        const fullPath = activeNode.getAttribute('data-full-path');
+        let projectName = null;
+        if (fullPath && window.extractProjectNameFromPath) {
+            projectName = window.extractProjectNameFromPath(fullPath);
+        }
+
+        const downloadData = {
+            name: name,
+            version: version,
+            fileName: `${name}_${version}.zip`
+        };
+        if (projectName) downloadData.projectName = projectName;
+
+        try {
+            if (window.CommonUtils && window.CommonUtils.showToast) {
+                window.CommonUtils.showToast('开始下载...', 'info');
+            }
+            const result = await window.AppConfig.download('program', 'download', downloadData, null, true);
+            if (result && result.success) {
+                if (window.CommonUtils && window.CommonUtils.showToast) {
+                    window.CommonUtils.showToast('下载成功', 'success');
+                }
+            } else {
+                throw new Error((result && result.message) || '下载失败');
+            }
+        } catch (e) {
+            console.error('下载仿真程序失败:', e);
+            if (window.CommonUtils && window.CommonUtils.showToast) {
+                window.CommonUtils.showToast('下载失败: ' + e.message, 'error');
+            }
+        }
+    }
+
     // 5.5 右侧算法树节点单击事件 - 显示算法详情
     document.querySelectorAll('#algorithmTree .tree-node').forEach(node => {
         node.addEventListener('click', function() {
@@ -1244,6 +1339,17 @@ document.addEventListener('DOMContentLoaded', function() {
                         clearWorkspace();
                         showComponent('programManagement');
                         return;
+                    case 'handleProgramDownload':
+                        // 检查程序侧边栏是否打开，如果未打开则自动打开
+                        const activeProgramIconDownloadRibbon = document.querySelector('.bottom-sidebar-icon.right-sidebar-icon.active[data-panel="program"]');
+                        if (!activeProgramIconDownloadRibbon) {
+                            const programIconRibbon = document.querySelector('.bottom-sidebar-icon.right-sidebar-icon[data-panel="program"]');
+                            if (programIconRibbon) {
+                                programIconRibbon.click();
+                            }
+                        }
+                        handleProgramDownload();
+                        break;
                     default:
                         console.warn(`未知的按钮动作: ${action}`);
                 }

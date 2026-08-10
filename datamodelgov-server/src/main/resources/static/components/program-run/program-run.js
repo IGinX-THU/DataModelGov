@@ -164,11 +164,15 @@ class ProgramRun extends HTMLElement {
 
     this.bindEvents();
 
-    this.renderTab(this.activeTab);
+    this.runStatus = 'IDLE';
 
-    this.updateCursor(this.currentTime, true);
-
-    this.updateStatusUI('IDLE');
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        this.renderTab(this.activeTab);
+        this.updateCursor(this.currentTime, true);
+        this.updateStatusUI('IDLE');
+      });
+    });
 
     this.renderVarTree();
 
@@ -844,7 +848,7 @@ class ProgramRun extends HTMLElement {
       this.chartGrid.appendChild(card);
       buildLegend(card, cfg);
       const chart = this.echarts.init(dom, null, { renderer: 'canvas', backgroundColor: 'transparent' });
-      chart.setOption(buildEChartsOptions(this.currentDatas[i], this.currentTime), true);
+      chart.setOption(buildEChartsOptions(this.currentDatas[i], this.currentTime, this.runStatus), true);
       this.charts.push(chart);
     });
     requestAnimationFrame(() => this.charts.forEach(c => c && c.resize()));
@@ -916,7 +920,7 @@ class ProgramRun extends HTMLElement {
 
     this.currentTime = time;
 
-    const cappedTime = Math.min(time, this.duration);
+    const cappedTime = time % this.duration;
 
     const pct = (cappedTime / this.duration) * 100;
 
@@ -1099,7 +1103,7 @@ class ProgramRun extends HTMLElement {
       this.chartGrid.appendChild(card);
       buildLegend(card, cfg);
       const chart = this.echarts.init(dom, null, { renderer: 'canvas', backgroundColor: 'transparent' });
-      chart.setOption(buildEChartsOptions(this.currentDatas[i], this.currentTime), true);
+      chart.setOption(buildEChartsOptions(this.currentDatas[i], this.currentTime, this.runStatus), true);
       this.charts.push(chart);
     });
     requestAnimationFrame(() => this.charts.forEach(c => c && c.resize()));
@@ -1173,6 +1177,18 @@ class ProgramRun extends HTMLElement {
 
     try {
 
+      this.currentDatas = this.currentConfigs.map(buildChartData);
+
+      this.currentTime = 0;
+
+      this.updateCursor(0, true);
+
+      this.charts.forEach((chart, i) => {
+        if (this.currentDatas[i]) {
+          chart.setOption(buildEChartsOptions(this.currentDatas[i], this.currentTime, 'RUNNING'), true);
+        }
+      });
+
       const root = this.shadowRoot;
 
       const inputs = root.querySelectorAll('.field-row .input-box input');
@@ -1211,6 +1227,7 @@ class ProgramRun extends HTMLElement {
 
         this.duration = parseFloat(inputs[0].value) || 30;
 
+        this._userInitiated = true;
         this.updateStatusUI('RUNNING');
 
         this.startPolling(name, version);
@@ -1261,6 +1278,7 @@ class ProgramRun extends HTMLElement {
 
         this.stopRunTimer();
 
+        this._userInitiated = true;
         this.updateStatusUI('STOPPED');
 
       }
@@ -1498,7 +1516,7 @@ class ProgramRun extends HTMLElement {
 
       if (this.currentDatas[i]) {
 
-        chart.setOption(buildEChartsOptions(this.currentDatas[i], this.currentTime), true);
+        chart.setOption(buildEChartsOptions(this.currentDatas[i], this.currentTime, this.runStatus), true);
 
       }
 
@@ -1774,7 +1792,9 @@ class ProgramRun extends HTMLElement {
 
     const statusTexts = {
 
-      'IDLE': '就绪',
+      'IDLE': '待运行',
+
+      'LOADING': '加载中...',
 
       'RUNNING': '仿真运行中',
 
@@ -1791,6 +1811,8 @@ class ProgramRun extends HTMLElement {
     const statusColors = {
 
       'IDLE': '#9ca3af',
+
+      'LOADING': '#f59e0b',
 
       'RUNNING': '#45D483',
 
@@ -1822,7 +1844,7 @@ class ProgramRun extends HTMLElement {
 
     }
 
-    if (this._lastStatus && this._lastStatus !== status) {
+    if (this._lastStatus && this._lastStatus !== status && this._userInitiated) {
 
       const toastMap = {
 
@@ -1846,9 +1868,31 @@ class ProgramRun extends HTMLElement {
         if (dataIcon && !dataIcon.classList.contains('active')) dataIcon.click();
       }
 
+      this._userInitiated = false;
+
     }
 
     this._lastStatus = status;
+
+    this.runStatus = status;
+
+    if (this.charts && this.charts.length > 0) {
+      this.charts.forEach((chart, i) => {
+        if (this.currentDatas[i]) {
+          chart.setOption(buildEChartsOptions(this.currentDatas[i], this.currentTime, this.runStatus), true);
+        }
+      });
+    } else {
+      requestAnimationFrame(() => {
+        if (this.charts && this.charts.length > 0) {
+          this.charts.forEach((chart, i) => {
+            if (this.currentDatas[i]) {
+              chart.setOption(buildEChartsOptions(this.currentDatas[i], this.currentTime, this.runStatus), true);
+            }
+          });
+        }
+      });
+    }
 
   }
 
@@ -1857,6 +1901,8 @@ class ProgramRun extends HTMLElement {
   async queryStatus(name, version) {
 
     try {
+
+      this.updateStatusUI('LOADING');
 
       const pn = this.getProjectName();
 
@@ -1929,9 +1975,11 @@ class ProgramRun extends HTMLElement {
 
     if (status === 'RUNNING' && name && version) {
 
-      this.startPolling(name, version);
-
       this.startRunTimer(data.lastRunTime);
+
+      if (!this._pollTimer) {
+        this.startPolling(name, version);
+      }
 
     }
 
@@ -1940,6 +1988,16 @@ class ProgramRun extends HTMLElement {
       this.stopPolling();
 
       this.stopRunTimer();
+
+      requestAnimationFrame(() => {
+        if (this.charts && this.charts.length > 0) {
+          this.charts.forEach((chart, i) => {
+            if (this.currentDatas[i]) {
+              chart.setOption(buildEChartsOptions(this.currentDatas[i], this.currentTime, this.runStatus), true);
+            }
+          });
+        }
+      });
 
     }
 
@@ -2504,7 +2562,7 @@ function buildChartData(cfg) {
 
 
 
-function buildEChartsOptions(data, time) {
+function buildEChartsOptions(data, time, status) {
 
   const hasData = data.seriesData.some(s => s.data.length > 0);
 
@@ -2540,7 +2598,7 @@ function buildEChartsOptions(data, time) {
 
     dataZoom: [{ type: 'inside', xAxisIndex: [0], filterMode: 'filter', start: 0, end: 100 }],
 
-    xAxis: { type: 'value', min: 0, splitNumber: 6, name: '时间 (s)', nameTextStyle: { color: '#9ca3af', fontSize: 10 }, axisLabel: { color: '#9ca3af', fontSize: 10 }, splitLine: { lineStyle: { color: '#24344D' } }, axisLine: { lineStyle: { color: '#24344D' } } },
+    xAxis: { type: 'value', min: 0, max: xMax, splitNumber: 6, name: '时间 (s)', nameTextStyle: { color: '#9ca3af', fontSize: 10 }, axisLabel: { color: '#9ca3af', fontSize: 10 }, splitLine: { lineStyle: { color: '#24344D' } }, axisLine: { lineStyle: { color: '#24344D' } } },
 
     yAxis,
 
@@ -2582,6 +2640,17 @@ function buildEChartsOptions(data, time) {
 
   if (!hasData) {
 
+    const statusTexts = {
+      'RUNNING': '运行中，请稍候...',
+      'IDLE': '点击运行按钮开始仿真',
+      'ERROR': '运行失败，请重试',
+      'STOPPED': '运行已停止，请重新运行',
+      'LOADING': '加载中...',
+      'UNKNOWN': '暂无数据'
+    };
+
+    const text = statusTexts[status] || '暂无数据';
+
     opts.graphic = {
 
       type: 'text',
@@ -2590,7 +2659,7 @@ function buildEChartsOptions(data, time) {
 
       top: 'middle',
 
-      style: { text: '暂无数据', fill: '#6b7280', fontSize: 14 }
+      style: { text, fill: '#6b7280', fontSize: 14 }
 
     };
 

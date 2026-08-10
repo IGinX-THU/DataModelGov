@@ -58,7 +58,7 @@ main { flex:1; display:block; min-width:0; padding:10px; background:var(--bg); }
 .content { display:flex; flex-direction:column; gap:10px; }
 .flow { display:flex; flex-direction:column; align-items:center; gap:0; padding:10px; background:var(--panel); border:1px solid var(--grid); border-radius:6px; }
 .flow-top { display:flex; align-items:center; justify-content:center; gap:8px; width:100%; }
-.flow-bottom { display:flex; align-items:center; justify-content:center; gap:8px; margin-top:-6px; width:100%; }
+.flow-bottom { display:flex; align-items:center; justify-content:center; gap:8px; margin-top:8px; width:100%; }
 .block { display:flex; align-items:center; justify-content:center; gap:6px; padding:8px 14px; border-radius:5px; font-size:12px; font-weight:500; color:#fff; min-width:120px; border:1px solid; }
 .flow-ico { font-size:13px; }
 .block.purple { background:linear-gradient(135deg,#8B7CFF,#6A5CE0); border-color:#8B7CFF; }
