@@ -179,7 +179,6 @@ window.AppConfig = {
         // 程序管理相关
         program: {
             upload: '/api/program/upload',
-            download: '/api/program/download',
             metas: '/api/program/metas',
             history: '/api/program/history',
             delete: '/api/program/delete',

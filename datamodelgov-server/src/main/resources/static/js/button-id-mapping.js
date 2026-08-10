@@ -45,10 +45,6 @@ const BUTTON_ID_MAP = {
         text: '程序管理',
         action: 'showProgramManagement'
     },
-    'btn-program-download': {
-        text: '程序下载',
-        action: 'handleProgramDownload'
-    },
     'btn-import': {
         text: '导入',
         action: 'showImportData'
@@ -184,10 +180,6 @@ const MENU_ID_MAP = {
     'menu-program-upload': {
         text: '仿真程序上传',
         action: 'showProgramUpload'
-    },
-    'menu-program-download': {
-        text: '下载仿真程序',
-        action: 'handleProgramDownload'
     },
     'menu-program-management': {
         text: '程序管理',
