@@ -1977,6 +1977,10 @@ class ProgramRun extends HTMLElement {
 
       this.startRunTimer(data.lastRunTime);
 
+      if (!this._pollTimer) {
+        this.startPolling(name, version);
+      }
+
     }
 
     if (status === 'SUCCESS' || status === 'ERROR' || status === 'STOPPED') {
@@ -2640,7 +2644,7 @@ function buildEChartsOptions(data, time, status) {
       'RUNNING': '运行中，请稍候...',
       'IDLE': '点击运行按钮开始仿真',
       'ERROR': '运行失败，请重试',
-      'STOPPED': '运行已停止，请重试',
+      'STOPPED': '运行已停止，请重新运行',
       'LOADING': '加载中...',
       'UNKNOWN': '暂无数据'
     };
