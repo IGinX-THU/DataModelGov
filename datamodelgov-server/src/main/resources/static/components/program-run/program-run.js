@@ -165,11 +165,14 @@ class ProgramRun extends HTMLElement {
     this.bindEvents();
 
     this.runStatus = 'IDLE';
-    this.renderTab(this.activeTab);
 
-    this.updateCursor(this.currentTime, true);
-
-    this.updateStatusUI('IDLE');
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        this.renderTab(this.activeTab);
+        this.updateCursor(this.currentTime, true);
+        this.updateStatusUI('IDLE');
+      });
+    });
 
     this.renderVarTree();
 
