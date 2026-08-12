@@ -17,6 +17,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.HandlerInterceptor;
 
+import javax.servlet.DispatcherType;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
@@ -42,6 +43,12 @@ public class PermissionInterceptor implements HandlerInterceptor {
     
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
+        // SSE 等异步请求的 async dispatch 无需重新校验权限（初始请求已校验）
+        // 且 async dispatch 时 SecurityContext 可能丢失，重新校验会导致写已提交的 response 而抛异常
+        if (request.getDispatcherType() == DispatcherType.ASYNC) {
+            return true;
+        }
+
         if (!(handler instanceof HandlerMethod)) {
             return true;
         }

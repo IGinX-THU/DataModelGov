@@ -118,11 +118,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter implements App
 
     /**
      * 从请求中获取token
+     * 优先从 Authorization header 获取；EventSource 无法设置自定义 header，
+     * 因此也支持从 query 参数 token 获取（仅用于 SSE 端点）
      */
     private String getTokenFromRequest(HttpServletRequest request) {
         String bearerToken = request.getHeader("Authorization");
         if (StringUtils.hasText(bearerToken) && bearerToken.startsWith("Bearer ")) {
             return bearerToken.substring(7);
+        }
+        // 兼容 EventSource（SSE）场景：从 query 参数读取 token
+        String queryToken = request.getParameter("token");
+        if (StringUtils.hasText(queryToken)) {
+            return queryToken;
         }
         return null;
     }
