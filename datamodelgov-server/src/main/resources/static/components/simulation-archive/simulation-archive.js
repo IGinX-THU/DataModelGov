@@ -11,7 +11,37 @@ class SimulationArchiveList extends HTMLElement {
     async connectedCallback() {
         await this.loadResources();
         this.bindEvents();
-        this.loadData();
+        // 等待menuPermission初始化完成后再检查角色
+        if (window.MenuPermission && !window.MenuPermission.isReady) {
+            await window.MenuPermission.init();
+        }
+        this.checkUserRoleAndHideProjectFilter();
+        // 不在初始化时自动加载数据，只在显示时加载
+    }
+
+    async checkUserRoleAndHideProjectFilter() {
+        // 检查用户角色，如果是普通用户则隐藏项目筛选框
+        let userRole = window.localStorage.getItem('userRole');
+        
+        // 如果localStorage中没有userRole，尝试从MenuPermission获取
+        if (!userRole) {
+            if (window.MenuPermission) {
+                if (!window.MenuPermission.isReady) {
+                    await window.MenuPermission.init();
+                }
+                userRole = window.MenuPermission.getCurrentRole();
+            }
+        }
+        
+        // 管理员角色为'ADMIN'，普通用户为'DATA_ENGINEER'
+        const isAdmin = userRole === 'ADMIN';
+        
+        if (!isAdmin) {
+            const projectNameFilterItem = this.shadowRoot.getElementById('projectNameFilterItem');
+            if (projectNameFilterItem) {
+                projectNameFilterItem.style.display = 'none';
+            }
+        }
     }
 
     async loadResources() {
@@ -29,6 +59,13 @@ class SimulationArchiveList extends HTMLElement {
     }
 
     bindEvents() {
+        this.shadowRoot.getElementById('importSimulationResourceBtn')?.addEventListener('click', () => {
+            window.showProjectImportWizard?.('simulation');
+        });
+        this.shadowRoot.getElementById('exportSimulationResourceBtn')?.addEventListener('click', () => {
+            window.showProjectExportWizard?.('simulation');
+        });
+
         const addBtn = this.shadowRoot.getElementById('addBtn');
         if (addBtn) {
             addBtn.addEventListener('click', () => {
@@ -144,9 +181,35 @@ class SimulationArchiveList extends HTMLElement {
             const ownerInput = this.shadowRoot.getElementById('ownerInput');
             const statusSelect = this.shadowRoot.getElementById('statusSelect');
 
+            // 检查用户角色，如果是普通用户则自动添加当前项目筛选
+            let userRole = window.localStorage.getItem('userRole');
+            if (!userRole && window.MenuPermission) {
+                userRole = window.MenuPermission.getCurrentRole();
+            }
+            const isAdmin = userRole === 'ADMIN';
+            
+            let projectNameValue = '';
+            if (projectNameInput) {
+                projectNameValue = projectNameInput.value || '';
+            }
+            
+            // 如果不是管理员且项目筛选框隐藏，自动使用当前项目名称
+            if (!isAdmin && !projectNameValue) {
+                const username = window.localStorage.getItem('username');
+                const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
+                if (cachedProject && cachedProject.name) {
+                    projectNameValue = cachedProject.name;
+                }
+            }
+            
+            // 管理员如果没有输入项目名称，则不传递projectName参数（查询所有项目）
+            if (isAdmin && !projectNameValue) {
+                projectNameValue = null;
+            }
+
             const request = {
                 name: nameInput ? nameInput.value : '',
-                projectName: projectNameInput ? projectNameInput.value : '',
+                projectName: projectNameValue,
                 owner: ownerInput ? ownerInput.value : '',
                 status: statusSelect ? statusSelect.value : '',
                 pageNum: this.currentPage,
@@ -464,6 +527,8 @@ class SimulationArchiveList extends HTMLElement {
 
     show() {
         this.style.display = 'block';
+        this.checkUserRoleAndHideProjectFilter();
+        this.currentPage = 1;
         this.loadData();
     }
 

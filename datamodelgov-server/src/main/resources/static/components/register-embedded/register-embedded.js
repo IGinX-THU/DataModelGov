@@ -45,6 +45,11 @@ class RegisterDataResourceEmbedded extends HTMLElement {
     }
 
     bindEvents() {
+        // 禁用所有number类型input的鼠标滚轮改变值功能
+        this.shadowRoot.querySelectorAll('input[type="number"]').forEach(input => {
+            input.addEventListener('wheel', (e) => e.preventDefault());
+        });
+
         // 关闭按钮
         const closeBtn = this.shadowRoot.getElementById('closeBtn');
         if (closeBtn) {
@@ -333,6 +338,15 @@ class RegisterDataResourceEmbedded extends HTMLElement {
                     console.error('❌ window.loadDataSourceTree 不存在');
                 }
                 
+                // 重新加载project tree
+                console.log('🔄 数据源注册成功，准备调用 loadProjectTree');
+                if (window.loadProjectTree) {
+                    console.log('🔄 调用 window.loadProjectTree');
+                    window.loadProjectTree();
+                } else {
+                    console.error('❌ window.loadProjectTree 不存在');
+                }
+                
                 // 刷新数据源列表
                 const dataSourceList = document.getElementById('dataSourceList');
                 if (dataSourceList && typeof dataSourceList.loadDataSources === 'function') {
@@ -436,6 +450,22 @@ class RegisterDataResourceEmbedded extends HTMLElement {
         if (data.schemaPrefix && data.schemaPrefix.includes('_system')) {
             this.showMessage('模式前缀不能包含"_system"', 'error');
             return false;
+        }
+        
+        // 模式前缀格式验证（与目标存储路径前缀规则一致）
+        if (data.schemaPrefix && data.schemaPrefix.trim() !== '') {
+            if (/^\d+$/.test(data.schemaPrefix)) {
+                this.showMessage('模式前缀不允许为纯数字', 'error');
+                return false;
+            }
+            if (/^_+$/.test(data.schemaPrefix)) {
+                this.showMessage('模式前缀不允许为纯下划线', 'error');
+                return false;
+            }
+            if (!/^([a-zA-Z][a-zA-Z0-9_]*|_[a-zA-Z0-9][a-zA-Z0-9_]*)(\.([a-zA-Z][a-zA-Z0-9_]*|_[a-zA-Z0-9][a-zA-Z0-9_]*))*$/.test(data.schemaPrefix)) {
+                this.showMessage('模式前缀格式不正确，支持字母、数字、下划线，不能纯数字，不能纯下划线，不能数字开头', 'error');
+                return false;
+            }
         }
         
         // 特定类型验证

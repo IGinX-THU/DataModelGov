@@ -77,8 +77,9 @@ public class SimulationExecutionService {
 
     /**
      * 运行仿真（全量执行）
+     * @return 包含执行记录时间戳的Result
      */
-    public Result<Void> runSimulation(Long createTime) {
+    public Result<Long> runSimulation(Long createTime) {
         return runSimulation(createTime, null);
     }
 
@@ -86,8 +87,9 @@ public class SimulationExecutionService {
      * 运行仿真（支持选择性执行，每个节点使用自己的时间窗口）
      * @param createTime 仿真档案创建时间（作为ID）
      * @param selectedNodeIds 选中的节点ID列表（null表示全量执行）
+     * @return 包含执行记录时间戳的Result
      */
-    public Result<Void> runSimulation(Long createTime, List<String> selectedNodeIds) {
+    public Result<Long> runSimulation(Long createTime, List<String> selectedNodeIds) {
         try {
             SimulationArchiveEntity archive = simulationArchiveService.queryArchive(createTime);
             if (archive == null) {
@@ -188,7 +190,7 @@ public class SimulationExecutionService {
                 }
             }).start();
 
-            return Result.success("仿真已开始运行");
+            return Result.success("仿真已开始运行", execution.getTimestamp());
 
         } catch (Exception e) {
             log.error("运行仿真失败", e);
@@ -231,7 +233,7 @@ public class SimulationExecutionService {
     /**
      * 获取仿真执行状态
      */
-    public Result<Map<String, Object>> getExecutionStatus(Long createTime) {
+    public Result<Map<String, Object>> getExecutionStatus(Long createTime, Long timestamp) {
         try {
             SimulationArchiveEntity archive = simulationArchiveService.queryArchive(createTime);
             if (archive == null) {
@@ -240,26 +242,37 @@ public class SimulationExecutionService {
                 return Result.success(errorData);
             }
 
-            // 查找最新的执行记录
             SimulationExecutionEntity execution = null;
-            for (SimulationExecutionEntity running : runningSimulations.values()) {
-                if (running.getArchiveId().equals(createTime)) {
-                    execution = running;
-                    break;
-                }
-            }
 
-            // 如果内存中没有，尝试从数据库加载最新的执行记录
-            if (execution == null) {
-                List<SimulationExecutionEntity> executions = queryExecutions(
-                    archive.getName(), null, null, null, 1, 1);
-                if (executions != null && !executions.isEmpty()) {
-                    execution = executions.get(0);
-                    // 从IginX加载完整的result字段（queryExecutions可能不包含完整result）
-                    if (execution != null && execution.getTimestamp() != null) {
-                        SimulationExecutionEntity fullExecution = loadExecution(execution.getTimestamp());
-                        if (fullExecution != null) {
-                            execution = fullExecution;
+            // 如果指定了时间戳，优先按时间戳精确查询执行记录
+            if (timestamp != null) {
+                // 先从内存中查找
+                execution = runningSimulations.get(timestamp);
+                // 内存中没有则从数据库加载
+                if (execution == null) {
+                    execution = loadExecution(timestamp);
+                }
+            } else {
+                // 未指定时间戳，查找最新的执行记录
+                for (SimulationExecutionEntity running : runningSimulations.values()) {
+                    if (running.getArchiveId().equals(createTime)) {
+                        execution = running;
+                        break;
+                    }
+                }
+
+                // 如果内存中没有，尝试从数据库加载最新的执行记录
+                if (execution == null) {
+                    List<SimulationExecutionEntity> executions = queryExecutions(
+                        archive.getName(), null, null, null, null, 1, 1);
+                    if (executions != null && !executions.isEmpty()) {
+                        execution = executions.get(0);
+                        // 从IginX加载完整的result字段（queryExecutions可能不包含完整result）
+                        if (execution != null && execution.getTimestamp() != null) {
+                            SimulationExecutionEntity fullExecution = loadExecution(execution.getTimestamp());
+                            if (fullExecution != null) {
+                                execution = fullExecution;
+                            }
                         }
                     }
                 }
@@ -373,11 +386,13 @@ public class SimulationExecutionService {
     /**
      * 分页查询仿真执行记录
      */
-    public List<SimulationExecutionEntity> queryExecutions(String archiveName, String status, Long startTime, Long endTime, int pageNum, int pageSize) {
+    public List<SimulationExecutionEntity> queryExecutions(String archiveName, Long archiveId, String status, Long startTime, Long endTime, int pageNum, int pageSize) {
         try {
             StringBuilder sql = new StringBuilder("SELECT * FROM " + DATA_PREFIX + " WHERE 1=1");
 
-            if (archiveName != null && !archiveName.trim().isEmpty()) {
+            if (archiveId != null) {
+                sql.append(" AND archiveId = ").append(archiveId);
+            } else if (archiveName != null && !archiveName.trim().isEmpty()) {
                 sql.append(" AND archiveName LIKE '^.*").append(archiveName.trim()).append(".*'");
             }
             if (status != null && !status.trim().isEmpty()) {

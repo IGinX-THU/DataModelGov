@@ -111,7 +111,11 @@ document.addEventListener('DOMContentLoaded', function() {
             'projectImport',
             'dataArchiveDetail',
             'modelArchiveList',
-            'algorithmArchiveList'
+            'algorithmArchiveList',
+            'programManagement',
+            'programUpload',
+            'programRun',
+            'userManual'
         ];
         
         components.forEach(componentId => {
@@ -204,7 +208,13 @@ document.addEventListener('DOMContentLoaded', function() {
     window.showGlobalLoading('正在加载数据资源...');
     loadDataSourceTree();
     loadProjectTree();
-    
+
+    // 移除页面初始化Loading遮罩层
+    const pageLoadingOverlay = document.getElementById('pageLoadingOverlay');
+    if (pageLoadingOverlay) {
+        pageLoadingOverlay.remove();
+    }
+
     // 1. 明暗模式切换
     const themeToggle = document.getElementById('themeToggle');
     const html = document.documentElement;
@@ -511,6 +521,30 @@ document.addEventListener('DOMContentLoaded', function() {
                         if (isSecondClick) clearWorkspace();
                         showComponent('algorithmArchiveList');
                         break;
+                    case 'showProjectImportData':
+                        window.showProjectImportWizard('data');
+                        break;
+                    case 'showProjectImportModel':
+                        window.showProjectImportWizard('model');
+                        break;
+                    case 'showProjectImportAlgorithm':
+                        window.showProjectImportWizard('algorithm');
+                        break;
+                    case 'showProjectImportSimulation':
+                        window.showProjectImportWizard('simulation');
+                        break;
+                    case 'showProjectExportData':
+                        window.showProjectExportWizard('data');
+                        break;
+                    case 'showProjectExportModel':
+                        window.showProjectExportWizard('model');
+                        break;
+                    case 'showProjectExportAlgorithm':
+                        window.showProjectExportWizard('algorithm');
+                        break;
+                    case 'showProjectExportSimulation':
+                        window.showProjectExportWizard('simulation');
+                        break;
                     case 'console.log':
                         console.log('数据源管理被点击');
                         break;
@@ -532,20 +566,26 @@ document.addEventListener('DOMContentLoaded', function() {
                         break;
                     case 'handleDownload':
                         console.log('下载模型文件菜单被点击');
+                        // 检查模型侧边栏是否打开，如果未打开则自动打开
                         const activeModelIconDownloadMenu = document.querySelector('.bottom-sidebar-icon.right-sidebar-icon.active[data-panel="model"]');
                         if (!activeModelIconDownloadMenu) {
-                            showWorkspaceMessage('请先打开模型侧边栏', 'warning');
-                            break;
+                            const modelIcon = document.querySelector('.bottom-sidebar-icon.right-sidebar-icon[data-panel="model"]');
+                            if (modelIcon) {
+                                modelIcon.click();
+                            }
                         }
                         const selectedModel = getSelectedModel();
                         showComponent('modelDownload', selectedModel);
                         break;
                     case 'handleAlgorithmDownload':
                         console.log('下载算法文件菜单被点击');
+                        // 检查算法侧边栏是否打开，如果未打开则自动打开
                         const activeAlgorithmIconDownloadMenu = document.querySelector('.bottom-sidebar-icon.right-sidebar-icon.active[data-panel="algorithm"]');
                         if (!activeAlgorithmIconDownloadMenu) {
-                            showWorkspaceMessage('请先打开算法侧边栏', 'warning');
-                            break;
+                            const algorithmIcon = document.querySelector('.bottom-sidebar-icon.right-sidebar-icon[data-panel="algorithm"]');
+                            if (algorithmIcon) {
+                                algorithmIcon.click();
+                            }
                         }
                         const selectedAlgorithm = getSelectedAlgorithm();
                         showComponent('algorithmDownload', selectedAlgorithm);
@@ -626,6 +666,21 @@ document.addEventListener('DOMContentLoaded', function() {
                         clearWorkspace();
                         showSimulationRecord();
                         return;
+                    case 'showProgramUpload':
+                        console.log('仿真程序上传菜单被点击');
+                        clearWorkspace();
+                        showComponent('programUpload');
+                        return;
+                    case 'showProgramManagement':
+                        console.log('程序管理菜单被点击');
+                        clearWorkspace();
+                        showComponent('programManagement');
+                        return;
+                    case 'showProgramRun':
+                        console.log('运行结果菜单被点击');
+                        clearWorkspace();
+                        showComponent('programRun');
+                        return;
                     case 'showAlgorithmList':
                         console.log('算法管理菜单被点击');
                         if (isSecondClick) clearWorkspace();
@@ -695,6 +750,14 @@ document.addEventListener('DOMContentLoaded', function() {
                     case 'showAbout':
                         console.log('关于菜单被点击');
                         showAbout();
+                        break;
+                    case 'showUserManual':
+                        console.log('用户手册菜单被点击');
+                        if (typeof window.showComponent === 'function') {
+                            window.showComponent('userManual');
+                        } else {
+                            console.error('window.showComponent函数未找到');
+                        }
                         break;
                     default:
                         console.warn(`未知的菜单动作: ${action}`);
@@ -774,9 +837,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 // 再次检查父节点也不是路径节点
                 if (modelName !== 'filesystem' && modelName !== 'models') {
                     console.log('找到模型名称（最后一级叶子节点的父节点）:', modelName, '版本号（最后一级叶子节点）:', nodeName);
+                    // 从当前选中节点（版本号节点）的data-full-path属性获取完整路径
+                    const fullPath = activeNode.getAttribute('data-full-path');
+                    console.log('版本历史使用的完整路径:', fullPath);
                     return {
                         name: modelName,
-                        version: nodeName
+                        version: nodeName,
+                        fullPath: fullPath // 保存完整路径用于提取项目名称
                     };
                 }
             }
@@ -833,6 +900,26 @@ document.addEventListener('DOMContentLoaded', function() {
         return path;
     }
 
+    // 从存储路径中提取项目名称
+    function extractProjectNameFromPath(path) {
+        if (!path) return null;
+        const prefixes = ['models_system.', 'algorithms_system.'];
+        for (const prefix of prefixes) {
+            if (path.startsWith(prefix)) {
+                // 去掉前缀后，第一部分就是项目名称
+                const withoutPrefix = path.substring(prefix.length);
+                const parts = withoutPrefix.split('.');
+                if (parts.length > 0) {
+                    return parts[0];
+                }
+            }
+        }
+        return null;
+    }
+
+    // 将提取项目名称的函数暴露到全局作用域
+    window.extractProjectNameFromPath = extractProjectNameFromPath;
+
     // 5. 右侧树节点单击事件 - 显示模型详情
     document.querySelectorAll('#modelTree .tree-node').forEach(node => {
         node.addEventListener('click', function() {
@@ -881,9 +968,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 // 再次检查父节点也不是路径节点
                 if (algorithmName !== 'filesystem' && algorithmName !== 'algorithms') {
                     console.log('找到算法名称（最后一级叶子节点的父节点）:', algorithmName, '版本号（最后一级叶子节点）:', nodeName);
+                    // 从当前选中节点（版本号节点）的data-full-path属性获取完整路径
+                    const fullPath = activeNode.getAttribute('data-full-path');
+                    console.log('版本历史使用的完整路径:', fullPath);
                     return {
                         name: algorithmName,
-                        version: nodeName
+                        version: nodeName,
+                        fullPath: fullPath // 保存完整路径用于提取项目名称
                     };
                 }
             }
@@ -983,11 +1074,13 @@ document.addEventListener('DOMContentLoaded', function() {
                         showComponent('algorithmUpload');
                         break;
                     case 'handleAlgorithmDownload':
-                        // 检查算法侧边栏是否打开
+                        // 检查算法侧边栏是否打开，如果未打开则自动打开
                         const activeAlgorithmIconDownload = document.querySelector('.bottom-sidebar-icon.right-sidebar-icon.active[data-panel="algorithm"]');
                         if (!activeAlgorithmIconDownload) {
-                            showWorkspaceMessage('请先打开算法侧边栏', 'warning');
-                            break;
+                            const algorithmIcon = document.querySelector('.bottom-sidebar-icon.right-sidebar-icon[data-panel="algorithm"]');
+                            if (algorithmIcon) {
+                                algorithmIcon.click();
+                            }
                         }
                         const selectedAlgorithmRibbon = getSelectedAlgorithm();
                         showComponent('algorithmDownload', selectedAlgorithmRibbon);
@@ -1036,18 +1129,16 @@ document.addEventListener('DOMContentLoaded', function() {
                         showComponent('projectImport');
                         break;
                     case 'handleDownload':
-                        // 检查模型侧边栏是否打开
+                        // 检查模型侧边栏是否打开，如果未打开则自动打开
                         const activeModelIcon = document.querySelector('.bottom-sidebar-icon.right-sidebar-icon.active[data-panel="model"]');
                         if (!activeModelIcon) {
-                            showWorkspaceMessage('请先打开模型侧边栏', 'warning');
-                            break;
+                            const modelIcon = document.querySelector('.bottom-sidebar-icon.right-sidebar-icon[data-panel="model"]');
+                            if (modelIcon) {
+                                modelIcon.click();
+                            }
                         }
                         const selectedModel = getSelectedModel();
-                        if (selectedModel) {
-                            showComponent('modelDownload', selectedModel);
-                        } else {
-                            showWorkspaceMessage('请先选择要下载的模型版本', 'warning');
-                        }
+                        showComponent('modelDownload', selectedModel);
                         break;
                     case 'handleDeleteModel':
                         // 检查模型侧边栏是否打开
@@ -1108,6 +1199,36 @@ document.addEventListener('DOMContentLoaded', function() {
                     case 'showAlgorithmArchiveList':
                         showComponent('algorithmArchiveList');
                         break;
+                    case 'showProjectImport':
+                        showComponent('projectImport');
+                        break;
+                    case 'showProjectExport':
+                        showComponent('projectExport');
+                        break;
+                    case 'showProjectImportData':
+                        window.showProjectImportWizard('data');
+                        break;
+                    case 'showProjectImportModel':
+                        window.showProjectImportWizard('model');
+                        break;
+                    case 'showProjectImportAlgorithm':
+                        window.showProjectImportWizard('algorithm');
+                        break;
+                    case 'showProjectImportSimulation':
+                        window.showProjectImportWizard('simulation');
+                        break;
+                    case 'showProjectExportData':
+                        window.showProjectExportWizard('data');
+                        break;
+                    case 'showProjectExportModel':
+                        window.showProjectExportWizard('model');
+                        break;
+                    case 'showProjectExportAlgorithm':
+                        window.showProjectExportWizard('algorithm');
+                        break;
+                    case 'showProjectExportSimulation':
+                        window.showProjectExportWizard('simulation');
+                        break;
                     case 'showSimulationArchive':
                         clearWorkspace();
                         showComponent('simulationArchiveList');
@@ -1115,6 +1236,14 @@ document.addEventListener('DOMContentLoaded', function() {
                     case 'showSimulationRecord':
                         clearWorkspace();
                         showSimulationRecord();
+                        return;
+                    case 'showProgramUpload':
+                        clearWorkspace();
+                        showComponent('programUpload');
+                        return;
+                    case 'showProgramManagement':
+                        clearWorkspace();
+                        showComponent('programManagement');
                         return;
                     default:
                         console.warn(`未知的按钮动作: ${action}`);
@@ -1169,6 +1298,17 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // 只使用公共的toast提示，不在工作区显示HTML提示
             // 上传组件内部已经调用了showMessage，这里不需要重复显示
+        });
+    }
+
+    // 监听程序上传成功事件
+    const programUpload = document.getElementById('programUpload');
+    if (programUpload) {
+        programUpload.addEventListener('upload-success', function(e) {
+            console.log('程序上传成功:', e.detail);
+            if (window.loadProjectTree) window.loadProjectTree();
+            const pm = document.getElementById('programManagement');
+            if (pm && pm.loadPrograms) pm.loadPrograms();
         });
     }
 
@@ -1317,10 +1457,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 params.append('version', selectedModel.version);
             }
             
+            // 从树结构fullPath中提取projectName
+            let projectName = null;
+            if (selectedModel.fullPath && window.extractProjectNameFromPath) {
+                projectName = window.extractProjectNameFromPath(selectedModel.fullPath);
+            }
+            
             // 使用新的API配置
             const result = await window.AppConfig.delete('model', 'delete', {
                 name: selectedModel.name,
-                version: selectedModel.version
+                version: selectedModel.version,
+                projectName: projectName
             });
             
             console.log('删除响应:', result);
@@ -1330,6 +1477,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // 从右侧树中移除该节点
                 removeModelFromTree(selectedModel);
+                
+                // 重新加载project tree
+                window.loadProjectTree();
 
                 // 清除选中状态
                 const modelTree = document.getElementById('modelTree');
@@ -1478,10 +1628,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 params.append('version', selectedAlgorithm.version);
             }
 
+            // 从树结构fullPath中提取projectName
+            let projectName = null;
+            if (selectedAlgorithm.fullPath && window.extractProjectNameFromPath) {
+                projectName = window.extractProjectNameFromPath(selectedAlgorithm.fullPath);
+            }
+
             // 使用新的API配置
             const result = await window.AppConfig.delete('algorithm', 'delete', {
                 name: selectedAlgorithm.name,
-                version: selectedAlgorithm.version
+                version: selectedAlgorithm.version,
+                projectName: projectName
             });
 
             console.log('删除响应:', result);
@@ -1491,6 +1648,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 // 从右侧树中移除该节点
                 removeAlgorithmFromTree(selectedAlgorithm);
+                
+                // 重新加载project tree
+                window.loadProjectTree();
 
                 // 清除选中状态
                 const algorithmTree = document.getElementById('algorithmTree');
@@ -1571,7 +1731,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // 显示确认对话框
-    function showConfirmDialog(title, message, onConfirm) {
+    window.showConfirmDialog = function(title, message, onConfirm) {
         // 移除已存在的对话框
         const existingDialog = document.querySelector('.confirm-dialog-overlay');
         if (existingDialog) {
@@ -1631,7 +1791,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     cursor: pointer;
                     font-size: 14px;
                     transition: all 0.2s;
-                ">确认删除</button>
+                ">确定</button>
             </div>
         `;
 
@@ -1719,6 +1879,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 showWorkspaceMessage(`数据源 "${alias}" 删除成功`, 'success');
                 // 重新加载数据源树
                 loadDataSourceTree();
+                // 重新加载project tree
+                window.loadProjectTree();
                 // 清除选中状态
                 selectedDataSource = null;
                 if (leftSidebarTree) {
@@ -1894,8 +2056,10 @@ function showSimulationRecord() {
         console.log('是否为测点:', isDataPoint);
         
         if (isDataPoint) {
+            // 直接替换为当前点击的测点，不累积
+            window.selectedDataPoints.clear();
             window.selectedDataPoints.add(dataSource);
-            console.log('添加测点到已选列表:', dataSource);
+            console.log('设置当前测点:', dataSource);
         } else {
             console.log('跳过非测点节点:', dataSource);
         }
@@ -2067,7 +2231,9 @@ function showSimulationRecord() {
             'algorithmList',
             'associationRules',
             'visualAnalysis',
-            'simulationArchiveList'
+            'simulationArchiveList',
+            'programUpload',
+            'programRun'
         ];
 
         if (componentsRequiringProject.includes(componentId)) {
@@ -2082,7 +2248,7 @@ function showSimulationRecord() {
         }
 
         // 弹窗组件不需要清空工作区，但需要隐藏其他弹窗
-        const modalComponents = ['registerEmbedded', 'importData', 'modelUpload', 'modelDownload', 'modelEdit', 'algorithmUpload', 'algorithmDownload', 'algorithmEdit'];
+        const modalComponents = ['registerEmbedded', 'importData', 'modelUpload', 'modelDownload', 'modelEdit', 'algorithmUpload', 'algorithmDownload', 'algorithmEdit', 'programUpload'];
         if (modalComponents.includes(componentId)) {
             // 隐藏其他弹窗组件
             modalComponents.forEach(modalId => {
@@ -2128,6 +2294,12 @@ function showSimulationRecord() {
 
     // 将showComponent暴露到全局作用域
     window.showComponent = showComponent;
+    window.showProjectImportWizard = function(resourceType) {
+        showComponent('projectImport', { resourceType });
+    };
+    window.showProjectExportWizard = function(resourceType) {
+        showComponent('projectExport', { resourceType });
+    };
 
     function showDatabaseTable(tableName) {
         showComponent('databaseTable', tableName);
@@ -2256,6 +2428,11 @@ function showSimulationRecord() {
                 algorithmTree.innerHTML = '<div class="loading-placeholder">正在加载算法资产...</div>';
             }
 
+            const programTree = document.getElementById('programTree');
+            if (programTree) {
+                programTree.innerHTML = '<div class="loading-placeholder">正在加载仿真程序...</div>';
+            }
+
             // 使用新的API配置
             const result = await window.AppConfig.get('datasource', 'tree');
             console.log('🔄 loadDataSourceTree API响应:', result);
@@ -2266,6 +2443,8 @@ function showSimulationRecord() {
                 syncFilesystemToModelAssets(result.data);
                 // 同步filesystem数据到右侧算法资产库
                 syncFilesystemToAlgorithmAssets(result.data);
+                // 同步filesystem数据到右侧仿真程序树
+                syncFilesystemToProgramAssets(result.data);
             } else {
                 console.error('加载数据源树失败:', result.message);
                 document.getElementById('dataSourceTree').innerHTML = '<div class="error-placeholder">加载数据源失败</div>';
@@ -2279,34 +2458,78 @@ function showSimulationRecord() {
         }
     }
 
-    // 动态加载项目树
+    // 动态加载项目树（显示用户的所有项目，只展开当前项目）
     async function loadProjectTree() {
         console.log('🔄 loadProjectTree 开始执行');
         try {
-            // 检查是否有缓存的项目（按用户隔离）
             const username = window.AppConfig.getUsername();
             let cachedProject = null;
             if (username && window.localStorage) {
                 cachedProject = JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null');
             }
+            const currentProjectName = cachedProject ? cachedProject.name : null;
 
-            if (cachedProject) {
-                // 有项目，加载项目树
-                if (window.displayProjectTree) {
-                    await window.displayProjectTree(cachedProject.name);
+            // 获取用户的所有项目
+            const queryRequest = { pageNum: 1, pageSize: 1000, name: null, algorithm: null, model: null, data: null };
+            const result = await window.AppConfig.post('project', 'query', queryRequest);
+
+            let allProjects = [];
+            if (result.code === 200 && result.data) {
+                allProjects = result.data.map(p => p.name);
+            }
+
+            const treeContainer = document.getElementById('projectTree');
+            if (!treeContainer) return;
+
+            if (allProjects.length === 0) {
+                treeContainer.innerHTML = `
+                    <div style="padding: 20px; text-align: center; color: #999;">
+                        <div style="font-size: 48px; margin-bottom: 16px;">📂</div>
+                        <div style="font-size: 14px; margin-bottom: 12px;">暂无项目</div>
+                        <div style="font-size: 12px; color: #aaa;">请在项目管理中新建项目</div>
+                    </div>
+                `;
+                const spacerElement = document.querySelector('.bottom-sidebar-spacer');
+                if (spacerElement) { spacerElement.textContent = '当前项目：无'; }
+                return;
+            }
+
+            // 获取当前项目的树结构
+            let currentProjectTree = null;
+            if (currentProjectName && allProjects.includes(currentProjectName)) {
+                const treeResult = await window.AppConfig.get('project', 'tree', { name: currentProjectName });
+                if (treeResult.code === 200 && treeResult.data) {
+                    currentProjectTree = treeResult.data;
                 }
-            } else {
-                // 没有项目，显示引导信息
-                const projectTreeContainer = document.getElementById('projectTree');
-                if (projectTreeContainer) {
-                    projectTreeContainer.innerHTML = `
-                        <div style="padding: 20px; text-align: center; color: #999;">
-                            <div style="font-size: 48px; margin-bottom: 16px;">📂</div>
-                            <div style="font-size: 14px; margin-bottom: 12px;">暂未打开项目</div>
-                            <div style="font-size: 12px; color: #aaa;">请在项目管理中打开或新建项目</div>
-                        </div>
+            }
+
+            // 渲染所有项目（当前项目展开，其他收起）
+            treeContainer.innerHTML = renderAllProjectsTree(allProjects, currentProjectName, currentProjectTree);
+            bindProjectTreeEvents();
+
+            // 更新底部项目名称显示
+            const spacerElement = document.querySelector('.bottom-sidebar-spacer');
+            if (spacerElement) {
+                if (currentProjectName && currentProjectTree) {
+                    spacerElement.textContent = `当前项目：${currentProjectName}`;
+                    spacerElement.style.cssText = `
+                        text-align: center;
+                        padding: 0 16px;
+                        font-size: 14px;
+                        font-weight: 500;
+                        color: #333;
+                        white-space: nowrap;
+                        overflow: hidden;
+                        text-overflow: ellipsis;
                     `;
+                } else {
+                    spacerElement.textContent = '当前项目：无';
                 }
+            }
+
+            // 重新加载右侧边栏（算法库和模型资产库）
+            if (typeof window.loadDataSourceTree === 'function') {
+                window.loadDataSourceTree();
             }
         } catch (error) {
             console.error('加载项目树异常:', error);
@@ -2420,23 +2643,52 @@ function showSimulationRecord() {
             }
         }
 
-        // 清空项目树
-        const projectTreeContainer = document.getElementById('projectTree');
-        if (projectTreeContainer) {
-            projectTreeContainer.innerHTML = `
+        // 刷新项目树（显示所有项目，不展开任何项目）
+        loadProjectTree();
+
+        // 清空工作区
+        if (typeof window.hideAllComponents === 'function') {
+            window.hideAllComponents();
+        }
+
+        // 清空左侧数据源树
+        const dataSourceTree = document.getElementById('dataSourceTree');
+        if (dataSourceTree) {
+            dataSourceTree.innerHTML = `
                 <div style="padding: 20px; text-align: center; color: #999;">
-                    <div style="font-size: 48px; margin-bottom: 16px;">📂</div>
-                    <div style="font-size: 14px; margin-bottom: 12px;">暂未打开项目</div>
-                    <div style="font-size: 12px; color: #aaa;">请在项目管理中打开或新建项目</div>
+                    <div style="font-size: 48px; margin-bottom: 16px;">📊</div>
+                    <div style="font-size: 14px; margin-bottom: 12px;">暂无数据源</div>
+                    <div style="font-size: 12px; color: #aaa;">请在数据管理中注册或导入数据源</div>
                 </div>
             `;
         }
 
-        // 清空底部项目名称显示
-        const spacerElement = document.querySelector('.bottom-sidebar-spacer');
-        if (spacerElement) {
-            spacerElement.textContent = '当前项目：无';
+        // 清空右侧模型资产库
+        const modelTree = document.getElementById('modelTree');
+        if (modelTree) {
+            modelTree.innerHTML = `
+                <div style="padding: 20px; text-align: center; color: #999;">
+                    <div style="font-size: 48px; margin-bottom: 16px;">📦</div>
+                    <div style="font-size: 14px; margin-bottom: 12px;">暂无模型资产</div>
+                    <div style="font-size: 12px; color: #aaa;">请在模型管理中上传模型文件</div>
+                </div>
+            `;
         }
+
+        // 清空右侧算法资产库
+        const algorithmTree = document.getElementById('algorithmTree');
+        if (algorithmTree) {
+            algorithmTree.innerHTML = `
+                <div style="padding: 20px; text-align: center; color: #999;">
+                    <div style="font-size: 48px; margin-bottom: 16px;">🧮</div>
+                    <div style="font-size: 14px; margin-bottom: 12px;">暂无算法资产</div>
+                    <div style="font-size: 12px; color: #aaa;">请在算法管理中上传算法文件</div>
+                </div>
+            `;
+        }
+
+        // 清除选中的数据源
+        selectedDataSource = null;
     };
 
     // 绑定关闭项目按钮事件
@@ -2449,10 +2701,38 @@ function showSimulationRecord() {
     function bindProjectTreeEvents() {
         const projectTree = document.getElementById('projectTree');
         if (projectTree) {
-            projectTree.addEventListener('click', function(e) {
+            if (projectTree._projectTreeClickHandler) {
+                projectTree.removeEventListener('click', projectTree._projectTreeClickHandler);
+            }
+            projectTree._projectTreeClickHandler = function(e) {
                 const node = e.target.closest('.tree-node');
                 if (node) {
                     e.stopPropagation();
+
+                    // 获取节点信息
+                    const nodeType = node.getAttribute('data-node-type');
+                    const nodeName = node.querySelector('.tree-node-text')?.textContent;
+
+                    console.log('点击项目树节点:', { nodeType, nodeName });
+
+                    // 项目节点点击：当前项目切换展开/收起，其他项目弹出切换确认
+                    if (nodeType === 'project') {
+                        const projectName = node.getAttribute('data-project-name');
+                        const username = window.AppConfig.getUsername();
+                        let currentProjectName = null;
+                        if (username && window.localStorage) {
+                            const cached = JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null');
+                            if (cached) currentProjectName = cached.name;
+                        }
+                        if (projectName === currentProjectName) {
+                            // 当前项目：直接切换展开/收起
+                            node.classList.toggle('expanded');
+                        } else {
+                            // 其他项目：弹出切换确认
+                            showSwitchProjectConfirmDialog(projectName);
+                        }
+                        return;
+                    }
 
                     // 检查是否有子节点，如果有则切换展开/收起状态
                     const hasChildren = node.querySelector('.tree-children');
@@ -2466,22 +2746,91 @@ function showSimulationRecord() {
                     // 设置当前选中
                     node.classList.add('active');
 
-                    // 获取节点信息
-                    const nodeType = node.getAttribute('data-node-type');
-                    const nodeName = node.querySelector('.tree-node-text')?.textContent;
-
-                    console.log('点击项目树节点:', { nodeType, nodeName });
-
                     // 根据节点类型执行不同操作
                     if (nodeType === 'data') {
                         console.log('点击数据节点:', nodeName);
+                        if (window.hideAllComponents) {
+                            window.hideAllComponents();
+                        }
+                        const dataArchiveDetail = document.getElementById('dataArchiveDetail');
+                        if (dataArchiveDetail) {
+                            dataArchiveDetail.showDetail(nodeName);
+                        }
                     } else if (nodeType === 'algorithm') {
                         console.log('点击算法节点:', nodeName);
+                        if (window.hideAllComponents) {
+                            window.hideAllComponents();
+                        }
+                        const algorithmDetail = document.getElementById('algorithmDetail');
+                        if (algorithmDetail && algorithmDetail.show) {
+                            const pathParts = nodeName.split('.');
+                            if (pathParts.length >= 4) {
+                                algorithmDetail.show({
+                                    name: pathParts[2],
+                                    version: pathParts[3],
+                                    fullPath: nodeName
+                                });
+                            } else {
+                                algorithmDetail.show({ name: nodeName, fullPath: nodeName });
+                            }
+                        }
+                        expandAlgorithmNodeInRightSidebar(nodeName, true);
                     } else if (nodeType === 'model') {
                         console.log('点击模型节点:', nodeName);
+                        if (window.hideAllComponents) {
+                            window.hideAllComponents();
+                        }
+                        const modelDetail = document.getElementById('modelDetail');
+                        if (modelDetail && modelDetail.show) {
+                            const pathParts = nodeName.split('.');
+                            if (pathParts.length >= 4) {
+                                modelDetail.show({
+                                    name: pathParts[2],
+                                    version: pathParts[3],
+                                    fullPath: nodeName
+                                });
+                            } else {
+                                modelDetail.show({ name: nodeName, fullPath: nodeName });
+                            }
+                        }
+                        expandModelNodeInRightSidebar(nodeName, true);
+                    } else if (nodeType === 'program') {
+                        const programName = node.getAttribute('data-program-name');
+                        const programVersion = node.getAttribute('data-program-version');
+                        console.log('点击程序节点:', programName, programVersion);
+                        if (window.hideAllComponents) {
+                            window.hideAllComponents();
+                        }
+                        const oldEl = document.getElementById('programRun');
+                        const parent = oldEl ? oldEl.parentElement : null;
+                        if (oldEl) oldEl.remove();
+                        const programRun = document.createElement('program-run');
+                        programRun.id = 'programRun';
+                        programRun.style.display = 'none';
+                        if (parent) parent.appendChild(programRun);
+                        programRun.setAttribute('data-name', programName);
+                        programRun.setAttribute('data-version', programVersion);
+                        if (window.showComponent) {
+                            window.showComponent('programRun');
+                        }
+                        // 等待组件初始化完成后再加载数据
+                        const waitForInit = () => {
+                            if (programRun.charts && programRun.charts.length > 0) {
+                                if (programRun.loadProgramFiles) {
+                                    programRun.loadProgramFiles(programName, programVersion);
+                                }
+                                if (programRun.queryStatus) {
+                                    programRun.queryStatus(programName, programVersion);
+                                }
+                            } else {
+                                setTimeout(waitForInit, 100);
+                            }
+                        };
+                        setTimeout(waitForInit, 100);
                     }
                 }
-            });
+            };
+            projectTree.addEventListener('click', projectTree._projectTreeClickHandler);
         }
     }
 
@@ -2509,7 +2858,7 @@ function showSimulationRecord() {
         // 过滤掉 models_system 和 algorithms_system 开头的数据源（这些数据源会移动到右侧显示）
         const filteredDataSources = dataSources.filter(item => {
             const path = typeof item === 'string' ? item : item.path;
-            return !path || (!path.startsWith('models_system') && !path.startsWith('algorithms_system'));
+            return !path || (!path.startsWith('models_system') && !path.startsWith('algorithms_system') && !path.startsWith('programs_system'));
         });
         console.log('🔄 过滤后的数据源数量:', filteredDataSources.length);
         
@@ -2557,7 +2906,13 @@ function showSimulationRecord() {
             treeNodes.forEach(node => {
                 node.addEventListener('click', function(e) {
                     e.stopPropagation();
-                    
+
+                    // 隐藏右键菜单
+                    const contextMenu = document.getElementById('dataSourceContextMenu');
+                    if (contextMenu) {
+                        contextMenu.style.display = 'none';
+                    }
+
                     // 确保只处理左侧的节点
                     if (!this.closest('.left-sidebar')) {
                         return;
@@ -2599,10 +2954,132 @@ function showSimulationRecord() {
                         this.classList.toggle('expanded');
                     }
                 });
+
+                // 添加右键菜单事件
+                node.addEventListener('contextmenu', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    // 确保只处理左侧的节点
+                    if (!this.closest('.left-sidebar')) {
+                        return;
+                    }
+
+                    // 先隐藏现有的右键菜单
+                    const existingMenu = document.getElementById('dataSourceContextMenu');
+                    if (existingMenu) {
+                        existingMenu.style.display = 'none';
+                    }
+
+                    const fullPath = this.getAttribute('data-full-path');
+                    const isLeaf = this.getAttribute('data-is-leaf') === 'true';
+
+                    // 禁止删除根节点（第一级节点）
+                    const pathParts = fullPath.split('.');
+                    if (pathParts.length === 1) {
+                        return; // 根节点不显示右键菜单
+                    }
+
+                    // 显示右键菜单
+                    const contextMenu = document.getElementById('dataSourceContextMenu');
+                    if (contextMenu) {
+                        contextMenu.style.display = 'block';
+                        // 使用鼠标位置，添加偏移量避免菜单被鼠标遮挡
+                        contextMenu.style.left = (e.clientX + 5) + 'px';
+                        contextMenu.style.top = (e.clientY + 5) + 'px';
+
+                        // 保存当前节点信息到菜单元素
+                        contextMenu.dataset.fullPath = fullPath;
+                        contextMenu.dataset.isLeaf = isLeaf;
+                    }
+                });
+            });
+        }
+
+        // 点击其他地方隐藏右键菜单
+        document.addEventListener('click', function(e) {
+            const contextMenu = document.getElementById('dataSourceContextMenu');
+            if (contextMenu && contextMenu.style.display === 'block') {
+                // 如果点击的不是右键菜单本身，则隐藏
+                if (!contextMenu.contains(e.target)) {
+                    contextMenu.style.display = 'none';
+                }
+            }
+        });
+
+        // 绑定删除菜单项点击事件
+        const deleteMenuItem = document.getElementById('deleteDataNode');
+        if (deleteMenuItem) {
+            deleteMenuItem.addEventListener('click', function() {
+                const contextMenu = document.getElementById('dataSourceContextMenu');
+                if (!contextMenu) return;
+
+                const fullPath = contextMenu.dataset.fullPath;
+                const isLeaf = contextMenu.dataset.isLeaf === 'true';
+
+                if (!fullPath) return;
+
+                // 构造删除路径
+                let deletePath;
+                if (isLeaf) {
+                    // 叶子节点：全路径
+                    deletePath = fullPath;
+                } else {
+                    // 非叶子节点：通配符
+                    deletePath = fullPath + '.*';
+                }
+
+                // 隐藏菜单
+                contextMenu.style.display = 'none';
+
+                // 显示确认对话框
+                window.showConfirmDialog('确认删除', `确定要删除 ${deletePath} 吗？`, () => {
+                    deleteDataSourceData(deletePath);
+                });
             });
         }
     }
-    
+
+    // 删除数据源数据
+    async function deleteDataSourceData(path) {
+        try {
+            if (window.showGlobalLoading) window.showGlobalLoading('正在删除数据...');
+
+            const url = `${window.AppConfig.api.baseURL}/api/data/deleteColumns/${encodeURIComponent(path)}`;
+            const response = await fetch(url, {
+                method: 'DELETE',
+                headers: window.AppConfig.getAuthHeaders()
+            });
+
+            const result = await response.json();
+
+            if (result.success || result.code === 200) {
+                if (window.CommonUtils && window.CommonUtils.showToast) {
+                    window.CommonUtils.showToast('删除成功', 'success');
+                }
+                // 重新加载数据源树
+                if (window.loadDataSourceTree) {
+                    window.loadDataSourceTree();
+                }
+                // 重新加载project tree
+                if (window.loadProjectTree) {
+                    window.loadProjectTree();
+                }
+            } else {
+                if (window.CommonUtils && window.CommonUtils.showToast) {
+                    window.CommonUtils.showToast('删除失败: ' + (result.message || '未知错误'), 'error');
+                }
+            }
+        } catch (error) {
+            console.error('删除数据失败:', error);
+            if (window.CommonUtils && window.CommonUtils.showToast) {
+                window.CommonUtils.showToast('删除失败: ' + error.message, 'error');
+            }
+        } finally {
+            if (window.hideGlobalLoading) window.hideGlobalLoading();
+        }
+    }
+
     // 同步filesystem数据到右侧模型资产库
     function syncFilesystemToModelAssets(allData) {
         try {
@@ -2861,8 +3338,140 @@ function showSimulationRecord() {
         }
     }
 
+    // 同步filesystem数据到仿真程序树
+    function syncFilesystemToProgramAssets(allData) {
+        try {
+            const filesystemData = allData.filter(item => {
+                const path = typeof item === 'string' ? item : item.path;
+                return path && path.startsWith('programs_system');
+            });
+
+            console.log('过滤出的programs_system数据:', filesystemData);
+
+            const programTree = document.getElementById('programTree');
+            if (!programTree) return;
+
+            if (filesystemData.length > 0) {
+                const treeMap = {};
+                filesystemData.forEach(item => {
+                    const path = typeof item === 'string' ? item : item.path;
+                    const parts = path.split('.');
+
+                    let current = treeMap;
+                    for (let i = 0; i < parts.length; i++) {
+                        const part = parts[i];
+                        if (!current[part]) {
+                            current[part] = {
+                                name: part,
+                                children: {},
+                                fullPath: parts.slice(0, i + 1).join('.'),
+                                isLeaf: i === parts.length - 1,
+                                level: i
+                            };
+                        }
+                        current = current[part].children;
+                    }
+                });
+
+                function createTreeNodes(nodes, container, level = 0) {
+                    Object.values(nodes).forEach(node => {
+                        const hasChildren = Object.keys(node.children).length > 0;
+
+                        const treeNode = document.createElement('div');
+                        treeNode.className = hasChildren ? 'tree-node expanded' : 'tree-node';
+                        treeNode.setAttribute('data-full-path', node.fullPath);
+                        treeNode.setAttribute('data-is-leaf', node.isLeaf.toString());
+
+                        if (hasChildren) {
+                            const icon = document.createElement('i');
+                            icon.className = 'icon folder-icon';
+                            treeNode.appendChild(icon);
+                        }
+
+                        const span = document.createElement('span');
+                        span.className = 'tree-node-text';
+                        span.textContent = node.name;
+                        treeNode.appendChild(span);
+
+                        if (hasChildren) {
+                            const childrenContainer = document.createElement('div');
+                            childrenContainer.className = 'tree-children';
+                            createTreeNodes(node.children, childrenContainer, level + 1);
+                            treeNode.appendChild(childrenContainer);
+                        }
+
+                        container.appendChild(treeNode);
+                    });
+                }
+
+                programTree.innerHTML = '';
+                createTreeNodes(treeMap, programTree);
+
+                const rightTreeNodes = programTree.querySelectorAll('.tree-node');
+                rightTreeNodes.forEach(node => {
+                    node.addEventListener('click', function(e) {
+                        e.stopPropagation();
+
+                        if (!this.closest('.right-sidebar')) {
+                            return;
+                        }
+
+                        programTree.querySelectorAll('.tree-node.active').forEach(n => n.classList.remove('active'));
+                        this.classList.add('active');
+
+                        if (this.querySelector('.tree-children')) {
+                            this.classList.toggle('expanded');
+                        }
+
+                        const fullPath = this.getAttribute('data-full-path');
+                        const isLeaf = this.getAttribute('data-is-leaf') === 'true';
+                        console.log('点击仿真程序节点:', fullPath, isLeaf);
+
+                        if (isLeaf && fullPath) {
+                            const parts = fullPath.split('.');
+                            if (parts.length >= 4 && parts[0] === 'programs_system') {
+                                const programName = parts[parts.length - 2];
+                                const programVersion = parts[parts.length - 1];
+
+                                const oldEl = document.getElementById('programRun');
+                                const parent = oldEl ? oldEl.parentElement : null;
+                                if (oldEl && parent) {
+                                    oldEl.remove();
+                                }
+                                const programRun = document.createElement('program-run');
+                                programRun.id = 'programRun';
+                                programRun.style.display = 'none';
+                                if (parent) parent.appendChild(programRun);
+                                programRun.setAttribute('data-name', programName);
+                                programRun.setAttribute('data-version', programVersion);
+
+                                clearWorkspace();
+                                showComponent('programRun');
+                                if (programRun.loadProgramFiles) {
+                                    programRun.loadProgramFiles(programName, programVersion);
+                                }
+                            }
+                        }
+                    });
+                });
+
+            } else {
+                programTree.innerHTML = '<div class="empty-placeholder">暂无仿真程序</div>';
+            }
+
+        } catch (error) {
+            console.error('同步filesystem数据到仿真程序树失败:', error);
+            const programTree = document.getElementById('programTree');
+            if (programTree) {
+                programTree.innerHTML = '<div class="error-placeholder">加载仿真程序失败</div>';
+            }
+        }
+    }
+
     // 将loadDataSourceTree函数暴露到全局作用域，供其他组件调用
     window.loadDataSourceTree = loadDataSourceTree;
+    // 将loadProjectTree函数暴露到全局作用域，供其他组件调用
+    window.loadProjectTree = loadProjectTree;
 });
 
 // 确保函数在全局作用域可用
@@ -2882,7 +3491,12 @@ window.loadDataSourceTree = async function() {
         if (algorithmTree) {
             algorithmTree.innerHTML = '<div class="loading-placeholder">正在加载算法资产...</div>';
         }
-        
+
+        const programTree = document.getElementById('programTree');
+        if (programTree) {
+            programTree.innerHTML = '<div class="loading-placeholder">正在加载仿真程序...</div>';
+        }
+
         console.log('🔄 调用接口:', window.AppConfig.getApiUrl('datasource', 'tree'));
         const result = await window.AppConfig.get('datasource', 'tree');
         
@@ -2894,6 +3508,8 @@ window.loadDataSourceTree = async function() {
             syncFilesystemToModelAssets(result.data);
             // 同步filesystem数据到右侧算法资产库
             syncFilesystemToAlgorithmAssets(result.data);
+            // 同步filesystem数据到右侧仿真程序树
+            syncFilesystemToProgramAssets(result.data);
             console.log('🔄 数据源树重新加载完成');
         } else {
             console.error('加载数据源树失败:', result.message);
@@ -2909,8 +3525,8 @@ window.loadDataSourceTree = async function() {
 };
 
 // 全局函数：在右侧模型侧边栏展开对应节点
-window.expandModelNodeInRightSidebar = function(storagePath) {
-    console.log('尝试在右侧模型侧边栏展开节点:', storagePath);
+window.expandModelNodeInRightSidebar = function(storagePath, syncOnly = false) {
+    console.log('尝试在右侧模型侧边栏展开节点:', storagePath, syncOnly ? '(仅同步选中)' : '');
     
     // 切换到右侧模型侧边栏
     const activeModelIcon = document.querySelector('.bottom-sidebar-icon.right-sidebar-icon.active[data-panel="model"]');
@@ -2943,8 +3559,13 @@ window.expandModelNodeInRightSidebar = function(storagePath) {
                     parent.classList.add('expanded');
                     parent = parent.closest('.tree-children')?.parentElement;
                 }
-                // 模拟点击节点
-                node.click();
+                if (syncOnly) {
+                    // 仅同步选中状态，避免重复触发详情加载
+                    modelTree.querySelectorAll('.tree-node.active').forEach(n => n.classList.remove('active'));
+                    node.classList.add('active');
+                } else {
+                    node.click();
+                }
                 node.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }
         });
@@ -2956,8 +3577,8 @@ window.expandModelNodeInRightSidebar = function(storagePath) {
 };
 
 // 全局函数：在右侧算法侧边栏展开对应节点
-window.expandAlgorithmNodeInRightSidebar = function(storagePath) {
-    console.log('尝试在右侧算法侧边栏展开节点:', storagePath);
+window.expandAlgorithmNodeInRightSidebar = function(storagePath, syncOnly = false) {
+    console.log('尝试在右侧算法侧边栏展开节点:', storagePath, syncOnly ? '(仅同步选中)' : '');
 
     // 切换到右侧算法侧边栏
     const activeAlgorithmIcon = document.querySelector('.bottom-sidebar-icon.right-sidebar-icon.active[data-panel="algorithm"]');
@@ -2990,8 +3611,13 @@ window.expandAlgorithmNodeInRightSidebar = function(storagePath) {
                     parent.classList.add('expanded');
                     parent = parent.closest('.tree-children')?.parentElement;
                 }
-                // 模拟点击节点
-                node.click();
+                if (syncOnly) {
+                    // 仅同步选中状态，避免重复触发详情加载
+                    algorithmTree.querySelectorAll('.tree-node.active').forEach(n => n.classList.remove('active'));
+                    node.classList.add('active');
+                } else {
+                    node.click();
+                }
                 node.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }
         });
@@ -3011,105 +3637,6 @@ window.showChangePasswordModal = function() {
 };
 
 // 用户头像点击事件（修改密码）- 已移至 change-password 组件内部处理
-
-// 全局函数：显示用户手册
-window.showUserManual = function() {
-    // 创建模态框
-    const modalOverlay = document.createElement('div');
-    modalOverlay.className = 'modal-overlay';
-    modalOverlay.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0, 0, 0, 0.5);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 10000;
-    `;
-    
-    // 创建模态框内容容器
-    const modalContainer = document.createElement('div');
-    modalContainer.style.cssText = `
-        width: 90%;
-        height: 90%;
-        max-width: 1400px;
-        max-height: 900px;
-        background: white;
-        border-radius: 8px;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-        overflow: hidden;
-        position: relative;
-        display: flex;
-        flex-direction: column;
-    `;
-    
-    // 加载用户手册内容
-    fetch('./components/user-manual/user-manual.html')
-        .then(response => response.text())
-        .then(html => {
-            modalContainer.innerHTML = html;
-            
-            // 获取用户手册容器并确保可以滚动
-            const userManualContainer = modalContainer.querySelector('.user-manual-container');
-            if (userManualContainer) {
-                userManualContainer.style.overflowY = 'auto';
-                userManualContainer.style.height = '100%';
-            }
-            
-            // 适配暗黑模式
-            if (document.documentElement.classList.contains('dark-mode')) {
-                modalContainer.querySelector('.user-manual-container').classList.add('dark-mode');
-            }
-        })
-        .catch(error => {
-            console.error('加载用户手册失败:', error);
-            modalContainer.innerHTML = `
-                <div style="padding: 40px; text-align: center;">
-                    <h3>加载用户手册失败</h3>
-                    <p>请检查网络连接或稍后重试</p>
-                    <button onclick="this.closest('.modal-overlay').remove()" style="
-                        padding: 8px 16px;
-                        background: #1890ff;
-                        color: white;
-                        border: none;
-                        border-radius: 4px;
-                        cursor: pointer;
-                    ">关闭</button>
-                </div>
-            `;
-        });
-    
-    // 点击遮罩关闭
-    modalOverlay.addEventListener('click', function(e) {
-        if (e.target === modalOverlay) {
-            modalOverlay.remove();
-        }
-    });
-    
-    // 添加到页面
-    modalOverlay.appendChild(modalContainer);
-    document.body.appendChild(modalOverlay);
-    
-    // ESC键关闭
-    const escHandler = function(e) {
-        if (e.key === 'Escape') {
-            modalOverlay.remove();
-            document.removeEventListener('keydown', escHandler);
-        }
-    };
-    document.addEventListener('keydown', escHandler);
-};
-
-// 全局函数：关闭用户手册
-window.closeUserManual = function() {
-    const modal = document.querySelector('.modal-overlay');
-    if (modal) {
-        modal.remove();
-    }
-};
 
 // 全局函数：关闭关于对话框
 window.closeAbout = function() {
@@ -3202,105 +3729,37 @@ window.showAbout = function() {
     document.addEventListener('keydown', escHandler);
 };
 
-// 显示项目树形结构
+// 显示项目树形结构（更新当前项目并刷新左侧项目列表）
 window.displayProjectTree = function(projectName) {
     console.log('🔄 displayProjectTree 被调用，项目名称:', projectName);
 
     if (!projectName || !projectName.trim()) {
-        console.log('项目名称为空，显示无项目提示');
-        const treeContainer = document.getElementById('projectTree');
-        if (treeContainer) {
-            treeContainer.innerHTML = `
-                <div style="padding: 20px; text-align: center; color: #999;">
-                    <div style="font-size: 48px; margin-bottom: 16px;">📂</div>
-                    <div style="font-size: 14px; margin-bottom: 12px;">暂未打开项目</div>
-                    <div style="font-size: 12px; color: #aaa;">请在项目管理中打开或新建项目</div>
-                </div>
-            `;
+        // 清除当前项目缓存，刷新列表
+        if (window.localStorage) {
+            const username = window.AppConfig.getUsername();
+            if (username) {
+                window.localStorage.removeItem('currentProject_' + username);
+            }
         }
-        const spacerElement = document.querySelector('.bottom-sidebar-spacer');
-        if (spacerElement) {
-            spacerElement.textContent = '当前项目：无';
+        return Promise.resolve(window.loadProjectTree && window.loadProjectTree());
+    }
+
+    // 更新当前项目缓存
+    if (window.localStorage) {
+        const username = window.AppConfig.getUsername();
+        if (username) {
+            window.localStorage.setItem('currentProject_' + username, JSON.stringify({
+                name: projectName,
+                createTime: Date.now()
+            }));
         }
-        return Promise.resolve();
     }
 
     if (window.showGlobalLoading) {
         window.showGlobalLoading('正在加载项目树...');
     }
 
-    // Call backend API to get project tree structure
-    return window.AppConfig.get('project', 'tree', { name: projectName })
-        .then(result => {
-            if (result.code === 200 && result.data) {
-                const treeData = result.data;
-                console.log('🔄 后端返回的树结构:', treeData);
-
-                const treeContainer = document.getElementById('projectTree');
-                if (treeContainer) {
-                    // 直接渲染ProjectTree结构
-                    const treeHTML = renderProjectTree(treeData);
-                    treeContainer.innerHTML = treeHTML;
-                    console.log('🔄 项目树渲染完成');
-                    // 绑定点击事件
-                    bindProjectTreeEvents();
-                }
-
-                // Update bottom-sidebar-spacer to show current project name
-                const spacerElement = document.querySelector('.bottom-sidebar-spacer');
-                if (spacerElement) {
-                    spacerElement.textContent = `当前项目：${treeData.name}`;
-                    spacerElement.style.cssText = `
-                        text-align: center;
-                        padding: 0 16px;
-                        font-size: 14px;
-                        font-weight: 500;
-                        color: #333;
-                        white-space: nowrap;
-                        overflow: hidden;
-                        text-overflow: ellipsis;
-                    `;
-                }
-
-                // 重新加载右侧边栏（算法库和模型资产库）
-                if (typeof loadDataSourceTree === 'function') {
-                    loadDataSourceTree();
-                }
-            } else {
-                console.error('获取项目树失败:', result.message);
-                const treeContainer = document.getElementById('projectTree');
-                if (treeContainer) {
-                    treeContainer.innerHTML = `
-                        <div style="padding: 20px; text-align: center; color: #999;">
-                            <div style="font-size: 48px; margin-bottom: 16px;">📂</div>
-                            <div style="font-size: 14px; margin-bottom: 12px;">暂未打开项目</div>
-                            <div style="font-size: 12px; color: #aaa;">请在项目管理中打开或新建项目</div>
-                        </div>
-                    `;
-                }
-                const spacerElement = document.querySelector('.bottom-sidebar-spacer');
-                if (spacerElement) {
-                    spacerElement.textContent = '当前项目：无';
-                }
-            }
-        })
-        .catch(error => {
-            console.error('加载项目树失败:', error);
-            const treeContainer = document.getElementById('projectTree');
-            if (treeContainer) {
-                treeContainer.innerHTML = `
-                    <div style="padding: 20px; text-align: center; color: #999;">
-                        <div style="font-size: 48px; margin-bottom: 16px;">📂</div>
-                        <div style="font-size: 14px; margin-bottom: 12px;">暂未打开项目</div>
-                        <div style="font-size: 12px; color: #aaa;">请在项目管理中打开或新建项目</div>
-                    </div>
-                `;
-            }
-            const spacerElement = document.querySelector('.bottom-sidebar-spacer');
-            if (spacerElement) {
-                spacerElement.textContent = '当前项目：无';
-            }
-        })
+    return Promise.resolve(window.loadProjectTree && window.loadProjectTree())
         .finally(() => {
             if (window.hideGlobalLoading) {
                 window.hideGlobalLoading();
@@ -3311,11 +3770,40 @@ window.displayProjectTree = function(projectName) {
 // 绑定项目树节点点击事件
 function bindProjectTreeEvents() {
     const projectTree = document.getElementById('projectTree');
-    if (projectTree) {
-        projectTree.addEventListener('click', function(e) {
+    if (!projectTree) return;
+
+    if (projectTree._projectTreeClickHandler) {
+        projectTree.removeEventListener('click', projectTree._projectTreeClickHandler);
+    }
+
+    projectTree._projectTreeClickHandler = function(e) {
             const node = e.target.closest('.tree-node');
             if (node) {
                 e.stopPropagation();
+
+                // 获取节点信息
+                const nodeType = node.getAttribute('data-node-type');
+                const nodeName = node.querySelector('.tree-node-text')?.textContent;
+
+                console.log('点击项目树节点:', { nodeType, nodeName });
+
+                // 项目节点点击：当前项目切换展开/收起，其他项目弹出切换确认
+                if (nodeType === 'project') {
+                    const projectName = node.getAttribute('data-project-name');
+                    const username = window.AppConfig.getUsername();
+                    let currentProjectName = null;
+                    if (username && window.localStorage) {
+                        const cached = JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null');
+                        if (cached) currentProjectName = cached.name;
+                    }
+                    if (projectName === currentProjectName) {
+                        // 当前项目：直接切换展开/收起
+                        node.classList.toggle('expanded');
+                    } else {
+                        showSwitchProjectConfirmDialog(projectName);
+                    }
+                    return;
+                }
 
                 // 检查是否有子节点，如果有则切换展开/收起状态
                 const hasChildren = node.querySelector('.tree-children');
@@ -3329,75 +3817,222 @@ function bindProjectTreeEvents() {
                 // 设置当前选中
                 node.classList.add('active');
 
-                // 获取节点信息
-                const nodeType = node.getAttribute('data-node-type');
-                const nodeName = node.querySelector('.tree-node-text')?.textContent;
-
-                console.log('点击项目树节点:', { nodeType, nodeName });
-
                 // 根据节点类型执行不同操作
                 if (nodeType === 'data') {
                     console.log('点击数据节点:', nodeName);
-                    // 清空工作区
                     if (window.hideAllComponents) {
                         window.hideAllComponents();
                     }
-                    // 跳转到数据档案详情页
                     const dataArchiveDetail = document.getElementById('dataArchiveDetail');
                     if (dataArchiveDetail) {
                         dataArchiveDetail.showDetail(nodeName);
-                    } else {
-                        console.error('数据档案详情组件未找到');
                     }
                 } else if (nodeType === 'algorithm') {
                     console.log('点击算法节点:', nodeName);
-                    // 清空工作区
                     if (window.hideAllComponents) {
                         window.hideAllComponents();
                     }
-                    // 显示算法详情
                     const algorithmDetail = document.getElementById('algorithmDetail');
                     if (algorithmDetail && algorithmDetail.show) {
-                        // nodeName是storagePath格式: algorithms_system.projectName.algorithmName.version
                         const pathParts = nodeName.split('.');
                         if (pathParts.length >= 4) {
-                            const algorithmName = pathParts[2];
-                            const algorithmVersion = pathParts[3];
-                            algorithmDetail.show({ name: algorithmName, version: algorithmVersion });
+                            algorithmDetail.show({
+                                name: pathParts[2],
+                                version: pathParts[3],
+                                fullPath: nodeName
+                            });
                         } else {
-                            algorithmDetail.show({ name: nodeName });
+                            algorithmDetail.show({ name: nodeName, fullPath: nodeName });
                         }
                     }
-                    // 同时在右侧算法侧边栏展开对应节点
-                    expandAlgorithmNodeInRightSidebar(nodeName);
+                    expandAlgorithmNodeInRightSidebar(nodeName, true);
                 } else if (nodeType === 'model') {
                     console.log('点击模型节点:', nodeName);
-                    // 清空工作区
                     if (window.hideAllComponents) {
                         window.hideAllComponents();
                     }
-                    // 显示模型详情
                     const modelDetail = document.getElementById('modelDetail');
                     if (modelDetail && modelDetail.show) {
-                        // nodeName是storagePath格式: models_system.projectName.modelName.version
                         const pathParts = nodeName.split('.');
                         if (pathParts.length >= 4) {
-                            const modelName = pathParts[2];
-                            const modelVersion = pathParts[3];
-                            modelDetail.show({ name: modelName, version: modelVersion });
+                            modelDetail.show({
+                                name: pathParts[2],
+                                version: pathParts[3],
+                                fullPath: nodeName
+                            });
                         } else {
-                            modelDetail.show({ name: nodeName });
+                            modelDetail.show({ name: nodeName, fullPath: nodeName });
                         }
                     }
-                    // 同时在右侧模型侧边栏展开对应节点
-                    expandModelNodeInRightSidebar(nodeName);
+                    // 同步右侧模型侧边栏选中状态（不再模拟点击，避免重复加载）
+                    expandModelNodeInRightSidebar(nodeName, true);
+                } else if (nodeType === 'program') {
+                    const programName = node.getAttribute('data-program-name');
+                    const programVersion = node.getAttribute('data-program-version');
+                    console.log('点击程序节点:', programName, programVersion);
+                    if (window.hideAllComponents) {
+                        window.hideAllComponents();
+                    }
+                    const oldEl = document.getElementById('programRun');
+                    const parent = oldEl ? oldEl.parentElement : null;
+                    if (oldEl) oldEl.remove();
+                    const programRun = document.createElement('program-run');
+                    programRun.id = 'programRun';
+                    programRun.style.display = 'none';
+                    if (parent) parent.appendChild(programRun);
+                    programRun.setAttribute('data-name', programName);
+                    programRun.setAttribute('data-version', programVersion);
+                    if (window.showComponent) {
+                        window.showComponent('programRun');
+                    }
+                    if (programRun.loadProgramFiles) {
+                        programRun.loadProgramFiles(programName, programVersion);
+                    }
+                    if (programRun.queryStatus) {
+                        programRun.queryStatus(programName, programVersion);
+                    }
                 }
             }
-        });
-    }
+    };
+
+    projectTree.addEventListener('click', projectTree._projectTreeClickHandler);
 }
 
-// 渲染ProjectTree结构
+// 切换项目确认对话框
+function showSwitchProjectConfirmDialog(projectName) {
+    const modal = document.createElement('div');
+    modal.style.cssText = `
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0,0,0,0.4); display: flex; align-items: center;
+        justify-content: center; z-index: 10001;
+    `;
+    modal.innerHTML = `
+        <div style="background: white; border-radius: 8px; padding: 24px; min-width: 360px; box-shadow: 0 4px 20px rgba(0,0,0,0.15);">
+            <div style="font-size: 16px; font-weight: 600; margin-bottom: 16px;">打开项目</div>
+            <div style="font-size: 14px; color: #666; margin-bottom: 24px;">确定要切换到项目「${projectName}」吗？</div>
+            <div style="display: flex; justify-content: flex-end; gap: 12px;">
+                <button type="button" style="padding: 8px 20px; border: 1px solid #ddd; border-radius: 4px; background: white; cursor: pointer; font-size: 14px;" id="switchProjectCancel">取消</button>
+                <button type="button" style="padding: 8px 20px; border: none; border-radius: 4px; background: #0078d4; color: white; cursor: pointer; font-size: 14px;" id="switchProjectConfirm">确定</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+
+    modal.querySelector('#switchProjectCancel').addEventListener('click', () => modal.remove());
+    modal.querySelector('#switchProjectConfirm').addEventListener('click', () => {
+        modal.remove();
+        if (typeof window.hideAllComponents === 'function') {
+            window.hideAllComponents();
+        }
+        window.displayProjectTree(projectName);
+    });
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) modal.remove();
+    });
+}
+
+// 渲染所有项目树（当前项目展开，其他收起）
+function renderAllProjectsTree(allProjects, currentProjectName, currentProjectTree) {
+    let html = '';
+
+    allProjects.forEach(projectName => {
+        const isCurrent = projectName === currentProjectName;
+        const expandedClass = isCurrent ? 'expanded' : '';
+
+        html += `
+            <div class="tree-node ${expandedClass}" data-node-type="project" data-project-name="${projectName}" data-full-path="0">
+                <span class="tree-icon project-icon">📁</span>
+                <span class="tree-node-text">${projectName}</span>
+        `;
+
+        if (isCurrent && currentProjectTree) {
+            html += `<div class="tree-children">`;
+
+            if (currentProjectTree.algorithms && currentProjectTree.algorithms.length > 0) {
+                html += `
+                    <div class="tree-node expanded" data-node-type="folder" data-full-path="0-algorithms">
+                        <span class="tree-icon folder-icon">📂</span>
+                        <span class="tree-node-text">algorithms</span>
+                        <div class="tree-children">
+                `;
+                currentProjectTree.algorithms.forEach(algo => {
+                    html += `
+                        <div class="tree-node" data-node-type="algorithm" data-full-path="${algo}">
+                            <span class="tree-icon algorithm-icon">🧮</span>
+                            <span class="tree-node-text">${algo}</span>
+                        </div>
+                    `;
+                });
+                html += `</div></div>`;
+            }
+
+            if (currentProjectTree.models && currentProjectTree.models.length > 0) {
+                html += `
+                    <div class="tree-node expanded" data-node-type="folder" data-full-path="0-models">
+                        <span class="tree-icon folder-icon">📂</span>
+                        <span class="tree-node-text">models</span>
+                        <div class="tree-children">
+                `;
+                currentProjectTree.models.forEach(model => {
+                    html += `
+                        <div class="tree-node" data-node-type="model" data-full-path="${model}">
+                            <span class="tree-icon model-icon">📦</span>
+                            <span class="tree-node-text">${model}</span>
+                        </div>
+                    `;
+                });
+                html += `</div></div>`;
+            }
+
+            if (currentProjectTree.datas && currentProjectTree.datas.length > 0) {
+                html += `
+                    <div class="tree-node expanded" data-node-type="folder" data-full-path="0-datas">
+                        <span class="tree-icon folder-icon">📂</span>
+                        <span class="tree-node-text">datas</span>
+                        <div class="tree-children">
+                `;
+                currentProjectTree.datas.forEach((data, index) => {
+                    html += `
+                        <div class="tree-node" data-node-type="data" data-full-path="0-datas-${index}">
+                            <span class="tree-icon data-icon">📊</span>
+                            <span class="tree-node-text">${data}</span>
+                        </div>
+                    `;
+                });
+                html += `</div></div>`;
+            }
+
+            if (currentProjectTree.programs && currentProjectTree.programs.length > 0) {
+                html += `
+                    <div class="tree-node expanded" data-node-type="folder" data-full-path="0-programs">
+                        <span class="tree-icon folder-icon">📂</span>
+                        <span class="tree-node-text">programs</span>
+                        <div class="tree-children">
+                `;
+                currentProjectTree.programs.forEach(program => {
+                    const parts = program.split('.');
+                    const programName = parts.length >= 4 ? parts[parts.length - 2] : (parts.length >= 2 ? parts[1] : program);
+                    const programVersion = parts.length >= 4 ? parts[parts.length - 1] : '';
+                    html += `
+                        <div class="tree-node" data-node-type="program" data-full-path="${program}" data-program-name="${programName}" data-program-version="${programVersion}">
+                            <span class="tree-icon program-icon">🔧</span>
+                            <span class="tree-node-text">${program}</span>
+                        </div>
+                    `;
+                });
+                html += `</div></div>`;
+            }
+
+            html += `</div>`;
+        }
+
+        html += `</div>`;
+    });
+
+    return html;
+}
+
+// 渲染单个ProjectTree结构
 function renderProjectTree(treeData) {
     let html = '';
 
@@ -3419,7 +4054,7 @@ function renderProjectTree(treeData) {
         `;
         treeData.algorithms.forEach((algo, index) => {
             html += `
-                <div class="tree-node" data-node-type="algorithm" data-full-path="0-algorithms-${index}">
+                <div class="tree-node" data-node-type="algorithm" data-full-path="${algo}">
                     <span class="tree-icon algorithm-icon">🧮</span>
                     <span class="tree-node-text">${algo}</span>
                 </div>

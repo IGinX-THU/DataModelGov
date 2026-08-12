@@ -11,7 +11,7 @@ class ModelArchiveList extends HTMLElement {
     async connectedCallback() {
         await this.loadResources();
         this.bindEvents();
-        this.loadData();
+        // 不在初始化时自动加载数据，只在显示时加载
     }
 
     async loadResources() {
@@ -29,6 +29,13 @@ class ModelArchiveList extends HTMLElement {
     }
 
     bindEvents() {
+        this.shadowRoot.getElementById('importModelResourceBtn')?.addEventListener('click', () => {
+            window.showProjectImportWizard?.('model');
+        });
+        this.shadowRoot.getElementById('exportModelResourceBtn')?.addEventListener('click', () => {
+            window.showProjectExportWizard?.('model');
+        });
+
         const searchBtn = this.shadowRoot.getElementById('searchBtn');
         if (searchBtn) {
             searchBtn.addEventListener('click', () => {

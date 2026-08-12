@@ -164,6 +164,24 @@ class AlgorithmEdit extends HTMLElement {
             });
         }
 
+        // 输入CSV文件名变化时更新运行命令
+        const inputCsvName = this.shadowRoot.getElementById('inputCsvName');
+        if (inputCsvName) {
+            inputCsvName.addEventListener('change', (e) => {
+                e.stopPropagation();
+                this.updateRuleCmdFromCsvNames();
+            });
+        }
+
+        // 输出CSV文件名变化时更新运行命令
+        const outputCsvName = this.shadowRoot.getElementById('outputCsvName');
+        if (outputCsvName) {
+            outputCsvName.addEventListener('change', (e) => {
+                e.stopPropagation();
+                this.updateRuleCmdFromCsvNames();
+            });
+        }
+
         // 阻止表单容器内的点击事件冒泡
         const formContainer = this.shadowRoot.querySelector('.form-container');
         if (formContainer) {
@@ -183,10 +201,8 @@ class AlgorithmEdit extends HTMLElement {
     }
 
     async show(algorithmInfo) {
-        this.currentAlgorithm = algorithmInfo;
-        this.removeAttribute('hidden');
         await this.loadAlgorithmData(algorithmInfo);
-        await this.loadParsingRules(); // 确保加载解析规则
+        await this.showWithAlgorithmData(algorithmInfo, this.currentAlgorithmMeta);
     }
 
     // 新增方法：直接接收algorithm-detail的数据，不重复调用接口
@@ -194,13 +210,14 @@ class AlgorithmEdit extends HTMLElement {
         this.currentAlgorithm = algorithmInfo;
         this.currentAlgorithmMeta = algorithmDetailData;
         this.removeAttribute('hidden');
-        
+        this.clearAutoFilledFields(); // 清空之前自动填充的字段
+
         // 确保加载解析规则
         await this.loadParsingRules();
-        
+
         // 加载源文件列表
         await this.loadSourceFiles();
-        
+
         // 直接使用algorithm-detail的数据填充表单，完全使用接口数据
         const algorithmNameInput = this.shadowRoot.getElementById('algorithmName');
         const developerInput = this.shadowRoot.getElementById('developer');
@@ -218,13 +235,14 @@ class AlgorithmEdit extends HTMLElement {
         if (descriptionInput) descriptionInput.value = algorithmDetailData.description || '';
 
         // 使用接口返回的inputs和outputs数据
-        this.loadInterfaceParamsFromData(algorithmDetailData.inputs, algorithmDetailData.outputs);
+        if (algorithmDetailData.inputs) {
+            this.loadInterfaceParamsFromData(algorithmDetailData.inputs, algorithmDetailData.outputs);
+        } else {
+            this.loadInterfaceParams();
+        }
 
-        // 加载关联绑定数据
-        this.loadBindingData(algorithmInfo);
-
-        // 自动填充运行命令和CSV文件名（根据当前算法元数据）
-        this.autoFillCommandAndCsvFields();
+        // 加载关联绑定数据（直接使用传入的数据，不重新调用API）
+        await this.loadBindingDataFromDetail(algorithmDetailData);
 
         // 加载结果回写路径前缀
         const outputTableInput = this.shadowRoot.getElementById('outputTable');
@@ -237,10 +255,15 @@ class AlgorithmEdit extends HTMLElement {
 
     async loadAlgorithmData(algorithmInfo) {
         try {
-            // 调用API获取完整的算法元数据
+            let projectName = null;
+            if (algorithmInfo.fullPath && window.extractProjectNameFromPath) {
+                projectName = window.extractProjectNameFromPath(algorithmInfo.fullPath);
+            }
+
             const result = await window.AppConfig.get('algorithm', 'metas', {
                 name: algorithmInfo.name,
-                version: algorithmInfo.version
+                version: algorithmInfo.version,
+                projectName: projectName
             });
             
             if (result.success && result.data) {
@@ -248,7 +271,6 @@ class AlgorithmEdit extends HTMLElement {
                 console.log('获取到完整算法元数据:', this.currentAlgorithmMeta);
             } else {
                 console.error('获取算法元数据失败:', result.message);
-                // 如果获取失败，至少保存基本信息
                 this.currentAlgorithmMeta = {
                     name: algorithmInfo.name,
                     version: algorithmInfo.version,
@@ -258,7 +280,6 @@ class AlgorithmEdit extends HTMLElement {
             }
         } catch (error) {
             console.error('获取算法元数据异常:', error);
-            // 如果获取失败，至少保存基本信息
             this.currentAlgorithmMeta = {
                 name: algorithmInfo.name,
                 version: algorithmInfo.version,
@@ -266,40 +287,6 @@ class AlgorithmEdit extends HTMLElement {
                 scene: algorithmInfo.scene
             };
         }
-        
-        // 加载基本信息到表单
-        const algorithmNameInput = this.shadowRoot.getElementById('algorithmName');
-        const developerInput = this.shadowRoot.getElementById('developer');
-        const versionInput = this.shadowRoot.getElementById('version');
-        const sceneInput = this.shadowRoot.getElementById('scene');
-
-        if (algorithmNameInput) algorithmNameInput.value = algorithmInfo.name || '';
-        if (developerInput) developerInput.value = algorithmInfo.author || '';
-        if (versionInput) versionInput.value = algorithmInfo.version || '';
-        if (sceneInput) sceneInput.value = algorithmInfo.scene || '';
-
-        // 加载档案描述字段
-        const descriptionInput = this.shadowRoot.getElementById('description');
-
-        if (descriptionInput) descriptionInput.value = this.currentAlgorithmMeta?.description || '';
-
-        // 加载接口参数（使用从API获取的数据）
-        if (this.currentAlgorithmMeta && this.currentAlgorithmMeta.inputs) {
-            this.loadInterfaceParamsFromData(this.currentAlgorithmMeta.inputs, this.currentAlgorithmMeta.outputs);
-        } else {
-            // 如果没有数据，使用默认参数
-            this.loadInterfaceParams();
-        }
-
-        // 加载关联绑定数据
-        this.loadBindingData(algorithmInfo);
-
-        // 自动填充运行命令和CSV文件名
-        this.autoFillCommandAndCsvFields();
-
-        // 加载结果回写路径前缀
-        const outputTableInput = this.shadowRoot.getElementById('outputTable');
-        if (outputTableInput) outputTableInput.value = this.currentAlgorithmMeta?.outputTable || '';
     }
 
     loadInterfaceParamsFromData(inputsData, outputsData) {
@@ -341,20 +328,8 @@ class AlgorithmEdit extends HTMLElement {
     }
 
     loadInterfaceParams() {
-        // 默认输入参数
-        this.inputs = [
-            { name: 'temperature', type: 'float', unit: '°C', desc: '环境温度' },
-            { name: 'pressure', type: 'float', unit: 'kPa', desc: '压力值' },
-            { name: 'flow_rate', type: 'float', unit: 'm³/h', desc: '流量' }
-        ];
-
-        // 默认输出参数
-        this.outputs = [
-            { name: 'control_signal', type: 'float', unit: '%', desc: '控制信号' },
-            { name: 'status', type: 'int', unit: '-', desc: '状态码' },
-            { name: 'efficiency', type: 'float', unit: '%', desc: '效率' }
-        ];
-
+        this.inputs = [];
+        this.outputs = [];
         this.renderParams();
     }
 
@@ -635,6 +610,21 @@ class AlgorithmEdit extends HTMLElement {
 
             if (window.hideGlobalLoading) window.hideGlobalLoading();
 
+            // 自动填充输入CSV文件名（仅在字段为空时填充）
+            const inputCsvName = this.shadowRoot.getElementById('inputCsvName');
+            if (inputCsvName && !inputCsvName.value) {
+                inputCsvName.value = 'input.csv';
+            }
+
+            // 自动填充输出CSV文件名（仅在字段为空时填充）
+            const outputCsvName = this.shadowRoot.getElementById('outputCsvName');
+            if (outputCsvName && !outputCsvName.value) {
+                outputCsvName.value = 'output.csv';
+            }
+
+            // 根据选择的源文件更新运行命令
+            this.autoFillCommandFromFileName(selectedFile);
+
             console.log('解析响应:', parseResponse);
 
             if (!parseResponse.success || !parseResponse.data) {
@@ -648,7 +638,7 @@ class AlgorithmEdit extends HTMLElement {
             const parsedApis = parseResult.apis || [];
 
             if (parsedApis.length === 0) {
-                this.showErrorMessage('未解析到数据，请确认代码注释是否符合规范');
+                this.showInfoMessage('未解析到参数数据，请确认代码注释是否符合规范。运行命令和CSV文件名已自动填充。');
                 return;
             }
 
@@ -750,8 +740,19 @@ class AlgorithmEdit extends HTMLElement {
 
             console.log('自动填充运行命令和CSV文件名:', algorithmName, version);
 
+            // 从fullPath中提取projectName
+            let projectName = null;
+            const fullPath = this.currentAlgorithm?.fullPath || this.currentAlgorithmMeta?.fullPath;
+            if (fullPath && window.extractProjectNameFromPath) {
+                projectName = window.extractProjectNameFromPath(fullPath);
+            }
+
             // 调用算法元数据API获取fileName
-            const result = await window.AppConfig.get('algorithm', 'metas', { name: algorithmName, version: version });
+            const result = await window.AppConfig.get('algorithm', 'metas', { 
+                name: algorithmName, 
+                version: version,
+                projectName: projectName
+            });
 
             if (result.success && result.data) {
                 const algorithmData = result.data;
@@ -760,23 +761,6 @@ class AlgorithmEdit extends HTMLElement {
                 // 获取fileName，如果没有则使用algorithmName作为默认值
                 const fileName = algorithmData.fileName || `${algorithmName}.py`;
                 console.log('使用fileName:', fileName);
-
-                // 自动填充运行命令（仅在字段为空时填充）
-                const ruleCmd = this.shadowRoot.getElementById('ruleCmd');
-                if (ruleCmd && !ruleCmd.value) {
-                    // 判断文件类型，生成对应的运行命令
-                    let command;
-                    if (fileName.endsWith('.m')) {
-                        command = 'matlab';
-                    } else if (fileName.endsWith('.py')) {
-                        command = 'python';
-                    } else {
-                        // C/C++ 可执行文件或其他类型，直接执行
-                        command = '';
-                    }
-                    ruleCmd.value = command ? `${command} ${fileName} -i input.csv -o output.csv` : `${fileName} -i input.csv -o output.csv`;
-                    console.log('自动填充运行命令:', ruleCmd.value);
-                }
 
                 // 自动填充输入CSV文件名（仅在字段为空时填充）
                 const inputCsvName = this.shadowRoot.getElementById('inputCsvName');
@@ -790,6 +774,27 @@ class AlgorithmEdit extends HTMLElement {
                 if (outputCsvName && !outputCsvName.value) {
                     outputCsvName.value = 'output.csv';
                     console.log('自动填充输出CSV文件名:', outputCsvName.value);
+                }
+
+                // 自动填充运行命令（仅在字段为空时填充）
+                const ruleCmd = this.shadowRoot.getElementById('ruleCmd');
+                if (ruleCmd && !ruleCmd.value) {
+                    const inputFile = inputCsvName ? inputCsvName.value || 'input.csv' : 'input.csv';
+                    const outputFile = outputCsvName ? outputCsvName.value || 'output.csv' : 'output.csv';
+                    let command;
+                    if (fileName.endsWith('.m')) {
+                        command = 'matlab';
+                    } else if (fileName.endsWith('.py')) {
+                        command = 'python';
+                    } else {
+                        command = '';
+                    }
+                    if (command === 'matlab') {
+                        ruleCmd.value = `matlab -batch "input_file='${inputFile}';output_file='${outputFile}';run('${fileName}')"`;
+                    } else {
+                        ruleCmd.value = command ? `${command} ${fileName} --input_file ${inputFile} --output_file ${outputFile}` : `${fileName} --input_file ${inputFile} --output_file ${outputFile}`;
+                    }
+                    console.log('自动填充运行命令:', ruleCmd.value);
                 }
             }
         } catch (error) {
@@ -837,10 +842,18 @@ class AlgorithmEdit extends HTMLElement {
                 return;
             }
 
+            // 从fullPath中提取projectName
+            let projectName = null;
+            const fullPath = this.currentAlgorithm?.fullPath || this.currentAlgorithmMeta?.fullPath;
+            if (fullPath && window.extractProjectNameFromPath) {
+                projectName = window.extractProjectNameFromPath(fullPath);
+            }
+
             // 调用extractAlgorithmFile接口获取文件列表
             const extractResponse = await window.AppConfig.post('algorithm', 'extractAlgorithmFile', {
                 name: algorithmName,
-                version: version
+                version: version,
+                projectName: projectName
             });
 
             if (extractResponse.success) {
@@ -1052,7 +1065,71 @@ class AlgorithmEdit extends HTMLElement {
 
     onSourceFileChange(value) {
         console.log('源文件变更:', value);
-        // 不显示提示信息，避免干扰用户
+        // 不自动填充运行命令，等待用户点击"从代码自动解析"按钮
+    }
+
+    // 根据文件名自动填充运行命令
+    autoFillCommandFromFileName(fileName) {
+        if (!fileName) {
+            return;
+        }
+
+        const inputCsvName = this.shadowRoot.getElementById('inputCsvName');
+        const outputCsvName = this.shadowRoot.getElementById('outputCsvName');
+        const inputFile = inputCsvName ? inputCsvName.value || 'input.csv' : 'input.csv';
+        const outputFile = outputCsvName ? outputCsvName.value || 'output.csv' : 'output.csv';
+
+        let command;
+        if (fileName.endsWith('.m')) {
+            command = 'matlab';
+        } else if (fileName.endsWith('.py')) {
+            command = 'python';
+        } else {
+            command = '';
+        }
+
+        const ruleCmd = this.shadowRoot.getElementById('ruleCmd');
+        if (ruleCmd) {
+            if (command === 'matlab') {
+            ruleCmd.value = `matlab -batch "input_file='${inputFile}';output_file='${outputFile}';run('${fileName}')"`;
+        } else {
+            ruleCmd.value = command ? `${command} ${fileName} --input_file ${inputFile} --output_file ${outputFile}` : `${fileName} --input_file ${inputFile} --output_file ${outputFile}`;
+        }
+            console.log('根据源文件自动填充运行命令:', ruleCmd.value);
+        }
+    }
+
+    // 根据CSV文件名更新运行命令
+    updateRuleCmdFromCsvNames() {
+        const ruleCmd = this.shadowRoot.getElementById('ruleCmd');
+        const inputCsvName = this.shadowRoot.getElementById('inputCsvName');
+        const outputCsvName = this.shadowRoot.getElementById('outputCsvName');
+        if (!ruleCmd || !ruleCmd.value) return;
+
+        const inputFile = inputCsvName ? inputCsvName.value || 'input.csv' : 'input.csv';
+        const outputFile = outputCsvName ? outputCsvName.value || 'output.csv' : 'output.csv';
+        const currentValue = ruleCmd.value;
+
+        if (currentValue.includes('matlab')) {
+            const fileNameMatch = currentValue.match(/run\('([^']+)'\)/);
+            if (fileNameMatch) {
+                const fileName = fileNameMatch[1];
+                ruleCmd.value = `matlab -batch "input_file='${inputFile}';output_file='${outputFile}';run('${fileName}')"`;
+            }
+        } else {
+            const fileNameMatch = currentValue.match(/(\S+\.(?:py|m|sh|exe))/);
+            if (fileNameMatch) {
+                const fileName = fileNameMatch[1];
+                const commandMatch = currentValue.match(/^(python|python3|java)\s+/);
+                const command = commandMatch ? commandMatch[1] : '';
+                if (command) {
+                    ruleCmd.value = `${command} ${fileName} --input_file ${inputFile} --output_file ${outputFile}`;
+                } else {
+                    ruleCmd.value = `${fileName} --input_file ${inputFile} --output_file ${outputFile}`;
+                }
+            }
+        }
+        console.log('根据CSV文件名更新运行命令:', ruleCmd.value);
     }
 
     onForceOverrideChange(checked) {
@@ -1233,17 +1310,31 @@ class AlgorithmEdit extends HTMLElement {
             console.warn('未找到模型树');
             return modelNames;
         }
+
+        // 从算法档案的fullPath中提取项目名
+        let algorithmProjectName = null;
+        const fullPath = this.currentAlgorithm?.fullPath || this.currentAlgorithmMeta?.fullPath;
+        if (fullPath && window.extractProjectNameFromPath) {
+            algorithmProjectName = window.extractProjectNameFromPath(fullPath);
+        }
+        console.log('算法档案所属项目:', algorithmProjectName);
+
         const seen = new Set();
         modelTree.querySelectorAll('.tree-node').forEach(node => {
-            const span = node.querySelector('span');
-            if (!span) return;
-            const name = span.textContent.trim();
-            if (name === 'models_system' || name === 'models' || seen.has(name)) return;
-            const hasChildren = node.querySelector('.tree-children');
-            if (hasChildren) {
-                const childNodes = hasChildren.querySelectorAll(':scope > .tree-node');
-                const hasLeaf = Array.from(childNodes).some(c => !c.querySelector('.tree-children'));
-                if (hasLeaf) { modelNames.push(name); seen.add(name); }
+            const nodeFullPath = node.getAttribute('data-full-path');
+            if (!nodeFullPath) return;
+
+            // 路径格式：models_system.projectName.modelName.version
+            const parts = nodeFullPath.split('.');
+            if (parts.length >= 4) {
+                const projectName = parts[1];
+                const modelName = parts[2];
+
+                // 只添加属于算法档案所属项目的模型
+                if (algorithmProjectName && projectName === algorithmProjectName && modelName && !seen.has(modelName)) {
+                    modelNames.push(modelName);
+                    seen.add(modelName);
+                }
             }
         });
         return modelNames;
@@ -1254,17 +1345,31 @@ class AlgorithmEdit extends HTMLElement {
         // 从模型树获取数据，而不是右侧边栏树
         const modelTree = document.getElementById('modelTree');
         if (!modelTree) return versions;
+
+        // 从算法档案的fullPath中提取项目名
+        let algorithmProjectName = null;
+        const fullPath = this.currentAlgorithm?.fullPath || this.currentAlgorithmMeta?.fullPath;
+        if (fullPath && window.extractProjectNameFromPath) {
+            algorithmProjectName = window.extractProjectNameFromPath(fullPath);
+        }
+        console.log('算法档案所属项目:', algorithmProjectName);
+
         modelTree.querySelectorAll('.tree-node').forEach(node => {
-            const span = node.querySelector('span');
-            if (!span || span.textContent.trim() !== modelName) return;
-            const children = node.querySelector('.tree-children');
-            if (!children) return;
-            children.querySelectorAll(':scope > .tree-node').forEach(child => {
-                const childSpan = child.querySelector('span');
-                if (childSpan && !child.querySelector('.tree-children')) {
-                    versions.push(childSpan.textContent.trim());
+            const nodeFullPath = node.getAttribute('data-full-path');
+            if (!nodeFullPath) return;
+
+            // 路径格式：models_system.projectName.modelName.version
+            const parts = nodeFullPath.split('.');
+            if (parts.length >= 4) {
+                const projectName = parts[1];
+                const pathModelName = parts[2];
+                const version = parts[3];
+
+                // 只添加属于算法档案所属项目的模型版本
+                if (algorithmProjectName && projectName === algorithmProjectName && pathModelName === modelName && version && !versions.includes(version)) {
+                    versions.push(version);
                 }
-            });
+            }
         });
         return versions;
     }
@@ -1329,7 +1434,15 @@ class AlgorithmEdit extends HTMLElement {
     async loadModelStoragePath(modelName, version, row) {
         try {
             console.log('加载模型storagePath:', modelName, version);
-            const result = await window.AppConfig.get('model', 'metas', { name: modelName, version: version });
+
+            // 从算法档案的fullPath中提取项目名
+            let algorithmProjectName = null;
+            const fullPath = this.currentAlgorithm?.fullPath || this.currentAlgorithmMeta?.fullPath;
+            if (fullPath && window.extractProjectNameFromPath) {
+                algorithmProjectName = window.extractProjectNameFromPath(fullPath);
+            }
+
+            const result = await window.AppConfig.get('model', 'metas', { name: modelName, version: version, projectName: algorithmProjectName });
             if (result.success && result.data) {
                 const modelData = result.data;
                 row.dataset.storagePath = modelData.storagePath || '';
@@ -1482,9 +1595,16 @@ class AlgorithmEdit extends HTMLElement {
 
         // 从算法元数据加载绑定数据
         try {
+            // 从fullPath中提取projectName
+            let projectName = null;
+            if (algorithmInfo.fullPath && window.extractProjectNameFromPath) {
+                projectName = window.extractProjectNameFromPath(algorithmInfo.fullPath);
+            }
+
             const result = await window.AppConfig.get('algorithm', 'metas', {
                 name: algorithmInfo.name,
-                version: algorithmInfo.version
+                version: algorithmInfo.version,
+                projectName: projectName
             });
 
             if (result.success && result.data) {
@@ -1558,6 +1678,89 @@ class AlgorithmEdit extends HTMLElement {
             }
         } catch (error) {
             console.error('加载绑定数据失败:', error);
+        }
+
+        // 延迟清除初始化标志，确保所有数据加载完成
+        setTimeout(() => {
+            this._isInitializingEdit = false;
+        }, 500);
+    }
+
+    // 新增方法：直接使用传入的算法详情数据，不重新调用API
+    async loadBindingDataFromDetail(algorithmDetailData) {
+        // 设置初始化标志，防止自动填充覆盖已有数据
+        this._isInitializingEdit = true;
+
+        // 加载数据源选项
+        await this.loadDataSourceOptions();
+
+        // 直接使用传入的算法详情数据
+        const algorithmData = algorithmDetailData;
+
+        // 加载数据源
+        const dataSource = this.shadowRoot.getElementById('dataSource');
+        if (dataSource && algorithmData.tableName) {
+            dataSource.value = algorithmData.tableName;
+            await this.loadDataSourceFields();
+        }
+
+        // 加载运行配置
+        const ruleCmd = this.shadowRoot.getElementById('ruleCmd');
+        const inputCsvName = this.shadowRoot.getElementById('inputCsvName');
+        const outputCsvName = this.shadowRoot.getElementById('outputCsvName');
+        if (ruleCmd && algorithmData.cmd) ruleCmd.value = algorithmData.cmd;
+        if (inputCsvName && algorithmData.inputCsvName) inputCsvName.value = algorithmData.inputCsvName;
+        if (outputCsvName && algorithmData.outputCsvName) outputCsvName.value = algorithmData.outputCsvName;
+
+        // 加载模型绑定
+        const modelBindList = this.shadowRoot.getElementById('modelBindList');
+        if (modelBindList) modelBindList.innerHTML = '';
+        if (algorithmData.calledModels) {
+            try {
+                const modelBindings = typeof algorithmData.calledModels === 'string'
+                    ? JSON.parse(algorithmData.calledModels)
+                    : algorithmData.calledModels;
+                const loadPromises = modelBindings.map(async (binding) => {
+                    const row = this.addModelBindRow({ modelName: binding.modelName, version: binding.version || '' });
+                    if (binding.storagePath) {
+                        row.dataset.storagePath = binding.storagePath;
+                    } else if (binding.modelName && binding.version) {
+                        await this.loadModelStoragePath(binding.modelName, binding.version, row);
+                    }
+                });
+                await Promise.all(loadPromises);
+            } catch (e) {
+                console.error('解析模型绑定数据失败:', e);
+            }
+        }
+
+        // 加载输入输出映射
+        if (algorithmData.inputData) {
+            try {
+                const mappings = typeof algorithmData.inputData === 'string'
+                    ? JSON.parse(algorithmData.inputData)
+                    : algorithmData.inputData;
+                this._inputMappings = mappings;
+                this.applyInputMappings();
+            } catch (e) { this._inputMappings = []; }
+        }
+        if (algorithmData.inputsBind) {
+            try {
+                const mappings = typeof algorithmData.inputsBind === 'string'
+                    ? JSON.parse(algorithmData.inputsBind)
+                    : algorithmData.inputsBind;
+                this._inputMappings = mappings;
+                this.applyInputMappings();
+            } catch (e) { this._inputMappings = []; }
+        }
+        if (algorithmData.outputsBind) {
+            try {
+                const resultMappings = typeof algorithmData.outputsBind === 'string'
+                    ? JSON.parse(algorithmData.outputsBind)
+                    : algorithmData.outputsBind;
+                this._outputMappings = resultMappings;
+                this.applyOutputMappings();
+            } catch (e) { this._outputMappings = []; }
         }
 
         // 延迟清除初始化标志，确保所有数据加载完成
@@ -1857,6 +2060,29 @@ class AlgorithmEdit extends HTMLElement {
                 return;
             }
 
+            // 验证结果回写路径前缀格式
+            if (formData.outputTable) {
+                if (formData.outputTable.includes('_system')) {
+                    this.showErrorMessage('结果回写路径前缀不能包含"_system"');
+                    return;
+                }
+                
+                if (/^\d+$/.test(formData.outputTable)) {
+                    this.showErrorMessage('结果回写路径前缀不允许为纯数字');
+                    return;
+                }
+                
+                if (/^_+$/.test(formData.outputTable)) {
+                    this.showErrorMessage('结果回写路径前缀不允许为纯下划线');
+                    return;
+                }
+                
+                if (!/^[a-zA-Z_][a-zA-Z0-9_.]*$/.test(formData.outputTable)) {
+                    this.showErrorMessage('结果回写路径前缀格式不正确，支持字母、数字、下划线，不能纯数字，不能纯下划线，不能数字开头');
+                    return;
+                }
+            }
+
             // 验证参数名重复
             const duplicateValidation = this.validateParameterNames(formData);
             if (!duplicateValidation.valid) {
@@ -1965,6 +2191,35 @@ class AlgorithmEdit extends HTMLElement {
             document.body.insertAdjacentHTML('beforeend', messageHtml);
             
             const messageEl = document.querySelector('.workspace-message.error');
+            setTimeout(() => {
+                if (messageEl) messageEl.remove();
+            }, 3000);
+        }
+    }
+
+    showInfoMessage(message) {
+        if (window.CommonUtils && window.CommonUtils.showToast) {
+            window.CommonUtils.showToast(message, 'info');
+        } else {
+            const messageHtml = `
+                <div class="workspace-message info" style="
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    background: #3b82f6;
+                    color: white;
+                    padding: 12px 20px;
+                    border-radius: 4px;
+                    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+                    z-index: 10001;
+                ">
+                    ${message}
+                </div>
+            `;
+            
+            document.body.insertAdjacentHTML('beforeend', messageHtml);
+            
+            const messageEl = document.querySelector('.workspace-message.info');
             setTimeout(() => {
                 if (messageEl) messageEl.remove();
             }, 3000);

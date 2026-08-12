@@ -1745,12 +1745,12 @@ public class RunTaskService {
         log.info("查询数据表时间范围,数据表: {},字段: {},", tableName,field);
 
         // 构建SQL查询获取最小和最大时间戳
-        String minSql = "SELECT %s FROM %s limit 1;";
+        String minSql = "SELECT %s FROM %s where 1=1 limit 1;";
 
         SessionExecuteSqlResult minResult = iginxSession.executeSql(String.format(minSql, field, tableName));
         Long minKey = minResult.getKeys()[0];
 
-        String maxSql = "SELECT %s FROM %s order by key desc limit 1;";
+        String maxSql = "SELECT %s FROM %s where 1=1 order by key desc limit 1;";
         SessionExecuteSqlResult maxResult = iginxSession.executeSql(String.format(maxSql, field, tableName));
         Long maxKey = maxResult.getKeys()[0];
 

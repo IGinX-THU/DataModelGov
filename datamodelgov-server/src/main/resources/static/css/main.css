@@ -84,6 +84,18 @@ html.font-scale-1 .btn-icon {
     transform: scale(1) !important;
 }
 
+html.font-scale-1 .ribbon-group-title {
+    font-size: 11px !important;
+}
+
+html.font-scale-1 .ribbon-btn-text {
+    font-size: 11px !important;
+}
+
+html.font-scale-1 .ribbon-btn-icon {
+    transform: scale(1) !important;
+}
+
 /* 中等字体 */
 html.font-scale-1-15 .nav-tabs .tab,
 html.font-scale-1-15 .nav-tabs .tab span,
@@ -167,6 +179,18 @@ html.font-scale-1-15 .user-bar .username {
 }
 
 html.font-scale-1-15 .btn-icon {
+    transform: scale(1.15) !important;
+}
+
+html.font-scale-1-15 .ribbon-group-title {
+    font-size: calc(11px * 1.15) !important;
+}
+
+html.font-scale-1-15 .ribbon-btn-text {
+    font-size: calc(11px * 1.15) !important;
+}
+
+html.font-scale-1-15 .ribbon-btn-icon {
     transform: scale(1.15) !important;
 }
 
@@ -256,6 +280,18 @@ html.font-scale-1-3 .btn-icon {
     transform: scale(1.3) !important;
 }
 
+html.font-scale-1-3 .ribbon-group-title {
+    font-size: calc(11px * 1.3) !important;
+}
+
+html.font-scale-1-3 .ribbon-btn-text {
+    font-size: calc(11px * 1.3) !important;
+}
+
+html.font-scale-1-3 .ribbon-btn-icon {
+    transform: scale(1.3) !important;
+}
+
 /* 特大字体 */
 html.font-scale-1-5 .nav-tabs .tab,
 html.font-scale-1-5 .nav-tabs .tab span,
@@ -339,6 +375,18 @@ html.font-scale-1-5 .user-bar .username {
 }
 
 html.font-scale-1-5 .btn-icon {
+    transform: scale(1.5) !important;
+}
+
+html.font-scale-1-5 .ribbon-group-title {
+    font-size: calc(11px * 1.5) !important;
+}
+
+html.font-scale-1-5 .ribbon-btn-text {
+    font-size: calc(11px * 1.5) !important;
+}
+
+html.font-scale-1-5 .ribbon-btn-icon {
     transform: scale(1.5) !important;
 }
 
@@ -528,7 +576,8 @@ html.font-scale-1-5 .btn-icon {
 /* 主内容区 */
 .main-container {
     display: flex;
-    height: calc(100vh - 30px - 68px);
+    flex: 1;
+    min-height: 0;
 }
 
 /* 侧边栏通用样式 */
@@ -981,6 +1030,34 @@ html.light-mode .dark-mode .workspace-content {
     color: #FFFFFF !important;
 }
 
+/* 工作区内组件和侧边栏树的滚动条样式 */
+.workspace-content::-webkit-scrollbar,
+.workspace-content ::-webkit-scrollbar,
+.sidebar .tree::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+}
+
+.workspace-content::-webkit-scrollbar-track,
+.workspace-content ::-webkit-scrollbar-track,
+.sidebar .tree::-webkit-scrollbar-track {
+    background: #eef2f7;
+}
+
+.workspace-content::-webkit-scrollbar-thumb,
+.workspace-content ::-webkit-scrollbar-thumb,
+.sidebar .tree::-webkit-scrollbar-thumb {
+    background: #9ca3af;
+    border-radius: 8px;
+    border: 2px solid #eef2f7;
+}
+
+.workspace-content::-webkit-scrollbar-thumb:hover,
+.workspace-content ::-webkit-scrollbar-thumb:hover,
+.sidebar .tree::-webkit-scrollbar-thumb:hover {
+    background: #6b7280;
+}
+
 html.dark-mode .dropdown-menu,
 html.light-mode .dark-mode .dropdown-menu {
     background-color: #0E0E10 !important;
@@ -1057,6 +1134,91 @@ html.light-mode .dark-mode .empty-placeholder {
     background-color: #2a1a2a;
     border: 1px solid #9c27b0;
     color: #ba68c8;
+}
+
+/* 数据资源库右键菜单样式 */
+#dataSourceContextMenu {
+    position: fixed;
+    background: white;
+    border: 1px solid #e4e7ed;
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    padding: 4px 0;
+    z-index: 2000;
+    min-width: 160px;
+}
+
+#dataSourceContextMenu .context-menu-item {
+    padding: 8px 16px;
+    font-size: 13px;
+    cursor: pointer;
+    color: #303133;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+#dataSourceContextMenu .context-menu-item:hover {
+    background: #ecf5ff;
+    color: #409eff;
+}
+
+#dataSourceContextMenu .context-menu-item.danger:hover {
+    background: #fef0f0;
+    color: #f56c6c;
+}
+
+/* 页面初始化Loading遮罩层样式 */
+.page-loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.95);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+}
+
+.page-loading-overlay .global-loading-spinner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.page-loading-overlay .global-spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #3370ff;
+    border-radius: 50%;
+    animation: global-spin 1s linear infinite;
+    margin-bottom: 16px;
+}
+
+.page-loading-overlay .global-loading-text {
+    color: #666;
+    font-weight: 500;
+    font-size: 14px;
+}
+
+html.dark-mode .page-loading-overlay,
+html.light-mode .dark-mode .page-loading-overlay {
+    background: rgba(0, 0, 0, 0.9);
+}
+
+html.dark-mode .page-loading-overlay .global-spinner,
+html.light-mode .dark-mode .page-loading-overlay .global-spinner {
+    border: 4px solid #444;
+    border-top: 4px solid #3370ff;
+}
+
+html.dark-mode .page-loading-overlay .global-loading-text,
+html.light-mode .dark-mode .page-loading-overlay .global-loading-text {
+    color: #ccc;
 }
 
 /* 全局Loading遮罩层样式 */

@@ -8,6 +8,8 @@ import lombok.Data;
 @Data
 public class ExecutionRecordQueryDto {
     private String archiveName;
+    private Long archiveId;
+    private String projectName;
     private String status;
     private Long startTime;
     private Long endTime;

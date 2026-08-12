@@ -252,14 +252,6 @@ class Iface(object):
         """
         pass
 
-    def exportData(self, request):
-        """
-        Parameters:
-         - request
-
-        """
-        pass
-
     def deleteData(self, request):
         """
         Parameters:
@@ -284,12 +276,15 @@ class Iface(object):
         """
         pass
 
-    def exportRelationalData(self, request):
+    def deleteColumns(self, path):
         """
         Parameters:
-         - request
+         - path
 
         """
+        pass
+
+    def getUserManualFile(self):
         pass
 
     def uploadModel(self, file, name, version):
@@ -302,20 +297,22 @@ class Iface(object):
         """
         pass
 
-    def downloadModel(self, name, version):
+    def downloadModel(self, name, version, projectName):
         """
         Parameters:
          - name
          - version
+         - projectName
 
         """
         pass
 
-    def getModelMeta(self, name, version):
+    def getModelMeta(self, name, version, projectName):
         """
         Parameters:
          - name
          - version
+         - projectName
 
         """
         pass
@@ -328,19 +325,21 @@ class Iface(object):
         """
         pass
 
-    def getModelHistory(self, name):
+    def getModelHistory(self, name, projectName):
         """
         Parameters:
          - name
+         - projectName
 
         """
         pass
 
-    def deleteModel(self, name, version):
+    def deleteModel(self, name, version, projectName):
         """
         Parameters:
          - name
          - version
+         - projectName
 
         """
         pass
@@ -387,20 +386,22 @@ class Iface(object):
         """
         pass
 
-    def downloadAlgorithm(self, name, version):
+    def downloadAlgorithm(self, name, version, projectName):
         """
         Parameters:
          - name
          - version
+         - projectName
 
         """
         pass
 
-    def getAlgorithmMeta(self, name, version):
+    def getAlgorithmMeta(self, name, version, projectName):
         """
         Parameters:
          - name
          - version
+         - projectName
 
         """
         pass
@@ -413,19 +414,21 @@ class Iface(object):
         """
         pass
 
-    def getAlgorithmHistory(self, name):
+    def getAlgorithmHistory(self, name, projectName):
         """
         Parameters:
          - name
+         - projectName
 
         """
         pass
 
-    def deleteAlgorithm(self, name, version):
+    def deleteAlgorithm(self, name, version, projectName):
         """
         Parameters:
          - name
          - version
+         - projectName
 
         """
         pass
@@ -551,10 +554,12 @@ class Iface(object):
         """
         pass
 
-    def exportProject(self, request):
+    def importProjectResource(self, file, projectName, resourceType):
         """
         Parameters:
-         - request
+         - file
+         - projectName
+         - resourceType
 
         """
         pass
@@ -632,10 +637,11 @@ class Iface(object):
         """
         pass
 
-    def runSimulationSelective(self, request):
+    def runSimulationSelective(self, createTime, params):
         """
         Parameters:
-         - request
+         - createTime
+         - params
 
         """
         pass
@@ -656,10 +662,11 @@ class Iface(object):
         """
         pass
 
-    def getSimulationExecutionLog(self, timestamp):
+    def getSimulationExecutionLog(self, timestamp, createTime):
         """
         Parameters:
          - timestamp
+         - createTime
 
         """
         pass
@@ -692,14 +699,6 @@ class Iface(object):
         """
         Parameters:
          - file
-         - timestamp
-
-        """
-        pass
-
-    def simulationPackageDownload(self, timestamp):
-        """
-        Parameters:
          - timestamp
 
         """
@@ -1787,38 +1786,6 @@ class Client(Iface):
             return result.success
         raise TApplicationException(TApplicationException.MISSING_RESULT, "importData failed: unknown result")
 
-    def exportData(self, request):
-        """
-        Parameters:
-         - request
-
-        """
-        self.send_exportData(request)
-        return self.recv_exportData()
-
-    def send_exportData(self, request):
-        self._oprot.writeMessageBegin('exportData', TMessageType.CALL, self._seqid)
-        args = exportData_args()
-        args.request = request
-        args.write(self._oprot)
-        self._oprot.writeMessageEnd()
-        self._oprot.trans.flush()
-
-    def recv_exportData(self):
-        iprot = self._iprot
-        (fname, mtype, rseqid) = iprot.readMessageBegin()
-        if mtype == TMessageType.EXCEPTION:
-            x = TApplicationException()
-            x.read(iprot)
-            iprot.readMessageEnd()
-            raise x
-        result = exportData_result()
-        result.read(iprot)
-        iprot.readMessageEnd()
-        if result.success is not None:
-            return result.success
-        raise TApplicationException(TApplicationException.MISSING_RESULT, "exportData failed: unknown result")
-
     def deleteData(self, request):
         """
         Parameters:
@@ -1915,24 +1882,24 @@ class Client(Iface):
             return result.success
         raise TApplicationException(TApplicationException.MISSING_RESULT, "countRelationalData failed: unknown result")
 
-    def exportRelationalData(self, request):
+    def deleteColumns(self, path):
         """
         Parameters:
-         - request
+         - path
 
         """
-        self.send_exportRelationalData(request)
-        return self.recv_exportRelationalData()
+        self.send_deleteColumns(path)
+        return self.recv_deleteColumns()
 
-    def send_exportRelationalData(self, request):
-        self._oprot.writeMessageBegin('exportRelationalData', TMessageType.CALL, self._seqid)
-        args = exportRelationalData_args()
-        args.request = request
+    def send_deleteColumns(self, path):
+        self._oprot.writeMessageBegin('deleteColumns', TMessageType.CALL, self._seqid)
+        args = deleteColumns_args()
+        args.path = path
         args.write(self._oprot)
         self._oprot.writeMessageEnd()
         self._oprot.trans.flush()
 
-    def recv_exportRelationalData(self):
+    def recv_deleteColumns(self):
         iprot = self._iprot
         (fname, mtype, rseqid) = iprot.readMessageBegin()
         if mtype == TMessageType.EXCEPTION:
@@ -1940,12 +1907,38 @@ class Client(Iface):
             x.read(iprot)
             iprot.readMessageEnd()
             raise x
-        result = exportRelationalData_result()
+        result = deleteColumns_result()
         result.read(iprot)
         iprot.readMessageEnd()
         if result.success is not None:
             return result.success
-        raise TApplicationException(TApplicationException.MISSING_RESULT, "exportRelationalData failed: unknown result")
+        raise TApplicationException(TApplicationException.MISSING_RESULT, "deleteColumns failed: unknown result")
+
+    def getUserManualFile(self):
+        self.send_getUserManualFile()
+        return self.recv_getUserManualFile()
+
+    def send_getUserManualFile(self):
+        self._oprot.writeMessageBegin('getUserManualFile', TMessageType.CALL, self._seqid)
+        args = getUserManualFile_args()
+        args.write(self._oprot)
+        self._oprot.writeMessageEnd()
+        self._oprot.trans.flush()
+
+    def recv_getUserManualFile(self):
+        iprot = self._iprot
+        (fname, mtype, rseqid) = iprot.readMessageBegin()
+        if mtype == TMessageType.EXCEPTION:
+            x = TApplicationException()
+            x.read(iprot)
+            iprot.readMessageEnd()
+            raise x
+        result = getUserManualFile_result()
+        result.read(iprot)
+        iprot.readMessageEnd()
+        if result.success is not None:
+            return result.success
+        raise TApplicationException(TApplicationException.MISSING_RESULT, "getUserManualFile failed: unknown result")
 
     def uploadModel(self, file, name, version):
         """
@@ -1983,21 +1976,23 @@ class Client(Iface):
             return result.success
         raise TApplicationException(TApplicationException.MISSING_RESULT, "uploadModel failed: unknown result")
 
-    def downloadModel(self, name, version):
+    def downloadModel(self, name, version, projectName):
         """
         Parameters:
          - name
          - version
+         - projectName
 
         """
-        self.send_downloadModel(name, version)
+        self.send_downloadModel(name, version, projectName)
         return self.recv_downloadModel()
 
-    def send_downloadModel(self, name, version):
+    def send_downloadModel(self, name, version, projectName):
         self._oprot.writeMessageBegin('downloadModel', TMessageType.CALL, self._seqid)
         args = downloadModel_args()
         args.name = name
         args.version = version
+        args.projectName = projectName
         args.write(self._oprot)
         self._oprot.writeMessageEnd()
         self._oprot.trans.flush()
@@ -2017,21 +2012,23 @@ class Client(Iface):
             return result.success
         raise TApplicationException(TApplicationException.MISSING_RESULT, "downloadModel failed: unknown result")
 
-    def getModelMeta(self, name, version):
+    def getModelMeta(self, name, version, projectName):
         """
         Parameters:
          - name
          - version
+         - projectName
 
         """
-        self.send_getModelMeta(name, version)
+        self.send_getModelMeta(name, version, projectName)
         return self.recv_getModelMeta()
 
-    def send_getModelMeta(self, name, version):
+    def send_getModelMeta(self, name, version, projectName):
         self._oprot.writeMessageBegin('getModelMeta', TMessageType.CALL, self._seqid)
         args = getModelMeta_args()
         args.name = name
         args.version = version
+        args.projectName = projectName
         args.write(self._oprot)
         self._oprot.writeMessageEnd()
         self._oprot.trans.flush()
@@ -2083,19 +2080,21 @@ class Client(Iface):
             return result.success
         raise TApplicationException(TApplicationException.MISSING_RESULT, "saveModelMeta failed: unknown result")
 
-    def getModelHistory(self, name):
+    def getModelHistory(self, name, projectName):
         """
         Parameters:
          - name
+         - projectName
 
         """
-        self.send_getModelHistory(name)
+        self.send_getModelHistory(name, projectName)
         return self.recv_getModelHistory()
 
-    def send_getModelHistory(self, name):
+    def send_getModelHistory(self, name, projectName):
         self._oprot.writeMessageBegin('getModelHistory', TMessageType.CALL, self._seqid)
         args = getModelHistory_args()
         args.name = name
+        args.projectName = projectName
         args.write(self._oprot)
         self._oprot.writeMessageEnd()
         self._oprot.trans.flush()
@@ -2115,21 +2114,23 @@ class Client(Iface):
             return result.success
         raise TApplicationException(TApplicationException.MISSING_RESULT, "getModelHistory failed: unknown result")
 
-    def deleteModel(self, name, version):
+    def deleteModel(self, name, version, projectName):
         """
         Parameters:
          - name
          - version
+         - projectName
 
         """
-        self.send_deleteModel(name, version)
+        self.send_deleteModel(name, version, projectName)
         return self.recv_deleteModel()
 
-    def send_deleteModel(self, name, version):
+    def send_deleteModel(self, name, version, projectName):
         self._oprot.writeMessageBegin('deleteModel', TMessageType.CALL, self._seqid)
         args = deleteModel_args()
         args.name = name
         args.version = version
+        args.projectName = projectName
         args.write(self._oprot)
         self._oprot.writeMessageEnd()
         self._oprot.trans.flush()
@@ -2313,21 +2314,23 @@ class Client(Iface):
             return result.success
         raise TApplicationException(TApplicationException.MISSING_RESULT, "uploadAlgorithm failed: unknown result")
 
-    def downloadAlgorithm(self, name, version):
+    def downloadAlgorithm(self, name, version, projectName):
         """
         Parameters:
          - name
          - version
+         - projectName
 
         """
-        self.send_downloadAlgorithm(name, version)
+        self.send_downloadAlgorithm(name, version, projectName)
         return self.recv_downloadAlgorithm()
 
-    def send_downloadAlgorithm(self, name, version):
+    def send_downloadAlgorithm(self, name, version, projectName):
         self._oprot.writeMessageBegin('downloadAlgorithm', TMessageType.CALL, self._seqid)
         args = downloadAlgorithm_args()
         args.name = name
         args.version = version
+        args.projectName = projectName
         args.write(self._oprot)
         self._oprot.writeMessageEnd()
         self._oprot.trans.flush()
@@ -2347,21 +2350,23 @@ class Client(Iface):
             return result.success
         raise TApplicationException(TApplicationException.MISSING_RESULT, "downloadAlgorithm failed: unknown result")
 
-    def getAlgorithmMeta(self, name, version):
+    def getAlgorithmMeta(self, name, version, projectName):
         """
         Parameters:
          - name
          - version
+         - projectName
 
         """
-        self.send_getAlgorithmMeta(name, version)
+        self.send_getAlgorithmMeta(name, version, projectName)
         return self.recv_getAlgorithmMeta()
 
-    def send_getAlgorithmMeta(self, name, version):
+    def send_getAlgorithmMeta(self, name, version, projectName):
         self._oprot.writeMessageBegin('getAlgorithmMeta', TMessageType.CALL, self._seqid)
         args = getAlgorithmMeta_args()
         args.name = name
         args.version = version
+        args.projectName = projectName
         args.write(self._oprot)
         self._oprot.writeMessageEnd()
         self._oprot.trans.flush()
@@ -2413,19 +2418,21 @@ class Client(Iface):
             return result.success
         raise TApplicationException(TApplicationException.MISSING_RESULT, "saveAlgorithmMeta failed: unknown result")
 
-    def getAlgorithmHistory(self, name):
+    def getAlgorithmHistory(self, name, projectName):
         """
         Parameters:
          - name
+         - projectName
 
         """
-        self.send_getAlgorithmHistory(name)
+        self.send_getAlgorithmHistory(name, projectName)
         return self.recv_getAlgorithmHistory()
 
-    def send_getAlgorithmHistory(self, name):
+    def send_getAlgorithmHistory(self, name, projectName):
         self._oprot.writeMessageBegin('getAlgorithmHistory', TMessageType.CALL, self._seqid)
         args = getAlgorithmHistory_args()
         args.name = name
+        args.projectName = projectName
         args.write(self._oprot)
         self._oprot.writeMessageEnd()
         self._oprot.trans.flush()
@@ -2445,21 +2452,23 @@ class Client(Iface):
             return result.success
         raise TApplicationException(TApplicationException.MISSING_RESULT, "getAlgorithmHistory failed: unknown result")
 
-    def deleteAlgorithm(self, name, version):
+    def deleteAlgorithm(self, name, version, projectName):
         """
         Parameters:
          - name
          - version
+         - projectName
 
         """
-        self.send_deleteAlgorithm(name, version)
+        self.send_deleteAlgorithm(name, version, projectName)
         return self.recv_deleteAlgorithm()
 
-    def send_deleteAlgorithm(self, name, version):
+    def send_deleteAlgorithm(self, name, version, projectName):
         self._oprot.writeMessageBegin('deleteAlgorithm', TMessageType.CALL, self._seqid)
         args = deleteAlgorithm_args()
         args.name = name
         args.version = version
+        args.projectName = projectName
         args.write(self._oprot)
         self._oprot.writeMessageEnd()
         self._oprot.trans.flush()
@@ -2961,24 +2970,28 @@ class Client(Iface):
             return result.success
         raise TApplicationException(TApplicationException.MISSING_RESULT, "importProject failed: unknown result")
 
-    def exportProject(self, request):
+    def importProjectResource(self, file, projectName, resourceType):
         """
         Parameters:
-         - request
+         - file
+         - projectName
+         - resourceType
 
         """
-        self.send_exportProject(request)
-        return self.recv_exportProject()
+        self.send_importProjectResource(file, projectName, resourceType)
+        return self.recv_importProjectResource()
 
-    def send_exportProject(self, request):
-        self._oprot.writeMessageBegin('exportProject', TMessageType.CALL, self._seqid)
-        args = exportProject_args()
-        args.request = request
+    def send_importProjectResource(self, file, projectName, resourceType):
+        self._oprot.writeMessageBegin('importProjectResource', TMessageType.CALL, self._seqid)
+        args = importProjectResource_args()
+        args.file = file
+        args.projectName = projectName
+        args.resourceType = resourceType
         args.write(self._oprot)
         self._oprot.writeMessageEnd()
         self._oprot.trans.flush()
 
-    def recv_exportProject(self):
+    def recv_importProjectResource(self):
         iprot = self._iprot
         (fname, mtype, rseqid) = iprot.readMessageBegin()
         if mtype == TMessageType.EXCEPTION:
@@ -2986,12 +2999,12 @@ class Client(Iface):
             x.read(iprot)
             iprot.readMessageEnd()
             raise x
-        result = exportProject_result()
+        result = importProjectResource_result()
         result.read(iprot)
         iprot.readMessageEnd()
         if result.success is not None:
             return result.success
-        raise TApplicationException(TApplicationException.MISSING_RESULT, "exportProject failed: unknown result")
+        raise TApplicationException(TApplicationException.MISSING_RESULT, "importProjectResource failed: unknown result")
 
     def saveSimulationArchive(self, archive):
         """
@@ -3267,19 +3280,21 @@ class Client(Iface):
             return result.success
         raise TApplicationException(TApplicationException.MISSING_RESULT, "runSimulation failed: unknown result")
 
-    def runSimulationSelective(self, request):
+    def runSimulationSelective(self, createTime, params):
         """
         Parameters:
-         - request
+         - createTime
+         - params
 
         """
-        self.send_runSimulationSelective(request)
+        self.send_runSimulationSelective(createTime, params)
         return self.recv_runSimulationSelective()
 
-    def send_runSimulationSelective(self, request):
+    def send_runSimulationSelective(self, createTime, params):
         self._oprot.writeMessageBegin('runSimulationSelective', TMessageType.CALL, self._seqid)
         args = runSimulationSelective_args()
-        args.request = request
+        args.createTime = createTime
+        args.params = params
         args.write(self._oprot)
         self._oprot.writeMessageEnd()
         self._oprot.trans.flush()
@@ -3363,19 +3378,21 @@ class Client(Iface):
             return result.success
         raise TApplicationException(TApplicationException.MISSING_RESULT, "getSimulationExecutionStatus failed: unknown result")
 
-    def getSimulationExecutionLog(self, timestamp):
+    def getSimulationExecutionLog(self, timestamp, createTime):
         """
         Parameters:
          - timestamp
+         - createTime
 
         """
-        self.send_getSimulationExecutionLog(timestamp)
+        self.send_getSimulationExecutionLog(timestamp, createTime)
         return self.recv_getSimulationExecutionLog()
 
-    def send_getSimulationExecutionLog(self, timestamp):
+    def send_getSimulationExecutionLog(self, timestamp, createTime):
         self._oprot.writeMessageBegin('getSimulationExecutionLog', TMessageType.CALL, self._seqid)
         args = getSimulationExecutionLog_args()
         args.timestamp = timestamp
+        args.createTime = createTime
         args.write(self._oprot)
         self._oprot.writeMessageEnd()
         self._oprot.trans.flush()
@@ -3524,38 +3541,6 @@ class Client(Iface):
         if result.success is not None:
             return result.success
         raise TApplicationException(TApplicationException.MISSING_RESULT, "uploadSimulationReport failed: unknown result")
-
-    def simulationPackageDownload(self, timestamp):
-        """
-        Parameters:
-         - timestamp
-
-        """
-        self.send_simulationPackageDownload(timestamp)
-        return self.recv_simulationPackageDownload()
-
-    def send_simulationPackageDownload(self, timestamp):
-        self._oprot.writeMessageBegin('simulationPackageDownload', TMessageType.CALL, self._seqid)
-        args = simulationPackageDownload_args()
-        args.timestamp = timestamp
-        args.write(self._oprot)
-        self._oprot.writeMessageEnd()
-        self._oprot.trans.flush()
-
-    def recv_simulationPackageDownload(self):
-        iprot = self._iprot
-        (fname, mtype, rseqid) = iprot.readMessageBegin()
-        if mtype == TMessageType.EXCEPTION:
-            x = TApplicationException()
-            x.read(iprot)
-            iprot.readMessageEnd()
-            raise x
-        result = simulationPackageDownload_result()
-        result.read(iprot)
-        iprot.readMessageEnd()
-        if result.success is not None:
-            return result.success
-        raise TApplicationException(TApplicationException.MISSING_RESULT, "simulationPackageDownload failed: unknown result")
 
     def login(self, loginRequest):
         """
@@ -4164,11 +4149,11 @@ class Processor(Iface, TProcessor):
         self._processMap["getDataSourceTree"] = Processor.process_getDataSourceTree
         self._processMap["queryData"] = Processor.process_queryData
         self._processMap["importData"] = Processor.process_importData
-        self._processMap["exportData"] = Processor.process_exportData
         self._processMap["deleteData"] = Processor.process_deleteData
         self._processMap["queryRelationalData"] = Processor.process_queryRelationalData
         self._processMap["countRelationalData"] = Processor.process_countRelationalData
-        self._processMap["exportRelationalData"] = Processor.process_exportRelationalData
+        self._processMap["deleteColumns"] = Processor.process_deleteColumns
+        self._processMap["getUserManualFile"] = Processor.process_getUserManualFile
         self._processMap["uploadModel"] = Processor.process_uploadModel
         self._processMap["downloadModel"] = Processor.process_downloadModel
         self._processMap["getModelMeta"] = Processor.process_getModelMeta
@@ -4200,7 +4185,7 @@ class Processor(Iface, TProcessor):
         self._processMap["getProject"] = Processor.process_getProject
         self._processMap["getProjectTree"] = Processor.process_getProjectTree
         self._processMap["importProject"] = Processor.process_importProject
-        self._processMap["exportProject"] = Processor.process_exportProject
+        self._processMap["importProjectResource"] = Processor.process_importProjectResource
         self._processMap["saveSimulationArchive"] = Processor.process_saveSimulationArchive
         self._processMap["querySimulationArchives"] = Processor.process_querySimulationArchives
         self._processMap["countSimulationArchives"] = Processor.process_countSimulationArchives
@@ -4217,7 +4202,6 @@ class Processor(Iface, TProcessor):
         self._processMap["countSimulationExecutionRecords"] = Processor.process_countSimulationExecutionRecords
         self._processMap["deleteSimulationExecutionRecord"] = Processor.process_deleteSimulationExecutionRecord
         self._processMap["uploadSimulationReport"] = Processor.process_uploadSimulationReport
-        self._processMap["simulationPackageDownload"] = Processor.process_simulationPackageDownload
         self._processMap["login"] = Processor.process_login
         self._processMap["refreshToken"] = Processor.process_refreshToken
         self._processMap["verifyToken"] = Processor.process_verifyToken
@@ -4949,29 +4933,6 @@ class Processor(Iface, TProcessor):
         oprot.writeMessageEnd()
         oprot.trans.flush()
 
-    def process_exportData(self, seqid, iprot, oprot):
-        args = exportData_args()
-        args.read(iprot)
-        iprot.readMessageEnd()
-        result = exportData_result()
-        try:
-            result.success = self._handler.exportData(args.request)
-            msg_type = TMessageType.REPLY
-        except TTransport.TTransportException:
-            raise
-        except TApplicationException as ex:
-            logging.exception('TApplication exception in handler')
-            msg_type = TMessageType.EXCEPTION
-            result = ex
-        except Exception:
-            logging.exception('Unexpected exception in handler')
-            msg_type = TMessageType.EXCEPTION
-            result = TApplicationException(TApplicationException.INTERNAL_ERROR, 'Internal error')
-        oprot.writeMessageBegin("exportData", msg_type, seqid)
-        result.write(oprot)
-        oprot.writeMessageEnd()
-        oprot.trans.flush()
-
     def process_deleteData(self, seqid, iprot, oprot):
         args = deleteData_args()
         args.read(iprot)
@@ -5041,13 +5002,13 @@ class Processor(Iface, TProcessor):
         oprot.writeMessageEnd()
         oprot.trans.flush()
 
-    def process_exportRelationalData(self, seqid, iprot, oprot):
-        args = exportRelationalData_args()
+    def process_deleteColumns(self, seqid, iprot, oprot):
+        args = deleteColumns_args()
         args.read(iprot)
         iprot.readMessageEnd()
-        result = exportRelationalData_result()
+        result = deleteColumns_result()
         try:
-            result.success = self._handler.exportRelationalData(args.request)
+            result.success = self._handler.deleteColumns(args.path)
             msg_type = TMessageType.REPLY
         except TTransport.TTransportException:
             raise
@@ -5059,7 +5020,30 @@ class Processor(Iface, TProcessor):
             logging.exception('Unexpected exception in handler')
             msg_type = TMessageType.EXCEPTION
             result = TApplicationException(TApplicationException.INTERNAL_ERROR, 'Internal error')
-        oprot.writeMessageBegin("exportRelationalData", msg_type, seqid)
+        oprot.writeMessageBegin("deleteColumns", msg_type, seqid)
+        result.write(oprot)
+        oprot.writeMessageEnd()
+        oprot.trans.flush()
+
+    def process_getUserManualFile(self, seqid, iprot, oprot):
+        args = getUserManualFile_args()
+        args.read(iprot)
+        iprot.readMessageEnd()
+        result = getUserManualFile_result()
+        try:
+            result.success = self._handler.getUserManualFile()
+            msg_type = TMessageType.REPLY
+        except TTransport.TTransportException:
+            raise
+        except TApplicationException as ex:
+            logging.exception('TApplication exception in handler')
+            msg_type = TMessageType.EXCEPTION
+            result = ex
+        except Exception:
+            logging.exception('Unexpected exception in handler')
+            msg_type = TMessageType.EXCEPTION
+            result = TApplicationException(TApplicationException.INTERNAL_ERROR, 'Internal error')
+        oprot.writeMessageBegin("getUserManualFile", msg_type, seqid)
         result.write(oprot)
         oprot.writeMessageEnd()
         oprot.trans.flush()
@@ -5093,7 +5077,7 @@ class Processor(Iface, TProcessor):
         iprot.readMessageEnd()
         result = downloadModel_result()
         try:
-            result.success = self._handler.downloadModel(args.name, args.version)
+            result.success = self._handler.downloadModel(args.name, args.version, args.projectName)
             msg_type = TMessageType.REPLY
         except TTransport.TTransportException:
             raise
@@ -5116,7 +5100,7 @@ class Processor(Iface, TProcessor):
         iprot.readMessageEnd()
         result = getModelMeta_result()
         try:
-            result.success = self._handler.getModelMeta(args.name, args.version)
+            result.success = self._handler.getModelMeta(args.name, args.version, args.projectName)
             msg_type = TMessageType.REPLY
         except TTransport.TTransportException:
             raise
@@ -5162,7 +5146,7 @@ class Processor(Iface, TProcessor):
         iprot.readMessageEnd()
         result = getModelHistory_result()
         try:
-            result.success = self._handler.getModelHistory(args.name)
+            result.success = self._handler.getModelHistory(args.name, args.projectName)
             msg_type = TMessageType.REPLY
         except TTransport.TTransportException:
             raise
@@ -5185,7 +5169,7 @@ class Processor(Iface, TProcessor):
         iprot.readMessageEnd()
         result = deleteModel_result()
         try:
-            result.success = self._handler.deleteModel(args.name, args.version)
+            result.success = self._handler.deleteModel(args.name, args.version, args.projectName)
             msg_type = TMessageType.REPLY
         except TTransport.TTransportException:
             raise
@@ -5323,7 +5307,7 @@ class Processor(Iface, TProcessor):
         iprot.readMessageEnd()
         result = downloadAlgorithm_result()
         try:
-            result.success = self._handler.downloadAlgorithm(args.name, args.version)
+            result.success = self._handler.downloadAlgorithm(args.name, args.version, args.projectName)
             msg_type = TMessageType.REPLY
         except TTransport.TTransportException:
             raise
@@ -5346,7 +5330,7 @@ class Processor(Iface, TProcessor):
         iprot.readMessageEnd()
         result = getAlgorithmMeta_result()
         try:
-            result.success = self._handler.getAlgorithmMeta(args.name, args.version)
+            result.success = self._handler.getAlgorithmMeta(args.name, args.version, args.projectName)
             msg_type = TMessageType.REPLY
         except TTransport.TTransportException:
             raise
@@ -5392,7 +5376,7 @@ class Processor(Iface, TProcessor):
         iprot.readMessageEnd()
         result = getAlgorithmHistory_result()
         try:
-            result.success = self._handler.getAlgorithmHistory(args.name)
+            result.success = self._handler.getAlgorithmHistory(args.name, args.projectName)
             msg_type = TMessageType.REPLY
         except TTransport.TTransportException:
             raise
@@ -5415,7 +5399,7 @@ class Processor(Iface, TProcessor):
         iprot.readMessageEnd()
         result = deleteAlgorithm_result()
         try:
-            result.success = self._handler.deleteAlgorithm(args.name, args.version)
+            result.success = self._handler.deleteAlgorithm(args.name, args.version, args.projectName)
             msg_type = TMessageType.REPLY
         except TTransport.TTransportException:
             raise
@@ -5777,13 +5761,13 @@ class Processor(Iface, TProcessor):
         oprot.writeMessageEnd()
         oprot.trans.flush()
 
-    def process_exportProject(self, seqid, iprot, oprot):
-        args = exportProject_args()
+    def process_importProjectResource(self, seqid, iprot, oprot):
+        args = importProjectResource_args()
         args.read(iprot)
         iprot.readMessageEnd()
-        result = exportProject_result()
+        result = importProjectResource_result()
         try:
-            result.success = self._handler.exportProject(args.request)
+            result.success = self._handler.importProjectResource(args.file, args.projectName, args.resourceType)
             msg_type = TMessageType.REPLY
         except TTransport.TTransportException:
             raise
@@ -5795,7 +5779,7 @@ class Processor(Iface, TProcessor):
             logging.exception('Unexpected exception in handler')
             msg_type = TMessageType.EXCEPTION
             result = TApplicationException(TApplicationException.INTERNAL_ERROR, 'Internal error')
-        oprot.writeMessageBegin("exportProject", msg_type, seqid)
+        oprot.writeMessageBegin("importProjectResource", msg_type, seqid)
         result.write(oprot)
         oprot.writeMessageEnd()
         oprot.trans.flush()
@@ -5990,7 +5974,7 @@ class Processor(Iface, TProcessor):
         iprot.readMessageEnd()
         result = runSimulationSelective_result()
         try:
-            result.success = self._handler.runSimulationSelective(args.request)
+            result.success = self._handler.runSimulationSelective(args.createTime, args.params)
             msg_type = TMessageType.REPLY
         except TTransport.TTransportException:
             raise
@@ -6059,7 +6043,7 @@ class Processor(Iface, TProcessor):
         iprot.readMessageEnd()
         result = getSimulationExecutionLog_result()
         try:
-            result.success = self._handler.getSimulationExecutionLog(args.timestamp)
+            result.success = self._handler.getSimulationExecutionLog(args.timestamp, args.createTime)
             msg_type = TMessageType.REPLY
         except TTransport.TTransportException:
             raise
@@ -6164,29 +6148,6 @@ class Processor(Iface, TProcessor):
             msg_type = TMessageType.EXCEPTION
             result = TApplicationException(TApplicationException.INTERNAL_ERROR, 'Internal error')
         oprot.writeMessageBegin("uploadSimulationReport", msg_type, seqid)
-        result.write(oprot)
-        oprot.writeMessageEnd()
-        oprot.trans.flush()
-
-    def process_simulationPackageDownload(self, seqid, iprot, oprot):
-        args = simulationPackageDownload_args()
-        args.read(iprot)
-        iprot.readMessageEnd()
-        result = simulationPackageDownload_result()
-        try:
-            result.success = self._handler.simulationPackageDownload(args.timestamp)
-            msg_type = TMessageType.REPLY
-        except TTransport.TTransportException:
-            raise
-        except TApplicationException as ex:
-            logging.exception('TApplication exception in handler')
-            msg_type = TMessageType.EXCEPTION
-            result = ex
-        except Exception:
-            logging.exception('Unexpected exception in handler')
-            msg_type = TMessageType.EXCEPTION
-            result = TApplicationException(TApplicationException.INTERNAL_ERROR, 'Internal error')
-        oprot.writeMessageBegin("simulationPackageDownload", msg_type, seqid)
         result.write(oprot)
         oprot.writeMessageEnd()
         oprot.trans.flush()
@@ -10471,135 +10432,6 @@ importData_result.thrift_spec = (
 )
 
 
-class exportData_args(object):
-    """
-    Attributes:
-     - request
-
-    """
-    thrift_spec = None
-
-
-    def __init__(self, request = None,):
-        self.request = request
-
-    def read(self, iprot):
-        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
-            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
-            return
-        iprot.readStructBegin()
-        while True:
-            (fname, ftype, fid) = iprot.readFieldBegin()
-            if ftype == TType.STOP:
-                break
-            if fid == 1:
-                if ftype == TType.STRUCT:
-                    self.request = DataQueryRequest()
-                    self.request.read(iprot)
-                else:
-                    iprot.skip(ftype)
-            else:
-                iprot.skip(ftype)
-            iprot.readFieldEnd()
-        iprot.readStructEnd()
-
-    def write(self, oprot):
-        self.validate()
-        if oprot._fast_encode is not None and self.thrift_spec is not None:
-            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
-            return
-        oprot.writeStructBegin('exportData_args')
-        if self.request is not None:
-            oprot.writeFieldBegin('request', TType.STRUCT, 1)
-            self.request.write(oprot)
-            oprot.writeFieldEnd()
-        oprot.writeFieldStop()
-        oprot.writeStructEnd()
-
-    def validate(self):
-        return
-
-    def __repr__(self):
-        L = ['%s=%r' % (key, value)
-             for key, value in self.__dict__.items()]
-        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
-
-    def __eq__(self, other):
-        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
-
-    def __ne__(self, other):
-        return not (self == other)
-all_structs.append(exportData_args)
-exportData_args.thrift_spec = (
-    None,  # 0
-    (1, TType.STRUCT, 'request', [DataQueryRequest, None], None, ),  # 1
-)
-
-
-class exportData_result(object):
-    """
-    Attributes:
-     - success
-
-    """
-    thrift_spec = None
-
-
-    def __init__(self, success = None,):
-        self.success = success
-
-    def read(self, iprot):
-        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
-            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
-            return
-        iprot.readStructBegin()
-        while True:
-            (fname, ftype, fid) = iprot.readFieldBegin()
-            if ftype == TType.STOP:
-                break
-            if fid == 0:
-                if ftype == TType.STRUCT:
-                    self.success = Result()
-                    self.success.read(iprot)
-                else:
-                    iprot.skip(ftype)
-            else:
-                iprot.skip(ftype)
-            iprot.readFieldEnd()
-        iprot.readStructEnd()
-
-    def write(self, oprot):
-        self.validate()
-        if oprot._fast_encode is not None and self.thrift_spec is not None:
-            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
-            return
-        oprot.writeStructBegin('exportData_result')
-        if self.success is not None:
-            oprot.writeFieldBegin('success', TType.STRUCT, 0)
-            self.success.write(oprot)
-            oprot.writeFieldEnd()
-        oprot.writeFieldStop()
-        oprot.writeStructEnd()
-
-    def validate(self):
-        return
-
-    def __repr__(self):
-        L = ['%s=%r' % (key, value)
-             for key, value in self.__dict__.items()]
-        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
-
-    def __eq__(self, other):
-        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
-
-    def __ne__(self, other):
-        return not (self == other)
-all_structs.append(exportData_result)
-exportData_result.thrift_spec = (
-    (0, TType.STRUCT, 'success', [Result, None], None, ),  # 0
-)
-
-
 class deleteData_args(object):
     """
     Attributes:
@@ -10987,17 +10819,17 @@ countRelationalData_result.thrift_spec = (
 )
 
 
-class exportRelationalData_args(object):
+class deleteColumns_args(object):
     """
     Attributes:
-     - request
+     - path
 
     """
     thrift_spec = None
 
 
-    def __init__(self, request = None,):
-        self.request = request
+    def __init__(self, path = None,):
+        self.path = path
 
     def read(self, iprot):
         if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
@@ -11009,9 +10841,8 @@ class exportRelationalData_args(object):
             if ftype == TType.STOP:
                 break
             if fid == 1:
-                if ftype == TType.STRUCT:
-                    self.request = RelationalQueryRequest()
-                    self.request.read(iprot)
+                if ftype == TType.STRING:
+                    self.path = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             else:
@@ -11024,10 +10855,10 @@ class exportRelationalData_args(object):
         if oprot._fast_encode is not None and self.thrift_spec is not None:
             oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
             return
-        oprot.writeStructBegin('exportRelationalData_args')
-        if self.request is not None:
-            oprot.writeFieldBegin('request', TType.STRUCT, 1)
-            self.request.write(oprot)
+        oprot.writeStructBegin('deleteColumns_args')
+        if self.path is not None:
+            oprot.writeFieldBegin('path', TType.STRING, 1)
+            oprot.writeString(self.path.encode('utf-8') if sys.version_info[0] == 2 else self.path)
             oprot.writeFieldEnd()
         oprot.writeFieldStop()
         oprot.writeStructEnd()
@@ -11045,14 +10876,14 @@ class exportRelationalData_args(object):
 
     def __ne__(self, other):
         return not (self == other)
-all_structs.append(exportRelationalData_args)
-exportRelationalData_args.thrift_spec = (
+all_structs.append(deleteColumns_args)
+deleteColumns_args.thrift_spec = (
     None,  # 0
-    (1, TType.STRUCT, 'request', [RelationalQueryRequest, None], None, ),  # 1
+    (1, TType.STRING, 'path', 'UTF8', None, ),  # 1
 )
 
 
-class exportRelationalData_result(object):
+class deleteColumns_result(object):
     """
     Attributes:
      - success
@@ -11089,7 +10920,7 @@ class exportRelationalData_result(object):
         if oprot._fast_encode is not None and self.thrift_spec is not None:
             oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
             return
-        oprot.writeStructBegin('exportRelationalData_result')
+        oprot.writeStructBegin('deleteColumns_result')
         if self.success is not None:
             oprot.writeFieldBegin('success', TType.STRUCT, 0)
             self.success.write(oprot)
@@ -11110,8 +10941,117 @@ class exportRelationalData_result(object):
 
     def __ne__(self, other):
         return not (self == other)
-all_structs.append(exportRelationalData_result)
-exportRelationalData_result.thrift_spec = (
+all_structs.append(deleteColumns_result)
+deleteColumns_result.thrift_spec = (
+    (0, TType.STRUCT, 'success', [Result, None], None, ),  # 0
+)
+
+
+class getUserManualFile_args(object):
+    thrift_spec = None
+
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('getUserManualFile_args')
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+all_structs.append(getUserManualFile_args)
+getUserManualFile_args.thrift_spec = (
+)
+
+
+class getUserManualFile_result(object):
+    """
+    Attributes:
+     - success
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, success = None,):
+        self.success = success
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 0:
+                if ftype == TType.STRUCT:
+                    self.success = Result()
+                    self.success.read(iprot)
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('getUserManualFile_result')
+        if self.success is not None:
+            oprot.writeFieldBegin('success', TType.STRUCT, 0)
+            self.success.write(oprot)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+all_structs.append(getUserManualFile_result)
+getUserManualFile_result.thrift_spec = (
     (0, TType.STRUCT, 'success', [Result, None], None, ),  # 0
 )
 
@@ -11273,14 +11213,16 @@ class downloadModel_args(object):
     Attributes:
      - name
      - version
+     - projectName
 
     """
     thrift_spec = None
 
 
-    def __init__(self, name = None, version = None,):
+    def __init__(self, name = None, version = None, projectName = None,):
         self.name = name
         self.version = version
+        self.projectName = projectName
 
     def read(self, iprot):
         if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
@@ -11301,6 +11243,11 @@ class downloadModel_args(object):
                     self.version = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
+            elif fid == 3:
+                if ftype == TType.STRING:
+                    self.projectName = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                else:
+                    iprot.skip(ftype)
             else:
                 iprot.skip(ftype)
             iprot.readFieldEnd()
@@ -11319,6 +11266,10 @@ class downloadModel_args(object):
         if self.version is not None:
             oprot.writeFieldBegin('version', TType.STRING, 2)
             oprot.writeString(self.version.encode('utf-8') if sys.version_info[0] == 2 else self.version)
+            oprot.writeFieldEnd()
+        if self.projectName is not None:
+            oprot.writeFieldBegin('projectName', TType.STRING, 3)
+            oprot.writeString(self.projectName.encode('utf-8') if sys.version_info[0] == 2 else self.projectName)
             oprot.writeFieldEnd()
         oprot.writeFieldStop()
         oprot.writeStructEnd()
@@ -11341,6 +11292,7 @@ downloadModel_args.thrift_spec = (
     None,  # 0
     (1, TType.STRING, 'name', 'UTF8', None, ),  # 1
     (2, TType.STRING, 'version', 'UTF8', None, ),  # 2
+    (3, TType.STRING, 'projectName', 'UTF8', None, ),  # 3
 )
 
 
@@ -11413,14 +11365,16 @@ class getModelMeta_args(object):
     Attributes:
      - name
      - version
+     - projectName
 
     """
     thrift_spec = None
 
 
-    def __init__(self, name = None, version = None,):
+    def __init__(self, name = None, version = None, projectName = None,):
         self.name = name
         self.version = version
+        self.projectName = projectName
 
     def read(self, iprot):
         if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
@@ -11441,6 +11395,11 @@ class getModelMeta_args(object):
                     self.version = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
+            elif fid == 3:
+                if ftype == TType.STRING:
+                    self.projectName = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                else:
+                    iprot.skip(ftype)
             else:
                 iprot.skip(ftype)
             iprot.readFieldEnd()
@@ -11459,6 +11418,10 @@ class getModelMeta_args(object):
         if self.version is not None:
             oprot.writeFieldBegin('version', TType.STRING, 2)
             oprot.writeString(self.version.encode('utf-8') if sys.version_info[0] == 2 else self.version)
+            oprot.writeFieldEnd()
+        if self.projectName is not None:
+            oprot.writeFieldBegin('projectName', TType.STRING, 3)
+            oprot.writeString(self.projectName.encode('utf-8') if sys.version_info[0] == 2 else self.projectName)
             oprot.writeFieldEnd()
         oprot.writeFieldStop()
         oprot.writeStructEnd()
@@ -11481,6 +11444,7 @@ getModelMeta_args.thrift_spec = (
     None,  # 0
     (1, TType.STRING, 'name', 'UTF8', None, ),  # 1
     (2, TType.STRING, 'version', 'UTF8', None, ),  # 2
+    (3, TType.STRING, 'projectName', 'UTF8', None, ),  # 3
 )
 
 
@@ -11681,13 +11645,15 @@ class getModelHistory_args(object):
     """
     Attributes:
      - name
+     - projectName
 
     """
     thrift_spec = None
 
 
-    def __init__(self, name = None,):
+    def __init__(self, name = None, projectName = None,):
         self.name = name
+        self.projectName = projectName
 
     def read(self, iprot):
         if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
@@ -11701,6 +11667,11 @@ class getModelHistory_args(object):
             if fid == 1:
                 if ftype == TType.STRING:
                     self.name = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 2:
+                if ftype == TType.STRING:
+                    self.projectName = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             else:
@@ -11717,6 +11688,10 @@ class getModelHistory_args(object):
         if self.name is not None:
             oprot.writeFieldBegin('name', TType.STRING, 1)
             oprot.writeString(self.name.encode('utf-8') if sys.version_info[0] == 2 else self.name)
+            oprot.writeFieldEnd()
+        if self.projectName is not None:
+            oprot.writeFieldBegin('projectName', TType.STRING, 2)
+            oprot.writeString(self.projectName.encode('utf-8') if sys.version_info[0] == 2 else self.projectName)
             oprot.writeFieldEnd()
         oprot.writeFieldStop()
         oprot.writeStructEnd()
@@ -11738,6 +11713,7 @@ all_structs.append(getModelHistory_args)
 getModelHistory_args.thrift_spec = (
     None,  # 0
     (1, TType.STRING, 'name', 'UTF8', None, ),  # 1
+    (2, TType.STRING, 'projectName', 'UTF8', None, ),  # 2
 )
 
 
@@ -11810,14 +11786,16 @@ class deleteModel_args(object):
     Attributes:
      - name
      - version
+     - projectName
 
     """
     thrift_spec = None
 
 
-    def __init__(self, name = None, version = None,):
+    def __init__(self, name = None, version = None, projectName = None,):
         self.name = name
         self.version = version
+        self.projectName = projectName
 
     def read(self, iprot):
         if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
@@ -11838,6 +11816,11 @@ class deleteModel_args(object):
                     self.version = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
+            elif fid == 3:
+                if ftype == TType.STRING:
+                    self.projectName = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                else:
+                    iprot.skip(ftype)
             else:
                 iprot.skip(ftype)
             iprot.readFieldEnd()
@@ -11856,6 +11839,10 @@ class deleteModel_args(object):
         if self.version is not None:
             oprot.writeFieldBegin('version', TType.STRING, 2)
             oprot.writeString(self.version.encode('utf-8') if sys.version_info[0] == 2 else self.version)
+            oprot.writeFieldEnd()
+        if self.projectName is not None:
+            oprot.writeFieldBegin('projectName', TType.STRING, 3)
+            oprot.writeString(self.projectName.encode('utf-8') if sys.version_info[0] == 2 else self.projectName)
             oprot.writeFieldEnd()
         oprot.writeFieldStop()
         oprot.writeStructEnd()
@@ -11878,6 +11865,7 @@ deleteModel_args.thrift_spec = (
     None,  # 0
     (1, TType.STRING, 'name', 'UTF8', None, ),  # 1
     (2, TType.STRING, 'version', 'UTF8', None, ),  # 2
+    (3, TType.STRING, 'projectName', 'UTF8', None, ),  # 3
 )
 
 
@@ -12617,14 +12605,16 @@ class downloadAlgorithm_args(object):
     Attributes:
      - name
      - version
+     - projectName
 
     """
     thrift_spec = None
 
 
-    def __init__(self, name = None, version = None,):
+    def __init__(self, name = None, version = None, projectName = None,):
         self.name = name
         self.version = version
+        self.projectName = projectName
 
     def read(self, iprot):
         if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
@@ -12645,6 +12635,11 @@ class downloadAlgorithm_args(object):
                     self.version = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
+            elif fid == 3:
+                if ftype == TType.STRING:
+                    self.projectName = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                else:
+                    iprot.skip(ftype)
             else:
                 iprot.skip(ftype)
             iprot.readFieldEnd()
@@ -12663,6 +12658,10 @@ class downloadAlgorithm_args(object):
         if self.version is not None:
             oprot.writeFieldBegin('version', TType.STRING, 2)
             oprot.writeString(self.version.encode('utf-8') if sys.version_info[0] == 2 else self.version)
+            oprot.writeFieldEnd()
+        if self.projectName is not None:
+            oprot.writeFieldBegin('projectName', TType.STRING, 3)
+            oprot.writeString(self.projectName.encode('utf-8') if sys.version_info[0] == 2 else self.projectName)
             oprot.writeFieldEnd()
         oprot.writeFieldStop()
         oprot.writeStructEnd()
@@ -12685,6 +12684,7 @@ downloadAlgorithm_args.thrift_spec = (
     None,  # 0
     (1, TType.STRING, 'name', 'UTF8', None, ),  # 1
     (2, TType.STRING, 'version', 'UTF8', None, ),  # 2
+    (3, TType.STRING, 'projectName', 'UTF8', None, ),  # 3
 )
 
 
@@ -12757,14 +12757,16 @@ class getAlgorithmMeta_args(object):
     Attributes:
      - name
      - version
+     - projectName
 
     """
     thrift_spec = None
 
 
-    def __init__(self, name = None, version = None,):
+    def __init__(self, name = None, version = None, projectName = None,):
         self.name = name
         self.version = version
+        self.projectName = projectName
 
     def read(self, iprot):
         if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
@@ -12785,6 +12787,11 @@ class getAlgorithmMeta_args(object):
                     self.version = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
+            elif fid == 3:
+                if ftype == TType.STRING:
+                    self.projectName = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                else:
+                    iprot.skip(ftype)
             else:
                 iprot.skip(ftype)
             iprot.readFieldEnd()
@@ -12803,6 +12810,10 @@ class getAlgorithmMeta_args(object):
         if self.version is not None:
             oprot.writeFieldBegin('version', TType.STRING, 2)
             oprot.writeString(self.version.encode('utf-8') if sys.version_info[0] == 2 else self.version)
+            oprot.writeFieldEnd()
+        if self.projectName is not None:
+            oprot.writeFieldBegin('projectName', TType.STRING, 3)
+            oprot.writeString(self.projectName.encode('utf-8') if sys.version_info[0] == 2 else self.projectName)
             oprot.writeFieldEnd()
         oprot.writeFieldStop()
         oprot.writeStructEnd()
@@ -12825,6 +12836,7 @@ getAlgorithmMeta_args.thrift_spec = (
     None,  # 0
     (1, TType.STRING, 'name', 'UTF8', None, ),  # 1
     (2, TType.STRING, 'version', 'UTF8', None, ),  # 2
+    (3, TType.STRING, 'projectName', 'UTF8', None, ),  # 3
 )
 
 
@@ -13025,13 +13037,15 @@ class getAlgorithmHistory_args(object):
     """
     Attributes:
      - name
+     - projectName
 
     """
     thrift_spec = None
 
 
-    def __init__(self, name = None,):
+    def __init__(self, name = None, projectName = None,):
         self.name = name
+        self.projectName = projectName
 
     def read(self, iprot):
         if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
@@ -13045,6 +13059,11 @@ class getAlgorithmHistory_args(object):
             if fid == 1:
                 if ftype == TType.STRING:
                     self.name = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 2:
+                if ftype == TType.STRING:
+                    self.projectName = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             else:
@@ -13061,6 +13080,10 @@ class getAlgorithmHistory_args(object):
         if self.name is not None:
             oprot.writeFieldBegin('name', TType.STRING, 1)
             oprot.writeString(self.name.encode('utf-8') if sys.version_info[0] == 2 else self.name)
+            oprot.writeFieldEnd()
+        if self.projectName is not None:
+            oprot.writeFieldBegin('projectName', TType.STRING, 2)
+            oprot.writeString(self.projectName.encode('utf-8') if sys.version_info[0] == 2 else self.projectName)
             oprot.writeFieldEnd()
         oprot.writeFieldStop()
         oprot.writeStructEnd()
@@ -13082,6 +13105,7 @@ all_structs.append(getAlgorithmHistory_args)
 getAlgorithmHistory_args.thrift_spec = (
     None,  # 0
     (1, TType.STRING, 'name', 'UTF8', None, ),  # 1
+    (2, TType.STRING, 'projectName', 'UTF8', None, ),  # 2
 )
 
 
@@ -13154,14 +13178,16 @@ class deleteAlgorithm_args(object):
     Attributes:
      - name
      - version
+     - projectName
 
     """
     thrift_spec = None
 
 
-    def __init__(self, name = None, version = None,):
+    def __init__(self, name = None, version = None, projectName = None,):
         self.name = name
         self.version = version
+        self.projectName = projectName
 
     def read(self, iprot):
         if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
@@ -13182,6 +13208,11 @@ class deleteAlgorithm_args(object):
                     self.version = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
+            elif fid == 3:
+                if ftype == TType.STRING:
+                    self.projectName = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                else:
+                    iprot.skip(ftype)
             else:
                 iprot.skip(ftype)
             iprot.readFieldEnd()
@@ -13200,6 +13231,10 @@ class deleteAlgorithm_args(object):
         if self.version is not None:
             oprot.writeFieldBegin('version', TType.STRING, 2)
             oprot.writeString(self.version.encode('utf-8') if sys.version_info[0] == 2 else self.version)
+            oprot.writeFieldEnd()
+        if self.projectName is not None:
+            oprot.writeFieldBegin('projectName', TType.STRING, 3)
+            oprot.writeString(self.projectName.encode('utf-8') if sys.version_info[0] == 2 else self.projectName)
             oprot.writeFieldEnd()
         oprot.writeFieldStop()
         oprot.writeStructEnd()
@@ -13222,6 +13257,7 @@ deleteAlgorithm_args.thrift_spec = (
     None,  # 0
     (1, TType.STRING, 'name', 'UTF8', None, ),  # 1
     (2, TType.STRING, 'version', 'UTF8', None, ),  # 2
+    (3, TType.STRING, 'projectName', 'UTF8', None, ),  # 3
 )
 
 
@@ -15231,17 +15267,21 @@ importProject_result.thrift_spec = (
 )
 
 
-class exportProject_args(object):
+class importProjectResource_args(object):
     """
     Attributes:
-     - request
+     - file
+     - projectName
+     - resourceType
 
     """
     thrift_spec = None
 
 
-    def __init__(self, request = None,):
-        self.request = request
+    def __init__(self, file = None, projectName = None, resourceType = None,):
+        self.file = file
+        self.projectName = projectName
+        self.resourceType = resourceType
 
     def read(self, iprot):
         if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
@@ -15253,9 +15293,18 @@ class exportProject_args(object):
             if ftype == TType.STOP:
                 break
             if fid == 1:
-                if ftype == TType.STRUCT:
-                    self.request = ProjectExportRequest()
-                    self.request.read(iprot)
+                if ftype == TType.STRING:
+                    self.file = iprot.readBinary()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 2:
+                if ftype == TType.STRING:
+                    self.projectName = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 3:
+                if ftype == TType.STRING:
+                    self.resourceType = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
             else:
@@ -15268,10 +15317,18 @@ class exportProject_args(object):
         if oprot._fast_encode is not None and self.thrift_spec is not None:
             oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
             return
-        oprot.writeStructBegin('exportProject_args')
-        if self.request is not None:
-            oprot.writeFieldBegin('request', TType.STRUCT, 1)
-            self.request.write(oprot)
+        oprot.writeStructBegin('importProjectResource_args')
+        if self.file is not None:
+            oprot.writeFieldBegin('file', TType.STRING, 1)
+            oprot.writeBinary(self.file)
+            oprot.writeFieldEnd()
+        if self.projectName is not None:
+            oprot.writeFieldBegin('projectName', TType.STRING, 2)
+            oprot.writeString(self.projectName.encode('utf-8') if sys.version_info[0] == 2 else self.projectName)
+            oprot.writeFieldEnd()
+        if self.resourceType is not None:
+            oprot.writeFieldBegin('resourceType', TType.STRING, 3)
+            oprot.writeString(self.resourceType.encode('utf-8') if sys.version_info[0] == 2 else self.resourceType)
             oprot.writeFieldEnd()
         oprot.writeFieldStop()
         oprot.writeStructEnd()
@@ -15289,14 +15346,16 @@ class exportProject_args(object):
 
     def __ne__(self, other):
         return not (self == other)
-all_structs.append(exportProject_args)
-exportProject_args.thrift_spec = (
+all_structs.append(importProjectResource_args)
+importProjectResource_args.thrift_spec = (
     None,  # 0
-    (1, TType.STRUCT, 'request', [ProjectExportRequest, None], None, ),  # 1
+    (1, TType.STRING, 'file', 'BINARY', None, ),  # 1
+    (2, TType.STRING, 'projectName', 'UTF8', None, ),  # 2
+    (3, TType.STRING, 'resourceType', 'UTF8', None, ),  # 3
 )
 
 
-class exportProject_result(object):
+class importProjectResource_result(object):
     """
     Attributes:
      - success
@@ -15333,7 +15392,7 @@ class exportProject_result(object):
         if oprot._fast_encode is not None and self.thrift_spec is not None:
             oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
             return
-        oprot.writeStructBegin('exportProject_result')
+        oprot.writeStructBegin('importProjectResource_result')
         if self.success is not None:
             oprot.writeFieldBegin('success', TType.STRUCT, 0)
             self.success.write(oprot)
@@ -15354,8 +15413,8 @@ class exportProject_result(object):
 
     def __ne__(self, other):
         return not (self == other)
-all_structs.append(exportProject_result)
-exportProject_result.thrift_spec = (
+all_structs.append(importProjectResource_result)
+importProjectResource_result.thrift_spec = (
     (0, TType.STRUCT, 'success', [Result, None], None, ),  # 0
 )
 
@@ -16496,14 +16555,16 @@ runSimulation_result.thrift_spec = (
 class runSimulationSelective_args(object):
     """
     Attributes:
-     - request
+     - createTime
+     - params
 
     """
     thrift_spec = None
 
 
-    def __init__(self, request = None,):
-        self.request = request
+    def __init__(self, createTime = None, params = None,):
+        self.createTime = createTime
+        self.params = params
 
     def read(self, iprot):
         if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
@@ -16515,9 +16576,19 @@ class runSimulationSelective_args(object):
             if ftype == TType.STOP:
                 break
             if fid == 1:
-                if ftype == TType.STRUCT:
-                    self.request = RunSimulationSelectiveRequest()
-                    self.request.read(iprot)
+                if ftype == TType.I64:
+                    self.createTime = iprot.readI64()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 2:
+                if ftype == TType.MAP:
+                    self.params = {}
+                    (_ktype80, _vtype81, _size79) = iprot.readMapBegin()
+                    for _i83 in range(_size79):
+                        _key84 = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                        _val85 = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                        self.params[_key84] = _val85
+                    iprot.readMapEnd()
                 else:
                     iprot.skip(ftype)
             else:
@@ -16531,9 +16602,17 @@ class runSimulationSelective_args(object):
             oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
             return
         oprot.writeStructBegin('runSimulationSelective_args')
-        if self.request is not None:
-            oprot.writeFieldBegin('request', TType.STRUCT, 1)
-            self.request.write(oprot)
+        if self.createTime is not None:
+            oprot.writeFieldBegin('createTime', TType.I64, 1)
+            oprot.writeI64(self.createTime)
+            oprot.writeFieldEnd()
+        if self.params is not None:
+            oprot.writeFieldBegin('params', TType.MAP, 2)
+            oprot.writeMapBegin(TType.STRING, TType.STRING, len(self.params))
+            for kiter86, viter87 in self.params.items():
+                oprot.writeString(kiter86.encode('utf-8') if sys.version_info[0] == 2 else kiter86)
+                oprot.writeString(viter87.encode('utf-8') if sys.version_info[0] == 2 else viter87)
+            oprot.writeMapEnd()
             oprot.writeFieldEnd()
         oprot.writeFieldStop()
         oprot.writeStructEnd()
@@ -16554,7 +16633,8 @@ class runSimulationSelective_args(object):
 all_structs.append(runSimulationSelective_args)
 runSimulationSelective_args.thrift_spec = (
     None,  # 0
-    (1, TType.STRUCT, 'request', [RunSimulationSelectiveRequest, None], None, ),  # 1
+    (1, TType.I64, 'createTime', None, None, ),  # 1
+    (2, TType.MAP, 'params', (TType.STRING, 'UTF8', TType.STRING, 'UTF8', False), None, ),  # 2
 )
 
 
@@ -16882,13 +16962,15 @@ class getSimulationExecutionLog_args(object):
     """
     Attributes:
      - timestamp
+     - createTime
 
     """
     thrift_spec = None
 
 
-    def __init__(self, timestamp = None,):
+    def __init__(self, timestamp = None, createTime = None,):
         self.timestamp = timestamp
+        self.createTime = createTime
 
     def read(self, iprot):
         if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
@@ -16902,6 +16984,11 @@ class getSimulationExecutionLog_args(object):
             if fid == 1:
                 if ftype == TType.I64:
                     self.timestamp = iprot.readI64()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 2:
+                if ftype == TType.I64:
+                    self.createTime = iprot.readI64()
                 else:
                     iprot.skip(ftype)
             else:
@@ -16918,6 +17005,10 @@ class getSimulationExecutionLog_args(object):
         if self.timestamp is not None:
             oprot.writeFieldBegin('timestamp', TType.I64, 1)
             oprot.writeI64(self.timestamp)
+            oprot.writeFieldEnd()
+        if self.createTime is not None:
+            oprot.writeFieldBegin('createTime', TType.I64, 2)
+            oprot.writeI64(self.createTime)
             oprot.writeFieldEnd()
         oprot.writeFieldStop()
         oprot.writeStructEnd()
@@ -16939,6 +17030,7 @@ all_structs.append(getSimulationExecutionLog_args)
 getSimulationExecutionLog_args.thrift_spec = (
     None,  # 0
     (1, TType.I64, 'timestamp', None, None, ),  # 1
+    (2, TType.I64, 'createTime', None, None, ),  # 2
 )
 
 
@@ -17528,134 +17620,6 @@ class uploadSimulationReport_result(object):
         return not (self == other)
 all_structs.append(uploadSimulationReport_result)
 uploadSimulationReport_result.thrift_spec = (
-    (0, TType.STRUCT, 'success', [Result, None], None, ),  # 0
-)
-
-
-class simulationPackageDownload_args(object):
-    """
-    Attributes:
-     - timestamp
-
-    """
-    thrift_spec = None
-
-
-    def __init__(self, timestamp = None,):
-        self.timestamp = timestamp
-
-    def read(self, iprot):
-        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
-            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
-            return
-        iprot.readStructBegin()
-        while True:
-            (fname, ftype, fid) = iprot.readFieldBegin()
-            if ftype == TType.STOP:
-                break
-            if fid == 1:
-                if ftype == TType.I64:
-                    self.timestamp = iprot.readI64()
-                else:
-                    iprot.skip(ftype)
-            else:
-                iprot.skip(ftype)
-            iprot.readFieldEnd()
-        iprot.readStructEnd()
-
-    def write(self, oprot):
-        self.validate()
-        if oprot._fast_encode is not None and self.thrift_spec is not None:
-            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
-            return
-        oprot.writeStructBegin('simulationPackageDownload_args')
-        if self.timestamp is not None:
-            oprot.writeFieldBegin('timestamp', TType.I64, 1)
-            oprot.writeI64(self.timestamp)
-            oprot.writeFieldEnd()
-        oprot.writeFieldStop()
-        oprot.writeStructEnd()
-
-    def validate(self):
-        return
-
-    def __repr__(self):
-        L = ['%s=%r' % (key, value)
-             for key, value in self.__dict__.items()]
-        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
-
-    def __eq__(self, other):
-        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
-
-    def __ne__(self, other):
-        return not (self == other)
-all_structs.append(simulationPackageDownload_args)
-simulationPackageDownload_args.thrift_spec = (
-    None,  # 0
-    (1, TType.I64, 'timestamp', None, None, ),  # 1
-)
-
-
-class simulationPackageDownload_result(object):
-    """
-    Attributes:
-     - success
-
-    """
-    thrift_spec = None
-
-
-    def __init__(self, success = None,):
-        self.success = success
-
-    def read(self, iprot):
-        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
-            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
-            return
-        iprot.readStructBegin()
-        while True:
-            (fname, ftype, fid) = iprot.readFieldBegin()
-            if ftype == TType.STOP:
-                break
-            if fid == 0:
-                if ftype == TType.STRUCT:
-                    self.success = Result()
-                    self.success.read(iprot)
-                else:
-                    iprot.skip(ftype)
-            else:
-                iprot.skip(ftype)
-            iprot.readFieldEnd()
-        iprot.readStructEnd()
-
-    def write(self, oprot):
-        self.validate()
-        if oprot._fast_encode is not None and self.thrift_spec is not None:
-            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
-            return
-        oprot.writeStructBegin('simulationPackageDownload_result')
-        if self.success is not None:
-            oprot.writeFieldBegin('success', TType.STRUCT, 0)
-            self.success.write(oprot)
-            oprot.writeFieldEnd()
-        oprot.writeFieldStop()
-        oprot.writeStructEnd()
-
-    def validate(self):
-        return
-
-    def __repr__(self):
-        L = ['%s=%r' % (key, value)
-             for key, value in self.__dict__.items()]
-        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
-
-    def __eq__(self, other):
-        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
-
-    def __ne__(self, other):
-        return not (self == other)
-all_structs.append(simulationPackageDownload_result)
-simulationPackageDownload_result.thrift_spec = (
     (0, TType.STRUCT, 'success', [Result, None], None, ),  # 0
 )
 

@@ -21,6 +21,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import javax.servlet.ServletOutputStream;
 import javax.servlet.http.HttpServletResponse;
 import java.io.BufferedOutputStream;
 import java.nio.file.Files;
@@ -73,6 +74,57 @@ public class ProjectExportService {
     /**
      * 导出项目资源为ZIP压缩包
      */
+    public void exportAllProject(ProjectExportRequest request, HttpServletResponse response) throws Exception {
+        request.setIncludeAlgorithms(true);
+        request.setIncludeModels(true);
+        request.setIncludeDataCsv(true);
+        request.setIncludeSimulationArchives(true);
+        exportProject(request, response);
+    }
+
+    public void exportResource(String projectName, String resourceType, HttpServletResponse response) throws Exception {
+        ProjectExportRequest request = new ProjectExportRequest();
+        request.setProjectName(projectName);
+        request.setIncludeAlgorithms(false);
+        request.setIncludeModels(false);
+        request.setIncludeDataCsv(false);
+        request.setIncludeSimulationArchives(false);
+
+        String normalizedType = resourceType == null ? "" : resourceType.trim().toLowerCase(Locale.ROOT);
+        switch (normalizedType) {
+            case "algorithm":
+            case "algorithms":
+                // 算法依赖数据和模型
+                request.setIncludeAlgorithms(true);
+                request.setIncludeModels(true);
+                request.setIncludeDataCsv(true);
+                break;
+            case "model":
+            case "models":
+                // 模型单独导出
+                request.setIncludeModels(true);
+                break;
+            case "data":
+            case "datas":
+                // 数据单独导出
+                request.setIncludeDataCsv(true);
+                break;
+            case "simulation":
+            case "simulations":
+                // 仿真全选
+                request.setIncludeAlgorithms(true);
+                request.setIncludeModels(true);
+                request.setIncludeDataCsv(true);
+                request.setIncludeSimulationArchives(true);
+                break;
+            default:
+                throw new IllegalArgumentException("不支持的资源类型: " + resourceType);
+        }
+
+        request.setResourceType(normalizedType);
+        exportProject(request, response);
+    }
+
     public void exportProject(ProjectExportRequest request, HttpServletResponse response) throws Exception {
         String projectName = request.getProjectName();
 
@@ -87,17 +139,18 @@ public class ProjectExportService {
         }
 
         // 2. 设置响应头
-        String zipFileName = projectName + "_export_" + System.currentTimeMillis() + ".zip";
+        String resourceType = request.getResourceType();
+        String typeSuffix = (resourceType != null && !resourceType.isEmpty()) ? "_" + resourceType : "";
+        String zipFileName = projectName + typeSuffix + "_export_" + System.currentTimeMillis() + ".zip";
         response.setContentType("application/zip");
         response.setCharacterEncoding("UTF-8");
         response.setHeader("Content-Disposition",
                 "attachment; filename=\"" + zipFileName + "\"");
         response.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
 
-        // 3. 创建ZIP输出流
-        ZipOutputStream zos = new ZipOutputStream(new BufferedOutputStream(response.getOutputStream()));
-
-        try {
+        // 3. 获取输出流并创建ZIP输出流
+        ServletOutputStream outputStream = response.getOutputStream();
+        try (ZipOutputStream zos = new ZipOutputStream(new BufferedOutputStream(outputStream))) {
             // 4. 写入清单文件
             writeManifest(zos, project, request);
 
@@ -127,6 +180,7 @@ public class ProjectExportService {
                 log.warn("项目 {} 导出时未选择任何资源类型", projectName);
             }
 
+            zos.flush();
             zos.finish();
             log.info("项目 {} 导出完成，共导出 {} 项资源", projectName, exportedCount);
 
@@ -146,6 +200,7 @@ public class ProjectExportService {
         manifest.put("projectName", project.getName());
         manifest.put("originalOwner", project.getOwner());
         manifest.put("exportUser", AuthUtil.getCurrentUsername());
+        manifest.put("resourceType", request.getResourceType());
         manifest.put("includeAlgorithms", request.getIncludeAlgorithms());
         manifest.put("includeModels", request.getIncludeModels());
         manifest.put("includeDataCsv", request.getIncludeDataCsv());
@@ -244,7 +299,7 @@ public class ProjectExportService {
                 String version = parts[3].replace('_', '.');
 
                 // 查询元数据
-                ModelMetaEntity meta = modelFileService.queryMeta(name, version);
+                ModelMetaEntity meta = modelFileService.queryMeta(name, version, project.getName());
                 if (meta == null) {
                     log.warn("模型元数据不存在: {} v{}", name, version);
                     continue;
@@ -256,7 +311,7 @@ public class ProjectExportService {
                         metaJson.getBytes(StandardCharsets.UTF_8));
 
                 // 下载并写入模型二进制文件
-                byte[] fileData = modelFileService.downloadModel(name, version);
+                byte[] fileData = modelFileService.downloadModel(name, version, project.getName());
                 writeZipEntry(zos, "models/files/" + meta.getFileName(), fileData);
 
                 count++;
@@ -314,7 +369,7 @@ public class ProjectExportService {
             List<String> measurements = entry.getValue();
 
             // 导出该前缀对应的数据档案元数据
-            DataArchiveEntity archive = dataArchiveService.findByName(prefix);
+            DataArchiveEntity archive = findDataArchiveForExport(project.getName(), prefix);
             if (archive != null) {
                 try {
                     String archiveJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(archive);
@@ -352,6 +407,21 @@ public class ProjectExportService {
             }
         }
         return count;
+    }
+
+    private DataArchiveEntity findDataArchiveForExport(String projectName, String dataPath) {
+        try {
+            List<DataArchiveEntity> archives = dataArchiveService.queryArchives(null, null, projectName, null, null, null);
+            for (DataArchiveEntity archive : archives) {
+                if (dataPath.equals(archive.getName())
+                        || (archive.getConfig() != null && archive.getConfig().contains(dataPath))) {
+                    return archive;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("按项目查询数据档案失败: project={}, dataPath={}", projectName, dataPath, e);
+        }
+        return dataArchiveService.findByName(dataPath);
     }
 
     /**
@@ -444,7 +514,7 @@ public class ProjectExportService {
                 // 查询该档案的执行记录
                 List<com.tsinghua.entity.SimulationExecutionEntity> executions =
                         simulationExecutionService.queryExecutions(
-                                archive.getName(), null, null, null, 1, 10000);
+                                archive.getName(), null, null, null, null, 1, 10000);
 
                 if (executions != null && !executions.isEmpty()) {
                     for (com.tsinghua.entity.SimulationExecutionEntity execution : executions) {
@@ -459,6 +529,23 @@ public class ProjectExportService {
                             Path taskDir = java.nio.file.Paths.get("project", projectName, "job", "simulation", String.valueOf(execution.getTimestamp()));
                             if (java.nio.file.Files.exists(taskDir)) {
                                 exportDirectoryToZip(zos, taskDir, archiveDir + "/executions/" + execution.getTimestamp() + "_files");
+                            } else {
+                                // 尝试检查是否是旧的一级目录结构（兼容性）
+                                Path oldTaskDir = java.nio.file.Paths.get("project", projectName, "job", "simulation");
+                                if (java.nio.file.Files.exists(oldTaskDir)) {
+                                    try (java.util.stream.Stream<Path> stream = java.nio.file.Files.list(oldTaskDir)) {
+                                        stream.filter(path -> path.getFileName().toString().equals(String.valueOf(execution.getTimestamp())))
+                                              .forEach(dir -> {
+                                                  try {
+                                                      exportDirectoryToZip(zos, dir, archiveDir + "/executions/" + execution.getTimestamp() + "_files");
+                                                  } catch (IOException e) {
+                                                      log.warn("导出任务目录失败: {}", dir, e);
+                                                  }
+                                              });
+                                    } catch (IOException e) {
+                                        log.warn("列出任务目录失败", e);
+                                    }
+                                }
                             }
                         }
                     }

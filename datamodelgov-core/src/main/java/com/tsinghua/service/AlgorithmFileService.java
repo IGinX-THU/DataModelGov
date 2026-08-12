@@ -142,12 +142,16 @@ public class AlgorithmFileService {
      * 3. 校验MD5确保文件完整性
      */
     public byte[] downloadAlgorithm(String name, String version) throws Exception {
-        log.info("开始下载算法: {} v{}", name, version);
+        return downloadAlgorithm(name, version, null);
+    }
+
+    public byte[] downloadAlgorithm(String name, String version, String projectName) throws Exception {
+        log.info("开始下载算法: {} v{} 项目名: {}", name, version, projectName);
 
         // 1. 先查询元数据验证算法信息
-        AlgorithmMetaEntity algorithmMeta = queryMeta(name, version);
+        AlgorithmMetaEntity algorithmMeta = queryMeta(name, version, projectName);
         if (algorithmMeta == null) {
-            throw new Exception("未找到指定的算法元数据: " + name + " v" + version);
+            throw new Exception("未找到指定的算法元数据: " + name + " v" + version + " 项目 " + projectName);
         }
 
         // 验证元数据完整性
@@ -229,19 +233,26 @@ public class AlgorithmFileService {
      * 提取算法文件（返回文件列表给前端）
      */
     public List<Map<String, Object>> extractAlgorithmFile(String algorithmName, String algorithmVersion, Path taskDir) throws Exception {
+        return extractAlgorithmFile(algorithmName, algorithmVersion, ProjectContext.getCurrentProject(null), taskDir);
+    }
+
+    /**
+     * 提取算法文件（返回文件列表给前端，带项目名）
+     */
+    public List<Map<String, Object>> extractAlgorithmFile(String algorithmName, String algorithmVersion, String projectName, Path taskDir) throws Exception {
         if (!StringUtils.hasText(algorithmName) || !StringUtils.hasText(algorithmVersion)) {
             throw new RuntimeException("算法名称或版本为空");
         }
 
-        log.info("开始下载算法: {} 版本 {}", algorithmName, algorithmVersion);
+        log.info("开始下载算法: {} 版本 {} 项目名: {}", algorithmName, algorithmVersion, projectName);
 
         // 获取算法元数据以获取正确的文件名
-        AlgorithmMetaEntity algorithmMeta = queryMeta(algorithmName, algorithmVersion);
+        AlgorithmMetaEntity algorithmMeta = queryMeta(algorithmName, algorithmVersion, projectName);
         if (algorithmMeta == null) {
-            throw new RuntimeException("未找到算法元数据: " + algorithmName + " 版本 " + algorithmVersion);
+            throw new RuntimeException("未找到算法元数据: " + algorithmName + " 版本 " + algorithmVersion + " 项目 " + projectName);
         }
 
-        byte[] algorithmData = downloadAlgorithm(algorithmName, algorithmVersion);
+        byte[] algorithmData = downloadAlgorithm(algorithmName, algorithmVersion, projectName);
         String fileName = algorithmMeta.getFileName();
         if (fileName == null || fileName.trim().isEmpty()) {
             throw new RuntimeException("算法文件名为空: " + algorithmName + " 版本 " + algorithmVersion);
@@ -341,7 +352,7 @@ public class AlgorithmFileService {
     public void saveAlgorithmMetadata(AlgorithmMetaEntity algorithmMetaDto) throws Exception {
 
         // 自动添加项目名称前缀
-        String projectName = com.tsinghua.util.ProjectContext.getCurrentProject("unknown");
+        String projectName = StringUtils.hasText(algorithmMetaDto.getProjectName()) ? algorithmMetaDto.getProjectName() : com.tsinghua.util.ProjectContext.getCurrentProject("unknown");
         if (projectName != null && !projectName.isEmpty()) {
             String outputTable = algorithmMetaDto.getOutputTable();
             if (outputTable != null && !outputTable.startsWith(projectName + ".")) {
@@ -351,9 +362,11 @@ public class AlgorithmFileService {
         }
 
         List<Point> metaPoints = new ArrayList<>();
-        AlgorithmMetaEntity queryMeta = queryMeta(algorithmMetaDto.getName(), algorithmMetaDto.getVersion());
+        AlgorithmMetaEntity queryMeta = queryMeta(algorithmMetaDto.getName(), algorithmMetaDto.getVersion(), algorithmMetaDto.getProjectName());
         long timestamp;
-        if (queryMeta != null && queryMeta.getTimestamp() != null) {
+        if (algorithmMetaDto.getTimestamp() != null) {
+            timestamp = algorithmMetaDto.getTimestamp();
+        } else if (queryMeta != null && queryMeta.getTimestamp() != null) {
             timestamp = queryMeta.getTimestamp();
         } else {
             timestamp = System.currentTimeMillis();
@@ -392,12 +405,23 @@ public class AlgorithmFileService {
     }
 
     public AlgorithmMetaEntity queryMeta(String name, String version) {
+        return queryMeta(name, version, ProjectContext.getCurrentProject(null));
+    }
+
+    public AlgorithmMetaEntity queryMeta(String name, String version, String projectName) {
         try {
-            String sql = "select * from %s where name = '%s' and version='%s';";
+            String sql;
+            if (StringUtils.hasText(projectName)) {
+                sql = "select * from %s where name = '%s' and version='%s' and projectName='%s';";
+            } else {
+                sql = "select * from %s where name = '%s' and version='%s';";
+            }
         String metaBasePath = META_PREFIX;
         String safeVersion = version.replace('.', '_');
         // iginxSession.openSession();
-        QueryDataSet res =  iginxSession.executeQuery(String.format(sql, metaBasePath, name, safeVersion));
+        QueryDataSet res = StringUtils.hasText(projectName)
+                ? iginxSession.executeQuery(String.format(sql, metaBasePath, name, safeVersion, projectName))
+                : iginxSession.executeQuery(String.format(sql, metaBasePath, name, safeVersion));
         List<String> head = res.getColumnList();
         Object[] row = res.nextRow();
         Map<String, Object> rs = new LinkedHashMap<>();
@@ -589,21 +613,32 @@ public class AlgorithmFileService {
         }
     }
 
-    public List<AlgorithmMetaEntity> queryMetaList(String name) {
+    public List<AlgorithmMetaEntity> queryMetaList(String name, String projectName) {
         try {
-            String sql = "select * from %s where name = '%s' ORDER BY timestamp ;";
-            // iginxSession.openSession();
-            SessionExecuteSqlResult res =  iginxSession.executeSql(String.format(sql, META_PREFIX, name));
-            List<Map<String, Object>> records = ConvertUtil.getRecords(res);
-            // iginxSession.closeSession();
+            String sql;
+            if (projectName != null && !projectName.trim().isEmpty()) {
+                sql = "select * from %s where name = '%s' and projectName = '%s' ORDER BY timestamp ;";
+                SessionExecuteSqlResult res =  iginxSession.executeSql(String.format(sql, META_PREFIX, name, projectName));
+                List<Map<String, Object>> records = ConvertUtil.getRecords(res);
 
-            return records.stream()
-                    .map(rs -> {
-                        AlgorithmMetaEntity dto = new AlgorithmMetaEntity();
-                        // 根据控制台输出的列名进行映射
-                        rs.forEach((k,v) -> setDtoField(dto, k, v));
-                        return dto;
-                    }).collect(Collectors.toList());
+                return records.stream()
+                        .map(rs -> {
+                            AlgorithmMetaEntity dto = new AlgorithmMetaEntity();
+                            rs.forEach((k,v) -> setDtoField(dto, k, v));
+                            return dto;
+                        }).collect(Collectors.toList());
+            } else {
+                sql = "select * from %s where name = '%s' ORDER BY timestamp ;";
+                SessionExecuteSqlResult res =  iginxSession.executeSql(String.format(sql, META_PREFIX, name));
+                List<Map<String, Object>> records = ConvertUtil.getRecords(res);
+
+                return records.stream()
+                        .map(rs -> {
+                            AlgorithmMetaEntity dto = new AlgorithmMetaEntity();
+                            rs.forEach((k,v) -> setDtoField(dto, k, v));
+                            return dto;
+                        }).collect(Collectors.toList());
+            }
         } catch (Exception e) {
             log.error("查询失败", e);
             return null;
@@ -613,12 +648,12 @@ public class AlgorithmFileService {
     /**
      * 移除算法资产
      */
-    public void deleteAlgorithm(String name, String version) {
+    public void deleteAlgorithm(String name, String version, String projectName) {
         try {
             List<String> measurements = ConvertUtil.iginxFieldNamesConvert(AlgorithmMetaEntity.class, META_PREFIX);
             if (StringUtils.hasText(version) && !"null".equals(version)) {
-                String projectName = ProjectContext.getCurrentProject("unknown");
-                String storagePath = buildStoragePath(projectName, name, version);
+                String actualProjectName = StringUtils.hasText(projectName) ? projectName : ProjectContext.getCurrentProject("unknown");
+                String storagePath = buildStoragePath(actualProjectName, name, version);
                 iginxClient.getDeleteClient().deleteMeasurement(storagePath);
                 AlgorithmMetaEntity queryMeta = queryMeta(name, version);
                 if (queryMeta != null && queryMeta.getTimestamp() != null) {
@@ -627,7 +662,8 @@ public class AlgorithmFileService {
                 }
                 dataPermissionService.deleteByTablePrefix(storagePath);
             } else {
-                List<AlgorithmMetaEntity> queryMetas = queryMetaList(name);
+                String actualProjectName = StringUtils.hasText(projectName) ? projectName : ProjectContext.getCurrentProject("unknown");
+                List<AlgorithmMetaEntity> queryMetas = queryMetaList(name, actualProjectName);
                 List<String> storagePaths = queryMetas.stream()
                         .map(meta ->
                                 buildStoragePath(meta.getProjectName(), meta.getName(), meta.getVersion())
@@ -644,6 +680,13 @@ public class AlgorithmFileService {
         } catch (Exception e) {
             log.error("移除算法资产失败", e);
         }
+    }
+
+    /**
+     * 移除算法资产（兼容旧版本）
+     */
+    public void deleteAlgorithm(String name, String version) {
+        deleteAlgorithm(name, version, null);
     }
 
     /**

@@ -17,6 +17,7 @@ class SimulationArchiveDetail extends HTMLElement {
         this.isEditMode = false;
         this.executionResult = null;
         this.isRunning = false;
+        this.currentExecutionTimestamp = null;
     }
 
     async connectedCallback() {
@@ -119,9 +120,30 @@ class SimulationArchiveDetail extends HTMLElement {
     }
 
     showAdd() {
+        // 立即停止自动刷新和清除当前档案
+        this.stopAutoRefreshLog();
         this.currentArchive = null;
         this.isEditMode = true;
-        if (!this.shadowRoot) { this.style.display = 'block'; return; }
+
+        if (!this.shadowRoot) {
+            this.style.display = 'block';
+            // 如果shadowRoot还未加载，等待加载后再初始化
+            setTimeout(() => {
+                if (this.shadowRoot) {
+                    this.initializeAddMode();
+                }
+            }, 100);
+            return;
+        }
+        this.initializeAddMode();
+    }
+
+    initializeAddMode() {
+        if (!this.shadowRoot) return;
+
+        // 停止自动刷新日志
+        this.stopAutoRefreshLog();
+
         const $ = id => this.shadowRoot.getElementById(id);
 
         const username = window.localStorage.getItem('username');
@@ -139,6 +161,15 @@ class SimulationArchiveDetail extends HTMLElement {
         setText('detailUpdateTime', '-');
         setText('detailExecutionCount', '0');
 
+        // 清空输入框，避免残留上一个档案的数据
+        const nameInput = $('detailNameInput'); if (nameInput) nameInput.value = '';
+        const descInput = $('detailDescInput'); if (descInput) descInput.value = '';
+        const cronInput = $('detailScheduleCronInput'); if (cronInput) cronInput.value = '';
+        const urlInput = $('outputApiUrl'); if (urlInput) urlInput.value = '';
+        const methodInput = $('outputApiMethod'); if (methodInput) methodInput.value = 'POST';
+        const headersInput = $('outputApiHeaders'); if (headersInput) headersInput.value = '';
+        const statusInput = $('detailStatusInput'); if (statusInput) statusInput.value = 'true';
+
         this.nodes = [];
         this.edges = [];
         this.selectedNode = null;
@@ -147,9 +178,41 @@ class SimulationArchiveDetail extends HTMLElement {
         this.edgeCounter = 0;
         this.executionResult = null;
         this.isRunning = false;
+        this.currentExecutionTimestamp = null;
+        this.currentResultTab = 'text';
+        this.currentCsvNodeId = null;
+        this.currentTextNodeId = null;
         this.renderGraph();
         this.updateNodeCheckList();
         this.updateExecStatus();
+
+        // 重置全选复选框为选中状态
+        const selectAllCheckbox = $('selectAllNodes');
+        if (selectAllCheckbox) selectAllCheckbox.checked = true;
+
+        // 清除执行日志和结果
+        const logContentPre = this.shadowRoot.querySelector('#logContent pre');
+        if (logContentPre) logContentPre.textContent = '暂无日志信息';
+
+        // 隐藏执行结果相关区域
+        const resultTabs = $('resultTabs');
+        if (resultTabs) resultTabs.style.display = 'none';
+        const resultActions = $('resultActions');
+        if (resultActions) resultActions.style.display = 'none';
+        const textResultArea = $('textResultArea');
+        if (textResultArea) textResultArea.style.display = 'none';
+        const csvResultArea = $('csvResultArea');
+        if (csvResultArea) csvResultArea.style.display = 'none';
+
+        // 清空结果内容
+        const textContentWrapper = $('textContentWrapper');
+        if (textContentWrapper) textContentWrapper.innerHTML = '<div class="empty-hint">暂无输出数据</div>';
+        const csvTableWrapper = $('csvTableWrapper');
+        if (csvTableWrapper) csvTableWrapper.innerHTML = '<div class="empty-hint">暂无CSV数据</div>';
+        const textNodeTabs = $('textNodeTabs');
+        if (textNodeTabs) textNodeTabs.innerHTML = '';
+        const csvNodeTabs = $('csvNodeTabs');
+        if (csvNodeTabs) csvNodeTabs.innerHTML = '';
 
         const fields = ['detailName', 'detailDesc', 'detailScheduleCron', 'detailOutputApiConfig', 'detailStatus'];
         fields.forEach(field => {
@@ -252,6 +315,7 @@ class SimulationArchiveDetail extends HTMLElement {
 
         this.isRunning = archive.isRunning || false;
         this.executionResult = null;
+        this.currentExecutionTimestamp = null;
         this.isEditMode = false;
         this.renderGraph();
         this.updateNodeCheckList();
@@ -269,6 +333,81 @@ class SimulationArchiveDetail extends HTMLElement {
         this.loadLatestExecution();
     }
 
+    loadArchiveDataWithoutExecution(archive) {
+        if (!this.shadowRoot) return;
+        const $ = id => this.shadowRoot.getElementById(id);
+        const setText = (id, text) => { const el = $(id); if (el) el.textContent = text; };
+        setText('detailTitle', archive.name || '仿真档案详情');
+        setText('detailName', archive.name || '-');
+        setText('detailDesc', archive.description || '-');
+        setText('detailProjectName', archive.projectName || '-');
+        setText('detailOwner', archive.owner || '-');
+        setText('detailScheduleCron', archive.scheduleCron || '未配置');
+
+        // 特殊处理 outputApiConfig 显示
+        const apiConfigEl = $('detailOutputApiConfig');
+        if (apiConfigEl) {
+            if (archive.outputApiConfig) {
+                try {
+                    const config = JSON.parse(archive.outputApiConfig);
+                    apiConfigEl.textContent = `${config.method || 'POST'} ${config.url || '未配置'}`;
+                } catch (e) {
+                    apiConfigEl.textContent = '配置格式错误';
+                }
+            } else {
+                apiConfigEl.textContent = '未配置';
+            }
+        }
+
+        setText('detailStatus', archive.status ? '启用' : '禁用');
+        setText('detailUpdateTime', archive.updateTime ? new Date(archive.updateTime).toLocaleString('zh-CN') : '-');
+        setText('detailExecutionCount', archive.executionCount || 0);
+
+        // 先清空旧数据，避免残留
+        this.nodes = [];
+        this.edges = [];
+        this.nodeCounter = 0;
+        this.edgeCounter = 0;
+
+        if (archive.graphJson) {
+            try {
+                const graphData = JSON.parse(archive.graphJson);
+                this.nodes = graphData.nodes || [];
+                this.edges = graphData.edges || [];
+                this.nodeCounter = this.nodes.reduce((max, n) => {
+                    const num = parseInt((n.nodeId || '').replace('node_', '')) || 0;
+                    return num > max ? num : max;
+                }, 0);
+                this.edgeCounter = this.edges.reduce((max, e) => {
+                    const num = parseInt((e.edgeId || '').replace('edge_', '')) || 0;
+                    return num > max ? num : max;
+                }, 0);
+            } catch (e) {
+                console.error('解析图数据失败:', e);
+                this.nodes = [];
+                this.edges = [];
+            }
+        }
+
+        this.isRunning = archive.isRunning || false;
+        this.executionResult = null;
+        this.currentExecutionTimestamp = null;
+        this.isEditMode = false;
+        this.renderGraph();
+        this.updateNodeCheckList();
+        this.updateExecStatus();
+
+        // 详情页隐藏工具栏
+        const toolbar = $('graphToolbar');
+        if (toolbar) toolbar.style.display = 'none';
+
+        // 详情页显示执行面板
+        const execPanel = this.shadowRoot.querySelector('.detail-section:nth-child(2)');
+        if (execPanel) execPanel.style.display = 'block';
+
+        // 不加载执行记录和日志
+    }
+
     async loadLatestExecution() {
         if (!this.currentArchive) return;
         try {
@@ -282,13 +421,45 @@ class SimulationArchiveDetail extends HTMLElement {
                     this.displayResult(result.data.execution.result);
                 } else {
                     console.log('No execution result found');
+                    // 未找到执行结果，清除结果显示
+                    this.clearResultDisplay();
                 }
+            } else {
+                // 接口返回错误，清除结果显示
+                this.clearResultDisplay();
             }
             // Load execution log
             await this.refreshLog();
         } catch (e) {
             console.error('加载最新执行记录失败:', e);
+            // 发生错误时也清除结果显示
+            this.clearResultDisplay();
         }
+    }
+
+    clearResultDisplay() {
+        if (!this.shadowRoot) return;
+        const $ = id => this.shadowRoot.getElementById(id);
+
+        // 隐藏执行结果相关区域
+        const resultTabs = $('resultTabs');
+        if (resultTabs) resultTabs.style.display = 'none';
+        const resultActions = $('resultActions');
+        if (resultActions) resultActions.style.display = 'none';
+        const textResultArea = $('textResultArea');
+        if (textResultArea) textResultArea.style.display = 'none';
+        const csvResultArea = $('csvResultArea');
+        if (csvResultArea) csvResultArea.style.display = 'none';
+
+        // 清空结果内容
+        const textContentWrapper = $('textContentWrapper');
+        if (textContentWrapper) textContentWrapper.innerHTML = '<div class="empty-hint">暂无输出数据</div>';
+        const csvTableWrapper = $('csvTableWrapper');
+        if (csvTableWrapper) csvTableWrapper.innerHTML = '<div class="empty-hint">暂无CSV数据</div>';
+        const textNodeTabs = $('textNodeTabs');
+        if (textNodeTabs) textNodeTabs.innerHTML = '';
+        const csvNodeTabs = $('csvNodeTabs');
+        if (csvNodeTabs) csvNodeTabs.innerHTML = '';
     }
 
     // === Edit Mode ===
@@ -318,11 +489,11 @@ class SimulationArchiveDetail extends HTMLElement {
         if (apiConfigV && apiConfigDiv) {
             apiConfigV.style.display = 'none';
             apiConfigDiv.style.display = 'block';
-            // 解析JSON配置
+            // 直接从currentArchive获取原始JSON配置，而不是从显示文本解析
             let config = {};
             try {
-                if (apiConfigV.textContent && apiConfigV.textContent !== '-' && apiConfigV.textContent !== '未配置') {
-                    config = JSON.parse(apiConfigV.textContent);
+                if (this.currentArchive && this.currentArchive.outputApiConfig) {
+                    config = JSON.parse(this.currentArchive.outputApiConfig);
                 }
             } catch (e) {
                 console.warn('解析API配置失败', e);
@@ -394,6 +565,25 @@ class SimulationArchiveDetail extends HTMLElement {
         const name = $('detailNameInput').value.trim();
         if (!name) { this.showToast('请输入档案名称', 'error'); return; }
 
+        // 验证 Headers 格式
+        let headers = {};
+        const headersInput = $('outputApiHeaders').value.trim();
+        if (headersInput) {
+            try {
+                headers = JSON.parse(headersInput);
+            } catch (e) {
+                this.showToast('输出API配置的Headers格式不正确，请输入有效的JSON格式', 'error');
+                return;
+            }
+        }
+
+        // 验证 Cron 表达式格式
+        const scheduleCron = $('detailScheduleCronInput').value.trim();
+        if (scheduleCron && !this.isValidCronExpression(scheduleCron)) {
+            this.showToast('调度配置的Cron表达式格式不正确', 'error');
+            return;
+        }
+
         try {
             if (window.showGlobalLoading) window.showGlobalLoading('正在保存...');
             const username = window.localStorage.getItem('username');
@@ -411,15 +601,16 @@ class SimulationArchiveDetail extends HTMLElement {
                 outputApiConfig: JSON.stringify({
                     url: $('outputApiUrl').value.trim(),
                     method: $('outputApiMethod').value,
-                    headers: $('outputApiHeaders').value.trim() ? JSON.parse($('outputApiHeaders').value.trim()) : {}
+                    headers: headers
                 })
             };
 
             const result = await window.AppConfig.post('simulationArchives', 'save', archiveData);
             if (result.code === 200) {
                 this.showToast('保存成功');
-                this.currentArchive = { ...this.currentArchive, ...archiveData };
-                this.loadArchiveData(this.currentArchive);
+                this.currentArchive = result.data; // 使用后端返回的数据，包含正确的createTime
+                // 新增保存后不加载执行记录，只加载基本信息
+                this.loadArchiveDataWithoutExecution(this.currentArchive);
                 this.cancelEdit();
             } else {
                 this.showToast(result.message || '保存失败', 'error');
@@ -554,21 +745,23 @@ class SimulationArchiveDetail extends HTMLElement {
 
             g.addEventListener('mousedown', e => {
                 if (this.isAddingEdge) { this.handleEdgeClick(node.nodeId); return; }
-                if (!this.isEditMode) { this.selectNode(node.nodeId); e.stopPropagation(); return; }
-                draggingNode = node;
-                dragStartX = e.clientX - (node.positionX || 100);
-                dragStartY = e.clientY - (node.positionY || 100);
-                this.selectNode(node.nodeId);
-                e.stopPropagation();
+                if (this.isEditMode) {
+                    draggingNode = node;
+                    dragStartX = e.clientX - (node.positionX || 100);
+                    dragStartY = e.clientY - (node.positionY || 100);
+                    this.selectNode(node.nodeId);
+                    e.stopPropagation();
+                }
+                // 详情模式下不处理mousedown，让click事件处理
             });
 
             g.addEventListener('click', e => {
-                this.selectNode(node.nodeId);
-                e.stopPropagation();
-            });
-
-            g.addEventListener('dblclick', e => {
-                if (this.isEditMode) this.showNodeModal(node);
+                if (this.isEditMode) {
+                    this.selectNode(node.nodeId);
+                } else {
+                    // 详情模式下单击节点跳转到算法详情页
+                    this.navigateToAlgorithmDetail(node);
+                }
                 e.stopPropagation();
             });
 
@@ -666,6 +859,35 @@ class SimulationArchiveDetail extends HTMLElement {
             if (checkbox) {
                 checkbox.checked = !checkbox.checked;
             }
+        }
+    }
+
+    navigateToAlgorithmDetail(node) {
+        if (!node.algorithmName) {
+            this.showToast('该节点未配置算法', 'warning');
+            return;
+        }
+
+        // 获取projectName，新建模式下从localStorage获取当前项目
+        let projectName = this.currentArchive?.projectName || null;
+        if (!projectName) {
+            const username = window.localStorage.getItem('username');
+            const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
+            projectName = cachedProject?.name || null;
+        }
+
+        const algorithmInfo = {
+            name: node.algorithmName,
+            version: node.algorithmVersion || 'latest',
+            fullPath: projectName ? `algorithms_system.${projectName}.${node.algorithmName}.${node.algorithmVersion}` : null
+        };
+
+        const algorithmDetail = document.getElementById('algorithmDetail');
+        if (algorithmDetail && typeof algorithmDetail.show === 'function') {
+            // 传入true表示从仿真档案详情页跳转过来
+            algorithmDetail.show(algorithmInfo, true);
+        } else {
+            this.showToast('算法详情组件未找到', 'error');
         }
     }
     selectEdge(edgeId) {
@@ -781,15 +1003,25 @@ class SimulationArchiveDetail extends HTMLElement {
     async loadTimeRangeForAlgorithm(algorithmName, algorithmVersion) {
         try {
             console.log('开始获取算法时间范围:', algorithmName, algorithmVersion);
-            
+
+            // 从当前档案中获取projectName，新建模式下从localStorage获取当前项目
+            let projectName = this.currentArchive?.projectName || null;
+            if (!projectName) {
+                const username = window.localStorage.getItem('username');
+                const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
+                projectName = cachedProject?.name || null;
+            }
+
             // 获取算法元数据
             const metaResult = await window.AppConfig.get('algorithm', 'metas', {
                 name: algorithmName,
-                version: algorithmVersion
+                version: algorithmVersion,
+                projectName: projectName
             });
             
             if (!metaResult.success || !metaResult.data) {
                 console.warn('获取算法元数据失败');
+                this.showToast('请先编辑算法档案', 'warning');
                 return;
             }
             
@@ -798,7 +1030,7 @@ class SimulationArchiveDetail extends HTMLElement {
             const inputsBind = algorithmMeta.inputsBind;
             
             if (!tableName) {
-                console.warn('算法未配置数据源表名');
+                this.showToast('算法未绑定数据源，请编辑算法档案', 'warning');
                 return;
             }
             
@@ -878,8 +1110,17 @@ class SimulationArchiveDetail extends HTMLElement {
             const select = this.shadowRoot.getElementById('algorithmSelect');
             if (!select) return;
 
-            // 从/api/algorithm/tree接口获取算法列表
-            const result = await window.AppConfig.get('algorithm', 'tree', {});
+            // 获取仿真档案所属项目，新建模式下从localStorage获取当前项目
+            let archiveProjectName = this.currentArchive?.projectName || null;
+            if (!archiveProjectName) {
+                const username = window.localStorage.getItem('username');
+                const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
+                archiveProjectName = cachedProject?.name || null;
+            }
+            console.log('仿真档案所属项目:', archiveProjectName);
+
+            // 从/api/algorithm/tree接口获取算法列表，传入projectName参数
+            const result = await window.AppConfig.get('algorithm', 'tree', { projectName: archiveProjectName });
             if (!result || !result.data) {
                 console.warn('获取算法树失败');
                 select.innerHTML = '<option value="">请选择算法</option>';
@@ -892,10 +1133,12 @@ class SimulationArchiveDetail extends HTMLElement {
             paths.forEach(path => {
                 if (path && path.startsWith('algorithms_system.')) {
                     const parts = path.split('.');
-                    if (parts.length >= 2) {
-                        // 倒数第二级是算法名，最后一级是版本
-                        const algorithmName = parts[parts.length - 2];
-                        if (algorithmName) {
+                    if (parts.length >= 4) {
+                        // 路径格式：algorithms_system.projectName.algorithmName.version
+                        const projectName = parts[1];
+                        const algorithmName = parts[2];
+                        // 只添加属于仿真档案所属项目的算法
+                        if (archiveProjectName && projectName === archiveProjectName && algorithmName) {
                             algorithmNames.add(algorithmName);
                         }
                     }
@@ -922,8 +1165,17 @@ class SimulationArchiveDetail extends HTMLElement {
         }
 
         try {
-            // 从/api/algorithm/tree接口获取算法版本
-            const result = await window.AppConfig.get('algorithm', 'tree', {});
+            // 获取仿真档案所属项目，新建模式下从localStorage获取当前项目
+            let archiveProjectName = this.currentArchive?.projectName || null;
+            if (!archiveProjectName) {
+                const username = window.localStorage.getItem('username');
+                const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
+                archiveProjectName = cachedProject?.name || null;
+            }
+            console.log('仿真档案所属项目:', archiveProjectName);
+
+            // 从/api/algorithm/tree接口获取算法版本，传入projectName参数
+            const result = await window.AppConfig.get('algorithm', 'tree', { projectName: archiveProjectName });
             if (!result || !result.data) {
                 console.warn('获取算法树失败');
                 versionSelect.innerHTML = '<option value="">获取版本失败</option>';
@@ -936,11 +1188,13 @@ class SimulationArchiveDetail extends HTMLElement {
             paths.forEach(path => {
                 if (path && path.startsWith('algorithms_system.')) {
                     const parts = path.split('.');
-                    if (parts.length >= 2) {
-                        // 倒数第二级是算法名，最后一级是版本
-                        const pathAlgorithmName = parts[parts.length - 2];
-                        const version = parts[parts.length - 1];
-                        if (pathAlgorithmName === algorithmName && version && !versions.includes(version)) {
+                    if (parts.length >= 4) {
+                        // 路径格式：algorithms_system.projectName.algorithmName.version
+                        const projectName = parts[1];
+                        const pathAlgorithmName = parts[2];
+                        const version = parts[3];
+                        // 只添加属于仿真档案所属项目的算法版本
+                        if (archiveProjectName && projectName === archiveProjectName && pathAlgorithmName === algorithmName && version && !versions.includes(version)) {
                             versions.push(version);
                         }
                     }
@@ -981,15 +1235,24 @@ class SimulationArchiveDetail extends HTMLElement {
         node.algorithmName = $('algorithmSelect').value || '';
         node.algorithmVersion = $('algorithmVersion').value || '';
 
-        node.startTime = $('startTime').value ? this.datetimeLocalToMs($('startTime').value) : null;
-        node.endTime = $('endTime').value ? this.datetimeLocalToMs($('endTime').value) : null;
+        const startTime = $('startTime').value ? this.datetimeLocalToMs($('startTime').value) : null;
+        const endTime = $('endTime').value ? this.datetimeLocalToMs($('endTime').value) : null;
+
+        // 验证时间范围
+        if (startTime && endTime && endTime < startTime) {
+            this.showToast('时间范围无效', 'error');
+            return;
+        }
+
+        node.startTime = startTime;
+        node.endTime = endTime;
 
         this.renderGraph();
         this.updateNodeCheckList();
         this.hideNodeModal();
     }
 
-    editAlgorithmArchive() {
+    async editAlgorithmArchive() {
         if (!this.selectedNode) {
             this.showToast('请先在图中选择一个算法节点', 'warning');
             return;
@@ -999,12 +1262,53 @@ class SimulationArchiveDetail extends HTMLElement {
             this.showToast('该节点未配置算法', 'warning');
             return;
         }
-        // Open the algorithm-edit component
-        const algoEdit = document.getElementById('algorithmEdit');
-        if (algoEdit && typeof algoEdit.show === 'function') {
-            algoEdit.show({ name: node.algorithmName, version: node.algorithmVersion });
-        } else {
-            this.showToast('算法编辑组件未加载', 'error');
+        
+        try {
+            // 显示loading
+            if (window.showGlobalLoading) {
+                window.showGlobalLoading('正在加载算法信息...');
+            }
+            
+            // 获取projectName，新建模式下从localStorage获取当前项目
+            let projectName = this.currentArchive?.projectName || null;
+            if (!projectName) {
+                const username = window.localStorage.getItem('username');
+                const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
+                projectName = cachedProject?.name || null;
+            }
+
+            // 先获取完整的算法元数据
+            const algorithmInfo = {
+                name: node.algorithmName,
+                version: node.algorithmVersion,
+                fullPath: projectName ? `algorithms_system.${projectName}.${node.algorithmName}.${node.algorithmVersion}` : null
+            };
+            
+            // 调用API获取完整的算法元数据
+            const result = await window.AppConfig.get('algorithm', 'metas', {
+                name: algorithmInfo.name,
+                version: algorithmInfo.version,
+                projectName: projectName
+            });
+            
+            if (result.success && result.data) {
+                // 使用showWithAlgorithmData方法，传递完整的算法元数据
+                const algoEdit = document.getElementById('algorithmEdit');
+                if (algoEdit && typeof algoEdit.showWithAlgorithmData === 'function') {
+                    algoEdit.showWithAlgorithmData(algorithmInfo, result.data);
+                } else {
+                    this.showToast('算法编辑组件未加载', 'error');
+                }
+            } else {
+                this.showToast('获取算法信息失败: ' + (result.message || '未知错误'), 'error');
+            }
+        } catch (error) {
+            console.error('加载算法信息失败:', error);
+            this.showToast('加载算法信息失败', 'error');
+        } finally {
+            if (window.hideGlobalLoading) {
+                window.hideGlobalLoading();
+            }
         }
     }
 
@@ -1122,11 +1426,20 @@ class SimulationArchiveDetail extends HTMLElement {
             $('edgeSourceField').placeholder = srcNode ? `${srcNode.nodeName} 的输出字段` : '源节点输出文件名';
             $('edgeTargetField').placeholder = tgtNode ? `${tgtNode.nodeName} 的输入字段` : '目标节点输入文件名';
 
+            // 从当前档案中获取projectName，新建模式下从localStorage获取当前项目
+            let projectName = this.currentArchive?.projectName || null;
+            if (!projectName) {
+                const username = window.localStorage.getItem('username');
+                const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
+                projectName = cachedProject?.name || null;
+            }
+
             if (srcNode && srcNode.algorithmName && srcNode.algorithmVersion) {
                 try {
                     const sourceMeta = await window.AppConfig.get('algorithm', 'metas', {
                         name: srcNode.algorithmName,
-                        version: srcNode.algorithmVersion
+                        version: srcNode.algorithmVersion,
+                        projectName: projectName
                     });
                     if (sourceMeta && sourceMeta.success && sourceMeta.data && sourceMeta.data.outputCsvName) {
                         if (!$('edgeSourceField').value) {
@@ -1139,7 +1452,8 @@ class SimulationArchiveDetail extends HTMLElement {
                 try {
                     const targetMeta = await window.AppConfig.get('algorithm', 'metas', {
                         name: tgtNode.algorithmName,
-                        version: tgtNode.algorithmVersion
+                        version: tgtNode.algorithmVersion,
+                        projectName: projectName
                     });
                     if (targetMeta && targetMeta.success && targetMeta.data && targetMeta.data.inputCsvName) {
                         if (!$('edgeTargetField').value) {
@@ -1216,11 +1530,19 @@ class SimulationArchiveDetail extends HTMLElement {
                 .filter(n => n)
                 .map(n => n.nodeName || n.nodeId);
             const predInfo = predecessors.length > 0 ? `<span class="node-pred-info">← ${predecessors.join(', ')}</span>` : '<span class="node-pred-info">（无前驱）</span>';
-            // 如果之前有选择状态，恢复选择；否则默认全选
-            const isChecked = currentSelection.length > 0 ? currentSelection.includes(node.nodeId) : true;
+            // 如果之前有选择状态且节点在之前的选择中，恢复选择；否则默认全选
+            const isChecked = currentSelection.length === 0 || currentSelection.includes(node.nodeId);
             item.innerHTML = `<label><input type="checkbox" data-node-id="${node.nodeId}" ${isChecked ? 'checked' : ''}><span class="node-status ${statusClass}"></span>${node.nodeName || node.nodeId}${predInfo}</label>`;
             list.appendChild(item);
         });
+
+        // 同步全选checkbox的状态
+        const selectAllCheckbox = this.shadowRoot.getElementById('selectAllNodes');
+        if (selectAllCheckbox) {
+            const allCheckboxes = this.shadowRoot.querySelectorAll('.node-check-item input[type="checkbox"]');
+            const allChecked = allCheckboxes.length > 0 && Array.from(allCheckboxes).every(cb => cb.checked);
+            selectAllCheckbox.checked = allChecked;
+        }
     }
 
     getTopologicalSortedNodes() {
@@ -1264,23 +1586,34 @@ class SimulationArchiveDetail extends HTMLElement {
         console.log('选中的节点ID:', selectedNodeIds);
         if (selectedNodeIds.length === 0) { this.showToast('请至少选择一个节点', 'error'); return; }
 
-        // 运行前自动保存图数据，确保后端读到最新的边/节点数据
-        try {
-            const saveData = {
-                createTime: this.currentArchive.createTime,
-                name: this.currentArchive.name,
-                description: this.currentArchive.description || '',
-                projectName: this.currentArchive.projectName || '',
-                owner: this.currentArchive.owner || '',
-                graphJson: JSON.stringify({ nodes: this.nodes, edges: this.edges }),
-                status: this.currentArchive.status !== false,
-                scheduleCron: this.currentArchive.scheduleCron || '',
-                outputApiConfig: this.currentArchive.outputApiConfig || '{}'
-            };
-            await window.AppConfig.post('simulationArchives', 'save', saveData);
-        } catch (e) {
-            console.warn('运行前自动保存图数据失败:', e);
+        // 保存本次执行的节点ID和执行ID，用于判断结果是否属于本次执行和避免竞态条件
+        this.currentExecutionNodeIds = [...selectedNodeIds];
+        this.currentExecutionId = Date.now();
+
+        // 检查选中节点的算法是否存在
+        const missingAlgorithms = await this.checkAlgorithmsExist(selectedNodeIds);
+        if (missingAlgorithms.length > 0) {
+            this.showToast('关联算法缺失: ' + missingAlgorithms.join(', '), 'error');
+            return;
         }
+
+        // 检查是否有重复的执行记录（相同档案、相同时间范围、执行成功）- 已注释
+        // const hasDuplicate = await this.checkDuplicateExecution(selectedNodeIds);
+        // if (hasDuplicate) {
+        //     this.showToast('该仿真档案在相同时间范围内已有成功执行记录，请勿重复提交', 'error');
+        //     return;
+        // }
+
+        // 清空上一次的执行结果，避免残留
+        this.executionResult = null;
+        const textContentWrapper = this.shadowRoot.getElementById('textContentWrapper');
+        if (textContentWrapper) textContentWrapper.innerHTML = '<div class="empty-hint">暂无输出数据</div>';
+        const csvTableWrapper = this.shadowRoot.getElementById('csvTableWrapper');
+        if (csvTableWrapper) csvTableWrapper.innerHTML = '<div class="empty-hint">暂无CSV数据</div>';
+        const textNodeTabs = this.shadowRoot.getElementById('textNodeTabs');
+        if (textNodeTabs) textNodeTabs.innerHTML = '';
+        const csvNodeTabs = this.shadowRoot.getElementById('csvNodeTabs');
+        if (csvNodeTabs) csvNodeTabs.innerHTML = '';
 
         this.isRunning = true;
         this.updateExecStatus();
@@ -1297,6 +1630,7 @@ class SimulationArchiveDetail extends HTMLElement {
             });
             console.log('后端返回结果:', result);
             if (result.code === 200) {
+                this.currentExecutionTimestamp = result.data;
                 this.showToast('仿真已开始运行');
                 this.pollExecutionStatus();
             } else {
@@ -1328,12 +1662,120 @@ class SimulationArchiveDetail extends HTMLElement {
         } catch (e) { this.showToast('停止失败', 'error'); }
     }
 
+    async checkAlgorithmsExist(selectedNodeIds) {
+        try {
+            // 获取当前项目名称
+            let projectName = this.currentArchive?.projectName || null;
+            if (!projectName) {
+                const username = window.localStorage.getItem('username');
+                const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
+                projectName = cachedProject?.name || null;
+            }
+
+            // 获取算法树
+            const result = await window.AppConfig.get('algorithm', 'tree', { projectName: projectName });
+            if (!result || !result.data) {
+                console.warn('获取算法树失败');
+                return [];
+            }
+
+            const paths = Array.isArray(result.data) ? result.data : [result.data];
+            const existingAlgorithms = new Set();
+
+            // 构建已存在的算法集合
+            paths.forEach(path => {
+                if (path && path.startsWith('algorithms_system.')) {
+                    const parts = path.split('.');
+                    if (parts.length >= 4) {
+                        const algoName = parts[2];
+                        const algoVersion = parts[3];
+                        existingAlgorithms.add(`${algoName}:${algoVersion}`);
+                    }
+                }
+            });
+
+            // 检查选中节点的算法是否存在
+            const missingAlgorithms = [];
+            selectedNodeIds.forEach(nodeId => {
+                const node = this.nodes.find(n => n.nodeId === nodeId);
+                if (node && node.algorithmName && node.algorithmVersion) {
+                    const key = `${node.algorithmName}:${node.algorithmVersion}`;
+                    if (!existingAlgorithms.has(key)) {
+                        missingAlgorithms.push(`${node.algorithmName}(${node.algorithmVersion})`);
+                    }
+                }
+            });
+
+            return missingAlgorithms;
+        } catch (e) {
+            console.error('检查算法存在性失败:', e);
+            return [];
+        }
+    }
+
+    async checkDuplicateExecution(selectedNodeIds) {
+        try {
+            // 获取选中节点的时间范围
+            const timeRanges = selectedNodeIds.map(nodeId => {
+                const node = this.nodes.find(n => n.nodeId === nodeId);
+                return node ? { startTime: node.startTime, endTime: node.endTime } : null;
+            }).filter(tr => tr !== null);
+
+            if (timeRanges.length === 0) return false;
+
+            // 查询该仿真档案的执行记录（使用POST请求）
+            const baseUrl = window.AppConfig.getApiUrl('simulationArchives', 'execution-records');
+            const result = await window.AppConfig.request(baseUrl, {
+                method: 'POST',
+                body: JSON.stringify({
+                    archiveId: this.currentArchive.createTime,
+                    projectName: this.currentArchive.projectName,
+                    status: 'completed',
+                    pageNum: 1,
+                    pageSize: 100
+                })
+            });
+
+            if (!result || !result.data || result.data.length === 0) return false;
+
+            // 检查是否有相同时间范围的执行记录
+            for (const record of result.data) {
+                if (record.startTime && record.endTime) {
+                    for (const tr of timeRanges) {
+                        if (tr.startTime === record.startTime && tr.endTime === record.endTime) {
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            return false;
+        } catch (e) {
+            console.error('检查重复执行记录失败:', e);
+            return false;
+        }
+    }
+
     async pollExecutionStatus() {
+        const executionId = this.currentExecutionId;
         const poll = async () => {
             if (!this.isRunning) return;
+            if (executionId !== this.currentExecutionId) return;
             try {
-                const result = await window.AppConfig.get('simulationArchives', 'execution-status', { createTime: this.currentArchive.createTime });
+                const params = { createTime: this.currentArchive.createTime };
+                if (this.currentExecutionTimestamp) params.timestamp = this.currentExecutionTimestamp;
+                const result = await window.AppConfig.get('simulationArchives', 'execution-status', params);
                 if (result.code === 200 && result.data && !result.data.isRunning) {
+                    if (executionId !== this.currentExecutionId) return;
+                    // 检查结果是否包含本次执行的节点
+                    const hasCurrentNodeResults = result.data.execution && result.data.execution.result && result.data.execution.result.results
+                        ? this.currentExecutionNodeIds.some(nodeId => result.data.execution.result.results[nodeId])
+                        : false;
+                    // 如果结果不包含本次执行的节点，说明新执行还没完成，继续轮询
+                    if (!hasCurrentNodeResults) {
+                        setTimeout(poll, 3000);
+                        return;
+                    }
                     this.isRunning = false;
                     this.shadowRoot.getElementById('runBtn').disabled = false;
                     if (result.data.execution && result.data.execution.result) {
@@ -1344,7 +1786,6 @@ class SimulationArchiveDetail extends HTMLElement {
                     this.refreshLog();
                     return;
                 }
-                // Poll logs while running
                 this.refreshLog();
             } catch (e) { console.error('轮询失败:', e); }
             setTimeout(poll, 3000);
@@ -1355,17 +1796,25 @@ class SimulationArchiveDetail extends HTMLElement {
 
     updateExecStatus() {
         const sv = this.shadowRoot.getElementById('execStatusValue');
+        const stopBtn = this.shadowRoot.getElementById('stopBtn');
+        const runBtn = this.shadowRoot.getElementById('runBtn');
         if (!sv) return;
         if (this.isRunning) {
             sv.textContent = '运行中';
             sv.className = 'status-value running';
+            if (stopBtn) stopBtn.disabled = false;
+            if (runBtn) runBtn.disabled = true;
         } else if (this.executionResult) {
             const hasFailed = Object.values(this.executionResult.results || {}).some(r => r && r.status === 'failed');
             sv.textContent = hasFailed ? '执行失败' : '执行完成';
             sv.className = 'status-value ' + (hasFailed ? 'failed' : 'completed');
+            if (stopBtn) stopBtn.disabled = true;
+            if (runBtn) runBtn.disabled = false;
         } else {
             sv.textContent = '未运行';
             sv.className = 'status-value';
+            if (stopBtn) stopBtn.disabled = true;
+            if (runBtn) runBtn.disabled = false;
         }
         // Update node statuses
         if (this.executionResult && this.executionResult.results) {
@@ -1378,6 +1827,7 @@ class SimulationArchiveDetail extends HTMLElement {
     }
 
     displayResult(result) {
+        console.log('displayResult:', 'currentExecutionNodeIds:', this.currentExecutionNodeIds, 'result keys:', result.results ? Object.keys(result.results) : 'none');
         this.executionResult = result;
         const ract = this.shadowRoot.getElementById('resultActions');
         const rtabs = this.shadowRoot.getElementById('resultTabs');
@@ -1405,6 +1855,8 @@ class SimulationArchiveDetail extends HTMLElement {
         const textData = {};
         if (result.results) {
             Object.entries(result.results).forEach(([nodeId, nr]) => {
+                // 只显示本次执行的节点结果
+                if (this.currentExecutionNodeIds && !this.currentExecutionNodeIds.includes(nodeId)) return;
                 if (nr.outputCsv) {
                     textData[nodeId] = { name: nr.nodeName || nodeId, output: nr.outputCsv };
                 }
@@ -1499,6 +1951,8 @@ class SimulationArchiveDetail extends HTMLElement {
         const csvData = {};
         if (result.results) {
             Object.entries(result.results).forEach(([nodeId, nr]) => {
+                // 只显示本次执行的节点结果
+                if (this.currentExecutionNodeIds && !this.currentExecutionNodeIds.includes(nodeId)) return;
                 if (nr.outputCsv) {
                     csvData[nodeId] = { name: nr.nodeName || nodeId, csv: nr.outputCsv };
                 }
@@ -1573,10 +2027,14 @@ class SimulationArchiveDetail extends HTMLElement {
 
     async refreshLog() {
         if (!this.currentArchive) return;
+        // 如果处于新增模式，不加载日志
+        if (this.currentArchive === null) return;
         try {
-            const result = await window.AppConfig.get('simulationArchives', 'execution-log', { createTime: this.currentArchive.createTime });
+            const params = { createTime: this.currentArchive.createTime };
+            if (this.currentExecutionTimestamp) params.timestamp = this.currentExecutionTimestamp;
+            const result = await window.AppConfig.get('simulationArchives', 'execution-log', params);
+            const logEl = this.shadowRoot.querySelector('#logContent pre');
             if (result.code === 200 && result.data && result.data.nodeLogs) {
-                const logEl = this.shadowRoot.querySelector('#logContent pre');
                 if (logEl) {
                     const logs = result.data.nodeLogs;
                     let logText = '';
@@ -1591,8 +2049,20 @@ class SimulationArchiveDetail extends HTMLElement {
                     const logContent = this.shadowRoot.getElementById('logContent');
                     if (logContent) logContent.scrollTop = logContent.scrollHeight;
                 }
+            } else {
+                // 未找到执行记录或返回错误，清除日志显示
+                if (logEl) {
+                    logEl.textContent = '暂无日志信息';
+                }
             }
-        } catch (e) { console.error('刷新日志失败:', e); }
+        } catch (e) {
+            console.error('刷新日志失败:', e);
+            // 发生错误时也清除日志显示
+            const logEl = this.shadowRoot.querySelector('#logContent pre');
+            if (logEl) {
+                logEl.textContent = '暂无日志信息';
+            }
+        }
     }
 
     startAutoRefreshLog() {
@@ -1607,8 +2077,10 @@ class SimulationArchiveDetail extends HTMLElement {
             clearInterval(this.logRefreshInterval);
             this.logRefreshInterval = null;
         }
-        const btn = this.shadowRoot.getElementById('autoRefreshLogBtn');
-        if (btn) { btn.textContent = '自动刷新: 关闭'; btn.classList.remove('active'); }
+        if (this.shadowRoot) {
+            const btn = this.shadowRoot.getElementById('autoRefreshLogBtn');
+            if (btn) { btn.textContent = '自动刷新: 关闭'; btn.classList.remove('active'); }
+        }
     }
 
     toggleAutoRefreshLog() {
@@ -1706,6 +2178,62 @@ class SimulationArchiveDetail extends HTMLElement {
     showToast(message, type = 'success') {
         if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast(message, type);
         else console.log(`[${type}] ${message}`);
+    }
+
+    isValidCronExpression(cron) {
+        if (!cron || typeof cron !== 'string') return false;
+        
+        const parts = cron.trim().split(/\s+/);
+        if (parts.length !== 6 && parts.length !== 7) return false;
+        
+        const seconds = parts[0];
+        const minutes = parts[1];
+        const hours = parts[2];
+        const dayOfMonth = parts[3];
+        const month = parts[4];
+        const dayOfWeek = parts[5];
+        const year = parts.length === 7 ? parts[6] : null;
+        
+        const isValidPart = (value, min, max, allowWildcard = true, allowQuestion = false, allowStep = true) => {
+            if (value === '*') return allowWildcard;
+            if (value === '?' && allowQuestion) return true;
+            if (value.includes('/')) {
+                const [base, step] = value.split('/');
+                if (!isValidPart(base, min, max, allowWildcard, allowQuestion, false)) return false;
+                if (!/^\d+$/.test(step)) return false;
+                const stepNum = parseInt(step, 10);
+                return stepNum > 0;
+            }
+            if (value.includes(',')) {
+                return value.split(',').every(v => isValidPart(v, min, max, false, allowQuestion, false));
+            }
+            if (value.includes('-')) {
+                const [start, end] = value.split('-');
+                if (!/^\d+$/.test(start) || !/^\d+$/.test(end)) return false;
+                const startNum = parseInt(start, 10);
+                const endNum = parseInt(end, 10);
+                return startNum >= min && endNum <= max && startNum <= endNum;
+            }
+            if (/^\d+$/.test(value)) {
+                const num = parseInt(value, 10);
+                return num >= min && num <= max;
+            }
+            if (['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'].includes(value.toUpperCase())) {
+                return true;
+            }
+            if (['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'].includes(value.toUpperCase())) {
+                return true;
+            }
+            return false;
+        };
+        
+        return isValidPart(seconds, 0, 59) &&
+               isValidPart(minutes, 0, 59) &&
+               isValidPart(hours, 0, 23) &&
+               isValidPart(dayOfMonth, 1, 31, true, true) &&
+               isValidPart(month, 1, 12) &&
+               isValidPart(dayOfWeek, 1, 7, true, true) &&
+               (year === null || isValidPart(year, 1970, 2099));
     }
 }
 

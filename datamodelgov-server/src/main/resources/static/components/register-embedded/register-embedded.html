@@ -46,12 +46,12 @@
             
             <div class="form-group">
                 <label class="form-label">数据前缀</label>
-                <input type="text" class="form-control" id="dataPrefix" placeholder="请输入数据前缀（可选）">
+                <input type="text" class="form-control" id="dataPrefix" placeholder="原数据库中带该前缀的数据才能加入 IGinX 中被查询到">
             </div>
             
             <div class="form-group">
                 <label class="form-label required">模式前缀</label>
-                <input type="text" class="form-control" id="schemaPrefix" placeholder="请输入模式前缀">
+                <input type="text" class="form-control" id="schemaPrefix" placeholder="给整个数据节点中的所有序列都加上一个虚拟前缀。">
             </div>
             
             <!-- 认证字段容器 -->
@@ -115,14 +115,14 @@
                     <label class="form-label">历史数据的数据路径前缀</label>
                     <input type="text" class="form-control" id="embeddedPrefix" placeholder="请输入历史数据的数据路径前缀">
                 </div>
-                <div class="form-group">
-                    <label class="form-label">数据写入方式</label>
-                    <input type="text" class="form-control" id="dataStruct" placeholder="LegacyParquet">
-                </div>
-                <div class="form-group">
-                    <label class="form-label">历史数据读取方式</label>
-                    <input type="text" class="form-control" id="dummyStruct" placeholder="LegacyFilesystem">
-                </div>
+<!--                <div class="form-group">-->
+<!--                    <label class="form-label">数据写入方式</label>-->
+<!--                    <input type="text" class="form-control" id="dataStruct" placeholder="LegacyParquet">-->
+<!--                </div>-->
+<!--                <div class="form-group">-->
+<!--                    <label class="form-label">历史数据读取方式</label>-->
+<!--                    <input type="text" class="form-control" id="dummyStruct" placeholder="LegacyFilesystem">-->
+<!--                </div>-->
             </div>
             
             <!-- Relational Database specific fields -->
@@ -133,8 +133,8 @@
                         <option value="mysql">MySQL</option>
                         <option value="postgresql">PostgreSQL</option>
                         <option value="oracle">Oracle</option>
-                        <option value="sql server">SQL Server</option>
-                        <option value="dameng">Dameng</option>
+                        <option value="oceanbase">OceanBase</option>
+                        <option value="dm">Dameng</option>
                     </select>
                 </div>
                 <div class="form-group">
@@ -166,11 +166,11 @@
                     <input type="text" class="form-control" id="mongodbUri" placeholder="mongodb://localhost:27017">
                 </div>
                 <div class="form-group">
-                    <label class="form-label">每次采样的文档数量</label>
+                    <label class="form-label">每次采样的文档数量（分析当前存在的列和类型）</label>
                     <input type="number" class="form-control" id="schemaSampleSize" placeholder="1000" min="1">
                 </div>
                 <div class="form-group">
-                    <label class="form-label">每次采样的文档</label>
+                    <label class="form-label">每次采样的文档（所有列和类型）</label>
                     <input type="number" class="form-control" id="dummySampleSize" placeholder="0" min="0">
                 </div>
             </div>
@@ -179,7 +179,7 @@
             <div id="redisFields" class="storage-specific-fields" style="display: none;">
                 <div class="form-group">
                     <label class="form-label">Redis客户端请求超时时间（毫秒）</label>
-                    <input type="number" class="form-control" id="redisTimeout" placeholder="2000" min="1">
+                    <input type="number" class="form-control" id="redisTimeout" placeholder="5000" min="1">
                 </div>
             </div>
         </form>

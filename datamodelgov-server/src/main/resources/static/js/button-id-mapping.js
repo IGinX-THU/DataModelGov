@@ -13,6 +13,14 @@ const BUTTON_ID_MAP = {
         text: '打开',
         action: 'showProjectList'
     },
+    'btn-import-project': {
+        text: '导入',
+        action: 'showProjectImport'
+    },
+    'btn-export-project': {
+        text: '导出',
+        action: 'showProjectExport'
+    },
     'btn-analyze': {
         text: '分析',
         action: 'showVisualAnalysis'
@@ -28,6 +36,14 @@ const BUTTON_ID_MAP = {
     'btn-algorithm-upload': {
         text: '算法上传',
         action: 'showAlgorithmUpload'
+    },
+    'btn-program-upload': {
+        text: '仿真程序上传',
+        action: 'showProgramUpload'
+    },
+    'btn-program-management': {
+        text: '程序管理',
+        action: 'showProgramManagement'
     },
     'btn-import': {
         text: '导入',
@@ -102,7 +118,7 @@ const MENU_ID_MAP = {
         action: 'showRegisterEmbedded'
     },
     'menu-import-data': {
-        text: '导入数据',
+        text: '上传数据文件',
         action: 'showImportData'
     },
     'menu-upload-model-file': {
@@ -146,7 +162,7 @@ const MENU_ID_MAP = {
         action: 'handleDeleteAlgorithm'
     },
     'menu-configure-parsing-rules': {
-        text: '配置解析规则',
+        text: '算法/模型解析规则',
         action: 'showParsingRules'
     },
     'menu-association-rule-configuration': {
@@ -160,6 +176,18 @@ const MENU_ID_MAP = {
     'menu-simulation-record': {
         text: '仿真记录',
         action: 'showSimulationRecord'
+    },
+    'menu-program-upload': {
+        text: '仿真程序上传',
+        action: 'showProgramUpload'
+    },
+    'menu-program-management': {
+        text: '程序管理',
+        action: 'showProgramManagement'
+    },
+    'menu-program-run': {
+        text: '运行结果',
+        action: 'showProgramRun'
     },
     'menu-algorithm-list': {
         text: '算法管理',
@@ -181,6 +209,30 @@ const MENU_ID_MAP = {
         text: '导入项目',
         action: 'showProjectImport'
     },
+    'menu-import-wizard-project': {
+        text: '项目',
+        action: 'showProjectImport'
+    },
+    'menu-export-wizard-project': {
+        text: '项目',
+        action: 'showProjectExport'
+    },
+    'menu-export-wizard-data': {
+        text: '数据',
+        action: 'showProjectExportData'
+    },
+    'menu-export-wizard-model': {
+        text: '模型',
+        action: 'showProjectExportModel'
+    },
+    'menu-export-wizard-algorithm': {
+        text: '算法',
+        action: 'showProjectExportAlgorithm'
+    },
+    'menu-export-wizard-simulation': {
+        text: '仿真',
+        action: 'showProjectExportSimulation'
+    },
     'menu-numerical-and-curve-analysis': {
         text: '数值与曲线分析',
         action: 'showVisualAnalysis'
@@ -201,17 +253,25 @@ const MENU_ID_MAP = {
         text: '关于',
         action: 'showAbout'
     },
+    'menu-user-manual': {
+        text: '用户手册',
+        action: 'showUserManual'
+    },
     'menu-import-wizard-data': {
         text: '数据',
-        action: 'showImportData'
+        action: 'showProjectImportData'
     },
     'menu-import-wizard-model': {
         text: '模型',
-        action: 'showModelUpload'
+        action: 'showProjectImportModel'
     },
     'menu-import-wizard-algorithm': {
         text: '算法',
-        action: 'showAlgorithmUpload'
+        action: 'showProjectImportAlgorithm'
+    },
+    'menu-import-wizard-simulation': {
+        text: '仿真',
+        action: 'showProjectImportSimulation'
     }
 };
 

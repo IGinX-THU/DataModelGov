@@ -19,6 +19,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
+import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -59,7 +60,11 @@ public class DataSourceService {
             }
         }
 
-        if (dataPermissionService.existTablePrefix(request.getSchemaPrefix())) {
+        String tablePrefix = StringUtils.hasText(request.getDataPrefix()) ?
+                request.getSchemaPrefix() + "." + request.getDataPrefix() :
+                request.getSchemaPrefix();
+
+        if (dataPermissionService.existTablePrefix(tablePrefix)) {
             throw new IllegalArgumentException("数据资源已存在");
         }
         // iginxSession.openSession();
@@ -68,16 +73,16 @@ public class DataSourceService {
                 StorageEngineType.findByValue(request.getStorageEngineType()),
                 request.buildExtraParams());
         // iginxSession.closeSession();
-        dataPermissionService.saveTablePrefix(request.getSchemaPrefix());
+        dataPermissionService.saveTablePrefix(tablePrefix);
         log.info("成功注册数据源: {}", request);
 
         // 保存数据档案
-        saveDataSourceArchive(request);
+        saveDataSourceArchive(request, tablePrefix);
 
         // 添加到项目的datas字段
         if (projectName != null && !projectName.isEmpty()) {
             try {
-                projectService.addToProject(projectName, request.getSchemaPrefix(), "datas");
+                projectService.addToProject(projectName, tablePrefix, "datas");
             } catch (Exception e) {
                 log.error("添加数据路径到项目失败", e);
             }
@@ -90,19 +95,16 @@ public class DataSourceService {
      * 移除异构数据源
      */
     public boolean removeDataSource(StorageEngineInfoDto storageEngineInfoDto) throws Exception {
-        // iginxSession.openSession();
-        RemovedStorageEngineInfo removedStorageEngineInfo = new RemovedStorageEngineInfo(storageEngineInfoDto.getIp(), storageEngineInfoDto.getPort(), storageEngineInfoDto.getSchemaPrefix(), storageEngineInfoDto.getDataPrefix());
-        List<RemovedStorageEngineInfo> removedStorageEngineList = Collections.singletonList(removedStorageEngineInfo);
-        iginxSession.removeStorageEngine(removedStorageEngineList);
-        // iginxSession.closeSession();
-        dataPermissionService.deleteByTablePrefix(storageEngineInfoDto.getSchemaPrefix());
 
         // 删除对应的数据档案元数据
+        String tablePrefix = StringUtils.hasText(storageEngineInfoDto.getDataPrefix()) ?
+                storageEngineInfoDto.getSchemaPrefix() + "." + storageEngineInfoDto.getDataPrefix() :
+                storageEngineInfoDto.getSchemaPrefix();
         try {
-            DataArchiveEntity archive = dataArchiveService.findByName(storageEngineInfoDto.getSchemaPrefix());
-            if (archive != null && archive.getId() != null) {
-                dataArchiveService.deleteArchive(archive.getId());
-                log.info("已删除数据源档案元数据: {}", storageEngineInfoDto.getSchemaPrefix());
+            DataArchiveEntity archive = dataArchiveService.findByName(tablePrefix);
+            if (archive != null && archive.getCreateTime() != null) {
+                dataArchiveService.deleteArchive(archive.getCreateTime());
+                log.info("已删除数据源档案元数据: {}", tablePrefix);
             }
         } catch (Exception e) {
             log.error("删除数据源档案元数据失败", e);
@@ -112,11 +114,19 @@ public class DataSourceService {
         String projectName = ProjectContext.getCurrentProject("unknown");
         if (projectName != null && !projectName.isEmpty()) {
             try {
-                projectService.removeFromProject(projectName, storageEngineInfoDto.getSchemaPrefix(), "datas");
+                projectService.removeFromProject(projectName, tablePrefix, "datas");
             } catch (Exception e) {
                 log.error("从项目移除数据路径失败", e);
             }
         }
+
+        // iginxSession.openSession();
+        RemovedStorageEngineInfo removedStorageEngineInfo = new RemovedStorageEngineInfo(storageEngineInfoDto.getIp(), storageEngineInfoDto.getPort(), storageEngineInfoDto.getSchemaPrefix(), storageEngineInfoDto.getDataPrefix());
+        List<RemovedStorageEngineInfo> removedStorageEngineList = Collections.singletonList(removedStorageEngineInfo);
+        iginxSession.removeStorageEngine(removedStorageEngineList);
+        // iginxSession.closeSession();
+
+        dataPermissionService.deleteByTablePrefix(tablePrefix);
 
         return true;
     }
@@ -136,8 +146,12 @@ public class DataSourceService {
             }
             String currentProject = ProjectContext.getCurrentProject(null);
             accessibleTables.forEach(accessibleTable -> filteredList.addAll(
-                    storageEngineInfoDtos.stream().filter(storageEngineInfoDto ->
-                                    accessibleTable.equalsIgnoreCase(storageEngineInfoDto.getSchemaPrefix()))
+                    storageEngineInfoDtos.stream().filter(storageEngineInfoDto -> {
+                                String tablePrefix = StringUtils.hasText(storageEngineInfoDto.getDataPrefix()) ?
+                                        storageEngineInfoDto.getSchemaPrefix() + "." + storageEngineInfoDto.getDataPrefix() :
+                                        storageEngineInfoDto.getSchemaPrefix();
+                                return accessibleTable.equalsIgnoreCase(tablePrefix);
+                    })
                             .filter(column -> {
                                 // 如果有当前项目，只返回该项目相关的路径
                                 if (currentProject != null && !currentProject.isEmpty()) {
@@ -179,7 +193,8 @@ public class DataSourceService {
                                     String path = column.getPath();
                                     return path.startsWith(currentProject + ".") ||
                                             path.startsWith("models_system." + currentProject + ".") ||
-                                            path.startsWith("algorithms_system." + currentProject + ".");
+                                            path.startsWith("algorithms_system." + currentProject + ".") ||
+                                            path.startsWith("programs_system." + currentProject + ".");
                                 }
                                 return false;
                             })
@@ -193,10 +208,10 @@ public class DataSourceService {
     /**
      * 保存数据源档案
      */
-    private void saveDataSourceArchive(BaseStorageEngineRequest request) {
+    private void saveDataSourceArchive(BaseStorageEngineRequest request, String tablePrefix) {
         try {
             DataArchiveEntity archive = new DataArchiveEntity();
-            archive.setName(request.getSchemaPrefix());
+            archive.setName(tablePrefix);
             archive.setType("datasource");
             archive.setDesc(request.getDescription());
             
@@ -213,7 +228,7 @@ public class DataSourceService {
             archive.setConfig(configJson);
 
             dataArchiveService.saveArchive(archive);
-            log.info("数据源档案已保存: {}, desc={}", request.getSchemaPrefix(), archive.getDesc());
+            log.info("数据源档案已保存: {}, desc={}", tablePrefix, archive.getDesc());
         } catch (Exception e) {
             log.error("保存数据源档案失败", e);
             // 不抛出异常，避免影响主流程

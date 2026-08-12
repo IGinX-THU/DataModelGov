@@ -184,7 +184,172 @@ class DataVisualization extends HTMLElement {
         </div>`;
     }
 
-    show(dataSource, points = [], tableData = null, keepQueryConditions = false) {
+    getBeijingTime() {
+        const now = new Date();
+        const beijingTime = new Date(now.getTime() + (8 * 60 * 60 * 1000));
+        const year = beijingTime.getUTCFullYear();
+        const month = String(beijingTime.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(beijingTime.getUTCDate()).padStart(2, '0');
+        const hours = String(beijingTime.getUTCHours()).padStart(2, '0');
+        const minutes = String(beijingTime.getUTCMinutes()).padStart(2, '0');
+        const seconds = String(beijingTime.getUTCSeconds()).padStart(2, '0');
+        return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+    }
+
+    async setDefaultTimeRange() {
+        console.log('setDefaultTimeRange() 开始执行');
+        const startTimeElement = this.shadowRoot.getElementById('startTime');
+        const endTimeElement = this.shadowRoot.getElementById('endTime');
+        
+        console.log('DOM元素:', { startTimeElement, endTimeElement });
+        
+        // 从选中的测点中提取父级路径作为tableName和sourceField
+        let tableName = null;
+        let sourceField = null;
+        if (this.selectedPoints && this.selectedPoints.size > 0) {
+            const firstPoint = Array.from(this.selectedPoints)[0];
+            const pathParts = firstPoint.split('.');
+            // 去掉最后一级（测点名称），保留父级路径
+            tableName = pathParts.slice(0, -1).join('.');
+            // 最后一级作为sourceField
+            sourceField = pathParts[pathParts.length - 1];
+            console.log('提取tableName:', tableName, 'sourceField:', sourceField, 'from:', firstPoint);
+        }
+        
+        if (!tableName) {
+            console.warn('无法从测点提取tableName，使用默认时间');
+            this.setFallbackTimeRange(startTimeElement, endTimeElement);
+            return;
+        }
+
+        try {
+            // 调用接口获取数据源的时间范围
+            const result = await window.AppConfig.post('task', 'time-range', {
+                tableName: tableName,
+                inputsBind: sourceField ? [{sourceField: sourceField}] : []
+            });
+            
+            console.log('时间范围查询结果:', result);
+            console.log('result.data详情:', result.data);
+            
+            if (result.success && result.data) {
+                const timeRange = result.data;
+                console.log('timeRange对象:', timeRange);
+                console.log('minKey:', timeRange.minKey, 'maxKey:', timeRange.maxKey);
+                
+                if (timeRange.minKey != null || timeRange.maxKey != null) {
+                    // 分别检查minKey和maxKey，哪个有效就设置哪个
+                    if (timeRange.minKey != null && this.isValidTimestamp(timeRange.minKey)) {
+                        const startDate = new Date(timeRange.minKey);
+                        const startTime = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}-${String(startDate.getDate()).padStart(2, '0')}T${String(startDate.getHours()).padStart(2, '0')}:${String(startDate.getMinutes()).padStart(2, '0')}:${String(startDate.getSeconds()).padStart(2, '0')}`;
+                        if (startTimeElement) {
+                            startTimeElement.value = startTime;
+                            console.log('设置开始时间:', startTime);
+                        }
+                    } else {
+                        // 不是有效时间戳，清空输入框
+                        if (startTimeElement) {
+                            startTimeElement.value = '';
+                            console.log('清空开始时间');
+                        }
+                    }
+                    
+                    if (timeRange.maxKey != null && this.isValidTimestamp(timeRange.maxKey)) {
+                        const endDate = new Date(timeRange.maxKey);
+                        const endTime = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}T${String(endDate.getHours()).padStart(2, '0')}:${String(endDate.getMinutes()).padStart(2, '0')}:${String(endDate.getSeconds()).padStart(2, '0')}`;
+                        if (endTimeElement) {
+                            endTimeElement.value = endTime;
+                            console.log('设置结束时间:', endTime);
+                        }
+                    } else {
+                        // 不是有效时间戳，清空输入框
+                        if (endTimeElement) {
+                            endTimeElement.value = '';
+                            console.log('清空结束时间');
+                        }
+                    }
+                    
+                    // 无论是否有效时间戳，都计算时间间隔
+                    await this.autoCalculatePrecision(tableName, timeRange.minKey, timeRange.maxKey);
+                } else {
+                    console.warn('时间范围为空，使用默认值');
+                    this.setFallbackTimeRange(startTimeElement, endTimeElement);
+                }
+            } else {
+                console.warn('获取时间范围失败:', result.message);
+                this.setFallbackTimeRange(startTimeElement, endTimeElement);
+            }
+        } catch (error) {
+            console.error('获取时间范围异常:', error);
+            this.setFallbackTimeRange(startTimeElement, endTimeElement);
+        }
+    }
+
+    async autoCalculatePrecision(tableName, minKey, maxKey) {
+        try {
+            // 调用count接口获取数据量
+            const countResult = await window.AppConfig.post('data', 'relational/count', {
+                tableName: tableName,
+                filters: null,
+                sortField: null,
+                sortDirection: null
+            });
+            
+            console.log('数据量查询结果:', countResult);
+            
+            if (countResult.success && countResult.data !== undefined) {
+                const totalCount = countResult.data;
+                console.log('数据总量:', totalCount);
+                
+                // 如果数据量超过100条，需要降采样
+                if (totalCount > 100) {
+                    const timeSpan = maxKey - minKey; // 毫秒
+                    const targetCount = 100;
+                    const intervalMs = Math.ceil(timeSpan / targetCount);
+                    
+                    // 时间单位固定为MS（值为7），只计算间隔数值
+                    const precision = intervalMs;
+                    const timePrecision = 7; // MS（固定值）
+                    
+                    const precisionElement = this.shadowRoot.getElementById('precision');
+                    
+                    if (precisionElement) {
+                        precisionElement.value = precision;
+                        console.log('设置时间间隔:', precision);
+                    }
+                    
+                    console.log(`数据量${totalCount}条超过100条，自动设置降采样间隔: ${precision}ms`);
+                } else {
+                    console.log(`数据量${totalCount}条在100条以内，不需要降采样`);
+                }
+            }
+        } catch (error) {
+            console.error('获取数据量失败:', error);
+        }
+    }
+
+    setFallbackTimeRange(startTimeElement, endTimeElement) {
+        if (startTimeElement) {
+            // 开始时间设置为24小时前
+            const now = new Date();
+            const beijingTime = new Date(now.getTime() + (8 * 60 * 60 * 1000));
+            const dayAgo = new Date(beijingTime.getTime() - (24 * 60 * 60 * 1000));
+            const year = dayAgo.getUTCFullYear();
+            const month = String(dayAgo.getUTCMonth() + 1).padStart(2, '0');
+            const day = String(dayAgo.getUTCDate()).padStart(2, '0');
+            const hours = String(dayAgo.getUTCHours()).padStart(2, '0');
+            const minutes = String(dayAgo.getUTCMinutes()).padStart(2, '0');
+            const seconds = String(dayAgo.getUTCSeconds()).padStart(2, '0');
+            startTimeElement.value = `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+        }
+        
+        if (endTimeElement) {
+            // 结束时间设置为当前北京时间
+            endTimeElement.value = this.getBeijingTime();
+        }
+    }
+
+    async show(dataSource, points = [], tableData = null, keepQueryConditions = false) {
         console.log('显示数据可视化:', dataSource, points, tableData, '保持查询条件:', keepQueryConditions);
         this.setAttribute('show', '');
         this.dataSource = dataSource;
@@ -194,23 +359,19 @@ class DataVisualization extends HTMLElement {
         this._oldSize = this.selectedPoints ? this.selectedPoints.size : 0;
         this._wasShowingInappropriate = this.isShowingInappropriateState();
         
-        // 如果是新的显示，使用传入的测点；如果是已存在的组件，保持当前选中的测点
-        if (!this.selectedPoints || this.selectedPoints.size === 0) {
-            this.selectedPoints = new Set(points);
-        } else {
-            // 检查是否有新增测点
-            const newPoints = points.filter(p => !this.selectedPoints.has(p));
-            if (newPoints.length > 0) {
-                console.log('检测到新增测点:', newPoints);
-                // 添加新测点
-                newPoints.forEach(p => this.selectedPoints.add(p));
-            }
-        }
+        // 直接使用传入的测点，不累积添加
+        // 点击哪个就展示哪个，而不是累积多个测点
+        this.selectedPoints = new Set(points);
 
         // 设置数据源名称
         const dataSourceNameEl = this.shadowRoot.getElementById('dataSourceName');
         if (dataSourceNameEl) {
             dataSourceNameEl.textContent = '时序数据查询';
+        }
+
+        // 如果不保持查询条件，自动设置默认时间
+        if (!keepQueryConditions) {
+            await this.setDefaultTimeRange();
         }
 
         console.log('组件已显示，开始初始化...');
@@ -219,9 +380,6 @@ class DataVisualization extends HTMLElement {
         setTimeout(() => {
             // 更新已选测点列表
             this.updateSelectedPointsList();
-
-            // 不设置默认时间范围，让用户手动选择
-            console.log('🔍 不设置默认时间范围，等待用户手动选择');
 
             // 如果有传入的数据，处理它
             if (tableData) {
@@ -261,19 +419,15 @@ class DataVisualization extends HTMLElement {
         // 毫秒级时间戳：13位数字（如 1704067200000）
         // 秒级时间戳：10位数字（如 1704067200）
         const timestampStr = String(Math.floor(Math.abs(numValue)));
-        const isValidLength = timestampStr.length === 13 || timestampStr.length === 10;
+        const isValidLength = timestampStr.length >= 10; // 至少10位
         
         if (!isValidLength) {
             return false;
         }
         
+        // 尝试转换为日期
         const date = new Date(numValue);
-        if (isNaN(date.getTime())) {
-            return false;
-        }
-        
-        const year = date.getFullYear();
-        return year >= 1970 && year <= 2100;
+        return !isNaN(date.getTime());
     }
 
     
@@ -295,6 +449,7 @@ class DataVisualization extends HTMLElement {
         this.updateTableHeader(tableData.header);
 
         // 保存实际的数据列（用于表格显示）
+        // 过滤掉key列，但保留window_start和window_end（时间窗口信息）
         this.actualDataColumns = tableData.header.filter(col => col !== 'key');
 
         // 保存表头信息（用于时间列检测）
@@ -306,18 +461,63 @@ class DataVisualization extends HTMLElement {
 
             // 如果有key列，尝试转换为时间戳
             if (record.key) {
-                try {
-                    const parsedTimestamp = new Date(record.key).getTime();
-                    // 检查是否是有效时间戳
-                    if (this.isValidTimestamp(parsedTimestamp)) {
-                        processedRecord.timestamp = parsedTimestamp;
-                    } else {
-                        // 不是有效时间戳，保留原始值
-                        processedRecord.timestamp = record.key;
+                let timestamp = record.key;
+                // 如果是字符串，尝试解析；如果是数字，直接使用
+                if (typeof record.key === 'string') {
+                    try {
+                        timestamp = new Date(record.key).getTime();
+                    } catch (error) {
+                        timestamp = record.key;
                     }
-                } catch (error) {
-                    // 解析异常，保留原始值
+                }
+                // 检查是否是有效时间戳
+                if (this.isValidTimestamp(timestamp)) {
+                    processedRecord.timestamp = timestamp;
+                    console.log('key转换成功:', record.key, '->', timestamp);
+                } else {
+                    // 不是有效时间戳，保留原始值
                     processedRecord.timestamp = record.key;
+                    console.log('key不是有效时间戳:', record.key);
+                }
+            }
+
+            // 如果有window_start列，尝试转换为时间戳
+            if (record.window_start !== undefined) {
+                let timestamp = record.window_start;
+                // 如果是字符串，尝试解析；如果是数字，直接使用
+                if (typeof record.window_start === 'string') {
+                    try {
+                        timestamp = new Date(record.window_start).getTime();
+                    } catch (error) {
+                        timestamp = record.window_start;
+                    }
+                }
+                if (this.isValidTimestamp(timestamp)) {
+                    processedRecord.window_start_timestamp = timestamp;
+                    console.log('window_start转换成功:', record.window_start, '->', timestamp);
+                } else {
+                    processedRecord.window_start_timestamp = record.window_start;
+                    console.log('window_start不是有效时间戳:', record.window_start);
+                }
+            }
+
+            // 如果有window_end列，尝试转换为时间戳
+            if (record.window_end !== undefined) {
+                let timestamp = record.window_end;
+                // 如果是字符串，尝试解析；如果是数字，直接使用
+                if (typeof record.window_end === 'string') {
+                    try {
+                        timestamp = new Date(record.window_end).getTime();
+                    } catch (error) {
+                        timestamp = record.window_end;
+                    }
+                }
+                if (this.isValidTimestamp(timestamp)) {
+                    processedRecord.window_end_timestamp = timestamp;
+                    console.log('window_end转换成功:', record.window_end, '->', timestamp);
+                } else {
+                    processedRecord.window_end_timestamp = record.window_end;
+                    console.log('window_end不是有效时间戳:', record.window_end);
                 }
             }
 
@@ -523,6 +723,14 @@ class DataVisualization extends HTMLElement {
             });
         }
 
+        // 添加测点按钮
+        const addPointBtn = this.shadowRoot.getElementById('addPointBtn');
+        if (addPointBtn) {
+            addPointBtn.addEventListener('click', () => {
+                this.showAddPointModal();
+            });
+        }
+
         // 分页按钮事件绑定
         const prevBtn = this.shadowRoot.getElementById('prevBtn');
         if (prevBtn) {
@@ -678,12 +886,6 @@ class DataVisualization extends HTMLElement {
             precisionInput.value = '';
         }
 
-        // 重置时间单位为毫秒
-        const timePrecisionSelect = this.shadowRoot.getElementById('timePrecision');
-        if (timePrecisionSelect) {
-            timePrecisionSelect.value = '7'; // 默认毫秒
-        }
-
         // 清除快速选择按钮的选中状态
         const quickTimeBtns = this.shadowRoot.querySelectorAll('.quick-time-btn');
         quickTimeBtns.forEach(btn => {
@@ -823,6 +1025,153 @@ class DataVisualization extends HTMLElement {
         }
     }
 
+    // 显示添加测点模态框
+    showAddPointModal() {
+        // 获取数据源树中的所有测点
+        const dataSourceTree = document.getElementById('dataSourceTree');
+        if (!dataSourceTree) {
+            console.error('数据源树不存在');
+            return;
+        }
+
+        // 获取当前选中的测点
+        const currentPoints = Array.from(this.selectedPoints);
+        if (currentPoints.length === 0) {
+            alert('当前没有选中的测点');
+            return;
+        }
+
+        // 获取当前选中测点的父节点路径
+        const currentPoint = currentPoints[0];
+        const pathParts = currentPoint.split('.');
+        const parentPath = pathParts.slice(0, -1).join('.');
+
+        // 获取当前数据源下的所有测点
+        const treeNodes = dataSourceTree.querySelectorAll('.tree-node');
+        const allSiblingPoints = [];
+
+        treeNodes.forEach(node => {
+            const fullPath = node.getAttribute('data-full-path');
+            const isLeaf = node.getAttribute('data-is-leaf') === 'true';
+            if (fullPath && isLeaf) {
+                // 检查是否是当前测点的兄弟节点（同一父节点）
+                const nodePathParts = fullPath.split('.');
+                const nodeParentPath = nodePathParts.slice(0, -1).join('.');
+                if (nodeParentPath === parentPath) {
+                    allSiblingPoints.push(fullPath);
+                }
+            }
+        });
+
+        if (allSiblingPoints.length === 0) {
+            alert('当前测点没有兄弟测点');
+            return;
+        }
+
+        // 创建模态框
+        const modal = document.createElement('div');
+        modal.className = 'modal-overlay';
+        modal.innerHTML = `
+            <div class="modal">
+                <div class="modal-header">
+                    <h3 class="modal-title">选择测点</h3>
+                    <button class="modal-close" id="closeModal">×</button>
+                </div>
+                <div class="modal-body">
+                    <div class="point-selector">
+                        <label class="query-label">选择测点 (${parentPath}):</label>
+                        <div class="select-all-container" style="padding: 8px 0; border-bottom: 1px solid #e8e8e8; margin-bottom: 8px;">
+                            <label class="checkbox-item" style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" id="selectAllCheckbox" style="margin-right: 8px;">
+                                <span>全选</span>
+                            </label>
+                        </div>
+                        <div class="checkbox-list" id="checkboxList" style="max-height: 300px; overflow-y: auto; border: 1px solid #d9d9d9; border-radius: 4px; padding: 12px;">
+                            ${allSiblingPoints.map(point => `
+                                <label class="checkbox-item" style="display: flex; align-items: center; padding: 8px 0; cursor: pointer;">
+                                    <input type="checkbox" value="${point}" class="point-checkbox" ${this.selectedPoints.has(point) ? 'checked' : ''} style="margin-right: 8px;">
+                                    <span>${point}</span>
+                                </label>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="modal-btn" id="cancelBtn">取消</button>
+                    <button class="modal-btn primary" id="confirmBtn">确定</button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+
+        // 绑定事件
+        const closeModal = modal.querySelector('#closeModal');
+        const cancelBtn = modal.querySelector('#cancelBtn');
+        const confirmBtn = modal.querySelector('#confirmBtn');
+        const checkboxList = modal.querySelector('#checkboxList');
+        const selectAllCheckbox = modal.querySelector('#selectAllCheckbox');
+        const pointCheckboxes = modal.querySelectorAll('.point-checkbox');
+
+        const closeModalHandler = () => {
+            document.body.removeChild(modal);
+        };
+
+        closeModal.addEventListener('click', closeModalHandler);
+        cancelBtn.addEventListener('click', closeModalHandler);
+
+        // 全选功能
+        selectAllCheckbox.addEventListener('change', (e) => {
+            const isChecked = e.target.checked;
+            pointCheckboxes.forEach(checkbox => {
+                checkbox.checked = isChecked;
+            });
+        });
+
+        // 当单个复选框变化时，更新全选复选框状态
+        pointCheckboxes.forEach(checkbox => {
+            checkbox.addEventListener('change', () => {
+                const allChecked = Array.from(pointCheckboxes).every(cb => cb.checked);
+                selectAllCheckbox.checked = allChecked;
+            });
+        });
+
+        confirmBtn.addEventListener('click', () => {
+            // 获取所有选中的复选框
+            const checkedBoxes = checkboxList.querySelectorAll('input[type="checkbox"]:checked');
+            const selectedPoints = Array.from(checkedBoxes).map(checkbox => checkbox.value);
+
+            if (selectedPoints.length === 0) {
+                alert('请至少选择一个测点');
+                return;
+            }
+
+            // 更新选中的测点
+            this.selectedPoints = new Set(selectedPoints);
+            
+            // 更新全局选中的测点
+            if (window.selectedDataPoints) {
+                window.selectedDataPoints.clear();
+                selectedPoints.forEach(point => window.selectedDataPoints.add(point));
+            }
+
+            // 更新显示
+            this.updateSelectedPointsList();
+            
+            // 重新加载数据
+            this.loadData();
+            
+            closeModalHandler();
+        });
+
+        // 点击模态框外部关闭
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                closeModalHandler();
+            }
+        });
+    }
+
     // 检查是否正在显示"数据不适合图表展示"状态
     isShowingInappropriateState() {
         const overlay = this.shadowRoot.getElementById('chartOverlay');
@@ -874,13 +1223,12 @@ class DataVisualization extends HTMLElement {
             const endTimeInput = this.shadowRoot.getElementById('endTime');
             const aggregationSelect = this.shadowRoot.getElementById('aggregationFunction');
             const precisionInput = this.shadowRoot.getElementById('precision');
-            const timePrecisionSelect = this.shadowRoot.getElementById('timePrecision');
 
             let startTime = null;
             let endTime = null;
             let aggregateType = null;
             let precision = null; // 不设置默认值，让后端处理
-            let timePrecision = 7; // 默认毫秒
+            let timePrecision = 7; // 固定为毫秒
 
             // 处理时间参数
             if (startTimeInput && startTimeInput.value) {
@@ -929,10 +1277,7 @@ class DataVisualization extends HTMLElement {
                 precision = parseInt(precisionInput.value);
             }
 
-            // 处理时间单位参数
-            if (timePrecisionSelect && timePrecisionSelect.value) {
-                timePrecision = parseInt(timePrecisionSelect.value);
-            }
+            // 时间单位固定为毫秒，不再读取下拉框
 
             console.log('查询参数:', { startTime, endTime, aggregateType, precision, timePrecision });
 
@@ -998,13 +1343,12 @@ class DataVisualization extends HTMLElement {
             const endTimeInput = this.shadowRoot.getElementById('endTime');
             const aggregationSelect = this.shadowRoot.getElementById('aggregationFunction');
             const precisionInput = this.shadowRoot.getElementById('precision');
-            const timePrecisionSelect = this.shadowRoot.getElementById('timePrecision');
 
             let startTime = null;
             let endTime = null;
             let aggregateType = null;
             let precision = null;
-            let timePrecision = 7;
+            let timePrecision = 7; // 固定为毫秒
 
             // 处理时间参数（与loadData方法相同的逻辑）
             if (startTimeInput && startTimeInput.value) {
@@ -1052,10 +1396,7 @@ class DataVisualization extends HTMLElement {
                 precision = parseInt(precisionInput.value);
             }
 
-            // 处理时间单位参数
-            if (timePrecisionSelect && timePrecisionSelect.value) {
-                timePrecision = parseInt(timePrecisionSelect.value);
-            }
+            // 时间单位固定为毫秒，不再读取下拉框
 
             console.log('导出参数:', { startTime, endTime, aggregateType, precision, timePrecision });
 
@@ -1391,21 +1732,42 @@ class DataVisualization extends HTMLElement {
         // 遍历显示数据中的所有数据点
         this.displayData.forEach(record => {
             this.selectedPoints.forEach(pointName => {
-                if (record[pointName] !== null && record[pointName] !== undefined && typeof record[pointName] === 'number') {
-                    minValue = Math.min(minValue, record[pointName]);
-                    maxValue = Math.max(maxValue, record[pointName]);
-                    hasData = true;
+                // 尝试各种可能的列名格式
+                const possibleColumns = [
+                    pointName,
+                    `first_value(${pointName})`,
+                    `max(${pointName})`,
+                    `min(${pointName})`,
+                    `sum(${pointName})`,
+                    `avg(${pointName})`,
+                    `count(${pointName})`,
+                    `last_value(${pointName})`,
+                    `first(${pointName})`,
+                    `last(${pointName})`
+                ];
+                
+                for (const col of possibleColumns) {
+                    const value = record[col] !== undefined ? record[col] : record.values && record.values[col] !== undefined ? record.values[col] : null;
+                    if (value !== null && value !== undefined && typeof value === 'number') {
+                        minValue = Math.min(minValue, value);
+                        maxValue = Math.max(maxValue, value);
+                        hasData = true;
+                        break; // 找到值后跳出循环
+                    }
                 }
             });
         });
 
         if (!hasData) {
+            console.warn('未找到数值数据，使用默认Y轴范围');
             return { min: 0, max: 100 }; // 默认范围
         }
 
         // 添加10%的边距，避免数据贴边
         const range = maxValue - minValue;
         const padding = range * 0.1;
+        
+        console.log('Y轴数据范围:', { minValue, maxValue, range, padding, finalMin: minValue - padding, finalMax: maxValue + padding });
         
         return {
             min: minValue - padding,
@@ -1579,9 +1941,30 @@ class DataVisualization extends HTMLElement {
             console.log('处理列:', column);
             
             // 检查该列是否为数值类型
+            // 优先检查聚合后的列名（如 first_value(project2.data.daoju.current.Z1)）
+            // 如果找不到，再检查原始列名
             const isNumericColumn = this.displayData.some(record => {
-                const value = record[column] !== undefined ? record[column] : record.values && record.values[column] !== undefined ? record.values[column] : null;
-                return typeof value === 'number';
+                // 尝试各种可能的列名格式
+                const possibleColumns = [
+                    column,
+                    `first_value(${column})`,
+                    `max(${column})`,
+                    `min(${column})`,
+                    `sum(${column})`,
+                    `avg(${column})`,
+                    `count(${column})`,
+                    `last_value(${column})`,
+                    `first(${column})`,
+                    `last(${column})`
+                ];
+                
+                for (const col of possibleColumns) {
+                    const value = record[col] !== undefined ? record[col] : record.values && record.values[col] !== undefined ? record.values[col] : null;
+                    if (typeof value === 'number') {
+                        return true;
+                    }
+                }
+                return false;
             });
 
             if (!isNumericColumn) {
@@ -1590,6 +1973,31 @@ class DataVisualization extends HTMLElement {
             }
 
             console.log('✅ 数值列检查通过:', column, '准备创建数据系列');
+            
+            // 找到实际存在的列名
+            let actualColumn = column;
+            const possibleColumns = [
+                column,
+                `first_value(${column})`,
+                `max(${column})`,
+                `min(${column})`,
+                `sum(${column})`,
+                `avg(${column})`,
+                `count(${column})`,
+                `last_value(${column})`,
+                `first(${column})`,
+                `last(${column})`
+            ];
+            
+            for (const col of possibleColumns) {
+                if (this.displayData.some(record => record[col] !== undefined || (record.values && record.values[col] !== undefined))) {
+                    actualColumn = col;
+                    break;
+                }
+            }
+            
+            console.log('🔍 实际使用的列名:', actualColumn);
+
             const data = this.displayData.map(record => {
                 let xValue;
                 if (xAxisColumn === 'key') {
@@ -1597,7 +2005,7 @@ class DataVisualization extends HTMLElement {
                 } else {
                     xValue = record[xAxisColumn] !== undefined ? record[xAxisColumn] : record.values && record.values[xAxisColumn] !== undefined ? record.values[xAxisColumn] : 0;
                 }
-                const yValue = record[column] !== undefined ? record[column] : record.values && record.values[column] !== undefined ? record.values[column] : 0;
+                const yValue = record[actualColumn] !== undefined ? record[actualColumn] : record.values && record.values[actualColumn] !== undefined ? record.values[actualColumn] : 0;
                 
                 // 收集X轴范围
                 if (typeof xValue === 'number' && !isNaN(xValue)) {
@@ -1611,7 +2019,7 @@ class DataVisualization extends HTMLElement {
 
             const color = this.getColorForPoint(column);
             const seriesItem = {
-                name: column,
+                name: actualColumn, // 使用实际列名作为系列名称
                 type: chartType,
                 data: data,
                 smooth: chartType === 'line',
@@ -1671,7 +2079,7 @@ class DataVisualization extends HTMLElement {
                 }
             },
             legend: {
-                data: yAxisColumns,
+                data: series.map(s => s.name), // 使用实际列名
                 top: 40,
                 left: 'center',
                 textStyle: {
@@ -1747,11 +2155,23 @@ class DataVisualization extends HTMLElement {
     }
 
     renderScatter(selectedXAxis, selectedYAxis) {
-        const actualColumns = this.actualDataColumns || [];
+        // 过滤掉window_start和window_end，只使用实际数据列
+        const actualColumns = this.actualDataColumns.filter(col => 
+            col !== 'window_start' && 
+            col !== 'window_end'
+        );
         
         // 确定X轴和Y轴列
-        const xAxisColumn = selectedXAxis || actualColumns[0];
-        const yAxisColumn = selectedYAxis || (actualColumns.length > 1 ? actualColumns[1] : actualColumns[0]);
+        // 如果只有一列数据，使用key作为X轴，数据列作为Y轴
+        let xAxisColumn, yAxisColumn;
+        
+        if (actualColumns.length === 1) {
+            xAxisColumn = 'key'; // 使用时间作为X轴
+            yAxisColumn = actualColumns[0]; // 使用唯一的数据列作为Y轴
+        } else {
+            xAxisColumn = selectedXAxis || actualColumns[0];
+            yAxisColumn = selectedYAxis || actualColumns[1];
+        }
 
         if (!xAxisColumn || !yAxisColumn) {
             this.showChartOverlay(`
@@ -1763,6 +2183,8 @@ class DataVisualization extends HTMLElement {
             return;
         }
 
+        console.log('散点图坐标轴:', { xAxisColumn, yAxisColumn });
+
         const data = this.displayData.map(record => {
             let xValue;
             if (xAxisColumn === 'key') {
@@ -1773,6 +2195,45 @@ class DataVisualization extends HTMLElement {
             const yValue = record[yAxisColumn] !== undefined ? record[yAxisColumn] : (record.values && record.values[yAxisColumn] !== undefined ? record.values[yAxisColumn] : 0);
             return [xValue, yValue];
         });
+
+        // 去重：如果有相同坐标的点，只保留一个
+        const uniqueData = [];
+        const seen = new Set();
+        data.forEach(([x, y]) => {
+            const key = `${x},${y}`;
+            if (!seen.has(key)) {
+                seen.add(key);
+                uniqueData.push([x, y]);
+            }
+        });
+
+        console.log(`散点图原始数据点: ${data.length}, 去重后: ${uniqueData.length}`);
+
+        // 计算X轴和Y轴的数据范围
+        let xMin = Infinity, xMax = -Infinity;
+        let yMin = Infinity, yMax = -Infinity;
+        
+        uniqueData.forEach(([x, y]) => {
+            if (typeof x === 'number' && !isNaN(x)) {
+                xMin = Math.min(xMin, x);
+                xMax = Math.max(xMax, x);
+            }
+            if (typeof y === 'number' && !isNaN(y)) {
+                yMin = Math.min(yMin, y);
+                yMax = Math.max(yMax, y);
+            }
+        });
+
+        // 添加10%的边距
+        const xRange = xMax - xMin;
+        const yRange = yMax - yMin;
+        const xPadding = xRange * 0.1;
+        const yPadding = yRange * 0.1;
+
+        const xAxisRange = xMin === Infinity ? { min: 0, max: 100 } : { min: xMin - xPadding, max: xMax + xPadding };
+        const yAxisRange = yMin === Infinity ? { min: 0, max: 100 } : { min: yMin - yPadding, max: yMax + yPadding };
+
+        console.log('散点图坐标轴范围:', { xAxisRange, yAxisRange });
 
         const option = {
             title: {
@@ -1794,7 +2255,9 @@ class DataVisualization extends HTMLElement {
                         xLabel = params.value[0].toFixed(2);
                     }
                     return `${xAxisColumn === 'key' ? '时间' : xAxisColumn}: ${xLabel}<br/>${yAxisColumn}: ${params.value[1].toFixed(2)}`;
-                }
+                },
+                confine: true,
+                appendToBody: false
             },
             grid: {
                 left: '10%',
@@ -1804,6 +2267,8 @@ class DataVisualization extends HTMLElement {
             },
             xAxis: {
                 type: 'value',
+                min: xAxisRange.min,
+                max: xAxisRange.max,
                 name: xAxisColumn === 'key' ? '' : xAxisColumn,
                 nameLocation: 'middle',
                 nameGap: 30,
@@ -1819,13 +2284,15 @@ class DataVisualization extends HTMLElement {
             },
             yAxis: {
                 type: 'value',
+                min: yAxisRange.min,
+                max: yAxisRange.max,
                 name: yAxisColumn,
                 nameLocation: 'middle',
                 nameGap: 40
             },
             series: [{
                 type: 'scatter',
-                data: data,
+                data: uniqueData,
                 symbolSize: 6,
                 itemStyle: {
                     color: '#3370ff'
@@ -1845,7 +2312,11 @@ class DataVisualization extends HTMLElement {
     }
 
     renderHistogram(selectedXAxis, selectedYAxis) {
-        const actualColumns = this.actualDataColumns || [];
+        // 过滤掉window_start和window_end，只使用实际数据列
+        const actualColumns = this.actualDataColumns.filter(col => 
+            col !== 'window_start' && 
+            col !== 'window_end'
+        );
         
         // 确定要统计的列
         const targetColumn = selectedYAxis || actualColumns.find(col => col !== 'key') || actualColumns[0];
@@ -1860,8 +2331,30 @@ class DataVisualization extends HTMLElement {
             return;
         }
 
-        // 收集数值数据
-        const values = this.displayData.map(record => record[targetColumn] !== undefined ? record[targetColumn] : 0).filter(v => typeof v === 'number');
+        // 收集数值数据（支持聚合列名）
+        const values = this.displayData.map(record => {
+            // 尝试各种可能的列名格式
+            const possibleColumns = [
+                targetColumn,
+                `first_value(${targetColumn})`,
+                `max(${targetColumn})`,
+                `min(${targetColumn})`,
+                `sum(${targetColumn})`,
+                `avg(${targetColumn})`,
+                `count(${targetColumn})`,
+                `last_value(${targetColumn})`,
+                `first(${targetColumn})`,
+                `last(${targetColumn})`
+            ];
+            
+            for (const col of possibleColumns) {
+                const value = record[col] !== undefined ? record[col] : record.values && record.values[col] !== undefined ? record.values[col] : null;
+                if (value !== null && value !== undefined && typeof value === 'number') {
+                    return value;
+                }
+            }
+            return 0;
+        }).filter(v => typeof v === 'number');
 
         if (values.length === 0) {
             this.showChartOverlay(`
@@ -2031,8 +2524,22 @@ class DataVisualization extends HTMLElement {
             // 实际数据列（不是选中测点）
             actualColumns.forEach(column => {
                 const td = document.createElement('td');
-                const value = record[column] !== undefined ? record[column] : record.values && record.values[column] !== undefined ? record.values[column] : '-';
-                td.textContent = typeof value === 'number' ? value.toFixed(2) : value;
+                let value = record[column] !== undefined ? record[column] : record.values && record.values[column] !== undefined ? record.values[column] : '-';
+                
+                // 对window_start和window_end列进行时间转换显示
+                if (column === 'window_start' && record.window_start_timestamp !== undefined) {
+                    if (this.isValidTimestamp(record.window_start_timestamp)) {
+                        value = new Date(record.window_start_timestamp).toLocaleString();
+                    }
+                } else if (column === 'window_end' && record.window_end_timestamp !== undefined) {
+                    if (this.isValidTimestamp(record.window_end_timestamp)) {
+                        value = new Date(record.window_end_timestamp).toLocaleString();
+                    }
+                } else if (typeof value === 'number') {
+                    value = value.toFixed(2);
+                }
+                
+                td.textContent = value;
                 tr.appendChild(td);
             });
 

@@ -1,0 +1,154 @@
+<div class="app">
+  <header>
+    <div class="head-left">
+      <span class="logo"></span>
+      <span class="title">涡轴发动机多系统仿真与监测平台</span>
+      <span class="model-tag"></span>
+    </div>
+    <div class="head-right">
+      <button class="btn btn-run"><span class="ico">▶</span>运行</button>
+      <!--<button class="btn btn-pause"><span class="ico">⏸</span>暂停</button>-->
+      <button class="btn btn-stop"><span class="ico">⏹</span>停止</button>
+      <span class="time-box">12.50 / 30.00 s</span>
+      <span class="status-box"><span class="dot"></span>仿真运行中</span>
+      <button class="btn btn-close" id="closeBtn"><span class="ico">✕</span>关闭</button>
+    </div>
+  </header>
+  <div class="body">
+    <aside class="left">
+      <div class="panel">
+        <div class="panel-title">项目与工况</div>
+        <div class="field-row"><label>模型文件</label><div class="input-box"><select><option value="" selected disabled>加载中...</option></select></div></div>
+        <div class="field-row"><label>仿真停止时间</label><div class="input-box"><input type="text" value="30"><span class="unit">s</span></div></div>
+        <div class="field-row"><label>固定步长</label><div class="input-box"><input type="text" value="0.025"><span class="unit">s</span></div></div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">输入指令</div>
+        <div class="field-row"><label>NP指令</label><div class="input-box"><input type="number" value="21000" step="1"><span class="unit">rpm</span></div></div>
+        <div class="field-row"><label>负载功率</label><div class="input-box"><input type="number" value="1000" step="1"><span class="unit">kW</span></div></div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">系统模块</div>
+        <ul class="module-tree">
+          <li class="open on"><span class="arrow">▾</span><span class="sys-ico">🖥</span>1 控制系统
+            <ul>
+              <li>控制模块</li>
+              <li>执行机构</li>
+              <li>传感器</li>
+            </ul>
+          </li>
+          <li class="open on"><span class="arrow">▾</span><span class="sys-ico">⛽</span>2 燃油系统
+            <ul>
+              <li>燃油供给</li>
+              <li>计量与调节</li>
+              <li>喷嘴与分配</li>
+            </ul>
+          </li>
+          <li class="open on"><span class="arrow">▾</span><span class="sys-ico">⚙</span>3 发动机总体性能
+            <ul>
+              <li>性能计算</li>
+              <li>热力循环</li>
+              <li>机械传动</li>
+            </ul>
+          </li>
+          <li class="open on"><span class="arrow">▾</span><span class="sys-ico">🛢</span>4 滑油系统
+            <ul>
+              <li>供油与回油</li>
+              <li>冷却与热管理</li>
+              <li>密封与泄漏</li>
+            </ul>
+          </li>
+          <li class="open on"><span class="arrow">▾</span><span class="sys-ico">🌬</span>5 空气系统
+            <ul>
+              <li>气动与进气</li>
+              <li>燃烧与传热</li>
+              <li>排气系统</li>
+            </ul>
+          </li>
+        </ul>
+      </div>
+      <div class="panel var-panel">
+        <div class="panel-title">
+          <span>变量选择</span>
+        </div>
+        <div class="var-tree" id="varTree"></div>
+      </div>
+    </aside>
+    <main>
+      <div class="tabs">
+        <button class="tab active">综合总览</button>
+        <button class="tab">总体性能</button>
+        <button class="tab">控制</button>
+        <button class="tab">燃油</button>
+        <button class="tab">滑油</button>
+        <button class="tab">空气</button>
+        <button class="tab">信号与告警</button>
+      </div>
+      <div class="content">
+        <div class="flow">
+          <div class="flow-top">
+            <div class="block purple"><span class="flow-ico">🖥</span>控制系统</div>
+            <span class="arrow-h">→</span>
+            <div class="block orange"><span class="flow-ico">⛽</span>燃油系统</div>
+            <span class="arrow-h">→</span>
+            <div class="block cyan"><span class="flow-ico">⚙</span>发动机总体性能</div>
+            <span class="arrow-h">→</span>
+            <div class="block blue"><span class="flow-ico">🌬</span>空气系统</div>
+          </div>
+          <div class="flow-bottom">
+            <span class="arrow-d">↘</span>
+            <div class="block green"><span class="flow-ico">🛢</span>滑油系统</div>
+            <span class="arrow-u">↗</span>
+          </div>
+        </div>
+        <div class="chart-grid"></div>
+      </div>
+    </main>
+    <aside class="right">
+      <div class="panel">
+        <div class="panel-title">当前关键参数</div>
+        <div class="kpi-grid">
+          <div class="kpi-card"><div class="kpi-head"><span class="kpi-name">Np</span><span class="kpi-icon"></span></div><div class="kpi-value">--</div><div class="kpi-unit">rpm</div></div>
+          <div class="kpi-card"><div class="kpi-head"><span class="kpi-name">Ng</span><span class="kpi-icon"></span></div><div class="kpi-value">--</div><div class="kpi-unit">rpm</div></div>
+          <div class="kpi-card"><div class="kpi-head"><span class="kpi-name">T45</span><span class="kpi-icon"></span></div><div class="kpi-value">--</div><div class="kpi-unit">K</div></div>
+          <div class="kpi-card"><div class="kpi-head"><span class="kpi-name">Mkp</span><span class="kpi-icon"></span></div><div class="kpi-value">--</div><div class="kpi-unit">N·m</div></div>
+          <div class="kpi-card"><div class="kpi-head"><span class="kpi-name">Wf</span><span class="kpi-icon"></span></div><div class="kpi-value">--</div><div class="kpi-unit">kg/s</div></div>
+          <div class="kpi-card"><div class="kpi-head"><span class="kpi-name">Error</span><span class="kpi-icon"></span></div><div class="kpi-value">--</div><div class="kpi-unit">-</div></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">系统状态</div>
+        <table class="status-table">
+          <thead><tr><th>系统</th><th>状态</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td class="sys-name">🖥 控制系统</td><td><span class="status-tag warn">未接线</span></td><td class="status-desc">信号未接出</td></tr>
+            <tr><td class="sys-name">⛽ 燃油系统</td><td><span class="status-tag warn">未接线</span></td><td class="status-desc">信号未接出</td></tr>
+            <tr><td class="sys-name">⚙ 发动机总体性能</td><td><span class="status-tag warn">未接线</span></td><td class="status-desc">信号未接出</td></tr>
+            <tr><td class="sys-name">🛢 滑油系统</td><td><span class="status-tag warn">未接线</span></td><td class="status-desc">信号未接出</td></tr>
+            <tr><td class="sys-name">🌬 空气系统</td><td><span class="status-tag warn">未接线</span></td><td class="status-desc">信号未接出</td></tr>
+            <tr><td class="sys-name">⚖ 单位一致性检查</td><td><span class="status-tag warn">待检查</span></td><td class="status-desc">单位待确认</td></tr>
+            <tr><td class="sys-name">🔔 信号与告警</td><td><span class="status-tag ok">正常</span></td><td class="status-desc">无告警</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="panel">
+        <div class="alert-title"><span class="bell">🔔</span>告警汇总 (<span class="alert-count">0</span>)<button class="view-detail">查看详情</button></div>
+        <div class="alert-list"><div class="alert-empty">暂无告警</div></div>
+      </div>
+    </aside>
+  </div>
+  <footer>
+    <div class="footer-label">时间导航</div>
+    <div class="play">
+      <button>⏮</button><button>▶</button><button>⏭</button>
+      <span class="active">1x</span><span>2x</span><span>5x</span><span>10x</span>
+    </div>
+    <div class="time-nav">
+      <div class="time-labels"><span>0</span><span>5</span><span>10</span><span>15</span><span>20</span><span>25</span><span>30</span></div>
+      <div class="time-track footer-track"><div class="time-progress"></div><div class="time-cursor"></div></div>
+      <div class="time-mark">12.50 s</div>
+    </div>
+    <div class="cursor-label"><span>光标时间</span><span class="cursor-val">12.50 s</span></div>
+    <div class="footer-actions"><button>⭳ 导出数据</button><button>💾 保存结果</button></div>
+  </footer>
+</div>

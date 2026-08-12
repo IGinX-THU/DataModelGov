@@ -193,10 +193,8 @@ class ModelEdit extends HTMLElement {
     }
 
     async show(modelInfo) {
-        this.currentModel = modelInfo;
-        this.removeAttribute('hidden');
         await this.loadModelData(modelInfo);
-        await this.loadParsingRules(); // 确保加载解析规则
+        await this.showWithModelData(modelInfo, this.currentModelMeta);
     }
 
     // 新增方法：直接接收model-detail的数据，不重复调用接口
@@ -223,7 +221,11 @@ class ModelEdit extends HTMLElement {
         if (sceneInput) sceneInput.value = modelDetailData.scene || '';
 
         // 使用接口返回的inputs和outputs数据
-        this.loadInterfaceParamsFromData(modelDetailData.inputs, modelDetailData.outputs, modelDetailData.apis);
+        if (modelDetailData.inputs || modelDetailData.apis) {
+            this.loadInterfaceParamsFromData(modelDetailData.inputs, modelDetailData.outputs, modelDetailData.apis);
+        } else {
+            this.loadInterfaceParams();
+        }
     }
 
     hide() {
@@ -232,10 +234,15 @@ class ModelEdit extends HTMLElement {
 
     async loadModelData(modelInfo) {
         try {
-            // 调用API获取完整的模型元数据
+            let projectName = null;
+            if (modelInfo.fullPath && window.extractProjectNameFromPath) {
+                projectName = window.extractProjectNameFromPath(modelInfo.fullPath);
+            }
+
             const result = await window.AppConfig.get('model', 'metas', {
                 name: modelInfo.name,
-                version: modelInfo.version
+                version: modelInfo.version,
+                projectName: projectName
             });
             
             if (result.success && result.data) {
@@ -243,7 +250,6 @@ class ModelEdit extends HTMLElement {
                 console.log('获取到完整模型元数据:', this.currentModelMeta);
             } else {
                 console.error('获取模型元数据失败:', result.message);
-                // 如果获取失败，至少保存基本信息
                 this.currentModelMeta = {
                     name: modelInfo.name,
                     version: modelInfo.version,
@@ -253,31 +259,12 @@ class ModelEdit extends HTMLElement {
             }
         } catch (error) {
             console.error('获取模型元数据异常:', error);
-            // 如果获取失败，至少保存基本信息
             this.currentModelMeta = {
                 name: modelInfo.name,
                 version: modelInfo.version,
                 author: modelInfo.author,
                 scene: modelInfo.scene
             };
-        }
-        
-        // 加载基本信息到表单
-        const modelNameInput = this.shadowRoot.getElementById('modelName');
-        const developerInput = this.shadowRoot.getElementById('developer');
-        const versionInput = this.shadowRoot.getElementById('version');
-        const sceneInput = this.shadowRoot.getElementById('scene');
-
-        if (modelNameInput) modelNameInput.value = modelInfo.name || '';
-        if (developerInput) developerInput.value = modelInfo.author || '';
-        if (versionInput) versionInput.value = modelInfo.version || '';
-        if (sceneInput) sceneInput.value = modelInfo.scene || '';
-
-        // 加载接口参数（使用从API获取的数据）
-        if (this.currentModelMeta && (this.currentModelMeta.inputs || this.currentModelMeta.apis)) {
-            this.loadInterfaceParamsFromData(this.currentModelMeta.inputs, this.currentModelMeta.outputs, this.currentModelMeta.apis);
-        } else {
-            this.loadInterfaceParams();
         }
     }
 
@@ -344,26 +331,9 @@ class ModelEdit extends HTMLElement {
     }
 
     loadInterfaceParams() {
-        // 默认输入参数
-        this.inputs = [
-            { name: 'temperature', type: 'float', unit: '°C', desc: '环境温度' },
-            { name: 'pressure', type: 'float', unit: 'kPa', desc: '压力值' },
-            { name: 'flow_rate', type: 'float', unit: 'm³/h', desc: '流量' }
-        ];
-
-        // 默认输出参数
-        this.outputs = [
-            { name: 'control_signal', type: 'float', unit: '%', desc: '控制信号' },
-            { name: 'status', type: 'int', unit: '-', desc: '状态码' },
-            { name: 'efficiency', type: 'float', unit: '%', desc: '效率' }
-        ];
-
-        this.apis = [{
-            name: '默认API',
-            description: '',
-            inputs: this.inputs,
-            outputs: this.outputs
-        }];
+        this.inputs = [];
+        this.outputs = [];
+        this.apis = [];
         this.currentApiIndex = 0;
         this.renderApiTabs();
         this.renderApiInfo();

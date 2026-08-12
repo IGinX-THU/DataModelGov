@@ -160,17 +160,33 @@ class ModelDetail extends HTMLElement {
                 window.showGlobalLoading('正在加载模型信息...');
             }
 
+            // 从fullPath中提取projectName
+            let projectName = null;
+            if (modelInfo.fullPath && window.extractProjectNameFromPath) {
+                projectName = window.extractProjectNameFromPath(modelInfo.fullPath);
+            }
+            if (!projectName) {
+                const username = window.AppConfig.getUsername();
+                const cachedProject = username ? JSON.parse(localStorage.getItem('currentProject_' + username) || 'null') : null;
+                projectName = cachedProject ? cachedProject.name : null;
+            }
+
             // 使用新的API配置
             const result = await window.AppConfig.get('model', 'metas', {
                 name: modelInfo.name,
-                version: modelInfo.version
+                version: modelInfo.version,
+                projectName: projectName
             });
 
-            if (result.success && result.data) {
+            if ((result.code === 200 || result.success) && result.data) {
                 const meta = result.data;
                 console.log('获取模型元数据成功:', meta);
                 // 保存完整的接口数据
                 this.currentModelMeta = meta;
+                // 将fullPath合并到meta中，以便后续使用
+                if (modelInfo.fullPath) {
+                    meta.fullPath = modelInfo.fullPath;
+                }
                 this.updateContent(meta);
             } else {
                 console.error('获取元数据失败:', result.message);
@@ -235,7 +251,12 @@ class ModelDetail extends HTMLElement {
     
     updateVersionHistory(modelInfo) {
         // 调用接口获取版本历史数据
-        this.loadVersionHistory(modelInfo);
+        // 如果modelInfo中有fullPath，使用它；否则使用this.currentModel中的fullPath
+        const modelInfoWithPath = {
+            ...modelInfo,
+            fullPath: modelInfo.fullPath || (this.currentModel ? this.currentModel.fullPath : null)
+        };
+        this.loadVersionHistory(modelInfoWithPath);
     }
 
     async loadVersionHistory(modelInfo) {
@@ -245,8 +266,32 @@ class ModelDetail extends HTMLElement {
                 window.showGlobalLoading('正在加载版本历史...');
             }
 
-            // 使用新的API配置
-            const result = await window.AppConfig.get('model', 'history', { name: modelInfo.name });
+            // 从右侧资源树路径中提取项目名称
+            let projectName = null;
+            console.log('modelInfo.fullPath:', modelInfo.fullPath);
+            console.log('window.extractProjectNameFromPath存在:', typeof window.extractProjectNameFromPath);
+            if (modelInfo.fullPath && window.extractProjectNameFromPath) {
+                projectName = window.extractProjectNameFromPath(modelInfo.fullPath);
+                console.log('从路径提取的项目名称:', projectName);
+            }
+
+            // 如果没有从路径中提取到项目名称，尝试从localStorage获取
+            if (!projectName) {
+                const username = window.localStorage.getItem('username');
+                const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
+                projectName = cachedProject ? cachedProject.name : null;
+                console.log('从localStorage获取的项目名称:', projectName);
+            }
+
+            // 使用新的API配置，传递项目名称
+            const params = { name: modelInfo.name };
+            if (projectName) {
+                params.projectName = projectName;
+            }
+
+            console.log('版本历史查询参数:', params);
+
+            const result = await window.AppConfig.get('model', 'history', params);
 
             if (result.success && result.data) {
                 const historyData = result.data;
@@ -446,7 +491,9 @@ class ModelDetail extends HTMLElement {
         // 显示编辑对话框，传递当前模型数据和完整的接口数据
         const modelEdit = document.getElementById('modelEdit');
         if (modelEdit && modelEdit.showWithModelData) {
-            modelEdit.showWithModelData(this.currentModel, this.currentModelMeta || this.currentModel);
+            // 合并fullPath到传递的数据中
+            const modelData = { ...this.currentModel, fullPath: this.currentModel.fullPath };
+            modelEdit.showWithModelData(modelData, this.currentModelMeta || this.currentModel);
         } else {
             console.error('未找到modelEdit组件或showWithModelData方法');
         }
@@ -581,17 +628,23 @@ class ModelDetail extends HTMLElement {
                 return;
             }
             
-            // 构建查询参数
-            const params = new URLSearchParams({
-                name: this.currentModel.name,
-                version: version
-            });
+            // 从fullPath中提取projectName
+            let projectName = null;
+            if (this.currentModel.fullPath && window.extractProjectNameFromPath) {
+                projectName = window.extractProjectNameFromPath(this.currentModel.fullPath);
+                console.log('🔍 提取的projectName:', projectName);
+            } else {
+                console.log('⚠️ 无法提取projectName - fullPath:', this.currentModel.fullPath, '函数存在:', !!window.extractProjectNameFromPath);
+            }
             
             // 使用新的API配置
             const result = await window.AppConfig.delete('model', 'delete', {
                 name: this.currentModel.name,
-                version: version
+                version: version,
+                projectName: projectName
             });
+            
+            console.log('📤 删除请求参数:', { name: this.currentModel.name, version: version, projectName: projectName });
             
             console.log('删除响应:', result);
             
@@ -606,6 +659,15 @@ class ModelDetail extends HTMLElement {
                     window.loadDataSourceTree();
                 } else {
                     console.error('❌ window.loadDataSourceTree 不存在');
+                }
+                
+                // 重新加载project tree
+                console.log('🔄 模型删除成功，准备调用 loadProjectTree');
+                if (window.loadProjectTree) {
+                    console.log('🔄 调用 window.loadProjectTree');
+                    window.loadProjectTree();
+                } else {
+                    console.error('❌ window.loadProjectTree 不存在');
                 }
                 
                 // 从右侧树中移除该版本节点

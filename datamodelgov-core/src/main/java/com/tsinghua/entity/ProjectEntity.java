@@ -46,6 +46,10 @@ public class ProjectEntity {
     @Field(name = "datas")
     private String datas;
 
+    @ApiModelProperty(value = "关联的仿真程序列表（格式：program1, program2, ... ）")
+    @Field(name = "programs")
+    private String programs;
+
     @ApiModelProperty(value = "创建时间")
     @Field(name = "createTime")
     private Long createTime;

@@ -183,15 +183,23 @@ public class DirectedGraphExecutionEngine {
 
             // 按拓扑排序顺序构建results，保证前端日志显示顺序正确
             Map<String, Object> orderedResults = new LinkedHashMap<>();
+            boolean hasFailedNode = false;
             for (String nodeId : executionOrder) {
                 Object nodeResult = executionResults.get(nodeId);
                 if (nodeResult != null) {
                     orderedResults.put(nodeId, nodeResult);
+                    // 检查是否有节点执行失败
+                    if (nodeResult instanceof Map) {
+                        Map<?, ?> nodeResultMap = (Map<?, ?>) nodeResult;
+                        if ("failed".equals(nodeResultMap.get("status"))) {
+                            hasFailedNode = true;
+                        }
+                    }
                 }
             }
 
-            result.put("success", true);
-            result.put("message", "仿真执行成功");
+            result.put("success", !hasFailedNode);
+            result.put("message", hasFailedNode ? "仿真执行完成，但有节点失败" : "仿真执行成功");
             result.put("executionOrder", executionOrder);
             result.put("results", orderedResults);
             result.put("nodeOutputs", nodeOutputs);
@@ -273,7 +281,7 @@ public class DirectedGraphExecutionEngine {
         String algorithmName = node.has("algorithmName") ? node.get("algorithmName").asText() : "";
         String algorithmVersion = node.has("algorithmVersion") ? node.get("algorithmVersion").asText() : "";
 
-        log.info("执行算法任务节点: nodeId={}, name={}, algorithm={}:{}", nodeId, nodeName, algorithmName, algorithmVersion);
+        log.info("执行算法任务节点: nodeId={}, name={}, projectName={}, algorithm={}:{}", nodeId, nodeName, projectName, algorithmName, algorithmVersion);
 
         if (algorithmName.isEmpty() || algorithmVersion.isEmpty()) {
             throw new Exception("节点 " + nodeName + " 未配置算法");
@@ -287,6 +295,7 @@ public class DirectedGraphExecutionEngine {
         Map<String, Object> executionParams = new HashMap<>();
         executionParams.put("nodeId", nodeId);
         executionParams.put("nodeName", nodeName);
+        executionParams.put("projectName", projectName);
         executionParams.put("algorithmName", algorithmName);
         executionParams.put("algorithmVersion", algorithmVersion);
         executionParams.put("startTime", startTime);
@@ -366,6 +375,7 @@ public class DirectedGraphExecutionEngine {
         Map<String, Object> nodeResult = new HashMap<>();
         nodeResult.put("nodeId", nodeId);
         nodeResult.put("nodeName", nodeName);
+        nodeResult.put("projectName", projectName);
         nodeResult.put("algorithm", algorithmName);
         nodeResult.put("version", algorithmVersion);
 

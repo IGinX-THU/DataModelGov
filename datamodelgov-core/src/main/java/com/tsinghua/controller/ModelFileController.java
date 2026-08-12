@@ -1,5 +1,6 @@
 package com.tsinghua.controller;
 
+import com.tsinghua.auth.util.AuthUtil;
 import com.tsinghua.entity.ModelMetaEntity;
 import com.tsinghua.model.Result;
 import com.tsinghua.dto.UploadResult;
@@ -59,8 +60,8 @@ public class ModelFileController {
             @RequestParam(value = "fileName", required = false) String fileName,
             HttpServletResponse response) throws Exception {
 
-        byte[] fileData = modelFileService.downloadModel(name, version);
-        ModelMetaEntity queryMeta = modelFileService.queryMeta(name, version);
+        byte[] fileData = modelFileService.downloadModel(name, version, ProjectContext.getCurrentProject(null));
+        ModelMetaEntity queryMeta = modelFileService.queryMeta(name, version, ProjectContext.getCurrentProject(null));
         fileName = queryMeta.getFileName();
 
         String encodedFilename = URLEncoder.encode(fileName, StandardCharsets.UTF_8.name())
@@ -80,8 +81,9 @@ public class ModelFileController {
     @RequirePermission(Permission.MODEL_READ)
     public Result<ModelMetaEntity> queryMeta(
             @RequestParam("name") String name,
-            @RequestParam("version") String version) throws Exception {
-        ModelMetaEntity result = modelFileService.queryMeta(name, version);
+            @RequestParam("version") String version,
+            @RequestParam(value = "projectName", required = false) String projectName) throws Exception {
+        ModelMetaEntity result = modelFileService.queryMeta(name, version, projectName);
         return Result.success(result);
     }
 
@@ -98,8 +100,9 @@ public class ModelFileController {
     @GetMapping( "/history")
     @RequirePermission(Permission.MODEL_READ)
     public Result<?> queryMetaList(
-            @RequestParam("name") String name) {
-        return Result.success(modelFileService.queryMetaList(name));
+            @RequestParam("name") String name,
+            @RequestParam(value = "projectName", required = false) String projectName) {
+        return Result.success(modelFileService.queryMetaList(name, projectName));
     }
 
     @ApiOperation("移除模型资产")
@@ -108,8 +111,9 @@ public class ModelFileController {
     @OperationLog(value = "移除模型资产", type = OperationLog.OperationType.DELETE)
     public Result<Void> handleDelete(
             @RequestParam("name") String name,
-            @RequestParam(value = "version", required = false) String version) throws Exception {
-        modelFileService.deleteModel(name, version);
+            @RequestParam(value = "version", required = false) String version,
+            @RequestParam(value = "projectName", required = false) String projectName) throws Exception {
+        modelFileService.deleteModel(name, version, projectName);
         return Result.success("操作成功");
     }
 
@@ -130,6 +134,9 @@ public class ModelFileController {
     @PostMapping("/archive/query")
     @RequirePermission(Permission.MODEL_READ)
     public Result<List<ModelMetaEntity>> queryModelArchives(@RequestBody ModelArchiveQueryRequest request) {
+        if (!AuthUtil.isAdmin()) {
+            request.setAuthor(AuthUtil.getCurrentUsername());
+        }
         List<ModelMetaEntity> result = modelFileService.queryModelArchives(
             request.getName(),
             request.getProjectName(),
@@ -144,6 +151,9 @@ public class ModelFileController {
     @PostMapping("/archive/count")
     @RequirePermission(Permission.MODEL_READ)
     public Result<Object> countModelArchives(@RequestBody ModelArchiveQueryRequest request) {
+        if (!AuthUtil.isAdmin()) {
+            request.setAuthor(AuthUtil.getCurrentUsername());
+        }
         List<ModelMetaEntity> allArchives = modelFileService.queryModelArchives(
             request.getName(),
             request.getProjectName(),

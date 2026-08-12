@@ -1597,6 +1597,117 @@ class DataQueryRequest(object):
         return not (self == other)
 
 
+class DataImportRequest(object):
+    """
+    Attributes:
+     - tableName
+     - path
+     - columns
+     - startTime
+     - endTime
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, tableName = None, path = None, columns = None, startTime = None, endTime = None,):
+        self.tableName = tableName
+        self.path = path
+        self.columns = columns
+        self.startTime = startTime
+        self.endTime = endTime
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 1:
+                if ftype == TType.STRING:
+                    self.tableName = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 2:
+                if ftype == TType.STRING:
+                    self.path = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 3:
+                if ftype == TType.LIST:
+                    self.columns = []
+                    (_etype17, _size14) = iprot.readListBegin()
+                    for _i18 in range(_size14):
+                        _elem19 = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                        self.columns.append(_elem19)
+                    iprot.readListEnd()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 4:
+                if ftype == TType.I64:
+                    self.startTime = iprot.readI64()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 5:
+                if ftype == TType.I64:
+                    self.endTime = iprot.readI64()
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('DataImportRequest')
+        if self.tableName is not None:
+            oprot.writeFieldBegin('tableName', TType.STRING, 1)
+            oprot.writeString(self.tableName.encode('utf-8') if sys.version_info[0] == 2 else self.tableName)
+            oprot.writeFieldEnd()
+        if self.path is not None:
+            oprot.writeFieldBegin('path', TType.STRING, 2)
+            oprot.writeString(self.path.encode('utf-8') if sys.version_info[0] == 2 else self.path)
+            oprot.writeFieldEnd()
+        if self.columns is not None:
+            oprot.writeFieldBegin('columns', TType.LIST, 3)
+            oprot.writeListBegin(TType.STRING, len(self.columns))
+            for iter20 in self.columns:
+                oprot.writeString(iter20.encode('utf-8') if sys.version_info[0] == 2 else iter20)
+            oprot.writeListEnd()
+            oprot.writeFieldEnd()
+        if self.startTime is not None:
+            oprot.writeFieldBegin('startTime', TType.I64, 4)
+            oprot.writeI64(self.startTime)
+            oprot.writeFieldEnd()
+        if self.endTime is not None:
+            oprot.writeFieldBegin('endTime', TType.I64, 5)
+            oprot.writeI64(self.endTime)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+
+
 class RelationalQueryRequest(object):
     """
     Attributes:
@@ -1646,11 +1757,11 @@ class RelationalQueryRequest(object):
             elif fid == 4:
                 if ftype == TType.LIST:
                     self.filters = []
-                    (_etype17, _size14) = iprot.readListBegin()
-                    for _i18 in range(_size14):
-                        _elem19 = FilterCondition()
-                        _elem19.read(iprot)
-                        self.filters.append(_elem19)
+                    (_etype24, _size21) = iprot.readListBegin()
+                    for _i25 in range(_size21):
+                        _elem26 = FilterCondition()
+                        _elem26.read(iprot)
+                        self.filters.append(_elem26)
                     iprot.readListEnd()
                 else:
                     iprot.skip(ftype)
@@ -1690,8 +1801,8 @@ class RelationalQueryRequest(object):
         if self.filters is not None:
             oprot.writeFieldBegin('filters', TType.LIST, 4)
             oprot.writeListBegin(TType.STRUCT, len(self.filters))
-            for iter20 in self.filters:
-                iter20.write(oprot)
+            for iter27 in self.filters:
+                iter27.write(oprot)
             oprot.writeListEnd()
             oprot.writeFieldEnd()
         if self.sortField is not None:
@@ -1860,26 +1971,26 @@ class TableDto(object):
             if fid == 1:
                 if ftype == TType.LIST:
                     self.header = []
-                    (_etype24, _size21) = iprot.readListBegin()
-                    for _i25 in range(_size21):
-                        _elem26 = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
-                        self.header.append(_elem26)
+                    (_etype31, _size28) = iprot.readListBegin()
+                    for _i32 in range(_size28):
+                        _elem33 = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                        self.header.append(_elem33)
                     iprot.readListEnd()
                 else:
                     iprot.skip(ftype)
             elif fid == 2:
                 if ftype == TType.LIST:
                     self.records = []
-                    (_etype30, _size27) = iprot.readListBegin()
-                    for _i31 in range(_size27):
-                        _elem32 = {}
-                        (_ktype34, _vtype35, _size33) = iprot.readMapBegin()
-                        for _i37 in range(_size33):
-                            _key38 = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
-                            _val39 = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
-                            _elem32[_key38] = _val39
+                    (_etype37, _size34) = iprot.readListBegin()
+                    for _i38 in range(_size34):
+                        _elem39 = {}
+                        (_ktype41, _vtype42, _size40) = iprot.readMapBegin()
+                        for _i44 in range(_size40):
+                            _key45 = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                            _val46 = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                            _elem39[_key45] = _val46
                         iprot.readMapEnd()
-                        self.records.append(_elem32)
+                        self.records.append(_elem39)
                     iprot.readListEnd()
                 else:
                     iprot.skip(ftype)
@@ -1897,18 +2008,18 @@ class TableDto(object):
         if self.header is not None:
             oprot.writeFieldBegin('header', TType.LIST, 1)
             oprot.writeListBegin(TType.STRING, len(self.header))
-            for iter40 in self.header:
-                oprot.writeString(iter40.encode('utf-8') if sys.version_info[0] == 2 else iter40)
+            for iter47 in self.header:
+                oprot.writeString(iter47.encode('utf-8') if sys.version_info[0] == 2 else iter47)
             oprot.writeListEnd()
             oprot.writeFieldEnd()
         if self.records is not None:
             oprot.writeFieldBegin('records', TType.LIST, 2)
             oprot.writeListBegin(TType.MAP, len(self.records))
-            for iter41 in self.records:
-                oprot.writeMapBegin(TType.STRING, TType.STRING, len(iter41))
-                for kiter42, viter43 in iter41.items():
-                    oprot.writeString(kiter42.encode('utf-8') if sys.version_info[0] == 2 else kiter42)
-                    oprot.writeString(viter43.encode('utf-8') if sys.version_info[0] == 2 else viter43)
+            for iter48 in self.records:
+                oprot.writeMapBegin(TType.STRING, TType.STRING, len(iter48))
+                for kiter49, viter50 in iter48.items():
+                    oprot.writeString(kiter49.encode('utf-8') if sys.version_info[0] == 2 else kiter49)
+                    oprot.writeString(viter50.encode('utf-8') if sys.version_info[0] == 2 else viter50)
                 oprot.writeMapEnd()
             oprot.writeListEnd()
             oprot.writeFieldEnd()
@@ -2622,14 +2733,16 @@ class ExtractAlgorithmFileRequest(object):
     Attributes:
      - name
      - version
+     - projectName
 
     """
     thrift_spec = None
 
 
-    def __init__(self, name = None, version = None,):
+    def __init__(self, name = None, version = None, projectName = None,):
         self.name = name
         self.version = version
+        self.projectName = projectName
 
     def read(self, iprot):
         if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
@@ -2650,6 +2763,11 @@ class ExtractAlgorithmFileRequest(object):
                     self.version = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
+            elif fid == 3:
+                if ftype == TType.STRING:
+                    self.projectName = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                else:
+                    iprot.skip(ftype)
             else:
                 iprot.skip(ftype)
             iprot.readFieldEnd()
@@ -2668,6 +2786,10 @@ class ExtractAlgorithmFileRequest(object):
         if self.version is not None:
             oprot.writeFieldBegin('version', TType.STRING, 2)
             oprot.writeString(self.version.encode('utf-8') if sys.version_info[0] == 2 else self.version)
+            oprot.writeFieldEnd()
+        if self.projectName is not None:
+            oprot.writeFieldBegin('projectName', TType.STRING, 3)
+            oprot.writeString(self.projectName.encode('utf-8') if sys.version_info[0] == 2 else self.projectName)
             oprot.writeFieldEnd()
         oprot.writeFieldStop()
         oprot.writeStructEnd()
@@ -3461,30 +3583,30 @@ class ProjectTree(object):
             elif fid == 2:
                 if ftype == TType.LIST:
                     self.algorithms = []
-                    (_etype47, _size44) = iprot.readListBegin()
-                    for _i48 in range(_size44):
-                        _elem49 = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
-                        self.algorithms.append(_elem49)
+                    (_etype54, _size51) = iprot.readListBegin()
+                    for _i55 in range(_size51):
+                        _elem56 = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                        self.algorithms.append(_elem56)
                     iprot.readListEnd()
                 else:
                     iprot.skip(ftype)
             elif fid == 3:
                 if ftype == TType.LIST:
                     self.models = []
-                    (_etype53, _size50) = iprot.readListBegin()
-                    for _i54 in range(_size50):
-                        _elem55 = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
-                        self.models.append(_elem55)
+                    (_etype60, _size57) = iprot.readListBegin()
+                    for _i61 in range(_size57):
+                        _elem62 = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                        self.models.append(_elem62)
                     iprot.readListEnd()
                 else:
                     iprot.skip(ftype)
             elif fid == 4:
                 if ftype == TType.LIST:
                     self.datas = []
-                    (_etype59, _size56) = iprot.readListBegin()
-                    for _i60 in range(_size56):
-                        _elem61 = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
-                        self.datas.append(_elem61)
+                    (_etype66, _size63) = iprot.readListBegin()
+                    for _i67 in range(_size63):
+                        _elem68 = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                        self.datas.append(_elem68)
                     iprot.readListEnd()
                 else:
                     iprot.skip(ftype)
@@ -3506,22 +3628,22 @@ class ProjectTree(object):
         if self.algorithms is not None:
             oprot.writeFieldBegin('algorithms', TType.LIST, 2)
             oprot.writeListBegin(TType.STRING, len(self.algorithms))
-            for iter62 in self.algorithms:
-                oprot.writeString(iter62.encode('utf-8') if sys.version_info[0] == 2 else iter62)
+            for iter69 in self.algorithms:
+                oprot.writeString(iter69.encode('utf-8') if sys.version_info[0] == 2 else iter69)
             oprot.writeListEnd()
             oprot.writeFieldEnd()
         if self.models is not None:
             oprot.writeFieldBegin('models', TType.LIST, 3)
             oprot.writeListBegin(TType.STRING, len(self.models))
-            for iter63 in self.models:
-                oprot.writeString(iter63.encode('utf-8') if sys.version_info[0] == 2 else iter63)
+            for iter70 in self.models:
+                oprot.writeString(iter70.encode('utf-8') if sys.version_info[0] == 2 else iter70)
             oprot.writeListEnd()
             oprot.writeFieldEnd()
         if self.datas is not None:
             oprot.writeFieldBegin('datas', TType.LIST, 4)
             oprot.writeListBegin(TType.STRING, len(self.datas))
-            for iter64 in self.datas:
-                oprot.writeString(iter64.encode('utf-8') if sys.version_info[0] == 2 else iter64)
+            for iter71 in self.datas:
+                oprot.writeString(iter71.encode('utf-8') if sys.version_info[0] == 2 else iter71)
             oprot.writeListEnd()
             oprot.writeFieldEnd()
         oprot.writeFieldStop()
@@ -4058,10 +4180,10 @@ class RunSimulationSelectiveRequest(object):
             elif fid == 2:
                 if ftype == TType.LIST:
                     self.selectedNodeIds = []
-                    (_etype68, _size65) = iprot.readListBegin()
-                    for _i69 in range(_size65):
-                        _elem70 = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
-                        self.selectedNodeIds.append(_elem70)
+                    (_etype75, _size72) = iprot.readListBegin()
+                    for _i76 in range(_size72):
+                        _elem77 = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                        self.selectedNodeIds.append(_elem77)
                     iprot.readListEnd()
                 else:
                     iprot.skip(ftype)
@@ -4083,8 +4205,8 @@ class RunSimulationSelectiveRequest(object):
         if self.selectedNodeIds is not None:
             oprot.writeFieldBegin('selectedNodeIds', TType.LIST, 2)
             oprot.writeListBegin(TType.STRING, len(self.selectedNodeIds))
-            for iter71 in self.selectedNodeIds:
-                oprot.writeString(iter71.encode('utf-8') if sys.version_info[0] == 2 else iter71)
+            for iter78 in self.selectedNodeIds:
+                oprot.writeString(iter78.encode('utf-8') if sys.version_info[0] == 2 else iter78)
             oprot.writeListEnd()
             oprot.writeFieldEnd()
         oprot.writeFieldStop()
@@ -5035,6 +5157,15 @@ DataQueryRequest.thrift_spec = (
     (5, TType.I64, 'precision', None, None, ),  # 5
     (6, TType.I32, 'timePrecision', None, None, ),  # 6
 )
+all_structs.append(DataImportRequest)
+DataImportRequest.thrift_spec = (
+    None,  # 0
+    (1, TType.STRING, 'tableName', 'UTF8', None, ),  # 1
+    (2, TType.STRING, 'path', 'UTF8', None, ),  # 2
+    (3, TType.LIST, 'columns', (TType.STRING, 'UTF8', False), None, ),  # 3
+    (4, TType.I64, 'startTime', None, None, ),  # 4
+    (5, TType.I64, 'endTime', None, None, ),  # 5
+)
 all_structs.append(RelationalQueryRequest)
 RelationalQueryRequest.thrift_spec = (
     None,  # 0
@@ -5127,6 +5258,7 @@ ExtractAlgorithmFileRequest.thrift_spec = (
     None,  # 0
     (1, TType.STRING, 'name', 'UTF8', None, ),  # 1
     (2, TType.STRING, 'version', 'UTF8', None, ),  # 2
+    (3, TType.STRING, 'projectName', 'UTF8', None, ),  # 3
 )
 all_structs.append(AlgorithmArchiveQueryRequest)
 AlgorithmArchiveQueryRequest.thrift_spec = (

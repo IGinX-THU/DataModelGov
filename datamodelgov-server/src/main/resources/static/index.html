@@ -22,6 +22,13 @@
     <script src="./config/app-config.js"></script>
 </head>
 <body>
+<!-- 页面初始化Loading遮罩层 -->
+<div class="page-loading-overlay" id="pageLoadingOverlay">
+    <div class="global-loading-spinner">
+        <div class="global-spinner"></div>
+        <div class="global-loading-text">正在加载页面...</div>
+    </div>
+</div>
 <!-- Desktop Application Shell (Enhancement Layer) -->
 <div class="desktop-shell-enhancement">
     <!-- Bottom Sidebar Toggle Tabs -->
@@ -43,8 +50,11 @@
             <div class="bottom-sidebar-icon right-sidebar-icon" data-target="right" data-panel="algorithm" title="算法">
                 <span class="sidebar-tab-icon">🧮</span>
             </div>
-            <div class="bottom-sidebar-icon right-sidebar-icon active" data-target="right" data-panel="model" title="models_system">
+            <div class="bottom-sidebar-icon right-sidebar-icon" data-target="right" data-panel="model" title="models_system">
                 <span class="sidebar-tab-icon">📦</span>
+            </div>
+            <div class="bottom-sidebar-icon right-sidebar-icon active" data-target="right" data-panel="program" title="仿真程序">
+                <span class="sidebar-tab-icon">💻</span>
             </div>
         </div>
     </div>
@@ -149,6 +159,11 @@
     <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z" fill="#673AB7"/>
     <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z" fill="none" stroke="#512DA8" stroke-width="0.5"/>
   </symbol>
+  
+  <!-- 列表图标 - Material Design List -->
+  <symbol id="icon-list" viewBox="0 0 24 24">
+    <path d="M3 5h2v2H3V5zm0 6h2v2H3v-2zm0 6h2v2H3v-2zM7 5h14v2H7V5zm0 6h14v2H7v-2zm0 6h14v2H7v-2z" fill="#607D8B"/>
+  </symbol>
 </svg>
 
 <!-- 顶部导航栏（修复下拉标签嵌套，确保点击区域完整） -->
@@ -160,8 +175,8 @@
                 <ul class="dropdown-menu">
                     <li id="menu-project-new">新建项目</li>
                     <li id="menu-project-list">打开项目</li>
-<!--                    <li id="menu-project-export">导出项目</li>-->
-<!--                    <li id="menu-project-import">导入项目</li>-->
+                    <li id="menu-project-export">导出项目</li>
+                    <li id="menu-project-import">导入项目</li>
                 </ul>
             </span>
         <span class="tab dropdown" id="dataDropdown">
@@ -170,7 +185,7 @@
                     <li id="menu-data-source-management">异构数据源管理</li>
                     <li id="menu-register-heterogeneous-data-source">注册异构数据源</li>
 <!--                    <li>移除异构数据源</li>-->
-                    <li id="menu-import-data">导入数据</li>
+                    <li id="menu-import-data">上传数据文件</li>
                     <li id="menu-data-archive-query">数据档案查询</li>
 <!--                    <li>导出数据</li>-->
                 </ul>
@@ -209,6 +224,14 @@
                     <li id="menu-simulation-record">仿真记录</li>
                 </ul>
             </span>
+        <span class="tab dropdown" id="programDropdown">
+                <span class="dropdown-trigger">程序</span>
+                <ul class="dropdown-menu">
+                    <li id="menu-program-upload">仿真程序上传</li>
+                    <li id="menu-program-management">程序管理</li>
+                    <li id="menu-program-run">运行结果</li>
+                </ul>
+            </span>
         <span class="tab dropdown" id="analysisDropdown" style="display: none;">
                 <span class="dropdown-trigger">分析</span>
                 <ul class="dropdown-menu">
@@ -227,16 +250,27 @@
         <span class="tab dropdown" id="toolDropdown">
                 <span class="dropdown-trigger">工具</span>
                 <ul class="dropdown-menu">
-                    <li id="menu-configure-parsing-rules">配置解析规则</li>
+                    <li id="menu-configure-parsing-rules">算法/模型解析规则</li>
                     <li class="has-submenu" id="menu-import-wizard">
                         导入向导 ▸
                         <ul class="submenu">
-                            <li id="menu-import-wizard-data">数据文件</li>
-                            <li id="menu-import-wizard-model">模型文件</li>
-                            <li id="menu-import-wizard-algorithm">算法文件</li>
+                            <li id="menu-import-wizard-project">项目</li>
+                            <li id="menu-import-wizard-data">数据</li>
+                            <li id="menu-import-wizard-model">模型</li>
+                            <li id="menu-import-wizard-algorithm">算法</li>
+                            <li id="menu-import-wizard-simulation">仿真</li>
                         </ul>
                     </li>
-                    <li id="menu-project-export">导出向导</li>
+                    <li class="has-submenu" id="menu-export-wizard">
+                        导出向导 ▸
+                        <ul class="submenu">
+                            <li id="menu-export-wizard-project">项目</li>
+                            <li id="menu-export-wizard-data">数据</li>
+                            <li id="menu-export-wizard-model">模型</li>
+                            <li id="menu-export-wizard-algorithm">算法</li>
+                            <li id="menu-export-wizard-simulation">仿真</li>
+                        </ul>
+                    </li>
                     <li class="has-submenu" id="menu-window">
                         窗口 ▸
                         <ul class="submenu">
@@ -271,6 +305,7 @@
         <span class="tab dropdown" id="helpDropdown">
                 <span class="dropdown-trigger">帮助</span>
                 <ul class="dropdown-menu">
+                    <li id="menu-user-manual">用户手册</li>
                     <li id="menu-about">关于</li>
                 </ul>
             </span>
@@ -304,6 +339,14 @@
                     <svg class="ribbon-btn-icon"><use href="#icon-folder-open"></use></svg>
                     <span class="ribbon-btn-text">打开</span>
                 </button>
+                <button class="ribbon-btn" id="btn-import-project">
+                    <svg class="ribbon-btn-icon"><use href="#icon-import"></use></svg>
+                    <span class="ribbon-btn-text">导入</span>
+                </button>
+                <button class="ribbon-btn" id="btn-export-project">
+                    <svg class="ribbon-btn-icon"><use href="#icon-export"></use></svg>
+                    <span class="ribbon-btn-text">导出</span>
+                </button>
             </div>
         </div>
         
@@ -322,12 +365,20 @@
                     <span class="ribbon-btn-text">管理</span>
                 </button>
                 <button class="ribbon-btn" id="btn-import">
-                    <svg class="ribbon-btn-icon"><use href="#icon-import"></use></svg>
-                    <span class="ribbon-btn-text">导入</span>
+                    <svg class="ribbon-btn-icon"><use href="#icon-upload"></use></svg>
+                    <span class="ribbon-btn-text">上传</span>
                 </button>
                 <button class="ribbon-btn" id="btn-query">
                     <svg class="ribbon-btn-icon"><use href="#icon-search"></use></svg>
                     <span class="ribbon-btn-text">查询</span>
+                </button>
+                <button class="ribbon-btn" id="btn-data-import">
+                    <svg class="ribbon-btn-icon"><use href="#icon-import"></use></svg>
+                    <span class="ribbon-btn-text">导入</span>
+                </button>
+                <button class="ribbon-btn" id="btn-data-export">
+                    <svg class="ribbon-btn-icon"><use href="#icon-export"></use></svg>
+                    <span class="ribbon-btn-text">导出</span>
                 </button>
             </div>
         </div>
@@ -358,6 +409,14 @@
                     <svg class="ribbon-btn-icon"><use href="#icon-search"></use></svg>
                     <span class="ribbon-btn-text">搜索</span>
                 </button>
+                <button class="ribbon-btn" id="btn-model-import">
+                    <svg class="ribbon-btn-icon"><use href="#icon-import"></use></svg>
+                    <span class="ribbon-btn-text">导入</span>
+                </button>
+                <button class="ribbon-btn" id="btn-model-export">
+                    <svg class="ribbon-btn-icon"><use href="#icon-export"></use></svg>
+                    <span class="ribbon-btn-text">导出</span>
+                </button>
             </div>
         </div>
 
@@ -387,6 +446,14 @@
                     <svg class="ribbon-btn-icon"><use href="#icon-search"></use></svg>
                     <span class="ribbon-btn-text">搜索</span>
                 </button>
+                <button class="ribbon-btn" id="btn-algorithm-import">
+                    <svg class="ribbon-btn-icon"><use href="#icon-import"></use></svg>
+                    <span class="ribbon-btn-text">导入</span>
+                </button>
+                <button class="ribbon-btn" id="btn-algorithm-export">
+                    <svg class="ribbon-btn-icon"><use href="#icon-export"></use></svg>
+                    <span class="ribbon-btn-text">导出</span>
+                </button>
             </div>
         </div>
 
@@ -404,9 +471,34 @@
                     <svg class="ribbon-btn-icon"><use href="#icon-analyze"></use></svg>
                     <span class="ribbon-btn-text">分析</span>
                 </button>
+                <button class="ribbon-btn" id="btn-simulation-import">
+                    <svg class="ribbon-btn-icon"><use href="#icon-import"></use></svg>
+                    <span class="ribbon-btn-text">导入</span>
+                </button>
+                <button class="ribbon-btn" id="btn-simulation-export">
+                    <svg class="ribbon-btn-icon"><use href="#icon-export"></use></svg>
+                    <span class="ribbon-btn-text">导出</span>
+                </button>
             </div>
         </div>
         
+        <div class="ribbon-separator"></div>
+
+        <!-- 仿真程序组 -->
+        <div class="ribbon-group">
+            <div class="ribbon-group-title">仿真程序</div>
+            <div class="ribbon-buttons">
+                <button class="ribbon-btn" id="btn-program-upload">
+                    <svg class="ribbon-btn-icon"><use href="#icon-upload"></use></svg>
+                    <span class="ribbon-btn-text">上传</span>
+                </button>
+                <button class="ribbon-btn" id="btn-program-management">
+                    <svg class="ribbon-btn-icon"><use href="#icon-list"></use></svg>
+                    <span class="ribbon-btn-text">管理</span>
+                </button>
+            </div>
+        </div>
+
         <div class="ribbon-separator"></div>
         
         <!-- 可视化分析组 -->
@@ -455,6 +547,11 @@
         </div>
     </div>
 
+    <!-- 数据资源库右键菜单 -->
+    <div id="dataSourceContextMenu" class="context-menu" style="display: none;">
+        <div class="context-menu-item" id="deleteDataNode">删除</div>
+    </div>
+
     <!-- 中间工作区 -->
     <div class="workspace">
         <div class="workspace-title">工作区</div>
@@ -481,6 +578,8 @@
             <algorithm-edit id="algorithmEdit"></algorithm-edit>
             <!-- 数据可视化组件 -->
             <data-visualization id="dataVisualization"></data-visualization>
+            <!-- 用户手册组件 -->
+            <user-manual id="userManual"></user-manual>
             <!-- 数据库表格组件 -->
             <database-table id="databaseTable"></database-table>
             <!-- 数据源管理组件 -->
@@ -517,6 +616,12 @@
             <model-archive-list id="modelArchiveList" style="display: none;"></model-archive-list>
             <!-- 算法档案列表组件 -->
             <algorithm-archive-list id="algorithmArchiveList" style="display: none;"></algorithm-archive-list>
+            <!-- 程序上传组件 -->
+            <program-upload id="programUpload" style="display: none;"></program-upload>
+            <!-- 程序管理组件 -->
+            <program-management id="programManagement" style="display: none;"></program-management>
+            <!-- 程序运行结果组件 -->
+            <program-run id="programRun" style="display: none;"></program-run>
         </div>
     </div>
 
@@ -535,12 +640,22 @@
             </div>
 
             <!-- 模型面板 -->
-            <div class="sidebar-panel right-sidebar-panel active" data-panel="model">
+            <div class="sidebar-panel right-sidebar-panel" data-panel="model">
                 <div class="sidebar-title">
                     <span>模型资产库</span>
                 </div>
                 <div class="tree" id="modelTree">
                     <div class="loading-placeholder">正在加载模型资产...</div>
+                </div>
+            </div>
+
+            <!-- 仿真程序面板 -->
+            <div class="sidebar-panel right-sidebar-panel active" data-panel="program">
+                <div class="sidebar-title">
+                    <span>仿真程序</span>
+                </div>
+                <div class="tree" id="programTree">
+                    <div class="loading-placeholder">正在加载仿真程序...</div>
                 </div>
             </div>
         </div>
@@ -583,12 +698,18 @@
 <script src="./components/data-archive-detail/data-archive-detail.js"></script>
 <script src="./components/model-archive-list/model-archive-list.js"></script>
 <script src="./components/algorithm-archive-list/algorithm-archive-list.js"></script>
+<script src="./components/program-management/program-management.js"></script>
+<script src="./components/program-upload/program-upload.js"></script>
+<script src="./components/program-run/program-run.js"></script>
+<script src="./components/user-manual/user-manual.js"></script>
     <script src="./components/user-management/user-management.js"></script>
     <script src="./components/permission-management/permission-management.js"></script>
     <script src="./components/change-password/change-password.js"></script>
 <script src="./js/localdb.js"></script>
 <script src="./js/state-manager.js"></script>
 <script src="./js/desktop-shell.js"></script>
+<script src="./lib/jszip/jszip.min.js"></script>
+<script src="./lib/docx-preview/docx-preview.min.js"></script>
 <script src="./js/main.js"></script>
 
 <!-- Service Worker Registration -->

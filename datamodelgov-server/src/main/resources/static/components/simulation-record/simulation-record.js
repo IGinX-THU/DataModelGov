@@ -2300,8 +2300,26 @@ class SimulationRecord extends HTMLElement {
             const startTime = this.shadowRoot.getElementById('startTime')?.value;
             const endTime = this.shadowRoot.getElementById('endTime')?.value;
 
+            // 检查用户角色，如果是普通用户则自动添加当前项目筛选
+            let userRole = window.localStorage.getItem('userRole');
+            if (!userRole && window.MenuPermission) {
+                userRole = window.MenuPermission.getCurrentRole();
+            }
+            const isAdmin = userRole === 'ADMIN';
+            
+            let projectNameValue = null;
+            if (!isAdmin) {
+                // 普通用户只能查询当前项目的档案对应的执行记录
+                const username = window.localStorage.getItem('username');
+                const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
+                if (cachedProject && cachedProject.name) {
+                    projectNameValue = cachedProject.name;
+                }
+            }
+
             const requestParams = {
                 archiveName: nameFilter || null,
+                projectName: projectNameValue,
                 status: statusFilter || null,
                 startTime: startTime ? new Date(startTime).getTime() : null,
                 endTime: endTime ? new Date(endTime).getTime() : null,
@@ -2351,8 +2369,26 @@ class SimulationRecord extends HTMLElement {
 
     async loadRecordsCount(name, status, startTime, endTime) {
         try {
+            // 检查用户角色，如果是普通用户则自动添加当前项目筛选
+            let userRole = window.localStorage.getItem('userRole');
+            if (!userRole && window.MenuPermission) {
+                userRole = window.MenuPermission.getCurrentRole();
+            }
+            const isAdmin = userRole === 'ADMIN';
+            
+            let projectNameValue = null;
+            if (!isAdmin) {
+                // 普通用户只能查询当前项目的档案对应的执行记录
+                const username = window.localStorage.getItem('username');
+                const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
+                if (cachedProject && cachedProject.name) {
+                    projectNameValue = cachedProject.name;
+                }
+            }
+
             const requestParams = {
                 archiveName: name || null,
+                projectName: projectNameValue,
                 status: status || null,
                 startTime: startTime ? new Date(startTime).getTime() : null,
                 endTime: endTime ? new Date(endTime).getTime() : null
@@ -2583,14 +2619,34 @@ class SimulationRecord extends HTMLElement {
             let outputDataFromCsv = null;
             let outputCsvData = null; // 保存CSV原始数据用于报告
             if (parsedResult && parsedResult.results) {
-                const firstNodeKey = Object.keys(parsedResult.results)[0];
-                if (firstNodeKey) {
-                    const nodeResult = parsedResult.results[firstNodeKey];
+                // 使用执行顺序中的最后一个节点（最终输出节点）
+                const executionOrder = parsedResult.executionOrder || Object.keys(parsedResult.results);
+                const finalNodeKey = executionOrder[executionOrder.length - 1];
+                if (finalNodeKey && parsedResult.results[finalNodeKey]) {
+                    const nodeResult = parsedResult.results[finalNodeKey];
                     if (nodeResult.outputCsv) {
                         outputCsvData = this.parseOutputCsv(nodeResult.outputCsv);
                         outputDataFromCsv = this.convertCsvToChartData(outputCsvData);
-                        console.log('从CSV解析的输出数据:', outputDataFromCsv);
+                        console.log('从results.outputCsv解析的输出数据:', outputDataFromCsv);
                         console.log('CSV原始数据:', outputCsvData);
+                    }
+                }
+            }
+
+            // 如果results中没有outputCsv，尝试从nodeOutputs中提取
+            if (!outputCsvData && parsedResult && parsedResult.nodeOutputs) {
+                const nodeKeys = Object.keys(parsedResult.nodeOutputs);
+                const lastNodeKey = nodeKeys[nodeKeys.length - 1];
+                if (lastNodeKey && parsedResult.nodeOutputs[lastNodeKey]) {
+                    const nodeOutput = parsedResult.nodeOutputs[lastNodeKey];
+                    if (typeof nodeOutput === 'string') {
+                        const csvMatch = nodeOutput.match(/=== 输出文件内容 \(output\.csv\) ===\s*\r?\n([\s\S]*?)(?=\r?\n\r?\n|$)/);
+                        if (csvMatch && csvMatch[1]) {
+                            outputCsvData = this.parseOutputCsv(csvMatch[1]);
+                            outputDataFromCsv = this.convertCsvToChartData(outputCsvData);
+                            console.log('从nodeOutputs解析的输出数据:', outputDataFromCsv);
+                            console.log('CSV原始数据:', outputCsvData);
+                        }
                     }
                 }
             }

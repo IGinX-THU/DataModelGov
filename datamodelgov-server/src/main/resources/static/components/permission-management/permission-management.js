@@ -200,24 +200,39 @@ class PermissionManagement extends HTMLElement {
             emptyHint.hidden = true;
         }
 
+        // 检查当前用户是否是管理员
+        const userRole = window.MenuPermission ? window.MenuPermission.getCurrentRole() : null;
+        const isAdmin = userRole === 'ADMIN';
+
         this.rows.forEach((row) => {
             const pk = this.rowPrimaryKey(row);
             const tr = document.createElement('tr');
+            let actionButtonsHtml = `
+                <div class="action-buttons">
+                    <button type="button" class="action-btn edit" data-id="${pk != null ? pk : ''}">编辑</button>
+            `;
+            if (isAdmin) {
+                actionButtonsHtml += `
+                    <button type="button" class="action-btn delete" data-table-prefix="${this.escapeHtml(row.tablePrefix || '')}">删除</button>
+                `;
+            }
+            actionButtonsHtml += '</div>';
+
             tr.innerHTML = `
                 <td>${this.escapeHtml(row.tablePrefix || '')}</td>
                 <td>${this.escapeHtml(row.owner || '')}</td>
                 <td>${row.isPublic ? '是' : '否'}</td>
                 <td>${this.escapeHtml(row.visibleUsers || '-')}</td>
                 <td>${this.formatTime(row.createTime)}</td>
-                <td>
-                    <div class="action-buttons">
-                        <button type="button" class="action-btn edit" data-id="${pk != null ? pk : ''}">编辑</button>
-                    </div>
-                </td>
+                <td>${actionButtonsHtml}</td>
             `;
             const editBtn = tr.querySelector('.action-btn.edit');
             if (editBtn && pk != null) {
                 editBtn.addEventListener('click', () => this.openEditModal(row));
+            }
+            const deleteBtn = tr.querySelector('.action-btn.delete');
+            if (deleteBtn) {
+                deleteBtn.addEventListener('click', () => this.deletePermission(row.tablePrefix));
             }
             tableBody.appendChild(tr);
         });
@@ -359,6 +374,34 @@ class PermissionManagement extends HTMLElement {
         } catch (error) {
             console.error('保存权限失败:', error);
             this.showToast('保存权限失败', 'error');
+        }
+    }
+
+    async deletePermission(tablePrefix) {
+        if (!tablePrefix) {
+            this.showToast('表前缀不能为空', 'error');
+            return;
+        }
+        const confirmed = await window.CommonUtils.confirmDialog(`确定要删除权限 "${tablePrefix}" 吗？`, '删除确认');
+        if (!confirmed) {
+            return;
+        }
+        try {
+            const url = `${window.AppConfig.api.baseURL}/api/data-permission/delete/${encodeURIComponent(tablePrefix)}`;
+            const response = await fetch(url, {
+                method: 'DELETE',
+                headers: window.AppConfig.getAuthHeaders()
+            });
+            const result = await response.json();
+            if (result.success) {
+                this.showToast(result.message || '删除成功');
+                await this.loadList();
+            } else {
+                this.showToast(result.message || '删除失败', 'error');
+            }
+        } catch (error) {
+            console.error('删除权限失败:', error);
+            this.showToast('删除权限失败', 'error');
         }
     }
 

@@ -1,5 +1,6 @@
 package com.tsinghua.controller;
 
+import com.tsinghua.auth.util.AuthUtil;
 import com.tsinghua.entity.AlgorithmMetaEntity;
 import com.tsinghua.model.Result;
 import com.tsinghua.dto.UploadResult;
@@ -82,8 +83,9 @@ public class AlgorithmFileController {
     @RequirePermission(Permission.READ)
     public Result<AlgorithmMetaEntity> queryMeta(
             @RequestParam("name") String name,
-            @RequestParam("version") String version) throws Exception {
-        AlgorithmMetaEntity result = algorithmFileService.queryMeta(name, version);
+            @RequestParam("version") String version,
+            @RequestParam(value = "projectName", required = false) String projectName) throws Exception {
+        AlgorithmMetaEntity result = algorithmFileService.queryMeta(name, version, projectName);
         return Result.success(result);
     }
 
@@ -100,8 +102,9 @@ public class AlgorithmFileController {
     @GetMapping( "/history")
     @RequirePermission(Permission.READ)
     public Result<List<AlgorithmMetaEntity>> queryMetaList(
-            @RequestParam("name") String name) {
-        return Result.success(algorithmFileService.queryMetaList(name));
+            @RequestParam("name") String name,
+            @RequestParam(value = "projectName", required = false) String projectName) {
+        return Result.success(algorithmFileService.queryMetaList(name, projectName));
     }
 
     @ApiOperation("移除算法资产")
@@ -110,8 +113,9 @@ public class AlgorithmFileController {
     @OperationLog(value = "移除算法资产", type = OperationLog.OperationType.DELETE)
     public Result<Void> handleDelete(
             @RequestParam("name") String name,
-            @RequestParam(value = "version", required = false) String version) throws Exception {
-        algorithmFileService.deleteAlgorithm(name, version);
+            @RequestParam(value = "version", required = false) String version,
+            @RequestParam(value = "projectName", required = false) String projectName) throws Exception {
+        algorithmFileService.deleteAlgorithm(name, version, projectName);
         return Result.success("操作成功");
     }
 
@@ -132,6 +136,9 @@ public class AlgorithmFileController {
     @PostMapping("/archive/query")
     @RequirePermission(Permission.READ)
     public Result<List<AlgorithmMetaEntity>> queryAlgorithmArchives(@RequestBody AlgorithmArchiveQueryRequest request) {
+        if (!AuthUtil.isAdmin()) {
+            request.setAuthor(AuthUtil.getCurrentUsername());
+        }
         List<AlgorithmMetaEntity> result = algorithmFileService.queryAlgorithmArchives(
             request.getName(),
             request.getProjectName(),
@@ -146,6 +153,9 @@ public class AlgorithmFileController {
     @PostMapping("/archive/count")
     @RequirePermission(Permission.READ)
     public Result<Object> countAlgorithmArchives(@RequestBody AlgorithmArchiveQueryRequest request) {
+        if (!AuthUtil.isAdmin()) {
+            request.setAuthor(AuthUtil.getCurrentUsername());
+        }
         List<AlgorithmMetaEntity> allArchives = algorithmFileService.queryAlgorithmArchives(
             request.getName(),
             request.getProjectName(),
@@ -160,20 +170,21 @@ public class AlgorithmFileController {
     @PostMapping("/extractAlgorithmFile")
     @RequirePermission(Permission.READ)
     public Result<?> extractAlgorithmFileForParsing(@RequestBody ExtractAlgorithmFileRequest request) throws Exception {
-        
+
         String algorithmName = request.getName();
         String version = request.getVersion();
-        
+        String projectName = request.getProjectName();
+
         if (algorithmName == null || version == null) {
             return Result.error("参数name和version不能为空");
         }
-        
+
         // 创建临时目录
         Path tempDir = Files.createTempDirectory("algorithm_parsing_");
-        
+
         try {
-            // 调用修改后的extractAlgorithmFile方法
-            List<Map<String, Object>> fileList = algorithmFileService.extractAlgorithmFile(algorithmName, version, tempDir);
+            // 调用修改后的extractAlgorithmFile方法，传入projectName
+            List<Map<String, Object>> fileList = algorithmFileService.extractAlgorithmFile(algorithmName, version, projectName, tempDir);
             return Result.success(fileList);
         } finally {
             // 清理临时目录

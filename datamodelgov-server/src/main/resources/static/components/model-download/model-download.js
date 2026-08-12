@@ -26,6 +26,30 @@ class ModelDownload extends HTMLElement {
         return path;
     }
 
+    // 检查节点是否属于当前项目
+    isNodeInCurrentProject(node, currentProjectName) {
+        if (!currentProjectName) return true; // 如果没有项目，不过滤
+        
+        // 向上遍历查找项目节点
+        let currentNode = node;
+        while (currentNode) {
+            const span = currentNode.querySelector('span');
+            if (span) {
+                const nodeName = span.textContent.trim();
+                if (nodeName === currentProjectName) {
+                    return true;
+                }
+                // 如果遇到 models_system，说明已经到顶层了
+                if (nodeName === 'models_system') {
+                    return false;
+                }
+            }
+            // 向上查找父节点
+            currentNode = currentNode.parentElement?.closest('.tree-node');
+        }
+        return false;
+    }
+
     async connectedCallback() {
         await this.loadResources();
         // 等待CSS加载完成后再渲染HTML
@@ -352,6 +376,12 @@ class ModelDownload extends HTMLElement {
         const modelName = this.shadowRoot.getElementById('modelName');
         if (!modelName) return;
 
+        // 获取当前项目
+        const username = window.localStorage.getItem('username');
+        const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
+        const currentProjectName = cachedProject ? cachedProject.name : null;
+        console.log('当前项目:', currentProjectName);
+
         // 获取右侧模型资产库的根节点
         const modelTree = document.getElementById('modelTree');
         if (!modelTree) {
@@ -379,21 +409,24 @@ class ModelDownload extends HTMLElement {
                 // 检查是否是父节点（有子节点的节点）
                 const childrenContainer = node.querySelector('.tree-children');
                 if (childrenContainer && childrenContainer.children.length > 0) {
-                    // 检查子节点是否为叶子节点（没有子节点的节点）
-                    const childNodes = childrenContainer.querySelectorAll('.tree-node');
+                    // 只检查直接子节点是否为叶子节点（避免误将更上层节点加入）
                     let hasLeafChild = false;
-
-                    childNodes.forEach(childNode => {
+                    for (const childNode of childrenContainer.children) {
+                        if (!childNode.classList.contains('tree-node')) continue;
                         const childChildrenContainer = childNode.querySelector('.tree-children');
                         // 如果子节点没有子节点，则是叶子节点
                         if (!childChildrenContainer || childChildrenContainer.children.length === 0) {
                             hasLeafChild = true;
+                            break;
                         }
-                    });
+                    }
 
-                    // 只有当子节点包含叶子节点时，才将父节点作为模型名称
+                    // 只有当直接子节点包含叶子节点时，才将父节点作为模型名称
                     if (hasLeafChild) {
-                        modelNames.add(strippedName);
+                        // 检查该节点是否属于当前项目
+                        if (this.isNodeInCurrentProject(node, currentProjectName)) {
+                            modelNames.add(strippedName);
+                        }
                     }
                 }
             }
@@ -419,14 +452,19 @@ class ModelDownload extends HTMLElement {
         
         if (!modelName || !modelVersion) return;
         
+        // 获取当前项目
+        const username = window.localStorage.getItem('username');
+        const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
+        const currentProjectName = cachedProject ? cachedProject.name : null;
+        
         const selectedModelName = modelName.value;
         if (!selectedModelName) {
             modelVersion.innerHTML = '<option value="">请选择版本号</option>';
             return;
         }
         
-        // 获取右侧模型资产库的所有节点
-        const rightSidebarTree = document.querySelector('.right-sidebar .tree');
+        // 获取模型资产库的所有节点（不能用.querySelector('.right-sidebar .tree')，会匹配到algorithmTree）
+        const rightSidebarTree = document.getElementById('modelTree');
         if (!rightSidebarTree) return;
         
         const allNodes = rightSidebarTree.querySelectorAll('.tree-node');
@@ -450,7 +488,10 @@ class ModelDownload extends HTMLElement {
                     if (parentNode) {
                         const parentSpan = parentNode.querySelector('span');
                         if (parentSpan && parentSpan.textContent.trim() === selectedModelName) {
-                            versions.push(nodeName);
+                            // 检查该节点是否属于当前项目
+                            if (this.isNodeInCurrentProject(node, currentProjectName)) {
+                                versions.push(nodeName);
+                            }
                         }
                     }
                 }
@@ -528,6 +569,14 @@ class ModelDownload extends HTMLElement {
                 fileName: `${formData.modelName}_${formData.modelVersion}.zip`
             };
             
+            // 从树结构fullPath中提取projectName
+            if (this.selectedModel && this.selectedModel.fullPath && window.extractProjectNameFromPath) {
+                const projectName = window.extractProjectNameFromPath(this.selectedModel.fullPath);
+                if (projectName) {
+                    downloadData.projectName = projectName;
+                }
+            }
+            
             const result = await window.AppConfig.download('model', 'download', downloadData, null, true);
             
             if (result.success) {
@@ -593,16 +642,20 @@ class ModelDownload extends HTMLElement {
     // 移除apiCall方法，因为下载使用表单提交方式
 
     showMessage(message, type = 'info') {
-        const messageDiv = document.createElement('div');
-        messageDiv.className = `message ${type}`;
-        messageDiv.textContent = message;
-        document.body.appendChild(messageDiv);
+        if (window.CommonUtils && window.CommonUtils.showToast) {
+            window.CommonUtils.showToast(message, type);
+        } else {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}`;
+            messageDiv.textContent = message;
+            document.body.appendChild(messageDiv);
 
-        setTimeout(() => {
-            if (messageDiv.parentNode) {
-                messageDiv.parentNode.removeChild(messageDiv);
-            }
-        }, 3000);
+            setTimeout(() => {
+                if (messageDiv.parentNode) {
+                    messageDiv.parentNode.removeChild(messageDiv);
+                }
+            }, 3000);
+        }
     }
 }
 

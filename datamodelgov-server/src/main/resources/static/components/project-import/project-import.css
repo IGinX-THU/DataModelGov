@@ -38,7 +38,8 @@
     margin-bottom: 8px;
 }
 
-.import-input {
+.import-input,
+.import-select {
     width: 100%;
     padding: 10px 12px;
     border: 1px solid #dcdfe6;
@@ -50,12 +51,14 @@
     transition: border-color 0.2s;
 }
 
-.import-input:focus {
+.import-input:focus,
+.import-select:focus {
     outline: none;
     border-color: #667eea;
 }
 
-.import-input::placeholder {
+.import-input::placeholder,
+.import-select::placeholder {
     color: #c0c4cc;
 }
 

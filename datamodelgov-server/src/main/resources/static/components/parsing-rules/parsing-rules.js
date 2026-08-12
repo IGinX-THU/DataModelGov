@@ -271,7 +271,6 @@ class ParsingRules extends HTMLElement {
         } else {
             // 降级处理
             console.log(`[${type.toUpperCase()}] ${message}`);
-            alert(message);
         }
     }
 

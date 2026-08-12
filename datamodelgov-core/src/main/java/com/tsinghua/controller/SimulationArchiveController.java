@@ -1,6 +1,7 @@
 package com.tsinghua.controller;
 
 import com.tsinghua.dto.ExecutionRecordQueryDto;
+import com.tsinghua.dto.SimulationArchiveQueryRequest;
 import com.tsinghua.entity.SimulationArchiveEntity;
 import com.tsinghua.entity.SimulationExecutionEntity;
 import com.tsinghua.model.Result;
@@ -47,15 +48,15 @@ public class SimulationArchiveController {
      */
     @ApiOperation("保存仿真档案")
     @PostMapping("/archives/save")
-    @RequirePermission(Permission.PARSING_RULES_CREATE)
+    @RequirePermission(Permission.CREATE)
     @OperationLog(value = "保存仿真档案", type = OperationLog.OperationType.CREATE)
-    public Result<Void> saveArchive(@RequestBody SimulationArchiveEntity archive) {
+    public Result<SimulationArchiveEntity> saveArchive(@RequestBody SimulationArchiveEntity archive) {
         try {
             simulationArchiveService.saveArchive(archive);
-            return Result.success("仿真档案保存成功");
+            return Result.success("仿真档案保存成功", archive);
         } catch (Exception e) {
             log.error("保存仿真档案失败", e);
-            return Result.error("保存失败: " + e.getMessage());
+            return Result.<SimulationArchiveEntity>error("保存失败: " + e.getMessage());
         }
     }
 
@@ -64,15 +65,16 @@ public class SimulationArchiveController {
      */
     @ApiOperation("查询仿真档案列表")
     @PostMapping("/archives/query")
-    @RequirePermission(Permission.PARSING_RULES_READ)
-    public Result<List<SimulationArchiveEntity>> queryArchives(
-            @RequestParam(required = false) String name,
-            @RequestParam(required = false) String projectName,
-            @RequestParam(required = false) String owner,
-            @RequestParam(required = false) Boolean status,
-            @RequestParam(defaultValue = "1") Integer pageNum,
-            @RequestParam(defaultValue = "10") Integer pageSize) {
-        List<SimulationArchiveEntity> archives = simulationArchiveService.queryArchives(name, projectName, owner, status, pageNum, pageSize);
+    @RequirePermission(Permission.READ)
+    public Result<List<SimulationArchiveEntity>> queryArchives(@RequestBody SimulationArchiveQueryRequest request) {
+        List<SimulationArchiveEntity> archives = simulationArchiveService.queryArchives(
+            request.getName(),
+            request.getProjectName(),
+            request.getOwner(),
+            request.getStatus(),
+            request.getPageNum() != null ? request.getPageNum() : 1,
+            request.getPageSize() != null ? request.getPageSize() : 10
+        );
         return Result.success(archives);
     }
 
@@ -81,13 +83,14 @@ public class SimulationArchiveController {
      */
     @ApiOperation("查询仿真档案总数")
     @PostMapping("/archives/count")
-    @RequirePermission(Permission.PARSING_RULES_READ)
-    public Result<Object> countArchives(
-            @RequestParam(required = false) String name,
-            @RequestParam(required = false) String projectName,
-            @RequestParam(required = false) String owner,
-            @RequestParam(required = false) Boolean status) {
-        Object count = simulationArchiveService.countArchives(name, projectName, owner, status);
+    @RequirePermission(Permission.READ)
+    public Result<Object> countArchives(@RequestBody SimulationArchiveQueryRequest request) {
+        Object count = simulationArchiveService.countArchives(
+            request.getName(),
+            request.getProjectName(),
+            request.getOwner(),
+            request.getStatus()
+        );
         return Result.success(count);
     }
 
@@ -96,7 +99,7 @@ public class SimulationArchiveController {
      */
     @ApiOperation("查询仿真档案详情")
     @GetMapping("/archives/detail")
-    @RequirePermission(Permission.PARSING_RULES_READ)
+    @RequirePermission(Permission.READ)
     public Result<?> getArchive(@RequestParam("createTime") Long createTime) {
         try {
             SimulationArchiveEntity archive = simulationArchiveService.queryArchive(createTime);
@@ -116,7 +119,7 @@ public class SimulationArchiveController {
      */
     @ApiOperation("删除仿真档案")
     @DeleteMapping("/archives/delete")
-    @RequirePermission(Permission.PARSING_RULES_DELETE)
+    @RequirePermission(Permission.DELETE)
     @OperationLog(value = "删除仿真档案", type = OperationLog.OperationType.DELETE)
     public Result<Void> deleteArchive(@RequestParam("createTime") Long createTime) {
         try {
@@ -133,7 +136,7 @@ public class SimulationArchiveController {
      */
     @ApiOperation("校验名称唯一性")
     @GetMapping("/archives/validate-name")
-    @RequirePermission(Permission.PARSING_RULES_READ)
+    @RequirePermission(Permission.READ)
     public Result<?> validateNameUniqueness(@RequestParam("name") String name) {
         try {
             simulationArchiveService.validateNameUniqueness(name);
@@ -149,7 +152,7 @@ public class SimulationArchiveController {
      */
     @ApiOperation("复制仿真档案")
     @PostMapping("/archives/copy")
-    @RequirePermission(Permission.PARSING_RULES_CREATE)
+    @RequirePermission(Permission.CREATE)
     @OperationLog(value = "复制仿真档案", type = OperationLog.OperationType.CREATE)
     public Result<SimulationArchiveEntity> copyArchive(
             @RequestParam("createTime") Long createTime,
@@ -168,9 +171,9 @@ public class SimulationArchiveController {
      */
     @ApiOperation("运行仿真")
     @PostMapping("/archives/run")
-    @RequirePermission(Permission.PARSING_RULES_CREATE)
+    @RequirePermission(Permission.CREATE)
     @OperationLog(value = "运行仿真", type = OperationLog.OperationType.UPDATE)
-    public Result<Void> runSimulation(@RequestParam("createTime") Long createTime) {
+    public Result<Long> runSimulation(@RequestParam("createTime") Long createTime) {
         return simulationExecutionService.runSimulation(createTime);
     }
 
@@ -179,9 +182,9 @@ public class SimulationArchiveController {
      */
     @ApiOperation("选择性运行仿真")
     @PostMapping("/archives/run-selective")
-    @RequirePermission(Permission.PARSING_RULES_CREATE)
+    @RequirePermission(Permission.CREATE)
     @OperationLog(value = "选择性运行仿真", type = OperationLog.OperationType.UPDATE)
-    public Result<Void> runSimulationSelective(
+    public Result<Long> runSimulationSelective(
             @RequestParam("createTime") Long createTime,
             @RequestBody(required = false) Map<String, Object> params) {
         List<String> selectedNodeIds = null;
@@ -202,7 +205,7 @@ public class SimulationArchiveController {
      */
     @ApiOperation("停止仿真")
     @PostMapping("/archives/stop")
-    @RequirePermission(Permission.PARSING_RULES_CREATE)
+    @RequirePermission(Permission.CREATE)
     @OperationLog(value = "停止仿真", type = OperationLog.OperationType.UPDATE)
     public Result<Void> stopSimulation(@RequestParam("createTime") Long createTime) {
         return simulationExecutionService.stopSimulation(createTime);
@@ -213,9 +216,11 @@ public class SimulationArchiveController {
      */
     @ApiOperation("获取仿真执行状态")
     @GetMapping("/archives/execution-status")
-    @RequirePermission(Permission.PARSING_RULES_READ)
-    public Result<?> getExecutionStatus(@RequestParam("createTime") Long createTime) {
-        return simulationExecutionService.getExecutionStatus(createTime);
+    @RequirePermission(Permission.READ)
+    public Result<?> getExecutionStatus(
+            @RequestParam("createTime") Long createTime,
+            @RequestParam(value = "timestamp", required = false) Long timestamp) {
+        return simulationExecutionService.getExecutionStatus(createTime, timestamp);
     }
 
     /**
@@ -223,7 +228,7 @@ public class SimulationArchiveController {
      */
     @ApiOperation("获取仿真执行日志")
     @GetMapping("/archives/execution-log")
-    @RequirePermission(Permission.PARSING_RULES_READ)
+    @RequirePermission(Permission.READ)
     public Result<Map<String, Object>> getExecutionLog(
             @RequestParam(value = "timestamp", required = false) Long timestamp,
             @RequestParam(value = "createTime", required = false) Long createTime) {
@@ -234,8 +239,9 @@ public class SimulationArchiveController {
         // If createTime (archiveId) is provided, get the latest execution for that archive
         if (createTime != null) {
             try {
+                // 使用archiveId查询该档案的执行记录
                 List<SimulationExecutionEntity> executions = simulationExecutionService.queryExecutions(
-                    null, null, null, null, 1, 1);
+                    null, createTime, null, null, null, 1, 1);
                 if (executions != null && !executions.isEmpty()) {
                     return simulationExecutionService.getExecutionLog(executions.get(0).getTimestamp());
                 }
@@ -259,12 +265,13 @@ public class SimulationArchiveController {
      */
     @ApiOperation("查询仿真执行记录列表")
     @PostMapping("/archives/execution-records")
-    @RequirePermission(Permission.PARSING_RULES_READ)
+    @RequirePermission(Permission.READ)
     public Result<?> queryExecutionRecords(@RequestBody ExecutionRecordQueryDto queryDto) {
-        // 管理员不过滤，普通用户仅能查看自己拥有的档案对应的执行记录
+        // 管理员可以查询所有记录
         if (AuthUtil.isAdmin()) {
             return Result.success(simulationExecutionService.queryExecutions(
                 queryDto.getArchiveName(),
+                queryDto.getArchiveId(),
                 queryDto.getStatus(),
                 queryDto.getStartTime(),
                 queryDto.getEndTime(),
@@ -273,21 +280,28 @@ public class SimulationArchiveController {
             ));
         }
 
-        String currentUser = AuthUtil.getCurrentUsername("unknown");
-        List<SimulationArchiveEntity> owned = simulationArchiveService.queryArchives(
-            null, null, currentUser, null, 1, 10000);
-        Set<Long> ownedIds = owned == null ? java.util.Collections.emptySet() :
-            owned.stream().map(SimulationArchiveEntity::getCreateTime)
-                .filter(java.util.Objects::nonNull).collect(Collectors.toSet());
-        if (ownedIds.isEmpty()) {
+        // 普通用户只能查询当前项目档案对应的执行记录
+        String projectName = queryDto.getProjectName();
+        if (projectName == null || projectName.trim().isEmpty()) {
             return Result.success(new ArrayList<>());
         }
 
-        // 先拉取较大的结果集再按所有者过滤并手动分页
+        // 查询当前项目的所有档案
+        List<SimulationArchiveEntity> projectArchives = simulationArchiveService.queryArchives(
+            null, projectName, null, null, 1, 10000);
+        Set<Long> archiveIds = projectArchives == null ? java.util.Collections.emptySet() :
+            projectArchives.stream().map(SimulationArchiveEntity::getCreateTime)
+                .filter(java.util.Objects::nonNull).collect(Collectors.toSet());
+        if (archiveIds.isEmpty()) {
+            return Result.success(new ArrayList<>());
+        }
+
+        // 先拉取较大的结果集再按archiveId过滤并手动分页
         int reqPage = queryDto.getPageNum() != null ? queryDto.getPageNum() : 1;
         int reqSize = queryDto.getPageSize() != null ? queryDto.getPageSize() : 10;
         List<SimulationExecutionEntity> all = simulationExecutionService.queryExecutions(
             queryDto.getArchiveName(),
+            null,
             queryDto.getStatus(),
             queryDto.getStartTime(),
             queryDto.getEndTime(),
@@ -295,7 +309,7 @@ public class SimulationArchiveController {
             10000
         );
         List<SimulationExecutionEntity> filtered = all == null ? new ArrayList<>() :
-            all.stream().filter(e -> e.getArchiveId() != null && ownedIds.contains(e.getArchiveId()))
+            all.stream().filter(e -> e.getArchiveId() != null && archiveIds.contains(e.getArchiveId()))
                 .collect(Collectors.toList());
 
         int from = Math.max(0, (reqPage - 1) * reqSize);
@@ -311,8 +325,9 @@ public class SimulationArchiveController {
      */
     @ApiOperation("查询仿真执行记录总数")
     @PostMapping("/archives/execution-records-count")
-    @RequirePermission(Permission.PARSING_RULES_READ)
+    @RequirePermission(Permission.READ)
     public Result<?> countExecutionRecords(@RequestBody ExecutionRecordQueryDto queryDto) {
+        // 管理员可以查询所有记录
         if (AuthUtil.isAdmin()) {
             return Result.success(simulationExecutionService.countExecutions(
                 queryDto.getArchiveName(),
@@ -322,18 +337,25 @@ public class SimulationArchiveController {
             ));
         }
 
-        String currentUser = AuthUtil.getCurrentUsername("unknown");
-        List<SimulationArchiveEntity> owned = simulationArchiveService.queryArchives(
-            null, null, currentUser, null, 1, 10000);
-        Set<Long> ownedIds = owned == null ? java.util.Collections.emptySet() :
-            owned.stream().map(SimulationArchiveEntity::getCreateTime)
+        // 普通用户只能查询当前项目档案对应的执行记录
+        String projectName = queryDto.getProjectName();
+        if (projectName == null || projectName.trim().isEmpty()) {
+            return Result.success(0L);
+        }
+
+        // 查询当前项目的所有档案
+        List<SimulationArchiveEntity> projectArchives = simulationArchiveService.queryArchives(
+            null, projectName, null, null, 1, 10000);
+        Set<Long> archiveIds = projectArchives == null ? java.util.Collections.emptySet() :
+            projectArchives.stream().map(SimulationArchiveEntity::getCreateTime)
                 .filter(java.util.Objects::nonNull).collect(Collectors.toSet());
-        if (ownedIds.isEmpty()) {
+        if (archiveIds.isEmpty()) {
             return Result.success(0L);
         }
 
         List<SimulationExecutionEntity> all = simulationExecutionService.queryExecutions(
             queryDto.getArchiveName(),
+            null,
             queryDto.getStatus(),
             queryDto.getStartTime(),
             queryDto.getEndTime(),
@@ -341,7 +363,7 @@ public class SimulationArchiveController {
             10000
         );
         long count = all == null ? 0L : all.stream()
-            .filter(e -> e.getArchiveId() != null && ownedIds.contains(e.getArchiveId()))
+            .filter(e -> e.getArchiveId() != null && archiveIds.contains(e.getArchiveId()))
             .count();
         return Result.success(count);
     }
@@ -351,7 +373,7 @@ public class SimulationArchiveController {
      */
     @ApiOperation("删除仿真执行记录")
     @DeleteMapping("/archives/execution-record")
-    @RequirePermission(Permission.PARSING_RULES_DELETE)
+    @RequirePermission(Permission.DELETE)
     @OperationLog(value = "删除仿真执行记录", type = OperationLog.OperationType.DELETE)
     public Result<Void> deleteExecutionRecord(@RequestParam("timestamp") Long timestamp) {
         try {
@@ -368,7 +390,7 @@ public class SimulationArchiveController {
      */
     @ApiOperation("上传仿真执行记录报告文件")
     @PostMapping("/archives/upload-report")
-    @RequirePermission(Permission.PARSING_RULES_UPDATE)
+    @RequirePermission(Permission.UPDATE)
     @OperationLog(value = "上传仿真执行记录报告文件", type = OperationLog.OperationType.UPDATE, recordParams = false)
     public Result<String> uploadReport(
             @RequestParam("file") MultipartFile file,
@@ -382,7 +404,7 @@ public class SimulationArchiveController {
      */
     @ApiOperation("打包并下载仿真执行记录文件")
     @PostMapping("/archives/package-download")
-    @RequirePermission(Permission.PARSING_RULES_READ)
+    @RequirePermission(Permission.READ)
     @OperationLog(value = "打包并下载仿真执行记录文件", type = OperationLog.OperationType.EXPORT, recordResult = false)
     public ResponseEntity<Resource> packageAndDownload(@RequestParam("timestamp") Long timestamp) throws Exception {
         return simulationExecutionService.packageAndDownload(timestamp);

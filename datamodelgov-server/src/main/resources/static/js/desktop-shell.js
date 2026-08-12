@@ -108,6 +108,87 @@ class DesktopShell {
                 }
             });
         });
+
+        // Bind ribbon buttons to import/export wizards
+        this.bindRibbonButtons();
+    }
+
+    bindRibbonButtons() {
+        // Data import/export
+        const btnDataImport = document.getElementById('btn-data-import');
+        if (btnDataImport) {
+            btnDataImport.addEventListener('click', () => {
+                if (typeof window.showProjectImportWizard === 'function') {
+                    window.showProjectImportWizard('data');
+                }
+            });
+        }
+
+        const btnDataExport = document.getElementById('btn-data-export');
+        if (btnDataExport) {
+            btnDataExport.addEventListener('click', () => {
+                if (typeof window.showProjectExportWizard === 'function') {
+                    window.showProjectExportWizard('data');
+                }
+            });
+        }
+
+        // Model import/export
+        const btnModelImport = document.getElementById('btn-model-import');
+        if (btnModelImport) {
+            btnModelImport.addEventListener('click', () => {
+                if (typeof window.showProjectImportWizard === 'function') {
+                    window.showProjectImportWizard('model');
+                }
+            });
+        }
+
+        const btnModelExport = document.getElementById('btn-model-export');
+        if (btnModelExport) {
+            btnModelExport.addEventListener('click', () => {
+                if (typeof window.showProjectExportWizard === 'function') {
+                    window.showProjectExportWizard('model');
+                }
+            });
+        }
+
+        // Algorithm import/export
+        const btnAlgorithmImport = document.getElementById('btn-algorithm-import');
+        if (btnAlgorithmImport) {
+            btnAlgorithmImport.addEventListener('click', () => {
+                if (typeof window.showProjectImportWizard === 'function') {
+                    window.showProjectImportWizard('algorithm');
+                }
+            });
+        }
+
+        const btnAlgorithmExport = document.getElementById('btn-algorithm-export');
+        if (btnAlgorithmExport) {
+            btnAlgorithmExport.addEventListener('click', () => {
+                if (typeof window.showProjectExportWizard === 'function') {
+                    window.showProjectExportWizard('algorithm');
+                }
+            });
+        }
+
+        // Simulation import/export
+        const btnSimulationImport = document.getElementById('btn-simulation-import');
+        if (btnSimulationImport) {
+            btnSimulationImport.addEventListener('click', () => {
+                if (typeof window.showProjectImportWizard === 'function') {
+                    window.showProjectImportWizard('simulation');
+                }
+            });
+        }
+
+        const btnSimulationExport = document.getElementById('btn-simulation-export');
+        if (btnSimulationExport) {
+            btnSimulationExport.addEventListener('click', () => {
+                if (typeof window.showProjectExportWizard === 'function') {
+                    window.showProjectExportWizard('simulation');
+                }
+            });
+        }
     }
 
     updateUserName() {

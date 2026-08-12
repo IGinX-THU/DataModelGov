@@ -139,6 +139,15 @@ struct DataQueryRequest {
     6: optional i32 timePrecision,
 }
 
+// 数据导入请求 - 完全匹配您的DataImportRequest DTO
+struct DataImportRequest {
+    1: string tableName,
+    2: optional string path,
+    3: optional list<string> columns,
+    4: optional i64 startTime,
+    5: optional i64 endTime,
+}
+
 // 关系数据查询请求 - 完全匹配您的RelationalQueryRequest DTO
 struct RelationalQueryRequest {
     1: i32 pageNum = 1,
@@ -230,6 +239,7 @@ struct AlgorithmMeta {
 struct ExtractAlgorithmFileRequest {
     1: string name,
     2: string version,
+    3: optional string projectName,
 }
 
 // 算法档案查询请求 - 完全匹配您的AlgorithmArchiveQueryRequest DTO
@@ -520,8 +530,8 @@ service ApiService {
     // POST /api/data/import -> importData(DataImportRequest, MultipartFile)
     Result importData(1: string config, 2: binary file),
 
-    // POST /api/data/export -> exportData(DataQueryRequest)
-    Result exportData(1: DataQueryRequest request),
+    // POST /api/data/export -> exportData(DataQueryRequest) - Note: Returns file, not suitable for Thrift
+    // Result exportData(1: DataQueryRequest request),
 
     // POST /api/data/delete -> deleteData(DataQueryRequest)
     Result deleteData(1: DataQueryRequest request),
@@ -532,27 +542,34 @@ service ApiService {
     // POST /api/data/relational/count -> countData(RelationalQueryRequest)
     Result countRelationalData(1: RelationalQueryRequest request),
 
-    // POST /api/data/relational/export -> exportRelationalDataToExcel(RelationalQueryRequest)
-    Result exportRelationalData(1: RelationalQueryRequest request),
+    // POST /api/data/relational/export -> exportRelationalDataToExcel(RelationalQueryRequest) - Note: Returns file, not suitable for Thrift
+    // Result exportRelationalData(1: RelationalQueryRequest request),
+
+    // DELETE /api/data/deleteColumns/{path} -> deleteColumns(String path)
+    Result deleteColumns(1: string path),
+
+    // ========== 文档接口 - 匹配DocController ==========
+    // GET /api/doc/user-manual/file -> getUserManualFile()
+    Result getUserManualFile(),
 
     // ========== 模型文件接口 - 匹配ModelFileController ==========
     // POST /api/model/upload -> handleFileUpload(MultipartFile, name, version)
     Result uploadModel(1: binary file, 2: string name, 3: string version),
 
     // POST /api/model/download -> handleFileDownload(String name, String version)
-    Result downloadModel(1: string name, 2: string version),
+    Result downloadModel(1: string name, 2: string version, 3: string projectName),
 
-    // GET /api/model/metas?name=xxx&version=xxx -> queryMeta(String name, String version)
-    Result getModelMeta(1: string name, 2: string version),
+    // GET /api/model/metas?name=xxx&version=xxx -> queryMeta(String name, String version, String projectName)
+    Result getModelMeta(1: string name, 2: string version, 3: string projectName),
 
     // POST /api/model/metas -> saveMeta(ModelMetaEntity)
     Result saveModelMeta(1: ModelMeta modelMeta),
 
     // GET /api/model/history?name=xxx -> queryMetaList(String name)
-    Result getModelHistory(1: string name),
+    Result getModelHistory(1: string name, 2: string projectName),
 
     // DELETE /api/model/delete?name=xxx&version=xxx -> deleteModel(String name, String version)
-    Result deleteModel(1: string name, 2: string version),
+    Result deleteModel(1: string name, 2: string version, 3: string projectName),
 
     // GET /api/model/tree?projectName=xxx -> queryModelTree(String projectName)
     Result getModelTree(1: string projectName),
@@ -571,19 +588,19 @@ service ApiService {
     Result uploadAlgorithm(1: binary file, 2: string name, 3: string version),
 
     // POST /api/algorithm/download -> handleFileDownload(String name, String version)
-    Result downloadAlgorithm(1: string name, 2: string version),
+    Result downloadAlgorithm(1: string name, 2: string version, 3: string projectName),
 
-    // GET /api/algorithm/metas?name=xxx&version=xxx -> queryMeta(String name, String version)
-    Result getAlgorithmMeta(1: string name, 2: string version),
+    // GET /api/algorithm/metas?name=xxx&version=xxx -> queryMeta(String name, String version, String projectName)
+    Result getAlgorithmMeta(1: string name, 2: string version, 3: string projectName),
 
     // POST /api/algorithm/metas -> saveMeta(AlgorithmMetaEntity)
     Result saveAlgorithmMeta(1: AlgorithmMeta algorithmMeta),
 
     // GET /api/algorithm/history?name=xxx -> queryMetaList(String name)
-    Result getAlgorithmHistory(1: string name),
+    Result getAlgorithmHistory(1: string name, 2: string projectName),
 
     // DELETE /api/algorithm/delete?name=xxx&version=xxx -> deleteAlgorithm(String name, String version)
-    Result deleteAlgorithm(1: string name, 2: string version),
+    Result deleteAlgorithm(1: string name, 2: string version, 3: string projectName),
 
     // GET /api/algorithm/tree?projectName=xxx -> queryAlgorithmTree(String projectName)
     Result getAlgorithmTree(1: string projectName),
@@ -632,8 +649,14 @@ service ApiService {
     // POST /api/project/import -> importProject(MultipartFile, projectName)
     Result importProject(1: binary file, 2: string projectName),
 
-    // POST /api/project/export -> exportProject(ProjectExportRequest)
-    Result exportProject(1: ProjectExportRequest request),
+    // POST /api/project/import/{resourceType} -> importProjectResource(MultipartFile, projectName, resourceType)
+    Result importProjectResource(1: binary file, 2: string projectName, 3: string resourceType),
+
+    // POST /api/project/export -> exportProject(ProjectExportRequest) - Note: Returns file, not suitable for Thrift
+    // Result exportProject(1: ProjectExportRequest request),
+
+    // POST /api/project/export/{resourceType} -> exportProjectResource(projectName, resourceType) - Note: Returns file, not suitable for Thrift
+    // Result exportProjectResource(1: string projectName, 2: string resourceType),
 
     // ========== 仿真档案接口 - 匹配SimulationArchiveController ==========
     // POST /api/simulation/archives/save -> saveArchive(SimulationArchiveEntity)
@@ -660,8 +683,8 @@ service ApiService {
     // POST /api/simulation/archives/run?createTime=xxx -> runSimulation(Long createTime)
     Result runSimulation(1: i64 createTime),
 
-    // POST /api/simulation/archives/run-selective -> runSimulationSelective(RunSimulationSelectiveRequest)
-    Result runSimulationSelective(1: RunSimulationSelectiveRequest request),
+    // POST /api/simulation/archives/run-selective -> runSimulationSelective(Long createTime, Map<String, Object> params)
+    Result runSimulationSelective(1: i64 createTime, 2: map<string, string> params),
 
     // POST /api/simulation/archives/stop?createTime=xxx -> stopSimulation(Long createTime)
     Result stopSimulation(1: i64 createTime),
@@ -669,8 +692,8 @@ service ApiService {
     // GET /api/simulation/archives/execution-status?createTime=xxx -> getExecutionStatus(Long createTime)
     Result getSimulationExecutionStatus(1: i64 createTime),
 
-    // GET /api/simulation/archives/execution-log?timestamp=xxx -> getExecutionLog(Long timestamp)
-    Result getSimulationExecutionLog(1: i64 timestamp),
+    // GET /api/simulation/archives/execution-log?timestamp=xxx&createTime=xxx -> getExecutionLog(Long timestamp, Long createTime)
+    Result getSimulationExecutionLog(1: optional i64 timestamp, 2: optional i64 createTime),
 
     // POST /api/simulation/archives/execution-records -> queryExecutionRecords(ExecutionRecordQueryDto)
     Result querySimulationExecutionRecords(1: ExecutionRecordQueryRequest request),
@@ -684,8 +707,8 @@ service ApiService {
     // POST /api/simulation/archives/upload-report -> uploadReport(MultipartFile, Long timestamp)
     Result uploadSimulationReport(1: binary file, 2: i64 timestamp),
 
-    // POST /api/simulation/archives/package-download?timestamp=xxx -> packageAndDownload(Long timestamp)
-    Result simulationPackageDownload(1: i64 timestamp),
+    // POST /api/simulation/archives/package-download?timestamp=xxx -> packageAndDownload(Long timestamp) - Note: Returns file, not suitable for Thrift
+    // Result simulationPackageDownload(1: i64 timestamp),
 
     // ========== 认证接口 - 匹配AuthController ==========
     // POST /api/auth/login -> login(username, password)

@@ -142,18 +142,22 @@
                     <div class="binding-config-header">运行配置</div>
                     <div class="binding-config-row">
                         <div class="binding-field">
-                            <label>运行命令</label>
-                            <input type="text" id="ruleCmd" placeholder="python3 model_runner.py --input-file raw_data.csv --output-file result.csv">
-                        </div>
-                    </div>
-                    <div class="binding-config-row">
-                        <div class="binding-field">
                             <label>输入CSV文件名</label>
                             <input type="text" id="inputCsvName" placeholder="raw_data.csv">
                         </div>
                         <div class="binding-field">
                             <label>输出CSV文件名</label>
                             <input type="text" id="outputCsvName" placeholder="result.csv">
+                        </div>
+                    </div>
+                    <div class="binding-config-row-full">
+                        <div class="binding-field">
+                            <label>运行命令</label>
+                            <input type="text" id="ruleCmd" placeholder="python3 model_runner.py --input-file raw_data.csv --output-file result.csv">
+                            <div class="command-hint">
+                                <span class="hint-label">提示：</span>
+                                <span class="hint-content">请根据实际脚本中的定义调整运行命令，确保能接收到输入CSV文件名并输出到指定CSV文件名</span>
+                            </div>
                         </div>
                     </div>
                 </div>

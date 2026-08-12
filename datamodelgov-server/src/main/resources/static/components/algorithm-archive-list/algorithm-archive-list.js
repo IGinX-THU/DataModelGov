@@ -11,7 +11,7 @@ class AlgorithmArchiveList extends HTMLElement {
     async connectedCallback() {
         await this.loadResources();
         this.bindEvents();
-        this.loadData();
+        // 不在初始化时自动加载数据，只在显示时加载
     }
 
     async loadResources() {
@@ -29,6 +29,13 @@ class AlgorithmArchiveList extends HTMLElement {
     }
 
     bindEvents() {
+        this.shadowRoot.getElementById('importAlgorithmResourceBtn')?.addEventListener('click', () => {
+            window.showProjectImportWizard?.('algorithm');
+        });
+        this.shadowRoot.getElementById('exportAlgorithmResourceBtn')?.addEventListener('click', () => {
+            window.showProjectExportWizard?.('algorithm');
+        });
+
         const searchBtn = this.shadowRoot.getElementById('searchBtn');
         if (searchBtn) {
             searchBtn.addEventListener('click', () => {
@@ -190,7 +197,11 @@ class AlgorithmArchiveList extends HTMLElement {
         }
         const algorithmDetail = document.getElementById('algorithmDetail');
         if (algorithmDetail && algorithmDetail.show) {
-            algorithmDetail.show({ name: item.name, version: item.version });
+            algorithmDetail.show({ 
+                name: item.name, 
+                version: item.version,
+                fullPath: item.storagePath
+            });
         }
     }
 

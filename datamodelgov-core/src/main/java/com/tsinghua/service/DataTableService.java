@@ -66,7 +66,7 @@ public class DataTableService {
 
             IginXHeader header = table.getHeader();
             if (header.hasTimestamp()) {
-                log.info(KEY+"\t");
+//                log.info(KEY+"\t");
                 columns.add(KEY);
             }
             for (IginXColumn column : header.getColumns()) {
@@ -261,9 +261,10 @@ public class DataTableService {
         QueryClient queryClient = iginxClient.getQueryClient();
 
         Set<String> paths = new HashSet<>(request.getPaths());
+        // 最小时间（1970-01-01）
         long startKey = Optional.ofNullable(request.getStartTime()).orElse(0L);
-        long endKey = Optional.ofNullable(request.getEndTime()).orElse(Long.MAX_VALUE);
-
+        //最大时间（10000-01-01 23:59:59.999） 足够大，但不会导致查询 OOM
+        long endKey = Optional.ofNullable(request.getEndTime()).orElse(253402300799999L);
         long precision = request.getPrecision();
         if (precision <= 0L) {
             precision = 1000L;
@@ -301,6 +302,44 @@ public class DataTableService {
         DeleteClient deleteClient = iginxClient.getDeleteClient();
         // 删除多个时间序列在 [startTime, endTime) 这段时间上的数据
         deleteClient.deleteMeasurementsData(request.getPaths(), request.getStartTime(), request.getEndTime());
+    }
+
+    /**
+     * 执行 DELETE COLUMNS 语句删除时间序列
+     */
+    public void deleteColumns(String path) {
+        try {
+            // 先删除对应的数据档案
+            deleteRelatedDataArchives(path);
+
+            // 再删除时间序列
+            String sql = "DELETE COLUMNS " + path + ";";
+            log.info("执行删除时间序列SQL: {}", sql);
+            iginxSession.executeSql(sql);
+        } catch (Exception e) {
+            log.error("删除时间序列失败: {}", path, e);
+            throw new RuntimeException("删除时间序列失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 删除与路径相关的数据档案
+     */
+    private void deleteRelatedDataArchives(String path) {
+        try {
+            // 如果路径包含通配符，需要查找所有匹配的档案
+            String prefix = path.endsWith(".*") ? path.substring(0, path.length() - 2) : path;
+            List<DataArchiveEntity> archives = dataArchiveService.queryArchives(null, null, null, null, null, null);
+            for (DataArchiveEntity archive : archives) {
+                if (archive.getName() != null && archive.getName().startsWith(prefix)) {
+                    log.info("删除数据档案: name={}, id={}", archive.getName(), archive.getId());
+                    dataArchiveService.deleteArchive(archive.getCreateTime());
+                }
+            }
+        } catch (Exception e) {
+            log.error("删除数据档案失败: {}", path, e);
+            // 不抛出异常，继续删除时间序列
+        }
     }
 
     /**

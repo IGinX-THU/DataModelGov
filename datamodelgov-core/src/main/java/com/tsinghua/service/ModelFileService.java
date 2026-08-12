@@ -131,13 +131,13 @@ public class ModelFileService {
      * 2. 按chunkCount精确获取文件块
      * 3. 校验MD5确保文件完整性
      */
-    public byte[] downloadModel(String name, String version) throws Exception {
-        log.info("开始下载模型: {} v{}", name, version);
+    public byte[] downloadModel(String name, String version, String projectName) throws Exception {
+        log.info("开始下载模型: {} v{} 项目 {}", name, version, projectName);
 
         // 1. 先查询元数据验证模型信息
-        ModelMetaEntity modelMeta = queryMeta(name, version);
+        ModelMetaEntity modelMeta = queryMeta(name, version, projectName);
         if (modelMeta == null) {
-            throw new Exception("未找到指定的模型元数据: " + name + " v" + version);
+            throw new Exception("未找到指定的模型元数据: " + name + " v" + version + " 项目 " + projectName);
         }
 
         // 验证元数据完整性
@@ -215,23 +215,27 @@ public class ModelFileService {
         return fileBytes;
     }
 
-    /**
-     * 提取模型文件（返回文件列表给前端）
-     */
     public List<Map<String, Object>> extractModelFile(String modelName, String modelVersion, Path taskDir) throws Exception {
+        return extractModelFile(modelName, modelVersion, ProjectContext.getCurrentProject(null), taskDir);
+    }
+
+        /**
+         * 提取模型文件（返回文件列表给前端）
+         */
+    public List<Map<String, Object>> extractModelFile(String modelName, String modelVersion, String projectName, Path taskDir) throws Exception {
         if (!StringUtils.hasText(modelName) || !StringUtils.hasText(modelVersion)) {
             throw new RuntimeException("模型名称或版本为空");
         }
 
-        log.info("开始下载模型: {} 版本 {}", modelName, modelVersion);
+        log.info("开始下载项目 {} 模型: {} 版本 {}", projectName, modelName, modelVersion);
 
         // 获取模型元数据以获取正确的文件名
-        ModelMetaEntity modelMeta = queryMeta(modelName, modelVersion);
+        ModelMetaEntity modelMeta = queryMeta(modelName, modelVersion, projectName);
         if (modelMeta == null) {
-            throw new RuntimeException("未找到模型元数据: " + modelName + " 版本 " + modelVersion);
+            throw new RuntimeException("未找到模型元数据: " + modelName + " 版本 " + modelVersion + " 项目 " + projectName);
         }
 
-        byte[] modelData = downloadModel(modelName, modelVersion);
+        byte[] modelData = downloadModel(modelName, modelVersion, projectName);
         String fileName = modelMeta.getFileName();
         if (fileName == null || fileName.trim().isEmpty()) {
             throw new RuntimeException("模型文件名为空: " + modelName + " 版本 " + modelVersion);
@@ -365,9 +369,11 @@ public class ModelFileService {
      */
     public void saveModelMetadata(ModelMetaEntity modelMetaDto) throws Exception {
         List<Point> metaPoints = new ArrayList<>();
-        ModelMetaEntity queryMeta = queryMeta(modelMetaDto.getName(), modelMetaDto.getVersion());
+        ModelMetaEntity queryMeta = queryMeta(modelMetaDto.getName(), modelMetaDto.getVersion(), modelMetaDto.getProjectName());
         long timestamp;
-        if (queryMeta != null && queryMeta.getTimestamp() != null) {
+        if (modelMetaDto.getTimestamp() != null) {
+            timestamp = modelMetaDto.getTimestamp();
+        } else if (queryMeta != null && queryMeta.getTimestamp() != null) {
             timestamp = queryMeta.getTimestamp();
         } else {
             timestamp = System.currentTimeMillis();
@@ -397,12 +403,23 @@ public class ModelFileService {
     }
 
     public ModelMetaEntity queryMeta(String name, String version) {
+        return queryMeta(name, version, ProjectContext.getCurrentProject(null));
+    }
+
+    public ModelMetaEntity queryMeta(String name, String version, String projectName) {
         try {
-            String sql = "select * from %s where name = '%s' and version='%s';";
+            String sql;
+            if (StringUtils.hasText(projectName)) {
+                sql = "select * from %s where name = '%s' and version='%s' and projectName='%s';";
+            } else {
+                sql = "select * from %s where name = '%s' and version='%s';";
+            }
         String metaBasePath = META_PREFIX;
         String safeVersion = version.replace('.', '_');
         // iginxSession.openSession();
-        QueryDataSet res =  iginxSession.executeQuery(String.format(sql, metaBasePath, name, safeVersion));
+        QueryDataSet res = StringUtils.hasText(projectName)
+                ? iginxSession.executeQuery(String.format(sql, metaBasePath, name, safeVersion, projectName))
+                : iginxSession.executeQuery(String.format(sql, metaBasePath, name, safeVersion));
         List<String> head = res.getColumnList();
         Object[] row = res.nextRow();
         Map<String, Object> rs = new LinkedHashMap<>();
@@ -531,21 +548,32 @@ public class ModelFileService {
         }
     }
 
-    public List<ModelMetaEntity> queryMetaList(String name) {
+    public List<ModelMetaEntity> queryMetaList(String name, String projectName) {
         try {
-            String sql = "select * from %s where name = '%s' ORDER BY timestamp ;";
-            // iginxSession.openSession();
-            SessionExecuteSqlResult res =  iginxSession.executeSql(String.format(sql, META_PREFIX, name));
-            List<Map<String, Object>> records = ConvertUtil.getRecords(res);
-            // iginxSession.closeSession();
+            String sql;
+            if (projectName != null && !projectName.trim().isEmpty()) {
+                sql = "select * from %s where name = '%s' and projectName = '%s' ORDER BY timestamp ;";
+                SessionExecuteSqlResult res =  iginxSession.executeSql(String.format(sql, META_PREFIX, name, projectName));
+                List<Map<String, Object>> records = ConvertUtil.getRecords(res);
 
-            return records.stream()
-                    .map(rs -> {
-                        ModelMetaEntity dto = new ModelMetaEntity();
-                        // 根据控制台输出的列名进行映射
-                        rs.forEach((k,v) -> setDtoField(dto, k, v));
-                        return dto;
-                    }).collect(Collectors.toList());
+                return records.stream()
+                        .map(rs -> {
+                            ModelMetaEntity dto = new ModelMetaEntity();
+                            rs.forEach((k,v) -> setDtoField(dto, k, v));
+                            return dto;
+                        }).collect(Collectors.toList());
+            } else {
+                sql = "select * from %s where name = '%s' ORDER BY timestamp ;";
+                SessionExecuteSqlResult res =  iginxSession.executeSql(String.format(sql, META_PREFIX, name));
+                List<Map<String, Object>> records = ConvertUtil.getRecords(res);
+
+                return records.stream()
+                        .map(rs -> {
+                            ModelMetaEntity dto = new ModelMetaEntity();
+                            rs.forEach((k,v) -> setDtoField(dto, k, v));
+                            return dto;
+                        }).collect(Collectors.toList());
+            }
         } catch (Exception e) {
             log.error("查询失败", e);
             return null;
@@ -555,12 +583,12 @@ public class ModelFileService {
     /**
      * 移除模型资产
      */
-    public void deleteModel(String name, String version) {
+    public void deleteModel(String name, String version, String projectName) {
         try {
             List<String> measurements = ConvertUtil.iginxFieldNamesConvert(ModelMetaEntity.class, META_PREFIX);
             if (StringUtils.hasText(version) && !"null".equals(version)) {
-                ModelMetaEntity queryMeta = queryMeta(name, version);
-                String storagePath = buildStoragePath(queryMeta.getProjectName(), name, version);
+                ModelMetaEntity queryMeta = queryMeta(name, version, projectName);
+                String storagePath = buildStoragePath(projectName != null ? projectName : (queryMeta != null ? queryMeta.getProjectName() : null), name, version);
                 iginxClient.getDeleteClient().deleteMeasurement(storagePath);
                 if (queryMeta != null && queryMeta.getTimestamp() != null) {
                     long timestamp = queryMeta.getTimestamp();
@@ -568,7 +596,8 @@ public class ModelFileService {
                 }
                 dataPermissionService.deleteByTablePrefix(storagePath);
             } else {
-                List<ModelMetaEntity> queryMetas = queryMetaList(name);
+                String actualProjectName = StringUtils.hasText(projectName) ? projectName : ProjectContext.getCurrentProject("unknown");
+                List<ModelMetaEntity> queryMetas = queryMetaList(name, actualProjectName);
                 List<String> storagePaths = queryMetas.stream()
                         .map(meta ->
                                 buildStoragePath(meta.getProjectName(),meta.getName(), meta.getVersion())
@@ -585,6 +614,13 @@ public class ModelFileService {
         } catch (Exception e) {
             log.error("移除模型资产失败", e);
         }
+    }
+
+    /**
+     * 移除模型资产（兼容旧版本）
+     */
+    public void deleteModel(String name, String version) {
+        deleteModel(name, version, null);
     }
 
     /**

@@ -306,7 +306,7 @@ public class RelationalDataService {
      */
     public String buildWhereClause(List<RelationalQueryRequest.FilterCondition> filters) {
         if (filters == null || filters.isEmpty()) {
-            return "";
+            return " 1=1 ";
         }
         
         StringBuilder whereClause = new StringBuilder();
@@ -351,11 +351,9 @@ public class RelationalDataService {
         StringBuilder sql = new StringBuilder("SELECT * FROM ").append(request.getTableName());
         
         // 添加WHERE条件
-        if (request.getFilters() != null && !request.getFilters().isEmpty()) {
-            String whereClause = buildWhereClause(request.getFilters());
-            if (StringUtils.hasText(whereClause)) {
-                sql.append(" WHERE ").append(whereClause);
-            }
+        String whereClause = buildWhereClause(request.getFilters());
+        if (StringUtils.hasText(whereClause)) {
+            sql.append(" WHERE ").append(whereClause);
         }
         
         // 添加ORDER BY排序条件
@@ -384,32 +382,36 @@ public class RelationalDataService {
         String operator = filter.getOperator();
         String value = filter.getValue();
         
+        // 判断值是否需要加引号（数字和布尔值不需要）
+        boolean shouldQuote = shouldQuoteValue(value);
+        String formattedValue = shouldQuote ? "'" + value + "'" : value;
+        
         switch (operator.toUpperCase()) {
             case "=":
             case "==":
-                return field + " = '" + value + "'";
+                return field + " = " + formattedValue;
             case "!=":
-                return field + " != '" + value + "'";
+                return field + " != " + formattedValue;
             case ">":
-                return field + " > '" + value + "'";
+                return field + " > " + formattedValue;
             case "<":
-                return field + " < '" + value + "'";
+                return field + " < " + formattedValue;
             case ">=":
-                return field + " >= '" + value + "'";
+                return field + " >= " + formattedValue;
             case "<=":
-                return field + " <= '" + value + "'";
+                return field + " <= " + formattedValue;
             case "IN":
                 // 处理IN条件，支持逗号分隔的值
                 String[] inValues = value.split(",");
                 String inClause = String.join(",", java.util.Arrays.stream(inValues)
-                    .map(v -> "'" + v.trim() + "'")
+                    .map(v -> shouldQuoteValue(v.trim()) ? "'" + v.trim() + "'" : v.trim())
                     .toArray(String[]::new));
                 return field + " IN (" + inClause + ")";
             case "NOT IN":
                 // 处理NOT IN条件
                 String[] notInValues = value.split(",");
                 String notInClause = String.join(",", java.util.Arrays.stream(notInValues)
-                    .map(v -> "'" + v.trim() + "'")
+                    .map(v -> shouldQuoteValue(v.trim()) ? "'" + v.trim() + "'" : v.trim())
                     .toArray(String[]::new));
                 return field + " NOT IN (" + notInClause + ")";
             case "LIKE":
@@ -420,7 +422,32 @@ public class RelationalDataService {
                 return field + " LIKE '^.*" + value + ".*'";
             default:
                 // 默认使用等于
-                return field + " = '" + value + "'";
+                return field + " = " + formattedValue;
+        }
+    }
+
+    /**
+     * 判断字符串值是否需要加引号
+     * 数字和布尔值不需要加引号，其他类型需要
+     */
+    private boolean shouldQuoteValue(String str) {
+        if (str == null || str.isEmpty()) {
+            return true;
+        }
+        
+        String trimmed = str.trim();
+        
+        // 检查是否为布尔值
+        if (trimmed.equalsIgnoreCase("true") || trimmed.equalsIgnoreCase("false")) {
+            return false;
+        }
+        
+        // 检查是否为数字
+        try {
+            Double.parseDouble(trimmed);
+            return false;
+        } catch (NumberFormatException e) {
+            return true;
         }
     }
 
@@ -469,11 +496,9 @@ public class RelationalDataService {
         StringBuilder sql = new StringBuilder("SELECT COUNT(1) FROM ").append(request.getTableName());
         
         // 添加WHERE条件（与查询相同的逻辑）
-        if (request.getFilters() != null && !request.getFilters().isEmpty()) {
-            String whereClause = buildWhereClause(request.getFilters());
-            if (StringUtils.hasText(whereClause)) {
-                sql.append(" WHERE ").append(whereClause);
-            }
+        String whereClause = buildWhereClause(request.getFilters());
+        if (StringUtils.hasText(whereClause)) {
+            sql.append(" WHERE ").append(whereClause);
         }
         
         // COUNT查询不需要排序，直接返回

@@ -226,6 +226,22 @@ class ModelUpload extends HTMLElement {
             });
         }
 
+        // 模型名称输入框变化时自动生成版本号
+        const modelNameInput = this.shadowRoot.getElementById('modelName');
+        if (modelNameInput) {
+            modelNameInput.addEventListener('input', () => {
+                this.generateSuggestedVersion();
+            });
+        }
+
+        // 模型名称下拉框变化时自动生成版本号
+        const modelNameSelect = this.shadowRoot.getElementById('modelNameSelect');
+        if (modelNameSelect) {
+            modelNameSelect.addEventListener('change', () => {
+                this.generateSuggestedVersion();
+            });
+        }
+
         // 是否关联已有模型变化事件
         const isRelatedModelYes = this.shadowRoot.getElementById('isRelatedModelYes');
         const isRelatedModelNo = this.shadowRoot.getElementById('isRelatedModelNo');
@@ -248,6 +264,106 @@ class ModelUpload extends HTMLElement {
                 this.hide();
             }
         });
+    }
+
+    async generateSuggestedVersion() {
+        try {
+            // 获取当前模型名称
+            let modelName = '';
+            
+            // 优先从弹窗中获取元素
+            const modal = document.querySelector('.modal-overlay');
+            if (modal) {
+                const modalContainer = modal.querySelector('.modal-container');
+                if (modalContainer) {
+                    const isRelatedModelYes = modalContainer.querySelector('#isRelatedModelYes');
+                    const modelNameInput = modalContainer.querySelector('#modelName');
+                    const modelNameSelect = modalContainer.querySelector('#modelNameSelect');
+                    
+                    if (isRelatedModelYes && isRelatedModelYes.checked && modelNameSelect) {
+                        modelName = modelNameSelect.value;
+                    } else if (modelNameInput) {
+                        modelName = modelNameInput.value;
+                    }
+                }
+            }
+            
+            // 如果弹窗中没有找到，尝试从Shadow DOM中获取
+            if (!modelName) {
+                const isRelatedModelYes = this.shadowRoot.getElementById('isRelatedModelYes');
+                const modelNameInput = this.shadowRoot.getElementById('modelName');
+                const modelNameSelect = this.shadowRoot.getElementById('modelNameSelect');
+                
+                if (isRelatedModelYes && isRelatedModelYes.checked && modelNameSelect) {
+                    modelName = modelNameSelect.value;
+                } else if (modelNameInput) {
+                    modelName = modelNameInput.value;
+                }
+            }
+            
+            if (!modelName) {
+                return; // 没有模型名称，不生成版本号
+            }
+            
+            // 获取当前项目名称
+            const username = window.localStorage.getItem('username');
+            const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
+            const projectName = cachedProject ? cachedProject.name : null;
+            
+            // 调用后端API获取版本历史
+            const params = { name: modelName };
+            if (projectName) {
+                params.projectName = projectName;
+            }
+            
+            const result = await window.AppConfig.get('model', 'history', params);
+            
+            if (result.success && result.data && result.data.length > 0) {
+                // 获取最新版本号（取最后一个，确保是最新版本）
+                const latestVersion = result.data[result.data.length - 1].version;
+                if (latestVersion) {
+                    // 解析版本号并累加小版本号
+                    // 支持两种格式：v1_0_0 或 1.0.0
+                    let parts;
+                    if (latestVersion.startsWith('v')) {
+                        parts = latestVersion.substring(1).split('_');
+                    } else {
+                        parts = latestVersion.split('.');
+                    }
+                    
+                    if (parts.length >= 3) {
+                        try {
+                            const major = parseInt(parts[0]);
+                            const minor = parseInt(parts[1]);
+                            const patch = parseInt(parts[2]);
+                            const newVersion = `v${major}_${minor}_${patch + 1}`;
+                            
+                            // 填充到版本号输入框
+                            const modelVersion = modal ? 
+                                modal.querySelector('.modal-container #modelVersion') : 
+                                this.shadowRoot.getElementById('modelVersion');
+                            
+                            if (modelVersion) {
+                                modelVersion.value = newVersion;
+                            }
+                        } catch (e) {
+                            console.warn('版本号解析失败:', e);
+                        }
+                    }
+                }
+            } else {
+                // 没有版本历史，使用默认版本v1_0_0
+                const modelVersion = modal ? 
+                    modal.querySelector('.modal-container #modelVersion') : 
+                    this.shadowRoot.getElementById('modelVersion');
+                
+                if (modelVersion) {
+                    modelVersion.value = 'v1_0_0';
+                }
+            }
+        } catch (error) {
+            console.error('生成建议版本号失败:', error);
+        }
     }
 
     handleRelatedModelChange() {
@@ -313,6 +429,12 @@ class ModelUpload extends HTMLElement {
             return;
         }
 
+        // 获取当前项目
+        const username = window.localStorage.getItem('username');
+        const cachedProject = username ? JSON.parse(window.localStorage.getItem('currentProject_' + username) || 'null') : null;
+        const currentProjectName = cachedProject ? cachedProject.name : null;
+        console.log('当前项目:', currentProjectName);
+
         // 获取右侧模型资产库的根节点
         const modelTree = document.getElementById('modelTree');
         if (!modelTree) {
@@ -334,11 +456,14 @@ class ModelUpload extends HTMLElement {
                     console.log('叶子节点完整路径:', fullPath);
                     // 路径格式：models_system.projectName.modelName.version
                     const parts = fullPath.split('.');
-                    // 倒数第二级是模型名称
-                    if (parts.length >= 3) {
-                        const modelName = parts[parts.length - 2];
-                        console.log('提取的模型名称:', modelName);
-                        modelNames.add(modelName);
+                    if (parts.length >= 4) {
+                        const projectName = parts[1];
+                        const modelName = parts[2];
+                        // 只添加属于当前项目的模型
+                        if (currentProjectName && projectName === currentProjectName && modelName) {
+                            console.log('提取的模型名称:', modelName);
+                            modelNames.add(modelName);
+                        }
                     }
                 }
             }
@@ -590,6 +715,31 @@ class ModelUpload extends HTMLElement {
             // 绑定单选按钮事件
             this.bindRadioEvents(modalElement);
             
+            // 绑定模型名称输入框和下拉框事件，用于自动生成版本号
+            const modelNameInput = modalElement.querySelector('#modelName');
+            if (modelNameInput) {
+                modelNameInput.addEventListener('input', () => {
+                    this.generateSuggestedVersion();
+                    this.clearFieldError('modelName');
+                });
+            }
+            
+            const modelNameSelect = modalElement.querySelector('#modelNameSelect');
+            if (modelNameSelect) {
+                modelNameSelect.addEventListener('change', () => {
+                    this.generateSuggestedVersion();
+                    this.clearFieldError('modelNameSelect');
+                });
+            }
+            
+            // 绑定版本号输入框的输入事件，用于清除错误提示
+            const modelVersionInput = modalElement.querySelector('#modelVersion');
+            if (modelVersionInput) {
+                modelVersionInput.addEventListener('input', () => {
+                    this.clearFieldError('modelVersion');
+                });
+            }
+            
             // 在DOM完全准备好后预加载模型名称数据
             this.loadModelNames();
             
@@ -693,7 +843,7 @@ class ModelUpload extends HTMLElement {
             hasError = true;
         }
         
-        // 验证模型名称
+        // 验证模型名称（只允许字母、数字、下划线和中文）
         if (!formData.modelName) {
             if (formData.isRelatedModel === 'yes') {
                 this.showFieldError('modelNameSelect', '请选择模型名称');
@@ -701,11 +851,19 @@ class ModelUpload extends HTMLElement {
                 this.showFieldError('modelName', '请输入模型名称');
             }
             hasError = true;
+        } else if (!/^[a-zA-Z0-9_\u4e00-\u9fa5]+$/.test(formData.modelName)) {
+            this.showFieldError('modelName', '模型名称只能包含字母、数字、下划线和中文');
+            window.CommonUtils.showToast('模型名称只能包含字母、数字、下划线和中文', 'error');
+            hasError = true;
         }
         
-        // 验证版本号
+        // 验证版本号（只允许字母、数字、下划线）
         if (!formData.modelVersion) {
             this.showFieldError('modelVersion', '请输入版本号');
+            hasError = true;
+        } else if (!/^[a-zA-Z0-9_]+$/.test(formData.modelVersion)) {
+            this.showFieldError('modelVersion', '版本号只能包含字母、数字和下划线');
+            window.CommonUtils.showToast('版本号只能包含字母、数字和下划线', 'error');
             hasError = true;
         }
         
@@ -716,7 +874,6 @@ class ModelUpload extends HTMLElement {
         }
         
         if (hasError) {
-            this.showMessage('请填写必填字段', 'error');
             return;
         }
 
@@ -749,6 +906,15 @@ class ModelUpload extends HTMLElement {
                     window.loadDataSourceTree();
                 } else {
                     console.error('❌ window.loadDataSourceTree 不存在');
+                }
+                
+                // 重新加载project tree
+                console.log('🔄 模型上传成功，准备调用 loadProjectTree');
+                if (window.loadProjectTree) {
+                    console.log('🔄 调用 window.loadProjectTree');
+                    window.loadProjectTree();
+                } else {
+                    console.error('❌ window.loadProjectTree 不存在');
                 }
                 
                 // 延迟关闭窗口
@@ -1107,13 +1273,56 @@ class ModelUpload extends HTMLElement {
 
     clearValidationErrors() {
         // 清除所有错误状态
-        const errorFields = this.shadowRoot.querySelectorAll('.form-control.error');
-        const errorMessages = this.shadowRoot.querySelectorAll('.error-message.show');
-        const errorGroups = this.shadowRoot.querySelectorAll('.form-group.error');
+        // 优先从弹窗中清除（用于modal manager）
+        const modal = document.querySelector('.modal-overlay');
+        if (modal) {
+            const modalContainer = modal.querySelector('.modal-container');
+            if (modalContainer) {
+                const errorFields = modalContainer.querySelectorAll('.form-control.error');
+                const errorMessages = modalContainer.querySelectorAll('.error-message.show');
+                const errorGroups = modalContainer.querySelectorAll('.form-group.error');
+                
+                errorFields.forEach(field => field.classList.remove('error'));
+                errorMessages.forEach(msg => msg.classList.remove('show'));
+                errorGroups.forEach(group => group.classList.remove('error'));
+            }
+        }
         
-        errorFields.forEach(field => field.classList.remove('error'));
-        errorMessages.forEach(msg => msg.classList.remove('show'));
-        errorGroups.forEach(group => group.classList.remove('error'));
+        // 同时清除Shadow DOM中的错误状态（用于直接渲染）
+        const shadowErrorFields = this.shadowRoot.querySelectorAll('.form-control.error');
+        const shadowErrorMessages = this.shadowRoot.querySelectorAll('.error-message.show');
+        const shadowErrorGroups = this.shadowRoot.querySelectorAll('.form-group.error');
+        
+        shadowErrorFields.forEach(field => field.classList.remove('error'));
+        shadowErrorMessages.forEach(msg => msg.classList.remove('show'));
+        shadowErrorGroups.forEach(group => group.classList.remove('error'));
+    }
+    
+    // 清除单个字段的错误提示
+    clearFieldError(fieldId) {
+        // 优先从弹窗中清除（用于modal manager）
+        const modal = document.querySelector('.modal-overlay');
+        if (modal) {
+            const modalContainer = modal.querySelector('.modal-container');
+            if (modalContainer) {
+                const field = modalContainer.querySelector('#' + fieldId);
+                const errorElement = modalContainer.querySelector('#' + fieldId + 'Error');
+                const formGroup = field?.closest('.form-group');
+                
+                if (field) field.classList.remove('error');
+                if (errorElement) errorElement.classList.remove('show');
+                if (formGroup) formGroup.classList.remove('error');
+            }
+        }
+        
+        // 同时清除Shadow DOM中的错误状态（用于直接渲染）
+        const shadowField = this.shadowRoot.getElementById(fieldId);
+        const shadowErrorElement = this.shadowRoot.getElementById(fieldId + 'Error');
+        const shadowFormGroup = shadowField?.closest('.form-group');
+        
+        if (shadowField) shadowField.classList.remove('error');
+        if (shadowErrorElement) shadowErrorElement.classList.remove('show');
+        if (shadowFormGroup) shadowFormGroup.classList.remove('error');
     }
 
     async apiCall(url, method = 'GET', data = null, isFormData = false) {

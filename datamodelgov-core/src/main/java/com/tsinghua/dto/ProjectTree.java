@@ -21,4 +21,7 @@ public class ProjectTree {
     @ApiModelProperty(value = "关联的数据源列表")
     private List<String> datas;
 
+    @ApiModelProperty(value = "关联的仿真程序列表")
+    private List<String> programs;
+
 }

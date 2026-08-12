@@ -2,6 +2,7 @@ class ProjectExport extends HTMLElement {
     constructor() {
         super();
         this.attachShadow({ mode: 'open' });
+        this.resourceType = null;
     }
 
     async connectedCallback() {
@@ -58,7 +59,7 @@ class ProjectExport extends HTMLElement {
                     </label>
 <!--                    <label class="export-checkbox-label">-->
 <!--                        <input type="checkbox" id="includeSimulationArchives" checked />-->
-<!--                        <span>仿真档案及记录</span>-->
+<!--                        <span>仿真及记录</span>-->
 <!--                    </label>-->
                 </div>
             </div>
@@ -71,8 +72,10 @@ class ProjectExport extends HTMLElement {
 </div>`;
     }
 
-    async show() {
+    async show(options = {}) {
+        this.resourceType = options.resourceType || null;
         this.style.display = 'block';
+        this.applyMode();
         await this.loadProjectList();
     }
 
@@ -132,11 +135,79 @@ class ProjectExport extends HTMLElement {
         root.getElementById('exportBtn')?.addEventListener('click', () => this.handleExport());
     }
 
+    applyMode() {
+        const root = this.shadowRoot;
+        const typeName = this.getResourceTypeName(this.resourceType);
+        const header = root.getElementById('exportHeader');
+        const section = root.getElementById('resourceSection');
+        if (header) header.textContent = typeName ? `导出${typeName}` : '导出项目';
+        if (section) section.style.display = 'none';
+
+        // 根据资源类型设置依赖关系
+        const checkboxes = {
+            includeAlgorithms: root.getElementById('includeAlgorithms'),
+            includeModels: root.getElementById('includeModels'),
+            includeDataCsv: root.getElementById('includeDataCsv'),
+            includeSimulationArchives: root.getElementById('includeSimulationArchives')
+        };
+
+        switch (this.resourceType) {
+            case 'algorithm':
+                // 算法依赖数据和模型
+                checkboxes.includeAlgorithms.checked = true;
+                checkboxes.includeModels.checked = true;
+                checkboxes.includeDataCsv.checked = true;
+                checkboxes.includeSimulationArchives.checked = false;
+                break;
+            case 'model':
+                // 模型单独导出
+                checkboxes.includeAlgorithms.checked = false;
+                checkboxes.includeModels.checked = true;
+                checkboxes.includeDataCsv.checked = false;
+                checkboxes.includeSimulationArchives.checked = false;
+                break;
+            case 'data':
+                // 数据单独导出
+                checkboxes.includeAlgorithms.checked = false;
+                checkboxes.includeModels.checked = false;
+                checkboxes.includeDataCsv.checked = true;
+                checkboxes.includeSimulationArchives.checked = false;
+                break;
+            case 'simulation':
+                // 仿真全选
+                checkboxes.includeAlgorithms.checked = true;
+                checkboxes.includeModels.checked = true;
+                checkboxes.includeDataCsv.checked = true;
+                checkboxes.includeSimulationArchives.checked = true;
+                break;
+            default:
+                // 项目全选
+                checkboxes.includeAlgorithms.checked = true;
+                checkboxes.includeModels.checked = true;
+                checkboxes.includeDataCsv.checked = true;
+                checkboxes.includeSimulationArchives.checked = true;
+                break;
+        }
+    }
+
+    getResourceTypeName(type) {
+        return {
+            algorithm: '算法',
+            model: '模型',
+            data: '数据',
+            simulation: '仿真'
+        }[type] || '';
+    }
+
     async handleExport() {
         const root = this.shadowRoot;
         const projectName = root.getElementById('projectSelect')?.value;
         if (!projectName) {
-            this.showToast('请选择项目', 'error');
+            if (window.CommonUtils && window.CommonUtils.showToast) {
+                window.CommonUtils.showToast('请选择项目', 'error');
+            } else {
+                this.showToast('请选择项目', 'error');
+            }
             return;
         }
 
@@ -146,7 +217,11 @@ class ProjectExport extends HTMLElement {
         const includeSimulationArchives = root.getElementById('includeSimulationArchives')?.checked || false;
 
         if (!includeAlgorithms && !includeModels && !includeDataCsv && !includeSimulationArchives) {
-            this.showToast('请至少选择一种导出资源类型', 'error');
+            if (window.CommonUtils && window.CommonUtils.showToast) {
+                window.CommonUtils.showToast('请至少选择一种导出资源类型', 'error');
+            } else {
+                this.showToast('请至少选择一种导出资源类型', 'error');
+            }
             return;
         }
 
@@ -163,13 +238,16 @@ class ProjectExport extends HTMLElement {
                 window.showGlobalLoading('正在导出项目...');
             }
 
-            const response = await fetch('/api/project/export', {
+            const exportUrl = this.resourceType
+                ? `/api/project/export/${this.resourceType}?projectName=${encodeURIComponent(projectName)}`
+                : '/api/project/export';
+            const response = await fetch(exportUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     ...window.AppConfig?.getAuthHeaders?.()
                 },
-                body: JSON.stringify(requestBody)
+                body: this.resourceType ? null : JSON.stringify(requestBody)
             });
 
             if (response.ok) {
@@ -190,7 +268,11 @@ class ProjectExport extends HTMLElement {
                 window.URL.revokeObjectURL(url);
                 document.body.removeChild(a);
 
-                this.showToast('导出成功');
+                if (window.CommonUtils && window.CommonUtils.showToast) {
+                    window.CommonUtils.showToast('导出成功');
+                } else {
+                    this.showToast('导出成功');
+                }
                 this.hide();
             } else {
                 // Try to parse error response
@@ -199,11 +281,19 @@ class ProjectExport extends HTMLElement {
                     const errorData = await response.json();
                     errorMsg = errorData.message || errorMsg;
                 } catch (e) {}
-                this.showToast(errorMsg, 'error');
+                if (window.CommonUtils && window.CommonUtils.showToast) {
+                    window.CommonUtils.showToast(errorMsg, 'error');
+                } else {
+                    this.showToast(errorMsg, 'error');
+                }
             }
         } catch (error) {
             console.error('导出项目失败:', error);
-            this.showToast('网络错误，导出失败', 'error');
+            if (window.CommonUtils && window.CommonUtils.showToast) {
+                window.CommonUtils.showToast('网络错误，导出失败', 'error');
+            } else {
+                this.showToast('网络错误，导出失败', 'error');
+            }
         } finally {
             if (window.hideGlobalLoading) {
                 window.hideGlobalLoading();

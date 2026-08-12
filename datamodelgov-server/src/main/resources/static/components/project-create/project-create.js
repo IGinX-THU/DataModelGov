@@ -216,7 +216,22 @@ class ProjectCreate extends HTMLElement {
 
         const name = this.shadowRoot.getElementById('projectName').value.trim();
         if (!name) {
-            this.showToast('请输入项目名称', 'error');
+            window.CommonUtils.showToast('请输入项目名称', 'error');
+            return;
+        }
+
+        if (name.includes('.')) {
+            window.CommonUtils.showToast('项目名称不允许包含点号(.)', 'error');
+            return;
+        }
+
+        if (/^\d+$/.test(name)) {
+            window.CommonUtils.showToast('项目名称不允许为纯数字', 'error');
+            return;
+        }
+
+        if (/^_+$/.test(name)) {
+            window.CommonUtils.showToast('项目名称不允许为纯下划线', 'error');
             return;
         }
 
