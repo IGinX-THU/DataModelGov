@@ -17,6 +17,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import javax.servlet.http.HttpServletResponse;
 import java.net.URLEncoder;
@@ -157,6 +158,42 @@ public class ProgramController {
                                                 @RequestParam("version") String version,
                                                 @RequestParam(value = "projectName", required = false) String projectName) {
         return programService.results(name, version, projectName);
+    }
+
+    @ApiOperation("实时仿真数据（增量）")
+    @GetMapping("/live-data")
+    @RequirePermission(Permission.READ)
+    public Result<Map<String, Object>> liveData(@RequestParam("name") String name,
+                                                 @RequestParam("version") String version,
+                                                 @RequestParam(value = "projectName", required = false) String projectName) {
+        return programService.getLiveData(name, version, projectName);
+    }
+
+    @ApiOperation("实时仿真数据 SSE 流（服务器主动推送，避免轮询）")
+    @GetMapping(value = "/live-stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @RequirePermission(Permission.READ)
+    public SseEmitter liveStream(@RequestParam("name") String name,
+                                 @RequestParam("version") String version,
+                                 @RequestParam(value = "projectName", required = false) String projectName) {
+        return programService.subscribeLiveData(name, version, projectName);
+    }
+
+    @ApiOperation("暂停仿真")
+    @PostMapping("/pause")
+    @RequirePermission(Permission.UPDATE)
+    public Result<Map<String, Object>> pause(@RequestParam("name") String name,
+                                             @RequestParam("version") String version,
+                                             @RequestParam(value = "projectName", required = false) String projectName) {
+        return programService.pause(name, version, projectName);
+    }
+
+    @ApiOperation("恢复仿真")
+    @PostMapping("/resume")
+    @RequirePermission(Permission.UPDATE)
+    public Result<Map<String, Object>> resume(@RequestParam("name") String name,
+                                              @RequestParam("version") String version,
+                                              @RequestParam(value = "projectName", required = false) String projectName) {
+        return programService.resume(name, version, projectName);
     }
 
     @ApiOperation("更新配置")

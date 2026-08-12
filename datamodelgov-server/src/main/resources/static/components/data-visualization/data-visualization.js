@@ -2070,7 +2070,7 @@ class DataVisualization extends HTMLElement {
                     let result = `${xAxisColumn === 'key' ? '时间' : xAxisColumn}: ${xLabel}<br/>`;
                     params.forEach(param => {
                         if (param.value[1] !== null && param.value[1] !== undefined) {
-                            result += `${param.seriesName}: ${param.value[1].toFixed(2)}<br/>`;
+                            result += `${param.seriesName}: ${param.value[1]}<br/>`;
                         } else {
                             result += `${param.seriesName}: --<br/>`;
                         }
@@ -2112,12 +2112,7 @@ class DataVisualization extends HTMLElement {
             yAxis: {
                 type: 'value',
                 min: dataRange.min,
-                max: dataRange.max,
-                axisLabel: {
-                    formatter: function(value) {
-                        return value.toFixed(2);
-                    }
-                }
+                max: dataRange.max
             },
             dataZoom: [
                 {
@@ -2252,9 +2247,9 @@ class DataVisualization extends HTMLElement {
                     if (xAxisColumn === 'key' && this.isValidTimestamp(params.value[0])) {
                         xLabel = new Date(params.value[0]).toLocaleString();
                     } else {
-                        xLabel = params.value[0].toFixed(2);
+                        xLabel = params.value[0];
                     }
-                    return `${xAxisColumn === 'key' ? '时间' : xAxisColumn}: ${xLabel}<br/>${yAxisColumn}: ${params.value[1].toFixed(2)}`;
+                    return `${xAxisColumn === 'key' ? '时间' : xAxisColumn}: ${xLabel}<br/>${yAxisColumn}: ${params.value[1]}`;
                 },
                 confine: true,
                 appendToBody: false
@@ -2400,7 +2395,7 @@ class DataVisualization extends HTMLElement {
                 formatter: (params) => {
                     const rangeStart = params.value[0] - binSize / 2;
                     const rangeEnd = params.value[0] + binSize / 2;
-                    return `范围: ${rangeStart.toFixed(2)} - ${rangeEnd.toFixed(2)}<br/>频数: ${params.value[1]}`;
+                    return `范围: ${rangeStart} - ${rangeEnd}<br/>频数: ${params.value[1]}`;
                 }
             },
             grid: {
@@ -2535,8 +2530,6 @@ class DataVisualization extends HTMLElement {
                     if (this.isValidTimestamp(record.window_end_timestamp)) {
                         value = new Date(record.window_end_timestamp).toLocaleString();
                     }
-                } else if (typeof value === 'number') {
-                    value = value.toFixed(2);
                 }
                 
                 td.textContent = value;

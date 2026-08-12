@@ -27,6 +27,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.*;
 import java.nio.charset.Charset;
@@ -62,6 +63,10 @@ public class ProgramService {
     private final ObjectMapper mapper = new ObjectMapper();
     private final Map<Long, Process> processMap = new ConcurrentHashMap<>();
     private final Map<Long, ProgramTaskEntity> runningTasks = new ConcurrentHashMap<>();
+    // 实时仿真数据缓冲：key=taskTimestamp, value=LiveDataBuffer
+    private final Map<Long, LiveDataBuffer> liveDataMap = new ConcurrentHashMap<>();
+    // 暂停/恢复状态：key=taskTimestamp, value=true表示已暂停
+    private final Map<Long, Boolean> pauseFlags = new ConcurrentHashMap<>();
     private static final Set<String> SUPPORTED_ARCHIVE = new HashSet<>(Arrays.asList(".zip", ".rar", ".7z", ".tar", ".tar.gz", ".tgz"));
     private static final boolean SEVENZIP_AVAILABLE;
 
@@ -837,6 +842,10 @@ public class ProgramService {
         runningTasks.put(taskTimestamp, task);
         saveTask(task);
 
+        // 提前创建 LiveDataBuffer，确保 SSE 连接时 buffer 已存在
+        // （doRun 线程下载/解压需要时间，此时前端 SSE 订阅才能拿到 buffer）
+        liveDataMap.put(taskTimestamp, new LiveDataBuffer());
+
         new Thread(() -> doRun(taskTimestamp, entity, stopTime, fixedStep, npCommand, loadPower, modelFile), "program-run-" + taskTimestamp).start();
 
         Map<String, Object> data = new HashMap<>();
@@ -846,20 +855,51 @@ public class ProgramService {
     }
 
     public Result<Map<String, Object>> stop(String name, String version, String projectName) {
-        ProgramEntity entity = queryMeta(name, version, projectName);
-        if (entity == null) return Result.error("程序不存在");
-        // Find latest running task and stop it
-        ProgramTaskEntity task = queryLatestTask(name, version, projectName);
-        if (task != null && TaskStatus.RUNNING.equals(task.getStatus())) {
-            Process process = processMap.remove(task.getTimestamp());
-            if (process != null && process.isAlive()) {
-                process.destroyForcibly();
+        log.info("停止请求: name={}, version={}, projectName={}", name, version, projectName);
+        try {
+            // 优先从内存缓存查找运行中的任务，避免 IGinX 查询（同 pause/resume）
+            ProgramTaskEntity task = findRunningTask(name, version, projectName);
+            if (task == null) {
+                task = queryLatestTask(name, version, projectName);
             }
-            updateTaskStatus(task.getTimestamp(), TaskStatus.STOPPED, null, null, null, null);
+            if (task != null && TaskStatus.RUNNING.equals(task.getStatus())) {
+                Long ts = task.getTimestamp();
+                if (ts != null) {
+                    // 先创建 stop.flag（让 progressiveReveal/MATLAB 检测到后退出）
+                    File taskDir = new File(getTaskBaseDir(projectName != null ? projectName : task.getProjectName()), String.valueOf(ts));
+                    try {
+                        Files.createFile(new File(taskDir, "stop.flag").toPath());
+                    } catch (IOException e) {
+                        log.warn("创建 stop.flag 失败: {}", e.getMessage());
+                    }
+                    // 同时删除 pause.flag（如果在暂停中，先恢复才能检测到 stop.flag）
+                    try {
+                        Files.deleteIfExists(new File(taskDir, "pause.flag").toPath());
+                    } catch (IOException e) {
+                        log.warn("删除 pause.flag 失败: {}", e.getMessage());
+                    }
+                    pauseFlags.remove(ts);
+                    // 等 1 秒让 MATLAB 检测到 stop.flag 退出，超时则强制杀进程
+                    Process process = processMap.get(ts);
+                    if (process != null && process.isAlive()) {
+                        try { process.waitFor(1, TimeUnit.SECONDS); } catch (InterruptedException ignored) {}
+                        if (process.isAlive()) {
+                            process.destroyForcibly();
+                        }
+                    }
+                    processMap.remove(ts);
+                    LiveDataBuffer buffer = liveDataMap.get(ts);
+                    if (buffer != null) buffer.setFinished(true);
+                    updateTaskStatus(ts, TaskStatus.STOPPED, null, null, null, null);
+                }
+            }
+            Map<String, Object> data = new HashMap<>();
+            data.put("status", TaskStatus.STOPPED);
+            return Result.success("已停止", data);
+        } catch (Exception e) {
+            log.error("停止异常", e);
+            return Result.error("停止失败: " + e.getMessage());
         }
-        Map<String, Object> data = new HashMap<>();
-        data.put("status", TaskStatus.STOPPED);
-        return Result.success("已停止", data);
     }
 
     private void doRun(long taskTimestamp, ProgramEntity entity, String stopTimeParam, String fixedStepParam, String npCommandParam, String loadPowerParam, String modelFileParam) {
@@ -901,21 +941,41 @@ public class ProgramService {
             writeWrapper(wrapper, shortTaskDir, shortProgramDir, preRunScript, modelFile, stopTime, fixedStepParam, npCommandParam, loadPowerParam);
             File oldCsv = new File(taskDir, "signals.csv");
             if (oldCsv.exists()) oldCsv.delete();
+            File oldLiveCsv = new File(taskDir, "signals_live.csv");
+            if (oldLiveCsv.exists()) oldLiveCsv.delete();
+
+            // 复用 run 方法中提前创建的 LiveDataBuffer（确保 SSE 订阅时已存在）
+            // 使用 computeIfAbsent 保证变量 effectively final（lambda 中引用）
+            LiveDataBuffer liveBuffer = liveDataMap.computeIfAbsent(taskTimestamp, k -> new LiveDataBuffer());
 
             ProcessBuilder pb = new ProcessBuilder();
             pb.directory(taskDir);
             pb.command("cmd", "/c", "chcp 65001 && matlab -batch \"cd('"
-                    + escape(shortTaskDir) + "'); run_wrapper; exit;\" -nosplash -nodesktop");
+                    + escape(shortTaskDir) + "'); run_wrapper; exit;\"");
             pb.redirectErrorStream(true);
             File logFile = new File(taskDir, "run.log");
             pb.redirectOutput(logFile);
 
             Process process = pb.start();
             processMap.put(taskTimestamp, process);
+
+            // 阻塞等待 MATLAB 仿真完成（编译+仿真约 1-3 分钟）。
+            // 期间 LiveDataBuffer 只发心跳，前端显示"仿真启动中"无曲线。
+            // 仿真结束后由 progressiveReveal 按节拍释放 CSV 行，实现渐进式曲线 + 暂停/恢复。
             boolean finished = process.waitFor(1200, TimeUnit.SECONDS);
             processMap.remove(taskTimestamp);
+            File pauseFlag = new File(taskDir, "pause.flag");
+            File stopFlag = new File(taskDir, "stop.flag");
+            // stop 端点主动停止（杀进程）会导致 waitFor 返回且 exitCode 非零，
+            // 此时不报失败——stop 端点已将状态置为 STOPPED。
+            if (stopFlag.exists()) {
+                log.info("检测到 stop.flag，任务由用户主动停止，跳过失败判定与回放");
+                liveBuffer.setFinished(true);
+                return;
+            }
             if (!finished) {
                 process.destroyForcibly();
+                liveBuffer.setFinished(true);
                 updateTaskStatus(taskTimestamp, TaskStatus.FAILED, "运行超时", null, null, null);
                 return;
             }
@@ -925,6 +985,21 @@ public class ProgramService {
             if (exitCode != 0) {
                 String err = readLastLines(logFile, 20);
                 updateTaskStatus(taskTimestamp, TaskStatus.FAILED, "MATLAB 退出码 " + exitCode + ": " + err, null, logFile.getAbsolutePath(), null);
+                return;
+            }
+
+            // === 渐进式回放：MATLAB 已跑完并写出完整 signals.csv，
+            // 此处按节拍把 CSV 行释放到 LiveDataBuffer，前端通过 SSE 看到曲线渐进生长。
+            // pause.flag / stop.flag 由 pause/resume/stop 端点控制。 ===
+            File liveCsv = new File(taskDir, "signals.csv");
+            if (liveCsv.exists()) {
+                progressiveReveal(liveCsv, liveBuffer, pauseFlag, stopFlag, stopTime);
+            } else {
+                log.warn("signals.csv 不存在，跳过渐进式回放");
+            }
+            // 回放期间若用户点了停止，stop 端点已置状态为 STOPPED，此处直接返回避免覆盖
+            if (stopFlag.exists()) {
+                log.info("回放期间收到停止指令，跳过结果处理与 SUCCESS 状态");
                 return;
             }
 
@@ -955,7 +1030,70 @@ public class ProgramService {
         } finally {
             processMap.remove(taskTimestamp);
             runningTasks.remove(taskTimestamp);
+            pauseFlags.remove(taskTimestamp);
+            // 延迟清理 liveDataMap（让前端最后一次轮询能拿到 finished 状态）
+            LiveDataBuffer buffer = liveDataMap.get(taskTimestamp);
+            if (buffer != null) buffer.setFinished(true);
         }
+    }
+
+    /**
+     * 渐进式回放：读取完整 signals_live.csv，按仿真时间节拍把行增量释放到 LiveDataBuffer。
+     * 仿真本身已由 MATLAB 阻塞 sim() 跑完，此处只控制数据向前端的展现节奏（非真实仿真暂停）。
+     * - 节拍：约 stopTime 秒内放完所有行（接近真实时间），每 100ms 释放一批
+     * - pause.flag 存在时暂停释放（阻塞等待 flag 删除）
+     * - stop.flag 存在时一次性释放剩余所有行并结束
+     */
+    private void progressiveReveal(File liveCsv, LiveDataBuffer liveBuffer, File pauseFlag, File stopFlag, int stopTime) {
+        List<String> lines;
+        try {
+            lines = Files.readAllLines(liveCsv.toPath(), StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            log.warn("读取 signals_live.csv 失败，跳过回放", e);
+            return;
+        }
+        if (lines.isEmpty()) return;
+
+        // 第一行 header
+        List<String> headers = Arrays.asList(lines.get(0).split(","));
+        liveBuffer.setHeaders(headers);
+
+        // 解析全部数据行
+        List<String[]> allRows = new ArrayList<>();
+        for (int i = 1; i < lines.size(); i++) {
+            String line = lines.get(i).trim();
+            if (line.isEmpty()) continue;
+            allRows.add(line.split(","));
+        }
+        if (allRows.isEmpty()) return;
+
+        int totalRows = allRows.size();
+        // 节拍：stopTime 秒内放完，每 100ms 一批（real-time pacing）
+        int totalTicks = Math.max(1, stopTime * 10);
+        int rowsPerTick = Math.max(1, (totalRows + totalTicks - 1) / totalTicks);
+        long tickMs = 100;
+
+        log.info("渐进式回放开始: 共 {} 行, 每批 {} 行/100ms (约 {}s)", totalRows, rowsPerTick, stopTime);
+        int cursor = 0;
+        while (cursor < totalRows) {
+            // 暂停：pause.flag 存在则等待（stop.flag 同时存在则跳出暂停）
+            while (pauseFlag.exists() && !stopFlag.exists()) {
+                try { Thread.sleep(200); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); return; }
+            }
+            // 停止：一次性释放剩余所有行
+            if (stopFlag.exists()) {
+                List<String[]> remaining = new ArrayList<>(allRows.subList(cursor, totalRows));
+                liveBuffer.appendRows(remaining);
+                log.info("回放被停止，一次性释放剩余 {} 行", remaining.size());
+                cursor = totalRows;
+                break;
+            }
+            int end = Math.min(cursor + rowsPerTick, totalRows);
+            liveBuffer.appendRows(new ArrayList<>(allRows.subList(cursor, end)));
+            cursor = end;
+            try { Thread.sleep(tickMs); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); return; }
+        }
+        log.info("渐进式回放完成: 释放 {} 行", totalRows);
     }
 
     private String findProgramDir(File dir, String scriptName) throws IOException {
@@ -1082,7 +1220,7 @@ public class ProgramService {
             sb.append("    end\n");
             // 3c1. Fuel System Wf output via subsystem port handles
             sb.append("    try\n");
-            sb.append("        fsPath = ['").append(modelName).append("'/Fuel System'];\n");
+            sb.append("        fsPath = '").append(modelName).append("/Fuel System';\n");
             sb.append("        fsPH = get_param(fsPath, 'PortHandles');\n");
             sb.append("        fsPos = get_param(fsPath, 'Position');\n");
             sb.append("        twName = 'ToWS_Wf'; twPath = ['").append(modelName).append("' '/' twName];\n");
@@ -1345,6 +1483,462 @@ public class ProgramService {
             sb.append("end\n");
         }
         Files.write(f.toPath(), sb.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
+    /**
+     * 生成仿真脚本（阻塞 sim + 渐进式回放版本）
+     * - 使用阻塞 sim() 一次性运行完整仿真，结束后写完整 signals_live.csv（全部行）
+     * - 不做实时采集：DLL 模型 RuntimeObject 在 headless MATLAB 下不可用，InitialState 也不支持
+     * - Java 侧 progressiveReveal 读取完整 CSV 后按节拍释放到 LiveDataBuffer，支持暂停/恢复/停止
+     * - 不修改模型结构，使用信号日志（SignalLogging + 端口 DataLogging）记录信号
+     */
+    private void writeLiveWrapper(File f, String taskDir, String programDir, String preRun, String modelFile,
+                                  int stopTime, String fixedStep, String npCommand, String loadPower) throws IOException {
+        StringBuilder sb = new StringBuilder();
+        String modelName = modelFile != null ? modelFile.replaceAll("\\.(slx|mdl)$", "") : "";
+
+        // 1. cd + 预配置脚本 + 参数设置（与 writeWrapper 一致）
+        sb.append("cd('").append(escape(programDir)).append("');\n");
+        sb.append("try\n");
+        sb.append("    ").append(preRun).append(";\n");
+        sb.append("catch ME\n");
+        sb.append("    fid = fopen('error.txt', 'w');\n");
+        sb.append("    fprintf(fid, '%s\\n', ME.message);\n");
+        sb.append("    fclose(fid);\n");
+        sb.append("    rethrow(ME);\n");
+        sb.append("end\n");
+        if (StringUtils.hasText(npCommand)) {
+            sb.append("NpReferenceRpm = ").append(npCommand).append(";\n");
+        }
+        if (StringUtils.hasText(loadPower)) {
+            sb.append("MkpReferenceNm = ").append(loadPower).append(";\n");
+        }
+        if (StringUtils.hasText(fixedStep)) {
+            sb.append("Ts = ").append(fixedStep).append(";\n");
+        }
+        sb.append("PTReferenceLoadPowerW = MkpReferenceNm * (NpReferenceRpm * pi / 30);\n");
+        sb.append("Power_cmd = PTReferenceLoadPowerW;\n");
+        sb.append("NpDem = NpReferenceRpm;\n");
+        sb.append("if exist('NgReferenceRpm', 'var'), NgMax = NgReferenceRpm * 1.05; end\n");
+        sb.append("if exist('WfReferenceKgps', 'var'), WfMax = WfReferenceKgps * 2; WfMin = WfReferenceKgps * 0.01; end\n");
+
+        // 2. 加载模型 + 配置分块仿真参数
+        if (!modelName.isEmpty()) {
+            sb.append("try\n");
+            sb.append("    load_system('").append(escape(modelName)).append("');\n");
+            sb.append("    set_param('").append(escape(modelName)).append("', 'StopTime', '").append(stopTime).append("');\n");
+            if (StringUtils.hasText(fixedStep)) {
+                sb.append("    set_param('").append(escape(modelName)).append("', 'FixedStep', '").append(fixedStep).append("');\n");
+            }
+            // 不使用 SaveFinalState/InitialState：DLL 模型状态由 DLL 内部管理，Simulink 状态向量为空
+            // 不修改模型结构（不添加 To Workspace 块），改用信号日志（SignalLogging + 端口 DataLogging）记录信号
+
+            // 3. 信号日志：不修改模型结构，通过端口 DataLogging 记录信号
+            //    （已通过 MATLAB R2019b 测试验证：set_param(portHandle,'DataLogging','on') 可用）
+            sb.append("    set_param('").append(escape(modelName)).append("', 'SignalLogging', 'on');\n");
+            sb.append("    set_param('").append(escape(modelName)).append("', 'SignalLoggingName', 'logsout');\n");
+            // 3.0 清除模型中已有的 DataLogging，确保 logsOut 只含我们设置的信号
+            sb.append("    allPorts = find_system('").append(escape(modelName)).append("', 'FindAll', 'on', 'Type', 'Port');\n");
+            sb.append("    for pi = 1:numel(allPorts)\n");
+            sb.append("        try\n");
+            sb.append("            if strcmp(get_param(allPorts(pi), 'DataLogging'), 'on')\n");
+            sb.append("                set_param(allPorts(pi), 'DataLogging', 'off');\n");
+            sb.append("            end\n");
+            sb.append("        catch; end\n");
+            sb.append("    end\n");
+            // 3a. 核心信号：在源块输出端口设置 DataLogging，同时记录信号名→源块路径映射
+            sb.append("    sigNames = {};\n");
+            sb.append("    sigPaths = {};\n");
+            sb.append("    wsSignals = {\n");
+            sb.append("        'Np',       '").append(modelName).append("/Turboshaft Engine Control System/Np';\n");
+            sb.append("        'Ng',       '").append(modelName).append("/Turboshaft Engine Control System/Ng';\n");
+            sb.append("        'NpDem',    '").append(modelName).append("/Turboshaft Engine Control System/NpDem';\n");
+            sb.append("        'T45',      '").append(modelName).append("/Turboshaft Engine Control System/T45';\n");
+            sb.append("        'Mkp',      '").append(modelName).append("/Turboshaft Engine Control System/Mkp';\n");
+            sb.append("        'Wf_cmd',   '").append(modelName).append("/Fuel System/Wf_cmd';\n");
+            sb.append("        'CLP',      '").append(modelName).append("/Turboshaft Engine Control System/CLP';\n");
+            sb.append("        'Wf',       '").append(modelName).append("/Fuel System';\n");
+            sb.append("    };\n");
+            sb.append("    for i = 1:size(wsSignals, 1)\n");
+            sb.append("        try\n");
+            sb.append("            ph = get_param(wsSignals{i, 2}, 'PortHandles');\n");
+            sb.append("            set_param(ph.Outport(1), 'DataLogging', 'on');\n");
+            sb.append("            set_param(ph.Outport(1), 'DataLoggingName', wsSignals{i, 1});\n");
+            sb.append("            sigNames{end+1} = wsSignals{i, 1};\n");
+            sb.append("            sigPaths{end+1} = wsSignals{i, 2};\n");
+            sb.append("        catch; end\n");
+            sb.append("    end\n");
+            // 3b. Goto 信号：在 From 块输出端口设置 DataLogging，记录 From 块路径
+            sb.append("    gotoSignals = {'Np_fbk','Ng_fbk','Mkp_fbk','T45_fbk','Wf_kgps','WfProxyCmd'};\n");
+            sb.append("    for i = 1:numel(gotoSignals)\n");
+            sb.append("        try\n");
+            sb.append("            fromBlks = find_system('").append(escape(modelName)).append("', 'BlockType', 'From', 'GotoTag', gotoSignals{i});\n");
+            sb.append("            if ~isempty(fromBlks)\n");
+            sb.append("                ph = get_param(fromBlks{1}, 'PortHandles');\n");
+            sb.append("                set_param(ph.Outport(1), 'DataLogging', 'on');\n");
+            sb.append("                set_param(ph.Outport(1), 'DataLoggingName', gotoSignals{i});\n");
+            sb.append("                sigNames{end+1} = gotoSignals{i};\n");
+            sb.append("                sigPaths{end+1} = fromBlks{1};\n");
+            sb.append("            end\n");
+            sb.append("        catch; end\n");
+            sb.append("    end\n");
+
+            // 4. sim() 运行仿真 + 用 BlockPath 精确匹配信号并写入 CSV
+            sb.append("    simOut = sim('").append(escape(modelName)).append("', 'ReturnWorkspaceOutputs', 'on', 'StopTime', '").append(stopTime).append("');\n");
+            sb.append("    tout = simOut.tout;\n");
+            sb.append("    logsOut = simOut.logsout;\n");
+            sb.append("    csvHeader = {'Np','Ng','NpDem','T45','Mkp','Wf_cmd','CLP','Np_fbk','Ng_fbk','Mkp_fbk','T45_fbk','Wf_kgps','WfProxyCmd','Wf'};\n");
+            sb.append("    nPoints = length(tout);\n");
+            sb.append("    colData = zeros(nPoints, numel(csvHeader));\n");
+            sb.append("    matched = false(numel(csvHeader), 1);\n");
+            sb.append("    if isa(logsOut, 'Simulink.SimulationData.Dataset')\n");
+            sb.append("        for ci = 1:numel(csvHeader)\n");
+            // 查找信号名在 sigNames 中的索引，获取对应的源块路径
+            sb.append("            idx = find(strcmp(sigNames, csvHeader{ci}));\n");
+            sb.append("            if ~isempty(idx)\n");
+            sb.append("                targetPath = sigPaths{idx(1)};\n");
+            sb.append("                for ei = 1:logsOut.numElements\n");
+            sb.append("                    try\n");
+            sb.append("                        sig = logsOut.getElement(ei);\n");
+            sb.append("                        try; bp = strjoin(convertToCell(sig.BlockPath), '/'); catch; bp = ''; end\n");
+            sb.append("                        if strcmp(bp, targetPath)\n");
+            sb.append("                            v = sig.Values;\n");
+            sb.append("                            if isa(v, 'timeseries'); v = v.Data; end\n");
+            sb.append("                            if isvector(v)\n");
+            sb.append("                                if length(v) == nPoints\n");
+            sb.append("                                    colData(:, ci) = v(:);\n");
+            sb.append("                                    matched(ci) = true;\n");
+            sb.append("                                elseif length(v) == 1\n");
+            sb.append("                                    colData(:, ci) = repmat(v(1), nPoints, 1);\n");
+            sb.append("                                    matched(ci) = true;\n");
+            sb.append("                                end\n");
+            sb.append("                            end\n");
+            sb.append("                            break;\n");
+            sb.append("                        end\n");
+            sb.append("                    catch; end\n");
+            sb.append("                end\n");
+            sb.append("            end\n");
+            sb.append("        end\n");
+            // 兜底：BlockPath 未匹配的列，按信号名直接 getElement
+            sb.append("        for ci = 1:numel(csvHeader)\n");
+            sb.append("            if ~matched(ci)\n");
+            sb.append("                try\n");
+            sb.append("                    sig = logsOut.getElement(csvHeader{ci});\n");
+            sb.append("                    v = sig.Values;\n");
+            sb.append("                    if isa(v, 'timeseries'); v = v.Data; end\n");
+            sb.append("                    if isvector(v)\n");
+            sb.append("                        if length(v) == nPoints\n");
+            sb.append("                            colData(:, ci) = v(:);\n");
+            sb.append("                        elseif length(v) == 1\n");
+            sb.append("                            colData(:, ci) = repmat(v(1), nPoints, 1);\n");
+            sb.append("                        end\n");
+            sb.append("                    end\n");
+            sb.append("                catch; end\n");
+            sb.append("            end\n");
+            sb.append("        end\n");
+            sb.append("    end\n");
+            // 诊断：打印匹配情况到 run.log
+            sb.append("    nNonZero = sum(any(colData ~= 0, 1));\n");
+            sb.append("    fprintf('signal extraction: %d/%d columns have data\\n', nNonZero, numel(csvHeader));\n");
+            // 写入 CSV
+            sb.append("    fid = fopen('").append(escape(taskDir)).append("/signals_live.csv', 'w');\n");
+            sb.append("    fprintf(fid, 'time,Np,Ng,NpDem,T45,Mkp,Wf_cmd,CLP,Np_fbk,Ng_fbk,Mkp_fbk,T45_fbk,Wf_kgps,WfProxyCmd,Wf\\n');\n");
+            sb.append("    for ri = 1:nPoints\n");
+            sb.append("        fprintf(fid, '%.6f', tout(ri));\n");
+            sb.append("        for ci = 1:numel(csvHeader); fprintf(fid, ',%.6f', colData(ri, ci)); end\n");
+            sb.append("        fprintf(fid, '\\n');\n");
+            sb.append("    end\n");
+            sb.append("    fclose(fid);\n");
+            // 仿真结束后把 signals_live.csv 复制为 signals.csv（供现有结果处理流程使用）
+            sb.append("    copyfile('").append(escape(taskDir)).append("/signals_live.csv', '").append(escape(taskDir)).append("/signals.csv');\n");
+            sb.append("    set_param('").append(escape(modelName)).append("', 'Dirty', 'off');\n");
+            sb.append("    close_system('").append(escape(modelName)).append("', 0);\n");
+            sb.append("catch ME\n");
+            sb.append("    try; fclose(fid); catch; end\n");
+            sb.append("    try; set_param('").append(escape(modelName)).append("', 'Dirty', 'off'); close_system('").append(escape(modelName)).append("', 0); catch; end\n");
+            sb.append("    fid = fopen('").append(escape(taskDir)).append("/error.txt', 'w');\n");
+            sb.append("    fprintf(fid, '%s\\n', ME.message);\n");
+            sb.append("    fclose(fid);\n");
+            sb.append("    rethrow(ME);\n");
+            sb.append("end\n");
+        }
+        Files.write(f.toPath(), sb.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
+    /**
+     * 线程安全的实时数据缓冲：MATLAB 写 CSV → 监控线程读 CSV → append 到这里 → 前端轮询/SSE 取增量
+     * 支持 SSE 订阅：有新数据时主动推送给所有订阅者，避免前端频繁轮询
+     */
+    public static class LiveDataBuffer {
+        private volatile List<String> headers = new ArrayList<>();
+        private final List<String[]> rows = Collections.synchronizedList(new ArrayList<>());
+        private volatile int lastIndex = 0;
+        private volatile boolean finished = false;
+        // SSE 订阅者列表
+        private final List<SseEmitter> emitters = Collections.synchronizedList(new ArrayList<>());
+
+        public void setHeaders(List<String> h) {
+            this.headers = h;
+            // header 就绪后立即推送一次，让前端初始化图表
+            notifySubscribers(buildPayload(new ArrayList<>()));
+        }
+
+        public List<String> getHeaders() { return headers; }
+
+        public void appendRows(List<String[]> newRows) {
+            rows.addAll(newRows);
+            // 有新数据时主动推送给所有 SSE 订阅者
+            notifySubscribers(buildPayload(newRows));
+        }
+
+        /** 返回从 lastIndex 到末尾的增量数据，并更新 lastIndex（轮询降级用） */
+        public synchronized Map<String, Object> getIncremental() {
+            Map<String, Object> result = new HashMap<>();
+            result.put("headers", headers);
+            int total = rows.size();
+            if (lastIndex < total) {
+                List<String[]> incremental = new ArrayList<>(rows.subList(lastIndex, total));
+                result.put("newRows", incremental);
+                lastIndex = total;
+            } else {
+                result.put("newRows", new ArrayList<String[]>());
+            }
+            result.put("totalRows", total);
+            result.put("currentSimTime", getCurrentSimTime());
+            result.put("finished", finished);
+            return result;
+        }
+
+        /** 注册 SSE 订阅者，连接断开时自动移除 */
+        public void subscribe(SseEmitter emitter) {
+            emitters.add(emitter);
+            // 心跳保活：MATLAB 仿真启动可能需要 2-3 分钟，期间无数据推送，
+            // 不发心跳会导致 SseEmitter 超时或代理/浏览器断开连接
+            final boolean[] alive = {true};
+            Thread heartbeat = new Thread(() -> {
+                while (alive[0]) {
+                    try { Thread.sleep(15000); } catch (InterruptedException e) { break; }
+                    if (alive[0]) {
+                        sendToEmitter(emitter, Collections.singletonMap("heartbeat", true));
+                    }
+                }
+            }, "sse-heartbeat");
+            heartbeat.setDaemon(true);
+            heartbeat.start();
+            emitter.onCompletion(() -> { alive[0] = false; emitters.remove(emitter); });
+            emitter.onTimeout(() -> { alive[0] = false; emitters.remove(emitter); emitter.complete(); });
+            emitter.onError(e -> { alive[0] = false; emitters.remove(emitter); });
+            // 订阅时立即推送已有数据（避免订阅后到下个 chunk 之间的空窗）
+            Map<String, Object> snapshot = new HashMap<>();
+            snapshot.put("headers", headers);
+            int total = rows.size();
+            snapshot.put("newRows", total > 0 ? new ArrayList<>(rows) : new ArrayList<>());
+            snapshot.put("totalRows", total);
+            snapshot.put("currentSimTime", getCurrentSimTime());
+            snapshot.put("finished", finished);
+            sendToEmitter(emitter, snapshot);
+        }
+
+        /** 向所有订阅者推送数据 */
+        private void notifySubscribers(Map<String, Object> payload) {
+            if (emitters.isEmpty()) return;
+            // 复制一份避免遍历时并发修改
+            List<SseEmitter> snapshot = new ArrayList<>(emitters);
+            for (SseEmitter emitter : snapshot) {
+                sendToEmitter(emitter, payload);
+            }
+        }
+
+        private void sendToEmitter(SseEmitter emitter, Map<String, Object> payload) {
+            try {
+                emitter.send(SseEmitter.event().data(payload));
+            } catch (Exception e) {
+                emitters.remove(emitter);
+            }
+        }
+
+        private Map<String, Object> buildPayload(List<String[]> newRows) {
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("headers", headers);
+            payload.put("newRows", newRows);
+            payload.put("totalRows", rows.size());
+            payload.put("currentSimTime", getCurrentSimTime());
+            payload.put("finished", finished);
+            return payload;
+        }
+
+        private double getCurrentSimTime() {
+            if (rows.isEmpty()) return 0.0;
+            String[] last = rows.get(rows.size() - 1);
+            if (last != null && last.length > 0) {
+                try { return Double.parseDouble(last[0]); } catch (NumberFormatException e) { return 0.0; }
+            }
+            return 0.0;
+        }
+
+        public void setFinished(boolean f) {
+            this.finished = f;
+            if (f) {
+                // 仿真结束：推送最终状态后关闭所有 SSE 连接
+                notifySubscribers(buildPayload(new ArrayList<>()));
+                List<SseEmitter> snapshot = new ArrayList<>(emitters);
+                for (SseEmitter emitter : snapshot) {
+                    try { emitter.complete(); } catch (Exception ignored) {}
+                }
+                emitters.clear();
+            }
+        }
+
+        public boolean isFinished() { return finished; }
+        public int getRowCount() { return rows.size(); }
+    }
+
+    /**
+     * 查询实时仿真数据（增量）
+     */
+    public Result<Map<String, Object>> getLiveData(String name, String version, String projectName) {
+        ProgramTaskEntity task = queryLatestTask(name, version, projectName);
+        if (task == null) return Result.error("无运行任务记录");
+
+        Map<String, Object> data = new HashMap<>();
+        data.put("status", task.getStatus());
+        data.put("lastError", task.getError());
+
+        LiveDataBuffer buffer = liveDataMap.get(task.getTimestamp());
+        if (buffer != null) {
+            data.putAll(buffer.getIncremental());
+        } else {
+            data.put("newRows", new ArrayList<String[]>());
+            data.put("totalRows", 0);
+            data.put("currentSimTime", 0.0);
+            data.put("finished", !TaskStatus.RUNNING.equals(task.getStatus()));
+        }
+        return Result.success(data);
+    }
+
+    /**
+     * SSE 订阅实时仿真数据：服务器在有新数据时主动推送，避免前端频繁轮询
+     * 返回 SseEmitter，Spring MVC 异步处理保持连接
+     */
+    public SseEmitter subscribeLiveData(String name, String version, String projectName) {
+        // 超时设为 5 分钟（MATLAB 启动+仿真可能需要 2-3 分钟）
+        SseEmitter emitter = new SseEmitter(300000L);
+
+        ProgramTaskEntity task = queryLatestTask(name, version, projectName);
+        if (task == null) {
+            try {
+                emitter.send(SseEmitter.event().data(Collections.singletonMap("error", "无运行任务记录")));
+                emitter.complete();
+            } catch (Exception ignored) {}
+            return emitter;
+        }
+
+        LiveDataBuffer buffer = liveDataMap.get(task.getTimestamp());
+        if (buffer == null) {
+            // buffer 已被清理（仿真已结束），立即推送结束状态
+            try {
+                Map<String, Object> endPayload = new HashMap<>();
+                endPayload.put("status", task.getStatus());
+                endPayload.put("lastError", task.getError());
+                endPayload.put("finished", true);
+                endPayload.put("newRows", new ArrayList<String[]>());
+                endPayload.put("totalRows", 0);
+                endPayload.put("currentSimTime", 0.0);
+                emitter.send(SseEmitter.event().data(endPayload));
+                emitter.complete();
+            } catch (Exception ignored) {}
+            return emitter;
+        }
+
+        // 订阅 buffer，有新数据时由 buffer 主动推送
+        buffer.subscribe(emitter);
+
+        // 如果仿真已经结束，订阅时会自动收到 finished 数据，但 emitter 可能未 complete
+        if (buffer.isFinished()) {
+            try { emitter.complete(); } catch (Exception ignored) {}
+        }
+
+        return emitter;
+    }
+
+    /**
+     * 暂停仿真：创建 pause.flag 文件，progressiveReveal 检测到后进入等待循环。
+     * 优先从内存缓存 runningTasks 查找任务，避免查 IGinX（消除锁竞争和延迟，
+     * 这是导致 ERR_INCOMPLETE_CHUNKED_ENCODING 的根因——IGinX 全局锁等待
+     * 使请求长时间阻塞，Tomcat 最终关闭连接导致响应不完整）。
+     */
+    public Result<Map<String, Object>> pause(String name, String version, String projectName) {
+        log.info("暂停请求: name={}, version={}, projectName={}", name, version, projectName);
+        try {
+            // 优先从内存缓存查找，避免 IGinX 查询
+            ProgramTaskEntity task = findRunningTask(name, version, projectName);
+            if (task == null) {
+                // 降级：查 IGinX（仅在缓存未命中时，如服务重启后恢复运行状态）
+                task = queryLatestTask(name, version, projectName);
+            }
+            if (task == null || !TaskStatus.RUNNING.equals(task.getStatus())) {
+                log.warn("暂停失败：无运行中的仿真任务 (found={}, status={})",
+                        task != null, task != null ? task.getStatus() : "null");
+                return Result.error("无运行中的仿真任务");
+            }
+            Long ts = task.getTimestamp();
+            if (ts == null) {
+                log.warn("暂停失败：任务时间戳为空");
+                return Result.error("任务时间戳为空");
+            }
+            pauseFlags.put(ts, true);
+            File taskDir = new File(getTaskBaseDir(projectName != null ? projectName : task.getProjectName()), String.valueOf(ts));
+            File pauseFlag = new File(taskDir, "pause.flag");
+            if (!pauseFlag.exists()) {
+                try {
+                    Files.createFile(pauseFlag.toPath());
+                } catch (IOException e) {
+                    log.warn("创建 pause.flag 失败: {}", e.getMessage());
+                }
+            }
+            log.info("已暂停任务: timestamp={}", ts);
+            Map<String, Object> data = new HashMap<>();
+            data.put("status", "PAUSED");
+            return Result.success("已暂停", data);
+        } catch (Exception e) {
+            log.error("暂停异常", e);
+            return Result.error("暂停失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 恢复仿真：删除 pause.flag 文件，progressiveReveal 检测到后继续释放数据。
+     * 同 pause，优先从内存缓存查找任务，避免 IGinX 查询。
+     */
+    public Result<Map<String, Object>> resume(String name, String version, String projectName) {
+        log.info("恢复请求: name={}, version={}, projectName={}", name, version, projectName);
+        try {
+            ProgramTaskEntity task = findRunningTask(name, version, projectName);
+            if (task == null) {
+                task = queryLatestTask(name, version, projectName);
+            }
+            if (task == null) {
+                return Result.error("无运行任务记录");
+            }
+            Long ts = task.getTimestamp();
+            if (ts == null) {
+                return Result.error("任务时间戳为空");
+            }
+            pauseFlags.remove(ts);
+            File taskDir = new File(getTaskBaseDir(projectName != null ? projectName : task.getProjectName()), String.valueOf(ts));
+            try {
+                Files.deleteIfExists(new File(taskDir, "pause.flag").toPath());
+            } catch (IOException e) {
+                log.warn("删除 pause.flag 失败: {}", e.getMessage());
+            }
+            log.info("已恢复任务: timestamp={}", ts);
+            Map<String, Object> data = new HashMap<>();
+            data.put("status", "RUNNING");
+            return Result.success("已恢复", data);
+        } catch (Exception e) {
+            log.error("恢复异常", e);
+            return Result.error("恢复失败: " + e.getMessage());
+        }
     }
 
     private void generateResultFiles(File taskDir, ProgramEntity entity, String modelFile,
@@ -1794,6 +2388,24 @@ public class ProgramService {
         }
     }
 
+    /**
+     * 从内存缓存 runningTasks 中查找运行中的任务（避免查 IGinX，消除锁竞争和延迟）。
+     * pause/resume/stop 等高频控制接口优先使用此方法，仅在缓存未命中时降级到 queryLatestTask。
+     */
+    private ProgramTaskEntity findRunningTask(String name, String version, String projectName) {
+        for (ProgramTaskEntity task : runningTasks.values()) {
+            if (task == null) continue;
+            boolean match = true;
+            if (name != null && !name.equals(task.getProgramName())) match = false;
+            if (version != null && !version.equals(task.getProgramVersion())) match = false;
+            if (projectName != null && !projectName.equals(task.getProjectName())) match = false;
+            if (match && TaskStatus.RUNNING.equals(task.getStatus())) {
+                return task;
+            }
+        }
+        return null;
+    }
+
     private ProgramTaskEntity queryLatestTask(String programName, String programVersion, String projectName) {
         try {
             StringBuilder sql = new StringBuilder("SELECT * FROM " + TASK_DATA_PREFIX + " WHERE 1=1");
@@ -1837,22 +2449,41 @@ public class ProgramService {
     public Result<Map<String, Object>> results(String name, String version, String projectName) {
         ProgramTaskEntity task = queryLatestTask(name, version, projectName);
         if (task == null) return Result.error("无运行任务记录");
-        
+
         // 如果状态为运行中，检查进程是否还在
         if (TaskStatus.RUNNING.equals(task.getStatus())) {
             Process process = processMap.get(task.getTimestamp());
-            if (process == null || !process.isAlive()) {
-                // 进程不存在或已结束，更新状态为失败
-                updateTaskStatus(task.getTimestamp(), TaskStatus.FAILED, "进程异常终止", null, null, null);
-                task.setStatus(TaskStatus.FAILED);
-                task.setError("进程异常终止");
-                processMap.remove(task.getTimestamp());
-                runningTasks.remove(task.getTimestamp());
+            if (process == null) {
+                // 进程不在 map 中：可能是 doRun 线程还在下载/解压/写脚本（尚未 start），
+                // 也可能是 doRun 已结束并清理。两种情况都不应覆盖状态：
+                //   - 前者：进程还没启动，覆盖为"异常终止"是误判
+                //   - 后者：doRun 已更新最终状态，queryLatestTask 会拿到正确状态
+            } else if (!process.isAlive()) {
+                // 进程在 map 中但已退出：doRun 线程可能还在处理（读日志、检查退出码、更新状态）
+                // 等待短暂时间让 doRun 完成 status 更新，避免覆盖真正的错误信息
+                try { Thread.sleep(1500); } catch (InterruptedException ignored) {}
+                task = queryLatestTask(name, version, projectName);
+                if (task != null && TaskStatus.RUNNING.equals(task.getStatus())) {
+                    // 等待后仍为 RUNNING，说明 doRun 线程异常退出或卡死，标记为进程异常终止
+                    updateTaskStatus(task.getTimestamp(), TaskStatus.FAILED, "进程异常终止", null, null, null);
+                    task.setStatus(TaskStatus.FAILED);
+                    task.setError("进程异常终止");
+                    processMap.remove(task.getTimestamp());
+                    runningTasks.remove(task.getTimestamp());
+                }
             }
         }
         
         Map<String, Object> data = new HashMap<>();
-        data.put("status", task.getStatus());
+        // 检查是否处于暂停状态：pause 端点只设内存 pauseFlags + pause.flag 文件，不更新 IGinX 状态。
+        // 刷新页面后 results 需要返回 "paused" 让前端恢复按钮显示"恢复"。
+        boolean isPaused = Boolean.TRUE.equals(pauseFlags.get(task.getTimestamp()));
+        if (!isPaused && TaskStatus.RUNNING.equals(task.getStatus()) && task.getTimestamp() != null) {
+            // 降级检查：服务重启后 pauseFlags 丢失，用 pause.flag 文件判断
+            File taskDir = new File(getTaskBaseDir(projectName), String.valueOf(task.getTimestamp()));
+            isPaused = new File(taskDir, "pause.flag").exists();
+        }
+        data.put("status", isPaused ? "paused" : task.getStatus());
         data.put("lastError", task.getError());
         data.put("lastRunTime", task.getStartTime());
         data.put("npCommand", task.getNpCommand());
