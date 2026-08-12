@@ -112,7 +112,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter implements App
             
         } catch (Exception e) {
             log.error("认证过滤器处理失败", e);
-            handleAuthenticationFailure(response, "认证处理失败");
+            // 响应已提交（控制器已开始写响应体）时不能再写错误响应，
+            // 否则会导致 ERR_INCOMPLETE_CHUNKED_ENCODING（响应流被损坏）
+            if (!response.isCommitted()) {
+                handleAuthenticationFailure(response, "认证处理失败");
+            }
         }
     }
 

@@ -855,41 +855,51 @@ public class ProgramService {
     }
 
     public Result<Map<String, Object>> stop(String name, String version, String projectName) {
-        ProgramEntity entity = queryMeta(name, version, projectName);
-        if (entity == null) return Result.error("程序不存在");
-        // Find latest running task and stop it
-        ProgramTaskEntity task = queryLatestTask(name, version, projectName);
-        if (task != null && TaskStatus.RUNNING.equals(task.getStatus())) {
-            // 先创建 stop.flag（让 MATLAB 脚本优雅退出分块循环）
-            File taskDir = new File(getTaskBaseDir(projectName), String.valueOf(task.getTimestamp()));
-            try {
-                Files.createFile(new File(taskDir, "stop.flag").toPath());
-            } catch (IOException e) {
-                log.warn("创建 stop.flag 失败", e);
+        log.info("停止请求: name={}, version={}, projectName={}", name, version, projectName);
+        try {
+            // 优先从内存缓存查找运行中的任务，避免 IGinX 查询（同 pause/resume）
+            ProgramTaskEntity task = findRunningTask(name, version, projectName);
+            if (task == null) {
+                task = queryLatestTask(name, version, projectName);
             }
-            // 同时删除 pause.flag（如果在暂停中，先恢复才能检测到 stop.flag）
-            try {
-                Files.deleteIfExists(new File(taskDir, "pause.flag").toPath());
-            } catch (IOException e) {
-                log.warn("删除 pause.flag 失败", e);
-            }
-            pauseFlags.remove(task.getTimestamp());
-            // 等 1 秒让 MATLAB 检测到 stop.flag 退出，超时则强制杀进程
-            Process process = processMap.get(task.getTimestamp());
-            if (process != null && process.isAlive()) {
-                try { process.waitFor(1, TimeUnit.SECONDS); } catch (InterruptedException ignored) {}
-                if (process.isAlive()) {
-                    process.destroyForcibly();
+            if (task != null && TaskStatus.RUNNING.equals(task.getStatus())) {
+                Long ts = task.getTimestamp();
+                if (ts != null) {
+                    // 先创建 stop.flag（让 progressiveReveal/MATLAB 检测到后退出）
+                    File taskDir = new File(getTaskBaseDir(projectName != null ? projectName : task.getProjectName()), String.valueOf(ts));
+                    try {
+                        Files.createFile(new File(taskDir, "stop.flag").toPath());
+                    } catch (IOException e) {
+                        log.warn("创建 stop.flag 失败: {}", e.getMessage());
+                    }
+                    // 同时删除 pause.flag（如果在暂停中，先恢复才能检测到 stop.flag）
+                    try {
+                        Files.deleteIfExists(new File(taskDir, "pause.flag").toPath());
+                    } catch (IOException e) {
+                        log.warn("删除 pause.flag 失败: {}", e.getMessage());
+                    }
+                    pauseFlags.remove(ts);
+                    // 等 1 秒让 MATLAB 检测到 stop.flag 退出，超时则强制杀进程
+                    Process process = processMap.get(ts);
+                    if (process != null && process.isAlive()) {
+                        try { process.waitFor(1, TimeUnit.SECONDS); } catch (InterruptedException ignored) {}
+                        if (process.isAlive()) {
+                            process.destroyForcibly();
+                        }
+                    }
+                    processMap.remove(ts);
+                    LiveDataBuffer buffer = liveDataMap.get(ts);
+                    if (buffer != null) buffer.setFinished(true);
+                    updateTaskStatus(ts, TaskStatus.STOPPED, null, null, null, null);
                 }
             }
-            processMap.remove(task.getTimestamp());
-            LiveDataBuffer buffer = liveDataMap.get(task.getTimestamp());
-            if (buffer != null) buffer.setFinished(true);
-            updateTaskStatus(task.getTimestamp(), TaskStatus.STOPPED, null, null, null, null);
+            Map<String, Object> data = new HashMap<>();
+            data.put("status", TaskStatus.STOPPED);
+            return Result.success("已停止", data);
+        } catch (Exception e) {
+            log.error("停止异常", e);
+            return Result.error("停止失败: " + e.getMessage());
         }
-        Map<String, Object> data = new HashMap<>();
-        data.put("status", TaskStatus.STOPPED);
-        return Result.success("已停止", data);
     }
 
     private void doRun(long taskTimestamp, ProgramEntity entity, String stopTimeParam, String fixedStepParam, String npCommandParam, String loadPowerParam, String modelFileParam) {
@@ -1852,41 +1862,83 @@ public class ProgramService {
     }
 
     /**
-     * 暂停仿真：创建 pause.flag 文件，MATLAB 脚本检测到后进入等待循环
+     * 暂停仿真：创建 pause.flag 文件，progressiveReveal 检测到后进入等待循环。
+     * 优先从内存缓存 runningTasks 查找任务，避免查 IGinX（消除锁竞争和延迟，
+     * 这是导致 ERR_INCOMPLETE_CHUNKED_ENCODING 的根因——IGinX 全局锁等待
+     * 使请求长时间阻塞，Tomcat 最终关闭连接导致响应不完整）。
      */
     public Result<Map<String, Object>> pause(String name, String version, String projectName) {
-        ProgramTaskEntity task = queryLatestTask(name, version, projectName);
-        if (task == null || !TaskStatus.RUNNING.equals(task.getStatus())) {
-            return Result.error("无运行中的仿真任务");
-        }
-        pauseFlags.put(task.getTimestamp(), true);
-        File taskDir = new File(getTaskBaseDir(projectName), String.valueOf(task.getTimestamp()));
+        log.info("暂停请求: name={}, version={}, projectName={}", name, version, projectName);
         try {
-            Files.createFile(new File(taskDir, "pause.flag").toPath());
-        } catch (IOException e) {
-            log.warn("创建 pause.flag 失败", e);
+            // 优先从内存缓存查找，避免 IGinX 查询
+            ProgramTaskEntity task = findRunningTask(name, version, projectName);
+            if (task == null) {
+                // 降级：查 IGinX（仅在缓存未命中时，如服务重启后恢复运行状态）
+                task = queryLatestTask(name, version, projectName);
+            }
+            if (task == null || !TaskStatus.RUNNING.equals(task.getStatus())) {
+                log.warn("暂停失败：无运行中的仿真任务 (found={}, status={})",
+                        task != null, task != null ? task.getStatus() : "null");
+                return Result.error("无运行中的仿真任务");
+            }
+            Long ts = task.getTimestamp();
+            if (ts == null) {
+                log.warn("暂停失败：任务时间戳为空");
+                return Result.error("任务时间戳为空");
+            }
+            pauseFlags.put(ts, true);
+            File taskDir = new File(getTaskBaseDir(projectName != null ? projectName : task.getProjectName()), String.valueOf(ts));
+            File pauseFlag = new File(taskDir, "pause.flag");
+            if (!pauseFlag.exists()) {
+                try {
+                    Files.createFile(pauseFlag.toPath());
+                } catch (IOException e) {
+                    log.warn("创建 pause.flag 失败: {}", e.getMessage());
+                }
+            }
+            log.info("已暂停任务: timestamp={}", ts);
+            Map<String, Object> data = new HashMap<>();
+            data.put("status", "PAUSED");
+            return Result.success("已暂停", data);
+        } catch (Exception e) {
+            log.error("暂停异常", e);
+            return Result.error("暂停失败: " + e.getMessage());
         }
-        Map<String, Object> data = new HashMap<>();
-        data.put("status", "PAUSED");
-        return Result.success("已暂停", data);
     }
 
     /**
-     * 恢复仿真：删除 pause.flag 文件，MATLAB 脚本检测到后继续
+     * 恢复仿真：删除 pause.flag 文件，progressiveReveal 检测到后继续释放数据。
+     * 同 pause，优先从内存缓存查找任务，避免 IGinX 查询。
      */
     public Result<Map<String, Object>> resume(String name, String version, String projectName) {
-        ProgramTaskEntity task = queryLatestTask(name, version, projectName);
-        if (task == null) return Result.error("无运行任务记录");
-        pauseFlags.remove(task.getTimestamp());
-        File taskDir = new File(getTaskBaseDir(projectName), String.valueOf(task.getTimestamp()));
+        log.info("恢复请求: name={}, version={}, projectName={}", name, version, projectName);
         try {
-            Files.deleteIfExists(new File(taskDir, "pause.flag").toPath());
-        } catch (IOException e) {
-            log.warn("删除 pause.flag 失败", e);
+            ProgramTaskEntity task = findRunningTask(name, version, projectName);
+            if (task == null) {
+                task = queryLatestTask(name, version, projectName);
+            }
+            if (task == null) {
+                return Result.error("无运行任务记录");
+            }
+            Long ts = task.getTimestamp();
+            if (ts == null) {
+                return Result.error("任务时间戳为空");
+            }
+            pauseFlags.remove(ts);
+            File taskDir = new File(getTaskBaseDir(projectName != null ? projectName : task.getProjectName()), String.valueOf(ts));
+            try {
+                Files.deleteIfExists(new File(taskDir, "pause.flag").toPath());
+            } catch (IOException e) {
+                log.warn("删除 pause.flag 失败: {}", e.getMessage());
+            }
+            log.info("已恢复任务: timestamp={}", ts);
+            Map<String, Object> data = new HashMap<>();
+            data.put("status", "RUNNING");
+            return Result.success("已恢复", data);
+        } catch (Exception e) {
+            log.error("恢复异常", e);
+            return Result.error("恢复失败: " + e.getMessage());
         }
-        Map<String, Object> data = new HashMap<>();
-        data.put("status", "RUNNING");
-        return Result.success("已恢复", data);
     }
 
     private void generateResultFiles(File taskDir, ProgramEntity entity, String modelFile,
@@ -2336,6 +2388,24 @@ public class ProgramService {
         }
     }
 
+    /**
+     * 从内存缓存 runningTasks 中查找运行中的任务（避免查 IGinX，消除锁竞争和延迟）。
+     * pause/resume/stop 等高频控制接口优先使用此方法，仅在缓存未命中时降级到 queryLatestTask。
+     */
+    private ProgramTaskEntity findRunningTask(String name, String version, String projectName) {
+        for (ProgramTaskEntity task : runningTasks.values()) {
+            if (task == null) continue;
+            boolean match = true;
+            if (name != null && !name.equals(task.getProgramName())) match = false;
+            if (version != null && !version.equals(task.getProgramVersion())) match = false;
+            if (projectName != null && !projectName.equals(task.getProjectName())) match = false;
+            if (match && TaskStatus.RUNNING.equals(task.getStatus())) {
+                return task;
+            }
+        }
+        return null;
+    }
+
     private ProgramTaskEntity queryLatestTask(String programName, String programVersion, String projectName) {
         try {
             StringBuilder sql = new StringBuilder("SELECT * FROM " + TASK_DATA_PREFIX + " WHERE 1=1");
@@ -2405,7 +2475,15 @@ public class ProgramService {
         }
         
         Map<String, Object> data = new HashMap<>();
-        data.put("status", task.getStatus());
+        // 检查是否处于暂停状态：pause 端点只设内存 pauseFlags + pause.flag 文件，不更新 IGinX 状态。
+        // 刷新页面后 results 需要返回 "paused" 让前端恢复按钮显示"恢复"。
+        boolean isPaused = Boolean.TRUE.equals(pauseFlags.get(task.getTimestamp()));
+        if (!isPaused && TaskStatus.RUNNING.equals(task.getStatus()) && task.getTimestamp() != null) {
+            // 降级检查：服务重启后 pauseFlags 丢失，用 pause.flag 文件判断
+            File taskDir = new File(getTaskBaseDir(projectName), String.valueOf(task.getTimestamp()));
+            isPaused = new File(taskDir, "pause.flag").exists();
+        }
+        data.put("status", isPaused ? "paused" : task.getStatus());
         data.put("lastError", task.getError());
         data.put("lastRunTime", task.getStartTime());
         data.put("npCommand", task.getNpCommand());

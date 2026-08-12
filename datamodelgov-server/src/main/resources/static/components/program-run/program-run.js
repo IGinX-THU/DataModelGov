@@ -1195,10 +1195,20 @@ class ProgramRun extends HTMLElement {
 
         this._userInitiated = true;
         this._revealStarted = false;
+        this.runStatus = 'STARTING';
         this.updateStatusUI('STARTING');
 
         // 仿真启动中：暂停不可用（曲线尚未显示），停止可用
         this.updateRunButtons('STARTING');
+
+        // 清除上一次运行的数据，防止切 tab 时 renderCustomCharts 用旧数据画曲线
+        this.csvHeaders = null;
+        this.csvRows = null;
+        this.liveHeaders = null;
+        this.liveRows = [];
+        this.currentTime = 0;
+        // 立即重绘当前 tab 的图表（显示"仿真启动中，请稍后..."而非旧曲线）
+        this.renderTab(this.activeTab || '综合总览');
 
         // 初始化实时数据收集
         this.liveHeaders = null;
@@ -1501,7 +1511,7 @@ class ProgramRun extends HTMLElement {
   handleLiveData(data, name, version) {
 
     // 状态映射
-    const statusMap = { 'running': 'RUNNING', 'success': 'SUCCESS', 'failed': 'ERROR', 'stopped': 'STOPPED', 'pending': 'IDLE' };
+    const statusMap = { 'running': 'RUNNING', 'success': 'SUCCESS', 'failed': 'ERROR', 'stopped': 'STOPPED', 'pending': 'IDLE', 'paused': 'PAUSED' };
     const status = statusMap[data.status] || data.status || 'UNKNOWN';
 
     // 如果有错误信息，显示
@@ -2076,6 +2086,16 @@ class ProgramRun extends HTMLElement {
 
     }
 
+    // STARTING 时右侧"系统状态"和"告警汇总"面板显示 loading 效果
+    const rightPanels = this.shadowRoot.querySelectorAll('.right .panel');
+    const isLoading = status === 'STARTING';
+    rightPanels.forEach(p => {
+      const titleEl = p.querySelector('.panel-title') || p.querySelector('.alert-title');
+      if (titleEl && (titleEl.textContent.includes('系统状态') || titleEl.textContent.includes('告警'))) {
+        p.classList.toggle('panel-loading', isLoading);
+      }
+    });
+
     if (this.runBtn && this.stopBtn) {
 
       const running = status === 'RUNNING' || status === 'STARTING';
@@ -2181,7 +2201,8 @@ class ProgramRun extends HTMLElement {
       'success': 'SUCCESS',
       'failed': 'ERROR',
       'stopped': 'STOPPED',
-      'pending': 'IDLE'
+      'pending': 'IDLE',
+      'paused': 'PAUSED'
     };
     const status = statusMap[data.status] || data.status || 'UNKNOWN';
 
@@ -2223,9 +2244,30 @@ class ProgramRun extends HTMLElement {
 
       // 刷新页面时恢复运行状态：显示"仿真启动中"，等 SSE 数据到达后切换到"仿真运行中"
       this._revealStarted = false;
+      this.runStatus = 'STARTING';
+      // 清除上一次运行的旧数据，防止切 tab 时显示旧曲线
+      this.csvHeaders = null;
+      this.csvRows = null;
       this.updateStatusUI('STARTING');
 
       this.updateRunButtons('STARTING');
+
+      // 重绘图表，确保显示"仿真启动中，请稍后..."而非旧曲线
+      this.renderTab(this.activeTab || '综合总览');
+
+      if (!this._es && !this._pollTimer) {
+        this.startStream(name, version);
+      }
+
+    }
+
+    if (status === 'PAUSED' && name && version) {
+
+      // 刷新页面时恢复暂停状态：曲线已在显示中被暂停，直接显示"已暂停"和"恢复"按钮
+      this._paused = true;
+      this._revealStarted = true;
+      this.updateStatusUI('PAUSED');
+      this.updateRunButtons('PAUSED');
 
       if (!this._es && !this._pollTimer) {
         this.startStream(name, version);
