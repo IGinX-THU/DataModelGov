@@ -237,7 +237,217 @@ public class MatlabSimulationRunner implements Closeable {
         log.info("[MATLAB] 停止时间 {} → 按固定步长对齐为 {}", requestedStopTime, alignedStopTime);
         sink.onStopTime(alignedStopTime);
 
+        // 添加 To Workspace 块（与回退方案 writeWrapper 一致），仿真结束后这些变量
+        // 会出现在 base workspace，由 exportResults() 汇总进 signals.csv
+        addWorkspaceBlocks();
+        // 配置信号日志（DataLogging）用于实时曲线显示
         configureSignalLogging();
+    }
+
+    /**
+     * 添加 To Workspace 块，与回退方案 writeWrapper 的信号集完全一致。
+     * 仿真结束后这些变量会出现在 base workspace，供 exportResults() 提取。
+     * 仿真结束后在 close() 里 close_system 不保存，不会污染原模型。
+     */
+    private void addWorkspaceBlocks() throws Exception {
+        String m = esc(modelName);
+        StringBuilder sb = new StringBuilder();
+        sb.append("dmg_okSignals = {};\n");
+
+        // 1a. 核心信号：在块所在子系统内添加 To Workspace 块
+        sb.append("dmg_wsSignals = {\n");
+        for (String[] sig : CORE_SIGNALS) {
+            sb.append("  '").append(sig[0]).append("', '").append(esc(modelName + sig[1])).append("';\n");
+        }
+        sb.append("};\n");
+        sb.append("for dmg_i = 1:size(dmg_wsSignals, 1)\n");
+        sb.append("  try\n");
+        sb.append("    dmg_sigName = dmg_wsSignals{dmg_i, 1}; dmg_blockPath = dmg_wsSignals{dmg_i, 2};\n");
+        sb.append("    dmg_parent = get_param(dmg_blockPath, 'Parent');\n");
+        sb.append("    dmg_srcName = get_param(dmg_blockPath, 'Name');\n");
+        sb.append("    dmg_twName = ['ToWS_' dmg_sigName]; dmg_twPath = [dmg_parent '/' dmg_twName];\n");
+        sb.append("    dmg_ph = get_param(dmg_blockPath, 'PortHandles');\n");
+        sb.append("    if isempty(dmg_ph.Outport); continue; end\n");
+        sb.append("    if getSimulinkBlockHandle(dmg_twPath) ~= -1; delete_block(dmg_twPath); end\n");
+        sb.append("    dmg_pos = get_param(dmg_blockPath, 'Position');\n");
+        sb.append("    add_block('simulink/Sinks/To Workspace', dmg_twPath, ...\n");
+        sb.append("      'Position', [dmg_pos(3)+80, dmg_pos(2), dmg_pos(3)+120, dmg_pos(2)+30], ...\n");
+        sb.append("      'VariableName', dmg_sigName, 'SaveFormat', 'Array', ...\n");
+        sb.append("      'MaxDataPoints', '1000000', 'Decimation', '1');\n");
+        sb.append("    add_line(dmg_parent, [dmg_srcName '/1'], [dmg_twName '/1']);\n");
+        sb.append("    dmg_okSignals{end+1} = dmg_sigName;\n");
+        sb.append("  catch; try; delete_block(dmg_twPath); catch; end; end\n");
+        sb.append("end\n");
+
+        // 1b. CLP（Inport 在控制系统子系统内部）
+        sb.append("try\n");
+        sb.append("  dmg_clpPath = ['").append(m).append("/Turboshaft Engine Control System/CLP'];\n");
+        sb.append("  dmg_clpParent = get_param(dmg_clpPath, 'Parent');\n");
+        sb.append("  dmg_clpName = get_param(dmg_clpPath, 'Name');\n");
+        sb.append("  dmg_twName = 'ToWS_CLP'; dmg_twPath = [dmg_clpParent '/' dmg_twName];\n");
+        sb.append("  if getSimulinkBlockHandle(dmg_twPath) ~= -1; delete_block(dmg_twPath); end\n");
+        sb.append("  dmg_pos = get_param(dmg_clpPath, 'Position');\n");
+        sb.append("  add_block('simulink/Sinks/To Workspace', dmg_twPath, ...\n");
+        sb.append("    'Position', [dmg_pos(3)+80, dmg_pos(2), dmg_pos(3)+120, dmg_pos(2)+30], ...\n");
+        sb.append("    'VariableName', 'CLP', 'SaveFormat', 'Array', 'MaxDataPoints', '1000000', 'Decimation', '1');\n");
+        sb.append("  add_line(dmg_clpParent, [dmg_clpName '/1'], [dmg_twName '/1']);\n");
+        sb.append("  dmg_okSignals{end+1} = 'CLP';\n");
+        sb.append("catch; try; delete_block(dmg_twPath); catch; end; end\n");
+
+        // 2. Goto 标签信号：From + To Workspace（与回退方案完全一致的完整列表）
+        String[] gotoAll = {
+            "Np_fbk", "Ng_fbk", "Mkp_fbk", "T45_fbk",
+            "Ngc", "Wf_kgps", "WfProxyCmd",
+            "Pt3_fbk", "Tt3_fbk",
+            "P1", "T1", "P45", "P4", "P5", "T5", "T4",
+            "Oil_AirTemp_C",
+            "dp_fuel", "lock_meter", "xm_ref_sb",
+            "xm_cmd_m", "lock_igv", "xd_cmd",
+            "shutdown", "xm", "xd"
+        };
+        sb.append("dmg_gotoAll = {");
+        for (int i = 0; i < gotoAll.length; i++) {
+            sb.append(i > 0 ? "," : "").append("'").append(gotoAll[i]).append("'");
+        }
+        sb.append("};\n");
+        sb.append("for dmg_i = 1:numel(dmg_gotoAll)\n");
+        sb.append("  try\n");
+        sb.append("    dmg_sigName = dmg_gotoAll{dmg_i}; dmg_gotoTag = dmg_gotoAll{dmg_i};\n");
+        sb.append("    dmg_twName = ['ToWS_From_' dmg_sigName]; dmg_fromName = ['From_' dmg_sigName];\n");
+        sb.append("    dmg_twPath = ['").append(m).append("' '/' dmg_twName]; dmg_fromPath = ['").append(m).append("' '/' dmg_fromName];\n");
+        sb.append("    if getSimulinkBlockHandle(dmg_twPath) ~= -1; delete_block(dmg_twPath); end\n");
+        sb.append("    if getSimulinkBlockHandle(dmg_fromPath) ~= -1; delete_block(dmg_fromPath); end\n");
+        sb.append("    add_block('simulink/Signal Routing/From', dmg_fromPath, 'GotoTag', dmg_gotoTag, ...\n");
+        sb.append("      'Position', [100, 100+dmg_i*40, 200, 130+dmg_i*40]);\n");
+        sb.append("    add_block('simulink/Sinks/To Workspace', dmg_twPath, 'VariableName', dmg_sigName, ...\n");
+        sb.append("      'SaveFormat', 'Array', 'MaxDataPoints', '1000000', 'Decimation', '1', ...\n");
+        sb.append("      'Position', [250, 100+dmg_i*40, 350, 130+dmg_i*40]);\n");
+        sb.append("    add_line('").append(m).append("', [dmg_fromName '/1'], [dmg_twName '/1']);\n");
+        sb.append("    dmg_okSignals{end+1} = dmg_sigName;\n");
+        sb.append("  catch; try; delete_block(dmg_twPath); catch; end; try; delete_block(dmg_fromPath); catch; end; end\n");
+        sb.append("end\n");
+
+        // 3. Fuel System Wf 输出（子系统端口）
+        sb.append("try\n");
+        sb.append("  dmg_fsPath = '").append(m).append("/Fuel System';\n");
+        sb.append("  dmg_fsPH = get_param(dmg_fsPath, 'PortHandles');\n");
+        sb.append("  dmg_fsPos = get_param(dmg_fsPath, 'Position');\n");
+        sb.append("  dmg_twName = 'ToWS_Wf'; dmg_twPath = ['").append(m).append("' '/' dmg_twName];\n");
+        sb.append("  if getSimulinkBlockHandle(dmg_twPath) ~= -1; delete_block(dmg_twPath); end\n");
+        sb.append("  add_block('simulink/Sinks/To Workspace', dmg_twPath, ...\n");
+        sb.append("    'Position', [dmg_fsPos(3)+80, dmg_fsPos(2), dmg_fsPos(3)+120, dmg_fsPos(2)+30], ...\n");
+        sb.append("    'VariableName', 'Wf', 'SaveFormat', 'Array', 'MaxDataPoints', '1000000', 'Decimation', '1');\n");
+        sb.append("  add_line('").append(m).append("', dmg_fsPH.Outport(1), get_param(dmg_twPath, 'PortHandles').Inport(1));\n");
+        sb.append("  dmg_okSignals{end+1} = 'Wf';\n");
+        sb.append("catch; try; delete_block(dmg_twPath); catch; end; end\n");
+
+        // 4. 空气系统输出（通过子系统 Outport）
+        sb.append("try\n");
+        sb.append("  dmg_airBlocks = find_system('").append(m).append("', 'RegExp', 'on', 'Name', 'G0[1-8]_.*W_kgps');\n");
+        sb.append("  dmg_airParent = '';\n");
+        sb.append("  for dmg_i = 1:numel(dmg_airBlocks)\n");
+        sb.append("    dmg_p = get_param(dmg_airBlocks{dmg_i}, 'Parent');\n");
+        sb.append("    if strcmp(get_param(dmg_p, 'Parent'), '").append(m).append("'); dmg_airParent = dmg_p; break; end\n");
+        sb.append("  end\n");
+        sb.append("  if ~isempty(dmg_airParent)\n");
+        sb.append("    dmg_subPH = get_param(dmg_airParent, 'PortHandles');\n");
+        sb.append("    dmg_airOuts = find_system(dmg_airParent, 'SearchDepth', 1, 'BlockType', 'Outport');\n");
+        sb.append("    dmg_subPos = get_param(dmg_airParent, 'Position');\n");
+        sb.append("    for dmg_i = 1:numel(dmg_airOuts)\n");
+        sb.append("      try\n");
+        sb.append("        dmg_outName = get_param(dmg_airOuts{dmg_i}, 'Name');\n");
+        sb.append("        dmg_twName = ['ToWS_' dmg_outName]; dmg_twPath = ['").append(m).append("' '/' dmg_twName];\n");
+        sb.append("        if getSimulinkBlockHandle(dmg_twPath) ~= -1; delete_block(dmg_twPath); end\n");
+        sb.append("        dmg_yOff = dmg_subPos(2) + dmg_i * 35;\n");
+        sb.append("        add_block('simulink/Sinks/To Workspace', dmg_twPath, ...\n");
+        sb.append("          'Position', [dmg_subPos(3)+80, dmg_yOff, dmg_subPos(3)+120, dmg_yOff+30], ...\n");
+        sb.append("          'VariableName', dmg_outName, 'SaveFormat', 'Array', 'MaxDataPoints', '1000000', 'Decimation', '1');\n");
+        sb.append("        add_line('").append(m).append("', dmg_subPH.Outport(dmg_i), get_param(dmg_twPath, 'PortHandles').Inport(1));\n");
+        sb.append("        dmg_okSignals{end+1} = dmg_outName;\n");
+        sb.append("      catch; try; delete_block(dmg_twPath); catch; end; end\n");
+        sb.append("    end\n");
+        sb.append("  end\n");
+        sb.append("catch; end\n");
+
+        // 5. 滑油系统输出（28 个 Outport 的子系统）
+        String[] oilVars = {
+            "Q_BearingA", "Q_BearingB", "Q_AirOil", "Q_Accessory",
+            "QA", "QB", "PA", "PB", "ToutA", "ToutB",
+            "QretA", "QretB", "QgenA", "QgenB",
+            "FuelOilCooler_Q", "FuelOilCooler_FuelTout",
+            "AirOilCooler_Pin_Pa", "AirOilCooler_Pout_Pa",
+            "FuelOilCooler_Pin_Pa", "FuelOilCooler_Pout_Pa",
+            "CavityState8_PaK", "SealLeak4_kgps", "VentFlow3_kgps",
+            "SealDeltaP4_Pa", "VentDeltaP2_Pa", "MassResidual2_kgps",
+            "FuelOil2_ToutC_QkW", "AirOil2_ToutC_QkW"
+        };
+        sb.append("try\n");
+        sb.append("  dmg_allSubs = find_system('").append(m).append("', 'SearchDepth', 1, 'BlockType', 'SubSystem');\n");
+        sb.append("  dmg_oilSys = '';\n");
+        sb.append("  for dmg_i = 1:numel(dmg_allSubs)\n");
+        sb.append("    dmg_subOuts = find_system(dmg_allSubs{dmg_i}, 'SearchDepth', 1, 'BlockType', 'Outport');\n");
+        sb.append("    if numel(dmg_subOuts) == 28; dmg_oilSys = dmg_allSubs{dmg_i}; break; end\n");
+        sb.append("  end\n");
+        sb.append("  if ~isempty(dmg_oilSys)\n");
+        sb.append("    dmg_oilPH = get_param(dmg_oilSys, 'PortHandles');\n");
+        sb.append("    dmg_oilOuts = find_system(dmg_oilSys, 'SearchDepth', 1, 'BlockType', 'Outport');\n");
+        sb.append("    dmg_oilPos = get_param(dmg_oilSys, 'Position');\n");
+        sb.append("    dmg_oilVarNames = {");
+        for (int i = 0; i < oilVars.length; i++) {
+            sb.append(i > 0 ? "," : "").append("'").append(oilVars[i]).append("'");
+        }
+        sb.append("};\n");
+        sb.append("    for dmg_i = 1:numel(dmg_oilOuts)\n");
+        sb.append("      try\n");
+        sb.append("        dmg_varName = dmg_oilVarNames{dmg_i};\n");
+        sb.append("        dmg_twName = ['ToWS_' dmg_varName]; dmg_twPath = ['").append(m).append("' '/' dmg_twName];\n");
+        sb.append("        if getSimulinkBlockHandle(dmg_twPath) ~= -1; delete_block(dmg_twPath); end\n");
+        sb.append("        dmg_yOff = dmg_oilPos(2) + dmg_i * 25;\n");
+        sb.append("        add_block('simulink/Sinks/To Workspace', dmg_twPath, ...\n");
+        sb.append("          'Position', [dmg_oilPos(3)+80, dmg_yOff, dmg_oilPos(3)+120, dmg_yOff+20], ...\n");
+        sb.append("          'VariableName', dmg_varName, 'SaveFormat', 'Array', 'MaxDataPoints', '1000000', 'Decimation', '1');\n");
+        sb.append("        add_line('").append(m).append("', dmg_oilPH.Outport(dmg_i), get_param(dmg_twPath, 'PortHandles').Inport(1));\n");
+        sb.append("        dmg_okSignals{end+1} = dmg_varName;\n");
+        sb.append("      catch; try; delete_block(dmg_twPath); catch; end; end\n");
+        sb.append("    end\n");
+        sb.append("  end\n");
+        sb.append("catch; end\n");
+
+        // 6. 发动机 SFunc 额外输出（HPC_u6, HPT_y16, LPT_y16）
+        sb.append("try\n");
+        sb.append("  dmg_sfuncBlocks = find_system('").append(m).append("', 'SearchDepth', 3, 'BlockType', 'S-Function');\n");
+        sb.append("  for dmg_i = 1:numel(dmg_sfuncBlocks)\n");
+        sb.append("    try\n");
+        sb.append("      dmg_fn = get_param(dmg_sfuncBlocks{dmg_i}, 'FunctionName');\n");
+        sb.append("      if strcmp(dmg_fn, 'SFunc_EngModel')\n");
+        sb.append("        dmg_engPH = get_param(dmg_sfuncBlocks{dmg_i}, 'PortHandles');\n");
+        sb.append("        dmg_engPos = get_param(dmg_sfuncBlocks{dmg_i}, 'Position');\n");
+        sb.append("        dmg_engParent = get_param(dmg_sfuncBlocks{dmg_i}, 'Parent');\n");
+        sb.append("        dmg_demuxName = 'ToWS_Demux_Extra'; dmg_demuxPath = [dmg_engParent '/' dmg_demuxName];\n");
+        sb.append("        if getSimulinkBlockHandle(dmg_demuxPath) ~= -1; delete_block(dmg_demuxPath); end\n");
+        sb.append("        add_block('simulink/Signal Routing/Demux', dmg_demuxPath, 'Outputs', '20', ...\n");
+        sb.append("          'Position', [dmg_engPos(3)+20, dmg_engPos(2), dmg_engPos(3)+40, dmg_engPos(2)+400]);\n");
+        sb.append("        add_line(dmg_engParent, dmg_engPH.Outport(1), get_param(dmg_demuxPath, 'PortHandles').Inport(1));\n");
+        sb.append("        dmg_extraVars = {'HPC_u6', 'HPT_y16', 'LPT_y16'};\n");
+        sb.append("        dmg_extraIdx = [13, 14, 15];\n");
+        sb.append("        for dmg_j = 1:3\n");
+        sb.append("          dmg_twName = ['ToWS_' dmg_extraVars{dmg_j}]; dmg_twPath = [dmg_engParent '/' dmg_twName];\n");
+        sb.append("          if getSimulinkBlockHandle(dmg_twPath) ~= -1; delete_block(dmg_twPath); end\n");
+        sb.append("          add_block('simulink/Sinks/To Workspace', dmg_twPath, ...\n");
+        sb.append("            'VariableName', dmg_extraVars{dmg_j}, 'SaveFormat', 'Array', ...\n");
+        sb.append("            'MaxDataPoints', '1000000', 'Decimation', '1', ...\n");
+        sb.append("            'Position', [dmg_engPos(3)+80, dmg_engPos(2)+(dmg_j-1)*40, dmg_engPos(3)+120, dmg_engPos(2)+30+(dmg_j-1)*40]);\n");
+        sb.append("          add_line(dmg_engParent, [dmg_demuxName '/' num2str(dmg_extraIdx(dmg_j))], [dmg_twName '/1']);\n");
+        sb.append("          dmg_okSignals{end+1} = dmg_extraVars{dmg_j};\n");
+        sb.append("        end\n");
+        sb.append("        break;\n");
+        sb.append("      end\n");
+        sb.append("    catch; end\n");
+        sb.append("  end\n");
+        sb.append("catch; end\n");
+
+        eval(sb.toString(), INIT_TIMEOUT_SEC, "添加 To Workspace 信号块");
+        log.info("[MATLAB] To Workspace 信号块已添加");
     }
 
     /** 读取模型实际生效的固定步长（FixedStep 可能是 'Ts' 这样的表达式，需要在 base workspace 求值） */
@@ -403,8 +613,9 @@ public class MatlabSimulationRunner implements Closeable {
 
     /**
      * 导出脚本：以 logsout 的时间序列为基准，先取实时曲线用的信号列，
-     * 再泛化扫描 base workspace 中行数一致的 timeseries / 数值变量 / Dataset（含模型自带的 To Workspace、Scope 记录），
-     * 保证 signals.csv 与旧 matlab -batch 方案的列集合基本一致（供入库、报警、报告复用）。
+     * 再按 okSignals 列表精确提取 To Workspace 变量（SaveFormat=Array 格式为 [time, data]，
+     * 需跳过时间列取数据列），然后提取工作区标量，最后泛化扫描 base workspace 补漏，
+     * 保证 signals.csv 与旧 matlab -batch 方案的列集合一致（供入库、报警、报告复用）。
      */
     private String buildExportScript() {
         String csv = esc(new File(taskDir, "signals.csv").getAbsolutePath());
@@ -429,11 +640,48 @@ public class MatlabSimulationRunner implements Closeable {
         sb.append("    catch; end\n");
         sb.append("    dmg_names{end+1} = dmg_cols{dmg_c}; dmg_data = [dmg_data dmg_col];\n");
         sb.append("  end\n");
-        // 2) 泛化扫描 base workspace
+        // 2) 按 okSignals 精确提取 To Workspace 变量
+        //    To Workspace (SaveFormat=Array) 产出 [time, data] 或 [time, data1, data2, ...]
+        //    标量信号取 v(:,2)，向量信号取 v(:,2:end)
+        sb.append("  for dmg_i = 1:numel(dmg_okSignals)\n");
+        sb.append("    try\n");
+        sb.append("      dmg_sn = dmg_okSignals{dmg_i};\n");
+        sb.append("      if exist(dmg_sn, 'var') ~= 1; continue; end\n");
+        sb.append("      dmg_v = evalin('base', dmg_sn);\n");
+        sb.append("      if ~isnumeric(dmg_v) || isempty(dmg_v); continue; end\n");
+        sb.append("      if size(dmg_v,1) == dmg_n && size(dmg_v,2) >= 2\n");
+        sb.append("        dmg_v = dmg_v(:, 2:end);\n");
+        sb.append("      elseif size(dmg_v,1) == dmg_n && size(dmg_v,2) == 1\n");
+        sb.append("        % 纯数据列（无时间列），直接用\n");
+        sb.append("      else; continue; end\n");
+        sb.append("      for dmg_k = 1:size(dmg_v,2)\n");
+        sb.append("        if size(dmg_v,2) == 1; dmg_cn = dmg_sn; else; dmg_cn = sprintf('%s_%d', dmg_sn, dmg_k); end\n");
+        sb.append("        dmg_cn = matlab.lang.makeValidName(dmg_cn);\n");
+        sb.append("        if any(strcmp(dmg_names, dmg_cn)); continue; end\n");
+        sb.append("        dmg_names{end+1} = dmg_cn; dmg_data = [dmg_data double(dmg_v(:,dmg_k))];\n");
+        sb.append("      end\n");
+        sb.append("    catch; end\n");
+        sb.append("  end\n");
+        // 3) 工作区标量（限制值、功率指令等，展开为常数列）
+        sb.append("  dmg_wsScalars = {'NgMax','T45Max','MkpMax','WfMax','WfMin','errmax','Power_cmd'};\n");
+        sb.append("  for dmg_i = 1:numel(dmg_wsScalars)\n");
+        sb.append("    try\n");
+        sb.append("      dmg_sn = dmg_wsScalars{dmg_i};\n");
+        sb.append("      if exist(dmg_sn, 'var') == 1\n");
+        sb.append("        dmg_v = evalin('base', dmg_sn);\n");
+        sb.append("        if isnumeric(dmg_v) && isscalar(dmg_v) && ~any(strcmp(dmg_names, dmg_sn))\n");
+        sb.append("          dmg_names{end+1} = dmg_sn; dmg_data = [dmg_data repmat(dmg_v, dmg_n, 1)];\n");
+        sb.append("        end\n");
+        sb.append("      end\n");
+        sb.append("    catch; end\n");
+        sb.append("  end\n");
+        // 4) 泛化扫描 base workspace 补漏（跳过已通过 okSignals 提取的变量）
+        sb.append("  dmg_okSet = dmg_okSignals;\n");
         sb.append("  dmg_vars = evalin('base','who');\n");
         sb.append("  for dmg_i = 1:numel(dmg_vars)\n");
         sb.append("    dmg_name = dmg_vars{dmg_i};\n");
         sb.append("    if strncmp(dmg_name,'dmg_',4); continue; end\n");
+        sb.append("    if any(strcmp(dmg_okSet, dmg_name)); continue; end\n");
         sb.append("    try; dmg_val = evalin('base', dmg_name); catch; continue; end\n");
         sb.append("    dmg_pairs = cell(0,2);\n");
         sb.append("    try\n");

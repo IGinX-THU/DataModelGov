@@ -1555,15 +1555,18 @@ class ProgramRun extends HTMLElement {
       // reset=true 表示服务端下发的是全量快照（首次订阅/断线重连），整体替换避免重复追加
       this.liveRows = data.reset ? data.newRows.slice() : (this.liveRows || []).concat(data.newRows);
 
-      // 用全量数据更新图表（200行以内性能无压力）
+      // 先更新 currentTime，再画图——applyCsvToCharts 内部 setOption(..., true) 全量重绘时
+      // 会用 this.currentTime 画 markLine 竖线，如果此时 currentTime 还是旧值，竖线就会
+      // 画在旧位置，随后 updateCursor 再 merge 移到新位置，但全量重绘已结束、竖线更新
+      // 被拖到下一帧渲染，视觉上竖线始终滞后曲线一拍
+      const simTime = data.currentSimTime || 0;
+      this.currentTime = simTime;
+
+      // 用全量数据更新图表（竖线已在 currentTime 中就位）
       this.csvHeaders = this.liveHeaders;
       this.csvRows = this.liveRows;
       this.applyCsvToCharts(this.liveHeaders, this.liveRows);
 
-      // 用仿真时间驱动游标（非行索引），保证与固定步长对齐
-      const simTime = data.currentSimTime || 0;
-      this.currentTime = simTime;
-      this.updateCursor(simTime, true);
       if (this.statusBox) {
         const timeBox = this.shadowRoot.querySelector('.time-box');
         if (timeBox) timeBox.textContent = simTime.toFixed(3) + ' / ' + this.duration.toFixed(2) + ' s';
