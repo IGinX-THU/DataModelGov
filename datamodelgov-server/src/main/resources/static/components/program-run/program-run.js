@@ -1108,11 +1108,11 @@ class ProgramRun extends HTMLElement {
 
     const starting = state === 'STARTING';
 
-    if (this.runBtn) this.runBtn.disabled = running || paused || starting;
+    if (this.runBtn) this.runBtn.disabled = running || paused || starting || this._busyAction === 'run';
 
     if (this.pauseBtn) {
 
-      this.pauseBtn.disabled = !running && !paused;
+      this.pauseBtn.disabled = (!running && !paused) || this._busyAction === 'pause';
 
       this.pauseBtn.innerHTML = paused
 
@@ -1122,7 +1122,7 @@ class ProgramRun extends HTMLElement {
 
     }
 
-    if (this.stopBtn) this.stopBtn.disabled = !running && !paused && !starting;
+    if (this.stopBtn) this.stopBtn.disabled = (!running && !paused && !starting) || this._busyAction === 'stop';
 
   }
 
@@ -1135,6 +1135,9 @@ class ProgramRun extends HTMLElement {
     const version = this.getAttribute('data-version');
 
     if (!name || !version) return;
+    if (this._busyAction) return;
+    this._busyAction = 'run';
+    this.updateRunButtons(this.runStatus || 'STARTING');
 
     try {
 
@@ -1246,6 +1249,10 @@ class ProgramRun extends HTMLElement {
 
       this.updateRunButtons('ERROR');
 
+    } finally {
+
+      this._busyAction = null;
+
     }
 
   }
@@ -1259,6 +1266,9 @@ class ProgramRun extends HTMLElement {
     const version = this.getAttribute('data-version');
 
     if (!name || !version) return;
+    if (this._busyAction) return;
+    this._busyAction = 'stop';
+    this.updateRunButtons(this.runStatus || 'RUNNING');
 
     try {
 
@@ -1292,6 +1302,11 @@ class ProgramRun extends HTMLElement {
 
       this.showToast('停止运行失败: ' + e.message, 'error');
 
+    } finally {
+
+      this._busyAction = null;
+      this.updateRunButtons(this.runStatus);
+
     }
 
   }
@@ -1315,6 +1330,9 @@ class ProgramRun extends HTMLElement {
     const name = this.getAttribute('data-name');
     const version = this.getAttribute('data-version');
     if (!name || !version) return;
+    if (this._busyAction) return;
+    this._busyAction = 'pause';
+    this.updateRunButtons(this.runStatus || 'RUNNING');
 
     try {
       const pn = this.getProjectName();
@@ -1331,6 +1349,9 @@ class ProgramRun extends HTMLElement {
     } catch (e) {
       console.error('暂停失败:', e);
       this.showToast('暂停失败: ' + e.message, 'error');
+    } finally {
+      this._busyAction = null;
+      this.updateRunButtons(this.runStatus);
     }
 
   }
@@ -1342,6 +1363,9 @@ class ProgramRun extends HTMLElement {
     const name = this.getAttribute('data-name');
     const version = this.getAttribute('data-version');
     if (!name || !version) return;
+    if (this._busyAction) return;
+    this._busyAction = 'pause';
+    this.updateRunButtons(this.runStatus || 'PAUSED');
 
     try {
       const pn = this.getProjectName();
@@ -1360,6 +1384,9 @@ class ProgramRun extends HTMLElement {
     } catch (e) {
       console.error('恢复失败:', e);
       this.showToast('恢复失败: ' + e.message, 'error');
+    } finally {
+      this._busyAction = null;
+      this.updateRunButtons(this.runStatus);
     }
 
   }
@@ -1588,8 +1615,16 @@ class ProgramRun extends HTMLElement {
       // 结束后：暂停/恢复均禁用
       this.updateRunButtons(status);
 
+      // 用已收到的实时数据重绘图表，确保停止时立刻显示部分曲线（不等 results 接口）
+      // currentTime 保持为最后收到的仿真时间，不归零
+      if (this.liveHeaders && this.liveRows && this.liveRows.length > 0) {
+        this.csvHeaders = this.liveHeaders;
+        this.csvRows = this.liveRows;
+        this.applyCsvToCharts(this.liveHeaders, this.liveRows);
+      }
+
       // 仿真结束后拉取完整结果（触发结果文件生成、入库、状态修正等后续流程）
-      // SSE 推送不含 status 字段，统一通过 results 接口获取最终状态与完整数据
+      // 如果 results 返回了更完整的数据（含 To Workspace 信号），会覆盖当前实时数据
       window.AppConfig.get('program', 'results', { name, version, ...(this.getProjectName() ? { projectName: this.getProjectName() } : {}) })
         .then(result => {
           if (result && result.code === 200 && result.data) {
@@ -1662,9 +1697,8 @@ class ProgramRun extends HTMLElement {
 
     const tMax = timeData.length ? timeData[timeData.length - 1] : 30;
 
-    // keep duration from stop time input; do not override with CSV tMax
-
-
+    // 用曲线末端的 x 轴时间驱动游标和时间显示
+    this.currentTime = tMax;
 
     const getSeries = (colName) => {
 
@@ -2241,6 +2275,16 @@ class ProgramRun extends HTMLElement {
     this.runError = data.lastError || null;
 
     this.runTimestamp = data.lastRunTime || null;
+
+    // 刷新页面时用后端返回的对齐停止时间设置时间轴上限
+    if (data.stopTime != null) {
+      const st = parseFloat(data.stopTime);
+      if (isFinite(st) && st > 0) {
+        this.duration = st;
+        const stopInput = this.shadowRoot.querySelector('.field-row .input-box input');
+        if (stopInput) stopInput.value = String(st);
+      }
+    }
 
     if (this.kpiParams) {
 
@@ -2910,7 +2954,7 @@ function buildEChartsOptions(data, time, status, duration) {
 
     backgroundColor: 'transparent',
 
-    tooltip: { trigger: 'axis', backgroundColor: 'rgba(15,23,42,.9)', borderColor: '#24344D', textStyle: { color: '#e5e7eb' } },
+    tooltip: { trigger: 'axis', confine: true, backgroundColor: 'rgba(15,23,42,.9)', borderColor: '#24344D', textStyle: { color: '#e5e7eb' } },
 
     grid: { left: 55, right: data.y2Min != null ? 65 : 45, top: 32, bottom: 25 },
 

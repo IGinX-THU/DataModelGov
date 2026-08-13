@@ -1019,7 +1019,9 @@ public class ProgramService {
                         stopTime, fixedStepParam, npCommandParam, loadPowerParam, liveBuffer, logFile);
             }
             if (result != RUN_OK) {
-                // 用户停止 / 运行失败：状态已由停止端点或运行分支设置，不再覆盖
+                // 用户停止 / 运行失败：状态已由停止端点或运行分支设置，不再覆盖。
+                // signals.csv 已由引擎 exportResults() 写到 taskDir（如果仿真已开始），
+                // results 接口会从 taskDir 兜底读取，无需在此入库。
                 return;
             }
 
@@ -2468,7 +2470,7 @@ public class ProgramService {
                 }
             }
         }
-        
+
         Map<String, Object> data = new HashMap<>();
         // 检查是否处于暂停状态：pause 端点只设内存 pauseFlags + pause.flag 文件，不更新 IGinX 状态。
         // 刷新页面后 results 需要返回 "paused" 让前端恢复按钮显示"恢复"。
@@ -2483,6 +2485,10 @@ public class ProgramService {
         data.put("lastRunTime", task.getStartTime());
         data.put("npCommand", task.getNpCommand());
         data.put("loadPower", task.getLoadPower());
+        // 返回对齐后的停止时间，刷新页面时前端据此设置时间轴上限
+        if (task.getStopTime() != null) {
+            data.put("stopTime", task.getStopTime());
+        }
 
         if (task.getRunLog() != null) {
             data.put("runLog", task.getRunLog());
@@ -2522,25 +2528,30 @@ public class ProgramService {
         }
 
         // Fallback: read from CSV file
-        if (task.getResultCsvPath() != null) {
-            File csv = new File(task.getResultCsvPath());
-            if (csv.exists()) {
-                try {
-                    List<String[]> rows = new ArrayList<>();
-                    try (BufferedReader br = Files.newBufferedReader(csv.toPath(), StandardCharsets.UTF_8)) {
-                        String line;
-                        while ((line = br.readLine()) != null) {
-                            rows.add(line.split(","));
-                        }
+        File csv = task.getResultCsvPath() != null ? new File(task.getResultCsvPath()) : null;
+        // resultCsvPath 尚未设置时（doRun 线程还在导出/入库），尝试从任务目录读 signals.csv
+        if (csv == null || !csv.exists()) {
+            File taskDir = new File(getTaskBaseDir(projectName != null ? projectName : task.getProjectName()),
+                    String.valueOf(task.getTimestamp()));
+            File fallbackCsv = new File(taskDir, "signals.csv");
+            if (fallbackCsv.exists()) csv = fallbackCsv;
+        }
+        if (csv != null && csv.exists()) {
+            try {
+                List<String[]> rows = new ArrayList<>();
+                try (BufferedReader br = Files.newBufferedReader(csv.toPath(), StandardCharsets.UTF_8)) {
+                    String line;
+                    while ((line = br.readLine()) != null) {
+                        rows.add(line.split(","));
                     }
-                    List<String> headers = new ArrayList<>();
-                    if (!rows.isEmpty()) headers.addAll(Arrays.asList(rows.remove(0)));
-                    data.put("headers", headers);
-                    data.put("rows", rows);
-                } catch (Exception e) {
-                    log.error("读取结果CSV失败", e);
-                    data.put("lastError", "读取CSV失败: " + e.getMessage());
                 }
+                List<String> headers = new ArrayList<>();
+                if (!rows.isEmpty()) headers.addAll(Arrays.asList(rows.remove(0)));
+                data.put("headers", headers);
+                data.put("rows", rows);
+            } catch (Exception e) {
+                log.error("读取结果CSV失败", e);
+                data.put("lastError", "读取CSV失败: " + e.getMessage());
             }
         }
         return Result.success(data);
