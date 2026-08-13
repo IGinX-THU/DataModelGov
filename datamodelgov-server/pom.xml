@@ -79,6 +79,8 @@
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
                     <mainClass>com.tsinghua.DataModelGovApplication</mainClass>
+                    <!-- 打包 MATLAB engine.jar（system scope），否则运行时找不到 com.mathworks.engine -->
+                    <includeSystemScope>true</includeSystemScope>
                 </configuration>
                 <executions>
                     <execution>

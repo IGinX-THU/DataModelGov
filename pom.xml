@@ -36,6 +36,7 @@
         <hutool.version>5.8.26</hutool.version>
         <knife4j.version>3.0.2</knife4j.version>
         <poi.version>5.1.0</poi.version>
+        <jna.version>5.13.0</jna.version>
     </properties>
 
     <dependencyManagement>
@@ -146,6 +147,13 @@
                 <groupId>cn.edu.tsinghua</groupId>
                 <artifactId>iginx-session</artifactId>
                 <version>${iginx.version}</version>
+            </dependency>
+
+            <!-- JNA：用于在进程内注入 MATLAB 原生库搜索路径，避免要求用户改 PATH -->
+            <dependency>
+                <groupId>net.java.dev.jna</groupId>
+                <artifactId>jna</artifactId>
+                <version>${jna.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

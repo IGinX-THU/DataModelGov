@@ -1186,15 +1186,26 @@ class ProgramRun extends HTMLElement {
 
       if (result && result.code === 200) {
 
-        this.duration = parseFloat(inputs[0].value) || 30;
-
         this.fixedStep = parseFloat(inputs[1].value) || 0.025;
+
+        // 后端会把停止时间对齐到固定步长的整数倍，以对齐后的值为准（仿真会真的停在该时刻）
+        const alignedStopTime = result.data && result.data.stopTime != null
+          ? parseFloat(result.data.stopTime) : NaN;
+
+        this.duration = !isNaN(alignedStopTime) ? alignedStopTime : (parseFloat(inputs[0].value) || 30);
+
+        if (!isNaN(alignedStopTime) && String(alignedStopTime) !== String(inputs[0].value)) {
+          inputs[0].value = String(alignedStopTime);
+          this.showToast('停止时间已按固定步长对齐为 ' + alignedStopTime + ' s', 'info');
+        }
 
         // 刷新时间显示：0.000 / {duration} s
         this.updateCursor(0, true);
 
         this._userInitiated = true;
         this._revealStarted = false;
+        // 新一轮运行重置暂停态，避免沿用上一次的暂停按钮状态
+        this._paused = false;
         this.runStatus = 'STARTING';
         this.updateStatusUI('STARTING');
 
@@ -1524,6 +1535,13 @@ class ProgramRun extends HTMLElement {
       this.liveHeaders = data.headers;
     }
 
+    // MATLAB 侧按模型实际固定步长对齐后的停止时间，用于校正时间轴上限
+    if (data.stopTime > 0 && Math.abs(data.stopTime - this.duration) > 1e-9) {
+      this.duration = data.stopTime;
+      const stopInput = this.shadowRoot.querySelector('.field-row .input-box input');
+      if (stopInput) stopInput.value = String(data.stopTime);
+    }
+
     // 追加增量数据
     if (data.newRows && data.newRows.length > 0 && this.liveHeaders) {
 
@@ -1534,7 +1552,8 @@ class ProgramRun extends HTMLElement {
         this.updateRunButtons('RUNNING');
       }
 
-      this.liveRows = (this.liveRows || []).concat(data.newRows);
+      // reset=true 表示服务端下发的是全量快照（首次订阅/断线重连），整体替换避免重复追加
+      this.liveRows = data.reset ? data.newRows.slice() : (this.liveRows || []).concat(data.newRows);
 
       // 用全量数据更新图表（200行以内性能无压力）
       this.csvHeaders = this.liveHeaders;
