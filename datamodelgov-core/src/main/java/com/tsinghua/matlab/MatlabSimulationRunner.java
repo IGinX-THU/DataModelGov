@@ -612,7 +612,7 @@ public class MatlabSimulationRunner implements Closeable {
         Files.write(script.toPath(), buildExportScript().getBytes(StandardCharsets.UTF_8));
         eval("run('" + esc(script.getAbsolutePath()) + "');", INIT_TIMEOUT_SEC, "导出仿真结果");
         log.info("[MATLAB] 结果已导出: {}", new File(taskDir, "signals.csv").getAbsolutePath());
-        //logMatlab("结果已导出: " + new File(taskDir, "signals.csv").getAbsolutePath());
+        //logMatlab("结果已生成: " + new File(taskDir, "signals.csv").getAbsolutePath());
     }
 
     /**
@@ -864,7 +864,7 @@ public class MatlabSimulationRunner implements Closeable {
     /** 记录 [MATLAB] 日志行，同时推送给前端 footer 实时显示 */
     private void logMatlab(String msg) {
         log.info("[MATLAB] {}", msg);
-        try { sink.onLog("[MATLAB] " + msg + "..."); } catch (Exception ignored) {}
+        try { sink.onLog("[MATLAB] " + msg + " ..."); } catch (Exception ignored) {}
     }
 
     private static double parseDouble(String s, double fallback) {
