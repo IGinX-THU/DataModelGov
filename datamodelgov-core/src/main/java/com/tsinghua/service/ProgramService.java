@@ -922,8 +922,8 @@ public class ProgramService {
                     if (runner != null) {
                         runner.stopSimulation();
                         pauseFlags.remove(ts);
-                        LiveDataBuffer engineBuffer = liveDataMap.get(ts);
-                        if (engineBuffer != null) engineBuffer.setFinished(true);
+                        // 不在此处 setFinished：让 doRun 线程的 pollLoop 退出 + exportResults 完成后，
+                        // 由 finally 块统一设 finished=true，确保"已执行停止命令"、"仿真结束"等日志能通过 SSE 推送到前端
                         updateTaskStatus(ts, TaskStatus.STOPPED, null, null, null, null);
                         Map<String, Object> stopped = new HashMap<>();
                         stopped.put("status", TaskStatus.STOPPED);
@@ -1090,6 +1090,11 @@ public class ProgramService {
                     @Override
                     public void onRows(List<String[]> rows) {
                         liveBuffer.appendRows(rows);
+                    }
+
+                    @Override
+                    public void onLog(String line) {
+                        liveBuffer.appendLogLine(line);
                     }
                 });
         engineRunners.put(taskTimestamp, runner);
@@ -1646,6 +1651,8 @@ public class ProgramService {
         private volatile boolean finished = false;
         // 对齐到固定步长后的停止时间（引擎模式下由 MATLAB 实际生效值回填）
         private volatile double stopTime = 0.0;
+        // 最新一条 MATLAB 日志（供前端 footer 显示）
+        private volatile String logLine = "";
         // SSE 订阅者列表
         private final List<SseEmitter> emitters = Collections.synchronizedList(new ArrayList<>());
 
@@ -1665,6 +1672,11 @@ public class ProgramService {
             notifySubscribers(buildPayload(newRows));
         }
 
+        public void appendLogLine(String line) {
+            this.logLine = line;
+            notifySubscribers(buildPayload(new ArrayList<>()));
+        }
+
         /** 返回从 lastIndex 到末尾的增量数据，并更新 lastIndex（轮询降级用） */
         public synchronized Map<String, Object> getIncremental() {
             Map<String, Object> result = new HashMap<>();
@@ -1681,6 +1693,7 @@ public class ProgramService {
             result.put("currentSimTime", getCurrentSimTime());
             result.put("stopTime", stopTime);
             result.put("finished", finished);
+            result.put("logLine", logLine);
             return result;
         }
 
@@ -1712,6 +1725,7 @@ public class ProgramService {
             snapshot.put("currentSimTime", getCurrentSimTime());
             snapshot.put("stopTime", stopTime);
             snapshot.put("finished", finished);
+            snapshot.put("logLine", logLine);
             // 快照包含全量数据（首次订阅或断线重连），前端需整体替换而非追加，避免重复
             snapshot.put("reset", true);
             sendToEmitter(emitter, snapshot);
@@ -1743,6 +1757,7 @@ public class ProgramService {
             payload.put("currentSimTime", getCurrentSimTime());
             payload.put("stopTime", stopTime);
             payload.put("finished", finished);
+            payload.put("logLine", logLine);
             return payload;
         }
 

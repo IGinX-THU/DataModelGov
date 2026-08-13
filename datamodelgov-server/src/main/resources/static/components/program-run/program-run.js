@@ -142,6 +142,8 @@ class ProgramRun extends HTMLElement {
 
     this.saveBtn = root.querySelector('.footer-actions button:nth-child(2)');
 
+    this.footerLog = root.querySelector('#footerLog');
+
 
 
     this.bindEvents();
@@ -1145,6 +1147,8 @@ class ProgramRun extends HTMLElement {
 
       this.currentTime = 0;
 
+      if (this.footerLog) this.footerLog.textContent = '仿真启动中，请稍后...';
+
       this.updateCursor(0, true);
 
       this.charts.forEach((chart, i) => {
@@ -1284,15 +1288,14 @@ class ProgramRun extends HTMLElement {
 
       if (result && result.code === 200) {
 
-        this.stopStream();
-
-        this.stopRunTimer();
-
         this._userInitiated = true;
         this.updateStatusUI('STOPPED');
 
         // 停止后：暂停/恢复均禁用
         this.updateRunButtons('STOPPED');
+
+        // 不在此处 stopStream：让 SSE 继续接收"已执行停止命令"、"仿真结束"等日志，
+        // 等 handleLiveData 收到 finished=true 后自然关闭
 
       }
 
@@ -1555,6 +1558,11 @@ class ProgramRun extends HTMLElement {
     // 如果有错误信息，显示
     if (data.lastError) {
       this.runError = data.lastError;
+    }
+
+    // MATLAB 日志行 → footer 左侧实时显示
+    if (data.logLine && this.footerLog) {
+      this.footerLog.textContent = data.logLine;
     }
 
     // 收到 headers 时初始化

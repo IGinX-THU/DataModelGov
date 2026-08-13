@@ -49,6 +49,9 @@ public class MatlabSimulationRunner implements Closeable {
         void onHeaders(List<String> headers);
 
         void onRows(List<String[]> rows);
+
+        /** MATLAB 日志行回调，供前端 footer 实时显示 */
+        void onLog(String line);
     }
 
     /** 核心信号：名称 → 模型内块路径（相对模型名的后缀） */
@@ -184,7 +187,7 @@ public class MatlabSimulationRunner implements Closeable {
             prepare();
             Future<Void> startFuture = call(() -> engine.evalAsync(
                     "set_param('" + esc(modelName) + "','SimulationCommand','start');"), 60, "发送仿真启动命令");
-            log.info("[MATLAB] 仿真启动命令已发送（编译+初始化期间无数据）");
+            logMatlab("仿真启动命令已发送（编译+初始化期间无数据）");
             pollLoop(startFuture);
             exportResults();
         } finally {
@@ -203,14 +206,14 @@ public class MatlabSimulationRunner implements Closeable {
         MatlabNativeLibrary.installHeadlessSuppressor();
         long t0 = System.currentTimeMillis();
         engine = call(MatlabEngine::startMatlab, ENGINE_START_TIMEOUT_SEC, "启动 MATLAB 引擎");
-        log.info("[MATLAB] 引擎已启动，耗时 {} ms", System.currentTimeMillis() - t0);
+        logMatlab("引擎已启动，耗时 " + (System.currentTimeMillis() - t0) + " ms");
     }
 
     /** 预配置：切目录、跑预运行脚本、设参数、载入模型、对齐停止时间、配置信号日志 */
     private void prepare() throws Exception {
         eval("cd('" + esc(programDir) + "');", INIT_TIMEOUT_SEC, "切换工作目录");
 
-        log.info("[MATLAB] 执行预运行脚本: {}", preRunScript);
+        logMatlab("执行预运行脚本: " + preRunScript);
         eval("dmg_out = evalc('" + esc(stripM(preRunScript)) + "');", INIT_TIMEOUT_SEC, "执行预运行脚本 " + preRunScript);
         writeMatlabLog(getString("dmg_out"));
 
@@ -225,7 +228,7 @@ public class MatlabSimulationRunner implements Closeable {
         params.append("if exist('WfReferenceKgps', 'var'), WfMax = WfReferenceKgps * 2; WfMin = WfReferenceKgps * 0.01; end\n");
         eval(params.toString(), INIT_TIMEOUT_SEC, "设置仿真参数");
 
-        log.info("[MATLAB] 载入模型: {}", modelName);
+        logMatlab("载入模型: " + modelName);
         eval("load_system('" + esc(modelName) + "');", INIT_TIMEOUT_SEC, "载入模型 " + modelName);
         if (hasText(fixedStep)) {
             eval("set_param('" + esc(modelName) + "','FixedStep','" + fixedStep + "');", CALL_TIMEOUT_SEC, "设置固定步长");
@@ -234,7 +237,7 @@ public class MatlabSimulationRunner implements Closeable {
         alignedStopTime = SimTimeUtil.alignToStep(requestedStopTime, resolveFixedStep());
         eval("set_param('" + esc(modelName) + "','StopTime','" + SimTimeUtil.format(alignedStopTime) + "');",
                 CALL_TIMEOUT_SEC, "设置停止时间");
-        log.info("[MATLAB] 停止时间 {} → 按固定步长对齐为 {}", requestedStopTime, alignedStopTime);
+        logMatlab("停止时间 " + requestedStopTime + " → 按固定步长对齐为 " + alignedStopTime);
         sink.onStopTime(alignedStopTime);
 
         // 添加 To Workspace 块（与回退方案 writeWrapper 一致），仿真结束后这些变量
@@ -447,7 +450,7 @@ public class MatlabSimulationRunner implements Closeable {
         sb.append("catch; end\n");
 
         eval(sb.toString(), INIT_TIMEOUT_SEC, "添加 To Workspace 信号块");
-        log.info("[MATLAB] To Workspace 信号块已添加");
+        logMatlab("To Workspace 信号块已添加");
     }
 
     /** 读取模型实际生效的固定步长（FixedStep 可能是 'Ts' 这样的表达式，需要在 base workspace 求值） */
@@ -524,7 +527,7 @@ public class MatlabSimulationRunner implements Closeable {
         if (hasText(cols)) {
             csvColumns.addAll(Arrays.asList(cols.split(",")));
         }
-        log.info("[MATLAB] 已配置信号日志，共 {} 个信号: {}", csvColumns.size() - 1, cols);
+        logMatlab("已配置信号日志，共 " + (csvColumns.size() - 1) + " 个信号: " + cols);
         sink.onHeaders(new ArrayList<>(csvColumns));
     }
 
@@ -542,7 +545,7 @@ public class MatlabSimulationRunner implements Closeable {
                 fetchIncremental();
             } else if (startFuture.isDone() && ("stopped".equals(status) || "terminating".equals(status))) {
                 // start 命令返回后仿真已在运行；此时回到 stopped 即表示仿真结束
-                log.info("[MATLAB] 仿真结束，状态={}，仿真时间={}，用户停止={}", status, lastSimTime, userStopped.get());
+                logMatlab("仿真结束，状态=" + status + "，仿真时间=" + lastSimTime + "，用户停止=" + userStopped.get());
                 fetchIncremental();
                 return;
             } else if (!sawRunning && startFuture.isDone()) {
@@ -609,6 +612,7 @@ public class MatlabSimulationRunner implements Closeable {
         Files.write(script.toPath(), buildExportScript().getBytes(StandardCharsets.UTF_8));
         eval("run('" + esc(script.getAbsolutePath()) + "');", INIT_TIMEOUT_SEC, "导出仿真结果");
         log.info("[MATLAB] 结果已导出: {}", new File(taskDir, "signals.csv").getAbsolutePath());
+        //logMatlab("结果已导出: " + new File(taskDir, "signals.csv").getAbsolutePath());
     }
 
     /**
@@ -751,7 +755,7 @@ public class MatlabSimulationRunner implements Closeable {
         engineExec.submit(() -> {
             try {
                 eng.eval("set_param('" + esc(modelName) + "','SimulationCommand','" + command + "');");
-                log.info("[MATLAB] 已执行仿真控制命令: {}", command);
+                logMatlab("已执行仿真控制命令: " + command);
             } catch (Exception e) {
                 log.warn("[MATLAB] 仿真控制命令 {} 执行失败: {}", command, e.toString());
             }
@@ -855,6 +859,12 @@ public class MatlabSimulationRunner implements Closeable {
             matlabLog.println(text);
             matlabLog.flush();
         }
+    }
+
+    /** 记录 [MATLAB] 日志行，同时推送给前端 footer 实时显示 */
+    private void logMatlab(String msg) {
+        log.info("[MATLAB] {}", msg);
+        try { sink.onLog("[MATLAB] " + msg + "..."); } catch (Exception ignored) {}
     }
 
     private static double parseDouble(String s, double fallback) {

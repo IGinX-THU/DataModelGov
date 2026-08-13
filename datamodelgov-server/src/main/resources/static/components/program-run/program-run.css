@@ -27,7 +27,7 @@ aside { width:252px; flex-shrink:0; background:var(--panel); border-right:1px so
 aside.right { border-left:1px solid var(--grid); border-right:none; }
 .panel { background:#0f172a; border:1px solid var(--grid); border-radius:6px; padding:10px; margin-bottom:10px; }
 .panel-title { margin:0 0 8px; font-size:12px; font-weight:600; color:var(--text); }
-.panel-loading { position:relative; opacity:0.6; pointer-events:none; }
+.panel-loading { position:relative; opacity:0.4; pointer-events:none; }
 .panel-loading::before { content:''; position:absolute; top:50%; left:50%; width:24px; height:24px; margin:-12px 0 0 -12px; border:2.5px solid #475569; border-top-color:#FFFF00; border-radius:50%; animation:panel-spin .7s linear infinite; z-index:2; }
 .panel-loading::after { content:'启动中'; position:absolute; top:calc(50% + 18px); left:50%; transform:translateX(-50%); color:#FFFF00; font-size:12px; font-weight:600; white-space:nowrap; z-index:2; }
 @keyframes panel-spin { to { transform: rotate(360deg); } }
@@ -106,11 +106,12 @@ main { flex:1; display:block; min-width:0; padding:10px; background:var(--bg); }
 footer { display:flex; align-items:center; gap:12px; padding:8px 16px; background:var(--panel); border-top:1px solid var(--grid); }
 .footer-label { font-size:12px; color:var(--muted); white-space:nowrap; }
 footer .play { margin-top:0; flex-shrink:0; }
+.footer-log { flex:1; font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .time-nav { flex:1; position:relative; padding-bottom:20px; }
 .time-nav .time-track { width:100%; }
 .cursor-label { display:flex; align-items:center; gap:6px; background:#1a2740; border:1px solid #24344D; border-radius:4px; padding:5px 10px; font-size:12px; color:var(--muted); }
 .cursor-val { color:var(--text); }
-.footer-actions { display:flex; gap:8px; margin-left:auto; }
+.footer-actions { display:flex; gap:8px; flex-shrink:0; }
 .footer-actions button { background:#1a2740; border:1px solid #24344D; color:var(--text); padding:5px 10px; border-radius:4px; font-size:12px; cursor:pointer; }
 .footer-actions button:hover { background:#24344D; }
 .export-dropdown { position:fixed; background:#0f172a; border:1px solid var(--grid); border-radius:6px; box-shadow:0 4px 12px rgba(0,0,0,.5); overflow:hidden; min-width:200px; }
