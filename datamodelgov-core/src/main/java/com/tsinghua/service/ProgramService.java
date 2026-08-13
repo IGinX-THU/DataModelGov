@@ -21,6 +21,7 @@ import com.tsinghua.dto.DataQueryRequest;
 import com.tsinghua.dto.TableDto;
 import com.tsinghua.model.Result;
 import com.tsinghua.matlab.MatlabSimulationRunner;
+import com.tsinghua.matlab.MatlabEnginePool;
 import com.tsinghua.util.ConvertUtil;
 import com.tsinghua.util.ProjectContext;
 import com.tsinghua.util.SimTimeUtil;
@@ -28,6 +29,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import javax.annotation.PostConstruct;
+import javax.annotation.PreDestroy;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -74,6 +77,8 @@ public class ProgramService {
     private final Map<Long, Boolean> pauseFlags = new ConcurrentHashMap<>();
     // MATLAB Engine 会话：key=taskTimestamp，存在即表示该任务由引擎驱动（支持真实暂停/恢复/停止）
     private final Map<Long, MatlabSimulationRunner> engineRunners = new ConcurrentHashMap<>();
+    // 常驻引擎池：避免每次仿真都重新启动 MATLAB（~2分钟）
+    private final MatlabEnginePool enginePool = new MatlabEnginePool();
     // 引擎运行期不可用（如缺少 MATLAB 原生库）时置位，后续任务直接走 matlab -batch 回退
     private volatile boolean engineDisabled = false;
     // 仿真执行结果码
@@ -107,6 +112,15 @@ public class ProgramService {
     @PostConstruct
     private void initMatlabHome() {
         MatlabSimulationRunner.configureMatlabHome(matlabHome);
+        // 引擎模式启用时，随 Spring Boot 启动常驻 MATLAB 引擎（异步，不阻塞启动）
+        if (matlabEngineEnabled) {
+            enginePool.init();
+        }
+    }
+
+    @PreDestroy
+    private void destroyEnginePool() {
+        enginePool.shutdown();
     }
 
     @Autowired
@@ -903,7 +917,39 @@ public class ProgramService {
 
     /** 是否使用 MATLAB Engine API 驱动仿真（否则回退到 matlab -batch） */
     private boolean isEngineMode() {
-        return matlabEngineEnabled && !engineDisabled && MatlabSimulationRunner.isApiAvailable();
+        if (!matlabEngineEnabled || engineDisabled) return false;
+        if (!MatlabSimulationRunner.isApiAvailable()) return false;
+        // 引擎池启动失败时回退；启动中或已就绪都走引擎模式（borrow 会等待就绪）
+        if (enginePool.isFailed()) {
+            log.warn("MATLAB 引擎池启动失败，回退到 matlab -batch");
+            return false;
+        }
+        return true;
+    }
+
+    /** MATLAB 引擎状态（供前端 footer 显示） */
+    public Result<Map<String, Object>> getEngineStatus() {
+        Map<String, Object> data = new HashMap<>();
+        if (!matlabEngineEnabled) {
+            data.put("status", "disabled");
+            data.put("message", "[MATLAB] 引擎模式未启用（matlab.engine.enabled=false）");
+        } else if (engineDisabled) {
+            data.put("status", "fallback");
+            data.put("message", "[MATLAB] 引擎不可用，已回退到 matlab -batch");
+        } else if (!MatlabSimulationRunner.isApiAvailable()) {
+            data.put("status", "unavailable");
+            data.put("message", "[MATLAB] Engine API 不可用（缺少原生库）");
+        } else if (enginePool.isFailed()) {
+            data.put("status", "failed");
+            data.put("message", "[MATLAB] 引擎启动失败，将回退到 matlab -batch");
+        } else if (enginePool.isReady()) {
+            data.put("status", "ready");
+            data.put("message", "[MATLAB] 引擎已就绪");
+        } else {
+            data.put("status", "starting");
+            data.put("message", "[MATLAB] 引擎启动中，请稍候...");
+        }
+        return Result.success(data);
     }
 
     public Result<Map<String, Object>> stop(String name, String version, String projectName) {
@@ -1096,7 +1142,8 @@ public class ProgramService {
                     public void onLog(String line) {
                         liveBuffer.appendLogLine(line);
                     }
-                });
+                },
+                enginePool);
         engineRunners.put(taskTimestamp, runner);
         try {
             runner.run();

@@ -197,7 +197,8 @@ window.AppConfig = {
             files: '/api/program/files',
             'download-result': '/api/program/download-result',
             'upload-overview': '/api/program/upload-overview',
-            'download-signal': '/api/program/download-signal'
+            'download-signal': '/api/program/download-signal',
+            'engine-status': '/api/program/engine-status'
         }
     },
     

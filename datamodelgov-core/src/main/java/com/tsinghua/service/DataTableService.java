@@ -70,7 +70,7 @@ public class DataTableService {
                 columns.add(KEY);
             }
             for (IginXColumn column : header.getColumns()) {
-                log.info(column.getName() + "\t");
+//                log.info(column.getName() + "\t");
                 columns.add(column.getName());
             }
 

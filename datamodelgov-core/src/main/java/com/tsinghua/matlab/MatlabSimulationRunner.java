@@ -77,7 +77,7 @@ public class MatlabSimulationRunner implements Closeable {
     private static final long INIT_TIMEOUT_SEC = 900;
     /** 单次引擎调用超时：仿真编译期间（1-3 分钟）调用会排队，需给足余量 */
     private static final long CALL_TIMEOUT_SEC = 1800;
-    private static final long POLL_INTERVAL_MS = 500;
+    private static final long POLL_INTERVAL_MS = 200;
 
     private static volatile Boolean apiAvailable;
     private static volatile String configuredMatlabHome;
@@ -112,9 +112,11 @@ public class MatlabSimulationRunner implements Closeable {
     private volatile double lastSimTime;
     private PrintWriter matlabLog;
 
+    private final MatlabEnginePool enginePool;
+
     public MatlabSimulationRunner(File taskDir, String programDir, String preRunScript, String modelName,
                                   double requestedStopTime, String fixedStep, String npCommand, String loadPower,
-                                  LiveSink sink) {
+                                  LiveSink sink, MatlabEnginePool enginePool) {
         this.taskDir = taskDir;
         this.programDir = programDir;
         this.preRunScript = preRunScript;
@@ -124,6 +126,7 @@ public class MatlabSimulationRunner implements Closeable {
         this.npCommand = npCommand;
         this.loadPower = loadPower;
         this.sink = sink;
+        this.enginePool = enginePool;
         this.alignedStopTime = requestedStopTime;
     }
 
@@ -185,9 +188,15 @@ public class MatlabSimulationRunner implements Closeable {
         try {
             startEngine();
             prepare();
+            // 用户在 prepare 阶段点了停止：不启动仿真，直接导出（可能无数据）
+            if (userStopped.get()) {
+                logMatlab("用户在初始化阶段停止，跳过仿真启动");
+                exportResults();
+                return;
+            }
             Future<Void> startFuture = call(() -> engine.evalAsync(
                     "set_param('" + esc(modelName) + "','SimulationCommand','start');"), 60, "发送仿真启动命令");
-            logMatlab("仿真启动命令已发送（编译+初始化期间无数据）");
+            logMatlab("仿真启动命令已发送（编译+初始化期间无数据，请耐心等待）");
             pollLoop(startFuture);
             exportResults();
         } finally {
@@ -200,13 +209,15 @@ public class MatlabSimulationRunner implements Closeable {
     // ==================== 生命周期 ====================
 
     private void startEngine() throws Exception {
-        // 在触碰 MatlabEngine 之前安装 AWT HeadlessException 抑制器：
-        // MvmImpl.loadLibrary 在依赖库缺失时会 SwingUtilities.invokeLater 弹对话框，
-        // headless 下 JDialog 构造抛 HeadlessException 刷屏
-        MatlabNativeLibrary.installHeadlessSuppressor();
         long t0 = System.currentTimeMillis();
-        engine = call(MatlabEngine::startMatlab, ENGINE_START_TIMEOUT_SEC, "启动 MATLAB 引擎");
-        logMatlab("引擎已启动，耗时 " + (System.currentTimeMillis() - t0) + " ms");
+        // 从引擎池借出（首次会启动 MATLAB，后续复用常驻引擎）
+        engine = enginePool.borrow(ENGINE_START_TIMEOUT_SEC);
+        long elapsed = System.currentTimeMillis() - t0;
+        if (elapsed < 1000) {
+            logMatlab("引擎已就绪（复用常驻引擎）");
+        } else {
+            logMatlab("引擎已就绪，耗时 " + elapsed + " ms");
+        }
     }
 
     /** 预配置：切目录、跑预运行脚本、设参数、载入模型、对齐停止时间、配置信号日志 */
@@ -517,7 +528,60 @@ public class MatlabSimulationRunner implements Closeable {
         sb.append("  catch; end\n");
         sb.append("end\n");
         sb.append("dmg_cursor = 0; dmg_map = [];\n");
+        // 把 addWorkspaceBlocks 添加的 To Workspace 块对应的信号也加入 DataLogging。
+        // DataLogging 只能设在输出端口上，不能设在 ToWorkspace 块的 Inport 上。
+        // 做法：通过 PortConnectivity 找到 ToWorkspace 块 Inport 的信号源端口（上游 Outport），
+        // 在那个 Outport 上开启 DataLogging。
+        sb.append("dmg_twBlocks = find_system('").append(esc(modelName)).append("','BlockType','ToWorkspace');\n");
+        sb.append("dmg_twOk = 0; dmg_twFail = 0;\n");
+        sb.append("dmg_firstErr = '';\n");
+        sb.append("for dmg_i = 1:numel(dmg_twBlocks)\n");
+        sb.append("  try\n");
+        sb.append("    dmg_twName = char(get_param(dmg_twBlocks{dmg_i}, 'VariableName'));\n");
+        sb.append("    if isempty(dmg_twName); dmg_twFail = dmg_twFail + 1; continue; end\n");
+        // 跳过已配置过的信号（核心信号在前面已开启 DataLogging）
+        sb.append("    dmg_alreadyLogged = false;\n");
+        sb.append("    for dmg_j = 1:numel(dmg_cols); if strcmp(dmg_cols{dmg_j}, dmg_twName); dmg_alreadyLogged = true; break; end; end\n");
+        sb.append("    if dmg_alreadyLogged; continue; end\n");
+        // 通过 PortConnectivity 找到 ToWorkspace Inport 的信号源端口
+        // PortConnectivity 字段: Type, Position, SrcBlock, SrcPort, DstBlock, DstPort
+        // SrcBlock 是源块 handle，SrcPort 是源端口号（1-based）
+        sb.append("    dmg_pc = get_param(dmg_twBlocks{dmg_i}, 'PortConnectivity');\n");
+        sb.append("    dmg_srcBlockH = dmg_pc(1).SrcBlock;\n");
+        sb.append("    dmg_srcPortIdx = dmg_pc(1).SrcPort;\n");
+        sb.append("    if isempty(dmg_srcBlockH) || dmg_srcBlockH == 0 || dmg_srcBlockH == -1\n");
+        sb.append("      dmg_twFail = dmg_twFail + 1; continue;\n");
+        sb.append("    end\n");
+        // 源块的 PortHandles.Outport 是数组，SrcPort 是 0-based 索引，需要 +1
+        sb.append("    dmg_srcPH = get_param(dmg_srcBlockH, 'PortHandles');\n");
+        sb.append("    dmg_srcPortIdx1 = dmg_srcPortIdx + 1;\n");
+        sb.append("    if isempty(dmg_srcPH.Outport) || numel(dmg_srcPH.Outport) < dmg_srcPortIdx1\n");
+        sb.append("      dmg_twFail = dmg_twFail + 1; continue;\n");
+        sb.append("    end\n");
+        sb.append("    dmg_srcPortH = dmg_srcPH.Outport(dmg_srcPortIdx1);\n");
+        sb.append("    set_param(dmg_srcPortH,'DataLogging','on');\n");
+        sb.append("    try; set_param(dmg_srcPortH,'DataLoggingNameMode','Custom'); catch; end\n");
+        sb.append("    set_param(dmg_srcPortH,'DataLoggingName',dmg_twName);\n");
+        sb.append("    dmg_srcBlockPath = get_param(dmg_srcBlockH, 'Path');\n");
+        sb.append("    dmg_cols{end+1} = dmg_twName; dmg_paths{end+1} = dmg_srcBlockPath;\n");
+        sb.append("    dmg_twOk = dmg_twOk + 1;\n");
+        sb.append("  catch\n");
+        sb.append("    dmg_twFail = dmg_twFail + 1;\n");
+        sb.append("    if isempty(dmg_firstErr)\n");
+        sb.append("      [dmg_msg, dmg_id] = lasterr;\n");
+        sb.append("      dmg_firstErr = ['i=' num2str(dmg_i) ' name=' dmg_twName ' id=' dmg_id ' msg=' dmg_msg];\n");
+        sb.append("    end\n");
+        sb.append("  end\n");
+        sb.append("end\n");
+        sb.append("if isempty(dmg_firstErr); dmg_firstErr = 'none'; end\n");
         eval(sb.toString(), INIT_TIMEOUT_SEC, "配置信号日志");
+
+        // 诊断
+        double twOk = getDouble("dmg_twOk");
+        double twFail = getDouble("dmg_twFail");
+        eval("dmg_colCount = numel(dmg_cols);", CALL_TIMEOUT_SEC, "统计 dmg_cols");
+        double colCount = getDouble("dmg_colCount");
+        log.warn("诊断: ToWorkspace DataLogging 成功 " + (int)twOk + " 失败 " + (int)twFail + ", cols=" + (int)colCount + ", 首个错误: " + getString("dmg_firstErr"));
 
         // 以 MATLAB 实际配置成功的信号为准构造 CSV 表头
         eval("dmg_colstr = strjoin(dmg_cols, ',');", CALL_TIMEOUT_SEC, "读取信号列表");
@@ -545,8 +609,9 @@ public class MatlabSimulationRunner implements Closeable {
                 fetchIncremental();
             } else if (startFuture.isDone() && ("stopped".equals(status) || "terminating".equals(status))) {
                 // start 命令返回后仿真已在运行；此时回到 stopped 即表示仿真结束
-                logMatlab("仿真结束，状态=" + status + "，仿真时间=" + lastSimTime + "，用户停止=" + userStopped.get());
+                // 先取最后一批数据（含最终时间点），再打日志，避免日志显示的时间落后于实际
                 fetchIncremental();
+                logMatlab("仿真结束，状态=" + status + "，仿真时间=" + lastSimTime + "，用户停止=" + userStopped.get());
                 return;
             } else if (!sawRunning && startFuture.isDone()) {
                 // start 已返回但从未进入 running：可能是极短仿真，直接取数收尾
@@ -577,12 +642,19 @@ public class MatlabSimulationRunner implements Closeable {
                 + "  if isempty(dmg_map) || any(dmg_map == 0)\n"
                 + "    dmg_map = zeros(1, numel(dmg_cols));\n"
                 + "    for dmg_c = 1:numel(dmg_cols)\n"
-                + "      for dmg_e = 1:logsout.numElements\n"
-                + "        try\n"
-                + "          dmg_el = logsout.getElement(dmg_e);\n"
-                + "          try; dmg_bp = strjoin(convertToCell(dmg_el.BlockPath), '/'); catch; dmg_bp = ''; end\n"
-                + "          if strcmp(dmg_bp, dmg_paths{dmg_c}); dmg_map(dmg_c) = dmg_e; break; end\n"
-                + "        catch; end\n"
+                + "      try\n"
+                + "        dmg_el = logsout.getElement(dmg_cols{dmg_c});\n"
+                + "        for dmg_e = 1:logsout.numElements\n"
+                + "          if strcmp(logsout.getElement(dmg_e).Name, dmg_cols{dmg_c}); dmg_map(dmg_c) = dmg_e; break; end\n"
+                + "        end\n"
+                + "      catch\n"
+                + "        for dmg_e = 1:logsout.numElements\n"
+                + "          try\n"
+                + "            dmg_el = logsout.getElement(dmg_e);\n"
+                + "            try; dmg_bp = strjoin(convertToCell(dmg_el.BlockPath), '/'); catch; dmg_bp = ''; end\n"
+                + "            if strcmp(dmg_bp, dmg_paths{dmg_c}); dmg_map(dmg_c) = dmg_e; break; end\n"
+                + "          catch; end\n"
+                + "        end\n"
                 + "      end\n"
                 + "    end\n"
                 + "  end\n"
@@ -741,6 +813,9 @@ public class MatlabSimulationRunner implements Closeable {
     public void stopSimulation() {
         userStopped.set(true);
         paused.set(false);
+        // 仿真可能还在 prepare 阶段（未 start），stop/continue 命令无效；
+        // userStopped=true 会让 run() 在 prepare 后跳过仿真启动
+        logMatlab("用户停止仿真");
         // 暂停中直接 stop 不生效，需要先 continue 再 stop
         submitCommand("continue");
         submitCommand("stop");
@@ -767,6 +842,7 @@ public class MatlabSimulationRunner implements Closeable {
         MatlabEngine eng = engine;
         engine = null;
         if (eng != null) {
+            // 清理模型状态（不关闭引擎），让下次仿真可以重新 load_system
             try {
                 engineExec.submit(() -> {
                     try {
@@ -774,16 +850,13 @@ public class MatlabSimulationRunner implements Closeable {
                         eng.eval("try; set_param('" + esc(modelName) + "','Dirty','off'); close_system('" + esc(modelName) + "', 0); catch; end");
                     } catch (Exception ignored) {
                     }
-                    eng.close();
                     return null;
-                }).get(120, TimeUnit.SECONDS);
+                }).get(60, TimeUnit.SECONDS);
             } catch (Exception e) {
-                log.warn("[MATLAB] 关闭引擎异常: {}", e.toString());
-                try {
-                    eng.disconnect();
-                } catch (Exception ignored) {
-                }
+                log.warn("[MATLAB] 清理模型状态异常: {}", e.toString());
             }
+            // 归还引擎到池中（不关闭），供下次仿真复用
+            enginePool.release(eng);
         }
         engineExec.shutdownNow();
         if (matlabLog != null) matlabLog.close();

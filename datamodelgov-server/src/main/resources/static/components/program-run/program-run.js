@@ -163,6 +163,35 @@ class ProgramRun extends HTMLElement {
 
     this.bindVarEvents();
 
+    // 查询 MATLAB 引擎状态并显示在 footer
+    this.refreshEngineStatus();
+
+  }
+
+  /** 查询 MATLAB 引擎状态，更新 footer 日志；启动中时自动轮询直到就绪/失败 */
+  async refreshEngineStatus() {
+    if (!this.footerLog) return;
+    try {
+      const url = window.AppConfig.getApiUrl('program', 'engine-status');
+      const result = await window.AppConfig.request(url);
+      if (result && result.code === 200 && result.data) {
+        const msg = result.data.message || '';
+        const status = result.data.status || '';
+        // 仿真未运行时才更新（避免覆盖仿真日志）
+        if (this.runStatus === 'IDLE' || !this.runStatus) {
+          this.footerLog.textContent = msg;
+        }
+        // 启动中时持续轮询
+        if (status === 'starting') {
+          this._engineStatusTimer = setTimeout(() => this.refreshEngineStatus(), 3000);
+        }
+      }
+    } catch (e) {
+      // 查询失败不阻塞页面
+      if (this.runStatus === 'IDLE' || !this.runStatus) {
+        this.footerLog.textContent = 'MATLAB 引擎状态未知';
+      }
+    }
   }
 
 
@@ -1651,25 +1680,8 @@ class ProgramRun extends HTMLElement {
 
     this.csvRows = rows;
 
+    // applyCsvToCharts 内部已调 updateAlertSummary，无需重复
     this.applyCsvToCharts(headers, rows);
-
-    const colIdx = {};
-
-    headers.forEach((h, i) => colIdx[h] = i);
-
-    const timeCol = colIdx['time'] != null ? colIdx['time'] : 0;
-
-    const timeData = rows.map(r => parseFloat(r[timeCol]));
-
-    const getLastVal = (colName) => {
-
-      if (!colName || colIdx[colName] == null) return null;
-
-      return parseFloat(rows[rows.length - 1][colIdx[colName]]);
-
-    };
-
-    this.updateAlertSummary(colIdx, rows, timeData, getLastVal);
 
   }
 
@@ -1831,6 +1843,9 @@ class ProgramRun extends HTMLElement {
 
     // 刷新游标显示（保持当前位置，不重置为 0）
     this.updateCursor(this.currentTime, true);
+
+    // 同步更新系统状态和告警汇总（实时数据也需要更新，不能等仿真结束）
+    this.updateAlertSummary(colIdx, rows, timeData, getLastVal);
 
   }
 
