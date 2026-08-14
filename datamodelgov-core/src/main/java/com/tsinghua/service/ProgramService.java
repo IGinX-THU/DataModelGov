@@ -947,7 +947,7 @@ public class ProgramService {
             data.put("message", "[MATLAB] 引擎已就绪");
         } else {
             data.put("status", "starting");
-            data.put("message", "[MATLAB] 引擎启动中，请稍候...");
+            data.put("message", "[MATLAB] 引擎启动中...");
         }
         return Result.success(data);
     }

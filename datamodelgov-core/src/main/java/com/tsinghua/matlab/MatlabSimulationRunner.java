@@ -562,7 +562,7 @@ public class MatlabSimulationRunner implements Closeable {
         sb.append("    set_param(dmg_srcPortH,'DataLogging','on');\n");
         sb.append("    try; set_param(dmg_srcPortH,'DataLoggingNameMode','Custom'); catch; end\n");
         sb.append("    set_param(dmg_srcPortH,'DataLoggingName',dmg_twName);\n");
-        sb.append("    dmg_srcBlockPath = get_param(dmg_srcBlockH, 'Path');\n");
+        sb.append("    dmg_srcBlockPath = getfullname(dmg_srcBlockH);\n");
         sb.append("    dmg_cols{end+1} = dmg_twName; dmg_paths{end+1} = dmg_srcBlockPath;\n");
         sb.append("    dmg_twOk = dmg_twOk + 1;\n");
         sb.append("  catch\n");
