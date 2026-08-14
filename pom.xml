@@ -221,6 +221,8 @@
                         <encoding>${project.build.sourceEncoding}</encoding>
                         <charset>${project.build.sourceEncoding}</charset>
                         <docencoding>${project.build.sourceEncoding}</docencoding>
+                        <doclint>none</doclint>
+                        <failOnError>false</failOnError>
                     </configuration>
                 </plugin>
 

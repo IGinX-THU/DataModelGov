@@ -33,6 +33,9 @@ public class DataSourceController {
 
     /**
      * 注册异构数据源 (Register Heterogeneous Data Source)
+     * @param jsonBody 数据源注册 JSON 报文
+     * @return 注册结果
+     * @throws Exception 解析或注册异常
      */
     @ApiOperation("注册异构数据源")
     @PostMapping("/register")
