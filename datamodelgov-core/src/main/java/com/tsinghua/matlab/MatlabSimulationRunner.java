@@ -621,10 +621,21 @@ public class MatlabSimulationRunner implements Closeable {
         }
     }
 
-    /** 取一次增量数据：WriteDataLogs 把运行中的日志刷入 workspace，再按游标取新增行 */
+    /** 取一次增量数据：WriteDataLogs 把运行中的日志刷入 workspace，再按游标取新增行。
+     *  向量信号会被展开为多列（<name>_1, <name>_2, ...），首次发现列变化时更新 headers。 */
     private void fetchIncremental() throws Exception {
         if (csvColumns.size() <= 1) return;
         eval(buildFetchScript(), CALL_TIMEOUT_SEC, "读取实时仿真数据");
+        // 检测列变化（向量信号展开、工作区标量追加），更新 csvColumns 并重发 headers
+        String newColStr = getString("dmg_newColStr");
+        if (hasText(newColStr)) {
+            List<String> newCols = new ArrayList<>(Arrays.asList(newColStr.split(",")));
+            if (!newCols.equals(csvColumns)) {
+                csvColumns.clear();
+                csvColumns.addAll(newCols);
+                sink.onHeaders(new ArrayList<>(csvColumns));
+            }
+        }
         Object data = call(() -> engine.getVariable("dmg_new"), CALL_TIMEOUT_SEC, "读取增量数据");
         List<String[]> rows = toRows(data, csvColumns.size());
         if (!rows.isEmpty()) {
@@ -636,9 +647,14 @@ public class MatlabSimulationRunner implements Closeable {
 
     private String buildFetchScript() {
         String m = esc(modelName);
+        // 枚举 logsout 全部元素，向量信号按列展开为 <name>_1, <name>_2, ...
+        // （与 exportResults 的展开规则一致），同时追加工作区标量为常数列。
+        // dmg_newCols 记录实际列名，供 Java 侧检测列变化并更新前端 headers。
         return "dmg_new = [];\n"
+                + "dmg_newCols = {};\n"
                 + "try; set_param('" + m + "','SimulationCommand','WriteDataLogs'); catch; end\n"
                 + "if exist('logsout','var') && isa(logsout,'Simulink.SimulationData.Dataset') && logsout.numElements > 0\n"
+                // 保留 dmg_map 构建（exportResults 依赖）
                 + "  if isempty(dmg_map) || any(dmg_map == 0)\n"
                 + "    dmg_map = zeros(1, numel(dmg_cols));\n"
                 + "    for dmg_c = 1:numel(dmg_cols)\n"
@@ -663,19 +679,65 @@ public class MatlabSimulationRunner implements Closeable {
                 + "  if dmg_total > dmg_cursor\n"
                 + "    dmg_sel = (dmg_cursor+1):dmg_total;\n"
                 + "    dmg_new = dmg_t(dmg_sel);\n"
+                + "    dmg_newCols{end+1} = 'time';\n"
+                + "    for dmg_e = 1:logsout.numElements\n"
+                + "      try\n"
+                + "        dmg_el = logsout.getElement(dmg_e);\n"
+                + "        dmg_name = dmg_el.Name;\n"
+                + "        if isempty(dmg_name); dmg_name = sprintf('sig_%d', dmg_e); end\n"
+                + "        dmg_v = dmg_el.Values.Data;\n"
+                + "        if isvector(dmg_v)\n"
+                + "          dmg_v = dmg_v(:);\n"
+                + "          if numel(dmg_v) >= dmg_total\n"
+                + "            dmg_new = [dmg_new dmg_v(dmg_sel)];\n"
+                + "            dmg_newCols{end+1} = matlab.lang.makeValidName(dmg_name);\n"
+                + "          end\n"
+                + "        elseif size(dmg_v,1) == dmg_total\n"
+                + "          for dmg_k = 1:size(dmg_v,2)\n"
+                + "            if size(dmg_v,2) == 1; dmg_cn = dmg_name; else; dmg_cn = sprintf('%s_%d', dmg_name, dmg_k); end\n"
+                + "            dmg_cn = matlab.lang.makeValidName(dmg_cn);\n"
+                + "            dmg_new = [dmg_new dmg_v(dmg_sel, dmg_k)];\n"
+                + "            dmg_newCols{end+1} = dmg_cn;\n"
+                + "          end\n"
+                + "        end\n"
+                + "      catch; end\n"
+                + "    end\n"
+                // 补充 dmg_cols 中未被 logsout 枚举覆盖的信号（DataLogging 失败、
+                // Values.Data 异常、或 From 块输出端口 DataLogging 名未生效等）。
+                // 优先用 dmg_map（BlockPath 匹配）从 logsout 取真实数据，取不到则补零列，
+                // 保证与改造前的实时列集一致（如 dp_fuel、lock_meter、xm、xd、CLP 等）。
                 + "    for dmg_c = 1:numel(dmg_cols)\n"
-                + "      dmg_col = zeros(numel(dmg_sel),1);\n"
-                + "      if dmg_map(dmg_c) > 0\n"
-                + "        try\n"
-                + "          dmg_v = logsout.getElement(dmg_map(dmg_c)).Values.Data(:);\n"
-                + "          if numel(dmg_v) >= dmg_total; dmg_col = dmg_v(dmg_sel); end\n"
-                + "        catch; end\n"
+                + "      dmg_cn = matlab.lang.makeValidName(dmg_cols{dmg_c});\n"
+                + "      if ~any(strcmp(dmg_newCols, dmg_cn))\n"
+                + "        dmg_col = zeros(numel(dmg_sel), 1);\n"
+                + "        if numel(dmg_map) >= dmg_c && dmg_map(dmg_c) > 0\n"
+                + "          try\n"
+                + "            dmg_v2 = logsout.getElement(dmg_map(dmg_c)).Values.Data(:);\n"
+                + "            if numel(dmg_v2) >= dmg_total; dmg_col = dmg_v2(dmg_sel); end\n"
+                + "          catch; end\n"
+                + "        end\n"
+                + "        dmg_new = [dmg_new dmg_col];\n"
+                + "        dmg_newCols{end+1} = dmg_cn;\n"
                 + "      end\n"
-                + "      dmg_new = [dmg_new dmg_col];\n"
                 + "    end\n"
                 + "    dmg_cursor = dmg_total;\n"
+                // 工作区标量（限制值、功率指令等）作为常数列追加
+                + "    dmg_wsScalars = {'NgMax','T45Max','MkpMax','WfMax','WfMin','errmax','Power_cmd'};\n"
+                + "    for dmg_i = 1:numel(dmg_wsScalars)\n"
+                + "      try\n"
+                + "        dmg_sn = dmg_wsScalars{dmg_i};\n"
+                + "        if exist(dmg_sn, 'var') == 1\n"
+                + "          dmg_sv = evalin('base', dmg_sn);\n"
+                + "          if isnumeric(dmg_sv) && isscalar(dmg_sv) && ~any(strcmp(dmg_newCols, dmg_sn))\n"
+                + "            dmg_new = [dmg_new repmat(dmg_sv, numel(dmg_sel), 1)];\n"
+                + "            dmg_newCols{end+1} = dmg_sn;\n"
+                + "          end\n"
+                + "        end\n"
+                + "      catch; end\n"
+                + "    end\n"
                 + "  end\n"
-                + "end\n";
+                + "end\n"
+                + "dmg_newColStr = strjoin(dmg_newCols, ',');\n";
     }
 
     /** 仿真结束后从 base workspace 汇总所有可用信号，写出 signals.csv / signals.mat */

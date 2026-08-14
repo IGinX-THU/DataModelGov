@@ -1186,6 +1186,7 @@ class ProgramRun extends HTMLElement {
     if (!name || !version) return;
     if (this._busyAction) return;
     this._busyAction = 'run';
+    this._cancelRun = false;
     this.updateRunButtons(this.runStatus || 'STARTING');
 
     try {
@@ -1195,18 +1196,28 @@ class ProgramRun extends HTMLElement {
         const statusUrl = window.AppConfig.getApiUrl('program', 'engine-status');
         const statusResult = await window.AppConfig.request(statusUrl);
         if (statusResult && statusResult.code === 200 && statusResult.data && statusResult.data.status === 'starting') {
-          if (this.footerLog) this.footerLog.textContent = '[MATLAB] 引擎卡在启动中，正在重启...';
+          if (this.footerLog) this.footerLog.textContent = '[MATLAB] 引擎正在重启...';
           const restartUrl = window.AppConfig.getApiUrl('program', 'engine-restart');
           await window.AppConfig.request(restartUrl, { method: 'POST' });
-          // 重启后等引擎就绪，轮询一次
+          // 重启后等引擎就绪，轮询；期间允许用户点停止取消
+          this._waitingEngine = true;
+          // 状态为 STARTING 时 stopBtn 是可用的，这里强制刷新一次确保按钮可用
+          this.updateRunButtons('STARTING');
           for (let i = 0; i < 60; i++) {
             await new Promise(r => setTimeout(r, 3000));
+            if (this._cancelRun) {
+              this._waitingEngine = false;
+              return; // 用户取消，不继续启动仿真
+            }
             const r = await window.AppConfig.request(statusUrl);
             if (r && r.code === 200 && r.data && r.data.status !== 'starting') break;
           }
+          this._waitingEngine = false;
         }
       } catch (e) {
         console.warn('引擎状态检查失败，继续运行:', e);
+      } finally {
+        this._waitingEngine = false;
       }
 
       this.currentDatas = this.currentConfigs.map(buildChartData);
@@ -1322,6 +1333,8 @@ class ProgramRun extends HTMLElement {
     } finally {
 
       this._busyAction = null;
+      this._waitingEngine = false;
+      this._cancelRun = false;
 
     }
 
@@ -1336,6 +1349,13 @@ class ProgramRun extends HTMLElement {
     const version = this.getAttribute('data-version');
 
     if (!name || !version) return;
+    // 引擎重启等待期间（_busyAction === 'run' 且正在轮询引擎状态）允许用户取消，
+    // 否则所有按钮都被锁死、既不能停也不能重试
+    if (this._busyAction === 'run' && this._waitingEngine) {
+      this._cancelRun = true;
+      if (this.footerLog) this.footerLog.textContent = '已取消仿真启动';
+      return;
+    }
     if (this._busyAction) return;
     this._busyAction = 'stop';
     this.updateRunButtons(this.runStatus || 'RUNNING');
@@ -1634,6 +1654,12 @@ class ProgramRun extends HTMLElement {
     // 收到 headers 时初始化
     if (data.headers && data.headers.length > 0) {
       this.liveHeaders = data.headers;
+    }
+
+    // reset=true（headers 变化/断线重连）：即使 newRows 为空也要清空已累积的旧行，
+    // 避免旧列数与新 headers 不匹配导致曲线错位
+    if (data.reset) {
+      this.liveRows = [];
     }
 
     // MATLAB 侧按模型实际固定步长对齐后的停止时间，用于校正时间轴上限

@@ -1716,8 +1716,12 @@ public class ProgramService {
 
         public void setHeaders(List<String> h) {
             this.headers = h;
-            // header 就绪后立即推送一次，让前端初始化图表
-            notifySubscribers(buildPayload(new ArrayList<>()));
+            // header 变化时清空已累积的行（列数/列序可能不匹配），并通知前端整体替换
+            rows.clear();
+            lastIndex = 0;
+            Map<String, Object> payload = buildPayload(new ArrayList<>());
+            payload.put("reset", true);
+            notifySubscribers(payload);
         }
 
         public List<String> getHeaders() { return headers; }
