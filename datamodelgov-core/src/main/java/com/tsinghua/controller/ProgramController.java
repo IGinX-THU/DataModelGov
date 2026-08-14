@@ -301,4 +301,18 @@ public class ProgramController {
             return ResponseEntity.internalServerError().body(null);
         }
     }
+
+    @ApiOperation("MATLAB 引擎状态")
+    @GetMapping("/engine-status")
+    @RequirePermission(Permission.READ)
+    public Result<Map<String, Object>> engineStatus() {
+        return programService.getEngineStatus();
+    }
+
+    @ApiOperation("重启 MATLAB 引擎")
+    @PostMapping("/engine-restart")
+    @RequirePermission(Permission.CREATE)
+    public Result<Map<String, Object>> engineRestart() {
+        return programService.restartEngine();
+    }
 }

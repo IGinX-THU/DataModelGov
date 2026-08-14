@@ -20,14 +20,22 @@ import com.tsinghua.dto.UploadResult;
 import com.tsinghua.dto.DataQueryRequest;
 import com.tsinghua.dto.TableDto;
 import com.tsinghua.model.Result;
+import com.tsinghua.matlab.MatlabSimulationRunner;
+import com.tsinghua.matlab.MatlabEnginePool;
 import com.tsinghua.util.ConvertUtil;
 import com.tsinghua.util.ProjectContext;
+import com.tsinghua.util.SimTimeUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import javax.annotation.PostConstruct;
+import javax.annotation.PreDestroy;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
+import javax.annotation.PostConstruct;
 
 import java.io.*;
 import java.nio.charset.Charset;
@@ -67,6 +75,17 @@ public class ProgramService {
     private final Map<Long, LiveDataBuffer> liveDataMap = new ConcurrentHashMap<>();
     // 暂停/恢复状态：key=taskTimestamp, value=true表示已暂停
     private final Map<Long, Boolean> pauseFlags = new ConcurrentHashMap<>();
+    // MATLAB Engine 会话：key=taskTimestamp，存在即表示该任务由引擎驱动（支持真实暂停/恢复/停止）
+    private final Map<Long, MatlabSimulationRunner> engineRunners = new ConcurrentHashMap<>();
+    // 常驻引擎池：避免每次仿真都重新启动 MATLAB（~2分钟）
+    private final MatlabEnginePool enginePool = new MatlabEnginePool();
+    // 引擎运行期不可用（如缺少 MATLAB 原生库）时置位，后续任务直接走 matlab -batch 回退
+    private volatile boolean engineDisabled = false;
+    // 仿真执行结果码
+    private static final int RUN_OK = 0;
+    private static final int RUN_STOPPED = 1;
+    private static final int RUN_FAILED = 2;
+    private static final int RUN_FALLBACK = 3;
     private static final Set<String> SUPPORTED_ARCHIVE = new HashSet<>(Arrays.asList(".zip", ".rar", ".7z", ".tar", ".tar.gz", ".tgz"));
     private static final boolean SEVENZIP_AVAILABLE;
 
@@ -79,6 +98,29 @@ public class ProgramService {
             log.error("SevenZipJBinding 初始化失败", e);
         }
         SEVENZIP_AVAILABLE = available;
+    }
+
+    // 运行期开关：置 false 可强制回退到 matlab -batch（引擎异常排查时用）
+    @Value("${matlab.engine.enabled:true}")
+    private boolean matlabEngineEnabled;
+
+    // MATLAB 安装根目录（如 C:\Program Files\MATLAB\R2019b）；留空则自动探测。
+    // 服务启动时注入到 MatlabSimulationRunner，用于在进程内加载 MATLAB 原生库，免去手动改 PATH。
+    @Value("${matlab.engine.home:}")
+    private String matlabHome;
+
+    @PostConstruct
+    private void initMatlabHome() {
+        MatlabSimulationRunner.configureMatlabHome(matlabHome);
+        // 引擎模式启用时，随 Spring Boot 启动常驻 MATLAB 引擎（异步，不阻塞启动）
+        if (matlabEngineEnabled) {
+            enginePool.init();
+        }
+    }
+
+    @PreDestroy
+    private void destroyEnginePool() {
+        enginePool.shutdown();
     }
 
     @Autowired
@@ -825,6 +867,9 @@ public class ProgramService {
         ProgramEntity entity = queryMeta(name, version, projectName);
         if (entity == null) return Result.error("程序不存在");
 
+        // 停止时间对齐到固定步长的整数倍，保证仿真真的停在用户设定的时刻上
+        final String alignedStopTime = alignStopTimeParam(stopTime, fixedStep);
+
         // Create task record
         long taskTimestamp = System.currentTimeMillis();
         ProgramTaskEntity task = new ProgramTaskEntity();
@@ -834,7 +879,7 @@ public class ProgramService {
         task.setProjectName(projectName);
         task.setStartTime(taskTimestamp);
         task.setStatus(TaskStatus.RUNNING);
-        task.setStopTime(stopTime);
+        task.setStopTime(alignedStopTime);
         task.setFixedStep(fixedStep);
         task.setNpCommand(npCommand);
         task.setLoadPower(loadPower);
@@ -846,12 +891,76 @@ public class ProgramService {
         // （doRun 线程下载/解压需要时间，此时前端 SSE 订阅才能拿到 buffer）
         liveDataMap.put(taskTimestamp, new LiveDataBuffer());
 
-        new Thread(() -> doRun(taskTimestamp, entity, stopTime, fixedStep, npCommand, loadPower, modelFile), "program-run-" + taskTimestamp).start();
+        new Thread(() -> doRun(taskTimestamp, entity, alignedStopTime, fixedStep, npCommand, loadPower, modelFile), "program-run-" + taskTimestamp).start();
 
         Map<String, Object> data = new HashMap<>();
         data.put("status", TaskStatus.RUNNING);
         data.put("taskTimestamp", taskTimestamp);
+        // 回传对齐后的停止时间，前端据此校正时间轴与游标上限
+        data.put("stopTime", alignedStopTime);
+        data.put("engineMode", isEngineMode());
         return Result.success("运行已启动", data);
+    }
+
+    /** 停止时间按固定步长取整（如 步长0.025、停止时间20.31 → 20.3） */
+    private String alignStopTimeParam(String stopTime, String fixedStep) {
+        if (!StringUtils.hasText(stopTime) || !StringUtils.hasText(fixedStep)) return stopTime;
+        double st = SimTimeUtil.parse(stopTime, Double.NaN);
+        double fs = SimTimeUtil.parse(fixedStep, Double.NaN);
+        if (Double.isNaN(st) || Double.isNaN(fs)) return stopTime;
+        String aligned = SimTimeUtil.format(SimTimeUtil.alignToStep(st, fs));
+        if (!aligned.equals(stopTime)) {
+            log.info("停止时间 {} 按固定步长 {} 对齐为 {}", stopTime, fixedStep, aligned);
+        }
+        return aligned;
+    }
+
+    /** 是否使用 MATLAB Engine API 驱动仿真（否则回退到 matlab -batch） */
+    private boolean isEngineMode() {
+        if (!matlabEngineEnabled || engineDisabled) return false;
+        if (!MatlabSimulationRunner.isApiAvailable()) return false;
+        // 引擎池启动失败时回退；启动中或已就绪都走引擎模式（borrow 会等待就绪）
+        if (enginePool.isFailed()) {
+            log.warn("MATLAB 引擎池启动失败，回退到 matlab -batch");
+            return false;
+        }
+        return true;
+    }
+
+    /** MATLAB 引擎状态（供前端 footer 显示） */
+    public Result<Map<String, Object>> getEngineStatus() {
+        Map<String, Object> data = new HashMap<>();
+        if (!matlabEngineEnabled) {
+            data.put("status", "disabled");
+            data.put("message", "[MATLAB] 引擎模式未启用（matlab.engine.enabled=false）");
+        } else if (engineDisabled) {
+            data.put("status", "fallback");
+            data.put("message", "[MATLAB] 引擎不可用，已回退到 matlab -batch");
+        } else if (!MatlabSimulationRunner.isApiAvailable()) {
+            data.put("status", "unavailable");
+            data.put("message", "[MATLAB] Engine API 不可用（缺少原生库）");
+        } else if (enginePool.isFailed()) {
+            data.put("status", "failed");
+            data.put("message", "[MATLAB] 引擎启动失败，将回退到 matlab -batch");
+        } else if (enginePool.isReady()) {
+            data.put("status", "ready");
+            data.put("message", "[MATLAB] 引擎已就绪");
+        } else {
+            data.put("status", "starting");
+            data.put("message", "[MATLAB] 引擎启动中...");
+        }
+        return Result.success(data);
+    }
+
+    /** 重启 MATLAB 引擎（用户在引擎卡住时手动触发） */
+    public Result<Map<String, Object>> restartEngine() {
+        log.info("用户请求重启 MATLAB 引擎");
+        engineDisabled = false;
+        enginePool.restart();
+        Map<String, Object> data = new HashMap<>();
+        data.put("status", "starting");
+        data.put("message", "[MATLAB] 引擎正在重启...");
+        return Result.success("重启请求已发送", data);
     }
 
     public Result<Map<String, Object>> stop(String name, String version, String projectName) {
@@ -865,6 +974,18 @@ public class ProgramService {
             if (task != null && TaskStatus.RUNNING.equals(task.getStatus())) {
                 Long ts = task.getTimestamp();
                 if (ts != null) {
+                    // 引擎模式：直接给 Simulink 发 stop 命令，仿真立即终止且已记录数据保留
+                    MatlabSimulationRunner runner = engineRunners.get(ts);
+                    if (runner != null) {
+                        runner.stopSimulation();
+                        pauseFlags.remove(ts);
+                        // 不在此处 setFinished：让 doRun 线程的 pollLoop 退出 + exportResults 完成后，
+                        // 由 finally 块统一设 finished=true，确保"已执行停止命令"、"仿真结束"等日志能通过 SSE 推送到前端
+                        updateTaskStatus(ts, TaskStatus.STOPPED, null, null, null, null);
+                        Map<String, Object> stopped = new HashMap<>();
+                        stopped.put("status", TaskStatus.STOPPED);
+                        return Result.success("已停止", stopped);
+                    }
                     // 先创建 stop.flag（让 progressiveReveal/MATLAB 检测到后退出）
                     File taskDir = new File(getTaskBaseDir(projectName != null ? projectName : task.getProjectName()), String.valueOf(ts));
                     try {
@@ -921,7 +1042,9 @@ public class ProgramService {
             JsonNode runtime = config.get("runtime");
             String preRunScript = runtime.path("preRunScript").asText("RunCtrlSysModelSHT");
             String modelFile = StringUtils.hasText(modelFileParam) ? modelFileParam : runtime.path("simulinkModel").asText("");
-            int stopTime = StringUtils.hasText(stopTimeParam) ? Integer.parseInt(stopTimeParam) : runtime.path("stopTime").asInt(30);
+            double stopTime = StringUtils.hasText(stopTimeParam)
+                    ? SimTimeUtil.parse(stopTimeParam, runtime.path("stopTime").asDouble(30))
+                    : runtime.path("stopTime").asDouble(30);
 
             String programDir = findProgramDir(taskDir, preRunScript);
             if (modelFile.isEmpty()) {
@@ -933,12 +1056,6 @@ public class ProgramService {
                     log.info("自动检测 Simulink 模型: {}", modelFile);
                 }
             }
-            String shortTaskDir = getShortPath(taskDir);
-            String shortProgramDir = getShortPath(new File(programDir));
-            log.info("MATLAB 运行目录: 原始={}, 短路径={}", taskDir.getAbsolutePath(), shortTaskDir);
-            log.info("MATLAB 程序目录: 原始={}, 短路径={}", programDir, shortProgramDir);
-            File wrapper = new File(taskDir, "run_wrapper.m");
-            writeWrapper(wrapper, shortTaskDir, shortProgramDir, preRunScript, modelFile, stopTime, fixedStepParam, npCommandParam, loadPowerParam);
             File oldCsv = new File(taskDir, "signals.csv");
             if (oldCsv.exists()) oldCsv.delete();
             File oldLiveCsv = new File(taskDir, "signals_live.csv");
@@ -947,59 +1064,21 @@ public class ProgramService {
             // 复用 run 方法中提前创建的 LiveDataBuffer（确保 SSE 订阅时已存在）
             // 使用 computeIfAbsent 保证变量 effectively final（lambda 中引用）
             LiveDataBuffer liveBuffer = liveDataMap.computeIfAbsent(taskTimestamp, k -> new LiveDataBuffer());
-
-            ProcessBuilder pb = new ProcessBuilder();
-            pb.directory(taskDir);
-            pb.command("cmd", "/c", "chcp 65001 && matlab -batch \"cd('"
-                    + escape(shortTaskDir) + "'); run_wrapper; exit;\"");
-            pb.redirectErrorStream(true);
             File logFile = new File(taskDir, "run.log");
-            pb.redirectOutput(logFile);
 
-            Process process = pb.start();
-            processMap.put(taskTimestamp, process);
-
-            // 阻塞等待 MATLAB 仿真完成（编译+仿真约 1-3 分钟）。
-            // 期间 LiveDataBuffer 只发心跳，前端显示"仿真启动中"无曲线。
-            // 仿真结束后由 progressiveReveal 按节拍释放 CSV 行，实现渐进式曲线 + 暂停/恢复。
-            boolean finished = process.waitFor(1200, TimeUnit.SECONDS);
-            processMap.remove(taskTimestamp);
-            File pauseFlag = new File(taskDir, "pause.flag");
-            File stopFlag = new File(taskDir, "stop.flag");
-            // stop 端点主动停止（杀进程）会导致 waitFor 返回且 exitCode 非零，
-            // 此时不报失败——stop 端点已将状态置为 STOPPED。
-            if (stopFlag.exists()) {
-                log.info("检测到 stop.flag，任务由用户主动停止，跳过失败判定与回放");
-                liveBuffer.setFinished(true);
-                return;
+            int result = RUN_FALLBACK;
+            if (isEngineMode()) {
+                result = runWithEngine(taskTimestamp, taskDir, programDir, preRunScript, modelFile,
+                        stopTime, fixedStepParam, npCommandParam, loadPowerParam, liveBuffer);
             }
-            if (!finished) {
-                process.destroyForcibly();
-                liveBuffer.setFinished(true);
-                updateTaskStatus(taskTimestamp, TaskStatus.FAILED, "运行超时", null, null, null);
-                return;
+            if (result == RUN_FALLBACK) {
+                result = runWithBatch(taskTimestamp, taskDir, programDir, preRunScript, modelFile,
+                        stopTime, fixedStepParam, npCommandParam, loadPowerParam, liveBuffer, logFile);
             }
-            int exitCode = process.exitValue();
-            String fullLog = readLastLines(logFile, 200);
-            log.info("程序运行结束，退出码: {}，日志:\n{}", exitCode, fullLog);
-            if (exitCode != 0) {
-                String err = readLastLines(logFile, 20);
-                updateTaskStatus(taskTimestamp, TaskStatus.FAILED, "MATLAB 退出码 " + exitCode + ": " + err, null, logFile.getAbsolutePath(), null);
-                return;
-            }
-
-            // === 渐进式回放：MATLAB 已跑完并写出完整 signals.csv，
-            // 此处按节拍把 CSV 行释放到 LiveDataBuffer，前端通过 SSE 看到曲线渐进生长。
-            // pause.flag / stop.flag 由 pause/resume/stop 端点控制。 ===
-            File liveCsv = new File(taskDir, "signals.csv");
-            if (liveCsv.exists()) {
-                progressiveReveal(liveCsv, liveBuffer, pauseFlag, stopFlag, stopTime);
-            } else {
-                log.warn("signals.csv 不存在，跳过渐进式回放");
-            }
-            // 回放期间若用户点了停止，stop 端点已置状态为 STOPPED，此处直接返回避免覆盖
-            if (stopFlag.exists()) {
-                log.info("回放期间收到停止指令，跳过结果处理与 SUCCESS 状态");
+            if (result != RUN_OK) {
+                // 用户停止 / 运行失败：状态已由停止端点或运行分支设置，不再覆盖。
+                // signals.csv 已由引擎 exportResults() 写到 taskDir（如果仿真已开始），
+                // results 接口会从 taskDir 兜底读取，无需在此入库。
                 return;
             }
 
@@ -1038,13 +1117,147 @@ public class ProgramService {
     }
 
     /**
+     * 通过 MATLAB Engine API 执行仿真：常驻 MATLAB 会话 + 异步 SimulationCommand，
+     * 曲线随仿真真实推进，暂停/恢复/停止直接作用于 Simulink 求解器。
+     *
+     * @return RUN_OK 正常结束；RUN_STOPPED 用户停止；RUN_FAILED 运行失败（状态已写）；
+     * RUN_FALLBACK 引擎不可用，需回退到 matlab -batch
+     */
+    private int runWithEngine(long taskTimestamp, File taskDir, String programDir, String preRunScript,
+                              String modelFile, double stopTime, String fixedStep, String npCommand,
+                              String loadPower, LiveDataBuffer liveBuffer) {
+        if (!StringUtils.hasText(modelFile)) {
+            log.warn("未指定 Simulink 模型，回退到 matlab -batch");
+            return RUN_FALLBACK;
+        }
+        String modelName = modelFile.replaceAll("\\.(slx|mdl)$", "");
+        MatlabSimulationRunner runner = new MatlabSimulationRunner(taskDir, programDir, preRunScript, modelName,
+                stopTime, fixedStep, npCommand, loadPower,
+                new MatlabSimulationRunner.LiveSink() {
+                    @Override
+                    public void onStopTime(double alignedStopTime) {
+                        liveBuffer.setStopTime(alignedStopTime);
+                    }
+
+                    @Override
+                    public void onHeaders(List<String> headers) {
+                        liveBuffer.setHeaders(headers);
+                    }
+
+                    @Override
+                    public void onRows(List<String[]> rows) {
+                        liveBuffer.appendRows(rows);
+                    }
+
+                    @Override
+                    public void onLog(String line) {
+                        liveBuffer.appendLogLine(line);
+                    }
+                },
+                enginePool);
+        engineRunners.put(taskTimestamp, runner);
+        try {
+            runner.run();
+            if (runner.isUserStopped()) {
+                log.info("引擎仿真被用户停止，仿真时间={}", runner.getLastSimTime());
+                return RUN_STOPPED;
+            }
+            log.info("引擎仿真完成：停止时间={}，最终仿真时间={}", runner.getAlignedStopTime(), runner.getLastSimTime());
+            return RUN_OK;
+        } catch (Throwable t) {
+            if (isEngineUnavailable(t)) {
+                engineDisabled = true;
+                log.error("MATLAB Engine 不可用，本次及后续仿真回退到 matlab -batch。"
+                        + "请确认本机已安装与 engine.jar 匹配的 MATLAB 版本，"
+                        + "或通过 matlab.engine.home 指定安装目录。原因: {}", t.toString());
+                return RUN_FALLBACK;
+            }
+            log.error("引擎仿真失败", t);
+            updateTaskStatus(taskTimestamp, TaskStatus.FAILED, t.getMessage(), null,
+                    new File(taskDir, "run.log").getAbsolutePath(), null);
+            return RUN_FAILED;
+        } finally {
+            engineRunners.remove(taskTimestamp);
+            runner.close();
+        }
+    }
+
+    /** 判断异常是否源于 MATLAB 原生库缺失（此时应回退，而不是把任务标记为失败） */
+    private boolean isEngineUnavailable(Throwable t) {
+        for (Throwable c = t; c != null; c = c.getCause()) {
+            if (c instanceof UnsatisfiedLinkError || c instanceof NoClassDefFoundError
+                    || c instanceof ExceptionInInitializerError) {
+                return true;
+            }
+            if (c == c.getCause()) break;
+        }
+        return false;
+    }
+
+    /**
+     * 回退方案：matlab -batch 阻塞跑完 sim() 后再渐进式回放 CSV。
+     * 仅在 MATLAB Engine API 不可用时使用（无真实暂停，暂停只是节流展示）。
+     */
+    private int runWithBatch(long taskTimestamp, File taskDir, String programDir, String preRunScript,
+                             String modelFile, double stopTime, String fixedStep, String npCommand,
+                             String loadPower, LiveDataBuffer liveBuffer, File logFile) throws Exception {
+        String shortTaskDir = getShortPath(taskDir);
+        String shortProgramDir = getShortPath(new File(programDir));
+        log.info("回退到 matlab -batch，运行目录={}，程序目录={}", shortTaskDir, shortProgramDir);
+        writeWrapper(new File(taskDir, "run_wrapper.m"), shortTaskDir, shortProgramDir, preRunScript,
+                modelFile, stopTime, fixedStep, npCommand, loadPower);
+
+        ProcessBuilder pb = new ProcessBuilder();
+        pb.directory(taskDir);
+        pb.command("cmd", "/c", "chcp 65001 && matlab -batch \"cd('"
+                + escape(shortTaskDir) + "'); run_wrapper; exit;\"");
+        pb.redirectErrorStream(true);
+        pb.redirectOutput(logFile);
+
+        Process process = pb.start();
+        processMap.put(taskTimestamp, process);
+        boolean finished = process.waitFor(1200, TimeUnit.SECONDS);
+        processMap.remove(taskTimestamp);
+
+        File pauseFlag = new File(taskDir, "pause.flag");
+        File stopFlag = new File(taskDir, "stop.flag");
+        if (stopFlag.exists()) {
+            log.info("检测到 stop.flag，任务由用户主动停止");
+            liveBuffer.setFinished(true);
+            return RUN_STOPPED;
+        }
+        if (!finished) {
+            process.destroyForcibly();
+            liveBuffer.setFinished(true);
+            updateTaskStatus(taskTimestamp, TaskStatus.FAILED, "运行超时", null, null, null);
+            return RUN_FAILED;
+        }
+        int exitCode = process.exitValue();
+        log.info("程序运行结束，退出码: {}，日志:\n{}", exitCode, readLastLines(logFile, 200));
+        if (exitCode != 0) {
+            updateTaskStatus(taskTimestamp, TaskStatus.FAILED,
+                    "MATLAB 退出码 " + exitCode + ": " + readLastLines(logFile, 20), null,
+                    logFile.getAbsolutePath(), null);
+            return RUN_FAILED;
+        }
+
+        File csv = new File(taskDir, "signals.csv");
+        if (csv.exists()) {
+            progressiveReveal(csv, liveBuffer, pauseFlag, stopFlag, stopTime);
+        } else {
+            log.warn("signals.csv 不存在，跳过渐进式回放");
+        }
+        return stopFlag.exists() ? RUN_STOPPED : RUN_OK;
+    }
+
+    /**
      * 渐进式回放：读取完整 signals_live.csv，按仿真时间节拍把行增量释放到 LiveDataBuffer。
      * 仿真本身已由 MATLAB 阻塞 sim() 跑完，此处只控制数据向前端的展现节奏（非真实仿真暂停）。
      * - 节拍：约 stopTime 秒内放完所有行（接近真实时间），每 100ms 释放一批
      * - pause.flag 存在时暂停释放（阻塞等待 flag 删除）
      * - stop.flag 存在时一次性释放剩余所有行并结束
      */
-    private void progressiveReveal(File liveCsv, LiveDataBuffer liveBuffer, File pauseFlag, File stopFlag, int stopTime) {
+    private void progressiveReveal(File liveCsv, LiveDataBuffer liveBuffer, File pauseFlag, File stopFlag, double stopTime) {
         List<String> lines;
         try {
             lines = Files.readAllLines(liveCsv.toPath(), StandardCharsets.UTF_8);
@@ -1069,7 +1282,7 @@ public class ProgramService {
 
         int totalRows = allRows.size();
         // 节拍：stopTime 秒内放完，每 100ms 一批（real-time pacing）
-        int totalTicks = Math.max(1, stopTime * 10);
+        int totalTicks = (int) Math.max(1, Math.round(stopTime * 10));
         int rowsPerTick = Math.max(1, (totalRows + totalTicks - 1) / totalTicks);
         long tickMs = 100;
 
@@ -1107,7 +1320,7 @@ public class ProgramService {
         }
     }
 
-    private void writeWrapper(File f, String taskDir, String programDir, String preRun, String modelFile, int stopTime,
+    private void writeWrapper(File f, String taskDir, String programDir, String preRun, String modelFile, double stopTime,
                               String fixedStep, String npCommand, String loadPower) throws IOException {
         StringBuilder sb = new StringBuilder();
         sb.append("cd('").append(escape(programDir)).append("');\n");
@@ -1486,186 +1699,6 @@ public class ProgramService {
     }
 
     /**
-     * 生成仿真脚本（阻塞 sim + 渐进式回放版本）
-     * - 使用阻塞 sim() 一次性运行完整仿真，结束后写完整 signals_live.csv（全部行）
-     * - 不做实时采集：DLL 模型 RuntimeObject 在 headless MATLAB 下不可用，InitialState 也不支持
-     * - Java 侧 progressiveReveal 读取完整 CSV 后按节拍释放到 LiveDataBuffer，支持暂停/恢复/停止
-     * - 不修改模型结构，使用信号日志（SignalLogging + 端口 DataLogging）记录信号
-     */
-    private void writeLiveWrapper(File f, String taskDir, String programDir, String preRun, String modelFile,
-                                  int stopTime, String fixedStep, String npCommand, String loadPower) throws IOException {
-        StringBuilder sb = new StringBuilder();
-        String modelName = modelFile != null ? modelFile.replaceAll("\\.(slx|mdl)$", "") : "";
-
-        // 1. cd + 预配置脚本 + 参数设置（与 writeWrapper 一致）
-        sb.append("cd('").append(escape(programDir)).append("');\n");
-        sb.append("try\n");
-        sb.append("    ").append(preRun).append(";\n");
-        sb.append("catch ME\n");
-        sb.append("    fid = fopen('error.txt', 'w');\n");
-        sb.append("    fprintf(fid, '%s\\n', ME.message);\n");
-        sb.append("    fclose(fid);\n");
-        sb.append("    rethrow(ME);\n");
-        sb.append("end\n");
-        if (StringUtils.hasText(npCommand)) {
-            sb.append("NpReferenceRpm = ").append(npCommand).append(";\n");
-        }
-        if (StringUtils.hasText(loadPower)) {
-            sb.append("MkpReferenceNm = ").append(loadPower).append(";\n");
-        }
-        if (StringUtils.hasText(fixedStep)) {
-            sb.append("Ts = ").append(fixedStep).append(";\n");
-        }
-        sb.append("PTReferenceLoadPowerW = MkpReferenceNm * (NpReferenceRpm * pi / 30);\n");
-        sb.append("Power_cmd = PTReferenceLoadPowerW;\n");
-        sb.append("NpDem = NpReferenceRpm;\n");
-        sb.append("if exist('NgReferenceRpm', 'var'), NgMax = NgReferenceRpm * 1.05; end\n");
-        sb.append("if exist('WfReferenceKgps', 'var'), WfMax = WfReferenceKgps * 2; WfMin = WfReferenceKgps * 0.01; end\n");
-
-        // 2. 加载模型 + 配置分块仿真参数
-        if (!modelName.isEmpty()) {
-            sb.append("try\n");
-            sb.append("    load_system('").append(escape(modelName)).append("');\n");
-            sb.append("    set_param('").append(escape(modelName)).append("', 'StopTime', '").append(stopTime).append("');\n");
-            if (StringUtils.hasText(fixedStep)) {
-                sb.append("    set_param('").append(escape(modelName)).append("', 'FixedStep', '").append(fixedStep).append("');\n");
-            }
-            // 不使用 SaveFinalState/InitialState：DLL 模型状态由 DLL 内部管理，Simulink 状态向量为空
-            // 不修改模型结构（不添加 To Workspace 块），改用信号日志（SignalLogging + 端口 DataLogging）记录信号
-
-            // 3. 信号日志：不修改模型结构，通过端口 DataLogging 记录信号
-            //    （已通过 MATLAB R2019b 测试验证：set_param(portHandle,'DataLogging','on') 可用）
-            sb.append("    set_param('").append(escape(modelName)).append("', 'SignalLogging', 'on');\n");
-            sb.append("    set_param('").append(escape(modelName)).append("', 'SignalLoggingName', 'logsout');\n");
-            // 3.0 清除模型中已有的 DataLogging，确保 logsOut 只含我们设置的信号
-            sb.append("    allPorts = find_system('").append(escape(modelName)).append("', 'FindAll', 'on', 'Type', 'Port');\n");
-            sb.append("    for pi = 1:numel(allPorts)\n");
-            sb.append("        try\n");
-            sb.append("            if strcmp(get_param(allPorts(pi), 'DataLogging'), 'on')\n");
-            sb.append("                set_param(allPorts(pi), 'DataLogging', 'off');\n");
-            sb.append("            end\n");
-            sb.append("        catch; end\n");
-            sb.append("    end\n");
-            // 3a. 核心信号：在源块输出端口设置 DataLogging，同时记录信号名→源块路径映射
-            sb.append("    sigNames = {};\n");
-            sb.append("    sigPaths = {};\n");
-            sb.append("    wsSignals = {\n");
-            sb.append("        'Np',       '").append(modelName).append("/Turboshaft Engine Control System/Np';\n");
-            sb.append("        'Ng',       '").append(modelName).append("/Turboshaft Engine Control System/Ng';\n");
-            sb.append("        'NpDem',    '").append(modelName).append("/Turboshaft Engine Control System/NpDem';\n");
-            sb.append("        'T45',      '").append(modelName).append("/Turboshaft Engine Control System/T45';\n");
-            sb.append("        'Mkp',      '").append(modelName).append("/Turboshaft Engine Control System/Mkp';\n");
-            sb.append("        'Wf_cmd',   '").append(modelName).append("/Fuel System/Wf_cmd';\n");
-            sb.append("        'CLP',      '").append(modelName).append("/Turboshaft Engine Control System/CLP';\n");
-            sb.append("        'Wf',       '").append(modelName).append("/Fuel System';\n");
-            sb.append("    };\n");
-            sb.append("    for i = 1:size(wsSignals, 1)\n");
-            sb.append("        try\n");
-            sb.append("            ph = get_param(wsSignals{i, 2}, 'PortHandles');\n");
-            sb.append("            set_param(ph.Outport(1), 'DataLogging', 'on');\n");
-            sb.append("            set_param(ph.Outport(1), 'DataLoggingName', wsSignals{i, 1});\n");
-            sb.append("            sigNames{end+1} = wsSignals{i, 1};\n");
-            sb.append("            sigPaths{end+1} = wsSignals{i, 2};\n");
-            sb.append("        catch; end\n");
-            sb.append("    end\n");
-            // 3b. Goto 信号：在 From 块输出端口设置 DataLogging，记录 From 块路径
-            sb.append("    gotoSignals = {'Np_fbk','Ng_fbk','Mkp_fbk','T45_fbk','Wf_kgps','WfProxyCmd'};\n");
-            sb.append("    for i = 1:numel(gotoSignals)\n");
-            sb.append("        try\n");
-            sb.append("            fromBlks = find_system('").append(escape(modelName)).append("', 'BlockType', 'From', 'GotoTag', gotoSignals{i});\n");
-            sb.append("            if ~isempty(fromBlks)\n");
-            sb.append("                ph = get_param(fromBlks{1}, 'PortHandles');\n");
-            sb.append("                set_param(ph.Outport(1), 'DataLogging', 'on');\n");
-            sb.append("                set_param(ph.Outport(1), 'DataLoggingName', gotoSignals{i});\n");
-            sb.append("                sigNames{end+1} = gotoSignals{i};\n");
-            sb.append("                sigPaths{end+1} = fromBlks{1};\n");
-            sb.append("            end\n");
-            sb.append("        catch; end\n");
-            sb.append("    end\n");
-
-            // 4. sim() 运行仿真 + 用 BlockPath 精确匹配信号并写入 CSV
-            sb.append("    simOut = sim('").append(escape(modelName)).append("', 'ReturnWorkspaceOutputs', 'on', 'StopTime', '").append(stopTime).append("');\n");
-            sb.append("    tout = simOut.tout;\n");
-            sb.append("    logsOut = simOut.logsout;\n");
-            sb.append("    csvHeader = {'Np','Ng','NpDem','T45','Mkp','Wf_cmd','CLP','Np_fbk','Ng_fbk','Mkp_fbk','T45_fbk','Wf_kgps','WfProxyCmd','Wf'};\n");
-            sb.append("    nPoints = length(tout);\n");
-            sb.append("    colData = zeros(nPoints, numel(csvHeader));\n");
-            sb.append("    matched = false(numel(csvHeader), 1);\n");
-            sb.append("    if isa(logsOut, 'Simulink.SimulationData.Dataset')\n");
-            sb.append("        for ci = 1:numel(csvHeader)\n");
-            // 查找信号名在 sigNames 中的索引，获取对应的源块路径
-            sb.append("            idx = find(strcmp(sigNames, csvHeader{ci}));\n");
-            sb.append("            if ~isempty(idx)\n");
-            sb.append("                targetPath = sigPaths{idx(1)};\n");
-            sb.append("                for ei = 1:logsOut.numElements\n");
-            sb.append("                    try\n");
-            sb.append("                        sig = logsOut.getElement(ei);\n");
-            sb.append("                        try; bp = strjoin(convertToCell(sig.BlockPath), '/'); catch; bp = ''; end\n");
-            sb.append("                        if strcmp(bp, targetPath)\n");
-            sb.append("                            v = sig.Values;\n");
-            sb.append("                            if isa(v, 'timeseries'); v = v.Data; end\n");
-            sb.append("                            if isvector(v)\n");
-            sb.append("                                if length(v) == nPoints\n");
-            sb.append("                                    colData(:, ci) = v(:);\n");
-            sb.append("                                    matched(ci) = true;\n");
-            sb.append("                                elseif length(v) == 1\n");
-            sb.append("                                    colData(:, ci) = repmat(v(1), nPoints, 1);\n");
-            sb.append("                                    matched(ci) = true;\n");
-            sb.append("                                end\n");
-            sb.append("                            end\n");
-            sb.append("                            break;\n");
-            sb.append("                        end\n");
-            sb.append("                    catch; end\n");
-            sb.append("                end\n");
-            sb.append("            end\n");
-            sb.append("        end\n");
-            // 兜底：BlockPath 未匹配的列，按信号名直接 getElement
-            sb.append("        for ci = 1:numel(csvHeader)\n");
-            sb.append("            if ~matched(ci)\n");
-            sb.append("                try\n");
-            sb.append("                    sig = logsOut.getElement(csvHeader{ci});\n");
-            sb.append("                    v = sig.Values;\n");
-            sb.append("                    if isa(v, 'timeseries'); v = v.Data; end\n");
-            sb.append("                    if isvector(v)\n");
-            sb.append("                        if length(v) == nPoints\n");
-            sb.append("                            colData(:, ci) = v(:);\n");
-            sb.append("                        elseif length(v) == 1\n");
-            sb.append("                            colData(:, ci) = repmat(v(1), nPoints, 1);\n");
-            sb.append("                        end\n");
-            sb.append("                    end\n");
-            sb.append("                catch; end\n");
-            sb.append("            end\n");
-            sb.append("        end\n");
-            sb.append("    end\n");
-            // 诊断：打印匹配情况到 run.log
-            sb.append("    nNonZero = sum(any(colData ~= 0, 1));\n");
-            sb.append("    fprintf('signal extraction: %d/%d columns have data\\n', nNonZero, numel(csvHeader));\n");
-            // 写入 CSV
-            sb.append("    fid = fopen('").append(escape(taskDir)).append("/signals_live.csv', 'w');\n");
-            sb.append("    fprintf(fid, 'time,Np,Ng,NpDem,T45,Mkp,Wf_cmd,CLP,Np_fbk,Ng_fbk,Mkp_fbk,T45_fbk,Wf_kgps,WfProxyCmd,Wf\\n');\n");
-            sb.append("    for ri = 1:nPoints\n");
-            sb.append("        fprintf(fid, '%.6f', tout(ri));\n");
-            sb.append("        for ci = 1:numel(csvHeader); fprintf(fid, ',%.6f', colData(ri, ci)); end\n");
-            sb.append("        fprintf(fid, '\\n');\n");
-            sb.append("    end\n");
-            sb.append("    fclose(fid);\n");
-            // 仿真结束后把 signals_live.csv 复制为 signals.csv（供现有结果处理流程使用）
-            sb.append("    copyfile('").append(escape(taskDir)).append("/signals_live.csv', '").append(escape(taskDir)).append("/signals.csv');\n");
-            sb.append("    set_param('").append(escape(modelName)).append("', 'Dirty', 'off');\n");
-            sb.append("    close_system('").append(escape(modelName)).append("', 0);\n");
-            sb.append("catch ME\n");
-            sb.append("    try; fclose(fid); catch; end\n");
-            sb.append("    try; set_param('").append(escape(modelName)).append("', 'Dirty', 'off'); close_system('").append(escape(modelName)).append("', 0); catch; end\n");
-            sb.append("    fid = fopen('").append(escape(taskDir)).append("/error.txt', 'w');\n");
-            sb.append("    fprintf(fid, '%s\\n', ME.message);\n");
-            sb.append("    fclose(fid);\n");
-            sb.append("    rethrow(ME);\n");
-            sb.append("end\n");
-        }
-        Files.write(f.toPath(), sb.toString().getBytes(StandardCharsets.UTF_8));
-    }
-
-    /**
      * 线程安全的实时数据缓冲：MATLAB 写 CSV → 监控线程读 CSV → append 到这里 → 前端轮询/SSE 取增量
      * 支持 SSE 订阅：有新数据时主动推送给所有订阅者，避免前端频繁轮询
      */
@@ -1674,21 +1707,36 @@ public class ProgramService {
         private final List<String[]> rows = Collections.synchronizedList(new ArrayList<>());
         private volatile int lastIndex = 0;
         private volatile boolean finished = false;
+        // 对齐到固定步长后的停止时间（引擎模式下由 MATLAB 实际生效值回填）
+        private volatile double stopTime = 0.0;
+        // 最新一条 MATLAB 日志（供前端 footer 显示）
+        private volatile String logLine = "";
         // SSE 订阅者列表
         private final List<SseEmitter> emitters = Collections.synchronizedList(new ArrayList<>());
 
         public void setHeaders(List<String> h) {
             this.headers = h;
-            // header 就绪后立即推送一次，让前端初始化图表
-            notifySubscribers(buildPayload(new ArrayList<>()));
+            // header 变化时清空已累积的行（列数/列序可能不匹配），并通知前端整体替换
+            rows.clear();
+            lastIndex = 0;
+            Map<String, Object> payload = buildPayload(new ArrayList<>());
+            payload.put("reset", true);
+            notifySubscribers(payload);
         }
 
         public List<String> getHeaders() { return headers; }
+
+        public void setStopTime(double t) { this.stopTime = t; }
 
         public void appendRows(List<String[]> newRows) {
             rows.addAll(newRows);
             // 有新数据时主动推送给所有 SSE 订阅者
             notifySubscribers(buildPayload(newRows));
+        }
+
+        public void appendLogLine(String line) {
+            this.logLine = line;
+            notifySubscribers(buildPayload(new ArrayList<>()));
         }
 
         /** 返回从 lastIndex 到末尾的增量数据，并更新 lastIndex（轮询降级用） */
@@ -1705,7 +1753,9 @@ public class ProgramService {
             }
             result.put("totalRows", total);
             result.put("currentSimTime", getCurrentSimTime());
+            result.put("stopTime", stopTime);
             result.put("finished", finished);
+            result.put("logLine", logLine);
             return result;
         }
 
@@ -1735,7 +1785,11 @@ public class ProgramService {
             snapshot.put("newRows", total > 0 ? new ArrayList<>(rows) : new ArrayList<>());
             snapshot.put("totalRows", total);
             snapshot.put("currentSimTime", getCurrentSimTime());
+            snapshot.put("stopTime", stopTime);
             snapshot.put("finished", finished);
+            snapshot.put("logLine", logLine);
+            // 快照包含全量数据（首次订阅或断线重连），前端需整体替换而非追加，避免重复
+            snapshot.put("reset", true);
             sendToEmitter(emitter, snapshot);
         }
 
@@ -1763,7 +1817,9 @@ public class ProgramService {
             payload.put("newRows", newRows);
             payload.put("totalRows", rows.size());
             payload.put("currentSimTime", getCurrentSimTime());
+            payload.put("stopTime", stopTime);
             payload.put("finished", finished);
+            payload.put("logLine", logLine);
             return payload;
         }
 
@@ -1821,8 +1877,8 @@ public class ProgramService {
      * 返回 SseEmitter，Spring MVC 异步处理保持连接
      */
     public SseEmitter subscribeLiveData(String name, String version, String projectName) {
-        // 超时设为 5 分钟（MATLAB 启动+仿真可能需要 2-3 分钟）
-        SseEmitter emitter = new SseEmitter(300000L);
+        // 超时设为 30 分钟：引擎模式下曲线随真实仿真推进，长仿真 + 暂停都会拉长连接时间
+        SseEmitter emitter = new SseEmitter(1800000L);
 
         ProgramTaskEntity task = queryLatestTask(name, version, projectName);
         if (task == null) {
@@ -1887,6 +1943,15 @@ public class ProgramService {
                 return Result.error("任务时间戳为空");
             }
             pauseFlags.put(ts, true);
+            // 引擎模式：SimulationCommand pause，求解器真正冻结（仿真时间不再推进）
+            MatlabSimulationRunner runner = engineRunners.get(ts);
+            if (runner != null) {
+                runner.pause();
+                log.info("已暂停仿真（引擎模式）: timestamp={}", ts);
+                Map<String, Object> paused = new HashMap<>();
+                paused.put("status", "PAUSED");
+                return Result.success("已暂停", paused);
+            }
             File taskDir = new File(getTaskBaseDir(projectName != null ? projectName : task.getProjectName()), String.valueOf(ts));
             File pauseFlag = new File(taskDir, "pause.flag");
             if (!pauseFlag.exists()) {
@@ -1925,6 +1990,15 @@ public class ProgramService {
                 return Result.error("任务时间戳为空");
             }
             pauseFlags.remove(ts);
+            // 引擎模式：SimulationCommand continue，从冻结的仿真时刻继续推进
+            MatlabSimulationRunner runner = engineRunners.get(ts);
+            if (runner != null) {
+                runner.resume();
+                log.info("已恢复仿真（引擎模式）: timestamp={}", ts);
+                Map<String, Object> resumed = new HashMap<>();
+                resumed.put("status", "RUNNING");
+                return Result.success("已恢复", resumed);
+            }
             File taskDir = new File(getTaskBaseDir(projectName != null ? projectName : task.getProjectName()), String.valueOf(ts));
             try {
                 Files.deleteIfExists(new File(taskDir, "pause.flag").toPath());
@@ -2473,7 +2547,7 @@ public class ProgramService {
                 }
             }
         }
-        
+
         Map<String, Object> data = new HashMap<>();
         // 检查是否处于暂停状态：pause 端点只设内存 pauseFlags + pause.flag 文件，不更新 IGinX 状态。
         // 刷新页面后 results 需要返回 "paused" 让前端恢复按钮显示"恢复"。
@@ -2488,6 +2562,10 @@ public class ProgramService {
         data.put("lastRunTime", task.getStartTime());
         data.put("npCommand", task.getNpCommand());
         data.put("loadPower", task.getLoadPower());
+        // 返回对齐后的停止时间，刷新页面时前端据此设置时间轴上限
+        if (task.getStopTime() != null) {
+            data.put("stopTime", task.getStopTime());
+        }
 
         if (task.getRunLog() != null) {
             data.put("runLog", task.getRunLog());
@@ -2527,25 +2605,30 @@ public class ProgramService {
         }
 
         // Fallback: read from CSV file
-        if (task.getResultCsvPath() != null) {
-            File csv = new File(task.getResultCsvPath());
-            if (csv.exists()) {
-                try {
-                    List<String[]> rows = new ArrayList<>();
-                    try (BufferedReader br = Files.newBufferedReader(csv.toPath(), StandardCharsets.UTF_8)) {
-                        String line;
-                        while ((line = br.readLine()) != null) {
-                            rows.add(line.split(","));
-                        }
+        File csv = task.getResultCsvPath() != null ? new File(task.getResultCsvPath()) : null;
+        // resultCsvPath 尚未设置时（doRun 线程还在导出/入库），尝试从任务目录读 signals.csv
+        if (csv == null || !csv.exists()) {
+            File taskDir = new File(getTaskBaseDir(projectName != null ? projectName : task.getProjectName()),
+                    String.valueOf(task.getTimestamp()));
+            File fallbackCsv = new File(taskDir, "signals.csv");
+            if (fallbackCsv.exists()) csv = fallbackCsv;
+        }
+        if (csv != null && csv.exists()) {
+            try {
+                List<String[]> rows = new ArrayList<>();
+                try (BufferedReader br = Files.newBufferedReader(csv.toPath(), StandardCharsets.UTF_8)) {
+                    String line;
+                    while ((line = br.readLine()) != null) {
+                        rows.add(line.split(","));
                     }
-                    List<String> headers = new ArrayList<>();
-                    if (!rows.isEmpty()) headers.addAll(Arrays.asList(rows.remove(0)));
-                    data.put("headers", headers);
-                    data.put("rows", rows);
-                } catch (Exception e) {
-                    log.error("读取结果CSV失败", e);
-                    data.put("lastError", "读取CSV失败: " + e.getMessage());
                 }
+                List<String> headers = new ArrayList<>();
+                if (!rows.isEmpty()) headers.addAll(Arrays.asList(rows.remove(0)));
+                data.put("headers", headers);
+                data.put("rows", rows);
+            } catch (Exception e) {
+                log.error("读取结果CSV失败", e);
+                data.put("lastError", "读取CSV失败: " + e.getMessage());
             }
         }
         return Result.success(data);
