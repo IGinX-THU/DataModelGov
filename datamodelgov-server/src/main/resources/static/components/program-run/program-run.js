@@ -1740,22 +1740,32 @@ class ProgramRun extends HTMLElement {
       // reset=true 表示服务端下发的是全量快照（首次订阅/断线重连），整体替换避免重复追加
       this.liveRows = data.reset ? data.newRows.slice() : (this.liveRows || []).concat(data.newRows);
 
-      // 先更新 currentTime，再画图——applyCsvToCharts 内部 setOption(..., true) 全量重绘时
-      // 会用 this.currentTime 画 markLine 竖线，如果此时 currentTime 还是旧值，竖线就会
-      // 画在旧位置，随后 updateCursor 再 merge 移到新位置，但全量重绘已结束、竖线更新
-      // 被拖到下一帧渲染，视觉上竖线始终滞后曲线一拍
       const simTime = data.currentSimTime || 0;
       this.currentTime = simTime;
 
-      // 用全量数据更新图表（竖线已在 currentTime 中就位）
-      this.csvHeaders = this.liveHeaders;
-      this.csvRows = this.liveRows;
-      this.applyCsvToCharts(this.liveHeaders, this.liveRows);
-
+      // 时间显示每次都更新（开销极小）
       if (this.statusBox) {
         const timeBox = this.shadowRoot.querySelector('.time-box');
         if (timeBox) timeBox.textContent = simTime.toFixed(3) + ' / ' + this.duration.toFixed(2) + ' s';
       }
+
+      // 图表重绘节流：applyCsvToCharts 遍历全部行 × 全部 series + 全量 setOption，
+      // 1000+ 行 × 10+ 图表时每次要数万次 parseFloat + 十几次 ECharts 重绘，
+      // SSE 来得快时前端会卡死。改为最多每 200ms 重绘一次，用 requestAnimationFrame 合并
+      this.csvHeaders = this.liveHeaders;
+      this.csvRows = this.liveRows;
+      if (!this._chartUpdatePending) {
+        this._chartUpdatePending = true;
+        const doUpdate = () => {
+          this._chartUpdatePending = false;
+          if (this.liveHeaders && this.liveRows && this.liveRows.length > 0) {
+            this.applyCsvToCharts(this.liveHeaders, this.liveRows);
+          }
+        };
+        if (this._chartUpdateTimer) clearTimeout(this._chartUpdateTimer);
+        this._chartUpdateTimer = setTimeout(doUpdate, 200);
+      }
+
     }
 
     // 更新状态 UI
@@ -1772,6 +1782,10 @@ class ProgramRun extends HTMLElement {
       this.updateStatusUI(status, data.lastError);
       // 结束后：暂停/恢复均禁用
       this.updateRunButtons(status);
+
+      // 取消待重绘的节流定时器，立即用最终数据重绘
+      if (this._chartUpdateTimer) { clearTimeout(this._chartUpdateTimer); this._chartUpdateTimer = null; }
+      this._chartUpdatePending = false;
 
       // 用已收到的实时数据重绘图表，确保停止时立刻显示部分曲线（不等 results 接口）
       // currentTime 保持为最后收到的仿真时间，不归零
