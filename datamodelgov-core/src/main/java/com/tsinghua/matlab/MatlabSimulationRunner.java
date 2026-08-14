@@ -77,7 +77,7 @@ public class MatlabSimulationRunner implements Closeable {
     private static final long INIT_TIMEOUT_SEC = 900;
     /** 单次引擎调用超时：仿真编译期间（1-3 分钟）调用会排队，需给足余量 */
     private static final long CALL_TIMEOUT_SEC = 1800;
-    private static final long POLL_INTERVAL_MS = 200;
+    private static final long POLL_INTERVAL_MS = 100;
 
     private static volatile Boolean apiAvailable;
     private static volatile String configuredMatlabHome;
@@ -106,6 +106,9 @@ public class MatlabSimulationRunner implements Closeable {
     private final AtomicBoolean userStopped = new AtomicBoolean(false);
     private final AtomicBoolean paused = new AtomicBoolean(false);
     private final List<String> csvColumns = new ArrayList<>();
+    /** 取数计数：列名只在首次和每 N 次检测，减少引擎调用次数 */
+    private int fetchCount = 0;
+    private static final int COL_CHECK_INTERVAL = 50;
 
     private volatile MatlabEngine engine;
     private volatile double alignedStopTime;
@@ -527,7 +530,7 @@ public class MatlabSimulationRunner implements Closeable {
         sb.append("    dmg_cols{end+1} = dmg_req{dmg_i,1}; dmg_paths{end+1} = dmg_req{dmg_i,2};\n");
         sb.append("  catch; end\n");
         sb.append("end\n");
-        sb.append("dmg_cursor = 0; dmg_map = [];\n");
+        sb.append("dmg_cursor = 0; dmg_map = []; dmg_layout = cell(0,3);\n");
         // 把 addWorkspaceBlocks 添加的 To Workspace 块对应的信号也加入 DataLogging。
         // DataLogging 只能设在输出端口上，不能设在 ToWorkspace 块的 Inport 上。
         // 做法：通过 PortConnectivity 找到 ToWorkspace 块 Inport 的信号源端口（上游 Outport），
@@ -595,40 +598,52 @@ public class MatlabSimulationRunner implements Closeable {
         sink.onHeaders(new ArrayList<>(csvColumns));
     }
 
-    /** 主循环：轮询仿真状态 + 拉取增量数据，直到仿真结束 */
+    /** 主循环：轮询仿真状态 + 拉取增量数据，直到仿真结束。
+     *  优化：把 status + simTime + WriteDataLogs + 取数合并成 1 次 eval + 1 次 getVariable，
+     *  避免每个周期 6-7 次 JNI 调用导致取数间隔过长、一次出一堆点。 */
     private void pollLoop(Future<Void> startFuture) throws Exception {
         boolean sawRunning = false;
         while (true) {
             Thread.sleep(POLL_INTERVAL_MS);
-            String status = param("SimulationStatus");
+            // 单次 eval 完成：读状态、读仿真时间、WriteDataLogs、取增量数据，打包成 dmg_poll
+            eval(buildPollScript(), CALL_TIMEOUT_SEC, "轮询+取数");
+            Object poll = call(() -> engine.getVariable("dmg_poll"), CALL_TIMEOUT_SEC, "读取轮询结果");
+            // dmg_poll = {status, simTimeStr, dmg_new, newColStr}
+            String status = "";
+            String simTimeStr = "0";
+            Object data = null;
+            String newColStr = "";
+            if (poll instanceof Object[]) {
+                Object[] parts = (Object[]) poll;
+                if (parts.length > 0 && parts[0] != null) status = String.valueOf(parts[0]);
+                if (parts.length > 1 && parts[1] != null) simTimeStr = String.valueOf(parts[1]);
+                if (parts.length > 2) data = parts[2];
+                if (parts.length > 3 && parts[3] != null) newColStr = String.valueOf(parts[3]);
+            }
+            double simTime = parseDouble(simTimeStr, lastSimTime);
+
             if ("running".equals(status) || "paused".equals(status)) {
                 sawRunning = true;
                 paused.set("paused".equals(status));
-                double t = parseDouble(param("SimulationTime"), lastSimTime);
-                if (t > lastSimTime) lastSimTime = t;
-                fetchIncremental();
+                if (simTime > lastSimTime) lastSimTime = simTime;
+                processData(data, newColStr);
             } else if (startFuture.isDone() && ("stopped".equals(status) || "terminating".equals(status))) {
-                // start 命令返回后仿真已在运行；此时回到 stopped 即表示仿真结束
-                // 先取最后一批数据（含最终时间点），再打日志，避免日志显示的时间落后于实际
-                fetchIncremental();
+                processData(data, newColStr);
                 logMatlab("仿真结束，状态=" + status + "，仿真时间=" + lastSimTime + "，用户停止=" + userStopped.get());
                 return;
             } else if (!sawRunning && startFuture.isDone()) {
-                // start 已返回但从未进入 running：可能是极短仿真，直接取数收尾
-                fetchIncremental();
+                processData(data, newColStr);
                 return;
             }
         }
     }
 
-    /** 取一次增量数据：WriteDataLogs 把运行中的日志刷入 workspace，再按游标取新增行。
-     *  向量信号会被展开为多列（<name>_1, <name>_2, ...），首次发现列变化时更新 headers。 */
-    private void fetchIncremental() throws Exception {
+    /** 处理取到的增量数据：检测列变化 + 转行 + 推送给前端 */
+    private void processData(Object data, String newColStr) throws Exception {
         if (csvColumns.size() <= 1) return;
-        eval(buildFetchScript(), CALL_TIMEOUT_SEC, "读取实时仿真数据");
-        // 检测列变化（向量信号展开、工作区标量追加），更新 csvColumns 并重发 headers
-        String newColStr = getString("dmg_newColStr");
-        if (hasText(newColStr)) {
+        fetchCount++;
+        boolean checkCols = (fetchCount == 1) || (fetchCount % COL_CHECK_INTERVAL == 0);
+        if (checkCols && hasText(newColStr)) {
             List<String> newCols = new ArrayList<>(Arrays.asList(newColStr.split(",")));
             if (!newCols.equals(csvColumns)) {
                 csvColumns.clear();
@@ -636,7 +651,6 @@ public class MatlabSimulationRunner implements Closeable {
                 sink.onHeaders(new ArrayList<>(csvColumns));
             }
         }
-        Object data = call(() -> engine.getVariable("dmg_new"), CALL_TIMEOUT_SEC, "读取增量数据");
         List<String[]> rows = toRows(data, csvColumns.size());
         if (!rows.isEmpty()) {
             String[] last = rows.get(rows.size() - 1);
@@ -645,99 +659,120 @@ public class MatlabSimulationRunner implements Closeable {
         }
     }
 
-    private String buildFetchScript() {
+    /** 合并轮询脚本：状态 + 仿真时间 + WriteDataLogs + 增量取数，结果打包到 dmg_poll cell */
+    private String buildPollScript() {
         String m = esc(modelName);
-        // 枚举 logsout 全部元素，向量信号按列展开为 <name>_1, <name>_2, ...
-        // （与 exportResults 的展开规则一致），同时追加工作区标量为常数列。
-        // dmg_newCols 记录实际列名，供 Java 侧检测列变化并更新前端 headers。
-        return "dmg_new = [];\n"
-                + "dmg_newCols = {};\n"
-                + "try; set_param('" + m + "','SimulationCommand','WriteDataLogs'); catch; end\n"
-                + "if exist('logsout','var') && isa(logsout,'Simulink.SimulationData.Dataset') && logsout.numElements > 0\n"
-                // 保留 dmg_map 构建（exportResults 依赖）
-                + "  if isempty(dmg_map) || any(dmg_map == 0)\n"
-                + "    dmg_map = zeros(1, numel(dmg_cols));\n"
-                + "    for dmg_c = 1:numel(dmg_cols)\n"
-                + "      try\n"
-                + "        dmg_el = logsout.getElement(dmg_cols{dmg_c});\n"
-                + "        for dmg_e = 1:logsout.numElements\n"
-                + "          if strcmp(logsout.getElement(dmg_e).Name, dmg_cols{dmg_c}); dmg_map(dmg_c) = dmg_e; break; end\n"
-                + "        end\n"
-                + "      catch\n"
-                + "        for dmg_e = 1:logsout.numElements\n"
-                + "          try\n"
-                + "            dmg_el = logsout.getElement(dmg_e);\n"
-                + "            try; dmg_bp = strjoin(convertToCell(dmg_el.BlockPath), '/'); catch; dmg_bp = ''; end\n"
-                + "            if strcmp(dmg_bp, dmg_paths{dmg_c}); dmg_map(dmg_c) = dmg_e; break; end\n"
-                + "          catch; end\n"
-                + "        end\n"
-                + "      end\n"
-                + "    end\n"
-                + "  end\n"
-                + "  dmg_t = logsout.getElement(1).Values.Time(:);\n"
-                + "  dmg_total = numel(dmg_t);\n"
-                + "  if dmg_total > dmg_cursor\n"
-                + "    dmg_sel = (dmg_cursor+1):dmg_total;\n"
-                + "    dmg_new = dmg_t(dmg_sel);\n"
-                + "    dmg_newCols{end+1} = 'time';\n"
-                + "    for dmg_e = 1:logsout.numElements\n"
-                + "      try\n"
-                + "        dmg_el = logsout.getElement(dmg_e);\n"
-                + "        dmg_name = dmg_el.Name;\n"
-                + "        if isempty(dmg_name); dmg_name = sprintf('sig_%d', dmg_e); end\n"
-                + "        dmg_v = dmg_el.Values.Data;\n"
-                + "        if isvector(dmg_v)\n"
-                + "          dmg_v = dmg_v(:);\n"
-                + "          if numel(dmg_v) >= dmg_total\n"
-                + "            dmg_new = [dmg_new dmg_v(dmg_sel)];\n"
-                + "            dmg_newCols{end+1} = matlab.lang.makeValidName(dmg_name);\n"
-                + "          end\n"
-                + "        elseif size(dmg_v,1) == dmg_total\n"
-                + "          for dmg_k = 1:size(dmg_v,2)\n"
-                + "            if size(dmg_v,2) == 1; dmg_cn = dmg_name; else; dmg_cn = sprintf('%s_%d', dmg_name, dmg_k); end\n"
-                + "            dmg_cn = matlab.lang.makeValidName(dmg_cn);\n"
-                + "            dmg_new = [dmg_new dmg_v(dmg_sel, dmg_k)];\n"
-                + "            dmg_newCols{end+1} = dmg_cn;\n"
-                + "          end\n"
-                + "        end\n"
-                + "      catch; end\n"
-                + "    end\n"
-                // 补充 dmg_cols 中未被 logsout 枚举覆盖的信号（DataLogging 失败、
-                // Values.Data 异常、或 From 块输出端口 DataLogging 名未生效等）。
-                // 优先用 dmg_map（BlockPath 匹配）从 logsout 取真实数据，取不到则补零列，
-                // 保证与改造前的实时列集一致（如 dp_fuel、lock_meter、xm、xd、CLP 等）。
-                + "    for dmg_c = 1:numel(dmg_cols)\n"
-                + "      dmg_cn = matlab.lang.makeValidName(dmg_cols{dmg_c});\n"
-                + "      if ~any(strcmp(dmg_newCols, dmg_cn))\n"
-                + "        dmg_col = zeros(numel(dmg_sel), 1);\n"
-                + "        if numel(dmg_map) >= dmg_c && dmg_map(dmg_c) > 0\n"
-                + "          try\n"
-                + "            dmg_v2 = logsout.getElement(dmg_map(dmg_c)).Values.Data(:);\n"
-                + "            if numel(dmg_v2) >= dmg_total; dmg_col = dmg_v2(dmg_sel); end\n"
-                + "          catch; end\n"
-                + "        end\n"
-                + "        dmg_new = [dmg_new dmg_col];\n"
-                + "        dmg_newCols{end+1} = dmg_cn;\n"
-                + "      end\n"
-                + "    end\n"
-                + "    dmg_cursor = dmg_total;\n"
-                // 工作区标量（限制值、功率指令等）作为常数列追加
-                + "    dmg_wsScalars = {'NgMax','T45Max','MkpMax','WfMax','WfMin','errmax','Power_cmd'};\n"
-                + "    for dmg_i = 1:numel(dmg_wsScalars)\n"
-                + "      try\n"
-                + "        dmg_sn = dmg_wsScalars{dmg_i};\n"
-                + "        if exist(dmg_sn, 'var') == 1\n"
-                + "          dmg_sv = evalin('base', dmg_sn);\n"
-                + "          if isnumeric(dmg_sv) && isscalar(dmg_sv) && ~any(strcmp(dmg_newCols, dmg_sn))\n"
-                + "            dmg_new = [dmg_new repmat(dmg_sv, numel(dmg_sel), 1)];\n"
-                + "            dmg_newCols{end+1} = dmg_sn;\n"
-                + "          end\n"
-                + "        end\n"
-                + "      catch; end\n"
-                + "    end\n"
-                + "  end\n"
-                + "end\n"
-                + "dmg_newColStr = strjoin(dmg_newCols, ',');\n";
+        StringBuilder sb = new StringBuilder();
+        // 1. 读状态和仿真时间
+        sb.append("dmg_status = ''; try; dmg_status = get_param('").append(m).append("','SimulationStatus'); catch; end\n");
+        sb.append("dmg_pv2 = '0'; try; dmg_pv2 = get_param('").append(m).append("','SimulationTime'); if ~ischar(dmg_pv2); dmg_pv2 = mat2str(dmg_pv2); end; catch; end\n");
+        // 2. 初始化取数变量
+        sb.append("dmg_new = [];\n");
+        sb.append("dmg_newCols = {};\n");
+        sb.append("dmg_newColStr = '';\n");
+        // 3. 仅在 running/paused/stopped 时做 WriteDataLogs + 取数
+        sb.append("if strcmp(dmg_status,'running') || strcmp(dmg_status,'paused') || strcmp(dmg_status,'stopped')\n");
+        sb.append("  try; set_param('").append(m).append("','SimulationCommand','WriteDataLogs'); catch; end\n");
+        sb.append("  if exist('logsout','var') && isa(logsout,'Simulink.SimulationData.Dataset') && logsout.numElements > 0\n");
+        // dmg_map 构建（exportResults 依赖）
+        sb.append("    if isempty(dmg_map) || any(dmg_map == 0)\n");
+        sb.append("      dmg_map = zeros(1, numel(dmg_cols));\n");
+        sb.append("      for dmg_c = 1:numel(dmg_cols)\n");
+        sb.append("        try\n");
+        sb.append("          dmg_el = logsout.getElement(dmg_cols{dmg_c});\n");
+        sb.append("          for dmg_e = 1:logsout.numElements\n");
+        sb.append("            if strcmp(logsout.getElement(dmg_e).Name, dmg_cols{dmg_c}); dmg_map(dmg_c) = dmg_e; break; end\n");
+        sb.append("          end\n");
+        sb.append("        catch\n");
+        sb.append("          for dmg_e = 1:logsout.numElements\n");
+        sb.append("            try\n");
+        sb.append("              dmg_el = logsout.getElement(dmg_e);\n");
+        sb.append("              try; dmg_bp = strjoin(convertToCell(dmg_el.BlockPath), '/'); catch; dmg_bp = ''; end\n");
+        sb.append("              if strcmp(dmg_bp, dmg_paths{dmg_c}); dmg_map(dmg_c) = dmg_e; break; end\n");
+        sb.append("            catch; end\n");
+        sb.append("          end\n");
+        sb.append("        end\n");
+        sb.append("      end\n");
+        sb.append("    end\n");
+        sb.append("    dmg_t = logsout.getElement(1).Values.Time(:);\n");
+        sb.append("    dmg_total = numel(dmg_t);\n");
+        sb.append("    if dmg_total > dmg_cursor\n");
+        sb.append("      dmg_sel = (dmg_cursor+1):dmg_total;\n");
+        sb.append("      dmg_new = dmg_t(dmg_sel);\n");
+        sb.append("      dmg_newCols{end+1} = 'time';\n");
+        // 首次构建 dmg_layout 缓存
+        sb.append("      if isempty(dmg_layout)\n");
+        sb.append("        dmg_layout = cell(0,3);\n");
+        sb.append("        for dmg_e = 1:logsout.numElements\n");
+        sb.append("          try\n");
+        sb.append("            dmg_el = logsout.getElement(dmg_e);\n");
+        sb.append("            dmg_name = dmg_el.Name;\n");
+        sb.append("            if isempty(dmg_name); dmg_name = sprintf('sig_%d', dmg_e); end\n");
+        sb.append("            dmg_v = dmg_el.Values.Data;\n");
+        sb.append("            if isvector(dmg_v)\n");
+        sb.append("              dmg_layout(end+1,:) = {dmg_e, matlab.lang.makeValidName(dmg_name), 1};\n");
+        sb.append("            elseif size(dmg_v,1) == dmg_total\n");
+        sb.append("              for dmg_k = 1:size(dmg_v,2)\n");
+        sb.append("                if size(dmg_v,2) == 1; dmg_cn = dmg_name; else; dmg_cn = sprintf('%s_%d', dmg_name, dmg_k); end\n");
+        sb.append("                dmg_layout(end+1,:) = {dmg_e, matlab.lang.makeValidName(dmg_cn), dmg_k};\n");
+        sb.append("              end\n");
+        sb.append("            end\n");
+        sb.append("          catch; end\n");
+        sb.append("        end\n");
+        sb.append("      end\n");
+        // 用缓存下标取数据
+        sb.append("      for dmg_i = 1:size(dmg_layout,1)\n");
+        sb.append("        try\n");
+        sb.append("          dmg_e = dmg_layout{dmg_i,1};\n");
+        sb.append("          dmg_cn = dmg_layout{dmg_i,2};\n");
+        sb.append("          dmg_k = dmg_layout{dmg_i,3};\n");
+        sb.append("          dmg_v = logsout.getElement(dmg_e).Values.Data;\n");
+        sb.append("          if isvector(dmg_v)\n");
+        sb.append("            dmg_v = dmg_v(:);\n");
+        sb.append("            if numel(dmg_v) >= dmg_total; dmg_new = [dmg_new dmg_v(dmg_sel)]; end\n");
+        sb.append("          elseif size(dmg_v,1) == dmg_total\n");
+        sb.append("            dmg_new = [dmg_new dmg_v(dmg_sel, dmg_k)];\n");
+        sb.append("          end\n");
+        sb.append("          dmg_newCols{end+1} = dmg_cn;\n");
+        sb.append("        catch; end\n");
+        sb.append("      end\n");
+        // 补充 dmg_cols 中未被 logsout 覆盖的信号
+        sb.append("      for dmg_c = 1:numel(dmg_cols)\n");
+        sb.append("        dmg_cn = matlab.lang.makeValidName(dmg_cols{dmg_c});\n");
+        sb.append("        if ~any(strcmp(dmg_newCols, dmg_cn))\n");
+        sb.append("          dmg_col = zeros(numel(dmg_sel), 1);\n");
+        sb.append("          if numel(dmg_map) >= dmg_c && dmg_map(dmg_c) > 0\n");
+        sb.append("            try\n");
+        sb.append("              dmg_v2 = logsout.getElement(dmg_map(dmg_c)).Values.Data(:);\n");
+        sb.append("              if numel(dmg_v2) >= dmg_total; dmg_col = dmg_v2(dmg_sel); end\n");
+        sb.append("            catch; end\n");
+        sb.append("          end\n");
+        sb.append("          dmg_new = [dmg_new dmg_col];\n");
+        sb.append("          dmg_newCols{end+1} = dmg_cn;\n");
+        sb.append("        end\n");
+        sb.append("      end\n");
+        sb.append("      dmg_cursor = dmg_total;\n");
+        // 工作区标量
+        sb.append("      dmg_wsScalars = {'NgMax','T45Max','MkpMax','WfMax','WfMin','errmax','Power_cmd'};\n");
+        sb.append("      for dmg_i = 1:numel(dmg_wsScalars)\n");
+        sb.append("        try\n");
+        sb.append("          dmg_sn = dmg_wsScalars{dmg_i};\n");
+        sb.append("          if exist(dmg_sn, 'var') == 1\n");
+        sb.append("            dmg_sv = evalin('base', dmg_sn);\n");
+        sb.append("            if isnumeric(dmg_sv) && isscalar(dmg_sv) && ~any(strcmp(dmg_newCols, dmg_sn))\n");
+        sb.append("              dmg_new = [dmg_new repmat(dmg_sv, numel(dmg_sel), 1)];\n");
+        sb.append("              dmg_newCols{end+1} = dmg_sn;\n");
+        sb.append("            end\n");
+        sb.append("          end\n");
+        sb.append("        catch; end\n");
+        sb.append("      end\n");
+        sb.append("    end\n");
+        sb.append("  end\n");
+        sb.append("  dmg_newColStr = strjoin(dmg_newCols, ',');\n");
+        sb.append("end\n");
+        // 4. 打包成 cell给 Java
+        sb.append("dmg_poll = {dmg_status, dmg_pv2, dmg_new, dmg_newColStr};\n");
+        return sb.toString();
     }
 
     /** 仿真结束后从 base workspace 汇总所有可用信号，写出 signals.csv / signals.mat */

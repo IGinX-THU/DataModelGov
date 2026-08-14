@@ -292,6 +292,64 @@ class ProgramRun extends HTMLElement {
 
 
 
+  showUnitIssues(issues) {
+
+    const root = this.shadowRoot;
+
+    let modal = root.querySelector('.alert-modal');
+
+    if (modal) modal.remove();
+
+    modal = document.createElement('div');
+
+    modal.className = 'alert-modal';
+
+    modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
+
+    const box = document.createElement('div');
+
+    box.style.cssText = 'background:#0f172a;border:1px solid #24344D;border-radius:8px;padding:24px;max-width:500px;max-height:400px;overflow:auto;color:#e5e7eb;font-size:13px;';
+
+    const title = document.createElement('div');
+
+    title.style.cssText = 'font-size:15px;font-weight:600;margin-bottom:16px;color:#f59e0b;';
+
+    title.textContent = '单位一致性检查详情';
+
+    box.appendChild(title);
+
+    issues.forEach(s => {
+
+      const item = document.createElement('div');
+
+      item.style.cssText = 'padding:8px 0;border-bottom:1px solid #24344D;';
+
+      item.textContent = s;
+
+      box.appendChild(item);
+
+    });
+
+    const closeBtn = document.createElement('button');
+
+    closeBtn.textContent = '关闭';
+
+    closeBtn.style.cssText = 'margin-top:16px;padding:6px 16px;background:#1e293b;border:1px solid #24344D;border-radius:4px;color:#e5e7eb;cursor:pointer;';
+
+    closeBtn.addEventListener('click', () => modal.remove());
+
+    box.appendChild(closeBtn);
+
+    modal.appendChild(box);
+
+    modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+
+    root.appendChild(modal);
+
+  }
+
+
+
   exportData() {
 
     if (!this.csvHeaders || !this.csvRows) {
@@ -2059,9 +2117,11 @@ class ProgramRun extends HTMLElement {
 
             const tag = issues.length > 0 ? 'warn' : 'ok';
 
-            const tagText = issues.length > 0 ? `${issues.length}项待确认` : '通过';
+            const tagText = issues.length > 0 ? `${issues.length}项` : '通过';
 
-            const desc = issues.length > 0 ? issues.join('; ') : '单位一致';
+            const desc = issues.length > 0
+              ? `<a class="status-link" data-unit-issues='${JSON.stringify(issues).replace(/'/g,"&#39;")}'>查看详情</a>`
+              : '单位一致';
 
             return `<tr><td class="sys-name">${m.icon} ${m.name}</td><td><span class="status-tag ${tag}">${tagText}</span></td><td class="status-desc">${desc}</td></tr>`;
 
@@ -2080,6 +2140,17 @@ class ProgramRun extends HTMLElement {
         return `<tr><td class="sys-name">${m.icon} ${m.name}</td><td><span class="status-tag ${connected ? 'ok' : 'warn'}">${tagText}</span></td><td class="status-desc">${connected ? '数据正常' : '信号未接出'}</td></tr>`;
 
       }).join('');
+
+      // 绑定单位一致性检查"查看详情"点击事件
+      statusTbody.querySelectorAll('a.status-link[data-unit-issues]').forEach(a => {
+        a.style.cssText = 'color:#f59e0b;cursor:pointer;text-decoration:underline;font-size:10px;';
+        a.addEventListener('click', () => {
+          try {
+            const issues = JSON.parse(a.getAttribute('data-unit-issues'));
+            this.showUnitIssues(issues);
+          } catch (e) { console.warn('解析单位检查问题失败', e); }
+        });
+      });
 
     }
 
