@@ -1832,6 +1832,20 @@ class ProgramRun extends HTMLElement {
 
     headers.forEach((h, i) => colIdx[h] = i);
 
+    // 别名：/live-stream 里向量信号若是单列，列名不带 _N 后缀（如 CavityState8_PaK），
+    // 而 /results 和前端配置用 _1 后缀（如 CavityState8_PaK_1）。
+    // 对没有 _N 展开的单列信号建立 _1 别名，让两种列名都能命中同一列。
+    const expanded = new Set();
+    headers.forEach(h => {
+      const m = h.match(/^(.+)_(\d+)$/);
+      if (m) expanded.add(m[1]);
+    });
+    headers.forEach(h => {
+      if (!expanded.has(h) && colIdx[h + '_1'] == null) {
+        colIdx[h + '_1'] = colIdx[h];
+      }
+    });
+
     const timeCol = colIdx['time'] != null ? colIdx['time'] : 0;
 
     const timeData = rows.map(r => parseFloat(r[timeCol]));

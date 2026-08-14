@@ -6,6 +6,7 @@ window.AppConfig = {
     // API基础配置
     api: {
         baseURL: 'http://localhost:8080', // 可配置的API域名
+        //baseURL: 'http://124.65.131.2:18080',
         // 前端请求超时时间（毫秒），建议略小于后端超时时间
         timeout: 55000,
         headers: {
