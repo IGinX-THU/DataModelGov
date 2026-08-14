@@ -1223,9 +1223,9 @@ class ProgramRun extends HTMLElement {
 
       this.pauseBtn.innerHTML = paused
 
-        ? '<span class="ico">▶</span>恢复'
+          ? '<span class="ico">▶</span>恢复'
 
-        : '<span class="ico">⏸</span>暂停';
+          : '<span class="ico">⏸</span>暂停';
 
     }
 
@@ -1332,7 +1332,7 @@ class ProgramRun extends HTMLElement {
 
         // 后端会把停止时间对齐到固定步长的整数倍，以对齐后的值为准（仿真会真的停在该时刻）
         const alignedStopTime = result.data && result.data.stopTime != null
-          ? parseFloat(result.data.stopTime) : NaN;
+            ? parseFloat(result.data.stopTime) : NaN;
 
         this.duration = !isNaN(alignedStopTime) ? alignedStopTime : (parseFloat(inputs[0].value) || 30);
 
@@ -1424,9 +1424,9 @@ class ProgramRun extends HTMLElement {
 
       const url = window.AppConfig.getApiUrl('program', 'stop')
 
-        + '?name=' + encodeURIComponent(name) + '&version=' + encodeURIComponent(version)
+          + '?name=' + encodeURIComponent(name) + '&version=' + encodeURIComponent(version)
 
-        + (pn ? '&projectName=' + encodeURIComponent(pn) : '');
+          + (pn ? '&projectName=' + encodeURIComponent(pn) : '');
 
       const result = await window.AppConfig.request(url, { method: 'POST' });
 
@@ -1484,8 +1484,8 @@ class ProgramRun extends HTMLElement {
     try {
       const pn = this.getProjectName();
       const url = window.AppConfig.getApiUrl('program', 'pause')
-        + '?name=' + encodeURIComponent(name) + '&version=' + encodeURIComponent(version)
-        + (pn ? '&projectName=' + encodeURIComponent(pn) : '');
+          + '?name=' + encodeURIComponent(name) + '&version=' + encodeURIComponent(version)
+          + (pn ? '&projectName=' + encodeURIComponent(pn) : '');
       const result = await window.AppConfig.request(url, { method: 'POST' });
       if (result && result.code === 200) {
         this._paused = true;
@@ -1517,8 +1517,8 @@ class ProgramRun extends HTMLElement {
     try {
       const pn = this.getProjectName();
       const url = window.AppConfig.getApiUrl('program', 'resume')
-        + '?name=' + encodeURIComponent(name) + '&version=' + encodeURIComponent(version)
-        + (pn ? '&projectName=' + encodeURIComponent(pn) : '');
+          + '?name=' + encodeURIComponent(name) + '&version=' + encodeURIComponent(version)
+          + (pn ? '&projectName=' + encodeURIComponent(pn) : '');
       const result = await window.AppConfig.request(url, { method: 'POST' });
       if (result && result.code === 200) {
         this._paused = false;
@@ -1740,32 +1740,22 @@ class ProgramRun extends HTMLElement {
       // reset=true 表示服务端下发的是全量快照（首次订阅/断线重连），整体替换避免重复追加
       this.liveRows = data.reset ? data.newRows.slice() : (this.liveRows || []).concat(data.newRows);
 
+      // 先更新 currentTime，再画图——applyCsvToCharts 内部 setOption(..., true) 全量重绘时
+      // 会用 this.currentTime 画 markLine 竖线，如果此时 currentTime 还是旧值，竖线就会
+      // 画在旧位置，随后 updateCursor 再 merge 移到新位置，但全量重绘已结束、竖线更新
+      // 被拖到下一帧渲染，视觉上竖线始终滞后曲线一拍
       const simTime = data.currentSimTime || 0;
       this.currentTime = simTime;
 
-      // 时间显示每次都更新（开销极小）
+      // 用全量数据更新图表（竖线已在 currentTime 中就位）
+      this.csvHeaders = this.liveHeaders;
+      this.csvRows = this.liveRows;
+      this.applyCsvToCharts(this.liveHeaders, this.liveRows);
+
       if (this.statusBox) {
         const timeBox = this.shadowRoot.querySelector('.time-box');
         if (timeBox) timeBox.textContent = simTime.toFixed(3) + ' / ' + this.duration.toFixed(2) + ' s';
       }
-
-      // 图表重绘节流：applyCsvToCharts 遍历全部行 × 全部 series + 全量 setOption，
-      // 1000+ 行 × 10+ 图表时每次要数万次 parseFloat + 十几次 ECharts 重绘，
-      // SSE 来得快时前端会卡死。改为最多每 200ms 重绘一次，用 requestAnimationFrame 合并
-      this.csvHeaders = this.liveHeaders;
-      this.csvRows = this.liveRows;
-      if (!this._chartUpdatePending) {
-        this._chartUpdatePending = true;
-        const doUpdate = () => {
-          this._chartUpdatePending = false;
-          if (this.liveHeaders && this.liveRows && this.liveRows.length > 0) {
-            this.applyCsvToCharts(this.liveHeaders, this.liveRows);
-          }
-        };
-        if (this._chartUpdateTimer) clearTimeout(this._chartUpdateTimer);
-        this._chartUpdateTimer = setTimeout(doUpdate, 200);
-      }
-
     }
 
     // 更新状态 UI
@@ -1783,10 +1773,6 @@ class ProgramRun extends HTMLElement {
       // 结束后：暂停/恢复均禁用
       this.updateRunButtons(status);
 
-      // 取消待重绘的节流定时器，立即用最终数据重绘
-      if (this._chartUpdateTimer) { clearTimeout(this._chartUpdateTimer); this._chartUpdateTimer = null; }
-      this._chartUpdatePending = false;
-
       // 用已收到的实时数据重绘图表，确保停止时立刻显示部分曲线（不等 results 接口）
       // currentTime 保持为最后收到的仿真时间，不归零
       if (this.liveHeaders && this.liveRows && this.liveRows.length > 0) {
@@ -1798,12 +1784,12 @@ class ProgramRun extends HTMLElement {
       // 仿真结束后拉取完整结果（触发结果文件生成、入库、状态修正等后续流程）
       // 如果 results 返回了更完整的数据（含 To Workspace 信号），会覆盖当前实时数据
       window.AppConfig.get('program', 'results', { name, version, ...(this.getProjectName() ? { projectName: this.getProjectName() } : {}) })
-        .then(result => {
-          if (result && result.code === 200 && result.data) {
-            this.handleResultData(result.data, name, version);
-          }
-        })
-        .catch(e => console.error('获取最终结果失败:', e));
+          .then(result => {
+            if (result && result.code === 200 && result.data) {
+              this.handleResultData(result.data, name, version);
+            }
+          })
+          .catch(e => console.error('获取最终结果失败:', e));
     }
   }
 
@@ -2103,7 +2089,7 @@ class ProgramRun extends HTMLElement {
 
         alertContainer.innerHTML = alerts.map(a =>
 
-          `<div class="alert ${a.level === '一级' ? 'alert-danger' : 'alert-warn'}"><span class="alert-time">${a.time.toFixed(2)} s</span><span class="alert-icon">${a.level === '一级' ? '🔴' : '🟡'}</span>${a.desc} — ${a.level}告警</div>`
+            `<div class="alert ${a.level === '一级' ? 'alert-danger' : 'alert-warn'}"><span class="alert-time">${a.time.toFixed(2)} s</span><span class="alert-icon">${a.level === '一级' ? '🔴' : '🟡'}</span>${a.desc} — ${a.level}告警</div>`
 
         ).join('');
 
@@ -2148,8 +2134,8 @@ class ProgramRun extends HTMLElement {
             const tagText = issues.length > 0 ? `${issues.length}项` : '通过';
 
             const desc = issues.length > 0
-              ? `<a class="status-link" data-unit-issues='${JSON.stringify(issues).replace(/'/g,"&#39;")}'>查看详情</a>`
-              : '单位一致';
+                ? `<a class="status-link" data-unit-issues='${JSON.stringify(issues).replace(/'/g,"&#39;")}'>查看详情</a>`
+                : '单位一致';
 
             return `<tr><td class="sys-name">${m.icon} ${m.name}</td><td><span class="status-tag ${tag}">${tagText}</span></td><td class="status-desc">${desc}</td></tr>`;
 
@@ -2591,7 +2577,7 @@ class ProgramRun extends HTMLElement {
 
         modelFileSelect.innerHTML = data.modelFiles.map(f =>
 
-          `<option value="${f}">${f}</option>`
+            `<option value="${f}">${f}</option>`
 
         ).join('');
 
@@ -2599,7 +2585,7 @@ class ProgramRun extends HTMLElement {
 
         const lastModelFile = data.params && data.params.modelFile
 
-          ? data.params.modelFile : null;
+            ? data.params.modelFile : null;
 
         if (lastModelFile && data.modelFiles.includes(lastModelFile)) {
 
@@ -2621,7 +2607,7 @@ class ProgramRun extends HTMLElement {
 
             const mn = this.programFilesData && this.programFilesData.params
 
-              ? this.programFilesData.params.modelName : '';
+                ? this.programFilesData.params.modelName : '';
 
             tag.textContent = mn || modelFileSelect.value.replace(/\.(slx|mdl)$/i, '');
 
@@ -2868,167 +2854,41 @@ const OVERVIEW_CHARTS = [
 
   chart('转速响应', 12000, 48000,
 
-    sig('Np指令', colors.yellow, { dashed: true }),
-
-    sig('Np', colors.green),
-
-    sig('Ng', colors.cyan)
-
-  ),
-
-  chart('温度与扭矩', 0, 2400,
-
-    sig('T45 (K)', colors.red, { csv: 'HPC_T4_out' }),
-
-    sig('Mkp (N·m)', colors.blue)
-
-  ),
-
-  chart('燃油系统', 0, 0.25,
-
-    sig('Wf指令', colors.yellow, { dashed: true }),
-
-    sig('Wf实际', colors.orange)
-
-  ),
-
-  chart('滑油热管理', 0, 1200,
-
-    sig('ToutA', colors.green, { csv: 'OilBoundary_1' }),
-
-    sig('ToutB', colors.cyan, { csv: 'OilBoundary_2' }),
-
-    sig('空滑出口油温', colors.yellow, { csv: 'OilBoundary_3' })
-
-  ),
-
-  chart('空气流量 G01-G08', 0, 1500,
-
-    sig('G01', colors.red, { csv: 'AirBoundaryTP16_1' }),
-
-    sig('G02', colors.orange, { csv: 'AirBoundaryTP16_3' }),
-
-    sig('G03', colors.yellow, { csv: 'AirBoundaryTP16_5' }),
-
-    sig('G04', colors.green, { csv: 'AirBoundaryTP16_7' }),
-
-    sig('G05', colors.cyan, { csv: 'AirBoundaryTP16_9' }),
-
-    sig('G06', colors.blue, { csv: 'AirBoundaryTP16_11' }),
-
-    sig('G07', colors.purple, { csv: 'AirBoundaryTP16_13' }),
-
-    sig('G08', colors.pink, { csv: 'AirBoundaryTP16_15' })
-
-  ),
-
-  chart2('压力与收敛', 0, 2000000, 0, 1e-6,
-
-    sig('Pt3 (kPa)', colors.blue, { csv: 'Pt3' }),
-
-    sig('Pt45 (kPa)', colors.cyan, { csv: 'Pt45' }),
-
-    sig('Error', colors.yellow, { axis: 'right' })
-
-  )
-
-];
-
-
-
-const CHARTS_BY_TAB = {
-
-  '综合总览': OVERVIEW_CHARTS,
-
-  '总体性能': [
-
-    chart('转速响应', 12000, 48000,
-
-      sig('Np', colors.green),
-
-      sig('Ng', colors.cyan)
-
-    ),
-
-    chart('温度与扭矩', 0, 2400,
-
-      sig('T45 (K)', colors.red, { csv: 'HPC_T4_out' }),
-
-      sig('Mkp (N·m)', colors.blue)
-
-    ),
-
-    chart('温度参数', 0, 1500,
-
-      sig('Tt1 (K)', colors.red, { csv: 'Tt1' }),
-
-      sig('Tt3 (K)', colors.orange, { csv: 'Tt3' }),
-
-      sig('Tt45 (K)', colors.yellow, { csv: 'Tt45' }),
-
-      sig('T45 (K)', colors.pink, { csv: 'HPC_T4_out' })
-
-    ),
-
-    chart('压力参数', 0, 3500000,
-
-      sig('Pt1 (Pa)', colors.blue, { csv: 'Pt1' }),
-
-      sig('Pt3 (Pa)', colors.cyan, { csv: 'Pt3' }),
-
-      sig('Pt45 (Pa)', colors.green, { csv: 'Pt45' }),
-
-      sig('Pt5 (Pa)', colors.purple, { csv: 'Pt5' })
-
-    )
-
-  ],
-
-  '控制': [
-
-    chart('转速响应', 12000, 48000,
-
       sig('Np指令', colors.yellow, { dashed: true }),
 
       sig('Np', colors.green),
 
       sig('Ng', colors.cyan)
 
-    )
+  ),
 
-  ],
+  chart('温度与扭矩', 0, 2400,
 
-  '燃油': [
+      sig('T45 (K)', colors.red, { csv: 'HPC_T4_out' }),
 
-    chart('燃油系统', 0, 0.25,
+      sig('Mkp (N·m)', colors.blue)
+
+  ),
+
+  chart('燃油系统', 0, 0.25,
 
       sig('Wf指令', colors.yellow, { dashed: true }),
 
       sig('Wf实际', colors.orange)
 
-    )
+  ),
 
-  ],
-
-  '滑油': [
-
-    chart('滑油热管理', 0, 1200,
+  chart('滑油热管理', 0, 1200,
 
       sig('ToutA', colors.green, { csv: 'OilBoundary_1' }),
 
       sig('ToutB', colors.cyan, { csv: 'OilBoundary_2' }),
 
-      sig('空滑出口油温', colors.yellow, { csv: 'OilBoundary_3' }),
+      sig('空滑出口油温', colors.yellow, { csv: 'OilBoundary_3' })
 
-      sig('OilBoundary_4', colors.red, { csv: 'OilBoundary_4' })
+  ),
 
-    )
-
-  ],
-
-  '空气': [
-
-    chart('空气流量 G01-G08', 0, 1500,
+  chart('空气流量 G01-G08', 0, 1500,
 
       sig('G01', colors.red, { csv: 'AirBoundaryTP16_1' }),
 
@@ -3046,19 +2906,145 @@ const CHARTS_BY_TAB = {
 
       sig('G08', colors.pink, { csv: 'AirBoundaryTP16_15' })
 
+  ),
+
+  chart2('压力与收敛', 0, 2000000, 0, 1e-6,
+
+      sig('Pt3 (kPa)', colors.blue, { csv: 'Pt3' }),
+
+      sig('Pt45 (kPa)', colors.cyan, { csv: 'Pt45' }),
+
+      sig('Error', colors.yellow, { axis: 'right' })
+
+  )
+
+];
+
+
+
+const CHARTS_BY_TAB = {
+
+  '综合总览': OVERVIEW_CHARTS,
+
+  '总体性能': [
+
+    chart('转速响应', 12000, 48000,
+
+        sig('Np', colors.green),
+
+        sig('Ng', colors.cyan)
+
+    ),
+
+    chart('温度与扭矩', 0, 2400,
+
+        sig('T45 (K)', colors.red, { csv: 'HPC_T4_out' }),
+
+        sig('Mkp (N·m)', colors.blue)
+
+    ),
+
+    chart('温度参数', 0, 1500,
+
+        sig('Tt1 (K)', colors.red, { csv: 'Tt1' }),
+
+        sig('Tt3 (K)', colors.orange, { csv: 'Tt3' }),
+
+        sig('Tt45 (K)', colors.yellow, { csv: 'Tt45' }),
+
+        sig('T45 (K)', colors.pink, { csv: 'HPC_T4_out' })
+
+    ),
+
+    chart('压力参数', 0, 3500000,
+
+        sig('Pt1 (Pa)', colors.blue, { csv: 'Pt1' }),
+
+        sig('Pt3 (Pa)', colors.cyan, { csv: 'Pt3' }),
+
+        sig('Pt45 (Pa)', colors.green, { csv: 'Pt45' }),
+
+        sig('Pt5 (Pa)', colors.purple, { csv: 'Pt5' })
+
+    )
+
+  ],
+
+  '控制': [
+
+    chart('转速响应', 12000, 48000,
+
+        sig('Np指令', colors.yellow, { dashed: true }),
+
+        sig('Np', colors.green),
+
+        sig('Ng', colors.cyan)
+
+    )
+
+  ],
+
+  '燃油': [
+
+    chart('燃油系统', 0, 0.25,
+
+        sig('Wf指令', colors.yellow, { dashed: true }),
+
+        sig('Wf实际', colors.orange)
+
+    )
+
+  ],
+
+  '滑油': [
+
+    chart('滑油热管理', 0, 1200,
+
+        sig('ToutA', colors.green, { csv: 'OilBoundary_1' }),
+
+        sig('ToutB', colors.cyan, { csv: 'OilBoundary_2' }),
+
+        sig('空滑出口油温', colors.yellow, { csv: 'OilBoundary_3' }),
+
+        sig('OilBoundary_4', colors.red, { csv: 'OilBoundary_4' })
+
+    )
+
+  ],
+
+  '空气': [
+
+    chart('空气流量 G01-G08', 0, 1500,
+
+        sig('G01', colors.red, { csv: 'AirBoundaryTP16_1' }),
+
+        sig('G02', colors.orange, { csv: 'AirBoundaryTP16_3' }),
+
+        sig('G03', colors.yellow, { csv: 'AirBoundaryTP16_5' }),
+
+        sig('G04', colors.green, { csv: 'AirBoundaryTP16_7' }),
+
+        sig('G05', colors.cyan, { csv: 'AirBoundaryTP16_9' }),
+
+        sig('G06', colors.blue, { csv: 'AirBoundaryTP16_11' }),
+
+        sig('G07', colors.purple, { csv: 'AirBoundaryTP16_13' }),
+
+        sig('G08', colors.pink, { csv: 'AirBoundaryTP16_15' })
+
     ),
 
     chart2('压力与收敛', 0, 3500000, 0, 1e-6,
 
-      sig('Pt1 (Pa)', colors.blue, { csv: 'Pt1' }),
+        sig('Pt1 (Pa)', colors.blue, { csv: 'Pt1' }),
 
-      sig('Pt3 (Pa)', colors.cyan, { csv: 'Pt3' }),
+        sig('Pt3 (Pa)', colors.cyan, { csv: 'Pt3' }),
 
-      sig('Pt45 (Pa)', colors.green, { csv: 'Pt45' }),
+        sig('Pt45 (Pa)', colors.green, { csv: 'Pt45' }),
 
-      sig('Pt5 (Pa)', colors.purple, { csv: 'Pt5' }),
+        sig('Pt5 (Pa)', colors.purple, { csv: 'Pt5' }),
 
-      sig('Error', colors.yellow, { axis: 'right' })
+        sig('Error', colors.yellow, { axis: 'right' })
 
     )
 
@@ -3068,9 +3054,9 @@ const CHARTS_BY_TAB = {
 
     chart('告警统计', 0, 5,
 
-      sig('一级告警', colors.red),
+        sig('一级告警', colors.red),
 
-      sig('二级告警', colors.orange)
+        sig('二级告警', colors.orange)
 
     )
 
@@ -3120,13 +3106,13 @@ function buildEChartsOptions(data, time, status, duration) {
 
   const xMax = duration || (hasData
 
-    ? data.seriesData.find(s => s.data.length > 0).data[data.seriesData.find(s => s.data.length > 0).data.length - 1][0]
+      ? data.seriesData.find(s => s.data.length > 0).data[data.seriesData.find(s => s.data.length > 0).data.length - 1][0]
 
-    : 30);
+      : 30);
 
   const yAxis = data.y2Min != null
 
-    ? [
+      ? [
 
         { type: 'value', min: data.yMin ?? null, max: data.yMax ?? null, name: data.unit || '', nameTextStyle: { color: '#9ca3af', fontSize: 10 }, axisLabel: { color: '#9ca3af', fontSize: 10 }, splitLine: { lineStyle: { color: '#24344D' } }, axisLine: { lineStyle: { color: '#24344D' } } },
 
@@ -3134,7 +3120,7 @@ function buildEChartsOptions(data, time, status, duration) {
 
       ]
 
-    : { type: 'value', min: data.yMin ?? null, max: data.yMax ?? null, name: data.unit || '', nameTextStyle: { color: '#9ca3af', fontSize: 10 }, axisLabel: { color: '#9ca3af', fontSize: 10 }, splitLine: { lineStyle: { color: '#24344D' } }, axisLine: { lineStyle: { color: '#24344D' } } };
+      : { type: 'value', min: data.yMin ?? null, max: data.yMax ?? null, name: data.unit || '', nameTextStyle: { color: '#9ca3af', fontSize: 10 }, axisLabel: { color: '#9ca3af', fontSize: 10 }, splitLine: { lineStyle: { color: '#24344D' } }, axisLine: { lineStyle: { color: '#24344D' } } };
 
 
 
@@ -3248,9 +3234,9 @@ function buildLegend(card, cfg) {
 
     const style = s.dashed
 
-      ? 'background:repeating-linear-gradient(90deg,' + s.color + ',' + s.color + ' 2px,transparent 2px,transparent 4px)'
+        ? 'background:repeating-linear-gradient(90deg,' + s.color + ',' + s.color + ' 2px,transparent 2px,transparent 4px)'
 
-      : 'background:' + s.color;
+        : 'background:' + s.color;
 
     return '<span class=\'legend-item\'><span class=\'legend-color\' style=\'' + style + '\'></span>' + s.name + '</span>';
 
