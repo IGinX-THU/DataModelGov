@@ -952,6 +952,17 @@ public class ProgramService {
         return Result.success(data);
     }
 
+    /** 重启 MATLAB 引擎（用户在引擎卡住时手动触发） */
+    public Result<Map<String, Object>> restartEngine() {
+        log.info("用户请求重启 MATLAB 引擎");
+        engineDisabled = false;
+        enginePool.restart();
+        Map<String, Object> data = new HashMap<>();
+        data.put("status", "starting");
+        data.put("message", "[MATLAB] 引擎正在重启...");
+        return Result.success("重启请求已发送", data);
+    }
+
     public Result<Map<String, Object>> stop(String name, String version, String projectName) {
         log.info("停止请求: name={}, version={}, projectName={}", name, version, projectName);
         try {

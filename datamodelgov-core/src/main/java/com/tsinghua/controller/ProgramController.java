@@ -308,4 +308,11 @@ public class ProgramController {
     public Result<Map<String, Object>> engineStatus() {
         return programService.getEngineStatus();
     }
+
+    @ApiOperation("重启 MATLAB 引擎")
+    @PostMapping("/engine-restart")
+    @RequirePermission(Permission.CREATE)
+    public Result<Map<String, Object>> engineRestart() {
+        return programService.restartEngine();
+    }
 }

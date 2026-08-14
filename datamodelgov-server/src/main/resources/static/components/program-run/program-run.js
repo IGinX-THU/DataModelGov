@@ -150,25 +150,23 @@ class ProgramRun extends HTMLElement {
 
     this.runStatus = 'IDLE';
 
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        this.renderTab(this.activeTab);
-        this.updateCursor(this.currentTime, true);
-        this.updateStatusUI('IDLE');
-        this.updateRunButtons('IDLE');
-      });
-    });
+    // 不在 init() 里 renderTab：组件此时可能是 display:none，canvas 宽高为 0。
+    // renderTab 由 show() → _doShow() 在 display:block 后负责。
+    this.updateCursor(this.currentTime, true);
+    this.updateStatusUI('IDLE');
+    this.updateRunButtons('IDLE');
 
     this.renderVarTree();
 
     this.bindVarEvents();
 
-    // 查询 MATLAB 引擎状态并显示在 footer
-    this.refreshEngineStatus();
+    // 不在 init() 里调 refreshEngineStatus：组件在页面加载时就存在于 DOM（display:none），
+    // init() 会被立即执行，导致没进入组件页面就调 engine-status。
+    // 改为在 show() 时才调。
 
   }
 
-  /** 查询 MATLAB 引擎状态，更新 footer 日志；启动中时自动轮询直到就绪/失败 */
+  /** 查询 MATLAB 引擎状态，更新 footer 日志 */
   async refreshEngineStatus() {
     if (!this.footerLog) return;
     try {
@@ -176,19 +174,13 @@ class ProgramRun extends HTMLElement {
       const result = await window.AppConfig.request(url);
       if (result && result.code === 200 && result.data) {
         const msg = result.data.message || '';
-        const status = result.data.status || '';
         // 仿真未运行时才更新（避免覆盖仿真日志）
-        if (this.runStatus === 'IDLE' || !this.runStatus) {
+        if (this.runStatus !== 'RUNNING' && this.runStatus !== 'STARTING' && this.runStatus !== 'PAUSED') {
           this.footerLog.textContent = msg;
-        }
-        // 启动中时持续轮询
-        if (status === 'starting') {
-          this._engineStatusTimer = setTimeout(() => this.refreshEngineStatus(), 3000);
         }
       }
     } catch (e) {
-      // 查询失败不阻塞页面
-      if (this.runStatus === 'IDLE' || !this.runStatus) {
+      if (this.runStatus !== 'RUNNING' && this.runStatus !== 'STARTING' && this.runStatus !== 'PAUSED') {
         this.footerLog.textContent = 'MATLAB 引擎状态未知';
       }
     }
@@ -1069,7 +1061,33 @@ class ProgramRun extends HTMLElement {
 
     this.style.display = 'block';
 
-    if (this.charts) this.charts.forEach(c => c && c.resize());
+    // init() 还没执行完时（connectedCallback 是 async 的），DOM 元素还没初始化，
+    // 延迟重试 show 逻辑，等 init() 完成后再渲染图表和查询引擎状态
+    if (!this.tabs || !this.chartGrid) {
+      const retry = () => {
+        if (this.tabs && this.chartGrid) {
+          this._doShow();
+        } else {
+          setTimeout(retry, 100);
+        }
+      };
+      setTimeout(retry, 100);
+      return;
+    }
+
+    this._doShow();
+
+  }
+
+  _doShow() {
+
+    // 组件可能在 display:none 时初始化（connectedCallback 在隐藏状态下执行），
+    // ECharts 初始化的 canvas 宽高为 0，图表不渲染。
+    // show() 设了 display:block 后需要等一帧让浏览器重新布局，再强制重新渲染图表。
+    requestAnimationFrame(() => {
+      // 强制重新 renderTab：dispose 旧图表（可能宽高为0），在 display:block 状态下重新创建
+      this.renderTab(this.activeTab || '综合总览');
+    });
 
   }
 
@@ -1171,6 +1189,25 @@ class ProgramRun extends HTMLElement {
     this.updateRunButtons(this.runStatus || 'STARTING');
 
     try {
+
+      // 引擎卡在"启动中"时，点击运行先重启引擎
+      try {
+        const statusUrl = window.AppConfig.getApiUrl('program', 'engine-status');
+        const statusResult = await window.AppConfig.request(statusUrl);
+        if (statusResult && statusResult.code === 200 && statusResult.data && statusResult.data.status === 'starting') {
+          if (this.footerLog) this.footerLog.textContent = '[MATLAB] 引擎卡在启动中，正在重启...';
+          const restartUrl = window.AppConfig.getApiUrl('program', 'engine-restart');
+          await window.AppConfig.request(restartUrl, { method: 'POST' });
+          // 重启后等引擎就绪，轮询一次
+          for (let i = 0; i < 60; i++) {
+            await new Promise(r => setTimeout(r, 3000));
+            const r = await window.AppConfig.request(statusUrl);
+            if (r && r.code === 200 && r.data && r.data.status !== 'starting') break;
+          }
+        }
+      } catch (e) {
+        console.warn('引擎状态检查失败，继续运行:', e);
+      }
 
       this.currentDatas = this.currentConfigs.map(buildChartData);
 
@@ -2255,11 +2292,11 @@ class ProgramRun extends HTMLElement {
 
         this.updateRunButtons('IDLE');
 
-        return;
+      } else {
+
+        this.handleResultData(result.data, name, version);
 
       }
-
-      this.handleResultData(result.data, name, version);
 
     } catch (e) {
 
@@ -2268,6 +2305,9 @@ class ProgramRun extends HTMLElement {
       this.updateRunButtons('IDLE');
 
     }
+
+    // results 接口完成后查询引擎状态（进页面只调一次）
+    this.refreshEngineStatus();
 
   }
 

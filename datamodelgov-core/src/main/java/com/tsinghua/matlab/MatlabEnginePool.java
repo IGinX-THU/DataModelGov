@@ -22,6 +22,7 @@ public class MatlabEnginePool {
 
     private final LinkedBlockingQueue<MatlabEngine> idle = new LinkedBlockingQueue<>(1);
     private final AtomicBoolean started = new AtomicBoolean(false);
+    private final AtomicBoolean starting = new AtomicBoolean(false);
     private volatile MatlabEngine engine;
     private volatile boolean startFailed = false;
 
@@ -30,9 +31,16 @@ public class MatlabEnginePool {
      * 由 ProgramService @PostConstruct 调用。
      */
     public void init() {
+        startEngineAsync();
+    }
+
+    private void startEngineAsync() {
+        starting.set(true);
+        started.set(false);
+        startFailed = false;
         Thread t = new Thread(() -> {
             try {
-                log.info("[MATLAB-POOL] Spring Boot 启动，正在启动 MATLAB 引擎...");
+                log.info("[MATLAB-POOL] 正在启动 MATLAB 引擎...");
                 MatlabNativeLibrary.prepare(null);
                 MatlabNativeLibrary.installHeadlessSuppressor();
                 long t0 = System.currentTimeMillis();
@@ -40,10 +48,12 @@ public class MatlabEnginePool {
                 long elapsed = System.currentTimeMillis() - t0;
                 engine = eng;
                 started.set(true);
+                starting.set(false);
                 idle.offer(eng);
                 log.info("[MATLAB-POOL] MATLAB 引擎已就绪，耗时 {} ms", elapsed);
             } catch (Exception e) {
                 startFailed = true;
+                starting.set(false);
                 log.error("[MATLAB-POOL] MATLAB 引擎启动失败，仿真将回退到 matlab -batch: {}", e.toString());
             }
         }, "matlab-engine-pool-init");
@@ -84,10 +94,39 @@ public class MatlabEnginePool {
     }
 
     /**
+     * 引擎是否正在启动中。
+     */
+    public boolean isStarting() {
+        return starting.get();
+    }
+
+    /**
      * 引擎是否启动失败（确定不可用，应回退）。
      */
     public boolean isFailed() {
         return startFailed;
+    }
+
+    /**
+     * 重启引擎：关闭旧引擎（如果有），重新异步启动。
+     * 用于引擎卡在"启动中"或异常状态时，用户点击运行触发重启。
+     */
+    public void restart() {
+        log.info("[MATLAB-POOL] 用户请求重启 MATLAB 引擎");
+        // 关闭旧引擎
+        MatlabEngine old = engine;
+        if (old != null) {
+            try { old.close(); } catch (Exception e) {
+                try { old.disconnect(); } catch (Exception ignored) {}
+            }
+        }
+        engine = null;
+        idle.clear();
+        started.set(false);
+        startFailed = false;
+        starting.set(false);
+        // 重新启动
+        startEngineAsync();
     }
 
     /**

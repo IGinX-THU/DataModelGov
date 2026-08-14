@@ -198,7 +198,8 @@ window.AppConfig = {
             'download-result': '/api/program/download-result',
             'upload-overview': '/api/program/upload-overview',
             'download-signal': '/api/program/download-signal',
-            'engine-status': '/api/program/engine-status'
+            'engine-status': '/api/program/engine-status',
+            'engine-restart': '/api/program/engine-restart'
         }
     },
     
