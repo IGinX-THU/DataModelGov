@@ -700,56 +700,61 @@ public class MatlabSimulationRunner implements Closeable {
         sb.append("      dmg_sel = (dmg_cursor+1):dmg_total;\n");
         sb.append("      dmg_new = dmg_t(dmg_sel);\n");
         sb.append("      dmg_newCols{end+1} = 'time';\n");
-        // 首次构建 dmg_layout 缓存
-        sb.append("      if isempty(dmg_layout)\n");
-        sb.append("        dmg_layout = cell(0,3);\n");
-        sb.append("        for dmg_e = 1:logsout.numElements\n");
-        sb.append("          try\n");
-        sb.append("            dmg_el = logsout.getElement(dmg_e);\n");
-        sb.append("            dmg_name = dmg_el.Name;\n");
-        sb.append("            if isempty(dmg_name); dmg_name = sprintf('sig_%d', dmg_e); end\n");
-        sb.append("            dmg_v = dmg_el.Values.Data;\n");
-        sb.append("            if isvector(dmg_v)\n");
-        sb.append("              dmg_layout(end+1,:) = {dmg_e, matlab.lang.makeValidName(dmg_name), 1};\n");
-        sb.append("            elseif size(dmg_v,1) == dmg_total\n");
-        sb.append("              for dmg_k = 1:size(dmg_v,2)\n");
-        sb.append("                if size(dmg_v,2) == 1; dmg_cn = dmg_name; else; dmg_cn = sprintf('%s_%d', dmg_name, dmg_k); end\n");
-        sb.append("                dmg_layout(end+1,:) = {dmg_e, matlab.lang.makeValidName(dmg_cn), dmg_k};\n");
-        sb.append("              end\n");
-        sb.append("            end\n");
-        sb.append("          catch; end\n");
-        sb.append("        end\n");
-        sb.append("      end\n");
-        // 用缓存下标取数据
-        sb.append("      for dmg_i = 1:size(dmg_layout,1)\n");
-        sb.append("        try\n");
-        sb.append("          dmg_e = dmg_layout{dmg_i,1};\n");
-        sb.append("          dmg_cn = dmg_layout{dmg_i,2};\n");
-        sb.append("          dmg_k = dmg_layout{dmg_i,3};\n");
-        sb.append("          dmg_v = logsout.getElement(dmg_e).Values.Data;\n");
-        sb.append("          if isvector(dmg_v)\n");
-        sb.append("            dmg_v = dmg_v(:);\n");
-        sb.append("            if numel(dmg_v) >= dmg_total; dmg_new = [dmg_new dmg_v(dmg_sel)]; end\n");
-        sb.append("          elseif size(dmg_v,1) == dmg_total\n");
-        sb.append("            dmg_new = [dmg_new dmg_v(dmg_sel, dmg_k)];\n");
-        sb.append("          end\n");
-        sb.append("          dmg_newCols{end+1} = dmg_cn;\n");
-        sb.append("        catch; end\n");
-        sb.append("      end\n");
-        // 补充 dmg_cols 中未被 logsout 覆盖的信号
+        // 按 dmg_cols + dmg_map 精确取数（与 exportResults section 1 一致），
+        // 不再遍历所有 logsout 元素——遍历全部会导致同名信号取错元素，
+        // 且 isvector 分支用 >= 检查会取错索引。
         sb.append("      for dmg_c = 1:numel(dmg_cols)\n");
         sb.append("        dmg_cn = matlab.lang.makeValidName(dmg_cols{dmg_c});\n");
-        sb.append("        if ~any(strcmp(dmg_newCols, dmg_cn))\n");
-        sb.append("          dmg_col = zeros(numel(dmg_sel), 1);\n");
+        sb.append("        if any(strcmp(dmg_newCols, dmg_cn)); continue; end\n");
+        sb.append("        dmg_added = false;\n");
+        sb.append("        try\n");
         sb.append("          if numel(dmg_map) >= dmg_c && dmg_map(dmg_c) > 0\n");
-        sb.append("            try\n");
-        sb.append("              dmg_v2 = logsout.getElement(dmg_map(dmg_c)).Values.Data(:);\n");
-        sb.append("              if numel(dmg_v2) >= dmg_total; dmg_col = dmg_v2(dmg_sel); end\n");
-        sb.append("            catch; end\n");
+        sb.append("            dmg_v = logsout.getElement(dmg_map(dmg_c)).Values.Data;\n");
+        sb.append("            if isvector(dmg_v)\n");
+        sb.append("              dmg_v = dmg_v(:);\n");
+        sb.append("              if numel(dmg_v) == dmg_total\n");
+        sb.append("                dmg_new = [dmg_new dmg_v(dmg_sel)];\n");
+        sb.append("                dmg_newCols{end+1} = dmg_cn;\n");
+        sb.append("                dmg_added = true;\n");
+        sb.append("              end\n");
+        sb.append("            elseif size(dmg_v,1) == dmg_total\n");
+        sb.append("              for dmg_k = 1:size(dmg_v,2)\n");
+        sb.append("                if size(dmg_v,2) == 1; dmg_cn2 = dmg_cn; else; dmg_cn2 = sprintf('%s_%d', dmg_cn, dmg_k); end\n");
+        sb.append("                dmg_cn2 = matlab.lang.makeValidName(dmg_cn2);\n");
+        sb.append("                if ~any(strcmp(dmg_newCols, dmg_cn2))\n");
+        sb.append("                  dmg_new = [dmg_new dmg_v(dmg_sel, dmg_k)];\n");
+        sb.append("                  dmg_newCols{end+1} = dmg_cn2;\n");
+        sb.append("                end\n");
+        sb.append("              end\n");
+        sb.append("              dmg_added = true;\n");
+        sb.append("            end\n");
         sb.append("          end\n");
-        sb.append("          dmg_new = [dmg_new dmg_col];\n");
+        sb.append("        catch; end\n");
+        sb.append("        if ~dmg_added\n");
+        sb.append("          dmg_new = [dmg_new zeros(numel(dmg_sel), 1)];\n");
         sb.append("          dmg_newCols{end+1} = dmg_cn;\n");
         sb.append("        end\n");
+        sb.append("      end\n");
+        // To Workspace 变量补充（与 exportResults section 2 一致）：
+        // logsout 里未找到的信号，尝试从 To Workspace 变量取（仿真中可能尚无数据，跳过即可）
+        sb.append("      for dmg_i = 1:numel(dmg_okSignals)\n");
+        sb.append("        try\n");
+        sb.append("          dmg_sn = dmg_okSignals{dmg_i};\n");
+        sb.append("          if exist(dmg_sn, 'var') ~= 1; continue; end\n");
+        sb.append("          dmg_v = evalin('base', dmg_sn);\n");
+        sb.append("          if ~isnumeric(dmg_v) || isempty(dmg_v); continue; end\n");
+        sb.append("          if size(dmg_v,1) == dmg_total && size(dmg_v,2) >= 2\n");
+        sb.append("            dmg_v = dmg_v(:, 2:end);\n");
+        sb.append("          elseif size(dmg_v,1) == dmg_total && size(dmg_v,2) == 1\n");
+        sb.append("          else; continue; end\n");
+        sb.append("          for dmg_k = 1:size(dmg_v,2)\n");
+        sb.append("            if size(dmg_v,2) == 1; dmg_cn = dmg_sn; else; dmg_cn = sprintf('%s_%d', dmg_sn, dmg_k); end\n");
+        sb.append("            dmg_cn = matlab.lang.makeValidName(dmg_cn);\n");
+        sb.append("            if any(strcmp(dmg_newCols, dmg_cn)); continue; end\n");
+        sb.append("            dmg_new = [dmg_new double(dmg_v(dmg_sel, dmg_k))];\n");
+        sb.append("            dmg_newCols{end+1} = dmg_cn;\n");
+        sb.append("          end\n");
+        sb.append("        catch; end\n");
         sb.append("      end\n");
         sb.append("      dmg_cursor = dmg_total;\n");
         // 工作区标量
