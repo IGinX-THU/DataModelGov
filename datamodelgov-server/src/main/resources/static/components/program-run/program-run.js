@@ -1261,8 +1261,8 @@ class ProgramRun extends HTMLElement {
           this._waitingEngine = true;
           // 状态为 STARTING 时 stopBtn 是可用的，这里强制刷新一次确保按钮可用
           this.updateRunButtons('STARTING');
-          for (let i = 0; i < 60; i++) {
-            await new Promise(r => setTimeout(r, 3000));
+          for (let i = 0; i < 12; i++) {
+            await new Promise(r => setTimeout(r, 15000));
             if (this._cancelRun) {
               this._waitingEngine = false;
               return; // 用户取消，不继续启动仿真

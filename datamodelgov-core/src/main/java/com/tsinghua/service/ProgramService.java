@@ -22,7 +22,10 @@ import com.tsinghua.dto.TableDto;
 import com.tsinghua.model.Result;
 import com.tsinghua.matlab.MatlabSimulationRunner;
 import com.tsinghua.matlab.MatlabEnginePool;
+import com.tsinghua.matlab.MatlabUtil;
+import com.tsinghua.util.ArchiveUtil;
 import com.tsinghua.util.ConvertUtil;
+import com.tsinghua.util.FileUtil;
 import com.tsinghua.util.ProjectContext;
 import com.tsinghua.util.SimTimeUtil;
 import lombok.extern.slf4j.Slf4j;
@@ -45,18 +48,6 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
-import java.util.zip.GZIPInputStream;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
-
-import net.sf.sevenzipjbinding.*;
-import net.sf.sevenzipjbinding.impl.RandomAccessFileInStream;
-import net.sf.sevenzipjbinding.simple.ISimpleInArchive;
-import net.sf.sevenzipjbinding.simple.ISimpleInArchiveItem;
-import org.apache.commons.compress.archivers.sevenz.SevenZArchiveEntry;
-import org.apache.commons.compress.archivers.sevenz.SevenZFile;
-import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
-import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 
 @Slf4j
 @Service
@@ -86,19 +77,6 @@ public class ProgramService {
     private static final int RUN_STOPPED = 1;
     private static final int RUN_FAILED = 2;
     private static final int RUN_FALLBACK = 3;
-    private static final Set<String> SUPPORTED_ARCHIVE = new HashSet<>(Arrays.asList(".zip", ".rar", ".7z", ".tar", ".tar.gz", ".tgz"));
-    private static final boolean SEVENZIP_AVAILABLE;
-
-    static {
-        boolean available = false;
-        try {
-            SevenZip.initSevenZipFromPlatformJAR();
-            available = true;
-        } catch (SevenZipNativeInitializationException e) {
-            log.error("SevenZipJBinding 初始化失败", e);
-        }
-        SEVENZIP_AVAILABLE = available;
-    }
 
     // 运行期开关：置 false 可强制回退到 matlab -batch（引擎异常排查时用）
     @Value("${matlab.engine.enabled:true}")
@@ -520,11 +498,11 @@ public class ProgramService {
     public UploadResult uploadProgram(MultipartFile file, String name, String version, String description) throws Exception {
         String originalName = file.getOriginalFilename();
         if (originalName == null) throw new IllegalArgumentException("文件名为空");
-        String ext = getExtension(originalName);
-        if (ext == null || !SUPPORTED_ARCHIVE.contains(ext)) {
+        String ext = ArchiveUtil.getExtension(originalName);
+        if (ext == null || !ArchiveUtil.SUPPORTED_ARCHIVE.contains(ext)) {
             throw new IllegalArgumentException("仅支持以下压缩格式: zip, rar, 7z, tar, tar.gz, tgz");
         }
-        String programName = (name != null && !name.isEmpty()) ? name : removeArchiveExtension(originalName);
+        String programName = (name != null && !name.isEmpty()) ? name : ArchiveUtil.removeArchiveExtension(originalName);
         String programVersion = (version != null && !version.isEmpty()) ? version : "1.0";
         String projectName = ProjectContext.getCurrentProject("unknown");
         String storagePath = buildStoragePath(projectName, programName, programVersion);
@@ -537,16 +515,16 @@ public class ProgramService {
         byte[] fileBytes = file.getBytes();
         File programDir = getProgramDir(projectName, programName, programVersion);
         if (programDir.exists()) {
-            deleteDirectory(programDir);
+            FileUtil.deleteDirectory(programDir);
         }
         programDir.mkdirs();
         File tempArchive = new File(programDir, originalName);
         Files.write(tempArchive.toPath(), fileBytes);
         try {
-            extractArchive(tempArchive, programDir);
+            ArchiveUtil.extractArchive(tempArchive, programDir);
             log.info("仿真程序解压验证成功。目录: {}", programDir.getAbsolutePath());
         } catch (Exception e) {
-            deleteDirectory(programDir);
+            FileUtil.deleteDirectory(programDir);
             throw new IllegalArgumentException("程序包解压失败: " + e.getMessage(), e);
         } finally {
             if (tempArchive.exists()) tempArchive.delete();
@@ -582,7 +560,7 @@ public class ProgramService {
         iginxClient.getWriteClient().writePoints(points);
 
         // 计算文件校验信息
-        String fileMd5 = calculateMD5(fileBytes);
+        String fileMd5 = FileUtil.calculateMD5(fileBytes);
 
         log.info("仿真程序文件上传成功。名称: {}, 版本: {}, 块数: {}, MD5: {}",
                 programName, programVersion, totalChunks, fileMd5);
@@ -617,158 +595,6 @@ public class ProgramService {
 
         return new UploadResult(programName, programVersion, originalName,
                 file.getSize(), totalChunks, storagePath, fileMd5);
-    }
-
-    private void extractArchive(File archive, File targetDir) throws IOException {
-        String ext = getExtension(archive.getName());
-        if (".zip".equals(ext) || ".jar".equals(ext)) {
-            extractZip(archive, targetDir);
-        } else if (".rar".equals(ext)) {
-            extractRar(archive, targetDir);
-        } else if (".7z".equals(ext)) {
-            extractSevenZ(archive, targetDir);
-        } else if (".tar".equals(ext)) {
-            extractTar(archive, targetDir);
-        } else if (".tar.gz".equals(ext) || ".tgz".equals(ext)) {
-            extractTarGz(archive, targetDir);
-        } else {
-            throw new IOException("不支持的压缩格式: " + ext);
-        }
-    }
-
-    private void extractZip(File src, File targetDir) throws IOException {
-        try (ZipInputStream zis = new ZipInputStream(new FileInputStream(src))) {
-            ZipEntry entry;
-            while ((entry = zis.getNextEntry()) != null) {
-                File f = new File(targetDir, entry.getName());
-                if (entry.isDirectory()) {
-                    f.mkdirs();
-                } else {
-                    f.getParentFile().mkdirs();
-                    try (FileOutputStream fos = new FileOutputStream(f)) {
-                        byte[] buf = new byte[8192];
-                        int len;
-                        while ((len = zis.read(buf)) > 0) fos.write(buf, 0, len);
-                    }
-                }
-                zis.closeEntry();
-            }
-        }
-    }
-
-    private void extractRar(File src, File targetDir) throws IOException {
-        if (!SEVENZIP_AVAILABLE) {
-            throw new IOException("SevenZipJBinding 未初始化，无法解压 RAR 文件");
-        }
-        try (RandomAccessFile raf = new RandomAccessFile(src, "r")) {
-            IInArchive inArchive = SevenZip.openInArchive(null, new RandomAccessFileInStream(raf));
-            try {
-                ISimpleInArchive simple = inArchive.getSimpleInterface();
-                for (ISimpleInArchiveItem item : simple.getArchiveItems()) {
-                    final File out = new File(targetDir, item.getPath());
-                    if (item.isFolder()) {
-                        out.mkdirs();
-                    } else {
-                        out.getParentFile().mkdirs();
-                        try (FileOutputStream fos = new FileOutputStream(out)) {
-                            ExtractOperationResult result = item.extractSlow(data -> {
-                                try {
-                                    fos.write(data);
-                                } catch (IOException e) {
-                                    throw new SevenZipException("写入文件失败: " + out.getName(), e);
-                                }
-                                return data.length;
-                            });
-                            if (result != ExtractOperationResult.OK) {
-                                throw new IOException("解压条目失败 " + item.getPath() + ": " + result);
-                            }
-                        }
-                    }
-                }
-            } finally {
-                if (inArchive != null) {
-                    try { inArchive.close(); } catch (IOException ignored) {}
-                }
-            }
-        }
-    }
-
-    private void extractSevenZ(File src, File targetDir) throws IOException {
-        try (SevenZFile sevenZFile = new SevenZFile(src)) {
-            SevenZArchiveEntry entry;
-            while ((entry = sevenZFile.getNextEntry()) != null) {
-                File f = new File(targetDir, entry.getName());
-                if (entry.isDirectory()) {
-                    f.mkdirs();
-                } else {
-                    f.getParentFile().mkdirs();
-                    try (InputStream is = sevenZFile.getInputStream(entry);
-                         FileOutputStream fos = new FileOutputStream(f)) {
-                        copy(is, fos);
-                    }
-                }
-            }
-        }
-    }
-
-    private void extractTar(File src, File targetDir) throws IOException {
-        try (TarArchiveInputStream tis = new TarArchiveInputStream(new FileInputStream(src))) {
-            TarArchiveEntry entry;
-            while ((entry = tis.getNextTarEntry()) != null) {
-                File f = new File(targetDir, entry.getName());
-                if (entry.isDirectory()) {
-                    f.mkdirs();
-                } else {
-                    f.getParentFile().mkdirs();
-                    try (FileOutputStream fos = new FileOutputStream(f)) {
-                        copy(tis, fos);
-                    }
-                }
-            }
-        }
-    }
-
-    private void extractTarGz(File src, File targetDir) throws IOException {
-        try (TarArchiveInputStream tis = new TarArchiveInputStream(new GZIPInputStream(new FileInputStream(src)))) {
-            TarArchiveEntry entry;
-            while ((entry = tis.getNextTarEntry()) != null) {
-                File f = new File(targetDir, entry.getName());
-                if (entry.isDirectory()) {
-                    f.mkdirs();
-                } else {
-                    f.getParentFile().mkdirs();
-                    try (FileOutputStream fos = new FileOutputStream(f)) {
-                        copy(tis, fos);
-                    }
-                }
-            }
-        }
-    }
-
-    private static void copy(InputStream in, OutputStream out) throws IOException {
-        byte[] buf = new byte[8192];
-        int len;
-        while ((len = in.read(buf)) >= 0) {
-            out.write(buf, 0, len);
-        }
-    }
-
-    private static String getExtension(String filename) {
-        String lower = filename.toLowerCase();
-        if (lower.endsWith(".tar.gz")) return ".tar.gz";
-        if (lower.endsWith(".tar.bz2")) return ".tar.bz2";
-        if (lower.endsWith(".tar.xz")) return ".tar.xz";
-        int dot = lower.lastIndexOf('.');
-        return dot < 0 ? null : lower.substring(dot);
-    }
-
-    private static String removeArchiveExtension(String filename) {
-        String lower = filename.toLowerCase();
-        if (lower.endsWith(".tar.gz")) return filename.substring(0, filename.length() - 7);
-        if (lower.endsWith(".tar.bz2")) return filename.substring(0, filename.length() - 8);
-        if (lower.endsWith(".tar.xz")) return filename.substring(0, filename.length() - 7);
-        int dot = filename.lastIndexOf('.');
-        return dot < 0 ? filename : filename.substring(0, dot);
     }
 
     private ObjectNode buildDefaultConfig(String programName) {
@@ -818,7 +644,7 @@ public class ProgramService {
                 // 删除磁盘上的程序解压目录
                 File programDir = getProgramDir(actualProjectName, name, version);
                 if (programDir.exists()) {
-                    deleteDirectory(programDir);
+                    FileUtil.deleteDirectory(programDir);
                     log.info("已删除程序目录: {}", programDir.getAbsolutePath());
                 }
             } else {
@@ -846,7 +672,7 @@ public class ProgramService {
                     }
                     File programDir = getProgramDir(meta.getProjectName(), meta.getName(), meta.getVersion());
                     if (programDir.exists()) {
-                        deleteDirectory(programDir);
+                        FileUtil.deleteDirectory(programDir);
                         log.info("已删除程序目录: {}", programDir.getAbsolutePath());
                     }
                 }
@@ -1030,7 +856,7 @@ public class ProgramService {
             byte[] archiveBytes = downloadFromIginx(entity.getStoragePath(), entity.getChunkCount(), entity.getFileMd5());
             File archiveFile = new File(taskDir, entity.getFileName());
             Files.write(archiveFile.toPath(), archiveBytes);
-            extractArchive(archiveFile, taskDir);
+            ArchiveUtil.extractArchive(archiveFile, taskDir);
             writeProgramConfig(taskDir, entity);
 
             File configFile = new File(taskDir, "program-config.json");
@@ -1046,7 +872,7 @@ public class ProgramService {
                     ? SimTimeUtil.parse(stopTimeParam, runtime.path("stopTime").asDouble(30))
                     : runtime.path("stopTime").asDouble(30);
 
-            String programDir = findProgramDir(taskDir, preRunScript);
+            String programDir = FileUtil.findProgramDir(taskDir, preRunScript);
             if (modelFile.isEmpty()) {
                 File programDirFile = new File(programDir);
                 File[] slxFiles = programDirFile.listFiles((d, n) ->
@@ -1201,8 +1027,8 @@ public class ProgramService {
     private int runWithBatch(long taskTimestamp, File taskDir, String programDir, String preRunScript,
                              String modelFile, double stopTime, String fixedStep, String npCommand,
                              String loadPower, LiveDataBuffer liveBuffer, File logFile) throws Exception {
-        String shortTaskDir = getShortPath(taskDir);
-        String shortProgramDir = getShortPath(new File(programDir));
+        String shortTaskDir = FileUtil.getShortPath(taskDir);
+        String shortProgramDir = FileUtil.getShortPath(new File(programDir));
         log.info("回退到 matlab -batch，运行目录={}，程序目录={}", shortTaskDir, shortProgramDir);
         writeWrapper(new File(taskDir, "run_wrapper.m"), shortTaskDir, shortProgramDir, preRunScript,
                 modelFile, stopTime, fixedStep, npCommand, loadPower);
@@ -1210,7 +1036,7 @@ public class ProgramService {
         ProcessBuilder pb = new ProcessBuilder();
         pb.directory(taskDir);
         pb.command("cmd", "/c", "chcp 65001 && matlab -batch \"cd('"
-                + escape(shortTaskDir) + "'); run_wrapper; exit;\"");
+                + MatlabUtil.escape(shortTaskDir) + "'); run_wrapper; exit;\"");
         pb.redirectErrorStream(true);
         pb.redirectOutput(logFile);
 
@@ -1233,10 +1059,10 @@ public class ProgramService {
             return RUN_FAILED;
         }
         int exitCode = process.exitValue();
-        log.info("程序运行结束，退出码: {}，日志:\n{}", exitCode, readLastLines(logFile, 200));
+        log.info("程序运行结束，退出码: {}，日志:\n{}", exitCode, FileUtil.readLastLines(logFile, 200));
         if (exitCode != 0) {
             updateTaskStatus(taskTimestamp, TaskStatus.FAILED,
-                    "MATLAB 退出码 " + exitCode + ": " + readLastLines(logFile, 20), null,
+                    "MATLAB 退出码 " + exitCode + ": " + FileUtil.readLastLines(logFile, 20), null,
                     logFile.getAbsolutePath(), null);
             return RUN_FAILED;
         }
@@ -1309,21 +1135,10 @@ public class ProgramService {
         log.info("渐进式回放完成: 释放 {} 行", totalRows);
     }
 
-    private String findProgramDir(File dir, String scriptName) throws IOException {
-        String name = scriptName.toLowerCase().endsWith(".m") ? scriptName : scriptName + ".m";
-        File base = dir.getAbsoluteFile();
-        try (java.util.stream.Stream<Path> paths = Files.walk(base.toPath())) {
-            Path found = paths.filter(p -> p.toFile().isFile() && p.getFileName().toString().equalsIgnoreCase(name))
-                    .findFirst()
-                    .orElse(null);
-            return found != null ? found.getParent().toString() : base.getAbsolutePath();
-        }
-    }
-
     private void writeWrapper(File f, String taskDir, String programDir, String preRun, String modelFile, double stopTime,
                               String fixedStep, String npCommand, String loadPower) throws IOException {
         StringBuilder sb = new StringBuilder();
-        sb.append("cd('").append(escape(programDir)).append("');\n");
+        sb.append("cd('").append(MatlabUtil.escape(programDir)).append("');\n");
         sb.append("try\n");
         sb.append("    ").append(preRun).append(";\n");
         sb.append("catch ME\n");
@@ -1350,10 +1165,10 @@ public class ProgramService {
         if (modelFile != null && !modelFile.isEmpty()) {
             String modelName = modelFile.replaceAll("\\.(slx|mdl)$", "");
             sb.append("try\n");
-            sb.append("    load_system('").append(escape(modelName)).append("');\n");
-            sb.append("    set_param('").append(escape(modelName)).append("', 'StopTime', '").append(stopTime).append("');\n");
+            sb.append("    load_system('").append(MatlabUtil.escape(modelName)).append("');\n");
+            sb.append("    set_param('").append(MatlabUtil.escape(modelName)).append("', 'StopTime', '").append(stopTime).append("');\n");
             if (StringUtils.hasText(fixedStep)) {
-                sb.append("    set_param('").append(escape(modelName)).append("', 'FixedStep', '").append(fixedStep).append("');\n");
+                sb.append("    set_param('").append(MatlabUtil.escape(modelName)).append("', 'FixedStep', '").append(fixedStep).append("');\n");
             }
             // okSignals tracks successfully added To Workspace variables
             sb.append("    okSignals = {};\n");
@@ -1549,8 +1364,8 @@ public class ProgramService {
             sb.append("    catch\n");
             sb.append("    end\n");
             // 4. Run simulation
-            sb.append("    simOut = sim('").append(escape(modelName)).append("', 'ReturnWorkspaceOutputs', 'on', 'StopTime', '").append(stopTime).append("');\n");
-            sb.append("    save('").append(escape(taskDir)).append("/simOut.mat', 'simOut');\n");
+            sb.append("    simOut = sim('").append(MatlabUtil.escape(modelName)).append("', 'ReturnWorkspaceOutputs', 'on', 'StopTime', '").append(stopTime).append("');\n");
+            sb.append("    save('").append(MatlabUtil.escape(taskDir)).append("/simOut.mat', 'simOut');\n");
             sb.append("    tout = simOut.tout;\n");
             sb.append("    colNames = {'time'};\n");
             sb.append("    colData = tout;\n");
@@ -1684,12 +1499,12 @@ public class ProgramService {
             sb.append("    catch\n");
             sb.append("    end\n");
             sb.append("    T = array2table(colData, 'VariableNames', colNames);\n");
-            sb.append("    writetable(T, '").append(escape(taskDir)).append("/signals.csv');\n");
-            sb.append("    save('").append(escape(taskDir)).append("/signals.mat', 'T');\n");
-            sb.append("    close_system('").append(escape(modelName)).append("', 0);\n");
+            sb.append("    writetable(T, '").append(MatlabUtil.escape(taskDir)).append("/signals.csv');\n");
+            sb.append("    save('").append(MatlabUtil.escape(taskDir)).append("/signals.mat', 'T');\n");
+            sb.append("    close_system('").append(MatlabUtil.escape(modelName)).append("', 0);\n");
             sb.append("catch ME\n");
-            sb.append("    try; close_system('").append(escape(modelName)).append("', 0); catch; end\n");
-            sb.append("    fid = fopen('").append(escape(taskDir)).append("/error.txt', 'w');\n");
+            sb.append("    try; close_system('").append(MatlabUtil.escape(modelName)).append("', 0); catch; end\n");
+            sb.append("    fid = fopen('").append(MatlabUtil.escape(taskDir)).append("/error.txt', 'w');\n");
             sb.append("    fprintf(fid, '%s\\n', ME.message);\n");
             sb.append("    fclose(fid);\n");
             sb.append("    rethrow(ME);\n");
@@ -2247,36 +2062,12 @@ public class ProgramService {
         }
         byte[] data = baos.toByteArray();
         if (expectedMd5 != null && !expectedMd5.isEmpty()) {
-            String actual = calculateMD5(data);
+            String actual = FileUtil.calculateMD5(data);
             if (!actual.equalsIgnoreCase(expectedMd5)) {
                 throw new Exception("程序包 MD5 校验失败");
             }
         }
         return data;
-    }
-
-    private String escape(String s) {
-        return s.replace("\\", "\\\\").replace("'", "''");
-    }
-
-    private String getShortPath(File file) {
-        if (!file.exists()) return file.getAbsolutePath();
-        try {
-            Process p = new ProcessBuilder("cmd", "/c", "for %I in (\""
-                    + file.getAbsolutePath() + "\") do @echo %~sI").redirectErrorStream(true).start();
-            java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-            byte[] buf = new byte[1024];
-            int n;
-            while ((n = p.getInputStream().read(buf)) != -1) baos.write(buf, 0, n);
-            p.waitFor(5, TimeUnit.SECONDS);
-            String output = new String(baos.toByteArray(), StandardCharsets.UTF_8).trim();
-            if (!output.isEmpty() && output.matches("^[A-Za-z]:\\\\.*")) {
-                return output;
-            }
-        } catch (Exception e) {
-            log.warn("获取短路径失败: {}", file.getAbsolutePath(), e);
-        }
-        return file.getAbsolutePath();
     }
 
     // ==================== Program Task IGinX persistence ====================
@@ -2914,50 +2705,6 @@ public class ProgramService {
                     otherFiles.add(relPath);
                 }
             }
-        }
-    }
-
-    private void deleteDirectory(File dir) {
-        if (dir == null || !dir.exists()) return;
-        File[] files = dir.listFiles();
-        if (files != null) {
-            for (File f : files) {
-                if (f.isDirectory()) deleteDirectory(f);
-                else f.delete();
-            }
-        }
-        dir.delete();
-    }
-
-
-    private String readLastLines(File f, int n) {
-        if (!f.exists()) return "";
-        List<String> lines = new ArrayList<>();
-        try (BufferedReader br = Files.newBufferedReader(f.toPath(), StandardCharsets.UTF_8)) {
-            String line;
-            while ((line = br.readLine()) != null) {
-                lines.add(line);
-                if (lines.size() > n) lines.remove(0);
-            }
-        } catch (IOException e) { }
-        return lines.stream().collect(Collectors.joining("\n"));
-    }
-
-    /**
-     * 计算文件的 MD5 校验和
-     */
-    private String calculateMD5(byte[] bytes) {
-        try {
-            java.security.MessageDigest md = java.security.MessageDigest.getInstance("MD5");
-            byte[] digest = md.digest(bytes);
-            StringBuilder sb = new StringBuilder();
-            for (byte b : digest) {
-                sb.append(String.format("%02x", b));
-            }
-            return sb.toString();
-        } catch (Exception e) {
-            log.warn("计算 MD5 失败", e);
-            return "";
         }
     }
 }

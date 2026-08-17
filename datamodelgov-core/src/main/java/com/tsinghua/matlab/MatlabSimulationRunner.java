@@ -649,6 +649,13 @@ public class MatlabSimulationRunner implements Closeable {
                 csvColumns.clear();
                 csvColumns.addAll(newCols);
                 sink.onHeaders(new ArrayList<>(csvColumns));
+                // 列变化时前端会清空已累积的行（reset=true），当前 poll 的增量数据
+                // 只有几行，直接发送会导致前面的曲线消失。重置 MATLAB 游标到 0，
+                // 让下次 poll 重新取全量数据（新列序），前端得到完整重绘。
+                try {
+                    eval("dmg_cursor = 0;", CALL_TIMEOUT_SEC, "重置游标");
+                } catch (Exception ignored) {}
+                return;
             }
         }
         List<String[]> rows = toRows(data, csvColumns.size());
@@ -700,13 +707,13 @@ public class MatlabSimulationRunner implements Closeable {
         sb.append("      dmg_sel = (dmg_cursor+1):dmg_total;\n");
         sb.append("      dmg_new = dmg_t(dmg_sel);\n");
         sb.append("      dmg_newCols{end+1} = 'time';\n");
-        // 按 dmg_cols + dmg_map 精确取数（与 exportResults section 1 一致），
-        // 不再遍历所有 logsout 元素——遍历全部会导致同名信号取错元素，
-        // 且 isvector 分支用 >= 检查会取错索引。
+        // 按 dmg_cols + dmg_map 精确取数（与 exportResults section 1 完全一致）：
+        // - dmg_map(dmg_c)==0 表示 logsout 里没有该信号，跳过（不填零），
+        //   让 Section 2（To Workspace 变量）补充，避免 Section 2 因同名跳过导致永远为零。
+        // - 向量/矩阵信号按列展开（_1,_2,...），与 export 一致。
         sb.append("      for dmg_c = 1:numel(dmg_cols)\n");
         sb.append("        dmg_cn = matlab.lang.makeValidName(dmg_cols{dmg_c});\n");
         sb.append("        if any(strcmp(dmg_newCols, dmg_cn)); continue; end\n");
-        sb.append("        dmg_added = false;\n");
         sb.append("        try\n");
         sb.append("          if numel(dmg_map) >= dmg_c && dmg_map(dmg_c) > 0\n");
         sb.append("            dmg_v = logsout.getElement(dmg_map(dmg_c)).Values.Data;\n");
@@ -715,7 +722,6 @@ public class MatlabSimulationRunner implements Closeable {
         sb.append("              if numel(dmg_v) == dmg_total\n");
         sb.append("                dmg_new = [dmg_new dmg_v(dmg_sel)];\n");
         sb.append("                dmg_newCols{end+1} = dmg_cn;\n");
-        sb.append("                dmg_added = true;\n");
         sb.append("              end\n");
         sb.append("            elseif size(dmg_v,1) == dmg_total\n");
         sb.append("              for dmg_k = 1:size(dmg_v,2)\n");
@@ -726,14 +732,9 @@ public class MatlabSimulationRunner implements Closeable {
         sb.append("                  dmg_newCols{end+1} = dmg_cn2;\n");
         sb.append("                end\n");
         sb.append("              end\n");
-        sb.append("              dmg_added = true;\n");
         sb.append("            end\n");
         sb.append("          end\n");
         sb.append("        catch; end\n");
-        sb.append("        if ~dmg_added\n");
-        sb.append("          dmg_new = [dmg_new zeros(numel(dmg_sel), 1)];\n");
-        sb.append("          dmg_newCols{end+1} = dmg_cn;\n");
-        sb.append("        end\n");
         sb.append("      end\n");
         // To Workspace 变量补充（与 exportResults section 2 一致）：
         // logsout 里未找到的信号，尝试从 To Workspace 变量取（仿真中可能尚无数据，跳过即可）
@@ -755,6 +756,14 @@ public class MatlabSimulationRunner implements Closeable {
         sb.append("            dmg_newCols{end+1} = dmg_cn;\n");
         sb.append("          end\n");
         sb.append("        catch; end\n");
+        sb.append("      end\n");
+        // 对 dmg_cols 中仍未出现在 dmg_newCols 的信号补零列（保持列集合一致）
+        sb.append("      for dmg_c = 1:numel(dmg_cols)\n");
+        sb.append("        dmg_cn = matlab.lang.makeValidName(dmg_cols{dmg_c});\n");
+        sb.append("        if ~any(strcmp(dmg_newCols, dmg_cn))\n");
+        sb.append("          dmg_new = [dmg_new zeros(numel(dmg_sel), 1)];\n");
+        sb.append("          dmg_newCols{end+1} = dmg_cn;\n");
+        sb.append("        end\n");
         sb.append("      end\n");
         sb.append("      dmg_cursor = dmg_total;\n");
         // 工作区标量
@@ -807,16 +816,31 @@ public class MatlabSimulationRunner implements Closeable {
         sb.append("dmg_n = numel(dmg_time);\n");
         sb.append("if dmg_n > 0\n");
         sb.append("  dmg_names = {'time'}; dmg_data = dmg_time;\n");
-        // 1) 实时曲线信号（按 BlockPath 匹配，与实时推送列保持一致）
+        // 1) 实时曲线信号（按 BlockPath 匹配，与实时推送列完全一致）
+        //    - dmg_map(dmg_c)==0 时跳过（不填零），让 Section 2 补充
+        //    - 向量/矩阵信号按列展开（_1,_2,...），与 poll 脚本一致
         sb.append("  for dmg_c = 1:numel(dmg_cols)\n");
-        sb.append("    dmg_col = zeros(dmg_n,1);\n");
+        sb.append("    dmg_cn = matlab.lang.makeValidName(dmg_cols{dmg_c});\n");
+        sb.append("    if any(strcmp(dmg_names, dmg_cn)); continue; end\n");
         sb.append("    try\n");
         sb.append("      if numel(dmg_map) >= dmg_c && dmg_map(dmg_c) > 0\n");
-        sb.append("        dmg_v = logsout.getElement(dmg_map(dmg_c)).Values.Data(:);\n");
-        sb.append("        if numel(dmg_v) == dmg_n; dmg_col = dmg_v; end\n");
+        sb.append("        dmg_v = logsout.getElement(dmg_map(dmg_c)).Values.Data;\n");
+        sb.append("        if isvector(dmg_v)\n");
+        sb.append("          dmg_v = dmg_v(:);\n");
+        sb.append("          if numel(dmg_v) == dmg_n\n");
+        sb.append("            dmg_names{end+1} = dmg_cn; dmg_data = [dmg_data dmg_v];\n");
+        sb.append("          end\n");
+        sb.append("        elseif size(dmg_v,1) == dmg_n\n");
+        sb.append("          for dmg_k = 1:size(dmg_v,2)\n");
+        sb.append("            if size(dmg_v,2) == 1; dmg_cn2 = dmg_cn; else; dmg_cn2 = sprintf('%s_%d', dmg_cn, dmg_k); end\n");
+        sb.append("            dmg_cn2 = matlab.lang.makeValidName(dmg_cn2);\n");
+        sb.append("            if ~any(strcmp(dmg_names, dmg_cn2))\n");
+        sb.append("              dmg_names{end+1} = dmg_cn2; dmg_data = [dmg_data double(dmg_v(:,dmg_k))];\n");
+        sb.append("            end\n");
+        sb.append("          end\n");
+        sb.append("        end\n");
         sb.append("      end\n");
         sb.append("    catch; end\n");
-        sb.append("    dmg_names{end+1} = dmg_cols{dmg_c}; dmg_data = [dmg_data dmg_col];\n");
         sb.append("  end\n");
         // 2) 按 okSignals 精确提取 To Workspace 变量
         //    To Workspace (SaveFormat=Array) 产出 [time, data] 或 [time, data1, data2, ...]
@@ -840,6 +864,13 @@ public class MatlabSimulationRunner implements Closeable {
         sb.append("      end\n");
         sb.append("    catch; end\n");
         sb.append("  end\n");
+        // 对 dmg_cols 中仍未出现在 dmg_names 的信号补零列（与 poll 脚本一致）
+        sb.append("  for dmg_c = 1:numel(dmg_cols)\n");
+        sb.append("    dmg_cn = matlab.lang.makeValidName(dmg_cols{dmg_c});\n");
+        sb.append("    if ~any(strcmp(dmg_names, dmg_cn))\n");
+        sb.append("      dmg_names{end+1} = dmg_cn; dmg_data = [dmg_data zeros(dmg_n,1)];\n");
+        sb.append("    end\n");
+        sb.append("  end\n");
         // 3) 工作区标量（限制值、功率指令等，展开为常数列）
         sb.append("  dmg_wsScalars = {'NgMax','T45Max','MkpMax','WfMax','WfMin','errmax','Power_cmd'};\n");
         sb.append("  for dmg_i = 1:numel(dmg_wsScalars)\n");
@@ -853,8 +884,8 @@ public class MatlabSimulationRunner implements Closeable {
         sb.append("      end\n");
         sb.append("    catch; end\n");
         sb.append("  end\n");
-        // 4) 泛化扫描 base workspace 补漏（跳过已通过 okSignals 提取的变量）
-        sb.append("  dmg_okSet = dmg_okSignals;\n");
+        // 4) 泛化扫描 base workspace 补漏（跳过 logsout / okSignals / tout，已在前面处理）
+        sb.append("  dmg_okSet = [dmg_okSignals, {'logsout','tout'}];\n");
         sb.append("  dmg_vars = evalin('base','who');\n");
         sb.append("  for dmg_i = 1:numel(dmg_vars)\n");
         sb.append("    dmg_name = dmg_vars{dmg_i};\n");
