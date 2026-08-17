@@ -3152,6 +3152,8 @@ function buildEChartsOptions(data, time, status, duration) {
 
       yAxisIndex: s.axis === 'right' ? 1 : 0,
 
+      itemStyle: { color: s.color },
+
       lineStyle: { color: s.color, width: 2, type: s.dashed ? 'dashed' : 'solid' },
 
       data: s.data,
