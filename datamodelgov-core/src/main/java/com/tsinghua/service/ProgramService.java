@@ -68,8 +68,8 @@ public class ProgramService {
     private final Map<Long, Boolean> pauseFlags = new ConcurrentHashMap<>();
     // MATLAB Engine 会话：key=taskTimestamp，存在即表示该任务由引擎驱动（支持真实暂停/恢复/停止）
     private final Map<Long, MatlabSimulationRunner> engineRunners = new ConcurrentHashMap<>();
-    // 常驻引擎池：避免每次仿真都重新启动 MATLAB（~2分钟）
-    private final MatlabEnginePool enginePool = new MatlabEnginePool();
+    // 引擎池（pool-size 在 @PostConstruct 中从 yml 读取后创建）
+    private MatlabEnginePool enginePool;
     // 引擎运行期不可用（如缺少 MATLAB 原生库）时置位，后续任务直接走 matlab -batch 回退
     private volatile boolean engineDisabled = false;
     // 仿真执行结果码
@@ -87,9 +87,16 @@ public class ProgramService {
     @Value("${matlab.engine.home:}")
     private String matlabHome;
 
+    // 引擎池最大并发数（含常驻引擎），每个引擎约占 1-2GB 内存
+    @Value("${matlab.engine.pool-size:4}")
+    private int enginePoolSize;
+
     @PostConstruct
     private void initMatlabHome() {
         MatlabSimulationRunner.configureMatlabHome(matlabHome);
+        // 创建引擎池（pool-size 从 yml 读取，默认 4）
+        enginePool = new MatlabEnginePool(enginePoolSize);
+        log.info("MATLAB 引擎池大小: {}", enginePoolSize);
         // 引擎模式启用时，随 Spring Boot 启动常驻 MATLAB 引擎（异步，不阻塞启动）
         if (matlabEngineEnabled) {
             enginePool.init();
@@ -98,7 +105,7 @@ public class ProgramService {
 
     @PreDestroy
     private void destroyEnginePool() {
-        enginePool.shutdown();
+        if (enginePool != null) enginePool.shutdown();
     }
 
     @Autowired
@@ -704,7 +711,11 @@ public class ProgramService {
         task.setProgramVersion(version);
         task.setProjectName(projectName);
         task.setStartTime(taskTimestamp);
-        task.setStatus(TaskStatus.RUNNING);
+        // 引擎模式下，如果所有引擎都在使用中，先标记为 QUEUED（排队中）
+        // doRun 线程 borrow 到引擎后会把状态改为 RUNNING
+        boolean willQueue = isEngineMode() && enginePool.idleCount() == 0
+                && enginePool.totalCount() >= enginePool.maxEngines();
+        task.setStatus(willQueue ? TaskStatus.QUEUED : TaskStatus.RUNNING);
         task.setStopTime(alignedStopTime);
         task.setFixedStep(fixedStep);
         task.setNpCommand(npCommand);
@@ -720,11 +731,15 @@ public class ProgramService {
         new Thread(() -> doRun(taskTimestamp, entity, alignedStopTime, fixedStep, npCommand, loadPower, modelFile), "program-run-" + taskTimestamp).start();
 
         Map<String, Object> data = new HashMap<>();
-        data.put("status", TaskStatus.RUNNING);
+        data.put("status", willQueue ? TaskStatus.QUEUED : TaskStatus.RUNNING);
         data.put("taskTimestamp", taskTimestamp);
         // 回传对齐后的停止时间，前端据此校正时间轴与游标上限
         data.put("stopTime", alignedStopTime);
         data.put("engineMode", isEngineMode());
+        if (willQueue) {
+            data.put("queuePosition", enginePool.waitingCount());
+            return Result.success("已加入排队（引擎忙），请稍后...", data);
+        }
         return Result.success("运行已启动", data);
     }
 
@@ -770,7 +785,15 @@ public class ProgramService {
             data.put("message", "[MATLAB] 引擎启动失败，将回退到 matlab -batch");
         } else if (enginePool.isReady()) {
             data.put("status", "ready");
-            data.put("message", "[MATLAB] 引擎已就绪");
+            int idle = enginePool.idleCount();
+            int total = enginePool.totalCount();
+            int max = enginePool.maxEngines();
+            int waiting = enginePool.waitingCount();
+            data.put("message", "[MATLAB] 引擎已就绪（空闲 " + idle + "/" + total + "，上限 " + max + "，排队 " + waiting + "）");
+            data.put("idle", idle);
+            data.put("total", total);
+            data.put("max", max);
+            data.put("waiting", waiting);
         } else {
             data.put("status", "starting");
             data.put("message", "[MATLAB] 引擎启动中...");
@@ -983,6 +1006,11 @@ public class ProgramService {
                 enginePool);
         engineRunners.put(taskTimestamp, runner);
         try {
+            // borrow 成功（或即将成功），从 QUEUED 切换到 RUNNING
+            ProgramTaskEntity curTask = runningTasks.get(taskTimestamp);
+            if (curTask != null && TaskStatus.QUEUED.equals(curTask.getStatus())) {
+                updateTaskStatus(taskTimestamp, TaskStatus.RUNNING, null, null, null, null);
+            }
             runner.run();
             if (runner.isUserStopped()) {
                 log.info("引擎仿真被用户停止，仿真时间={}", runner.getLastSimTime());

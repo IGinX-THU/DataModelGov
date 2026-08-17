@@ -68,6 +68,9 @@ matlab:
     # 服务启动时会用 JNA 把 <matlab.home>/bin/win64 注入到本进程的 DLL 搜索路径，
     # 因此通常无需再手动修改 PATH。
     home:
+    # 引擎池最大并发数（含常驻引擎）。每个引擎是独立 MATLAB 进程，约占 1-2GB 内存。
+    # 1：串行（旧行为）；4：最多 4 个仿真并发，第 5 个排队等待。
+    pool-size: 4
 
 # 离线缓存配置
 offline:

@@ -213,11 +213,20 @@ public class MatlabSimulationRunner implements Closeable {
 
     private void startEngine() throws Exception {
         long t0 = System.currentTimeMillis();
-        // 从引擎池借出（首次会启动 MATLAB，后续复用常驻引擎）
+        // 引擎池满时 borrow 会阻塞，先提示前端正在排队
+        if (enginePool.idleCount() == 0 && enginePool.totalCount() >= enginePool.maxEngines()) {
+            // 正在使用中的引擎数 = 总数 - 空闲数；前面排队的任务数 = waitingCount
+            // waitingCount 在 borrow 内部才递增，这里用"使用中引擎数 - 1"作为前面任务数
+            // （当前任务还没借到引擎，使用中的引擎都是前面正在跑的任务）
+            int runningTasks = enginePool.totalCount() - enginePool.idleCount();
+            int ahead = runningTasks + enginePool.waitingCount();
+            logMatlab("引擎已达并发上限(" + enginePool.maxEngines() + ")，排队等待中...（前面还有 " + ahead + " 个任务）");
+        }
+        // 从引擎池借出（空闲直接取；未达上限按需创建；达上限阻塞等待）
         engine = enginePool.borrow(ENGINE_START_TIMEOUT_SEC);
         long elapsed = System.currentTimeMillis() - t0;
         if (elapsed < 1000) {
-            logMatlab("引擎已就绪（复用常驻引擎）");
+            logMatlab("引擎已就绪（复用空闲引擎）");
         } else {
             logMatlab("引擎已就绪，耗时 " + elapsed + " ms");
         }
@@ -530,7 +539,7 @@ public class MatlabSimulationRunner implements Closeable {
         sb.append("    dmg_cols{end+1} = dmg_req{dmg_i,1}; dmg_paths{end+1} = dmg_req{dmg_i,2};\n");
         sb.append("  catch; end\n");
         sb.append("end\n");
-        sb.append("dmg_cursor = 0; dmg_map = []; dmg_layout = cell(0,3);\n");
+        sb.append("dmg_cursor = 0; dmg_mapNames = {}; dmg_layout = cell(0,3);\n");
         // 把 addWorkspaceBlocks 添加的 To Workspace 块对应的信号也加入 DataLogging。
         // DataLogging 只能设在输出端口上，不能设在 ToWorkspace 块的 Inport 上。
         // 做法：通过 PortConnectivity 找到 ToWorkspace 块 Inport 的信号源端口（上游 Outport），
@@ -642,15 +651,14 @@ public class MatlabSimulationRunner implements Closeable {
     private void processData(Object data, String newColStr) throws Exception {
         if (csvColumns.size() <= 1) return;
         fetchCount++;
-        boolean checkCols = (fetchCount == 1) || (fetchCount % COL_CHECK_INTERVAL == 0);
-        if (checkCols && hasText(newColStr)) {
+        if (hasText(newColStr)) {
             List<String> newCols = new ArrayList<>(Arrays.asList(newColStr.split(",")));
             if (!newCols.equals(csvColumns)) {
+                log.info("[MATLAB] 信号列头更新（向量展开）: 原列数={}, 新列数={}", csvColumns.size(), newCols.size());
                 csvColumns.clear();
                 csvColumns.addAll(newCols);
                 sink.onHeaders(new ArrayList<>(csvColumns));
-                // 列变化时前端会清空已累积的行（reset=true），当前 poll 的增量数据
-                // 只有几行，直接发送会导致前面的曲线消失。重置 MATLAB 游标到 0，
+                // 列变化时前端会清空已累积的行（reset=true），重置 MATLAB 游标到 0，
                 // 让下次 poll 重新取全量数据（新列序），前端得到完整重绘。
                 try {
                     eval("dmg_cursor = 0;", CALL_TIMEOUT_SEC, "重置游标");
@@ -681,54 +689,56 @@ public class MatlabSimulationRunner implements Closeable {
         sb.append("if strcmp(dmg_status,'running') || strcmp(dmg_status,'paused') || strcmp(dmg_status,'stopped')\n");
         sb.append("  try; set_param('").append(m).append("','SimulationCommand','WriteDataLogs'); catch; end\n");
         sb.append("  if exist('logsout','var') && isa(logsout,'Simulink.SimulationData.Dataset') && logsout.numElements > 0\n");
-        // dmg_map 构建（exportResults 依赖）
-        sb.append("    if isempty(dmg_map) || any(dmg_map == 0)\n");
-        sb.append("      dmg_map = zeros(1, numel(dmg_cols));\n");
+        // dmg_mapNames 冻结每个信号对应的 logsout 元素名称（cell 数组）。
+        // 只在首次构建，之后冻结。每次用 logsout.getElement(name) 按名称取值，
+        // 不受 WriteDataLogs 重建导致索引变化的影响。
+        // dmg_mapNames{c} = '' 表示该信号不在 logsout 中，走 Section 2 To Workspace。
+        sb.append("    if isempty(dmg_mapNames)\n");
+        sb.append("      dmg_mapNames = cell(1, numel(dmg_cols));\n");
+        sb.append("      dmg_logNames = cell(1, logsout.numElements);\n");
+        sb.append("      dmg_logBP = cell(1, logsout.numElements);\n");
+        sb.append("      for dmg_e = 1:logsout.numElements\n");
+        sb.append("        try; dmg_el0 = logsout.getElement(dmg_e); dmg_logNames{dmg_e} = dmg_el0.Name;\n");
+        sb.append("          try; dmg_logBP{dmg_e} = strjoin(convertToCell(dmg_el0.BlockPath), '/'); catch; dmg_logBP{dmg_e} = ''; end;\n");
+        sb.append("        catch; dmg_logNames{dmg_e} = ''; dmg_logBP{dmg_e} = ''; end\n");
+        sb.append("      end\n");
         sb.append("      for dmg_c = 1:numel(dmg_cols)\n");
-        sb.append("        try\n");
-        sb.append("          dmg_el = logsout.getElement(dmg_cols{dmg_c});\n");
-        sb.append("          for dmg_e = 1:logsout.numElements\n");
-        sb.append("            if strcmp(logsout.getElement(dmg_e).Name, dmg_cols{dmg_c}); dmg_map(dmg_c) = dmg_e; break; end\n");
-        sb.append("          end\n");
-        sb.append("        catch\n");
-        sb.append("          for dmg_e = 1:logsout.numElements\n");
-        sb.append("            try\n");
-        sb.append("              dmg_el = logsout.getElement(dmg_e);\n");
-        sb.append("              try; dmg_bp = strjoin(convertToCell(dmg_el.BlockPath), '/'); catch; dmg_bp = ''; end\n");
-        sb.append("              if strcmp(dmg_bp, dmg_paths{dmg_c}); dmg_map(dmg_c) = dmg_e; break; end\n");
-        sb.append("            catch; end\n");
-        sb.append("          end\n");
+        sb.append("        dmg_idx = find(strcmp(dmg_logBP, dmg_paths{dmg_c}), 1);\n");
+        sb.append("        if isempty(dmg_idx); dmg_idx = find(strcmp(dmg_logNames, dmg_cols{dmg_c}), 1); end\n");
+        sb.append("        if ~isempty(dmg_idx); dmg_mapNames{dmg_c} = dmg_logNames{dmg_idx}; end\n");
+        sb.append("      end\n");
+        sb.append("    end\n");
+        sb.append("    dmg_tElem = [];\n");
+        sb.append("    if ~isempty(dmg_mapNames)\n");
+        sb.append("      for dmg_c = 1:numel(dmg_mapNames)\n");
+        sb.append("        if ~isempty(dmg_mapNames{dmg_c})\n");
+        sb.append("          try; dmg_tElem = logsout.getElement(dmg_mapNames{dmg_c}); break; catch; end\n");
         sb.append("        end\n");
         sb.append("      end\n");
         sb.append("    end\n");
-        sb.append("    dmg_t = logsout.getElement(1).Values.Time(:);\n");
+        sb.append("    if ~isempty(dmg_tElem)\n");
+        sb.append("      dmg_t = dmg_tElem.Values.Time(:);\n");
+        sb.append("    else\n");
+        sb.append("      dmg_t = logsout.getElement(1).Values.Time(:);\n");
+        sb.append("    end\n");
         sb.append("    dmg_total = numel(dmg_t);\n");
         sb.append("    if dmg_total > dmg_cursor\n");
         sb.append("      dmg_sel = (dmg_cursor+1):dmg_total;\n");
         sb.append("      dmg_new = dmg_t(dmg_sel);\n");
         sb.append("      dmg_newCols{end+1} = 'time';\n");
-        // 按 dmg_cols + dmg_map 精确取数（与 exportResults section 1 完全一致）：
-        // - dmg_map(dmg_c)==0 表示 logsout 里没有该信号，跳过（不填零），
-        //   让 Section 2（To Workspace 变量）补充，避免 Section 2 因同名跳过导致永远为零。
-        // - 向量/矩阵信号按列展开（_1,_2,...），与 export 一致。
+        // 按冻结的 dmg_mapNames 取值，统一按 size(dmg_v,2) 展开列
         sb.append("      for dmg_c = 1:numel(dmg_cols)\n");
         sb.append("        dmg_cn = matlab.lang.makeValidName(dmg_cols{dmg_c});\n");
         sb.append("        if any(strcmp(dmg_newCols, dmg_cn)); continue; end\n");
         sb.append("        try\n");
-        sb.append("          if numel(dmg_map) >= dmg_c && dmg_map(dmg_c) > 0\n");
-        sb.append("            dmg_v = logsout.getElement(dmg_map(dmg_c)).Values.Data;\n");
-        sb.append("            if isvector(dmg_v)\n");
-        sb.append("              dmg_v = dmg_v(:);\n");
-        sb.append("              if numel(dmg_v) == dmg_total\n");
-        sb.append("                dmg_new = [dmg_new dmg_v(dmg_sel)];\n");
-        sb.append("                dmg_newCols{end+1} = dmg_cn;\n");
-        sb.append("              end\n");
-        sb.append("            elseif size(dmg_v,1) == dmg_total\n");
+        sb.append("          if ~isempty(dmg_mapNames{dmg_c})\n");
+        sb.append("            dmg_v = logsout.getElement(dmg_mapNames{dmg_c}).Values.Data;\n");
+        sb.append("            if size(dmg_v,1) == dmg_total\n");
         sb.append("              for dmg_k = 1:size(dmg_v,2)\n");
         sb.append("                if size(dmg_v,2) == 1; dmg_cn2 = dmg_cn; else; dmg_cn2 = sprintf('%s_%d', dmg_cn, dmg_k); end\n");
         sb.append("                dmg_cn2 = matlab.lang.makeValidName(dmg_cn2);\n");
         sb.append("                if ~any(strcmp(dmg_newCols, dmg_cn2))\n");
-        sb.append("                  dmg_new = [dmg_new dmg_v(dmg_sel, dmg_k)];\n");
+        sb.append("                  dmg_new = [dmg_new double(dmg_v(dmg_sel, dmg_k))];\n");
         sb.append("                  dmg_newCols{end+1} = dmg_cn2;\n");
         sb.append("                end\n");
         sb.append("              end\n");
@@ -810,27 +820,55 @@ public class MatlabSimulationRunner implements Closeable {
         StringBuilder sb = new StringBuilder();
         sb.append("dmg_time = [];\n");
         sb.append("if exist('logsout','var') && isa(logsout,'Simulink.SimulationData.Dataset') && logsout.numElements > 0\n");
-        sb.append("  dmg_time = logsout.getElement(1).Values.Time(:);\n");
+        // 用 dmg_mapNames 中第一个非空条目取时间向量，避免 getElement(1) 索引不稳定
+        sb.append("  dmg_tElem = [];\n");
+        sb.append("  if ~isempty(dmg_mapNames)\n");
+        sb.append("    for dmg_c = 1:numel(dmg_mapNames)\n");
+        sb.append("      if ~isempty(dmg_mapNames{dmg_c})\n");
+        sb.append("        try; dmg_tElem = logsout.getElement(dmg_mapNames{dmg_c}); break; catch; end\n");
+        sb.append("      end\n");
+        sb.append("    end\n");
+        sb.append("  end\n");
+        sb.append("  if ~isempty(dmg_tElem)\n");
+        sb.append("    dmg_time = dmg_tElem.Values.Time(:);\n");
+        sb.append("  else\n");
+        sb.append("    dmg_time = logsout.getElement(1).Values.Time(:);\n");
+        sb.append("  end\n");
         sb.append("elseif exist('tout','var'); dmg_time = tout(:);\n");
         sb.append("end\n");
         sb.append("dmg_n = numel(dmg_time);\n");
         sb.append("if dmg_n > 0\n");
         sb.append("  dmg_names = {'time'}; dmg_data = dmg_time;\n");
-        // 1) 实时曲线信号（按 BlockPath 匹配，与实时推送列完全一致）
-        //    - dmg_map(dmg_c)==0 时跳过（不填零），让 Section 2 补充
-        //    - 向量/矩阵信号按列展开（_1,_2,...），与 poll 脚本一致
+        // 1) 实时曲线信号（按冻结的 dmg_mapNames 取值，与 poll 脚本完全一致）
+        //    - dmg_mapNames 在 poll 阶段已构建并冻结，export 直接复用
+        //    - 如果 dmg_mapNames 为空（poll 未执行或变量丢失），按相同逻辑构建
+        //    - 不使用 isvector 判断，统一按 size(dmg_v,2) 展开列
+        // 构建/验证 dmg_mapNames（与 poll 脚本一致）
+        sb.append("  if exist('logsout','var') && isa(logsout,'Simulink.SimulationData.Dataset') && logsout.numElements > 0\n");
+        sb.append("    if isempty(dmg_mapNames) || numel(dmg_mapNames) ~= numel(dmg_cols)\n");
+        sb.append("      dmg_mapNames = cell(1, numel(dmg_cols));\n");
+        sb.append("      dmg_logNames = cell(1, logsout.numElements);\n");
+        sb.append("      dmg_logBP = cell(1, logsout.numElements);\n");
+        sb.append("      for dmg_e = 1:logsout.numElements\n");
+        sb.append("        try; dmg_el0 = logsout.getElement(dmg_e); dmg_logNames{dmg_e} = dmg_el0.Name;\n");
+        sb.append("          try; dmg_logBP{dmg_e} = strjoin(convertToCell(dmg_el0.BlockPath), '/'); catch; dmg_logBP{dmg_e} = ''; end;\n");
+        sb.append("        catch; dmg_logNames{dmg_e} = ''; dmg_logBP{dmg_e} = ''; end\n");
+        sb.append("      end\n");
+        sb.append("      for dmg_c = 1:numel(dmg_cols)\n");
+        sb.append("        dmg_idx = find(strcmp(dmg_logBP, dmg_paths{dmg_c}), 1);\n");
+        sb.append("        if isempty(dmg_idx); dmg_idx = find(strcmp(dmg_logNames, dmg_cols{dmg_c}), 1); end\n");
+        sb.append("        if ~isempty(dmg_idx); dmg_mapNames{dmg_c} = dmg_logNames{dmg_idx}; end\n");
+        sb.append("      end\n");
+        sb.append("    end\n");
+        sb.append("  end\n");
+        // 按 dmg_mapNames 取值
         sb.append("  for dmg_c = 1:numel(dmg_cols)\n");
         sb.append("    dmg_cn = matlab.lang.makeValidName(dmg_cols{dmg_c});\n");
         sb.append("    if any(strcmp(dmg_names, dmg_cn)); continue; end\n");
         sb.append("    try\n");
-        sb.append("      if numel(dmg_map) >= dmg_c && dmg_map(dmg_c) > 0\n");
-        sb.append("        dmg_v = logsout.getElement(dmg_map(dmg_c)).Values.Data;\n");
-        sb.append("        if isvector(dmg_v)\n");
-        sb.append("          dmg_v = dmg_v(:);\n");
-        sb.append("          if numel(dmg_v) == dmg_n\n");
-        sb.append("            dmg_names{end+1} = dmg_cn; dmg_data = [dmg_data dmg_v];\n");
-        sb.append("          end\n");
-        sb.append("        elseif size(dmg_v,1) == dmg_n\n");
+        sb.append("      if ~isempty(dmg_mapNames) && ~isempty(dmg_mapNames{dmg_c})\n");
+        sb.append("        dmg_v = logsout.getElement(dmg_mapNames{dmg_c}).Values.Data;\n");
+        sb.append("        if size(dmg_v,1) == dmg_n\n");
         sb.append("          for dmg_k = 1:size(dmg_v,2)\n");
         sb.append("            if size(dmg_v,2) == 1; dmg_cn2 = dmg_cn; else; dmg_cn2 = sprintf('%s_%d', dmg_cn, dmg_k); end\n");
         sb.append("            dmg_cn2 = matlab.lang.makeValidName(dmg_cn2);\n");
