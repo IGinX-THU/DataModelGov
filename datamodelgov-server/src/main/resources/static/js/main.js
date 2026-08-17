@@ -2820,9 +2820,6 @@ function showSimulationRecord() {
                                 if (programRun.loadProgramFiles) {
                                     programRun.loadProgramFiles(programName, programVersion);
                                 }
-                                if (programRun.queryStatus) {
-                                    programRun.queryStatus(programName, programVersion);
-                                }
                             } else {
                                 setTimeout(waitForInit, 100);
                             }
@@ -3888,9 +3885,6 @@ function bindProjectTreeEvents() {
                     }
                     if (programRun.loadProgramFiles) {
                         programRun.loadProgramFiles(programName, programVersion);
-                    }
-                    if (programRun.queryStatus) {
-                        programRun.queryStatus(programName, programVersion);
                     }
                 }
             }

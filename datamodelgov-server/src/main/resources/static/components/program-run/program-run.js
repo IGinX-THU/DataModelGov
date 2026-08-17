@@ -175,12 +175,12 @@ class ProgramRun extends HTMLElement {
       if (result && result.code === 200 && result.data) {
         const msg = result.data.message || '';
         // 仿真未运行时才更新（避免覆盖仿真日志）
-        if (this.runStatus !== 'RUNNING' && this.runStatus !== 'STARTING' && this.runStatus !== 'PAUSED') {
+        if (this.runStatus !== 'RUNNING' && this.runStatus !== 'STARTING' && this.runStatus !== 'PAUSED' && this.runStatus !== 'QUEUED') {
           this.footerLog.textContent = msg;
         }
       }
     } catch (e) {
-      if (this.runStatus !== 'RUNNING' && this.runStatus !== 'STARTING' && this.runStatus !== 'PAUSED') {
+      if (this.runStatus !== 'RUNNING' && this.runStatus !== 'STARTING' && this.runStatus !== 'PAUSED' && this.runStatus !== 'QUEUED') {
         this.footerLog.textContent = 'MATLAB 引擎状态未知';
       }
     }
@@ -1215,7 +1215,9 @@ class ProgramRun extends HTMLElement {
 
     const starting = state === 'STARTING';
 
-    if (this.runBtn) this.runBtn.disabled = running || paused || starting || this._busyAction === 'run';
+    const queued = state === 'QUEUED';
+
+    if (this.runBtn) this.runBtn.disabled = running || paused || starting || queued || this._busyAction === 'run';
 
     if (this.pauseBtn) {
 
@@ -1229,7 +1231,7 @@ class ProgramRun extends HTMLElement {
 
     }
 
-    if (this.stopBtn) this.stopBtn.disabled = (!running && !paused && !starting) || this._busyAction === 'stop';
+    if (this.stopBtn) this.stopBtn.disabled = (!running && !paused && !starting && !queued) || this._busyAction === 'stop';
 
   }
 
@@ -1261,8 +1263,8 @@ class ProgramRun extends HTMLElement {
           this._waitingEngine = true;
           // 状态为 STARTING 时 stopBtn 是可用的，这里强制刷新一次确保按钮可用
           this.updateRunButtons('STARTING');
-          for (let i = 0; i < 60; i++) {
-            await new Promise(r => setTimeout(r, 3000));
+          for (let i = 0; i < 12; i++) {
+            await new Promise(r => setTimeout(r, 15000));
             if (this._cancelRun) {
               this._waitingEngine = false;
               return; // 用户取消，不继续启动仿真
@@ -1348,11 +1350,13 @@ class ProgramRun extends HTMLElement {
         this._revealStarted = false;
         // 新一轮运行重置暂停态，避免沿用上一次的暂停按钮状态
         this._paused = false;
-        this.runStatus = 'STARTING';
-        this.updateStatusUI('STARTING');
+        // 引擎忙时后端返回 queued 状态，前端显示排队中
+        const isQueued = result.data && result.data.status === 'queued';
+        this.runStatus = isQueued ? 'QUEUED' : 'STARTING';
+        this.updateStatusUI(isQueued ? 'QUEUED' : 'STARTING');
 
-        // 仿真启动中：暂停不可用（曲线尚未显示），停止可用
-        this.updateRunButtons('STARTING');
+        // 仿真启动中/排队中：暂停不可用，排队中停止也不可用
+        this.updateRunButtons(isQueued ? 'QUEUED' : 'STARTING');
 
         // 清除上一次运行的数据，防止切 tab 时 renderCustomCharts 用旧数据画曲线
         this.csvHeaders = null;
@@ -1360,7 +1364,7 @@ class ProgramRun extends HTMLElement {
         this.liveHeaders = null;
         this.liveRows = [];
         this.currentTime = 0;
-        // 立即重绘当前 tab 的图表（显示"仿真启动中，请稍后..."而非旧曲线）
+        // 立即重绘当前 tab 的图表（显示"排队等待中"或"仿真启动中"而非旧曲线）
         this.renderTab(this.activeTab || '综合总览');
 
         // 初始化实时数据收集
@@ -1696,7 +1700,7 @@ class ProgramRun extends HTMLElement {
   handleLiveData(data, name, version) {
 
     // 状态映射
-    const statusMap = { 'running': 'RUNNING', 'success': 'SUCCESS', 'failed': 'ERROR', 'stopped': 'STOPPED', 'pending': 'IDLE', 'paused': 'PAUSED' };
+    const statusMap = { 'running': 'RUNNING', 'queued': 'QUEUED', 'success': 'SUCCESS', 'failed': 'ERROR', 'stopped': 'STOPPED', 'pending': 'IDLE', 'paused': 'PAUSED' };
     const status = statusMap[data.status] || data.status || 'UNKNOWN';
 
     // 如果有错误信息，显示
@@ -2269,6 +2273,8 @@ class ProgramRun extends HTMLElement {
 
       'STARTING': '仿真启动中',
 
+      'QUEUED': '排队等待中',
+
       'RUNNING': '仿真运行中',
 
       'PAUSED': '已暂停',
@@ -2290,6 +2296,8 @@ class ProgramRun extends HTMLElement {
       'LOADING': '#f59e0b',
 
       'STARTING': '#45D483',
+
+      'QUEUED': '#f59e0b',
 
       'RUNNING': '#45D483',
 
@@ -2325,11 +2333,12 @@ class ProgramRun extends HTMLElement {
 
     if (this.runBtn && this.stopBtn) {
 
-      const running = status === 'RUNNING' || status === 'STARTING';
+      const running = status === 'RUNNING' || status === 'STARTING' || status === 'QUEUED';
 
       this.runBtn.disabled = running;
 
-      this.stopBtn.disabled = !running;
+      // 排队中不允许停止（还没真正开始）
+      this.stopBtn.disabled = !(status === 'RUNNING' || status === 'STARTING');
 
     }
 
@@ -2428,6 +2437,7 @@ class ProgramRun extends HTMLElement {
 
     const statusMap = {
       'running': 'RUNNING',
+      'queued': 'QUEUED',
       'success': 'SUCCESS',
       'failed': 'ERROR',
       'stopped': 'STOPPED',
@@ -2493,6 +2503,25 @@ class ProgramRun extends HTMLElement {
       this.updateRunButtons('STARTING');
 
       // 重绘图表，确保显示"仿真启动中，请稍后..."而非旧曲线
+      this.renderTab(this.activeTab || '综合总览');
+
+      if (!this._es && !this._pollTimer) {
+        this.startStream(name, version);
+      }
+
+    }
+
+    if (status === 'QUEUED' && name && version) {
+
+      // 刷新页面时恢复排队状态：引擎忙，等待空闲
+      this._revealStarted = false;
+      this.runStatus = 'QUEUED';
+      this.csvHeaders = null;
+      this.csvRows = null;
+      this.updateStatusUI('QUEUED');
+
+      this.updateRunButtons('QUEUED');
+
       this.renderTab(this.activeTab || '综合总览');
 
       if (!this._es && !this._pollTimer) {
@@ -3152,6 +3181,8 @@ function buildEChartsOptions(data, time, status, duration) {
 
       yAxisIndex: s.axis === 'right' ? 1 : 0,
 
+      itemStyle: { color: s.color },
+
       lineStyle: { color: s.color, width: 2, type: s.dashed ? 'dashed' : 'solid' },
 
       data: s.data,
@@ -3180,6 +3211,7 @@ function buildEChartsOptions(data, time, status, duration) {
 
     const statusTexts = {
       'STARTING': '仿真启动中，请稍后...',
+      'QUEUED': '排队等待中，前面有任务正在运行...',
       'RUNNING': '仿真运行中，暂无数据',
       'IDLE': '点击运行按钮开始仿真',
       'ERROR': '运行失败，请重试',
