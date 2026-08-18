@@ -20,13 +20,25 @@ import com.tsinghua.dto.UploadResult;
 import com.tsinghua.dto.DataQueryRequest;
 import com.tsinghua.dto.TableDto;
 import com.tsinghua.model.Result;
+import com.tsinghua.matlab.MatlabSimulationRunner;
+import com.tsinghua.matlab.MatlabEnginePool;
+import com.tsinghua.matlab.MatlabUtil;
+import com.tsinghua.util.ArchiveUtil;
 import com.tsinghua.util.ConvertUtil;
+import com.tsinghua.util.FileUtil;
 import com.tsinghua.util.ProjectContext;
+import com.tsinghua.util.SimTimeUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import javax.annotation.PostConstruct;
+import javax.annotation.PreDestroy;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
+import javax.annotation.PostConstruct;
 
 import java.io.*;
 import java.nio.charset.Charset;
@@ -36,18 +48,6 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
-import java.util.zip.GZIPInputStream;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
-
-import net.sf.sevenzipjbinding.*;
-import net.sf.sevenzipjbinding.impl.RandomAccessFileInStream;
-import net.sf.sevenzipjbinding.simple.ISimpleInArchive;
-import net.sf.sevenzipjbinding.simple.ISimpleInArchiveItem;
-import org.apache.commons.compress.archivers.sevenz.SevenZArchiveEntry;
-import org.apache.commons.compress.archivers.sevenz.SevenZFile;
-import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
-import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 
 @Slf4j
 @Service
@@ -62,18 +62,50 @@ public class ProgramService {
     private final ObjectMapper mapper = new ObjectMapper();
     private final Map<Long, Process> processMap = new ConcurrentHashMap<>();
     private final Map<Long, ProgramTaskEntity> runningTasks = new ConcurrentHashMap<>();
-    private static final Set<String> SUPPORTED_ARCHIVE = new HashSet<>(Arrays.asList(".zip", ".rar", ".7z", ".tar", ".tar.gz", ".tgz"));
-    private static final boolean SEVENZIP_AVAILABLE;
+    // 实时仿真数据缓冲：key=taskTimestamp, value=LiveDataBuffer
+    private final Map<Long, LiveDataBuffer> liveDataMap = new ConcurrentHashMap<>();
+    // 暂停/恢复状态：key=taskTimestamp, value=true表示已暂停
+    private final Map<Long, Boolean> pauseFlags = new ConcurrentHashMap<>();
+    // MATLAB Engine 会话：key=taskTimestamp，存在即表示该任务由引擎驱动（支持真实暂停/恢复/停止）
+    private final Map<Long, MatlabSimulationRunner> engineRunners = new ConcurrentHashMap<>();
+    // 引擎池（pool-size 在 @PostConstruct 中从 yml 读取后创建）
+    private MatlabEnginePool enginePool;
+    // 引擎运行期不可用（如缺少 MATLAB 原生库）时置位，后续任务直接走 matlab -batch 回退
+    private volatile boolean engineDisabled = false;
+    // 仿真执行结果码
+    private static final int RUN_OK = 0;
+    private static final int RUN_STOPPED = 1;
+    private static final int RUN_FAILED = 2;
+    private static final int RUN_FALLBACK = 3;
 
-    static {
-        boolean available = false;
-        try {
-            SevenZip.initSevenZipFromPlatformJAR();
-            available = true;
-        } catch (SevenZipNativeInitializationException e) {
-            log.error("SevenZipJBinding 初始化失败", e);
+    // 运行期开关：置 false 可强制回退到 matlab -batch（引擎异常排查时用）
+    @Value("${matlab.engine.enabled:true}")
+    private boolean matlabEngineEnabled;
+
+    // MATLAB 安装根目录（如 C:\Program Files\MATLAB\R2019b）；留空则自动探测。
+    // 服务启动时注入到 MatlabSimulationRunner，用于在进程内加载 MATLAB 原生库，免去手动改 PATH。
+    @Value("${matlab.engine.home:}")
+    private String matlabHome;
+
+    // 引擎池最大并发数（含常驻引擎），每个引擎约占 1-2GB 内存
+    @Value("${matlab.engine.pool-size:4}")
+    private int enginePoolSize;
+
+    @PostConstruct
+    private void initMatlabHome() {
+        MatlabSimulationRunner.configureMatlabHome(matlabHome);
+        // 创建引擎池（pool-size 从 yml 读取，默认 4）
+        enginePool = new MatlabEnginePool(enginePoolSize);
+        log.info("MATLAB 引擎池大小: {}", enginePoolSize);
+        // 引擎模式启用时，随 Spring Boot 启动常驻 MATLAB 引擎（异步，不阻塞启动）
+        if (matlabEngineEnabled) {
+            enginePool.init();
         }
-        SEVENZIP_AVAILABLE = available;
+    }
+
+    @PreDestroy
+    private void destroyEnginePool() {
+        if (enginePool != null) enginePool.shutdown();
     }
 
     @Autowired
@@ -473,11 +505,11 @@ public class ProgramService {
     public UploadResult uploadProgram(MultipartFile file, String name, String version, String description) throws Exception {
         String originalName = file.getOriginalFilename();
         if (originalName == null) throw new IllegalArgumentException("文件名为空");
-        String ext = getExtension(originalName);
-        if (ext == null || !SUPPORTED_ARCHIVE.contains(ext)) {
+        String ext = ArchiveUtil.getExtension(originalName);
+        if (ext == null || !ArchiveUtil.SUPPORTED_ARCHIVE.contains(ext)) {
             throw new IllegalArgumentException("仅支持以下压缩格式: zip, rar, 7z, tar, tar.gz, tgz");
         }
-        String programName = (name != null && !name.isEmpty()) ? name : removeArchiveExtension(originalName);
+        String programName = (name != null && !name.isEmpty()) ? name : ArchiveUtil.removeArchiveExtension(originalName);
         String programVersion = (version != null && !version.isEmpty()) ? version : "1.0";
         String projectName = ProjectContext.getCurrentProject("unknown");
         String storagePath = buildStoragePath(projectName, programName, programVersion);
@@ -490,16 +522,16 @@ public class ProgramService {
         byte[] fileBytes = file.getBytes();
         File programDir = getProgramDir(projectName, programName, programVersion);
         if (programDir.exists()) {
-            deleteDirectory(programDir);
+            FileUtil.deleteDirectory(programDir);
         }
         programDir.mkdirs();
         File tempArchive = new File(programDir, originalName);
         Files.write(tempArchive.toPath(), fileBytes);
         try {
-            extractArchive(tempArchive, programDir);
+            ArchiveUtil.extractArchive(tempArchive, programDir);
             log.info("仿真程序解压验证成功。目录: {}", programDir.getAbsolutePath());
         } catch (Exception e) {
-            deleteDirectory(programDir);
+            FileUtil.deleteDirectory(programDir);
             throw new IllegalArgumentException("程序包解压失败: " + e.getMessage(), e);
         } finally {
             if (tempArchive.exists()) tempArchive.delete();
@@ -535,7 +567,7 @@ public class ProgramService {
         iginxClient.getWriteClient().writePoints(points);
 
         // 计算文件校验信息
-        String fileMd5 = calculateMD5(fileBytes);
+        String fileMd5 = FileUtil.calculateMD5(fileBytes);
 
         log.info("仿真程序文件上传成功。名称: {}, 版本: {}, 块数: {}, MD5: {}",
                 programName, programVersion, totalChunks, fileMd5);
@@ -570,158 +602,6 @@ public class ProgramService {
 
         return new UploadResult(programName, programVersion, originalName,
                 file.getSize(), totalChunks, storagePath, fileMd5);
-    }
-
-    private void extractArchive(File archive, File targetDir) throws IOException {
-        String ext = getExtension(archive.getName());
-        if (".zip".equals(ext) || ".jar".equals(ext)) {
-            extractZip(archive, targetDir);
-        } else if (".rar".equals(ext)) {
-            extractRar(archive, targetDir);
-        } else if (".7z".equals(ext)) {
-            extractSevenZ(archive, targetDir);
-        } else if (".tar".equals(ext)) {
-            extractTar(archive, targetDir);
-        } else if (".tar.gz".equals(ext) || ".tgz".equals(ext)) {
-            extractTarGz(archive, targetDir);
-        } else {
-            throw new IOException("不支持的压缩格式: " + ext);
-        }
-    }
-
-    private void extractZip(File src, File targetDir) throws IOException {
-        try (ZipInputStream zis = new ZipInputStream(new FileInputStream(src))) {
-            ZipEntry entry;
-            while ((entry = zis.getNextEntry()) != null) {
-                File f = new File(targetDir, entry.getName());
-                if (entry.isDirectory()) {
-                    f.mkdirs();
-                } else {
-                    f.getParentFile().mkdirs();
-                    try (FileOutputStream fos = new FileOutputStream(f)) {
-                        byte[] buf = new byte[8192];
-                        int len;
-                        while ((len = zis.read(buf)) > 0) fos.write(buf, 0, len);
-                    }
-                }
-                zis.closeEntry();
-            }
-        }
-    }
-
-    private void extractRar(File src, File targetDir) throws IOException {
-        if (!SEVENZIP_AVAILABLE) {
-            throw new IOException("SevenZipJBinding 未初始化，无法解压 RAR 文件");
-        }
-        try (RandomAccessFile raf = new RandomAccessFile(src, "r")) {
-            IInArchive inArchive = SevenZip.openInArchive(null, new RandomAccessFileInStream(raf));
-            try {
-                ISimpleInArchive simple = inArchive.getSimpleInterface();
-                for (ISimpleInArchiveItem item : simple.getArchiveItems()) {
-                    final File out = new File(targetDir, item.getPath());
-                    if (item.isFolder()) {
-                        out.mkdirs();
-                    } else {
-                        out.getParentFile().mkdirs();
-                        try (FileOutputStream fos = new FileOutputStream(out)) {
-                            ExtractOperationResult result = item.extractSlow(data -> {
-                                try {
-                                    fos.write(data);
-                                } catch (IOException e) {
-                                    throw new SevenZipException("写入文件失败: " + out.getName(), e);
-                                }
-                                return data.length;
-                            });
-                            if (result != ExtractOperationResult.OK) {
-                                throw new IOException("解压条目失败 " + item.getPath() + ": " + result);
-                            }
-                        }
-                    }
-                }
-            } finally {
-                if (inArchive != null) {
-                    try { inArchive.close(); } catch (IOException ignored) {}
-                }
-            }
-        }
-    }
-
-    private void extractSevenZ(File src, File targetDir) throws IOException {
-        try (SevenZFile sevenZFile = new SevenZFile(src)) {
-            SevenZArchiveEntry entry;
-            while ((entry = sevenZFile.getNextEntry()) != null) {
-                File f = new File(targetDir, entry.getName());
-                if (entry.isDirectory()) {
-                    f.mkdirs();
-                } else {
-                    f.getParentFile().mkdirs();
-                    try (InputStream is = sevenZFile.getInputStream(entry);
-                         FileOutputStream fos = new FileOutputStream(f)) {
-                        copy(is, fos);
-                    }
-                }
-            }
-        }
-    }
-
-    private void extractTar(File src, File targetDir) throws IOException {
-        try (TarArchiveInputStream tis = new TarArchiveInputStream(new FileInputStream(src))) {
-            TarArchiveEntry entry;
-            while ((entry = tis.getNextTarEntry()) != null) {
-                File f = new File(targetDir, entry.getName());
-                if (entry.isDirectory()) {
-                    f.mkdirs();
-                } else {
-                    f.getParentFile().mkdirs();
-                    try (FileOutputStream fos = new FileOutputStream(f)) {
-                        copy(tis, fos);
-                    }
-                }
-            }
-        }
-    }
-
-    private void extractTarGz(File src, File targetDir) throws IOException {
-        try (TarArchiveInputStream tis = new TarArchiveInputStream(new GZIPInputStream(new FileInputStream(src)))) {
-            TarArchiveEntry entry;
-            while ((entry = tis.getNextTarEntry()) != null) {
-                File f = new File(targetDir, entry.getName());
-                if (entry.isDirectory()) {
-                    f.mkdirs();
-                } else {
-                    f.getParentFile().mkdirs();
-                    try (FileOutputStream fos = new FileOutputStream(f)) {
-                        copy(tis, fos);
-                    }
-                }
-            }
-        }
-    }
-
-    private static void copy(InputStream in, OutputStream out) throws IOException {
-        byte[] buf = new byte[8192];
-        int len;
-        while ((len = in.read(buf)) >= 0) {
-            out.write(buf, 0, len);
-        }
-    }
-
-    private static String getExtension(String filename) {
-        String lower = filename.toLowerCase();
-        if (lower.endsWith(".tar.gz")) return ".tar.gz";
-        if (lower.endsWith(".tar.bz2")) return ".tar.bz2";
-        if (lower.endsWith(".tar.xz")) return ".tar.xz";
-        int dot = lower.lastIndexOf('.');
-        return dot < 0 ? null : lower.substring(dot);
-    }
-
-    private static String removeArchiveExtension(String filename) {
-        String lower = filename.toLowerCase();
-        if (lower.endsWith(".tar.gz")) return filename.substring(0, filename.length() - 7);
-        if (lower.endsWith(".tar.bz2")) return filename.substring(0, filename.length() - 8);
-        if (lower.endsWith(".tar.xz")) return filename.substring(0, filename.length() - 7);
-        int dot = filename.lastIndexOf('.');
-        return dot < 0 ? filename : filename.substring(0, dot);
     }
 
     private ObjectNode buildDefaultConfig(String programName) {
@@ -771,7 +651,7 @@ public class ProgramService {
                 // 删除磁盘上的程序解压目录
                 File programDir = getProgramDir(actualProjectName, name, version);
                 if (programDir.exists()) {
-                    deleteDirectory(programDir);
+                    FileUtil.deleteDirectory(programDir);
                     log.info("已删除程序目录: {}", programDir.getAbsolutePath());
                 }
             } else {
@@ -799,7 +679,7 @@ public class ProgramService {
                     }
                     File programDir = getProgramDir(meta.getProjectName(), meta.getName(), meta.getVersion());
                     if (programDir.exists()) {
-                        deleteDirectory(programDir);
+                        FileUtil.deleteDirectory(programDir);
                         log.info("已删除程序目录: {}", programDir.getAbsolutePath());
                     }
                 }
@@ -820,6 +700,9 @@ public class ProgramService {
         ProgramEntity entity = queryMeta(name, version, projectName);
         if (entity == null) return Result.error("程序不存在");
 
+        // 停止时间对齐到固定步长的整数倍，保证仿真真的停在用户设定的时刻上
+        final String alignedStopTime = alignStopTimeParam(stopTime, fixedStep);
+
         // Create task record
         long taskTimestamp = System.currentTimeMillis();
         ProgramTaskEntity task = new ProgramTaskEntity();
@@ -828,8 +711,12 @@ public class ProgramService {
         task.setProgramVersion(version);
         task.setProjectName(projectName);
         task.setStartTime(taskTimestamp);
-        task.setStatus(TaskStatus.RUNNING);
-        task.setStopTime(stopTime);
+        // 引擎模式下，如果所有引擎都在使用中，先标记为 QUEUED（排队中）
+        // doRun 线程 borrow 到引擎后会把状态改为 RUNNING
+        boolean willQueue = isEngineMode() && enginePool.idleCount() == 0
+                && enginePool.totalCount() >= enginePool.maxEngines();
+        task.setStatus(willQueue ? TaskStatus.QUEUED : TaskStatus.RUNNING);
+        task.setStopTime(alignedStopTime);
         task.setFixedStep(fixedStep);
         task.setNpCommand(npCommand);
         task.setLoadPower(loadPower);
@@ -837,29 +724,152 @@ public class ProgramService {
         runningTasks.put(taskTimestamp, task);
         saveTask(task);
 
-        new Thread(() -> doRun(taskTimestamp, entity, stopTime, fixedStep, npCommand, loadPower, modelFile), "program-run-" + taskTimestamp).start();
+        // 提前创建 LiveDataBuffer，确保 SSE 连接时 buffer 已存在
+        // （doRun 线程下载/解压需要时间，此时前端 SSE 订阅才能拿到 buffer）
+        liveDataMap.put(taskTimestamp, new LiveDataBuffer());
+
+        new Thread(() -> doRun(taskTimestamp, entity, alignedStopTime, fixedStep, npCommand, loadPower, modelFile), "program-run-" + taskTimestamp).start();
 
         Map<String, Object> data = new HashMap<>();
-        data.put("status", TaskStatus.RUNNING);
+        data.put("status", willQueue ? TaskStatus.QUEUED : TaskStatus.RUNNING);
         data.put("taskTimestamp", taskTimestamp);
+        // 回传对齐后的停止时间，前端据此校正时间轴与游标上限
+        data.put("stopTime", alignedStopTime);
+        data.put("engineMode", isEngineMode());
+        if (willQueue) {
+            data.put("queuePosition", enginePool.waitingCount());
+            return Result.success("已加入排队（引擎忙），请稍后...", data);
+        }
         return Result.success("运行已启动", data);
     }
 
-    public Result<Map<String, Object>> stop(String name, String version, String projectName) {
-        ProgramEntity entity = queryMeta(name, version, projectName);
-        if (entity == null) return Result.error("程序不存在");
-        // Find latest running task and stop it
-        ProgramTaskEntity task = queryLatestTask(name, version, projectName);
-        if (task != null && TaskStatus.RUNNING.equals(task.getStatus())) {
-            Process process = processMap.remove(task.getTimestamp());
-            if (process != null && process.isAlive()) {
-                process.destroyForcibly();
-            }
-            updateTaskStatus(task.getTimestamp(), TaskStatus.STOPPED, null, null, null, null);
+    /** 停止时间按固定步长取整（如 步长0.025、停止时间20.31 → 20.3） */
+    private String alignStopTimeParam(String stopTime, String fixedStep) {
+        if (!StringUtils.hasText(stopTime) || !StringUtils.hasText(fixedStep)) return stopTime;
+        double st = SimTimeUtil.parse(stopTime, Double.NaN);
+        double fs = SimTimeUtil.parse(fixedStep, Double.NaN);
+        if (Double.isNaN(st) || Double.isNaN(fs)) return stopTime;
+        String aligned = SimTimeUtil.format(SimTimeUtil.alignToStep(st, fs));
+        if (!aligned.equals(stopTime)) {
+            log.info("停止时间 {} 按固定步长 {} 对齐为 {}", stopTime, fixedStep, aligned);
         }
+        return aligned;
+    }
+
+    /** 是否使用 MATLAB Engine API 驱动仿真（否则回退到 matlab -batch） */
+    private boolean isEngineMode() {
+        if (!matlabEngineEnabled || engineDisabled) return false;
+        if (!MatlabSimulationRunner.isApiAvailable()) return false;
+        // 引擎池启动失败时回退；启动中或已就绪都走引擎模式（borrow 会等待就绪）
+        if (enginePool.isFailed()) {
+            log.warn("MATLAB 引擎池启动失败，回退到 matlab -batch");
+            return false;
+        }
+        return true;
+    }
+
+    /** MATLAB 引擎状态（供前端 footer 显示） */
+    public Result<Map<String, Object>> getEngineStatus() {
         Map<String, Object> data = new HashMap<>();
-        data.put("status", TaskStatus.STOPPED);
-        return Result.success("已停止", data);
+        if (!matlabEngineEnabled) {
+            data.put("status", "disabled");
+            data.put("message", "[MATLAB] 引擎模式未启用（matlab.engine.enabled=false）");
+        } else if (engineDisabled) {
+            data.put("status", "fallback");
+            data.put("message", "[MATLAB] 引擎不可用，已回退到 matlab -batch");
+        } else if (!MatlabSimulationRunner.isApiAvailable()) {
+            data.put("status", "unavailable");
+            data.put("message", "[MATLAB] Engine API 不可用（缺少原生库）");
+        } else if (enginePool.isFailed()) {
+            data.put("status", "failed");
+            data.put("message", "[MATLAB] 引擎启动失败，将回退到 matlab -batch");
+        } else if (enginePool.isReady()) {
+            data.put("status", "ready");
+            int idle = enginePool.idleCount();
+            int total = enginePool.totalCount();
+            int max = enginePool.maxEngines();
+            int waiting = enginePool.waitingCount();
+            data.put("message", "[MATLAB] 引擎已就绪（空闲 " + idle + "/" + total + "，上限 " + max + "，排队 " + waiting + "）");
+            data.put("idle", idle);
+            data.put("total", total);
+            data.put("max", max);
+            data.put("waiting", waiting);
+        } else {
+            data.put("status", "starting");
+            data.put("message", "[MATLAB] 引擎启动中...");
+        }
+        return Result.success(data);
+    }
+
+    /** 重启 MATLAB 引擎（用户在引擎卡住时手动触发） */
+    public Result<Map<String, Object>> restartEngine() {
+        log.info("用户请求重启 MATLAB 引擎");
+        engineDisabled = false;
+        enginePool.restart();
+        Map<String, Object> data = new HashMap<>();
+        data.put("status", "starting");
+        data.put("message", "[MATLAB] 引擎正在重启...");
+        return Result.success("重启请求已发送", data);
+    }
+
+    public Result<Map<String, Object>> stop(String name, String version, String projectName) {
+        log.info("停止请求: name={}, version={}, projectName={}", name, version, projectName);
+        try {
+            // 优先从内存缓存查找运行中的任务，避免 IGinX 查询（同 pause/resume）
+            ProgramTaskEntity task = findRunningTask(name, version, projectName);
+            if (task == null) {
+                task = queryLatestTask(name, version, projectName);
+            }
+            if (task != null && TaskStatus.RUNNING.equals(task.getStatus())) {
+                Long ts = task.getTimestamp();
+                if (ts != null) {
+                    // 引擎模式：直接给 Simulink 发 stop 命令，仿真立即终止且已记录数据保留
+                    MatlabSimulationRunner runner = engineRunners.get(ts);
+                    if (runner != null) {
+                        runner.stopSimulation();
+                        pauseFlags.remove(ts);
+                        // 不在此处 setFinished：让 doRun 线程的 pollLoop 退出 + exportResults 完成后，
+                        // 由 finally 块统一设 finished=true，确保"已执行停止命令"、"仿真结束"等日志能通过 SSE 推送到前端
+                        updateTaskStatus(ts, TaskStatus.STOPPED, null, null, null, null);
+                        Map<String, Object> stopped = new HashMap<>();
+                        stopped.put("status", TaskStatus.STOPPED);
+                        return Result.success("已停止", stopped);
+                    }
+                    // 先创建 stop.flag（让 progressiveReveal/MATLAB 检测到后退出）
+                    File taskDir = new File(getTaskBaseDir(projectName != null ? projectName : task.getProjectName()), String.valueOf(ts));
+                    try {
+                        Files.createFile(new File(taskDir, "stop.flag").toPath());
+                    } catch (IOException e) {
+                        log.warn("创建 stop.flag 失败: {}", e.getMessage());
+                    }
+                    // 同时删除 pause.flag（如果在暂停中，先恢复才能检测到 stop.flag）
+                    try {
+                        Files.deleteIfExists(new File(taskDir, "pause.flag").toPath());
+                    } catch (IOException e) {
+                        log.warn("删除 pause.flag 失败: {}", e.getMessage());
+                    }
+                    pauseFlags.remove(ts);
+                    // 等 1 秒让 MATLAB 检测到 stop.flag 退出，超时则强制杀进程
+                    Process process = processMap.get(ts);
+                    if (process != null && process.isAlive()) {
+                        try { process.waitFor(1, TimeUnit.SECONDS); } catch (InterruptedException ignored) {}
+                        if (process.isAlive()) {
+                            process.destroyForcibly();
+                        }
+                    }
+                    processMap.remove(ts);
+                    LiveDataBuffer buffer = liveDataMap.get(ts);
+                    if (buffer != null) buffer.setFinished(true);
+                    updateTaskStatus(ts, TaskStatus.STOPPED, null, null, null, null);
+                }
+            }
+            Map<String, Object> data = new HashMap<>();
+            data.put("status", TaskStatus.STOPPED);
+            return Result.success("已停止", data);
+        } catch (Exception e) {
+            log.error("停止异常", e);
+            return Result.error("停止失败: " + e.getMessage());
+        }
     }
 
     private void doRun(long taskTimestamp, ProgramEntity entity, String stopTimeParam, String fixedStepParam, String npCommandParam, String loadPowerParam, String modelFileParam) {
@@ -869,7 +879,7 @@ public class ProgramService {
             byte[] archiveBytes = downloadFromIginx(entity.getStoragePath(), entity.getChunkCount(), entity.getFileMd5());
             File archiveFile = new File(taskDir, entity.getFileName());
             Files.write(archiveFile.toPath(), archiveBytes);
-            extractArchive(archiveFile, taskDir);
+            ArchiveUtil.extractArchive(archiveFile, taskDir);
             writeProgramConfig(taskDir, entity);
 
             File configFile = new File(taskDir, "program-config.json");
@@ -881,9 +891,11 @@ public class ProgramService {
             JsonNode runtime = config.get("runtime");
             String preRunScript = runtime.path("preRunScript").asText("RunCtrlSysModelSHT");
             String modelFile = StringUtils.hasText(modelFileParam) ? modelFileParam : runtime.path("simulinkModel").asText("");
-            int stopTime = StringUtils.hasText(stopTimeParam) ? Integer.parseInt(stopTimeParam) : runtime.path("stopTime").asInt(30);
+            double stopTime = StringUtils.hasText(stopTimeParam)
+                    ? SimTimeUtil.parse(stopTimeParam, runtime.path("stopTime").asDouble(30))
+                    : runtime.path("stopTime").asDouble(30);
 
-            String programDir = findProgramDir(taskDir, preRunScript);
+            String programDir = FileUtil.findProgramDir(taskDir, preRunScript);
             if (modelFile.isEmpty()) {
                 File programDirFile = new File(programDir);
                 File[] slxFiles = programDirFile.listFiles((d, n) ->
@@ -893,38 +905,29 @@ public class ProgramService {
                     log.info("自动检测 Simulink 模型: {}", modelFile);
                 }
             }
-            String shortTaskDir = getShortPath(taskDir);
-            String shortProgramDir = getShortPath(new File(programDir));
-            log.info("MATLAB 运行目录: 原始={}, 短路径={}", taskDir.getAbsolutePath(), shortTaskDir);
-            log.info("MATLAB 程序目录: 原始={}, 短路径={}", programDir, shortProgramDir);
-            File wrapper = new File(taskDir, "run_wrapper.m");
-            writeWrapper(wrapper, shortTaskDir, shortProgramDir, preRunScript, modelFile, stopTime, fixedStepParam, npCommandParam, loadPowerParam);
             File oldCsv = new File(taskDir, "signals.csv");
             if (oldCsv.exists()) oldCsv.delete();
+            File oldLiveCsv = new File(taskDir, "signals_live.csv");
+            if (oldLiveCsv.exists()) oldLiveCsv.delete();
 
-            ProcessBuilder pb = new ProcessBuilder();
-            pb.directory(taskDir);
-            pb.command("cmd", "/c", "chcp 65001 && matlab -batch \"cd('"
-                    + escape(shortTaskDir) + "'); run_wrapper; exit;\" -nosplash -nodesktop");
-            pb.redirectErrorStream(true);
+            // 复用 run 方法中提前创建的 LiveDataBuffer（确保 SSE 订阅时已存在）
+            // 使用 computeIfAbsent 保证变量 effectively final（lambda 中引用）
+            LiveDataBuffer liveBuffer = liveDataMap.computeIfAbsent(taskTimestamp, k -> new LiveDataBuffer());
             File logFile = new File(taskDir, "run.log");
-            pb.redirectOutput(logFile);
 
-            Process process = pb.start();
-            processMap.put(taskTimestamp, process);
-            boolean finished = process.waitFor(1200, TimeUnit.SECONDS);
-            processMap.remove(taskTimestamp);
-            if (!finished) {
-                process.destroyForcibly();
-                updateTaskStatus(taskTimestamp, TaskStatus.FAILED, "运行超时", null, null, null);
-                return;
+            int result = RUN_FALLBACK;
+            if (isEngineMode()) {
+                result = runWithEngine(taskTimestamp, taskDir, programDir, preRunScript, modelFile,
+                        stopTime, fixedStepParam, npCommandParam, loadPowerParam, liveBuffer);
             }
-            int exitCode = process.exitValue();
-            String fullLog = readLastLines(logFile, 200);
-            log.info("程序运行结束，退出码: {}，日志:\n{}", exitCode, fullLog);
-            if (exitCode != 0) {
-                String err = readLastLines(logFile, 20);
-                updateTaskStatus(taskTimestamp, TaskStatus.FAILED, "MATLAB 退出码 " + exitCode + ": " + err, null, logFile.getAbsolutePath(), null);
+            if (result == RUN_FALLBACK) {
+                result = runWithBatch(taskTimestamp, taskDir, programDir, preRunScript, modelFile,
+                        stopTime, fixedStepParam, npCommandParam, loadPowerParam, liveBuffer, logFile);
+            }
+            if (result != RUN_OK) {
+                // 用户停止 / 运行失败：状态已由停止端点或运行分支设置，不再覆盖。
+                // signals.csv 已由引擎 exportResults() 写到 taskDir（如果仿真已开始），
+                // results 接口会从 taskDir 兜底读取，无需在此入库。
                 return;
             }
 
@@ -955,24 +958,215 @@ public class ProgramService {
         } finally {
             processMap.remove(taskTimestamp);
             runningTasks.remove(taskTimestamp);
+            pauseFlags.remove(taskTimestamp);
+            // 延迟清理 liveDataMap（让前端最后一次轮询能拿到 finished 状态）
+            LiveDataBuffer buffer = liveDataMap.get(taskTimestamp);
+            if (buffer != null) buffer.setFinished(true);
         }
     }
 
-    private String findProgramDir(File dir, String scriptName) throws IOException {
-        String name = scriptName.toLowerCase().endsWith(".m") ? scriptName : scriptName + ".m";
-        File base = dir.getAbsoluteFile();
-        try (java.util.stream.Stream<Path> paths = Files.walk(base.toPath())) {
-            Path found = paths.filter(p -> p.toFile().isFile() && p.getFileName().toString().equalsIgnoreCase(name))
-                    .findFirst()
-                    .orElse(null);
-            return found != null ? found.getParent().toString() : base.getAbsolutePath();
+    /**
+     * 通过 MATLAB Engine API 执行仿真：常驻 MATLAB 会话 + 异步 SimulationCommand，
+     * 曲线随仿真真实推进，暂停/恢复/停止直接作用于 Simulink 求解器。
+     *
+     * @return RUN_OK 正常结束；RUN_STOPPED 用户停止；RUN_FAILED 运行失败（状态已写）；
+     * RUN_FALLBACK 引擎不可用，需回退到 matlab -batch
+     */
+    private int runWithEngine(long taskTimestamp, File taskDir, String programDir, String preRunScript,
+                              String modelFile, double stopTime, String fixedStep, String npCommand,
+                              String loadPower, LiveDataBuffer liveBuffer) {
+        if (!StringUtils.hasText(modelFile)) {
+            log.warn("未指定 Simulink 模型，回退到 matlab -batch");
+            return RUN_FALLBACK;
+        }
+        String modelName = modelFile.replaceAll("\\.(slx|mdl)$", "");
+        MatlabSimulationRunner runner = new MatlabSimulationRunner(taskDir, programDir, preRunScript, modelName,
+                stopTime, fixedStep, npCommand, loadPower,
+                new MatlabSimulationRunner.LiveSink() {
+                    @Override
+                    public void onStopTime(double alignedStopTime) {
+                        liveBuffer.setStopTime(alignedStopTime);
+                    }
+
+                    @Override
+                    public void onHeaders(List<String> headers) {
+                        liveBuffer.setHeaders(headers);
+                    }
+
+                    @Override
+                    public void onRows(List<String[]> rows) {
+                        liveBuffer.appendRows(rows);
+                    }
+
+                    @Override
+                    public void onLog(String line) {
+                        liveBuffer.appendLogLine(line);
+                    }
+                },
+                enginePool);
+        engineRunners.put(taskTimestamp, runner);
+        try {
+            // borrow 成功（或即将成功），从 QUEUED 切换到 RUNNING
+            ProgramTaskEntity curTask = runningTasks.get(taskTimestamp);
+            if (curTask != null && TaskStatus.QUEUED.equals(curTask.getStatus())) {
+                updateTaskStatus(taskTimestamp, TaskStatus.RUNNING, null, null, null, null);
+            }
+            runner.run();
+            if (runner.isUserStopped()) {
+                log.info("引擎仿真被用户停止，仿真时间={}", runner.getLastSimTime());
+                return RUN_STOPPED;
+            }
+            log.info("引擎仿真完成：停止时间={}，最终仿真时间={}", runner.getAlignedStopTime(), runner.getLastSimTime());
+            return RUN_OK;
+        } catch (Throwable t) {
+            if (isEngineUnavailable(t)) {
+                engineDisabled = true;
+                log.error("MATLAB Engine 不可用，本次及后续仿真回退到 matlab -batch。"
+                        + "请确认本机已安装与 engine.jar 匹配的 MATLAB 版本，"
+                        + "或通过 matlab.engine.home 指定安装目录。原因: {}", t.toString());
+                return RUN_FALLBACK;
+            }
+            log.error("引擎仿真失败", t);
+            updateTaskStatus(taskTimestamp, TaskStatus.FAILED, t.getMessage(), null,
+                    new File(taskDir, "run.log").getAbsolutePath(), null);
+            return RUN_FAILED;
+        } finally {
+            engineRunners.remove(taskTimestamp);
+            runner.close();
         }
     }
 
-    private void writeWrapper(File f, String taskDir, String programDir, String preRun, String modelFile, int stopTime,
+    /** 判断异常是否源于 MATLAB 原生库缺失（此时应回退，而不是把任务标记为失败） */
+    private boolean isEngineUnavailable(Throwable t) {
+        for (Throwable c = t; c != null; c = c.getCause()) {
+            if (c instanceof UnsatisfiedLinkError || c instanceof NoClassDefFoundError
+                    || c instanceof ExceptionInInitializerError) {
+                return true;
+            }
+            if (c == c.getCause()) break;
+        }
+        return false;
+    }
+
+    /**
+     * 回退方案：matlab -batch 阻塞跑完 sim() 后再渐进式回放 CSV。
+     * 仅在 MATLAB Engine API 不可用时使用（无真实暂停，暂停只是节流展示）。
+     */
+    private int runWithBatch(long taskTimestamp, File taskDir, String programDir, String preRunScript,
+                             String modelFile, double stopTime, String fixedStep, String npCommand,
+                             String loadPower, LiveDataBuffer liveBuffer, File logFile) throws Exception {
+        String shortTaskDir = FileUtil.getShortPath(taskDir);
+        String shortProgramDir = FileUtil.getShortPath(new File(programDir));
+        log.info("回退到 matlab -batch，运行目录={}，程序目录={}", shortTaskDir, shortProgramDir);
+        writeWrapper(new File(taskDir, "run_wrapper.m"), shortTaskDir, shortProgramDir, preRunScript,
+                modelFile, stopTime, fixedStep, npCommand, loadPower);
+
+        ProcessBuilder pb = new ProcessBuilder();
+        pb.directory(taskDir);
+        pb.command("cmd", "/c", "chcp 65001 && matlab -batch \"cd('"
+                + MatlabUtil.escape(shortTaskDir) + "'); run_wrapper; exit;\"");
+        pb.redirectErrorStream(true);
+        pb.redirectOutput(logFile);
+
+        Process process = pb.start();
+        processMap.put(taskTimestamp, process);
+        boolean finished = process.waitFor(1200, TimeUnit.SECONDS);
+        processMap.remove(taskTimestamp);
+
+        File pauseFlag = new File(taskDir, "pause.flag");
+        File stopFlag = new File(taskDir, "stop.flag");
+        if (stopFlag.exists()) {
+            log.info("检测到 stop.flag，任务由用户主动停止");
+            liveBuffer.setFinished(true);
+            return RUN_STOPPED;
+        }
+        if (!finished) {
+            process.destroyForcibly();
+            liveBuffer.setFinished(true);
+            updateTaskStatus(taskTimestamp, TaskStatus.FAILED, "运行超时", null, null, null);
+            return RUN_FAILED;
+        }
+        int exitCode = process.exitValue();
+        log.info("程序运行结束，退出码: {}，日志:\n{}", exitCode, FileUtil.readLastLines(logFile, 200));
+        if (exitCode != 0) {
+            updateTaskStatus(taskTimestamp, TaskStatus.FAILED,
+                    "MATLAB 退出码 " + exitCode + ": " + FileUtil.readLastLines(logFile, 20), null,
+                    logFile.getAbsolutePath(), null);
+            return RUN_FAILED;
+        }
+
+        File csv = new File(taskDir, "signals.csv");
+        if (csv.exists()) {
+            progressiveReveal(csv, liveBuffer, pauseFlag, stopFlag, stopTime);
+        } else {
+            log.warn("signals.csv 不存在，跳过渐进式回放");
+        }
+        return stopFlag.exists() ? RUN_STOPPED : RUN_OK;
+    }
+
+    /**
+     * 渐进式回放：读取完整 signals_live.csv，按仿真时间节拍把行增量释放到 LiveDataBuffer。
+     * 仿真本身已由 MATLAB 阻塞 sim() 跑完，此处只控制数据向前端的展现节奏（非真实仿真暂停）。
+     * - 节拍：约 stopTime 秒内放完所有行（接近真实时间），每 100ms 释放一批
+     * - pause.flag 存在时暂停释放（阻塞等待 flag 删除）
+     * - stop.flag 存在时一次性释放剩余所有行并结束
+     */
+    private void progressiveReveal(File liveCsv, LiveDataBuffer liveBuffer, File pauseFlag, File stopFlag, double stopTime) {
+        List<String> lines;
+        try {
+            lines = Files.readAllLines(liveCsv.toPath(), StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            log.warn("读取 signals_live.csv 失败，跳过回放", e);
+            return;
+        }
+        if (lines.isEmpty()) return;
+
+        // 第一行 header
+        List<String> headers = Arrays.asList(lines.get(0).split(","));
+        liveBuffer.setHeaders(headers);
+
+        // 解析全部数据行
+        List<String[]> allRows = new ArrayList<>();
+        for (int i = 1; i < lines.size(); i++) {
+            String line = lines.get(i).trim();
+            if (line.isEmpty()) continue;
+            allRows.add(line.split(","));
+        }
+        if (allRows.isEmpty()) return;
+
+        int totalRows = allRows.size();
+        // 节拍：stopTime 秒内放完，每 100ms 一批（real-time pacing）
+        int totalTicks = (int) Math.max(1, Math.round(stopTime * 10));
+        int rowsPerTick = Math.max(1, (totalRows + totalTicks - 1) / totalTicks);
+        long tickMs = 100;
+
+        log.info("渐进式回放开始: 共 {} 行, 每批 {} 行/100ms (约 {}s)", totalRows, rowsPerTick, stopTime);
+        int cursor = 0;
+        while (cursor < totalRows) {
+            // 暂停：pause.flag 存在则等待（stop.flag 同时存在则跳出暂停）
+            while (pauseFlag.exists() && !stopFlag.exists()) {
+                try { Thread.sleep(200); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); return; }
+            }
+            // 停止：一次性释放剩余所有行
+            if (stopFlag.exists()) {
+                List<String[]> remaining = new ArrayList<>(allRows.subList(cursor, totalRows));
+                liveBuffer.appendRows(remaining);
+                log.info("回放被停止，一次性释放剩余 {} 行", remaining.size());
+                cursor = totalRows;
+                break;
+            }
+            int end = Math.min(cursor + rowsPerTick, totalRows);
+            liveBuffer.appendRows(new ArrayList<>(allRows.subList(cursor, end)));
+            cursor = end;
+            try { Thread.sleep(tickMs); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); return; }
+        }
+        log.info("渐进式回放完成: 释放 {} 行", totalRows);
+    }
+
+    private void writeWrapper(File f, String taskDir, String programDir, String preRun, String modelFile, double stopTime,
                               String fixedStep, String npCommand, String loadPower) throws IOException {
         StringBuilder sb = new StringBuilder();
-        sb.append("cd('").append(escape(programDir)).append("');\n");
+        sb.append("cd('").append(MatlabUtil.escape(programDir)).append("');\n");
         sb.append("try\n");
         sb.append("    ").append(preRun).append(";\n");
         sb.append("catch ME\n");
@@ -999,10 +1193,10 @@ public class ProgramService {
         if (modelFile != null && !modelFile.isEmpty()) {
             String modelName = modelFile.replaceAll("\\.(slx|mdl)$", "");
             sb.append("try\n");
-            sb.append("    load_system('").append(escape(modelName)).append("');\n");
-            sb.append("    set_param('").append(escape(modelName)).append("', 'StopTime', '").append(stopTime).append("');\n");
+            sb.append("    load_system('").append(MatlabUtil.escape(modelName)).append("');\n");
+            sb.append("    set_param('").append(MatlabUtil.escape(modelName)).append("', 'StopTime', '").append(stopTime).append("');\n");
             if (StringUtils.hasText(fixedStep)) {
-                sb.append("    set_param('").append(escape(modelName)).append("', 'FixedStep', '").append(fixedStep).append("');\n");
+                sb.append("    set_param('").append(MatlabUtil.escape(modelName)).append("', 'FixedStep', '").append(fixedStep).append("');\n");
             }
             // okSignals tracks successfully added To Workspace variables
             sb.append("    okSignals = {};\n");
@@ -1082,7 +1276,7 @@ public class ProgramService {
             sb.append("    end\n");
             // 3c1. Fuel System Wf output via subsystem port handles
             sb.append("    try\n");
-            sb.append("        fsPath = ['").append(modelName).append("'/Fuel System'];\n");
+            sb.append("        fsPath = '").append(modelName).append("/Fuel System';\n");
             sb.append("        fsPH = get_param(fsPath, 'PortHandles');\n");
             sb.append("        fsPos = get_param(fsPath, 'Position');\n");
             sb.append("        twName = 'ToWS_Wf'; twPath = ['").append(modelName).append("' '/' twName];\n");
@@ -1198,8 +1392,8 @@ public class ProgramService {
             sb.append("    catch\n");
             sb.append("    end\n");
             // 4. Run simulation
-            sb.append("    simOut = sim('").append(escape(modelName)).append("', 'ReturnWorkspaceOutputs', 'on', 'StopTime', '").append(stopTime).append("');\n");
-            sb.append("    save('").append(escape(taskDir)).append("/simOut.mat', 'simOut');\n");
+            sb.append("    simOut = sim('").append(MatlabUtil.escape(modelName)).append("', 'ReturnWorkspaceOutputs', 'on', 'StopTime', '").append(stopTime).append("');\n");
+            sb.append("    save('").append(MatlabUtil.escape(taskDir)).append("/simOut.mat', 'simOut');\n");
             sb.append("    tout = simOut.tout;\n");
             sb.append("    colNames = {'time'};\n");
             sb.append("    colData = tout;\n");
@@ -1333,18 +1527,335 @@ public class ProgramService {
             sb.append("    catch\n");
             sb.append("    end\n");
             sb.append("    T = array2table(colData, 'VariableNames', colNames);\n");
-            sb.append("    writetable(T, '").append(escape(taskDir)).append("/signals.csv');\n");
-            sb.append("    save('").append(escape(taskDir)).append("/signals.mat', 'T');\n");
-            sb.append("    close_system('").append(escape(modelName)).append("', 0);\n");
+            sb.append("    writetable(T, '").append(MatlabUtil.escape(taskDir)).append("/signals.csv');\n");
+            sb.append("    save('").append(MatlabUtil.escape(taskDir)).append("/signals.mat', 'T');\n");
+            sb.append("    close_system('").append(MatlabUtil.escape(modelName)).append("', 0);\n");
             sb.append("catch ME\n");
-            sb.append("    try; close_system('").append(escape(modelName)).append("', 0); catch; end\n");
-            sb.append("    fid = fopen('").append(escape(taskDir)).append("/error.txt', 'w');\n");
+            sb.append("    try; close_system('").append(MatlabUtil.escape(modelName)).append("', 0); catch; end\n");
+            sb.append("    fid = fopen('").append(MatlabUtil.escape(taskDir)).append("/error.txt', 'w');\n");
             sb.append("    fprintf(fid, '%s\\n', ME.message);\n");
             sb.append("    fclose(fid);\n");
             sb.append("    rethrow(ME);\n");
             sb.append("end\n");
         }
         Files.write(f.toPath(), sb.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
+    /**
+     * 线程安全的实时数据缓冲：MATLAB 写 CSV → 监控线程读 CSV → append 到这里 → 前端轮询/SSE 取增量
+     * 支持 SSE 订阅：有新数据时主动推送给所有订阅者，避免前端频繁轮询
+     */
+    public static class LiveDataBuffer {
+        private volatile List<String> headers = new ArrayList<>();
+        private final List<String[]> rows = Collections.synchronizedList(new ArrayList<>());
+        private volatile int lastIndex = 0;
+        private volatile boolean finished = false;
+        // 对齐到固定步长后的停止时间（引擎模式下由 MATLAB 实际生效值回填）
+        private volatile double stopTime = 0.0;
+        // 最新一条 MATLAB 日志（供前端 footer 显示）
+        private volatile String logLine = "";
+        // SSE 订阅者列表
+        private final List<SseEmitter> emitters = Collections.synchronizedList(new ArrayList<>());
+
+        public void setHeaders(List<String> h) {
+            this.headers = h;
+            // header 变化时清空已累积的行（列数/列序可能不匹配），并通知前端整体替换
+            rows.clear();
+            lastIndex = 0;
+            Map<String, Object> payload = buildPayload(new ArrayList<>());
+            payload.put("reset", true);
+            notifySubscribers(payload);
+        }
+
+        public List<String> getHeaders() { return headers; }
+
+        public void setStopTime(double t) { this.stopTime = t; }
+
+        public void appendRows(List<String[]> newRows) {
+            rows.addAll(newRows);
+            // 有新数据时主动推送给所有 SSE 订阅者
+            notifySubscribers(buildPayload(newRows));
+        }
+
+        public void appendLogLine(String line) {
+            this.logLine = line;
+            notifySubscribers(buildPayload(new ArrayList<>()));
+        }
+
+        /** 返回从 lastIndex 到末尾的增量数据，并更新 lastIndex（轮询降级用） */
+        public synchronized Map<String, Object> getIncremental() {
+            Map<String, Object> result = new HashMap<>();
+            result.put("headers", headers);
+            int total = rows.size();
+            if (lastIndex < total) {
+                List<String[]> incremental = new ArrayList<>(rows.subList(lastIndex, total));
+                result.put("newRows", incremental);
+                lastIndex = total;
+            } else {
+                result.put("newRows", new ArrayList<String[]>());
+            }
+            result.put("totalRows", total);
+            result.put("currentSimTime", getCurrentSimTime());
+            result.put("stopTime", stopTime);
+            result.put("finished", finished);
+            result.put("logLine", logLine);
+            return result;
+        }
+
+        /** 注册 SSE 订阅者，连接断开时自动移除 */
+        public void subscribe(SseEmitter emitter) {
+            emitters.add(emitter);
+            // 心跳保活：MATLAB 仿真启动可能需要 2-3 分钟，期间无数据推送，
+            // 不发心跳会导致 SseEmitter 超时或代理/浏览器断开连接
+            final boolean[] alive = {true};
+            Thread heartbeat = new Thread(() -> {
+                while (alive[0]) {
+                    try { Thread.sleep(15000); } catch (InterruptedException e) { break; }
+                    if (alive[0]) {
+                        sendToEmitter(emitter, Collections.singletonMap("heartbeat", true));
+                    }
+                }
+            }, "sse-heartbeat");
+            heartbeat.setDaemon(true);
+            heartbeat.start();
+            emitter.onCompletion(() -> { alive[0] = false; emitters.remove(emitter); });
+            emitter.onTimeout(() -> { alive[0] = false; emitters.remove(emitter); emitter.complete(); });
+            emitter.onError(e -> { alive[0] = false; emitters.remove(emitter); });
+            // 订阅时立即推送已有数据（避免订阅后到下个 chunk 之间的空窗）
+            Map<String, Object> snapshot = new HashMap<>();
+            snapshot.put("headers", headers);
+            int total = rows.size();
+            snapshot.put("newRows", total > 0 ? new ArrayList<>(rows) : new ArrayList<>());
+            snapshot.put("totalRows", total);
+            snapshot.put("currentSimTime", getCurrentSimTime());
+            snapshot.put("stopTime", stopTime);
+            snapshot.put("finished", finished);
+            snapshot.put("logLine", logLine);
+            // 快照包含全量数据（首次订阅或断线重连），前端需整体替换而非追加，避免重复
+            snapshot.put("reset", true);
+            sendToEmitter(emitter, snapshot);
+        }
+
+        /** 向所有订阅者推送数据 */
+        private void notifySubscribers(Map<String, Object> payload) {
+            if (emitters.isEmpty()) return;
+            // 复制一份避免遍历时并发修改
+            List<SseEmitter> snapshot = new ArrayList<>(emitters);
+            for (SseEmitter emitter : snapshot) {
+                sendToEmitter(emitter, payload);
+            }
+        }
+
+        private void sendToEmitter(SseEmitter emitter, Map<String, Object> payload) {
+            try {
+                emitter.send(SseEmitter.event().data(payload));
+            } catch (Exception e) {
+                emitters.remove(emitter);
+            }
+        }
+
+        private Map<String, Object> buildPayload(List<String[]> newRows) {
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("headers", headers);
+            payload.put("newRows", newRows);
+            payload.put("totalRows", rows.size());
+            payload.put("currentSimTime", getCurrentSimTime());
+            payload.put("stopTime", stopTime);
+            payload.put("finished", finished);
+            payload.put("logLine", logLine);
+            return payload;
+        }
+
+        private double getCurrentSimTime() {
+            if (rows.isEmpty()) return 0.0;
+            String[] last = rows.get(rows.size() - 1);
+            if (last != null && last.length > 0) {
+                try { return Double.parseDouble(last[0]); } catch (NumberFormatException e) { return 0.0; }
+            }
+            return 0.0;
+        }
+
+        public void setFinished(boolean f) {
+            this.finished = f;
+            if (f) {
+                // 仿真结束：推送最终状态后关闭所有 SSE 连接
+                notifySubscribers(buildPayload(new ArrayList<>()));
+                List<SseEmitter> snapshot = new ArrayList<>(emitters);
+                for (SseEmitter emitter : snapshot) {
+                    try { emitter.complete(); } catch (Exception ignored) {}
+                }
+                emitters.clear();
+            }
+        }
+
+        public boolean isFinished() { return finished; }
+        public int getRowCount() { return rows.size(); }
+    }
+
+    /**
+     * 查询实时仿真数据（增量）
+     */
+    public Result<Map<String, Object>> getLiveData(String name, String version, String projectName) {
+        ProgramTaskEntity task = queryLatestTask(name, version, projectName);
+        if (task == null) return Result.error("无运行任务记录");
+
+        Map<String, Object> data = new HashMap<>();
+        data.put("status", task.getStatus());
+        data.put("lastError", task.getError());
+
+        LiveDataBuffer buffer = liveDataMap.get(task.getTimestamp());
+        if (buffer != null) {
+            data.putAll(buffer.getIncremental());
+        } else {
+            data.put("newRows", new ArrayList<String[]>());
+            data.put("totalRows", 0);
+            data.put("currentSimTime", 0.0);
+            data.put("finished", !TaskStatus.RUNNING.equals(task.getStatus()));
+        }
+        return Result.success(data);
+    }
+
+    /**
+     * SSE 订阅实时仿真数据：服务器在有新数据时主动推送，避免前端频繁轮询
+     * 返回 SseEmitter，Spring MVC 异步处理保持连接
+     */
+    public SseEmitter subscribeLiveData(String name, String version, String projectName) {
+        // 超时设为 30 分钟：引擎模式下曲线随真实仿真推进，长仿真 + 暂停都会拉长连接时间
+        SseEmitter emitter = new SseEmitter(1800000L);
+
+        ProgramTaskEntity task = queryLatestTask(name, version, projectName);
+        if (task == null) {
+            try {
+                emitter.send(SseEmitter.event().data(Collections.singletonMap("error", "无运行任务记录")));
+                emitter.complete();
+            } catch (Exception ignored) {}
+            return emitter;
+        }
+
+        LiveDataBuffer buffer = liveDataMap.get(task.getTimestamp());
+        if (buffer == null) {
+            // buffer 已被清理（仿真已结束），立即推送结束状态
+            try {
+                Map<String, Object> endPayload = new HashMap<>();
+                endPayload.put("status", task.getStatus());
+                endPayload.put("lastError", task.getError());
+                endPayload.put("finished", true);
+                endPayload.put("newRows", new ArrayList<String[]>());
+                endPayload.put("totalRows", 0);
+                endPayload.put("currentSimTime", 0.0);
+                emitter.send(SseEmitter.event().data(endPayload));
+                emitter.complete();
+            } catch (Exception ignored) {}
+            return emitter;
+        }
+
+        // 订阅 buffer，有新数据时由 buffer 主动推送
+        buffer.subscribe(emitter);
+
+        // 如果仿真已经结束，订阅时会自动收到 finished 数据，但 emitter 可能未 complete
+        if (buffer.isFinished()) {
+            try { emitter.complete(); } catch (Exception ignored) {}
+        }
+
+        return emitter;
+    }
+
+    /**
+     * 暂停仿真：创建 pause.flag 文件，progressiveReveal 检测到后进入等待循环。
+     * 优先从内存缓存 runningTasks 查找任务，避免查 IGinX（消除锁竞争和延迟，
+     * 这是导致 ERR_INCOMPLETE_CHUNKED_ENCODING 的根因——IGinX 全局锁等待
+     * 使请求长时间阻塞，Tomcat 最终关闭连接导致响应不完整）。
+     */
+    public Result<Map<String, Object>> pause(String name, String version, String projectName) {
+        log.info("暂停请求: name={}, version={}, projectName={}", name, version, projectName);
+        try {
+            // 优先从内存缓存查找，避免 IGinX 查询
+            ProgramTaskEntity task = findRunningTask(name, version, projectName);
+            if (task == null) {
+                // 降级：查 IGinX（仅在缓存未命中时，如服务重启后恢复运行状态）
+                task = queryLatestTask(name, version, projectName);
+            }
+            if (task == null || !TaskStatus.RUNNING.equals(task.getStatus())) {
+                log.warn("暂停失败：无运行中的仿真任务 (found={}, status={})",
+                        task != null, task != null ? task.getStatus() : "null");
+                return Result.error("无运行中的仿真任务");
+            }
+            Long ts = task.getTimestamp();
+            if (ts == null) {
+                log.warn("暂停失败：任务时间戳为空");
+                return Result.error("任务时间戳为空");
+            }
+            pauseFlags.put(ts, true);
+            // 引擎模式：SimulationCommand pause，求解器真正冻结（仿真时间不再推进）
+            MatlabSimulationRunner runner = engineRunners.get(ts);
+            if (runner != null) {
+                runner.pause();
+                log.info("已暂停仿真（引擎模式）: timestamp={}", ts);
+                Map<String, Object> paused = new HashMap<>();
+                paused.put("status", "PAUSED");
+                return Result.success("已暂停", paused);
+            }
+            File taskDir = new File(getTaskBaseDir(projectName != null ? projectName : task.getProjectName()), String.valueOf(ts));
+            File pauseFlag = new File(taskDir, "pause.flag");
+            if (!pauseFlag.exists()) {
+                try {
+                    Files.createFile(pauseFlag.toPath());
+                } catch (IOException e) {
+                    log.warn("创建 pause.flag 失败: {}", e.getMessage());
+                }
+            }
+            log.info("已暂停任务: timestamp={}", ts);
+            Map<String, Object> data = new HashMap<>();
+            data.put("status", "PAUSED");
+            return Result.success("已暂停", data);
+        } catch (Exception e) {
+            log.error("暂停异常", e);
+            return Result.error("暂停失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 恢复仿真：删除 pause.flag 文件，progressiveReveal 检测到后继续释放数据。
+     * 同 pause，优先从内存缓存查找任务，避免 IGinX 查询。
+     */
+    public Result<Map<String, Object>> resume(String name, String version, String projectName) {
+        log.info("恢复请求: name={}, version={}, projectName={}", name, version, projectName);
+        try {
+            ProgramTaskEntity task = findRunningTask(name, version, projectName);
+            if (task == null) {
+                task = queryLatestTask(name, version, projectName);
+            }
+            if (task == null) {
+                return Result.error("无运行任务记录");
+            }
+            Long ts = task.getTimestamp();
+            if (ts == null) {
+                return Result.error("任务时间戳为空");
+            }
+            pauseFlags.remove(ts);
+            // 引擎模式：SimulationCommand continue，从冻结的仿真时刻继续推进
+            MatlabSimulationRunner runner = engineRunners.get(ts);
+            if (runner != null) {
+                runner.resume();
+                log.info("已恢复仿真（引擎模式）: timestamp={}", ts);
+                Map<String, Object> resumed = new HashMap<>();
+                resumed.put("status", "RUNNING");
+                return Result.success("已恢复", resumed);
+            }
+            File taskDir = new File(getTaskBaseDir(projectName != null ? projectName : task.getProjectName()), String.valueOf(ts));
+            try {
+                Files.deleteIfExists(new File(taskDir, "pause.flag").toPath());
+            } catch (IOException e) {
+                log.warn("删除 pause.flag 失败: {}", e.getMessage());
+            }
+            log.info("已恢复任务: timestamp={}", ts);
+            Map<String, Object> data = new HashMap<>();
+            data.put("status", "RUNNING");
+            return Result.success("已恢复", data);
+        } catch (Exception e) {
+            log.error("恢复异常", e);
+            return Result.error("恢复失败: " + e.getMessage());
+        }
     }
 
     private void generateResultFiles(File taskDir, ProgramEntity entity, String modelFile,
@@ -1579,36 +2090,12 @@ public class ProgramService {
         }
         byte[] data = baos.toByteArray();
         if (expectedMd5 != null && !expectedMd5.isEmpty()) {
-            String actual = calculateMD5(data);
+            String actual = FileUtil.calculateMD5(data);
             if (!actual.equalsIgnoreCase(expectedMd5)) {
                 throw new Exception("程序包 MD5 校验失败");
             }
         }
         return data;
-    }
-
-    private String escape(String s) {
-        return s.replace("\\", "\\\\").replace("'", "''");
-    }
-
-    private String getShortPath(File file) {
-        if (!file.exists()) return file.getAbsolutePath();
-        try {
-            Process p = new ProcessBuilder("cmd", "/c", "for %I in (\""
-                    + file.getAbsolutePath() + "\") do @echo %~sI").redirectErrorStream(true).start();
-            java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-            byte[] buf = new byte[1024];
-            int n;
-            while ((n = p.getInputStream().read(buf)) != -1) baos.write(buf, 0, n);
-            p.waitFor(5, TimeUnit.SECONDS);
-            String output = new String(baos.toByteArray(), StandardCharsets.UTF_8).trim();
-            if (!output.isEmpty() && output.matches("^[A-Za-z]:\\\\.*")) {
-                return output;
-            }
-        } catch (Exception e) {
-            log.warn("获取短路径失败: {}", file.getAbsolutePath(), e);
-        }
-        return file.getAbsolutePath();
     }
 
     // ==================== Program Task IGinX persistence ====================
@@ -1794,6 +2281,24 @@ public class ProgramService {
         }
     }
 
+    /**
+     * 从内存缓存 runningTasks 中查找运行中的任务（避免查 IGinX，消除锁竞争和延迟）。
+     * pause/resume/stop 等高频控制接口优先使用此方法，仅在缓存未命中时降级到 queryLatestTask。
+     */
+    private ProgramTaskEntity findRunningTask(String name, String version, String projectName) {
+        for (ProgramTaskEntity task : runningTasks.values()) {
+            if (task == null) continue;
+            boolean match = true;
+            if (name != null && !name.equals(task.getProgramName())) match = false;
+            if (version != null && !version.equals(task.getProgramVersion())) match = false;
+            if (projectName != null && !projectName.equals(task.getProjectName())) match = false;
+            if (match && TaskStatus.RUNNING.equals(task.getStatus())) {
+                return task;
+            }
+        }
+        return null;
+    }
+
     private ProgramTaskEntity queryLatestTask(String programName, String programVersion, String projectName) {
         try {
             StringBuilder sql = new StringBuilder("SELECT * FROM " + TASK_DATA_PREFIX + " WHERE 1=1");
@@ -1837,26 +2342,49 @@ public class ProgramService {
     public Result<Map<String, Object>> results(String name, String version, String projectName) {
         ProgramTaskEntity task = queryLatestTask(name, version, projectName);
         if (task == null) return Result.error("无运行任务记录");
-        
+
         // 如果状态为运行中，检查进程是否还在
         if (TaskStatus.RUNNING.equals(task.getStatus())) {
             Process process = processMap.get(task.getTimestamp());
-            if (process == null || !process.isAlive()) {
-                // 进程不存在或已结束，更新状态为失败
-                updateTaskStatus(task.getTimestamp(), TaskStatus.FAILED, "进程异常终止", null, null, null);
-                task.setStatus(TaskStatus.FAILED);
-                task.setError("进程异常终止");
-                processMap.remove(task.getTimestamp());
-                runningTasks.remove(task.getTimestamp());
+            if (process == null) {
+                // 进程不在 map 中：可能是 doRun 线程还在下载/解压/写脚本（尚未 start），
+                // 也可能是 doRun 已结束并清理。两种情况都不应覆盖状态：
+                //   - 前者：进程还没启动，覆盖为"异常终止"是误判
+                //   - 后者：doRun 已更新最终状态，queryLatestTask 会拿到正确状态
+            } else if (!process.isAlive()) {
+                // 进程在 map 中但已退出：doRun 线程可能还在处理（读日志、检查退出码、更新状态）
+                // 等待短暂时间让 doRun 完成 status 更新，避免覆盖真正的错误信息
+                try { Thread.sleep(1500); } catch (InterruptedException ignored) {}
+                task = queryLatestTask(name, version, projectName);
+                if (task != null && TaskStatus.RUNNING.equals(task.getStatus())) {
+                    // 等待后仍为 RUNNING，说明 doRun 线程异常退出或卡死，标记为进程异常终止
+                    updateTaskStatus(task.getTimestamp(), TaskStatus.FAILED, "进程异常终止", null, null, null);
+                    task.setStatus(TaskStatus.FAILED);
+                    task.setError("进程异常终止");
+                    processMap.remove(task.getTimestamp());
+                    runningTasks.remove(task.getTimestamp());
+                }
             }
         }
-        
+
         Map<String, Object> data = new HashMap<>();
-        data.put("status", task.getStatus());
+        // 检查是否处于暂停状态：pause 端点只设内存 pauseFlags + pause.flag 文件，不更新 IGinX 状态。
+        // 刷新页面后 results 需要返回 "paused" 让前端恢复按钮显示"恢复"。
+        boolean isPaused = Boolean.TRUE.equals(pauseFlags.get(task.getTimestamp()));
+        if (!isPaused && TaskStatus.RUNNING.equals(task.getStatus()) && task.getTimestamp() != null) {
+            // 降级检查：服务重启后 pauseFlags 丢失，用 pause.flag 文件判断
+            File taskDir = new File(getTaskBaseDir(projectName), String.valueOf(task.getTimestamp()));
+            isPaused = new File(taskDir, "pause.flag").exists();
+        }
+        data.put("status", isPaused ? "paused" : task.getStatus());
         data.put("lastError", task.getError());
         data.put("lastRunTime", task.getStartTime());
         data.put("npCommand", task.getNpCommand());
         data.put("loadPower", task.getLoadPower());
+        // 返回对齐后的停止时间，刷新页面时前端据此设置时间轴上限
+        if (task.getStopTime() != null) {
+            data.put("stopTime", task.getStopTime());
+        }
 
         if (task.getRunLog() != null) {
             data.put("runLog", task.getRunLog());
@@ -1896,25 +2424,30 @@ public class ProgramService {
         }
 
         // Fallback: read from CSV file
-        if (task.getResultCsvPath() != null) {
-            File csv = new File(task.getResultCsvPath());
-            if (csv.exists()) {
-                try {
-                    List<String[]> rows = new ArrayList<>();
-                    try (BufferedReader br = Files.newBufferedReader(csv.toPath(), StandardCharsets.UTF_8)) {
-                        String line;
-                        while ((line = br.readLine()) != null) {
-                            rows.add(line.split(","));
-                        }
+        File csv = task.getResultCsvPath() != null ? new File(task.getResultCsvPath()) : null;
+        // resultCsvPath 尚未设置时（doRun 线程还在导出/入库），尝试从任务目录读 signals.csv
+        if (csv == null || !csv.exists()) {
+            File taskDir = new File(getTaskBaseDir(projectName != null ? projectName : task.getProjectName()),
+                    String.valueOf(task.getTimestamp()));
+            File fallbackCsv = new File(taskDir, "signals.csv");
+            if (fallbackCsv.exists()) csv = fallbackCsv;
+        }
+        if (csv != null && csv.exists()) {
+            try {
+                List<String[]> rows = new ArrayList<>();
+                try (BufferedReader br = Files.newBufferedReader(csv.toPath(), StandardCharsets.UTF_8)) {
+                    String line;
+                    while ((line = br.readLine()) != null) {
+                        rows.add(line.split(","));
                     }
-                    List<String> headers = new ArrayList<>();
-                    if (!rows.isEmpty()) headers.addAll(Arrays.asList(rows.remove(0)));
-                    data.put("headers", headers);
-                    data.put("rows", rows);
-                } catch (Exception e) {
-                    log.error("读取结果CSV失败", e);
-                    data.put("lastError", "读取CSV失败: " + e.getMessage());
                 }
+                List<String> headers = new ArrayList<>();
+                if (!rows.isEmpty()) headers.addAll(Arrays.asList(rows.remove(0)));
+                data.put("headers", headers);
+                data.put("rows", rows);
+            } catch (Exception e) {
+                log.error("读取结果CSV失败", e);
+                data.put("lastError", "读取CSV失败: " + e.getMessage());
             }
         }
         return Result.success(data);
@@ -2200,50 +2733,6 @@ public class ProgramService {
                     otherFiles.add(relPath);
                 }
             }
-        }
-    }
-
-    private void deleteDirectory(File dir) {
-        if (dir == null || !dir.exists()) return;
-        File[] files = dir.listFiles();
-        if (files != null) {
-            for (File f : files) {
-                if (f.isDirectory()) deleteDirectory(f);
-                else f.delete();
-            }
-        }
-        dir.delete();
-    }
-
-
-    private String readLastLines(File f, int n) {
-        if (!f.exists()) return "";
-        List<String> lines = new ArrayList<>();
-        try (BufferedReader br = Files.newBufferedReader(f.toPath(), StandardCharsets.UTF_8)) {
-            String line;
-            while ((line = br.readLine()) != null) {
-                lines.add(line);
-                if (lines.size() > n) lines.remove(0);
-            }
-        } catch (IOException e) { }
-        return lines.stream().collect(Collectors.joining("\n"));
-    }
-
-    /**
-     * 计算文件的 MD5 校验和
-     */
-    private String calculateMD5(byte[] bytes) {
-        try {
-            java.security.MessageDigest md = java.security.MessageDigest.getInstance("MD5");
-            byte[] digest = md.digest(bytes);
-            StringBuilder sb = new StringBuilder();
-            for (byte b : digest) {
-                sb.append(String.format("%02x", b));
-            }
-            return sb.toString();
-        } catch (Exception e) {
-            log.warn("计算 MD5 失败", e);
-            return "";
         }
     }
 }

@@ -57,6 +57,21 @@ knife4j:
   enable: false
   production: true
 
+# MATLAB 仿真配置
+matlab:
+  engine:
+    # true：用 MATLAB Engine API 驱动仿真（实时曲线 + 真实暂停/恢复/停止）
+    # false：强制回退到 matlab -batch（跑完再回放，暂停仅为展示节流）
+    enabled: true
+    # MATLAB 安装根目录（如 C:\Program Files\MATLAB\R2019b）。
+    # 留空则按 MATLAB_ROOT 环境变量 → PATH 中的 matlab.exe → Program Files\MATLAB 下最新版本 顺序自动探测。
+    # 服务启动时会用 JNA 把 <matlab.home>/bin/win64 注入到本进程的 DLL 搜索路径，
+    # 因此通常无需再手动修改 PATH。
+    home:
+    # 引擎池最大并发数（含常驻引擎）。每个引擎是独立 MATLAB 进程，约占 1-2GB 内存。
+    # 1：串行（旧行为）；4：最多 4 个仿真并发，第 5 个排队等待。
+    pool-size: 4
+
 # 离线缓存配置
 offline:
   enabled: true

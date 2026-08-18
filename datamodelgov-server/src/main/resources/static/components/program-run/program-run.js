@@ -124,16 +124,6 @@ class ProgramRun extends HTMLElement {
 
     this.flow = root.querySelector('.flow');
 
-    this.timeTrack = root.querySelector('.time-track');
-
-    this.timeCursor = root.querySelector('.time-cursor');
-
-    this.timeProgress = root.querySelector('.time-progress');
-
-    this.timeMark = root.querySelector('.time-mark');
-
-    this.cursorVal = root.querySelector('.cursor-val');
-
     this.timeBox = root.querySelector('.time-box');
 
     this.statusBox = root.querySelector('.status-box');
@@ -144,21 +134,15 @@ class ProgramRun extends HTMLElement {
 
     this.stopBtn = root.querySelector('.btn-stop');
 
+    this.pauseBtn = root.querySelector('.btn-pause');
+
     this.closeBtn = root.querySelector('#closeBtn');
-
-    const playWrap = root.querySelector('.play');
-
-    this.prevBtn = playWrap.querySelector('button:nth-child(1)');
-
-    this.playBtn = playWrap.querySelector('button:nth-child(2)');
-
-    this.nextBtn = playWrap.querySelector('button:nth-child(3)');
-
-    this.speedBtns = Array.from(playWrap.querySelectorAll('span'));
 
     this.exportBtn = root.querySelector('.footer-actions button:nth-child(1)');
 
     this.saveBtn = root.querySelector('.footer-actions button:nth-child(2)');
+
+    this.footerLog = root.querySelector('#footerLog');
 
 
 
@@ -166,18 +150,40 @@ class ProgramRun extends HTMLElement {
 
     this.runStatus = 'IDLE';
 
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        this.renderTab(this.activeTab);
-        this.updateCursor(this.currentTime, true);
-        this.updateStatusUI('IDLE');
-      });
-    });
+    // 不在 init() 里 renderTab：组件此时可能是 display:none，canvas 宽高为 0。
+    // renderTab 由 show() → _doShow() 在 display:block 后负责。
+    this.updateCursor(this.currentTime, true);
+    this.updateStatusUI('IDLE');
+    this.updateRunButtons('IDLE');
 
     this.renderVarTree();
 
     this.bindVarEvents();
 
+    // 不在 init() 里调 refreshEngineStatus：组件在页面加载时就存在于 DOM（display:none），
+    // init() 会被立即执行，导致没进入组件页面就调 engine-status。
+    // 改为在 show() 时才调。
+
+  }
+
+  /** 查询 MATLAB 引擎状态，更新 footer 日志 */
+  async refreshEngineStatus() {
+    if (!this.footerLog) return;
+    try {
+      const url = window.AppConfig.getApiUrl('program', 'engine-status');
+      const result = await window.AppConfig.request(url);
+      if (result && result.code === 200 && result.data) {
+        const msg = result.data.message || '';
+        // 仿真未运行时才更新（避免覆盖仿真日志）
+        if (this.runStatus !== 'RUNNING' && this.runStatus !== 'STARTING' && this.runStatus !== 'PAUSED' && this.runStatus !== 'QUEUED') {
+          this.footerLog.textContent = msg;
+        }
+      }
+    } catch (e) {
+      if (this.runStatus !== 'RUNNING' && this.runStatus !== 'STARTING' && this.runStatus !== 'PAUSED' && this.runStatus !== 'QUEUED') {
+        this.footerLog.textContent = 'MATLAB 引擎状态未知';
+      }
+    }
   }
 
 
@@ -188,73 +194,11 @@ class ProgramRun extends HTMLElement {
 
     this.tabs.forEach(t => t.addEventListener('click', () => this.renderTab(t.textContent.trim())));
 
-    this.playBtn.addEventListener('click', () => this.togglePlay());
-
-    this.prevBtn.addEventListener('click', () => this.updateCursor(this.currentTime - 1));
-
-    this.nextBtn.addEventListener('click', () => this.updateCursor(this.currentTime + 1));
-
-    this.speedBtns.forEach(s => s.addEventListener('click', () => {
-
-      this.speed = parseFloat(s.textContent);
-
-      this.speedBtns.forEach(b => b.classList.toggle('active', b === s));
-
-      if (this.playing) { this.stopPlay(); this.startPlay(); }
-
-    }));
-
-
-
     if (this.runBtn) this.runBtn.addEventListener('click', () => this.handleRun());
 
     if (this.stopBtn) this.stopBtn.addEventListener('click', () => this.handleStop());
 
-
-
-    this.timeTrack.addEventListener('click', (e) => {
-
-      if (this.timeCursor.contains(e.target)) return;
-
-      const rect = this.timeTrack.getBoundingClientRect();
-
-      const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-
-      this.updateCursor(pct * this.duration);
-
-    });
-
-
-
-    this.timeCursor.addEventListener('pointerdown', (e) => {
-
-      this.dragging = true;
-
-      e.stopPropagation();
-
-      this.timeCursor.setPointerCapture(e.pointerId);
-
-    });
-
-    this.timeCursor.addEventListener('pointermove', (e) => {
-
-      if (!this.dragging) return;
-
-      const rect = this.timeTrack.getBoundingClientRect();
-
-      const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-
-      this.updateCursor(pct * this.duration);
-
-    });
-
-    this.timeCursor.addEventListener('pointerup', (e) => {
-
-      this.dragging = false;
-
-      this.timeCursor.releasePointerCapture(e.pointerId);
-
-    });
+    if (this.pauseBtn) this.pauseBtn.addEventListener('click', () => this.handleTogglePause());
 
 
 
@@ -327,6 +271,64 @@ class ProgramRun extends HTMLElement {
       });
 
     }
+
+    const closeBtn = document.createElement('button');
+
+    closeBtn.textContent = '关闭';
+
+    closeBtn.style.cssText = 'margin-top:16px;padding:6px 16px;background:#1e293b;border:1px solid #24344D;border-radius:4px;color:#e5e7eb;cursor:pointer;';
+
+    closeBtn.addEventListener('click', () => modal.remove());
+
+    box.appendChild(closeBtn);
+
+    modal.appendChild(box);
+
+    modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+
+    root.appendChild(modal);
+
+  }
+
+
+
+  showUnitIssues(issues) {
+
+    const root = this.shadowRoot;
+
+    let modal = root.querySelector('.alert-modal');
+
+    if (modal) modal.remove();
+
+    modal = document.createElement('div');
+
+    modal.className = 'alert-modal';
+
+    modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
+
+    const box = document.createElement('div');
+
+    box.style.cssText = 'background:#0f172a;border:1px solid #24344D;border-radius:8px;padding:24px;max-width:500px;max-height:400px;overflow:auto;color:#e5e7eb;font-size:13px;';
+
+    const title = document.createElement('div');
+
+    title.style.cssText = 'font-size:15px;font-weight:600;margin-bottom:16px;color:#f59e0b;';
+
+    title.textContent = '单位一致性检查详情';
+
+    box.appendChild(title);
+
+    issues.forEach(s => {
+
+      const item = document.createElement('div');
+
+      item.style.cssText = 'padding:8px 0;border-bottom:1px solid #24344D;';
+
+      item.textContent = s;
+
+      box.appendChild(item);
+
+    });
 
     const closeBtn = document.createElement('button');
 
@@ -848,7 +850,7 @@ class ProgramRun extends HTMLElement {
       this.chartGrid.appendChild(card);
       buildLegend(card, cfg);
       const chart = this.echarts.init(dom, null, { renderer: 'canvas', backgroundColor: 'transparent' });
-      chart.setOption(buildEChartsOptions(this.currentDatas[i], this.currentTime, this.runStatus), true);
+      chart.setOption(buildEChartsOptions(this.currentDatas[i], this.currentTime, this.runStatus, this.duration), true);
       this.charts.push(chart);
     });
     requestAnimationFrame(() => this.charts.forEach(c => c && c.resize()));
@@ -924,17 +926,21 @@ class ProgramRun extends HTMLElement {
 
     const pct = (cappedTime / this.duration) * 100;
 
-    this.timeProgress.style.width = pct + '%';
+    if (this.timeProgress) this.timeProgress.style.width = pct + '%';
 
-    this.timeCursor.style.left = pct + '%';
+    if (this.timeCursor) this.timeCursor.style.left = pct + '%';
 
-    this.timeMark.style.left = pct + '%';
+    if (this.timeMark) {
 
-    this.timeMark.textContent = time.toFixed(2) + ' s';
+      this.timeMark.style.left = pct + '%';
 
-    if (this.cursorVal) this.cursorVal.textContent = time.toFixed(2) + ' s';
+      this.timeMark.textContent = time.toFixed(3) + ' s';
 
-    if (this.timeBox) this.timeBox.textContent = time.toFixed(2) + ' / ' + this.duration.toFixed(2) + ' s';
+    }
+
+    if (this.cursorVal) this.cursorVal.textContent = time.toFixed(3) + ' s';
+
+    if (this.timeBox) this.timeBox.textContent = time.toFixed(3) + ' / ' + this.duration.toFixed(2) + ' s';
 
 
 
@@ -1103,7 +1109,7 @@ class ProgramRun extends HTMLElement {
       this.chartGrid.appendChild(card);
       buildLegend(card, cfg);
       const chart = this.echarts.init(dom, null, { renderer: 'canvas', backgroundColor: 'transparent' });
-      chart.setOption(buildEChartsOptions(this.currentDatas[i], this.currentTime, this.runStatus), true);
+      chart.setOption(buildEChartsOptions(this.currentDatas[i], this.currentTime, this.runStatus, this.duration), true);
       this.charts.push(chart);
     });
     requestAnimationFrame(() => this.charts.forEach(c => c && c.resize()));
@@ -1113,7 +1119,33 @@ class ProgramRun extends HTMLElement {
 
     this.style.display = 'block';
 
-    if (this.charts) this.charts.forEach(c => c && c.resize());
+    // init() 还没执行完时（connectedCallback 是 async 的），DOM 元素还没初始化，
+    // 延迟重试 show 逻辑，等 init() 完成后再渲染图表和查询引擎状态
+    if (!this.tabs || !this.chartGrid) {
+      const retry = () => {
+        if (this.tabs && this.chartGrid) {
+          this._doShow();
+        } else {
+          setTimeout(retry, 100);
+        }
+      };
+      setTimeout(retry, 100);
+      return;
+    }
+
+    this._doShow();
+
+  }
+
+  _doShow() {
+
+    // 组件可能在 display:none 时初始化（connectedCallback 在隐藏状态下执行），
+    // ECharts 初始化的 canvas 宽高为 0，图表不渲染。
+    // show() 设了 display:block 后需要等一帧让浏览器重新布局，再强制重新渲染图表。
+    requestAnimationFrame(() => {
+      // 强制重新 renderTab：dispose 旧图表（可能宽高为0），在 display:block 状态下重新创建
+      this.renderTab(this.activeTab || '综合总览');
+    });
 
   }
 
@@ -1123,7 +1155,7 @@ class ProgramRun extends HTMLElement {
 
     this.style.display = 'none';
 
-    this.stopPolling();
+    this.stopStream();
 
     this.stopRunTimer();
 
@@ -1167,6 +1199,44 @@ class ProgramRun extends HTMLElement {
 
 
 
+  /**
+   * 统一控制运行/暂停/停止按钮的禁用状态
+   * 按钮始终显示，仅在非运行态时禁用
+   * - IDLE/STOPPED/SUCCESS/ERROR：运行可用，其余禁用
+   * - STARTING：运行禁用，暂停禁用，停止可用（MATLAB 计算中，可取消）
+   * - RUNNING：运行禁用，暂停可用，停止可用
+   * - PAUSED：运行禁用，暂停可用（点击恢复），停止可用
+   */
+  updateRunButtons(state) {
+
+    const running = state === 'RUNNING';
+
+    const paused = state === 'PAUSED';
+
+    const starting = state === 'STARTING';
+
+    const queued = state === 'QUEUED';
+
+    if (this.runBtn) this.runBtn.disabled = running || paused || starting || queued || this._busyAction === 'run';
+
+    if (this.pauseBtn) {
+
+      this.pauseBtn.disabled = (!running && !paused) || this._busyAction === 'pause';
+
+      this.pauseBtn.innerHTML = paused
+
+          ? '<span class="ico">▶</span>恢复'
+
+          : '<span class="ico">⏸</span>暂停';
+
+    }
+
+    if (this.stopBtn) this.stopBtn.disabled = (!running && !paused && !starting && !queued) || this._busyAction === 'stop';
+
+  }
+
+
+
   async handleRun() {
 
     const name = this.getAttribute('data-name');
@@ -1174,18 +1244,53 @@ class ProgramRun extends HTMLElement {
     const version = this.getAttribute('data-version');
 
     if (!name || !version) return;
+    if (this._busyAction) return;
+    this._busyAction = 'run';
+    this._cancelRun = false;
+    this.updateRunButtons(this.runStatus || 'STARTING');
 
     try {
+
+      // 引擎卡在"启动中"时，点击运行先重启引擎
+      try {
+        const statusUrl = window.AppConfig.getApiUrl('program', 'engine-status');
+        const statusResult = await window.AppConfig.request(statusUrl);
+        if (statusResult && statusResult.code === 200 && statusResult.data && statusResult.data.status === 'starting') {
+          if (this.footerLog) this.footerLog.textContent = '[MATLAB] 引擎正在重启...';
+          const restartUrl = window.AppConfig.getApiUrl('program', 'engine-restart');
+          await window.AppConfig.request(restartUrl, { method: 'POST' });
+          // 重启后等引擎就绪，轮询；期间允许用户点停止取消
+          this._waitingEngine = true;
+          // 状态为 STARTING 时 stopBtn 是可用的，这里强制刷新一次确保按钮可用
+          this.updateRunButtons('STARTING');
+          for (let i = 0; i < 12; i++) {
+            await new Promise(r => setTimeout(r, 15000));
+            if (this._cancelRun) {
+              this._waitingEngine = false;
+              return; // 用户取消，不继续启动仿真
+            }
+            const r = await window.AppConfig.request(statusUrl);
+            if (r && r.code === 200 && r.data && r.data.status !== 'starting') break;
+          }
+          this._waitingEngine = false;
+        }
+      } catch (e) {
+        console.warn('引擎状态检查失败，继续运行:', e);
+      } finally {
+        this._waitingEngine = false;
+      }
 
       this.currentDatas = this.currentConfigs.map(buildChartData);
 
       this.currentTime = 0;
 
+      if (this.footerLog) this.footerLog.textContent = '仿真启动中，请稍后...';
+
       this.updateCursor(0, true);
 
       this.charts.forEach((chart, i) => {
         if (this.currentDatas[i]) {
-          chart.setOption(buildEChartsOptions(this.currentDatas[i], this.currentTime, 'RUNNING'), true);
+          chart.setOption(buildEChartsOptions(this.currentDatas[i], this.currentTime, 'RUNNING', this.duration), true);
         }
       });
 
@@ -1225,18 +1330,57 @@ class ProgramRun extends HTMLElement {
 
       if (result && result.code === 200) {
 
-        this.duration = parseFloat(inputs[0].value) || 30;
+        this.fixedStep = parseFloat(inputs[1].value) || 0.025;
+
+        // 后端会把停止时间对齐到固定步长的整数倍，以对齐后的值为准（仿真会真的停在该时刻）
+        const alignedStopTime = result.data && result.data.stopTime != null
+            ? parseFloat(result.data.stopTime) : NaN;
+
+        this.duration = !isNaN(alignedStopTime) ? alignedStopTime : (parseFloat(inputs[0].value) || 30);
+
+        if (!isNaN(alignedStopTime) && String(alignedStopTime) !== String(inputs[0].value)) {
+          inputs[0].value = String(alignedStopTime);
+          this.showToast('停止时间已按固定步长对齐为 ' + alignedStopTime + ' s', 'info');
+        }
+
+        // 刷新时间显示：0.000 / {duration} s
+        this.updateCursor(0, true);
 
         this._userInitiated = true;
-        this.updateStatusUI('RUNNING');
+        this._revealStarted = false;
+        // 新一轮运行重置暂停态，避免沿用上一次的暂停按钮状态
+        this._paused = false;
+        // 引擎忙时后端返回 queued 状态，前端显示排队中
+        const isQueued = result.data && result.data.status === 'queued';
+        this.runStatus = isQueued ? 'QUEUED' : 'STARTING';
+        this.updateStatusUI(isQueued ? 'QUEUED' : 'STARTING');
 
-        this.startPolling(name, version);
+        // 仿真启动中/排队中：暂停不可用，排队中停止也不可用
+        this.updateRunButtons(isQueued ? 'QUEUED' : 'STARTING');
 
-        this.startRunTimer(Date.now());
+        // 清除上一次运行的数据，防止切 tab 时 renderCustomCharts 用旧数据画曲线
+        this.csvHeaders = null;
+        this.csvRows = null;
+        this.liveHeaders = null;
+        this.liveRows = [];
+        this.currentTime = 0;
+        // 立即重绘当前 tab 的图表（显示"排队等待中"或"仿真启动中"而非旧曲线）
+        this.renderTab(this.activeTab || '综合总览');
+
+        // 初始化实时数据收集
+        this.liveHeaders = null;
+        this.liveRows = [];
+
+        this.startStream(name, version);
+
+        // 不在此处启动计时器：MATLAB 仿真启动需要 1-3 分钟，
+        // 等首批渐进回放数据到达后再开始计时（handleLiveData 中切换到 RUNNING）
 
       } else {
 
         this.updateStatusUI('ERROR', result ? result.msg : '启动失败');
+
+        this.updateRunButtons('ERROR');
 
       }
 
@@ -1245,6 +1389,14 @@ class ProgramRun extends HTMLElement {
       console.error('启动运行失败:', e);
 
       this.updateStatusUI('ERROR', e.message);
+
+      this.updateRunButtons('ERROR');
+
+    } finally {
+
+      this._busyAction = null;
+      this._waitingEngine = false;
+      this._cancelRun = false;
 
     }
 
@@ -1259,6 +1411,16 @@ class ProgramRun extends HTMLElement {
     const version = this.getAttribute('data-version');
 
     if (!name || !version) return;
+    // 引擎重启等待期间（_busyAction === 'run' 且正在轮询引擎状态）允许用户取消，
+    // 否则所有按钮都被锁死、既不能停也不能重试
+    if (this._busyAction === 'run' && this._waitingEngine) {
+      this._cancelRun = true;
+      if (this.footerLog) this.footerLog.textContent = '已取消仿真启动';
+      return;
+    }
+    if (this._busyAction) return;
+    this._busyAction = 'stop';
+    this.updateRunButtons(this.runStatus || 'RUNNING');
 
     try {
 
@@ -1266,20 +1428,22 @@ class ProgramRun extends HTMLElement {
 
       const url = window.AppConfig.getApiUrl('program', 'stop')
 
-        + '?name=' + encodeURIComponent(name) + '&version=' + encodeURIComponent(version)
+          + '?name=' + encodeURIComponent(name) + '&version=' + encodeURIComponent(version)
 
-        + (pn ? '&projectName=' + encodeURIComponent(pn) : '');
+          + (pn ? '&projectName=' + encodeURIComponent(pn) : '');
 
       const result = await window.AppConfig.request(url, { method: 'POST' });
 
       if (result && result.code === 200) {
 
-        this.stopPolling();
-
-        this.stopRunTimer();
-
         this._userInitiated = true;
         this.updateStatusUI('STOPPED');
+
+        // 停止后：暂停/恢复均禁用
+        this.updateRunButtons('STOPPED');
+
+        // 不在此处 stopStream：让 SSE 继续接收"已执行停止命令"、"仿真结束"等日志，
+        // 等 handleLiveData 收到 finished=true 后自然关闭
 
       }
 
@@ -1289,11 +1453,206 @@ class ProgramRun extends HTMLElement {
 
       this.showToast('停止运行失败: ' + e.message, 'error');
 
+    } finally {
+
+      this._busyAction = null;
+      this.updateRunButtons(this.runStatus);
+
     }
 
   }
 
 
+
+  async handleTogglePause() {
+
+    if (this._paused) {
+      this.handleResume();
+    } else {
+      this.handlePause();
+    }
+
+  }
+
+
+
+  async handlePause() {
+
+    const name = this.getAttribute('data-name');
+    const version = this.getAttribute('data-version');
+    if (!name || !version) return;
+    if (this._busyAction) return;
+    this._busyAction = 'pause';
+    this.updateRunButtons(this.runStatus || 'RUNNING');
+
+    try {
+      const pn = this.getProjectName();
+      const url = window.AppConfig.getApiUrl('program', 'pause')
+          + '?name=' + encodeURIComponent(name) + '&version=' + encodeURIComponent(version)
+          + (pn ? '&projectName=' + encodeURIComponent(pn) : '');
+      const result = await window.AppConfig.request(url, { method: 'POST' });
+      if (result && result.code === 200) {
+        this._paused = true;
+        this.stopRunTimer();
+        this.updateStatusUI('PAUSED');
+        this.updateRunButtons('PAUSED');
+      }
+    } catch (e) {
+      console.error('暂停失败:', e);
+      this.showToast('暂停失败: ' + e.message, 'error');
+    } finally {
+      this._busyAction = null;
+      this.updateRunButtons(this.runStatus);
+    }
+
+  }
+
+
+
+  async handleResume() {
+
+    const name = this.getAttribute('data-name');
+    const version = this.getAttribute('data-version');
+    if (!name || !version) return;
+    if (this._busyAction) return;
+    this._busyAction = 'pause';
+    this.updateRunButtons(this.runStatus || 'PAUSED');
+
+    try {
+      const pn = this.getProjectName();
+      const url = window.AppConfig.getApiUrl('program', 'resume')
+          + '?name=' + encodeURIComponent(name) + '&version=' + encodeURIComponent(version)
+          + (pn ? '&projectName=' + encodeURIComponent(pn) : '');
+      const result = await window.AppConfig.request(url, { method: 'POST' });
+      if (result && result.code === 200) {
+        this._paused = false;
+        this.updateStatusUI(this._revealStarted ? 'RUNNING' : 'STARTING');
+        this.updateRunButtons('RUNNING');
+        // 恢复后重启 SSE 流：暂停期间连接可能已超时断开
+        // 游标由 SSE 推送的 simTime 驱动，无需墙钟计时器
+        this.startStream(name, version);
+      }
+    } catch (e) {
+      console.error('恢复失败:', e);
+      this.showToast('恢复失败: ' + e.message, 'error');
+    } finally {
+      this._busyAction = null;
+      this.updateRunButtons(this.runStatus);
+    }
+
+  }
+
+
+
+  /**
+   * 通过 SSE 订阅实时仿真数据，服务器有新数据时主动推送，无需轮询
+   * EventSource 不支持自定义 header，因此 token 通过 query 参数传递
+   */
+  startStream(name, version) {
+
+    this.stopStream();
+
+    this._streamDone = false;
+
+    const pn = this.getProjectName();
+
+    const token = localStorage.getItem('jwtToken') || '';
+
+    const params = new URLSearchParams();
+
+    params.set('name', name);
+
+    params.set('version', version);
+
+    if (pn) params.set('projectName', pn);
+
+    if (token) params.set('token', token);
+
+    const streamUrl = window.AppConfig.getApiUrl('program', 'live-stream') + '?' + params.toString();
+
+
+
+    try {
+
+      this._es = new EventSource(streamUrl);
+
+    } catch (e) {
+
+      console.error('SSE 连接失败，降级为轮询', e);
+
+      this.startPolling(name, version);
+
+      return;
+
+    }
+
+
+
+    this._es.onmessage = (evt) => {
+
+      try {
+
+        const data = JSON.parse(evt.data);
+
+        // 心跳保活，忽略
+        if (data.heartbeat) return;
+
+        // 无任务记录或错误：停止 SSE，显示空闲状态（不重连）
+        if (data.error) {
+          this._streamDone = true;
+          this.stopStream();
+          this.updateStatusUI('IDLE');
+          this.updateRunButtons('IDLE');
+          return;
+        }
+
+        this.handleLiveData(data, name, version);
+
+      } catch (e) {
+
+        console.error('解析 SSE 数据失败:', e);
+
+      }
+
+    };
+
+
+
+    this._es.onerror = (e) => {
+
+      // _streamDone=true 表示服务端主动关闭（仿真结束/无任务），不再重连
+      // _streamDone=false 表示网络异常，允许 EventSource 自动重连
+      if (this._streamDone) {
+        this.stopStream();
+      } else {
+        console.warn('SSE 连接异常，浏览器将自动重连');
+      }
+
+    };
+
+  }
+
+
+
+  stopStream() {
+
+    this._streamDone = true;
+
+    if (this._es) {
+
+      this._es.close();
+
+      this._es = null;
+
+    }
+
+  }
+
+
+
+  /**
+   * 降级方案：SSE 不可用时使用轮询（保留兼容）
+   */
 
   startPolling(name, version) {
 
@@ -1305,19 +1664,19 @@ class ProgramRun extends HTMLElement {
 
         const pn = this.getProjectName();
 
-        const result = await window.AppConfig.get('program', 'results', { name, version, ...(pn ? { projectName: pn } : {}) });
+        const result = await window.AppConfig.get('program', 'live-data', { name, version, ...(pn ? { projectName: pn } : {}) });
 
         if (!result || result.code !== 200 || !result.data) return;
 
-        this.handleResultData(result.data, name, version);
+        this.handleLiveData(result.data, name, version);
 
       } catch (e) {
 
-        console.error('轮询状态失败:', e);
+        console.error('轮询实时数据失败:', e);
 
       }
 
-    }, 30000);
+    }, 500);
 
   }
 
@@ -1337,31 +1696,117 @@ class ProgramRun extends HTMLElement {
 
 
 
+  /** 处理实时增量数据 */
+  handleLiveData(data, name, version) {
+
+    // 状态映射
+    const statusMap = { 'running': 'RUNNING', 'queued': 'QUEUED', 'success': 'SUCCESS', 'failed': 'ERROR', 'stopped': 'STOPPED', 'pending': 'IDLE', 'paused': 'PAUSED' };
+    const status = statusMap[data.status] || data.status || 'UNKNOWN';
+
+    // 如果有错误信息，显示
+    if (data.lastError) {
+      this.runError = data.lastError;
+    }
+
+    // MATLAB 日志行 → footer 左侧实时显示
+    if (data.logLine && this.footerLog) {
+      this.footerLog.textContent = data.logLine;
+    }
+
+    // 收到 headers 时初始化
+    if (data.headers && data.headers.length > 0) {
+      this.liveHeaders = data.headers;
+    }
+
+    // reset=true（headers 变化/断线重连）：即使 newRows 为空也要清空已累积的旧行，
+    // 避免旧列数与新 headers 不匹配导致曲线错位
+    if (data.reset) {
+      this.liveRows = [];
+    }
+
+    // MATLAB 侧按模型实际固定步长对齐后的停止时间，用于校正时间轴上限
+    if (data.stopTime > 0 && Math.abs(data.stopTime - this.duration) > 1e-9) {
+      this.duration = data.stopTime;
+      const stopInput = this.shadowRoot.querySelector('.field-row .input-box input');
+      if (stopInput) stopInput.value = String(data.stopTime);
+    }
+
+    // 追加增量数据
+    if (data.newRows && data.newRows.length > 0 && this.liveHeaders) {
+
+      // 首批数据到达：从"仿真启动中"切换到"仿真运行中"
+      if (!this._revealStarted) {
+        this._revealStarted = true;
+        this.updateStatusUI('RUNNING');
+        this.updateRunButtons('RUNNING');
+      }
+
+      // reset=true 表示服务端下发的是全量快照（首次订阅/断线重连），整体替换避免重复追加
+      this.liveRows = data.reset ? data.newRows.slice() : (this.liveRows || []).concat(data.newRows);
+
+      // 先更新 currentTime，再画图——applyCsvToCharts 内部 setOption(..., true) 全量重绘时
+      // 会用 this.currentTime 画 markLine 竖线，如果此时 currentTime 还是旧值，竖线就会
+      // 画在旧位置，随后 updateCursor 再 merge 移到新位置，但全量重绘已结束、竖线更新
+      // 被拖到下一帧渲染，视觉上竖线始终滞后曲线一拍
+      const simTime = data.currentSimTime || 0;
+      this.currentTime = simTime;
+
+      // 用全量数据更新图表（竖线已在 currentTime 中就位）
+      this.csvHeaders = this.liveHeaders;
+      this.csvRows = this.liveRows;
+      this.applyCsvToCharts(this.liveHeaders, this.liveRows);
+
+      if (this.statusBox) {
+        const timeBox = this.shadowRoot.querySelector('.time-box');
+        if (timeBox) timeBox.textContent = simTime.toFixed(3) + ' / ' + this.duration.toFixed(2) + ' s';
+      }
+    }
+
+    // 更新状态 UI
+    if (status === 'RUNNING' && !this._paused) {
+      this.runStatus = 'RUNNING';
+    }
+
+    // 仿真结束
+    if (data.finished || status === 'SUCCESS' || status === 'ERROR' || status === 'STOPPED') {
+      this._streamDone = true;
+      this.stopStream();
+      this.stopRunTimer();
+      this.runStatus = status;
+      this.updateStatusUI(status, data.lastError);
+      // 结束后：暂停/恢复均禁用
+      this.updateRunButtons(status);
+
+      // 用已收到的实时数据重绘图表，确保停止时立刻显示部分曲线（不等 results 接口）
+      // currentTime 保持为最后收到的仿真时间，不归零
+      if (this.liveHeaders && this.liveRows && this.liveRows.length > 0) {
+        this.csvHeaders = this.liveHeaders;
+        this.csvRows = this.liveRows;
+        this.applyCsvToCharts(this.liveHeaders, this.liveRows);
+      }
+
+      // 仿真结束后拉取完整结果（触发结果文件生成、入库、状态修正等后续流程）
+      // 如果 results 返回了更完整的数据（含 To Workspace 信号），会覆盖当前实时数据
+      window.AppConfig.get('program', 'results', { name, version, ...(this.getProjectName() ? { projectName: this.getProjectName() } : {}) })
+          .then(result => {
+            if (result && result.code === 200 && result.data) {
+              this.handleResultData(result.data, name, version);
+            }
+          })
+          .catch(e => console.error('获取最终结果失败:', e));
+    }
+  }
+
+
+
   loadCsvData(headers, rows) {
 
     this.csvHeaders = headers;
 
     this.csvRows = rows;
 
+    // applyCsvToCharts 内部已调 updateAlertSummary，无需重复
     this.applyCsvToCharts(headers, rows);
-
-    const colIdx = {};
-
-    headers.forEach((h, i) => colIdx[h] = i);
-
-    const timeCol = colIdx['time'] != null ? colIdx['time'] : 0;
-
-    const timeData = rows.map(r => parseFloat(r[timeCol]));
-
-    const getLastVal = (colName) => {
-
-      if (!colName || colIdx[colName] == null) return null;
-
-      return parseFloat(rows[rows.length - 1][colIdx[colName]]);
-
-    };
-
-    this.updateAlertSummary(colIdx, rows, timeData, getLastVal);
 
   }
 
@@ -1391,15 +1836,28 @@ class ProgramRun extends HTMLElement {
 
     headers.forEach((h, i) => colIdx[h] = i);
 
+    // 别名：/live-stream 里向量信号若是单列，列名不带 _N 后缀（如 CavityState8_PaK），
+    // 而 /results 和前端配置用 _1 后缀（如 CavityState8_PaK_1）。
+    // 对没有 _N 展开的单列信号建立 _1 别名，让两种列名都能命中同一列。
+    const expanded = new Set();
+    headers.forEach(h => {
+      const m = h.match(/^(.+)_(\d+)$/);
+      if (m) expanded.add(m[1]);
+    });
+    headers.forEach(h => {
+      if (!expanded.has(h) && colIdx[h + '_1'] == null) {
+        colIdx[h + '_1'] = colIdx[h];
+      }
+    });
+
     const timeCol = colIdx['time'] != null ? colIdx['time'] : 0;
 
     const timeData = rows.map(r => parseFloat(r[timeCol]));
 
     const tMax = timeData.length ? timeData[timeData.length - 1] : 30;
 
-    // keep duration from stop time input; do not override with CSV tMax
-
-
+    // 用曲线末端的 x 轴时间驱动游标和时间显示
+    this.currentTime = tMax;
 
     const getSeries = (colName) => {
 
@@ -1516,13 +1974,17 @@ class ProgramRun extends HTMLElement {
 
       if (this.currentDatas[i]) {
 
-        chart.setOption(buildEChartsOptions(this.currentDatas[i], this.currentTime, this.runStatus), true);
+        chart.setOption(buildEChartsOptions(this.currentDatas[i], this.currentTime, this.runStatus, this.duration), true);
 
       }
 
     });
 
-    this.updateCursor(0, true);
+    // 刷新游标显示（保持当前位置，不重置为 0）
+    this.updateCursor(this.currentTime, true);
+
+    // 同步更新系统状态和告警汇总（实时数据也需要更新，不能等仿真结束）
+    this.updateAlertSummary(colIdx, rows, timeData, getLastVal);
 
   }
 
@@ -1631,7 +2093,7 @@ class ProgramRun extends HTMLElement {
 
         alertContainer.innerHTML = alerts.map(a =>
 
-          `<div class="alert ${a.level === '一级' ? 'alert-danger' : 'alert-warn'}"><span class="alert-time">${a.time.toFixed(2)} s</span><span class="alert-icon">${a.level === '一级' ? '🔴' : '🟡'}</span>${a.desc} — ${a.level}告警</div>`
+            `<div class="alert ${a.level === '一级' ? 'alert-danger' : 'alert-warn'}"><span class="alert-time">${a.time.toFixed(2)} s</span><span class="alert-icon">${a.level === '一级' ? '🔴' : '🟡'}</span>${a.desc} — ${a.level}告警</div>`
 
         ).join('');
 
@@ -1673,9 +2135,11 @@ class ProgramRun extends HTMLElement {
 
             const tag = issues.length > 0 ? 'warn' : 'ok';
 
-            const tagText = issues.length > 0 ? `${issues.length}项待确认` : '通过';
+            const tagText = issues.length > 0 ? `${issues.length}项` : '通过';
 
-            const desc = issues.length > 0 ? issues.join('; ') : '单位一致';
+            const desc = issues.length > 0
+                ? `<a class="status-link" data-unit-issues='${JSON.stringify(issues).replace(/'/g,"&#39;")}'>查看详情</a>`
+                : '单位一致';
 
             return `<tr><td class="sys-name">${m.icon} ${m.name}</td><td><span class="status-tag ${tag}">${tagText}</span></td><td class="status-desc">${desc}</td></tr>`;
 
@@ -1694,6 +2158,17 @@ class ProgramRun extends HTMLElement {
         return `<tr><td class="sys-name">${m.icon} ${m.name}</td><td><span class="status-tag ${connected ? 'ok' : 'warn'}">${tagText}</span></td><td class="status-desc">${connected ? '数据正常' : '信号未接出'}</td></tr>`;
 
       }).join('');
+
+      // 绑定单位一致性检查"查看详情"点击事件
+      statusTbody.querySelectorAll('a.status-link[data-unit-issues]').forEach(a => {
+        a.style.cssText = 'color:#f59e0b;cursor:pointer;text-decoration:underline;font-size:10px;';
+        a.addEventListener('click', () => {
+          try {
+            const issues = JSON.parse(a.getAttribute('data-unit-issues'));
+            this.showUnitIssues(issues);
+          } catch (e) { console.warn('解析单位检查问题失败', e); }
+        });
+      });
 
     }
 
@@ -1796,7 +2271,13 @@ class ProgramRun extends HTMLElement {
 
       'LOADING': '加载中...',
 
+      'STARTING': '仿真启动中',
+
+      'QUEUED': '排队等待中',
+
       'RUNNING': '仿真运行中',
+
+      'PAUSED': '已暂停',
 
       'SUCCESS': '运行完成',
 
@@ -1814,7 +2295,13 @@ class ProgramRun extends HTMLElement {
 
       'LOADING': '#f59e0b',
 
+      'STARTING': '#45D483',
+
+      'QUEUED': '#f59e0b',
+
       'RUNNING': '#45D483',
+
+      'PAUSED': '#f59e0b',
 
       'SUCCESS': '#35C9FF',
 
@@ -1834,13 +2321,24 @@ class ProgramRun extends HTMLElement {
 
     }
 
+    // STARTING 时右侧"系统状态"和"告警汇总"面板显示 loading 效果
+    const rightPanels = this.shadowRoot.querySelectorAll('.right .panel');
+    const isLoading = status === 'STARTING';
+    rightPanels.forEach(p => {
+      const titleEl = p.querySelector('.panel-title') || p.querySelector('.alert-title');
+      if (titleEl && (titleEl.textContent.includes('系统状态') || titleEl.textContent.includes('告警'))) {
+        p.classList.toggle('panel-loading', isLoading);
+      }
+    });
+
     if (this.runBtn && this.stopBtn) {
 
-      const running = status === 'RUNNING';
+      const running = status === 'RUNNING' || status === 'STARTING' || status === 'QUEUED';
 
       this.runBtn.disabled = running;
 
-      this.stopBtn.disabled = !running;
+      // 排队中不允许停止（还没真正开始）
+      this.stopBtn.disabled = !(status === 'RUNNING' || status === 'STARTING');
 
     }
 
@@ -1879,7 +2377,7 @@ class ProgramRun extends HTMLElement {
     if (this.charts && this.charts.length > 0) {
       this.charts.forEach((chart, i) => {
         if (this.currentDatas[i]) {
-          chart.setOption(buildEChartsOptions(this.currentDatas[i], this.currentTime, this.runStatus), true);
+          chart.setOption(buildEChartsOptions(this.currentDatas[i], this.currentTime, this.runStatus, this.duration), true);
         }
       });
     } else {
@@ -1887,7 +2385,7 @@ class ProgramRun extends HTMLElement {
         if (this.charts && this.charts.length > 0) {
           this.charts.forEach((chart, i) => {
             if (this.currentDatas[i]) {
-              chart.setOption(buildEChartsOptions(this.currentDatas[i], this.currentTime, this.runStatus), true);
+              chart.setOption(buildEChartsOptions(this.currentDatas[i], this.currentTime, this.runStatus, this.duration), true);
             }
           });
         }
@@ -1912,17 +2410,24 @@ class ProgramRun extends HTMLElement {
 
         this.updateStatusUI('IDLE');
 
-        return;
+        this.updateRunButtons('IDLE');
+
+      } else {
+
+        this.handleResultData(result.data, name, version);
 
       }
-
-      this.handleResultData(result.data, name, version);
 
     } catch (e) {
 
       this.updateStatusUI('IDLE');
 
+      this.updateRunButtons('IDLE');
+
     }
+
+    // results 接口完成后查询引擎状态（进页面只调一次）
+    this.refreshEngineStatus();
 
   }
 
@@ -1932,10 +2437,12 @@ class ProgramRun extends HTMLElement {
 
     const statusMap = {
       'running': 'RUNNING',
+      'queued': 'QUEUED',
       'success': 'SUCCESS',
       'failed': 'ERROR',
       'stopped': 'STOPPED',
-      'pending': 'IDLE'
+      'pending': 'IDLE',
+      'paused': 'PAUSED'
     };
     const status = statusMap[data.status] || data.status || 'UNKNOWN';
 
@@ -1952,6 +2459,16 @@ class ProgramRun extends HTMLElement {
     this.runError = data.lastError || null;
 
     this.runTimestamp = data.lastRunTime || null;
+
+    // 刷新页面时用后端返回的对齐停止时间设置时间轴上限
+    if (data.stopTime != null) {
+      const st = parseFloat(data.stopTime);
+      if (isFinite(st) && st > 0) {
+        this.duration = st;
+        const stopInput = this.shadowRoot.querySelector('.field-row .input-box input');
+        if (stopInput) stopInput.value = String(st);
+      }
+    }
 
     if (this.kpiParams) {
 
@@ -1975,25 +2492,71 @@ class ProgramRun extends HTMLElement {
 
     if (status === 'RUNNING' && name && version) {
 
-      this.startRunTimer(data.lastRunTime);
+      // 刷新页面时恢复运行状态：显示"仿真启动中"，等 SSE 数据到达后切换到"仿真运行中"
+      this._revealStarted = false;
+      this.runStatus = 'STARTING';
+      // 清除上一次运行的旧数据，防止切 tab 时显示旧曲线
+      this.csvHeaders = null;
+      this.csvRows = null;
+      this.updateStatusUI('STARTING');
 
-      if (!this._pollTimer) {
-        this.startPolling(name, version);
+      this.updateRunButtons('STARTING');
+
+      // 重绘图表，确保显示"仿真启动中，请稍后..."而非旧曲线
+      this.renderTab(this.activeTab || '综合总览');
+
+      if (!this._es && !this._pollTimer) {
+        this.startStream(name, version);
+      }
+
+    }
+
+    if (status === 'QUEUED' && name && version) {
+
+      // 刷新页面时恢复排队状态：引擎忙，等待空闲
+      this._revealStarted = false;
+      this.runStatus = 'QUEUED';
+      this.csvHeaders = null;
+      this.csvRows = null;
+      this.updateStatusUI('QUEUED');
+
+      this.updateRunButtons('QUEUED');
+
+      this.renderTab(this.activeTab || '综合总览');
+
+      if (!this._es && !this._pollTimer) {
+        this.startStream(name, version);
+      }
+
+    }
+
+    if (status === 'PAUSED' && name && version) {
+
+      // 刷新页面时恢复暂停状态：曲线已在显示中被暂停，直接显示"已暂停"和"恢复"按钮
+      this._paused = true;
+      this._revealStarted = true;
+      this.updateStatusUI('PAUSED');
+      this.updateRunButtons('PAUSED');
+
+      if (!this._es && !this._pollTimer) {
+        this.startStream(name, version);
       }
 
     }
 
     if (status === 'SUCCESS' || status === 'ERROR' || status === 'STOPPED') {
 
-      this.stopPolling();
+      this.stopStream();
 
       this.stopRunTimer();
+
+      this.updateRunButtons(status);
 
       requestAnimationFrame(() => {
         if (this.charts && this.charts.length > 0) {
           this.charts.forEach((chart, i) => {
             if (this.currentDatas[i]) {
-              chart.setOption(buildEChartsOptions(this.currentDatas[i], this.currentTime, this.runStatus), true);
+              chart.setOption(buildEChartsOptions(this.currentDatas[i], this.currentTime, this.runStatus, this.duration), true);
             }
           });
         }
@@ -2043,7 +2606,7 @@ class ProgramRun extends HTMLElement {
 
         modelFileSelect.innerHTML = data.modelFiles.map(f =>
 
-          `<option value="${f}">${f}</option>`
+            `<option value="${f}">${f}</option>`
 
         ).join('');
 
@@ -2051,7 +2614,7 @@ class ProgramRun extends HTMLElement {
 
         const lastModelFile = data.params && data.params.modelFile
 
-          ? data.params.modelFile : null;
+            ? data.params.modelFile : null;
 
         if (lastModelFile && data.modelFiles.includes(lastModelFile)) {
 
@@ -2073,7 +2636,7 @@ class ProgramRun extends HTMLElement {
 
             const mn = this.programFilesData && this.programFilesData.params
 
-              ? this.programFilesData.params.modelName : '';
+                ? this.programFilesData.params.modelName : '';
 
             tag.textContent = mn || modelFileSelect.value.replace(/\.(slx|mdl)$/i, '');
 
@@ -2124,6 +2687,10 @@ class ProgramRun extends HTMLElement {
 
 
 
+      // 页面加载时检查一次任务状态（单次调用，非轮询）
+      // - RUNNING: handleResultData 会自动启动 SSE 流重连
+      // - SUCCESS/ERROR/STOPPED: 显示已有结果
+      // - IDLE: 无任务，等待用户点击运行
       this.queryStatus(name, version);
 
     } catch (e) {
@@ -2316,167 +2883,41 @@ const OVERVIEW_CHARTS = [
 
   chart('转速响应', 12000, 48000,
 
-    sig('Np指令', colors.yellow, { dashed: true }),
-
-    sig('Np', colors.green),
-
-    sig('Ng', colors.cyan)
-
-  ),
-
-  chart('温度与扭矩', 0, 2400,
-
-    sig('T45 (K)', colors.red, { csv: 'HPC_T4_out' }),
-
-    sig('Mkp (N·m)', colors.blue)
-
-  ),
-
-  chart('燃油系统', 0, 0.25,
-
-    sig('Wf指令', colors.yellow, { dashed: true }),
-
-    sig('Wf实际', colors.orange)
-
-  ),
-
-  chart('滑油热管理', 0, 1200,
-
-    sig('ToutA', colors.green, { csv: 'OilBoundary_1' }),
-
-    sig('ToutB', colors.cyan, { csv: 'OilBoundary_2' }),
-
-    sig('空滑出口油温', colors.yellow, { csv: 'OilBoundary_3' })
-
-  ),
-
-  chart('空气流量 G01-G08', 0, 1500,
-
-    sig('G01', colors.red, { csv: 'AirBoundaryTP16_1' }),
-
-    sig('G02', colors.orange, { csv: 'AirBoundaryTP16_3' }),
-
-    sig('G03', colors.yellow, { csv: 'AirBoundaryTP16_5' }),
-
-    sig('G04', colors.green, { csv: 'AirBoundaryTP16_7' }),
-
-    sig('G05', colors.cyan, { csv: 'AirBoundaryTP16_9' }),
-
-    sig('G06', colors.blue, { csv: 'AirBoundaryTP16_11' }),
-
-    sig('G07', colors.purple, { csv: 'AirBoundaryTP16_13' }),
-
-    sig('G08', colors.pink, { csv: 'AirBoundaryTP16_15' })
-
-  ),
-
-  chart2('压力与收敛', 0, 2000000, 0, 1e-6,
-
-    sig('Pt3 (kPa)', colors.blue, { csv: 'Pt3' }),
-
-    sig('Pt45 (kPa)', colors.cyan, { csv: 'Pt45' }),
-
-    sig('Error', colors.yellow, { axis: 'right' })
-
-  )
-
-];
-
-
-
-const CHARTS_BY_TAB = {
-
-  '综合总览': OVERVIEW_CHARTS,
-
-  '总体性能': [
-
-    chart('转速响应', 12000, 48000,
-
-      sig('Np', colors.green),
-
-      sig('Ng', colors.cyan)
-
-    ),
-
-    chart('温度与扭矩', 0, 2400,
-
-      sig('T45 (K)', colors.red, { csv: 'HPC_T4_out' }),
-
-      sig('Mkp (N·m)', colors.blue)
-
-    ),
-
-    chart('温度参数', 0, 1500,
-
-      sig('Tt1 (K)', colors.red, { csv: 'Tt1' }),
-
-      sig('Tt3 (K)', colors.orange, { csv: 'Tt3' }),
-
-      sig('Tt45 (K)', colors.yellow, { csv: 'Tt45' }),
-
-      sig('T45 (K)', colors.pink, { csv: 'HPC_T4_out' })
-
-    ),
-
-    chart('压力参数', 0, 3500000,
-
-      sig('Pt1 (Pa)', colors.blue, { csv: 'Pt1' }),
-
-      sig('Pt3 (Pa)', colors.cyan, { csv: 'Pt3' }),
-
-      sig('Pt45 (Pa)', colors.green, { csv: 'Pt45' }),
-
-      sig('Pt5 (Pa)', colors.purple, { csv: 'Pt5' })
-
-    )
-
-  ],
-
-  '控制': [
-
-    chart('转速响应', 12000, 48000,
-
       sig('Np指令', colors.yellow, { dashed: true }),
 
       sig('Np', colors.green),
 
       sig('Ng', colors.cyan)
 
-    )
+  ),
 
-  ],
+  chart('温度与扭矩', 0, 2400,
 
-  '燃油': [
+      sig('T45 (K)', colors.red, { csv: 'HPC_T4_out' }),
 
-    chart('燃油系统', 0, 0.25,
+      sig('Mkp (N·m)', colors.blue)
+
+  ),
+
+  chart('燃油系统', 0, 0.25,
 
       sig('Wf指令', colors.yellow, { dashed: true }),
 
       sig('Wf实际', colors.orange)
 
-    )
+  ),
 
-  ],
-
-  '滑油': [
-
-    chart('滑油热管理', 0, 1200,
+  chart('滑油热管理', 0, 1200,
 
       sig('ToutA', colors.green, { csv: 'OilBoundary_1' }),
 
       sig('ToutB', colors.cyan, { csv: 'OilBoundary_2' }),
 
-      sig('空滑出口油温', colors.yellow, { csv: 'OilBoundary_3' }),
+      sig('空滑出口油温', colors.yellow, { csv: 'OilBoundary_3' })
 
-      sig('OilBoundary_4', colors.red, { csv: 'OilBoundary_4' })
+  ),
 
-    )
-
-  ],
-
-  '空气': [
-
-    chart('空气流量 G01-G08', 0, 1500,
+  chart('空气流量 G01-G08', 0, 1500,
 
       sig('G01', colors.red, { csv: 'AirBoundaryTP16_1' }),
 
@@ -2494,19 +2935,145 @@ const CHARTS_BY_TAB = {
 
       sig('G08', colors.pink, { csv: 'AirBoundaryTP16_15' })
 
+  ),
+
+  chart2('压力与收敛', 0, 2000000, 0, 1e-6,
+
+      sig('Pt3 (kPa)', colors.blue, { csv: 'Pt3' }),
+
+      sig('Pt45 (kPa)', colors.cyan, { csv: 'Pt45' }),
+
+      sig('Error', colors.yellow, { axis: 'right' })
+
+  )
+
+];
+
+
+
+const CHARTS_BY_TAB = {
+
+  '综合总览': OVERVIEW_CHARTS,
+
+  '总体性能': [
+
+    chart('转速响应', 12000, 48000,
+
+        sig('Np', colors.green),
+
+        sig('Ng', colors.cyan)
+
+    ),
+
+    chart('温度与扭矩', 0, 2400,
+
+        sig('T45 (K)', colors.red, { csv: 'HPC_T4_out' }),
+
+        sig('Mkp (N·m)', colors.blue)
+
+    ),
+
+    chart('温度参数', 0, 1500,
+
+        sig('Tt1 (K)', colors.red, { csv: 'Tt1' }),
+
+        sig('Tt3 (K)', colors.orange, { csv: 'Tt3' }),
+
+        sig('Tt45 (K)', colors.yellow, { csv: 'Tt45' }),
+
+        sig('T45 (K)', colors.pink, { csv: 'HPC_T4_out' })
+
+    ),
+
+    chart('压力参数', 0, 3500000,
+
+        sig('Pt1 (Pa)', colors.blue, { csv: 'Pt1' }),
+
+        sig('Pt3 (Pa)', colors.cyan, { csv: 'Pt3' }),
+
+        sig('Pt45 (Pa)', colors.green, { csv: 'Pt45' }),
+
+        sig('Pt5 (Pa)', colors.purple, { csv: 'Pt5' })
+
+    )
+
+  ],
+
+  '控制': [
+
+    chart('转速响应', 12000, 48000,
+
+        sig('Np指令', colors.yellow, { dashed: true }),
+
+        sig('Np', colors.green),
+
+        sig('Ng', colors.cyan)
+
+    )
+
+  ],
+
+  '燃油': [
+
+    chart('燃油系统', 0, 0.25,
+
+        sig('Wf指令', colors.yellow, { dashed: true }),
+
+        sig('Wf实际', colors.orange)
+
+    )
+
+  ],
+
+  '滑油': [
+
+    chart('滑油热管理', 0, 1200,
+
+        sig('ToutA', colors.green, { csv: 'OilBoundary_1' }),
+
+        sig('ToutB', colors.cyan, { csv: 'OilBoundary_2' }),
+
+        sig('空滑出口油温', colors.yellow, { csv: 'OilBoundary_3' }),
+
+        sig('OilBoundary_4', colors.red, { csv: 'OilBoundary_4' })
+
+    )
+
+  ],
+
+  '空气': [
+
+    chart('空气流量 G01-G08', 0, 1500,
+
+        sig('G01', colors.red, { csv: 'AirBoundaryTP16_1' }),
+
+        sig('G02', colors.orange, { csv: 'AirBoundaryTP16_3' }),
+
+        sig('G03', colors.yellow, { csv: 'AirBoundaryTP16_5' }),
+
+        sig('G04', colors.green, { csv: 'AirBoundaryTP16_7' }),
+
+        sig('G05', colors.cyan, { csv: 'AirBoundaryTP16_9' }),
+
+        sig('G06', colors.blue, { csv: 'AirBoundaryTP16_11' }),
+
+        sig('G07', colors.purple, { csv: 'AirBoundaryTP16_13' }),
+
+        sig('G08', colors.pink, { csv: 'AirBoundaryTP16_15' })
+
     ),
 
     chart2('压力与收敛', 0, 3500000, 0, 1e-6,
 
-      sig('Pt1 (Pa)', colors.blue, { csv: 'Pt1' }),
+        sig('Pt1 (Pa)', colors.blue, { csv: 'Pt1' }),
 
-      sig('Pt3 (Pa)', colors.cyan, { csv: 'Pt3' }),
+        sig('Pt3 (Pa)', colors.cyan, { csv: 'Pt3' }),
 
-      sig('Pt45 (Pa)', colors.green, { csv: 'Pt45' }),
+        sig('Pt45 (Pa)', colors.green, { csv: 'Pt45' }),
 
-      sig('Pt5 (Pa)', colors.purple, { csv: 'Pt5' }),
+        sig('Pt5 (Pa)', colors.purple, { csv: 'Pt5' }),
 
-      sig('Error', colors.yellow, { axis: 'right' })
+        sig('Error', colors.yellow, { axis: 'right' })
 
     )
 
@@ -2516,9 +3083,9 @@ const CHARTS_BY_TAB = {
 
     chart('告警统计', 0, 5,
 
-      sig('一级告警', colors.red),
+        sig('一级告警', colors.red),
 
-      sig('二级告警', colors.orange)
+        sig('二级告警', colors.orange)
 
     )
 
@@ -2562,19 +3129,19 @@ function buildChartData(cfg) {
 
 
 
-function buildEChartsOptions(data, time, status) {
+function buildEChartsOptions(data, time, status, duration) {
 
   const hasData = data.seriesData.some(s => s.data.length > 0);
 
-  const xMax = hasData
+  const xMax = duration || (hasData
 
-    ? data.seriesData.find(s => s.data.length > 0).data[data.seriesData.find(s => s.data.length > 0).data.length - 1][0]
+      ? data.seriesData.find(s => s.data.length > 0).data[data.seriesData.find(s => s.data.length > 0).data.length - 1][0]
 
-    : 30;
+      : 30);
 
   const yAxis = data.y2Min != null
 
-    ? [
+      ? [
 
         { type: 'value', min: data.yMin ?? null, max: data.yMax ?? null, name: data.unit || '', nameTextStyle: { color: '#9ca3af', fontSize: 10 }, axisLabel: { color: '#9ca3af', fontSize: 10 }, splitLine: { lineStyle: { color: '#24344D' } }, axisLine: { lineStyle: { color: '#24344D' } } },
 
@@ -2582,7 +3149,7 @@ function buildEChartsOptions(data, time, status) {
 
       ]
 
-    : { type: 'value', min: data.yMin ?? null, max: data.yMax ?? null, name: data.unit || '', nameTextStyle: { color: '#9ca3af', fontSize: 10 }, axisLabel: { color: '#9ca3af', fontSize: 10 }, splitLine: { lineStyle: { color: '#24344D' } }, axisLine: { lineStyle: { color: '#24344D' } } };
+      : { type: 'value', min: data.yMin ?? null, max: data.yMax ?? null, name: data.unit || '', nameTextStyle: { color: '#9ca3af', fontSize: 10 }, axisLabel: { color: '#9ca3af', fontSize: 10 }, splitLine: { lineStyle: { color: '#24344D' } }, axisLine: { lineStyle: { color: '#24344D' } } };
 
 
 
@@ -2590,7 +3157,7 @@ function buildEChartsOptions(data, time, status) {
 
     backgroundColor: 'transparent',
 
-    tooltip: { trigger: 'axis', backgroundColor: 'rgba(15,23,42,.9)', borderColor: '#24344D', textStyle: { color: '#e5e7eb' } },
+    tooltip: { trigger: 'axis', confine: true, backgroundColor: 'rgba(15,23,42,.9)', borderColor: '#24344D', textStyle: { color: '#e5e7eb' } },
 
     grid: { left: 55, right: data.y2Min != null ? 65 : 45, top: 32, bottom: 25 },
 
@@ -2613,6 +3180,8 @@ function buildEChartsOptions(data, time, status) {
       symbol: 'none',
 
       yAxisIndex: s.axis === 'right' ? 1 : 0,
+
+      itemStyle: { color: s.color },
 
       lineStyle: { color: s.color, width: 2, type: s.dashed ? 'dashed' : 'solid' },
 
@@ -2641,7 +3210,9 @@ function buildEChartsOptions(data, time, status) {
   if (!hasData) {
 
     const statusTexts = {
-      'RUNNING': '运行中，请稍候...',
+      'STARTING': '仿真启动中，请稍后...',
+      'QUEUED': '排队等待中，前面有任务正在运行...',
+      'RUNNING': '仿真运行中，暂无数据',
       'IDLE': '点击运行按钮开始仿真',
       'ERROR': '运行失败，请重试',
       'STOPPED': '运行已停止，请重新运行',
@@ -2695,9 +3266,9 @@ function buildLegend(card, cfg) {
 
     const style = s.dashed
 
-      ? 'background:repeating-linear-gradient(90deg,' + s.color + ',' + s.color + ' 2px,transparent 2px,transparent 4px)'
+        ? 'background:repeating-linear-gradient(90deg,' + s.color + ',' + s.color + ' 2px,transparent 2px,transparent 4px)'
 
-      : 'background:' + s.color;
+        : 'background:' + s.color;
 
     return '<span class=\'legend-item\'><span class=\'legend-color\' style=\'' + style + '\'></span>' + s.name + '</span>';
 

@@ -106,9 +106,41 @@
             <version>1.26.0</version>
         </dependency>
 
+        <!-- MATLAB Engine API for Java：用于启动 MATLAB、执行脚本、异步 sim() 仿真、
+             暂停/恢复、读取 workspace 数据。
+             jar 取自 <MATLAB>/extern/engines/java/jar/engine.jar 并随项目一起提供，
+             这样构建机不装 MATLAB 也能编译；更换 MATLAB 版本时替换该 jar 即可。
+             注意：运行期仍需本机安装同版本 MATLAB；原生库搜索路径由 MatlabNativeLibrary
+             在进程内注入，无需手动改 PATH。 -->
+        <dependency>
+            <groupId>com.mathworks</groupId>
+            <artifactId>matlab-engine</artifactId>
+            <version>R2019b</version>
+            <scope>system</scope>
+            <systemPath>${project.basedir}/src/main/resources/libs/matlab-engine-R2019b.jar</systemPath>
+        </dependency>
+
+        <!-- JNA：进程内调用 Win32 SetDllDirectory / SetEnvironmentVariable，
+             把 <MATLAB>/bin/win64 注入到本进程的 DLL 搜索路径与 PATH，
+             使 MatlabEngine 在不修改外部环境变量的情况下也能加载 nativemvm.dll -->
+        <dependency>
+            <groupId>net.java.dev.jna</groupId>
+            <artifactId>jna</artifactId>
+        </dependency>
+
     </dependencies>
 
     <build>
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+                <!-- libs 下是编译期依赖 jar（MATLAB engine.jar），由 system scope 引用并经
+                     includeSystemScope 打入 BOOT-INF/lib，不需要再作为资源拷进 classes 重复一份 -->
+                <excludes>
+                    <exclude>libs/**</exclude>
+                </excludes>
+            </resource>
+        </resources>
         <plugins>
             <!-- Maven Compiler Plugin -->
             <plugin>

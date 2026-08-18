@@ -2813,14 +2813,12 @@ function showSimulationRecord() {
                         if (window.showComponent) {
                             window.showComponent('programRun');
                         }
-                        // 等待组件初始化完成后再加载数据
+                        // 等待组件 init() 完成后再加载数据
+                        // 用 this.tabs 是否已赋值判断 init() 是否执行完（不依赖 charts，display:none 时 charts 可能为空）
                         const waitForInit = () => {
-                            if (programRun.charts && programRun.charts.length > 0) {
+                            if (programRun.tabs) {
                                 if (programRun.loadProgramFiles) {
                                     programRun.loadProgramFiles(programName, programVersion);
-                                }
-                                if (programRun.queryStatus) {
-                                    programRun.queryStatus(programName, programVersion);
                                 }
                             } else {
                                 setTimeout(waitForInit, 100);
@@ -3887,9 +3885,6 @@ function bindProjectTreeEvents() {
                     }
                     if (programRun.loadProgramFiles) {
                         programRun.loadProgramFiles(programName, programVersion);
-                    }
-                    if (programRun.queryStatus) {
-                        programRun.queryStatus(programName, programVersion);
                     }
                 }
             }

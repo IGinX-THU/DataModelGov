@@ -17,6 +17,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import javax.servlet.http.HttpServletResponse;
 import java.net.URLEncoder;
@@ -159,6 +160,42 @@ public class ProgramController {
         return programService.results(name, version, projectName);
     }
 
+    @ApiOperation("实时仿真数据（增量）")
+    @GetMapping("/live-data")
+    @RequirePermission(Permission.READ)
+    public Result<Map<String, Object>> liveData(@RequestParam("name") String name,
+                                                 @RequestParam("version") String version,
+                                                 @RequestParam(value = "projectName", required = false) String projectName) {
+        return programService.getLiveData(name, version, projectName);
+    }
+
+    @ApiOperation("实时仿真数据 SSE 流（服务器主动推送，避免轮询）")
+    @GetMapping(value = "/live-stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @RequirePermission(Permission.READ)
+    public SseEmitter liveStream(@RequestParam("name") String name,
+                                 @RequestParam("version") String version,
+                                 @RequestParam(value = "projectName", required = false) String projectName) {
+        return programService.subscribeLiveData(name, version, projectName);
+    }
+
+    @ApiOperation("暂停仿真")
+    @PostMapping("/pause")
+    @RequirePermission(Permission.UPDATE)
+    public Result<Map<String, Object>> pause(@RequestParam("name") String name,
+                                             @RequestParam("version") String version,
+                                             @RequestParam(value = "projectName", required = false) String projectName) {
+        return programService.pause(name, version, projectName);
+    }
+
+    @ApiOperation("恢复仿真")
+    @PostMapping("/resume")
+    @RequirePermission(Permission.UPDATE)
+    public Result<Map<String, Object>> resume(@RequestParam("name") String name,
+                                              @RequestParam("version") String version,
+                                              @RequestParam(value = "projectName", required = false) String projectName) {
+        return programService.resume(name, version, projectName);
+    }
+
     @ApiOperation("更新配置")
     @PostMapping("/update-config")
     @RequirePermission(Permission.UPDATE)
@@ -263,5 +300,19 @@ public class ProgramController {
             log.error("导出信号数据失败", e);
             return ResponseEntity.internalServerError().body(null);
         }
+    }
+
+    @ApiOperation("MATLAB 引擎状态")
+    @GetMapping("/engine-status")
+    @RequirePermission(Permission.READ)
+    public Result<Map<String, Object>> engineStatus() {
+        return programService.getEngineStatus();
+    }
+
+    @ApiOperation("重启 MATLAB 引擎")
+    @PostMapping("/engine-restart")
+    @RequirePermission(Permission.CREATE)
+    public Result<Map<String, Object>> engineRestart() {
+        return programService.restartEngine();
     }
 }
