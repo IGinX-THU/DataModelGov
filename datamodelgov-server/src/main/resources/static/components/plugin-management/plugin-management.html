@@ -1,0 +1,21 @@
+<div class="plugin-management">
+  <div class="header">
+    <h2>插件管理</h2>
+    <button class="btn btn-primary" id="uploadBtn">+ 上传插件</button>
+  </div>
+  <div class="upload-form hidden" id="uploadForm">
+    <h3 id="uploadFormTitle">上传新插件</h3>
+    <div class="form-row"><label>插件 ID</label><input type="text" id="pluginId" placeholder="留空自动生成，更新时填已有 ID"></div>
+    <div class="form-row"><label>名称</label><input type="text" id="pluginName" placeholder="AFO 扩展"></div>
+    <div class="form-row"><label>版本</label><input type="text" id="pluginVersion" placeholder="1.0.0"></div>
+    <div class="form-row"><label>作者</label><input type="text" id="pluginAuthor"></div>
+    <div class="form-row"><label>描述</label><textarea id="pluginDesc" rows="2"></textarea></div>
+    <div class="form-row"><label>入口 JS</label><input type="file" id="pluginEntryJs" accept=".js,mjs"></div>
+    <div class="form-row"><label>CSS（可选）</label><input type="file" id="pluginCss" accept=".css"></div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" id="cancelUploadBtn">取消</button>
+      <button class="btn btn-primary" id="submitUploadBtn">保存</button>
+    </div>
+  </div>
+  <div class="plugin-list" id="pluginList"></div>
+</div>

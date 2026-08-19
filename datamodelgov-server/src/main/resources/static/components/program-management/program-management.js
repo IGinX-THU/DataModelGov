@@ -75,6 +75,7 @@ class ProgramManagement extends HTMLElement {
                     const projectName = btn.dataset.project;
                     if (!name || !version) return;
                     if (btn.classList.contains('run-btn')) this.openProgramRun(name, version, projectName);
+                    if (btn.classList.contains('config-btn')) this.openConfig(name, version, projectName);
                     if (btn.classList.contains('delete-btn')) this.deleteProgram(name, version);
                     if (btn.classList.contains('download-btn')) this.downloadProgram(name, version, projectName);
                     return;
@@ -91,42 +92,174 @@ class ProgramManagement extends HTMLElement {
         const configCloseBtn = this.shadowRoot.getElementById('configCloseBtn');
         const configCancelBtn = this.shadowRoot.getElementById('configCancelBtn');
         const configSaveBtn = this.shadowRoot.getElementById('configSaveBtn');
-        const addSystemBtn = this.shadowRoot.getElementById('addSystemBtn');
-        const addOutputBtn = this.shadowRoot.getElementById('addOutputBtn');
+        const addParamBtn = this.shadowRoot.getElementById('addParamBtn');
+        const addSignalBtn = this.shadowRoot.getElementById('addSignalBtn');
+        const addSectionBtn = this.shadowRoot.getElementById('addSectionBtn');
+        const cfgUploadJsonBtn = this.shadowRoot.getElementById('cfgUploadJsonBtn');
+        const cfgUploadJsonInput = this.shadowRoot.getElementById('cfgUploadJsonInput');
+        const cfgDownloadJsonBtn = this.shadowRoot.getElementById('cfgDownloadJsonBtn');
+        const cfgApplyTemplateBtn = this.shadowRoot.getElementById('cfgApplyTemplateBtn');
 
         if (configCloseBtn) configCloseBtn.addEventListener('click', () => this.closeConfig());
         if (configCancelBtn) configCancelBtn.addEventListener('click', () => this.closeConfig());
         if (configSaveBtn) configSaveBtn.addEventListener('click', () => this.saveConfig());
-        if (addSystemBtn) addSystemBtn.addEventListener('click', () => this.addSystemRow());
-        if (addOutputBtn) addOutputBtn.addEventListener('click', () => this.addOutputRow());
+        if (addParamBtn) addParamBtn.addEventListener('click', () => this.addParamRow());
+        if (addSignalBtn) addSignalBtn.addEventListener('click', () => this.addSignalRow());
+        if (addSectionBtn) addSectionBtn.addEventListener('click', () => this.addSectionRow());
+        if (cfgApplyTemplateBtn) cfgApplyTemplateBtn.addEventListener('click', () => this.applyTemplate());
+        if (cfgUploadJsonBtn) cfgUploadJsonBtn.addEventListener('click', () => cfgUploadJsonInput && cfgUploadJsonInput.click());
+        if (cfgUploadJsonInput) cfgUploadJsonInput.addEventListener('change', (e) => this.handleConfigUpload(e));
+        if (cfgDownloadJsonBtn) cfgDownloadJsonBtn.addEventListener('click', () => this.downloadConfigJson());
+        // 双向自动同步：表单 ↔ rawJson
+        const configForm = this.shadowRoot.getElementById('configForm');
+        if (configForm) {
+            configForm.addEventListener('input', () => this.syncFormToRawJson());
+            configForm.addEventListener('change', () => this.syncFormToRawJson());
+        }
+        const rawEl = this.shadowRoot.getElementById('cfgRawJson');
+        if (rawEl) {
+            // rawJson 变化时（debounce 300ms）自动同步到表单
+            let rawTimer = null;
+            rawEl.addEventListener('input', () => {
+                if (rawTimer) clearTimeout(rawTimer);
+                rawTimer = setTimeout(() => this.syncRawJsonToForm(), 300);
+            });
+        }
+    }
+
+    /** 表单 → rawJson：把表单值合并到 rawJson（保留 rawJson 里表单不支持的字段） */
+    syncFormToRawJson() {
+        if (!this.editingConfig) return;
+        const rawEl = this.shadowRoot.getElementById('cfgRawJson');
+        if (!rawEl) return;
+        // 防止循环同步：标记正在从表单同步
+        if (this._syncingForm) return;
+        this._syncingForm = true;
+        try {
+            const formConfig = this.collectConfig(false);
+            let rawConfig = this.editingConfig;
+            if (rawEl.value && rawEl.value.trim()) {
+                try { rawConfig = JSON.parse(rawEl.value); } catch (e) { /* 用 editingConfig */ }
+            }
+            const merged = this.mergeFormAndRaw(formConfig, rawConfig);
+            rawEl.value = JSON.stringify(merged, null, 2);
+        } catch (e) {
+            // 忽略同步错误
+        } finally {
+            this._syncingForm = false;
+        }
+    }
+
+    /** rawJson → 表单：解析 rawJson 并回填表单字段 */
+    syncRawJsonToForm() {
+        const rawEl = this.shadowRoot.getElementById('cfgRawJson');
+        if (!rawEl || !rawEl.value || !rawEl.value.trim()) return;
+        // 防止循环同步
+        if (this._syncingRaw) return;
+        this._syncingRaw = true;
+        try {
+            const parsed = JSON.parse(rawEl.value);
+            this.editingConfig = this.normalizeConfig(parsed, { name: this.configProgramName });
+            this.renderConfigForm(this.editingConfig);
+        } catch (e) {
+            // JSON 格式错误时不回填，让用户继续编辑
+        } finally {
+            this._syncingRaw = false;
+        }
     }
 
     show() { this.style.display = 'block'; this.loadPrograms(); }
     hide() { this.style.display = 'none'; }
 
     normalizeConfig(config, program) {
+        const c = config || {};
         return {
-            programName: (config && config.programName) || (program && program.name) || '',
-            runtime: (config && config.runtime) || {},
-            systems: (config && config.systems) || [],
-            outputs: (config && config.outputs) || []
+            programName: c.programName || (program && program.name) || '',
+            runtime: c.runtime || { preRunScript: '', simulinkModel: '', stopTime: 30, fixedStep: '' },
+            setupScript: c.setupScript || null,
+            parameters: c.parameters || [],
+            derivedVars: c.derivedVars || [],
+            signals: c.signals || [],
+            ui: c.ui || { title: '', layout: 'tabs', sections: [], extension: { enabled: false, mode: 'slot', entry: '', slot: '' } }
         };
     }
 
-    openConfig(name, version) {
+    async openConfig(name, version, projectName) {
         this.configProgramName = name;
         this.configProgramVersion = version;
-        const program = this.programs.find(p => p.name === name && p.version === version);
+        this.configProjectName = projectName || this.getProjectName();
         const nameEl = this.shadowRoot.getElementById('configProgramName');
-        if (nameEl) nameEl.textContent = program ? (program.name || '-') : '-';
+        if (nameEl) nameEl.textContent = name;
+        // 加载可用插件列表（填充下拉框）
+        await this.loadPluginOptions();
+        // 加载配置模板列表（填充下拉框）
+        await this.loadTemplateOptions();
         let config = {};
         try {
-            config = program && program.configJson ? JSON.parse(program.configJson) : {};
+            const pn = this.configProjectName;
+            const result = await window.AppConfig.get('program', 'config', { name, version, ...(pn ? { projectName: pn } : {}) });
+            if (result && (result.success || result.code === 200) && result.data) {
+                config = typeof result.data === 'string' ? JSON.parse(result.data) : result.data;
+            }
         } catch (e) { config = {}; }
-        this.editingConfig = this.normalizeConfig(config, program);
+        this.editingConfig = this.normalizeConfig(config, { name });
         this.renderConfigForm(this.editingConfig);
         const modal = this.shadowRoot.getElementById('configModal');
         if (modal) modal.classList.remove('hidden');
+    }
+
+    /** 加载插件列表，填充 cfgExtEntry 下拉框 */
+    async loadPluginOptions() {
+        const select = this.shadowRoot.getElementById('cfgExtEntry');
+        if (!select) return;
+        try {
+            const result = await window.AppConfig.get('program', 'plugin');
+            const plugins = (result && (result.success || result.code === 200) && Array.isArray(result.data)) ? result.data : [];
+            const current = select.value;
+            select.innerHTML = '<option value="">不使用插件</option>' +
+                plugins.map(p => `<option value="${this.esc(p.id)}">${this.esc(p.name || p.id)}${p.program ? ' (' + this.esc(p.program) + ')' : ''}</option>`).join('');
+            select.value = current;
+        } catch (e) {
+            console.warn('加载插件列表失败:', e);
+        }
+    }
+
+    /** 加载配置模板列表，填充下拉框 */
+    async loadTemplateOptions() {
+        const select = this.shadowRoot.getElementById('cfgTemplateSelect');
+        if (!select) return;
+        try {
+            const result = await window.AppConfig.get('program', 'config-templates');
+            const templates = (result && (result.success || result.code === 200) && Array.isArray(result.data)) ? result.data : [];
+            select.innerHTML = '<option value="">选择模板...</option>' +
+                templates.map(t => `<option value="${this.esc(t.id)}">${this.esc(t.name || t.id)}</option>`).join('');
+        } catch (e) {
+            console.warn('加载配置模板列表失败:', e);
+        }
+    }
+
+    /** 应用选中的配置模板 */
+    async applyTemplate() {
+        const select = this.shadowRoot.getElementById('cfgTemplateSelect');
+        if (!select || !select.value) {
+            if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('请先选择模板', 'warning');
+            return;
+        }
+        const id = select.value;
+        try {
+            const url = window.AppConfig.getApiUrl('program', 'config-templates') + '/' + encodeURIComponent(id);
+            const result = await window.AppConfig.request(url, { method: 'GET' });
+            if (result && (result.success || result.code === 200) && result.data) {
+                const config = typeof result.data === 'string' ? JSON.parse(result.data) : result.data;
+                this.editingConfig = this.normalizeConfig(config, { name: this.configProgramName });
+                this.renderConfigForm(this.editingConfig);
+                if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('模板已应用', 'success');
+            } else {
+                throw new Error(result.message || '加载模板失败');
+            }
+        } catch (e) {
+            if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('加载模板失败: ' + e.message, 'error');
+        }
     }
 
     closeConfig() {
@@ -138,99 +271,128 @@ class ProgramManagement extends HTMLElement {
     }
 
     renderConfigForm(config) {
-        const runtime = config.runtime || {};
-        const sim = this.shadowRoot.getElementById('cfgSimulinkModel');
-        const pre = this.shadowRoot.getElementById('cfgPreRunScript');
-        const stop = this.shadowRoot.getElementById('cfgStopTime');
-        if (sim) sim.value = runtime.simulinkModel || '';
-        if (pre) pre.value = runtime.preRunScript || '';
-        if (stop) stop.value = runtime.stopTime != null ? runtime.stopTime : '';
-        this.renderSystemRows(config.systems || []);
-        this.renderOutputRows(config.outputs || []);
+        const rt = config.runtime || {};
+        const set = (id, v) => { const el = this.shadowRoot.getElementById(id); if (el) el.value = v != null ? v : ''; };
+        set('cfgPreRunScript', rt.preRunScript);
+        set('cfgSimulinkModel', rt.simulinkModel);
+        set('cfgStopTime', rt.stopTime);
+        set('cfgFixedStep', rt.fixedStep);
+        set('cfgSetupScript', config.setupScript);
+        const ui = config.ui || {};
+        set('cfgUiTitle', ui.title);
+        const layoutEl = this.shadowRoot.getElementById('cfgUiLayout');
+        if (layoutEl) layoutEl.value = ui.layout || 'tabs';
+        const ext = ui.extension || {};
+        const extEn = this.shadowRoot.getElementById('cfgExtEnabled');
+        if (extEn) extEn.checked = !!ext.enabled;
+        set('cfgExtMode', ext.mode || 'slot');
+        set('cfgExtEntry', ext.entry);
+        set('cfgExtSlot', ext.slot);
+        this.renderParamRows(config.parameters || []);
+        this.renderSignalRows(config.signals || []);
+        this.renderSectionRows(config.ui && config.ui.sections || []);
         const raw = this.shadowRoot.getElementById('cfgRawJson');
         if (raw) raw.value = JSON.stringify(config, null, 2);
     }
 
-    renderSystemRows(systems) {
-        const container = this.shadowRoot.getElementById('systemConfigList');
+    esc(v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
+
+    renderParamRows(params) {
+        const container = this.shadowRoot.getElementById('paramConfigList');
         if (!container) return;
         container.innerHTML = '';
-        const iconOptions = ['⚙', '🔥', '💧', '⚡', '📊', '🛠', '🧭', '🔋', '✈', '🌡'];
-        const colorOptions = [
-            { value: 'purple', label: '紫色' },
-            { value: 'orange', label: '橙色' },
-            { value: 'green', label: '绿色' },
-            { value: 'blue', label: '蓝色' },
-            { value: 'cyan', label: '青色' }
-        ];
-        const esc = (v) => String(v == null ? '' : v).replace(/"/g, '&quot;').replace(/</g, '&lt;');
-        systems.forEach((s, idx) => {
+        params.forEach((p, idx) => {
             const row = document.createElement('div');
             row.className = 'config-row';
-            const currentIcon = s.icon || '';
-            const currentColor = s.color || '';
-            let iconSelect = `<option value="">-</option>` + iconOptions.map(icon => {
-                const selected = icon === currentIcon ? 'selected' : '';
-                return `<option value="${esc(icon)}" ${selected}>${esc(icon)}</option>`;
-            }).join('');
-            if (currentIcon && !iconOptions.includes(currentIcon)) {
-                iconSelect = `<option value="${esc(currentIcon)}" selected>${esc(currentIcon)}</option>` + iconSelect.replace('<option value="">-</option>', '');
-            }
-            let colorSelect = `<option value="">-</option>` + colorOptions.map(c => {
-                const selected = c.value === currentColor ? 'selected' : '';
-                return `<option value="${esc(c.value)}" ${selected}>${esc(c.label)}</option>`;
-            }).join('');
-            if (currentColor && !colorOptions.some(c => c.value === currentColor)) {
-                colorSelect = `<option value="${esc(currentColor)}" selected>${esc(currentColor)}</option>` + colorSelect;
-            }
             row.innerHTML = `
-                <input type="text" class="cfg-sys-id" placeholder="ID" value="${esc(s.id)}">
-                <input type="text" class="cfg-sys-name" placeholder="名称" value="${esc(s.name)}">
-                <select class="cfg-sys-icon">${iconSelect}</select>
-                <select class="cfg-sys-color">${colorSelect}</select>
-                <input type="text" class="cfg-sys-keywords" placeholder="关键字,逗号分隔" value="${(Array.isArray(s.keywords) ? s.keywords.join(',') : (s.keywords || '')).replace(/"/g, '&quot;')}">
+                <input type="text" class="cfg-p-key" placeholder="key" value="${this.esc(p.key)}">
+                <input type="text" class="cfg-p-label" placeholder="标签" value="${this.esc(p.label)}">
+                <input type="text" class="cfg-p-matlabVar" placeholder="MATLAB 变量" value="${this.esc(p.matlabVar)}">
+                <input type="text" class="cfg-p-default" placeholder="默认值" value="${this.esc(p.defaultValue)}">
+                <input type="text" class="cfg-p-unit" placeholder="单位" value="${this.esc(p.unit)}">
                 <button class="btn btn-icon delete-row" data-idx="${idx}" type="button">✕</button>
             `;
             row.querySelector('.delete-row').addEventListener('click', () => {
-                this.editingConfig.systems.splice(idx, 1);
+                this.editingConfig = this.collectConfig(false);
+                this.editingConfig.parameters.splice(idx, 1);
                 this.renderConfigForm(this.editingConfig);
             });
             container.appendChild(row);
         });
     }
 
-    renderOutputRows(outputs) {
-        const container = this.shadowRoot.getElementById('outputConfigList');
+    renderSignalRows(signals) {
+        const container = this.shadowRoot.getElementById('signalConfigList');
         if (!container) return;
         container.innerHTML = '';
-        const systems = (this.editingConfig && this.editingConfig.systems) || [];
-        outputs.forEach((o, idx) => {
-            const opts = systems.map(s => `<option value="${(s.id || '').replace(/"/g, '&quot;')}" ${(o.system || '') === s.id ? 'selected' : ''}>${(s.name || s.id || '').replace(/</g, '&lt;')}</option>`).join('');
+        const typeOpts = ['block', 'goto', 'subsystemOut', 'subsystemAllOuts', 'sfuncExtra', 'auto'];
+        signals.forEach((s, idx) => {
             const row = document.createElement('div');
             row.className = 'config-row';
+            const typeSelect = typeOpts.map(t => `<option value="${t}" ${s.type === t ? 'selected' : ''}>${t}</option>`).join('');
             row.innerHTML = `
-                <input type="text" class="cfg-out-name" placeholder="信号名" value="${(o.name || '').replace(/"/g, '&quot;')}">
-                <select class="cfg-out-system"><option value="">-</option>${opts}</select>
-                <input type="text" class="cfg-out-unit" placeholder="单位" value="${(o.unit || '').replace(/"/g, '&quot;')}">
+                <input type="text" class="cfg-s-name" placeholder="信号名" value="${this.esc(s.name)}">
+                <select class="cfg-s-type">${typeSelect}</select>
+                <input type="text" class="cfg-s-path" placeholder="块路径/Goto 标签/子系统路径" value="${this.esc(s.path || s.blockPath || s.gotoTag || s.subsystemPath)}">
+                <input type="text" class="cfg-s-label" placeholder="显示名" value="${this.esc(s.label)}">
+                <input type="text" class="cfg-s-unit" placeholder="单位" value="${this.esc(s.unit)}">
                 <button class="btn btn-icon delete-row" data-idx="${idx}" type="button">✕</button>
             `;
             row.querySelector('.delete-row').addEventListener('click', () => {
-                this.editingConfig.outputs.splice(idx, 1);
+                this.editingConfig = this.collectConfig(false);
+                this.editingConfig.signals.splice(idx, 1);
                 this.renderConfigForm(this.editingConfig);
             });
             container.appendChild(row);
         });
     }
 
-    addSystemRow() {
+    renderSectionRows(sections) {
+        const container = this.shadowRoot.getElementById('sectionConfigList');
+        if (!container) return;
+        container.innerHTML = '';
+        const typeOpts = ['control', 'charts', 'readout', 'gauge', 'table', 'custom'];
+        sections.forEach((sec, idx) => {
+            const row = document.createElement('div');
+            row.className = 'config-row';
+            const typeSelect = typeOpts.map(t => `<option value="${t}" ${sec.type === t ? 'selected' : ''}>${t}</option>`).join('');
+            const fieldsStr = Array.isArray(sec.rows) ? sec.rows.map(r => (r.fields || []).join(',')).join(';') : '';
+            const signalsStr = sec.type === 'charts' && sec.groups ? sec.groups.map(g => (g.signals || []).join(',')).join(';') : '';
+            row.innerHTML = `
+                <input type="text" class="cfg-sec-id" placeholder="ID" value="${this.esc(sec.id)}">
+                <input type="text" class="cfg-sec-title" placeholder="标题" value="${this.esc(sec.title)}">
+                <select class="cfg-sec-type">${typeSelect}</select>
+                <input type="text" class="cfg-sec-fields" placeholder="字段(逗号;分组)" value="${this.esc(fieldsStr || signalsStr)}">
+                <button class="btn btn-icon delete-row" data-idx="${idx}" type="button">✕</button>
+            `;
+            row.querySelector('.delete-row').addEventListener('click', () => {
+                this.editingConfig = this.collectConfig(false);
+                this.editingConfig.ui.sections.splice(idx, 1);
+                this.renderConfigForm(this.editingConfig);
+            });
+            container.appendChild(row);
+        });
+    }
+
+    addParamRow() {
         this.editingConfig = this.collectConfig(false);
-        this.editingConfig.systems.push({ id: '', name: '', icon: '', color: '', keywords: [] });
+        if (!this.editingConfig.parameters) this.editingConfig.parameters = [];
+        this.editingConfig.parameters.push({ key: '', label: '', matlabVar: '', defaultValue: '', unit: '' });
         this.renderConfigForm(this.editingConfig);
     }
 
-    addOutputRow() {
+    addSignalRow() {
         this.editingConfig = this.collectConfig(false);
-        this.editingConfig.outputs.push({ name: '', system: '', unit: '' });
+        if (!this.editingConfig.signals) this.editingConfig.signals = [];
+        this.editingConfig.signals.push({ name: '', type: 'block', path: '', label: '', unit: '' });
+        this.renderConfigForm(this.editingConfig);
+    }
+
+    addSectionRow() {
+        this.editingConfig = this.collectConfig(false);
+        if (!this.editingConfig.ui) this.editingConfig.ui = { title: '', layout: 'tabs', sections: [] };
+        if (!this.editingConfig.ui.sections) this.editingConfig.ui.sections = [];
+        this.editingConfig.ui.sections.push({ id: '', title: '', type: 'control' });
         this.renderConfigForm(this.editingConfig);
     }
 
@@ -239,40 +401,156 @@ class ProgramManagement extends HTMLElement {
         if (parseRaw && raw) {
             try { return JSON.parse(raw); } catch (e) {}
         }
+        const val = (id) => this.shadowRoot.getElementById(id)?.value || '';
+        const num = (id, dflt) => { const v = parseFloat(val(id)); return isNaN(v) ? dflt : v; };
         const runtime = {
-            simulinkModel: this.shadowRoot.getElementById('cfgSimulinkModel')?.value || '',
-            preRunScript: this.shadowRoot.getElementById('cfgPreRunScript')?.value || '',
-            stopTime: parseFloat(this.shadowRoot.getElementById('cfgStopTime')?.value) || 30
+            preRunScript: val('cfgPreRunScript'),
+            simulinkModel: val('cfgSimulinkModel'),
+            stopTime: num('cfgStopTime', 30),
+            fixedStep: val('cfgFixedStep')
         };
-        const systems = [];
-        this.shadowRoot.querySelectorAll('#systemConfigList .config-row').forEach(row => {
-            const keywords = (row.querySelector('.cfg-sys-keywords')?.value || '').split(',').map(k => k.trim()).filter(k => k);
-            systems.push({
-                id: row.querySelector('.cfg-sys-id')?.value.trim() || '',
-                name: row.querySelector('.cfg-sys-name')?.value.trim() || '',
-                icon: row.querySelector('.cfg-sys-icon')?.value.trim() || '',
-                color: row.querySelector('.cfg-sys-color')?.value.trim() || '',
-                keywords
+        const setupScript = val('cfgSetupScript') || null;
+        const parameters = [];
+        this.shadowRoot.querySelectorAll('#paramConfigList .config-row').forEach(row => {
+            parameters.push({
+                key: row.querySelector('.cfg-p-key')?.value.trim() || '',
+                label: row.querySelector('.cfg-p-label')?.value.trim() || '',
+                matlabVar: row.querySelector('.cfg-p-matlabVar')?.value.trim() || '',
+                defaultValue: row.querySelector('.cfg-p-default')?.value.trim() || '',
+                unit: row.querySelector('.cfg-p-unit')?.value.trim() || ''
             });
         });
-        const outputs = [];
-        this.shadowRoot.querySelectorAll('#outputConfigList .config-row').forEach(row => {
-            outputs.push({
-                name: row.querySelector('.cfg-out-name')?.value.trim() || '',
-                system: row.querySelector('.cfg-out-system')?.value || '',
-                unit: row.querySelector('.cfg-out-unit')?.value.trim() || ''
-            });
+        const signals = [];
+        this.shadowRoot.querySelectorAll('#signalConfigList .config-row').forEach(row => {
+            const type = row.querySelector('.cfg-s-type')?.value || 'block';
+            const path = row.querySelector('.cfg-s-path')?.value.trim() || '';
+            const sig = {
+                name: row.querySelector('.cfg-s-name')?.value.trim() || '',
+                type,
+                label: row.querySelector('.cfg-s-label')?.value.trim() || '',
+                unit: row.querySelector('.cfg-s-unit')?.value.trim() || ''
+            };
+            if (type === 'goto') sig.gotoTag = path; else if (type === 'block') sig.blockPath = path;
+            else if (type === 'subsystemOut' || type === 'subsystemAllOuts') sig.subsystemPath = path;
+            else sig.path = path;
+            signals.push(sig);
         });
-        return { ...this.editingConfig, runtime, systems, outputs };
+        const sections = [];
+        this.shadowRoot.querySelectorAll('#sectionConfigList .config-row').forEach(row => {
+            const type = row.querySelector('.cfg-sec-type')?.value || 'control';
+            const fieldsStr = row.querySelector('.cfg-sec-fields')?.value.trim() || '';
+            const sec = {
+                id: row.querySelector('.cfg-sec-id')?.value.trim() || '',
+                title: row.querySelector('.cfg-sec-title')?.value.trim() || '',
+                type
+            };
+            if (type === 'control') {
+                sec.rows = fieldsStr ? fieldsStr.split(';').map(g => ({ fields: g.split(',').map(f => f.trim()).filter(Boolean) })) : [];
+            } else if (type === 'charts') {
+                sec.groups = fieldsStr ? fieldsStr.split(';').map(g => ({ title: '', signals: g.split(',').map(s => s.trim()).filter(Boolean) })) : [];
+            }
+            sections.push(sec);
+        });
+        const ext = {
+            enabled: !!this.shadowRoot.getElementById('cfgExtEnabled')?.checked,
+            mode: val('cfgExtMode') || 'slot',
+            entry: val('cfgExtEntry'),
+            slot: val('cfgExtSlot')
+        };
+        const ui = { title: val('cfgUiTitle'), layout: val('cfgUiLayout') || 'tabs', sections, extension: ext };
+        return { ...this.editingConfig, runtime, setupScript, parameters, signals, ui };
+    }
+
+    /**
+     * 合并表单收集的配置和 rawJson 配置：
+     * - 表单支持的字段（runtime、parameters、signals、ui.title、ui.sections 基本结构、ui.extension）用表单值
+     * - 表单不支持的字段（section.groups 的 yMin/yMax/series、readout items、flow、leftPanels 等）用 rawJson 值
+     */
+    mergeFormAndRaw(formConfig, rawConfig) {
+        const merged = JSON.parse(JSON.stringify(rawConfig)); // 以 raw 为底
+        // 表单字段覆盖
+        merged.runtime = formConfig.runtime;
+        merged.setupScript = formConfig.setupScript;
+        merged.parameters = formConfig.parameters;
+        merged.signals = formConfig.signals;
+        if (formConfig.ui) {
+            if (!merged.ui) merged.ui = {};
+            merged.ui.title = formConfig.ui.title;
+            merged.ui.layout = formConfig.ui.layout;
+            merged.ui.extension = formConfig.ui.extension;
+            // sections：表单收集的是基本结构，raw 可能有更多字段（groups 详细配置、readout items）
+            // 按 id 合并：表单值覆盖基本字段，raw 补充表单不支持的字段
+            if (formConfig.ui.sections && rawConfig.ui && rawConfig.ui.sections) {
+                merged.ui.sections = formConfig.ui.sections.map(fs => {
+                    const rs = rawConfig.ui.sections.find(r => r.id === fs.id);
+                    if (!rs) return fs;
+                    const mergedSec = JSON.parse(JSON.stringify(rs)); // raw 为底
+                    mergedSec.id = fs.id;
+                    mergedSec.title = fs.title;
+                    mergedSec.type = fs.type;
+                    // charts 类型：表单可能只收集了 signals，raw 有完整 groups（含 yMin/yMax/series）
+                    if (fs.type === 'charts' && rs.groups) {
+                        mergedSec.groups = rs.groups; // 保留 raw 的完整 groups
+                    }
+                    return mergedSec;
+                });
+            } else {
+                merged.ui.sections = formConfig.ui.sections;
+            }
+        }
+        return merged;
+    }
+
+    handleConfigUpload(e) {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        const inputEl = e.target;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            try {
+                const parsed = JSON.parse(ev.target.result);
+                this.editingConfig = this.normalizeConfig(parsed, { name: this.configProgramName });
+                this.renderConfigForm(this.editingConfig);
+                if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('配置已加载', 'success');
+            } catch (err) {
+                if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('JSON 解析失败: ' + err.message, 'error');
+            }
+            if (inputEl) inputEl.value = '';
+        };
+        reader.readAsText(file);
+    }
+
+    downloadConfigJson() {
+        const config = this.collectConfig(false);
+        const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `program-config-${this.configProgramName || 'untitled'}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
     }
 
     async saveConfig() {
-        const config = this.collectConfig(false);
+        // 从可视化表单收集配置（包含插件扩展字段）
+        let config = this.collectConfig(false);
+        // 合并 rawJson 里表单不支持的字段（如 chart groups 的 yMin/yMax、readout items 等）
+        const rawEl = this.shadowRoot.getElementById('cfgRawJson');
+        if (rawEl && rawEl.value && rawEl.value.trim()) {
+            try {
+                const rawConfig = JSON.parse(rawEl.value);
+                // 用 rawConfig 的深层字段补全表单不支持的配置
+                config = this.mergeFormAndRaw(config, rawConfig);
+            } catch (e) {
+                if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('原始 JSON 格式错误: ' + e.message, 'error');
+                return;
+            }
+        }
         try {
-            const pn = this.getProjectName();
-            const url = window.AppConfig.getApiUrl('program', 'update-config') + '?name=' + encodeURIComponent(this.configProgramName) + '&version=' + encodeURIComponent(this.configProgramVersion) + (pn ? '&projectName=' + encodeURIComponent(pn) : '');
+            const pn = this.configProjectName || this.getProjectName();
+            const url = window.AppConfig.getApiUrl('program', 'config') + '?name=' + encodeURIComponent(this.configProgramName) + '&version=' + encodeURIComponent(this.configProgramVersion) + (pn ? '&projectName=' + encodeURIComponent(pn) : '');
             const result = await window.AppConfig.request(url, {
-                method: 'POST',
+                method: 'PUT',
                 body: JSON.stringify(config)
             });
             if (result && (result.success || result.code === 200)) {
@@ -332,6 +610,7 @@ class ProgramManagement extends HTMLElement {
                     <td><span class="status ${statusClass}">${p.status || 'READY'}</span></td>
                     <td class="actions">
                         <button class="run-btn filter-btn outline" data-name="${p.name || ''}" data-version="${p.version || ''}" data-project="${p.projectName || ''}">运行</button>
+                        <button class="config-btn filter-btn outline" data-name="${p.name || ''}" data-version="${p.version || ''}" data-project="${p.projectName || ''}">配置</button>
                         <button class="download-btn filter-btn outline" data-name="${p.name || ''}" data-version="${p.version || ''}" data-project="${p.projectName || ''}">下载</button>
                         <button class="delete-btn filter-btn outline" data-name="${p.name || ''}" data-version="${p.version || ''}" data-project="${p.projectName || ''}">删除</button>
                     </td>

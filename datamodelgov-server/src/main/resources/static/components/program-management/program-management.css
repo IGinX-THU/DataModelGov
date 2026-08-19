@@ -195,3 +195,55 @@
     opacity: 0.5;
     cursor: not-allowed;
 }
+.config-toolbar {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-color, #e5e7eb);
+}
+.config-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+    margin-bottom: 6px;
+}
+.config-row input[type="text"],
+.config-row input[type="number"],
+.config-row select {
+    flex: 1;
+    min-width: 90px;
+    padding: 4px 6px;
+    font-size: 12px;
+    border: 1px solid var(--border-color, #d1d5db);
+    border-radius: 4px;
+}
+.config-row .delete-row {
+    flex: 0 0 auto;
+    padding: 4px 8px;
+}
+.btn-sm {
+    font-size: 12px;
+    padding: 4px 10px;
+    border: 1px solid var(--border-color, #d1d5db);
+    border-radius: 4px;
+    background: #fff;
+    cursor: pointer;
+}
+.btn-sm:hover { background: var(--bg-hover, #f3f4f6); }
+.btn-icon {
+    padding: 2px 8px;
+    border: 1px solid var(--border-color, #d1d5db);
+    border-radius: 4px;
+    background: #fff;
+    cursor: pointer;
+}
+#cfgRawJson {
+    width: 100%;
+    font-family: monospace;
+    font-size: 12px;
+    padding: 8px;
+    border: 1px solid var(--border-color, #d1d5db);
+    border-radius: 4px;
+}

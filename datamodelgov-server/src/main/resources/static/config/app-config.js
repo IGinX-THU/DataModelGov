@@ -195,6 +195,8 @@ window.AppConfig = {
             pause: '/api/program/pause',
             resume: '/api/program/resume',
             'update-config': '/api/program/update-config',
+            config: '/api/program/config',
+            plugin: '/api/program/plugin',
             files: '/api/program/files',
             'download-result': '/api/program/download-result',
             'upload-overview': '/api/program/upload-overview',

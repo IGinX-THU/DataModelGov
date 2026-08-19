@@ -72,6 +72,83 @@ public class ProgramController {
         return Result.success("元数据保存成功");
     }
 
+    @ApiOperation("获取仿真程序配置（program-config.json）")
+    @GetMapping("/config")
+    @RequirePermission(Permission.READ)
+    public Result<String> getConfig(
+            @RequestParam("name") String name,
+            @RequestParam("version") String version,
+            @RequestParam(value = "projectName", required = false) String projectName) {
+        String config = programService.getProgramConfig(name, version, projectName);
+        return Result.success("操作成功", config);
+    }
+
+    @ApiOperation("保存仿真程序配置（program-config.json）")
+    @PutMapping("/config")
+    @RequirePermission(Permission.UPDATE)
+    @OperationLog(value = "保存仿真程序配置", type = OperationLog.OperationType.UPDATE)
+    public Result<Void> saveConfig(
+            @RequestParam("name") String name,
+            @RequestParam("version") String version,
+            @RequestParam(value = "projectName", required = false) String projectName,
+            @RequestBody String configJson) {
+        java.util.List<String> errors = programService.saveProgramConfig(name, version, projectName, configJson);
+        if (errors != null && !errors.isEmpty()) {
+            return Result.error("配置校验失败: " + String.join("; ", errors));
+        }
+        return Result.success("配置保存成功");
+    }
+
+    @ApiOperation("列出可用的预置配置模板")
+    @GetMapping("/config-templates")
+    @RequirePermission(Permission.READ)
+    public Result<List<Map<String, String>>> listConfigTemplates() {
+        // 扫描 classpath:program-configs/*.json
+        List<Map<String, String>> templates = new java.util.ArrayList<>();
+        try {
+            org.springframework.core.io.support.PathMatchingResourcePatternResolver resolver =
+                    new org.springframework.core.io.support.PathMatchingResourcePatternResolver();
+            org.springframework.core.io.Resource[] resources =
+                    resolver.getResources("classpath:program-configs/*.json");
+            for (org.springframework.core.io.Resource res : resources) {
+                String filename = res.getFilename();
+                if (filename == null) continue;
+                String id = filename.substring(0, filename.length() - 5); // 去掉 .json
+                Map<String, String> tpl = new java.util.LinkedHashMap<>();
+                tpl.put("id", id);
+                tpl.put("name", id);
+                templates.add(tpl);
+            }
+        } catch (Exception e) {
+            log.warn("扫描配置模板失败: {}", e.getMessage());
+        }
+        return Result.success("操作成功", templates);
+    }
+
+    @ApiOperation("获取预置配置模板内容")
+    @GetMapping("/config-templates/{id}")
+    @RequirePermission(Permission.READ)
+    public Result<String> getConfigTemplate(@PathVariable("id") String id) {
+        try {
+            org.springframework.core.io.support.PathMatchingResourcePatternResolver resolver =
+                    new org.springframework.core.io.support.PathMatchingResourcePatternResolver();
+            org.springframework.core.io.Resource res =
+                    resolver.getResource("classpath:program-configs/" + id + ".json");
+            if (!res.exists()) return Result.error("模板不存在");
+            try (java.io.InputStream is = res.getInputStream()) {
+                java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+                byte[] buf = new byte[4096];
+                int n;
+                while ((n = is.read(buf)) > 0) out.write(buf, 0, n);
+                String content = new String(out.toByteArray(), StandardCharsets.UTF_8);
+                return Result.success("操作成功", content);
+            }
+        } catch (Exception e) {
+            log.warn("读取配置模板失败: {}", e.getMessage());
+            return Result.error("读取失败: " + e.getMessage());
+        }
+    }
+
     @ApiOperation("仿真程序元数据历史")
     @GetMapping("/history")
     @RequirePermission(Permission.READ)
@@ -135,11 +212,15 @@ public class ProgramController {
                                            @RequestParam("version") String version,
                                            @RequestParam(value = "stopTime", required = false, defaultValue = "") String stopTime,
                                            @RequestParam(value = "fixedStep", required = false, defaultValue = "") String fixedStep,
-                                           @RequestParam(value = "npCommand", required = false, defaultValue = "") String npCommand,
-                                           @RequestParam(value = "loadPower", required = false, defaultValue = "") String loadPower,
                                            @RequestParam(value = "modelFile", required = false, defaultValue = "") String modelFile,
-                                           @RequestParam(value = "projectName", required = false) String projectName) {
-        return programService.run(name, version, stopTime, fixedStep, npCommand, loadPower, modelFile, projectName);
+                                           @RequestParam(value = "projectName", required = false) String projectName,
+                                           @RequestParam Map<String, String> allParams) {
+        // 从全部参数中剥离固定项，剩余的作为动态参数透传（由 ProgramConfig.parameters 定义）
+        java.util.Map<String, String> params = new java.util.LinkedHashMap<>(allParams);
+        for (String k : new String[]{"name", "version", "stopTime", "fixedStep", "modelFile", "projectName"}) {
+            params.remove(k);
+        }
+        return programService.run(name, version, stopTime, fixedStep, modelFile, projectName, params);
     }
 
     @ApiOperation("停止仿真程序")

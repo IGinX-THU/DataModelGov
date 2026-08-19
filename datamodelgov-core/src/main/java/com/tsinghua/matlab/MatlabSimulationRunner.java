@@ -1,6 +1,7 @@
 package com.tsinghua.matlab;
 
 import com.mathworks.engine.MatlabEngine;
+import com.tsinghua.program.config.ProgramConfig;
 import com.tsinghua.util.SimTimeUtil;
 import lombok.extern.slf4j.Slf4j;
 
@@ -93,9 +94,16 @@ public class MatlabSimulationRunner implements Closeable {
     private final String modelName;
     private final double requestedStopTime;
     private final String fixedStep;
-    private final String npCommand;
-    private final String loadPower;
     private final LiveSink sink;
+    /** 用户参数值（key 对应 ProgramConfig.parameters[].key，value 为字符串形式） */
+    private final java.util.Map<String, String> paramValues;
+    /** 参数定义（来自 ProgramConfig.parameters），runner 据此把 paramValues 写入 base workspace */
+    private final java.util.List<ProgramConfig.ParameterSpec> parameters;
+    /** 信号采集脚本文件名（如 "dmg_setup.m"），由集成人员按模型结构编写并随程序部署。
+     *  非空时 runner 在 load_system 之后 eval 它，脚本须在 base workspace 留下
+     *  dmg_cols（cell 数组，元素为信号名）。为空时回退到内置的 addWorkspaceBlocks +
+     *  configureSignalLogging（过渡期保留，后续移除）。 */
+    private final String setupScript;
 
     private final ExecutorService engineExec =
             Executors.newSingleThreadExecutor(r -> {
@@ -118,16 +126,19 @@ public class MatlabSimulationRunner implements Closeable {
     private final MatlabEnginePool enginePool;
 
     public MatlabSimulationRunner(File taskDir, String programDir, String preRunScript, String modelName,
-                                  double requestedStopTime, String fixedStep, String npCommand, String loadPower,
-                                  LiveSink sink, MatlabEnginePool enginePool) {
+                                  double requestedStopTime, String fixedStep,
+                                  java.util.Map<String, String> paramValues,
+                                  java.util.List<ProgramConfig.ParameterSpec> parameters,
+                                  String setupScript, LiveSink sink, MatlabEnginePool enginePool) {
         this.taskDir = taskDir;
         this.programDir = programDir;
         this.preRunScript = preRunScript;
         this.modelName = modelName;
         this.requestedStopTime = requestedStopTime;
         this.fixedStep = fixedStep;
-        this.npCommand = npCommand;
-        this.loadPower = loadPower;
+        this.paramValues = paramValues != null ? paramValues : new java.util.LinkedHashMap<>();
+        this.parameters = parameters != null ? parameters : new java.util.ArrayList<>();
+        this.setupScript = setupScript;
         this.sink = sink;
         this.enginePool = enginePool;
         this.alignedStopTime = requestedStopTime;
@@ -240,15 +251,16 @@ public class MatlabSimulationRunner implements Closeable {
         eval("dmg_out = evalc('" + esc(stripM(preRunScript)) + "');", INIT_TIMEOUT_SEC, "执行预运行脚本 " + preRunScript);
         writeMatlabLog(getString("dmg_out"));
 
+        // 设置用户参数到 base workspace：按 ProgramConfig.parameters 定义，把前端传入的
+        // 值（或默认值）写入对应的 matlabVar。fixedStep 单独处理（写入 Ts）。
         StringBuilder params = new StringBuilder();
-        if (hasText(npCommand)) params.append("NpReferenceRpm = ").append(npCommand).append(";\n");
-        if (hasText(loadPower)) params.append("MkpReferenceNm = ").append(loadPower).append(";\n");
+        for (ProgramConfig.ParameterSpec p : parameters) {
+            String v = paramValues.get(p.getKey());
+            if (hasText(v) && hasText(p.getMatlabVar())) {
+                params.append(p.getMatlabVar()).append(" = ").append(v).append(";\n");
+            }
+        }
         if (hasText(fixedStep)) params.append("Ts = ").append(fixedStep).append(";\n");
-        params.append("PTReferenceLoadPowerW = MkpReferenceNm * (NpReferenceRpm * pi / 30);\n");
-        params.append("Power_cmd = PTReferenceLoadPowerW;\n");
-        params.append("NpDem = NpReferenceRpm;\n");
-        params.append("if exist('NgReferenceRpm', 'var'), NgMax = NgReferenceRpm * 1.05; end\n");
-        params.append("if exist('WfReferenceKgps', 'var'), WfMax = WfReferenceKgps * 2; WfMin = WfReferenceKgps * 0.01; end\n");
         eval(params.toString(), INIT_TIMEOUT_SEC, "设置仿真参数");
 
         logMatlab("载入模型: " + modelName);
@@ -263,11 +275,31 @@ public class MatlabSimulationRunner implements Closeable {
         logMatlab("停止时间 " + requestedStopTime + " → 按固定步长对齐为 " + alignedStopTime);
         sink.onStopTime(alignedStopTime);
 
-        // 添加 To Workspace 块（与回退方案 writeWrapper 一致），仿真结束后这些变量
-        // 会出现在 base workspace，由 exportResults() 汇总进 signals.csv
-        addWorkspaceBlocks();
-        // 配置信号日志（DataLogging）用于实时曲线显示
-        configureSignalLogging();
+        // 信号采集：由程序专属 setupScript（.m）负责派生变量、加 ToWorkspace、
+        // 开 DataLogging，并在 base workspace 留下 dmg_cols。无 setupScript 时报错。
+        if (hasText(setupScript)) {
+            eval("dmg_modelName = '" + esc(modelName) + "';", CALL_TIMEOUT_SEC, "设置 dmg_modelName");
+            String scriptCall = stripM(setupScript);
+            logMatlab("执行信号采集脚本: " + scriptCall);
+            eval("dmg_setup_out = evalc('" + esc(scriptCall) + "');", INIT_TIMEOUT_SEC, "执行信号采集脚本 " + scriptCall);
+            writeMatlabLog(getString("dmg_setup_out"));
+            readDmgCols();
+        } else {
+            throw new IllegalStateException("未配置 setupScript（信号采集脚本），无法运行仿真。请在 ProgramConfig.setupScript 中指定。");
+        }
+    }
+
+    /** 读取 setupScript 留下的 dmg_cols，构造 CSV 表头并通知前端 */
+    private void readDmgCols() throws Exception {
+        eval("dmg_colstr = strjoin(dmg_cols, ',');", CALL_TIMEOUT_SEC, "读取信号列表");
+        String cols = getString("dmg_colstr");
+        csvColumns.clear();
+        csvColumns.add("time");
+        if (hasText(cols)) {
+            csvColumns.addAll(Arrays.asList(cols.split(",")));
+        }
+        logMatlab("已配置信号日志，共 " + (csvColumns.size() - 1) + " 个信号: " + cols);
+        sink.onHeaders(new ArrayList<>(csvColumns));
     }
 
     /**

@@ -122,7 +122,7 @@ class ProgramRun extends HTMLElement {
 
     this.chartGrid = root.querySelector('.chart-grid');
 
-    this.flow = root.querySelector('.flow');
+    this.flow = root.querySelector('.flow');  // 骨架版无 .flow，值为 null
 
     this.timeBox = root.querySelector('.time-box');
 
@@ -150,19 +150,11 @@ class ProgramRun extends HTMLElement {
 
     this.runStatus = 'IDLE';
 
-    // 不在 init() 里 renderTab：组件此时可能是 display:none，canvas 宽高为 0。
-    // renderTab 由 show() → _doShow() 在 display:block 后负责。
     this.updateCursor(this.currentTime, true);
     this.updateStatusUI('IDLE');
     this.updateRunButtons('IDLE');
 
-    this.renderVarTree();
-
-    this.bindVarEvents();
-
-    // 不在 init() 里调 refreshEngineStatus：组件在页面加载时就存在于 DOM（display:none），
-    // init() 会被立即执行，导致没进入组件页面就调 engine-status。
-    // 改为在 show() 时才调。
+    // 骨架版无 varTree / flow，不调用 renderVarTree / bindVarEvents
 
   }
 
@@ -806,7 +798,7 @@ class ProgramRun extends HTMLElement {
 
     this.tabs.forEach(t => t.classList.toggle('active', t.textContent.trim() === tab));
 
-    this.flow.style.display = tab === '综合总览' ? '' : 'none';
+    if (this.flow) this.flow.style.display = tab === '综合总览' ? '' : 'none';
 
     this.renderVarTree();
 
@@ -1139,12 +1131,33 @@ class ProgramRun extends HTMLElement {
 
   _doShow() {
 
+    // 加载程序配置和文件列表（只加载一次，防止重复请求）
+    const name = this.getAttribute('data-name');
+    const version = this.getAttribute('data-version');
+    if (name && version && !this._dataLoaded) {
+      this._dataLoaded = true;
+      this._configLoading = true;
+      this.loadProgramConfig(name, version).finally(() => { this._configLoading = false; });
+      // 同时加载程序文件列表（模型文件下拉框等）
+      this.loadProgramFiles(name, version);
+    }
+
     // 组件可能在 display:none 时初始化（connectedCallback 在隐藏状态下执行），
     // ECharts 初始化的 canvas 宽高为 0，图表不渲染。
     // show() 设了 display:block 后需要等一帧让浏览器重新布局，再强制重新渲染图表。
     requestAnimationFrame(() => {
-      // 强制重新 renderTab：dispose 旧图表（可能宽高为0），在 display:block 状态下重新创建
-      this.renderTab(this.activeTab || '综合总览');
+      if (this.programConfig) {
+        // 配置模式：重新渲染当前 section
+        const sections = (this.programConfig.ui && this.programConfig.ui.sections) || [];
+        const sec = sections.find(s => (s.title || s.id) === this.activeTab) || sections[0];
+        if (sec) this.renderConfigSection(sec);
+      } else if (this._configLoading) {
+        // 配置加载中
+        if (this.chartGrid) this.chartGrid.innerHTML = '<div style="padding:40px;text-align:center;color:#6b7280;">配置加载中...</div>';
+      } else {
+        // 无配置：显示提示
+        if (this.chartGrid) this.chartGrid.innerHTML = '<div style="padding:40px;text-align:center;color:#6b7280;">未配置页面布局，请在程序管理中编辑配置</div>';
+      }
     });
 
   }
@@ -1158,6 +1171,8 @@ class ProgramRun extends HTMLElement {
     this.stopStream();
 
     this.stopRunTimer();
+
+    this.destroyExtension();
 
   }
 
@@ -1296,9 +1311,9 @@ class ProgramRun extends HTMLElement {
 
       const root = this.shadowRoot;
 
-      const inputs = root.querySelectorAll('.field-row .input-box input');
-
-      const select = root.querySelector('.field-row .input-box select');
+      const stopTimeInput = root.getElementById('stopTimeInput');
+      const fixedStepInput = root.getElementById('fixedStepInput');
+      const modelFileSelect = root.getElementById('modelFileSelect');
 
       const params = new URLSearchParams();
 
@@ -1306,17 +1321,19 @@ class ProgramRun extends HTMLElement {
 
       params.set('version', version);
 
-      if (inputs.length >= 1 && inputs[0].value) params.set('stopTime', inputs[0].value);
+      if (stopTimeInput && stopTimeInput.value) params.set('stopTime', stopTimeInput.value);
 
-      if (inputs.length >= 2 && inputs[1].value) params.set('fixedStep', inputs[1].value);
+      if (fixedStepInput && fixedStepInput.value) params.set('fixedStep', fixedStepInput.value);
 
-      if (inputs.length >= 3 && inputs[2].value) params.set('npCommand', inputs[2].value);
+      // 配置模式：按 ProgramConfig.parameters 动态收集参数
+      if (this.programConfig && this.programConfig.parameters && this.programConfig.parameters.length) {
+        const dynParams = this.collectConfigParams();
+        dynParams.forEach((v, k) => params.set(k, v));
+      }
 
-      if (inputs.length >= 4 && inputs[3].value) params.set('loadPower', inputs[3].value);
+      if (modelFileSelect && modelFileSelect.value) {
 
-      if (select && select.value) {
-
-        params.set('modelFile', select.value);
+        params.set('modelFile', modelFileSelect.value);
 
       }
 
@@ -1330,16 +1347,16 @@ class ProgramRun extends HTMLElement {
 
       if (result && result.code === 200) {
 
-        this.fixedStep = parseFloat(inputs[1].value) || 0.025;
+        this.fixedStep = parseFloat(fixedStepInput && fixedStepInput.value) || 0.025;
 
         // 后端会把停止时间对齐到固定步长的整数倍，以对齐后的值为准（仿真会真的停在该时刻）
         const alignedStopTime = result.data && result.data.stopTime != null
             ? parseFloat(result.data.stopTime) : NaN;
 
-        this.duration = !isNaN(alignedStopTime) ? alignedStopTime : (parseFloat(inputs[0].value) || 30);
+        this.duration = !isNaN(alignedStopTime) ? alignedStopTime : (parseFloat(stopTimeInput && stopTimeInput.value) || 30);
 
-        if (!isNaN(alignedStopTime) && String(alignedStopTime) !== String(inputs[0].value)) {
-          inputs[0].value = String(alignedStopTime);
+        if (!isNaN(alignedStopTime) && stopTimeInput && String(alignedStopTime) !== String(stopTimeInput.value)) {
+          stopTimeInput.value = String(alignedStopTime);
           this.showToast('停止时间已按固定步长对齐为 ' + alignedStopTime + ' s', 'info');
         }
 
@@ -1365,7 +1382,13 @@ class ProgramRun extends HTMLElement {
         this.liveRows = [];
         this.currentTime = 0;
         // 立即重绘当前 tab 的图表（显示"排队等待中"或"仿真启动中"而非旧曲线）
-        this.renderTab(this.activeTab || '综合总览');
+        if (this.programConfig) {
+          const sections = (this.programConfig.ui && this.programConfig.ui.sections) || [];
+          const sec = sections.find(s => (s.title || s.id) === this.activeTab) || sections[0];
+          if (sec) this.renderConfigSection(sec);
+        } else {
+          this.renderTab(this.activeTab || '综合总览');
+        }
 
         // 初始化实时数据收集
         this.liveHeaders = null;
@@ -1727,7 +1750,8 @@ class ProgramRun extends HTMLElement {
     // MATLAB 侧按模型实际固定步长对齐后的停止时间，用于校正时间轴上限
     if (data.stopTime > 0 && Math.abs(data.stopTime - this.duration) > 1e-9) {
       this.duration = data.stopTime;
-      const stopInput = this.shadowRoot.querySelector('.field-row .input-box input');
+      const stopInput = this.shadowRoot.getElementById('stopTimeInput')
+          || this.shadowRoot.querySelector('.field-row .input-box input');
       if (stopInput) stopInput.value = String(data.stopTime);
     }
 
@@ -1983,8 +2007,15 @@ class ProgramRun extends HTMLElement {
     // 刷新游标显示（保持当前位置，不重置为 0）
     this.updateCursor(this.currentTime, true);
 
-    // 同步更新系统状态和告警汇总（实时数据也需要更新，不能等仿真结束）
-    this.updateAlertSummary(colIdx, rows, timeData, getLastVal);
+    // 同步更新系统状态和告警汇总（旧模式 + 配置模式都调）
+    try { this.updateAlertSummary(colIdx, rows, timeData, getLastVal); }
+    catch (e) { console.warn('updateAlertSummary error:', e); }
+
+    // 配置模式：更新 KPI 读数项当前值
+    if (this.programConfig) {
+      try { this.updateConfigReadouts(headers, rows); } catch (e) { console.warn('updateConfigReadouts error:', e); }
+      try { this.notifyPluginData(headers, rows); } catch (e) { console.warn('notifyPluginData error:', e); }
+    }
 
   }
 
@@ -2023,15 +2054,21 @@ class ProgramRun extends HTMLElement {
 
     const alerts = [];
 
-    const ALERT_LIMITS = [
-
-      { name: 'T45', csv: 'T45', limitCsv: 'T45Max', unit: 'K', desc: '燃气涡轮后温度超限' },
-
-      { name: 'Mkp', csv: 'Mkp', limitCsv: 'MkpMax', unit: 'N·m', desc: '动力涡轮扭矩超限' },
-
-      { name: 'Ng', csv: 'Ng', limitCsv: 'NgMax', unit: 'rpm', desc: '燃气涡轮转速超限' },
-
-    ];
+    // 告警规则：配置模式从 ProgramConfig.ui.rightPanels[].alertRules 取，旧模式用硬编码
+    let ALERT_LIMITS;
+    if (this.programConfig) {
+      const rightPanels = (this.programConfig.ui && this.programConfig.ui.rightPanels) || [];
+      const alertPanel = rightPanels.find(p => p.type === 'alertPanel');
+      ALERT_LIMITS = (alertPanel && alertPanel.alertRules || []).map(r => ({
+        name: r.signal, csv: r.signal, limitCsv: r.limitSignal, unit: r.unit || '', desc: r.desc || ''
+      }));
+    } else {
+      ALERT_LIMITS = [
+        { name: 'T45', csv: 'T45', limitCsv: 'T45Max', unit: 'K', desc: '燃气涡轮后温度超限' },
+        { name: 'Mkp', csv: 'Mkp', limitCsv: 'MkpMax', unit: 'N·m', desc: '动力涡轮扭矩超限' },
+        { name: 'Ng', csv: 'Ng', limitCsv: 'NgMax', unit: 'rpm', desc: '燃气涡轮转速超限' },
+      ];
+    }
 
     ALERT_LIMITS.forEach(al => {
 
@@ -2107,23 +2144,25 @@ class ProgramRun extends HTMLElement {
 
     if (statusTbody) {
 
-      const modules = [
-
-        { icon: '🖥', name: '控制系统', csvs: ['CLP', 'Np', 'Ng', 'T45', 'Mkp', 'Ngc', 'Wf_cmd', 'NpDem'] },
-
-        { icon: '⛽', name: '燃油系统', csvs: ['WfProxyCmd', 'Wf_kgps', 'Wf', 'Wf_cmd'] },
-
-        { icon: '⚙', name: '发动机总体性能', csvs: ['Pt1', 'Tt1', 'Pt3', 'Tt3', 'Pt45', 'Tt45', 'Pt5', 'Tt5', 'HPC_T4_out', 'HPC_P4_out1', 'HPC_T5_out1', 'Np', 'Ng', 'Mkp'] },
-
-        { icon: '🛢', name: '滑油系统', csvs: ['Q_BearingA', 'Q_BearingB', 'Q_AirOil', 'Q_Accessory', 'QA', 'QB', 'PA', 'PB', 'ToutA', 'ToutB', 'QretA', 'QretB', 'QgenA', 'QgenB', 'FuelOilCooler_Q', 'FuelOilCooler_FuelTout', 'AirOilCooler_Pin_Pa', 'AirOilCooler_Pout_Pa', 'FuelOilCooler_Pin_Pa', 'FuelOilCooler_Pout_Pa', 'CavityState8_PaK_1', 'SealLeak4_kgps_1', 'VentFlow3_kgps_1', 'SealDeltaP4_Pa_1', 'VentDeltaP2_Pa_1', 'MassResidual2_kgps_1', 'FuelOil2_ToutC_QkW_1', 'AirOil2_ToutC_QkW_1'] },
-
-        { icon: '🌬', name: '空气系统', csvs: ['Pt1', 'Tt1', 'Pt3', 'Tt3', 'Pt45', 'Tt45', 'Pt5', 'Tt5', 'G01_GT1_IN_W_kgps', 'G02_GT1_OUT_W_kgps', 'G03_GT2_IN_W_kgps', 'G04_GT2_OUT_W_kgps', 'G05_PT1_IN_ROOT_W_kgps', 'G06_PT1_OUT_ROOT_W_kgps', 'G07_PT2_IN_TIP_W_kgps', 'G08_PT2_OUT_TIP_W_kgps'] },
-
-        { icon: '🔔', name: '信号与告警', csvs: ['HPC_T4_out', 'Pt3', 'Pt45'] },
-
-        { icon: '⚖', name: '单位一致性检查', csvs: [] },
-
-      ];
+      // 配置模式从 ProgramConfig.ui.rightPanels[].statusRows 取，旧模式用硬编码
+      let modules;
+      if (this.programConfig) {
+        const rightPanels = (this.programConfig.ui && this.programConfig.ui.rightPanels) || [];
+        const statusPanel = rightPanels.find(p => p.type === 'statusTable');
+        modules = (statusPanel && statusPanel.statusRows || []).map(r => ({
+          icon: r.icon || '', name: r.name || '', csvs: r.csvs || []
+        }));
+      } else {
+        modules = [
+          { icon: '🖥', name: '控制系统', csvs: ['CLP', 'Np', 'Ng', 'T45', 'Mkp', 'Ngc', 'Wf_cmd', 'NpDem'] },
+          { icon: '⛽', name: '燃油系统', csvs: ['WfProxyCmd', 'Wf_kgps', 'Wf', 'Wf_cmd'] },
+          { icon: '⚙', name: '发动机总体性能', csvs: ['Pt1', 'Tt1', 'Pt3', 'Tt3', 'Pt45', 'Tt45', 'Pt5', 'Tt5', 'HPC_T4_out', 'HPC_P4_out1', 'HPC_T5_out1', 'Np', 'Ng', 'Mkp'] },
+          { icon: '🛢', name: '滑油系统', csvs: ['Q_BearingA', 'Q_BearingB', 'Q_AirOil', 'Q_Accessory', 'QA', 'QB', 'PA', 'PB', 'ToutA', 'ToutB', 'QretA', 'QretB', 'QgenA', 'QgenB', 'FuelOilCooler_Q', 'FuelOilCooler_FuelTout', 'AirOilCooler_Pin_Pa', 'AirOilCooler_Pout_Pa', 'FuelOilCooler_Pin_Pa', 'FuelOilCooler_Pout_Pa', 'CavityState8_PaK_1', 'SealLeak4_kgps_1', 'VentFlow3_kgps_1', 'SealDeltaP4_Pa_1', 'VentDeltaP2_Pa_1', 'MassResidual2_kgps_1', 'FuelOil2_ToutC_QkW_1', 'AirOil2_ToutC_QkW_1'] },
+          { icon: '🌬', name: '空气系统', csvs: ['Pt1', 'Tt1', 'Pt3', 'Tt3', 'Pt45', 'Tt45', 'Pt5', 'Tt5', 'G01_GT1_IN_W_kgps', 'G02_GT1_OUT_W_kgps', 'G03_GT2_IN_W_kgps', 'G04_GT2_OUT_W_kgps', 'G05_PT1_IN_ROOT_W_kgps', 'G06_PT1_OUT_ROOT_W_kgps', 'G07_PT2_IN_TIP_W_kgps', 'G08_PT2_OUT_TIP_W_kgps'] },
+          { icon: '🔔', name: '信号与告警', csvs: ['HPC_T4_out', 'Pt3', 'Pt45'] },
+          { icon: '⚖', name: '单位一致性检查', csvs: [] },
+        ];
+      }
 
       statusTbody.innerHTML = modules.map(m => {
 
@@ -2465,7 +2504,9 @@ class ProgramRun extends HTMLElement {
       const st = parseFloat(data.stopTime);
       if (isFinite(st) && st > 0) {
         this.duration = st;
-        const stopInput = this.shadowRoot.querySelector('.field-row .input-box input');
+        // 配置模式用 #stopTimeInput，旧模式用通用选择器
+        const stopInput = this.shadowRoot.getElementById('stopTimeInput')
+            || this.shadowRoot.querySelector('.field-row .input-box input');
         if (stopInput) stopInput.value = String(st);
       }
     }
@@ -2482,6 +2523,11 @@ class ProgramRun extends HTMLElement {
 
       this.renderKpiFromParams();
 
+    }
+
+    // 配置模式：用 data.npCommand/data.loadPower 更新 KPI 卡片初始值
+    if (this.programConfig) {
+      this.updateKpiFromParams(data);
     }
 
     if (data.headers && data.rows) {
@@ -2503,7 +2549,13 @@ class ProgramRun extends HTMLElement {
       this.updateRunButtons('STARTING');
 
       // 重绘图表，确保显示"仿真启动中，请稍后..."而非旧曲线
-      this.renderTab(this.activeTab || '综合总览');
+      if (this.programConfig) {
+        const sections = (this.programConfig.ui && this.programConfig.ui.sections) || [];
+        const sec = sections.find(s => (s.title || s.id) === this.activeTab) || sections[0];
+        if (sec) this.renderConfigSection(sec);
+      } else {
+        this.renderTab(this.activeTab || '综合总览');
+      }
 
       if (!this._es && !this._pollTimer) {
         this.startStream(name, version);
@@ -2522,7 +2574,13 @@ class ProgramRun extends HTMLElement {
 
       this.updateRunButtons('QUEUED');
 
-      this.renderTab(this.activeTab || '综合总览');
+      if (this.programConfig) {
+        const sections = (this.programConfig.ui && this.programConfig.ui.sections) || [];
+        const sec = sections.find(s => (s.title || s.id) === this.activeTab) || sections[0];
+        if (sec) this.renderConfigSection(sec);
+      } else {
+        this.renderTab(this.activeTab || '综合总览');
+      }
 
       if (!this._es && !this._pollTimer) {
         this.startStream(name, version);
@@ -2570,6 +2628,10 @@ class ProgramRun extends HTMLElement {
 
   async loadProgramFiles(name, version) {
 
+    // 防止重复加载（_doShow 和 main.js 的 waitForInit 都可能调）
+    if (this._filesLoading) return;
+    this._filesLoading = true;
+
     try {
 
       const pn = this.getProjectName();
@@ -2600,7 +2662,7 @@ class ProgramRun extends HTMLElement {
 
       const root = this.shadowRoot;
 
-      const modelFileSelect = root.querySelectorAll('.field-row .input-box select')[0];
+      const modelFileSelect = root.getElementById('modelFileSelect') || root.querySelectorAll('.field-row .input-box select')[0];
 
       if (modelFileSelect && data.modelFiles) {
 
@@ -2668,15 +2730,22 @@ class ProgramRun extends HTMLElement {
 
         }
 
-        const inputs = root.querySelectorAll('.field-row .input-box input');
+        const stopTimeInput = root.getElementById('stopTimeInput');
+        const fixedStepInput = root.getElementById('fixedStepInput');
 
-        if (inputs.length >= 1 && p.stopTime) inputs[0].value = p.stopTime;
+        if (stopTimeInput && p.stopTime) stopTimeInput.value = p.stopTime;
 
-        if (inputs.length >= 2 && p.fixedStep) inputs[1].value = p.fixedStep;
+        if (fixedStepInput && p.fixedStep) fixedStepInput.value = p.fixedStep;
 
-        if (inputs.length >= 3 && p.npCommand) inputs[2].value = p.npCommand;
-
-        if (inputs.length >= 4 && p.loadPower) inputs[3].value = p.loadPower;
+        // 配置模式：按 data-param 属性回填动态参数（npCommand/loadPower 等）
+        if (this.programConfig) {
+          root.querySelectorAll('input[data-param]').forEach(inp => {
+            const key = inp.dataset.param;
+            if (key && p[key] != null) inp.value = p[key];
+          });
+          // 回填 KPI 卡片：按 paramKey 映射
+          this.updateKpiFromParams(p);
+        }
 
         if (p.kpiParams) {
           this.kpiParams = p.kpiParams;
@@ -2693,13 +2762,827 @@ class ProgramRun extends HTMLElement {
       // - IDLE: 无任务，等待用户点击运行
       this.queryStatus(name, version);
 
+      // 配置由 _doShow 负责加载，这里不再重复调 loadProgramConfig
+
     } catch (e) {
 
       console.error('加载程序文件列表失败:', e);
 
+    } finally {
+
+      this._filesLoading = false;
+
     }
 
   }
+
+  // ── 配置驱动渲染（ProgramConfig）──
+
+  /** 加载程序配置 JSON，成功后应用到 UI */
+  async loadProgramConfig(name, version) {
+    try {
+      const pn = this.getProjectName();
+      const result = await window.AppConfig.get('program', 'config', { name, version, ...(pn ? { projectName: pn } : {}) });
+      if (result && (result.success || result.code === 200) && result.data) {
+        const cfg = typeof result.data === 'string' ? JSON.parse(result.data) : result.data;
+        this.programConfig = cfg;
+        this.applyProgramConfig();
+        // 配置加载完成后重新渲染当前 section（_doShow 时可能还没加载完）
+        requestAnimationFrame(() => {
+          const sections = (cfg.ui && cfg.ui.sections) || [];
+          const sec = sections.find(s => (s.title || s.id) === this.activeTab) || sections[0];
+          if (sec) this.renderConfigSection(sec);
+        });
+      }
+    } catch (e) {
+      console.warn('加载程序配置失败:', e);
+    }
+  }
+
+  /** 把 ProgramConfig 应用到 UI：左侧面板 + 流程图 + tabs + 图表 + 右侧面板 + 扩展 */
+  applyProgramConfig() {
+    const cfg = this.programConfig;
+    if (!cfg) return;
+    const root = this.shadowRoot;
+    try {
+      // 页面标题
+      if (cfg.ui && cfg.ui.title) {
+        const titleEl = root.querySelector('.head-left .title');
+        if (titleEl) titleEl.textContent = cfg.ui.title;
+      }
+
+      // 动态生成左侧面板
+      this.renderLeftPanel(cfg);
+      // 动态生成右侧面板
+      this.renderRightPanel(cfg);
+      // 动态生成流程图
+      this.renderFlowDiagram(cfg.ui && cfg.ui.flow);
+      // 动态生成 tabs
+      this.renderConfigTabs(cfg.ui || {});
+      // 切到第一个 tab
+      const sections = (cfg.ui && cfg.ui.sections) || [];
+      if (sections.length > 0) {
+        this.renderConfigSection(sections[0]);
+      } else {
+        this.chartGrid.innerHTML = '<div style="padding:40px;text-align:center;color:#6b7280;">未配置页面布局，请在程序管理中编辑配置</div>';
+      }
+      // 加载扩展/插件
+      this.loadExtension(cfg.ui && cfg.ui.extension);
+
+      // 如果 programFilesData 已加载，重新填充模型文件下拉框 + 回填 stopTime/fixedStep
+      if (this.programFilesData) {
+        this.fillModelFileSelect(this.programFilesData);
+        const p = this.programFilesData.params || {};
+        const stopTimeInput = root.getElementById('stopTimeInput');
+        const fixedStepInput = root.getElementById('fixedStepInput');
+        if (stopTimeInput && p.stopTime) stopTimeInput.value = p.stopTime;
+        if (fixedStepInput && p.fixedStep) fixedStepInput.value = p.fixedStep;
+      }
+    } catch (e) {
+      console.error('applyProgramConfig 出错:', e);
+      if (this.chartGrid) {
+        this.chartGrid.innerHTML = '<div style="padding:20px;color:#ef4444;">配置渲染出错: ' + (e.message || e) + '</div>';
+      }
+    }
+  }
+
+  /** 填充模型文件下拉框 */
+  fillModelFileSelect(data) {
+    const root = this.shadowRoot;
+    const modelFileSelect = root.getElementById('modelFileSelect');
+    if (!modelFileSelect || !data.modelFiles) return;
+    modelFileSelect.innerHTML = data.modelFiles.map(f => `<option value="${f}">${f}</option>`).join('');
+    const lastModelFile = data.params && data.params.modelFile ? data.params.modelFile : null;
+    if (lastModelFile && data.modelFiles.includes(lastModelFile)) {
+      modelFileSelect.value = lastModelFile;
+    } else if (data.modelFiles.length > 0) {
+      modelFileSelect.value = data.modelFiles[0];
+    }
+    const tag = root.querySelector('.model-tag');
+    if (tag) {
+      const mn = data.params && data.params.modelName ? data.params.modelName : '';
+      tag.textContent = mn || (modelFileSelect.value || '').replace(/\.(slx|mdl)$/i, '');
+    }
+  }
+
+  /** 动态生成左侧面板：按 ui.leftPanels[] 配置逐个渲染 */
+  renderLeftPanel(cfg) {
+    const root = this.shadowRoot;
+    const left = root.getElementById('leftPanel');
+    if (!left) { console.error('renderLeftPanel: #leftPanel not found'); return; }
+    left.innerHTML = '';
+    const panels = (cfg.ui && cfg.ui.leftPanels) || [];
+    panels.forEach(p => {
+      const el = this.renderPanel(p, cfg);
+      if (el) left.appendChild(el);
+    });
+  }
+
+  /** 动态生成右侧面板：按 ui.rightPanels[] 配置逐个渲染 */
+  renderRightPanel(cfg) {
+    const root = this.shadowRoot;
+    const right = root.getElementById('rightPanel');
+    if (!right) { console.error('renderRightPanel: #rightPanel not found'); return; }
+    right.innerHTML = '';
+    const panels = (cfg.ui && cfg.ui.rightPanels) || [];
+    panels.forEach(p => {
+      const el = this.renderPanel(p, cfg);
+      if (el) right.appendChild(el);
+    });
+  }
+
+  /** 渲染单个面板（按 type 分发） */
+  renderPanel(panelSpec, cfg) {
+    if (!panelSpec || !panelSpec.type) return null;
+    const div = document.createElement('div');
+    div.className = 'panel';
+    switch (panelSpec.type) {
+      case 'runtime': return this.renderRuntimePanel(div, panelSpec, cfg);
+      case 'params': return this.renderParamsPanel(div, panelSpec, cfg);
+      case 'moduleTree': return this.renderModuleTreePanel(div, panelSpec);
+      case 'varTree': return this.renderVarTreePanel(div, panelSpec);
+      case 'kpi': return this.renderKpiPanel(div, panelSpec);
+      case 'statusTable': return this.renderStatusTablePanel(div, panelSpec);
+      case 'alertPanel': return this.renderAlertPanel(div, panelSpec);
+      case 'custom': div.innerHTML = panelSpec.html || ''; return div;
+      default: return null;
+    }
+  }
+
+  /** runtime 面板：模型文件 + 停止时间 + 固定步长 */
+  renderRuntimePanel(div, spec, cfg) {
+    const runtime = cfg.runtime || {};
+    div.innerHTML = `
+      <div class="panel-title">${this.esc(spec.title || '项目与工况')}</div>
+      <div class="field-row"><label>模型文件</label><div class="input-box"><select id="modelFileSelect"><option value="" selected disabled>加载中...</option></select></div></div>
+      <div class="field-row"><label>仿真停止时间</label><div class="input-box"><input type="text" id="stopTimeInput" value="${this.esc(String(runtime.stopTime != null ? runtime.stopTime : 30))}"><span class="unit">s</span></div></div>
+      <div class="field-row"><label>固定步长</label><div class="input-box"><input type="text" id="fixedStepInput" value="${this.esc(runtime.fixedStep || '0.025')}"><span class="unit">s</span></div></div>
+    `;
+    return div;
+  }
+
+  /** params 面板：按 parameters[] 动态生成参数表单 */
+  renderParamsPanel(div, spec, cfg) {
+    const params = cfg.parameters || [];
+    if (!params.length) return null;
+    let html = `<div class="panel-title">${this.esc(spec.title || '输入参数')}</div>`;
+    params.forEach(p => {
+      const unit = p.unit ? `<span class="unit">${this.esc(p.unit)}</span>` : '';
+      const defVal = p.defaultValue != null ? this.esc(String(p.defaultValue)) : '';
+      const inputType = p.type === 'number' ? 'number' : 'text';
+      const stepAttr = p.type === 'number' ? ' step="1"' : '';
+      html += `<div class="field-row" data-param-key="${this.esc(p.key || '')}"><label>${this.esc(p.label || p.key || '')}</label><div class="input-box"><input type="${inputType}" value="${defVal}"${stepAttr} data-param="${this.esc(p.key || '')}">${unit}</div></div>`;
+    });
+    div.innerHTML = html;
+    return div;
+  }
+
+  /** moduleTree 面板：系统模块树 */
+  renderModuleTreePanel(div, spec) {
+    const modules = spec.modules || [];
+    let html = `<div class="panel-title">${this.esc(spec.title || '系统模块')}</div><ul class="module-tree">`;
+    modules.forEach(m => {
+      html += `<li class="open on"><span class="arrow">▾</span><span class="sys-ico">${this.esc(m.icon || '')}</span>${this.esc(m.name || '')}`;
+      if (m.children && m.children.length) {
+        html += '<ul>';
+        m.children.forEach(c => { html += `<li>${this.esc(c)}</li>`; });
+        html += '</ul>';
+      }
+      html += '</li>';
+    });
+    html += '</ul>';
+    div.innerHTML = html;
+    // 绑定折叠
+    div.querySelectorAll('.module-tree > li').forEach(li => {
+      li.addEventListener('click', (e) => {
+        if (e.target.classList.contains('arrow') || e.target === li) {
+          li.classList.toggle('open');
+          const arrow = li.querySelector('.arrow');
+          if (arrow) arrow.textContent = li.classList.contains('open') ? '▾' : '▸';
+        }
+      });
+    });
+    return div;
+  }
+
+  /** varTree 面板：变量选择树（按当前 tab 过滤） */
+  renderVarTreePanel(div, spec) {
+    div.className = 'panel var-panel';
+    div.innerHTML = `<div class="panel-title"><span>${this.esc(spec.title || '变量选择')}</span></div><div class="var-tree" id="varTree"></div>`;
+    // 保存 varGroups 供后续 renderVarTreeFromConfig 使用
+    this._configVarGroups = spec.varGroups || [];
+    // 延迟渲染（需要等 tabs 渲染完后按 activeTab 过滤）
+    requestAnimationFrame(() => this.renderVarTreeFromConfig());
+    return div;
+  }
+
+  /** 按配置渲染变量树（按当前 activeTab 过滤，分输入/输出小组） */
+  renderVarTreeFromConfig() {
+    const container = this.shadowRoot.getElementById('varTree');
+    if (!container) return;
+    const groups = this._configVarGroups || [];
+    const activeTab = this.activeTab || (groups[0] && groups[0].tab) || '';
+    const selected = this._configSelectedVars || new Set();
+    let html = '';
+    groups.forEach((grp, gi) => {
+      if (grp.tab !== activeTab) return;
+      const vars = grp.vars || [];
+      const hasIO = vars.some(v => v.io);
+      const allChecked = vars.every((v, vi) => selected.has(`${gi}_${vi}`));
+      html += `<div class="var-group" data-group="${gi}">`;
+      html += `<div class="var-group-header" data-gi="${gi}"><input type="checkbox" class="var-group-check" data-gi="${gi}" ${allChecked ? 'checked' : ''}>${this.esc(grp.group)}</div>`;
+      const renderVarItem = (v, vi) => {
+        const checked = selected.has(`${gi}_${vi}`) ? 'checked' : '';
+        const cn = v.cnName ? `<span class="var-cn">${this.esc(v.cnName)}</span>` : '';
+        return `<li class="var-item" data-gi="${gi}" data-vi="${vi}">
+          <input type="checkbox" data-gi="${gi}" data-vi="${vi}" ${checked}>
+          <span class="var-name">${this.esc(v.name)}</span>
+          ${cn}
+          <span class="var-unit">${this.esc(v.unit || '')}</span>
+        </li>`;
+      };
+      if (hasIO) {
+        const plainVars = vars.map((v, vi) => ({ v, vi })).filter(x => !x.v.io);
+        const inputVars = vars.map((v, vi) => ({ v, vi })).filter(x => x.v.io === 'input');
+        const outputVars = vars.map((v, vi) => ({ v, vi })).filter(x => x.v.io === 'output');
+        html += '<div class="var-group-body">';
+        if (plainVars.length > 0) {
+          html += '<ul class="var-group-items">';
+          plainVars.forEach(({ v, vi }) => { html += renderVarItem(v, vi); });
+          html += '</ul>';
+        }
+        const renderSubGroup = (label, ioType, vars2) => {
+          if (vars2.length === 0) return;
+          const subAllChecked = vars2.every(({ vi }) => selected.has(`${gi}_${vi}`));
+          html += `<div class="var-io-group"><div class="var-io-header"><input type="checkbox" class="var-io-check" data-gi="${gi}" data-io="${ioType}" ${subAllChecked ? 'checked' : ''}>${label}</div><ul class="var-group-items">`;
+          vars2.forEach(({ v, vi }) => { html += renderVarItem(v, vi); });
+          html += '</ul></div>';
+        };
+        renderSubGroup('输入', 'input', inputVars);
+        renderSubGroup('输出', 'output', outputVars);
+        html += '</div>';
+      } else {
+        html += '<ul class="var-group-items">';
+        vars.forEach((v, vi) => { html += renderVarItem(v, vi); });
+        html += '</ul>';
+      }
+      html += '</div>';
+    });
+    container.innerHTML = html;
+    this.bindVarTreeEvents(container, groups);
+  }
+
+  /** 绑定变量树事件（支持分组全选、输入/输出小组全选、单选）——只绑一次 */
+  bindVarTreeEvents(container, groups) {
+    if (this._varTreeEventsBound) return;
+    this._varTreeEventsBound = true;
+    container.addEventListener('change', (e) => {
+      const cb = e.target;
+      if (cb.classList.contains('var-group-check')) {
+        const gi = parseInt(cb.dataset.gi);
+        (groups[gi].vars || []).forEach((v, vi) => {
+          if (cb.checked) this._configSelectedVars.add(`${gi}_${vi}`);
+          else this._configSelectedVars.delete(`${gi}_${vi}`);
+        });
+        this.renderVarTreeFromConfig();
+        this.renderCustomChartsFromConfig();
+      } else if (cb.classList.contains('var-io-check')) {
+        const gi = parseInt(cb.dataset.gi);
+        const ioType = cb.dataset.io;
+        (groups[gi].vars || []).forEach((v, vi) => {
+          if (v.io === ioType) {
+            if (cb.checked) this._configSelectedVars.add(`${gi}_${vi}`);
+            else this._configSelectedVars.delete(`${gi}_${vi}`);
+          }
+        });
+        this.renderVarTreeFromConfig();
+        this.renderCustomChartsFromConfig();
+      } else if (cb.dataset.gi !== undefined && cb.dataset.vi !== undefined) {
+        const gi = parseInt(cb.dataset.gi);
+        const vi = parseInt(cb.dataset.vi);
+        if (cb.checked) this._configSelectedVars.add(`${gi}_${vi}`);
+        else this._configSelectedVars.delete(`${gi}_${vi}`);
+        this.renderVarTreeFromConfig();
+        this.renderCustomChartsFromConfig();
+      }
+    });
+  }
+
+  /** 同步 varTree checkbox 状态到 _configSelectedVars（保留兼容） */
+  _syncConfigSelectedVars(container) {
+    this._configSelectedVars = new Set();
+    container.querySelectorAll('.var-item input[type="checkbox"]').forEach(cb => {
+      if (cb.checked) {
+        const gi = cb.dataset.gi;
+        const vi = cb.dataset.vi;
+        this._configSelectedVars.add(`${gi}_${vi}`);
+      }
+    });
+  }
+
+  /** kpi 面板：KPI 读数卡片（初始值 '--'，后端数据到达后覆盖） */
+  renderKpiPanel(div, spec) {
+    const items = spec.kpiItems || [];
+    if (!items.length) return null;
+    let html = `<div class="panel-title">${this.esc(spec.title || '当前关键参数')}</div><div class="kpi-grid">`;
+    items.forEach(item => {
+      html += `<div class="kpi-card" data-signal="${this.esc(item.signal || '')}" data-param-key="${this.esc(item.paramKey || '')}"><div class="kpi-head"><span class="kpi-name">${this.esc(item.label || item.signal || '')}</span><span class="kpi-icon"></span></div><div class="kpi-value">--</div><div class="kpi-unit">${this.esc(item.unit || '')}</div></div>`;
+    });
+    html += '</div>';
+    div.innerHTML = html;
+    return div;
+  }
+
+  /** 配置模式：用参数值更新 KPI 卡片（与原版 renderKpiFromParams 一致的格式化） */
+  updateKpiFromParams(params) {
+    if (!params) return;
+    const fmtMap = {
+      'Np': v => v ? Number(v).toLocaleString() : '--',
+      'Ng': v => v ? Number(v).toLocaleString() : '--',
+      'T45': v => v ? Number(v).toFixed(1) : '--',
+      'Mkp': v => v ? Number(v).toFixed(1) : '--',
+      'Wf': v => v ? Number(v).toFixed(4) : '--',
+      'Error': v => v != null && v !== '' ? Number(v).toString() : '--'
+    };
+    const cards = this.shadowRoot.querySelectorAll('.kpi-card[data-signal]');
+    cards.forEach(card => {
+      const sig = card.dataset.signal;
+      const paramKey = card.dataset.paramKey;
+      const valEl = card.querySelector('.kpi-value');
+      if (!valEl) return;
+      // 按 paramKey 从 params 取值
+      let val = null;
+      if (paramKey && params[paramKey] != null) val = params[paramKey];
+      // 兼容原版：Np<-npCommand, Mkp<-loadPower
+      if (!val && sig === 'Np' && params.npCommand) val = params.npCommand;
+      if (!val && sig === 'Mkp' && params.loadPower) val = params.loadPower;
+      if (val != null) {
+        const fmt = fmtMap[sig] || (v => v != null ? v : '--');
+        valEl.textContent = fmt(val);
+      }
+    });
+  }
+
+  /** statusTable 面板：系统状态表（初始状态与原版 HTML 一致） */
+  renderStatusTablePanel(div, spec) {
+    const rows = spec.statusRows || [];
+    if (!rows.length) return null;
+    let html = `<div class="panel-title">${this.esc(spec.title || '系统状态')}</div><table class="status-table"><thead><tr><th>系统</th><th>状态</th><th>说明</th></tr></thead><tbody>`;
+    rows.forEach(r => {
+      // 初始状态：有 csvs 的显示"未接线"，单位一致性检查显示"待检查"，信号与告警显示"正常"
+      let tag = 'warn', tagText = '未接线';
+      if (r.name === '单位一致性检查') { tag = 'warn'; tagText = '待检查'; }
+      else if (r.name === '信号与告警') { tag = 'ok'; tagText = '正常'; }
+      html += `<tr><td class="sys-name">${this.esc(r.icon || '')} ${this.esc(r.name || '')}</td><td><span class="status-tag ${tag}">${tagText}</span></td><td class="status-desc">${this.esc(r.desc || '')}</td></tr>`;
+    });
+    html += '</tbody></table>';
+    div.innerHTML = html;
+    return div;
+  }
+
+  /** alertPanel 面板：告警汇总 */
+  renderAlertPanel(div, spec) {
+    div.innerHTML = `
+      <div class="alert-title"><span class="bell">🔔</span>${this.esc(spec.title || '告警汇总')} (<span class="alert-count">0</span>)<button class="view-detail">查看详情</button></div>
+      <div class="alert-list"><div class="alert-empty">暂无告警</div></div>
+    `;
+    // 绑定"查看详情"按钮
+    const btn = div.querySelector('.view-detail');
+    if (btn) btn.addEventListener('click', () => this.showAlertDetail());
+    return div;
+  }
+
+  /** 渲染流程图（main 区域顶部） */
+  renderFlowDiagram(flow) {
+    const content = this.shadowRoot.querySelector('.content');
+    if (!content) return;
+    // 移除旧流程图
+    const oldFlow = content.querySelector('.flow');
+    if (oldFlow) oldFlow.remove();
+    if (!flow) return;
+    const topRow = flow.topRow || [];
+    const bottomRow = flow.bottomRow || [];
+    if (!topRow.length && !bottomRow.length) return;
+    const flowDiv = document.createElement('div');
+    flowDiv.className = 'flow';
+    // 上方行
+    if (topRow.length) {
+      let topHtml = '<div class="flow-top">';
+      topRow.forEach((b, i) => {
+        if (i > 0) topHtml += '<span class="arrow-h">→</span>';
+        topHtml += `<div class="block ${this.esc(b.color || 'purple')}"><span class="flow-ico">${this.esc(b.icon || '')}</span>${this.esc(b.label || '')}</div>`;
+      });
+      topHtml += '</div>';
+      flowDiv.innerHTML = topHtml;
+    }
+    // 下方行
+    if (bottomRow.length) {
+      let bottomHtml = '<div class="flow-bottom">';
+      bottomHtml += '<span class="arrow-d">↘</span>';
+      bottomRow.forEach((b, i) => {
+        if (i > 0) bottomHtml += '<span class="arrow-h">→</span>';
+        bottomHtml += `<div class="block ${this.esc(b.color || 'green')}"><span class="flow-ico">${this.esc(b.icon || '')}</span>${this.esc(b.label || '')}</div>`;
+      });
+      bottomHtml += '<span class="arrow-u">↗</span>';
+      bottomHtml += '</div>';
+      flowDiv.innerHTML += bottomHtml;
+    }
+    // 插入到 chart-grid 之前
+    const chartGrid = content.querySelector('.chart-grid');
+    if (chartGrid) content.insertBefore(flowDiv, chartGrid);
+    else content.appendChild(flowDiv);
+    this.flow = flowDiv;
+  }
+
+  // ── 扩展/插件加载（Shadow DOM 隔离 + 错误边界）──
+
+  /** 加载并初始化扩展。ext = { enabled, mode, entry, slot, css } */
+  async loadExtension(ext) {
+    // 先销毁旧扩展
+    this.destroyExtension();
+    if (!ext || !ext.enabled || !ext.entry) return;
+    try {
+      const baseUrl = window.AppConfig.getApiUrl('program', 'plugin');
+      const token = window.AppConfig.getToken();
+      const tokenQs = token ? `?token=${encodeURIComponent(token)}` : '';
+      const jsUrl = `${baseUrl}/${encodeURIComponent(ext.entry)}/entry.js${tokenQs}`;
+      // 动态 import（ES module）
+      const mod = await import(/* @vite-ignore */ jsUrl);
+      const PluginCtor = mod.default || mod;
+      if (typeof PluginCtor !== 'function') {
+        console.warn('插件未导出 default 函数/类:', ext.entry);
+        return;
+      }
+      // 创建隔离容器
+      const container = document.createElement('div');
+      container.className = 'plugin-container';
+      const shadow = container.attachShadow({ mode: 'open' });
+      // 注入 CSS（可选）
+      if (ext.css) {
+        const cssUrl = `${baseUrl}/${encodeURIComponent(ext.entry)}/style.css${tokenQs}`;
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = cssUrl;
+        shadow.appendChild(link);
+      }
+      // 挂载点
+      const mount = document.createElement('div');
+      mount.className = 'plugin-mount';
+      shadow.appendChild(mount);
+
+      // 按 mode 挂到页面
+      if (ext.mode === 'override') {
+        // 接管整个内容区域：隐藏 .body（含左右面板和 main），插件插入到 .body 位置
+        const body = this.shadowRoot.querySelector('.body');
+        if (body) {
+          body.style.display = 'none';
+          // 插件容器插入到 .body 之后，占满整个内容区
+          container.style.cssText = 'flex:1;min-height:0;display:flex;flex-direction:column;';
+          body.parentNode.insertBefore(container, body.nextSibling);
+        } else {
+          // 兜底：隐藏 main，插件插入到 main 之后
+          const main = this.shadowRoot.querySelector('main');
+          if (main) main.style.display = 'none';
+          this.shadowRoot.appendChild(container);
+        }
+      } else {
+        // slot 模式：挂到指定槽位
+        const slot = this.shadowRoot.querySelector(`[data-plugin-slot="${ext.slot}"]`);
+        if (slot) {
+          slot.appendChild(container);
+        } else {
+          // 默认挂到 chart-grid 之后
+          const cg = this.shadowRoot.querySelector('.chart-grid');
+          if (cg && cg.parentNode) {
+            cg.parentNode.insertBefore(container, cg.nextSibling);
+          }
+        }
+      }
+
+      // 构造 ctx
+      const ctx = this.buildPluginContext(shadow, mount);
+      const instance = typeof PluginCtor === 'function' ? new PluginCtor(ctx) : PluginCtor(ctx);
+      if (instance && typeof instance.init === 'function') {
+        await instance.init(ctx);
+      }
+      this.pluginInstance = instance;
+      this.pluginContainer = container;
+      this.pluginShadow = shadow;
+      console.info('插件已加载:', ext.entry);
+    } catch (e) {
+      console.error('加载插件失败:', e);
+      // 错误边界：不破坏主页面，只在 footer 提示
+      if (this.footerLog) this.footerLog.textContent = '[插件] 加载失败: ' + e.message;
+    }
+  }
+
+  /** 销毁当前扩展 */
+  destroyExtension() {
+    try {
+      if (this.pluginInstance && typeof this.pluginInstance.destroy === 'function') {
+        this.pluginInstance.destroy();
+      }
+    } catch (e) { console.warn('插件 destroy 异常:', e); }
+    if (this.pluginContainer && this.pluginContainer.parentNode) {
+      this.pluginContainer.parentNode.removeChild(this.pluginContainer);
+    }
+    // 恢复 .body 和 main 显示（override 模式）
+    const body = this.shadowRoot.querySelector('.body');
+    if (body) body.style.display = '';
+    const main = this.shadowRoot.querySelector('main');
+    if (main) main.style.display = '';
+    this.pluginInstance = null;
+    this.pluginContainer = null;
+    this.pluginShadow = null;
+  }
+
+  /** 构造插件上下文 ctx */
+  buildPluginContext(shadow, mount) {
+    const self = this;
+    return {
+      // 挂载根
+      mount,
+      shadow,
+      // 配置
+      config: this.programConfig,
+      // 当前参数值
+      getParams() { return self.collectConfigParams(); },
+      // 信号元数据
+      signals: (this.programConfig && this.programConfig.signals) || [],
+      // 当前 CSV 数据
+      getData() { return { headers: self.csvHeaders || [], rows: self.csvRows || [] }; },
+      // 数据流事件订阅（SSE 推送时回调）
+      onData(fn) {
+        self._pluginDataListeners = self._pluginDataListeners || [];
+        self._pluginDataListeners.push(fn);
+      },
+      // 仿真控制
+      controls: {
+        start: () => self.handleRun(),
+        pause: () => self.handlePause && self.handlePause(),
+        resume: () => self.handleResume && self.handleResume(),
+        stop: () => self.handleStop && self.handleStop(),
+      },
+      // 当前仿真状态
+      getStatus() { return self.runStatus; },
+      // ECharts 实例（共享）
+      echarts: self.echarts,
+    };
+  }
+
+  /** 通知插件数据更新（applyCsvToCharts 末尾调用）*/
+  notifyPluginData(headers, rows) {
+    if (!this._pluginDataListeners) return;
+    for (const fn of this._pluginDataListeners) {
+      try { fn({ headers, rows }); } catch (e) { console.warn('插件 onData 回调异常:', e); }
+    }
+  }
+
+  /** 按 ProgramConfig.ui.sections 渲染 tabs */
+  renderConfigTabs(ui) {
+    const sections = ui.sections || [];
+    if (!sections.length) return;
+    const root = this.shadowRoot;
+    const tabsBar = root.querySelector('.tabs');
+    if (!tabsBar) return;
+    tabsBar.innerHTML = sections.map((s, i) =>
+      `<button class="tab${i === 0 ? ' active' : ''}">${this.esc(s.title || s.id || '')}</button>`
+    ).join('');
+    this.tabs = Array.from(tabsBar.querySelectorAll('.tab'));
+    // 重新绑定 tab 点击
+    this.tabs.forEach(t => {
+      t.addEventListener('click', () => {
+        const title = t.textContent.trim();
+        const sec = sections.find(s => (s.title || s.id) === title);
+        if (sec) this.renderConfigSection(sec);
+      });
+    });
+  }
+
+  /** 渲染一个配置 section（charts/control/readouts）*/
+  renderConfigSection(section) {
+    this.activeTab = section.title || section.id;
+    this.tabs.forEach(t => t.classList.toggle('active', t.textContent.trim() === this.activeTab));
+    // 流程图：第一个 tab 显示，其他隐藏
+    if (this.flow) {
+      const sections = (this.programConfig && this.programConfig.ui && this.programConfig.ui.sections) || [];
+      this.flow.style.display = (sections[0] && (sections[0].title || sections[0].id) === this.activeTab) ? '' : 'none';
+    }
+
+    if (section.type === 'charts') {
+      if (section.groups && section.groups.length) {
+        // 有预定义图表组（如信号与告警）：按 groups 渲染
+        const cfgs = this.buildChartsFromGroups(section.groups);
+        this.renderConfigCharts(cfgs);
+      } else {
+        // 无预定义图表组：从变量树选择动态生成（每个选中变量一个图表）
+        this.selectAllVarsForConfigTab(this.activeTab);
+        this.renderCustomChartsFromConfig();
+      }
+    } else if (section.type === 'control') {
+      this.chartGrid.innerHTML = '<div style="padding:40px;text-align:center;color:#6b7280;">参数已显示在左侧面板，请调整后点击运行</div>';
+      this.charts.forEach(c => c.dispose());
+      this.charts = [];
+      this.currentConfigs = [];
+      this.currentDatas = [];
+    } else if (section.type === 'readouts' && section.items) {
+      this.renderConfigReadouts(section.items);
+    } else {
+      this.chartGrid.innerHTML = '<div style="padding:40px;text-align:center;color:#6b7280;">暂无内容</div>';
+      this.charts.forEach(c => c.dispose());
+      this.charts = [];
+    }
+
+    // 切换 tab 时重新渲染变量树（按当前 tab 过滤）
+    this.renderVarTreeFromConfig();
+  }
+
+  /** 配置模式：选中当前 tab 对应的所有变量 */
+  selectAllVarsForConfigTab(tab) {
+    this._configSelectedVars = new Set();
+    const groups = this._configVarGroups || [];
+    groups.forEach((grp, gi) => {
+      if (grp.tab !== tab) return;
+      (grp.vars || []).forEach((v, vi) => {
+        this._configSelectedVars.add(`${gi}_${vi}`);
+      });
+    });
+    // 同步勾选 varTree checkbox
+    const root = this.shadowRoot;
+    if (root) {
+      root.querySelectorAll('.var-tree input[type="checkbox"]').forEach(cb => { cb.checked = true; });
+    }
+  }
+
+  /** 配置模式：按选中的变量动态生成图表（每个变量一个图表）*/
+  renderCustomChartsFromConfig() {
+    const groups = this._configVarGroups || [];
+    const selected = this._configSelectedVars || new Set();
+    const cfgs = [];
+    let colorIdx = 0;
+    // 按 varGroups 顺序遍历，保持图表顺序稳定
+    groups.forEach((grp, gi) => {
+      if (grp.tab !== this.activeTab) return;
+      (grp.vars || []).forEach((v, vi) => {
+        if (!selected.has(`${gi}_${vi}`)) return;
+        const series = (v.csvs || []).map(csv => {
+          const subName = (v.csvs && v.csvs.length > 1) ? csv : v.name;
+          const color = VAR_COLORS[colorIdx % VAR_COLORS.length];
+          colorIdx++;
+          return sig(subName, color, { csv });
+        });
+        cfgs.push(chartUnit(v.cnName || v.name, v.unit, ...series));
+      });
+    });
+    this.renderConfigCharts(cfgs);
+  }
+
+  /** 把 ChartGroup[] 转成图表配置（chartUnit 格式）*/
+  buildChartsFromGroups(groups) {
+    const cfgs = [];
+    let colorIdx = 0;
+    groups.forEach(g => {
+      // 支持 series 对象数组（详细配置）和 signals 字符串数组（简单配置）
+      let seriesArr = [];
+      if (g.series && g.series.length) {
+        seriesArr = g.series.map(s => {
+          const color = this.resolveColor(s.color) || VAR_COLORS[colorIdx % VAR_COLORS.length];
+          colorIdx++;
+          return sig(s.name || s.csv || '', color, {
+            dashed: !!s.dashed,
+            csv: s.csv || s.name || '',
+            axis: s.axis || null
+          });
+        });
+      } else {
+        const signals = g.signals || [];
+        seriesArr = signals.map(sn => {
+          const color = VAR_COLORS[colorIdx % VAR_COLORS.length];
+          colorIdx++;
+          return sig(sn, color, { csv: sn });
+        });
+      }
+      // 有 yMin/yMax 用 chart，有 y2Min/y2Max 用 chart2，否则用 chartUnit
+      if (g.y2Min != null || g.y2Max != null) {
+        cfgs.push(chart2(g.title || '', g.yMin, g.yMax, g.y2Min, g.y2Max, ...seriesArr));
+      } else if (g.yMin != null || g.yMax != null) {
+        cfgs.push(chart(g.title || '', g.yMin, g.yMax, ...seriesArr));
+      } else {
+        const unit = (g.yAxis && g.yAxis.unit) || g.unit || '';
+        cfgs.push(chartUnit(g.title || '', unit, ...seriesArr));
+      }
+    });
+    return cfgs;
+  }
+
+  /** 解析颜色（支持颜色名和十六进制） */
+  resolveColor(name) {
+    if (!name) return null;
+    if (name.startsWith('#')) return name;
+    return colors[name] || null;
+  }
+
+  /** 用 cfgs 渲染图表（配置模式）*/
+  renderConfigCharts(cfgs) {
+    this.charts.forEach(c => c.dispose());
+    this.charts = [];
+    this.currentConfigs = cfgs;
+    this.currentDatas = cfgs.map(buildChartData);
+    if (this.csvHeaders && this.csvRows) {
+      this.applyCsvToCharts(this.csvHeaders, this.csvRows);
+    }
+    this.chartGrid.innerHTML = '';
+    this.chartGrid.classList.toggle('single', cfgs.length === 1);
+    cfgs.forEach((cfg, i) => {
+      const card = document.createElement('div');
+      card.className = 'chart-card';
+      const head = document.createElement('div');
+      head.className = 'chart-head';
+      const title = document.createElement('span');
+      title.className = 'chart-title';
+      title.textContent = cfg.title;
+      head.appendChild(title);
+      card.appendChild(head);
+      const dom = document.createElement('div');
+      dom.className = 'chart-dom';
+      card.appendChild(dom);
+      this.chartGrid.appendChild(card);
+      buildLegend(card, cfg);
+      const chart = this.echarts.init(dom, null, { renderer: 'canvas', backgroundColor: 'transparent' });
+      chart.setOption(buildEChartsOptions(this.currentDatas[i], this.currentTime, this.runStatus, this.duration), true);
+      this.charts.push(chart);
+    });
+    requestAnimationFrame(() => this.charts.forEach(c => c && c.resize()));
+  }
+
+  /** 渲染读数项（readouts section）*/
+  renderConfigReadouts(items) {
+    this.charts.forEach(c => c.dispose());
+    this.charts = [];
+    this.currentConfigs = [];
+    this.currentDatas = [];
+    this.chartGrid.innerHTML = '';
+    this.chartGrid.classList.remove('single');
+    const grid = document.createElement('div');
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;padding:12px;';
+    items.forEach(item => {
+      const card = document.createElement('div');
+      card.className = 'kpi-card';
+      card.dataset.signal = item.signal || '';
+      card.innerHTML = `
+        <div class="kpi-head"><span class="kpi-name">${this.esc(item.label || item.signal || '')}</span></div>
+        <div class="kpi-value">--</div>
+        <div class="kpi-unit">${this.esc(item.unit || '')}</div>
+      `;
+      grid.appendChild(card);
+    });
+    this.chartGrid.appendChild(grid);
+    if (this.csvHeaders && this.csvRows) {
+      this.updateConfigReadouts(this.csvHeaders, this.csvRows);
+    }
+  }
+
+  /** 更新读数项的当前值（chart-grid 内 + 右侧 KPI 面板）*/
+  updateConfigReadouts(headers, rows) {
+    if (!rows || !rows.length) return;
+    const colIdx = {};
+    headers.forEach((h, i) => colIdx[h] = i);
+    const lastRow = rows[rows.length - 1];
+    // 与原来 renderKpiFromParams 一致的 per-signal 格式化
+    const fmtMap = {
+      'Np': v => v ? Number(v).toLocaleString() : '--',
+      'Ng': v => v ? Number(v).toLocaleString() : '--',
+      'T45': v => v ? Number(v).toFixed(1) : '--',
+      'Mkp': v => v ? Number(v).toFixed(1) : '--',
+      'Wf': v => v ? Number(v).toFixed(4) : '--',
+      'Error': v => v != null && v !== '' ? Number(v).toString() : '--'
+    };
+    this.shadowRoot.querySelectorAll('[data-signal] .kpi-value, .kpi-card[data-signal] .kpi-value').forEach(valEl => {
+      const card = valEl.closest('[data-signal]');
+      if (!card) return;
+      const sig = card.dataset.signal;
+      const idx = colIdx[sig];
+      if (idx != null) {
+        const raw = lastRow[idx];
+        const v = parseFloat(raw);
+        const fmt = fmtMap[sig] || (x => isFinite(x) ? x.toFixed(3) : '--');
+        valEl.textContent = fmt(v);
+      }
+    });
+  }
+
+  /** 收集配置模式下的动态参数（供 handleRun 用）*/
+  collectConfigParams() {
+    const params = new URLSearchParams();
+    const root = this.shadowRoot;
+    root.querySelectorAll('.left .panel .field-row[data-param-key] input[data-param]').forEach(inp => {
+      const key = inp.dataset.param;
+      if (key && inp.value) params.set(key, inp.value);
+    });
+    return params;
+  }
+
+  esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
 }
 
