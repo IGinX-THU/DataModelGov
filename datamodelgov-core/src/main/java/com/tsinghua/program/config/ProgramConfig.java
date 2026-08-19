@@ -40,10 +40,13 @@ public class ProgramConfig {
     /** 信号采集规则（可选；setupScript 为主，本字段用于文档化/probe 草稿） */
     private List<SignalSpec> signals;
 
-    /** 信号采集脚本内容（MATLAB .m 源码，以 function dmg_setup 开头）。
-     *  运行时写入 taskDir/dmg_setup.m，runner cd(taskDir) 后调用。
-     *  脚本运行后须在 base workspace 留下 dmg_cols（cell 数组）。 */
+    /** 信号采集脚本文件名（如 "dmg_setup.m"），仅用于文档化。
+     *  实际脚本内容存在 ProgramEntity.setupScript 字段，运行时写到 taskDir/dmg_setup.m。 */
     private String setupScript;
+
+    /** 页面模板名（引用 resources/templates/<模板名>/template.json）。
+     *  运行时加载模板的 ui 配置。如果 ui 字段也有值，ui 优先（用户自定义覆盖模板）。 */
+    private String template;
 
     /** 运行页面 UI 配置 */
     private UiConfig ui;

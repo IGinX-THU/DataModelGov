@@ -1,0 +1,8 @@
+{
+  "id": "afo-extra",
+  "name": "AFO 扩展面板",
+  "description": "AFO_V_1Disp 涡轴发动机实时扭矩监控面板",
+  "program": "AFO_V_1Disp",
+  "version": "1.0.0",
+  "author": "dev"
+}

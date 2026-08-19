@@ -20,6 +20,7 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import javax.servlet.http.HttpServletResponse;
+import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -99,53 +100,198 @@ public class ProgramController {
         return Result.success("配置保存成功");
     }
 
-    @ApiOperation("列出可用的预置配置模板")
+    @ApiOperation("列出可接入的预置程序")
+    @GetMapping("/preset-programs")
+    @RequirePermission(Permission.READ)
+    public Result<List<Map<String, String>>> listPresetPrograms() {
+        List<Map<String, String>> programs = new java.util.ArrayList<>();
+        try {
+            org.springframework.core.io.support.PathMatchingResourcePatternResolver resolver =
+                    new org.springframework.core.io.support.PathMatchingResourcePatternResolver();
+            org.springframework.core.io.Resource[] resources =
+                    resolver.getResources("classpath:programs/*/*");
+            java.util.Set<String> programNames = new java.util.LinkedHashSet<>();
+            for (org.springframework.core.io.Resource res : resources) {
+                String url = res.getURL().toString();
+                int idx = url.lastIndexOf("/programs/");
+                if (idx < 0) continue;
+                String tail = url.substring(idx + "/programs/".length());
+                int slash = tail.indexOf('/');
+                if (slash < 0) continue;
+                String programName = tail.substring(0, slash);
+                String filename = tail.substring(slash + 1).toLowerCase();
+                if (filename.endsWith(".zip") || filename.endsWith(".rar") || filename.endsWith(".7z") || filename.endsWith(".tar.gz") || filename.endsWith(".tgz") || filename.endsWith(".tar")) {
+                    programNames.add(programName);
+                }
+            }
+            for (String name : programNames) {
+                Map<String, String> p = new java.util.LinkedHashMap<>();
+                p.put("id", name);
+                p.put("name", name);
+                programs.add(p);
+            }
+        } catch (Exception e) {
+            log.warn("扫描预置程序失败: {}", e.getMessage());
+        }
+        return Result.success("操作成功", programs);
+    }
+
+    @ApiOperation("上传预置程序（从 resources/programs/ 读取源码+配置+脚本存入 IGinX）")
+    @PostMapping("/preset-programs/{id}/upload")
+    @RequirePermission(Permission.CREATE)
+    @OperationLog(value = "上传预置程序", type = OperationLog.OperationType.CREATE)
+    public Result<Map<String, Object>> uploadPresetProgram(
+            @PathVariable("id") String id,
+            @RequestParam(value = "version", required = false, defaultValue = "1.0") String version,
+            @RequestParam(value = "projectName", required = false) String projectName) {
+        try {
+            Map<String, Object> result = programService.uploadPresetProgram(id, version, projectName);
+            return Result.success("预置程序已上传", result);
+        } catch (Exception e) {
+            log.error("上传预置程序失败", e);
+            return Result.error("上传失败: " + e.getMessage());
+        }
+    }
+
+    @ApiOperation("列出可用的预置配置（扫描 programs/ 目录）")
     @GetMapping("/config-templates")
     @RequirePermission(Permission.READ)
     public Result<List<Map<String, String>>> listConfigTemplates() {
-        // 扫描 classpath:program-configs/*.json
         List<Map<String, String>> templates = new java.util.ArrayList<>();
         try {
             org.springframework.core.io.support.PathMatchingResourcePatternResolver resolver =
                     new org.springframework.core.io.support.PathMatchingResourcePatternResolver();
             org.springframework.core.io.Resource[] resources =
-                    resolver.getResources("classpath:program-configs/*.json");
+                    resolver.getResources("classpath:programs/*/config.json");
             for (org.springframework.core.io.Resource res : resources) {
-                String filename = res.getFilename();
-                if (filename == null) continue;
-                String id = filename.substring(0, filename.length() - 5); // 去掉 .json
+                String url = res.getURL().toString();
+                int idx = url.lastIndexOf("/programs/");
+                if (idx < 0) continue;
+                String tail = url.substring(idx + "/programs/".length());
+                int slash = tail.indexOf('/');
+                if (slash < 0) continue;
+                String programName = tail.substring(0, slash);
                 Map<String, String> tpl = new java.util.LinkedHashMap<>();
-                tpl.put("id", id);
-                tpl.put("name", id);
+                tpl.put("id", programName);
+                tpl.put("name", programName);
                 templates.add(tpl);
             }
         } catch (Exception e) {
-            log.warn("扫描配置模板失败: {}", e.getMessage());
+            log.warn("扫描预置配置失败: {}", e.getMessage());
         }
         return Result.success("操作成功", templates);
     }
 
-    @ApiOperation("获取预置配置模板内容")
+    @ApiOperation("获取预置配置内容（config.json，不含脚本）")
     @GetMapping("/config-templates/{id}")
     @RequirePermission(Permission.READ)
     public Result<String> getConfigTemplate(@PathVariable("id") String id) {
         try {
+            String content = readClasspathResource("programs/" + id + "/config.json");
+            if (content == null) return Result.error("预置配置不存在");
+            return Result.success("操作成功", content);
+        } catch (Exception e) {
+            log.warn("读取预置配置失败: {}", e.getMessage());
+            return Result.error("读取失败: " + e.getMessage());
+        }
+    }
+
+    @ApiOperation("获取预置程序的信号采集脚本（dmg_setup.m）")
+    @GetMapping("/config-templates/{id}/setup-script")
+    @RequirePermission(Permission.READ)
+    public Result<String> getPresetSetupScript(@PathVariable("id") String id) {
+        try {
+            String content = readClasspathResource("programs/" + id + "/dmg_setup.m");
+            if (content == null) return Result.error("脚本不存在");
+            return Result.success("操作成功", content);
+        } catch (Exception e) {
+            log.warn("读取预置脚本失败: {}", e.getMessage());
+            return Result.error("读取失败: " + e.getMessage());
+        }
+    }
+
+    @ApiOperation("列出可用的页面模板")
+    @GetMapping("/templates")
+    @RequirePermission(Permission.READ)
+    public Result<List<Map<String, String>>> listTemplates() {
+        List<Map<String, String>> templates = new java.util.ArrayList<>();
+        try {
             org.springframework.core.io.support.PathMatchingResourcePatternResolver resolver =
                     new org.springframework.core.io.support.PathMatchingResourcePatternResolver();
-            org.springframework.core.io.Resource res =
-                    resolver.getResource("classpath:program-configs/" + id + ".json");
-            if (!res.exists()) return Result.error("模板不存在");
-            try (java.io.InputStream is = res.getInputStream()) {
-                java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
-                byte[] buf = new byte[4096];
-                int n;
-                while ((n = is.read(buf)) > 0) out.write(buf, 0, n);
-                String content = new String(out.toByteArray(), StandardCharsets.UTF_8);
-                return Result.success("操作成功", content);
+            org.springframework.core.io.Resource[] resources =
+                    resolver.getResources("classpath:templates/*/template.json");
+            for (org.springframework.core.io.Resource res : resources) {
+                String url = res.getURL().toString();
+                int idx = url.lastIndexOf("/templates/");
+                if (idx < 0) continue;
+                String tail = url.substring(idx + "/templates/".length());
+                int slash = tail.indexOf('/');
+                if (slash < 0) continue;
+                String templateId = tail.substring(0, slash);
+                Map<String, String> tpl = new java.util.LinkedHashMap<>();
+                tpl.put("id", templateId);
+                tpl.put("name", templateId);
+                templates.add(tpl);
             }
         } catch (Exception e) {
-            log.warn("读取配置模板失败: {}", e.getMessage());
+            log.warn("扫描页面模板失败: {}", e.getMessage());
+        }
+        return Result.success("操作成功", templates);
+    }
+
+    @ApiOperation("获取页面模板内容（template.json）")
+    @GetMapping("/templates/{id}")
+    @RequirePermission(Permission.READ)
+    public Result<String> getTemplate(@PathVariable("id") String id) {
+        try {
+            String content = readClasspathResource("templates/" + id + "/template.json");
+            if (content == null) return Result.error("模板不存在");
+            return Result.success("操作成功", content);
+        } catch (Exception e) {
+            log.warn("读取页面模板失败: {}", e.getMessage());
             return Result.error("读取失败: " + e.getMessage());
+        }
+    }
+
+    @ApiOperation("获取仿真程序的信号采集脚本")
+    @GetMapping("/setup-script")
+    @RequirePermission(Permission.READ)
+    public Result<String> getSetupScript(
+            @RequestParam("name") String name,
+            @RequestParam("version") String version,
+            @RequestParam(value = "projectName", required = false) String projectName) {
+        String script = programService.getProgramSetupScript(name, version, projectName);
+        return Result.success("操作成功", script);
+    }
+
+    @ApiOperation("保存仿真程序的信号采集脚本")
+    @PutMapping(value = "/setup-script", consumes = {"text/plain", "application/json"})
+    @RequirePermission(Permission.UPDATE)
+    @OperationLog(value = "保存信号采集脚本", type = OperationLog.OperationType.UPDATE)
+    public Result<Void> saveSetupScript(
+            @RequestParam("name") String name,
+            @RequestParam("version") String version,
+            @RequestParam(value = "projectName", required = false) String projectName,
+            @RequestBody String setupScript) {
+        java.util.List<String> errors = programService.saveProgramSetupScript(name, version, projectName, setupScript);
+        if (errors != null && !errors.isEmpty()) {
+            return Result.error("保存失败: " + String.join("; ", errors));
+        }
+        return Result.success("脚本保存成功");
+    }
+
+    /** 读取 classpath 资源为字符串 */
+    private String readClasspathResource(String path) throws IOException {
+        org.springframework.core.io.support.PathMatchingResourcePatternResolver resolver =
+                new org.springframework.core.io.support.PathMatchingResourcePatternResolver();
+        org.springframework.core.io.Resource res = resolver.getResource("classpath:" + path);
+        if (!res.exists()) return null;
+        try (java.io.InputStream is = res.getInputStream()) {
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[4096];
+            int n;
+            while ((n = is.read(buf)) > 0) out.write(buf, 0, n);
+            return new String(out.toByteArray(), StandardCharsets.UTF_8);
         }
     }
 

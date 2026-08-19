@@ -202,7 +202,11 @@ window.AppConfig = {
             'upload-overview': '/api/program/upload-overview',
             'download-signal': '/api/program/download-signal',
             'engine-status': '/api/program/engine-status',
-            'engine-restart': '/api/program/engine-restart'
+            'engine-restart': '/api/program/engine-restart',
+            'preset-programs': '/api/program/preset-programs',
+            'config-templates': '/api/program/config-templates',
+            templates: '/api/program/templates',
+            'setup-script': '/api/program/setup-script'
         }
     },
     
@@ -273,7 +277,7 @@ window.AppConfig = {
     async request(url, options = {}) {
         const config = {
             method: 'GET',
-            headers: this.getAuthHeaders(),
+            headers: { ...this.getAuthHeaders(), ...(options.headers || {}) },
             ...options
         };
 

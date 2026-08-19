@@ -2785,6 +2785,20 @@ class ProgramRun extends HTMLElement {
       const result = await window.AppConfig.get('program', 'config', { name, version, ...(pn ? { projectName: pn } : {}) });
       if (result && (result.success || result.code === 200) && result.data) {
         const cfg = typeof result.data === 'string' ? JSON.parse(result.data) : result.data;
+        // 如果有 template 引用且 ui 为空，加载模板的 ui 配置
+        const uiEmpty = !cfg.ui || (!cfg.ui.sections || cfg.ui.sections.length === 0);
+        if (cfg.template && uiEmpty) {
+          try {
+            const tplUrl = window.AppConfig.getApiUrl('program', 'templates') + '/' + encodeURIComponent(cfg.template);
+            const tplResult = await window.AppConfig.request(tplUrl, { method: 'GET' });
+            if (tplResult && (tplResult.success || tplResult.code === 200) && tplResult.data) {
+              const tpl = typeof tplResult.data === 'string' ? JSON.parse(tplResult.data) : tplResult.data;
+              cfg.ui = tpl.ui || tpl;
+            }
+          } catch (te) {
+            console.warn('加载页面模板失败:', te);
+          }
+        }
         this.programConfig = cfg;
         this.applyProgramConfig();
         // 配置加载完成后重新渲染当前 section（_doShow 时可能还没加载完）

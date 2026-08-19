@@ -97,8 +97,10 @@ class ProgramManagement extends HTMLElement {
         const addSectionBtn = this.shadowRoot.getElementById('addSectionBtn');
         const cfgUploadJsonBtn = this.shadowRoot.getElementById('cfgUploadJsonBtn');
         const cfgUploadJsonInput = this.shadowRoot.getElementById('cfgUploadJsonInput');
-        const cfgDownloadJsonBtn = this.shadowRoot.getElementById('cfgDownloadJsonBtn');
         const cfgApplyTemplateBtn = this.shadowRoot.getElementById('cfgApplyTemplateBtn');
+        const cfgApplyPresetBtn = this.shadowRoot.getElementById('cfgApplyPresetBtn');
+        const cfgUploadScriptBtn = this.shadowRoot.getElementById('cfgUploadScriptBtn');
+        const cfgUploadScriptInput = this.shadowRoot.getElementById('cfgUploadScriptInput');
 
         if (configCloseBtn) configCloseBtn.addEventListener('click', () => this.closeConfig());
         if (configCancelBtn) configCancelBtn.addEventListener('click', () => this.closeConfig());
@@ -106,10 +108,12 @@ class ProgramManagement extends HTMLElement {
         if (addParamBtn) addParamBtn.addEventListener('click', () => this.addParamRow());
         if (addSignalBtn) addSignalBtn.addEventListener('click', () => this.addSignalRow());
         if (addSectionBtn) addSectionBtn.addEventListener('click', () => this.addSectionRow());
+        if (cfgApplyPresetBtn) cfgApplyPresetBtn.addEventListener('click', () => this.applyPreset());
         if (cfgApplyTemplateBtn) cfgApplyTemplateBtn.addEventListener('click', () => this.applyTemplate());
         if (cfgUploadJsonBtn) cfgUploadJsonBtn.addEventListener('click', () => cfgUploadJsonInput && cfgUploadJsonInput.click());
         if (cfgUploadJsonInput) cfgUploadJsonInput.addEventListener('change', (e) => this.handleConfigUpload(e));
-        if (cfgDownloadJsonBtn) cfgDownloadJsonBtn.addEventListener('click', () => this.downloadConfigJson());
+        if (cfgUploadScriptBtn) cfgUploadScriptBtn.addEventListener('click', () => cfgUploadScriptInput && cfgUploadScriptInput.click());
+        if (cfgUploadScriptInput) cfgUploadScriptInput.addEventListener('change', (e) => this.handleScriptUpload(e));
         // 双向自动同步：表单 ↔ rawJson
         const configForm = this.shadowRoot.getElementById('configForm');
         if (configForm) {
@@ -173,15 +177,16 @@ class ProgramManagement extends HTMLElement {
 
     normalizeConfig(config, program) {
         const c = config || {};
-        return {
+        const result = {
             programName: c.programName || (program && program.name) || '',
             runtime: c.runtime || { preRunScript: '', simulinkModel: '', stopTime: 30, fixedStep: '' },
-            setupScript: c.setupScript || null,
             parameters: c.parameters || [],
             derivedVars: c.derivedVars || [],
             signals: c.signals || [],
             ui: c.ui || { title: '', layout: 'tabs', sections: [], extension: { enabled: false, mode: 'slot', entry: '', slot: '' } }
         };
+        if (c.template) result.template = c.template;
+        return result;
     }
 
     async openConfig(name, version, projectName) {
@@ -190,9 +195,9 @@ class ProgramManagement extends HTMLElement {
         this.configProjectName = projectName || this.getProjectName();
         const nameEl = this.shadowRoot.getElementById('configProgramName');
         if (nameEl) nameEl.textContent = name;
-        // 加载可用插件列表（填充下拉框）
+        // 加载可用插件列表、预置配置列表、页面模板列表
         await this.loadPluginOptions();
-        // 加载配置模板列表（填充下拉框）
+        await this.loadPresetOptions();
         await this.loadTemplateOptions();
         let config = {};
         try {
@@ -203,11 +208,120 @@ class ProgramManagement extends HTMLElement {
             }
         } catch (e) { config = {}; }
         this.editingConfig = this.normalizeConfig(config, { name });
+        // 如果有 template 引用且没有内联 ui，加载 template 的 ui 填充到表单
+        if (this.editingConfig.template && (!this.editingConfig.ui || !this.editingConfig.ui.title)) {
+            try {
+                const tplUrl = window.AppConfig.getApiUrl('program', 'templates') + '/' + encodeURIComponent(this.editingConfig.template);
+                const tplResult = await window.AppConfig.request(tplUrl, { method: 'GET' });
+                if (tplResult && (tplResult.success || tplResult.code === 200) && tplResult.data) {
+                    const tpl = typeof tplResult.data === 'string' ? JSON.parse(tplResult.data) : tplResult.data;
+                    if (!this.editingConfig.ui || !this.editingConfig.ui.title) {
+                        this.editingConfig.ui = tpl.ui || tpl;
+                    }
+                }
+            } catch (te) { console.warn('加载页面模板失败:', te); }
+        }
         this.renderConfigForm(this.editingConfig);
+        // 回显 template 下拉
+        const tplSelect = this.shadowRoot.getElementById('cfgTemplateSelect');
+        if (tplSelect && this.editingConfig.template) tplSelect.value = this.editingConfig.template;
+        // 加载 setupScript（独立字段）
+        await this.loadSetupScript(name, version);
         const modal = this.shadowRoot.getElementById('configModal');
         if (modal) modal.classList.remove('hidden');
     }
 
+    /** 加载预置配置列表，填充下拉框 */
+    async loadPresetOptions() {
+        const select = this.shadowRoot.getElementById('cfgPresetSelect');
+        if (!select) return;
+        try {
+            const result = await window.AppConfig.get('program', 'config-templates');
+            const presets = (result && (result.success || result.code === 200) && Array.isArray(result.data)) ? result.data : [];
+            select.innerHTML = '<option value="">选择预置配置...</option>' +
+                presets.map(t => `<option value="${this.esc(t.id)}">${this.esc(t.name || t.id)}</option>`).join('');
+            if (this.configProgramName) select.value = this.configProgramName;
+        } catch (e) {
+            console.warn('加载预置配置列表失败:', e);
+        }
+    }
+
+    /** 加载 setupScript（独立字段） */
+    async loadSetupScript(name, version) {
+        try {
+            const pn = this.configProjectName;
+            const result = await window.AppConfig.get('program', 'setup-script', { name, version, ...(pn ? { projectName: pn } : {}) });
+            if (result && (result.success || result.code === 200) && result.data) {
+                const el = this.shadowRoot.getElementById('cfgSetupScript');
+                if (el) el.value = result.data;
+            }
+        } catch (e) {
+            console.warn('加载脚本失败:', e);
+        }
+    }
+
+    /** 加载选中的预置配置（含脚本） */
+    async applyPreset() {
+        const select = this.shadowRoot.getElementById('cfgPresetSelect');
+        if (!select || !select.value) {
+            if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('请先选择预置配置', 'warning');
+            return;
+        }
+        const id = select.value;
+        try {
+            // 加载配置 JSON
+            const url = window.AppConfig.getApiUrl('program', 'config-templates') + '/' + encodeURIComponent(id);
+            const result = await window.AppConfig.request(url, { method: 'GET' });
+            if (result && (result.success || result.code === 200) && result.data) {
+                const config = typeof result.data === 'string' ? JSON.parse(result.data) : result.data;
+                this.editingConfig = this.normalizeConfig(config, { name: this.configProgramName });
+                // 如果有 template 引用且 ui 为空，加载 template 的 ui 填充到表单
+                const uiEmpty = !this.editingConfig.ui || (!this.editingConfig.ui.title && (!this.editingConfig.ui.sections || this.editingConfig.ui.sections.length === 0));
+                if (this.editingConfig.template && uiEmpty) {
+                    try {
+                        const tplUrl = window.AppConfig.getApiUrl('program', 'templates') + '/' + encodeURIComponent(this.editingConfig.template);
+                        const tplResult = await window.AppConfig.request(tplUrl, { method: 'GET' });
+                        if (tplResult && (tplResult.success || tplResult.code === 200) && tplResult.data) {
+                            const tpl = typeof tplResult.data === 'string' ? JSON.parse(tplResult.data) : tplResult.data;
+                            this.editingConfig.ui = tpl.ui || tpl;
+                        }
+                    } catch (te) { console.warn('加载页面模板失败:', te); }
+                }
+                this.renderConfigForm(this.editingConfig);
+                // 回显 template 下拉
+                const tplSel = this.shadowRoot.getElementById('cfgTemplateSelect');
+                if (tplSel && this.editingConfig.template) tplSel.value = this.editingConfig.template;
+                // 加载对应的脚本
+                const scriptUrl = window.AppConfig.getApiUrl('program', 'config-templates') + '/' + encodeURIComponent(id) + '/setup-script';
+                const scriptResult = await window.AppConfig.request(scriptUrl, { method: 'GET' });
+                if (scriptResult && (scriptResult.success || scriptResult.code === 200) && scriptResult.data) {
+                    const el = this.shadowRoot.getElementById('cfgSetupScript');
+                    if (el) el.value = scriptResult.data;
+                }
+                if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('预置配置已加载', 'success');
+            } else {
+                throw new Error(result.message || '加载失败');
+            }
+        } catch (e) {
+            if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('加载预置配置失败: ' + e.message, 'error');
+        }
+    }
+
+    /** 上传 .m 文件，解析到脚本文本框 */
+    handleScriptUpload(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+            const el = this.shadowRoot.getElementById('cfgSetupScript');
+            if (el) el.value = reader.result;
+            if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('脚本已加载: ' + file.name, 'success');
+        };
+        reader.readAsText(file);
+        e.target.value = '';
+    }
+
+    /** 下载脚本为 .m 文件 */
     /** 加载插件列表，填充 cfgExtEntry 下拉框 */
     async loadPluginOptions() {
         const select = this.shadowRoot.getElementById('cfgExtEntry');
@@ -224,42 +338,39 @@ class ProgramManagement extends HTMLElement {
         }
     }
 
-    /** 加载配置模板列表，填充下拉框 */
+    /** 加载页面模板列表，填充下拉框 */
     async loadTemplateOptions() {
         const select = this.shadowRoot.getElementById('cfgTemplateSelect');
         if (!select) return;
         try {
-            const result = await window.AppConfig.get('program', 'config-templates');
+            const result = await window.AppConfig.get('program', 'templates');
             const templates = (result && (result.success || result.code === 200) && Array.isArray(result.data)) ? result.data : [];
-            select.innerHTML = '<option value="">选择模板...</option>' +
+            select.innerHTML = '<option value="">无（内联UI）</option>' +
                 templates.map(t => `<option value="${this.esc(t.id)}">${this.esc(t.name || t.id)}</option>`).join('');
+            // 回显当前 template
+            if (this.editingConfig && this.editingConfig.template) select.value = this.editingConfig.template;
         } catch (e) {
-            console.warn('加载配置模板列表失败:', e);
+            console.warn('加载页面模板列表失败:', e);
         }
     }
 
-    /** 应用选中的配置模板 */
+    /** 应用选中的页面模板（设置 template 字段） */
     async applyTemplate() {
         const select = this.shadowRoot.getElementById('cfgTemplateSelect');
-        if (!select || !select.value) {
+        if (!select) {
             if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('请先选择模板', 'warning');
             return;
         }
         const id = select.value;
-        try {
-            const url = window.AppConfig.getApiUrl('program', 'config-templates') + '/' + encodeURIComponent(id);
-            const result = await window.AppConfig.request(url, { method: 'GET' });
-            if (result && (result.success || result.code === 200) && result.data) {
-                const config = typeof result.data === 'string' ? JSON.parse(result.data) : result.data;
-                this.editingConfig = this.normalizeConfig(config, { name: this.configProgramName });
-                this.renderConfigForm(this.editingConfig);
-                if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('模板已应用', 'success');
-            } else {
-                throw new Error(result.message || '加载模板失败');
-            }
-        } catch (e) {
-            if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('加载模板失败: ' + e.message, 'error');
+        if (!id) {
+            // 清除 template
+            if (this.editingConfig) delete this.editingConfig.template;
+            if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('已清除模板引用', 'info');
+            return;
         }
+        // 设置 template 字段
+        if (this.editingConfig) this.editingConfig.template = id;
+        if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('已引用模板: ' + id, 'success');
     }
 
     closeConfig() {
@@ -277,7 +388,7 @@ class ProgramManagement extends HTMLElement {
         set('cfgSimulinkModel', rt.simulinkModel);
         set('cfgStopTime', rt.stopTime);
         set('cfgFixedStep', rt.fixedStep);
-        set('cfgSetupScript', config.setupScript);
+        // setupScript 是独立字段，由 loadSetupScript 单独加载
         const ui = config.ui || {};
         set('cfgUiTitle', ui.title);
         const layoutEl = this.shadowRoot.getElementById('cfgUiLayout');
@@ -409,7 +520,6 @@ class ProgramManagement extends HTMLElement {
             stopTime: num('cfgStopTime', 30),
             fixedStep: val('cfgFixedStep')
         };
-        const setupScript = val('cfgSetupScript') || null;
         const parameters = [];
         this.shadowRoot.querySelectorAll('#paramConfigList .config-row').forEach(row => {
             parameters.push({
@@ -458,7 +568,7 @@ class ProgramManagement extends HTMLElement {
             slot: val('cfgExtSlot')
         };
         const ui = { title: val('cfgUiTitle'), layout: val('cfgUiLayout') || 'tabs', sections, extension: ext };
-        return { ...this.editingConfig, runtime, setupScript, parameters, signals, ui };
+        return { ...this.editingConfig, runtime, parameters, signals, ui };
     }
 
     /**
@@ -520,17 +630,6 @@ class ProgramManagement extends HTMLElement {
         reader.readAsText(file);
     }
 
-    downloadConfigJson() {
-        const config = this.collectConfig(false);
-        const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `program-config-${this.configProgramName || 'untitled'}.json`;
-        a.click();
-        URL.revokeObjectURL(url);
-    }
-
     async saveConfig() {
         // 从可视化表单收集配置（包含插件扩展字段）
         let config = this.collectConfig(false);
@@ -546,20 +645,34 @@ class ProgramManagement extends HTMLElement {
                 return;
             }
         }
+        // 保留 template 字段
+        const tplSelect = this.shadowRoot.getElementById('cfgTemplateSelect');
+        if (tplSelect && tplSelect.value) config.template = tplSelect.value;
+        else delete config.template;
         try {
             const pn = this.configProjectName || this.getProjectName();
+            // 1. 保存配置 JSON
             const url = window.AppConfig.getApiUrl('program', 'config') + '?name=' + encodeURIComponent(this.configProgramName) + '&version=' + encodeURIComponent(this.configProgramVersion) + (pn ? '&projectName=' + encodeURIComponent(pn) : '');
             const result = await window.AppConfig.request(url, {
                 method: 'PUT',
                 body: JSON.stringify(config)
             });
-            if (result && (result.success || result.code === 200)) {
-                if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('配置已保存', 'success');
-                this.closeConfig();
-                this.loadPrograms();
-            } else {
+            if (!(result && (result.success || result.code === 200))) {
                 throw new Error(result.message || '保存失败');
             }
+            // 2. 保存 setupScript（独立字段）
+            const scriptEl = this.shadowRoot.getElementById('cfgSetupScript');
+            if (scriptEl) {
+                const scriptUrl = window.AppConfig.getApiUrl('program', 'setup-script') + '?name=' + encodeURIComponent(this.configProgramName) + '&version=' + encodeURIComponent(this.configProgramVersion) + (pn ? '&projectName=' + encodeURIComponent(pn) : '');
+                await window.AppConfig.request(scriptUrl, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'text/plain' },
+                    body: scriptEl.value
+                });
+            }
+            if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('配置已保存', 'success');
+            this.closeConfig();
+            this.loadPrograms();
         } catch (e) {
             console.error('保存配置失败:', e);
             if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('保存配置失败: ' + e.message, 'error');
@@ -879,19 +992,36 @@ class ProgramManagement extends HTMLElement {
 
     async downloadProgram(name, version, projectName) {
         try {
-            // 仅传 name/version/projectName；文件名由后端按原始上传文件名(含扩展名)返回，
-            // 确保下载的包与原始上传字节一致，再上传时能被正确解析。
+            // 1. 下载源码包
             const downloadData = {
                 name: name,
                 version: version,
                 ...(projectName ? { projectName: projectName } : {})
             };
-            const result = await window.AppConfig.download('program', 'download', downloadData, null, true);
-            if (result.success) {
-                if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('下载成功', 'success');
-            } else {
-                throw new Error(result.message || '下载失败');
+            await window.AppConfig.download('program', 'download', downloadData, null, true);
+            // 2. 下载配置 JSON
+            const pn = projectName || this.getProjectName();
+            const cfgResult = await window.AppConfig.get('program', 'config', { name, version, ...(pn ? { projectName: pn } : {}) });
+            if (cfgResult && (cfgResult.success || cfgResult.code === 200) && cfgResult.data) {
+                const cfgData = typeof cfgResult.data === 'string' ? cfgResult.data : JSON.stringify(cfgResult.data, null, 2);
+                const cfgBlob = new Blob([cfgData], { type: 'application/json' });
+                const cfgA = document.createElement('a');
+                cfgA.href = URL.createObjectURL(cfgBlob);
+                cfgA.download = 'config.json';
+                cfgA.click();
+                URL.revokeObjectURL(cfgA.href);
             }
+            // 3. 下载脚本
+            const scriptResult = await window.AppConfig.get('program', 'setup-script', { name, version, ...(pn ? { projectName: pn } : {}) });
+            if (scriptResult && (scriptResult.success || scriptResult.code === 200) && scriptResult.data) {
+                const scriptBlob = new Blob([scriptResult.data], { type: 'text/plain' });
+                const scriptA = document.createElement('a');
+                scriptA.href = URL.createObjectURL(scriptBlob);
+                scriptA.download = 'dmg_setup.m';
+                scriptA.click();
+                URL.revokeObjectURL(scriptA.href);
+            }
+            if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('下载成功', 'success');
         } catch (e) {
             console.error('下载失败:', e);
             if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('下载失败: ' + e.message, 'error');

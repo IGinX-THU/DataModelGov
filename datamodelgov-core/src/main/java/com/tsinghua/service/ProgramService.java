@@ -227,6 +227,13 @@ public class ProgramService {
                         dto.setConfigJson((String) value);
                     }
                     break;
+                case META_PREFIX + "." + "setupScript":
+                    if (value instanceof byte[]) {
+                        dto.setSetupScript(new String((byte[]) value, StandardCharsets.UTF_8));
+                    } else if (value instanceof String) {
+                        dto.setSetupScript((String) value);
+                    }
+                    break;
                 case META_PREFIX + "." + "status":
                     if (value instanceof byte[]) {
                         dto.setStatus(new String((byte[]) value, StandardCharsets.UTF_8));
@@ -458,6 +465,130 @@ public class ProgramService {
         }
     }
 
+    /** 读取 classpath 资源为字符串 */
+    private String readClasspathString(String path) {
+        try {
+            org.springframework.core.io.support.PathMatchingResourcePatternResolver resolver =
+                    new org.springframework.core.io.support.PathMatchingResourcePatternResolver();
+            org.springframework.core.io.Resource res = resolver.getResource("classpath:" + path);
+            if (!res.exists()) return null;
+            try (java.io.InputStream is = res.getInputStream()) {
+                java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+                byte[] buf = new byte[4096];
+                int n;
+                while ((n = is.read(buf)) > 0) out.write(buf, 0, n);
+                return new String(out.toByteArray(), StandardCharsets.UTF_8);
+            }
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * 上传预置程序：从 classpath:programs/<程序名>/ 读取源码包+配置+脚本，存入 IGinX。
+     * configJson 和 setupScript 分别存到两个字段。
+     */
+    public Map<String, Object> uploadPresetProgram(String programName, String version, String projectName) throws Exception {
+        String base = "programs/" + programName + "/";
+        // 1. 找到源码压缩包
+        org.springframework.core.io.support.PathMatchingResourcePatternResolver resolver =
+                new org.springframework.core.io.support.PathMatchingResourcePatternResolver();
+        org.springframework.core.io.Resource[] resources = resolver.getResources("classpath:" + base + "*");
+        String archiveFilename = null;
+        byte[] archiveBytes = null;
+        for (org.springframework.core.io.Resource res : resources) {
+            String filename = res.getFilename();
+            if (filename == null) continue;
+            String lower = filename.toLowerCase();
+            if (lower.endsWith(".zip") || lower.endsWith(".rar") || lower.endsWith(".7z") || lower.endsWith(".tar.gz") || lower.endsWith(".tgz") || lower.endsWith(".tar")) {
+                try (java.io.InputStream is = res.getInputStream()) {
+                    java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+                    byte[] buf = new byte[8192];
+                    int n;
+                    while ((n = is.read(buf)) > 0) out.write(buf, 0, n);
+                    archiveBytes = out.toByteArray();
+                    archiveFilename = filename;
+                    break;
+                }
+            }
+        }
+        if (archiveBytes == null) throw new IllegalArgumentException("预置程序目录下未找到源码压缩包: " + base);
+
+        // 2. 读取 config.json（不内联脚本）
+        String configContent = readClasspathString(base + "config.json");
+
+        // 3. 读取 dmg_setup.m 内容（独立存 setupScript 字段）
+        String setupScriptContent = readClasspathString(base + "dmg_setup.m");
+
+        // 4. 存入 IGinX
+        String programVersion = (version != null && !version.isEmpty()) ? version : "1.0";
+        String projName = (projectName != null && !projectName.isEmpty()) ? projectName : ProjectContext.getCurrentProject("unknown");
+        String storagePath = buildStoragePath(projName, programName, programVersion);
+
+        if (dataPermissionService.existTablePrefix(storagePath)) {
+            throw new IllegalArgumentException("仿真程序资产已存在: " + programName + " " + programVersion);
+        }
+
+        // 解压验证
+        File programDir = getProgramDir(projName, programName, programVersion);
+        if (programDir.exists()) FileUtil.deleteDirectory(programDir);
+        programDir.mkdirs();
+        File tempArchive = new File(programDir, archiveFilename);
+        Files.write(tempArchive.toPath(), archiveBytes);
+        try {
+            ArchiveUtil.extractArchive(tempArchive, programDir);
+        } catch (Exception e) {
+            FileUtil.deleteDirectory(programDir);
+            throw new IllegalArgumentException("程序包解压失败: " + e.getMessage(), e);
+        } finally {
+            if (tempArchive.exists()) tempArchive.delete();
+        }
+
+        // 写入 IGinX
+        int totalChunks = (int) Math.ceil((double) archiveBytes.length / CHUNK_SIZE);
+        List<Point> points = new ArrayList<>();
+        for (int i = 0; i < totalChunks; i++) {
+            int start = i * CHUNK_SIZE;
+            int end = Math.min(archiveBytes.length, start + CHUNK_SIZE);
+            byte[] chunk = Arrays.copyOfRange(archiveBytes, start, end);
+            points.add(Point.builder().measurement(storagePath).key(i).binaryValue(chunk).build());
+        }
+        iginxClient.getWriteClient().writePoints(points);
+        String fileMd5 = FileUtil.calculateMD5(archiveBytes);
+
+        // 保存元数据
+        ProgramEntity programMetaDto = new ProgramEntity();
+        programMetaDto.setName(programName);
+        programMetaDto.setVersion(programVersion);
+        programMetaDto.setDescription("预置程序: " + programName);
+        programMetaDto.setFileName(archiveFilename);
+        programMetaDto.setFileSize((long) archiveBytes.length);
+        programMetaDto.setChunkCount(totalChunks);
+        programMetaDto.setStoragePath(storagePath);
+        programMetaDto.setFileMd5(fileMd5);
+        programMetaDto.setProjectName(projName);
+        programMetaDto.setAuthor("system");
+        programMetaDto.setStatus("READY");
+        programMetaDto.setConfigJson(configContent != null ? configContent : buildDefaultConfig(programName).toString());
+        programMetaDto.setSetupScript(setupScriptContent);
+        saveProgramMetadata(programMetaDto);
+        dataPermissionService.saveTablePrefix(storagePath);
+
+        if (projName != null && !projName.isEmpty()) {
+            try { projectService.addToProject(projName, storagePath, "programs"); } catch (Exception e) { log.error("添加到项目失败", e); }
+        }
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("name", programName);
+        result.put("version", programVersion);
+        result.put("fileName", archiveFilename);
+        result.put("fileSize", archiveBytes.length);
+        result.put("chunkCount", totalChunks);
+        result.put("storagePath", storagePath);
+        result.put("fileMd5", fileMd5);
+        log.info("预置程序上传成功: {} {}, 块数: {}", programName, programVersion, totalChunks);
+        return result;
+    }
 
     /**
      * 获取仿真程序配置 JSON（configJson 字段）。若无配置返回骨架。
@@ -471,6 +602,27 @@ public class ProgramService {
             return ProgramConfigMapper.stringify(ProgramConfigMapper.parse(buildDefaultConfig(name).toString()));
         }
         return cfg;
+    }
+
+    /** 获取仿真程序的信号采集脚本内容（setupScript 独立字段） */
+    public String getProgramSetupScript(String name, String version, String projectName) {
+        ProgramEntity entity = queryMeta(name, version, projectName);
+        if (entity == null) return null;
+        return entity.getSetupScript();
+    }
+
+    /** 保存仿真程序的信号采集脚本内容（setupScript 独立字段） */
+    public List<String> saveProgramSetupScript(String name, String version, String projectName, String setupScript) {
+        ProgramEntity entity = queryMeta(name, version, projectName);
+        if (entity == null) return Collections.singletonList("程序不存在");
+        entity.setSetupScript(setupScript);
+        try {
+            saveProgramMetadata(entity);
+        } catch (Exception e) {
+            log.error("保存脚本失败", e);
+            return Collections.singletonList("保存失败: " + e.getMessage());
+        }
+        return Collections.emptyList();
     }
 
     /**
@@ -543,6 +695,7 @@ public class ProgramService {
         points.add(ConvertUtil.createFieldPoint(META_PREFIX, "version", safeVersion, timestamp));
         points.add(ConvertUtil.createFieldPoint(META_PREFIX, "description", entity.getDescription(), timestamp));
         points.add(ConvertUtil.createFieldPoint(META_PREFIX, "configJson", entity.getConfigJson(), timestamp));
+        points.add(ConvertUtil.createFieldPoint(META_PREFIX, "setupScript", entity.getSetupScript(), timestamp));
         points.add(ConvertUtil.createFieldPoint(META_PREFIX, "status", entity.getStatus(), timestamp));
         points.add(ConvertUtil.createFieldPoint(META_PREFIX, "lastError", entity.getLastError(), timestamp));
         points.add(ConvertUtil.createFieldPoint(META_PREFIX, "lastRunTime", entity.getLastRunTime(), timestamp));
@@ -692,14 +845,11 @@ public class ProgramService {
         config.put("programDir", taskDir.getAbsolutePath());
         File cfg = new File(taskDir, "program-config.json");
         mapper.writerWithDefaultPrettyPrinter().writeValue(cfg, config);
-        // 把 setupScript 内容写到 taskDir/dmg_setup.m（runner cd(taskDir) 后调用）
-        JsonNode setupNode = config.get("setupScript");
-        if (setupNode != null && !setupNode.isNull() && setupNode.isTextual()) {
-            String script = setupNode.asText();
-            if (script != null && !script.trim().isEmpty()) {
-                Files.write(new File(taskDir, "dmg_setup.m").toPath(),
-                        script.getBytes(StandardCharsets.UTF_8));
-            }
+        // 从 entity.setupScript（独立字段）写到 taskDir/dmg_setup.m
+        String script = entity.getSetupScript();
+        if (script != null && !script.trim().isEmpty()) {
+            Files.write(new File(taskDir, "dmg_setup.m").toPath(),
+                    script.getBytes(StandardCharsets.UTF_8));
         }
     }
 
@@ -958,9 +1108,9 @@ public class ProgramService {
             double stopTime = StringUtils.hasText(stopTimeParam)
                     ? SimTimeUtil.parse(stopTimeParam, runtime != null ? runtime.getStopTime() : 30)
                     : (runtime != null ? runtime.getStopTime() : 30);
-            // setupScript 内容已由 writeProgramConfig 写到 taskDir/dmg_setup.m
+            // setupScript 内容已由 writeProgramConfig 从 entity.setupScript 写到 taskDir/dmg_setup.m
             // runner cd(taskDir) 后用固定函数名 dmg_setup 调用
-            String setupScript = StringUtils.hasText(pgConfig.getSetupScript()) ? "dmg_setup" : null;
+            String setupScript = StringUtils.hasText(entity.getSetupScript()) ? "dmg_setup" : null;
 
             // 构造参数值映射：优先用前端传入，其次用 config 里的默认值
             Map<String, String> paramValues = new LinkedHashMap<>();

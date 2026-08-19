@@ -7,7 +7,7 @@
                 <input type="text" id="filterProject" placeholder="项目名称" class="filter-input">
                 <button class="filter-btn" id="searchBtn">查询</button>
                 <button class="filter-btn" id="resetFilterBtn">重置</button>
-                <button class="filter-btn primary" id="showUploadBtn">上传程序</button>
+                <button class="filter-btn primary" id="showUploadBtn">新建程序</button>
             </div>
         </div>
 
@@ -48,15 +48,19 @@
             </div>
             <div class="modal-body">
                 <div class="config-toolbar">
-                    <label>配置模板：</label>
-                    <select id="cfgTemplateSelect" style="min-width:160px;">
-                        <option value="">选择模板...</option>
+                    <label>预置配置：</label>
+                    <select id="cfgPresetSelect" style="min-width:140px;">
+                        <option value="">选择预置配置...</option>
                     </select>
-                    <button class="btn btn-sm" id="cfgApplyTemplateBtn" type="button">应用模板</button>
+                    <button class="btn btn-sm" id="cfgApplyPresetBtn" type="button">加载</button>
+                    <span style="width:12px"></span>
+                    <label>页面模板：</label>
+                    <select id="cfgTemplateSelect" style="min-width:140px;">
+                        <option value="">无（内联UI）</option>
+                    </select>
                     <span style="flex:1"></span>
                     <button class="btn btn-sm" id="cfgUploadJsonBtn" type="button">上传 JSON</button>
                     <input type="file" id="cfgUploadJsonInput" accept=".json,application/json" hidden>
-                    <button class="btn btn-sm" id="cfgDownloadJsonBtn" type="button">下载 JSON</button>
                 </div>
                 <div class="config-section">
                     <h4>运行配置</h4>
@@ -78,6 +82,10 @@
                     </div>
                     <div class="form-row">
                         <label>信号采集脚本（MATLAB 源码，function dmg_setup）</label>
+                        <div style="display:flex;gap:8px;margin-bottom:4px;">
+                            <button class="btn btn-sm" id="cfgUploadScriptBtn" type="button">上传 .m 文件</button>
+                            <input type="file" id="cfgUploadScriptInput" accept=".m,text/plain" hidden>
+                        </div>
                         <textarea id="cfgSetupScript" rows="10" placeholder="function dmg_setup()&#10;% 信号采集脚本&#10;...&#10;end" style="width:100%;font-family:monospace;font-size:12px;"></textarea>
                     </div>
                 </div>

@@ -1,0 +1,1211 @@
+{
+  "title": "涡轴发动机多系统仿真与监测平台",
+  "layout": "tabs",
+  "flow": {
+    "topRow": [
+      {
+        "icon": "🖥",
+        "label": "控制系统",
+        "color": "purple"
+      },
+      {
+        "icon": "⛽",
+        "label": "燃油系统",
+        "color": "orange"
+      },
+      {
+        "icon": "⚙",
+        "label": "发动机总体性能",
+        "color": "cyan"
+      },
+      {
+        "icon": "🌬",
+        "label": "空气系统",
+        "color": "blue"
+      }
+    ],
+    "bottomRow": [
+      {
+        "icon": "🛢",
+        "label": "滑油系统",
+        "color": "green"
+      }
+    ]
+  },
+  "leftPanels": [
+    {
+      "type": "runtime",
+      "title": "项目与工况"
+    },
+    {
+      "type": "params",
+      "title": "输入指令"
+    },
+    {
+      "type": "moduleTree",
+      "title": "系统模块",
+      "modules": [
+        {
+          "icon": "🖥",
+          "name": "1 控制系统",
+          "children": [
+            "控制模块",
+            "执行机构",
+            "传感器"
+          ]
+        },
+        {
+          "icon": "⛽",
+          "name": "2 燃油系统",
+          "children": [
+            "燃油供给",
+            "计量与调节",
+            "喷嘴与分配"
+          ]
+        },
+        {
+          "icon": "⚙",
+          "name": "3 发动机总体性能",
+          "children": [
+            "性能计算",
+            "热力循环",
+            "机械传动"
+          ]
+        },
+        {
+          "icon": "🛢",
+          "name": "4 滑油系统",
+          "children": [
+            "供油与回油",
+            "冷却与热管理",
+            "密封与泄漏"
+          ]
+        },
+        {
+          "icon": "🌬",
+          "name": "5 空气系统",
+          "children": [
+            "气动与进气",
+            "燃烧与传热",
+            "排气系统"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "varTree",
+      "title": "变量选择",
+      "varGroups": [
+        {
+          "group": "综合总览",
+          "tab": "综合总览",
+          "vars": [
+            {
+              "name": "NpDem+Np_fbk",
+              "cnName": "动力涡轮转速指令+反馈",
+              "csvs": [
+                "NpDem",
+                "Np_fbk"
+              ],
+              "unit": "rpm"
+            },
+            {
+              "name": "Ng_fbk",
+              "cnName": "燃气涡轮转速反馈",
+              "csvs": [
+                "Ng_fbk"
+              ],
+              "unit": "rpm"
+            },
+            {
+              "name": "T45_fbk",
+              "cnName": "燃气涡轮后温度反馈",
+              "csvs": [
+                "T45_fbk"
+              ],
+              "unit": "K"
+            },
+            {
+              "name": "Mkp_fbk",
+              "cnName": "动力涡轮扭矩反馈",
+              "csvs": [
+                "Mkp_fbk"
+              ],
+              "unit": "N·m"
+            },
+            {
+              "name": "Wfcmd",
+              "cnName": "燃油流量指令",
+              "csvs": [
+                "Wf_cmd",
+                "Wf"
+              ],
+              "unit": "kg/s"
+            }
+          ]
+        },
+        {
+          "group": "控制系统",
+          "tab": "控制",
+          "vars": [
+            {
+              "name": "CLP",
+              "cnName": "综合控制逻辑",
+              "csvs": [
+                "CLP"
+              ],
+              "unit": "-"
+            },
+            {
+              "name": "NpDem+Np_fbk",
+              "cnName": "动力涡轮转速指令+反馈",
+              "csvs": [
+                "NpDem",
+                "Np_fbk"
+              ],
+              "unit": "rpm"
+            },
+            {
+              "name": "NgMax+Ng_fbk",
+              "cnName": "燃气涡轮转速限制+反馈",
+              "csvs": [
+                "NgMax",
+                "Ng_fbk"
+              ],
+              "unit": "rpm"
+            },
+            {
+              "name": "T45Max+T45_fbk",
+              "cnName": "燃气涡轮后温度限制+反馈",
+              "csvs": [
+                "T45Max",
+                "T45_fbk"
+              ],
+              "unit": "K"
+            },
+            {
+              "name": "MkpMax+Mkp_fbk",
+              "cnName": "动力涡轮扭矩限制+反馈",
+              "csvs": [
+                "MkpMax",
+                "Mkp_fbk"
+              ],
+              "unit": "N·m"
+            },
+            {
+              "name": "Ngc",
+              "cnName": "燃气涡轮换算转速",
+              "csvs": [
+                "Ngc"
+              ],
+              "unit": "-"
+            },
+            {
+              "name": "Wfcmd",
+              "cnName": "燃油流量指令",
+              "csvs": [
+                "Wf_cmd",
+                "Wf"
+              ],
+              "unit": "kg/s"
+            }
+          ]
+        },
+        {
+          "group": "发动机总体性能",
+          "tab": "总体性能",
+          "vars": [
+            {
+              "name": "Wf",
+              "cnName": "实际燃油流量",
+              "csvs": [
+                "Wf",
+                "Wf_kgps"
+              ],
+              "unit": "kg/s"
+            },
+            {
+              "name": "Power",
+              "cnName": "负载/输出功率指令",
+              "csvs": [
+                "Power_cmd"
+              ],
+              "unit": "W"
+            },
+            {
+              "name": "HP_PowerExtract",
+              "cnName": "高压轴功率提取保留槽",
+              "csvs": [
+                "HP_PowerExtract"
+              ],
+              "unit": "W"
+            },
+            {
+              "name": "Pt1/P1",
+              "cnName": "发动机进口总压",
+              "csvs": [
+                "Pt1",
+                "P1"
+              ],
+              "unit": "Pa"
+            },
+            {
+              "name": "Tt1/T1",
+              "cnName": "发动机进口总温",
+              "csvs": [
+                "Tt1",
+                "T1"
+              ],
+              "unit": "K"
+            },
+            {
+              "name": "Pt3",
+              "cnName": "压气机出口总压",
+              "csvs": [
+                "Pt3",
+                "Pt3_fbk"
+              ],
+              "unit": "Pa"
+            },
+            {
+              "name": "Tt3",
+              "cnName": "压气机出口总温",
+              "csvs": [
+                "Tt3",
+                "Tt3_fbk"
+              ],
+              "unit": "K"
+            },
+            {
+              "name": "Pt45/P45",
+              "cnName": "燃气涡轮后总压",
+              "csvs": [
+                "Pt45",
+                "P45"
+              ],
+              "unit": "Pa"
+            },
+            {
+              "name": "Tt45/T45",
+              "cnName": "燃气涡轮后总温",
+              "csvs": [
+                "Tt45",
+                "T45",
+                "HPC_T4_out"
+              ],
+              "unit": "K"
+            },
+            {
+              "name": "Pt5/P5",
+              "cnName": "动力涡轮出口总压",
+              "csvs": [
+                "Pt5",
+                "P5"
+              ],
+              "unit": "Pa"
+            },
+            {
+              "name": "Tt5/T5",
+              "cnName": "动力涡轮出口总温",
+              "csvs": [
+                "Tt5",
+                "T5"
+              ],
+              "unit": "K"
+            },
+            {
+              "name": "Np",
+              "cnName": "动力涡轮机械转速",
+              "csvs": [
+                "Np"
+              ],
+              "unit": "rpm"
+            },
+            {
+              "name": "Ng",
+              "cnName": "燃气涡轮机械转速",
+              "csvs": [
+                "Ng"
+              ],
+              "unit": "rpm"
+            },
+            {
+              "name": "SM_HPC",
+              "cnName": "高压压气机裕度类监测量",
+              "csvs": [
+                "SM_HPC"
+              ],
+              "unit": "-"
+            },
+            {
+              "name": "Mkp",
+              "cnName": "动力涡轮扭矩",
+              "csvs": [
+                "Mkp"
+              ],
+              "unit": "N·m"
+            },
+            {
+              "name": "HPC_u6",
+              "cnName": "HPC附加监测量",
+              "csvs": [
+                "HPC_u6"
+              ],
+              "unit": "-"
+            },
+            {
+              "name": "HPT_y16",
+              "cnName": "HPT附加监测量",
+              "csvs": [
+                "HPT_y16"
+              ],
+              "unit": "-"
+            },
+            {
+              "name": "LPT_y16",
+              "cnName": "LPT附加监测量",
+              "csvs": [
+                "LPT_y16"
+              ],
+              "unit": "-"
+            },
+            {
+              "name": "Error",
+              "cnName": "总体收敛误差最大值",
+              "csvs": [
+                "errmax"
+              ],
+              "unit": "-"
+            },
+            {
+              "name": "Pt4/P4",
+              "cnName": "燃烧室出口总压",
+              "csvs": [
+                "HPC_P4_out1",
+                "P4"
+              ],
+              "unit": "Pa"
+            },
+            {
+              "name": "Tt4/T4",
+              "cnName": "燃烧室出口总温",
+              "csvs": [
+                "HPC_T4_out",
+                "T4"
+              ],
+              "unit": "K"
+            }
+          ]
+        },
+        {
+          "group": "燃油模块",
+          "tab": "燃油",
+          "vars": [
+            {
+              "name": "WfProxyCmd+Wf_kgps",
+              "cnName": "计量燃油指令",
+              "csvs": [
+                "WfProxyCmd",
+                "Wf_kgps"
+              ],
+              "unit": "kg/s"
+            },
+            {
+              "name": "Δp_fuel",
+              "cnName": "油压/计量压差",
+              "csvs": [
+                "dp_fuel"
+              ],
+              "unit": "MPa",
+              "io": "input"
+            },
+            {
+              "name": "lock_meter",
+              "cnName": "计量活门闭锁信号",
+              "csvs": [
+                "lock_meter"
+              ],
+              "unit": "0/1",
+              "io": "input"
+            },
+            {
+              "name": "xm_ref_sb",
+              "cnName": "计量位移台架激励",
+              "csvs": [
+                "xm_ref_sb"
+              ],
+              "unit": "m",
+              "io": "input"
+            },
+            {
+              "name": "xm_cmd_m",
+              "cnName": "计量位移联仿指令",
+              "csvs": [
+                "xm_cmd_m"
+              ],
+              "unit": "m",
+              "io": "input"
+            },
+            {
+              "name": "lock_igv",
+              "cnName": "导叶活门闭锁信号",
+              "csvs": [
+                "lock_igv"
+              ],
+              "unit": "0/1",
+              "io": "input"
+            },
+            {
+              "name": "xd_cmd",
+              "cnName": "导叶位移指令",
+              "csvs": [
+                "xd_cmd"
+              ],
+              "unit": "m",
+              "io": "input"
+            },
+            {
+              "name": "shutdown",
+              "cnName": "停车信号",
+              "csvs": [
+                "shutdown"
+              ],
+              "unit": "0/1",
+              "io": "input"
+            },
+            {
+              "name": "xm",
+              "cnName": "计量活门位移输出",
+              "csvs": [
+                "xm"
+              ],
+              "unit": "m",
+              "io": "output"
+            },
+            {
+              "name": "Wf",
+              "cnName": "计量燃油质量流量",
+              "csvs": [
+                "Wf",
+                "Wf_kgps"
+              ],
+              "unit": "kg/s",
+              "io": "output"
+            },
+            {
+              "name": "xd",
+              "cnName": "导叶活门位移输出",
+              "csvs": [
+                "xd"
+              ],
+              "unit": "m",
+              "io": "output"
+            }
+          ]
+        },
+        {
+          "group": "滑油模块",
+          "tab": "滑油",
+          "vars": [
+            {
+              "name": "Ng_fbk",
+              "cnName": "燃气涡轮转速",
+              "csvs": [
+                "Ng_fbk"
+              ],
+              "unit": "rpm",
+              "io": "input"
+            },
+            {
+              "name": "Np_fbk",
+              "cnName": "动力涡轮转速",
+              "csvs": [
+                "Np_fbk"
+              ],
+              "unit": "rpm",
+              "io": "input"
+            },
+            {
+              "name": "AirOil_Teff_C",
+              "cnName": "空滑有效空气温度",
+              "csvs": [
+                "Oil_AirTemp_C"
+              ],
+              "unit": "℃",
+              "io": "input"
+            },
+            {
+              "name": "OilPump_Displacement_cc_rev",
+              "cnName": "滑油泵排量",
+              "csvs": [
+                "OilPump_Displacement_cc_rev"
+              ],
+              "unit": "cc/rev",
+              "io": "input"
+            },
+            {
+              "name": "Wf_kgps",
+              "cnName": "计量燃油量",
+              "csvs": [
+                "Wf_kgps"
+              ],
+              "unit": "kg/s",
+              "io": "input"
+            },
+            {
+              "name": "VentBoundary10",
+              "cnName": "通风边界向量",
+              "csvs": [
+                "VentBoundary10_1",
+                "VentBoundary10_2",
+                "VentBoundary10_3",
+                "VentBoundary10_4",
+                "VentBoundary10_5",
+                "VentBoundary10_6",
+                "VentBoundary10_7",
+                "VentBoundary10_8",
+                "VentBoundary10_9",
+                "VentBoundary10_10"
+              ],
+              "unit": "Pa/K",
+              "io": "input"
+            },
+            {
+              "name": "OilInlet2_C",
+              "cnName": "燃滑/空滑入口油温向量",
+              "csvs": [
+                "OilInlet2_C_1",
+                "OilInlet2_C_2"
+              ],
+              "unit": "℃",
+              "io": "input"
+            },
+            {
+              "name": "Q_BearingA",
+              "cnName": "甲轴承腔换热量",
+              "csvs": [
+                "Q_BearingA"
+              ],
+              "unit": "W",
+              "io": "output"
+            },
+            {
+              "name": "Q_BearingB",
+              "cnName": "乙轴承腔换热量",
+              "csvs": [
+                "Q_BearingB"
+              ],
+              "unit": "W",
+              "io": "output"
+            },
+            {
+              "name": "Q_AirOil",
+              "cnName": "空滑换热量",
+              "csvs": [
+                "Q_AirOil"
+              ],
+              "unit": "W",
+              "io": "output"
+            },
+            {
+              "name": "Q_Accessory",
+              "cnName": "机匣附件换热量",
+              "csvs": [
+                "Q_Accessory"
+              ],
+              "unit": "W",
+              "io": "output"
+            },
+            {
+              "name": "QA",
+              "cnName": "甲轴承腔供油流量",
+              "csvs": [
+                "QA"
+              ],
+              "unit": "m³/s",
+              "io": "output"
+            },
+            {
+              "name": "QB",
+              "cnName": "乙轴承腔供油流量",
+              "csvs": [
+                "QB"
+              ],
+              "unit": "m³/s",
+              "io": "output"
+            },
+            {
+              "name": "PA",
+              "cnName": "甲轴承腔油路压力",
+              "csvs": [
+                "PA"
+              ],
+              "unit": "Pa",
+              "io": "output"
+            },
+            {
+              "name": "PB",
+              "cnName": "乙轴承腔油路压力",
+              "csvs": [
+                "PB"
+              ],
+              "unit": "Pa",
+              "io": "output"
+            },
+            {
+              "name": "ToutA",
+              "cnName": "甲轴承腔出口油温",
+              "csvs": [
+                "ToutA"
+              ],
+              "unit": "K",
+              "io": "output"
+            },
+            {
+              "name": "ToutB",
+              "cnName": "乙轴承腔出口油温",
+              "csvs": [
+                "ToutB"
+              ],
+              "unit": "K",
+              "io": "output"
+            },
+            {
+              "name": "QretA",
+              "cnName": "A腔回油流量",
+              "csvs": [
+                "QretA"
+              ],
+              "unit": "m³/s",
+              "io": "output"
+            },
+            {
+              "name": "QretB",
+              "cnName": "B腔回油流量",
+              "csvs": [
+                "QretB"
+              ],
+              "unit": "m³/s",
+              "io": "output"
+            },
+            {
+              "name": "QgenA",
+              "cnName": "甲轴承腔生热量",
+              "csvs": [
+                "QgenA"
+              ],
+              "unit": "W",
+              "io": "output"
+            },
+            {
+              "name": "QgenB",
+              "cnName": "乙轴承腔生热量",
+              "csvs": [
+                "QgenB"
+              ],
+              "unit": "W",
+              "io": "output"
+            },
+            {
+              "name": "FuelOilCooler_Q",
+              "cnName": "燃滑换热量",
+              "csvs": [
+                "FuelOilCooler_Q"
+              ],
+              "unit": "W",
+              "io": "output"
+            },
+            {
+              "name": "FuelOilCooler_FuelTout",
+              "cnName": "燃滑燃油出口温度",
+              "csvs": [
+                "FuelOilCooler_FuelTout"
+              ],
+              "unit": "K",
+              "io": "output"
+            },
+            {
+              "name": "AirOilCooler_Pin",
+              "cnName": "空滑入口压力",
+              "csvs": [
+                "AirOilCooler_Pin_Pa"
+              ],
+              "unit": "Pa",
+              "io": "output"
+            },
+            {
+              "name": "AirOilCooler_Pout",
+              "cnName": "空滑出口压力",
+              "csvs": [
+                "AirOilCooler_Pout_Pa"
+              ],
+              "unit": "Pa",
+              "io": "output"
+            },
+            {
+              "name": "FuelOilCooler_Pin",
+              "cnName": "燃滑入口压力",
+              "csvs": [
+                "FuelOilCooler_Pin_Pa"
+              ],
+              "unit": "Pa",
+              "io": "output"
+            },
+            {
+              "name": "FuelOilCooler_Pout",
+              "cnName": "燃滑出口压力",
+              "csvs": [
+                "FuelOilCooler_Pout_Pa"
+              ],
+              "unit": "Pa",
+              "io": "output"
+            },
+            {
+              "name": "CavityState8",
+              "cnName": "A/B腔前后压力温度状态",
+              "csvs": [
+                "CavityState8_PaK_1",
+                "CavityState8_PaK_2",
+                "CavityState8_PaK_3",
+                "CavityState8_PaK_4",
+                "CavityState8_PaK_5",
+                "CavityState8_PaK_6",
+                "CavityState8_PaK_7",
+                "CavityState8_PaK_8"
+              ],
+              "unit": "Pa/K",
+              "io": "output"
+            },
+            {
+              "name": "SealLeak4",
+              "cnName": "A前/A后/B前/B后封严泄漏",
+              "csvs": [
+                "SealLeak4_kgps_1",
+                "SealLeak4_kgps_2",
+                "SealLeak4_kgps_3",
+                "SealLeak4_kgps_4"
+              ],
+              "unit": "kg/s",
+              "io": "output"
+            },
+            {
+              "name": "VentFlow3",
+              "cnName": "A腔/B腔/总通风流量",
+              "csvs": [
+                "VentFlow3_kgps_1",
+                "VentFlow3_kgps_2",
+                "VentFlow3_kgps_3"
+              ],
+              "unit": "kg/s",
+              "io": "output"
+            },
+            {
+              "name": "SealDeltaP4",
+              "cnName": "四路封严压差",
+              "csvs": [
+                "SealDeltaP4_Pa_1",
+                "SealDeltaP4_Pa_2",
+                "SealDeltaP4_Pa_3",
+                "SealDeltaP4_Pa_4"
+              ],
+              "unit": "Pa",
+              "io": "output"
+            },
+            {
+              "name": "VentDeltaP2",
+              "cnName": "A/B腔通风压损",
+              "csvs": [
+                "VentDeltaP2_Pa_1",
+                "VentDeltaP2_Pa_2"
+              ],
+              "unit": "Pa",
+              "io": "output"
+            },
+            {
+              "name": "MassResidual2",
+              "cnName": "A/B腔质量残差",
+              "csvs": [
+                "MassResidual2_kgps_1",
+                "MassResidual2_kgps_2"
+              ],
+              "unit": "kg/s",
+              "io": "output"
+            },
+            {
+              "name": "FuelOil2_ToutC_QkW",
+              "cnName": "燃滑出口油温/散热量",
+              "csvs": [
+                "FuelOil2_ToutC_QkW_1",
+                "FuelOil2_ToutC_QkW_2"
+              ],
+              "unit": "℃/kW",
+              "io": "output"
+            },
+            {
+              "name": "AirOil2_ToutC_QkW",
+              "cnName": "空滑出口油温/散热量",
+              "csvs": [
+                "AirOil2_ToutC_QkW_1",
+                "AirOil2_ToutC_QkW_2"
+              ],
+              "unit": "℃/kW",
+              "io": "output"
+            }
+          ]
+        },
+        {
+          "group": "空气模块",
+          "tab": "空气",
+          "vars": [
+            {
+              "name": "AirBoundaryTP16",
+              "cnName": "G01-G08总温总压边界",
+              "csvs": [
+                "AirBoundaryTP16_1",
+                "AirBoundaryTP16_3",
+                "AirBoundaryTP16_5",
+                "AirBoundaryTP16_7",
+                "AirBoundaryTP16_9",
+                "AirBoundaryTP16_11",
+                "AirBoundaryTP16_13",
+                "AirBoundaryTP16_15"
+              ],
+              "unit": "K/Pa"
+            },
+            {
+              "name": "Ng_fbk",
+              "cnName": "燃气涡轮转速",
+              "csvs": [
+                "Ng_fbk"
+              ],
+              "unit": "rpm"
+            },
+            {
+              "name": "Np_fbk",
+              "cnName": "动力涡轮转速",
+              "csvs": [
+                "Np_fbk"
+              ],
+              "unit": "rpm"
+            },
+            {
+              "name": "G01",
+              "cnName": "GT1进气流量",
+              "csvs": [
+                "G01_GT1_IN_W_kgps"
+              ],
+              "unit": "kg/s"
+            },
+            {
+              "name": "G02",
+              "cnName": "GT1出气流量",
+              "csvs": [
+                "G02_GT1_OUT_W_kgps"
+              ],
+              "unit": "kg/s"
+            },
+            {
+              "name": "G03",
+              "cnName": "GT2进气流量",
+              "csvs": [
+                "G03_GT2_IN_W_kgps"
+              ],
+              "unit": "kg/s"
+            },
+            {
+              "name": "G04",
+              "cnName": "GT2出气流量",
+              "csvs": [
+                "G04_GT2_OUT_W_kgps"
+              ],
+              "unit": "kg/s"
+            },
+            {
+              "name": "G05",
+              "cnName": "PT1根部进气流量",
+              "csvs": [
+                "G05_PT1_IN_ROOT_W_kgps"
+              ],
+              "unit": "kg/s"
+            },
+            {
+              "name": "G06",
+              "cnName": "PT1根部出气流量",
+              "csvs": [
+                "G06_PT1_OUT_ROOT_W_kgps"
+              ],
+              "unit": "kg/s"
+            },
+            {
+              "name": "G07",
+              "cnName": "PT2叶尖进气流量",
+              "csvs": [
+                "G07_PT2_IN_TIP_W_kgps"
+              ],
+              "unit": "kg/s"
+            },
+            {
+              "name": "G08",
+              "cnName": "PT2叶尖出气流量",
+              "csvs": [
+                "G08_PT2_OUT_TIP_W_kgps"
+              ],
+              "unit": "kg/s"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "rightPanels": [
+    {
+      "type": "kpi",
+      "title": "当前关键参数",
+      "kpiItems": [
+        {
+          "signal": "Np",
+          "label": "Np",
+          "unit": "rpm",
+          "paramKey": "npCommand"
+        },
+        {
+          "signal": "Ng",
+          "label": "Ng",
+          "unit": "rpm"
+        },
+        {
+          "signal": "T45",
+          "label": "T45",
+          "unit": "K"
+        },
+        {
+          "signal": "Mkp",
+          "label": "Mkp",
+          "unit": "N·m",
+          "paramKey": "loadPower"
+        },
+        {
+          "signal": "Wf",
+          "label": "Wf",
+          "unit": "kg/s"
+        },
+        {
+          "signal": "Error",
+          "label": "Error",
+          "unit": "-"
+        }
+      ]
+    },
+    {
+      "type": "statusTable",
+      "title": "系统状态",
+      "statusRows": [
+        {
+          "icon": "🖥",
+          "name": "控制系统",
+          "csvs": [
+            "CLP",
+            "Np",
+            "Ng",
+            "T45",
+            "Mkp",
+            "Ngc",
+            "Wf_cmd",
+            "NpDem"
+          ],
+          "desc": "信号未接出"
+        },
+        {
+          "icon": "⛽",
+          "name": "燃油系统",
+          "csvs": [
+            "WfProxyCmd",
+            "Wf_kgps",
+            "Wf",
+            "Wf_cmd"
+          ],
+          "desc": "信号未接出"
+        },
+        {
+          "icon": "⚙",
+          "name": "发动机总体性能",
+          "csvs": [
+            "Pt1",
+            "Tt1",
+            "Pt3",
+            "Tt3",
+            "Pt45",
+            "Tt45",
+            "Pt5",
+            "Tt5",
+            "HPC_T4_out",
+            "HPC_P4_out1",
+            "HPC_T5_out1",
+            "Np",
+            "Ng",
+            "Mkp"
+          ],
+          "desc": "信号未接出"
+        },
+        {
+          "icon": "🛢",
+          "name": "滑油系统",
+          "csvs": [
+            "Q_BearingA",
+            "Q_BearingB",
+            "Q_AirOil",
+            "Q_Accessory",
+            "QA",
+            "QB",
+            "PA",
+            "PB",
+            "ToutA",
+            "ToutB",
+            "QretA",
+            "QretB",
+            "QgenA",
+            "QgenB",
+            "FuelOilCooler_Q",
+            "FuelOilCooler_FuelTout",
+            "AirOilCooler_Pin_Pa",
+            "AirOilCooler_Pout_Pa",
+            "FuelOilCooler_Pin_Pa",
+            "FuelOilCooler_Pout_Pa",
+            "CavityState8_PaK_1",
+            "SealLeak4_kgps_1",
+            "VentFlow3_kgps_1",
+            "SealDeltaP4_Pa_1",
+            "VentDeltaP2_Pa_1",
+            "MassResidual2_kgps_1",
+            "FuelOil2_ToutC_QkW_1",
+            "AirOil2_ToutC_QkW_1"
+          ],
+          "desc": "信号未接出"
+        },
+        {
+          "icon": "🌬",
+          "name": "空气系统",
+          "csvs": [
+            "Pt1",
+            "Tt1",
+            "Pt3",
+            "Tt3",
+            "Pt45",
+            "Tt45",
+            "Pt5",
+            "Tt5",
+            "G01_GT1_IN_W_kgps",
+            "G02_GT1_OUT_W_kgps",
+            "G03_GT2_IN_W_kgps",
+            "G04_GT2_OUT_W_kgps",
+            "G05_PT1_IN_ROOT_W_kgps",
+            "G06_PT1_OUT_ROOT_W_kgps",
+            "G07_PT2_IN_TIP_W_kgps",
+            "G08_PT2_OUT_TIP_W_kgps"
+          ],
+          "desc": "信号未接出"
+        },
+        {
+          "icon": "⚖",
+          "name": "单位一致性检查",
+          "csvs": [],
+          "desc": "单位待确认"
+        },
+        {
+          "icon": "🔔",
+          "name": "信号与告警",
+          "csvs": [
+            "HPC_T4_out",
+            "Pt3",
+            "Pt45"
+          ],
+          "desc": "无告警"
+        }
+      ]
+    },
+    {
+      "type": "alertPanel",
+      "title": "告警汇总",
+      "alertRules": [
+        {
+          "signal": "T45",
+          "limitSignal": "T45Max",
+          "unit": "K",
+          "desc": "燃气涡轮后温度超限"
+        },
+        {
+          "signal": "Mkp",
+          "limitSignal": "MkpMax",
+          "unit": "N·m",
+          "desc": "动力涡轮扭矩超限"
+        },
+        {
+          "signal": "Ng",
+          "limitSignal": "NgMax",
+          "unit": "rpm",
+          "desc": "燃气涡轮转速超限"
+        }
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "overview",
+      "title": "综合总览",
+      "type": "charts"
+    },
+    {
+      "id": "performance",
+      "title": "总体性能",
+      "type": "charts"
+    },
+    {
+      "id": "control",
+      "title": "控制",
+      "type": "charts"
+    },
+    {
+      "id": "fuel",
+      "title": "燃油",
+      "type": "charts"
+    },
+    {
+      "id": "oil",
+      "title": "滑油",
+      "type": "charts"
+    },
+    {
+      "id": "air",
+      "title": "空气",
+      "type": "charts"
+    },
+    {
+      "id": "alerts",
+      "title": "信号与告警",
+      "type": "charts",
+      "groups": [
+        {
+          "title": "告警统计",
+          "yMin": 0,
+          "yMax": 5,
+          "series": [
+            {
+              "name": "一级告警",
+              "color": "red"
+            },
+            {
+              "name": "二级告警",
+              "color": "orange"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "extension": {
+    "enabled": false,
+    "mode": "slot",
+    "entry": "",
+    "slot": ""
+  }
+}
