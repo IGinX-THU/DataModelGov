@@ -411,7 +411,8 @@ class ProgramUpload extends HTMLElement {
                     if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('预置程序创建成功: ' + programId, 'success');
                     this.dispatchEvent(new CustomEvent('upload-success', { bubbles: true, composed: true }));
                     this.hide();
-                    if (window.programManagement) window.programManagement.loadPrograms();
+                    const pm = document.getElementById('programManagement');
+                    if (pm && pm.loadPrograms) pm.loadPrograms();
                 } else {
                     throw new Error(result.message || '创建失败');
                 }

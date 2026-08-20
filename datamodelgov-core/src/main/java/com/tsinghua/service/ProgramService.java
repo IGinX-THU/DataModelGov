@@ -74,6 +74,8 @@ public class ProgramService {
     private MatlabEnginePool enginePool;
     // 引擎运行期不可用（如缺少 MATLAB 原生库）时置位，后续任务直接 FAILED
     private volatile boolean engineDisabled = false;
+    // 服务启动时间，用于判断 RUNNING 状态的任务是否为重启前遗留
+    private final long serviceStartTime = System.currentTimeMillis();
     // 仿真执行结果码
     private static final int RUN_OK = 0;
     private static final int RUN_STOPPED = 1;
@@ -567,7 +569,7 @@ public class ProgramService {
         programMetaDto.setStoragePath(storagePath);
         programMetaDto.setFileMd5(fileMd5);
         programMetaDto.setProjectName(projName);
-        programMetaDto.setAuthor("system");
+        programMetaDto.setAuthor(AuthUtil.getCurrentUsername());
         programMetaDto.setStatus("READY");
         programMetaDto.setConfigJson(configContent != null ? configContent : buildDefaultConfig(programName).toString());
         programMetaDto.setSetupScript(setupScriptContent);
@@ -665,6 +667,7 @@ public class ProgramService {
         List<String> errors = ProgramConfigMapper.validate(cfg, false);
         if (!errors.isEmpty()) return errors;
         entity.setConfigJson(configJson);
+        entity.setStatus("READY");
         try {
             saveProgramMetadata(entity);
         } catch (Exception e) {
@@ -801,7 +804,7 @@ public class ProgramService {
         programMetaDto.setFileMd5(fileMd5);
         programMetaDto.setProjectName(projectName);
         programMetaDto.setAuthor(AuthUtil.getCurrentUsername());
-        programMetaDto.setStatus("READY");
+        programMetaDto.setStatus("UNCONFIGURED");
         programMetaDto.setConfigJson(buildDefaultConfig(programName).toString());
         saveProgramMetadata(programMetaDto);
 
@@ -1449,6 +1452,9 @@ public class ProgramService {
         ProgramTaskEntity task = queryLatestTask(name, version, projectName);
         if (task == null) return Result.error("无运行任务记录");
 
+        // 检查是否因服务重启导致任务实际已终止
+        checkRestartedTask(task);
+
         Map<String, Object> data = new HashMap<>();
         data.put("status", task.getStatus());
         data.put("lastError", task.getError());
@@ -1481,6 +1487,9 @@ public class ProgramService {
             } catch (Exception ignored) {}
             return emitter;
         }
+
+        // 检查是否因服务重启导致任务实际已终止
+        checkRestartedTask(task);
 
         LiveDataBuffer buffer = liveDataMap.get(task.getTimestamp());
         if (buffer == null) {
@@ -2094,33 +2103,37 @@ public class ProgramService {
         return kpiParams;
     }
 
+    /**
+     * 检查任务是否因服务重启而实际已终止。
+     * 判断依据：任务创建时间早于服务启动时间（说明是重启前遗留），
+     * 且内存中 engineRunners/runningTasks 都没有该任务。
+     */
+    private boolean checkRestartedTask(ProgramTaskEntity task) {
+        if (task == null) return false;
+        if (!TaskStatus.RUNNING.equals(task.getStatus()) && !TaskStatus.QUEUED.equals(task.getStatus())) {
+            return false;
+        }
+        Long ts = task.getTimestamp();
+        if (ts == null) return false;
+        // 任务创建于本次服务启动之前 → 重启前遗留，进程已不存在
+        if (ts >= serviceStartTime) {
+            // 本次启动后创建的任务，检查内存中是否还在
+            if (engineRunners.get(ts) != null || runningTasks.get(ts) != null) {
+                return false;
+            }
+        }
+        updateTaskStatus(ts, TaskStatus.FAILED, "服务重启，仿真进程已终止", null, null, null);
+        task.setStatus(TaskStatus.FAILED);
+        task.setError("服务重启，仿真进程已终止");
+        return true;
+    }
+
     public Result<Map<String, Object>> results(String name, String version, String projectName) {
         ProgramTaskEntity task = queryLatestTask(name, version, projectName);
         if (task == null) return Result.error("无运行任务记录");
 
-        // 如果状态为运行中，检查进程是否还在
-        if (TaskStatus.RUNNING.equals(task.getStatus())) {
-            Process process = processMap.get(task.getTimestamp());
-            if (process == null) {
-                // 进程不在 map 中：可能是 doRun 线程还在下载/解压/写脚本（尚未 start），
-                // 也可能是 doRun 已结束并清理。两种情况都不应覆盖状态：
-                //   - 前者：进程还没启动，覆盖为"异常终止"是误判
-                //   - 后者：doRun 已更新最终状态，queryLatestTask 会拿到正确状态
-            } else if (!process.isAlive()) {
-                // 进程在 map 中但已退出：doRun 线程可能还在处理（读日志、检查退出码、更新状态）
-                // 等待短暂时间让 doRun 完成 status 更新，避免覆盖真正的错误信息
-                try { Thread.sleep(1500); } catch (InterruptedException ignored) {}
-                task = queryLatestTask(name, version, projectName);
-                if (task != null && TaskStatus.RUNNING.equals(task.getStatus())) {
-                    // 等待后仍为 RUNNING，说明 doRun 线程异常退出或卡死，标记为进程异常终止
-                    updateTaskStatus(task.getTimestamp(), TaskStatus.FAILED, "进程异常终止", null, null, null);
-                    task.setStatus(TaskStatus.FAILED);
-                    task.setError("进程异常终止");
-                    processMap.remove(task.getTimestamp());
-                    runningTasks.remove(task.getTimestamp());
-                }
-            }
-        }
+        // 检查是否因服务重启导致任务实际已终止
+        checkRestartedTask(task);
 
         Map<String, Object> data = new HashMap<>();
         // 检查是否处于暂停状态：pause 端点只设内存 pauseFlags + pause.flag 文件，不更新 IGinX 状态。

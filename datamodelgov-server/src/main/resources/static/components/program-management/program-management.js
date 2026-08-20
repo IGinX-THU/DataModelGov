@@ -68,23 +68,16 @@ class ProgramManagement extends HTMLElement {
         if (tbody) {
             tbody.addEventListener('click', (e) => {
                 const btn = e.target.closest('button');
-                const row = e.target.closest('tr');
                 if (btn) {
+                    if (btn.disabled) return;
                     const name = btn.dataset.name;
                     const version = btn.dataset.version;
                     const projectName = btn.dataset.project;
                     if (!name || !version) return;
-                    if (btn.classList.contains('run-btn')) this.openProgramRun(name, version, projectName);
-                    if (btn.classList.contains('config-btn')) this.openConfig(name, version, projectName);
-                    if (btn.classList.contains('delete-btn')) this.deleteProgram(name, version);
-                    if (btn.classList.contains('download-btn')) this.downloadProgram(name, version, projectName);
-                    return;
-                }
-                if (row) {
-                    const name = row.dataset.name;
-                    const version = row.dataset.version;
-                    const projectName = row.dataset.project;
-                    if (name && version) this.openProgramRun(name, version, projectName);
+                    if (btn.classList.contains('run-btn')) this._withBusy(btn, () => this.openProgramRun(name, version, projectName));
+                    if (btn.classList.contains('config-btn')) this._withBusy(btn, () => this.openConfig(name, version, projectName));
+                    if (btn.classList.contains('delete-btn')) this._withBusy(btn, () => this.deleteProgram(name, version));
+                    if (btn.classList.contains('download-btn')) this._withBusy(btn, () => this.downloadProgram(name, version, projectName));
                 }
             });
         }
@@ -189,7 +182,28 @@ class ProgramManagement extends HTMLElement {
         return result;
     }
 
+    /** 请求期间禁用按钮，防止重复点击 */
+    async _withBusy(btn, fn) {
+        if (btn.disabled) return;
+        btn.disabled = true;
+        try {
+            await fn();
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
     async openConfig(name, version, projectName) {
+        if (this._configOpening) return;
+        this._configOpening = true;
+        try {
+            await this._doOpenConfig(name, version, projectName);
+        } finally {
+            this._configOpening = false;
+        }
+    }
+
+    async _doOpenConfig(name, version, projectName) {
         this.configProgramName = name;
         this.configProgramVersion = version;
         this.configProjectName = projectName || this.getProjectName();
@@ -712,19 +726,21 @@ class ProgramManagement extends HTMLElement {
         emptyHint.hidden = true;
         tbody.innerHTML = this.programs.map(p => {
             const time = p.timestamp ? new Date(p.timestamp).toLocaleString() : '-';
-            const statusClass = p.status === 'RUNNING' ? 'running' : p.status === 'ERROR' ? 'error' : 'ready';
+            const statusClass = p.status === 'RUNNING' ? 'running' : p.status === 'ERROR' ? 'error' : p.status === 'UNCONFIGURED' ? 'unconfigured' : 'ready';
+            const statusText = p.status === 'UNCONFIGURED' ? '未配置' : (p.status || 'READY');
             return `
                 <tr data-name="${p.name || ''}" data-version="${p.version || ''}" data-project="${p.projectName || ''}">
                     <td>${p.name || '-'}</td>
                     <td>${p.version || '-'}</td>
                     <td>${p.projectName || '-'}</td>
                     <td>${p.description || '-'}</td>
+                    <td>${p.author || '-'}</td>
                     <td>${time}</td>
-                    <td><span class="status ${statusClass}">${p.status || 'READY'}</span></td>
+                    <td><span class="status ${statusClass}">${statusText}</span></td>
                     <td class="actions">
-                        <button class="run-btn filter-btn outline" data-name="${p.name || ''}" data-version="${p.version || ''}" data-project="${p.projectName || ''}">运行</button>
                         <button class="config-btn filter-btn outline" data-name="${p.name || ''}" data-version="${p.version || ''}" data-project="${p.projectName || ''}">配置</button>
                         <button class="download-btn filter-btn outline" data-name="${p.name || ''}" data-version="${p.version || ''}" data-project="${p.projectName || ''}">下载</button>
+                        <button class="run-btn filter-btn outline" data-name="${p.name || ''}" data-version="${p.version || ''}" data-project="${p.projectName || ''}">运行</button>
                         <button class="delete-btn filter-btn outline" data-name="${p.name || ''}" data-version="${p.version || ''}" data-project="${p.projectName || ''}">删除</button>
                     </td>
                 </tr>
@@ -1013,13 +1029,18 @@ class ProgramManagement extends HTMLElement {
             }
             // 3. 下载脚本
             const scriptResult = await window.AppConfig.get('program', 'setup-script', { name, version, ...(pn ? { projectName: pn } : {}) });
-            if (scriptResult && (scriptResult.success || scriptResult.code === 200) && scriptResult.data) {
-                const scriptBlob = new Blob([scriptResult.data], { type: 'text/plain' });
-                const scriptA = document.createElement('a');
-                scriptA.href = URL.createObjectURL(scriptBlob);
-                scriptA.download = 'dmg_setup.m';
-                scriptA.click();
-                URL.revokeObjectURL(scriptA.href);
+            if (scriptResult && (scriptResult.success || scriptResult.code === 200)) {
+                const scriptData = scriptResult.data || '';
+                if (scriptData) {
+                    const scriptBlob = new Blob([scriptData], { type: 'text/plain' });
+                    const scriptA = document.createElement('a');
+                    scriptA.href = URL.createObjectURL(scriptBlob);
+                    scriptA.download = 'dmg_setup.m';
+                    scriptA.click();
+                    URL.revokeObjectURL(scriptA.href);
+                } else {
+                    if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('该程序未配置 MATLAB 脚本', 'info');
+                }
             }
             if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('下载成功', 'success');
         } catch (e) {

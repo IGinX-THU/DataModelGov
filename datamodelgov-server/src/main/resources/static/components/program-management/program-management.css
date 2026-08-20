@@ -16,6 +16,7 @@
     font-size: 12px;
 }
 .status.ready { background: #f6ffed; color: #389e0d; }
+.status.unconfigured { background: #fffbe6; color: #d48806; }
 .status.running { background: #e6f7ff; color: #096dd9; }
 .status.error { background: #fff1f0; color: #cf1322; }
 
@@ -38,6 +39,7 @@
 
 .actions { white-space: nowrap; }
 .actions .filter-btn { margin-right: 4px; margin-bottom: 2px; }
+.actions .filter-btn:disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
 
 .hidden { display: none !important; }
 

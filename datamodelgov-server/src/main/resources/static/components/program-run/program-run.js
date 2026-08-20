@@ -1131,15 +1131,17 @@ class ProgramRun extends HTMLElement {
 
   _doShow() {
 
-    // 加载程序配置和文件列表（只加载一次，防止重复请求）
+    // 加载程序配置和文件列表（每次显示都重新加载配置，确保拿到最新配置）
     const name = this.getAttribute('data-name');
     const version = this.getAttribute('data-version');
-    if (name && version && !this._dataLoaded) {
-      this._dataLoaded = true;
+    if (name && version) {
       this._configLoading = true;
       this.loadProgramConfig(name, version).finally(() => { this._configLoading = false; });
-      // 同时加载程序文件列表（模型文件下拉框等）
-      this.loadProgramFiles(name, version);
+      const key = name + '@' + version;
+      if (this._loadedKey !== key) {
+        this._loadedKey = key;
+        this.loadProgramFiles(name, version);
+      }
     }
 
     // 组件可能在 display:none 时初始化（connectedCallback 在隐藏状态下执行），
