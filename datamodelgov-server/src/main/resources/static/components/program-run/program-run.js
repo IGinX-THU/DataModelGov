@@ -1733,9 +1733,13 @@ class ProgramRun extends HTMLElement {
       this.runError = data.lastError;
     }
 
-    // MATLAB 日志行 → footer 左侧实时显示
-    if (data.logLine && this.footerLog) {
-      this.footerLog.textContent = data.logLine;
+    // MATLAB 日志行 → footer 左侧实时显示 + loading overlay 显示
+    if (data.logLine) {
+      if (this.footerLog) this.footerLog.textContent = data.logLine;
+      const overlayLog = this.shadowRoot.getElementById('runLoadingLog');
+      if (overlayLog && !overlayLog.hidden) {
+        overlayLog.textContent = data.logLine;
+      }
     }
 
     // 收到 headers 时初始化
@@ -1854,44 +1858,7 @@ class ProgramRun extends HTMLElement {
 
   }
 
-  /** 重建图表 DOM 和 ECharts 实例（不触发 applyCsvToCharts，避免递归）*/
-  _rebuildChartsFromConfig() {
-    const cfgs = this.currentConfigs;
-    if (!cfgs || cfgs.length === 0) return;
-    this.charts.forEach(c => c.dispose());
-    this.charts = [];
-    this.currentDatas = cfgs.map(buildChartData);
-    this.chartGrid.innerHTML = '';
-    this.chartGrid.classList.toggle('single', cfgs.length === 1);
-    cfgs.forEach((cfg, i) => {
-      const card = document.createElement('div');
-      card.className = 'chart-card';
-      const head = document.createElement('div');
-      head.className = 'chart-head';
-      const title = document.createElement('span');
-      title.className = 'chart-title';
-      title.textContent = cfg.title;
-      head.appendChild(title);
-      card.appendChild(head);
-      const dom = document.createElement('div');
-      dom.className = 'chart-dom';
-      card.appendChild(dom);
-      this.chartGrid.appendChild(card);
-      buildLegend(card, cfg);
-      const chart = this.echarts.init(dom, null, { renderer: 'canvas', backgroundColor: 'transparent' });
-      chart.setOption(buildEChartsOptions(this.currentDatas[i], this.currentTime, this.runStatus, this.duration), true);
-      this.charts.push(chart);
-    });
-    requestAnimationFrame(() => this.charts.forEach(c => c && c.resize()));
-  }
-
   applyCsvToCharts(headers, rows) {
-
-    // 如果图表尚未创建（STARTING 时跳过了 ECharts 初始化），先重建图表 DOM 和 ECharts 实例
-    if (this.charts.length === 0 && this.currentConfigs.length > 0) {
-      this._rebuildChartsFromConfig();
-      if (this.charts.length === 0) return;
-    }
 
     const colIdx = {};
 
@@ -2397,15 +2364,16 @@ class ProgramRun extends HTMLElement {
 
     }
 
-    // STARTING 时右侧"系统状态"和"告警汇总"面板显示 loading 效果
-    const rightPanels = this.shadowRoot.querySelectorAll('.right .panel');
-    const isLoading = status === 'STARTING';
-    rightPanels.forEach(p => {
-      const titleEl = p.querySelector('.panel-title') || p.querySelector('.alert-title');
-      if (titleEl && (titleEl.textContent.includes('系统状态') || titleEl.textContent.includes('告警'))) {
-        p.classList.toggle('panel-loading', isLoading);
+    // STARTING/QUEUED 时显示整体 loading 覆盖层
+    const overlay = this.shadowRoot.getElementById('runLoadingOverlay');
+    const overlayText = this.shadowRoot.getElementById('runLoadingText');
+    if (overlay) {
+      const showOverlay = status === 'STARTING' || status === 'QUEUED';
+      overlay.hidden = !showOverlay;
+      if (showOverlay && overlayText) {
+        overlayText.textContent = status === 'QUEUED' ? '排队等待中，前面有任务正在运行...' : '仿真启动中，请稍后...';
       }
-    });
+    }
 
     if (this.runBtn && this.stopBtn) {
 
@@ -3539,13 +3507,11 @@ class ProgramRun extends HTMLElement {
     this.charts = [];
     this.currentConfigs = cfgs;
     this.currentDatas = cfgs.map(buildChartData);
-    const hasData = this.csvHeaders && this.csvRows;
-    if (hasData) {
+    if (this.csvHeaders && this.csvRows) {
       this.applyCsvToCharts(this.csvHeaders, this.csvRows);
     }
     this.chartGrid.innerHTML = '';
     this.chartGrid.classList.toggle('single', cfgs.length === 1);
-    const showLoading = !hasData && (this.runStatus === 'STARTING' || this.runStatus === 'QUEUED');
     cfgs.forEach((cfg, i) => {
       const card = document.createElement('div');
       card.className = 'chart-card';
@@ -3558,21 +3524,14 @@ class ProgramRun extends HTMLElement {
       card.appendChild(head);
       const dom = document.createElement('div');
       dom.className = 'chart-dom';
-      if (showLoading) {
-        dom.innerHTML = '<div class="chart-loading"><div class="chart-loading-spinner"></div><div class="chart-loading-text">'
-          + (this.runStatus === 'QUEUED' ? '排队等待中...' : '仿真启动中，请稍后...')
-          + '</div></div>';
-      }
       card.appendChild(dom);
       this.chartGrid.appendChild(card);
-      if (!showLoading) buildLegend(card, cfg);
-      if (!showLoading) {
-        const chart = this.echarts.init(dom, null, { renderer: 'canvas', backgroundColor: 'transparent' });
-        chart.setOption(buildEChartsOptions(this.currentDatas[i], this.currentTime, this.runStatus, this.duration), true);
-        this.charts.push(chart);
-      }
+      buildLegend(card, cfg);
+      const chart = this.echarts.init(dom, null, { renderer: 'canvas', backgroundColor: 'transparent' });
+      chart.setOption(buildEChartsOptions(this.currentDatas[i], this.currentTime, this.runStatus, this.duration), true);
+      this.charts.push(chart);
     });
-    if (!showLoading) requestAnimationFrame(() => this.charts.forEach(c => c && c.resize()));
+    requestAnimationFrame(() => this.charts.forEach(c => c && c.resize()));
   }
 
   /** 渲染读数项（readouts section）*/
