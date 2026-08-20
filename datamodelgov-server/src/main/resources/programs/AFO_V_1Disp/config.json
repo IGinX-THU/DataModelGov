@@ -12,7 +12,7 @@
       "label": "NP指令",
       "unit": "rpm",
       "type": "number",
-      "defaultValue": "21000",
+      "defaultValue": "19000",
       "matlabVar": "NpReferenceRpm",
       "widget": "input"
     },
@@ -21,7 +21,7 @@
       "label": "负载功率",
       "unit": "kW",
       "type": "number",
-      "defaultValue": "1000",
+      "defaultValue": "850",
       "matlabVar": "MkpReferenceNm",
       "widget": "input"
     }
