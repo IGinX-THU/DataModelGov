@@ -117,7 +117,7 @@
             <artifactId>matlab-engine</artifactId>
             <version>R2019b</version>
             <scope>system</scope>
-            <systemPath>${project.basedir}/src/main/resources/libs/matlab-engine-R2019b.jar</systemPath>
+            <systemPath>${project.basedir}/src/main/resources/libs/engine.jar</systemPath>
         </dependency>
 
         <!-- JNA：进程内调用 Win32 SetDllDirectory / SetEnvironmentVariable，

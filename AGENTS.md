@@ -16,10 +16,12 @@ mvn -o package -DskipTests                             # 打包（server 模块�
 `ProgramService.doRun` → `MatlabSimulationRunner`（`com.tsinghua.matlab`，非 Spring bean，
 每个仿真任务 new 一个，持有引擎会话，用完 `close()`）。
 
-- 编译期依赖 `datamodelgov-core/src/main/resources/libs/matlab-engine-R2019b.jar`（从
-  `<MATLAB>/extern/engines/java/jar/engine.jar` 拷来，随项目提供，构建机不装 MATLAB 也能编译）。
+- 编译期依赖 `datamodelgov-core/src/main/resources/libs/engine.jar`（直接从
+  `<MATLAB>/extern/engines/java/jar/engine.jar` 拷来，保留原文件名，随项目提供，构建机不装 MATLAB 也能编译）。
   该目录已在 core 的 `<resources>` 中 `exclude`，避免被当作资源重复打进 classes。
-  换 MATLAB 版本时替换该 jar 并同步改 `datamodelgov-core/pom.xml` 里的 `systemPath`。
+  换 MATLAB 版本时只需用新版本的 `engine.jar` 覆盖该文件即可，`pom.xml` 里的 `systemPath` 不用改。
+  打包后该 jar 位于 `datamodelgov-server-1.0.0-standalone.zip` 解压目录的 `lib/` 下，
+  部署换版本时直接替换 `lib/engine.jar` 即可。
   `spring-boot-maven-plugin` 已开启 `includeSystemScope`，打包会带上该 jar。
 - **运行期原生库加载**：服务启动后由 `MatlabNativeLibrary.prepare(...)` 用 JNA 调用
   Win32 `SetDllDirectory` / `SetEnvironmentVariable`，把 `<MATLAB>/bin/win64` 注入到

@@ -1854,9 +1854,44 @@ class ProgramRun extends HTMLElement {
 
   }
 
-
+  /** 重建图表 DOM 和 ECharts 实例（不触发 applyCsvToCharts，避免递归）*/
+  _rebuildChartsFromConfig() {
+    const cfgs = this.currentConfigs;
+    if (!cfgs || cfgs.length === 0) return;
+    this.charts.forEach(c => c.dispose());
+    this.charts = [];
+    this.currentDatas = cfgs.map(buildChartData);
+    this.chartGrid.innerHTML = '';
+    this.chartGrid.classList.toggle('single', cfgs.length === 1);
+    cfgs.forEach((cfg, i) => {
+      const card = document.createElement('div');
+      card.className = 'chart-card';
+      const head = document.createElement('div');
+      head.className = 'chart-head';
+      const title = document.createElement('span');
+      title.className = 'chart-title';
+      title.textContent = cfg.title;
+      head.appendChild(title);
+      card.appendChild(head);
+      const dom = document.createElement('div');
+      dom.className = 'chart-dom';
+      card.appendChild(dom);
+      this.chartGrid.appendChild(card);
+      buildLegend(card, cfg);
+      const chart = this.echarts.init(dom, null, { renderer: 'canvas', backgroundColor: 'transparent' });
+      chart.setOption(buildEChartsOptions(this.currentDatas[i], this.currentTime, this.runStatus, this.duration), true);
+      this.charts.push(chart);
+    });
+    requestAnimationFrame(() => this.charts.forEach(c => c && c.resize()));
+  }
 
   applyCsvToCharts(headers, rows) {
+
+    // 如果图表尚未创建（STARTING 时跳过了 ECharts 初始化），先重建图表 DOM 和 ECharts 实例
+    if (this.charts.length === 0 && this.currentConfigs.length > 0) {
+      this._rebuildChartsFromConfig();
+      if (this.charts.length === 0) return;
+    }
 
     const colIdx = {};
 
@@ -3504,11 +3539,13 @@ class ProgramRun extends HTMLElement {
     this.charts = [];
     this.currentConfigs = cfgs;
     this.currentDatas = cfgs.map(buildChartData);
-    if (this.csvHeaders && this.csvRows) {
+    const hasData = this.csvHeaders && this.csvRows;
+    if (hasData) {
       this.applyCsvToCharts(this.csvHeaders, this.csvRows);
     }
     this.chartGrid.innerHTML = '';
     this.chartGrid.classList.toggle('single', cfgs.length === 1);
+    const showLoading = !hasData && (this.runStatus === 'STARTING' || this.runStatus === 'QUEUED');
     cfgs.forEach((cfg, i) => {
       const card = document.createElement('div');
       card.className = 'chart-card';
@@ -3521,14 +3558,21 @@ class ProgramRun extends HTMLElement {
       card.appendChild(head);
       const dom = document.createElement('div');
       dom.className = 'chart-dom';
+      if (showLoading) {
+        dom.innerHTML = '<div class="chart-loading"><div class="chart-loading-spinner"></div><div class="chart-loading-text">'
+          + (this.runStatus === 'QUEUED' ? '排队等待中...' : '仿真启动中，请稍后...')
+          + '</div></div>';
+      }
       card.appendChild(dom);
       this.chartGrid.appendChild(card);
-      buildLegend(card, cfg);
-      const chart = this.echarts.init(dom, null, { renderer: 'canvas', backgroundColor: 'transparent' });
-      chart.setOption(buildEChartsOptions(this.currentDatas[i], this.currentTime, this.runStatus, this.duration), true);
-      this.charts.push(chart);
+      if (!showLoading) buildLegend(card, cfg);
+      if (!showLoading) {
+        const chart = this.echarts.init(dom, null, { renderer: 'canvas', backgroundColor: 'transparent' });
+        chart.setOption(buildEChartsOptions(this.currentDatas[i], this.currentTime, this.runStatus, this.duration), true);
+        this.charts.push(chart);
+      }
     });
-    requestAnimationFrame(() => this.charts.forEach(c => c && c.resize()));
+    if (!showLoading) requestAnimationFrame(() => this.charts.forEach(c => c && c.resize()));
   }
 
   /** 渲染读数项（readouts section）*/
@@ -4042,13 +4086,13 @@ function buildEChartsOptions(data, time, status, duration) {
 
       ? [
 
-        { type: 'value', min: data.yMin ?? null, max: data.yMax ?? null, name: data.unit || '', nameTextStyle: { color: '#9ca3af', fontSize: 10 }, axisLabel: { color: '#9ca3af', fontSize: 10 }, splitLine: { lineStyle: { color: '#24344D' } }, axisLine: { lineStyle: { color: '#24344D' } } },
+        { type: 'value', scale: true, min: data.yMin ?? null, max: data.yMax ?? null, name: data.unit || '', nameTextStyle: { color: '#9ca3af', fontSize: 10 }, axisLabel: { color: '#9ca3af', fontSize: 10 }, splitLine: { lineStyle: { color: '#24344D' } }, axisLine: { lineStyle: { color: '#24344D' } } },
 
-        { type: 'value', min: data.y2Min, max: data.y2Max, position: 'right', name: data.unit2 || '', nameTextStyle: { color: '#9ca3af', fontSize: 10 }, axisLabel: { color: '#9ca3af', fontSize: 10, formatter: v => v !== 0 && Math.abs(v) < 1e-4 ? v.toExponential(1) : v.toFixed(0) }, splitLine: { show: false }, axisLine: { lineStyle: { color: '#24344D' } } }
+        { type: 'value', scale: true, min: data.y2Min, max: data.y2Max, position: 'right', name: data.unit2 || '', nameTextStyle: { color: '#9ca3af', fontSize: 10 }, axisLabel: { color: '#9ca3af', fontSize: 10, formatter: v => v !== 0 && Math.abs(v) < 1e-4 ? v.toExponential(1) : v.toFixed(0) }, splitLine: { show: false }, axisLine: { lineStyle: { color: '#24344D' } } }
 
       ]
 
-      : { type: 'value', min: data.yMin ?? null, max: data.yMax ?? null, name: data.unit || '', nameTextStyle: { color: '#9ca3af', fontSize: 10 }, axisLabel: { color: '#9ca3af', fontSize: 10 }, splitLine: { lineStyle: { color: '#24344D' } }, axisLine: { lineStyle: { color: '#24344D' } } };
+      : { type: 'value', scale: true, min: data.yMin ?? null, max: data.yMax ?? null, name: data.unit || '', nameTextStyle: { color: '#9ca3af', fontSize: 10 }, axisLabel: { color: '#9ca3af', fontSize: 10 }, splitLine: { lineStyle: { color: '#24344D' } }, axisLine: { lineStyle: { color: '#24344D' } } };
 
 
 

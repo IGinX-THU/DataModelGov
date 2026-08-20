@@ -31,6 +31,9 @@ aside.right { border-left:1px solid var(--grid); border-right:none; }
 .panel-loading::before { content:''; position:absolute; top:50%; left:50%; width:24px; height:24px; margin:-12px 0 0 -12px; border:2.5px solid #475569; border-top-color:#FFFF00; border-radius:50%; animation:panel-spin .7s linear infinite; z-index:2; }
 .panel-loading::after { content:'启动中'; position:absolute; top:calc(50% + 18px); left:50%; transform:translateX(-50%); color:#FFFF00; font-size:12px; font-weight:600; white-space:nowrap; z-index:2; }
 @keyframes panel-spin { to { transform: rotate(360deg); } }
+.chart-loading { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; min-height:120px; }
+.chart-loading-spinner { width:32px; height:32px; border:3px solid #24344D; border-top-color:#45D483; border-radius:50%; animation:panel-spin .8s linear infinite; }
+.chart-loading-text { margin-top:12px; color:#45D483; font-size:13px; font-weight:500; }
 .field-row { display:flex; align-items:center; justify-content:space-between; padding:5px 0; border-bottom:1px solid var(--grid); font-size:11px; }
 .field-row:last-child { border-bottom:none; }
 .field-row label { color:var(--muted); }
