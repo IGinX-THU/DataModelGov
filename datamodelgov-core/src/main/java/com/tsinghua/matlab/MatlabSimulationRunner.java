@@ -221,7 +221,7 @@ public class MatlabSimulationRunner implements Closeable {
             if (modelCacheHit) {
                 logMatlab("模型缓存已命中，正在通过 Fast Restart 启动仿真...");
             } else {
-                logMatlab("仿真启动命令已发送。当前未命中模型缓存，正在首次编译和初始化，可能需要 1-3 分钟，期间暂无数据，请耐心等待...");
+                logMatlab("仿真启动命令已发送。当前未命中模型缓存，正在首次编译和初始化，期间暂无数据，请耐心等待；可在程序配置中启用「后台预热」以避免后续冷启动等待。");
             }
             pollLoop(startFuture);
             exportResults();
@@ -288,7 +288,7 @@ public class MatlabSimulationRunner implements Closeable {
         }
         modelCacheHit = modelReuse;
         if (!modelReuse) {
-            logMatlab("首次运行或模型缓存未命中，正在冷启动。初始化、模型加载和首次编译可能需要 1-3 分钟，请耐心等待...");
+            logMatlab("首次运行或模型缓存未命中，正在冷启动，请耐心等待；可在程序配置中启用「后台预热」以避免后续冷启动等待。");
         }
 
         // 清理每轮数据变量；复用模型时保留 dmg_cols/dmg_paths/dmg_okSignals，供 setupScript 快速返回后继续取数
