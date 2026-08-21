@@ -2,6 +2,10 @@
   "runtime": {
     "preRunScript": "RunCtrlSysModelSHT",
     "simulinkModel": "Dll_Control_AFO_V8_2_R2019b.slx",
+    "simulinkModels": [
+      "Dll_Control_AFO_V8_2_R2019b.slx",
+      "Dll_Control_AFO_V8_2_R2020a.slx"
+    ],
     "stopTime": 30,
     "fixedStep": "0.025"
   },

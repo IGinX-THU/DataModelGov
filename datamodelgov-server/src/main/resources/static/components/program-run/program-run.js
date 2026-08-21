@@ -1137,11 +1137,8 @@ class ProgramRun extends HTMLElement {
     if (name && version) {
       this._configLoading = true;
       this.loadProgramConfig(name, version).finally(() => { this._configLoading = false; });
-      const key = name + '@' + version;
-      if (this._loadedKey !== key) {
-        this._loadedKey = key;
-        this.loadProgramFiles(name, version);
-      }
+      // 页面加载时检查一次任务状态（单次调用，非轮询）
+      this.queryStatus(name, version);
     }
 
     // 组件可能在 display:none 时初始化（connectedCallback 在隐藏状态下执行），
@@ -2631,156 +2628,6 @@ class ProgramRun extends HTMLElement {
 
 
 
-  async loadProgramFiles(name, version) {
-
-    // 防止重复加载（_doShow 和 main.js 的 waitForInit 都可能调）
-    if (this._filesLoading) return;
-    this._filesLoading = true;
-
-    try {
-
-      const pn = this.getProjectName();
-
-      const result = await window.AppConfig.get('program', 'files', { name, version, ...(pn ? { projectName: pn } : {}) });
-
-      if (!result || result.code !== 200 || !result.data) {
-
-        console.warn('获取程序文件列表失败', result);
-
-        return;
-
-      }
-
-      const data = result.data;
-
-      if (!data.found) {
-
-        console.warn('程序目录不存在:', data.message);
-
-        return;
-
-      }
-
-      this.programFilesData = data;
-
-
-
-      const root = this.shadowRoot;
-
-      const modelFileSelect = root.getElementById('modelFileSelect') || root.querySelectorAll('.field-row .input-box select')[0];
-
-      if (modelFileSelect && data.modelFiles) {
-
-        modelFileSelect.innerHTML = data.modelFiles.map(f =>
-
-            `<option value="${f}">${f}</option>`
-
-        ).join('');
-
-
-
-        const lastModelFile = data.params && data.params.modelFile
-
-            ? data.params.modelFile : null;
-
-        if (lastModelFile && data.modelFiles.includes(lastModelFile)) {
-
-          modelFileSelect.value = lastModelFile;
-
-        } else if (data.modelFiles.length > 0) {
-
-          modelFileSelect.value = data.modelFiles[0];
-
-        }
-
-
-
-        const updateModelTag = () => {
-
-          const tag = root.querySelector('.model-tag');
-
-          if (tag) {
-
-            const mn = this.programFilesData && this.programFilesData.params
-
-                ? this.programFilesData.params.modelName : '';
-
-            tag.textContent = mn || modelFileSelect.value.replace(/\.(slx|mdl)$/i, '');
-
-          }
-
-        };
-
-        modelFileSelect.removeEventListener('change', this._modelSelectHandler);
-
-        this._modelSelectHandler = updateModelTag;
-
-        modelFileSelect.addEventListener('change', updateModelTag);
-
-        updateModelTag();
-
-      }
-
-
-
-      if (data.params) {
-
-        const p = data.params;
-
-        if (p.stopTime) {
-
-          this.duration = parseFloat(p.stopTime) || 30;
-
-          this.updateCursor(0, true);
-
-        }
-
-        const stopTimeInput = root.getElementById('stopTimeInput');
-        const fixedStepInput = root.getElementById('fixedStepInput');
-
-        if (stopTimeInput && p.stopTime) stopTimeInput.value = p.stopTime;
-
-        if (fixedStepInput && p.fixedStep) fixedStepInput.value = p.fixedStep;
-
-        // 配置模式：按 data-param 属性回填动态参数（npCommand/loadPower 等）
-        if (this.programConfig) {
-          root.querySelectorAll('input[data-param]').forEach(inp => {
-            const key = inp.dataset.param;
-            if (key && p[key] != null) inp.value = p[key];
-          });
-          // 回填 KPI 卡片：按 paramKey 映射
-          this.updateKpiFromParams(p);
-        }
-
-        if (p.kpiParams) {
-          this.kpiParams = p.kpiParams;
-          this.renderKpiFromParams();
-        }
-
-      }
-
-
-
-      // 页面加载时检查一次任务状态（单次调用，非轮询）
-      // - RUNNING: handleResultData 会自动启动 SSE 流重连
-      // - SUCCESS/ERROR/STOPPED: 显示已有结果
-      // - IDLE: 无任务，等待用户点击运行
-      this.queryStatus(name, version);
-
-      // 配置由 _doShow 负责加载，这里不再重复调 loadProgramConfig
-
-    } catch (e) {
-
-      console.error('加载程序文件列表失败:', e);
-
-    } finally {
-
-      this._filesLoading = false;
-
-    }
-
-  }
-
   // ── 配置驱动渲染（ProgramConfig）──
 
   /** 加载程序配置 JSON，成功后应用到 UI */
@@ -2847,40 +2694,11 @@ class ProgramRun extends HTMLElement {
       }
       // 加载扩展/插件
       this.loadExtension(cfg.ui && cfg.ui.extension);
-
-      // 如果 programFilesData 已加载，重新填充模型文件下拉框 + 回填 stopTime/fixedStep
-      if (this.programFilesData) {
-        this.fillModelFileSelect(this.programFilesData);
-        const p = this.programFilesData.params || {};
-        const stopTimeInput = root.getElementById('stopTimeInput');
-        const fixedStepInput = root.getElementById('fixedStepInput');
-        if (stopTimeInput && p.stopTime) stopTimeInput.value = p.stopTime;
-        if (fixedStepInput && p.fixedStep) fixedStepInput.value = p.fixedStep;
-      }
     } catch (e) {
       console.error('applyProgramConfig 出错:', e);
       if (this.chartGrid) {
         this.chartGrid.innerHTML = '<div style="padding:20px;color:#ef4444;">配置渲染出错: ' + (e.message || e) + '</div>';
       }
-    }
-  }
-
-  /** 填充模型文件下拉框 */
-  fillModelFileSelect(data) {
-    const root = this.shadowRoot;
-    const modelFileSelect = root.getElementById('modelFileSelect');
-    if (!modelFileSelect || !data.modelFiles) return;
-    modelFileSelect.innerHTML = data.modelFiles.map(f => `<option value="${f}">${f}</option>`).join('');
-    const lastModelFile = data.params && data.params.modelFile ? data.params.modelFile : null;
-    if (lastModelFile && data.modelFiles.includes(lastModelFile)) {
-      modelFileSelect.value = lastModelFile;
-    } else if (data.modelFiles.length > 0) {
-      modelFileSelect.value = data.modelFiles[0];
-    }
-    const tag = root.querySelector('.model-tag');
-    if (tag) {
-      const mn = data.params && data.params.modelName ? data.params.modelName : '';
-      tag.textContent = mn || (modelFileSelect.value || '').replace(/\.(slx|mdl)$/i, '');
     }
   }
 
@@ -2931,12 +2749,29 @@ class ProgramRun extends HTMLElement {
   /** runtime 面板：模型文件 + 停止时间 + 固定步长 */
   renderRuntimePanel(div, spec, cfg) {
     const runtime = cfg.runtime || {};
+    const models = (runtime.simulinkModels && runtime.simulinkModels.length)
+      ? runtime.simulinkModels
+      : (runtime.simulinkModel ? [runtime.simulinkModel] : []);
+    const defaultModel = runtime.simulinkModel || (models.length ? models[0] : '');
+    const modelOptions = models.length
+      ? models.map(m => `<option value="${this.esc(m)}"${m === defaultModel ? ' selected' : ''}>${this.esc(m)}</option>`).join('')
+      : '<option value="" selected disabled>未配置</option>';
     div.innerHTML = `
       <div class="panel-title">${this.esc(spec.title || '项目与工况')}</div>
-      <div class="field-row"><label>模型文件</label><div class="input-box"><select id="modelFileSelect"><option value="" selected disabled>加载中...</option></select></div></div>
+      <div class="field-row"><label>模型文件</label><div class="input-box"><select id="modelFileSelect">${modelOptions}</select></div></div>
       <div class="field-row"><label>仿真停止时间</label><div class="input-box"><input type="text" id="stopTimeInput" value="${this.esc(String(runtime.stopTime != null ? runtime.stopTime : 30))}"><span class="unit">s</span></div></div>
       <div class="field-row"><label>固定步长</label><div class="input-box"><input type="text" id="fixedStepInput" value="${this.esc(runtime.fixedStep || '0.025')}"><span class="unit">s</span></div></div>
     `;
+    // 模型切换时更新标题旁的模型标签 + 初始化标签
+    const select = div.querySelector('#modelFileSelect');
+    if (select) {
+      const updateTag = () => {
+        const tag = this.shadowRoot.querySelector('.model-tag');
+        if (tag) tag.textContent = (select.value || '').replace(/\.(slx|mdl)$/i, '');
+      };
+      select.addEventListener('change', updateTag);
+      updateTag();
+    }
     return div;
   }
 

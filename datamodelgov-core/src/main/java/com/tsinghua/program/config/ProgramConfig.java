@@ -59,8 +59,10 @@ public class ProgramConfig {
     public static class RuntimeConfig {
         /** 预运行脚本名（如 "RunCtrlSysModelSHT"），在 cd(programDir) 后执行 */
         private String preRunScript;
-        /** Simulink 模型文件名（如 "Dll_Control_AFO_V8_2_R2019b.slx"） */
+        /** Simulink 模型文件名（如 "Dll_Control_AFO_V8_2_R2019b.slx"），默认选中项 */
         private String simulinkModel;
+        /** 可选模型文件列表（下拉选），为空时回退到 simulinkModel 单项 */
+        private java.util.List<String> simulinkModels;
         /** 默认停止时间（秒） */
         private double stopTime;
         /** 固定步长（可以是表达式如 "Ts"，由 base workspace 求值） */

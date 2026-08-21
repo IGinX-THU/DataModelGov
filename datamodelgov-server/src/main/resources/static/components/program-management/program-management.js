@@ -400,6 +400,7 @@ class ProgramManagement extends HTMLElement {
         const set = (id, v) => { const el = this.shadowRoot.getElementById(id); if (el) el.value = v != null ? v : ''; };
         set('cfgPreRunScript', rt.preRunScript);
         set('cfgSimulinkModel', rt.simulinkModel);
+        set('cfgSimulinkModels', (rt.simulinkModels || []).join(', '));
         set('cfgStopTime', rt.stopTime);
         set('cfgFixedStep', rt.fixedStep);
         // setupScript 是独立字段，由 loadSetupScript 单独加载
@@ -531,6 +532,7 @@ class ProgramManagement extends HTMLElement {
         const runtime = {
             preRunScript: val('cfgPreRunScript'),
             simulinkModel: val('cfgSimulinkModel'),
+            simulinkModels: val('cfgSimulinkModels').split(',').map(s => s.trim()).filter(Boolean),
             stopTime: num('cfgStopTime', 30),
             fixedStep: val('cfgFixedStep')
         };

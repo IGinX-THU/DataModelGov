@@ -20,12 +20,21 @@
 
 m = dmg_modelName;
 
-%% 1. 派生变量
+%% 1. 派生变量（每次运行都要重算，依赖用户传入的参数）
 PTReferenceLoadPowerW = MkpReferenceNm * (NpReferenceRpm * pi / 30);
 Power_cmd = PTReferenceLoadPowerW;
 NpDem = NpReferenceRpm;
 if exist('NgReferenceRpm', 'var'), NgMax = NgReferenceRpm * 1.05; end
 if exist('WfReferenceKgps', 'var'), WfMax = WfReferenceKgps * 2; WfMin = WfReferenceKgps * 0.01; end
+
+% 重置取数游标和映射（每次运行都要重置）
+dmg_cursor = 0; dmg_mapNames = {}; dmg_layout = cell(0,3);
+
+% dmg_skipBlocks = true 时跳过加块和 DataLogging 配置（模型已配置过，复用）
+if exist('dmg_skipBlocks', 'var') && dmg_skipBlocks
+  fprintf('dmg_setup: 跳过加块和DataLogging（模型已配置过）\n');
+  return;
+end
 
 %% 2. 添加 To Workspace 块
 dmg_okSignals = {};
@@ -256,7 +265,7 @@ for dmg_i = 1:size(dmg_req,1)
   catch; end
 end
 
-dmg_cursor = 0; dmg_mapNames = {}; dmg_layout = cell(0,3);
+dmg_cursor = 0; dmg_mapNames = {};
 
 % 把 To Workspace 块对应的信号也加入 DataLogging。
 % DataLogging 只能设在输出端口上，通过 PortConnectivity 找到 ToWorkspace Inport
