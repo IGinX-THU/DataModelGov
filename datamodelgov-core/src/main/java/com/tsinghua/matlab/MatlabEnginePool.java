@@ -3,6 +3,8 @@ package com.tsinghua.matlab;
 import com.mathworks.engine.MatlabEngine;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -23,6 +25,7 @@ public class MatlabEnginePool {
 
     private final int maxEngines;
     private final LinkedBlockingQueue<MatlabEngine> idle = new LinkedBlockingQueue<>();
+    private final Map<MatlabEngine, String> loadedModels = new ConcurrentHashMap<>();
     private final AtomicInteger totalEngines = new AtomicInteger(0);
     private final AtomicInteger waitingCount = new AtomicInteger(0);
     private final AtomicBoolean started = new AtomicBoolean(false);
@@ -83,6 +86,28 @@ public class MatlabEnginePool {
      * @param timeoutSec 等待超时（秒）
      * @return 可用的 MatlabEngine
      */
+    public MatlabEngine borrow(String preferredModel, long timeoutSec) throws Exception {
+        if (preferredModel != null && !preferredModel.trim().isEmpty()) {
+            int candidates = idle.size();
+            for (int i = 0; i < candidates; i++) {
+                MatlabEngine candidate = idle.poll();
+                if (candidate == null) break;
+                if (preferredModel.equals(loadedModels.get(candidate))) {
+                    log.info("[MATLAB-POOL] 命中模型亲和引擎: {}", preferredModel);
+                    return candidate;
+                }
+                idle.offer(candidate);
+            }
+        }
+        return borrow(timeoutSec);
+    }
+
+    public void markLoadedModel(MatlabEngine eng, String modelName) {
+        if (eng == null) return;
+        if (modelName == null || modelName.trim().isEmpty()) loadedModels.remove(eng);
+        else loadedModels.put(eng, modelName);
+    }
+
     public MatlabEngine borrow(long timeoutSec) throws Exception {
         // 1. 先尝试取空闲引擎（非阻塞）
         MatlabEngine eng = idle.poll();
@@ -198,6 +223,7 @@ public class MatlabEnginePool {
                 try { eng.disconnect(); } catch (Exception ignored) {}
             }
         }
+        loadedModels.clear();
         totalEngines.set(0);
         started.set(false);
         startFailed = false;
@@ -221,6 +247,7 @@ public class MatlabEnginePool {
                 try { eng.disconnect(); } catch (Exception ignored) {}
             }
         }
+        loadedModels.clear();
         totalEngines.set(0);
     }
 }

@@ -59,14 +59,19 @@ public class ProgramTaskEntity {
     private String fixedStep;
 
     /**
-     * 输入参数 - NP指令
+     * 输入参数 - NP指令（旧字段，兼容历史数据；新任务用 paramsJson）
      */
     private String npCommand;
 
     /**
-     * 输入参数 - 负载功率
+     * 输入参数 - 负载功率（旧字段，兼容历史数据；新任务用 paramsJson）
      */
     private String loadPower;
+
+    /**
+     * 动态参数 JSON（新字段，存储 ProgramConfig.parameters 定义的全部参数值）
+     */
+    private String paramsJson;
 
     /**
      * 模型文件

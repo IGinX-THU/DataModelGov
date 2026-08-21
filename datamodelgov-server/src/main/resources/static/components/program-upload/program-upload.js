@@ -34,48 +34,35 @@ class ProgramUpload extends HTMLElement {
         return `
             <div class="upload-container">
                 <div class="upload-header">
-                    <h3 class="upload-title">上传仿真程序</h3>
+                    <h3 class="upload-title">新建仿真程序</h3>
                     <button class="close-btn" id="closeBtn">&times;</button>
                 </div>
-                <form id="uploadForm">
-                    <div class="form-group">
-                        <label class="form-label required">程序压缩包</label>
-                        <div class="file-upload-area" id="fileUploadArea">
-                            <div class="upload-content">
-                                <div class="upload-icon">📁</div>
-                                <p class="upload-text">点击选择文件或拖拽文件到此处</p>
-                                <p class="upload-hint">支持 .zip, .rar, .7z, .tar, .tar.gz, .tgz 格式</p>
-                                <input type="file" class="file-input" id="uploadFile" accept=".zip,.rar,.7z,.tar,.tar.gz,.tgz">
-                            </div>
+                <div class="wizard-steps">
+                    <div class="wizard-step active" id="step1Indicator"><span class="step-number">1</span><span class="step-label">选择来源</span></div>
+                    <div class="wizard-step-line"></div>
+                    <div class="wizard-step" id="step2Indicator"><span class="step-number">2</span><span class="step-label">填写信息</span></div>
+                </div>
+                <div class="wizard-content" id="step1Content">
+                    <div class="source-choice">
+                        <label class="source-option"><input type="radio" name="sourceType" value="preset" checked><div class="source-card"><div class="source-icon">📦</div><div class="source-text"><div class="source-title">从已接入程序创建</div><div class="source-desc">选择 resources/programs/ 里的预置程序，自动关联源码包、配置和脚本</div></div></div></label>
+                        <label class="source-option"><input type="radio" name="sourceType" value="manual"><div class="source-card"><div class="source-icon">📤</div><div class="source-text"><div class="source-title">手动上传</div><div class="source-desc">上传自己的压缩包，自行填写程序信息</div></div></div></label>
+                    </div>
+                    <div class="form-actions"><button type="button" class="btn btn-secondary" id="cancelBtn">取消</button><button type="button" class="btn btn-primary" id="step1NextBtn">下一步</button></div>
+                </div>
+                <div class="wizard-content" id="step2Content" style="display:none;">
+                    <form id="uploadForm">
+                        <div id="presetForm" style="display:none;">
+                            <div class="form-group"><label class="form-label required">选择程序</label><select class="form-control" id="presetProgramSelect"><option value="">请选择...</option></select><div class="error-message" id="presetSelectError">请选择程序</div></div>
                         </div>
-                        <div class="file-info" id="fileInfo" style="display: none;">
-                            <div class="file-details">
-                                <span class="file-name" id="fileName"></span>
-                                <span class="file-size" id="fileSize"></span>
-                            </div>
-                            <button type="button" class="remove-file-btn" id="removeFileBtn">&times;</button>
+                        <div id="manualForm" style="display:none;">
+                            <div class="form-group"><label class="form-label required">程序压缩包</label><div class="file-upload-area" id="fileUploadArea"><div class="upload-content"><div class="upload-icon">📁</div><p class="upload-text">点击选择文件或拖拽文件到此处</p><p class="upload-hint">支持 .zip, .rar, .7z, .tar, .tar.gz, .tgz 格式</p><input type="file" class="file-input" id="uploadFile" accept=".zip,.rar,.7z,.tar,.tar.gz,.tgz"></div></div><div class="file-info" id="fileInfo" style="display: none;"><div class="file-details"><span class="file-name" id="fileName"></span><span class="file-size" id="fileSize"></span></div><button type="button" class="remove-file-btn" id="removeFileBtn">&times;</button></div><div class="error-message" id="uploadFileError">请选择程序压缩包</div></div>
                         </div>
-                        <div class="error-message" id="uploadFileError">请选择程序压缩包</div>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label required">程序名称</label>
-                        <input type="text" class="form-control" id="uploadName" placeholder="请输入程序名称">
-                        <div class="error-message" id="uploadNameError">请输入程序名称</div>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label required">版本号</label>
-                        <input type="text" class="form-control" id="uploadVersion" placeholder="请输入版本号">
-                        <div class="error-message" id="uploadVersionError">请输入版本号</div>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">描述</label>
-                        <textarea class="form-control" id="uploadDescription" rows="3" placeholder="请输入描述"></textarea>
-                    </div>
-                    <div class="form-actions">
-                        <button type="button" class="btn btn-secondary" id="cancelBtn">取消</button>
-                        <button type="button" class="btn btn-primary" id="uploadBtn">确认上传</button>
-                    </div>
-                </form>
+                        <div class="form-group"><label class="form-label required">程序名称</label><input type="text" class="form-control" id="uploadName" placeholder="请输入程序名称"><div class="error-message" id="uploadNameError">请输入程序名称</div></div>
+                        <div class="form-group"><label class="form-label required">版本号</label><input type="text" class="form-control" id="uploadVersion" placeholder="请输入版本号" value="1.0"><div class="error-message" id="uploadVersionError">请输入版本号</div></div>
+                        <div class="form-group"><label class="form-label">描述</label><textarea class="form-control" id="uploadDescription" rows="3" placeholder="请输入描述"></textarea></div>
+                        <div class="form-actions"><button type="button" class="btn btn-secondary" id="step2PrevBtn">上一步</button><button type="button" class="btn btn-primary" id="uploadBtn">确认上传</button></div>
+                    </form>
+                </div>
             </div>
         `;
     }
@@ -110,6 +97,71 @@ class ProgramUpload extends HTMLElement {
         this.bindModalEvents(modal);
         this.resetForm();
         this.clearValidationErrors();
+        this.goToStep(1);
+        this.loadPresetPrograms();
+    }
+
+    /** 加载预置程序列表 */
+    async loadPresetPrograms() {
+        try {
+            const result = await window.AppConfig.get('program', 'preset-programs');
+            const programs = (result && (result.success || result.code === 200) && Array.isArray(result.data)) ? result.data : [];
+            const select = this.getElement('presetProgramSelect');
+            if (select) {
+                select.innerHTML = '<option value="">请选择...</option>' +
+                    programs.map(p => `<option value="${p.id}">${p.name || p.id}</option>`).join('');
+            }
+        } catch (e) {
+            console.warn('加载预置程序列表失败:', e);
+        }
+    }
+
+    /** 跳转到指定步骤 */
+    goToStep(step) {
+        const step1Content = this.getElement('step1Content');
+        const step2Content = this.getElement('step2Content');
+        const step1Indicator = this.getElement('step1Indicator');
+        const step2Indicator = this.getElement('step2Indicator');
+        if (step === 1) {
+            if (step1Content) step1Content.style.display = '';
+            if (step2Content) step2Content.style.display = 'none';
+            if (step1Indicator) step1Indicator.classList.add('active');
+            if (step2Indicator) step2Indicator.classList.remove('active');
+        } else {
+            if (step1Content) step1Content.style.display = 'none';
+            if (step2Content) step2Content.style.display = '';
+            if (step1Indicator) step1Indicator.classList.remove('active');
+            if (step2Indicator) step2Indicator.classList.add('active');
+            // 根据来源类型显示对应表单
+            const sourceType = this.getSelectedSourceType();
+            const presetForm = this.getElement('presetForm');
+            const manualForm = this.getElement('manualForm');
+            if (sourceType === 'preset') {
+                if (presetForm) presetForm.style.display = '';
+                if (manualForm) manualForm.style.display = 'none';
+            } else {
+                if (presetForm) presetForm.style.display = 'none';
+                if (manualForm) manualForm.style.display = '';
+            }
+        }
+    }
+
+    getSelectedSourceType() {
+        const modal = this.getModal();
+        let radios;
+        if (modal) {
+            radios = modal.querySelectorAll('input[name="sourceType"]');
+            if (radios && radios.length > 0) {
+                for (const r of radios) {
+                    if (r.checked) return r.value;
+                }
+            }
+        }
+        radios = this.shadowRoot.querySelectorAll('input[name="sourceType"]');
+        for (const r of radios) {
+            if (r.checked) return r.value;
+        }
+        return 'preset';
     }
 
     hide() {
@@ -127,8 +179,24 @@ class ProgramUpload extends HTMLElement {
             const cancelBtn = modalElement.querySelector('#cancelBtn');
             if (cancelBtn) cancelBtn.addEventListener('click', () => this.hide());
 
+            const step1NextBtn = modalElement.querySelector('#step1NextBtn');
+            if (step1NextBtn) step1NextBtn.addEventListener('click', () => this.goToStep(2));
+
+            const step2PrevBtn = modalElement.querySelector('#step2PrevBtn');
+            if (step2PrevBtn) step2PrevBtn.addEventListener('click', () => this.goToStep(1));
+
             const uploadBtn = modalElement.querySelector('#uploadBtn');
             if (uploadBtn) uploadBtn.addEventListener('click', () => this.handleUpload());
+
+            // 预置程序选择变化时自动填充程序名
+            const presetSelect = modalElement.querySelector('#presetProgramSelect');
+            if (presetSelect) presetSelect.addEventListener('change', () => {
+                const nameInput = this.getElement('uploadName');
+                const descInput = this.getElement('uploadDescription');
+                if (nameInput && presetSelect.value) nameInput.value = presetSelect.value;
+                if (descInput && presetSelect.value) descInput.value = '预置程序: ' + presetSelect.value;
+                this.clearFieldError('presetSelectError');
+            });
 
             this.bindFileEvents(modalElement);
 
@@ -309,18 +377,14 @@ class ProgramUpload extends HTMLElement {
 
     async handleUpload() {
         this.clearValidationErrors();
+        const sourceType = this.getSelectedSourceType();
         const nameInput = this.getElement('uploadName');
         const versionInput = this.getElement('uploadVersion');
         const descriptionInput = this.getElement('uploadDescription');
-        const file = this.selectedFile;
         const name = nameInput ? nameInput.value.trim() : '';
         const version = versionInput ? versionInput.value.trim() : '';
 
         let hasError = false;
-        if (!file) {
-            this.showFieldError('uploadFile', '请选择程序压缩包');
-            hasError = true;
-        }
         if (!name) {
             this.showFieldError('uploadName', '请输入程序名称');
             hasError = true;
@@ -329,25 +393,59 @@ class ProgramUpload extends HTMLElement {
             this.showFieldError('uploadVersion', '请输入版本号');
             hasError = true;
         }
-        if (hasError) return;
 
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('name', name);
-        formData.append('version', version);
-        formData.append('description', descriptionInput ? descriptionInput.value.trim() : '');
-        try {
-            const result = await window.AppConfig.upload('program', 'upload', formData);
-            if (result && (result.code === 200 || result.success)) {
-                if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('上传成功', 'success');
-                this.dispatchEvent(new CustomEvent('upload-success', { bubbles: true, composed: true }));
-                this.hide();
-            } else {
-                throw new Error(result.message || '上传失败');
+        if (sourceType === 'preset') {
+            // 预置程序模式：验证选择了程序，调用后端接口
+            const presetSelect = this.getElement('presetProgramSelect');
+            if (!presetSelect || !presetSelect.value) {
+                this.showFieldError('presetSelect', '请选择程序');
+                hasError = true;
             }
-        } catch (e) {
-            console.error('上传失败:', e);
-            if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('上传失败: ' + e.message, 'error');
+            if (hasError) return;
+            const programId = presetSelect.value;
+            try {
+                if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('正在创建预置程序...', 'info');
+                const url = window.AppConfig.getApiUrl('program', 'preset-programs') + '/' + encodeURIComponent(programId) + '/upload?version=' + encodeURIComponent(version);
+                const result = await window.AppConfig.request(url, { method: 'POST' });
+                if (result && (result.success || result.code === 200)) {
+                    if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('预置程序创建成功: ' + programId, 'success');
+                    this.dispatchEvent(new CustomEvent('upload-success', { bubbles: true, composed: true }));
+                    this.hide();
+                    const pm = document.getElementById('programManagement');
+                    if (pm && pm.loadPrograms) pm.loadPrograms();
+                } else {
+                    throw new Error(result.message || '创建失败');
+                }
+            } catch (e) {
+                console.error('创建预置程序失败:', e);
+                if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('创建失败: ' + e.message, 'error');
+            }
+        } else {
+            // 手动上传模式：验证选择了文件，走原有上传逻辑
+            const file = this.selectedFile;
+            if (!file) {
+                this.showFieldError('uploadFile', '请选择程序压缩包');
+                hasError = true;
+            }
+            if (hasError) return;
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('name', name);
+            formData.append('version', version);
+            formData.append('description', descriptionInput ? descriptionInput.value.trim() : '');
+            try {
+                const result = await window.AppConfig.upload('program', 'upload', formData);
+                if (result && (result.code === 200 || result.success)) {
+                    if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('创建成功', 'success');
+                    this.dispatchEvent(new CustomEvent('upload-success', { bubbles: true, composed: true }));
+                    this.hide();
+                } else {
+                    throw new Error(result.message || '创建失败');
+                }
+            } catch (e) {
+                console.error('创建失败:', e);
+                if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('创建失败: ' + e.message, 'error');
+            }
         }
     }
 }

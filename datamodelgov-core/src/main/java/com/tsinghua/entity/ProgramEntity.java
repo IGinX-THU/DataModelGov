@@ -20,7 +20,10 @@ public class ProgramEntity {
     @ApiModelProperty(value = "配置文件JSON")
     private String configJson;
 
-    @ApiModelProperty(value = "状态：READY/RUNNING/SUCCESS/ERROR")
+    @ApiModelProperty(value = "信号采集脚本内容（MATLAB .m 源码）")
+    private String setupScript;
+
+    @ApiModelProperty(value = "状态：UNCONFIGURED/READY")
     private String status;
 
     @ApiModelProperty(value = "最近错误信息")

@@ -1,0 +1,37 @@
+.plugin-management { padding: 20px; max-width: 1200px; margin: 0 auto; }
+.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.header h2 { margin: 0; font-size: 20px; }
+.btn { padding: 6px 16px; border-radius: 4px; border: 1px solid #d1d5db; background: #fff; cursor: pointer; font-size: 13px; }
+.btn-primary { background: #2563eb; color: #fff; border-color: #2563eb; }
+.btn-secondary { background: #fff; }
+.btn:hover { opacity: 0.9; }
+.upload-form {
+  background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px;
+  padding: 20px; margin-bottom: 20px;
+}
+.upload-form.hidden { display: none; }
+.upload-form h3 { margin: 0 0 16px; font-size: 16px; }
+.form-row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.form-row label { width: 100px; font-size: 13px; color: #374151; flex-shrink: 0; }
+.form-row input[type="text"], .form-row textarea {
+  flex: 1; padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px;
+}
+.form-row input[type="file"] { flex: 1; font-size: 13px; }
+.form-actions { display: flex; gap: 12px; justify-content: flex-end; margin-top: 16px; }
+.plugin-list { display: grid; gap: 12px; }
+.plugin-card {
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px;
+  display: flex; justify-content: space-between; align-items: flex-start;
+}
+.plugin-info { flex: 1; }
+.plugin-name { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+.plugin-meta { font-size: 12px; color: #6b7280; display: flex; gap: 16px; flex-wrap: wrap; }
+.plugin-desc { font-size: 13px; color: #4b5563; margin-top: 6px; }
+.plugin-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.plugin-actions .btn { padding: 4px 10px; font-size: 12px; }
+.ref-badge {
+  display: inline-block; padding: 2px 8px; border-radius: 10px;
+  font-size: 11px; background: #e0e7ff; color: #3730a3;
+}
+.ref-badge.zero { background: #f3f4f6; color: #9ca3af; }
+.empty-state { text-align: center; padding: 40px; color: #9ca3af; font-size: 14px; }

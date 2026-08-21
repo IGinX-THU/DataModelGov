@@ -1,54 +1,111 @@
 <div class="upload-container">
     <div class="upload-header">
-        <h3 class="upload-title">上传仿真程序</h3>
+        <h3 class="upload-title">新建仿真程序</h3>
         <button class="close-btn" id="closeBtn">&times;</button>
     </div>
 
-    <form id="uploadForm">
-        <div class="form-group">
-            <label class="form-label required">程序压缩包</label>
-            <div class="file-upload-area" id="fileUploadArea">
-                <div class="upload-content">
-                    <div class="upload-icon">📁</div>
-                    <p class="upload-text">点击选择文件或拖拽文件到此处</p>
-                    <p class="upload-hint">支持 .zip, .rar, .7z, .tar, .tar.gz, .tgz 格式</p>
-                    <input type="file" class="file-input" id="uploadFile" accept=".zip,.rar,.7z,.tar,.tar.gz,.tgz">
+    <!-- 步骤指示器 -->
+    <div class="wizard-steps">
+        <div class="wizard-step active" id="step1Indicator">
+            <span class="step-number">1</span>
+            <span class="step-label">选择来源</span>
+        </div>
+        <div class="wizard-step-line"></div>
+        <div class="wizard-step" id="step2Indicator">
+            <span class="step-number">2</span>
+            <span class="step-label">填写信息</span>
+        </div>
+    </div>
+
+    <!-- 第一步：选择来源 -->
+    <div class="wizard-content" id="step1Content">
+        <div class="source-choice">
+            <label class="source-option">
+                <input type="radio" name="sourceType" value="preset" checked>
+                <div class="source-card">
+                    <div class="source-icon">📦</div>
+                    <div class="source-text">
+                        <div class="source-title">从已接入程序创建</div>
+                        <div class="source-desc">选择 resources/programs/ 里的预置程序，自动关联源码包、配置和脚本</div>
+                    </div>
                 </div>
-            </div>
-            <div class="file-info" id="fileInfo" style="display: none;">
-                <div class="file-details">
-                    <span class="file-name" id="fileName"></span>
-                    <span class="file-size" id="fileSize"></span>
+            </label>
+            <label class="source-option">
+                <input type="radio" name="sourceType" value="manual">
+                <div class="source-card">
+                    <div class="source-icon">📤</div>
+                    <div class="source-text">
+                        <div class="source-title">手动上传</div>
+                        <div class="source-desc">上传自己的压缩包，自行填写程序信息</div>
+                    </div>
                 </div>
-                <button type="button" class="remove-file-btn" id="removeFileBtn">&times;</button>
-            </div>
-            <div class="error-message" id="uploadFileError">请选择程序压缩包</div>
+            </label>
         </div>
-
-        <div class="form-group">
-            <label class="form-label required">程序名称</label>
-            <input type="text" class="form-control" id="uploadName" placeholder="请输入程序名称">
-            <div class="error-message" id="uploadNameError">请输入程序名称</div>
-        </div>
-
-        <div class="form-group">
-            <label class="form-label required">版本号</label>
-            <input type="text" class="form-control" id="uploadVersion" placeholder="请输入版本号">
-            <div class="error-message" id="uploadVersionError">请输入版本号</div>
-        </div>
-
-        <div class="form-group">
-            <label class="form-label">描述</label>
-            <textarea class="form-control" id="uploadDescription" rows="3" placeholder="请输入描述"></textarea>
-        </div>
-
         <div class="form-actions">
-            <button type="button" class="btn btn-secondary" id="cancelBtn">
-                取消
-            </button>
-            <button type="button" class="btn btn-primary" id="uploadBtn">
-                确认上传
-            </button>
+            <button type="button" class="btn btn-secondary" id="cancelBtn">取消</button>
+            <button type="button" class="btn btn-primary" id="step1NextBtn">下一步</button>
         </div>
-    </form>
+    </div>
+
+    <!-- 第二步：填写信息 -->
+    <div class="wizard-content" id="step2Content" style="display:none;">
+        <form id="uploadForm">
+            <!-- 预置程序模式 -->
+            <div id="presetForm" style="display:none;">
+                <div class="form-group">
+                    <label class="form-label required">选择程序</label>
+                    <select class="form-control" id="presetProgramSelect">
+                        <option value="">请选择...</option>
+                    </select>
+                    <div class="error-message" id="presetSelectError">请选择程序</div>
+                </div>
+            </div>
+
+            <!-- 手动上传模式 -->
+            <div id="manualForm" style="display:none;">
+                <div class="form-group">
+                    <label class="form-label required">程序压缩包</label>
+                    <div class="file-upload-area" id="fileUploadArea">
+                        <div class="upload-content">
+                            <div class="upload-icon">📁</div>
+                            <p class="upload-text">点击选择文件或拖拽文件到此处</p>
+                            <p class="upload-hint">支持 .zip, .rar, .7z, .tar, .tar.gz, .tgz 格式</p>
+                            <input type="file" class="file-input" id="uploadFile" accept=".zip,.rar,.7z,.tar,.tar.gz,.tgz">
+                        </div>
+                    </div>
+                    <div class="file-info" id="fileInfo" style="display: none;">
+                        <div class="file-details">
+                            <span class="file-name" id="fileName"></span>
+                            <span class="file-size" id="fileSize"></span>
+                        </div>
+                        <button type="button" class="remove-file-btn" id="removeFileBtn">&times;</button>
+                    </div>
+                    <div class="error-message" id="uploadFileError">请选择程序压缩包</div>
+                </div>
+            </div>
+
+            <!-- 公共字段 -->
+            <div class="form-group">
+                <label class="form-label required">程序名称</label>
+                <input type="text" class="form-control" id="uploadName" placeholder="请输入程序名称">
+                <div class="error-message" id="uploadNameError">请输入程序名称</div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label required">版本号</label>
+                <input type="text" class="form-control" id="uploadVersion" placeholder="请输入版本号" value="1.0">
+                <div class="error-message" id="uploadVersionError">请输入版本号</div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">描述</label>
+                <textarea class="form-control" id="uploadDescription" rows="3" placeholder="请输入描述"></textarea>
+            </div>
+
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary" id="step2PrevBtn">上一步</button>
+                <button type="button" class="btn btn-primary" id="uploadBtn">确认新建</button>
+            </div>
+        </form>
+    </div>
 </div>

@@ -2813,18 +2813,8 @@ function showSimulationRecord() {
                         if (window.showComponent) {
                             window.showComponent('programRun');
                         }
-                        // 等待组件 init() 完成后再加载数据
-                        // 用 this.tabs 是否已赋值判断 init() 是否执行完（不依赖 charts，display:none 时 charts 可能为空）
-                        const waitForInit = () => {
-                            if (programRun.tabs) {
-                                if (programRun.loadProgramFiles) {
-                                    programRun.loadProgramFiles(programName, programVersion);
-                                }
-                            } else {
-                                setTimeout(waitForInit, 100);
-                            }
-                        };
-                        setTimeout(waitForInit, 100);
+                        // _doShow() 已负责加载配置和文件列表，无需再调 loadProgramFiles
+                        // 这里只确保组件已初始化（show() 可能在 init() 完成前被调，有 retry 机制）
                     }
                 }
             };

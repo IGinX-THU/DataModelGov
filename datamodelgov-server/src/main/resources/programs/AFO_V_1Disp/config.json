@@ -1,0 +1,157 @@
+{
+  "runtime": {
+    "preRunScript": "RunCtrlSysModelSHT",
+    "skipPreRunOnReuse": true,
+    "prewarm": true,
+    "simulinkModel": "Dll_Control_AFO_V8_2_R2019b.slx",
+    "simulinkModels": [
+      "Dll_Control_AFO_V8_2_R2019b.slx",
+      "Dll_Control_AFO_V8_2_R2020a.slx"
+    ],
+    "stopTime": 30,
+    "fixedStep": "0.025"
+  },
+  "setupScript": "dmg_setup.m",
+  "parameters": [
+    {
+      "key": "npCommand",
+      "label": "NP指令",
+      "unit": "rpm",
+      "type": "number",
+      "defaultValue": "19000",
+      "matlabVar": "NpReferenceRpm",
+      "widget": "input"
+    },
+    {
+      "key": "loadPower",
+      "label": "负载功率",
+      "unit": "kW",
+      "type": "number",
+      "defaultValue": "850",
+      "matlabVar": "MkpReferenceNm",
+      "widget": "input"
+    }
+  ],
+  "signals": [
+    {
+      "name": "Np",
+      "type": "block",
+      "blockPath": "/Turboshaft Engine Control System/Np",
+      "label": "动力涡轮转速",
+      "unit": "rpm"
+    },
+    {
+      "name": "Ng",
+      "type": "block",
+      "blockPath": "/Turboshaft Engine Control System/Ng",
+      "label": "燃气涡轮转速",
+      "unit": "rpm"
+    },
+    {
+      "name": "NpDem",
+      "type": "block",
+      "blockPath": "/Turboshaft Engine Control System/NpDem",
+      "label": "转速指令",
+      "unit": "rpm"
+    },
+    {
+      "name": "T45",
+      "type": "block",
+      "blockPath": "/Turboshaft Engine Control System/T45",
+      "label": "涡轮后温度",
+      "unit": "℃"
+    },
+    {
+      "name": "Mkp",
+      "type": "block",
+      "blockPath": "/Turboshaft Engine Control System/Mkp",
+      "label": "扭矩",
+      "unit": "N·m"
+    },
+    {
+      "name": "Wf_cmd",
+      "type": "block",
+      "blockPath": "/Fuel System/Wf_cmd",
+      "label": "燃油流量指令",
+      "unit": "kg/s"
+    },
+    {
+      "name": "CLP",
+      "type": "block",
+      "blockPath": "/Turboshaft Engine Control System/CLP",
+      "label": "功率",
+      "unit": "W"
+    },
+    {
+      "name": "Wf",
+      "type": "subsystemOut",
+      "subsystemPath": "/Fuel System",
+      "outIndex": 1,
+      "label": "燃油流量",
+      "unit": "kg/s"
+    },
+    {
+      "name": "Np_fbk",
+      "type": "goto",
+      "gotoTag": "Np_fbk",
+      "label": "转速反馈",
+      "unit": "rpm"
+    },
+    {
+      "name": "Ng_fbk",
+      "type": "goto",
+      "gotoTag": "Ng_fbk",
+      "label": "燃气涡轮转速反馈",
+      "unit": "rpm"
+    },
+    {
+      "name": "Mkp_fbk",
+      "type": "goto",
+      "gotoTag": "Mkp_fbk",
+      "label": "扭矩反馈",
+      "unit": "N·m"
+    },
+    {
+      "name": "T45_fbk",
+      "type": "goto",
+      "gotoTag": "T45_fbk",
+      "label": "温度反馈",
+      "unit": "℃"
+    },
+    {
+      "name": "Wf_kgps",
+      "type": "goto",
+      "gotoTag": "Wf_kgps",
+      "label": "燃油流量(kg/s)",
+      "unit": "kg/s"
+    },
+    {
+      "name": "HPC_u6",
+      "type": "sfuncExtra",
+      "sfuncPath": "/Turboshaft Engine Control System/SFunc_EngModel",
+      "sfuncOutIndex": 13,
+      "label": "HPC 出口参数"
+    },
+    {
+      "name": "HPT_y16",
+      "type": "sfuncExtra",
+      "sfuncPath": "/Turboshaft Engine Control System/SFunc_EngModel",
+      "sfuncOutIndex": 14,
+      "label": "HPT 出口参数"
+    },
+    {
+      "name": "LPT_y16",
+      "type": "sfuncExtra",
+      "sfuncPath": "/Turboshaft Engine Control System/SFunc_EngModel",
+      "sfuncOutIndex": 15,
+      "label": "LPT 出口参数"
+    }
+  ],
+  "template": "afo-dashboard",
+  "extension": {
+    "enabled": false,
+    "mode": "slot",
+    "entry": "",
+    "slot": ""
+  }
+}

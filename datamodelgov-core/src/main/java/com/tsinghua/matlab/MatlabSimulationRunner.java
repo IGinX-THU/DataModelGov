@@ -1,6 +1,7 @@
 package com.tsinghua.matlab;
 
 import com.mathworks.engine.MatlabEngine;
+import com.tsinghua.program.config.ProgramConfig;
 import com.tsinghua.util.SimTimeUtil;
 import lombok.extern.slf4j.Slf4j;
 
@@ -77,6 +78,9 @@ public class MatlabSimulationRunner implements Closeable {
     private static final long INIT_TIMEOUT_SEC = 900;
     /** 单次引擎调用超时：仿真编译期间（1-3 分钟）调用会排队，需给足余量 */
     private static final long CALL_TIMEOUT_SEC = 1800;
+    /** 轮询超时：仿真已开始运行后，单次 poll eval 不应超过 20s，
+     *  超时说明 WriteDataLogs 或取数阻塞（Simulink 内部状态异常），需立即收尾。 */
+    private static final long POLL_TIMEOUT_SEC = 20;
     private static final long POLL_INTERVAL_MS = 100;
 
     private static volatile Boolean apiAvailable;
@@ -90,12 +94,20 @@ public class MatlabSimulationRunner implements Closeable {
     private final File taskDir;
     private final String programDir;
     private final String preRunScript;
+    private final boolean skipPreRunOnReuse;
     private final String modelName;
     private final double requestedStopTime;
     private final String fixedStep;
-    private final String npCommand;
-    private final String loadPower;
     private final LiveSink sink;
+    /** 用户参数值（key 对应 ProgramConfig.parameters[].key，value 为字符串形式） */
+    private final java.util.Map<String, String> paramValues;
+    /** 参数定义（来自 ProgramConfig.parameters），runner 据此把 paramValues 写入 base workspace */
+    private final java.util.List<ProgramConfig.ParameterSpec> parameters;
+    /** 信号采集脚本文件名（如 "dmg_setup.m"），由集成人员按模型结构编写并随程序部署。
+     *  非空时 runner 在 load_system 之后 eval 它，脚本须在 base workspace 留下
+     *  dmg_cols（cell 数组，元素为信号名）。为空时回退到内置的 addWorkspaceBlocks +
+     *  configureSignalLogging（过渡期保留，后续移除）。 */
+    private final String setupScript;
 
     private final ExecutorService engineExec =
             Executors.newSingleThreadExecutor(r -> {
@@ -112,22 +124,29 @@ public class MatlabSimulationRunner implements Closeable {
 
     private volatile MatlabEngine engine;
     private volatile double alignedStopTime;
+    private volatile double resolvedFixedStep = 0.025;
     private volatile double lastSimTime;
+    private volatile boolean modelCacheHit;
     private PrintWriter matlabLog;
 
     private final MatlabEnginePool enginePool;
 
-    public MatlabSimulationRunner(File taskDir, String programDir, String preRunScript, String modelName,
-                                  double requestedStopTime, String fixedStep, String npCommand, String loadPower,
-                                  LiveSink sink, MatlabEnginePool enginePool) {
+    public MatlabSimulationRunner(File taskDir, String programDir, String preRunScript,
+                                  boolean skipPreRunOnReuse, String modelName,
+                                  double requestedStopTime, String fixedStep,
+                                  java.util.Map<String, String> paramValues,
+                                  java.util.List<ProgramConfig.ParameterSpec> parameters,
+                                  String setupScript, LiveSink sink, MatlabEnginePool enginePool) {
         this.taskDir = taskDir;
         this.programDir = programDir;
         this.preRunScript = preRunScript;
+        this.skipPreRunOnReuse = skipPreRunOnReuse;
         this.modelName = modelName;
         this.requestedStopTime = requestedStopTime;
         this.fixedStep = fixedStep;
-        this.npCommand = npCommand;
-        this.loadPower = loadPower;
+        this.paramValues = paramValues != null ? paramValues : new java.util.LinkedHashMap<>();
+        this.parameters = parameters != null ? parameters : new java.util.ArrayList<>();
+        this.setupScript = setupScript;
         this.sink = sink;
         this.enginePool = enginePool;
         this.alignedStopTime = requestedStopTime;
@@ -199,13 +218,30 @@ public class MatlabSimulationRunner implements Closeable {
             }
             Future<Void> startFuture = call(() -> engine.evalAsync(
                     "set_param('" + esc(modelName) + "','SimulationCommand','start');"), 60, "发送仿真启动命令");
-            logMatlab("仿真启动命令已发送（编译+初始化期间无数据，请耐心等待）");
+            if (modelCacheHit) {
+                logMatlab("模型缓存已命中，正在通过 Fast Restart 启动仿真...");
+            } else {
+                logMatlab("仿真启动命令已发送。当前未命中模型缓存，正在首次编译和初始化，期间暂无数据，请耐心等待；可在程序配置中启用「后台预热」以避免后续冷启动等待。");
+            }
             pollLoop(startFuture);
             exportResults();
         } finally {
             if (matlabLog != null) {
                 matlabLog.flush();
             }
+        }
+    }
+
+    public void prewarm() throws Exception {
+        matlabLog = new PrintWriter(new FileWriter(new File(taskDir, "prewarm.log"), true), true);
+        try {
+            startEngine();
+            prepare();
+            Future<Void> startFuture = call(() -> engine.evalAsync(
+                    "set_param('" + esc(modelName) + "','SimulationCommand','start');"), 60, "发送预热启动命令");
+            pollLoop(startFuture);
+        } finally {
+            if (matlabLog != null) matlabLog.flush();
         }
     }
 
@@ -222,8 +258,8 @@ public class MatlabSimulationRunner implements Closeable {
             int ahead = runningTasks + enginePool.waitingCount();
             logMatlab("引擎已达并发上限(" + enginePool.maxEngines() + ")，排队等待中...（前面还有 " + ahead + " 个任务）");
         }
-        // 从引擎池借出（空闲直接取；未达上限按需创建；达上限阻塞等待）
-        engine = enginePool.borrow(ENGINE_START_TIMEOUT_SEC);
+        // 从引擎池借出（优先复用已加载相同模型的引擎）
+        engine = enginePool.borrow(modelName, ENGINE_START_TIMEOUT_SEC);
         long elapsed = System.currentTimeMillis() - t0;
         if (elapsed < 1000) {
             logMatlab("引擎已就绪（复用空闲引擎）");
@@ -232,42 +268,138 @@ public class MatlabSimulationRunner implements Closeable {
         }
     }
 
-    /** 预配置：切目录、跑预运行脚本、设参数、载入模型、对齐停止时间、配置信号日志 */
+    /** 预配置：切目录、跑预运行脚本、设参数、载入模型、对齐停止时间、配置信号日志。
+     *  优化：如果引擎中已加载相同模型（dmg_loadedModel == modelName），跳过 load_system
+     *  和 dmg_setup 的加块/DataLogging 部分（dmg_skipBlocks=true），只重算派生变量和参数，
+     *  配合 Simulink Fast Restart 跳过重新编译，将重复运行从 1-2 分钟降到数秒。 */
     private void prepare() throws Exception {
         eval("cd('" + esc(programDir) + "');", INIT_TIMEOUT_SEC, "切换工作目录");
 
-        logMatlab("执行预运行脚本: " + preRunScript);
-        eval("dmg_out = evalc('" + esc(stripM(preRunScript)) + "');", INIT_TIMEOUT_SEC, "执行预运行脚本 " + preRunScript);
-        writeMatlabLog(getString("dmg_out"));
+        // 检查引擎中是否已加载相同模型
+        eval("dmg_prevModel = ''; try; dmg_prevModel = dmg_loadedModel; catch; end", CALL_TIMEOUT_SEC, "检查已加载模型");
+        String prevModel = getString("dmg_prevModel");
+        boolean modelReuse = hasText(prevModel) && prevModel.equals(modelName);
+        if (modelReuse) {
+            eval(buildRestoreSignalCacheScript(), CALL_TIMEOUT_SEC, "恢复信号配置缓存");
+            if (getDouble("dmg_hasSignalCache") != 1.0) {
+                modelReuse = false;
+                logMatlab("已加载模型的信号配置缓存不完整，将自动执行一次冷启动重建缓存，请耐心等待...");
+            }
+        }
+        modelCacheHit = modelReuse;
+        if (!modelReuse) {
+            logMatlab("首次运行或模型缓存未命中，正在冷启动，请耐心等待；可在程序配置中启用「后台预热」以避免后续冷启动等待。");
+        }
 
+        // 清理每轮数据变量；复用模型时保留 dmg_cols/dmg_paths/dmg_okSignals，供 setupScript 快速返回后继续取数
+        String setupVariables = modelReuse ? "" : " dmg_cols dmg_paths dmg_okSignals";
+        eval("try; clear logsout dmg_new dmg_poll dmg_cursor dmg_mapNames dmg_total " +
+                "dmg_t dmg_v dmg_sel dmg_tElem dmg_newCols dmg_newColStr dmg_logNames " +
+                "dmg_logBP dmg_el0 dmg_status dmg_pv2 dmg_cn dmg_cn2 dmg_skipBlocks " +
+                "dmg_wsScalars dmg_sv dmg_sn dmg_v" + setupVariables + "; catch; end",
+                CALL_TIMEOUT_SEC, "清理上次运行残留");
+
+        if (modelReuse && skipPreRunOnReuse) {
+            logMatlab("命中模型缓存，跳过预运行脚本: " + preRunScript);
+        } else {
+            if (modelReuse) {
+                logMatlab("执行预运行脚本: " + preRunScript);
+            } else {
+                logMatlab("当前未命中模型缓存，正在执行预运行初始化脚本: " + preRunScript + "，请耐心等待...");
+            }
+            eval("dmg_out = evalc('" + esc(stripM(preRunScript)) + "');", INIT_TIMEOUT_SEC, "执行预运行脚本 " + preRunScript);
+            writeMatlabLog(getString("dmg_out"));
+            if (modelReuse) {
+                eval(buildRestoreSignalCacheScript(), CALL_TIMEOUT_SEC, "预运行后恢复信号配置缓存");
+            }
+        }
+
+        // 设置用户参数到 base workspace：按 ProgramConfig.parameters 定义，把前端传入的
+        // 值（或默认值）写入对应的 matlabVar。fixedStep 单独处理（写入 Ts）。
         StringBuilder params = new StringBuilder();
-        if (hasText(npCommand)) params.append("NpReferenceRpm = ").append(npCommand).append(";\n");
-        if (hasText(loadPower)) params.append("MkpReferenceNm = ").append(loadPower).append(";\n");
+        for (ProgramConfig.ParameterSpec p : parameters) {
+            String v = paramValues.get(p.getKey());
+            if (hasText(v) && hasText(p.getMatlabVar())) {
+                params.append(p.getMatlabVar()).append(" = ").append(v).append(";\n");
+            }
+        }
         if (hasText(fixedStep)) params.append("Ts = ").append(fixedStep).append(";\n");
-        params.append("PTReferenceLoadPowerW = MkpReferenceNm * (NpReferenceRpm * pi / 30);\n");
-        params.append("Power_cmd = PTReferenceLoadPowerW;\n");
-        params.append("NpDem = NpReferenceRpm;\n");
-        params.append("if exist('NgReferenceRpm', 'var'), NgMax = NgReferenceRpm * 1.05; end\n");
-        params.append("if exist('WfReferenceKgps', 'var'), WfMax = WfReferenceKgps * 2; WfMin = WfReferenceKgps * 0.01; end\n");
         eval(params.toString(), INIT_TIMEOUT_SEC, "设置仿真参数");
 
-        logMatlab("载入模型: " + modelName);
-        eval("load_system('" + esc(modelName) + "');", INIT_TIMEOUT_SEC, "载入模型 " + modelName);
-        if (hasText(fixedStep)) {
-            eval("set_param('" + esc(modelName) + "','FixedStep','" + fixedStep + "');", CALL_TIMEOUT_SEC, "设置固定步长");
+        if (modelReuse) {
+            logMatlab("模型已加载且已配置，跳过 load_system 和加块（Fast Restart）");
+        } else {
+            // 不同模型：先关闭旧模型（如果有）
+            if (hasText(prevModel)) {
+                logMatlab("切换模型: " + prevModel + " → " + modelName + "，关闭旧模型");
+                eval("try; set_param('" + esc(prevModel) + "','FastRestart','off'); close_system('" + esc(prevModel) + "', 0); catch; end",
+                        CALL_TIMEOUT_SEC, "关闭旧模型");
+            }
+            logMatlab("正在加载 Simulink 模型: " + modelName + "，首次加载可能较慢，请耐心等待...");
+            eval("load_system('" + esc(modelName) + "');", INIT_TIMEOUT_SEC, "载入模型 " + modelName);
+            if (hasText(fixedStep)) {
+                eval("set_param('" + esc(modelName) + "','FixedStep','" + fixedStep + "');", CALL_TIMEOUT_SEC, "设置固定步长");
+            }
+            // 启用 Fast Restart：后续运行跳过编译
+            eval("try; set_param('" + esc(modelName) + "','FastRestart','on'); catch; end",
+                    CALL_TIMEOUT_SEC, "启用 Fast Restart");
         }
 
         alignedStopTime = SimTimeUtil.alignToStep(requestedStopTime, resolveFixedStep());
+        resolvedFixedStep = resolveFixedStep();
         eval("set_param('" + esc(modelName) + "','StopTime','" + SimTimeUtil.format(alignedStopTime) + "');",
                 CALL_TIMEOUT_SEC, "设置停止时间");
         logMatlab("停止时间 " + requestedStopTime + " → 按固定步长对齐为 " + alignedStopTime);
         sink.onStopTime(alignedStopTime);
 
-        // 添加 To Workspace 块（与回退方案 writeWrapper 一致），仿真结束后这些变量
-        // 会出现在 base workspace，由 exportResults() 汇总进 signals.csv
-        addWorkspaceBlocks();
-        // 配置信号日志（DataLogging）用于实时曲线显示
-        configureSignalLogging();
+        // 信号采集：由程序专属 setupScript（.m）负责派生变量、加 ToWorkspace、
+        // 开 DataLogging，并在 base workspace 留下 dmg_cols。无 setupScript 时报错。
+        if (hasText(setupScript)) {
+            eval("dmg_modelName = '" + esc(modelName) + "';", CALL_TIMEOUT_SEC, "设置 dmg_modelName");
+            // 模型复用时跳过加块和 DataLogging 配置（dmg_skipBlocks=true）
+            eval("dmg_skipBlocks = " + modelReuse + ";", CALL_TIMEOUT_SEC, "设置 dmg_skipBlocks");
+            String scriptCall = stripM(setupScript);
+            logMatlab("执行信号采集脚本: " + scriptCall + (modelReuse ? "（跳过加块）" : "（全量）"));
+            eval("dmg_setup_out = evalc('" + esc(scriptCall) + "');", INIT_TIMEOUT_SEC, "执行信号采集脚本 " + scriptCall);
+            writeMatlabLog(getString("dmg_setup_out"));
+            readDmgCols();
+            eval("dmg_signalCache = struct(); dmg_signalCache.model = dmg_modelName; " +
+                    "dmg_signalCache.cols = dmg_cols; " +
+                    "if exist('dmg_paths','var'); dmg_signalCache.paths = dmg_paths; else; dmg_signalCache.paths = {}; end; " +
+                    "if exist('dmg_okSignals','var'); dmg_signalCache.okSignals = dmg_okSignals; else; dmg_signalCache.okSignals = {}; end; " +
+                    "setappdata(0,'dmg_signal_cache',dmg_signalCache); clear dmg_signalCache;",
+                    CALL_TIMEOUT_SEC, "缓存信号配置");
+        } else {
+            throw new IllegalStateException("未配置 setupScript（信号采集脚本），无法运行仿真。请在 ProgramConfig.setupScript 中指定。");
+        }
+
+        // 记录当前加载的模型名，供下次运行判断是否可复用
+        eval("dmg_loadedModel = '" + esc(modelName) + "';", CALL_TIMEOUT_SEC, "记录已加载模型");
+        enginePool.markLoadedModel(engine, modelName);
+    }
+
+    private String buildRestoreSignalCacheScript() {
+        return "dmg_hasSignalCache = 0; " +
+                "if isappdata(0,'dmg_signal_cache'); " +
+                "dmg_signalCache = getappdata(0,'dmg_signal_cache'); " +
+                "if isstruct(dmg_signalCache) && isfield(dmg_signalCache,'model') && strcmp(dmg_signalCache.model,'" + esc(modelName) + "') && isfield(dmg_signalCache,'cols'); " +
+                "dmg_cols = dmg_signalCache.cols; " +
+                "if isfield(dmg_signalCache,'paths'); dmg_paths = dmg_signalCache.paths; else; dmg_paths = {}; end; " +
+                "if isfield(dmg_signalCache,'okSignals'); dmg_okSignals = dmg_signalCache.okSignals; else; dmg_okSignals = {}; end; " +
+                "dmg_hasSignalCache = 1; end; end";
+    }
+
+    /** 读取 setupScript 留下的 dmg_cols，构造 CSV 表头并通知前端 */
+    private void readDmgCols() throws Exception {
+        eval("dmg_colstr = strjoin(dmg_cols, ',');", CALL_TIMEOUT_SEC, "读取信号列表");
+        String cols = getString("dmg_colstr");
+        csvColumns.clear();
+        csvColumns.add("time");
+        if (hasText(cols)) {
+            csvColumns.addAll(Arrays.asList(cols.split(",")));
+        }
+        logMatlab("已配置信号日志，共 " + (csvColumns.size() - 1) + " 个信号: " + cols);
+        sink.onHeaders(new ArrayList<>(csvColumns));
     }
 
     /**
@@ -608,35 +740,123 @@ public class MatlabSimulationRunner implements Closeable {
     }
 
     /** 主循环：轮询仿真状态 + 拉取增量数据，直到仿真结束。
-     *  优化：把 status + simTime + WriteDataLogs + 取数合并成 1 次 eval + 1 次 getVariable，
-     *  避免每个周期 6-7 次 JNI 调用导致取数间隔过长、一次出一堆点。 */
+     *  编译阶段（sawRunning 之前）用长超时 CALL_TIMEOUT_SEC，因为 MATLAB 在编译，
+     *  eval 调用会排队等待 1-2 分钟。
+     *  运行阶段（sawRunning 之后）用短超时 POLL_TIMEOUT_SEC，因为 get_param 和
+     *  WriteDataLogs 在正常运行时应该很快。超时说明 WriteDataLogs 阻塞（Simulink
+     *  内部状态异常），需立即收尾，不能等 30 分钟。 */
     private void pollLoop(Future<Void> startFuture) throws Exception {
         boolean sawRunning = false;
+        int stallCount = 0;          // simTime 连续无进展的轮询次数
+        double lastProgressSimTime = -1;
+        final int STALL_LIMIT = 30;  // 30 次 × 100ms = 3s 无进展 → 判定结束
+        int pollRound = 0;
         while (true) {
             Thread.sleep(POLL_INTERVAL_MS);
+            pollRound++;
+            // 编译阶段用长超时，运行阶段用短超时
+            long timeout = sawRunning ? POLL_TIMEOUT_SEC : CALL_TIMEOUT_SEC;
+            long evalStart = System.currentTimeMillis();
             // 单次 eval 完成：读状态、读仿真时间、WriteDataLogs、取增量数据，打包成 dmg_poll
-            eval(buildPollScript(), CALL_TIMEOUT_SEC, "轮询+取数");
-            Object poll = call(() -> engine.getVariable("dmg_poll"), CALL_TIMEOUT_SEC, "读取轮询结果");
-            // dmg_poll = {status, simTimeStr, dmg_new, newColStr}
-            String status = "";
-            String simTimeStr = "0";
-            Object data = null;
-            String newColStr = "";
-            if (poll instanceof Object[]) {
-                Object[] parts = (Object[]) poll;
-                if (parts.length > 0 && parts[0] != null) status = String.valueOf(parts[0]);
-                if (parts.length > 1 && parts[1] != null) simTimeStr = String.valueOf(parts[1]);
-                if (parts.length > 2) data = parts[2];
-                if (parts.length > 3 && parts[3] != null) newColStr = String.valueOf(parts[3]);
+            try {
+                eval(buildPollScript(), timeout, "轮询+取数");
+            } catch (Exception e) {
+                if (sawRunning && (e.getMessage() != null && e.getMessage().contains("超时"))) {
+                    // 运行阶段 poll eval 超时 → WriteDataLogs 或取数阻塞
+                    logMatlab("【严重】轮询 eval 超时(" + POLL_TIMEOUT_SEC + "s)，仿真时间=" + lastSimTime
+                            + "，WriteDataLogs 可能阻塞。尝试强制停止并收尾。");
+                    // 尝试强制停止（短超时，可能也阻塞，用 try-catch 兜底）
+                    try {
+                        eval("try; set_param('" + esc(modelName) + "','SimulationCommand','stop'); catch; end",
+                                5, "强制停止(超时后)");
+                    } catch (Exception ignored) {}
+                    doFinalFlush();
+                    logMatlab("轮询超时后收尾完成，仿真时间=" + lastSimTime);
+                    return;
+                }
+                throw e; // 编译阶段超时或其他异常，向上抛
             }
+            long evalDuration = System.currentTimeMillis() - evalStart;
+            if (evalDuration > 3000) {
+                log.info("[MATLAB] 轮询 #{} eval 耗时 {}ms (simTime={})", pollRound, evalDuration, lastSimTime);
+            }
+            // 分别读取各变量，避免 getVariable 序列化 cell 数组（含大矩阵）极慢的问题。
+            // 字符串变量用 getString（轻量），矩阵数据通过 CSV 文件传递（彻底绕开 getVariable）。
+            long gvStart = System.currentTimeMillis();
+            String status;
+            String simTimeStr;
+            String newColStr;
+            Object data = null;
+            try {
+                status = getStringFast("dmg_status", timeout);
+                simTimeStr = getStringFast("dmg_pv2", timeout);
+                newColStr = getStringFast("dmg_newColStr", timeout);
+            } catch (Exception e) {
+                if (sawRunning && (e.getMessage() != null && e.getMessage().contains("超时"))) {
+                    logMatlab("【严重】getString 超时(" + timeout + "s)，仿真时间=" + lastSimTime
+                            + "，engineExec 线程可能已阻塞。直接结束。");
+                    return;
+                }
+                throw e;
+            }
+            long gvDuration = System.currentTimeMillis() - gvStart;
+            // 从 CSV 文件读取矩阵数据（避免 getVariable 序列化大矩阵）
+            File dataFile = new File(taskDir, "dmg_poll_data.csv");
+            if (hasText(newColStr) && dataFile.exists() && dataFile.length() > 0) {
+                try {
+                    data = readCsvMatrix(dataFile);
+                } catch (Exception e) {
+                    log.warn("[MATLAB] 读取 poll CSV 失败: {}", e.getMessage());
+                }
+            }
+            if (gvDuration > 3000) {
+                log.info("[MATLAB] 轮询 #{} getString+读文件 耗时 {}ms (simTime={})", pollRound, gvDuration, lastSimTime);
+            }
+            if (status == null) status = "";
+            if (simTimeStr == null) simTimeStr = "0";
+            if (newColStr == null) newColStr = "";
             double simTime = parseDouble(simTimeStr, lastSimTime);
+            // 每 10 轮输出一次心跳日志，方便定位卡住位置
+            if (pollRound % 10 == 0) {
+                log.info("[MATLAB] 心跳 #{} status={} simTime={} stall={} rows={}",
+                        pollRound, status, simTime, stallCount, csvColumns.size());
+            }
 
             if ("running".equals(status) || "paused".equals(status)) {
                 sawRunning = true;
                 paused.set("paused".equals(status));
                 if (simTime > lastSimTime) lastSimTime = simTime;
                 processData(data, newColStr);
+                // simTime 已到达对齐后的停止时间（或差最后一步）→ 仿真实际已结束
+                double effectiveStop = alignedStopTime - resolvedFixedStep;
+                if (simTime >= effectiveStop) {
+                    doFinalFlush();
+                    logMatlab("仿真到达停止时间 " + alignedStopTime + "，判定结束");
+                    return;
+                }
+                // 停滞检测（兜底）：simTime 有进展时重置计数，否则累加
+                if (simTime > lastProgressSimTime) {
+                    lastProgressSimTime = simTime;
+                    stallCount = 0;
+                } else {
+                    stallCount++;
+                    if (stallCount >= STALL_LIMIT) {
+                        // 强制 stop 仿真，释放可能的 WriteDataLogs 锁，再取剩余数据
+                        try { eval("try; set_param('" + esc(modelName) + "','SimulationCommand','stop'); catch; end",
+                                POLL_TIMEOUT_SEC, "强制停止"); } catch (Exception ignored) {}
+                        doFinalFlush();
+                        logMatlab("仿真时间长时间无进展(" + (STALL_LIMIT * POLL_INTERVAL_MS / 1000)
+                                + "s)，判定结束，仿真时间=" + lastSimTime);
+                        return;
+                    }
+                }
             } else if (startFuture.isDone() && ("stopped".equals(status) || "terminating".equals(status))) {
+                processData(data, newColStr);
+                logMatlab("仿真结束，状态=" + status + "，仿真时间=" + lastSimTime + "，用户停止=" + userStopped.get());
+                return;
+            } else if (sawRunning
+                    && ("compiled".equals(status) || "inactive".equals(status) || "".equals(status))) {
+                // Fast Restart 模式下仿真结束后状态回到 compiled（部分版本为 inactive）
                 processData(data, newColStr);
                 logMatlab("仿真结束，状态=" + status + "，仿真时间=" + lastSimTime + "，用户停止=" + userStopped.get());
                 return;
@@ -661,7 +881,7 @@ public class MatlabSimulationRunner implements Closeable {
                 // 列变化时前端会清空已累积的行（reset=true），重置 MATLAB 游标到 0，
                 // 让下次 poll 重新取全量数据（新列序），前端得到完整重绘。
                 try {
-                    eval("dmg_cursor = 0;", CALL_TIMEOUT_SEC, "重置游标");
+                    eval("dmg_cursor = 0;", POLL_TIMEOUT_SEC, "重置游标");
                 } catch (Exception ignored) {}
                 return;
             }
@@ -671,6 +891,78 @@ public class MatlabSimulationRunner implements Closeable {
             String[] last = rows.get(rows.size() - 1);
             lastSimTime = Math.max(lastSimTime, parseDouble(last[0], lastSimTime));
             sink.onRows(rows);
+        }
+    }
+
+    /** 最终刷新：强制 WriteDataLogs + 取剩余数据（用于停滞判定后收尾） */
+    private String buildFinalFlushScript() {
+        String m = esc(modelName);
+        StringBuilder sb = new StringBuilder();
+        sb.append("dmg_new = [];\n");
+        sb.append("dmg_newColStr = '';\n");
+        sb.append("try; set_param('").append(m).append("','SimulationCommand','WriteDataLogs'); catch; end\n");
+        sb.append("if exist('logsout','var') && isa(logsout,'Simulink.SimulationData.Dataset') && logsout.numElements > 0\n");
+        sb.append("  dmg_tElem = [];\n");
+        sb.append("  if ~isempty(dmg_mapNames)\n");
+        sb.append("    for dmg_c = 1:numel(dmg_mapNames)\n");
+        sb.append("      if ~isempty(dmg_mapNames{dmg_c})\n");
+        sb.append("        try; dmg_tElem = logsout.getElement(dmg_mapNames{dmg_c}); break; catch; end\n");
+        sb.append("      end\n");
+        sb.append("    end\n");
+        sb.append("  end\n");
+        sb.append("  if isempty(dmg_tElem); dmg_tElem = logsout.getElement(1); end\n");
+        sb.append("  dmg_t = dmg_tElem.Values.Time(:);\n");
+        sb.append("  dmg_total = numel(dmg_t);\n");
+        sb.append("  if dmg_total > dmg_cursor\n");
+        sb.append("    dmg_sel = (dmg_cursor+1):dmg_total;\n");
+        sb.append("    dmg_new = dmg_t(dmg_sel);\n");
+        sb.append("    for dmg_c = 1:numel(dmg_cols)\n");
+        sb.append("      try\n");
+        sb.append("        if ~isempty(dmg_mapNames{dmg_c})\n");
+        sb.append("          dmg_v = logsout.getElement(dmg_mapNames{dmg_c}).Values.Data;\n");
+        sb.append("          if size(dmg_v,1) == dmg_total\n");
+        sb.append("            for dmg_k = 1:size(dmg_v,2)\n");
+        sb.append("              dmg_new = [dmg_new, double(dmg_v(dmg_sel, dmg_k))];\n");
+        sb.append("            end\n");
+        sb.append("          end\n");
+        sb.append("        end\n");
+        sb.append("      catch; end\n");
+        sb.append("    end\n");
+        sb.append("  end\n");
+        sb.append("end\n");
+        // 写到 CSV 文件，Java 侧读文件（避免 getVariable 序列化大矩阵）
+        String csvPath = esc(taskDir.getAbsolutePath().replace('\\', '/')) + "/dmg_final_data.csv";
+        sb.append("if ~isempty(dmg_new)\n");
+        sb.append("  try; csvwrite('").append(csvPath).append("', dmg_new); catch; end\n");
+        sb.append("end\n");
+        // 也写列名到文件
+        String colPath = esc(taskDir.getAbsolutePath().replace('\\', '/')) + "/dmg_final_cols.txt";
+        sb.append("try; fid = fopen('").append(colPath).append("', 'w'); if fid > 0; fputs(fid, dmg_newColStr); fclose(fid); end; catch; end\n");
+        return sb.toString();
+    }
+
+    /** 最终数据刷新：强制 WriteDataLogs + 取剩余数据（复用于各种结束路径）。
+     *  用 POLL_TIMEOUT_SEC 而非 CALL_TIMEOUT_SEC，因为 WriteDataLogs 在仿真已停止后
+     *  不应长时间阻塞；如果阻塞说明引擎状态异常，不值得等 30 分钟。 */
+    private void doFinalFlush() {
+        try {
+            eval(buildFinalFlushScript(), POLL_TIMEOUT_SEC, "最终数据刷新");
+            // 从文件读取最终数据（避免 getVariable 序列化大矩阵）
+            File finalDataFile = new File(taskDir, "dmg_final_data.csv");
+            File finalColsFile = new File(taskDir, "dmg_final_cols.txt");
+            Object finalPoll = null;
+            if (finalDataFile.exists() && finalDataFile.length() > 0) {
+                finalPoll = readCsvMatrix(finalDataFile);
+            }
+            String finalCols = "";
+            if (finalColsFile.exists()) {
+                try {
+                    finalCols = new String(Files.readAllBytes(finalColsFile.toPath()), StandardCharsets.UTF_8).trim();
+                } catch (Exception ignored) {}
+            }
+            processData(finalPoll, finalCols);
+        } catch (Exception e) {
+            log.warn("[MATLAB] 最终数据刷新失败: {}", e.getMessage());
         }
     }
 
@@ -685,8 +977,8 @@ public class MatlabSimulationRunner implements Closeable {
         sb.append("dmg_new = [];\n");
         sb.append("dmg_newCols = {};\n");
         sb.append("dmg_newColStr = '';\n");
-        // 3. 仅在 running/paused/stopped 时做 WriteDataLogs + 取数
-        sb.append("if strcmp(dmg_status,'running') || strcmp(dmg_status,'paused') || strcmp(dmg_status,'stopped')\n");
+        // 3. 在运行中及 Fast Restart 结束后的 compiled 状态做 WriteDataLogs + 取数
+        sb.append("if strcmp(dmg_status,'running') || strcmp(dmg_status,'paused') || strcmp(dmg_status,'stopped') || strcmp(dmg_status,'compiled')\n");
         sb.append("  try; set_param('").append(m).append("','SimulationCommand','WriteDataLogs'); catch; end\n");
         sb.append("  if exist('logsout','var') && isa(logsout,'Simulink.SimulationData.Dataset') && logsout.numElements > 0\n");
         // dmg_mapNames 冻结每个信号对应的 logsout 元素名称（cell 数组）。
@@ -794,8 +1086,14 @@ public class MatlabSimulationRunner implements Closeable {
         sb.append("  end\n");
         sb.append("  dmg_newColStr = strjoin(dmg_newCols, ',');\n");
         sb.append("end\n");
-        // 4. 打包成 cell给 Java
-        sb.append("dmg_poll = {dmg_status, dmg_pv2, dmg_new, dmg_newColStr};\n");
+        // 把 dmg_new 矩阵写到 CSV 文件，Java 侧直接读文件，避免 getVariable 序列化大矩阵极慢。
+        // getVariable 对 double[][] 的 JNI 序列化是已知的性能瓶颈，且超时后无法中断。
+        String csvPath = esc(taskDir.getAbsolutePath().replace('\\', '/')) + "/dmg_poll_data.csv";
+        sb.append("if ~isempty(dmg_new)\n");
+        sb.append("  try; csvwrite('").append(csvPath).append("', dmg_new); catch; end\n");
+        sb.append("else\n");
+        sb.append("  try; delete('").append(csvPath).append("'); catch; end\n");
+        sb.append("end\n");
         return sb.toString();
     }
 
@@ -1013,20 +1311,19 @@ public class MatlabSimulationRunner implements Closeable {
         MatlabEngine eng = engine;
         engine = null;
         if (eng != null) {
-            // 清理模型状态（不关闭引擎），让下次仿真可以重新 load_system
+            // 停止仿真（如果还在运行），但不 close_system——保持模型常驻供下次复用
             try {
                 engineExec.submit(() -> {
                     try {
                         eng.eval("try; set_param('" + esc(modelName) + "','SimulationCommand','stop'); catch; end");
-                        eng.eval("try; set_param('" + esc(modelName) + "','Dirty','off'); close_system('" + esc(modelName) + "', 0); catch; end");
                     } catch (Exception ignored) {
                     }
                     return null;
-                }).get(60, TimeUnit.SECONDS);
+                }).get(30, TimeUnit.SECONDS);
             } catch (Exception e) {
-                log.warn("[MATLAB] 清理模型状态异常: {}", e.toString());
+                log.warn("[MATLAB] 停止仿真异常: {}", e.toString());
             }
-            // 归还引擎到池中（不关闭），供下次仿真复用
+            // 归还引擎到池中（模型保持加载，供下次相同模型复用 + Fast Restart）
             enginePool.release(eng);
         }
         engineExec.shutdownNow();
@@ -1049,12 +1346,17 @@ public class MatlabSimulationRunner implements Closeable {
     }
 
     private void eval(String command, long timeoutSec, String what) throws Exception {
+        long startedAt = System.currentTimeMillis();
         call(() -> {
             Writer out = matlabLog != null ? matlabLog : new java.io.StringWriter();
             engine.eval(command, out, out);
             out.flush();
             return null;
         }, timeoutSec, what);
+        long elapsed = System.currentTimeMillis() - startedAt;
+        if (elapsed >= 3000 && !"轮询+取数".equals(what)) {
+            logMatlab(what + "完成，耗时 " + String.format(Locale.US, "%.1f", elapsed / 1000.0) + " 秒");
+        }
     }
 
     /** get_param 的字符串形式（数值参数用 mat2str 转成字符串，便于统一处理） */
@@ -1066,6 +1368,12 @@ public class MatlabSimulationRunner implements Closeable {
 
     private String getString(String var) throws Exception {
         Object v = call(() -> engine.getVariable(var), CALL_TIMEOUT_SEC, "读取变量 " + var);
+        return v == null ? "" : String.valueOf(v);
+    }
+
+    /** 带超时参数的 getString，用于轮询阶段 */
+    private String getStringFast(String var, long timeoutSec) throws Exception {
+        Object v = call(() -> engine.getVariable(var), timeoutSec, "读取变量 " + var);
         return v == null ? "" : String.valueOf(v);
     }
 
@@ -1084,6 +1392,28 @@ public class MatlabSimulationRunner implements Closeable {
             if (r.length == cols) rows.add(fmtRow(r));
         }
         return rows;
+    }
+
+    /** 从 CSV 文件读取数值矩阵，返回 double[][]（与 engine.getVariable 相同格式）。
+     *  彻底绕开 MATLAB Engine API 的 getVariable 序列化瓶颈。 */
+    private static double[][] readCsvMatrix(File file) throws Exception {
+        List<double[]> rows = new ArrayList<>();
+        try (java.io.BufferedReader br = new java.io.BufferedReader(
+                new java.io.InputStreamReader(new java.io.FileInputStream(file), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = br.readLine()) != null) {
+                line = line.trim();
+                if (line.isEmpty()) continue;
+                String[] parts = line.split(",");
+                double[] row = new double[parts.length];
+                for (int i = 0; i < parts.length; i++) {
+                    try { row[i] = Double.parseDouble(parts[i].trim()); }
+                    catch (NumberFormatException e) { row[i] = 0.0; }
+                }
+                rows.add(row);
+            }
+        }
+        return rows.toArray(new double[0][]);
     }
 
     private static String[] fmtRow(double[] values) {

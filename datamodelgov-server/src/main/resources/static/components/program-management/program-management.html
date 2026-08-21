@@ -7,7 +7,7 @@
                 <input type="text" id="filterProject" placeholder="项目名称" class="filter-input">
                 <button class="filter-btn" id="searchBtn">查询</button>
                 <button class="filter-btn" id="resetFilterBtn">重置</button>
-                <button class="filter-btn primary" id="showUploadBtn">上传程序</button>
+                <button class="filter-btn primary" id="showUploadBtn">新建程序</button>
             </div>
         </div>
 
@@ -19,6 +19,7 @@
                         <th>版本</th>
                         <th>项目</th>
                         <th>描述</th>
+                        <th>创建者</th>
                         <th>创建时间</th>
                         <th>状态</th>
                         <th>操作</th>
@@ -46,35 +47,124 @@
                 <h3>程序配置 - <span id="configProgramName">-</span></h3>
                 <button class="modal-close" id="configCloseBtn">✕</button>
             </div>
-            <div class="modal-body">
-                <div class="config-section">
-                    <h4>运行配置</h4>
-                    <div class="form-row">
-                        <label>模型名</label>
-                        <input type="text" id="cfgSimulinkModel" placeholder="Dll_Control_AFO_V8_2_R2019b">
-                    </div>
-                    <div class="form-row">
-                        <label>预运行脚本</label>
-                        <input type="text" id="cfgPreRunScript" placeholder="RunCtrlSysModelSHT">
-                    </div>
-                    <div class="form-row">
-                        <label>停止时间</label>
-                        <input type="number" id="cfgStopTime" placeholder="30">
-                    </div>
+            <div class="modal-body" style="display:flex;flex-direction:column;gap:12px;">
+                <div class="config-toolbar">
+                    <label>预置配置：</label>
+                    <select id="cfgPresetSelect" style="min-width:140px;">
+                        <option value="">选择预置配置...</option>
+                    </select>
+                    <button class="btn btn-sm" id="cfgApplyPresetBtn" type="button">加载</button>
                 </div>
-                <div class="config-section">
-                    <h4>系统模块</h4>
-                    <div id="systemConfigList"></div>
-                    <button class="btn btn-sm" id="addSystemBtn" type="button">+ 添加系统</button>
+                <div class="config-toolbar">
+                    <label>信号采集脚本上传：</label>
+                    <button class="btn btn-sm" id="cfgUploadScriptBtn" type="button">上传 .m 文件</button>
+                    <input type="file" id="cfgUploadScriptInput" accept=".m,text/plain" hidden>
+                    <span style="flex:1"></span>
+                    <label>页面模板：</label>
+                    <select id="cfgTemplateSelect" style="min-width:140px;">
+                        <option value="">无（内联UI）</option>
+                    </select>
+                    <span style="flex:1"></span>
+                    <label>配置文件导入：</label>
+                    <button class="btn btn-sm" id="cfgUploadJsonBtn" type="button">上传 JSON</button>
+                    <input type="file" id="cfgUploadJsonInput" accept=".json,application/json" hidden>
                 </div>
-                <div class="config-section">
-                    <h4>输出信号</h4>
-                    <div id="outputConfigList"></div>
-                    <button class="btn btn-sm" id="addOutputBtn" type="button">+ 添加输出</button>
-                </div>
-                <div class="config-section">
-                    <h4>原始 JSON</h4>
-                    <textarea id="cfgRawJson" rows="6"></textarea>
+                <div style="display:flex;gap:12px;align-items:stretch;flex:1;min-height:0;">
+                    <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:12px;overflow-y:auto;min-height:0;">
+                        <div class="config-section" style="flex:1;display:flex;flex-direction:column;min-height:0;">
+                            <h4>信号采集脚本</h4>
+                            <textarea id="cfgSetupScript" placeholder="function dmg_setup()&#10;% 信号采集脚本&#10;...&#10;end" style="flex:1;min-height:0;width:100%;font-family:monospace;font-size:12px;"></textarea>
+                        </div>
+                    </div>
+                    <div style="width:800px;flex-shrink:0;display:flex;flex-direction:column;gap:12px;overflow-y:auto;min-height:0;">
+                        <div class="config-section">
+                            <h4>运行配置</h4>
+                            <div class="form-row">
+                                <label>预运行脚本</label>
+                                <input type="text" id="cfgPreRunScript" placeholder="RunCtrlSysModelSHT">
+                            </div>
+                            <div class="form-row">
+                                <label>热启动优化</label>
+                                <label><input type="checkbox" id="cfgSkipPreRunOnReuse"> 模型复用时跳过预运行脚本</label>
+                            </div>
+                            <div class="form-row">
+                                <label>后台预热</label>
+                                <label><input type="checkbox" id="cfgPrewarm"> 服务启动或引擎重启后自动预热</label>
+                            </div>
+                            <div class="form-row">
+                                <label>Simulink 模型</label>
+                                <input type="text" id="cfgSimulinkModel" placeholder="Dll_Control_AFO_V8_2_R2019b.slx">
+                            </div>
+                            <div class="form-row">
+                                <label>可选模型列表</label>
+                                <input type="text" id="cfgSimulinkModels" placeholder="多个用逗号分隔，如 Dll_Control_AFO_V8_2_R2019b.slx, Dll_Control_AFO_V8_2_R2020a.slx">
+                            </div>
+                            <div class="form-row">
+                                <label>停止时间</label>
+                                <input type="number" id="cfgStopTime" placeholder="30" step="any">
+                            </div>
+                            <div class="form-row">
+                                <label>固定步长</label>
+                                <input type="text" id="cfgFixedStep" placeholder="Ts 或 0.025">
+                            </div>
+                        </div>
+                        <div class="config-section">
+                            <h4>参数定义</h4>
+                            <div id="paramConfigList"></div>
+                            <button class="btn btn-sm" id="addParamBtn" type="button">+ 添加参数</button>
+                        </div>
+                        <div class="config-section">
+                            <h4>信号采集</h4>
+                            <div id="signalConfigList"></div>
+                            <button class="btn btn-sm" id="addSignalBtn" type="button">+ 添加信号</button>
+                        </div>
+                        <div class="config-section">
+                            <h4>页面布局</h4>
+                            <div class="form-row">
+                                <label>页面标题</label>
+                                <input type="text" id="cfgUiTitle" placeholder="AFO 涡轴发动机">
+                            </div>
+                            <div class="form-row">
+                                <label>布局方式</label>
+                                <select id="cfgUiLayout">
+                                    <option value="tabs">tabs</option>
+                                    <option value="stacked">stacked</option>
+                                </select>
+                            </div>
+                            <div id="sectionConfigList"></div>
+                            <button class="btn btn-sm" id="addSectionBtn" type="button">+ 添加分区</button>
+                        </div>
+                        <div class="config-section">
+                            <h4>扩展/插件</h4>
+                            <div class="form-row">
+                                <label>启用扩展</label>
+                                <input type="checkbox" id="cfgExtEnabled">
+                            </div>
+                            <div class="form-row">
+                                <label>加载模式</label>
+                                <select id="cfgExtMode">
+                                    <option value="slot">slot（在指定槽位插入）</option>
+                                    <option value="override">override（接管整个页面）</option>
+                                </select>
+                            </div>
+                            <div class="form-row">
+                                <label>插件</label>
+                                <select id="cfgExtEntry">
+                                    <option value="">不使用插件</option>
+                                </select>
+                            </div>
+                            <div class="form-row">
+                                <label>槽位 ID（slot 模式）</label>
+                                <input type="text" id="cfgExtSlot" placeholder="extra-panel">
+                            </div>
+                        </div>
+                    </div>
+                    <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:12px;overflow-y:auto;min-height:0;">
+                        <div class="config-section" style="flex:1;display:flex;flex-direction:column;min-height:0;">
+                            <h4>原始 JSON</h4>
+                            <textarea id="cfgRawJson" style="flex:1;min-height:0;width:100%;"></textarea>
+                        </div>
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">

@@ -195,12 +195,18 @@ window.AppConfig = {
             pause: '/api/program/pause',
             resume: '/api/program/resume',
             'update-config': '/api/program/update-config',
+            config: '/api/program/config',
+            plugin: '/api/program/plugin',
             files: '/api/program/files',
             'download-result': '/api/program/download-result',
             'upload-overview': '/api/program/upload-overview',
             'download-signal': '/api/program/download-signal',
             'engine-status': '/api/program/engine-status',
-            'engine-restart': '/api/program/engine-restart'
+            'engine-restart': '/api/program/engine-restart',
+            'preset-programs': '/api/program/preset-programs',
+            'config-templates': '/api/program/config-templates',
+            templates: '/api/program/templates',
+            'setup-script': '/api/program/setup-script'
         }
     },
     
@@ -271,8 +277,8 @@ window.AppConfig = {
     async request(url, options = {}) {
         const config = {
             method: 'GET',
-            headers: this.getAuthHeaders(),
-            ...options
+            ...options,
+            headers: { ...this.getAuthHeaders(), ...(options.headers || {}) }
         };
 
         // 如果是登录或刷新接口，不需要token

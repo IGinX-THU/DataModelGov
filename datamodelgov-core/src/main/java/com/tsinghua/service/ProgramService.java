@@ -23,6 +23,8 @@ import com.tsinghua.model.Result;
 import com.tsinghua.matlab.MatlabSimulationRunner;
 import com.tsinghua.matlab.MatlabEnginePool;
 import com.tsinghua.matlab.MatlabUtil;
+import com.tsinghua.program.config.ProgramConfig;
+import com.tsinghua.program.config.ProgramConfigMapper;
 import com.tsinghua.util.ArchiveUtil;
 import com.tsinghua.util.ConvertUtil;
 import com.tsinghua.util.FileUtil;
@@ -31,6 +33,8 @@ import com.tsinghua.util.SimTimeUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
@@ -46,7 +50,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -70,15 +76,20 @@ public class ProgramService {
     private final Map<Long, MatlabSimulationRunner> engineRunners = new ConcurrentHashMap<>();
     // 引擎池（pool-size 在 @PostConstruct 中从 yml 读取后创建）
     private MatlabEnginePool enginePool;
-    // 引擎运行期不可用（如缺少 MATLAB 原生库）时置位，后续任务直接走 matlab -batch 回退
+    private final AtomicBoolean prewarming = new AtomicBoolean(false);
+    private final Queue<ProgramEntity> prewarmQueue = new ConcurrentLinkedQueue<>();
+    private final Set<String> queuedPrewarms = ConcurrentHashMap.newKeySet();
+    private volatile String prewarmMessage = "";
+    // 引擎运行期不可用（如缺少 MATLAB 原生库）时置位，后续任务直接 FAILED
     private volatile boolean engineDisabled = false;
+    // 服务启动时间，用于判断 RUNNING 状态的任务是否为重启前遗留
+    private final long serviceStartTime = System.currentTimeMillis();
     // 仿真执行结果码
     private static final int RUN_OK = 0;
     private static final int RUN_STOPPED = 1;
     private static final int RUN_FAILED = 2;
-    private static final int RUN_FALLBACK = 3;
 
-    // 运行期开关：置 false 可强制回退到 matlab -batch（引擎异常排查时用）
+    // 运行期开关：置 false 可禁用引擎（仿真任务将直接 FAILED，不再回退）
     @Value("${matlab.engine.enabled:true}")
     private boolean matlabEngineEnabled;
 
@@ -101,6 +112,11 @@ public class ProgramService {
         if (matlabEngineEnabled) {
             enginePool.init();
         }
+    }
+
+    @EventListener(ApplicationReadyEvent.class)
+    public void prewarmOnApplicationReady() {
+        startPrewarmAsync();
     }
 
     @PreDestroy
@@ -224,6 +240,13 @@ public class ProgramService {
                         dto.setConfigJson(new String((byte[]) value, StandardCharsets.UTF_8));
                     } else if (value instanceof String) {
                         dto.setConfigJson((String) value);
+                    }
+                    break;
+                case META_PREFIX + "." + "setupScript":
+                    if (value instanceof byte[]) {
+                        dto.setSetupScript(new String((byte[]) value, StandardCharsets.UTF_8));
+                    } else if (value instanceof String) {
+                        dto.setSetupScript((String) value);
                     }
                     break;
                 case META_PREFIX + "." + "status":
@@ -457,6 +480,220 @@ public class ProgramService {
         }
     }
 
+    /** 读取 classpath 资源为字符串 */
+    private String readClasspathString(String path) {
+        try {
+            org.springframework.core.io.support.PathMatchingResourcePatternResolver resolver =
+                    new org.springframework.core.io.support.PathMatchingResourcePatternResolver();
+            org.springframework.core.io.Resource res = resolver.getResource("classpath:" + path);
+            if (!res.exists()) return null;
+            try (java.io.InputStream is = res.getInputStream()) {
+                java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+                byte[] buf = new byte[4096];
+                int n;
+                while ((n = is.read(buf)) > 0) out.write(buf, 0, n);
+                return new String(out.toByteArray(), StandardCharsets.UTF_8);
+            }
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * 上传预置程序：从 classpath:programs/<程序名>/ 读取源码包+配置+脚本，存入 IGinX。
+     * configJson 和 setupScript 分别存到两个字段。
+     */
+    public Map<String, Object> uploadPresetProgram(String programName, String version, String projectName) throws Exception {
+        String base = "programs/" + programName + "/";
+        // 1. 找到源码压缩包
+        org.springframework.core.io.support.PathMatchingResourcePatternResolver resolver =
+                new org.springframework.core.io.support.PathMatchingResourcePatternResolver();
+        org.springframework.core.io.Resource[] resources = resolver.getResources("classpath:" + base + "*");
+        String archiveFilename = null;
+        byte[] archiveBytes = null;
+        for (org.springframework.core.io.Resource res : resources) {
+            String filename = res.getFilename();
+            if (filename == null) continue;
+            String lower = filename.toLowerCase();
+            if (lower.endsWith(".zip") || lower.endsWith(".rar") || lower.endsWith(".7z") || lower.endsWith(".tar.gz") || lower.endsWith(".tgz") || lower.endsWith(".tar")) {
+                try (java.io.InputStream is = res.getInputStream()) {
+                    java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+                    byte[] buf = new byte[8192];
+                    int n;
+                    while ((n = is.read(buf)) > 0) out.write(buf, 0, n);
+                    archiveBytes = out.toByteArray();
+                    archiveFilename = filename;
+                    break;
+                }
+            }
+        }
+        if (archiveBytes == null) throw new IllegalArgumentException("预置程序目录下未找到源码压缩包: " + base);
+
+        // 2. 读取 config.json（不内联脚本）
+        String configContent = readClasspathString(base + "config.json");
+
+        // 3. 读取 dmg_setup.m 内容（独立存 setupScript 字段）
+        String setupScriptContent = readClasspathString(base + "dmg_setup.m");
+
+        // 4. 存入 IGinX
+        String programVersion = (version != null && !version.isEmpty()) ? version : "1.0";
+        String projName = (projectName != null && !projectName.isEmpty()) ? projectName : ProjectContext.getCurrentProject("unknown");
+        String storagePath = buildStoragePath(projName, programName, programVersion);
+
+        if (dataPermissionService.existTablePrefix(storagePath)) {
+            throw new IllegalArgumentException("仿真程序资产已存在: " + programName + " " + programVersion);
+        }
+
+        // 解压验证
+        File programDir = getProgramDir(projName, programName, programVersion);
+        if (programDir.exists()) FileUtil.deleteDirectory(programDir);
+        programDir.mkdirs();
+        File tempArchive = new File(programDir, archiveFilename);
+        Files.write(tempArchive.toPath(), archiveBytes);
+        try {
+            ArchiveUtil.extractArchive(tempArchive, programDir);
+        } catch (Exception e) {
+            FileUtil.deleteDirectory(programDir);
+            throw new IllegalArgumentException("程序包解压失败: " + e.getMessage(), e);
+        } finally {
+            if (tempArchive.exists()) tempArchive.delete();
+        }
+
+        // 写入 IGinX
+        int totalChunks = (int) Math.ceil((double) archiveBytes.length / CHUNK_SIZE);
+        List<Point> points = new ArrayList<>();
+        for (int i = 0; i < totalChunks; i++) {
+            int start = i * CHUNK_SIZE;
+            int end = Math.min(archiveBytes.length, start + CHUNK_SIZE);
+            byte[] chunk = Arrays.copyOfRange(archiveBytes, start, end);
+            points.add(Point.builder().measurement(storagePath).key(i).binaryValue(chunk).build());
+        }
+        iginxClient.getWriteClient().writePoints(points);
+        String fileMd5 = FileUtil.calculateMD5(archiveBytes);
+
+        // 保存元数据
+        ProgramEntity programMetaDto = new ProgramEntity();
+        programMetaDto.setName(programName);
+        programMetaDto.setVersion(programVersion);
+        programMetaDto.setDescription("预置程序: " + programName);
+        programMetaDto.setFileName(archiveFilename);
+        programMetaDto.setFileSize((long) archiveBytes.length);
+        programMetaDto.setChunkCount(totalChunks);
+        programMetaDto.setStoragePath(storagePath);
+        programMetaDto.setFileMd5(fileMd5);
+        programMetaDto.setProjectName(projName);
+        programMetaDto.setAuthor(AuthUtil.getCurrentUsername());
+        programMetaDto.setStatus("READY");
+        programMetaDto.setConfigJson(configContent != null ? configContent : buildDefaultConfig(programName).toString());
+        programMetaDto.setSetupScript(setupScriptContent);
+        saveProgramMetadata(programMetaDto);
+        dataPermissionService.saveTablePrefix(storagePath);
+
+        if (projName != null && !projName.isEmpty()) {
+            try { projectService.addToProject(projName, storagePath, "programs"); } catch (Exception e) { log.error("添加到项目失败", e); }
+        }
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("name", programName);
+        result.put("version", programVersion);
+        result.put("fileName", archiveFilename);
+        result.put("fileSize", archiveBytes.length);
+        result.put("chunkCount", totalChunks);
+        result.put("storagePath", storagePath);
+        result.put("fileMd5", fileMd5);
+        log.info("预置程序上传成功: {} {}, 块数: {}", programName, programVersion, totalChunks);
+        return result;
+    }
+
+    /**
+     * 获取仿真程序配置 JSON（configJson 字段）。若无配置返回骨架。
+     */
+    public String getProgramConfig(String name, String version, String projectName) {
+        ProgramEntity entity = queryMeta(name, version, projectName);
+        if (entity == null) return null;
+        String cfg = entity.getConfigJson();
+        if (!StringUtils.hasText(cfg)) {
+            // 返回骨架配置，便于前端编辑器初始化
+            return ProgramConfigMapper.stringify(ProgramConfigMapper.parse(buildDefaultConfig(name).toString()));
+        }
+        return cfg;
+    }
+
+    /** 获取仿真程序的信号采集脚本内容（setupScript 独立字段） */
+    public String getProgramSetupScript(String name, String version, String projectName) {
+        ProgramEntity entity = queryMeta(name, version, projectName);
+        if (entity == null) return null;
+        return entity.getSetupScript();
+    }
+
+    /** 保存仿真程序的信号采集脚本内容（setupScript 独立字段） */
+    public List<String> saveProgramSetupScript(String name, String version, String projectName, String setupScript) {
+        ProgramEntity entity = queryMeta(name, version, projectName);
+        if (entity == null) return Collections.singletonList("程序不存在");
+        entity.setSetupScript(setupScript);
+        try {
+            saveProgramMetadata(entity);
+        } catch (Exception e) {
+            log.error("保存脚本失败", e);
+            return Collections.singletonList("保存失败: " + e.getMessage());
+        }
+        return Collections.emptyList();
+    }
+
+    /**
+     * 统计每个插件被多少个程序配置引用。
+     * key = 插件 ID（ProgramConfig.ui.extension.entry），value = 引用计数。
+     */
+    public java.util.Map<String, Integer> countPluginReferences() {
+        java.util.Map<String, Integer> counts = new java.util.HashMap<>();
+        try {
+            List<ProgramEntity> all = queryProgramList();
+            if (all == null) return counts;
+            for (ProgramEntity entity : all) {
+                String cfg = entity.getConfigJson();
+                if (!StringUtils.hasText(cfg)) continue;
+                try {
+                    JsonNode root = mapper.readTree(cfg);
+                    JsonNode ext = root.path("ui").path("extension");
+                    if (ext.isMissingNode() || !ext.path("enabled").asBoolean(false)) continue;
+                    String entry = ext.path("entry").asText("");
+                    if (StringUtils.hasText(entry)) {
+                        counts.merge(entry, 1, Integer::sum);
+                    }
+                } catch (Exception ignored) {}
+            }
+        } catch (Exception e) {
+            log.warn("统计插件引用计数失败: {}", e.getMessage());
+        }
+        return counts;
+    }
+
+    /**
+     * 保存仿真程序配置 JSON：校验后写入 ProgramEntity.configJson 并持久化。
+     * 返回非空列表表示校验错误（调用方据决定是否放行）；返回空列表表示成功。
+     */
+    public List<String> saveProgramConfig(String name, String version, String projectName, String configJson) {
+        ProgramEntity entity = queryMeta(name, version, projectName);
+        if (entity == null) return Collections.singletonList("程序不存在");
+        ProgramConfig cfg = ProgramConfigMapper.parse(configJson);
+        if (cfg == null) return Collections.singletonList("配置 JSON 解析失败");
+        List<String> errors = ProgramConfigMapper.validate(cfg, false);
+        if (!errors.isEmpty()) return errors;
+        entity.setConfigJson(configJson);
+        entity.setStatus("READY");
+        try {
+            saveProgramMetadata(entity);
+        } catch (Exception e) {
+            log.error("保存程序配置失败", e);
+            return Collections.singletonList("保存失败: " + e.getMessage());
+        }
+        ProgramConfig.RuntimeConfig runtime = cfg.getRuntime();
+        if (runtime != null && Boolean.TRUE.equals(runtime.getPrewarm())) {
+            log.info("[MATLAB-PREWARM] 配置保存成功，触发预热: {} {}", entity.getName(), entity.getVersion());
+            enqueuePrewarm(entity);
+        }
+        return Collections.emptyList();
+    }
 
     /**
      * 保存仿真程序元数据
@@ -479,6 +716,7 @@ public class ProgramService {
         points.add(ConvertUtil.createFieldPoint(META_PREFIX, "version", safeVersion, timestamp));
         points.add(ConvertUtil.createFieldPoint(META_PREFIX, "description", entity.getDescription(), timestamp));
         points.add(ConvertUtil.createFieldPoint(META_PREFIX, "configJson", entity.getConfigJson(), timestamp));
+        points.add(ConvertUtil.createFieldPoint(META_PREFIX, "setupScript", entity.getSetupScript(), timestamp));
         points.add(ConvertUtil.createFieldPoint(META_PREFIX, "status", entity.getStatus(), timestamp));
         points.add(ConvertUtil.createFieldPoint(META_PREFIX, "lastError", entity.getLastError(), timestamp));
         points.add(ConvertUtil.createFieldPoint(META_PREFIX, "lastRunTime", entity.getLastRunTime(), timestamp));
@@ -584,7 +822,7 @@ public class ProgramService {
         programMetaDto.setFileMd5(fileMd5);
         programMetaDto.setProjectName(projectName);
         programMetaDto.setAuthor(AuthUtil.getCurrentUsername());
-        programMetaDto.setStatus("READY");
+        programMetaDto.setStatus("UNCONFIGURED");
         programMetaDto.setConfigJson(buildDefaultConfig(programName).toString());
         saveProgramMetadata(programMetaDto);
 
@@ -604,14 +842,22 @@ public class ProgramService {
                 file.getSize(), totalChunks, storagePath, fileMd5);
     }
 
+    /** 构建骨架配置：不写死任何程序专属值，由集成人员在配置编辑器里补全。
+     *  runtime 留空，运行时 doRun 会自动探测 .slx/.m 填入。 */
     private ObjectNode buildDefaultConfig(String programName) {
         ObjectNode config = mapper.createObjectNode();
         config.put("programName", programName);
         ObjectNode runtime = config.putObject("runtime");
-        runtime.put("preRunScript", "RunCtrlSysModelSHT");
-        runtime.put("simulinkModel", "Dll_Control_AFO_V8_2_R2019b.slx");
+        runtime.put("preRunScript", "");
+        runtime.put("skipPreRunOnReuse", false);
+        runtime.put("prewarm", false);
+        runtime.put("simulinkModel", "");
         runtime.put("stopTime", 30);
-        config.putArray("outputs");
+        config.putArray("parameters");
+        config.putNull("setupScript");
+        ObjectNode ui = config.putObject("ui");
+        ui.put("title", programName);
+        ui.putArray("sections");
         return config;
     }
 
@@ -622,6 +868,12 @@ public class ProgramService {
         config.put("programDir", taskDir.getAbsolutePath());
         File cfg = new File(taskDir, "program-config.json");
         mapper.writerWithDefaultPrettyPrinter().writeValue(cfg, config);
+        // 从 entity.setupScript（独立字段）写到 taskDir/dmg_setup.m
+        String script = entity.getSetupScript();
+        if (script != null && !script.trim().isEmpty()) {
+            Files.write(new File(taskDir, "dmg_setup.m").toPath(),
+                    script.getBytes(StandardCharsets.UTF_8));
+        }
     }
 
     /**
@@ -696,7 +948,7 @@ public class ProgramService {
         deleteProgram(name, version, null);
     }
 
-    public Result<Map<String, Object>> run(String name, String version, String stopTime, String fixedStep, String npCommand, String loadPower, String modelFile, String projectName) {
+    public Result<Map<String, Object>> run(String name, String version, String stopTime, String fixedStep, String modelFile, String projectName, Map<String, String> params) {
         ProgramEntity entity = queryMeta(name, version, projectName);
         if (entity == null) return Result.error("程序不存在");
 
@@ -713,14 +965,14 @@ public class ProgramService {
         task.setStartTime(taskTimestamp);
         // 引擎模式下，如果所有引擎都在使用中，先标记为 QUEUED（排队中）
         // doRun 线程 borrow 到引擎后会把状态改为 RUNNING
-        boolean willQueue = isEngineMode() && enginePool.idleCount() == 0
-                && enginePool.totalCount() >= enginePool.maxEngines();
+        boolean willQueue = isEngineMode() && (prewarming.get() || (enginePool.idleCount() == 0
+                && enginePool.totalCount() >= enginePool.maxEngines()));
         task.setStatus(willQueue ? TaskStatus.QUEUED : TaskStatus.RUNNING);
         task.setStopTime(alignedStopTime);
         task.setFixedStep(fixedStep);
-        task.setNpCommand(npCommand);
-        task.setLoadPower(loadPower);
         task.setModelFile(modelFile);
+        // 动态参数序列化为 JSON 存档（兼容旧字段 npCommand/loadPower）
+        task.setParamsJson(mapper.valueToTree(params).toString());
         runningTasks.put(taskTimestamp, task);
         saveTask(task);
 
@@ -728,7 +980,7 @@ public class ProgramService {
         // （doRun 线程下载/解压需要时间，此时前端 SSE 订阅才能拿到 buffer）
         liveDataMap.put(taskTimestamp, new LiveDataBuffer());
 
-        new Thread(() -> doRun(taskTimestamp, entity, alignedStopTime, fixedStep, npCommand, loadPower, modelFile), "program-run-" + taskTimestamp).start();
+        new Thread(() -> doRun(taskTimestamp, entity, alignedStopTime, fixedStep, modelFile, params), "program-run-" + taskTimestamp).start();
 
         Map<String, Object> data = new HashMap<>();
         data.put("status", willQueue ? TaskStatus.QUEUED : TaskStatus.RUNNING);
@@ -756,16 +1008,162 @@ public class ProgramService {
         return aligned;
     }
 
-    /** 是否使用 MATLAB Engine API 驱动仿真（否则回退到 matlab -batch） */
+    /** 是否使用 MATLAB Engine API 驱动仿真（否则任务直接 FAILED，不再回退） */
     private boolean isEngineMode() {
         if (!matlabEngineEnabled || engineDisabled) return false;
         if (!MatlabSimulationRunner.isApiAvailable()) return false;
-        // 引擎池启动失败时回退；启动中或已就绪都走引擎模式（borrow 会等待就绪）
+        // 引擎池启动失败时拒绝运行；启动中或已就绪都走引擎模式（borrow 会等待就绪）
         if (enginePool.isFailed()) {
-            log.warn("MATLAB 引擎池启动失败，回退到 matlab -batch");
+            log.warn("MATLAB 引擎池启动失败，仿真无法运行");
             return false;
         }
         return true;
+    }
+
+    private List<ProgramEntity> queryProgramsForPrewarm() {
+        try {
+            String sql = "SELECT * FROM " + META_PREFIX + " WHERE 1=1;";
+            log.info("[MATLAB-PREWARM] 执行系统级程序查询: {}", sql);
+            SessionExecuteSqlResult result = iginxSession.executeSql(sql);
+            List<Map<String, Object>> records = ConvertUtil.getRecords(result);
+            if (records == null) return new ArrayList<>();
+            List<ProgramEntity> programs = new ArrayList<>();
+            for (Map<String, Object> record : records) {
+                ProgramEntity entity = new ProgramEntity();
+                record.forEach((key, value) -> setDtoField(entity, key, value));
+                programs.add(entity);
+            }
+            return programs;
+        } catch (Exception e) {
+            log.error("[MATLAB-PREWARM] 系统级程序查询失败", e);
+            return new ArrayList<>();
+        }
+    }
+
+    private void startPrewarmAsync() {
+        startPrewarmAsync(6);
+    }
+
+    private void startPrewarmAsync(int attemptsRemaining) {
+        if (!matlabEngineEnabled || enginePool == null) return;
+        List<ProgramEntity> programs = queryProgramsForPrewarm();
+        if (programs.isEmpty() && attemptsRemaining > 1) {
+            log.warn("[MATLAB-PREWARM] 暂未发现程序，10 秒后重试（剩余 {} 次）", attemptsRemaining - 1);
+            Thread retry = new Thread(() -> {
+                try {
+                    Thread.sleep(10000);
+                    startPrewarmAsync(attemptsRemaining - 1);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }, "matlab-prewarm-discovery");
+            retry.setDaemon(true);
+            retry.start();
+            return;
+        }
+        int enabled = 0;
+        for (ProgramEntity entity : programs) {
+            try {
+                ProgramConfig config = ProgramConfigMapper.parse(entity.getConfigJson());
+                ProgramConfig.RuntimeConfig runtime = config != null ? config.getRuntime() : null;
+                if (runtime != null && Boolean.TRUE.equals(runtime.getPrewarm())) {
+                    enqueuePrewarm(entity);
+                    enabled++;
+                }
+            } catch (Exception e) {
+                log.warn("[MATLAB-PREWARM] 跳过无法解析配置的程序 {} {}: {}",
+                        entity.getName(), entity.getVersion(), e.getMessage());
+            }
+        }
+        log.info("[MATLAB-PREWARM] 扫描程序 {} 个，已启用预热 {} 个，当前队列 {} 个",
+                programs.size(), enabled, prewarmQueue.size());
+        startPrewarmWorker();
+    }
+
+    private void enqueuePrewarm(ProgramEntity entity) {
+        if (entity == null || !matlabEngineEnabled || enginePool == null) return;
+        String key = String.valueOf(entity.getProjectName()) + "|" + entity.getName() + "|" + entity.getVersion();
+        if (queuedPrewarms.add(key)) {
+            prewarmQueue.offer(entity);
+            log.info("[MATLAB-PREWARM] 已加入预热队列: {} {}", entity.getName(), entity.getVersion());
+        }
+        startPrewarmWorker();
+    }
+
+    private void startPrewarmWorker() {
+        if (prewarmQueue.isEmpty() || !prewarming.compareAndSet(false, true)) return;
+        Thread thread = new Thread(() -> {
+            try {
+                ProgramEntity entity;
+                while ((entity = prewarmQueue.poll()) != null) {
+                    String key = String.valueOf(entity.getProjectName()) + "|" + entity.getName() + "|" + entity.getVersion();
+                    prewarmMessage = "正在预热 " + entity.getName() + " " + entity.getVersion();
+                    try {
+                        ProgramConfig config = ProgramConfigMapper.parse(entity.getConfigJson());
+                        if (config == null || config.getRuntime() == null || !Boolean.TRUE.equals(config.getRuntime().getPrewarm())) {
+                            log.info("[MATLAB-PREWARM] 配置已关闭预热，跳过 {} {}", entity.getName(), entity.getVersion());
+                            continue;
+                        }
+                        prewarmProgram(entity, config);
+                        log.info("[MATLAB-PREWARM] {} {} 预热完成", entity.getName(), entity.getVersion());
+                    } catch (Exception e) {
+                        log.error("[MATLAB-PREWARM] {} {} 预热失败", entity.getName(), entity.getVersion(), e);
+                    } finally {
+                        queuedPrewarms.remove(key);
+                    }
+                }
+                prewarmMessage = "程序预热完成";
+            } finally {
+                prewarming.set(false);
+                if (!prewarmQueue.isEmpty()) startPrewarmWorker();
+            }
+        }, "matlab-program-prewarm");
+        thread.setDaemon(true);
+        thread.start();
+    }
+
+    private void prewarmProgram(ProgramEntity entity, ProgramConfig config) throws Exception {
+        ProgramConfig.RuntimeConfig runtime = config.getRuntime();
+        String modelFile = runtime.getSimulinkModel();
+        if (!StringUtils.hasText(modelFile)) throw new Exception("未配置 Simulink 模型");
+        File baseDir = new File(System.getProperty("java.io.tmpdir"), "datamodelgov-prewarm");
+        if (!baseDir.exists() && !baseDir.mkdirs()) throw new IOException("无法创建预热目录: " + baseDir);
+        File taskDir = new File(baseDir, entity.getName() + "-" + entity.getVersion() + "-" + System.currentTimeMillis());
+        if (!taskDir.mkdirs()) throw new IOException("无法创建程序预热目录: " + taskDir);
+        byte[] archiveBytes = downloadFromIginx(entity.getStoragePath(), entity.getChunkCount(), entity.getFileMd5());
+        File archiveFile = new File(taskDir, entity.getFileName());
+        Files.write(archiveFile.toPath(), archiveBytes);
+        ArchiveUtil.extractArchive(archiveFile, taskDir);
+        writeProgramConfig(taskDir, entity);
+        String preRunScript = StringUtils.hasText(runtime.getPreRunScript()) ? runtime.getPreRunScript() : "";
+        String programDir = FileUtil.findProgramDir(taskDir, preRunScript);
+        File setupSource = new File(taskDir, "dmg_setup.m");
+        File setupTarget = new File(programDir, "dmg_setup.m");
+        if (setupSource.exists() && !setupTarget.exists()) Files.copy(setupSource.toPath(), setupTarget.toPath());
+        Map<String, String> parameterValues = new LinkedHashMap<>();
+        if (config.getParameters() != null) {
+            for (ProgramConfig.ParameterSpec parameter : config.getParameters()) {
+                if (StringUtils.hasText(parameter.getDefaultValue())) {
+                    parameterValues.put(parameter.getKey(), parameter.getDefaultValue());
+                }
+            }
+        }
+        double fixedStepValue = SimTimeUtil.parse(runtime.getFixedStep(), 0.025);
+        String modelName = modelFile.replaceAll("\\.(slx|mdl)$", "");
+        MatlabSimulationRunner runner = new MatlabSimulationRunner(taskDir, programDir, preRunScript,
+                true, modelName, fixedStepValue, runtime.getFixedStep(), parameterValues,
+                config.getParameters(), StringUtils.hasText(entity.getSetupScript()) ? "dmg_setup" : null,
+                new MatlabSimulationRunner.LiveSink() {
+                    @Override public void onStopTime(double alignedStopTime) {}
+                    @Override public void onHeaders(List<String> headers) {}
+                    @Override public void onRows(List<String[]> rows) {}
+                    @Override public void onLog(String line) { log.info("[MATLAB-PREWARM] {}", line); }
+                }, enginePool);
+        try {
+            runner.prewarm();
+        } finally {
+            runner.close();
+        }
     }
 
     /** MATLAB 引擎状态（供前端 footer 显示） */
@@ -775,14 +1173,17 @@ public class ProgramService {
             data.put("status", "disabled");
             data.put("message", "[MATLAB] 引擎模式未启用（matlab.engine.enabled=false）");
         } else if (engineDisabled) {
-            data.put("status", "fallback");
-            data.put("message", "[MATLAB] 引擎不可用，已回退到 matlab -batch");
+            data.put("status", "disabled");
+            data.put("message", "[MATLAB] 引擎运行期不可用，仿真无法运行（已禁用，不再回退）");
         } else if (!MatlabSimulationRunner.isApiAvailable()) {
             data.put("status", "unavailable");
             data.put("message", "[MATLAB] Engine API 不可用（缺少原生库）");
         } else if (enginePool.isFailed()) {
             data.put("status", "failed");
-            data.put("message", "[MATLAB] 引擎启动失败，将回退到 matlab -batch");
+            data.put("message", "[MATLAB] 引擎启动失败，仿真无法运行");
+        } else if (prewarming.get()) {
+            data.put("status", "warming");
+            data.put("message", "[MATLAB] " + prewarmMessage + "，首次使用前请耐心等待...");
         } else if (enginePool.isReady()) {
             data.put("status", "ready");
             int idle = enginePool.idleCount();
@@ -806,6 +1207,7 @@ public class ProgramService {
         log.info("用户请求重启 MATLAB 引擎");
         engineDisabled = false;
         enginePool.restart();
+        startPrewarmAsync();
         Map<String, Object> data = new HashMap<>();
         data.put("status", "starting");
         data.put("message", "[MATLAB] 引擎正在重启...");
@@ -835,29 +1237,8 @@ public class ProgramService {
                         stopped.put("status", TaskStatus.STOPPED);
                         return Result.success("已停止", stopped);
                     }
-                    // 先创建 stop.flag（让 progressiveReveal/MATLAB 检测到后退出）
-                    File taskDir = new File(getTaskBaseDir(projectName != null ? projectName : task.getProjectName()), String.valueOf(ts));
-                    try {
-                        Files.createFile(new File(taskDir, "stop.flag").toPath());
-                    } catch (IOException e) {
-                        log.warn("创建 stop.flag 失败: {}", e.getMessage());
-                    }
-                    // 同时删除 pause.flag（如果在暂停中，先恢复才能检测到 stop.flag）
-                    try {
-                        Files.deleteIfExists(new File(taskDir, "pause.flag").toPath());
-                    } catch (IOException e) {
-                        log.warn("删除 pause.flag 失败: {}", e.getMessage());
-                    }
+                    // 引擎不可用或 runner 已退出：直接标记停止
                     pauseFlags.remove(ts);
-                    // 等 1 秒让 MATLAB 检测到 stop.flag 退出，超时则强制杀进程
-                    Process process = processMap.get(ts);
-                    if (process != null && process.isAlive()) {
-                        try { process.waitFor(1, TimeUnit.SECONDS); } catch (InterruptedException ignored) {}
-                        if (process.isAlive()) {
-                            process.destroyForcibly();
-                        }
-                    }
-                    processMap.remove(ts);
                     LiveDataBuffer buffer = liveDataMap.get(ts);
                     if (buffer != null) buffer.setFinished(true);
                     updateTaskStatus(ts, TaskStatus.STOPPED, null, null, null, null);
@@ -872,7 +1253,7 @@ public class ProgramService {
         }
     }
 
-    private void doRun(long taskTimestamp, ProgramEntity entity, String stopTimeParam, String fixedStepParam, String npCommandParam, String loadPowerParam, String modelFileParam) {
+    private void doRun(long taskTimestamp, ProgramEntity entity, String stopTimeParam, String fixedStepParam, String modelFileParam, Map<String, String> params) {
         File taskDir = new File(getTaskBaseDir(entity.getProjectName()), String.valueOf(taskTimestamp));
         try {
             taskDir.mkdirs();
@@ -887,15 +1268,47 @@ public class ProgramService {
                 updateTaskStatus(taskTimestamp, TaskStatus.FAILED, "缺少 program-config.json", null, null, null);
                 return;
             }
-            JsonNode config = mapper.readTree(configFile);
-            JsonNode runtime = config.get("runtime");
-            String preRunScript = runtime.path("preRunScript").asText("RunCtrlSysModelSHT");
-            String modelFile = StringUtils.hasText(modelFileParam) ? modelFileParam : runtime.path("simulinkModel").asText("");
+            ProgramConfig pgConfig = ProgramConfigMapper.parse(new String(Files.readAllBytes(configFile.toPath()), StandardCharsets.UTF_8));
+            if (pgConfig == null) {
+                updateTaskStatus(taskTimestamp, TaskStatus.FAILED, "program-config.json 解析失败", null, null, null);
+                return;
+            }
+            ProgramConfig.RuntimeConfig runtime = pgConfig.getRuntime();
+            String preRunScript = runtime != null && StringUtils.hasText(runtime.getPreRunScript())
+                    ? runtime.getPreRunScript() : "";
+            boolean skipPreRunOnReuse = runtime != null && !Boolean.FALSE.equals(runtime.getSkipPreRunOnReuse());
+            String modelFile = StringUtils.hasText(modelFileParam) ? modelFileParam
+                    : (runtime != null ? runtime.getSimulinkModel() : "");
             double stopTime = StringUtils.hasText(stopTimeParam)
-                    ? SimTimeUtil.parse(stopTimeParam, runtime.path("stopTime").asDouble(30))
-                    : runtime.path("stopTime").asDouble(30);
+                    ? SimTimeUtil.parse(stopTimeParam, runtime != null ? runtime.getStopTime() : 30)
+                    : (runtime != null ? runtime.getStopTime() : 30);
+            // setupScript 内容已由 writeProgramConfig 从 entity.setupScript 写到 taskDir/dmg_setup.m
+            // runner cd(taskDir) 后用固定函数名 dmg_setup 调用
+            String setupScript = StringUtils.hasText(entity.getSetupScript()) ? "dmg_setup" : null;
+
+            // 构造参数值映射：优先用前端传入，其次用 config 里的默认值
+            Map<String, String> paramValues = new LinkedHashMap<>();
+            if (pgConfig.getParameters() != null) {
+                for (ProgramConfig.ParameterSpec p : pgConfig.getParameters()) {
+                    String v = params.get(p.getKey());
+                    if (!StringUtils.hasText(v)) v = p.getDefaultValue();
+                    if (StringUtils.hasText(v)) paramValues.put(p.getKey(), v);
+                }
+            }
 
             String programDir = FileUtil.findProgramDir(taskDir, preRunScript);
+            // dmg_setup.m 由 writeProgramConfig 写到 taskDir，但 runner 会 cd(programDir)，
+            // 如果 programDir 是 taskDir 的子目录（解压目录），MATLAB 找不到 dmg_setup。
+            // 把 dmg_setup.m 复制到 programDir，确保 cd 后能找到。
+            File dmgSetupInTask = new File(taskDir, "dmg_setup.m");
+            File dmgSetupInProgramDir = new File(programDir, "dmg_setup.m");
+            if (dmgSetupInTask.exists() && !dmgSetupInProgramDir.exists()) {
+                try {
+                    Files.copy(dmgSetupInTask.toPath(), dmgSetupInProgramDir.toPath());
+                } catch (Exception e) {
+                    log.warn("复制 dmg_setup.m 到 programDir 失败", e);
+                }
+            }
             if (modelFile.isEmpty()) {
                 File programDirFile = new File(programDir);
                 File[] slxFiles = programDirFile.listFiles((d, n) ->
@@ -915,15 +1328,26 @@ public class ProgramService {
             LiveDataBuffer liveBuffer = liveDataMap.computeIfAbsent(taskTimestamp, k -> new LiveDataBuffer());
             File logFile = new File(taskDir, "run.log");
 
-            int result = RUN_FALLBACK;
-            if (isEngineMode()) {
-                result = runWithEngine(taskTimestamp, taskDir, programDir, preRunScript, modelFile,
-                        stopTime, fixedStepParam, npCommandParam, loadPowerParam, liveBuffer);
+            if (!isEngineMode()) {
+                updateTaskStatus(taskTimestamp, TaskStatus.FAILED,
+                        "MATLAB Engine 模式未启用，无法运行仿真（已移除 matlab -batch 回退方案）",
+                        null, null, null);
+                return;
             }
-            if (result == RUN_FALLBACK) {
-                result = runWithBatch(taskTimestamp, taskDir, programDir, preRunScript, modelFile,
-                        stopTime, fixedStepParam, npCommandParam, loadPowerParam, liveBuffer, logFile);
+            if (prewarming.get()) {
+                liveBuffer.appendLogLine("[MATLAB] 后台预热尚未完成，当前任务正在等待预热模型...");
+                long deadline = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(20);
+                while (prewarming.get() && System.currentTimeMillis() < deadline) {
+                    Thread.sleep(1000);
+                }
+                if (prewarming.get()) {
+                    updateTaskStatus(taskTimestamp, TaskStatus.FAILED, "等待 MATLAB 预热超时", null, logFile.getAbsolutePath(), null);
+                    return;
+                }
+                liveBuffer.appendLogLine("[MATLAB] 后台预热完成，开始运行仿真...");
             }
+            int result = runWithEngine(taskTimestamp, taskDir, programDir, preRunScript, skipPreRunOnReuse,
+                    modelFile, stopTime, fixedStepParam, paramValues, pgConfig.getParameters(), setupScript, liveBuffer);
             if (result != RUN_OK) {
                 // 用户停止 / 运行失败：状态已由停止端点或运行分支设置，不再覆盖。
                 // signals.csv 已由引擎 exportResults() 写到 taskDir（如果仿真已开始），
@@ -938,7 +1362,7 @@ public class ProgramService {
             }
             log.info("程序运行成功，结果文件: {}", csv.getAbsolutePath());
 
-            generateResultFiles(taskDir, entity, modelFile, stopTimeParam, fixedStepParam, npCommandParam, loadPowerParam, logFile);
+            generateResultFiles(taskDir, entity, modelFile, stopTimeParam, fixedStepParam, paramValues, logFile);
 
             // Import result CSV to IGinX with key column
             String outputTable = importResultCsvToIginx(csv, entity, taskTimestamp, modelFile);
@@ -969,19 +1393,20 @@ public class ProgramService {
      * 通过 MATLAB Engine API 执行仿真：常驻 MATLAB 会话 + 异步 SimulationCommand，
      * 曲线随仿真真实推进，暂停/恢复/停止直接作用于 Simulink 求解器。
      *
-     * @return RUN_OK 正常结束；RUN_STOPPED 用户停止；RUN_FAILED 运行失败（状态已写）；
-     * RUN_FALLBACK 引擎不可用，需回退到 matlab -batch
+     * @return RUN_OK 正常结束；RUN_STOPPED 用户停止；RUN_FAILED 运行失败（状态已写）
      */
     private int runWithEngine(long taskTimestamp, File taskDir, String programDir, String preRunScript,
-                              String modelFile, double stopTime, String fixedStep, String npCommand,
-                              String loadPower, LiveDataBuffer liveBuffer) {
+                              boolean skipPreRunOnReuse, String modelFile, double stopTime, String fixedStep,
+                              Map<String, String> paramValues, List<ProgramConfig.ParameterSpec> parameters,
+                              String setupScript, LiveDataBuffer liveBuffer) {
         if (!StringUtils.hasText(modelFile)) {
-            log.warn("未指定 Simulink 模型，回退到 matlab -batch");
-            return RUN_FALLBACK;
+            log.warn("未指定 Simulink 模型");
+            updateTaskStatus(taskTimestamp, TaskStatus.FAILED, "未指定 Simulink 模型", null, null, null);
+            return RUN_FAILED;
         }
         String modelName = modelFile.replaceAll("\\.(slx|mdl)$", "");
-        MatlabSimulationRunner runner = new MatlabSimulationRunner(taskDir, programDir, preRunScript, modelName,
-                stopTime, fixedStep, npCommand, loadPower,
+        MatlabSimulationRunner runner = new MatlabSimulationRunner(taskDir, programDir, preRunScript,
+                skipPreRunOnReuse, modelName, stopTime, fixedStep, paramValues, parameters, setupScript,
                 new MatlabSimulationRunner.LiveSink() {
                     @Override
                     public void onStopTime(double alignedStopTime) {
@@ -1021,10 +1446,13 @@ public class ProgramService {
         } catch (Throwable t) {
             if (isEngineUnavailable(t)) {
                 engineDisabled = true;
-                log.error("MATLAB Engine 不可用，本次及后续仿真回退到 matlab -batch。"
+                log.error("MATLAB Engine 不可用，本次及后续仿真将直接 FAILED。"
                         + "请确认本机已安装与 engine.jar 匹配的 MATLAB 版本，"
                         + "或通过 matlab.engine.home 指定安装目录。原因: {}", t.toString());
-                return RUN_FALLBACK;
+                updateTaskStatus(taskTimestamp, TaskStatus.FAILED,
+                        "MATLAB Engine 不可用: " + t.getMessage(), null,
+                        new File(taskDir, "run.log").getAbsolutePath(), null);
+                return RUN_FAILED;
             }
             log.error("引擎仿真失败", t);
             updateTaskStatus(taskTimestamp, TaskStatus.FAILED, t.getMessage(), null,
@@ -1036,7 +1464,7 @@ public class ProgramService {
         }
     }
 
-    /** 判断异常是否源于 MATLAB 原生库缺失（此时应回退，而不是把任务标记为失败） */
+    /** 判断异常是否源于 MATLAB 原生库缺失 */
     private boolean isEngineUnavailable(Throwable t) {
         for (Throwable c = t; c != null; c = c.getCause()) {
             if (c instanceof UnsatisfiedLinkError || c instanceof NoClassDefFoundError
@@ -1048,498 +1476,6 @@ public class ProgramService {
         return false;
     }
 
-    /**
-     * 回退方案：matlab -batch 阻塞跑完 sim() 后再渐进式回放 CSV。
-     * 仅在 MATLAB Engine API 不可用时使用（无真实暂停，暂停只是节流展示）。
-     */
-    private int runWithBatch(long taskTimestamp, File taskDir, String programDir, String preRunScript,
-                             String modelFile, double stopTime, String fixedStep, String npCommand,
-                             String loadPower, LiveDataBuffer liveBuffer, File logFile) throws Exception {
-        String shortTaskDir = FileUtil.getShortPath(taskDir);
-        String shortProgramDir = FileUtil.getShortPath(new File(programDir));
-        log.info("回退到 matlab -batch，运行目录={}，程序目录={}", shortTaskDir, shortProgramDir);
-        writeWrapper(new File(taskDir, "run_wrapper.m"), shortTaskDir, shortProgramDir, preRunScript,
-                modelFile, stopTime, fixedStep, npCommand, loadPower);
-
-        ProcessBuilder pb = new ProcessBuilder();
-        pb.directory(taskDir);
-        pb.command("cmd", "/c", "chcp 65001 && matlab -batch \"cd('"
-                + MatlabUtil.escape(shortTaskDir) + "'); run_wrapper; exit;\"");
-        pb.redirectErrorStream(true);
-        pb.redirectOutput(logFile);
-
-        Process process = pb.start();
-        processMap.put(taskTimestamp, process);
-        boolean finished = process.waitFor(1200, TimeUnit.SECONDS);
-        processMap.remove(taskTimestamp);
-
-        File pauseFlag = new File(taskDir, "pause.flag");
-        File stopFlag = new File(taskDir, "stop.flag");
-        if (stopFlag.exists()) {
-            log.info("检测到 stop.flag，任务由用户主动停止");
-            liveBuffer.setFinished(true);
-            return RUN_STOPPED;
-        }
-        if (!finished) {
-            process.destroyForcibly();
-            liveBuffer.setFinished(true);
-            updateTaskStatus(taskTimestamp, TaskStatus.FAILED, "运行超时", null, null, null);
-            return RUN_FAILED;
-        }
-        int exitCode = process.exitValue();
-        log.info("程序运行结束，退出码: {}，日志:\n{}", exitCode, FileUtil.readLastLines(logFile, 200));
-        if (exitCode != 0) {
-            updateTaskStatus(taskTimestamp, TaskStatus.FAILED,
-                    "MATLAB 退出码 " + exitCode + ": " + FileUtil.readLastLines(logFile, 20), null,
-                    logFile.getAbsolutePath(), null);
-            return RUN_FAILED;
-        }
-
-        File csv = new File(taskDir, "signals.csv");
-        if (csv.exists()) {
-            progressiveReveal(csv, liveBuffer, pauseFlag, stopFlag, stopTime);
-        } else {
-            log.warn("signals.csv 不存在，跳过渐进式回放");
-        }
-        return stopFlag.exists() ? RUN_STOPPED : RUN_OK;
-    }
-
-    /**
-     * 渐进式回放：读取完整 signals_live.csv，按仿真时间节拍把行增量释放到 LiveDataBuffer。
-     * 仿真本身已由 MATLAB 阻塞 sim() 跑完，此处只控制数据向前端的展现节奏（非真实仿真暂停）。
-     * - 节拍：约 stopTime 秒内放完所有行（接近真实时间），每 100ms 释放一批
-     * - pause.flag 存在时暂停释放（阻塞等待 flag 删除）
-     * - stop.flag 存在时一次性释放剩余所有行并结束
-     */
-    private void progressiveReveal(File liveCsv, LiveDataBuffer liveBuffer, File pauseFlag, File stopFlag, double stopTime) {
-        List<String> lines;
-        try {
-            lines = Files.readAllLines(liveCsv.toPath(), StandardCharsets.UTF_8);
-        } catch (Exception e) {
-            log.warn("读取 signals_live.csv 失败，跳过回放", e);
-            return;
-        }
-        if (lines.isEmpty()) return;
-
-        // 第一行 header
-        List<String> headers = Arrays.asList(lines.get(0).split(","));
-        liveBuffer.setHeaders(headers);
-
-        // 解析全部数据行
-        List<String[]> allRows = new ArrayList<>();
-        for (int i = 1; i < lines.size(); i++) {
-            String line = lines.get(i).trim();
-            if (line.isEmpty()) continue;
-            allRows.add(line.split(","));
-        }
-        if (allRows.isEmpty()) return;
-
-        int totalRows = allRows.size();
-        // 节拍：stopTime 秒内放完，每 100ms 一批（real-time pacing）
-        int totalTicks = (int) Math.max(1, Math.round(stopTime * 10));
-        int rowsPerTick = Math.max(1, (totalRows + totalTicks - 1) / totalTicks);
-        long tickMs = 100;
-
-        log.info("渐进式回放开始: 共 {} 行, 每批 {} 行/100ms (约 {}s)", totalRows, rowsPerTick, stopTime);
-        int cursor = 0;
-        while (cursor < totalRows) {
-            // 暂停：pause.flag 存在则等待（stop.flag 同时存在则跳出暂停）
-            while (pauseFlag.exists() && !stopFlag.exists()) {
-                try { Thread.sleep(200); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); return; }
-            }
-            // 停止：一次性释放剩余所有行
-            if (stopFlag.exists()) {
-                List<String[]> remaining = new ArrayList<>(allRows.subList(cursor, totalRows));
-                liveBuffer.appendRows(remaining);
-                log.info("回放被停止，一次性释放剩余 {} 行", remaining.size());
-                cursor = totalRows;
-                break;
-            }
-            int end = Math.min(cursor + rowsPerTick, totalRows);
-            liveBuffer.appendRows(new ArrayList<>(allRows.subList(cursor, end)));
-            cursor = end;
-            try { Thread.sleep(tickMs); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); return; }
-        }
-        log.info("渐进式回放完成: 释放 {} 行", totalRows);
-    }
-
-    private void writeWrapper(File f, String taskDir, String programDir, String preRun, String modelFile, double stopTime,
-                              String fixedStep, String npCommand, String loadPower) throws IOException {
-        StringBuilder sb = new StringBuilder();
-        sb.append("cd('").append(MatlabUtil.escape(programDir)).append("');\n");
-        sb.append("try\n");
-        sb.append("    ").append(preRun).append(";\n");
-        sb.append("catch ME\n");
-        sb.append("    fid = fopen('error.txt', 'w');\n");
-        sb.append("    fprintf(fid, '%s\\n', ME.message);\n");
-        sb.append("    fclose(fid);\n");
-        sb.append("    rethrow(ME);\n");
-        sb.append("end\n");
-        if (StringUtils.hasText(npCommand)) {
-            sb.append("NpReferenceRpm = ").append(npCommand).append(";\n");
-        }
-        if (StringUtils.hasText(loadPower)) {
-            sb.append("MkpReferenceNm = ").append(loadPower).append(";\n");
-        }
-        if (StringUtils.hasText(fixedStep)) {
-            sb.append("Ts = ").append(fixedStep).append(";\n");
-        }
-        // Recalculate derived values that depend on user input
-        sb.append("PTReferenceLoadPowerW = MkpReferenceNm * (NpReferenceRpm * pi / 30);\n");
-        sb.append("Power_cmd = PTReferenceLoadPowerW;\n");
-        sb.append("NpDem = NpReferenceRpm;\n");
-        sb.append("if exist('NgReferenceRpm', 'var'), NgMax = NgReferenceRpm * 1.05; end\n");
-        sb.append("if exist('WfReferenceKgps', 'var'), WfMax = WfReferenceKgps * 2; WfMin = WfReferenceKgps * 0.01; end\n");
-        if (modelFile != null && !modelFile.isEmpty()) {
-            String modelName = modelFile.replaceAll("\\.(slx|mdl)$", "");
-            sb.append("try\n");
-            sb.append("    load_system('").append(MatlabUtil.escape(modelName)).append("');\n");
-            sb.append("    set_param('").append(MatlabUtil.escape(modelName)).append("', 'StopTime', '").append(stopTime).append("');\n");
-            if (StringUtils.hasText(fixedStep)) {
-                sb.append("    set_param('").append(MatlabUtil.escape(modelName)).append("', 'FixedStep', '").append(fixedStep).append("');\n");
-            }
-            // okSignals tracks successfully added To Workspace variables
-            sb.append("    okSignals = {};\n");
-            // 3a. Add To Workspace blocks for blocks with output ports
-            sb.append("    wsSignals = {\n");
-            sb.append("        'Np',       '").append(modelName).append("/Turboshaft Engine Control System/Np';\n");
-            sb.append("        'Ng',       '").append(modelName).append("/Turboshaft Engine Control System/Ng';\n");
-            sb.append("        'NpDem',    '").append(modelName).append("/Turboshaft Engine Control System/NpDem';\n");
-            sb.append("        'T45',      '").append(modelName).append("/Turboshaft Engine Control System/T45';\n");
-            sb.append("        'Mkp',      '").append(modelName).append("/Turboshaft Engine Control System/Mkp';\n");
-            sb.append("        'Wf_cmd',   '").append(modelName).append("/Fuel System/Wf_cmd';\n");
-            sb.append("    };\n");
-            sb.append("    for i = 1:size(wsSignals, 1)\n");
-            sb.append("        try\n");
-            sb.append("            sigName = wsSignals{i, 1};\n");
-            sb.append("            blockPath = wsSignals{i, 2};\n");
-            sb.append("            parent = get_param(blockPath, 'Parent');\n");
-            sb.append("            srcName = get_param(blockPath, 'Name');\n");
-            sb.append("            twName = ['ToWS_' sigName];\n");
-            sb.append("            twPath = [parent '/' twName];\n");
-            sb.append("            ph = get_param(blockPath, 'PortHandles');\n");
-            sb.append("            if isempty(ph.Outport); continue; end\n");
-            sb.append("            if getSimulinkBlockHandle(twPath) ~= -1; delete_block(twPath); end\n");
-            sb.append("            pos = get_param(blockPath, 'Position');\n");
-            sb.append("            newPos = [pos(3)+80, pos(2), pos(3)+120, pos(2)+30];\n");
-            sb.append("            add_block('simulink/Sinks/To Workspace', twPath, ...\n");
-            sb.append("                'Position', newPos, 'VariableName', sigName, ...\n");
-            sb.append("                'SaveFormat', 'Array', 'MaxDataPoints', '1000000', 'Decimation', '1');\n");
-            sb.append("            add_line(parent, [srcName '/1'], [twName '/1']);\n");
-            sb.append("            okSignals{end+1} = sigName;\n");
-            sb.append("        catch\n");
-            sb.append("            try; delete_block(twPath); catch; end\n");
-            sb.append("        end\n");
-            sb.append("    end\n");
-            // 3a2. CLP - Inport inside control system, add To Workspace inside subsystem
-            sb.append("    try\n");
-            sb.append("        clpPath = ['").append(modelName).append("'/Turboshaft Engine Control System/CLP'];\n");
-            sb.append("        clpParent = get_param(clpPath, 'Parent');\n");
-            sb.append("        clpName = get_param(clpPath, 'Name');\n");
-            sb.append("        twName = 'ToWS_CLP'; twPath = [clpParent '/' twName];\n");
-            sb.append("        if getSimulinkBlockHandle(twPath) ~= -1; delete_block(twPath); end\n");
-            sb.append("        pos = get_param(clpPath, 'Position');\n");
-            sb.append("        add_block('simulink/Sinks/To Workspace', twPath, 'Position', [pos(3)+80, pos(2), pos(3)+120, pos(2)+30], ...\n");
-            sb.append("            'VariableName', 'CLP', 'SaveFormat', 'Array', 'MaxDataPoints', '1000000', 'Decimation', '1');\n");
-            sb.append("        add_line(clpParent, [clpName '/1'], [twName '/1']);\n");
-            sb.append("        okSignals{end+1} = 'CLP';\n");
-            sb.append("    catch\n");
-            sb.append("        try; delete_block(twPath); catch; end\n");
-            sb.append("    end\n");
-            // 3b. Add From + To Workspace for Goto-tagged signals
-            sb.append("    gotoSignals = {\n");
-            sb.append("        'Np_fbk', 'Np_fbk'; 'Ng_fbk', 'Ng_fbk'; 'Mkp_fbk', 'Mkp_fbk'; 'T45_fbk', 'T45_fbk';\n");
-            sb.append("        'Ngc', 'Ngc'; 'Wf_kgps', 'Wf_kgps'; 'WfProxyCmd', 'WfProxyCmd';\n");
-            sb.append("        'Pt3_fbk', 'Pt3_fbk'; 'Tt3_fbk', 'Tt3_fbk';\n");
-            sb.append("        'P1', 'P1'; 'T1', 'T1'; 'P45', 'P45'; 'P4', 'P4'; 'P5', 'P5'; 'T5', 'T5'; 'T4', 'T4';\n");
-            sb.append("        'Oil_AirTemp_C', 'Oil_AirTemp_C';\n");
-            sb.append("        'dp_fuel', 'dp_fuel'; 'lock_meter', 'lock_meter'; 'xm_ref_sb', 'xm_ref_sb';\n");
-            sb.append("        'xm_cmd_m', 'xm_cmd_m'; 'lock_igv', 'lock_igv'; 'xd_cmd', 'xd_cmd';\n");
-            sb.append("        'shutdown', 'shutdown'; 'xm', 'xm'; 'xd', 'xd'\n");
-            sb.append("    };\n");
-            sb.append("    for i = 1:size(gotoSignals, 1)\n");
-            sb.append("        try\n");
-            sb.append("            sigName = gotoSignals{i, 1}; gotoTag = gotoSignals{i, 2};\n");
-            sb.append("            twName = ['ToWS_From_' sigName]; fromName = ['From_' sigName];\n");
-            sb.append("            twPath = ['").append(modelName).append("' '/' twName]; fromPath = ['").append(modelName).append("' '/' fromName];\n");
-            sb.append("            if getSimulinkBlockHandle(twPath) ~= -1; delete_block(twPath); end\n");
-            sb.append("            if getSimulinkBlockHandle(fromPath) ~= -1; delete_block(fromPath); end\n");
-            sb.append("            add_block('simulink/Signal Routing/From', fromPath, 'GotoTag', gotoTag, 'Position', [100, 100+i*40, 200, 130+i*40]);\n");
-            sb.append("            add_block('simulink/Sinks/To Workspace', twPath, 'VariableName', sigName, ...\n");
-            sb.append("                'SaveFormat', 'Array', 'MaxDataPoints', '1000000', 'Decimation', '1', 'Position', [250, 100+i*40, 350, 130+i*40]);\n");
-            sb.append("            add_line('").append(modelName).append("', [fromName '/1'], [twName '/1']);\n");
-            sb.append("            okSignals{end+1} = sigName;\n");
-            sb.append("        catch\n");
-            sb.append("            try; delete_block(twPath); catch; end\n");
-            sb.append("            try; delete_block(fromPath); catch; end\n");
-            sb.append("        end\n");
-            sb.append("    end\n");
-            // 3c1. Fuel System Wf output via subsystem port handles
-            sb.append("    try\n");
-            sb.append("        fsPath = '").append(modelName).append("/Fuel System';\n");
-            sb.append("        fsPH = get_param(fsPath, 'PortHandles');\n");
-            sb.append("        fsPos = get_param(fsPath, 'Position');\n");
-            sb.append("        twName = 'ToWS_Wf'; twPath = ['").append(modelName).append("' '/' twName];\n");
-            sb.append("        if getSimulinkBlockHandle(twPath) ~= -1; delete_block(twPath); end\n");
-            sb.append("        add_block('simulink/Sinks/To Workspace', twPath, 'Position', [fsPos(3)+80, fsPos(2), fsPos(3)+120, fsPos(2)+30], ...\n");
-            sb.append("            'VariableName', 'Wf', 'SaveFormat', 'Array', 'MaxDataPoints', '1000000', 'Decimation', '1');\n");
-            sb.append("        add_line('").append(modelName).append("', fsPH.Outport(1), get_param(twPath, 'PortHandles').Inport(1));\n");
-            sb.append("        okSignals{end+1} = 'Wf';\n");
-            sb.append("    catch\n");
-            sb.append("        try; delete_block(twPath); catch; end\n");
-            sb.append("    end\n");
-            // 3c. Air system outputs via subsystem port handles
-            sb.append("    try\n");
-            sb.append("        airBlocks = find_system('").append(modelName).append("', 'RegExp', 'on', 'Name', 'G0[1-8]_.*W_kgps');\n");
-            sb.append("        airParent = '';\n");
-            sb.append("        for i = 1:numel(airBlocks)\n");
-            sb.append("            p = get_param(airBlocks{i}, 'Parent');\n");
-            sb.append("            if strcmp(get_param(p, 'Parent'), '").append(modelName).append("')\n");
-            sb.append("                airParent = p; break;\n");
-            sb.append("            end\n");
-            sb.append("        end\n");
-            sb.append("        if ~isempty(airParent)\n");
-            sb.append("            subPH = get_param(airParent, 'PortHandles');\n");
-            sb.append("            airOuts = find_system(airParent, 'SearchDepth', 1, 'BlockType', 'Outport');\n");
-            sb.append("            subPos = get_param(airParent, 'Position');\n");
-            sb.append("            for i = 1:numel(airOuts)\n");
-            sb.append("                try\n");
-            sb.append("                    outName = get_param(airOuts{i}, 'Name');\n");
-            sb.append("                    twName = ['ToWS_' outName]; twPath = ['").append(modelName).append("' '/' twName];\n");
-            sb.append("                    if getSimulinkBlockHandle(twPath) ~= -1; delete_block(twPath); end\n");
-            sb.append("                    yOff = subPos(2) + i * 35;\n");
-            sb.append("                    add_block('simulink/Sinks/To Workspace', twPath, 'Position', [subPos(3)+80, yOff, subPos(3)+120, yOff+30], ...\n");
-            sb.append("                        'VariableName', outName, 'SaveFormat', 'Array', 'MaxDataPoints', '1000000', 'Decimation', '1');\n");
-            sb.append("                    add_line('").append(modelName).append("', subPH.Outport(i), get_param(twPath, 'PortHandles').Inport(1));\n");
-            sb.append("                    okSignals{end+1} = outName;\n");
-            sb.append("                catch\n");
-            sb.append("                    try; delete_block(twPath); catch; end\n");
-            sb.append("                end\n");
-            sb.append("            end\n");
-            sb.append("        end\n");
-            sb.append("    catch\n");
-            sb.append("    end\n");
-            // 3d. Oil subsystem outputs via subsystem port handles (find by 28 outports)
-            sb.append("    try\n");
-            sb.append("        allSubs = find_system('").append(modelName).append("', 'SearchDepth', 1, 'BlockType', 'SubSystem');\n");
-            sb.append("        oilSys = '';\n");
-            sb.append("        for i = 1:numel(allSubs)\n");
-            sb.append("            subOuts = find_system(allSubs{i}, 'SearchDepth', 1, 'BlockType', 'Outport');\n");
-            sb.append("            if numel(subOuts) == 28; oilSys = allSubs{i}; break; end\n");
-            sb.append("        end\n");
-            sb.append("        if ~isempty(oilSys)\n");
-            sb.append("            oilPH = get_param(oilSys, 'PortHandles');\n");
-            sb.append("            oilOuts = find_system(oilSys, 'SearchDepth', 1, 'BlockType', 'Outport');\n");
-            sb.append("            oilPos = get_param(oilSys, 'Position');\n");
-            sb.append("            oilVarNames = {'Q_BearingA','Q_BearingB','Q_AirOil','Q_Accessory', ...\n");
-            sb.append("                'QA','QB','PA','PB','ToutA','ToutB', ...\n");
-            sb.append("                'QretA','QretB','QgenA','QgenB', ...\n");
-            sb.append("                'FuelOilCooler_Q','FuelOilCooler_FuelTout', ...\n");
-            sb.append("                'AirOilCooler_Pin_Pa','AirOilCooler_Pout_Pa', ...\n");
-            sb.append("                'FuelOilCooler_Pin_Pa','FuelOilCooler_Pout_Pa', ...\n");
-            sb.append("                'CavityState8_PaK','SealLeak4_kgps','VentFlow3_kgps', ...\n");
-            sb.append("                'SealDeltaP4_Pa','VentDeltaP2_Pa','MassResidual2_kgps', ...\n");
-            sb.append("                'FuelOil2_ToutC_QkW','AirOil2_ToutC_QkW'};\n");
-            sb.append("            for i = 1:numel(oilOuts)\n");
-            sb.append("                try\n");
-            sb.append("                    varName = oilVarNames{i};\n");
-            sb.append("                    twName = ['ToWS_' varName]; twPath = ['").append(modelName).append("' '/' twName];\n");
-            sb.append("                    if getSimulinkBlockHandle(twPath) ~= -1; delete_block(twPath); end\n");
-            sb.append("                    yOff = oilPos(2) + i * 25;\n");
-            sb.append("                    add_block('simulink/Sinks/To Workspace', twPath, 'Position', [oilPos(3)+80, yOff, oilPos(3)+120, yOff+20], ...\n");
-            sb.append("                        'VariableName', varName, 'SaveFormat', 'Array', 'MaxDataPoints', '1000000', 'Decimation', '1');\n");
-            sb.append("                    add_line('").append(modelName).append("', oilPH.Outport(i), get_param(twPath, 'PortHandles').Inport(1));\n");
-            sb.append("                    okSignals{end+1} = varName;\n");
-            sb.append("                catch\n");
-            sb.append("                    try; delete_block(twPath); catch; end\n");
-            sb.append("                end\n");
-            sb.append("            end\n");
-            sb.append("        end\n");
-            sb.append("    catch\n");
-            sb.append("    end\n");
-            // 3e. Engine SFunc additional outputs (HPC_u6, HPT_y16, LPT_y16)
-            sb.append("    try\n");
-            sb.append("        sfuncBlocks = find_system('").append(modelName).append("', 'SearchDepth', 3, 'BlockType', 'S-Function');\n");
-            sb.append("        for i = 1:numel(sfuncBlocks)\n");
-            sb.append("            try\n");
-            sb.append("                fn = get_param(sfuncBlocks{i}, 'FunctionName');\n");
-            sb.append("                if strcmp(fn, 'SFunc_EngModel')\n");
-            sb.append("                    engPH = get_param(sfuncBlocks{i}, 'PortHandles');\n");
-            sb.append("                    engPos = get_param(sfuncBlocks{i}, 'Position');\n");
-            sb.append("                    engParent = get_param(sfuncBlocks{i}, 'Parent');\n");
-            sb.append("                    demuxName = 'ToWS_Demux_Extra'; demuxPath = [engParent '/' demuxName];\n");
-            sb.append("                    if getSimulinkBlockHandle(demuxPath) ~= -1; delete_block(demuxPath); end\n");
-            sb.append("                    add_block('simulink/Signal Routing/Demux', demuxPath, 'Outputs', '20', ...\n");
-            sb.append("                        'Position', [engPos(3)+20, engPos(2), engPos(3)+40, engPos(2)+400]);\n");
-            sb.append("                    add_line(engParent, engPH.Outport(1), get_param(demuxPath, 'PortHandles').Inport(1));\n");
-            sb.append("                    extraVars = {'HPC_u6', 'HPT_y16', 'LPT_y16'};\n");
-            sb.append("                    extraIdx = [13, 14, 15];\n");
-            sb.append("                    for j = 1:3\n");
-            sb.append("                        twName = ['ToWS_' extraVars{j}]; twPath = [engParent '/' twName];\n");
-            sb.append("                        if getSimulinkBlockHandle(twPath) ~= -1; delete_block(twPath); end\n");
-            sb.append("                        add_block('simulink/Sinks/To Workspace', twPath, ...\n");
-            sb.append("                            'VariableName', extraVars{j}, 'SaveFormat', 'Array', ...\n");
-            sb.append("                            'MaxDataPoints', '1000000', 'Decimation', '1', ...\n");
-            sb.append("                            'Position', [engPos(3)+80, engPos(2)+(j-1)*40, engPos(3)+120, engPos(2)+30+(j-1)*40]);\n");
-            sb.append("                        add_line(engParent, [demuxName '/' num2str(extraIdx(j))], [twName '/1']);\n");
-            sb.append("                        okSignals{end+1} = extraVars{j};\n");
-            sb.append("                    end\n");
-            sb.append("                    break;\n");
-            sb.append("                end\n");
-            sb.append("            catch\n");
-            sb.append("            end\n");
-            sb.append("        end\n");
-            sb.append("    catch\n");
-            sb.append("    end\n");
-            // 4. Run simulation
-            sb.append("    simOut = sim('").append(MatlabUtil.escape(modelName)).append("', 'ReturnWorkspaceOutputs', 'on', 'StopTime', '").append(stopTime).append("');\n");
-            sb.append("    save('").append(MatlabUtil.escape(taskDir)).append("/simOut.mat', 'simOut');\n");
-            sb.append("    tout = simOut.tout;\n");
-            sb.append("    colNames = {'time'};\n");
-            sb.append("    colData = tout;\n");
-            // 5. Extract from simOut - timeseries and numeric
-            sb.append("    tsVars = {'Pt1','Tt1','Pt3','Tt3','Pt45','Tt45','Pt5','Tt5', ...\n");
-            sb.append("              'HPC_T4_out','HPC_P4_out1','HPC_T5_out1', ...\n");
-            sb.append("              'Np','Ng','NpDem','T45','Mkp','Wf_cmd','Wf','CLP', ...\n");
-            sb.append("              'G01_GT1_IN_W_kgps','G02_GT1_OUT_W_kgps','G03_GT2_IN_W_kgps', ...\n");
-            sb.append("              'G04_GT2_OUT_W_kgps','G05_PT1_IN_ROOT_W_kgps','G06_PT1_OUT_ROOT_W_kgps', ...\n");
-            sb.append("              'G07_PT2_IN_TIP_W_kgps','G08_PT2_OUT_TIP_W_kgps', ...\n");
-            sb.append("              'Np_fbk','Ng_fbk','Mkp_fbk','T45_fbk', ...\n");
-            sb.append("              'Ngc','Wf_kgps','WfProxyCmd', ...\n");
-            sb.append("              'Pt3_fbk','Tt3_fbk','P1','T1','P45','P4','P5','T5','T4', ...\n");
-            sb.append("              'Oil_AirTemp_C', ...\n");
-            sb.append("              'HPC_u6','HPT_y16','LPT_y16'};\n");
-            sb.append("    for i = 1:length(tsVars)\n");
-            sb.append("        try\n");
-            sb.append("            v = simOut.(tsVars{i});\n");
-            sb.append("            if isa(v, 'timeseries') && size(v.Data,2) == 1\n");
-            sb.append("                colNames{end+1} = tsVars{i}; colData = [colData, v.Data];\n");
-            sb.append("            elseif isnumeric(v) && size(v,1) == length(tout) && size(v,2) == 1\n");
-            sb.append("                colNames{end+1} = tsVars{i}; colData = [colData, v];\n");
-            sb.append("            elseif isa(v, 'Simulink.SimulationData.Dataset')\n");
-            sb.append("                for j = 1:v.numElements\n");
-            sb.append("                    elem = v.get(j);\n");
-            sb.append("                    if isa(elem, 'timeseries') && size(elem.Data,2) == 1\n");
-            sb.append("                        if v.numElements == 1; colNames{end+1} = tsVars{i};\n");
-            sb.append("                        else; colNames{end+1} = sprintf('%s_%d', tsVars{i}, j); end\n");
-            sb.append("                        colData = [colData, elem.Data];\n");
-            sb.append("                    end\n");
-            sb.append("                end\n");
-            sb.append("            end\n");
-            sb.append("        catch\n");
-            sb.append("        end\n");
-            sb.append("    end\n");
-            // 6. Extract oil variables (multi-dimensional) from simOut
-            sb.append("    oilVars = {'Q_BearingA','Q_BearingB','Q_AirOil','Q_Accessory', ...\n");
-            sb.append("        'QA','QB','PA','PB','ToutA','ToutB', ...\n");
-            sb.append("        'QretA','QretB','QgenA','QgenB', ...\n");
-            sb.append("        'FuelOilCooler_Q','FuelOilCooler_FuelTout', ...\n");
-            sb.append("        'AirOilCooler_Pin_Pa','AirOilCooler_Pout_Pa', ...\n");
-            sb.append("        'FuelOilCooler_Pin_Pa','FuelOilCooler_Pout_Pa', ...\n");
-            sb.append("        'CavityState8_PaK','SealLeak4_kgps','VentFlow3_kgps', ...\n");
-            sb.append("        'SealDeltaP4_Pa','VentDeltaP2_Pa','MassResidual2_kgps', ...\n");
-            sb.append("        'FuelOil2_ToutC_QkW','AirOil2_ToutC_QkW'};\n");
-            sb.append("    for i = 1:length(oilVars)\n");
-            sb.append("        try\n");
-            sb.append("            v = simOut.(oilVars{i});\n");
-            sb.append("            if isa(v, 'timeseries')\n");
-            sb.append("                d = v.Data;\n");
-            sb.append("                if size(d,1) == length(tout)\n");
-            sb.append("                    if size(d,2) == 1\n");
-            sb.append("                        if ~any(strcmp(colNames, oilVars{i}))\n");
-            sb.append("                            colNames{end+1} = oilVars{i}; colData = [colData, d];\n");
-            sb.append("                        end\n");
-            sb.append("                    else\n");
-            sb.append("                        for j = 1:size(d,2)\n");
-            sb.append("                            cn = sprintf('%s_%d', oilVars{i}, j);\n");
-            sb.append("                            if ~any(strcmp(colNames, cn))\n");
-            sb.append("                                colNames{end+1} = cn; colData = [colData, d(:,j)];\n");
-            sb.append("                            end\n");
-            sb.append("                        end\n");
-            sb.append("                    end\n");
-            sb.append("                end\n");
-            sb.append("            elseif isnumeric(v) && size(v,1) == length(tout)\n");
-            sb.append("                if size(v,2) == 1\n");
-            sb.append("                    if ~any(strcmp(colNames, oilVars{i}))\n");
-            sb.append("                        colNames{end+1} = oilVars{i}; colData = [colData, v];\n");
-            sb.append("                    end\n");
-            sb.append("                else\n");
-            sb.append("                    for j = 1:size(v,2)\n");
-            sb.append("                        cn = sprintf('%s_%d', oilVars{i}, j);\n");
-            sb.append("                        if ~any(strcmp(colNames, cn))\n");
-            sb.append("                            colNames{end+1} = cn; colData = [colData, v(:,j)];\n");
-            sb.append("                        end\n");
-            sb.append("                    end\n");
-            sb.append("                end\n");
-            sb.append("            end\n");
-            sb.append("        catch\n");
-            sb.append("        end\n");
-            sb.append("    end\n");
-            // 6b. Also check workspace variables from To Workspace blocks
-            sb.append("    for i = 1:length(okSignals)\n");
-            sb.append("        try\n");
-            sb.append("            sigName = okSignals{i};\n");
-            sb.append("            if exist(sigName, 'var') == 1\n");
-            sb.append("                v = eval(sigName);\n");
-            sb.append("                if size(v,2) >= 2 && ~any(strcmp(colNames, sigName))\n");
-            sb.append("                    colNames{end+1} = sigName; colData = [colData, v(:,2)];\n");
-            sb.append("                end\n");
-            sb.append("            end\n");
-            sb.append("        catch\n");
-            sb.append("        end\n");
-            sb.append("    end\n");
-            // 6c. Extract workspace scalar variables (limits, error) as constant columns
-            sb.append("    wsScalars = {'NgMax','T45Max','MkpMax','WfMax','WfMin','errmax','Power_cmd'};\n");
-            sb.append("    for i = 1:length(wsScalars)\n");
-            sb.append("        try\n");
-            sb.append("            sn = wsScalars{i};\n");
-            sb.append("            if exist(sn, 'var') == 1\n");
-            sb.append("                v = eval(sn);\n");
-            sb.append("                if isnumeric(v) && isscalar(v) && ~any(strcmp(colNames, sn))\n");
-            sb.append("                    colNames{end+1} = sn; colData = [colData, repmat(v, length(tout), 1)];\n");
-            sb.append("                end\n");
-            sb.append("            end\n");
-            sb.append("        catch\n");
-            sb.append("        end\n");
-            sb.append("    end\n");
-            // 7. Scan simOut fields for any remaining numeric outputs
-            sb.append("    try\n");
-            sb.append("        allNames = fieldnames(simOut);\n");
-            sb.append("        for i = 1:numel(allNames)\n");
-            sb.append("            name = allNames{i};\n");
-            sb.append("            try\n");
-            sb.append("                v = simOut.(name);\n");
-            sb.append("                if isnumeric(v) && size(v,1) == length(tout) && ~any(strcmp(colNames, name))\n");
-            sb.append("                    if size(v,2) == 1\n");
-            sb.append("                        colNames{end+1} = name; colData = [colData, v];\n");
-            sb.append("                    else\n");
-            sb.append("                        for j = 1:size(v,2)\n");
-            sb.append("                            cn = sprintf('%s_%d', name, j);\n");
-            sb.append("                            if ~any(strcmp(colNames, cn))\n");
-            sb.append("                                colNames{end+1} = cn; colData = [colData, v(:,j)];\n");
-            sb.append("                            end\n");
-            sb.append("                        end\n");
-            sb.append("                    end\n");
-            sb.append("                end\n");
-            sb.append("            catch\n");
-            sb.append("            end\n");
-            sb.append("        end\n");
-            sb.append("    catch\n");
-            sb.append("    end\n");
-            sb.append("    T = array2table(colData, 'VariableNames', colNames);\n");
-            sb.append("    writetable(T, '").append(MatlabUtil.escape(taskDir)).append("/signals.csv');\n");
-            sb.append("    save('").append(MatlabUtil.escape(taskDir)).append("/signals.mat', 'T');\n");
-            sb.append("    close_system('").append(MatlabUtil.escape(modelName)).append("', 0);\n");
-            sb.append("catch ME\n");
-            sb.append("    try; close_system('").append(MatlabUtil.escape(modelName)).append("', 0); catch; end\n");
-            sb.append("    fid = fopen('").append(MatlabUtil.escape(taskDir)).append("/error.txt', 'w');\n");
-            sb.append("    fprintf(fid, '%s\\n', ME.message);\n");
-            sb.append("    fclose(fid);\n");
-            sb.append("    rethrow(ME);\n");
-            sb.append("end\n");
-        }
-        Files.write(f.toPath(), sb.toString().getBytes(StandardCharsets.UTF_8));
-    }
 
     /**
      * 线程安全的实时数据缓冲：MATLAB 写 CSV → 监控线程读 CSV → append 到这里 → 前端轮询/SSE 取增量
@@ -1699,6 +1635,9 @@ public class ProgramService {
         ProgramTaskEntity task = queryLatestTask(name, version, projectName);
         if (task == null) return Result.error("无运行任务记录");
 
+        // 检查是否因服务重启导致任务实际已终止
+        checkRestartedTask(task);
+
         Map<String, Object> data = new HashMap<>();
         data.put("status", task.getStatus());
         data.put("lastError", task.getError());
@@ -1731,6 +1670,9 @@ public class ProgramService {
             } catch (Exception ignored) {}
             return emitter;
         }
+
+        // 检查是否因服务重启导致任务实际已终止
+        checkRestartedTask(task);
 
         LiveDataBuffer buffer = liveDataMap.get(task.getTimestamp());
         if (buffer == null) {
@@ -1859,12 +1801,12 @@ public class ProgramService {
     }
 
     private void generateResultFiles(File taskDir, ProgramEntity entity, String modelFile,
-                                     String stopTime, String fixedStep, String npCommand, String loadPower,
+                                     String stopTime, String fixedStep, Map<String, String> params,
                                      File logFile) {
         try {
             // metadata.json
             ObjectNode metadata = mapper.createObjectNode();
-            metadata.put("softwareVersion", "AFO V1.0");
+            metadata.put("softwareVersion", "Simulation V1.0");
             metadata.put("modelPath", modelFile != null ? modelFile : "");
             metadata.put("modelHash", "");
             metadata.put("matlabVersion", "R2019b");
@@ -1883,9 +1825,12 @@ public class ProgramService {
             ObjectNode scenario = mapper.createObjectNode();
             scenario.put("stopTime", stopTime != null && !stopTime.isEmpty() ? stopTime : "30");
             scenario.put("fixedStep", fixedStep != null && !fixedStep.isEmpty() ? fixedStep : "0.025");
-            scenario.put("npCommand", npCommand != null && !npCommand.isEmpty() ? npCommand : "20800");
-            scenario.put("loadPower", loadPower != null && !loadPower.isEmpty() ? loadPower : "2176600");
             scenario.put("modelFile", modelFile != null ? modelFile : "");
+            // 动态参数写入 scenario（按实际传入的 params，不再硬编码 npCommand/loadPower）
+            if (params != null) {
+                ObjectNode paramsNode = scenario.putObject("params");
+                params.forEach(paramsNode::put);
+            }
             ObjectNode defaults = scenario.putObject("defaults");
             defaults.put("Np0", 20800);
             defaults.put("Ng0", 38000);
@@ -1986,7 +1931,7 @@ public class ProgramService {
         if (!metadataFile.exists()) {
             if (entity == null) entity = queryMeta(name, version, projectName);
             File logFile = entity != null && entity.getLastLogPath() != null ? new File(entity.getLastLogPath()) : null;
-            generateResultFiles(resultDir, entity, "", "", "", "", "", logFile);
+            generateResultFiles(resultDir, entity, "", "", "", new java.util.LinkedHashMap<>(), logFile);
         }
 
         String ts = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
@@ -2193,6 +2138,7 @@ public class ProgramService {
             points.add(ConvertUtil.createFieldPoint(basePath, "fixedStep", task.getFixedStep(), ts));
             points.add(ConvertUtil.createFieldPoint(basePath, "npCommand", task.getNpCommand(), ts));
             points.add(ConvertUtil.createFieldPoint(basePath, "loadPower", task.getLoadPower(), ts));
+            points.add(ConvertUtil.createFieldPoint(basePath, "paramsJson", task.getParamsJson(), ts));
             points.add(ConvertUtil.createFieldPoint(basePath, "modelFile", task.getModelFile(), ts));
             points.add(ConvertUtil.createFieldPoint(basePath, "resultCsvPath", task.getResultCsvPath(), ts));
             points.add(ConvertUtil.createFieldPoint(basePath, "logPath", task.getLogPath(), ts));
@@ -2266,6 +2212,7 @@ public class ProgramService {
                     case "fixedStep": task.setFixedStep(strValue); break;
                     case "npCommand": task.setNpCommand(strValue); break;
                     case "loadPower": task.setLoadPower(strValue); break;
+                    case "paramsJson": task.setParamsJson(strValue); break;
                     case "modelFile": task.setModelFile(strValue); break;
                     case "resultCsvPath": task.setResultCsvPath(strValue); break;
                     case "logPath": task.setLogPath(strValue); break;
@@ -2339,33 +2286,37 @@ public class ProgramService {
         return kpiParams;
     }
 
+    /**
+     * 检查任务是否因服务重启而实际已终止。
+     * 判断依据：任务创建时间早于服务启动时间（说明是重启前遗留），
+     * 且内存中 engineRunners/runningTasks 都没有该任务。
+     */
+    private boolean checkRestartedTask(ProgramTaskEntity task) {
+        if (task == null) return false;
+        if (!TaskStatus.RUNNING.equals(task.getStatus()) && !TaskStatus.QUEUED.equals(task.getStatus())) {
+            return false;
+        }
+        Long ts = task.getTimestamp();
+        if (ts == null) return false;
+        // 任务创建于本次服务启动之前 → 重启前遗留，进程已不存在
+        if (ts >= serviceStartTime) {
+            // 本次启动后创建的任务，检查内存中是否还在
+            if (engineRunners.get(ts) != null || runningTasks.get(ts) != null) {
+                return false;
+            }
+        }
+        updateTaskStatus(ts, TaskStatus.FAILED, "服务重启，仿真进程已终止", null, null, null);
+        task.setStatus(TaskStatus.FAILED);
+        task.setError("服务重启，仿真进程已终止");
+        return true;
+    }
+
     public Result<Map<String, Object>> results(String name, String version, String projectName) {
         ProgramTaskEntity task = queryLatestTask(name, version, projectName);
         if (task == null) return Result.error("无运行任务记录");
 
-        // 如果状态为运行中，检查进程是否还在
-        if (TaskStatus.RUNNING.equals(task.getStatus())) {
-            Process process = processMap.get(task.getTimestamp());
-            if (process == null) {
-                // 进程不在 map 中：可能是 doRun 线程还在下载/解压/写脚本（尚未 start），
-                // 也可能是 doRun 已结束并清理。两种情况都不应覆盖状态：
-                //   - 前者：进程还没启动，覆盖为"异常终止"是误判
-                //   - 后者：doRun 已更新最终状态，queryLatestTask 会拿到正确状态
-            } else if (!process.isAlive()) {
-                // 进程在 map 中但已退出：doRun 线程可能还在处理（读日志、检查退出码、更新状态）
-                // 等待短暂时间让 doRun 完成 status 更新，避免覆盖真正的错误信息
-                try { Thread.sleep(1500); } catch (InterruptedException ignored) {}
-                task = queryLatestTask(name, version, projectName);
-                if (task != null && TaskStatus.RUNNING.equals(task.getStatus())) {
-                    // 等待后仍为 RUNNING，说明 doRun 线程异常退出或卡死，标记为进程异常终止
-                    updateTaskStatus(task.getTimestamp(), TaskStatus.FAILED, "进程异常终止", null, null, null);
-                    task.setStatus(TaskStatus.FAILED);
-                    task.setError("进程异常终止");
-                    processMap.remove(task.getTimestamp());
-                    runningTasks.remove(task.getTimestamp());
-                }
-            }
-        }
+        // 检查是否因服务重启导致任务实际已终止
+        checkRestartedTask(task);
 
         Map<String, Object> data = new HashMap<>();
         // 检查是否处于暂停状态：pause 端点只设内存 pauseFlags + pause.flag 文件，不更新 IGinX 状态。
@@ -2457,9 +2408,12 @@ public class ProgramService {
         ProgramEntity entity = queryMeta(name, version, projectName);
         if (entity == null) return Result.error("程序不存在");
         try {
-            mapper.readTree(configJson);
+            JsonNode configNode = mapper.readTree(configJson);
             entity.setConfigJson(configJson);
             saveProgramMetadata(entity);
+            if (configNode.path("runtime").path("prewarm").asBoolean(false)) {
+                enqueuePrewarm(entity);
+            }
             return Result.success("配置更新成功", entity);
         } catch (Exception e) {
             return Result.error("配置更新失败: " + e.getMessage());
@@ -2553,11 +2507,56 @@ public class ProgramService {
         result.put("dllFiles", dllFiles);
         result.put("otherFiles", otherFiles);
 
-        Map<String, Object> params = parseProgramParams(programDir, scriptFiles);
-        if (params.get("modelName") != null && !((String)params.get("modelName")).isEmpty()) {
-            String mn = (String)params.get("modelName");
+        // 优先从 ProgramConfig 取参数（配置驱动），无配置时回退到脚本解析
+        ProgramEntity entity = queryMeta(name, version, projectName);
+        ProgramConfig pgConfig = entity != null && StringUtils.hasText(entity.getConfigJson())
+                ? ProgramConfigMapper.parse(entity.getConfigJson()) : null;
+        Map<String, Object> params;
+        if (pgConfig != null && pgConfig.getParameters() != null && !pgConfig.getParameters().isEmpty()) {
+            // 配置驱动：从 ProgramConfig 构造参数（优先从 MATLAB 源码解析实际值）
+            params = buildParamsFromConfig(pgConfig, modelFiles, programDir, scriptFiles);
+        } else {
+            // 旧模式：解析 AFO 脚本
+            params = parseProgramParams(programDir, scriptFiles);
+            if (params.get("modelName") != null && !((String)params.get("modelName")).isEmpty()) {
+                String mn = (String)params.get("modelName");
+                for (String mf : modelFiles) {
+                    if (mf.startsWith(mn + ".") || mf.equals(mn)) {
+                        params.put("modelFile", mf);
+                        break;
+                    }
+                }
+            }
+            if (!params.containsKey("modelFile") && !modelFiles.isEmpty()) {
+                params.put("modelFile", modelFiles.get(0));
+            }
+        }
+        result.put("params", params);
+        return result;
+    }
+
+    /** 从 ProgramConfig 构造前端参数（配置驱动模式）*/
+    private Map<String, Object> buildParamsFromConfig(ProgramConfig cfg, List<String> modelFiles,
+                                                       File programDir, List<String> scriptFiles) {
+        Map<String, Object> params = new LinkedHashMap<>();
+        ProgramConfig.RuntimeConfig rt = cfg.getRuntime();
+        params.put("stopTime", rt != null && rt.getStopTime() != 0 ? String.valueOf(rt.getStopTime()) : "30");
+        // fixedStep：如果是纯数值直接用；如果是变量名（如 "Ts"）尝试从源码求值，求不到 fallback 0.025
+        String fixedStep = rt != null ? rt.getFixedStep() : null;
+        if (!StringUtils.hasText(fixedStep)) {
+            fixedStep = "0.025";
+        } else if (!fixedStep.matches("[0-9.]+")) {
+            // 非纯数值，当作变量名从源码求值
+            String resolved = resolveVarFromScripts(programDir, scriptFiles, fixedStep);
+            if (resolved != null) fixedStep = resolved;
+            else fixedStep = "0.025";
+        }
+        params.put("fixedStep", fixedStep);
+        // 模型文件：从 runtime.simulinkModel 或自动检测
+        String modelName = rt != null ? rt.getSimulinkModel() : "";
+        if (StringUtils.hasText(modelName)) {
             for (String mf : modelFiles) {
-                if (mf.startsWith(mn + ".") || mf.equals(mn)) {
+                if (mf.equals(modelName) || mf.startsWith(modelName + ".")) {
                     params.put("modelFile", mf);
                     break;
                 }
@@ -2566,7 +2565,69 @@ public class ProgramService {
         if (!params.containsKey("modelFile") && !modelFiles.isEmpty()) {
             params.put("modelFile", modelFiles.get(0));
         }
-        result.put("params", params);
+        params.put("modelName", modelName != null ? modelName : "");
+        // 动态参数：优先用 defaultValue（集成人员填写，最可靠）；
+        // defaultValue 为空时尝试从 MATLAB 源码按 matlabVar 解析兜底
+        List<ProgramConfig.ParameterSpec> ps = cfg.getParameters();
+        if (ps != null) {
+            // 只对 defaultValue 为空的参数尝试源码解析
+            java.util.Set<String> varsToResolve = new java.util.HashSet<>();
+            for (ProgramConfig.ParameterSpec p : ps) {
+                if (p.getMatlabVar() != null && (p.getDefaultValue() == null || p.getDefaultValue().isEmpty())) {
+                    varsToResolve.add(p.getMatlabVar());
+                }
+            }
+            java.util.Map<String, String> sourceValues = varsToResolve.isEmpty()
+                    ? new java.util.HashMap<>()
+                    : resolveVarsFromScripts(programDir, scriptFiles, varsToResolve);
+            for (ProgramConfig.ParameterSpec p : ps) {
+                if (p.getKey() == null) continue;
+                String val = p.getDefaultValue();
+                if (val == null || val.isEmpty()) {
+                    // defaultValue 为空，尝试源码解析
+                    if (p.getMatlabVar() != null) val = sourceValues.get(p.getMatlabVar());
+                }
+                if (val != null) params.put(p.getKey(), val);
+            }
+        }
+        return params;
+    }
+
+    /** 从 MATLAB 源码解析单个变量的数值（用于 fixedStep 等可能是变量名的字段） */
+    private String resolveVarFromScripts(File programDir, List<String> scriptFiles, String varName) {
+        java.util.Set<String> vars = new java.util.HashSet<>();
+        vars.add(varName);
+        java.util.Map<String, String> result = resolveVarsFromScripts(programDir, scriptFiles, vars);
+        return result.get(varName);
+    }
+
+    /**
+     * 从 MATLAB 源码脚本里按变量名解析数值（通用兜底）。
+     * 遍历所有 .m 文件，对每个变量用正则 "var\s*=\s*([0-9.eE+-]+)" 搜索。
+     * 支持纯数值和科学计数法，不支持表达式（表达式需集成人员在 defaultValue 里显式填写）。
+     */
+    private java.util.Map<String, String> resolveVarsFromScripts(File programDir,
+                                                                  List<String> scriptFiles,
+                                                                  java.util.Set<String> vars) {
+        java.util.Map<String, String> result = new java.util.HashMap<>();
+        if (vars == null || vars.isEmpty() || programDir == null || scriptFiles == null) return result;
+        for (String relPath : scriptFiles) {
+            File scriptFile = new File(programDir, relPath);
+            try {
+                String content = new String(Files.readAllBytes(scriptFile.toPath()), StandardCharsets.UTF_8);
+                for (String var : vars) {
+                    if (result.containsKey(var)) continue;
+                    // 支持 21000 / 0.025 / 1e-3 / 2.1e4 等
+                    java.util.regex.Matcher m = java.util.regex.Pattern.compile(
+                            var + "\\s*=\\s*([0-9.]+[eE][+-]?[0-9]+|[0-9.]+)").matcher(content);
+                    if (m.find()) {
+                        result.put(var, m.group(1));
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("解析脚本参数失败: {}", relPath, e);
+            }
+        }
         return result;
     }
 
