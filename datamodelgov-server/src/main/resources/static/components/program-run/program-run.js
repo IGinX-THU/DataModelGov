@@ -1271,6 +1271,12 @@ class ProgramRun extends HTMLElement {
         const statusResult = await window.AppConfig.request(statusUrl);
         if (statusResult && statusResult.code === 200 && statusResult.data && statusResult.data.status === 'starting') {
           if (this.footerLog) this.footerLog.textContent = '[MATLAB] 引擎正在重启...';
+          // 显示 loading 覆盖层，让用户知道正在重启引擎
+          this.runStatus = 'STARTING';
+          this.updateStatusUI('STARTING');
+          // 覆盖层文字改为引擎重启提示
+          const overlayText = this.shadowRoot.getElementById('runLoadingText');
+          if (overlayText) overlayText.textContent = 'MATLAB 引擎正在重启，请稍后...';
           const restartUrl = window.AppConfig.getApiUrl('program', 'engine-restart');
           await window.AppConfig.request(restartUrl, { method: 'POST' });
           // 重启后等引擎就绪，轮询；期间允许用户点停止取消
