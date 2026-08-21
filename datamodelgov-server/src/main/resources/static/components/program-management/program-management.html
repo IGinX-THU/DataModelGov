@@ -70,6 +70,14 @@
                         <input type="text" id="cfgPreRunScript" placeholder="RunCtrlSysModelSHT">
                     </div>
                     <div class="form-row">
+                        <label>热启动优化</label>
+                        <label><input type="checkbox" id="cfgSkipPreRunOnReuse"> 模型复用时跳过预运行脚本</label>
+                    </div>
+                    <div class="form-row">
+                        <label>后台预热</label>
+                        <label><input type="checkbox" id="cfgPrewarm"> 服务启动或引擎重启后自动预热</label>
+                    </div>
+                    <div class="form-row">
                         <label>Simulink 模型</label>
                         <input type="text" id="cfgSimulinkModel" placeholder="Dll_Control_AFO_V8_2_R2019b.slx">
                     </div>

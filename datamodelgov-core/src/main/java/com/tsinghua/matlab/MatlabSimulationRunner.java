@@ -94,6 +94,7 @@ public class MatlabSimulationRunner implements Closeable {
     private final File taskDir;
     private final String programDir;
     private final String preRunScript;
+    private final boolean skipPreRunOnReuse;
     private final String modelName;
     private final double requestedStopTime;
     private final String fixedStep;
@@ -125,11 +126,13 @@ public class MatlabSimulationRunner implements Closeable {
     private volatile double alignedStopTime;
     private volatile double resolvedFixedStep = 0.025;
     private volatile double lastSimTime;
+    private volatile boolean modelCacheHit;
     private PrintWriter matlabLog;
 
     private final MatlabEnginePool enginePool;
 
-    public MatlabSimulationRunner(File taskDir, String programDir, String preRunScript, String modelName,
+    public MatlabSimulationRunner(File taskDir, String programDir, String preRunScript,
+                                  boolean skipPreRunOnReuse, String modelName,
                                   double requestedStopTime, String fixedStep,
                                   java.util.Map<String, String> paramValues,
                                   java.util.List<ProgramConfig.ParameterSpec> parameters,
@@ -137,6 +140,7 @@ public class MatlabSimulationRunner implements Closeable {
         this.taskDir = taskDir;
         this.programDir = programDir;
         this.preRunScript = preRunScript;
+        this.skipPreRunOnReuse = skipPreRunOnReuse;
         this.modelName = modelName;
         this.requestedStopTime = requestedStopTime;
         this.fixedStep = fixedStep;
@@ -214,13 +218,30 @@ public class MatlabSimulationRunner implements Closeable {
             }
             Future<Void> startFuture = call(() -> engine.evalAsync(
                     "set_param('" + esc(modelName) + "','SimulationCommand','start');"), 60, "发送仿真启动命令");
-            logMatlab("仿真启动命令已发送（编译+初始化期间无数据，请耐心等待）");
+            if (modelCacheHit) {
+                logMatlab("模型缓存已命中，正在通过 Fast Restart 启动仿真...");
+            } else {
+                logMatlab("仿真启动命令已发送。当前未命中模型缓存，正在首次编译和初始化，可能需要 1-3 分钟，期间暂无数据，请耐心等待...");
+            }
             pollLoop(startFuture);
             exportResults();
         } finally {
             if (matlabLog != null) {
                 matlabLog.flush();
             }
+        }
+    }
+
+    public void prewarm() throws Exception {
+        matlabLog = new PrintWriter(new FileWriter(new File(taskDir, "prewarm.log"), true), true);
+        try {
+            startEngine();
+            prepare();
+            Future<Void> startFuture = call(() -> engine.evalAsync(
+                    "set_param('" + esc(modelName) + "','SimulationCommand','start');"), 60, "发送预热启动命令");
+            pollLoop(startFuture);
+        } finally {
+            if (matlabLog != null) matlabLog.flush();
         }
     }
 
@@ -237,8 +258,8 @@ public class MatlabSimulationRunner implements Closeable {
             int ahead = runningTasks + enginePool.waitingCount();
             logMatlab("引擎已达并发上限(" + enginePool.maxEngines() + ")，排队等待中...（前面还有 " + ahead + " 个任务）");
         }
-        // 从引擎池借出（空闲直接取；未达上限按需创建；达上限阻塞等待）
-        engine = enginePool.borrow(ENGINE_START_TIMEOUT_SEC);
+        // 从引擎池借出（优先复用已加载相同模型的引擎）
+        engine = enginePool.borrow(modelName, ENGINE_START_TIMEOUT_SEC);
         long elapsed = System.currentTimeMillis() - t0;
         if (elapsed < 1000) {
             logMatlab("引擎已就绪（复用空闲引擎）");
@@ -254,23 +275,44 @@ public class MatlabSimulationRunner implements Closeable {
     private void prepare() throws Exception {
         eval("cd('" + esc(programDir) + "');", INIT_TIMEOUT_SEC, "切换工作目录");
 
-        // 清理上次运行残留的 workspace 状态（引擎是池化复用的，不清会导致 logsout
-        // 和 To Workspace 变量跨运行累积，内存压力递增，WriteDataLogs 越来越慢，
-        // 最终导致仿真越来越早卡死）
-        eval("try; clear logsout dmg_new dmg_poll dmg_cursor dmg_mapNames dmg_total " +
-                "dmg_t dmg_v dmg_sel dmg_tElem dmg_newCols dmg_newColStr dmg_logNames " +
-                "dmg_logBP dmg_el0 dmg_cols dmg_paths dmg_status dmg_pv2 dmg_cn dmg_cn2 " +
-                "dmg_skipBlocks dmg_wsScalars dmg_sv dmg_sn dmg_v; catch; end",
-                CALL_TIMEOUT_SEC, "清理上次运行残留");
-
         // 检查引擎中是否已加载相同模型
         eval("dmg_prevModel = ''; try; dmg_prevModel = dmg_loadedModel; catch; end", CALL_TIMEOUT_SEC, "检查已加载模型");
         String prevModel = getString("dmg_prevModel");
         boolean modelReuse = hasText(prevModel) && prevModel.equals(modelName);
+        if (modelReuse) {
+            eval(buildRestoreSignalCacheScript(), CALL_TIMEOUT_SEC, "恢复信号配置缓存");
+            if (getDouble("dmg_hasSignalCache") != 1.0) {
+                modelReuse = false;
+                logMatlab("已加载模型的信号配置缓存不完整，将自动执行一次冷启动重建缓存，请耐心等待...");
+            }
+        }
+        modelCacheHit = modelReuse;
+        if (!modelReuse) {
+            logMatlab("首次运行或模型缓存未命中，正在冷启动。初始化、模型加载和首次编译可能需要 1-3 分钟，请耐心等待...");
+        }
 
-        logMatlab("执行预运行脚本: " + preRunScript);
-        eval("dmg_out = evalc('" + esc(stripM(preRunScript)) + "');", INIT_TIMEOUT_SEC, "执行预运行脚本 " + preRunScript);
-        writeMatlabLog(getString("dmg_out"));
+        // 清理每轮数据变量；复用模型时保留 dmg_cols/dmg_paths/dmg_okSignals，供 setupScript 快速返回后继续取数
+        String setupVariables = modelReuse ? "" : " dmg_cols dmg_paths dmg_okSignals";
+        eval("try; clear logsout dmg_new dmg_poll dmg_cursor dmg_mapNames dmg_total " +
+                "dmg_t dmg_v dmg_sel dmg_tElem dmg_newCols dmg_newColStr dmg_logNames " +
+                "dmg_logBP dmg_el0 dmg_status dmg_pv2 dmg_cn dmg_cn2 dmg_skipBlocks " +
+                "dmg_wsScalars dmg_sv dmg_sn dmg_v" + setupVariables + "; catch; end",
+                CALL_TIMEOUT_SEC, "清理上次运行残留");
+
+        if (modelReuse && skipPreRunOnReuse) {
+            logMatlab("命中模型缓存，跳过预运行脚本: " + preRunScript);
+        } else {
+            if (modelReuse) {
+                logMatlab("执行预运行脚本: " + preRunScript);
+            } else {
+                logMatlab("当前未命中模型缓存，正在执行预运行初始化脚本: " + preRunScript + "，请耐心等待...");
+            }
+            eval("dmg_out = evalc('" + esc(stripM(preRunScript)) + "');", INIT_TIMEOUT_SEC, "执行预运行脚本 " + preRunScript);
+            writeMatlabLog(getString("dmg_out"));
+            if (modelReuse) {
+                eval(buildRestoreSignalCacheScript(), CALL_TIMEOUT_SEC, "预运行后恢复信号配置缓存");
+            }
+        }
 
         // 设置用户参数到 base workspace：按 ProgramConfig.parameters 定义，把前端传入的
         // 值（或默认值）写入对应的 matlabVar。fixedStep 单独处理（写入 Ts）。
@@ -293,7 +335,7 @@ public class MatlabSimulationRunner implements Closeable {
                 eval("try; set_param('" + esc(prevModel) + "','FastRestart','off'); close_system('" + esc(prevModel) + "', 0); catch; end",
                         CALL_TIMEOUT_SEC, "关闭旧模型");
             }
-            logMatlab("载入模型: " + modelName);
+            logMatlab("正在加载 Simulink 模型: " + modelName + "，首次加载可能较慢，请耐心等待...");
             eval("load_system('" + esc(modelName) + "');", INIT_TIMEOUT_SEC, "载入模型 " + modelName);
             if (hasText(fixedStep)) {
                 eval("set_param('" + esc(modelName) + "','FixedStep','" + fixedStep + "');", CALL_TIMEOUT_SEC, "设置固定步长");
@@ -321,12 +363,30 @@ public class MatlabSimulationRunner implements Closeable {
             eval("dmg_setup_out = evalc('" + esc(scriptCall) + "');", INIT_TIMEOUT_SEC, "执行信号采集脚本 " + scriptCall);
             writeMatlabLog(getString("dmg_setup_out"));
             readDmgCols();
+            eval("dmg_signalCache = struct(); dmg_signalCache.model = dmg_modelName; " +
+                    "dmg_signalCache.cols = dmg_cols; " +
+                    "if exist('dmg_paths','var'); dmg_signalCache.paths = dmg_paths; else; dmg_signalCache.paths = {}; end; " +
+                    "if exist('dmg_okSignals','var'); dmg_signalCache.okSignals = dmg_okSignals; else; dmg_signalCache.okSignals = {}; end; " +
+                    "setappdata(0,'dmg_signal_cache',dmg_signalCache); clear dmg_signalCache;",
+                    CALL_TIMEOUT_SEC, "缓存信号配置");
         } else {
             throw new IllegalStateException("未配置 setupScript（信号采集脚本），无法运行仿真。请在 ProgramConfig.setupScript 中指定。");
         }
 
         // 记录当前加载的模型名，供下次运行判断是否可复用
         eval("dmg_loadedModel = '" + esc(modelName) + "';", CALL_TIMEOUT_SEC, "记录已加载模型");
+        enginePool.markLoadedModel(engine, modelName);
+    }
+
+    private String buildRestoreSignalCacheScript() {
+        return "dmg_hasSignalCache = 0; " +
+                "if isappdata(0,'dmg_signal_cache'); " +
+                "dmg_signalCache = getappdata(0,'dmg_signal_cache'); " +
+                "if isstruct(dmg_signalCache) && isfield(dmg_signalCache,'model') && strcmp(dmg_signalCache.model,'" + esc(modelName) + "') && isfield(dmg_signalCache,'cols'); " +
+                "dmg_cols = dmg_signalCache.cols; " +
+                "if isfield(dmg_signalCache,'paths'); dmg_paths = dmg_signalCache.paths; else; dmg_paths = {}; end; " +
+                "if isfield(dmg_signalCache,'okSignals'); dmg_okSignals = dmg_signalCache.okSignals; else; dmg_okSignals = {}; end; " +
+                "dmg_hasSignalCache = 1; end; end";
     }
 
     /** 读取 setupScript 留下的 dmg_cols，构造 CSV 表头并通知前端 */
@@ -1286,12 +1346,17 @@ public class MatlabSimulationRunner implements Closeable {
     }
 
     private void eval(String command, long timeoutSec, String what) throws Exception {
+        long startedAt = System.currentTimeMillis();
         call(() -> {
             Writer out = matlabLog != null ? matlabLog : new java.io.StringWriter();
             engine.eval(command, out, out);
             out.flush();
             return null;
         }, timeoutSec, what);
+        long elapsed = System.currentTimeMillis() - startedAt;
+        if (elapsed >= 3000 && !"轮询+取数".equals(what)) {
+            logMatlab(what + "完成，耗时 " + String.format(Locale.US, "%.1f", elapsed / 1000.0) + " 秒");
+        }
     }
 
     /** get_param 的字符串形式（数值参数用 mat2str 转成字符串，便于统一处理） */

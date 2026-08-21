@@ -1,6 +1,8 @@
 {
   "runtime": {
     "preRunScript": "RunCtrlSysModelSHT",
+    "skipPreRunOnReuse": true,
+    "prewarm": true,
     "simulinkModel": "Dll_Control_AFO_V8_2_R2019b.slx",
     "simulinkModels": [
       "Dll_Control_AFO_V8_2_R2019b.slx",

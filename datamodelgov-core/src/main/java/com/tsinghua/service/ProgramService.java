@@ -33,6 +33,8 @@ import com.tsinghua.util.SimTimeUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
@@ -48,7 +50,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -72,6 +76,10 @@ public class ProgramService {
     private final Map<Long, MatlabSimulationRunner> engineRunners = new ConcurrentHashMap<>();
     // 引擎池（pool-size 在 @PostConstruct 中从 yml 读取后创建）
     private MatlabEnginePool enginePool;
+    private final AtomicBoolean prewarming = new AtomicBoolean(false);
+    private final Queue<ProgramEntity> prewarmQueue = new ConcurrentLinkedQueue<>();
+    private final Set<String> queuedPrewarms = ConcurrentHashMap.newKeySet();
+    private volatile String prewarmMessage = "";
     // 引擎运行期不可用（如缺少 MATLAB 原生库）时置位，后续任务直接 FAILED
     private volatile boolean engineDisabled = false;
     // 服务启动时间，用于判断 RUNNING 状态的任务是否为重启前遗留
@@ -104,6 +112,11 @@ public class ProgramService {
         if (matlabEngineEnabled) {
             enginePool.init();
         }
+    }
+
+    @EventListener(ApplicationReadyEvent.class)
+    public void prewarmOnApplicationReady() {
+        startPrewarmAsync();
     }
 
     @PreDestroy
@@ -831,6 +844,8 @@ public class ProgramService {
         config.put("programName", programName);
         ObjectNode runtime = config.putObject("runtime");
         runtime.put("preRunScript", "");
+        runtime.put("skipPreRunOnReuse", false);
+        runtime.put("prewarm", false);
         runtime.put("simulinkModel", "");
         runtime.put("stopTime", 30);
         config.putArray("parameters");
@@ -945,8 +960,8 @@ public class ProgramService {
         task.setStartTime(taskTimestamp);
         // 引擎模式下，如果所有引擎都在使用中，先标记为 QUEUED（排队中）
         // doRun 线程 borrow 到引擎后会把状态改为 RUNNING
-        boolean willQueue = isEngineMode() && enginePool.idleCount() == 0
-                && enginePool.totalCount() >= enginePool.maxEngines();
+        boolean willQueue = isEngineMode() && (prewarming.get() || (enginePool.idleCount() == 0
+                && enginePool.totalCount() >= enginePool.maxEngines()));
         task.setStatus(willQueue ? TaskStatus.QUEUED : TaskStatus.RUNNING);
         task.setStopTime(alignedStopTime);
         task.setFixedStep(fixedStep);
@@ -1000,6 +1015,152 @@ public class ProgramService {
         return true;
     }
 
+    private List<ProgramEntity> queryProgramsForPrewarm() {
+        try {
+            String sql = "SELECT * FROM " + META_PREFIX + " WHERE 1=1;";
+            log.info("[MATLAB-PREWARM] 执行系统级程序查询: {}", sql);
+            SessionExecuteSqlResult result = iginxSession.executeSql(sql);
+            List<Map<String, Object>> records = ConvertUtil.getRecords(result);
+            if (records == null) return new ArrayList<>();
+            List<ProgramEntity> programs = new ArrayList<>();
+            for (Map<String, Object> record : records) {
+                ProgramEntity entity = new ProgramEntity();
+                record.forEach((key, value) -> setDtoField(entity, key, value));
+                programs.add(entity);
+            }
+            return programs;
+        } catch (Exception e) {
+            log.error("[MATLAB-PREWARM] 系统级程序查询失败", e);
+            return new ArrayList<>();
+        }
+    }
+
+    private void startPrewarmAsync() {
+        startPrewarmAsync(6);
+    }
+
+    private void startPrewarmAsync(int attemptsRemaining) {
+        if (!matlabEngineEnabled || enginePool == null) return;
+        List<ProgramEntity> programs = queryProgramsForPrewarm();
+        if (programs.isEmpty() && attemptsRemaining > 1) {
+            log.warn("[MATLAB-PREWARM] 暂未发现程序，10 秒后重试（剩余 {} 次）", attemptsRemaining - 1);
+            Thread retry = new Thread(() -> {
+                try {
+                    Thread.sleep(10000);
+                    startPrewarmAsync(attemptsRemaining - 1);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }, "matlab-prewarm-discovery");
+            retry.setDaemon(true);
+            retry.start();
+            return;
+        }
+        int enabled = 0;
+        for (ProgramEntity entity : programs) {
+            try {
+                ProgramConfig config = ProgramConfigMapper.parse(entity.getConfigJson());
+                ProgramConfig.RuntimeConfig runtime = config != null ? config.getRuntime() : null;
+                if (runtime != null && Boolean.TRUE.equals(runtime.getPrewarm())) {
+                    enqueuePrewarm(entity);
+                    enabled++;
+                }
+            } catch (Exception e) {
+                log.warn("[MATLAB-PREWARM] 跳过无法解析配置的程序 {} {}: {}",
+                        entity.getName(), entity.getVersion(), e.getMessage());
+            }
+        }
+        log.info("[MATLAB-PREWARM] 扫描程序 {} 个，已启用预热 {} 个，当前队列 {} 个",
+                programs.size(), enabled, prewarmQueue.size());
+        startPrewarmWorker();
+    }
+
+    private void enqueuePrewarm(ProgramEntity entity) {
+        if (entity == null || !matlabEngineEnabled || enginePool == null) return;
+        String key = String.valueOf(entity.getProjectName()) + "|" + entity.getName() + "|" + entity.getVersion();
+        if (queuedPrewarms.add(key)) {
+            prewarmQueue.offer(entity);
+            log.info("[MATLAB-PREWARM] 已加入预热队列: {} {}", entity.getName(), entity.getVersion());
+        }
+        startPrewarmWorker();
+    }
+
+    private void startPrewarmWorker() {
+        if (prewarmQueue.isEmpty() || !prewarming.compareAndSet(false, true)) return;
+        Thread thread = new Thread(() -> {
+            try {
+                ProgramEntity entity;
+                while ((entity = prewarmQueue.poll()) != null) {
+                    String key = String.valueOf(entity.getProjectName()) + "|" + entity.getName() + "|" + entity.getVersion();
+                    prewarmMessage = "正在预热 " + entity.getName() + " " + entity.getVersion();
+                    try {
+                        ProgramConfig config = ProgramConfigMapper.parse(entity.getConfigJson());
+                        if (config == null || config.getRuntime() == null || !Boolean.TRUE.equals(config.getRuntime().getPrewarm())) {
+                            log.info("[MATLAB-PREWARM] 配置已关闭预热，跳过 {} {}", entity.getName(), entity.getVersion());
+                            continue;
+                        }
+                        prewarmProgram(entity, config);
+                        log.info("[MATLAB-PREWARM] {} {} 预热完成", entity.getName(), entity.getVersion());
+                    } catch (Exception e) {
+                        log.error("[MATLAB-PREWARM] {} {} 预热失败", entity.getName(), entity.getVersion(), e);
+                    } finally {
+                        queuedPrewarms.remove(key);
+                    }
+                }
+                prewarmMessage = "程序预热完成";
+            } finally {
+                prewarming.set(false);
+                if (!prewarmQueue.isEmpty()) startPrewarmWorker();
+            }
+        }, "matlab-program-prewarm");
+        thread.setDaemon(true);
+        thread.start();
+    }
+
+    private void prewarmProgram(ProgramEntity entity, ProgramConfig config) throws Exception {
+        ProgramConfig.RuntimeConfig runtime = config.getRuntime();
+        String modelFile = runtime.getSimulinkModel();
+        if (!StringUtils.hasText(modelFile)) throw new Exception("未配置 Simulink 模型");
+        File baseDir = new File(System.getProperty("java.io.tmpdir"), "datamodelgov-prewarm");
+        if (!baseDir.exists() && !baseDir.mkdirs()) throw new IOException("无法创建预热目录: " + baseDir);
+        File taskDir = new File(baseDir, entity.getName() + "-" + entity.getVersion() + "-" + System.currentTimeMillis());
+        if (!taskDir.mkdirs()) throw new IOException("无法创建程序预热目录: " + taskDir);
+        byte[] archiveBytes = downloadFromIginx(entity.getStoragePath(), entity.getChunkCount(), entity.getFileMd5());
+        File archiveFile = new File(taskDir, entity.getFileName());
+        Files.write(archiveFile.toPath(), archiveBytes);
+        ArchiveUtil.extractArchive(archiveFile, taskDir);
+        writeProgramConfig(taskDir, entity);
+        String preRunScript = StringUtils.hasText(runtime.getPreRunScript()) ? runtime.getPreRunScript() : "";
+        String programDir = FileUtil.findProgramDir(taskDir, preRunScript);
+        File setupSource = new File(taskDir, "dmg_setup.m");
+        File setupTarget = new File(programDir, "dmg_setup.m");
+        if (setupSource.exists() && !setupTarget.exists()) Files.copy(setupSource.toPath(), setupTarget.toPath());
+        Map<String, String> parameterValues = new LinkedHashMap<>();
+        if (config.getParameters() != null) {
+            for (ProgramConfig.ParameterSpec parameter : config.getParameters()) {
+                if (StringUtils.hasText(parameter.getDefaultValue())) {
+                    parameterValues.put(parameter.getKey(), parameter.getDefaultValue());
+                }
+            }
+        }
+        double fixedStepValue = SimTimeUtil.parse(runtime.getFixedStep(), 0.025);
+        String modelName = modelFile.replaceAll("\\.(slx|mdl)$", "");
+        MatlabSimulationRunner runner = new MatlabSimulationRunner(taskDir, programDir, preRunScript,
+                true, modelName, fixedStepValue, runtime.getFixedStep(), parameterValues,
+                config.getParameters(), StringUtils.hasText(entity.getSetupScript()) ? "dmg_setup" : null,
+                new MatlabSimulationRunner.LiveSink() {
+                    @Override public void onStopTime(double alignedStopTime) {}
+                    @Override public void onHeaders(List<String> headers) {}
+                    @Override public void onRows(List<String[]> rows) {}
+                    @Override public void onLog(String line) { log.info("[MATLAB-PREWARM] {}", line); }
+                }, enginePool);
+        try {
+            runner.prewarm();
+        } finally {
+            runner.close();
+        }
+    }
+
     /** MATLAB 引擎状态（供前端 footer 显示） */
     public Result<Map<String, Object>> getEngineStatus() {
         Map<String, Object> data = new HashMap<>();
@@ -1015,6 +1176,9 @@ public class ProgramService {
         } else if (enginePool.isFailed()) {
             data.put("status", "failed");
             data.put("message", "[MATLAB] 引擎启动失败，仿真无法运行");
+        } else if (prewarming.get()) {
+            data.put("status", "warming");
+            data.put("message", "[MATLAB] " + prewarmMessage + "，首次使用前请耐心等待...");
         } else if (enginePool.isReady()) {
             data.put("status", "ready");
             int idle = enginePool.idleCount();
@@ -1038,6 +1202,7 @@ public class ProgramService {
         log.info("用户请求重启 MATLAB 引擎");
         engineDisabled = false;
         enginePool.restart();
+        startPrewarmAsync();
         Map<String, Object> data = new HashMap<>();
         data.put("status", "starting");
         data.put("message", "[MATLAB] 引擎正在重启...");
@@ -1106,6 +1271,7 @@ public class ProgramService {
             ProgramConfig.RuntimeConfig runtime = pgConfig.getRuntime();
             String preRunScript = runtime != null && StringUtils.hasText(runtime.getPreRunScript())
                     ? runtime.getPreRunScript() : "";
+            boolean skipPreRunOnReuse = runtime != null && !Boolean.FALSE.equals(runtime.getSkipPreRunOnReuse());
             String modelFile = StringUtils.hasText(modelFileParam) ? modelFileParam
                     : (runtime != null ? runtime.getSimulinkModel() : "");
             double stopTime = StringUtils.hasText(stopTimeParam)
@@ -1163,8 +1329,20 @@ public class ProgramService {
                         null, null, null);
                 return;
             }
-            int result = runWithEngine(taskTimestamp, taskDir, programDir, preRunScript, modelFile,
-                    stopTime, fixedStepParam, paramValues, pgConfig.getParameters(), setupScript, liveBuffer);
+            if (prewarming.get()) {
+                liveBuffer.appendLogLine("[MATLAB] 后台预热尚未完成，当前任务正在等待预热模型...");
+                long deadline = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(20);
+                while (prewarming.get() && System.currentTimeMillis() < deadline) {
+                    Thread.sleep(1000);
+                }
+                if (prewarming.get()) {
+                    updateTaskStatus(taskTimestamp, TaskStatus.FAILED, "等待 MATLAB 预热超时", null, logFile.getAbsolutePath(), null);
+                    return;
+                }
+                liveBuffer.appendLogLine("[MATLAB] 后台预热完成，开始运行仿真...");
+            }
+            int result = runWithEngine(taskTimestamp, taskDir, programDir, preRunScript, skipPreRunOnReuse,
+                    modelFile, stopTime, fixedStepParam, paramValues, pgConfig.getParameters(), setupScript, liveBuffer);
             if (result != RUN_OK) {
                 // 用户停止 / 运行失败：状态已由停止端点或运行分支设置，不再覆盖。
                 // signals.csv 已由引擎 exportResults() 写到 taskDir（如果仿真已开始），
@@ -1213,7 +1391,7 @@ public class ProgramService {
      * @return RUN_OK 正常结束；RUN_STOPPED 用户停止；RUN_FAILED 运行失败（状态已写）
      */
     private int runWithEngine(long taskTimestamp, File taskDir, String programDir, String preRunScript,
-                              String modelFile, double stopTime, String fixedStep,
+                              boolean skipPreRunOnReuse, String modelFile, double stopTime, String fixedStep,
                               Map<String, String> paramValues, List<ProgramConfig.ParameterSpec> parameters,
                               String setupScript, LiveDataBuffer liveBuffer) {
         if (!StringUtils.hasText(modelFile)) {
@@ -1222,8 +1400,8 @@ public class ProgramService {
             return RUN_FAILED;
         }
         String modelName = modelFile.replaceAll("\\.(slx|mdl)$", "");
-        MatlabSimulationRunner runner = new MatlabSimulationRunner(taskDir, programDir, preRunScript, modelName,
-                stopTime, fixedStep, paramValues, parameters, setupScript,
+        MatlabSimulationRunner runner = new MatlabSimulationRunner(taskDir, programDir, preRunScript,
+                skipPreRunOnReuse, modelName, stopTime, fixedStep, paramValues, parameters, setupScript,
                 new MatlabSimulationRunner.LiveSink() {
                     @Override
                     public void onStopTime(double alignedStopTime) {
@@ -2225,9 +2403,12 @@ public class ProgramService {
         ProgramEntity entity = queryMeta(name, version, projectName);
         if (entity == null) return Result.error("程序不存在");
         try {
-            mapper.readTree(configJson);
+            JsonNode configNode = mapper.readTree(configJson);
             entity.setConfigJson(configJson);
             saveProgramMetadata(entity);
+            if (configNode.path("runtime").path("prewarm").asBoolean(false)) {
+                enqueuePrewarm(entity);
+            }
             return Result.success("配置更新成功", entity);
         } catch (Exception e) {
             return Result.error("配置更新失败: " + e.getMessage());

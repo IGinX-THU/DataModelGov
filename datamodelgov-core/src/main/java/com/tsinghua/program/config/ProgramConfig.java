@@ -59,6 +59,10 @@ public class ProgramConfig {
     public static class RuntimeConfig {
         /** 预运行脚本名（如 "RunCtrlSysModelSHT"），在 cd(programDir) 后执行 */
         private String preRunScript;
+        /** 命中已加载模型时是否跳过预运行脚本 */
+        private Boolean skipPreRunOnReuse;
+        /** 服务启动或引擎重启后是否在后台预热模型 */
+        private Boolean prewarm;
         /** Simulink 模型文件名（如 "Dll_Control_AFO_V8_2_R2019b.slx"），默认选中项 */
         private String simulinkModel;
         /** 可选模型文件列表（下拉选），为空时回退到 simulinkModel 单项 */

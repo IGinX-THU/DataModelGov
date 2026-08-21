@@ -399,6 +399,10 @@ class ProgramManagement extends HTMLElement {
         const rt = config.runtime || {};
         const set = (id, v) => { const el = this.shadowRoot.getElementById(id); if (el) el.value = v != null ? v : ''; };
         set('cfgPreRunScript', rt.preRunScript);
+        const skipPreRunEl = this.shadowRoot.getElementById('cfgSkipPreRunOnReuse');
+        if (skipPreRunEl) skipPreRunEl.checked = rt.skipPreRunOnReuse !== false;
+        const prewarmEl = this.shadowRoot.getElementById('cfgPrewarm');
+        if (prewarmEl) prewarmEl.checked = rt.prewarm === true;
         set('cfgSimulinkModel', rt.simulinkModel);
         set('cfgSimulinkModels', (rt.simulinkModels || []).join(', '));
         set('cfgStopTime', rt.stopTime);
@@ -531,6 +535,8 @@ class ProgramManagement extends HTMLElement {
         const num = (id, dflt) => { const v = parseFloat(val(id)); return isNaN(v) ? dflt : v; };
         const runtime = {
             preRunScript: val('cfgPreRunScript'),
+            skipPreRunOnReuse: this.shadowRoot.getElementById('cfgSkipPreRunOnReuse')?.checked === true,
+            prewarm: this.shadowRoot.getElementById('cfgPrewarm')?.checked === true,
             simulinkModel: val('cfgSimulinkModel'),
             simulinkModels: val('cfgSimulinkModels').split(',').map(s => s.trim()).filter(Boolean),
             stopTime: num('cfgStopTime', 30),

@@ -1265,32 +1265,28 @@ class ProgramRun extends HTMLElement {
 
     try {
 
-      // 引擎卡在"启动中"时，点击运行先重启引擎
+      // 引擎启动或程序预热期间等待就绪，不重复重启引擎
       try {
         const statusUrl = window.AppConfig.getApiUrl('program', 'engine-status');
-        const statusResult = await window.AppConfig.request(statusUrl);
-        if (statusResult && statusResult.code === 200 && statusResult.data && statusResult.data.status === 'starting') {
-          if (this.footerLog) this.footerLog.textContent = '[MATLAB] 引擎正在重启...';
-          // 显示 loading 覆盖层，让用户知道正在重启引擎
+        let statusResult = await window.AppConfig.request(statusUrl);
+        const waitingStatuses = ['starting', 'warming'];
+        if (statusResult && statusResult.code === 200 && statusResult.data && waitingStatuses.includes(statusResult.data.status)) {
           this.runStatus = 'STARTING';
           this.updateStatusUI('STARTING');
-          // 覆盖层文字改为引擎重启提示
-          const overlayText = this.shadowRoot.getElementById('runLoadingText');
-          if (overlayText) overlayText.textContent = 'MATLAB 引擎正在重启，请稍后...';
-          const restartUrl = window.AppConfig.getApiUrl('program', 'engine-restart');
-          await window.AppConfig.request(restartUrl, { method: 'POST' });
-          // 重启后等引擎就绪，轮询；期间允许用户点停止取消
           this._waitingEngine = true;
-          // 状态为 STARTING 时 stopBtn 是可用的，这里强制刷新一次确保按钮可用
           this.updateRunButtons('STARTING');
-          for (let i = 0; i < 12; i++) {
-            await new Promise(r => setTimeout(r, 15000));
+          for (let i = 0; i < 180; i++) {
+            const message = statusResult.data.message || '[MATLAB] 正在准备运行环境...';
+            if (this.footerLog) this.footerLog.textContent = message;
+            const overlayText = this.shadowRoot.getElementById('runLoadingText');
+            if (overlayText) overlayText.textContent = message.replace(/^\[MATLAB\]\s*/, '');
+            await new Promise(r => setTimeout(r, 5000));
             if (this._cancelRun) {
               this._waitingEngine = false;
-              return; // 用户取消，不继续启动仿真
+              return;
             }
-            const r = await window.AppConfig.request(statusUrl);
-            if (r && r.code === 200 && r.data && r.data.status !== 'starting') break;
+            statusResult = await window.AppConfig.request(statusUrl);
+            if (!statusResult || statusResult.code !== 200 || !statusResult.data || !waitingStatuses.includes(statusResult.data.status)) break;
           }
           this._waitingEngine = false;
         }
