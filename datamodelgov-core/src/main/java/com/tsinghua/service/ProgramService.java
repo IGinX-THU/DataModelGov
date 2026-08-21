@@ -687,6 +687,11 @@ public class ProgramService {
             log.error("保存程序配置失败", e);
             return Collections.singletonList("保存失败: " + e.getMessage());
         }
+        ProgramConfig.RuntimeConfig runtime = cfg.getRuntime();
+        if (runtime != null && Boolean.TRUE.equals(runtime.getPrewarm())) {
+            log.info("[MATLAB-PREWARM] 配置保存成功，触发预热: {} {}", entity.getName(), entity.getVersion());
+            enqueuePrewarm(entity);
+        }
         return Collections.emptyList();
     }
 

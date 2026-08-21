@@ -277,8 +277,8 @@ window.AppConfig = {
     async request(url, options = {}) {
         const config = {
             method: 'GET',
-            headers: { ...this.getAuthHeaders(), ...(options.headers || {}) },
-            ...options
+            ...options,
+            headers: { ...this.getAuthHeaders(), ...(options.headers || {}) }
         };
 
         // 如果是登录或刷新接口，不需要token
