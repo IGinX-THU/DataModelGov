@@ -979,6 +979,8 @@ public class ProgramService {
         // 提前创建 LiveDataBuffer，确保 SSE 连接时 buffer 已存在
         // （doRun 线程下载/解压需要时间，此时前端 SSE 订阅才能拿到 buffer）
         liveDataMap.put(taskTimestamp, new LiveDataBuffer());
+        LiveDataBuffer initBuffer = liveDataMap.get(taskTimestamp);
+        if (initBuffer != null) initBuffer.setTaskInfo(task.getStatus(), null);
 
         new Thread(() -> doRun(taskTimestamp, entity, alignedStopTime, fixedStep, modelFile, params), "program-run-" + taskTimestamp).start();
 
@@ -1498,6 +1500,9 @@ public class ProgramService {
         private volatile double stopTime = 0.0;
         // 最新一条 MATLAB 日志（供前端 footer 显示）
         private volatile String logLine = "";
+        // 当前任务状态与错误（解决仿真结束时 SSE 缺少 status，前端出现 UNKNOWN 的问题）
+        private volatile String taskStatus = "";
+        private volatile String taskError = "";
         // SSE 订阅者列表
         private final List<SseEmitter> emitters = Collections.synchronizedList(new ArrayList<>());
 
@@ -1526,6 +1531,12 @@ public class ProgramService {
             notifySubscribers(buildPayload(new ArrayList<>()));
         }
 
+        /** 更新任务状态/错误，不主动推送，随下一次数据/结束事件一并下发 */
+        public void setTaskInfo(String status, String error) {
+            this.taskStatus = status;
+            this.taskError = error;
+        }
+
         /** 返回从 lastIndex 到末尾的增量数据，并更新 lastIndex（轮询降级用） */
         public synchronized Map<String, Object> getIncremental() {
             Map<String, Object> result = new HashMap<>();
@@ -1543,6 +1554,8 @@ public class ProgramService {
             result.put("stopTime", stopTime);
             result.put("finished", finished);
             result.put("logLine", logLine);
+            result.put("status", taskStatus);
+            result.put("lastError", taskError);
             return result;
         }
 
@@ -1575,6 +1588,8 @@ public class ProgramService {
             snapshot.put("stopTime", stopTime);
             snapshot.put("finished", finished);
             snapshot.put("logLine", logLine);
+            snapshot.put("status", taskStatus);
+            snapshot.put("lastError", taskError);
             // 快照包含全量数据（首次订阅或断线重连），前端需整体替换而非追加，避免重复
             snapshot.put("reset", true);
             sendToEmitter(emitter, snapshot);
@@ -1607,6 +1622,8 @@ public class ProgramService {
             payload.put("stopTime", stopTime);
             payload.put("finished", finished);
             payload.put("logLine", logLine);
+            payload.put("status", taskStatus);
+            payload.put("lastError", taskError);
             return payload;
         }
 
@@ -1646,11 +1663,8 @@ public class ProgramService {
         // 检查是否因服务重启导致任务实际已终止
         checkRestartedTask(task);
 
-        Map<String, Object> data = new HashMap<>();
-        data.put("status", task.getStatus());
-        data.put("lastError", task.getError());
-
         LiveDataBuffer buffer = liveDataMap.get(task.getTimestamp());
+        Map<String, Object> data = new HashMap<>();
         if (buffer != null) {
             data.putAll(buffer.getIncremental());
         } else {
@@ -1659,6 +1673,9 @@ public class ProgramService {
             data.put("currentSimTime", 0.0);
             data.put("finished", !TaskStatus.RUNNING.equals(task.getStatus()));
         }
+        // 以任务实体中的状态为准，覆盖 buffer 中可能滞后的值
+        data.put("status", task.getStatus());
+        data.put("lastError", task.getError());
         return Result.success(data);
     }
 
@@ -1670,7 +1687,9 @@ public class ProgramService {
         // 超时设为 30 分钟：引擎模式下曲线随真实仿真推进，长仿真 + 暂停都会拉长连接时间
         SseEmitter emitter = new SseEmitter(1800000L);
 
-        ProgramTaskEntity task = queryLatestTask(name, version, projectName);
+        // 优先取内存中最新运行/排队任务，避免新任务落盘延迟串到旧任务
+        ProgramTaskEntity task = findLatestRunningOrQueuedTask(name, version, projectName);
+        if (task == null) task = queryLatestTask(name, version, projectName);
         if (task == null) {
             try {
                 emitter.send(SseEmitter.event().data(Collections.singletonMap("error", "无运行任务记录")));
@@ -2166,6 +2185,8 @@ public class ProgramService {
         if (task == null) return;
         task.setStatus(status);
         task.setError(error);
+        LiveDataBuffer buffer = liveDataMap.get(taskTimestamp);
+        if (buffer != null) buffer.setTaskInfo(status, error);
         task.setEndTime(System.currentTimeMillis());
         if (csvPath != null) task.setResultCsvPath(csvPath);
         if (logPath != null) task.setLogPath(logPath);
@@ -2252,6 +2273,27 @@ public class ProgramService {
             }
         }
         return null;
+    }
+
+    /**
+     * 从内存缓存 runningTasks 中查找最新运行中/排队任务（优先于 DB 查询）。
+     * 避免新任务落盘延迟导致 /live-stream 串到旧的结束任务。
+     */
+    private ProgramTaskEntity findLatestRunningOrQueuedTask(String name, String version, String projectName) {
+        ProgramTaskEntity latest = null;
+        for (ProgramTaskEntity task : runningTasks.values()) {
+            if (task == null || task.getTimestamp() == null) continue;
+            boolean match = true;
+            if (name != null && !name.equals(task.getProgramName())) match = false;
+            if (version != null && !version.equals(task.getProgramVersion())) match = false;
+            if (projectName != null && !projectName.equals(task.getProjectName())) match = false;
+            if (!match) continue;
+            if (!TaskStatus.RUNNING.equals(task.getStatus()) && !TaskStatus.QUEUED.equals(task.getStatus())) continue;
+            if (latest == null || task.getTimestamp() > latest.getTimestamp()) {
+                latest = task;
+            }
+        }
+        return latest;
     }
 
     private ProgramTaskEntity queryLatestTask(String programName, String programVersion, String projectName) {

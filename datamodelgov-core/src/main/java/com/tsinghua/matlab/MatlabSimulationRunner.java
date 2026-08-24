@@ -271,10 +271,19 @@ public class MatlabSimulationRunner implements Closeable {
         }
     }
 
-    private void configurePacing(boolean enabled) throws Exception {
-        eval("set_param('" + esc(modelName) + "','EnablePacing','" + (enabled ? "on" : "off") + "','PacingRate','1');",
-                CALL_TIMEOUT_SEC, enabled ? "启用交互实时模式" : "关闭预热限速");
-        if (enabled) logMatlab("已启用交互实时模式，仿真时间将按约 1:1 的现实时间推进");
+    private void configurePacing(boolean enabled) {
+        try {
+            eval("set_param('" + esc(modelName) + "','EnablePacing','" + (enabled ? "on" : "off") + "','PacingRate','1');",
+                    CALL_TIMEOUT_SEC, enabled ? "启用交互实时模式" : "关闭预热限速");
+            if (enabled) logMatlab("已启用交互实时模式，仿真时间将按约 1:1 的现实时间推进");
+        } catch (Exception e) {
+            log.warn("[MATLAB] {}失败，将继续不限速运行: {}", enabled ? "启用交互实时模式" : "关闭预热限速", e.getMessage());
+            if (enabled) {
+                try {
+                    eval("set_param('" + esc(modelName) + "','EnablePacing','off');", CALL_TIMEOUT_SEC, "回退不限速模式");
+                } catch (Exception ignored) {}
+            }
+        }
     }
 
     /** 预配置：切目录、跑预运行脚本、设参数、载入模型、对齐停止时间、配置信号日志。

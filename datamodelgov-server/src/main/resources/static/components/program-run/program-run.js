@@ -1231,7 +1231,7 @@ class ProgramRun extends HTMLElement {
 
     const queued = state === 'QUEUED';
 
-    if (this.runBtn) this.runBtn.disabled = running || paused || starting || queued || this._busyAction === 'run';
+    if (this.runBtn) this.runBtn.disabled = running || paused || starting || queued || state === 'UNKNOWN' || this._busyAction === 'run';
 
     if (this.pauseBtn) {
 
@@ -2378,7 +2378,7 @@ class ProgramRun extends HTMLElement {
 
       const running = status === 'RUNNING' || status === 'STARTING' || status === 'QUEUED';
 
-      this.runBtn.disabled = running;
+      this.runBtn.disabled = running || status === 'UNKNOWN';
 
       // 排队中不允许停止（还没真正开始）
       this.stopBtn.disabled = !(status === 'RUNNING' || status === 'STARTING');
