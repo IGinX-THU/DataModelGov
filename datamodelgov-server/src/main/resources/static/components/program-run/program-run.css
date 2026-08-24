@@ -5,6 +5,27 @@
   display:block; width:100%; height:auto; min-height:100%; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif; background:var(--bg); color:var(--text); overflow:visible; font-size:13px;
 }
 * { box-sizing:border-box; }
+/* 组件内全屏：fixed 占满浏览器 */
+:host(.component-fullscreen) {
+  position: fixed !important;
+  top: 0; left: 0;
+  width: 100vw; height: 100vh;
+  z-index: 9999;
+  overflow: hidden;
+}
+:host(.component-fullscreen) .app {
+  height: 100vh;
+  min-height: 100vh;
+}
+:host(.component-fullscreen) .body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+:host(.component-fullscreen) .chart-grid {
+  flex: 1;
+  min-height: 0;
+}
 .app { width:100%; height:auto; min-height:100%; display:flex; flex-direction:column; }
 header { display:flex; align-items:center; justify-content:space-between; height:46px; padding:0 16px; background:var(--panel); border-bottom:1px solid var(--grid); flex-shrink:0; }
 .head-left { display:flex; align-items:center; gap:10px; }
@@ -19,6 +40,16 @@ header { display:flex; align-items:center; justify-content:space-between; height
 .btn-pause { background:var(--yellow); color:#000; }
 .btn-stop { background:var(--red); }
 .btn-close { background:#475569; }
+.btn-fullscreen { background:#475569; }
+/* Windows 风格标题栏按钮：全屏和关闭 */
+.btn-fullscreen, .btn-close {
+  border: none; border-radius: 0; padding: 0; width: 32px; height: 32px;
+  display: flex; align-items: center; justify-content: center; background: transparent;
+  color: var(--text);
+}
+.btn-fullscreen .ico, .btn-close .ico { font-size: 14px; }
+.btn-fullscreen:hover { background: rgba(255,255,255,0.1); }
+.btn-close:hover { background: #e81123; color: #fff; }
 .time-box { padding:5px 10px; background:#1a2740; border:1px solid var(--grid); border-radius:4px; color:var(--green); font-size:12px; }
 .status-box { padding:5px 10px; background:#1a2740; border-radius:4px; color:var(--green); font-size:12px; display:flex; align-items:center; gap:4px; }
 .dot { width:7px; height:7px; border-radius:50%; background:var(--green); }
@@ -44,6 +75,7 @@ aside.right { border-left:1px solid var(--grid); border-right:none; }
 .input-box { display:flex; align-items:center; gap:4px; background:#0b1220; border:1px solid #24344D; border-radius:4px; padding:2px 6px; }
 .input-box input { background:transparent; border:none; color:var(--text); font-size:12px; width:56px; outline:none; text-align:right; }
 .input-box .unit { color:var(--muted); font-size:11px; }
+.field-hint { font-size:10px; color:#f59e0b; padding:2px 0 4px; margin-top:-2px; }
 .input-box select { background:#0b1220; border:none; color:var(--text); font-size:12px; width:170px; outline:none; }
 .input-box select option { background:#0f172a; color:var(--text); }
 .module-tree { list-style:none; margin:0; padding:0; font-size:11px; }

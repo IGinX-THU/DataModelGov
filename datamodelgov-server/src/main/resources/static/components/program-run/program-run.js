@@ -192,6 +192,19 @@ class ProgramRun extends HTMLElement {
 
     if (this.pauseBtn) this.pauseBtn.addEventListener('click', () => this.handleTogglePause());
 
+    // 组件内全屏
+    this._isFullscreen = false;
+    const fullscreenBtn = this.shadowRoot.getElementById('fullscreenBtn');
+    if (fullscreenBtn) {
+      fullscreenBtn.addEventListener('click', () => this.toggleFullscreen());
+    }
+    this._escHandler = (e) => {
+      if (e.key === 'Escape' && this._isFullscreen) {
+        this.toggleFullscreen();
+      }
+    };
+    document.addEventListener('keydown', this._escHandler);
+
 
 
     const viewDetailBtn = this.shadowRoot.querySelector('.view-detail');
@@ -1173,6 +1186,23 @@ class ProgramRun extends HTMLElement {
 
     this.destroyExtension();
 
+  }
+
+  toggleFullscreen() {
+    this._isFullscreen = !this._isFullscreen;
+    this.classList.toggle('component-fullscreen', this._isFullscreen);
+    const btn = this.shadowRoot.getElementById('fullscreenBtn');
+    if (btn) {
+      btn.innerHTML = this._isFullscreen
+        ? '<span class="ico">❐</span>'
+        : '<span class="ico">⛶</span>';
+      btn.title = this._isFullscreen ? '退出全屏 (Esc)' : '全屏显示 (Esc 退出)';
+    }
+    // 延迟一帧让布局生效后重绘图表
+    requestAnimationFrame(() => {
+      this.charts.forEach(c => c && c.resize());
+      window.dispatchEvent(new Event('resize'));
+    });
   }
 
 
@@ -2508,12 +2538,27 @@ class ProgramRun extends HTMLElement {
       const st = parseFloat(data.stopTime);
       if (isFinite(st) && st > 0) {
         this.duration = st;
-        // 配置模式用 #stopTimeInput，旧模式用通用选择器
-        const stopInput = this.shadowRoot.getElementById('stopTimeInput')
-            || this.shadowRoot.querySelector('.field-row .input-box input');
+        const stopInput = this.shadowRoot.getElementById('stopTimeInput');
         if (stopInput) stopInput.value = String(st);
       }
     }
+    // 回显固定步长
+    if (data.fixedStep != null && data.fixedStep !== '') {
+      const stepInput = this.shadowRoot.getElementById('fixedStepInput');
+      if (stepInput) stepInput.value = data.fixedStep;
+    }
+    // 回显模型文件
+    if (data.modelFile != null && data.modelFile !== '') {
+      const modelSelect = this.shadowRoot.getElementById('modelFileSelect');
+      if (modelSelect) modelSelect.value = data.modelFile;
+    }
+    // 回显动态参数到左侧输入框（按 data-param 匹配 key）
+    this.shadowRoot.querySelectorAll('input[data-param]').forEach(inp => {
+      const key = inp.dataset.param;
+      if (key && data[key] != null && data[key] !== '') {
+        inp.value = data[key];
+      }
+    });
 
     if (this.kpiParams) {
 
@@ -2758,12 +2803,29 @@ class ProgramRun extends HTMLElement {
     const modelOptions = models.length
       ? models.map(m => `<option value="${this.esc(m)}"${m === defaultModel ? ' selected' : ''}>${this.esc(m)}</option>`).join('')
       : '<option value="" selected disabled>未配置</option>';
+    const stepHintText = runtime.fixedStepHint || '';
+    const baseVal = runtime.fixedStepBaseValue;
     div.innerHTML = `
       <div class="panel-title">${this.esc(spec.title || '项目与工况')}</div>
       <div class="field-row"><label>模型文件</label><div class="input-box"><select id="modelFileSelect">${modelOptions}</select></div></div>
       <div class="field-row"><label>仿真停止时间</label><div class="input-box"><input type="text" id="stopTimeInput" value="${this.esc(String(runtime.stopTime != null ? runtime.stopTime : 30))}"><span class="unit">s</span></div></div>
       <div class="field-row"><label>固定步长</label><div class="input-box"><input type="text" id="fixedStepInput" value="${this.esc(runtime.fixedStep || '0.025')}"><span class="unit">s</span></div></div>
+      <div class="field-hint" id="fixedStepHint" style="display:none"></div>
     `;
+    // 步长输入校验：值不是 baseValue 的约数时显示 fixedStepHint，正确时隐藏
+    const stepInput = div.querySelector('#fixedStepInput');
+    const hintEl = div.querySelector('#fixedStepHint');
+    if (stepInput && hintEl && baseVal && stepHintText) {
+      const check = () => {
+        const stepVal = parseFloat(stepInput.value);
+        const invalid = isNaN(stepVal) || stepVal <= 0
+          || Math.abs(baseVal / stepVal - Math.round(baseVal / stepVal)) > 1e-9;
+        hintEl.style.display = invalid ? '' : 'none';
+        if (invalid) hintEl.textContent = stepHintText;
+      };
+      stepInput.addEventListener('input', check);
+      check();
+    }
     // 模型切换时更新标题旁的模型标签 + 初始化标签
     const select = div.querySelector('#modelFileSelect');
     if (select) {

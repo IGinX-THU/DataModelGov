@@ -2382,9 +2382,29 @@ public class ProgramService {
         data.put("lastRunTime", task.getStartTime());
         data.put("npCommand", task.getNpCommand());
         data.put("loadPower", task.getLoadPower());
+        // 解析 paramsJson，把动态参数也平铺到 data 中，供前端 KPI 回显
+        if (task.getParamsJson() != null && !task.getParamsJson().isEmpty()) {
+            try {
+                Map<String, Object> paramMap = mapper.readValue(task.getParamsJson(),
+                        new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
+                for (Map.Entry<String, Object> entry : paramMap.entrySet()) {
+                    if (entry.getValue() != null) {
+                        data.putIfAbsent(entry.getKey(), entry.getValue());
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("解析 paramsJson 失败: {}", e.getMessage());
+            }
+        }
         // 返回对齐后的停止时间，刷新页面时前端据此设置时间轴上限
         if (task.getStopTime() != null) {
             data.put("stopTime", task.getStopTime());
+        }
+        if (task.getFixedStep() != null) {
+            data.put("fixedStep", task.getFixedStep());
+        }
+        if (task.getModelFile() != null) {
+            data.put("modelFile", task.getModelFile());
         }
 
         if (task.getRunLog() != null) {
