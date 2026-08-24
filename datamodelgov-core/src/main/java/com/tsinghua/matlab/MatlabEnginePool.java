@@ -25,6 +25,7 @@ public class MatlabEnginePool {
 
     private final int maxEngines;
     private final LinkedBlockingQueue<MatlabEngine> idle = new LinkedBlockingQueue<>();
+    /** key=引擎，value="模型名|固定步长" 组合键，用于 Fast Restart 匹配 */
     private final Map<MatlabEngine, String> loadedModels = new ConcurrentHashMap<>();
     private final AtomicInteger totalEngines = new AtomicInteger(0);
     private final AtomicInteger waitingCount = new AtomicInteger(0);
@@ -86,14 +87,15 @@ public class MatlabEnginePool {
      * @param timeoutSec 等待超时（秒）
      * @return 可用的 MatlabEngine
      */
-    public MatlabEngine borrow(String preferredModel, long timeoutSec) throws Exception {
+    public MatlabEngine borrow(String preferredModel, String preferredStep, long timeoutSec) throws Exception {
         if (preferredModel != null && !preferredModel.trim().isEmpty()) {
+            String preferredKey = buildModelKey(preferredModel, preferredStep);
             int candidates = idle.size();
             for (int i = 0; i < candidates; i++) {
                 MatlabEngine candidate = idle.poll();
                 if (candidate == null) break;
-                if (preferredModel.equals(loadedModels.get(candidate))) {
-                    log.info("[MATLAB-POOL] 命中模型亲和引擎: {}", preferredModel);
+                if (preferredKey.equals(loadedModels.get(candidate))) {
+                    log.info("[MATLAB-POOL] 命中模型+步长亲和引擎: {}", preferredKey);
                     return candidate;
                 }
                 idle.offer(candidate);
@@ -102,10 +104,16 @@ public class MatlabEnginePool {
         return borrow(timeoutSec);
     }
 
-    public void markLoadedModel(MatlabEngine eng, String modelName) {
+    public void markLoadedModel(MatlabEngine eng, String modelName, String fixedStep) {
         if (eng == null) return;
         if (modelName == null || modelName.trim().isEmpty()) loadedModels.remove(eng);
-        else loadedModels.put(eng, modelName);
+        else loadedModels.put(eng, buildModelKey(modelName, fixedStep));
+    }
+
+    /** 组合键：模型名|固定步长（步长为空时只按模型名匹配） */
+    private static String buildModelKey(String modelName, String fixedStep) {
+        if (fixedStep == null || fixedStep.trim().isEmpty()) return modelName;
+        return modelName + "|" + fixedStep;
     }
 
     public MatlabEngine borrow(long timeoutSec) throws Exception {

@@ -172,7 +172,7 @@ class ProgramManagement extends HTMLElement {
         const c = config || {};
         const result = {
             programName: c.programName || (program && program.name) || '',
-            runtime: c.runtime || { preRunScript: '', simulinkModel: '', stopTime: 30, fixedStep: '' },
+            runtime: c.runtime || { preRunScript: '', simulinkModel: '', stopTime: 30, fixedStep: '', fixedStepBaseValue: null, fixedStepHint: '' },
             parameters: c.parameters || [],
             derivedVars: c.derivedVars || [],
             signals: c.signals || [],
@@ -407,6 +407,8 @@ class ProgramManagement extends HTMLElement {
         set('cfgSimulinkModels', (rt.simulinkModels || []).join(', '));
         set('cfgStopTime', rt.stopTime);
         set('cfgFixedStep', rt.fixedStep);
+        set('cfgFixedStepBaseValue', rt.fixedStepBaseValue != null ? rt.fixedStepBaseValue : '');
+        set('cfgFixedStepHint', rt.fixedStepHint || '');
         // setupScript 是独立字段，由 loadSetupScript 单独加载
         const ui = config.ui || {};
         set('cfgUiTitle', ui.title);
@@ -540,7 +542,9 @@ class ProgramManagement extends HTMLElement {
             simulinkModel: val('cfgSimulinkModel'),
             simulinkModels: val('cfgSimulinkModels').split(',').map(s => s.trim()).filter(Boolean),
             stopTime: num('cfgStopTime', 30),
-            fixedStep: val('cfgFixedStep')
+            fixedStep: val('cfgFixedStep'),
+            fixedStepBaseValue: num('cfgFixedStepBaseValue', null),
+            fixedStepHint: val('cfgFixedStepHint')
         };
         const parameters = [];
         this.shadowRoot.querySelectorAll('#paramConfigList .config-row').forEach(row => {

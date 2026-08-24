@@ -9,7 +9,9 @@
       "Dll_Control_AFO_V8_2_R2020a.slx"
     ],
     "stopTime": 30,
-    "fixedStep": "0.025"
+    "fixedStep": "0.025",
+    "fixedStepBaseValue": 0.025,
+    "fixedStepHint": "必须是 0.025 的约数（如 0.025、0.0125、0.005、0.0025、0.001）"
   },
   "setupScript": "dmg_setup.m",
   "parameters": [
