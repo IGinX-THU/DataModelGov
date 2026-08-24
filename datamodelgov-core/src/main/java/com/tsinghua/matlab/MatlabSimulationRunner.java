@@ -261,8 +261,8 @@ public class MatlabSimulationRunner implements Closeable {
             int ahead = runningTasks + enginePool.waitingCount();
             logMatlab("引擎已达并发上限(" + enginePool.maxEngines() + ")，排队等待中...（前面还有 " + ahead + " 个任务）");
         }
-        // 从引擎池借出（优先复用已加载相同模型的引擎）
-        engine = enginePool.borrow(modelName, ENGINE_START_TIMEOUT_SEC);
+        // 从引擎池借出（优先复用已加载相同模型+相同步长的引擎）
+        engine = enginePool.borrow(modelName, fixedStep, ENGINE_START_TIMEOUT_SEC);
         long elapsed = System.currentTimeMillis() - t0;
         if (elapsed < 1000) {
             logMatlab("引擎已就绪（复用空闲引擎）");
@@ -293,10 +293,13 @@ public class MatlabSimulationRunner implements Closeable {
     private void prepare() throws Exception {
         eval("cd('" + esc(programDir) + "');", INIT_TIMEOUT_SEC, "切换工作目录");
 
-        // 检查引擎中是否已加载相同模型
+        // 检查引擎中是否已加载相同模型+相同步长
         eval("dmg_prevModel = ''; try; dmg_prevModel = dmg_loadedModel; catch; end", CALL_TIMEOUT_SEC, "检查已加载模型");
+        eval("dmg_prevStep = ''; try; dmg_prevStep = dmg_loadedStep; catch; end", CALL_TIMEOUT_SEC, "检查已加载步长");
         String prevModel = getString("dmg_prevModel");
-        boolean modelReuse = hasText(prevModel) && prevModel.equals(modelName);
+        String prevStep = getString("dmg_prevStep");
+        boolean modelReuse = hasText(prevModel) && prevModel.equals(modelName)
+                && hasText(fixedStep) && fixedStep.equals(prevStep);
         if (modelReuse) {
             eval(buildRestoreSignalCacheScript(), CALL_TIMEOUT_SEC, "恢复信号配置缓存");
             if (getDouble("dmg_hasSignalCache") != 1.0) {
@@ -345,15 +348,19 @@ public class MatlabSimulationRunner implements Closeable {
         eval(params.toString(), INIT_TIMEOUT_SEC, "设置仿真参数");
 
         if (modelReuse) {
-            logMatlab("模型已加载且已配置，跳过 load_system 和加块（Fast Restart）");
+            logMatlab("模型已加载且步长一致，跳过 load_system 和加块（Fast Restart）");
         } else {
-            // 不同模型：先关闭旧模型（如果有）
+            // 不同模型或不同步长：先关闭旧模型（如果有），重新加载+编译
             if (hasText(prevModel)) {
-                logMatlab("切换模型: " + prevModel + " → " + modelName + "，关闭旧模型");
+                String stepInfo = hasText(prevStep) ? " (步长=" + prevStep + ")" : "";
+                String newStepInfo = hasText(fixedStep) ? " (步长=" + fixedStep + ")" : "";
+                logMatlab("切换模型或步长: " + prevModel + stepInfo + " → " + modelName + newStepInfo + "，关闭旧模型重新加载");
                 eval("try; set_param('" + esc(prevModel) + "','FastRestart','off'); close_system('" + esc(prevModel) + "', 0); catch; end",
                         CALL_TIMEOUT_SEC, "关闭旧模型");
+            } else if (!hasText(prevModel)) {
+                logMatlab("首次加载模型: " + modelName);
             }
-            logMatlab("正在加载 Simulink 模型: " + modelName + "，首次加载可能较慢，请耐心等待...");
+            logMatlab("正在加载 Simulink 模型: " + modelName + "，首次加载或步长变更可能较慢，请耐心等待...");
             eval("load_system('" + esc(modelName) + "');", INIT_TIMEOUT_SEC, "载入模型 " + modelName);
             if (hasText(fixedStep)) {
                 eval("set_param('" + esc(modelName) + "','FixedStep','" + fixedStep + "');", CALL_TIMEOUT_SEC, "设置固定步长");
@@ -398,9 +405,10 @@ public class MatlabSimulationRunner implements Closeable {
             throw new IllegalStateException("未配置 setupScript（信号采集脚本），无法运行仿真。请在 ProgramConfig.setupScript 中指定。");
         }
 
-        // 记录当前加载的模型名，供下次运行判断是否可复用
+        // 记录当前加载的模型名和步长，供下次运行判断是否可复用
         eval("dmg_loadedModel = '" + esc(modelName) + "';", CALL_TIMEOUT_SEC, "记录已加载模型");
-        enginePool.markLoadedModel(engine, modelName);
+        eval("dmg_loadedStep = '" + esc(fixedStep != null ? fixedStep : "") + "';", CALL_TIMEOUT_SEC, "记录已加载步长");
+        enginePool.markLoadedModel(engine, modelName, fixedStep);
     }
 
     private String buildRestoreSignalCacheScript() {
