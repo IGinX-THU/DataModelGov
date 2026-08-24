@@ -1150,10 +1150,11 @@ public class ProgramService {
         }
         double fixedStepValue = SimTimeUtil.parse(runtime.getFixedStep(), 0.025);
         String modelName = modelFile.replaceAll("\\.(slx|mdl)$", "");
+        String signalCacheKey = buildSignalCacheKey(entity);
         MatlabSimulationRunner runner = new MatlabSimulationRunner(taskDir, programDir, preRunScript,
                 true, modelName, fixedStepValue, runtime.getFixedStep(), parameterValues,
                 config.getParameters(), StringUtils.hasText(entity.getSetupScript()) ? "dmg_setup" : null,
-                new MatlabSimulationRunner.LiveSink() {
+                signalCacheKey, new MatlabSimulationRunner.LiveSink() {
                     @Override public void onStopTime(double alignedStopTime) {}
                     @Override public void onHeaders(List<String> headers) {}
                     @Override public void onRows(List<String[]> rows) {}
@@ -1164,6 +1165,12 @@ public class ProgramService {
         } finally {
             runner.close();
         }
+    }
+
+    private String buildSignalCacheKey(ProgramEntity entity) {
+        String archiveHash = entity.getFileMd5() != null ? entity.getFileMd5() : "";
+        String setupSource = entity.getSetupScript() != null ? entity.getSetupScript() : "";
+        return FileUtil.calculateMD5((archiveHash + "\n" + setupSource).getBytes(StandardCharsets.UTF_8));
     }
 
     /** MATLAB 引擎状态（供前端 footer 显示） */
@@ -1347,7 +1354,8 @@ public class ProgramService {
                 liveBuffer.appendLogLine("[MATLAB] 后台预热完成，开始运行仿真...");
             }
             int result = runWithEngine(taskTimestamp, taskDir, programDir, preRunScript, skipPreRunOnReuse,
-                    modelFile, stopTime, fixedStepParam, paramValues, pgConfig.getParameters(), setupScript, liveBuffer);
+                    modelFile, stopTime, fixedStepParam, paramValues, pgConfig.getParameters(), setupScript,
+                    buildSignalCacheKey(entity), liveBuffer);
             if (result != RUN_OK) {
                 // 用户停止 / 运行失败：状态已由停止端点或运行分支设置，不再覆盖。
                 // signals.csv 已由引擎 exportResults() 写到 taskDir（如果仿真已开始），
@@ -1398,7 +1406,7 @@ public class ProgramService {
     private int runWithEngine(long taskTimestamp, File taskDir, String programDir, String preRunScript,
                               boolean skipPreRunOnReuse, String modelFile, double stopTime, String fixedStep,
                               Map<String, String> paramValues, List<ProgramConfig.ParameterSpec> parameters,
-                              String setupScript, LiveDataBuffer liveBuffer) {
+                              String setupScript, String signalCacheKey, LiveDataBuffer liveBuffer) {
         if (!StringUtils.hasText(modelFile)) {
             log.warn("未指定 Simulink 模型");
             updateTaskStatus(taskTimestamp, TaskStatus.FAILED, "未指定 Simulink 模型", null, null, null);
@@ -1407,7 +1415,7 @@ public class ProgramService {
         String modelName = modelFile.replaceAll("\\.(slx|mdl)$", "");
         MatlabSimulationRunner runner = new MatlabSimulationRunner(taskDir, programDir, preRunScript,
                 skipPreRunOnReuse, modelName, stopTime, fixedStep, paramValues, parameters, setupScript,
-                new MatlabSimulationRunner.LiveSink() {
+                signalCacheKey, new MatlabSimulationRunner.LiveSink() {
                     @Override
                     public void onStopTime(double alignedStopTime) {
                         liveBuffer.setStopTime(alignedStopTime);

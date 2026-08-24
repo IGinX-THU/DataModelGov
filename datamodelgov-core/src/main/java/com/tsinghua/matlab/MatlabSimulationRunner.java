@@ -108,6 +108,7 @@ public class MatlabSimulationRunner implements Closeable {
      *  dmg_cols（cell 数组，元素为信号名）。为空时回退到内置的 addWorkspaceBlocks +
      *  configureSignalLogging（过渡期保留，后续移除）。 */
     private final String setupScript;
+    private final String signalCacheKey;
 
     private final ExecutorService engineExec =
             Executors.newSingleThreadExecutor(r -> {
@@ -118,9 +119,7 @@ public class MatlabSimulationRunner implements Closeable {
     private final AtomicBoolean userStopped = new AtomicBoolean(false);
     private final AtomicBoolean paused = new AtomicBoolean(false);
     private final List<String> csvColumns = new ArrayList<>();
-    /** 取数计数：列名只在首次和每 N 次检测，减少引擎调用次数 */
-    private int fetchCount = 0;
-    private static final int COL_CHECK_INTERVAL = 50;
+    private long publishedRowCount = 0;
 
     private volatile MatlabEngine engine;
     private volatile double alignedStopTime;
@@ -136,7 +135,8 @@ public class MatlabSimulationRunner implements Closeable {
                                   double requestedStopTime, String fixedStep,
                                   java.util.Map<String, String> paramValues,
                                   java.util.List<ProgramConfig.ParameterSpec> parameters,
-                                  String setupScript, LiveSink sink, MatlabEnginePool enginePool) {
+                                  String setupScript, String signalCacheKey,
+                                  LiveSink sink, MatlabEnginePool enginePool) {
         this.taskDir = taskDir;
         this.programDir = programDir;
         this.preRunScript = preRunScript;
@@ -147,6 +147,7 @@ public class MatlabSimulationRunner implements Closeable {
         this.paramValues = paramValues != null ? paramValues : new java.util.LinkedHashMap<>();
         this.parameters = parameters != null ? parameters : new java.util.ArrayList<>();
         this.setupScript = setupScript;
+        this.signalCacheKey = signalCacheKey != null ? signalCacheKey : "";
         this.sink = sink;
         this.enginePool = enginePool;
         this.alignedStopTime = requestedStopTime;
@@ -291,9 +292,9 @@ public class MatlabSimulationRunner implements Closeable {
             logMatlab("首次运行或模型缓存未命中，正在冷启动，请耐心等待；可在程序配置中启用「后台预热」以避免后续冷启动等待。");
         }
 
-        // 清理每轮数据变量；复用模型时保留 dmg_cols/dmg_paths/dmg_okSignals，供 setupScript 快速返回后继续取数
-        String setupVariables = modelReuse ? "" : " dmg_cols dmg_paths dmg_okSignals";
-        eval("try; clear logsout dmg_new dmg_poll dmg_cursor dmg_mapNames dmg_total " +
+        // 清理每轮数据变量；复用模型时保留信号定义、展开列头和 logsout 映射
+        String setupVariables = modelReuse ? "" : " dmg_cols dmg_paths dmg_okSignals dmg_cachedExpandedCols dmg_mapNames";
+        eval("try; clear logsout dmg_new dmg_poll dmg_cursor dmg_total " +
                 "dmg_t dmg_v dmg_sel dmg_tElem dmg_newCols dmg_newColStr dmg_logNames " +
                 "dmg_logBP dmg_el0 dmg_status dmg_pv2 dmg_cn dmg_cn2 dmg_skipBlocks " +
                 "dmg_wsScalars dmg_sv dmg_sn dmg_v" + setupVariables + "; catch; end",
@@ -362,12 +363,19 @@ public class MatlabSimulationRunner implements Closeable {
             logMatlab("执行信号采集脚本: " + scriptCall + (modelReuse ? "（跳过加块）" : "（全量）"));
             eval("dmg_setup_out = evalc('" + esc(scriptCall) + "');", INIT_TIMEOUT_SEC, "执行信号采集脚本 " + scriptCall);
             writeMatlabLog(getString("dmg_setup_out"));
+            if (modelReuse) {
+                eval(buildRestoreSignalCacheScript(), CALL_TIMEOUT_SEC, "信号脚本后恢复展开列结构");
+            }
             readDmgCols();
-            eval("dmg_signalCache = struct(); dmg_signalCache.model = dmg_modelName; " +
+            eval("dmg_signalCache = struct(); " +
+                    "if isappdata(0,'dmg_signal_cache'); dmg_oldSignalCache = getappdata(0,'dmg_signal_cache'); " +
+                    "if isstruct(dmg_oldSignalCache) && isfield(dmg_oldSignalCache,'model') && strcmp(dmg_oldSignalCache.model,dmg_modelName) " +
+                    "&& isfield(dmg_oldSignalCache,'key') && strcmp(dmg_oldSignalCache.key,'" + esc(signalCacheKey) + "'); dmg_signalCache = dmg_oldSignalCache; end; end; " +
+                    "dmg_signalCache.model = dmg_modelName; dmg_signalCache.key = '" + esc(signalCacheKey) + "'; " +
                     "dmg_signalCache.cols = dmg_cols; " +
                     "if exist('dmg_paths','var'); dmg_signalCache.paths = dmg_paths; else; dmg_signalCache.paths = {}; end; " +
                     "if exist('dmg_okSignals','var'); dmg_signalCache.okSignals = dmg_okSignals; else; dmg_signalCache.okSignals = {}; end; " +
-                    "setappdata(0,'dmg_signal_cache',dmg_signalCache); clear dmg_signalCache;",
+                    "setappdata(0,'dmg_signal_cache',dmg_signalCache); clear dmg_signalCache dmg_oldSignalCache;",
                     CALL_TIMEOUT_SEC, "缓存信号配置");
         } else {
             throw new IllegalStateException("未配置 setupScript（信号采集脚本），无法运行仿真。请在 ProgramConfig.setupScript 中指定。");
@@ -379,26 +387,33 @@ public class MatlabSimulationRunner implements Closeable {
     }
 
     private String buildRestoreSignalCacheScript() {
-        return "dmg_hasSignalCache = 0; " +
+        return "dmg_hasSignalCache = 0; dmg_cachedExpandedCols = {}; dmg_mapNames = {}; " +
                 "if isappdata(0,'dmg_signal_cache'); " +
                 "dmg_signalCache = getappdata(0,'dmg_signal_cache'); " +
-                "if isstruct(dmg_signalCache) && isfield(dmg_signalCache,'model') && strcmp(dmg_signalCache.model,'" + esc(modelName) + "') && isfield(dmg_signalCache,'cols'); " +
+                "if isstruct(dmg_signalCache) && isfield(dmg_signalCache,'model') && strcmp(dmg_signalCache.model,'" + esc(modelName) + "') " +
+                "&& isfield(dmg_signalCache,'key') && strcmp(dmg_signalCache.key,'" + esc(signalCacheKey) + "') && isfield(dmg_signalCache,'cols'); " +
                 "dmg_cols = dmg_signalCache.cols; " +
                 "if isfield(dmg_signalCache,'paths'); dmg_paths = dmg_signalCache.paths; else; dmg_paths = {}; end; " +
                 "if isfield(dmg_signalCache,'okSignals'); dmg_okSignals = dmg_signalCache.okSignals; else; dmg_okSignals = {}; end; " +
+                "if isfield(dmg_signalCache,'expandedCols'); dmg_cachedExpandedCols = dmg_signalCache.expandedCols; end; " +
+                "if isfield(dmg_signalCache,'mapNames'); dmg_mapNames = dmg_signalCache.mapNames; end; " +
                 "dmg_hasSignalCache = 1; end; end";
     }
 
-    /** 读取 setupScript 留下的 dmg_cols，构造 CSV 表头并通知前端 */
+    /** 读取 setupScript 留下的 dmg_cols；模型复用时优先采用已缓存的最终展开列头 */
     private void readDmgCols() throws Exception {
-        eval("dmg_colstr = strjoin(dmg_cols, ',');", CALL_TIMEOUT_SEC, "读取信号列表");
+        eval("dmg_usingCachedSchema = exist('dmg_cachedExpandedCols','var') && ~isempty(dmg_cachedExpandedCols); " +
+                "if dmg_usingCachedSchema; dmg_colstr = strjoin(dmg_cachedExpandedCols, ','); " +
+                "else; dmg_colstr = strjoin([{'time'}, dmg_cols(:)'], ','); end;",
+                CALL_TIMEOUT_SEC, "读取信号列表");
         String cols = getString("dmg_colstr");
+        boolean cachedSchema = getDouble("dmg_usingCachedSchema") == 1.0;
         csvColumns.clear();
-        csvColumns.add("time");
         if (hasText(cols)) {
             csvColumns.addAll(Arrays.asList(cols.split(",")));
         }
-        logMatlab("已配置信号日志，共 " + (csvColumns.size() - 1) + " 个信号: " + cols);
+        if (csvColumns.isEmpty() || !"time".equals(csvColumns.get(0))) csvColumns.add(0, "time");
+        logMatlab((cachedSchema ? "已恢复缓存列结构" : "已配置信号日志") + "，共 " + (csvColumns.size() - 1) + " 个信号: " + cols);
         sink.onHeaders(new ArrayList<>(csvColumns));
     }
 
@@ -870,20 +885,24 @@ public class MatlabSimulationRunner implements Closeable {
     /** 处理取到的增量数据：检测列变化 + 转行 + 推送给前端 */
     private void processData(Object data, String newColStr) throws Exception {
         if (csvColumns.size() <= 1) return;
-        fetchCount++;
         if (hasText(newColStr)) {
             List<String> newCols = new ArrayList<>(Arrays.asList(newColStr.split(",")));
-            if (!newCols.equals(csvColumns)) {
-                log.info("[MATLAB] 信号列头更新（向量展开）: 原列数={}, 新列数={}", csvColumns.size(), newCols.size());
+            boolean columnsChanged = !newCols.equals(csvColumns);
+            if (columnsChanged) {
+                boolean rebuildPublishedRows = publishedRowCount > 0;
+                log.info("[MATLAB] 信号列头更新（向量展开）: 原列数={}, 新列数={}, 已发布行数={}",
+                        csvColumns.size(), newCols.size(), publishedRowCount);
                 csvColumns.clear();
                 csvColumns.addAll(newCols);
                 sink.onHeaders(new ArrayList<>(csvColumns));
-                // 列变化时前端会清空已累积的行（reset=true），重置 MATLAB 游标到 0，
-                // 让下次 poll 重新取全量数据（新列序），前端得到完整重绘。
-                try {
-                    eval("dmg_cursor = 0;", POLL_TIMEOUT_SEC, "重置游标");
-                } catch (Exception ignored) {}
-                return;
+                cacheExpandedSignalSchema();
+                if (rebuildPublishedRows) {
+                    try {
+                        eval("dmg_cursor = 0;", POLL_TIMEOUT_SEC, "重置游标");
+                    } catch (Exception ignored) {}
+                    publishedRowCount = 0;
+                    return;
+                }
             }
         }
         List<String[]> rows = toRows(data, csvColumns.size());
@@ -891,6 +910,23 @@ public class MatlabSimulationRunner implements Closeable {
             String[] last = rows.get(rows.size() - 1);
             lastSimTime = Math.max(lastSimTime, parseDouble(last[0], lastSimTime));
             sink.onRows(rows);
+            publishedRowCount += rows.size();
+            log.debug("[MATLAB] 实时数据批次: 新增 {} 行，累计 {} 行，时间 {} → {}",
+                    rows.size(), publishedRowCount, rows.get(0)[0], last[0]);
+        }
+    }
+
+    private void cacheExpandedSignalSchema() {
+        try {
+            eval("if isappdata(0,'dmg_signal_cache'); dmg_signalCache = getappdata(0,'dmg_signal_cache'); " +
+                    "if isstruct(dmg_signalCache) && isfield(dmg_signalCache,'model') && strcmp(dmg_signalCache.model,'" + esc(modelName) + "') " +
+                    "&& isfield(dmg_signalCache,'key') && strcmp(dmg_signalCache.key,'" + esc(signalCacheKey) + "'); " +
+                    "dmg_signalCache.expandedCols = dmg_newCols; " +
+                    "if exist('dmg_mapNames','var'); dmg_signalCache.mapNames = dmg_mapNames; end; " +
+                    "setappdata(0,'dmg_signal_cache',dmg_signalCache); end; clear dmg_signalCache; end;",
+                    POLL_TIMEOUT_SEC, "缓存展开列结构");
+        } catch (Exception e) {
+            log.warn("[MATLAB] 缓存展开列结构失败: {}", e.getMessage());
         }
     }
 
