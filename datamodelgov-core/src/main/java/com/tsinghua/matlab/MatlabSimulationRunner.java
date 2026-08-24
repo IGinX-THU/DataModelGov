@@ -217,6 +217,7 @@ public class MatlabSimulationRunner implements Closeable {
                 exportResults();
                 return;
             }
+            configurePacing(true);
             Future<Void> startFuture = call(() -> engine.evalAsync(
                     "set_param('" + esc(modelName) + "','SimulationCommand','start');"), 60, "发送仿真启动命令");
             if (modelCacheHit) {
@@ -238,6 +239,7 @@ public class MatlabSimulationRunner implements Closeable {
         try {
             startEngine();
             prepare();
+            configurePacing(false);
             Future<Void> startFuture = call(() -> engine.evalAsync(
                     "set_param('" + esc(modelName) + "','SimulationCommand','start');"), 60, "发送预热启动命令");
             pollLoop(startFuture);
@@ -267,6 +269,12 @@ public class MatlabSimulationRunner implements Closeable {
         } else {
             logMatlab("引擎已就绪，耗时 " + elapsed + " ms");
         }
+    }
+
+    private void configurePacing(boolean enabled) throws Exception {
+        eval("set_param('" + esc(modelName) + "','EnablePacing','" + (enabled ? "on" : "off") + "','PacingRate','1');",
+                CALL_TIMEOUT_SEC, enabled ? "启用交互实时模式" : "关闭预热限速");
+        if (enabled) logMatlab("已启用交互实时模式，仿真时间将按约 1:1 的现实时间推进");
     }
 
     /** 预配置：切目录、跑预运行脚本、设参数、载入模型、对齐停止时间、配置信号日志。
