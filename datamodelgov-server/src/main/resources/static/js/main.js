@@ -1309,7 +1309,9 @@ document.addEventListener('DOMContentLoaded', function() {
             console.log('程序上传成功:', e.detail);
             if (window.loadProjectTree) window.loadProjectTree();
             const pm = document.getElementById('programManagement');
-            if (pm && pm.loadPrograms) pm.loadPrograms();
+            if (pm && pm.loadPrograms && pm.style.display !== 'none' && !pm.hidden) {
+                pm.loadPrograms();
+            }
         });
     }
 

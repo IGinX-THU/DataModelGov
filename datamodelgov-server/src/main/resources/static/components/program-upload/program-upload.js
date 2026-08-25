@@ -413,8 +413,6 @@ class ProgramUpload extends HTMLElement {
                     if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('预置程序创建成功: ' + programId, 'success');
                     this.dispatchEvent(new CustomEvent('upload-success', { bubbles: true, composed: true }));
                     this.hide();
-                    const pm = document.getElementById('programManagement');
-                    if (pm && pm.loadPrograms) await pm.loadPrograms();
                     if (window.ProgramLauncher) {
                         try {
                             const username = window.AppConfig.getUsername ? window.AppConfig.getUsername() : localStorage.getItem('username');

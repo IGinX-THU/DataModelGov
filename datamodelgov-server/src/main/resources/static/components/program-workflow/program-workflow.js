@@ -193,48 +193,68 @@ class ProgramWorkflow extends HTMLElement {
   }
 
   getSections() {
+    const defaultActions = {
+      data: [{ label: '字段说明' }, { label: '创建并校验项目', primary: true }],
+      identify: [{ label: '恢复默认配置' }, { label: '开始辨识', primary: true }],
+      identifiability: [{ label: '切换分析对象' }, { label: '生成分析报告', primary: true }],
+      uq: [{ label: '评估配置' }, { label: '开始评估', primary: true }],
+      validation: [{ label: '选择辨识结果' }, { label: '开始验证', primary: true }],
+      prediction: [{ label: '选择模型' }, { label: '运行预测', primary: true }],
+      results: [{ label: '打开结果目录' }, { label: '导出所选结果', primary: true }]
+    };
+
+    const ui = this.programConfig && this.programConfig.ui;
+    if (ui && Array.isArray(ui.sections) && ui.sections.length) {
+      return ui.sections.map((s, i) => ({
+        id: s.id || ('s' + i),
+        title: s.title || s.id,
+        hint: s.hint || '',
+        actions: (Array.isArray(s.actions) && s.actions.length) ? s.actions : (defaultActions[s.id] || [])
+      }));
+    }
+
     return [
       {
         id: 'data',
         title: '新建项目与数据',
         hint: '在一个页面内完成项目建立、测量数据检查、辅助变量计算和训练工况分组。',
-        actions: [{ label: '字段说明' }, { label: '创建并校验项目', primary: true }]
+        actions: defaultActions.data
       },
       {
         id: 'identify',
         title: '参数辨识',
         hint: '默认采用瞬态时刻模型；路径、正则化配置、辨识流程和结果集中在一个页面。',
-        actions: [{ label: '恢复默认配置' }, { label: '开始辨识', primary: true }]
+        actions: defaultActions.identify
       },
       {
         id: 'identifiability',
         title: '可辨识性',
         hint: '同时展示整体信息质量、逐参数分类和主要补偿参数，帮助判断辨识结果能否独立解释。',
-        actions: [{ label: '切换分析对象' }, { label: '生成分析报告', primary: true }]
+        actions: defaultActions.identifiability
       },
       {
         id: 'uq',
         title: '不确定性评估',
         hint: '分别评估关键修正系数和全部修正系数，并给出参数95%置信区间及预测影响。',
-        actions: [{ label: '评估配置' }, { label: '开始评估', primary: true }]
+        actions: defaultActions.uq
       },
       {
         id: 'validation',
         title: '测试验证',
         hint: '仅使用稳态模型，在独立测试工况上比较零修正模型、稳态辨识模型和测量数据。',
-        actions: [{ label: '选择辨识结果' }, { label: '开始验证', primary: true }]
+        actions: defaultActions.validation
       },
       {
         id: 'prediction',
         title: '工况预测',
         hint: '输入单个新工况，在无测量输出条件下给出稳态辨识模型预测和后验95%置信区间。',
-        actions: [{ label: '选择模型' }, { label: '运行预测', primary: true }]
+        actions: defaultActions.prediction
       },
       {
         id: 'results',
         title: '结果中心',
         hint: '按项目和任务组织辨识、可辨识性、不确定、验证与预测结果。',
-        actions: [{ label: '打开结果目录' }, { label: '导出所选结果', primary: true }]
+        actions: defaultActions.results
       }
     ];
   }
