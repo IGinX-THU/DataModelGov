@@ -106,7 +106,7 @@ public class ProgramService {
     private void initMatlabHome() {
         MatlabSimulationRunner.configureMatlabHome(matlabHome);
         // 创建引擎池（pool-size 从 yml 读取，默认 4）
-        enginePool = new MatlabEnginePool(enginePoolSize);
+        enginePool = new MatlabEnginePool(enginePoolSize, matlabHome);
         log.info("MATLAB 引擎池大小: {}", enginePoolSize);
         // 引擎模式启用时，随 Spring Boot 启动常驻 MATLAB 引擎（异步，不阻塞启动）
         if (matlabEngineEnabled) {
@@ -122,6 +122,14 @@ public class ProgramService {
     @PreDestroy
     private void destroyEnginePool() {
         if (enginePool != null) enginePool.shutdown();
+    }
+
+    /** Shared MATLAB engine pool for other program execution services in this package. */
+    MatlabEnginePool enginePool() {
+        if (enginePool == null) {
+            throw new IllegalStateException("MATLAB engine pool is not initialized");
+        }
+        return enginePool;
     }
 
     @Autowired
@@ -509,6 +517,7 @@ public class ProgramService {
         org.springframework.core.io.support.PathMatchingResourcePatternResolver resolver =
                 new org.springframework.core.io.support.PathMatchingResourcePatternResolver();
         org.springframework.core.io.Resource[] resources = resolver.getResources("classpath:" + base + "*");
+        Arrays.sort(resources, Comparator.comparingInt(resource -> presetArchivePriority(resource.getFilename())));
         String archiveFilename = null;
         byte[] archiveBytes = null;
         for (org.springframework.core.io.Resource res : resources) {
@@ -603,6 +612,17 @@ public class ProgramService {
         result.put("fileMd5", fileMd5);
         log.info("预置程序上传成功: {} {}, 块数: {}", programName, programVersion, totalChunks);
         return result;
+    }
+
+    private int presetArchivePriority(String filename) {
+        if (filename == null) return Integer.MAX_VALUE;
+        String lower = filename.toLowerCase(Locale.ROOT);
+        if (lower.endsWith(".zip")) return 0;
+        if (lower.endsWith(".7z")) return 1;
+        if (lower.endsWith(".rar")) return 2;
+        if (lower.endsWith(".tar.gz") || lower.endsWith(".tgz")) return 3;
+        if (lower.endsWith(".tar")) return 4;
+        return Integer.MAX_VALUE;
     }
 
     /**

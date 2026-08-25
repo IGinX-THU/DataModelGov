@@ -157,6 +157,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter implements App
                requestURI.startsWith("/config/") ||
                requestURI.startsWith("/api/auth/") ||
                requestURI.equals("/api/test/public") ||
+               requestURI.startsWith("/api/program/plugin/") ||
                requestURI.startsWith("/doc.html") ||
                requestURI.startsWith("/swagger-ui/") ||
                requestURI.startsWith("/v3/api-docs/") ||

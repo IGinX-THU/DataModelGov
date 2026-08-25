@@ -154,8 +154,7 @@ public class ProgramController {
     }
 
     @ApiOperation("列出可用的预置配置（扫描 programs/ 目录）")
-    @GetMapping("/config-templates")
-    @RequirePermission(Permission.READ)
+    @GetMapping("/config-templates")    @RequirePermission(Permission.READ)
     public Result<List<Map<String, String>>> listConfigTemplates() {
         List<Map<String, String>> templates = new java.util.ArrayList<>();
         try {

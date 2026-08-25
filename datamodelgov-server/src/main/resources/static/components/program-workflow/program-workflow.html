@@ -1,0 +1,27 @@
+<div class="workflow-shell">
+  <header class="workflow-header">
+    <div class="program-heading">
+      <span class="program-mark" aria-hidden="true"></span>
+      <div class="program-titles">
+        <span class="program-title" id="programTitle">MATLAB 程序工作流</span>
+        <span class="program-meta" id="programMeta"></span>
+      </div>
+    </div>
+    <div class="header-actions">
+      <span class="status" id="workflowStatus" data-state="idle"><span class="status-dot"></span><span id="statusText">待加载</span></span>
+      <button class="window-button" id="fullscreenBtn" type="button" title="全屏显示" aria-label="全屏显示">
+        <span class="fullscreen-icon" aria-hidden="true"></span>
+      </button>
+      <button class="window-button close-button" id="closeBtn" type="button" title="关闭" aria-label="关闭">&times;</button>
+    </div>
+  </header>
+  <main class="workflow-body">
+    <div class="plugin-host" id="pluginHost" aria-live="polite">
+      <div class="shell-message" id="shellMessage">请选择程序以加载工作流</div>
+    </div>
+  </main>
+  <footer class="workflow-footer">
+    <span class="log-label">日志</span>
+    <span class="footer-log" id="footerLog">工作流尚未加载</span>
+  </footer>
+</div>

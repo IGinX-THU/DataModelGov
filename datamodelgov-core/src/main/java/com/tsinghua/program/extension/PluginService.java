@@ -94,15 +94,26 @@ public class PluginService {
     /** 读取插件入口 JS 内容（供 Controller 直接返回） */
     public String readEntryJs(String id) throws IOException {
         PluginEntity p = plugins.get(id);
-        if (p == null || p.getEntryFile() == null) return null;
-        return readClasspathResource("plugins/" + id + "/" + p.getEntryFile());
+        String entryFile = p != null ? p.getEntryFile() : null;
+        if (entryFile == null) entryFile = "entry.js";
+        String content = readClasspathResource("plugins/" + id + "/" + entryFile);
+        if (content == null && p != null && p.getEntryFile() != null) {
+            // 回退尝试默认文件名
+            content = readClasspathResource("plugins/" + id + "/entry.js");
+        }
+        return content;
     }
 
     /** 读取插件 CSS 内容 */
     public String readCss(String id) throws IOException {
         PluginEntity p = plugins.get(id);
-        if (p == null || p.getCssFile() == null) return null;
-        return readClasspathResource("plugins/" + id + "/" + p.getCssFile());
+        String cssFile = p != null ? p.getCssFile() : null;
+        if (cssFile != null) {
+            String content = readClasspathResource("plugins/" + id + "/" + cssFile);
+            if (content != null) return content;
+        }
+        // 回退尝试默认文件名
+        return readClasspathResource("plugins/" + id + "/style.css");
     }
 
     private String readClasspathResource(String path) throws IOException {

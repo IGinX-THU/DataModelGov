@@ -57,17 +57,17 @@ public final class ProgramConfigMapper {
             return errors;
         }
         ProgramConfig.RuntimeConfig rt = config.getRuntime();
-        if (rt == null || isBlank(rt.getSimulinkModel())) {
-            errors.add("runtime.simulinkModel 必填");
-        }
-        if (rt != null && isBlank(rt.getPreRunScript())) {
-            errors.add("runtime.preRunScript 必填");
-        }
-        if (strict && isBlank(config.getSetupScript())) {
-            errors.add("setupScript 必填（信号采集脚本）");
+        String executionType = rt == null || isBlank(rt.getExecutionType())
+                ? "simulinkRealtime" : rt.getExecutionType().trim();
+        if ("simulinkRealtime".equals(executionType)) {
+            validateSimulinkRealtime(config, rt, strict, errors);
+        } else if ("matlabWorkflow".equals(executionType)) {
+            validateMatlabWorkflow(config, rt, errors);
+        } else {
+            errors.add("runtime.executionType 不支持: " + executionType);
         }
 
-        // parameters.key 唯一 + matlabVar 非空
+        // parameters.key 唯一 + matlabVar 非空（matlabWorkflow 不要求 matlabVar）
         List<ProgramConfig.ParameterSpec> params = config.getParameters();
         if (params != null) {
             Set<String> keys = new HashSet<>();
@@ -77,7 +77,7 @@ public final class ProgramConfigMapper {
                 } else if (!keys.add(p.getKey())) {
                     errors.add("parameter.key 重复: " + p.getKey());
                 }
-                if (isBlank(p.getMatlabVar())) {
+                if ("simulinkRealtime".equals(executionType) && isBlank(p.getMatlabVar())) {
                     errors.add("parameter.matlabVar 必填 (key=" + p.getKey() + ")");
                 }
             }
@@ -119,8 +119,18 @@ public final class ProgramConfigMapper {
         }
 
         // 扩展配置
-        if (ui != null && ui.getExtension() != null && ui.getExtension().isEnabled()) {
-            ProgramConfig.ExtensionConfig ext = ui.getExtension();
+        ProgramConfig.ExtensionConfig ext = ui == null ? null : ui.getExtension();
+        if (strict && "matlabWorkflow".equals(executionType)) {
+            if (ext == null || !ext.isEnabled()) {
+                errors.add("matlabWorkflow 严格模式要求启用 ui.extension");
+            }
+            if (ext == null || isBlank(ext.getEntry())) {
+                errors.add("matlabWorkflow 严格模式要求 ui.extension.entry");
+            }
+            if (ext == null || !"override".equals(ext.getMode())) {
+                errors.add("matlabWorkflow 严格模式要求 ui.extension.mode=override");
+            }
+        } else if (ext != null && ext.isEnabled()) {
             if (isBlank(ext.getEntry())) {
                 errors.add("ui.extension.enabled=true 时 entry 必填");
             }
@@ -135,6 +145,88 @@ public final class ProgramConfigMapper {
         }
 
         return errors;
+    }
+
+    private static void validateSimulinkRealtime(ProgramConfig config, ProgramConfig.RuntimeConfig rt,
+                                                  boolean strict, List<String> errors) {
+        if (rt == null || isBlank(rt.getSimulinkModel())) {
+            errors.add("runtime.simulinkModel 必填");
+        }
+        if (rt != null && isBlank(rt.getPreRunScript())) {
+            errors.add("runtime.preRunScript 必填");
+        }
+        if (strict && isBlank(config.getSetupScript())) {
+            errors.add("setupScript 必填（信号采集脚本）");
+        }
+    }
+
+    private static void validateMatlabWorkflow(ProgramConfig config, ProgramConfig.RuntimeConfig rt,
+                                                List<String> errors) {
+        if (rt == null || isBlank(rt.getWorkingDirectory())) {
+            errors.add("runtime.workingDirectory 必填");
+        }
+        if (!isBlank(config.getSetupScript())) {
+            errors.add("matlabWorkflow 不允许 setupScript");
+        }
+        if (rt != null && (!isBlank(rt.getSimulinkModel())
+                || (rt.getSimulinkModels() != null && !rt.getSimulinkModels().isEmpty()))) {
+            errors.add("matlabWorkflow 不允许 runtime.simulinkModel/simulinkModels");
+        }
+
+        ProgramConfig.WorkflowConfig workflow = config.getWorkflow();
+        List<ProgramConfig.WorkflowAction> actions = workflow == null ? null : workflow.getActions();
+        if (actions == null || actions.isEmpty()) {
+            errors.add("workflow.actions 至少需要一项");
+        } else {
+            Set<String> actionKeys = new HashSet<>();
+            for (ProgramConfig.WorkflowAction action : actions) {
+                if (action == null || isBlank(action.getKey())) {
+                    errors.add("workflow.action.key 必填");
+                } else {
+                    String key = action.getKey();
+                    if (!key.matches("[A-Za-z][A-Za-z0-9_-]*")) {
+                        errors.add("workflow.action.key 格式非法: " + key);
+                    } else if (!actionKeys.add(key)) {
+                        errors.add("workflow.action.key 重复: " + key);
+                    }
+                }
+                if (action == null || isBlank(action.getEntryPoint())) {
+                    errors.add("workflow.action.entryPoint 必填");
+                } else if (!action.getEntryPoint().matches("[A-Za-z][A-Za-z0-9_]*")) {
+                    errors.add("workflow.action.entryPoint 不是合法 MATLAB 标识符: " + action.getEntryPoint());
+                }
+            }
+        }
+
+        if (workflow != null && workflow.getRequiredFiles() != null) {
+            for (String file : workflow.getRequiredFiles()) {
+                String normalized = file == null ? "" : file.replace('\\', '/');
+                if (isBlank(file) || normalized.startsWith("/") || normalized.matches("^[A-Za-z]:/.*")
+                        || normalized.equals("..") || normalized.startsWith("../") || normalized.contains("/../")) {
+                    errors.add("workflow.requiredFiles 必须是安全的相对路径: " + file);
+                }
+            }
+        }
+
+        List<ProgramConfig.DatasetSpec> datasets = workflow == null ? null : workflow.getDatasets();
+        if (datasets != null) {
+            Set<String> datasetKeys = new HashSet<>();
+            for (ProgramConfig.DatasetSpec dataset : datasets) {
+                if (dataset == null || isBlank(dataset.getKey())) {
+                    errors.add("workflow.dataset.key 必填");
+                } else if (!datasetKeys.add(dataset.getKey())) {
+                    errors.add("workflow.dataset.key 重复: " + dataset.getKey());
+                }
+                if (dataset != null && dataset.getRequiredColumns() != null) {
+                    Set<String> columns = new HashSet<>();
+                    for (String column : dataset.getRequiredColumns()) {
+                        if (isBlank(column)) errors.add("workflow.dataset.requiredColumns 不允许空值");
+                        else if (!columns.add(column)) errors.add("workflow.dataset.requiredColumns 重复: " + column);
+                    }
+                }
+            }
+        }
+
     }
 
     private static boolean isBlank(String s) { return s == null || s.trim().isEmpty(); }

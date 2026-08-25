@@ -1,0 +1,106 @@
+{
+  "runtime": {
+    "executionType": "matlabWorkflow",
+    "workingDirectory": "稳态试车工况点模型修正V1/SteadyModelAdaptFromTestV1"
+  },
+  "workflow": {
+    "requiredFiles": [
+      "GTESS.dll",
+      "GTESS.h",
+      "blockAndFunctions.h",
+      "types_TMATS.H",
+      "Turboshaft-TS-Split.mdl",
+      "Turboshaft-TS.mdl",
+      "MiddleData/RunModelSHT_V2_design_state.mat"
+    ],
+    "datasets": [
+      {
+        "key": "trainingData",
+        "label": "训练数据",
+        "type": "xlsx",
+        "role": "training",
+        "required": true,
+        "requiredColumns": ["point_id", "Np_mean", "Ng_mean", "Wf_mean", "Tt45_mean", "Pt45_mean", "Mkp_mean", "Mkg_mean", "Pt2_mean", "Tt1_mean", "Pt3_mean", "Tt3_mean", "Pamb_mean", "Tamb_mean", "Altitude_mean", "Mach_mean"]
+      },
+      {
+        "key": "testData",
+        "label": "独立测试数据",
+        "type": "xlsx",
+        "role": "test",
+        "required": false,
+        "requiredColumns": ["point_id", "Np_mean", "Ng_mean", "Wf_mean", "Tt45_mean", "Pt45_mean", "Mkp_mean", "Mkg_mean", "Pt2_mean", "Tt1_mean", "Pt3_mean", "Tt3_mean", "Pamb_mean", "Tamb_mean", "Altitude_mean", "Mach_mean"]
+      }
+    ],
+    "actions": [
+      {
+        "key": "estimateSteady",
+        "label": "稳态模型参数辨识",
+        "entryPoint": "Start_SteadyModelAdapt_V2_02_SteadyModelParameterEstimation",
+        "stage": "identification",
+        "inputs": ["trainingData"],
+        "resultType": "estimation"
+      },
+      {
+        "key": "estimateTransient",
+        "label": "瞬态时刻模型参数辨识",
+        "entryPoint": "Start_SteadyModelAdapt_V2_03_TransientInstantEstimation",
+        "stage": "identification",
+        "inputs": ["trainingData"],
+        "resultType": "estimation"
+      },
+      {
+        "key": "engineeringIdentifiability",
+        "label": "工程可辨识性分析",
+        "entryPoint": "Start_SteadyModelAdapt_V2_16_EngineeringIdentifiabilityAnalysis",
+        "stage": "identifiability",
+        "inputs": [],
+        "resultType": "identifiability"
+      },
+      {
+        "key": "uqMethodA",
+        "label": "不确定性评估方法A",
+        "entryPoint": "Start_SteadyModelUQ_00_RunAll",
+        "stage": "uq",
+        "inputs": ["userCfg"],
+        "resultType": "uncertainty"
+      },
+      {
+        "key": "uqMethodB",
+        "label": "不确定性评估方法B",
+        "entryPoint": "Start_SteadyModelUQ_B_00_RunAll",
+        "stage": "uq",
+        "inputs": ["userCfg"],
+        "resultType": "uncertainty"
+      },
+      {
+        "key": "testValidation",
+        "label": "独立测试验证",
+        "entryPoint": "Start_SteadyModelAdapt_V2_05_TestDataValidation",
+        "stage": "validation",
+        "inputs": ["testData"],
+        "resultType": "validation"
+      },
+      {
+        "key": "operatingPointPrediction",
+        "label": "任意工况预测",
+        "entryPoint": "Start_SteadyModelPredict_01_InputDrivenPrediction",
+        "stage": "prediction",
+        "inputs": ["modelInput", "estimationResultFile", "posteriorOptions"],
+        "resultType": "prediction"
+      }
+    ]
+  },
+  "parameters": [],
+  "signals": [],
+  "ui": {
+    "title": "稳态试车工况点模型修正 V1",
+    "layout": "tabs",
+    "sections": [],
+    "extension": {
+      "enabled": true,
+      "mode": "override",
+      "entry": "steady-model-adapt-v1",
+      "css": "style.css"
+    }
+  }
+}

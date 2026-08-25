@@ -80,6 +80,17 @@
                         <div class="config-section">
                             <h4>运行配置</h4>
                             <div class="form-row">
+                                <label>执行类型</label>
+                                <select id="cfgExecutionType">
+                                    <option value="simulinkRealtime">Simulink 实时仿真</option>
+                                    <option value="matlabWorkflow">MATLAB 函数工作流</option>
+                                </select>
+                            </div>
+                            <div class="form-row" id="cfgWorkingDirectoryRow">
+                                <label>工作目录</label>
+                                <input type="text" id="cfgWorkingDirectory" placeholder="程序包内相对目录">
+                            </div>
+                            <div class="form-row">
                                 <label>预运行脚本</label>
                                 <input type="text" id="cfgPreRunScript" placeholder="RunCtrlSysModelSHT">
                             </div>

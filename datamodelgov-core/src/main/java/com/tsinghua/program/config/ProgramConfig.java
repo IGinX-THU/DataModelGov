@@ -31,6 +31,9 @@ public class ProgramConfig {
     /** 运行时配置 */
     private RuntimeConfig runtime;
 
+    /** MATLAB 工作流配置 */
+    private WorkflowConfig workflow;
+
     /** 用户可调参数定义（前端动态渲染表单） */
     private List<ParameterSpec> parameters;
 
@@ -57,6 +60,10 @@ public class ProgramConfig {
     @JsonInclude(JsonInclude.Include.NON_NULL)
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class RuntimeConfig {
+        /** 执行类型：simulinkRealtime（默认）| matlabWorkflow */
+        private String executionType;
+        /** MATLAB 工作目录（matlabWorkflow 必填） */
+        private String workingDirectory;
         /** 预运行脚本名（如 "RunCtrlSysModelSHT"），在 cd(programDir) 后执行 */
         private String preRunScript;
         /** 命中已加载模型时是否跳过预运行脚本 */
@@ -71,6 +78,41 @@ public class ProgramConfig {
         private double stopTime;
         /** 固定步长（可以是表达式如 "Ts"，由 base workspace 求值） */
         private String fixedStep;
+    }
+
+    @Data
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class WorkflowConfig {
+        /** 工作流使用的数据集 */
+        private List<DatasetSpec> datasets;
+        /** 可执行工作流动作 */
+        private List<WorkflowAction> actions;
+        private List<String> requiredFiles;
+    }
+
+    @Data
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class DatasetSpec {
+        private String key;
+        private String label;
+        private String type;
+        private String role;
+        private Boolean required;
+        private List<String> requiredColumns;
+    }
+
+    @Data
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class WorkflowAction {
+        private String key;
+        private String label;
+        private String entryPoint;
+        private String stage;
+        private List<String> inputs;
+        private String resultType;
     }
 
     @Data

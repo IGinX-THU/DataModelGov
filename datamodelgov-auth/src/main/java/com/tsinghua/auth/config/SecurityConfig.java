@@ -116,6 +116,8 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
                 .antMatchers("/login.html", "/login", "/error", "/favicon.ico").permitAll()
                 // 放行认证相关API
                 .antMatchers("/api/auth/**").permitAll()
+                // 放行插件静态资源（JS/CSS，供前端动态 import，不含敏感数据）
+                .antMatchers("/api/program/plugin/**").permitAll()
                 // 放行RBAC测试API（用于测试权限系统）
                 .antMatchers("/api/rbac/**").permitAll()
                 // 放行公开测试API

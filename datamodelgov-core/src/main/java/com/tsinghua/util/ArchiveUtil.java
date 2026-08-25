@@ -110,7 +110,7 @@ public final class ArchiveUtil {
         try (ZipInputStream zis = new ZipInputStream(new FileInputStream(src))) {
             ZipEntry entry;
             while ((entry = zis.getNextEntry()) != null) {
-                File f = new File(targetDir, entry.getName());
+                File f = safeChild(targetDir, entry.getName());
                 if (entry.isDirectory()) {
                     f.mkdirs();
                 } else {
@@ -135,7 +135,7 @@ public final class ArchiveUtil {
             try {
                 ISimpleInArchive simple = inArchive.getSimpleInterface();
                 for (ISimpleInArchiveItem item : simple.getArchiveItems()) {
-                    final File out = new File(targetDir, item.getPath());
+                    final File out = safeChild(targetDir, item.getPath());
                     if (item.isFolder()) {
                         out.mkdirs();
                     } else {
@@ -167,7 +167,7 @@ public final class ArchiveUtil {
         try (SevenZFile sevenZFile = new SevenZFile(src)) {
             SevenZArchiveEntry entry;
             while ((entry = sevenZFile.getNextEntry()) != null) {
-                File f = new File(targetDir, entry.getName());
+                File f = safeChild(targetDir, entry.getName());
                 if (entry.isDirectory()) {
                     f.mkdirs();
                 } else {
@@ -185,7 +185,7 @@ public final class ArchiveUtil {
         try (TarArchiveInputStream tis = new TarArchiveInputStream(new FileInputStream(src))) {
             TarArchiveEntry entry;
             while ((entry = tis.getNextTarEntry()) != null) {
-                File f = new File(targetDir, entry.getName());
+                File f = safeChild(targetDir, entry.getName());
                 if (entry.isDirectory()) {
                     f.mkdirs();
                 } else {
@@ -202,7 +202,7 @@ public final class ArchiveUtil {
         try (TarArchiveInputStream tis = new TarArchiveInputStream(new GZIPInputStream(new FileInputStream(src)))) {
             TarArchiveEntry entry;
             while ((entry = tis.getNextTarEntry()) != null) {
-                File f = new File(targetDir, entry.getName());
+                File f = safeChild(targetDir, entry.getName());
                 if (entry.isDirectory()) {
                     f.mkdirs();
                 } else {
@@ -213,6 +213,17 @@ public final class ArchiveUtil {
                 }
             }
         }
+    }
+
+    private static File safeChild(File targetDir, String entryName) throws IOException {
+        File base = targetDir.getCanonicalFile();
+        File child = new File(base, entryName).getCanonicalFile();
+        String basePath = base.getPath();
+        String childPath = child.getPath();
+        if (!childPath.equals(basePath) && !childPath.startsWith(basePath + File.separator)) {
+            throw new IOException("压缩包条目越界: " + entryName);
+        }
+        return child;
     }
 
     private static void copy(InputStream in, OutputStream out) throws IOException {
