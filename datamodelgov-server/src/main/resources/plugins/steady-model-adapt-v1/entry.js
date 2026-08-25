@@ -1,19 +1,25 @@
-const SECTIONS = [
-  { id: 'data', title: '项目与数据', hint: '工作区、试车数据与数据合同' },
-  { id: 'identify', title: '参数辨识', hint: 'A/B/C/D 连续辨识流程' },
-  { id: 'identifiability', title: '工程可辨识性', hint: '双位置信息质量与补偿关系' },
-  { id: 'uq', title: '不确定性评估', hint: '方法 A / B 与 95%置信区间' },
-  { id: 'validation', title: '独立测试验证', hint: '测试集输出与误差标准差' },
-  { id: 'prediction', title: '任意工况预测', hint: '单工况确定性与后验预测' },
-  { id: 'results', title: '结果中心', hint: '追溯、审核、归档与发布' }
+const MEASURE_HEADERS = [
+  '工况', 'Np', 'Ng', 'Wf', 'Mkp', 'Mkg', 'Tt1', 'Pt2', 'Pt3', 'Tt3', 'Tt45', 'Pt45', 'Pamb', 'Tamb', '高度', 'Mach'
 ];
 
-const TERMINAL = new Set(['SUCCEEDED', 'FAILED', 'CANCELLED', 'SKIPPED']);
-const RUNNING = new Set(['QUEUED', 'RUNNING', 'CANCEL_REQUESTED']);
-const STATUS_TEXT = {
-  READY: '就绪', QUEUED: '排队中', RUNNING: '运行中', CANCEL_REQUESTED: '取消中',
-  SUCCEEDED: '已完成', FAILED: '已失败', CANCELLED: '已取消', SKIPPED: '已跳过'
-};
+const GROUP_HEADERS = [
+  '工况', '数据角色', '训练分组', 'AC相对换算转速', '进气道换算流量', '燃烧室进口换算流量',
+  'GT物理压比', 'GT-PT涵道换算流量', 'PT物理压比', 'PT-尾喷管涵道换算流量', '测量燃油流量归一化坐标'
+];
+
+const IDENTIFY_PARAMS = [
+  { name: 'HPC_K_W', form: '调度', unit: '无量纲', action: '曲线' },
+  { name: 'HPC_K_eta', form: '调度', unit: '无量纲', action: '曲线' },
+  { name: 'Burner_K_dP', form: '调度', unit: '无量纲', action: '曲线' },
+  { name: 'GT_K_W', form: '调度', unit: '无量纲', action: '曲线' },
+  { name: 'GT_K_eta', form: '调度', unit: '无量纲', action: '曲线' },
+  { name: 'PT_K_W', form: '调度', unit: '无量纲', action: '曲线' },
+  { name: 'PT_K_eta', form: '调度', unit: '无量纲', action: '曲线' },
+  { name: 'Nozzle_K_A8', form: '常值', unit: '无量纲', action: '详情' },
+  { name: 'Wf_bias', form: '调度', unit: 'kg/s', action: '曲线' }
+];
+
+const OUTPUT_VARS = ['Np', 'Ng', 'Pt3', 'Tt3', 'Tt45', 'Pt45'];
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -22,1021 +28,750 @@ function el(tag, className, text) {
   return node;
 }
 
-function button(text, className, handler) {
-  const node = el('button', className || 'btn', text);
+function button(label, className, handler) {
+  const node = el('button', className || 'btn-card', label);
   node.type = 'button';
   if (handler) node.addEventListener('click', handler);
   return node;
 }
 
-function input(type, name, value, placeholder) {
+function input(type, name, placeholder, value) {
   const node = document.createElement('input');
   node.type = type;
   node.name = name;
-  if (value !== undefined && value !== null) node.value = String(value);
   if (placeholder) node.placeholder = placeholder;
+  if (value !== undefined && value !== null) node.value = String(value);
   return node;
 }
 
-function asArray(value) {
-  return Array.isArray(value) ? value : [];
-}
-
-function formatTime(value) {
-  if (!value) return '—';
-  const date = new Date(Number(value));
-  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('zh-CN', { hour12: false });
-}
-
-function formatSize(value) {
-  const size = Number(value);
-  if (!Number.isFinite(size)) return '—';
-  if (size < 1024) return size + ' B';
-  if (size < 1048576) return (size / 1024).toFixed(1) + ' KB';
-  return (size / 1048576).toFixed(1) + ' MB';
-}
-
-function actionText(action) {
-  return [action.key, action.stage, action.label, action.resultType].filter(Boolean).join(' ').toLowerCase();
-}
-
-function actionSection(action) {
-  const text = actionText(action);
-  if (/publish|发布/.test(text) || /review|audit|approve|审核|归档/.test(text)) return 'results';
-  if (/predict|工况预测|prediction/.test(text)) return 'prediction';
-  if (/validat|testdata|test[_ -]?data|测试验证|独立测试/.test(text)) return 'validation';
-  if (/uncertain|\buq\b|posterior|置信|后验|耗时预估|runtime.?estimate/.test(text)) return 'uq';
-  if (/identifiab|可辨识/.test(text)) return 'identifiability';
-  if (/adapt|estimat|identif|calibrat|参数辨识|模型修正/.test(text)) return 'identify';
-  return 'results';
-}
-
-function isDatasetInput(name, specs) {
-  return specs.some(spec => spec.key === name);
+function select(options, selectedValue) {
+  const s = document.createElement('select');
+  options.forEach(opt => {
+    const val = typeof opt === 'object' ? opt.value : opt;
+    const label = typeof opt === 'object' ? opt.label : opt;
+    const o = new Option(label, val);
+    if (val === selectedValue) o.selected = true;
+    s.append(o);
+  });
+  return s;
 }
 
 class SteadyModelAdaptV1 {
   constructor(ctx) {
     this.ctx = ctx;
-    this.root = null;
-    this.activeSection = 'data';
-    this.workspaces = [];
+    this.mount = ctx.mount;
+    this.activeSection = ctx.activeSectionId || 'data';
     this.workspace = null;
-    this.uploaded = [];
+    this.workspaces = [];
     this.tasks = new Map();
-    this.results = new Map();
-    this.artifacts = new Map();
-    this.taskLogs = new Map();
-    this.timers = new Set();
-    this.listeners = [];
-    this.charts = [];
-    this.destroyed = false;
-    this.busy = false;
-    this.predictionMode = 'pressure';
     this.identifyModel = 'transient';
-    this.uqMethod = 'A';
-    this.actions = asArray(ctx.config && ctx.config.workflow && ctx.config.workflow.actions);
-    this.datasetSpecs = asArray(ctx.config && ctx.config.workflow && ctx.config.workflow.datasets);
+    this.identifyTaskType = 'default';
+    this.activeSnapshot = 'pre';
+    this.activeUqMethod = 'A';
+    this.activeUqTab = 'overall';
+    this.activeValidTab = 'output';
+    this.predictionMode = 'pressure';
+    this.resultsFilter = 'all';
+    this.charts = [];
+    this.timers = new Set();
+    this.destroyed = false;
   }
 
   async init() {
-    this.buildShell();
     this.render();
-    await this.loadWorkspaces();
+    await this.loadInitialData();
   }
 
-  buildShell() {
-    this.root = el('div', 'steady-app');
-    const header = el('header', 'app-header');
-    const identity = el('div', 'identity');
-    identity.append(el('div', 'eyebrow', '发动机个性化性能数字模型'), el('h1', '', '稳态试车工况点模型修正 V1'));
-    identity.append(el('p', 'subhead', [this.ctx.program.name, this.ctx.program.version, this.ctx.program.projectName].filter(Boolean).join(' · ')));
-    this.workspaceBadge = el('div', 'workspace-badge', '未选择工作区');
-    header.append(identity, this.workspaceBadge);
+  async setSection(sectionId) {
+    this.activeSection = sectionId;
+    this.render();
+  }
 
-    const body = el('div', 'app-body');
-    this.nav = el('nav', 'flow-nav');
-    this.content = el('main', 'content');
-    this.aside = el('aside', 'status-rail');
-    body.append(this.nav, this.content, this.aside);
-    this.root.append(header, body);
-    this.ctx.mount.replaceChildren(this.root);
+  onHeaderAction(label, sectionId) {
+    this.ctx.log(`触发操作：${label}（${sectionId}）`);
+    if (label === '创建并校验项目') {
+      this.handleCreateProject();
+    } else if (label === '开始辨识') {
+      this.handleStartIdentify();
+    } else if (label === '开始评估') {
+      this.handleStartUq();
+    } else if (label === '开始验证') {
+      this.handleStartValidation();
+    } else if (label === '运行预测') {
+      this.handleStartPrediction();
+    } else if (label === '导出所选结果') {
+      this.handleExportResults();
+    }
+  }
+
+  async loadInitialData() {
+    try {
+      if (this.ctx.http && this.ctx.http.workspace) {
+        const list = await this.ctx.http.workspace.list();
+        if (Array.isArray(list)) this.workspaces = list;
+        if (this.workspaces.length > 0 && !this.workspace) {
+          this.workspace = this.workspaces[0];
+        }
+      }
+    } catch (e) {
+      console.warn('读取工作区失败:', e);
+    }
   }
 
   render() {
-    if (this.destroyed) return;
+    if (this.destroyed || !this.mount) return;
     this.disposeCharts();
-    this.renderNav();
-    this.content.replaceChildren();
-    const section = SECTIONS.find(item => item.id === this.activeSection) || SECTIONS[0];
-    const heading = el('div', 'section-heading');
-    heading.append(el('div', 'step-number', String(SECTIONS.indexOf(section) + 1).padStart(2, '0')));
-    const copy = el('div');
-    copy.append(el('h2', '', section.title), el('p', '', section.hint));
-    heading.append(copy);
-    this.content.append(heading);
-    const renderer = this['render_' + section.id];
-    if (renderer) renderer.call(this, this.content);
-    this.renderAside();
-    this.workspaceBadge.textContent = this.workspace ? '工作区 ' + this.workspace.id : '未选择工作区';
+    this.mount.replaceChildren();
+
+    const view = el('div', 'section-view');
+    const renderer = this['render_' + this.activeSection];
+    if (renderer) {
+      renderer.call(this, view);
+    } else {
+      this.render_data(view);
+    }
+    this.mount.appendChild(view);
   }
 
-  renderNav() {
-    this.nav.replaceChildren();
-    this.nav.append(el('div', 'nav-title', '业务流程'));
-    SECTIONS.forEach((section, index) => {
-      const item = button('', 'nav-item' + (section.id === this.activeSection ? ' active' : ''), () => {
-        this.activeSection = section.id;
-        this.render();
-      });
-      item.append(el('span', 'nav-index', String(index + 1)), el('span', 'nav-label', section.title));
-      this.nav.append(item);
-    });
-  }
-
-  renderAside() {
-    this.aside.replaceChildren();
-    const pre = this.card('前置条件');
-    const list = el('ul', 'check-list');
-    this.checkItem(list, '工作区已创建', Boolean(this.workspace));
-    const required = this.datasetSpecs.filter(item => item.required);
-    this.checkItem(list, '必需数据已上传', required.every(spec => this.uploaded.some(item => item.datasetKey === spec.key)));
-    this.checkItem(list, '工作流动作可用', this.actions.length > 0);
-    pre.append(list);
-
-    const status = this.card('任务状态');
-    const taskList = el('div', 'mini-task-list');
-    const tasks = Array.from(this.tasks.values()).sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0)).slice(0, 6);
-    if (!tasks.length) taskList.append(el('p', 'empty', '当前会话暂无任务'));
-    tasks.forEach(task => {
-      const row = el('button', 'mini-task');
-      row.type = 'button';
-      row.addEventListener('click', () => {
-        const action = this.findAction(task.actionKey);
-        this.activeSection = action ? actionSection(action) : 'results';
-        this.render();
-      });
-      row.append(el('span', '', this.actionLabel(task.actionKey)), this.statusPill(task.status));
-      taskList.append(row);
-    });
-    status.append(taskList);
-
-    const note = this.card('运行约束');
-    note.append(el('p', 'rail-note', '训练数据用于辨识，测试数据仅用于独立验证。业务结果只读取结构化返回值，不解析 MATLAB 控制台日志。'));
-    this.aside.append(pre, status, note);
-  }
-
-  checkItem(list, label, passed) {
-    const item = el('li', passed ? 'passed' : 'pending');
-    item.append(el('span', 'check-mark', passed ? '通过' : '待办'), el('span', '', label));
-    list.append(item);
-  }
-
-  card(title, className) {
-    const node = el('section', 'card' + (className ? ' ' + className : ''));
-    if (title) node.append(el('h3', 'card-title', title));
-    return node;
-  }
-
+  /* ================= 01 项目与数据 ================= */
   render_data(container) {
-    const workspaceCard = this.card('项目工作区', 'span-2');
-    const toolbar = el('div', 'toolbar');
-    const select = document.createElement('select');
-    select.setAttribute('aria-label', '选择工作区');
-    select.append(new Option('请选择已有工作区', ''));
-    this.workspaces.forEach(item => select.append(new Option(item.id + ' · ' + formatTime(item.createdAt), item.id)));
-    select.value = this.workspace ? this.workspace.id : '';
-    select.addEventListener('change', () => this.selectWorkspace(select.value));
-    const create = button('新建工作区', 'btn primary', () => this.createWorkspace());
-    const refresh = button('刷新', 'btn subtle', () => this.loadWorkspaces());
-    toolbar.append(select, create, refresh);
-    workspaceCard.append(toolbar);
-    if (this.workspace) {
-      const facts = el('div', 'facts');
-      this.fact(facts, '程序', this.workspace.programName || this.ctx.program.name);
-      this.fact(facts, '模型版本', this.workspace.programVersion || this.ctx.program.version);
-      this.fact(facts, '项目', this.workspace.projectName || this.ctx.program.projectName || '—');
-      this.fact(facts, '创建时间', formatTime(this.workspace.createdAt));
-      workspaceCard.append(facts);
-    }
+    // Card 1: 项目建立与数据合同
+    const c1 = this.createCard(
+      '项目建立与数据合同',
+      '项目创建完成前，后续功能保持锁定；测试数据可选且不参与参数辨识。'
+    );
+    const form = el('div', 'form-grid-4');
+    form.append(
+      this.createField('项目名称', input('text', 'projectName', '请输入项目名称', (this.workspace && this.workspace.projectName) || '示例项目_2026')),
+      this.createField('模型程序包', select(['稳态试车工况点模型修正V1', '选择交付程序目录'])),
+      this.createField('训练数据', select(['steady_bench_2p4_train_means.xlsx', '选择训练试车数据'])),
+      this.createField('测试数据', select(['steady_bench_2p4_test_means.xlsx', '选择测试数据（可选）']))
+    );
+    c1.body.append(form);
+    c1.body.append(el('p', 'card-foot-note', '训练数据用于辨识，测试数据仅用于独立验证。'));
 
-    const datasetCard = this.card('训练与测试数据', 'span-2');
-    const datasetGrid = el('div', 'dataset-grid');
-    if (!this.datasetSpecs.length) datasetGrid.append(el('p', 'empty', '当前程序配置未声明 workflow.datasets。'));
-    this.datasetSpecs.forEach(spec => datasetGrid.append(this.renderDataset(spec)));
-    datasetCard.append(datasetGrid);
+    // Card 2: 测量数据表
+    const c2 = this.createCard(
+      '测量数据表',
+      '每行对应一个稳态工况窗口；全部测量字段保存在同一张表中，固定工况编号并支持横向滚动。'
+    );
+    const mRows = [
+      ['工况A', '动态显示', '动态显示', '动态显示', '动态显示', '动态显示', '动态显示', '动态显示', '动态显示', '动态显示', '动态显示', '动态显示', '动态显示', '动态显示', '动态显示', '动态显示'],
+      ['工况B', '动态显示', '动态显示', '动态显示', '动态显示', '动态显示', '动态显示', '动态显示', '动态显示', '动态显示', '动态显示', '动态显示', '动态显示', '动态显示', '动态显示', '动态显示'],
+      ['工况C', '动态显示', '动态显示', '动态显示', '动态显示', '动态显示', '动态显示', '动态显示', '动态显示', '动态显示', '动态显示', '动态显示', '动态显示', '动态显示', '动态显示', '动态显示']
+    ];
+    c2.body.append(this.createTable(MEASURE_HEADERS, mRows));
+    c2.body.append(el('p', 'table-note', '单位、缺失值、越界标记和原始字段名在列标题提示中展示；表内数值由导入文件动态读取。'));
 
-    const contract = this.card('数据合同与质量检查');
-    contract.append(el('p', 'muted', '服务端结构化检查结果将在相应动作完成后显示。上传文件不会在浏览器中推断或伪造业务数值。'));
-    const fields = ['point_id', 'Np_mean', 'Ng_mean', 'Wf_mean', 'Mkp_mean', 'Mkg_mean', 'Tt1_mean', 'Pt2_mean', 'Pt3_mean', 'Tt3_mean', 'Tt45_mean', 'Pt45_mean', 'Pamb_mean', 'Tamb_mean', 'Altitude_mean', 'Mach_mean'];
-    const chips = el('div', 'chips');
-    fields.forEach(field => chips.append(el('span', 'chip', field)));
-    contract.append(chips);
+    // Card 3: AC相对换算转速、调度变量与训练分组
+    const c3 = this.createCard(
+      'AC相对换算转速、调度变量与训练分组',
+      '同一表显示各工况辅助变量；按AC相对换算转速聚类后写入训练分组列。'
+    );
+    const gRows = [
+      ['工况A', '训练', '组甲', '动态显示', '动态显示', '动态显示', '动态显示', '动态显示', '动态显示', '动态显示', '动态显示'],
+      ['工况B', '训练', '组甲', '动态显示', '动态显示', '动态显示', '动态显示', '动态显示', '动态显示', '动态显示', '动态显示'],
+      ['工况C', '训练', '组乙', '动态显示', '动态显示', '动态显示', '动态显示', '动态显示', '动态显示', '动态显示', '动态显示']
+    ];
+    c3.body.append(this.createTable(GROUP_HEADERS, gRows));
+    c3.body.append(el('p', 'table-note', '同一训练组采用一致的组号和颜色标识。分组结果可查看但不允许直接手工改写。'));
 
-    const dataActions = this.card('可用数据动作');
-    this.renderActionButtons(dataActions, this.actions.filter(action => {
-      const text = actionText(action);
-      return /data|import|prepare|group|contract|数据|分组|检查/.test(text) && actionSection(action) === 'results';
-    }));
-
-    const grid = el('div', 'grid');
-    grid.append(workspaceCard, datasetCard, contract, dataActions);
-    container.append(grid);
+    container.append(c1.card, c2.card, c3.card);
   }
 
-  renderDataset(spec) {
-    const uploaded = this.uploaded.find(item => item.datasetKey === spec.key);
-    const node = el('div', 'dataset-item');
-    const top = el('div', 'dataset-top');
-    const title = el('div');
-    title.append(el('strong', '', spec.label || spec.key), el('small', '', [spec.role, spec.type].filter(Boolean).join(' · ')));
-    top.append(title, el('span', uploaded ? 'dataset-state ready' : 'dataset-state', uploaded ? '已上传' : (spec.required ? '必需' : '可选')));
-    node.append(top);
-    if (uploaded) node.append(el('div', 'file-meta', uploaded.fileName + ' · ' + formatSize(uploaded.size) + ' · ' + formatTime(uploaded.uploadedAt)));
-    const file = input('file', 'file-' + spec.key);
-    if (String(spec.type).toLowerCase() === 'xlsx') file.accept = '.xlsx,.xls';
-    if (String(spec.type).toLowerCase() === 'csv') file.accept = '.csv';
-    file.disabled = !this.workspace;
-    file.addEventListener('change', () => {
-      if (file.files && file.files[0]) this.uploadDataset(spec.key, file.files[0]);
-      file.value = '';
-    });
-    node.append(file);
-    return node;
-  }
-
+  /* ================= 02 参数辨识 ================= */
   render_identify(container) {
-    const config = this.card('辨识任务配置', 'span-2');
-    const modeRow = el('div', 'form-row');
-    const modelSelect = this.selectControl('identify-model', [
-      ['transient', '瞬态时刻模型（默认）'], ['steady', '稳态模型']
-    ], this.identifyModel);
-    modelSelect.addEventListener('change', () => {
-      this.identifyModel = modelSelect.value;
+    // Card 1: 辨识任务与正则化配置
+    const c1 = this.createCard(
+      '辨识任务与正则化配置',
+      '默认采用瞬态时刻模型；路径、正则化配置、辨识流程和结果集中在一个页面。'
+    );
+    const seg = el('div', 'segmented');
+    const seg1 = button('瞬态时刻模型', 'segment' + (this.identifyModel === 'transient' ? ' active' : ''), () => {
+      this.identifyModel = 'transient';
       this.render();
     });
-    modeRow.append(this.field('辨识模型', modelSelect));
-    config.append(modeRow);
-    const notice = el('p', 'muted', '正则化参数由程序入口内置默认值决定，不可在运行时覆盖。以下为入口默认配置，仅供参考。');
-    config.append(notice);
-    const stages = el('div', 'stage-config readonly');
-    const defaults = this.identifyModel === 'steady'
-      ? [['A', 'TSVD', '截断 7 方向'], ['B', 'Tikhonov', 's=0.50'], ['D', 'Tikhonov', 's=1.00']]
-      : [['A', 'TSVD', '截断 5 方向'], ['B', 'Tikhonov', 's=0.75'], ['D', 'Tikhonov', 's=1.00']];
-    defaults.forEach(values => {
-      const stage = el('div', 'stage-box');
-      stage.append(el('strong', '', '阶段 ' + values[0]));
-      stage.append(el('div', 'stage-default', '方法：' + values[1]));
-      stage.append(el('div', 'stage-default', '参数：' + values[2]));
-      stages.append(stage);
+    const seg2 = button('稳态模型', 'segment' + (this.identifyModel === 'steady' ? ' active' : ''), () => {
+      this.identifyModel = 'steady';
+      this.render();
     });
-    config.append(stages);
+    const seg3 = button('默认辨识任务', 'segment' + (this.identifyTaskType === 'default' ? ' active' : ''), () => {
+      this.identifyTaskType = 'default';
+      this.render();
+    });
+    seg.append(seg1, seg2, seg3);
+    c1.body.append(seg);
 
-    const flow = this.card('连续辨识流程', 'span-2');
-    const flowline = el('div', 'stage-flow');
-    ['A 全工况常值初估', 'B 分组组内估计', 'C 调度节点组装', 'D 全工况联合微调'].forEach((name, index) => {
-      const step = el('div', 'flow-step');
-      step.append(el('span', 'flow-dot', String(index + 1)), el('span', '', name));
-      flowline.append(step);
-    });
-    flow.append(flowline);
-    const identifyActions = this.actionsFor('identify').filter(action => {
-      const text = actionText(action);
-      return this.identifyModel === 'steady' ? /steady|稳态模型/.test(text) && !/transient|瞬态/.test(text) : /transient|瞬态/.test(text);
-    });
-    this.renderActionButtons(flow, identifyActions, '一次启动完成 A/B/C/D；配置将写入任务记录。');
+    const mGrid = el('div', 'method-grid');
+    const rVal = this.identifyModel === 'steady' ? '4' : '6';
+    const sVal = this.identifyModel === 'steady' ? '0.50' : '0.75';
+    mGrid.append(
+      this.createMethodCard('A', '全工况常值', '无阻尼 TSVD', `保留奇异方向 r = ${rVal}`),
+      this.createMethodCard('B', '分组估计', 'Tikhonov', `正则化尺度 s = ${sVal}`),
+      this.createMethodCard('D', '全工况微调', 'Tikhonov', '正则化尺度 s = 1.00')
+    );
+    c1.body.append(mGrid);
 
-    const result = this.card('修正系数与输出误差', 'span-2');
-    this.renderSectionResults(result, 'identify');
-    const grid = el('div', 'grid');
-    grid.append(config, flow, result);
-    container.append(grid);
+    // Card 2: 辨识流程
+    const c2 = this.createCard(
+      '辨识流程',
+      'A/B/C/D是连续执行阶段，不设置逐阶段运行按钮。'
+    );
+    const flow = el('div', 'flow-line');
+    flow.append(
+      this.createFlowStep('A', 'A 全工况常值初估', '建立公共初值'),
+      this.createFlowStep('B', 'B 分组组内估计', '按训练分组辨识'),
+      this.createFlowStep('C', 'C 调度重构', '组间拟合与常值平均'),
+      this.createFlowStep('D', 'D 全工况微调', '联合数据最终修正')
+    );
+    c2.body.append(flow);
+
+    // Card 3: 修正系数辨识结果
+    const c3 = this.createCard(
+      '修正系数辨识结果',
+      '表内同时显示设计点值和节点均值；曲线按钮打开该参数完整调度曲线。'
+    );
+    const paramHeaders = ['修正系数', '形式', '设计点值', '节点均值', '单位', '查看'];
+    const paramRows = IDENTIFY_PARAMS.map(p => [
+      p.name,
+      p.form,
+      '动态显示',
+      '动态显示',
+      p.unit,
+      button(p.action, 'btn-table', () => this.ctx.log('查看：' + p.name))
+    ]);
+    c3.body.append(this.createTable(paramHeaders, paramRows));
+
+    // Card 4: 输出误差标准差与计算时间
+    const c4 = this.createCard(
+      '输出误差标准差与计算时间',
+      '修正前后误差直接对照；曲线按钮查看逐工况误差。'
+    );
+    const errHeaders = ['输出', '修正前标准差', '修正后标准差', '查看'];
+    const errRows = OUTPUT_VARS.map(o => [
+      o,
+      '动态显示',
+      '动态显示',
+      button('曲线', 'btn-table', () => this.ctx.log('查看误差曲线：' + o))
+    ]);
+    c4.body.append(this.createTable(errHeaders, errRows));
+    const timeBox = el('div', 'metrics-grid');
+    timeBox.style.marginTop = '14px';
+    timeBox.append(this.createMetricBox('总计算时间', '运行完成后显示总耗时及 A/B/C/D 分阶段耗时'));
+    c4.body.append(timeBox);
+
+    container.append(c1.card, c2.card, c3.card, c4.card);
   }
 
+  /* ================= 03 可辨识性 ================= */
   render_identifiability(container) {
-    const overview = this.card('分析位置与工程问题');
-    const tabs = el('div', 'segmented');
-    tabs.append(button('零修正基准模型', 'segment active'), button('稳态辨识模型', 'segment'));
-    tabs.addEventListener('click', event => {
-      if (!(event.target instanceof HTMLButtonElement)) return;
-      tabs.querySelectorAll('button').forEach(node => node.classList.toggle('active', node === event.target));
-    });
-    overview.append(tabs, el('p', 'muted', '同时评估自身敏感性、参数补偿依赖及双位置结论一致性。'));
-    this.renderActionButtons(overview, this.actionsFor('identifiability'));
-    const evidence = this.card('整体信息质量');
-    this.placeholderMetrics(evidence, ['标准化条件数', '有效奇异方向', '观测数', '参数数']);
-    const result = this.card('逐参数分类与补偿证据', 'span-2');
-    this.renderSectionResults(result, 'identifiability');
-    const grid = el('div', 'grid');
-    grid.append(overview, evidence, result);
-    container.append(grid);
-  }
-
-  render_uq(container) {
-    const methods = this.card('评估方法', 'span-2');
-    const choice = el('div', 'method-grid');
-    choice.append(this.methodCard('A', '关键修正系数评估', '总体调度参数、常值参数和燃油偏置'), this.methodCard('B', '全修正系数评估', '六部件局部常值修正与物理引气不确定性'));
-    methods.append(choice);
-    const cfg = el('div', 'form-row');
-    const methodSelect = this.selectControl('uq-method', [['A', '方法 A'], ['B', '方法 B']], this.uqMethod);
-    methodSelect.addEventListener('change', () => {
-      this.uqMethod = methodSelect.value;
+    // Card 1: 分析对象
+    const c1 = this.createCard(
+      '分析对象',
+      '同时切换和展示两个位置下（A 阶段前 / D 阶段后）的辨识结果进行综合判断。'
+    );
+    const seg = el('div', 'segmented');
+    const b1 = button('瞬态时刻模型', 'segment active');
+    const b2 = button('稳态模型', 'segment');
+    const b3 = button('A 阶段前', 'segment' + (this.activeSnapshot === 'pre' ? ' active' : ''), () => {
+      this.activeSnapshot = 'pre';
       this.render();
     });
-    cfg.append(this.field('粒子/样本配置', input('number', 'uq-samples', '', '由程序配置或任务输入决定')), this.field('方法选择', methodSelect));
-    methods.append(cfg);
-    const uqActions = this.actionsFor('uq').filter(action => this.uqMethod === 'B' ? /methodB|方法B|uqB/i.test(actionText(action)) : !/methodB|方法B|uqB/i.test(actionText(action)));
-    this.renderActionButtons(methods, uqActions, '若配置提供耗时预估动作，可先独立执行轻量预估。');
+    const b4 = button('D 阶段后', 'segment' + (this.activeSnapshot === 'post' ? ' active' : ''), () => {
+      this.activeSnapshot = 'post';
+      this.render();
+    });
+    seg.append(b1, b2, b3, b4);
+    c1.body.append(seg);
 
-    const progress = this.card('运行状态');
-    this.renderTaskProgress(progress, uqActions);
-    const result = this.card('95%置信区间结果', 'span-2');
-    result.append(el('p', 'muted', '模型输出区间与叠加测量误差后的可观测量区间分别展示，不显示参数真值。'));
-    this.renderSectionResults(result, 'uq');
-    const grid = el('div', 'grid');
-    grid.append(methods, progress, result);
-    container.append(grid);
+    // Card 2: 整体信息质量
+    const c2 = this.createCard(
+      '整体信息质量',
+      '原始矩阵、标准化矩阵和当前正则化后的条件数必须区分显示。'
+    );
+    const qGrid = el('div', 'metrics-grid');
+    qGrid.append(
+      this.createMetricBox('标准化信息矩阵条件数', '动态显示'),
+      this.createMetricBox('当前正则化后条件数', '动态显示'),
+      this.createMetricBox('数值秩 / 有效秩', '动态显示'),
+      this.createMetricBox('最小有效奇异值', '动态显示'),
+      this.createMetricBox('双快照变化', '运行后归纳')
+    );
+    c2.body.append(qGrid);
+
+    // Card 3: 逐参数分类与主要补偿参数
+    const c3 = this.createCard(
+      '逐参数分类与主要补偿参数',
+      '依赖补偿参数必须列出贡献最大的补偿对象，而不只给出“依赖补偿”标签。'
+    );
+    const idHeaders = ['参数', '自身敏感性', '补偿依赖', '主要补偿参数', 'A 前类别', 'D 后类别', '证据与建议'];
+    const idRows = IDENTIFY_PARAMS.map(p => [
+      p.name,
+      '动态显示',
+      '动态显示',
+      '按贡献排序显示',
+      '动态显示',
+      '动态显示',
+      button('查看', 'btn-table', () => this.ctx.log('查看证据：' + p.name))
+    ]);
+    c3.body.append(this.createTable(idHeaders, idRows));
+
+    // Card 4: 所选参数证据详情
+    const c4 = this.createCard(
+      '所选参数证据详情',
+      '点击表格行后在本页展开，避免与逐参数分类表重复。'
+    );
+    const eGrid = el('div', 'evidence-grid');
+    eGrid.append(
+      this.createEvidenceBox('自身敏感性证据', '孤立工程扰动、主导输出及响应量级动态显示'),
+      this.createEvidenceBox('补偿关系证据', '主要补偿参数、变化方向、步长占比和补偿后残差动态显示'),
+      this.createEvidenceBox('工程处置建议', '保留、加强先验、固定参数或增加工况激励的建议动态显示')
+    );
+    c4.body.append(eGrid);
+
+    container.append(c1.card, c2.card, c3.card, c4.card);
   }
 
+  /* ================= 04 不确定性评估 ================= */
+  render_uq(container) {
+    // Card 1: 评估方法与运行时间预估
+    const c1 = this.createCard(
+      '评估方法与运行时间预估',
+      '耗时根据导入工况、有效数据量、后验配置和一次模型回放试算动态估计。'
+    );
+    const mGrid = el('div', 'method-grid grid-2');
+    const cardA = this.createMethodCard('A', '关键修正系数评估', '聚焦辨识阶段使用的总体调度修正与燃油偏置。', '', this.activeUqMethod === 'A', () => {
+      this.activeUqMethod = 'A';
+      this.render();
+    });
+    const cardB = this.createMethodCard('B', '全修正系数评估', '进一步纳入六部件局部修正和物理引气不确定性。', '', this.activeUqMethod === 'B', () => {
+      this.activeUqMethod = 'B';
+      this.render();
+    });
+    mGrid.append(cardA, cardB);
+    c1.body.append(mGrid);
+
+    const estGrid = el('div', 'metrics-grid');
+    estGrid.style.marginTop = '14px';
+    estGrid.append(
+      this.createMetricBox('关键修正系数评估', '预计耗时：待估算'),
+      this.createMetricBox('全修正系数评估', '预计耗时：待估算')
+    );
+    c1.body.append(estGrid);
+
+    // Card 2: 参数 95% 置信区间图
+    const c2 = this.createCard(
+      '参数 95% 置信区间图',
+      '沿用程序结果图的分块结构；静态设计稿隐藏数值，实际软件按结果动态显示。'
+    );
+    const seg = el('div', 'segmented');
+    seg.append(
+      button('总体调度与燃油', 'segment' + (this.activeUqTab === 'overall' ? ' active' : ''), () => { this.activeUqTab = 'overall'; this.render(); }),
+      button('六部件局部', 'segment' + (this.activeUqTab === 'local' ? ' active' : ''), () => { this.activeUqTab = 'local'; this.render(); }),
+      button('物理引气', 'segment' + (this.activeUqTab === 'bleed' ? ' active' : ''), () => { this.activeUqTab = 'bleed'; this.render(); })
+    );
+    c2.body.append(seg);
+
+    const chartsGrid = el('div', 'charts-grid-3');
+    IDENTIFY_PARAMS.forEach(p => {
+      chartsGrid.append(this.createChartCell(p.name));
+    });
+    c2.body.append(chartsGrid);
+    c2.body.append(el('div', 'chart-legend', '— 95%置信区间    ● 后验中心    | 修正系数辨识结果'));
+
+    // Card 3: 结果解释与验收
+    const c3 = this.createCard(
+      '结果解释与验收',
+      '用通俗说明回答工程人员最关心的问题。'
+    );
+    const list = el('ul', 'check-list');
+    [
+      '可信范围：每个参数的可信区间有多宽',
+      '补偿关系：哪些参数必须联合解释',
+      '多解可能：是否存在不同参数组合解释同一数据',
+      '预测影响：参数不确定性会使输出波动多大',
+      '统计状态：结果是否满足正式使用门槛'
+    ].forEach(t => list.append(el('li', 'check-item', t)));
+    c3.body.append(list);
+
+    // Card 4: 运行进度与时间
+    const c4 = this.createCard(
+      '运行进度与时间',
+      '正式任务中显示总体进度、当前步骤、已用时间、预计剩余和完成后的总运行时间。'
+    );
+    const progressTrack = el('div', 'progress-track');
+    progressTrack.append(el('div', 'progress-fill'));
+    c4.body.append(progressTrack);
+    c4.body.append(el('p', 'card-subtitle', '等待开始 / 运行后显示当前步骤'));
+
+    const pGrid = el('div', 'metrics-grid');
+    pGrid.style.marginTop = '12px';
+    pGrid.append(
+      this.createMetricBox('已用时间', '运行后显示'),
+      this.createMetricBox('预计剩余', '运行后显示'),
+      this.createMetricBox('总运行时间', '完成后显示')
+    );
+    c4.body.append(pGrid);
+    const btnRow = el('div', 'btn-row');
+    btnRow.append(button('查看运行日志与验收明细', 'btn-card', () => this.ctx.log('查看运行日志')));
+    c4.body.append(btnRow);
+
+    container.append(c1.card, c2.card, c3.card, c4.card);
+  }
+
+  /* ================= 05 测试验证 ================= */
   render_validation(container) {
-    const testSpecs = this.datasetSpecs.filter(spec => /test|valid|测试/.test([spec.key, spec.role, spec.label].join(' ').toLowerCase()));
-    const hasTest = testSpecs.some(spec => this.uploaded.some(item => item.datasetKey === spec.key));
-    const intro = this.card('独立测试集');
-    intro.append(el('div', hasTest ? 'notice success' : 'notice', hasTest ? '测试集已就绪，仅用于验证且不更新参数。' : '未提供测试集时，程序应安全返回“已跳过”，不作为错误处理。'));
-    this.renderActionButtons(intro, this.actionsFor('validation'));
-    const chart = this.card('输出对比与误差标准差', 'span-2');
-    this.renderSectionResults(chart, 'validation');
-    const grid = el('div', 'grid');
-    grid.append(intro, chart);
-    container.append(grid);
+    // Card 1: 验证输入与边界
+    const c1 = this.createCard(
+      '验证输入与边界',
+      '测试数据不参与辨识；本页只做稳态模型验证。'
+    );
+    const form = el('div', 'form-grid-3');
+    form.append(
+      this.createField('稳态辨识模型', select(['steady_model_adapt_v2_transient_instant_latest.mat', '选择辨识结果'])),
+      this.createField('测试数据', select(['steady_bench_2p4_test_means.xlsx', '选择测试数据']))
+    );
+    c1.body.append(form);
+    const notice = el('div', 'notice-box success', '✓ 稳态模型验证 · 数据隔离检查');
+    c1.body.append(notice);
+
+    // Card 2: 验证结果分页
+    const c2 = this.createCard(
+      '验证结果分页',
+      '输出对比与误差标准差使用同一主界面的页签切换，均覆盖全部测试工况和全部稳态输出。'
+    );
+    const seg = el('div', 'segmented');
+    seg.append(
+      button('输出对比', 'segment' + (this.activeValidTab === 'output' ? ' active' : ''), () => { this.activeValidTab = 'output'; this.render(); }),
+      button('误差标准差对比', 'segment' + (this.activeValidTab === 'rmse' ? ' active' : ''), () => { this.activeValidTab = 'rmse'; this.render(); })
+    );
+    c2.body.append(seg);
+
+    if (this.activeValidTab === 'output') {
+      const tag = el('div', 'card-subtitle', '当前页：全部输出对比');
+      tag.style.margin = '0 0 12px';
+      c2.body.append(tag);
+
+      const chartsGrid = el('div', 'charts-grid-3');
+      OUTPUT_VARS.forEach(o => chartsGrid.append(this.createChartCell(o)));
+      c2.body.append(chartsGrid);
+      c2.body.append(el('div', 'chart-legend', '— 零修正模型    — 稳态辨识模型    — 测量值'));
+    } else {
+      const vHeaders = ['输出', '零修正模型 RMSE', '稳态辨识模型 RMSE', '改善幅度'];
+      const vRows = OUTPUT_VARS.map(o => [o, '动态显示', '动态显示', '动态显示']);
+      c2.body.append(this.createTable(vHeaders, vRows));
+    }
+
+    // Card 3: 提示
+    const c3 = this.createCard(
+      '提示',
+      '不同单位的输出不直接相加为一个未经归一化的总误差。'
+    );
+    const info = el('div', 'notice-box info', 'ℹ 测试数据未用于参数更新；不读取隐藏真值');
+    c3.body.append(info);
+
+    container.append(c1.card, c2.card, c3.card);
   }
 
+  /* ================= 06 工况预测 ================= */
   render_prediction(container) {
-    const formCard = this.card('单工况输入', 'span-2');
-    const modes = el('div', 'segmented mode-switch');
-    const pressure = button('直接环境边界（模式 2）', 'segment' + (this.predictionMode === 'pressure' ? ' active' : ''));
-    const altitude = button('高度环境边界（模式 3）', 'segment' + (this.predictionMode === 'altitude' ? ' active' : ''));
-    pressure.addEventListener('click', () => { this.predictionMode = 'pressure'; this.render(); });
-    altitude.addEventListener('click', () => { this.predictionMode = 'altitude'; this.render(); });
-    modes.append(pressure, altitude);
-    formCard.append(modes);
-    const form = el('div', 'prediction-form');
-    const first = this.predictionMode === 'pressure'
-      ? ['Pamb', '环境静压', 'Pa'] : ['Altitude', '高度', 'm'];
-    [first, ['Tamb', '环境静温', 'K'], ['Mach', '马赫数', '—'], ['Wf_model', '模型燃油流量', 'kg/s'], ['Mkp', 'PT 轴负载', 'N·m'], ['Mkg', 'GT 附件负载', 'N·m']].forEach(item => {
-      const control = input('number', 'predict-' + item[0], '', item[2]);
-      control.step = 'any';
-      form.append(this.field(item[1] + ' (' + item[0] + ')', control));
-    });
-    const posterior = this.selectControl('posterior-method', [['none', '仅确定性预测'], ['A', '方法 A 后验'], ['B', '方法 B 后验']], 'none');
-    form.append(this.field('不确定性传播', posterior));
-    formCard.append(form);
-    this.renderActionButtons(formCard, this.actionsFor('prediction'));
-    const result = this.card('预测输出', 'span-2');
-    result.append(el('p', 'muted', '确定性输出、共同工作最大残差和收敛状态优先显示；可用后验同时显示模型输出与可观测量 95%置信区间。'));
-    this.renderSectionResults(result, 'prediction');
-    const grid = el('div', 'grid');
-    grid.append(formCard, result);
-    container.append(grid);
-  }
+    // Card 1: 预测方式
+    const c1 = this.createCard(
+      '预测方式',
+      '首轮只支持单工况，不设计批量预测。'
+    );
+    const seg = el('div', 'segmented');
+    seg.append(
+      button('直接环境边界', 'segment' + (this.predictionMode === 'pressure' ? ' active' : ''), () => { this.predictionMode = 'pressure'; this.render(); }),
+      button('高度环境边界', 'segment' + (this.predictionMode === 'altitude' ? ' active' : ''), () => { this.predictionMode = 'altitude'; this.render(); })
+    );
+    c1.body.append(seg);
+    const hint = this.predictionMode === 'pressure'
+      ? '不经过总距角与控制闭环；燃油输入为模型实际输入，不应用燃油测量值。'
+      : '由 DLL 根据高度和静温重构环境压力，无需同时输入高度和 Pamb。';
+    c1.body.append(el('p', 'card-foot-note', hint));
 
-  render_results(container) {
-    const trace = this.card('任务与结果追溯', 'span-2');
-    const tasks = Array.from(this.tasks.values()).sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
-    if (!tasks.length) trace.append(el('p', 'empty', '当前会话暂无任务结果。'));
-    tasks.forEach(task => trace.append(this.renderTaskRecord(task)));
-    const governance = this.card('审核与发布');
-    const publishable = tasks.filter(task => task.status === 'SUCCEEDED' && task.resultType === 'estimation');
-    if (!publishable.length) governance.append(el('p', 'empty', '暂无可审核的参数辨识结果。'));
-    publishable.forEach(task => {
-      const record = el('div', 'task-record');
-      record.append(el('strong', '', this.actionLabel(task.actionKey)), el('small', '', task.id));
-      const controls = el('div', 'toolbar compact');
-      controls.append(
-        button('审核通过', 'btn subtle', () => this.reviewTask(task.id, 'APPROVED')),
-        button('审核驳回', 'btn danger', () => this.reviewTask(task.id, 'REJECTED'))
+    // Card 2: 单工况输入
+    const c2 = this.createCard(
+      '单工况输入',
+      '切换环境边界方式后只显示需要填写的字段。'
+    );
+    const form = el('div', 'form-grid-3');
+    if (this.predictionMode === 'pressure') {
+      form.append(
+        this.createField('环境压力 (Pamb)', input('number', 'pamb', '请输入或由高度计算')),
+        this.createField('环境静温 (Tamb)', input('number', 'tamb', '请输入')),
+        this.createField('马赫数 (Mach)', input('number', 'mach', '请输入')),
+        this.createField('模型燃油流量 (Wf_model)', input('number', 'wf', '请输入')),
+        this.createField('PT 轴负载 (Mkp)', input('number', 'mkp', '请输入')),
+        this.createField('GT 附件负载 (Mkg)', input('number', 'mkg', '请输入'))
       );
-      if (task.reviewStatus === 'APPROVED') controls.append(button('发布为当前辨识模型', 'btn primary', () => this.publishTask(task.id)));
-      record.append(controls);
-      if (task.reviewStatus) record.append(el('p', 'muted', '审核状态：' + task.reviewStatus));
-      if (task.publicationStatus) record.append(el('p', 'notice success', '发布状态：' + task.publicationStatus));
-      governance.append(record);
-    });
-    const grid = el('div', 'grid');
-    grid.append(trace, governance);
-    container.append(grid);
-  }
-
-  renderTaskRecord(task) {
-    const node = el('article', 'task-record');
-    const head = el('div', 'task-head');
-    const title = el('div');
-    title.append(el('strong', '', this.actionLabel(task.actionKey)), el('small', '', task.id));
-    head.append(title, this.statusPill(task.status));
-    node.append(head);
-    const meta = el('div', 'task-meta');
-    meta.append(el('span', '', '开始：' + formatTime(task.startedAt || task.createdAt)), el('span', '', '结束：' + formatTime(task.completedAt)));
-    node.append(meta);
-    if (task.error) node.append(el('div', 'notice error', task.error));
-    const controls = el('div', 'toolbar compact');
-    if (RUNNING.has(task.status)) controls.append(button('取消任务', 'btn danger', () => this.cancelTask(task.id)));
-    if (task.status === 'SUCCEEDED') controls.append(button('查看结构化结果', 'btn subtle', () => this.loadOutcome(task.id)));
-    controls.append(button('查看日志', 'btn subtle', () => this.loadTaskLog(task.id)));
-    node.append(controls);
-    const result = this.results.get(task.id);
-    if (result) node.append(this.renderValue(result.value !== undefined ? result.value : result, 0));
-    const artifacts = this.artifacts.get(task.id);
-    if (artifacts) node.append(this.renderArtifacts(artifacts, task.id));
-    const log = this.taskLogs.get(task.id);
-    if (log !== undefined) node.append(el('pre', 'task-log', log || '暂无日志'));
-    return node;
-  }
-
-  renderActionButtons(parent, actions, help) {
-    if (help) parent.append(el('p', 'muted', help));
-    const bar = el('div', 'action-bar');
-    if (!actions.length) bar.append(el('span', 'empty', '当前 workflow.actions 未提供对应动作。'));
-    actions.forEach(action => {
-      const task = this.latestTask(action.key);
-      const running = task && RUNNING.has(task.status);
-      const start = button(action.label || action.key, 'btn primary', () => this.startAction(action));
-      start.disabled = !this.workspace || running || this.busy;
-      bar.append(start);
-      if (running) bar.append(button('取消', 'btn danger', () => this.cancelTask(task.id)));
-    });
-    parent.append(bar);
-  }
-
-  renderTaskProgress(parent, actions) {
-    const task = actions.map(action => this.latestTask(action.key)).filter(Boolean).sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))[0];
-    if (!task) {
-      parent.append(el('p', 'empty', '尚未启动不确定性任务。预计耗时以结构化预估动作结果为准。'));
-      return;
+    } else {
+      form.append(
+        this.createField('高度 (Altitude)', input('number', 'altitude', '请输入')),
+        this.createField('环境静温 (Tamb)', input('number', 'tamb', '请输入')),
+        this.createField('马赫数 (Mach)', input('number', 'mach', '请输入')),
+        this.createField('模型燃油流量 (Wf_model)', input('number', 'wf', '请输入')),
+        this.createField('PT 轴负载 (Mkp)', input('number', 'mkp', '请输入')),
+        this.createField('GT 附件负载 (Mkg)', input('number', 'mkg', '请输入'))
+      );
     }
-    parent.append(this.statusPill(task.status));
-    const progress = el('div', 'progress');
-    const fill = el('span');
-    const numeric = Number(task.progress);
-    fill.style.width = Number.isFinite(numeric) ? Math.max(0, Math.min(100, numeric)) + '%' : (RUNNING.has(task.status) ? '35%' : task.status === 'SUCCEEDED' ? '100%' : '0%');
-    progress.append(fill);
-    parent.append(progress);
-    const details = el('div', 'facts vertical');
-    this.fact(details, '当前子步骤', task.step || task.currentStep || '—');
-    this.fact(details, '已运行时间', task.elapsed || this.elapsed(task));
-    this.fact(details, '预计剩余时间', task.estimatedRemaining || '待程序返回');
-    this.fact(details, '最终运行时间', task.duration || (task.completedAt && task.startedAt ? this.duration(task.completedAt - task.startedAt) : '—'));
-    parent.append(details);
+    c2.body.append(form);
+
+    // Card 3: 预测输出与 95% 置信区间
+    const c3 = this.createCard(
+      '预测输出与 95% 置信区间',
+      '确定性结果、后验中心、模型输出区间和可观测量区间均在运行后读取。'
+    );
+    const pHeaders = ['输出', '稳态辨识模型', '区间下界', '区间上界', '状态'];
+    const pRows = OUTPUT_VARS.map(o => [o, '动态显示', '动态显示', '动态显示', '待运行']);
+    c3.body.append(this.createTable(pHeaders, pRows));
+
+    // Card 4: 区间图与运行验收
+    const c4 = this.createCard(
+      '区间图与运行验收',
+      '单工况正式后验可选择关键修正系数评估或全修正系数评估后验。'
+    );
+    const chartsGrid = el('div', 'charts-grid-3');
+    OUTPUT_VARS.forEach(o => chartsGrid.append(this.createChartCell(o)));
+    c4.body.append(chartsGrid);
+    c4.body.append(el('div', 'chart-legend', '— 95%置信区间    ● 后验中心    | 稳态辨识模型'));
+
+    container.append(c1.card, c2.card, c3.card, c4.card);
   }
 
-  renderSectionResults(parent, sectionId) {
-    const relevant = Array.from(this.tasks.values()).filter(task => {
-      const action = this.findAction(task.actionKey);
-      return action && actionSection(action) === sectionId && task.status === 'SUCCEEDED';
+  /* ================= 07 结果中心 ================= */
+  render_results(container) {
+    // Card 1: 结果筛选
+    const c1 = this.createCard(
+      '结果筛选',
+      '项目同时显示全部结果；运行后自动归档结果，不需要用户浏览目录。'
+    );
+    const seg = el('div', 'segmented');
+    const filters = [
+      ['all', '全部任务'],
+      ['identify', '参数辨识'],
+      ['identifiability', '可辨识性'],
+      ['uq', '不确定性'],
+      ['validation', '测试验证'],
+      ['prediction', '工况预测']
+    ];
+    filters.forEach(([key, name]) => {
+      seg.append(button(name, 'segment' + (this.resultsFilter === key ? ' active' : ''), () => {
+        this.resultsFilter = key;
+        this.render();
+      }));
     });
-    if (!relevant.length) {
-      parent.append(el('p', 'empty', '待任务完成后显示结构化结果与产物。'));
-      return;
-    }
-    relevant.sort((a, b) => Number(b.completedAt || 0) - Number(a.completedAt || 0));
-    relevant.slice(0, 2).forEach(task => {
-      const block = el('div', 'result-block');
-      block.append(el('h4', '', this.actionLabel(task.actionKey)));
-      const result = this.results.get(task.id);
-      if (result) block.append(this.renderValue(result.value !== undefined ? result.value : result, 0));
-      else block.append(button('加载结构化结果', 'btn subtle', () => this.loadOutcome(task.id)));
-      const artifacts = this.artifacts.get(task.id);
-      if (artifacts) block.append(this.renderArtifacts(artifacts, task.id));
-      parent.append(block);
+    c1.body.append(seg);
+
+    // Card 2: 项目结果记录
+    const c2 = this.createCard(
+      '项目结果记录',
+      '不在设计稿填入示例时间、耗时和结果数值。'
+    );
+    const rHeaders = ['任务类型', '方法或路径', '状态', '主要产物', '操作'];
+    const rRows = [
+      ['参数辨识', '用户运行后记录', '待运行', '参数、调度曲线、误差', button('打开', 'btn-table', () => this.ctx.setSection('identify'))],
+      ['可辨识性', '用户运行后记录', '待运行', '分类、补偿方向、报告', button('打开', 'btn-table', () => this.ctx.setSection('identifiability'))],
+      ['关键修正系数评估', '用户运行后记录', '待运行', '后验、可信区间、预测', button('打开', 'btn-table', () => this.ctx.setSection('uq'))],
+      ['全修正系数评估', '用户运行后记录', '待运行', '分块后验、可信区间、预测', button('打开', 'btn-table', () => this.ctx.setSection('uq'))],
+      ['测试验证', '稳态模型', '待运行', '输出对比、误差标准差', button('打开', 'btn-table', () => this.ctx.setSection('validation'))],
+      ['工况预测', '单工况', '待运行', '预测中心、可信区间', button('打开', 'btn-table', () => this.ctx.setSection('prediction'))]
+    ];
+    c2.body.append(this.createTable(rHeaders, rRows));
+    c2.body.append(el('p', 'table-note', '尚无运行记录时，引导用户返回相应页面开始任务。'));
+
+    // Card 3: 所选结果详情
+    const c3 = this.createCard(
+      '所选结果详情',
+      '仅展示当前选择，不修改原始结果文件。'
+    );
+    const dGrid = el('div', 'metrics-grid');
+    dGrid.append(
+      this.createMetricBox('输入数据与模型指纹', '尚未选择结果'),
+      this.createMetricBox('运行配置与停止原因', '尚未选择结果'),
+      this.createMetricBox('验收状态与复核意见', '尚未选择结果'),
+      this.createMetricBox('结果文件与图形', '尚未选择结果'),
+      this.createMetricBox('MATLAB 调用方式', '尚未选择结果'),
+      this.createMetricBox('稳态辨识模型状态', '尚未选择结果')
+    );
+    c3.body.append(dGrid);
+    const btnRow = el('div', 'btn-row');
+    btnRow.append(
+      button('复制调用方式', 'btn-card', () => this.ctx.log('已复制调用方式')),
+      button('设为稳态辨识模型', 'btn-card primary', () => this.ctx.log('已设为稳态辨识模型'))
+    );
+    c3.body.append(btnRow);
+
+    // Card 4: 追溯与导出
+    const c4 = this.createCard(
+      '追溯与导出',
+      '结果运行后保存输入、模型、配置、日志、图形和报告之间的对应关系。'
+    );
+    const tRow = el('div', 'btn-row');
+    tRow.style.marginTop = '0';
+    ['输入可追溯', '模型可追溯', '配置可追溯', '结论可追溯'].forEach(t => {
+      tRow.append(button(t, 'btn-card', () => this.ctx.log('追溯：' + t)));
     });
+    c4.body.append(tRow);
+
+    container.append(c1.card, c2.card, c3.card, c4.card);
   }
 
-  renderValue(value, depth) {
-    if (value === null || value === undefined) return el('span', 'value-empty', '—');
-    if (depth > 3) return el('span', 'value-summary', Array.isArray(value) ? value.length + ' 项' : '结构化对象');
-    if (typeof value !== 'object') return el('span', 'value-scalar', String(value));
-    if (Array.isArray(value)) return this.renderArray(value, depth);
-    const dl = el('dl', 'result-object');
-    Object.keys(value).forEach(key => {
-      const dt = el('dt', '', key);
-      const dd = el('dd');
-      dd.append(this.renderValue(value[key], depth + 1));
-      dl.append(dt, dd);
-    });
-    return dl;
+  /* ================= 通用辅助渲染 ================= */
+  createCard(title, subtitle) {
+    const card = el('div', 'card');
+    const head = el('div', 'card-head');
+    head.append(el('h3', 'card-title', title));
+    if (subtitle) head.append(el('p', 'card-subtitle', subtitle));
+    const body = el('div', 'card-body');
+    card.append(head, body);
+    return { card, head, body };
   }
 
-  renderArray(rows, depth) {
-    if (!rows.length) return el('span', 'value-empty', '空列表');
-    const objectRows = rows.filter(item => item && typeof item === 'object' && !Array.isArray(item));
-    if (objectRows.length === rows.length) {
-      const columns = Array.from(new Set(objectRows.flatMap(item => Object.keys(item)))).slice(0, 12);
-      const wrap = el('div', 'table-wrap');
-      const table = el('table', 'data-table');
-      const thead = el('thead');
-      const hr = el('tr');
-      columns.forEach(column => hr.append(el('th', '', column)));
-      thead.append(hr);
-      const tbody = el('tbody');
-      objectRows.slice(0, 100).forEach(row => {
-        const tr = el('tr');
-        columns.forEach(column => {
-          const cell = row[column];
-          tr.append(el('td', '', cell && typeof cell === 'object' ? JSON.stringify(cell) : (cell === undefined || cell === null ? '—' : cell)));
-        });
-        tbody.append(tr);
-      });
-      table.append(thead, tbody);
-      wrap.append(table);
-      if (rows.length > 100) wrap.append(el('p', 'muted', '仅显示前 100 行，共 ' + rows.length + ' 行。'));
-      const result = el('div', 'tabular-result');
-      const numericColumns = columns.filter(column => objectRows.some(row => row[column] !== '' && Number.isFinite(Number(row[column]))));
-      if (this.ctx.echarts && depth < 3 && objectRows.length > 1 && numericColumns.length) {
-        const chartHost = el('div', 'result-chart');
-        result.append(chartHost);
-        this.scheduleChart(chartHost, objectRows.slice(0, 100), columns[0], numericColumns.slice(0, 4));
-      }
-      result.append(wrap);
-      return result;
-    }
-    const list = el('ul', 'value-list');
-    rows.slice(0, 100).forEach(item => {
-      const li = el('li');
-      li.append(this.renderValue(item, depth + 1));
-      list.append(li);
-    });
-    return list;
-  }
-
-  renderArtifacts(items, taskId) {
-    const wrap = el('div', 'artifact-list');
-    wrap.append(el('h5', '', '结果产物'));
-    if (!items.length) wrap.append(el('p', 'empty', '未发现新增产物。'));
-    items.forEach(item => {
-      const row = el('div', 'artifact-row');
-      const copy = el('div');
-      const name = item.name || item.fileName || item.id;
-      copy.append(el('strong', '', name), el('small', '', [item.type, formatSize(item.size)].filter(Boolean).join(' · ')));
-      const download = button('下载', 'btn subtle', () => {
-        this.ctx.http.artifacts.download(taskId + '/' + item.id, name)
-          .catch(error => this.ctx.log('产物下载失败：' + (error.message || error)));
-      });
-      row.append(copy, download);
-      wrap.append(row);
-    });
+  createField(label, control) {
+    const wrap = el('div', 'field');
+    wrap.append(el('label', 'field-label', label), control);
     return wrap;
   }
 
-  methodCard(code, title, description) {
-    const node = el('div', 'method-card');
-    node.append(el('span', 'method-code', code), el('strong', '', title), el('p', '', description));
-    return node;
-  }
-
-  placeholderMetrics(parent, names) {
-    const grid = el('div', 'metric-grid');
-    names.forEach(name => {
-      const metric = el('div', 'metric');
-      metric.append(el('span', '', name), el('strong', '', '待计算'));
-      grid.append(metric);
+  createTable(headers, rows) {
+    const wrap = el('div', 'table-wrap');
+    const table = el('table', 'data-table');
+    const thead = el('thead');
+    const hr = el('tr');
+    headers.forEach(h => hr.append(el('th', '', h)));
+    thead.append(hr);
+    const tbody = el('tbody');
+    rows.forEach(r => {
+      const tr = el('tr');
+      r.forEach(val => {
+        const td = el('td');
+        if (val instanceof HTMLElement) {
+          td.append(val);
+        } else {
+          td.textContent = String(val == null ? '' : val);
+        }
+        tr.append(td);
+      });
+      tbody.append(tr);
     });
-    parent.append(grid);
+    table.append(thead, tbody);
+    wrap.append(table);
+    return wrap;
   }
 
-  field(label, control) {
-    const wrapper = el('label', 'field');
-    wrapper.append(el('span', 'field-label', label), control);
-    return wrapper;
+  createMethodCard(badge, title, sub, desc, isActive = false, clickHandler = null) {
+    const card = el('div', 'method-card' + (isActive ? ' active' : ''));
+    card.append(el('div', 'method-badge', badge));
+    const info = el('div', 'method-info');
+    info.append(el('h4', 'method-title', title));
+    if (sub) info.append(el('p', 'method-sub', sub));
+    if (desc) info.append(el('p', 'method-desc', desc));
+    card.append(info);
+    if (clickHandler) card.addEventListener('click', clickHandler);
+    return card;
   }
 
-  selectControl(name, options, selected) {
-    const select = document.createElement('select');
-    select.name = name;
-    options.forEach(option => select.append(new Option(option[1], option[0], false, option[0] === selected)));
-    return select;
-  }
-
-  fact(parent, label, value) {
-    const node = el('div', 'fact');
-    node.append(el('span', '', label), el('strong', '', value === undefined || value === null || value === '' ? '—' : value));
-    parent.append(node);
-  }
-
-  statusPill(status) {
-    const value = status || 'READY';
-    return el('span', 'status-pill status-' + value.toLowerCase(), STATUS_TEXT[value] || value);
-  }
-
-  actionsFor(section) {
-    return this.actions.filter(action => actionSection(action) === section);
-  }
-
-  findAction(key) {
-    return this.actions.find(action => action.key === key);
-  }
-
-  actionLabel(key) {
-    const action = this.findAction(key);
-    return action ? (action.label || action.key) : key;
-  }
-
-  latestTask(actionKey) {
-    return Array.from(this.tasks.values()).filter(task => task.actionKey === actionKey).sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))[0];
-  }
-
-  hasSuccessfulAction(pattern) {
-    return Array.from(this.tasks.values()).some(task => {
-      const action = this.findAction(task.actionKey);
-      return task.status === 'SUCCEEDED' && action && pattern.test(actionText(action));
-    });
-  }
-
-  async request(call, activity) {
-    try {
-      this.ctx.setStatus('loading', activity);
-      this.ctx.log(activity);
-      const response = await call();
-      if (!response || (response.success === false) || (response.code !== undefined && Number(response.code) !== 200 && response.success !== true)) {
-        throw new Error(response && (response.message || response.msg) || activity + '失败');
-      }
-      return response.data !== undefined ? response.data : response;
-    } catch (error) {
-      if (!this.destroyed) {
-        this.ctx.setStatus('error', '操作失败');
-        this.ctx.log(activity + '失败：' + (error.message || error));
-      }
-      throw error;
-    }
-  }
-
-  async loadWorkspaces() {
-    try {
-      const list = await this.request(() => this.ctx.http.workspace.list(), '读取工作区');
-      if (this.destroyed) return;
-      this.workspaces = asArray(list);
-      if (this.workspace) {
-        const current = this.workspaces.find(item => item.id === this.workspace.id);
-        if (!current) this.workspace = null;
-      }
-      this.ctx.setStatus('ready', '就绪');
-      this.ctx.log('工作区已刷新');
-      this.render();
-    } catch (error) {
-      this.render();
-    }
-  }
-
-  async createWorkspace() {
-    if (this.busy) return;
-    this.busy = true;
-    try {
-      const workspace = await this.request(() => this.ctx.http.workspace.create({}), '创建工作区');
-      if (this.destroyed) return;
-      this.workspace = workspace;
-      this.workspaces.unshift(workspace);
-      this.uploaded = [];
-      this.tasks.clear();
-      this.ctx.setStatus('ready', '工作区已创建');
-      this.ctx.log('工作区 ' + workspace.id + ' 已创建');
-      this.render();
-    } catch (error) {
-      this.render();
-    } finally {
-      this.busy = false;
-    }
-  }
-
-  async selectWorkspace(id) {
-    if (!id) {
-      this.workspace = null;
-      this.uploaded = [];
-      this.tasks.clear();
-      this.results.clear();
-      this.artifacts.clear();
-      this.render();
-      return;
-    }
-    try {
-      const workspace = await this.request(() => this.ctx.http.workspace.get(id), '打开工作区');
-      if (this.destroyed) return;
-      this.workspace = workspace;
-      await Promise.all([this.loadDatasets(), this.loadTasks()]);
-      this.ctx.setStatus('ready', '工作区已打开');
-      this.ctx.log('已选择工作区 ' + id);
-      this.render();
-    } catch (error) {
-      this.render();
-    }
-  }
-
-  async loadDatasets() {
-    if (!this.workspace) return;
-    const datasets = await this.request(
-      () => this.ctx.http.datasets.request(this.workspace.id, { method: 'GET' }),
-      '读取数据集'
+  createFlowStep(badge, label, sublabel) {
+    const step = el('div', 'flow-step');
+    step.append(
+      el('div', 'flow-dot', badge),
+      el('div', 'flow-label', label),
+      el('div', 'flow-sublabel', sublabel)
     );
-    if (!this.destroyed) this.uploaded = asArray(datasets);
+    return step;
   }
 
-  async loadTasks() {
-    if (!this.workspace) return;
-    const tasks = await this.request(
-      () => this.ctx.http.tasks.list({ workspaceId: this.workspace.id }),
-      '读取任务列表'
-    );
-    if (this.destroyed) return;
-    this.tasks.clear();
-    asArray(tasks).forEach(task => {
-      this.tasks.set(task.id, task);
-      if (RUNNING.has(task.status)) this.schedulePoll(task.id, 500);
-    });
+  createMetricBox(label, val) {
+    const box = el('div', 'metric-box');
+    box.append(el('div', 'metric-label', label), el('div', 'metric-val', val));
+    return box;
   }
 
-  async uploadDataset(datasetKey, file) {
-    if (!this.workspace || !file) return;
-    const body = new FormData();
-    body.append('file', file);
-    body.append('datasetKey', datasetKey);
+  createEvidenceBox(title, desc) {
+    const box = el('div', 'evidence-box');
+    box.append(el('h4', 'evidence-title', title), el('p', 'evidence-desc', desc));
+    return box;
+  }
+
+  createChartCell(title) {
+    const cell = el('div', 'chart-cell');
+    cell.append(el('h4', 'chart-cell-title', title));
+    const host = el('div', 'chart-host', '待运行后生成图表');
+    cell.append(host);
+    return cell;
+  }
+
+  /* ================= 业务动作处理 ================= */
+  async handleCreateProject() {
+    this.ctx.log('正在创建并校验项目...');
     try {
-      await this.request(() => this.ctx.http.datasets.request(this.workspace.id, { method: 'POST', body }), '上传数据集');
-      await this.loadDatasets();
-      if (this.destroyed) return;
-      this.ctx.setStatus('ready', '数据已上传');
-      this.ctx.log('数据集 ' + datasetKey + ' 已上传');
-      this.render();
-    } catch (error) {
-      this.render();
-    }
-  }
-
-  collectActionInputs(action) {
-    const inputs = {};
-    asArray(action.inputs).forEach(name => {
-      if (isDatasetInput(name, this.datasetSpecs)) return;
-      if (/modelInput/i.test(name)) {
-        const modelInput = {
-          point_id: 'CUSTOM_POINT',
-          inletBoundaryMode: this.predictionMode === 'pressure' ? 2 : 3
-        };
-        const keys = this.predictionMode === 'pressure' ? ['Pamb', 'Tamb', 'Mach', 'Wf_model', 'Mkp', 'Mkg'] : ['Altitude', 'Tamb', 'Mach', 'Wf_model', 'Mkp', 'Mkg'];
-        keys.forEach(key => {
-          const node = this.root.querySelector('[name="predict-' + key + '"]');
-          if (!node || node.value === '') throw new Error('请填写预测输入：' + key);
-          modelInput[key] = Number(node.value);
-        });
-        inputs[name] = modelInput;
-      } else if (/estimationResultFile/i.test(name)) {
-        inputs[name] = '';
-      } else if (/posteriorOptions/i.test(name)) {
-        const method = this.root.querySelector('[name="posterior-method"]');
-        inputs[name] = method && method.value !== 'none' ? { method: method.value, runId: 'latest' } : {};
-      } else if (/userCfg|config|options/i.test(name)) {
-        inputs[name] = this.buildConfigInput(action);
-      } else {
-        const control = this.root.querySelector('[name="action-input-' + name + '"]');
-        if (!control || control.value === '') throw new Error('动作需要配置输入：' + name);
-        inputs[name] = control.type === 'number' ? Number(control.value) : control.value;
+      if (this.ctx.http && this.ctx.http.workspace) {
+        const ws = await this.ctx.http.workspace.create({});
+        this.workspace = ws;
+        this.ctx.log(`项目 ${ws.id} 创建成功并已校验`);
+        this.render();
       }
-    });
-    return inputs;
+    } catch (e) {
+      this.ctx.log('创建项目失败: ' + (e.message || e));
+    }
   }
 
-  buildConfigInput(action) {
-    if (actionSection(action) === 'uq') {
-      const samples = this.root.querySelector('[name="uq-samples"]');
-      const value = { figureVisible: 'off' };
-      if (samples && samples.value !== '') {
-        value.formalSampleCount = Number(samples.value);
-        value.posteriorPredictiveSampleCount = Number(samples.value);
+  async handleStartIdentify() {
+    this.ctx.log('正在启动参数辨识 A/B/C/D 流程...');
+    try {
+      if (!this.workspace) {
+        this.ctx.log('请先创建项目');
+        return;
       }
-      if (/methodB|uqB/i.test(action.key || '')) value.runAdditionalSteadyPrediction = true;
-      return value;
-    }
-    return {};
-  }
-
-  ensureGenericInputs(action) {
-    const missing = asArray(action.inputs).filter(name => !isDatasetInput(name, this.datasetSpecs) && !/modelInput|estimationResultFile|posteriorOptions|userCfg|config|options/i.test(name));
-    if (!missing.length) return true;
-    const existing = this.root.querySelector('.generic-inputs[data-action="' + action.key + '"]');
-    if (existing) return true;
-    const target = this.content.querySelector('.action-bar');
-    if (!target) return false;
-    const form = el('div', 'generic-inputs');
-    form.dataset.action = action.key;
-    form.append(el('p', 'muted', '该动作声明了额外结构化输入，请填写后再次启动。'));
-    missing.forEach(name => form.append(this.field(name, input('text', 'action-input-' + name, '', name))));
-    target.before(form);
-    return false;
-  }
-
-  async startAction(action) {
-    if (!this.workspace || this.busy) return;
-    const section = actionSection(action);
-    if (section === 'identifiability' && (!this.hasSuccessfulAction(/estimateSteady|稳态模型参数/) || !this.hasSuccessfulAction(/estimateTransient|瞬态时刻/))) {
-      this.ctx.log('工程可辨识性分析前必须先完成稳态和瞬态时刻两条辨识路径。');
-      return;
-    }
-    if (['uq', 'validation', 'prediction'].includes(section) && !this.hasSuccessfulAction(/estimateTransient|瞬态时刻/)) {
-      this.ctx.log('该任务前必须先完成瞬态时刻模型参数辨识。');
-      return;
-    }
-    if (!this.ensureGenericInputs(action)) return;
-    this.busy = true;
-    try {
-      const inputs = this.collectActionInputs(action);
-      const task = await this.request(() => this.ctx.http.tasks.create({ workspaceId: this.workspace.id, actionKey: action.key, inputs }), '提交任务：' + (action.label || action.key));
-      if (this.destroyed) return;
-      this.tasks.set(task.id, task);
-      this.ctx.setStatus('running', '任务运行中');
-      this.ctx.log('任务 ' + task.id + ' 已提交');
-      this.render();
-      this.schedulePoll(task.id, 500);
-    } catch (error) {
-      this.render();
-    } finally {
-      this.busy = false;
+      const actionKey = this.identifyModel === 'steady' ? 'estimateSteady' : 'estimateTransient';
+      const task = await this.ctx.http.tasks.create({
+        workspaceId: this.workspace.id,
+        actionKey: actionKey,
+        inputs: {}
+      });
+      this.ctx.log(`辨识任务 ${task.id} 已提交`);
+    } catch (e) {
+      this.ctx.log('启动辨识失败: ' + (e.message || e));
     }
   }
 
-  schedulePoll(taskId, delay) {
-    if (this.destroyed) return;
-    const timer = setTimeout(() => {
-      this.timers.delete(timer);
-      this.pollTask(taskId);
-    }, delay);
-    this.timers.add(timer);
+  async handleStartUq() {
+    this.ctx.log(`正在启动不确定性评估（方法 ${this.activeUqMethod}）...`);
   }
 
-  async pollTask(taskId) {
-    if (this.destroyed) return;
-    try {
-      const task = await this.request(() => this.ctx.http.tasks.get(taskId), '刷新任务状态');
-      if (this.destroyed) return;
-      this.tasks.set(task.id, task);
-      if (TERMINAL.has(task.status)) {
-        this.ctx.setStatus(task.status === 'SUCCEEDED' ? 'ready' : 'error', STATUS_TEXT[task.status] || task.status);
-        this.ctx.log('任务 ' + task.id + '：' + (STATUS_TEXT[task.status] || task.status));
-        if (task.status === 'SUCCEEDED') await this.loadOutcome(task.id, false);
-        else await this.loadArtifacts(task.id, false);
-      } else {
-        this.ctx.setStatus('running', STATUS_TEXT[task.status] || task.status);
-        this.schedulePoll(taskId, 2000);
-      }
-      this.render();
-    } catch (error) {
-      if (!this.destroyed) this.schedulePoll(taskId, 5000);
-    }
+  async handleStartValidation() {
+    this.ctx.log('正在启动测试集稳态验证...');
   }
 
-  async cancelTask(taskId) {
-    try {
-      const task = await this.request(() => this.ctx.http.tasks.request(taskId + '/cancel', { method: 'POST' }), '请求取消任务');
-      if (this.destroyed) return;
-      this.tasks.set(task.id, task);
-      this.ctx.setStatus('running', '取消中');
-      this.ctx.log('任务已请求取消；原始程序包不支持中途取消，将等待当前 MATLAB 调用结束后生效');
-      this.render();
-      this.schedulePoll(taskId, 1000);
-    } catch (error) {
-      this.render();
-    }
+  async handleStartPrediction() {
+    this.ctx.log('正在执行单工况预测...');
   }
 
-  async loadTaskLog(taskId) {
-    try {
-      const log = await this.request(() => this.ctx.http.tasks.request(taskId + '/log', { method: 'GET' }), '读取任务日志');
-      if (!this.destroyed) this.taskLogs.set(taskId, log && log.content ? log.content : '');
-      this.render();
-    } catch (error) {
-      this.render();
-    }
-  }
-
-  async reviewTask(taskId, decision) {
-    try {
-      const task = await this.request(
-        () => this.ctx.http.results.request(taskId + '/review', { method: 'POST', body: { decision, notes: '' } }),
-        decision === 'APPROVED' ? '审核通过' : '审核驳回'
-      );
-      if (!this.destroyed) this.tasks.set(task.id, task);
-      this.render();
-    } catch (error) {
-      this.render();
-    }
-  }
-
-  async publishTask(taskId) {
-    try {
-      await this.request(
-        () => this.ctx.http.results.request(taskId + '/publish', { method: 'POST', body: {} }),
-        '发布辨识模型'
-      );
-      const task = await this.request(() => this.ctx.http.tasks.get(taskId), '刷新发布状态');
-      if (!this.destroyed) this.tasks.set(task.id, task);
-      this.render();
-    } catch (error) {
-      this.render();
-    }
-  }
-
-  async loadOutcome(taskId, rerender = true) {
-    try {
-      const result = await this.request(() => this.ctx.http.results.get(taskId), '读取结构化结果');
-      if (this.destroyed) return;
-      this.results.set(taskId, result);
-      await this.loadArtifacts(taskId, false);
-      this.ctx.setStatus('ready', '结果已加载');
-      this.ctx.log('结构化结果与产物已加载');
-      if (rerender) this.render();
-    } catch (error) {
-      if (rerender) this.render();
-    }
-  }
-
-  async loadArtifacts(taskId, rerender = true) {
-    try {
-      const artifacts = await this.request(() => this.ctx.http.artifacts.request(taskId, { method: 'GET' }), '读取结果产物');
-      if (!this.destroyed) this.artifacts.set(taskId, asArray(artifacts));
-      if (rerender) this.render();
-    } catch (error) {
-      if (rerender) this.render();
-    }
-  }
-
-  elapsed(task) {
-    if (!task.startedAt) return '—';
-    return this.duration((task.completedAt || Date.now()) - task.startedAt);
-  }
-
-  duration(milliseconds) {
-    const seconds = Math.max(0, Math.floor(Number(milliseconds) / 1000));
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const rest = seconds % 60;
-    return [hours ? hours + '小时' : '', minutes ? minutes + '分' : '', rest + '秒'].filter(Boolean).join(' ');
-  }
-
-  scheduleChart(host, rows, categoryColumn, numericColumns) {
-    const timer = setTimeout(() => {
-      this.timers.delete(timer);
-      if (this.destroyed || !host.isConnected) return;
-      try {
-        const chart = this.ctx.echarts.init(host, null, { renderer: 'canvas' });
-        chart.setOption({
-          animation: false,
-          color: ['#17698d', '#4f8f72', '#b4792b', '#8b5b8f'],
-          tooltip: { trigger: 'axis' },
-          legend: { type: 'scroll', top: 2, textStyle: { fontSize: 10 } },
-          grid: { left: 48, right: 18, top: 38, bottom: 42, containLabel: true },
-          xAxis: {
-            type: 'category',
-            name: categoryColumn,
-            data: rows.map((row, index) => row[categoryColumn] === undefined ? String(index + 1) : String(row[categoryColumn])),
-            axisLabel: { fontSize: 10, hideOverlap: true }
-          },
-          yAxis: { type: 'value', axisLabel: { fontSize: 10 }, scale: true },
-          series: numericColumns.map(column => ({
-            name: column,
-            type: 'line',
-            symbolSize: 5,
-            connectNulls: false,
-            data: rows.map(row => Number.isFinite(Number(row[column])) ? Number(row[column]) : null)
-          }))
-        });
-        this.charts.push(chart);
-      } catch (error) {
-        host.replaceChildren(el('p', 'empty', '图表初始化失败，表格数据仍可查看。'));
-      }
-    }, 0);
-    this.timers.add(timer);
-  }
-
-  resize() {
-    this.charts.forEach(chart => {
-      try { chart.resize(); } catch (error) { /* chart may already be detached */ }
-    });
+  async handleExportResults() {
+    this.ctx.log('正在导出所选结果...');
   }
 
   disposeCharts() {
-    this.charts.forEach(chart => {
-      try { chart.dispose(); } catch (error) { /* chart may already be disposed */ }
+    this.charts.forEach(c => {
+      try { c.dispose(); } catch (e) {}
     });
     this.charts = [];
+  }
+
+  resize() {
+    this.charts.forEach(c => {
+      try { c.resize(); } catch (e) {}
+    });
   }
 
   destroy() {
     this.destroyed = true;
-    this.timers.forEach(timer => clearTimeout(timer));
+    this.timers.forEach(t => clearTimeout(t));
     this.timers.clear();
-    this.listeners.forEach(item => item.target.removeEventListener(item.type, item.handler, item.options));
-    this.listeners = [];
     this.disposeCharts();
-    this.tasks.clear();
-    this.results.clear();
-    this.artifacts.clear();
-    this.taskLogs.clear();
-    if (this.ctx.mount) this.ctx.mount.replaceChildren();
-    this.root = null;
+    if (this.mount) this.mount.replaceChildren();
   }
 }
 

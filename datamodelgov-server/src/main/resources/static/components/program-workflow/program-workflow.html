@@ -1,27 +1,49 @@
 <div class="workflow-shell">
-  <header class="workflow-header">
-    <div class="program-heading">
-      <span class="program-mark" aria-hidden="true"></span>
-      <div class="program-titles">
-        <span class="program-title" id="programTitle">MATLAB 程序工作流</span>
-        <span class="program-meta" id="programMeta"></span>
+  <aside class="workflow-sidebar">
+    <div class="sidebar-block platform-block">
+      <div class="platform-logo">
+        <span class="platform-dot" aria-hidden="true"></span>
+        <span class="platform-name">个性化性能数字模型平台</span>
       </div>
     </div>
-    <div class="header-actions">
-      <span class="status" id="workflowStatus" data-state="idle"><span class="status-dot"></span><span id="statusText">待加载</span></span>
-      <button class="window-button" id="fullscreenBtn" type="button" title="全屏显示" aria-label="全屏显示">
-        <span class="fullscreen-icon" aria-hidden="true"></span>
-      </button>
-      <button class="window-button close-button" id="closeBtn" type="button" title="关闭" aria-label="关闭">&times;</button>
+    <div class="sidebar-block current-function">
+      <div class="block-label">当前功能</div>
+      <div class="current-name" id="currentFunctionName">稳态试车工况点模型<br>自适应修正</div>
     </div>
-  </header>
-  <main class="workflow-body">
-    <div class="plugin-host" id="pluginHost" aria-live="polite">
-      <div class="shell-message" id="shellMessage">请选择程序以加载工作流</div>
+    <div class="sidebar-block flow-nav">
+      <div class="block-label">功能流程</div>
+      <nav class="nav-list" id="workflowNav"></nav>
+    </div>
+    <div class="sidebar-block env-status">
+      <div class="status-line">
+        <span class="status-dot" id="envDot"></span>
+        <span class="status-text" id="envStatusText">计算环境就绪</span>
+      </div>
+      <div class="status-note" id="envStatusNote">模型与数据状态随项目更新</div>
+    </div>
+  </aside>
+  <main class="workflow-right">
+    <header class="workflow-topbar">
+      <div class="topbar-title" id="topbarTitle">发动机个性化性能数字模型平台</div>
+      <div class="topbar-meta">
+        <span class="meta-tag" id="topbarFunction">功能: 稳态试车工况点模型修正V1</span>
+        <span class="meta-tag" id="topbarProject">当前项目: 未创建</span>
+        <button class="topbar-btn" type="button" id="helpBtn">帮助</button>
+        <button class="topbar-btn" type="button" id="fullscreenBtn">全屏</button>
+        <button class="topbar-btn" type="button" id="exitBtn">退出</button>
+      </div>
+    </header>
+    <div class="workflow-header">
+      <div class="header-main">
+        <h1 class="page-title" id="pageTitle">—</h1>
+        <p class="page-desc" id="pageDesc">—</p>
+      </div>
+      <div class="header-actions" id="pageActions"></div>
+    </div>
+    <div class="workflow-content">
+      <div class="plugin-host" id="pluginHost" aria-live="polite">
+        <div class="shell-message" id="shellMessage">请选择程序以加载工作流</div>
+      </div>
     </div>
   </main>
-  <footer class="workflow-footer">
-    <span class="log-label">日志</span>
-    <span class="footer-log" id="footerLog">工作流尚未加载</span>
-  </footer>
 </div>

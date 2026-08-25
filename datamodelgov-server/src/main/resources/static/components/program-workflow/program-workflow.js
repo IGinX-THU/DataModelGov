@@ -6,6 +6,8 @@ class ProgramWorkflow extends HTMLElement {
     this.program = null;
     this.pluginInstance = null;
     this.pluginContainer = null;
+    this.sections = [];
+    this.activeSection = null;
     this._initialized = false;
     this._destroyed = false;
     this._isFullscreen = false;
@@ -15,14 +17,10 @@ class ProgramWorkflow extends HTMLElement {
 
   connectedCallback() {
     if (!this._resourcesReady) this._resourcesReady = this.loadResources();
-    this._resourcesReady.catch(error => {
-      console.error('加载程序工作流资源失败:', error);
-    });
+    this._resourcesReady.catch(error => console.error('加载程序工作流资源失败:', error));
   }
 
-  disconnectedCallback() {
-    this.destroy();
-  }
+  disconnectedCallback() { this.destroy(); }
 
   async loadResources() {
     const base = 'components/program-workflow/';
@@ -37,12 +35,20 @@ class ProgramWorkflow extends HTMLElement {
     template.innerHTML = await response.text();
     this.shadowRoot.appendChild(template.content.cloneNode(true));
 
-    this.titleEl = this.shadowRoot.getElementById('programTitle');
-    this.metaEl = this.shadowRoot.getElementById('programMeta');
-    this.statusEl = this.shadowRoot.getElementById('workflowStatus');
-    this.statusTextEl = this.shadowRoot.getElementById('statusText');
+    this.currentFunctionName = this.shadowRoot.getElementById('currentFunctionName');
+    this.workflowNav = this.shadowRoot.getElementById('workflowNav');
+    this.envDot = this.shadowRoot.getElementById('envDot');
+    this.envStatusText = this.shadowRoot.getElementById('envStatusText');
+    this.envStatusNote = this.shadowRoot.getElementById('envStatusNote');
+    this.topbarTitle = this.shadowRoot.getElementById('topbarTitle');
+    this.topbarFunction = this.shadowRoot.getElementById('topbarFunction');
+    this.topbarProject = this.shadowRoot.getElementById('topbarProject');
+    this.pageTitle = this.shadowRoot.getElementById('pageTitle');
+    this.pageDesc = this.shadowRoot.getElementById('pageDesc');
+    this.pageActions = this.shadowRoot.getElementById('pageActions');
     this.pluginHost = this.shadowRoot.getElementById('pluginHost');
-    this.footerLog = this.shadowRoot.getElementById('footerLog');
+    this.shellMessage = this.shadowRoot.getElementById('shellMessage');
+
     this.bindEvents();
     this._initialized = true;
     this._destroyed = false;
@@ -54,13 +60,21 @@ class ProgramWorkflow extends HTMLElement {
       this.dispatchEvent(new CustomEvent('workflow-close', { bubbles: true, composed: true }));
     };
     this._fullscreenHandler = () => this.toggleFullscreen();
-    this._keyHandler = event => {
-      if (event.key === 'Escape' && this._isFullscreen) this.toggleFullscreen(false);
-    };
+    this._keyHandler = event => { if (event.key === 'Escape' && this._isFullscreen) this.toggleFullscreen(false); };
     this._resizeHandler = () => this.notifyPluginResize();
 
-    this.shadowRoot.getElementById('closeBtn').addEventListener('click', this._closeHandler);
-    this.shadowRoot.getElementById('fullscreenBtn').addEventListener('click', this._fullscreenHandler);
+    const exitBtn = this.shadowRoot.getElementById('exitBtn');
+    const helpBtn = this.shadowRoot.getElementById('helpBtn');
+    const fullscreenBtn = this.shadowRoot.getElementById('fullscreenBtn');
+    if (exitBtn) exitBtn.addEventListener('click', this._closeHandler);
+    if (fullscreenBtn) fullscreenBtn.addEventListener('click', this._fullscreenHandler);
+    if (helpBtn) helpBtn.addEventListener('click', () => {
+      if (this.pluginInstance && typeof this.pluginInstance.onHelp === 'function') {
+        this.pluginInstance.onHelp();
+      } else {
+        this.setLog('帮助功能已调用');
+      }
+    });
     document.addEventListener('keydown', this._keyHandler);
     window.addEventListener('resize', this._resizeHandler);
   }
@@ -73,10 +87,8 @@ class ProgramWorkflow extends HTMLElement {
     const version = details.version || this.getAttribute('data-version');
     const projectName = details.projectName || this.getAttribute('data-project');
     const config = details.config || this.programConfig;
-    if (name && version) {
-      return this.loadProgram(name, version, projectName, config);
-    }
-    this.setStatus('idle', '待加载');
+    if (name && version) return this.loadProgram(name, version, projectName, config);
+    this.setEnvStatus('idle', '待加载');
     this.renderMessage('请选择程序以加载工作流');
     return null;
   }
@@ -93,10 +105,8 @@ class ProgramWorkflow extends HTMLElement {
     this.destroyExtension();
     if (this._keyHandler) document.removeEventListener('keydown', this._keyHandler);
     if (this._resizeHandler) window.removeEventListener('resize', this._resizeHandler);
-    const closeButton = this.shadowRoot.getElementById('closeBtn');
-    const fullscreenButton = this.shadowRoot.getElementById('fullscreenBtn');
-    if (closeButton && this._closeHandler) closeButton.removeEventListener('click', this._closeHandler);
-    if (fullscreenButton && this._fullscreenHandler) fullscreenButton.removeEventListener('click', this._fullscreenHandler);
+    const exitBtn = this.shadowRoot.getElementById('exitBtn');
+    if (exitBtn && this._closeHandler) exitBtn.removeEventListener('click', this._closeHandler);
     this.programConfig = null;
     this.program = null;
     this._destroyed = true;
@@ -105,19 +115,16 @@ class ProgramWorkflow extends HTMLElement {
   async ensureReady() {
     if (!this._resourcesReady) this._resourcesReady = this.loadResources();
     await this._resourcesReady;
-    if (this._destroyed && this._initialized) {
-      this.bindEvents();
-      this._destroyed = false;
-    }
+    if (this._destroyed && this._initialized) { this.bindEvents(); this._destroyed = false; }
   }
 
   async loadProgram(name, version, projectName, preloadedConfig) {
     if (name && typeof name === 'object') {
-      const details = name;
-      name = details.name;
-      version = details.version;
-      projectName = details.projectName;
-      preloadedConfig = details.config;
+      const d = name;
+      name = d.name;
+      version = d.version;
+      projectName = d.projectName;
+      preloadedConfig = d.config;
     }
     if (!name || !version) throw new Error('程序名称和版本不能为空');
 
@@ -133,8 +140,7 @@ class ProgramWorkflow extends HTMLElement {
     this.program = { name, version, projectName: currentProject || null };
     this.programConfig = null;
     this.destroyExtension();
-    this.updateHeader();
-    this.setStatus('loading', '加载中');
+    this.setEnvStatus('loading', '计算环境加载中');
     this.setLog('正在加载程序配置');
     this.renderMessage('正在加载工作流插件...');
 
@@ -152,23 +158,19 @@ class ProgramWorkflow extends HTMLElement {
       if (sequence !== this._loadSequence) return null;
 
       this.programConfig = config;
-      const extension = config.ui && config.ui.extension;
-      if (!extension || extension.enabled === false || !extension.entry) {
-        throw new Error('程序配置必须提供已启用的 ui.extension.entry');
-      }
 
       await this.loadECharts();
       if (sequence !== this._loadSequence) return null;
-      await this.loadExtension(extension, sequence);
+      await this.loadExtension(config, sequence);
       if (sequence !== this._loadSequence) return null;
-      this.setStatus('ready', '就绪');
-      this.setLog(`工作流插件 ${extension.entry} 已加载`);
+      this.setEnvStatus('ready', '计算环境就绪');
+      this.setLog('工作流已加载');
       return this.programConfig;
     } catch (error) {
       if (sequence !== this._loadSequence) return null;
       console.error('加载程序工作流失败:', error);
       this.destroyExtension();
-      this.setStatus('error', '加载失败');
+      this.setEnvStatus('error', '计算环境异常');
       this.setLog('工作流加载失败: ' + (error.message || error));
       this.renderMessage('无法加载程序工作流：' + (error.message || error), true);
       return null;
@@ -176,10 +178,7 @@ class ProgramWorkflow extends HTMLElement {
   }
 
   async loadECharts() {
-    if (window.echarts) {
-      this.echarts = window.echarts;
-      return;
-    }
+    if (window.echarts) { this.echarts = window.echarts; return; }
     if (!ProgramWorkflow.echartsPromise) {
       ProgramWorkflow.echartsPromise = new Promise((resolve, reject) => {
         const script = document.createElement('script');
@@ -193,8 +192,118 @@ class ProgramWorkflow extends HTMLElement {
     this.echarts = window.echarts;
   }
 
-  async loadExtension(extension, sequence) {
+  getSections() {
+    return [
+      {
+        id: 'data',
+        title: '新建项目与数据',
+        hint: '在一个页面内完成项目建立、测量数据检查、辅助变量计算和训练工况分组。',
+        actions: [{ label: '字段说明' }, { label: '创建并校验项目', primary: true }]
+      },
+      {
+        id: 'identify',
+        title: '参数辨识',
+        hint: '默认采用瞬态时刻模型；路径、正则化配置、辨识流程和结果集中在一个页面。',
+        actions: [{ label: '恢复默认配置' }, { label: '开始辨识', primary: true }]
+      },
+      {
+        id: 'identifiability',
+        title: '可辨识性',
+        hint: '同时展示整体信息质量、逐参数分类和主要补偿参数，帮助判断辨识结果能否独立解释。',
+        actions: [{ label: '切换分析对象' }, { label: '生成分析报告', primary: true }]
+      },
+      {
+        id: 'uq',
+        title: '不确定性评估',
+        hint: '分别评估关键修正系数和全部修正系数，并给出参数95%置信区间及预测影响。',
+        actions: [{ label: '评估配置' }, { label: '开始评估', primary: true }]
+      },
+      {
+        id: 'validation',
+        title: '测试验证',
+        hint: '仅使用稳态模型，在独立测试工况上比较零修正模型、稳态辨识模型和测量数据。',
+        actions: [{ label: '选择辨识结果' }, { label: '开始验证', primary: true }]
+      },
+      {
+        id: 'prediction',
+        title: '工况预测',
+        hint: '输入单个新工况，在无测量输出条件下给出稳态辨识模型预测和后验95%置信区间。',
+        actions: [{ label: '选择模型' }, { label: '运行预测', primary: true }]
+      },
+      {
+        id: 'results',
+        title: '结果中心',
+        hint: '按项目和任务组织辨识、可辨识性、不确定、验证与预测结果。',
+        actions: [{ label: '打开结果目录' }, { label: '导出所选结果', primary: true }]
+      }
+    ];
+  }
+
+  renderShell() {
+    const ui = (this.programConfig && this.programConfig.ui) || {};
+    if (this.topbarTitle) this.topbarTitle.textContent = '发动机个性化性能数字模型平台';
+    if (this.topbarFunction) this.topbarFunction.textContent = '功能: ' + (ui.title || (this.program && this.program.name) || '稳态试车工况点模型修正V1');
+    if (this.topbarProject) {
+      const p = this.program && this.program.projectName;
+      this.topbarProject.textContent = '当前项目: ' + (p ? p : '未创建');
+    }
+    if (this.currentFunctionName) {
+      this.currentFunctionName.innerHTML = '稳态试车工况点模型<br>自适应修正';
+    }
+
+    this.sections = this.getSections();
+    if (!this.activeSection) this.activeSection = this.sections[0];
+
+    this.workflowNav.replaceChildren();
+    this.sections.forEach((section, index) => {
+      const item = document.createElement('button');
+      item.className = 'nav-item' + (section.id === this.activeSection.id ? ' active' : '');
+      item.type = 'button';
+      item.append(el('span', 'nav-index', String(index + 1)));
+      item.append(el('span', 'nav-label', section.title));
+      item.addEventListener('click', () => this.setActiveSection(section.id));
+      this.workflowNav.appendChild(item);
+    });
+    this.updatePageHeader();
+  }
+
+  updatePageHeader() {
+    const section = this.activeSection || this.sections[0] || {};
+    this.pageTitle.textContent = section.title || '—';
+    this.pageDesc.textContent = section.hint || '';
+    this.pageActions.replaceChildren();
+    (section.actions || []).forEach(a => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = a.primary ? 'btn primary' : 'btn';
+      btn.textContent = a.label;
+      btn.addEventListener('click', () => {
+        if (this.pluginInstance && typeof this.pluginInstance.onHeaderAction === 'function') {
+          this.pluginInstance.onHeaderAction(a.label, section.id);
+        } else {
+          this.setLog('操作：' + a.label);
+        }
+      });
+      this.pageActions.appendChild(btn);
+    });
+  }
+
+  async setActiveSection(id) {
+    this.activeSection = this.sections.find(s => s.id === id) || this.sections[0];
+    this.workflowNav.querySelectorAll('.nav-item').forEach((item, index) => {
+      item.classList.toggle('active', this.sections[index].id === this.activeSection.id);
+    });
+    this.updatePageHeader();
+    if (this.pluginInstance && typeof this.pluginInstance.setSection === 'function') {
+      try { await this.pluginInstance.setSection(this.activeSection.id); } catch (e) { console.warn('setSection 失败:', e); }
+    }
+  }
+
+  async loadExtension(config, sequence) {
     this.destroyExtension();
+    const extension = config.ui && config.ui.extension;
+    if (!extension || extension.enabled === false || !extension.entry) throw new Error('程序配置必须提供已启用的 ui.extension.entry');
+
     const baseUrl = window.AppConfig.getApiUrl('program', 'plugin');
     const token = window.AppConfig.getToken ? window.AppConfig.getToken() : localStorage.getItem('jwtToken');
     const query = token ? `?token=${encodeURIComponent(token)}` : '';
@@ -217,28 +326,23 @@ class ProgramWorkflow extends HTMLElement {
     }
     const mount = document.createElement('div');
     mount.className = 'plugin-mount';
-    mount.style.cssText = 'display:flex;flex:1;min-width:0;min-height:0;';
+    mount.style.cssText = 'display:flex;width:100%;min-width:0;min-height:0;flex-direction:column;';
     pluginShadow.appendChild(mount);
     this.pluginHost.replaceChildren(container);
     this.pluginContainer = container;
     this.pluginShadow = pluginShadow;
 
+    this.renderShell();
+
     try {
+      this.activeSection = this.sections[0];
       const context = this.buildPluginContext(pluginShadow, mount);
       let instance;
-      try {
-        instance = new Plugin(context);
-      } catch (error) {
-        if (!/not a constructor/i.test(error && error.message)) throw error;
-        instance = Plugin(context);
-      }
+      try { instance = new Plugin(context); } catch (error) { if (!/not a constructor/i.test(error && error.message)) throw error; instance = Plugin(context); }
       if (instance && typeof instance.then === 'function') instance = await instance;
       this.pluginInstance = instance || null;
       if (instance && typeof instance.init === 'function') await instance.init(context);
-      if (sequence !== this._loadSequence) {
-        this.destroyExtension();
-        return;
-      }
+      if (sequence !== this._loadSequence) { this.destroyExtension(); return; }
     } catch (error) {
       this.destroyExtension();
       throw new Error(`插件 ${pluginId} 初始化失败: ${error.message || error}`);
@@ -246,9 +350,12 @@ class ProgramWorkflow extends HTMLElement {
   }
 
   buildPluginContext(shadow, mount) {
+    const section = this.activeSection || this.sections[0] || {};
     return Object.freeze({
-      mount,
-      shadow,
+      mount, shadow,
+      activeSectionId: section.id,
+      sections: this.sections,
+      setSection: id => this.setActiveSection(id),
       program: Object.freeze({ ...this.program }),
       metadata: Object.freeze({ ...this.program }),
       config: this.programConfig,
@@ -261,7 +368,7 @@ class ProgramWorkflow extends HTMLElement {
         artifacts: this.createHttpNamespace('artifacts')
       }),
       log: message => this.setLog(message),
-      setStatus: (state, text) => this.setStatus(state, text)
+      setStatus: (state, text) => this.setEnvStatus(state, text)
     });
   }
 
@@ -271,7 +378,6 @@ class ProgramWorkflow extends HTMLElement {
       const baseUrl = (window.AppConfig.api && window.AppConfig.api.baseURL) || '';
       let url = `${baseUrl}/api/program/workflow/${namespace}`;
       if (cleanPath) url += '/' + cleanPath.split('/').map(encodeURIComponent).join('/');
-
       const query = {
         name: this.program.name,
         version: this.program.version,
@@ -280,7 +386,6 @@ class ProgramWorkflow extends HTMLElement {
       };
       const queryString = new URLSearchParams(Object.entries(query).filter(([, value]) => value !== undefined && value !== null)).toString();
       if (queryString) url += '?' + queryString;
-
       const requestOptions = { ...options };
       delete requestOptions.query;
       if (requestOptions.body instanceof FormData) {
@@ -290,12 +395,9 @@ class ProgramWorkflow extends HTMLElement {
         if (!response.ok) throw new Error(`请求失败: HTTP ${response.status}`);
         return response.json();
       }
-      if (requestOptions.body !== undefined && this.isPlainObject(requestOptions.body)) {
-        requestOptions.body = JSON.stringify(requestOptions.body);
-      }
+      if (requestOptions.body !== undefined && this.isPlainObject(requestOptions.body)) requestOptions.body = JSON.stringify(requestOptions.body);
       return window.AppConfig.request(url, requestOptions);
     };
-
     const download = async (path, fileName, query = {}) => {
       const cleanPath = String(path || '').replace(/^\/+/, '');
       const baseUrl = (window.AppConfig.api && window.AppConfig.api.baseURL) || '';
@@ -316,46 +418,27 @@ class ProgramWorkflow extends HTMLElement {
       anchor.click();
       setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
     };
-
-    return Object.freeze({
-      request,
-      list: query => request('', { method: 'GET', query }),
-      get: (id, query) => request(id, { method: 'GET', query }),
-      create: (data, query) => request('', { method: 'POST', body: data, query }),
-      update: (id, data, query) => request(id, { method: 'PUT', body: data, query }),
-      remove: (id, query) => request(id, { method: 'DELETE', query }),
-      download
-    });
+    return Object.freeze({ request, list: query => request('', { method: 'GET', query }), get: (id, query) => request(id, { method: 'GET', query }), create: (data, query) => request('', { method: 'POST', body: data, query }), update: (id, data, query) => request(id, { method: 'PUT', body: data, query }), remove: (id, query) => request(id, { method: 'DELETE', query }), download });
   }
 
-  isPlainObject(value) {
-    return value !== null && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype;
-  }
+  isPlainObject(value) { return value !== null && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype; }
 
   getProjectName() {
     const username = window.AppConfig.getUsername ? window.AppConfig.getUsername() : localStorage.getItem('username');
     if (!username) return null;
-    try {
-      const project = JSON.parse(localStorage.getItem('currentProject_' + username) || 'null');
-      return project && project.name ? project.name : null;
-    } catch (error) {
-      console.warn('读取当前项目失败:', error);
-      return null;
-    }
+    try { const project = JSON.parse(localStorage.getItem('currentProject_' + username) || 'null'); return project && project.name ? project.name : null; }
+    catch (error) { console.warn('读取当前项目失败:', error); return null; }
   }
 
   destroyExtension() {
     const instance = this.pluginInstance;
     this.pluginInstance = null;
+    this.activeSection = null;
     if (instance && typeof instance.destroy === 'function') {
       try {
         const result = instance.destroy();
-        if (result && typeof result.catch === 'function') {
-          result.catch(error => console.warn('工作流插件销毁失败:', error));
-        }
-      } catch (error) {
-        console.warn('工作流插件销毁失败:', error);
-      }
+        if (result && typeof result.catch === 'function') result.catch(error => console.warn('工作流插件销毁失败:', error));
+      } catch (error) { console.warn('工作流插件销毁失败:', error); }
     }
     if (this.pluginContainer && this.pluginContainer.parentNode) this.pluginContainer.remove();
     this.pluginContainer = null;
@@ -365,41 +448,22 @@ class ProgramWorkflow extends HTMLElement {
   toggleFullscreen(force) {
     this._isFullscreen = typeof force === 'boolean' ? force : !this._isFullscreen;
     this.classList.toggle('component-fullscreen', this._isFullscreen);
-    const button = this.shadowRoot.getElementById('fullscreenBtn');
-    if (button) {
-      const label = this._isFullscreen ? '退出全屏' : '全屏显示';
-      button.title = label;
-      button.setAttribute('aria-label', label);
-    }
     requestAnimationFrame(() => this.notifyPluginResize());
   }
 
   notifyPluginResize() {
     if (this.pluginInstance && typeof this.pluginInstance.resize === 'function') {
-      try {
-        this.pluginInstance.resize();
-      } catch (error) {
-        console.warn('工作流插件 resize 失败:', error);
-      }
+      try { this.pluginInstance.resize(); } catch (error) { console.warn('工作流插件 resize 失败:', error); }
     }
   }
 
-  updateHeader() {
-    if (!this.program) return;
-    if (this.titleEl) this.titleEl.textContent = this.program.name || 'MATLAB 程序工作流';
-    if (this.metaEl) {
-      this.metaEl.textContent = [this.program.version, this.program.projectName].filter(Boolean).join(' · ');
-    }
+  setEnvStatus(type, text, note) {
+    if (this.envDot) this.envDot.className = 'status-dot' + (type ? ' ' + type : '');
+    if (this.envStatusText) this.envStatusText.textContent = text || '计算环境就绪';
+    if (note && this.envStatusNote) this.envStatusNote.textContent = note;
   }
 
-  setStatus(state, text) {
-    if (this.statusEl) this.statusEl.dataset.state = state || 'idle';
-    if (this.statusTextEl) this.statusTextEl.textContent = text || state || '待加载';
-  }
-
-  setLog(message) {
-    if (this.footerLog) this.footerLog.textContent = String(message == null ? '' : message);
-  }
+  setLog(message) { if (this.envStatusNote) this.envStatusNote.textContent = String(message == null ? '模型与数据状态随项目更新' : message); }
 
   renderMessage(message, isError = false) {
     if (!this.pluginHost) return;
@@ -408,6 +472,13 @@ class ProgramWorkflow extends HTMLElement {
     element.textContent = message;
     this.pluginHost.replaceChildren(element);
   }
+}
+
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined && text !== null) node.textContent = String(text);
+  return node;
 }
 
 customElements.define('program-workflow', ProgramWorkflow);
