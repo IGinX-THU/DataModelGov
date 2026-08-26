@@ -402,6 +402,93 @@ input::placeholder { color: #9aa6ad; }
   background: #f2f7fb;
 }
 
+/* ===== 增强表格：排序、筛选、列冻结、异常标记 ===== */
+/* 表头内联筛选 */
+.enhanced-table .th-filter-wrap {
+  margin-left: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  vertical-align: middle;
+}
+.enhanced-table .th-filter-icon {
+  cursor: pointer;
+  font-size: 11px;
+  opacity: 0.4;
+  user-select: none;
+}
+.enhanced-table .th-filter-icon:hover {
+  opacity: 1;
+}
+.enhanced-table .th-filter-input {
+  width: 60px;
+  padding: 1px 3px;
+  font-size: 11px;
+  border: 1px solid #4a90d9;
+  border-radius: 2px;
+  outline: none;
+}
+
+.enhanced-table th.sort-asc::after {
+  content: ' ▲';
+  font-size: 10px;
+  color: #4a90d9;
+}
+.enhanced-table th.sort-desc::after {
+  content: ' ▼';
+  font-size: 10px;
+  color: #4a90d9;
+}
+
+/* 列冻结：前 N 列横向滚动时固定 */
+.enhanced-table .freeze-col {
+  position: sticky;
+  background: #f0f4f7;
+  z-index: 2;
+  left: 0;
+}
+.enhanced-table tbody .freeze-col {
+  background: #ffffff;
+}
+.enhanced-table tr:nth-child(even) .freeze-col {
+  background: #fafbfc;
+}
+.enhanced-table tr:hover .freeze-col {
+  background: #f2f7fb;
+}
+
+/* 异常标记 */
+.enhanced-table td.anomaly {
+  color: #d4380d !important;
+  font-weight: 600;
+  background: #fff1f0 !important;
+}
+
+/* 表头类别分组行 */
+.enhanced-table .group-header-row {
+  border-bottom: 1px solid #c8d3dc;
+}
+.enhanced-table .group-header {
+  background: #e3eaf0;
+  color: #2a4455;
+  font-weight: 600;
+  text-align: center;
+  border-right: 1px solid #c8d3dc;
+  font-size: 11px;
+  padding: 4px 8px;
+}
+.enhanced-table .group-header:last-child {
+  border-right: 0;
+}
+
+/* 训练分组颜色标识 */
+.group-g1 { background: #e6f4ea !important; }
+.group-g2 { background: #e8f0fe !important; }
+.group-g3 { background: #fef7e0 !important; }
+.group-g4 { background: #fce8e6 !important; }
+.group-g5 { background: #f3e8fd !important; }
+.group-g6 { background: #e6f7f0 !important; }
+
 .table-note {
   font-size: 11px;
   color: #7f919e;

@@ -1,5 +1,15 @@
 const MEASURE_HEADERS = [
-  '工况', 'Np', 'Ng', 'Wf', 'Mkp', 'Mkg', 'Tt1', 'Pt2', 'Pt3', 'Tt3', 'Tt45', 'Pt45', 'Pamb', 'Tamb', '高度', 'Mach'
+  '工况', 'Np', 'Ng', 'Wf', 'Mkp', 'Mkg', 'Tt1', 'Pt2', 'Pt3', 'Tt3', 'Tt45', 'Pt45', 'Pamb', 'Tamb', 'Altitude', 'Mach'
+];
+
+/** 测量数据表表头按类别分组（文档 5.2） */
+const MEASURE_GROUPS = [
+  { label: '编号', span: 1, headers: ['工况'] },
+  { label: '转速', span: 2, headers: ['Np', 'Ng'] },
+  { label: '燃油与负载', span: 3, headers: ['Wf', 'Mkp', 'Mkg'] },
+  { label: '温度', span: 3, headers: ['Tt1', 'Tt3', 'Tt45'] },
+  { label: '压力', span: 3, headers: ['Pt2', 'Pt3', 'Pt45'] },
+  { label: '环境', span: 4, headers: ['Pamb', 'Tamb', 'Altitude', 'Mach'] }
 ];
 
 /** 文档第 13 节统一任务状态（与后端 TaskStatus 英文常量保持一致） */
@@ -36,6 +46,49 @@ const GROUP_KEY_MAP = {
   'PT物理压比': 'ptTotalPressureRatio',
   'PT-尾喷管涵道换算流量': 'ptNozzleDuctCorrectedMassFlow',
   '测量燃油流量归一化坐标': 'measuredFuelNormalizedCoordinate'
+};
+
+/** 测量数据表表头单位提示（title 属性） */
+const MEASURE_UNIT_TIPS = {
+  '工况': '工况编号 point_id（无量纲）',
+  'Np': 'PT轴转速 Np_mean (rpm)',
+  'Ng': 'GT轴转速 Ng_mean (rpm)',
+  'Wf': '燃油流量 Wf_mean (kg/s)',
+  'Mkp': 'PT扭矩 Mkp_mean (N·m)',
+  'Mkg': 'GT扭矩 Mkg_mean (N·m)',
+  'Tt1': '进口总温 Tt1_mean (K)',
+  'Pt2': 'AC进口总压 Pt2_mean (Pa)',
+  'Pt3': 'HPC出口总压 Pt3_mean (Pa)',
+  'Tt3': 'HPC出口总温 Tt3_mean (K)',
+  'Tt45': '涡轮出口总温 Tt45_mean (K)',
+  'Pt45': '涡轮出口总压 Pt45_mean (Pa)',
+  'Pamb': '环境压力 Pamb_mean (Pa)',
+  'Tamb': '环境温度 Tamb_mean (K)',
+  'Altitude': '飞行高度 Altitude_mean (m)',
+  'Mach': '马赫数 Mach_mean（无量纲）'
+};
+
+/** 调度变量表表头单位提示 */
+const GROUP_UNIT_TIPS = {
+  '工况': '工况编号 point_id（无量纲）',
+  '数据角色': 'training / test（无量纲）',
+  '训练分组': '聚类组号 G1, G2... 或 N/A（无量纲）',
+  'AC相对换算转速': '无量纲',
+  '进气道换算流量': 'kg/s',
+  '燃烧室进口换算流量': 'kg/s',
+  'GT物理压比': '无量纲',
+  'GT-PT涵道换算流量': 'kg/s',
+  'PT物理压比': '无量纲',
+  'PT-尾喷管涵道换算流量': 'kg/s',
+  '测量燃油流量归一化坐标': '无量纲'
+};
+
+/** 测量数据异常阈值（超出范围标红） */
+const MEASURE_ANOMALY = {
+  'Np': [0, 40000], 'Ng': [0, 50000], 'Wf': [0, 10],
+  'Tt1': [200, 400], 'Tt3': [200, 1200], 'Tt45': [200, 1400],
+  'Pt2': [50000, 200000], 'Pt3': [50000, 600000], 'Pt45': [50000, 600000],
+  'Pamb': [50000, 120000], 'Tamb': [200, 350], 'Altitude': [0, 20000], 'Mach': [0, 3]
 };
 
 const DEFAULT_PARAMS = [
@@ -432,36 +485,83 @@ class SteadyModelAdaptV1 {
 
     c1.body.append(form);
 
-    // Card 2: 测量数据表
+    container.append(c1.card);
+
+    // 数据状态仅在项目创建/打开后显示
+    if (this.projectCreated) {
+
+    // Card 1b: 数据区 — 文件状态、工况数、字段完整性、数据指纹
+    const c1b = this.createCard(
+      '数据状态',
+      '显示训练集和测试集的文件状态、工况数、字段完整性和数据指纹。'
+    );
+    const dataStatusRows = [];
+    const addDataStatus = (label, file, preview) => {
+      const exists = !!file;
+      const rowCount = preview && preview.rowCount != null ? preview.rowCount : (preview && preview.rows ? preview.rows.length : 0);
+      const valid = preview && preview.valid !== false;
+      const missing = preview && preview.missingColumns ? preview.missingColumns.join(', ') : '';
+      const fingerprint = preview && preview.fingerprint ? preview.fingerprint
+        : (this.workspace && this.workspace.uploadedDatasets ? (this.workspace.uploadedDatasets.find(d => d.datasetKey === label) || {}).sha256 : '');
+      dataStatusRows.push([
+        label,
+        exists ? file : '—',
+        exists ? '已导入' : '未导入',
+        exists ? rowCount : '—',
+        exists ? (valid ? '完整' : '缺失: ' + missing) : '—',
+        fingerprint ? String(fingerprint).substring(0, 12) + '...' : '—'
+      ]);
+    };
+    addDataStatus('trainingData', this.projectForm.trainingData, this.preview.training);
+    addDataStatus('testData', this.projectForm.testData, this.preview.test);
+    c1b.body.append(this.createTable(
+      ['数据集', '文件名', '文件状态', '工况数', '字段完整性', '数据指纹(SHA256)'],
+      dataStatusRows
+    ));
+    container.append(c1b.card);
+
+    } // end if (this.projectCreated) — 数据状态
+
+    // Card 2: 测量数据表（始终显示）
     const c2 = this.createCard(
       '测量数据表',
       '每行对应一个稳态工况窗口；全部测量字段保存在同一张表中，固定工况编号并支持横向滚动。'
     );
     const measureRows = this.extractMeasureRows();
-    if (measureRows.length > 0) {
-      c2.body.append(this.createTable(MEASURE_HEADERS, measureRows));
-    } else {
-      c2.body.append(el('p', 'empty-hint', '请选择训练数据后自动加载测量数据'));
-    }
+    c2.body.append(this.createEnhancedTable(MEASURE_HEADERS, measureRows, {
+      unitTips: MEASURE_UNIT_TIPS,
+      anomaly: MEASURE_ANOMALY,
+      freezeCols: 1,
+      groupHeaders: MEASURE_GROUPS
+    }));
     c2.body.append(el('p', 'table-note', '单位、缺失值、越界标记和原始字段名在列标题提示中展示；表内数值由导入文件动态读取。'));
+    container.append(c2.card);
 
-    // Card 3: 调度变量与训练分组表
+    // Card 3: 调度变量与训练分组表（始终显示）
     const c3 = this.createCard(
       'AC相对换算转速、调度变量与训练分组',
       '同一表显示各工况辅助变量；按AC相对换算转速聚类后写入训练分组列。'
     );
     const groupRows = this.extractGroupRows();
-    if (groupRows.length > 0) {
-      c3.body.append(this.createTable(GROUP_HEADERS, groupRows));
-    } else {
-      c3.body.append(el('p', 'empty-hint', '请选择训练数据后自动加载调度变量与分组'));
-    }
+    c3.body.append(this.createEnhancedTable(GROUP_HEADERS, groupRows, {
+      unitTips: GROUP_UNIT_TIPS,
+      freezeCols: 1,
+      cellClass: (header, val) => {
+        if (header === '训练分组' && val) {
+          const m = /^组(\d+)$/.exec(String(val));
+          if (m) return 'group-g' + Math.min(parseInt(m[1]), 6);
+        }
+        return null;
+      }
+    }));
     const note = el('p', 'table-note', '');
     note.style.fontWeight = 'bold';
     note.textContent = '用途:AC相对换算转速用于聚类与HPC调度节点;其余列分别服务于压损、涡轮和燃油偏置调度。';
     c3.body.append(note);
+    container.append(c3.card);
 
-    // Card 4: 质量与操作区
+    // Card 4: 质量与操作区（仅在项目创建/打开后显示）
+    if (this.projectCreated) {
     const c4 = this.createCard(
       '质量与操作',
       '显示数据合同校验结果、工况覆盖、分组状态；项目创建后可进入参数辨识。'
@@ -471,12 +571,41 @@ class SteadyModelAdaptV1 {
     if (p) {
       qualityRows.push(['工况数', String(p.rowCount || 0)]);
       qualityRows.push(['字段校验', p.valid !== false ? '通过' : '缺失: ' + (p.missingColumns || []).join(', ')]);
+      // 异常字段：扫描测量数据中超出阈值的字段
+      const anomalyFields = [];
+      if (p.rows && p.rows.length) {
+        MEASURE_HEADERS.forEach(h => {
+          const range = MEASURE_ANOMALY[h];
+          if (!range) return;
+          const key = h === '工况' ? 'point_id' : (h === 'Altitude' ? 'Altitude_mean' : h + '_mean');
+          let hasAnomaly = false;
+          for (const r of p.rows) {
+            const num = parseFloat(r[key]);
+            if (!isNaN(num) && (num < range[0] || num > range[1])) { hasAnomaly = true; break; }
+          }
+          if (hasAnomaly) anomalyFields.push(h);
+        });
+      }
+      qualityRows.push(['异常字段', anomalyFields.length ? anomalyFields.join(', ') : '无']);
+      // 缺失值统计
+      let missingCount = 0;
+      if (p.rows && p.rows.length) {
+        MEASURE_HEADERS.forEach(h => {
+          const key = h === '工况' ? 'point_id' : (h === 'Altitude' ? 'Altitude_mean' : h + '_mean');
+          for (const r of p.rows) {
+            if (r[key] == null || r[key] === '') missingCount++;
+          }
+        });
+      }
+      qualityRows.push(['缺失值', String(missingCount)]);
       qualityRows.push(['训练分组数', String(p.groupCount || 0)]);
       qualityRows.push(['测量数据行', String((p.rows || []).length)]);
       qualityRows.push(['调度变量行', String((p.scheduleRows || []).length)]);
     } else {
       qualityRows.push(['工况数', '—']);
       qualityRows.push(['字段校验', '—']);
+      qualityRows.push(['异常字段', '—']);
+      qualityRows.push(['缺失值', '—']);
       qualityRows.push(['训练分组数', '—']);
       qualityRows.push(['测量数据行', '—']);
       qualityRows.push(['调度变量行', '—']);
@@ -484,9 +613,9 @@ class SteadyModelAdaptV1 {
     c4.body.append(this.createTable(['检查项', '结果'], qualityRows));
 
     // 操作按钮
-    const opRow = el('div', 'btn-row');
-    opRow.style.marginTop = '12px';
-    opRow.append(
+    const qualityOpRow = el('div', 'btn-row');
+    qualityOpRow.style.marginTop = '12px';
+    qualityOpRow.append(
       button('重新计算辅助变量', 'btn-card', async () => {
         if (!this.workspace) {
           if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('请先创建并校验项目', 'warning');
@@ -503,9 +632,10 @@ class SteadyModelAdaptV1 {
         }
       })
     );
-    c4.body.append(opRow);
+    c4.body.append(qualityOpRow);
+    container.append(c4.card);
 
-    container.append(c1.card, c2.card, c3.card, c4.card);
+    } // end if (this.projectCreated) — 质量与操作
   }
 
   /* 创建带状态标识的输入字段 */
@@ -524,7 +654,7 @@ class SteadyModelAdaptV1 {
     const p = this.preview.training;
     if (p && Array.isArray(p.rows)) {
       return p.rows.map(r => MEASURE_HEADERS.map(h => {
-        const key = h === '工况' ? 'point_id' : (h === '高度' ? 'Altitude_mean' : h + '_mean');
+        const key = h === '工况' ? 'point_id' : (h === 'Altitude' ? 'Altitude_mean' : h + '_mean');
         const val = r[key];
         return val != null ? val : '—';
       }));
@@ -1165,6 +1295,149 @@ class SteadyModelAdaptV1 {
     });
     table.append(thead, tbody);
     wrap.append(table);
+    return wrap;
+  }
+
+  /**
+   * 增强表格：支持排序、筛选、单位提示、异常标记、列冻结。
+   * @param headers  表头数组
+   * @param rows     数据行（与 headers 列对齐）
+   * @param opts     { unitTips: {header->tip}, anomaly: {header->[min,max]}, freezeCols: number }
+   */
+  createEnhancedTable(headers, rows, opts = {}) {
+    const unitTips = opts.unitTips || {};
+    const anomaly = opts.anomaly || {};
+    const freezeCols = opts.freezeCols || 1;
+    const groupHeaders = opts.groupHeaders || null;
+    const cellClass = opts.cellClass || null;
+    let sortCol = -1, sortDesc = false;
+    const colFilters = headers.map(() => '');
+
+    const wrap = el('div', 'table-wrap enhanced-table-wrap');
+
+    const table = el('table', 'data-table enhanced-table');
+    const thead = el('thead');
+
+    // 类别分组行（可选）
+    if (groupHeaders) {
+      const groupRow = el('tr', 'group-header-row');
+      let colIdx = 0;
+      groupHeaders.forEach(g => {
+        const th = el('th', 'group-header', g.label);
+        th.colSpan = g.span;
+        if (colIdx < freezeCols) th.classList.add('freeze-col');
+        colIdx += g.span;
+        groupRow.append(th);
+      });
+      thead.append(groupRow);
+    }
+
+    // 表头行
+    const hr = el('tr');
+    headers.forEach((h, idx) => {
+      const th = el('th', '', h);
+      if (idx < freezeCols) th.classList.add('freeze-col');
+      if (unitTips[h]) th.title = unitTips[h];
+      th.style.cursor = 'pointer';
+      // 排序
+      th.addEventListener('click', (e) => {
+        // 点击搜索图标时不触发排序
+        if (e.target.classList && e.target.classList.contains('th-filter-icon')) return;
+        if (sortCol === idx) { sortDesc = !sortDesc; }
+        else { sortCol = idx; sortDesc = false; }
+        renderHead();
+        renderBody();
+      });
+      // 搜索图标 + 内联筛选输入框
+      const filterWrap = el('span', 'th-filter-wrap');
+      const icon = el('span', 'th-filter-icon', '🔍');
+      icon.title = '点击筛选此列';
+      const inp = el('input', 'th-filter-input');
+      inp.type = 'text';
+      inp.placeholder = '筛选';
+      inp.style.display = 'none';
+      inp.addEventListener('input', () => {
+        colFilters[idx] = inp.value.trim().toLowerCase();
+        renderBody();
+      });
+      inp.addEventListener('click', e => e.stopPropagation());
+      icon.addEventListener('click', e => {
+        e.stopPropagation();
+        inp.style.display = inp.style.display === 'none' ? '' : 'none';
+        if (inp.style.display !== 'none') inp.focus();
+        else { inp.value = ''; colFilters[idx] = ''; renderBody(); }
+      });
+      filterWrap.append(icon, inp);
+      th.append(filterWrap);
+      hr.append(th);
+    });
+    thead.append(hr);
+
+    table.append(thead);
+    const tbody = el('tbody');
+    table.append(tbody);
+    wrap.append(table);
+
+    function renderHead() {
+      hr.querySelectorAll('th').forEach((th, idx) => {
+        th.classList.remove('sort-asc', 'sort-desc');
+        if (idx === sortCol) th.classList.add(sortDesc ? 'sort-desc' : 'sort-asc');
+      });
+    }
+
+    function renderBody() {
+      tbody.innerHTML = '';
+      let data = rows.slice();
+      // 按列筛选
+      const hasFilter = colFilters.some(f => f.length > 0);
+      if (hasFilter) {
+        data = data.filter(r => r.every((v, idx) => {
+          if (!colFilters[idx]) return true;
+          return String(v == null ? '' : v).toLowerCase().includes(colFilters[idx]);
+        }));
+      }
+      // 排序
+      if (sortCol >= 0) {
+        data.sort((a, b) => {
+          const va = a[sortCol], vb = b[sortCol];
+          const na = parseFloat(va), nb = parseFloat(vb);
+          if (!isNaN(na) && !isNaN(nb)) return sortDesc ? nb - na : na - nb;
+          return sortDesc
+            ? String(vb).localeCompare(String(va))
+            : String(va).localeCompare(String(vb));
+        });
+      }
+      data.forEach(r => {
+        const tr = el('tr');
+        r.forEach((val, idx) => {
+          const td = el('td');
+          if (idx < freezeCols) td.classList.add('freeze-col');
+          if (val instanceof HTMLElement) {
+            td.append(val);
+          } else {
+            const str = String(val == null ? '' : val);
+            td.textContent = str;
+            if (str === '动态显示' || str === '待运行') td.classList.add('dim');
+            const range = anomaly[headers[idx]];
+            if (range) {
+              const num = parseFloat(val);
+              if (!isNaN(num) && (num < range[0] || num > range[1])) {
+                td.classList.add('anomaly');
+                td.title = `异常值：${num}（正常范围 ${range[0]}~${range[1]}）`;
+              }
+            }
+            if (cellClass) {
+              const cls = cellClass(headers[idx], val, r, idx);
+              if (cls) td.classList.add(cls);
+            }
+          }
+          tr.append(td);
+        });
+        tbody.append(tr);
+      });
+    }
+
+    renderBody();
     return wrap;
   }
 
