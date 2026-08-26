@@ -319,17 +319,8 @@ class SteadyModelAdaptV1 {
     );
     const form = el('div', 'form-grid-4');
 
-    const nameInput = input('text', 'projectName', '请输入项目名称（仅限英文、数字、下划线、连字符）', this.projectForm.projectName);
-    nameInput.pattern = '^[A-Za-z0-9._-]+$';
-    nameInput.addEventListener('input', () => {
-      // 过滤非 ASCII 字符
-      const filtered = nameInput.value.replace(/[^A-Za-z0-9._-]/g, '');
-      if (filtered !== nameInput.value) {
-        nameInput.value = filtered;
-        if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('项目名称仅支持英文、数字、下划线、连字符', 'warning');
-      }
-      this.projectForm.projectName = nameInput.value;
-    });
+    const nameInput = input('text', 'projectName', '请输入项目名称', this.projectForm.projectName);
+    nameInput.addEventListener('input', () => { this.projectForm.projectName = nameInput.value; });
 
     // 模型程序包：使用 ctx.program 信息
     const programName = this.ctx.program && this.ctx.program.name || '稳态试车工况点模型修正V1';
@@ -394,7 +385,10 @@ class SteadyModelAdaptV1 {
     } else {
       c3.body.append(el('p', 'empty-hint', '请选择训练数据后自动加载调度变量与分组'));
     }
-    c3.body.append(el('p', 'table-note', '同一训练组采用一致的组号和颜色标识。分组结果可查看但不允许直接手工改写。'));
+    const note = el('p', 'table-note', '');
+    note.style.fontWeight = 'bold';
+    note.textContent = '用途:AC相对换算转速用于聚类与HPC调度节点;其余列分别服务于压损、涡轮和燃油偏置调度。';
+    c3.body.append(note);
 
     container.append(c1.card, c2.card, c3.card);
   }
