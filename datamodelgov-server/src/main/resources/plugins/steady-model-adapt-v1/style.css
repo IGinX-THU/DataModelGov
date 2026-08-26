@@ -134,10 +134,16 @@ button, input, select, textarea { font: inherit; }
   border: 1px solid #f0d8a8;
 }
 
+.field-status.validated {
+  color: #1a7f37;
+  background: #e6f4ea;
+  border: 1px solid #b4dfc4;
+}
+
 .field-status.ok {
-  color: #c47b1a;
-  background: #fff4e0;
-  border: 1px solid #f0d8a8;
+  color: #1a7f37;
+  background: #e6f4ea;
+  border: 1px solid #b4dfc4;
 }
 
 .field-status.optional {

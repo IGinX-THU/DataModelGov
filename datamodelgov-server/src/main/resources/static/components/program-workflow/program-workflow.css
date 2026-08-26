@@ -242,6 +242,24 @@
   border-color: #f0d8a8;
 }
 
+.meta-tag.project-created {
+  color: #1a7f37;
+  background: #e6f4ea;
+  border-color: #b4dfc4;
+}
+
+.project-close-x {
+  margin-left: 6px;
+  cursor: pointer;
+  color: #1a7f37;
+  font-size: 12px;
+  opacity: 0.6;
+}
+.project-close-x:hover {
+  opacity: 1;
+  color: #d4380d;
+}
+
 .topbar-btn {
   padding: 4px 12px;
   border: 1px solid #c8d4dc;

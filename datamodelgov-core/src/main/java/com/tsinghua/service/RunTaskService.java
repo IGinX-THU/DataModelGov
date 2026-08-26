@@ -330,10 +330,10 @@ public class RunTaskService {
             }
             
             // 2. 检查任务状态
-            if (!TaskStatus.RUNNING.equals(task.getStatus())) {
+            if (!TaskStatus.RUNNING.getValue().equals(task.getStatus())) {
                 // 如果任务不在运行状态，直接标记为已停止
                 log.info("任务不在运行状态，直接标记为已停止: {}", task.getStatus());
-                task.setStatus(TaskStatus.STOPPED);
+                task.setStatus(TaskStatus.STOPPED.getValue());
                 saveTask(task);
                 log.info("任务 {} 已标记为已停止", timestamp);
                 return;
@@ -352,7 +352,7 @@ public class RunTaskService {
             if (!isProcessRunning(processId)) {
                 log.warn("进程 {} 不存在或已结束，任务可能已经停止", processId);
                 // 更新任务状态为STOPPED
-                task.setStatus(TaskStatus.STOPPED);
+                task.setStatus(TaskStatus.STOPPED.getValue());
                 saveTask(task);
                 return;
             }
@@ -409,7 +409,7 @@ public class RunTaskService {
             }
             
             // 7. 更新任务状态为STOPPED
-            task.setStatus(TaskStatus.STOPPED);
+            task.setStatus(TaskStatus.STOPPED.getValue());
             saveTask(task);
             
             log.info("任务 {} 停止成功", timestamp);
@@ -534,7 +534,7 @@ public class RunTaskService {
 
             long timestamp = System.currentTimeMillis();
             runTaskEntity.setTimestamp(timestamp);
-            runTaskEntity.setStatus(TaskStatus.PENDING);
+            runTaskEntity.setStatus(TaskStatus.PENDING.getValue());
             runTaskEntity.setStartTime(Optional.ofNullable(runTaskRequest.getStartTime()).orElse(0L));
             runTaskEntity.setEndTime(Optional.ofNullable(runTaskRequest.getEndTime()).orElse(timestamp));
 
@@ -570,7 +570,7 @@ public class RunTaskService {
         } catch (Exception e) {
             log.error("运行任务失败", e);
             // 更新任务状态为失败
-            runTaskEntity.setStatus(TaskStatus.FAILED);
+            runTaskEntity.setStatus(TaskStatus.FAILED.getValue());
             runTaskEntity.setProcessLog(e.getMessage());
             saveTask(runTaskEntity);
         }
@@ -683,7 +683,7 @@ public class RunTaskService {
 
     private void executeCommand(AssociationRulesEntity associationRulesEntity, RunTaskEntity runTaskEntity, Path taskDir, List<OutputBindDto> outputs) throws Exception {
         // 更新状态为RUNNING
-        runTaskEntity.setStatus(TaskStatus.RUNNING);
+        runTaskEntity.setStatus(TaskStatus.RUNNING.getValue());
         saveTask(runTaskEntity);
         
         // 在任务目录中执行命令
@@ -926,7 +926,7 @@ public class RunTaskService {
                 runTaskEntity.setProcessLog(processLogBuilder.toString());
                 if (exitCode == 0) {
                     log.info("命令执行成功，退出码: {}", exitCode);
-                    runTaskEntity.setStatus(TaskStatus.SUCCESS);
+                    runTaskEntity.setStatus(TaskStatus.SUCCESS.getValue());
 
                     // 处理输出CSV文件
                     try {
@@ -937,7 +937,7 @@ public class RunTaskService {
                     }
                 } else {
                     log.error("命令执行失败，退出码: {}", exitCode);
-                    runTaskEntity.setStatus(TaskStatus.FAILED);
+                    runTaskEntity.setStatus(TaskStatus.FAILED.getValue());
                     String errorLog = "\n命令执行失败，退出码: " + exitCode+ "\n";
                     runTaskEntity.setProcessLog(processLogBuilder.toString() + errorLog);
                 }
@@ -947,7 +947,7 @@ public class RunTaskService {
             } catch (Exception e) {
                 log.error("异步进程监控失败: PID={}", finalProcessId, e);
                 // 更新任务状态为失败
-                runTaskEntity.setStatus(TaskStatus.FAILED);
+                runTaskEntity.setStatus(TaskStatus.FAILED.getValue());
                 String errorLog = "\n进程监控异常: " + e.getMessage() + "\n";
                 runTaskEntity.setProcessLog(processLogBuilder.toString() + errorLog);
                 
@@ -957,7 +957,7 @@ public class RunTaskService {
                 } catch (Exception saveException) {
                     log.error("保存任务状态失败: {}", saveException.getMessage(), saveException);
                     // 如果保存失败，至少记录到日志
-                    log.error("任务状态应该为: {}, 进程ID: {}", TaskStatus.FAILED, finalProcessId);
+                    log.error("任务状态应该为: {}, 进程ID: {}", TaskStatus.FAILED.getValue(), finalProcessId);
                 }
             }
         });

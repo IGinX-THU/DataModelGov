@@ -266,8 +266,19 @@ class ProgramWorkflow extends HTMLElement {
     if (this.topbarProject) {
       const pluginProjectCreated = this.pluginInstance && this.pluginInstance.projectCreated;
       const p = pluginProjectCreated ? (this.pluginInstance.projectForm && this.pluginInstance.projectForm.projectName) : null;
-      this.topbarProject.textContent = '当前项目：' + (p ? p : '未创建');
       this.topbarProject.classList.toggle('project-uncreated', !pluginProjectCreated);
+      this.topbarProject.classList.toggle('project-created', !!pluginProjectCreated);
+      if (pluginProjectCreated && p) {
+        this.topbarProject.innerHTML = '当前项目：' + p + ' <span class="project-close-x" title="关闭当前项目">✕</span>';
+        const x = this.topbarProject.querySelector('.project-close-x');
+        if (x) x.onclick = () => {
+          if (this.pluginInstance && typeof this.pluginInstance.closeProject === 'function') {
+            this.pluginInstance.closeProject();
+          }
+        };
+      } else {
+        this.topbarProject.textContent = '当前项目：未创建';
+      }
     }
     if (this.currentFunctionName) {
       this.currentFunctionName.innerHTML = '稳态试车工况点模型<br>自适应修正';

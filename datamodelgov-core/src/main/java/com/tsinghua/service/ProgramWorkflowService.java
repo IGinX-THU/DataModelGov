@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.tsinghua.auth.util.AuthUtil;
 import com.tsinghua.entity.ProgramEntity;
+import com.tsinghua.enums.TaskStatus;
 import com.tsinghua.matlab.MatlabFunctionRunner;
 import com.tsinghua.program.config.ProgramConfig;
 import com.tsinghua.program.config.ProgramConfigMapper;
@@ -87,8 +88,8 @@ public class ProgramWorkflowService {
                 try {
                     Map<String, Object> task = readMap(file);
                     String status = value(task.get("status"));
-                    if ("QUEUED".equals(status) || "RUNNING".equals(status) || "CANCEL_REQUESTED".equals(status)) {
-                        updateTask(file, "FAILED", "服务重启导致任务中断", null, true);
+                    if (TaskStatus.QUEUED.getValue().equals(status) || TaskStatus.RUNNING.getValue().equals(status) || TaskStatus.CANCELLING.getValue().equals(status)) {
+                        updateTask(file, TaskStatus.FAILED.getValue(), "服务重启导致任务中断", null, true);
                     }
                 } catch (Exception e) {
                     log.warn("恢复工作流任务状态失败: {}", file, e);
@@ -429,9 +430,6 @@ public class ProgramWorkflowService {
                     String.join(", ", (List<String>) dataContract.get("missingColumns")));
         }
 
-        // MATLAB 初始化与零修正回放：计算全部调度变量
-        Map<String, Object> initResult = runMatlabInit(workingDirectory, trainingDataFile, workspace);
-
         long now = System.currentTimeMillis();
         Map<String, Object> record = new LinkedHashMap<>();
         record.put("id", id);
@@ -441,7 +439,7 @@ public class ProgramWorkflowService {
         record.put("jobName", jobName != null ? jobName : "");
         record.put("trainingDataFile", trainingDataFile);
         record.put("testDataFile", testDataFile != null ? testDataFile : "");
-        record.put("status", "READY");
+        record.put("status", TaskStatus.READY.getValue());
         record.put("workingDirectory", source.relativize(workingDirectory).toString().replace(File.separatorChar, '/'));
         String configJson = ProgramConfigMapper.stringify(config);
         record.put("programFileMd5", entity.getFileMd5());
@@ -452,11 +450,43 @@ public class ProgramWorkflowService {
         record.put("datasets", datasetSpecs(config));
         record.put("actions", actionSpecs(config));
         record.put("dataContract", dataContract);
-        record.put("initResult", initResult);
+        record.put("initResult", null);
         writeJson(child(workspace, "workspace.json"), record);
         Files.write(child(workspace, "program-config.json"), configJson.getBytes(StandardCharsets.UTF_8));
         writeJson(child(workspace, "datasets.json"), uploadedDatasets);
         record.put("uploadedDatasets", uploadedDatasets);
+        addStatusLabel(record);
+
+        // 异步执行 MATLAB 初始化
+        final String trainingFile = trainingDataFile;
+        executor.submit(() -> {
+            try {
+                Map<String, Object> initResult = runMatlabInit(workingDirectory, trainingFile, workspace);
+                synchronized (lock(child(workspace, "workspace.json"))) {
+                    Map<String, Object> ws = readMap(child(workspace, "workspace.json"));
+                    ws.put("initResult", initResult);
+                    ws.put("status", TaskStatus.READY.getValue());
+                    ws.put("updatedAt", System.currentTimeMillis());
+                    writeJson(child(workspace, "workspace.json"), ws);
+                }
+                log.info("工作区 {} MATLAB 初始化完成: {}", id, initResult.get("status"));
+            } catch (Exception e) {
+                log.warn("工作区 {} MATLAB 初始化失败", id, e);
+                try {
+                    synchronized (lock(child(workspace, "workspace.json"))) {
+                        Map<String, Object> ws = readMap(child(workspace, "workspace.json"));
+                        Map<String, Object> fallback = new LinkedHashMap<>();
+                        fallback.put("status", "FALLBACK");
+                        fallback.put("message", e.getMessage() != null ? e.getMessage() : String.valueOf(e));
+                        ws.put("initResult", fallback);
+                        ws.put("status", TaskStatus.READY.getValue());
+                        ws.put("updatedAt", System.currentTimeMillis());
+                        writeJson(child(workspace, "workspace.json"), ws);
+                    }
+                } catch (IOException ignored) {}
+            }
+        });
+
         return record;
     }
 
@@ -551,7 +581,10 @@ public class ProgramWorkflowService {
                 Path manifest = child(path, "workspace.json");
                 if (!Files.isRegularFile(manifest)) continue;
                 Map<String, Object> workspace = readMap(manifest);
-                if (matchesProgram(workspace, name, version, project)) result.add(workspace);
+                if (matchesProgram(workspace, name, version, project)) {
+                    addStatusLabel(workspace);
+                    result.add(workspace);
+                }
             }
         }
         result.sort((a, b) -> Long.compare(longValue(b.get("createdAt")), longValue(a.get("createdAt"))));
@@ -562,6 +595,7 @@ public class ProgramWorkflowService {
         Path workspace = requireWorkspace(id, name, version, projectName);
         Map<String, Object> record = readMap(child(workspace, "workspace.json"));
         record.put("uploadedDatasets", readListOfMaps(child(workspace, "datasets.json")));
+        addStatusLabel(record);
         return record;
     }
 
@@ -652,7 +686,7 @@ public class ProgramWorkflowService {
         task.put("entryPoint", action.getEntryPoint());
         task.put("stage", action.getStage());
         task.put("resultType", action.getResultType());
-        task.put("status", "QUEUED");
+        task.put("status", TaskStatus.READY.getValue());
         task.put("createdAt", System.currentTimeMillis());
         task.put("cancelRequested", false);
         task.put("logPath", "tasks/" + taskId + "/run.log");
@@ -663,6 +697,7 @@ public class ProgramWorkflowService {
                 runTask(workspace, taskDir, task, action, arguments);
             }
         });
+        addStatusLabel(task);
         return task;
     }
 
@@ -676,7 +711,11 @@ public class ProgramWorkflowService {
             for (Path task : (Iterable<Path>) paths::iterator) {
                 if (!Files.isDirectory(task) || !SAFE_ID.matcher(task.getFileName().toString()).matches()) continue;
                 Path manifest = child(task, "task.json");
-                if (Files.isRegularFile(manifest)) result.add(readMap(manifest));
+                if (Files.isRegularFile(manifest)) {
+                    Map<String, Object> t = readMap(manifest);
+                    addStatusLabel(t);
+                    result.add(t);
+                }
             }
         }
         result.sort((a, b) -> Long.compare(longValue(b.get("createdAt")), longValue(a.get("createdAt"))));
@@ -685,7 +724,9 @@ public class ProgramWorkflowService {
 
     public Map<String, Object> getTask(String taskId, String name, String version, String projectName) throws Exception {
         Path task = requireTask(taskId, name, version, projectName);
-        return readMap(child(task, "task.json"));
+        Map<String, Object> record = readMap(child(task, "task.json"));
+        addStatusLabel(record);
+        return record;
     }
 
     public Map<String, Object> getTaskLog(String taskId, String name, String version, String projectName) throws Exception {
@@ -709,7 +750,7 @@ public class ProgramWorkflowService {
             String status = value(task.get("status"));
             if (!isTerminal(status)) {
                 task.put("cancelRequested", true);
-                task.put("status", "CANCEL_REQUESTED");
+                task.put("status", TaskStatus.CANCELLING.getValue());
                 task.put("updatedAt", System.currentTimeMillis());
                 writeJson(manifest, task);
             }
@@ -737,10 +778,10 @@ public class ProgramWorkflowService {
         }
         synchronized (lock(manifest)) {
             Map<String, Object> task = readMap(manifest);
-            if (!"SUCCEEDED".equals(task.get("status"))) throw new IllegalStateException("Only successful results can be reviewed");
+            if (!TaskStatus.COMPLETED.getValue().equals(task.get("status"))) throw new IllegalStateException("只有已完成的任务才能审核");
             String notes = request == null ? "" : text(request, "notes");
             if (notes.length() > 2000) throw new IllegalArgumentException("Review notes are too long");
-            task.put("reviewStatus", decision);
+            task.put("reviewStatus", "APPROVED".equals(decision) ? TaskStatus.REVIEW_APPROVED.getValue() : TaskStatus.REVIEW_REJECTED.getValue());
             task.put("reviewNotes", notes);
             task.put("reviewedBy", AuthUtil.getCurrentUsername());
             task.put("reviewedAt", System.currentTimeMillis());
@@ -755,8 +796,8 @@ public class ProgramWorkflowService {
         Path manifest = child(taskDir, "task.json");
         synchronized (lock(manifest)) {
             Map<String, Object> task = readMap(manifest);
-            if (!"SUCCEEDED".equals(task.get("status"))) throw new IllegalStateException("Only successful results can be published");
-            if (!"APPROVED".equals(task.get("reviewStatus"))) throw new IllegalStateException("Result must be approved before publication");
+            if (!TaskStatus.COMPLETED.getValue().equals(task.get("status"))) throw new IllegalStateException("只有已完成的任务才能发布");
+            if (!TaskStatus.REVIEW_APPROVED.getValue().equals(task.get("reviewStatus"))) throw new IllegalStateException("结果必须审核通过后才能发布");
             if (!"estimation".equals(task.get("resultType"))) throw new IllegalStateException("Only identified model results can be published");
             Map<String, Object> result = readMap(child(taskDir, "result.json"));
             Object summaryObject = result.get("value");
@@ -781,11 +822,11 @@ public class ProgramWorkflowService {
             publication.put("actionKey", task.get("actionKey"));
             publication.put("publishedBy", AuthUtil.getCurrentUsername());
             publication.put("publishedAt", System.currentTimeMillis());
-            publication.put("status", "PUBLISHED");
+            publication.put("status", TaskStatus.PUBLISHED.getValue());
             synchronized (lock(child(workspace, "published-model.json"))) {
                 writeJson(child(workspace, "published-model.json"), publication);
             }
-            task.put("publicationStatus", "PUBLISHED");
+            task.put("publicationStatus", TaskStatus.PUBLISHED.getValue());
             task.put("publishedBy", publication.get("publishedBy"));
             task.put("publishedAt", publication.get("publishedAt"));
             writeJson(manifest, task);
@@ -829,11 +870,12 @@ public class ProgramWorkflowService {
                          ProgramConfig.WorkflowAction action, Object[] arguments) {
         String taskId = value(initialTask.get("id"));
         Path manifest = taskDir.resolve("task.json");
+        Path runLog = taskDir.resolve("run.log");
         MatlabFunctionRunner runner = null;
         Map<String, Stamp> before = Collections.emptyMap();
         try {
             before = snapshotArtifacts(workspace);
-            updateTask(manifest, "RUNNING", null, System.currentTimeMillis(), false);
+            updateTask(manifest, TaskStatus.WORKFLOW_RUNNING.getValue(), null, System.currentTimeMillis(), false);
             Path workingDirectory = resolveInside(workspace.resolve("source"),
                     value(readMap(workspace.resolve("workspace.json")).get("workingDirectory")), true);
             Path requestFile = taskDir.resolve("request.json");
@@ -854,7 +896,7 @@ public class ProgramWorkflowService {
             Object[] adapterArguments = new Object[]{action.getEntryPoint(), requestFile.toFile().getCanonicalPath(),
                     matlabResult.toFile().getCanonicalPath(), matlabManifest.toFile().getCanonicalPath()};
             runner = new MatlabFunctionRunner(workingDirectory.toFile(), "dmg_run_workflow", adapterArguments,
-                    taskDir.resolve("run.log").toFile(), programService.enginePool(), new MatlabFunctionRunner.ProgressCancellationSink() {
+                    runLog.toFile(), programService.enginePool(), new MatlabFunctionRunner.ProgressCancellationSink() {
                 private long lastUpdate;
                 @Override public void onProgress(String message) {
                     long now = System.currentTimeMillis();
@@ -880,22 +922,35 @@ public class ProgramWorkflowService {
             result.put("completedAt", System.currentTimeMillis());
             writeJson(taskDir.resolve("result.json"), result);
             writeJson(taskDir.resolve("artifacts.json"), collectArtifacts(workspace, before));
-            updateTask(manifest, "SUCCEEDED", null, null, true);
+            updateTask(manifest, TaskStatus.COMPLETED.getValue(), null, null, true);
         } catch (CancellationException e) {
             finishArtifactsQuietly(workspace, taskDir, before);
-            updateTaskQuietly(manifest, "CANCELLED", e.getMessage());
+            updateTaskQuietly(manifest, TaskStatus.CANCELLING.getValue(), "用户取消，当前DLL调用结束后已停止并保存检查点");
         } catch (Exception e) {
             finishArtifactsQuietly(workspace, taskDir, before);
             try {
                 if (Boolean.TRUE.equals(readMap(manifest).get("cancelRequested"))) {
-                    updateTaskQuietly(manifest, "CANCELLED", "任务已在当前MATLAB安全点取消");
+                    updateTaskQuietly(manifest, TaskStatus.CANCELLING.getValue(), "用户取消，当前DLL调用结束后已停止并保存检查点");
                 } else {
                     log.error("MATLAB workflow task {} failed", taskId, e);
-                    updateTaskQuietly(manifest, "FAILED", safeError(e));
+                    String errMsg = e.getMessage() != null ? e.getMessage() : "";
+                    if (errMsg.contains("test") && errMsg.contains("not found") || errMsg.contains("测试数据不存在")) {
+                        updateTaskQuietly(manifest, TaskStatus.SKIPPED.getValue(), "测试数据不存在，已安全跳过测试验证");
+                    } else {
+                        synchronized (lock(manifest)) {
+                            Map<String, Object> task = readMap(manifest);
+                            task.put("status", TaskStatus.WORKFLOW_FAILED.getValue());
+                            task.put("error", safeError(e));
+                            task.put("errorDetail", buildErrorDetail(e, action.getStage(), runLog));
+                            task.put("updatedAt", System.currentTimeMillis());
+                            task.put("completedAt", System.currentTimeMillis());
+                            writeJson(manifest, task);
+                        }
+                    }
                 }
             } catch (Exception statusError) {
                 log.error("MATLAB workflow task {} failed", taskId, e);
-                updateTaskQuietly(manifest, "FAILED", safeError(e));
+                updateTaskQuietly(manifest, TaskStatus.WORKFLOW_FAILED.getValue(), safeError(e));
             }
         } finally {
             running.remove(taskId);
@@ -1230,6 +1285,16 @@ public class ProgramWorkflowService {
         catch (Exception ignored) { }
     }
 
+    private void addStatusLabel(Map<String, Object> record) {
+        if (record == null) return;
+        Object status = record.get("status");
+        if (status != null) record.put("statusLabel", TaskStatus.label(String.valueOf(status)));
+        Object reviewStatus = record.get("reviewStatus");
+        if (reviewStatus != null) record.put("reviewStatusLabel", TaskStatus.label(String.valueOf(reviewStatus)));
+        Object pubStatus = record.get("publicationStatus");
+        if (pubStatus != null) record.put("publicationStatusLabel", TaskStatus.label(String.valueOf(pubStatus)));
+    }
+
     private void updateTask(Path manifest, String status, String error, Long startedAt, boolean completed) throws IOException {
         synchronized (lock(manifest)) {
             Map<String, Object> task = readMap(manifest);
@@ -1238,6 +1303,9 @@ public class ProgramWorkflowService {
             if (startedAt != null) task.put("startedAt", startedAt);
             if (completed || isTerminal(status)) task.put("completedAt", System.currentTimeMillis());
             if (error != null) task.put("error", error);
+            if (TaskStatus.COMPLETED.getValue().equals(status) && "estimation".equals(task.get("resultType"))) {
+                task.put("reviewStatus", TaskStatus.PENDING_REVIEW.getValue());
+            }
             writeJson(manifest, task);
         }
     }
@@ -1261,7 +1329,7 @@ public class ProgramWorkflowService {
     }
 
     private boolean isTerminal(String status) {
-        return "SUCCEEDED".equals(status) || "FAILED".equals(status) || "CANCELLED".equals(status);
+        return TaskStatus.isTerminal(status);
     }
 
     private void validateWorkflowFiles(Path workingDirectory, ProgramConfig config) throws IOException {
@@ -1381,6 +1449,40 @@ public class ProgramWorkflowService {
         name = name.replaceAll("[^A-Za-z0-9._-]", "_");
         return name.isEmpty() || ".".equals(name) || "..".equals(name) ? fallback : name;
     }
+    private Map<String, Object> buildErrorDetail(Exception e, String stage, Path logFile) {
+        Map<String, Object> detail = new LinkedHashMap<>();
+        detail.put("说明", safeError(e));
+        detail.put("受影响阶段", stage != null ? stage : "未知");
+        String matlabId = null;
+        if (e.getStackTrace() != null && e.getStackTrace().length > 0) {
+            for (StackTraceElement ste : e.getStackTrace()) {
+                if (ste.getClassName() != null && ste.getClassName().contains("matlab")) {
+                    matlabId = ste.getClassName() + "." + ste.getMethodName() + ":" + ste.getLineNumber();
+                    break;
+                }
+            }
+        }
+        detail.put("MATLAB异常标识符", matlabId != null ? matlabId : "无");
+        detail.put("完整日志路径", logFile != null ? logFile.toAbsolutePath().toString() : "无");
+        String msg = e.getMessage() != null ? e.getMessage() : "";
+        String suggestion;
+        if (msg.contains("DLL") || msg.contains("dll") || msg.contains("native")) {
+            suggestion = "DLL 共同工作失败，请检查 DLL 版本和工况参数，重试或联系算法维护人员";
+        } else if (msg.contains("fingerprint") || msg.contains("hash") || msg.contains("指纹")) {
+            suggestion = "结果指纹不兼容，请重新运行相关步骤";
+        } else if (msg.contains("posterior") || msg.contains("后验") || msg.contains("sample")) {
+            suggestion = "后验样本不足，不给出正式区间，保留诊断结果供参考";
+        } else if (msg.contains("cancel") || msg.contains("取消")) {
+            suggestion = "用户取消，当前 DLL 调用结束后已停止并保存检查点";
+        } else if (msg.contains("test") || msg.contains("测试")) {
+            suggestion = "测试数据不存在，已安全跳过测试验证";
+        } else {
+            suggestion = "请查看完整日志，检查输入数据和配置后重试";
+        }
+        detail.put("建议处置", suggestion);
+        return detail;
+    }
+
     private String safeError(Exception e) {
         String message = e.getMessage();
         if (!StringUtils.hasText(message)) message = e.getClass().getSimpleName();

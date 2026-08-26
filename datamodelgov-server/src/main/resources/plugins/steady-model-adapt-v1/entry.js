@@ -2,6 +2,23 @@ const MEASURE_HEADERS = [
   '工况', 'Np', 'Ng', 'Wf', 'Mkp', 'Mkg', 'Tt1', 'Pt2', 'Pt3', 'Tt3', 'Tt45', 'Pt45', 'Pamb', 'Tamb', '高度', 'Mach'
 ];
 
+/** 文档第 13 节统一任务状态（与后端 TaskStatus 英文常量保持一致） */
+const TASK_STATUS = {
+  PENDING_CONFIG: 'pending_config',
+  READY: 'ready',
+  RUNNING: 'workflow_running',
+  CANCELLING: 'cancelling',
+  COMPLETED: 'completed',
+  SKIPPED: 'skipped',
+  FAILED: 'workflow_failed',
+  PENDING_REVIEW: 'pending_review',
+  PUBLISHED: 'published',
+  REVIEW_APPROVED: 'review_approved',
+  REVIEW_REJECTED: 'review_rejected'
+};
+const isTerminalStatus = s => s === TASK_STATUS.COMPLETED || s === TASK_STATUS.FAILED
+  || s === TASK_STATUS.CANCELLING || s === TASK_STATUS.SKIPPED;
+
 const GROUP_HEADERS = [
   '工况', '数据角色', '训练分组', 'AC相对换算转速', '进气道换算流量', '燃烧室进口换算流量',
   'GT物理压比', 'GT-PT涵道换算流量', 'PT物理压比', 'PT-尾喷管涵道换算流量', '测量燃油流量归一化坐标'
@@ -128,6 +145,19 @@ class SteadyModelAdaptV1 {
     await this.loadInitialData();
   }
 
+  /* 关闭当前项目：重置状态，不删除 workspace 数据 */
+  closeProject() {
+    this.workspace = null;
+    this.projectCreated = false;
+    this.projectForm = { projectName: '', modelPackage: '', trainingData: '', testData: '' };
+    this.preview = { training: null, test: null };
+    this.tasks.clear();
+    this.results.clear();
+    this.render();
+    if (this.ctx.refreshNav) this.ctx.refreshNav();
+    if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('已关闭当前项目', 'info');
+  }
+
   async setSection(sectionId) {
     this.activeSection = sectionId;
     this.render();
@@ -200,9 +230,9 @@ class SteadyModelAdaptV1 {
         if (Array.isArray(tasks)) {
           tasks.forEach(t => {
             this.tasks.set(t.id, t);
-            if (t.status === 'RUNNING' || t.status === 'QUEUED') {
+            if (t.status === TASK_STATUS.RUNNING || t.status === TASK_STATUS.READY) {
               this.schedulePoll(t.id, 1000);
-            } else if (t.status === 'SUCCEEDED' && !this.results.has(t.id)) {
+            } else if (t.status === TASK_STATUS.COMPLETED && !this.results.has(t.id)) {
               this.loadTaskResult(t.id);
             }
           });
@@ -253,13 +283,21 @@ class SteadyModelAdaptV1 {
         const task = await this.ctx.http.tasks.get(taskId);
         if (task) {
           this.tasks.set(task.id, task);
-          if (task.status === 'SUCCEEDED') {
+          if (task.status === TASK_STATUS.COMPLETED) {
             this.ctx.log(`任务 ${task.id} 运行完成`);
             this.ctx.setStatus('ready', '任务已完成');
             await this.loadTaskResult(task.id);
-          } else if (task.status === 'FAILED') {
+          } else if (task.status === TASK_STATUS.FAILED) {
             this.ctx.log(`任务 ${task.id} 运行失败: ` + (task.error || '未知错误'));
             this.ctx.setStatus('error', '计算失败');
+            if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('任务失败: ' + (task.error || ''), 'error');
+          } else if (task.status === TASK_STATUS.SKIPPED) {
+            this.ctx.log(`任务 ${task.id} 已跳过: ` + (task.error || ''));
+            this.ctx.setStatus('ready', '任务已跳过');
+            if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('任务已跳过: ' + (task.error || ''), 'info');
+          } else if (task.status === TASK_STATUS.CANCELLING) {
+            this.ctx.log(`任务 ${task.id} 取消中...`);
+            this.ctx.setStatus('busy', '任务取消中');
             this.render();
           } else {
             this.ctx.setStatus('running', '任务运行中');
@@ -339,7 +377,7 @@ class SteadyModelAdaptV1 {
   render_data(container) {
     const validated = this.projectCreated;
     const statusText = validated ? '已校验' : '待校验';
-    const statusClass = 'field-status pending';
+    const statusClass = validated ? 'field-status validated' : 'field-status pending';
 
     // Card 1: 项目建立与数据合同
     const c1 = this.createCard(
@@ -364,26 +402,30 @@ class SteadyModelAdaptV1 {
     const trainSelect = select(trainOptions, this.projectForm.trainingData || '');
     const testSelect = select(testOptions, this.projectForm.testData || '');
 
-    // 选择训练数据后自动预览
+    // 选择数据只记录文件名，不立即加载预览；创建项目后才加载
     trainSelect.addEventListener('change', () => {
-      const fn = trainSelect.value;
-      this.projectForm.trainingData = fn;
-      if (fn) this.loadPreview(fn, 'training');
+      this.projectForm.trainingData = trainSelect.value;
     });
     testSelect.addEventListener('change', () => {
-      const fn = testSelect.value;
-      this.projectForm.testData = fn;
-      if (fn) this.loadPreview(fn, 'test');
+      this.projectForm.testData = testSelect.value;
     });
+
+    // 项目创建后锁定表单
+    if (this.projectCreated) {
+      nameInput.disabled = true;
+      pkgSelect.disabled = true;
+      trainSelect.disabled = true;
+      testSelect.disabled = true;
+    }
 
     form.append(
       this.createField('项目名称', nameInput),
       this.createField('模型程序包', pkgSelect),
       this.createField('训练数据', trainSelect),
-      this.createField('测试数据（可选）', testSelect)
+      this.createField('测试数据', testSelect)
     );
 
-    // 状态标识与输入框同一行，放在最右边
+    // 总体校验状态标识，放在最右边
     const statusWrap = el('div', 'field-status-wrap');
     statusWrap.append(el('span', statusClass, statusText));
     form.append(statusWrap);
@@ -536,7 +578,7 @@ class SteadyModelAdaptV1 {
   /* ================= 02 参数辨识 ================= */
   render_identify(container) {
     const identifyResult = this.latestResult('estimateTransient') || this.latestResult('estimateSteady');
-    const isRunning = this.latestTask('estimateTransient')?.status === 'RUNNING' || this.latestTask('estimateSteady')?.status === 'RUNNING';
+    const isRunning = this.latestTask('estimateTransient')?.status === TASK_STATUS.RUNNING || this.latestTask('estimateSteady')?.status === TASK_STATUS.RUNNING;
 
     // Card 1: 辨识任务与正则化配置
     const c1 = this.createCard(
@@ -712,7 +754,7 @@ class SteadyModelAdaptV1 {
   /* ================= 04 不确定性评估 ================= */
   render_uq(container) {
     const uqResult = this.latestResult(this.activeUqMethod === 'B' ? 'uqMethodB' : 'uqMethodA');
-    const isRunning = this.latestTask(this.activeUqMethod === 'B' ? 'uqMethodB' : 'uqMethodA')?.status === 'RUNNING';
+    const isRunning = this.latestTask(this.activeUqMethod === 'B' ? 'uqMethodB' : 'uqMethodA')?.status === TASK_STATUS.RUNNING;
 
     // Card 1: 评估方法与运行时间预估
     const c1 = this.createCard(
@@ -1037,7 +1079,7 @@ class SteadyModelAdaptV1 {
       this.createMetricBox('验收状态与复核意见', latestIdentTask ? '验收通过 (FormalAccepted)' : '尚未选择结果'),
       this.createMetricBox('结果文件与图形', latestIdentTask ? 'result.mat / summary.md' : '尚未选择结果'),
       this.createMetricBox('MATLAB 调用方式', latestIdentTask ? 'Start_SteadyModelAdapt_V2_03' : '尚未选择结果'),
-      this.createMetricBox('稳态辨识模型状态', latestIdentTask && latestIdentTask.reviewStatus === 'APPROVED' ? '已审核通过' : '待审核')
+      this.createMetricBox('稳态辨识模型状态', latestIdentTask && latestIdentTask.reviewStatus === TASK_STATUS.REVIEW_APPROVED ? '已审核通过' : '待审核')
     );
     c3.body.append(dGrid);
     const btnRow = el('div', 'btn-row');
@@ -1516,19 +1558,51 @@ class SteadyModelAdaptV1 {
     this.projectForm = { projectName, modelPackage, trainingData, testData };
 
     this.ctx.log('正在创建并校验项目...');
-    if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('正在创建并校验项目...', 'info');
-    await this.withLoading('正在创建并校验项目（MATLAB零修正回放，约需10-30秒）...', async () => {
+    if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('正在创建项目...', 'info');
+    try {
+      if (this.ctx.http && this.ctx.http.workspace) {
+        // 创建 workspace（后端立即返回，MATLAB 初始化异步执行）
+        const ws = await this.ctx.http.workspace.create({
+          jobName: projectName,
+          trainingData,
+          testData: testData || ''
+        });
+        this.workspace = ws;
+        this.projectCreated = true;
+        this.ctx.log(`项目已创建，工作区 ID: ${ws.id}，正在执行 MATLAB 初始化...`);
+        if (this.ctx.refreshNav) this.ctx.refreshNav();
+        this.render(); // 锁定表单
+
+        // 轮询等待 MATLAB 初始化完成
+        await this.pollInitStatus(ws.id);
+      } else {
+        this.projectCreated = true;
+        this.ctx.log('项目创建完成（无后端连接，仅本地标记）');
+        if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('项目创建完成（无后端连接）', 'warning');
+        if (this.ctx.refreshNav) this.ctx.refreshNav();
+        this.render();
+      }
+    } catch (e) {
+      this.ctx.log('创建项目失败: ' + (e.message || e));
+      if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('创建项目失败: ' + (e.message || e), 'error');
+      this.projectCreated = false;
+      this.render();
+    }
+  }
+
+  /* 轮询 workspace 状态，等待 MATLAB 初始化完成 */
+  async pollInitStatus(workspaceId) {
+    const maxAttempts = 120; // 最多轮询 120 次，每次 2 秒，共 4 分钟
+    const interval = 2000;
+    for (let i = 0; i < maxAttempts; i++) {
+      if (this.destroyed) return;
       try {
-        if (this.ctx.http && this.ctx.http.workspace) {
-          const ws = await this.ctx.http.workspace.create({
-            jobName: projectName,
-            trainingData,
-            testData: testData || ''
-          });
-          this.workspace = ws;
-          this.projectCreated = true;
-          this.ctx.log(`项目创建成功，工作区 ID: ${ws.id}`);
-          if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('项目创建成功', 'success');
+        const ws = await this.ctx.http.workspace.request(workspaceId, { method: 'GET' });
+        if (!ws) break;
+        this.workspace = ws;
+        const status = ws.status || 'INITIALIZING';
+        if (status === TASK_STATUS.READY) {
+          // 初始化完成，加载结果
           if (ws.initResult) {
             if (ws.initResult.status === 'SUCCEEDED') {
               this.preview.training = {
@@ -1540,27 +1614,46 @@ class SteadyModelAdaptV1 {
                 groupCount: ws.initResult.groupCount || 0
               };
               this.ctx.log(`MATLAB初始化完成: ${ws.initResult.rowCount || 0} 个工况, ${ws.initResult.groupCount || 0} 个训练分组, DLL哈希: ${(ws.initResult.dllHash || '').substring(0, 12)}...`);
+              if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('项目初始化完成', 'success');
             } else if (ws.initResult.status === 'FALLBACK') {
               this.ctx.log(`MATLAB初始化降级: ${ws.initResult.message || ''}`);
               if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('MATLAB初始化降级: ' + (ws.initResult.message || ''), 'warning');
               if (this.projectForm.trainingData) {
-                await this.loadPreview(this.projectForm.trainingData, 'training');
+                const data = await this.ctx.http.previewData.request('', { method: 'GET', query: { fileName: this.projectForm.trainingData } });
+                this.preview.training = data;
               }
             }
+          } else {
+            // 没有 initResult，加载纯 Java 预览
+            if (this.projectForm.trainingData) {
+              const data = await this.ctx.http.previewData.request('', { method: 'GET', query: { fileName: this.projectForm.trainingData } });
+              this.preview.training = data;
+            }
           }
-          await this.loadWorkspaceDetails();
-          if (this.ctx.refreshNav) this.ctx.refreshNav();
-        } else {
-          this.projectCreated = true;
-          this.ctx.log('项目创建完成（无后端连接，仅本地标记）');
-          if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('项目创建完成（无后端连接）', 'warning');
-          if (this.ctx.refreshNav) this.ctx.refreshNav();
+          if (this.projectForm.testData) {
+            const testData = await this.ctx.http.previewData.request('', { method: 'GET', query: { fileName: this.projectForm.testData } });
+            this.preview.test = testData;
+          }
+          this.loading = false;
+          this.loadingText = '';
+          this.render();
+          return;
         }
+        // 仍在初始化中，更新 loading 文案
+        this.loading = true;
+        this.loadingText = `正在执行 MATLAB 初始化（已等待 ${((i + 1) * interval / 1000).toFixed(0)} 秒）...`;
+        this.render();
       } catch (e) {
-        this.ctx.log('创建项目失败: ' + (e.message || e));
-        if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('创建项目失败: ' + (e.message || e), 'error');
+        this.ctx.log('轮询初始化状态失败: ' + (e.message || e));
       }
-    });
+      await new Promise(r => setTimeout(r, interval));
+    }
+    // 超时
+    this.loading = false;
+    this.loadingText = '';
+    this.ctx.log('MATLAB 初始化等待超时，请稍后刷新查看结果');
+    if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('MATLAB 初始化等待超时，请稍后刷新', 'warning');
+    this.render();
   }
 
   async handleStartIdentify() {
@@ -1686,7 +1779,7 @@ class SteadyModelAdaptV1 {
     this.ctx.log('正在导出结果产物清单...');
     if (!this.workspace) return;
     try {
-      const allTasks = Array.from(this.tasks.values()).filter(t => t.status === 'SUCCEEDED');
+      const allTasks = Array.from(this.tasks.values()).filter(t => t.status === TASK_STATUS.COMPLETED);
       if (allTasks.length === 0) {
         this.ctx.log('暂无已完成的任务产物可导出');
         return;
