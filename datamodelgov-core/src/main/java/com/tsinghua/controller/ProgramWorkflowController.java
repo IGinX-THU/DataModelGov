@@ -36,6 +36,19 @@ public class ProgramWorkflowController {
     @Autowired
     private ProgramWorkflowService workflowService;
 
+    @ApiOperation("列出程序包内可用数据文件")
+    @GetMapping("/available-data")
+    @RequirePermission(Permission.READ)
+    public Result<?> listAvailableData(@RequestParam("name") String name,
+                                       @RequestParam("version") String version,
+                                       @RequestParam(value = "projectName", required = false) String projectName) {
+        try {
+            return Result.success(workflowService.listAvailableData(name, version, projectName));
+        } catch (Exception e) {
+            return failure("读取可用数据文件失败", e);
+        }
+    }
+
     @ApiOperation("创建程序工作区")
     @PostMapping("/workspace")
     @RequirePermission(Permission.CREATE)

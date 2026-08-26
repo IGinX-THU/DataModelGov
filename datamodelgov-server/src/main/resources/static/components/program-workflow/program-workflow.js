@@ -264,8 +264,10 @@ class ProgramWorkflow extends HTMLElement {
     if (this.topbarTitle) this.topbarTitle.textContent = '发动机个性化性能数字模型平台';
     if (this.topbarFunction) this.topbarFunction.textContent = '功能: ' + (ui.title || (this.program && this.program.name) || '稳态试车工况点模型修正V1');
     if (this.topbarProject) {
-      const p = this.program && this.program.projectName;
-      this.topbarProject.textContent = '当前项目: ' + (p ? p : '未创建');
+      const pluginProjectCreated = this.pluginInstance && this.pluginInstance.projectCreated;
+      const p = pluginProjectCreated ? (this.pluginInstance.projectForm && this.pluginInstance.projectForm.projectName) : null;
+      this.topbarProject.textContent = '当前项目：' + (p ? p : '未创建');
+      this.topbarProject.classList.toggle('project-uncreated', !pluginProjectCreated);
     }
     if (this.currentFunctionName) {
       this.currentFunctionName.innerHTML = '稳态试车工况点模型<br>自适应修正';
@@ -309,7 +311,14 @@ class ProgramWorkflow extends HTMLElement {
   }
 
   async setActiveSection(id) {
-    this.activeSection = this.sections.find(s => s.id === id) || this.sections[0];
+    const target = this.sections.find(s => s.id === id);
+    if (!target) return;
+    const locked = this.getLockedSections();
+    if (locked.has(target.id)) {
+      this.setLog(`功能"${target.title}"尚未解锁，请先完成前置步骤`);
+      return;
+    }
+    this.activeSection = target;
     this.workflowNav.querySelectorAll('.nav-item').forEach((item, index) => {
       item.classList.toggle('active', this.sections[index].id === this.activeSection.id);
     });
@@ -317,6 +326,22 @@ class ProgramWorkflow extends HTMLElement {
     if (this.pluginInstance && typeof this.pluginInstance.setSection === 'function') {
       try { await this.pluginInstance.setSection(this.activeSection.id); } catch (e) { console.warn('setSection 失败:', e); }
     }
+    this.updateNavLockState();
+  }
+
+  getLockedSections() {
+    if (this.pluginInstance && typeof this.pluginInstance.getLockedSections === 'function') {
+      try { return new Set(this.pluginInstance.getLockedSections()); } catch (e) { return new Set(); }
+    }
+    return new Set();
+  }
+
+  updateNavLockState() {
+    const locked = this.getLockedSections();
+    this.workflowNav.querySelectorAll('.nav-item').forEach((item, index) => {
+      const section = this.sections[index];
+      if (section) item.classList.toggle('locked', locked.has(section.id));
+    });
   }
 
   async loadExtension(config, sequence) {
@@ -363,6 +388,7 @@ class ProgramWorkflow extends HTMLElement {
       this.pluginInstance = instance || null;
       if (instance && typeof instance.init === 'function') await instance.init(context);
       if (sequence !== this._loadSequence) { this.destroyExtension(); return; }
+      this.updateNavLockState();
     } catch (error) {
       this.destroyExtension();
       throw new Error(`插件 ${pluginId} 初始化失败: ${error.message || error}`);
@@ -376,6 +402,7 @@ class ProgramWorkflow extends HTMLElement {
       activeSectionId: section.id,
       sections: this.sections,
       setSection: id => this.setActiveSection(id),
+      refreshNav: () => { this.updateNavLockState(); this.renderShell(); },
       program: Object.freeze({ ...this.program }),
       metadata: Object.freeze({ ...this.program }),
       config: this.programConfig,
@@ -385,7 +412,8 @@ class ProgramWorkflow extends HTMLElement {
         datasets: this.createHttpNamespace('datasets'),
         tasks: this.createHttpNamespace('tasks'),
         results: this.createHttpNamespace('results'),
-        artifacts: this.createHttpNamespace('artifacts')
+        artifacts: this.createHttpNamespace('artifacts'),
+        availableData: this.createHttpNamespace('available-data')
       }),
       log: message => this.setLog(message),
       setStatus: (state, text) => this.setEnvStatus(state, text)

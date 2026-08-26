@@ -81,6 +81,18 @@ class SteadyModelAdaptV1 {
     this.predictionMode = 'pressure';
     this.resultsFilter = 'all';
 
+    // 项目创建状态：false 时后续功能锁定
+    this.projectCreated = false;
+    // 项目表单缓存
+    this.projectForm = {
+      projectName: '',
+      modelPackage: '',
+      trainingData: '',
+      testData: ''
+    };
+    // 可用数据文件列表（从后端获取）
+    this.availableDataFiles = [];
+
     // 预测输入缓存
     this.predInputs = {
       pamb: 101325,
@@ -101,6 +113,12 @@ class SteadyModelAdaptV1 {
   async setSection(sectionId) {
     this.activeSection = sectionId;
     this.render();
+  }
+
+  /* 项目创建完成前，除"新建项目与数据"外全部锁定 */
+  getLockedSections() {
+    if (this.projectCreated) return [];
+    return ['identify', 'identifiability', 'uq', 'validation', 'prediction', 'results'];
   }
 
   async onHeaderAction(label, sectionId) {
@@ -129,17 +147,28 @@ class SteadyModelAdaptV1 {
   /* ================= 后端数据加载与同步 ================= */
   async loadInitialData() {
     try {
+      // 加载可用数据文件列表
+      if (this.ctx.http && this.ctx.http.availableData) {
+        const files = await this.ctx.http.availableData.list();
+        if (Array.isArray(files)) this.availableDataFiles = files;
+      }
+    } catch (e) {
+      console.warn('读取可用数据文件失败:', e);
+    }
+    try {
       if (this.ctx.http && this.ctx.http.workspace) {
         const list = await this.ctx.http.workspace.list();
         if (Array.isArray(list)) this.workspaces = list;
         if (this.workspaces.length > 0 && !this.workspace) {
           this.workspace = this.workspaces[0];
+          this.projectCreated = true;
           await this.loadWorkspaceDetails();
         }
       }
     } catch (e) {
       console.warn('读取工作区失败:', e);
     }
+    this.render();
   }
 
   async loadWorkspaceDetails() {
@@ -236,59 +265,101 @@ class SteadyModelAdaptV1 {
 
   /* ================= 01 项目与数据 ================= */
   render_data(container) {
+    const validated = this.projectCreated;
+    const statusText = validated ? '已校验' : '待校验';
+    const statusClass = 'field-status pending';
+
     // Card 1: 项目建立与数据合同
     const c1 = this.createCard(
       '项目建立与数据合同',
       '项目创建完成前，后续功能保持锁定；测试数据可选且不参与参数辨识。'
     );
     const form = el('div', 'form-grid-4');
-    const trainFileName = this.datasets.find(d => d.datasetKey === 'trainingData')?.fileName || 'steady_bench_2p4_train_means.xlsx';
-    const testFileName = this.datasets.find(d => d.datasetKey === 'testData')?.fileName || 'steady_bench_2p4_test_means.xlsx';
+
+    const nameInput = input('text', 'projectName', '请输入项目名称', this.projectForm.projectName);
+
+    // 模型程序包：使用 ctx.program 信息
+    const programName = this.ctx.program && this.ctx.program.name || '稳态试车工况点模型修正V1';
+    const pkgOptions = [{ value: '', label: '选择交付程序目录' }, programName];
+    const pkgSelect = select(pkgOptions, this.projectForm.modelPackage || '');
+
+    // 训练数据/测试数据：从后端获取的可用数据文件列表
+    const dataFileNames = this.availableDataFiles.map(f => f.fileName);
+    const trainOptions = [{ value: '', label: '选择训练试车数据' }, ...dataFileNames];
+    const testOptions = [{ value: '', label: '选择测试数据（可选）' }, ...dataFileNames];
+    const trainSelect = select(trainOptions, this.projectForm.trainingData || '');
+    const testSelect = select(testOptions, this.projectForm.testData || '');
 
     form.append(
-      this.createField('项目名称', input('text', 'projectName', '请输入项目名称', (this.workspace && this.workspace.projectName) || '示例项目_2026')),
-      this.createField('模型程序包', select(['稳态试车工况点模型修正V1', '选择交付程序目录'])),
-      this.createField('训练数据', select([trainFileName, '选择训练试车数据'])),
-      this.createField('测试数据', select([testFileName, '选择测试数据（可选）']))
+      this.createField('项目名称', nameInput),
+      this.createField('模型程序包', pkgSelect),
+      this.createField('训练数据', trainSelect),
+      this.createField('测试数据（可选）', testSelect)
     );
+
+    // 状态标识与输入框同一行，放在最右边
+    const statusWrap = el('div', 'field-status-wrap');
+    statusWrap.append(el('span', statusClass, statusText));
+    form.append(statusWrap);
+
     c1.body.append(form);
-    c1.body.append(el('p', 'card-foot-note', '训练数据用于辨识，测试数据仅用于独立验证。'));
 
     // Card 2: 测量数据表
     const c2 = this.createCard(
       '测量数据表',
       '每行对应一个稳态工况窗口；全部测量字段保存在同一张表中，固定工况编号并支持横向滚动。'
     );
-    const mRows = [
-      ['工况1', '1.000', '1.000', '0.1245', '1498.2', '198.5', '288.15', '101325', '842300', '585.2', '982.5', '185200', '101325', '288.15', '0.0', '0.00'],
-      ['工况2', '0.985', '0.962', '0.1180', '1420.0', '190.0', '288.15', '101325', '798000', '572.0', '965.0', '178000', '101325', '288.15', '0.0', '0.00'],
-      ['工况3', '0.950', '0.920', '0.1050', '1310.5', '180.2', '288.15', '101325', '720000', '551.4', '935.8', '164500', '101325', '288.15', '0.0', '0.00'],
-      ['工况4', '0.900', '0.865', '0.0910', '1180.0', '168.0', '288.15', '101325', '635000', '528.0', '898.0', '149000', '101325', '288.15', '0.0', '0.00'],
-      ['工况5', '0.850', '0.810', '0.0780', '1020.8', '155.4', '288.15', '101325', '548000', '502.5', '855.2', '132000', '101325', '288.15', '0.0', '0.00'],
-      ['工况6', '0.800', '0.750', '0.0650', '860.0', '140.0', '288.15', '101325', '462000', '475.0', '805.0', '115000', '101325', '288.15', '0.0', '0.00'],
-      ['工况7', '0.750', '0.690', '0.0540', '710.2', '125.0', '288.15', '101325', '385000', '448.2', '755.0', '98500', '101325', '288.15', '0.0', '0.00']
-    ];
-    c2.body.append(this.createTable(MEASURE_HEADERS, mRows));
+    const measureRows = this.extractMeasureRows();
+    if (measureRows.length > 0) {
+      c2.body.append(this.createTable(MEASURE_HEADERS, measureRows));
+    } else {
+      c2.body.append(el('p', 'empty-hint', validated ? '暂无测量数据，请检查训练数据文件' : '请先创建并校验项目后加载数据'));
+    }
     c2.body.append(el('p', 'table-note', '单位、缺失值、越界标记和原始字段名在列标题提示中展示；表内数值由导入文件动态读取。'));
 
-    // Card 3: AC相对换算转速、调度变量与训练分组
+    // Card 3: 调度变量与训练分组表
     const c3 = this.createCard(
       'AC相对换算转速、调度变量与训练分组',
       '同一表显示各工况辅助变量；按AC相对换算转速聚类后写入训练分组列。'
     );
-    const gRows = [
-      ['工况1', '训练', '组1 (高转速)', '1.000', '1.000', '0.985', '1.000', '0.992', '1.000', '0.995', '1.000'],
-      ['工况2', '训练', '组1 (高转速)', '0.962', '0.958', '0.945', '0.960', '0.955', '0.965', '0.958', '0.948'],
-      ['工况3', '训练', '组2 (中高转速)', '0.920', '0.912', '0.900', '0.915', '0.908', '0.922', '0.910', '0.843'],
-      ['工况4', '训练', '组2 (中高转速)', '0.865', '0.850', '0.835', '0.855', '0.842', '0.860', '0.845', '0.731'],
-      ['工况5', '训练', '组3 (中低转速)', '0.810', '0.790', '0.772', '0.795', '0.780', '0.802', '0.785', '0.627'],
-      ['工况6', '训练', '组4 (低转速)', '0.750', '0.725', '0.705', '0.730', '0.715', '0.740', '0.720', '0.522'],
-      ['工况7', '训练', '组4 (低转速)', '0.690', '0.660', '0.638', '0.665', '0.650', '0.675', '0.655', '0.434']
-    ];
-    c3.body.append(this.createTable(GROUP_HEADERS, gRows));
+    const groupRows = this.extractGroupRows();
+    if (groupRows.length > 0) {
+      c3.body.append(this.createTable(GROUP_HEADERS, groupRows));
+    } else {
+      c3.body.append(el('p', 'empty-hint', validated ? '暂无调度变量数据，请检查训练数据文件' : '请先创建并校验项目后加载数据'));
+    }
     c3.body.append(el('p', 'table-note', '同一训练组采用一致的组号和颜色标识。分组结果可查看但不允许直接手工改写。'));
 
     container.append(c1.card, c2.card, c3.card);
+  }
+
+  /* 创建带状态标识的输入字段 */
+  createFieldWithStatus(label, control, statusText, statusClass) {
+    const wrap = el('div', 'field');
+    const labelRow = el('div', 'field-label-row');
+    labelRow.append(el('label', 'field-label', label));
+    const status = el('span', statusClass, statusText);
+    labelRow.append(status);
+    wrap.append(labelRow, control);
+    return wrap;
+  }
+
+  /* 从后端结果中提取测量数据行，无数据时返回空数组 */
+  extractMeasureRows() {
+    const ds = this.datasets.find(d => d.datasetKey === 'trainingData');
+    if (ds && Array.isArray(ds.rows)) {
+      return ds.rows.map(r => MEASURE_HEADERS.map(h => r[h] ?? '—'));
+    }
+    return [];
+  }
+
+  /* 从后端结果中提取调度变量与分组行，无数据时返回空数组 */
+  extractGroupRows() {
+    const ds = this.datasets.find(d => d.datasetKey === 'trainingData');
+    if (ds && Array.isArray(ds.groupRows)) {
+      return ds.groupRows.map(r => GROUP_HEADERS.map(h => r[h] ?? '—'));
+    }
+    return [];
   }
 
   /* ================= 02 参数辨识 ================= */
@@ -928,16 +999,66 @@ class SteadyModelAdaptV1 {
 
   /* ================= 业务动作触发与后端交互 ================= */
   async handleCreateProject() {
+    if (this.projectCreated) {
+      this.ctx.log('项目已创建，字段已锁定');
+      return;
+    }
+
+    // 从 DOM 读取表单值
+    const root = this.mount;
+    const nameInput = root.querySelector('input[name="projectName"]');
+    const projectName = nameInput ? nameInput.value.trim() : this.projectForm.projectName;
+    if (!projectName) {
+      this.ctx.log('创建失败：请输入项目名称');
+      return;
+    }
+
+    const selects = root.querySelectorAll('select');
+    const pkgSel = selects[0];
+    const trainSel = selects[1];
+    const testSel = selects[2];
+    const modelPackage = pkgSel ? pkgSel.value : this.projectForm.modelPackage;
+    const trainingData = trainSel ? trainSel.value : this.projectForm.trainingData;
+    const testData = testSel ? testSel.value : '';
+
+    if (!trainingData) {
+      this.ctx.log('创建失败：请选择训练数据');
+      return;
+    }
+    if (!modelPackage) {
+      this.ctx.log('创建失败：请选择模型程序包');
+      return;
+    }
+
+    // 缓存表单
+    this.projectForm = { projectName, modelPackage, trainingData, testData };
+
     this.ctx.log('正在创建并校验项目...');
+    this.busy = true;
+    this.render();
     try {
       if (this.ctx.http && this.ctx.http.workspace) {
-        const ws = await this.ctx.http.workspace.create({});
+        const ws = await this.ctx.http.workspace.create({
+          projectName,
+          trainingData,
+          testData: testData || ''
+        });
         this.workspace = ws;
+        this.projectCreated = true;
         this.ctx.log(`项目创建成功，工作区 ID: ${ws.id}`);
         await this.loadWorkspaceDetails();
+        if (this.ctx.refreshNav) this.ctx.refreshNav();
+      } else {
+        // 无后端 HTTP 时仅标记创建完成（开发占位）
+        this.projectCreated = true;
+        this.ctx.log('项目创建完成（无后端连接，仅本地标记）');
+        if (this.ctx.refreshNav) this.ctx.refreshNav();
       }
     } catch (e) {
       this.ctx.log('创建项目失败: ' + (e.message || e));
+    } finally {
+      this.busy = false;
+      this.render();
     }
   }
 

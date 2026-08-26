@@ -94,8 +94,9 @@ button, input, select, textarea { font: inherit; }
 
 .form-grid-4 {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
   gap: 16px;
+  align-items: end;
 }
 
 .field {
@@ -106,10 +107,50 @@ button, input, select, textarea { font: inherit; }
   min-width: 160px;
 }
 
+.field-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .field-label {
   font-size: 12px;
   color: #3b5060;
   font-weight: 500;
+}
+
+.field-status {
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.field-status.pending {
+  color: #c47b1a;
+  background: #fff4e0;
+  border: 1px solid #f0d8a8;
+}
+
+.field-status.ok {
+  color: #c47b1a;
+  background: #fff4e0;
+  border: 1px solid #f0d8a8;
+}
+
+.field-status.optional {
+  color: #6b7c8a;
+  background: #f0f4f7;
+  border: 1px solid #d4dde5;
+}
+
+.field-status-wrap {
+  display: flex;
+  align-items: center;
+  padding-bottom: 8px;
+  white-space: nowrap;
 }
 
 input[type="text"], input[type="number"], select {
@@ -360,6 +401,17 @@ input::placeholder { color: #9aa6ad; }
   color: #7f919e;
   margin: 8px 0 0;
   line-height: 1.5;
+}
+
+.empty-hint {
+  padding: 24px 16px;
+  text-align: center;
+  color: #9aa8b4;
+  font-size: 13px;
+  background: #f8fafc;
+  border: 1px dashed #d4dde5;
+  border-radius: 4px;
+  margin: 0;
 }
 
 .btn-table {
