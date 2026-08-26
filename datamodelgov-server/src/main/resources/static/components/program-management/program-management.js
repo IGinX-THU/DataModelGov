@@ -402,6 +402,15 @@ class ProgramManagement extends HTMLElement {
         const workflow = executionType === 'matlabWorkflow';
         const workingDirectoryRow = this.shadowRoot.getElementById('cfgWorkingDirectoryRow');
         if (workingDirectoryRow) workingDirectoryRow.style.display = workflow ? '' : 'none';
+        // 页面模板仅 simulinkRealtime 可见
+        const templateGroup = this.shadowRoot.getElementById('cfgTemplateGroup');
+        if (templateGroup) templateGroup.style.display = workflow ? 'none' : 'inline-flex';
+        // 左列信号采集脚本区仅 simulinkRealtime 可见
+        const scriptColumn = this.shadowRoot.getElementById('cfgScriptColumn');
+        if (scriptColumn) scriptColumn.style.display = workflow ? 'none' : 'flex';
+        // 运行配置标题随类型变化
+        const runtimeTitle = this.shadowRoot.getElementById('cfgRuntimeTitle');
+        if (runtimeTitle) runtimeTitle.textContent = workflow ? '工作流配置' : '运行配置';
         const simulinkFieldIds = [
             'cfgPreRunScript', 'cfgSkipPreRunOnReuse', 'cfgPrewarm', 'cfgSimulinkModel',
             'cfgSimulinkModels', 'cfgStopTime', 'cfgFixedStep', 'cfgFixedStepBaseValue', 'cfgFixedStepHint'
@@ -414,10 +423,6 @@ class ProgramManagement extends HTMLElement {
             const section = this.shadowRoot.getElementById(id)?.closest('.config-section');
             if (section) section.style.display = workflow ? 'none' : '';
         });
-        const setupSection = this.shadowRoot.getElementById('cfgSetupScript')?.closest('.config-section');
-        if (setupSection && setupSection.parentElement) {
-            setupSection.parentElement.style.display = workflow ? 'none' : 'flex';
-        }
     }
 
     renderConfigForm(config) {
