@@ -86,6 +86,9 @@ public final class ProgramConfigMapper {
         // ui.sections 引用的信号名/参数 key 须存在（仅 strict 模式校验信号名，
         // 因为非 strict 时 setupScript 还没产出 dmg_cols，无法核对）
         ProgramConfig.UiConfig ui = config.getUi();
+        // matlabWorkflow + extension.override 时 sections 由插件解释，跳过 type 校验
+        boolean pluginOverride = ui != null && ui.getExtension() != null
+                && ui.getExtension().isEnabled() && "override".equals(ui.getExtension().getMode());
         if (strict && ui != null && ui.getSections() != null) {
             Set<String> paramKeys = new HashSet<>();
             if (params != null) {
@@ -100,7 +103,7 @@ public final class ProgramConfigMapper {
                 } else if (!sectionIds.add(s.getId())) {
                     errors.add("section.id 重复: " + s.getId());
                 }
-                if (isBlank(s.getType())) {
+                if (isBlank(s.getType()) && !pluginOverride) {
                     errors.add("section.type 必填 (id=" + s.getId() + ")");
                 }
                 if ("control".equals(s.getType()) && s.getRows() != null) {

@@ -393,6 +393,10 @@ class ProgramWorkflow extends HTMLElement {
   }
 
   createHttpNamespace(namespace) {
+    const unwrap = result => {
+      if (result && typeof result === 'object' && 'success' in result && 'data' in result) return result.data;
+      return result;
+    };
     const request = async (path = '', options = {}) => {
       const cleanPath = String(path || '').replace(/^\/+/, '');
       const baseUrl = (window.AppConfig.api && window.AppConfig.api.baseURL) || '';
@@ -413,10 +417,12 @@ class ProgramWorkflow extends HTMLElement {
         delete headers['Content-Type'];
         const response = await fetch(url, { ...requestOptions, headers });
         if (!response.ok) throw new Error(`请求失败: HTTP ${response.status}`);
-        return response.json();
+        const json = await response.json();
+        return unwrap(json);
       }
       if (requestOptions.body !== undefined && this.isPlainObject(requestOptions.body)) requestOptions.body = JSON.stringify(requestOptions.body);
-      return window.AppConfig.request(url, requestOptions);
+      const result = await window.AppConfig.request(url, requestOptions);
+      return unwrap(result);
     };
     const download = async (path, fileName, query = {}) => {
       const cleanPath = String(path || '').replace(/^\/+/, '');
