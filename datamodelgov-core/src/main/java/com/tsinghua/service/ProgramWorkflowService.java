@@ -105,7 +105,7 @@ public class ProgramWorkflowService {
 
     /**
      * 列出程序包内可用的数据文件（Excel），用于项目创建前的下拉选择。
-     * 临时解压程序包，扫描 workingDirectory 下的 TestData 目录。
+     * 直接扫描上传时已解压的程序目录，不重复解压。
      */
     public List<Map<String, Object>> listAvailableData(String name, String version, String projectName) throws Exception {
         requireSafeQueryValue(name, "name");
@@ -114,55 +114,36 @@ public class ProgramWorkflowService {
         ProgramEntity entity = requireWorkflowProgram(name, version, project);
         ProgramConfig config = parseWorkflowConfig(entity);
 
-        String archiveName = safeFileName(entity.getFileName(), "program.zip");
-        if (!ArchiveUtil.isSupportedArchive(archiveName)) {
-            throw new IllegalArgumentException("Program archive has an unsupported file extension");
+        // 使用上传时已解压的程序目录
+        File programDir = programService.getProgramDir(project, name, version);
+        if (!programDir.isDirectory()) {
+            throw new IllegalArgumentException("程序解压目录不存在，请重新上传程序包");
         }
 
-        Path tempDir = Files.createTempDirectory("workflow-available-data-");
-        try {
-            Path archive = child(tempDir, archiveName);
-            Files.write(archive, programService.downloadProgram(name, version, project));
-            Path extractDir = child(tempDir, "extracted");
-            Files.createDirectories(extractDir);
-            ArchiveUtil.extractArchive(archive.toFile(), extractDir.toFile());
+        String configuredWorkingDirectory = config.getRuntime().getWorkingDirectory().trim();
+        Path workingDirectory = resolveInside(programDir.toPath(), configuredWorkingDirectory, true);
 
-            String configuredWorkingDirectory = config.getRuntime().getWorkingDirectory().trim();
-            Path workingDirectory = resolveInside(extractDir, configuredWorkingDirectory, true);
-
-            List<Map<String, Object>> result = new ArrayList<>();
-            // 扫描 TestData 目录下的 Excel 文件
-            Path testData = child(workingDirectory, "TestData");
-            if (Files.isDirectory(testData)) {
-                try (Stream<Path> paths = Files.list(testData)) {
-                    for (Path file : (Iterable<Path>) paths::iterator) {
-                        if (!Files.isRegularFile(file)) continue;
-                        String fileName = file.getFileName().toString();
-                        String lower = fileName.toLowerCase();
-                        if (lower.endsWith(".xlsx") || lower.endsWith(".xls")) {
-                            Map<String, Object> entry = new LinkedHashMap<>();
-                            entry.put("fileName", fileName);
-                            entry.put("size", Files.size(file));
-                            entry.put("relativePath", "TestData/" + fileName);
-                            result.add(entry);
-                        }
+        List<Map<String, Object>> result = new ArrayList<>();
+        // 扫描 TestData 目录下的 Excel 文件
+        Path testData = child(workingDirectory, "TestData");
+        if (Files.isDirectory(testData)) {
+            try (Stream<Path> paths = Files.list(testData)) {
+                for (Path file : (Iterable<Path>) paths::iterator) {
+                    if (!Files.isRegularFile(file)) continue;
+                    String fileName = file.getFileName().toString();
+                    String lower = fileName.toLowerCase();
+                    if (lower.endsWith(".xlsx") || lower.endsWith(".xls")) {
+                        Map<String, Object> entry = new LinkedHashMap<>();
+                        entry.put("fileName", fileName);
+                        entry.put("size", Files.size(file));
+                        entry.put("relativePath", "TestData/" + fileName);
+                        result.add(entry);
                     }
                 }
             }
-            result.sort(Comparator.comparing(m -> value(m.get("fileName"))));
-            return result;
-        } finally {
-            deleteRecursively(tempDir);
         }
-    }
-
-    private void deleteRecursively(Path dir) {
-        if (!Files.isDirectory(dir)) return;
-        try (Stream<Path> paths = Files.walk(dir)) {
-            paths.sorted(Comparator.reverseOrder()).forEach(p -> {
-                try { Files.deleteIfExists(p); } catch (IOException ignored) {}
-            });
-        } catch (IOException ignored) {}
+        result.sort(Comparator.comparing(m -> value(m.get("fileName"))));
+        return result;
     }
 
     public Map<String, Object> createWorkspace(String name, String version, String projectName) throws Exception {

@@ -159,7 +159,7 @@ public class ProgramService {
         return dir;
     }
 
-    private File getProgramDir(String projectName, String name, String version) {
+    public File getProgramDir(String projectName, String name, String version) {
         String safeProj = safeProjectName(projectName);
         String safeVersion = version.replace('.', '_');
         File dir = new File(TASK_BASE_DIR + "/" + safeProj + "/program/" + name + "_" + safeVersion);
