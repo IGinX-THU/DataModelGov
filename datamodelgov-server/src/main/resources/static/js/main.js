@@ -669,6 +669,15 @@ document.addEventListener('DOMContentLoaded', function() {
                         return;
                     case 'showProgramUpload':
                         console.log('仿真程序上传菜单被点击');
+                        // 检查是否已打开项目
+                        const usernameUpload = window.localStorage.getItem('username');
+                        const cachedProjectUpload = usernameUpload ? JSON.parse(window.localStorage.getItem('currentProject_' + usernameUpload) || 'null') : null;
+                        if (!cachedProjectUpload) {
+                            if (window.CommonUtils && window.CommonUtils.showToast) {
+                                window.CommonUtils.showToast('请先选择或创建项目', 'error');
+                            }
+                            return;
+                        }
                         clearWorkspace();
                         showComponent('programUpload');
                         return;

@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -108,6 +109,22 @@ public class ProgramWorkflowController {
             return Result.success(workflowService.getWorkspace(id, name, version, projectName));
         } catch (Exception e) {
             return failure("读取工作区失败", e);
+        }
+    }
+
+    @ApiOperation("删除程序工作区")
+    @DeleteMapping("/workspace/{id}")
+    @RequirePermission(Permission.DELETE)
+    @OperationLog(value = "删除程序工作区", type = OperationLog.OperationType.DELETE)
+    public Result<?> deleteWorkspace(@PathVariable("id") String id,
+                                     @RequestParam("name") String name,
+                                     @RequestParam("version") String version,
+                                     @RequestParam(value = "projectName", required = false) String projectName) {
+        try {
+            workflowService.deleteWorkspace(id, name, version, projectName);
+            return Result.success("已删除");
+        } catch (Exception e) {
+            return failure("删除工作区失败", e);
         }
     }
 

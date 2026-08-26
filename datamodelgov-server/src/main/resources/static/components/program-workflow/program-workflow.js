@@ -194,7 +194,7 @@ class ProgramWorkflow extends HTMLElement {
 
   getSections() {
     const defaultActions = {
-      data: [{ label: '字段说明' }, { label: '创建并校验项目', primary: true }],
+      data: [{ label: '字段说明' }, { label: '打开已有项目' }, { label: '创建并校验项目', primary: true }],
       identify: [{ label: '恢复默认配置' }, { label: '开始辨识', primary: true }],
       identifiability: [{ label: '切换分析对象' }, { label: '生成分析报告', primary: true }],
       uq: [{ label: '评估配置' }, { label: '开始评估', primary: true }],

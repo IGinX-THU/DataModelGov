@@ -565,6 +565,22 @@ public class ProgramWorkflowService {
         return record;
     }
 
+    public void deleteWorkspace(String id, String name, String version, String projectName) throws Exception {
+        Path workspace = requireWorkspace(id, name, version, projectName);
+        deleteRecursively(workspace);
+    }
+
+    private void deleteRecursively(Path path) throws IOException {
+        if (Files.isDirectory(path)) {
+            try (Stream<Path> paths = Files.list(path)) {
+                for (Path child : (Iterable<Path>) paths::iterator) {
+                    deleteRecursively(child);
+                }
+            }
+        }
+        Files.deleteIfExists(path);
+    }
+
     public Map<String, Object> uploadDataset(String workspaceId, String datasetKey, MultipartFile file,
                                               String name, String version, String projectName) throws Exception {
         if (file == null || file.isEmpty()) throw new IllegalArgumentException("Dataset file is empty");

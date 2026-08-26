@@ -84,6 +84,8 @@ class SteadyModelAdaptV1 {
     this.timers = new Set();
     this.destroyed = false;
     this.busy = false;
+    this.loading = false;
+    this.loadingText = '';
 
     // 状态配置
     this.identifyModel = 'transient';
@@ -141,6 +143,10 @@ class SteadyModelAdaptV1 {
     this.ctx.log(`触发操作：${label}（${sectionId}）`);
     if (label === '创建并校验项目') {
       await this.handleCreateProject();
+    } else if (label === '字段说明') {
+      this.showFieldHelp();
+    } else if (label === '打开已有项目') {
+      await this.handleOpenExistingProject();
     } else if (label === '开始辨识') {
       await this.handleStartIdentify();
     } else if (label === '恢复默认配置') {
@@ -162,80 +168,68 @@ class SteadyModelAdaptV1 {
 
   /* ================= 后端数据加载与同步 ================= */
   async loadInitialData() {
-    try {
-      // 加载可用数据文件列表
-      if (this.ctx.http && this.ctx.http.availableData) {
-        const files = await this.ctx.http.availableData.list();
-        if (Array.isArray(files)) this.availableDataFiles = files;
-      }
-    } catch (e) {
-      console.warn('读取可用数据文件失败:', e);
-    }
-    try {
-      if (this.ctx.http && this.ctx.http.workspace) {
-        const list = await this.ctx.http.workspace.list();
-        if (Array.isArray(list)) this.workspaces = list;
-        if (this.workspaces.length > 0 && !this.workspace) {
-          const ws = this.workspaces[0];
-          // 只有当 workspace 有 jobName 时才恢复项目状态
-          if (ws.jobName) {
-            this.workspace = ws;
-            this.projectCreated = true;
-            this.projectForm.projectName = ws.jobName;
-            await this.loadWorkspaceDetails();
-            if (this.ctx.refreshNav) this.ctx.refreshNav();
-          }
+    await this.withLoading('正在加载数据...', async () => {
+      try {
+        if (this.ctx.http && this.ctx.http.availableData) {
+          const files = await this.ctx.http.availableData.list();
+          if (Array.isArray(files)) this.availableDataFiles = files;
         }
+      } catch (e) {
+        console.warn('读取可用数据文件失败:', e);
       }
-    } catch (e) {
-      console.warn('读取工作区失败:', e);
-    }
-    this.render();
+      try {
+        if (this.ctx.http && this.ctx.http.workspace) {
+          const list = await this.ctx.http.workspace.list();
+          if (Array.isArray(list)) this.workspaces = list;
+        }
+      } catch (e) {
+        console.warn('读取工作区失败:', e);
+      }
+    });
   }
 
   async loadWorkspaceDetails() {
     if (!this.workspace || !this.ctx.http) return;
-    try {
-      const [datasets, tasks] = await Promise.all([
-        this.ctx.http.datasets.request(this.workspace.id, { method: 'GET' }).catch(() => []),
-        this.ctx.http.tasks.list({ workspaceId: this.workspace.id }).catch(() => [])
-      ]);
-      if (Array.isArray(datasets)) this.datasets = datasets;
-      if (Array.isArray(tasks)) {
-        tasks.forEach(t => {
-          this.tasks.set(t.id, t);
-          if (t.status === 'RUNNING' || t.status === 'QUEUED') {
-            this.schedulePoll(t.id, 1000);
-          } else if (t.status === 'SUCCEEDED' && !this.results.has(t.id)) {
-            this.loadTaskResult(t.id);
-          }
-        });
+    await this.withLoading('正在加载工作区详情...', async () => {
+      try {
+        const [datasets, tasks] = await Promise.all([
+          this.ctx.http.datasets.request(this.workspace.id, { method: 'GET' }).catch(() => []),
+          this.ctx.http.tasks.list({ workspaceId: this.workspace.id }).catch(() => [])
+        ]);
+        if (Array.isArray(datasets)) this.datasets = datasets;
+        if (Array.isArray(tasks)) {
+          tasks.forEach(t => {
+            this.tasks.set(t.id, t);
+            if (t.status === 'RUNNING' || t.status === 'QUEUED') {
+              this.schedulePoll(t.id, 1000);
+            } else if (t.status === 'SUCCEEDED' && !this.results.has(t.id)) {
+              this.loadTaskResult(t.id);
+            }
+          });
+        }
+        if (this.workspace.jobName) this.projectForm.projectName = this.workspace.jobName;
+        if (this.workspace.programName) this.projectForm.modelPackage = this.workspace.programName;
+        if (this.workspace.trainingDataFile) this.projectForm.trainingData = this.workspace.trainingDataFile;
+        if (this.workspace.testDataFile) this.projectForm.testData = this.workspace.testDataFile;
+        if (this.workspace.initResult && this.workspace.initResult.status === 'SUCCEEDED') {
+          this.preview.training = {
+            rows: this.workspace.initResult.measureRows || [],
+            scheduleRows: this.workspace.initResult.scheduleRows || [],
+            rowCount: this.workspace.initResult.rowCount || 0,
+            valid: this.workspace.initResult.valid !== false,
+            missingColumns: this.workspace.initResult.missingColumns || [],
+            groupCount: this.workspace.initResult.groupCount || 0
+          };
+        } else if (this.workspace.trainingDataFile) {
+          await this.loadPreview(this.workspace.trainingDataFile, 'training');
+        }
+        if (this.workspace.testDataFile) {
+          await this.loadPreview(this.workspace.testDataFile, 'test');
+        }
+      } catch (e) {
+        console.warn('刷新工作区详情失败:', e);
       }
-      // 恢复表单状态
-      if (this.workspace.jobName) this.projectForm.projectName = this.workspace.jobName;
-      if (this.workspace.trainingDataFile) this.projectForm.trainingData = this.workspace.trainingDataFile;
-      if (this.workspace.testDataFile) this.projectForm.testData = this.workspace.testDataFile;
-      // 如果 workspace 有 initResult，恢复预览
-      if (this.workspace.initResult && this.workspace.initResult.status === 'SUCCEEDED') {
-        this.preview.training = {
-          rows: this.workspace.initResult.measureRows || [],
-          scheduleRows: this.workspace.initResult.scheduleRows || [],
-          rowCount: this.workspace.initResult.rowCount || 0,
-          valid: this.workspace.initResult.valid !== false,
-          missingColumns: this.workspace.initResult.missingColumns || [],
-          groupCount: this.workspace.initResult.groupCount || 0
-        };
-      } else if (this.workspace.trainingDataFile) {
-        // 否则重新预览训练数据
-        await this.loadPreview(this.workspace.trainingDataFile, 'training');
-      }
-      if (this.workspace.testDataFile) {
-        await this.loadPreview(this.workspace.testDataFile, 'test');
-      }
-      this.render();
-    } catch (e) {
-      console.warn('刷新工作区详情失败:', e);
-    }
+    });
   }
 
   async loadTaskResult(taskId) {
@@ -291,18 +285,53 @@ class SteadyModelAdaptV1 {
     return task ? this.results.get(task.id) : null;
   }
 
+  /* 带 loading 状态的异步操作包装 */
+  async withLoading(text, fn) {
+    this.loading = true;
+    this.loadingText = text;
+    this.render();
+    try {
+      return await fn();
+    } finally {
+      this.loading = false;
+      this.loadingText = '';
+      this.render();
+    }
+  }
+
   render() {
     if (this.destroyed || !this.mount) return;
     this.disposeCharts();
     this.mount.replaceChildren();
 
     const view = el('div', 'section-view');
+    view.style.position = 'relative';
     const renderer = this['render_' + this.activeSection];
     if (renderer) {
       renderer.call(this, view);
     } else {
       this.render_data(view);
     }
+
+    // loading 覆盖层
+    if (this.loading) {
+      const overlay = el('div', 'loading-overlay');
+      overlay.style.cssText = 'position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,.7);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:100;border-radius:inherit;';
+      const spinner = el('div', 'loading-spinner');
+      spinner.style.cssText = 'width:36px;height:36px;border:3px solid #e8e8e8;border-top-color:#1890ff;border-radius:50%;animation:dmg-spin .8s linear infinite;';
+      const text = el('div', 'loading-text', this.loadingText || '加载中...');
+      text.style.cssText = 'margin-top:12px;font-size:14px;color:#666;';
+      overlay.append(spinner, text);
+      view.append(overlay);
+      // 注入 keyframes（只注入一次）
+      if (!document.getElementById('dmg-loading-style')) {
+        const style = document.createElement('style');
+        style.id = 'dmg-loading-style';
+        style.textContent = '@keyframes dmg-spin{to{transform:rotate(360deg)}}';
+        document.head.append(style);
+      }
+    }
+
     this.mount.appendChild(view);
   }
 
@@ -390,7 +419,51 @@ class SteadyModelAdaptV1 {
     note.textContent = '用途:AC相对换算转速用于聚类与HPC调度节点;其余列分别服务于压损、涡轮和燃油偏置调度。';
     c3.body.append(note);
 
-    container.append(c1.card, c2.card, c3.card);
+    // Card 4: 质量与操作区
+    const c4 = this.createCard(
+      '质量与操作',
+      '显示数据合同校验结果、工况覆盖、分组状态；项目创建后可进入参数辨识。'
+    );
+    const p = this.preview.training;
+    const qualityRows = [];
+    if (p) {
+      qualityRows.push(['工况数', String(p.rowCount || 0)]);
+      qualityRows.push(['字段校验', p.valid !== false ? '通过' : '缺失: ' + (p.missingColumns || []).join(', ')]);
+      qualityRows.push(['训练分组数', String(p.groupCount || 0)]);
+      qualityRows.push(['测量数据行', String((p.rows || []).length)]);
+      qualityRows.push(['调度变量行', String((p.scheduleRows || []).length)]);
+    } else {
+      qualityRows.push(['工况数', '—']);
+      qualityRows.push(['字段校验', '—']);
+      qualityRows.push(['训练分组数', '—']);
+      qualityRows.push(['测量数据行', '—']);
+      qualityRows.push(['调度变量行', '—']);
+    }
+    c4.body.append(this.createTable(['检查项', '结果'], qualityRows));
+
+    // 操作按钮
+    const opRow = el('div', 'btn-row');
+    opRow.style.marginTop = '12px';
+    opRow.append(
+      button('重新计算辅助变量', 'btn-card', async () => {
+        if (!this.workspace) {
+          if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('请先创建并校验项目', 'warning');
+          return;
+        }
+        await this.loadWorkspaceDetails();
+        if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('辅助变量已重新计算', 'success');
+      }),
+      button('进入参数辨识', 'btn-card primary', () => {
+        if (this.projectCreated) {
+          if (this.ctx.setSection) this.ctx.setSection('identify');
+        } else {
+          if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('请先创建并校验项目', 'warning');
+        }
+      })
+    );
+    c4.body.append(opRow);
+
+    container.append(c1.card, c2.card, c3.card, c4.card);
   }
 
   /* 创建带状态标识的输入字段 */
@@ -445,17 +518,19 @@ class SteadyModelAdaptV1 {
   /* 加载数据文件预览 */
   async loadPreview(fileName, type) {
     this.ctx.log(`正在加载数据预览: ${fileName}...`);
-    try {
-      if (this.ctx.http && this.ctx.http.previewData) {
-        const data = await this.ctx.http.previewData.request('', { method: 'GET', query: { fileName } });
-        this.preview[type] = data;
-        this.projectForm[type === 'training' ? 'trainingData' : 'testData'] = fileName;
-        this.ctx.log(`数据预览完成: ${data.rowCount || 0} 行, ${data.valid ? '字段校验通过' : '缺少字段: ' + (data.missingColumns || []).join(', ')}`);
-        this.render();
+    await this.withLoading(`正在加载${type === 'training' ? '训练' : '测试'}数据预览...`, async () => {
+      try {
+        if (this.ctx.http && this.ctx.http.previewData) {
+          const data = await this.ctx.http.previewData.request('', { method: 'GET', query: { fileName } });
+          this.preview[type] = data;
+          this.projectForm[type === 'training' ? 'trainingData' : 'testData'] = fileName;
+          this.ctx.log(`数据预览完成: ${data.rowCount || 0} 行, ${data.valid ? '字段校验通过' : '缺少字段: ' + (data.missingColumns || []).join(', ')}`);
+        }
+      } catch (e) {
+        this.ctx.log('数据预览失败: ' + (e.message || e));
+        if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('数据预览失败: ' + (e.message || e), 'error');
       }
-    } catch (e) {
-      this.ctx.log('数据预览失败: ' + (e.message || e));
-    }
+    });
   }
 
   /* ================= 02 参数辨识 ================= */
@@ -1093,6 +1168,317 @@ class SteadyModelAdaptV1 {
     return { cell, host };
   }
 
+  /* ================= 字段说明 / 帮助 / 打开已有项目 ================= */
+
+  /* 字段说明：弹出测量数据表和调度变量表的字段定义 */
+  showFieldHelp() {
+    const measureFields = [
+      ['point_id', '工况编号', '-', '主键，关联试车工况、计算结果和日志'],
+      ['Np_mean', 'PT轴转速', 'rpm', '测量'],
+      ['Ng_mean', 'GT轴转速', 'rpm', '测量'],
+      ['Wf_mean', '燃油流量', 'kg/s', '测量输入'],
+      ['Mkp_mean', 'PT负载扭矩', 'N·m', '模型输入'],
+      ['Mkg_mean', 'GT外部附件负载扭矩', 'N·m', '模型输入'],
+      ['Pt2_mean', '压气机入口总压', 'Pa', '模式4模型输入'],
+      ['Tt1_mean', '进口总温测量', 'K', '模式4模型输入'],
+      ['Pt3_mean', '压气机出口总压', 'Pa', '拟合输出'],
+      ['Tt3_mean', '压气机出口总温', 'K', '拟合输出'],
+      ['Tt45_mean', '45截面总温', 'K', '拟合输出'],
+      ['Pt45_mean', '45截面总压', 'Pa', '拟合输出'],
+      ['Pamb_mean', '环境静压', 'Pa', '环境输入'],
+      ['Tamb_mean', '环境静温', 'K', '环境输入'],
+      ['Altitude_mean', '高度', 'm', '记录/预测模式输入'],
+      ['Mach_mean', '马赫数', '-', '环境输入']
+    ];
+    const scheduleFields = [
+      ['数据角色', '标识训练数据或测试数据'],
+      ['训练分组', '训练工况的聚类组号；测试工况显示"不参与分组"'],
+      ['AC相对换算转速', '训练工况聚类主坐标，并用于HPC流量/效率修正调度'],
+      ['进气道换算流量', '进气道压损修正的工况坐标'],
+      ['燃烧室进口换算流量', '燃烧室压损修正调度'],
+      ['GT物理压比', 'GT流量/效率修正调度，避免修正量自反馈'],
+      ['GT-PT涵道换算流量', 'GT-PT涵道压损修正调度'],
+      ['PT物理压比', 'PT流量/效率修正调度'],
+      ['PT-尾喷管涵道换算流量', 'PT-尾喷管涵道压损修正调度'],
+      ['测量燃油流量归一化坐标', '燃油测量偏置节点调度']
+    ];
+
+    const overlay = el('div', 'help-overlay');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    const dialog = el('div', 'help-dialog');
+    dialog.style.cssText = 'background:#fff;border-radius:8px;max-width:720px;max-height:80vh;overflow:auto;padding:24px 32px;box-shadow:0 4px 24px rgba(0,0,0,.2);';
+    const close = () => overlay.remove();
+    overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+
+    const title = el('h3', '', '字段说明');
+    title.style.cssText = 'margin:0 0 16px 0;font-size:18px;color:#1a1a1a;';
+    dialog.append(title);
+
+    const h1 = el('h4', '', '测量数据表字段');
+    h1.style.cssText = 'margin:16px 0 8px 0;font-size:15px;color:#333;';
+    dialog.append(h1);
+    const t1 = this.createTable(
+      ['字段名', '含义', '单位', '角色'],
+      measureFields.map(r => [el('code', '', r[0]), r[1], r[2], r[3]])
+    );
+    t1.style.cssText = 'font-size:13px;margin-bottom:16px;';
+    dialog.append(t1);
+
+    const h2 = el('h4', '', '调度变量与训练分组表字段');
+    h2.style.cssText = 'margin:16px 0 8px 0;font-size:15px;color:#333;';
+    dialog.append(h2);
+    const t2 = this.createTable(
+      ['字段', '用途'],
+      scheduleFields.map(r => [r[0], r[1]])
+    );
+    t2.style.cssText = 'font-size:13px;margin-bottom:16px;';
+    dialog.append(t2);
+
+    const btnRow = el('div', '');
+    btnRow.style.cssText = 'text-align:right;';
+    const btn = el('button', 'btn primary', '关闭');
+    btn.style.cssText = 'padding:6px 20px;border:none;border-radius:4px;background:#1890ff;color:#fff;cursor:pointer;font-size:14px;';
+    btn.addEventListener('click', close);
+    btnRow.append(btn);
+    dialog.append(btnRow);
+
+    overlay.append(dialog);
+    document.body.append(overlay);
+  }
+
+  /* 顶部帮助按钮：弹出当前页面的操作指引 */
+  onHelp() {
+    const helps = {
+      data: {
+        title: '新建项目与数据 — 帮助',
+        content: [
+          '1. 输入项目名称，选择模型程序包和训练数据（测试数据可选）。',
+          '2. 选择训练数据后自动加载测量数据表和调度变量表。',
+          '3. 点击"创建并校验项目"执行零修正回放，校验数据合同并计算调度变量。',
+          '4. 项目创建完成后，后续功能（参数辨识、可辨识性等）自动解锁。',
+          '5. 训练集用于参数辨识，测试集仅用于独立验证，不参与参数更新。',
+          '6. 点击"字段说明"查看测量字段和调度变量的详细定义。'
+        ]
+      },
+      identify: {
+        title: '参数辨识 — 帮助',
+        content: [
+          '1. 默认采用瞬态时刻模型，可切换为稳态模型。',
+          '2. A阶段全工况常值初估，B阶段分组组内估计，C阶段调度重构，D阶段全工况微调。',
+          '3. 点击"开始辨识"执行参数辨识，形成稳态辨识模型。',
+          '4. 辨识完成后可查看参数估计值、输出误差标准差和计算时间。'
+        ]
+      },
+      identifiability: {
+        title: '可辨识性 — 帮助',
+        content: [
+          '1. 展示整体信息质量、逐参数分类和主要补偿参数。',
+          '2. 帮助判断辨识结果能否独立解释，是否存在参数补偿关系。',
+          '3. 点击"生成分析报告"执行可辨识性分析。'
+        ]
+      },
+      uq: {
+        title: '不确定性评估 — 帮助',
+        content: [
+          '1. 方法A评估关键修正系数的95%置信区间。',
+          '2. 方法B评估全修正系数后验及输出的95%置信区间。',
+          '3. 点击"开始评估"执行不确定性评估。'
+        ]
+      },
+      validation: {
+        title: '测试验证 — 帮助',
+        content: [
+          '1. 使用独立测试集验证稳态辨识模型。',
+          '2. 展示稳态输出对比和误差标准差对比。',
+          '3. 点击"开始验证"执行测试集验证。'
+        ]
+      },
+      prediction: {
+        title: '工况预测 — 帮助',
+        content: [
+          '1. 对指定的新工况执行确定性预测。',
+          '2. 可选方法A/B后验区间预测。',
+          '3. 在没有该工况测量数据时给出模型输出。'
+        ]
+      },
+      results: {
+        title: '结果中心 — 帮助',
+        content: [
+          '1. 审核、归档并发布项目版本。',
+          '2. 结果保存输入、模型、配置、日志、图形和报告之间的对应关系。',
+          '3. 点击"导出所选结果"导出结果文件。'
+        ]
+      }
+    };
+    const help = helps[this.activeSection] || helps.data;
+
+    const overlay = el('div', 'help-overlay');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    const dialog = el('div', 'help-dialog');
+    dialog.style.cssText = 'background:#fff;border-radius:8px;max-width:560px;max-height:80vh;overflow:auto;padding:24px 32px;box-shadow:0 4px 24px rgba(0,0,0,.2);';
+    const close = () => overlay.remove();
+    overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+
+    const title = el('h3', '', help.title);
+    title.style.cssText = 'margin:0 0 16px 0;font-size:18px;color:#1a1a1a;';
+    dialog.append(title);
+    help.content.forEach(line => {
+      const p = el('p', '', line);
+      p.style.cssText = 'margin:8px 0;font-size:14px;color:#555;line-height:1.6;';
+      dialog.append(p);
+    });
+
+    const btnRow = el('div', '');
+    btnRow.style.cssText = 'text-align:right;margin-top:16px;';
+    const btn = el('button', 'btn primary', '关闭');
+    btn.style.cssText = 'padding:6px 20px;border:none;border-radius:4px;background:#1890ff;color:#fff;cursor:pointer;font-size:14px;';
+    btn.addEventListener('click', close);
+    btnRow.append(btn);
+    dialog.append(btnRow);
+
+    overlay.append(dialog);
+    document.body.append(overlay);
+  }
+
+  /* 打开已有项目：列出已有 workspace 供用户选择 */
+  async handleOpenExistingProject() {
+    if (!this.ctx.http || !this.ctx.http.workspace) {
+      if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('无后端连接', 'warning');
+      return;
+    }
+    let list;
+    await this.withLoading('正在加载项目列表...', async () => {
+      try {
+        list = await this.ctx.http.workspace.list();
+      } catch (e) {
+        if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('加载项目列表失败: ' + (e.message || e), 'error');
+      }
+    });
+    if (!Array.isArray(list) || list.length === 0) {
+      if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('暂无已有项目', 'info');
+      return;
+    }
+    if (!Array.isArray(list) || list.length === 0) {
+      if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('暂无已有项目', 'info');
+      return;
+    }
+    const overlay = el('div', 'help-overlay');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    const dialog = el('div', 'help-dialog');
+    dialog.style.cssText = 'background:#fff;border-radius:8px;max-width:520px;max-height:80vh;overflow:auto;padding:24px 32px;box-shadow:0 4px 24px rgba(0,0,0,.2);';
+    const close = () => overlay.remove();
+    overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+
+    const title = el('h3', '', '打开已有项目');
+    title.style.cssText = 'margin:0 0 16px 0;font-size:18px;color:#1a1a1a;';
+    dialog.append(title);
+
+    list.forEach(ws => {
+      const item = el('div', '');
+      item.style.cssText = 'padding:12px 16px;border:1px solid #e8e8e8;border-radius:6px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;transition:border-color .2s,opacity .3s;';
+      const info = el('div', '');
+      info.style.cssText = 'flex:1;cursor:pointer;';
+      const name = el('div', '', ws.jobName || ws.id);
+      name.style.cssText = 'font-size:15px;font-weight:600;color:#1a1a1a;';
+      const meta = el('div', '', `${ws.trainingDataFile || '-'}  ·  ${ws.createdAt || ''}`);
+      meta.style.cssText = 'font-size:12px;color:#999;margin-top:4px;';
+      info.append(name, meta);
+      info.addEventListener('mouseenter', () => { item.style.borderColor = '#1890ff'; });
+      info.addEventListener('mouseleave', () => { item.style.borderColor = '#e8e8e8'; });
+      info.addEventListener('click', async () => {
+        info.style.pointerEvents = 'none';
+        name.textContent = (ws.jobName || ws.id) + '  ·  加载中...';
+        try {
+          close();
+          this.workspace = ws;
+          this.projectCreated = true;
+          this.projectForm.projectName = ws.jobName || '';
+          this.projectForm.modelPackage = ws.programName || '';
+          this.projectForm.trainingData = ws.trainingDataFile || '';
+          this.projectForm.testData = ws.testDataFile || '';
+          await this.loadWorkspaceDetails();
+          if (this.ctx.refreshNav) this.ctx.refreshNav();
+          if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('已打开项目: ' + (ws.jobName || ws.id), 'success');
+        } catch (err) {
+          info.style.pointerEvents = '';
+          name.textContent = ws.jobName || ws.id;
+          if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('打开项目失败: ' + (err.message || err), 'error');
+        }
+      });
+
+      const delBtn = el('button', '', '删除');
+      delBtn.style.cssText = 'padding:4px 12px;border:1px solid #ff4d4f;border-radius:4px;background:#fff;color:#ff4d4f;cursor:pointer;font-size:13px;flex-shrink:0;margin-left:12px;transition:all .2s;';
+      delBtn.addEventListener('mouseenter', () => { delBtn.style.background = '#ff4d4f'; delBtn.style.color = '#fff'; });
+      delBtn.addEventListener('mouseleave', () => { delBtn.style.background = '#fff'; delBtn.style.color = '#ff4d4f'; });
+      delBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const confirmRow = el('div', '');
+        confirmRow.style.cssText = 'padding:8px 0 0 0;display:flex;align-items:center;gap:8px;flex-wrap:wrap;';
+        const hint = el('span', '', `确认删除"${ws.jobName || ws.id}"？不可恢复`);
+        hint.style.cssText = 'font-size:13px;color:#ff4d4f;flex:1;';
+        const yesBtn = el('button', '', '确认删除');
+        yesBtn.style.cssText = 'padding:4px 12px;border:none;border-radius:4px;background:#ff4d4f;color:#fff;cursor:pointer;font-size:13px;';
+        const noBtn = el('button', '', '取消');
+        noBtn.style.cssText = 'padding:4px 12px;border:1px solid #d9d9d9;border-radius:4px;background:#fff;color:#666;cursor:pointer;font-size:13px;';
+        confirmRow.append(hint, noBtn, yesBtn);
+
+        item.style.borderColor = '#ff4d4f';
+        item.style.background = '#fff1f0';
+        item.replaceChildren(confirmRow);
+
+        noBtn.addEventListener('click', () => {
+          item.style.borderColor = '#e8e8e8';
+          item.style.background = '';
+          item.replaceChildren(info, delBtn);
+        });
+
+        yesBtn.addEventListener('click', async () => {
+          yesBtn.disabled = true;
+          noBtn.disabled = true;
+          yesBtn.textContent = '删除中...';
+          try {
+            await this.ctx.http.workspace.request(ws.id, { method: 'DELETE' });
+            this.workspaces = this.workspaces.filter(w => w.id !== ws.id);
+            if (this.workspace && this.workspace.id === ws.id) {
+              this.workspace = null;
+              this.projectCreated = false;
+              this.projectForm = { projectName: '', modelPackage: '', trainingData: '', testData: '' };
+              this.preview = { training: null, test: null };
+              this.render();
+              if (this.ctx.refreshNav) this.ctx.refreshNav();
+            }
+            item.style.opacity = '0';
+            setTimeout(() => item.remove(), 300);
+            if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('项目已删除', 'success');
+            if (this.workspaces.length === 0) setTimeout(close, 400);
+          } catch (err) {
+            yesBtn.disabled = false;
+            noBtn.disabled = false;
+            yesBtn.textContent = '确认删除';
+            item.style.borderColor = '#e8e8e8';
+            item.style.background = '';
+            item.replaceChildren(info, delBtn);
+            if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('删除失败: ' + (err.message || err), 'error');
+          }
+        });
+      });
+
+      item.append(info, delBtn);
+      dialog.append(item);
+    });
+
+    const btnRow = el('div', '');
+    btnRow.style.cssText = 'text-align:right;margin-top:16px;';
+    const btn = el('button', 'btn', '取消');
+    btn.style.cssText = 'padding:6px 20px;border:1px solid #d9d9d9;border-radius:4px;background:#fff;cursor:pointer;font-size:14px;';
+    btn.addEventListener('click', close);
+    btnRow.append(btn);
+    dialog.append(btnRow);
+
+    overlay.append(dialog);
+    document.body.append(overlay);
+  }
+
   /* ================= 业务动作触发与后端交互 ================= */
   async handleCreateProject() {
     if (this.projectCreated) {
@@ -1131,55 +1517,50 @@ class SteadyModelAdaptV1 {
 
     this.ctx.log('正在创建并校验项目...');
     if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('正在创建并校验项目...', 'info');
-    this.busy = true;
-    this.render();
-    try {
-      if (this.ctx.http && this.ctx.http.workspace) {
-        const ws = await this.ctx.http.workspace.create({
-          jobName: projectName,
-          trainingData,
-          testData: testData || ''
-        });
-        this.workspace = ws;
-        this.projectCreated = true;
-        this.ctx.log(`项目创建成功，工作区 ID: ${ws.id}`);
-        if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('项目创建成功', 'success');
-        // 从 workspace 返回的 initResult 加载预览数据
-        if (ws.initResult) {
-          if (ws.initResult.status === 'SUCCEEDED') {
-            this.preview.training = {
-              rows: ws.initResult.measureRows || [],
-              scheduleRows: ws.initResult.scheduleRows || [],
-              rowCount: ws.initResult.rowCount || 0,
-              valid: ws.initResult.valid !== false,
-              missingColumns: ws.initResult.missingColumns || [],
-              groupCount: ws.initResult.groupCount || 0
-            };
-            this.ctx.log(`MATLAB初始化完成: ${ws.initResult.rowCount || 0} 个工况, ${ws.initResult.groupCount || 0} 个训练分组, DLL哈希: ${(ws.initResult.dllHash || '').substring(0, 12)}...`);
-          } else if (ws.initResult.status === 'FALLBACK') {
-            this.ctx.log(`MATLAB初始化降级: ${ws.initResult.message || ''}`);
-            if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('MATLAB初始化降级: ' + (ws.initResult.message || ''), 'warning');
-            // 降级时使用 previewData 的纯 Java 计算结果
-            if (this.projectForm.trainingData) {
-              await this.loadPreview(this.projectForm.trainingData, 'training');
+    await this.withLoading('正在创建并校验项目（MATLAB零修正回放，约需10-30秒）...', async () => {
+      try {
+        if (this.ctx.http && this.ctx.http.workspace) {
+          const ws = await this.ctx.http.workspace.create({
+            jobName: projectName,
+            trainingData,
+            testData: testData || ''
+          });
+          this.workspace = ws;
+          this.projectCreated = true;
+          this.ctx.log(`项目创建成功，工作区 ID: ${ws.id}`);
+          if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('项目创建成功', 'success');
+          if (ws.initResult) {
+            if (ws.initResult.status === 'SUCCEEDED') {
+              this.preview.training = {
+                rows: ws.initResult.measureRows || [],
+                scheduleRows: ws.initResult.scheduleRows || [],
+                rowCount: ws.initResult.rowCount || 0,
+                valid: ws.initResult.valid !== false,
+                missingColumns: ws.initResult.missingColumns || [],
+                groupCount: ws.initResult.groupCount || 0
+              };
+              this.ctx.log(`MATLAB初始化完成: ${ws.initResult.rowCount || 0} 个工况, ${ws.initResult.groupCount || 0} 个训练分组, DLL哈希: ${(ws.initResult.dllHash || '').substring(0, 12)}...`);
+            } else if (ws.initResult.status === 'FALLBACK') {
+              this.ctx.log(`MATLAB初始化降级: ${ws.initResult.message || ''}`);
+              if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('MATLAB初始化降级: ' + (ws.initResult.message || ''), 'warning');
+              if (this.projectForm.trainingData) {
+                await this.loadPreview(this.projectForm.trainingData, 'training');
+              }
             }
           }
+          await this.loadWorkspaceDetails();
+          if (this.ctx.refreshNav) this.ctx.refreshNav();
+        } else {
+          this.projectCreated = true;
+          this.ctx.log('项目创建完成（无后端连接，仅本地标记）');
+          if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('项目创建完成（无后端连接）', 'warning');
+          if (this.ctx.refreshNav) this.ctx.refreshNav();
         }
-        await this.loadWorkspaceDetails();
-        if (this.ctx.refreshNav) this.ctx.refreshNav();
-      } else {
-        this.projectCreated = true;
-        this.ctx.log('项目创建完成（无后端连接，仅本地标记）');
-        if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('项目创建完成（无后端连接）', 'warning');
-        if (this.ctx.refreshNav) this.ctx.refreshNav();
+      } catch (e) {
+        this.ctx.log('创建项目失败: ' + (e.message || e));
+        if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('创建项目失败: ' + (e.message || e), 'error');
       }
-    } catch (e) {
-      this.ctx.log('创建项目失败: ' + (e.message || e));
-      if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('创建项目失败: ' + (e.message || e), 'error');
-    } finally {
-      this.busy = false;
-      this.render();
-    }
+    });
   }
 
   async handleStartIdentify() {
@@ -1188,107 +1569,117 @@ class SteadyModelAdaptV1 {
     }
     const actionKey = this.identifyModel === 'steady' ? 'estimateSteady' : 'estimateTransient';
     this.ctx.log(`启动参数辨识（${actionKey}）...`);
-    try {
-      const task = await this.ctx.http.tasks.create({
-        workspaceId: this.workspace.id,
-        actionKey: actionKey,
-        inputs: { trainingData: '' }
-      });
-      this.ctx.log(`辨识任务已提交 (ID: ${task.id})`);
-      this.tasks.set(task.id, task);
-      this.render();
-      this.schedulePoll(task.id, 500);
-    } catch (e) {
-      this.ctx.log('启动辨识失败: ' + (e.message || e));
-    }
+    await this.withLoading('正在提交辨识任务...', async () => {
+      try {
+        const task = await this.ctx.http.tasks.create({
+          workspaceId: this.workspace.id,
+          actionKey: actionKey,
+          inputs: { trainingData: '' }
+        });
+        this.ctx.log(`辨识任务已提交 (ID: ${task.id})`);
+        this.tasks.set(task.id, task);
+        this.schedulePoll(task.id, 500);
+      } catch (e) {
+        this.ctx.log('启动辨识失败: ' + (e.message || e));
+        if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('启动辨识失败: ' + (e.message || e), 'error');
+      }
+    });
   }
 
   async handleStartIdentifiability() {
     if (!this.workspace) await this.handleCreateProject();
     this.ctx.log('启动工程可辨识性分析...');
-    try {
-      const task = await this.ctx.http.tasks.create({
-        workspaceId: this.workspace.id,
-        actionKey: 'engineeringIdentifiability',
-        inputs: {}
-      });
-      this.ctx.log(`可辨识性分析任务已提交 (ID: ${task.id})`);
-      this.tasks.set(task.id, task);
-      this.render();
-      this.schedulePoll(task.id, 500);
-    } catch (e) {
-      this.ctx.log('启动可辨识性分析失败: ' + (e.message || e));
-    }
+    await this.withLoading('正在提交可辨识性分析...', async () => {
+      try {
+        const task = await this.ctx.http.tasks.create({
+          workspaceId: this.workspace.id,
+          actionKey: 'engineeringIdentifiability',
+          inputs: {}
+        });
+        this.ctx.log(`可辨识性分析任务已提交 (ID: ${task.id})`);
+        this.tasks.set(task.id, task);
+        this.schedulePoll(task.id, 500);
+      } catch (e) {
+        this.ctx.log('启动可辨识性分析失败: ' + (e.message || e));
+        if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('启动可辨识性分析失败: ' + (e.message || e), 'error');
+      }
+    });
   }
 
   async handleStartUq() {
     if (!this.workspace) await this.handleCreateProject();
     const actionKey = this.activeUqMethod === 'B' ? 'uqMethodB' : 'uqMethodA';
     this.ctx.log(`启动不确定性评估（${actionKey}）...`);
-    try {
-      const task = await this.ctx.http.tasks.create({
-        workspaceId: this.workspace.id,
-        actionKey: actionKey,
-        inputs: { userCfg: { figureVisible: 'off' } }
-      });
-      this.ctx.log(`不确定性评估任务已提交 (ID: ${task.id})`);
-      this.tasks.set(task.id, task);
-      this.render();
-      this.schedulePoll(task.id, 500);
-    } catch (e) {
-      this.ctx.log('启动评估失败: ' + (e.message || e));
-    }
+    await this.withLoading('正在提交不确定性评估...', async () => {
+      try {
+        const task = await this.ctx.http.tasks.create({
+          workspaceId: this.workspace.id,
+          actionKey: actionKey,
+          inputs: { userCfg: { figureVisible: 'off' } }
+        });
+        this.ctx.log(`不确定性评估任务已提交 (ID: ${task.id})`);
+        this.tasks.set(task.id, task);
+        this.schedulePoll(task.id, 500);
+      } catch (e) {
+        this.ctx.log('启动评估失败: ' + (e.message || e));
+        if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('启动评估失败: ' + (e.message || e), 'error');
+      }
+    });
   }
 
   async handleStartValidation() {
     if (!this.workspace) await this.handleCreateProject();
     this.ctx.log('启动测试集稳态模型验证...');
-    try {
-      const task = await this.ctx.http.tasks.create({
-        workspaceId: this.workspace.id,
-        actionKey: 'testValidation',
-        inputs: { testData: '' }
-      });
-      this.ctx.log(`测试验证任务已提交 (ID: ${task.id})`);
-      this.tasks.set(task.id, task);
-      this.render();
-      this.schedulePoll(task.id, 500);
-    } catch (e) {
-      this.ctx.log('启动测试验证失败: ' + (e.message || e));
-    }
+    await this.withLoading('正在提交测试验证...', async () => {
+      try {
+        const task = await this.ctx.http.tasks.create({
+          workspaceId: this.workspace.id,
+          actionKey: 'testValidation',
+          inputs: { testData: '' }
+        });
+        this.ctx.log(`测试验证任务已提交 (ID: ${task.id})`);
+        this.tasks.set(task.id, task);
+        this.schedulePoll(task.id, 500);
+      } catch (e) {
+        this.ctx.log('启动测试验证失败: ' + (e.message || e));
+        if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('启动测试验证失败: ' + (e.message || e), 'error');
+      }
+    });
   }
 
   async handleStartPrediction() {
     if (!this.workspace) await this.handleCreateProject();
     this.ctx.log('启动单工况预测计算...');
-    try {
-      const modelInput = {
-        point_id: 'PRED_PT_1',
-        inletBoundaryMode: this.predictionMode === 'pressure' ? 2 : 3,
-        Pamb: this.predInputs.pamb,
-        Altitude: this.predInputs.altitude,
-        Tamb: this.predInputs.tamb,
-        Mach: this.predInputs.mach,
-        Wf_model: this.predInputs.wf,
-        Mkp: this.predInputs.mkp,
-        Mkg: this.predInputs.mkg
-      };
-      const task = await this.ctx.http.tasks.create({
-        workspaceId: this.workspace.id,
-        actionKey: 'operatingPointPrediction',
-        inputs: {
-          modelInput,
-          estimationResultFile: '',
-          posteriorOptions: { method: 'A', runId: 'latest' }
-        }
-      });
-      this.ctx.log(`工况预测任务已提交 (ID: ${task.id})`);
-      this.tasks.set(task.id, task);
-      this.render();
-      this.schedulePoll(task.id, 500);
-    } catch (e) {
-      this.ctx.log('工况预测失败: ' + (e.message || e));
-    }
+    await this.withLoading('正在提交预测计算...', async () => {
+      try {
+        const modelInput = {
+          point_id: 'PRED_PT_1',
+          inletBoundaryMode: this.predictionMode === 'pressure' ? 2 : 3,
+          Pamb: this.predInputs.pamb,
+          Altitude: this.predInputs.altitude,
+          Tamb: this.predInputs.tamb,
+          Mach: this.predInputs.mach,
+          Wf_model: this.predInputs.wf,
+          Mkp: this.predInputs.mkp,
+          Mkg: this.predInputs.mkg
+        };
+        const task = await this.ctx.http.tasks.create({
+          workspaceId: this.workspace.id,
+          actionKey: 'operatingPointPrediction',
+          inputs: {
+            modelInput,
+            estimationResultFile: '',
+            posteriorOptions: { method: 'A', runId: 'latest' }
+          }
+        });
+        this.ctx.log(`工况预测任务已提交 (ID: ${task.id})`);
+        this.tasks.set(task.id, task);
+        this.schedulePoll(task.id, 500);
+      } catch (e) {
+        this.ctx.log('工况预测失败: ' + (e.message || e));
+        if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('工况预测失败: ' + (e.message || e), 'error');
+      }
+    });
   }
 
   async handleExportResults() {

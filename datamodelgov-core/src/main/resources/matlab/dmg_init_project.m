@@ -99,10 +99,10 @@ try
     for i = 1:rowCount
         sr = struct();
         sr.point_id = char(trainingData.point_id(i));
-        sr.dataRole = "training";
+        sr.dataRole = 'training';
         groupId = local_find_group(groups, i);
         if isempty(groupId)
-            sr.trainingGroup = "N/A";
+            sr.trainingGroup = 'N/A';
         else
             sr.trainingGroup = sprintf('G%d', groupId);
         end
@@ -139,7 +139,7 @@ try
     for g = 1:numel(groups)
         gi = struct();
         gi.groupId = sprintf('G%d', g);
-        gi.pointIds = strjoin(string(trainingData.point_id(groups{g})), ',');
+        gi.pointIds = char(strjoin(string(trainingData.point_id(groups{g})), ','));
         gi.pointCount = numel(groups{g});
         speeds = measuredAcCorrectedSpeed(groups{g});
         gi.acNcrMean = mean(speeds);
