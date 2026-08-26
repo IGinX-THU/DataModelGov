@@ -49,6 +49,20 @@ public class ProgramWorkflowController {
         }
     }
 
+    @ApiOperation("预览数据文件内容")
+    @GetMapping("/preview-data")
+    @RequirePermission(Permission.READ)
+    public Result<?> previewData(@RequestParam("name") String name,
+                                 @RequestParam("version") String version,
+                                 @RequestParam(value = "projectName", required = false) String projectName,
+                                 @RequestParam("fileName") String fileName) {
+        try {
+            return Result.success(workflowService.previewData(name, version, projectName, fileName));
+        } catch (Exception e) {
+            return failure("预览数据文件失败", e);
+        }
+    }
+
     @ApiOperation("创建程序工作区")
     @PostMapping("/workspace")
     @RequirePermission(Permission.CREATE)
@@ -56,9 +70,15 @@ public class ProgramWorkflowController {
     public Result<?> createWorkspace(@RequestParam("name") String name,
                                      @RequestParam("version") String version,
                                      @RequestParam(value = "projectName", required = false) String projectName,
-                                     @RequestBody(required = false) Map<String, Object> ignored) {
+                                     @RequestBody(required = false) Map<String, Object> body) {
         try {
-            return Result.success(workflowService.createWorkspace(name, version, projectName));
+            String jobName = body != null ? String.valueOf(body.getOrDefault("jobName", "")) : "";
+            String trainingData = body != null ? String.valueOf(body.getOrDefault("trainingData", "")) : "";
+            String testData = body != null ? String.valueOf(body.getOrDefault("testData", "")) : "";
+            if ("null".equals(jobName)) jobName = "";
+            if ("null".equals(trainingData)) trainingData = "";
+            if ("null".equals(testData)) testData = "";
+            return Result.success(workflowService.createWorkspace(name, version, projectName, jobName, trainingData, testData));
         } catch (Exception e) {
             return failure("创建工作区失败", e);
         }

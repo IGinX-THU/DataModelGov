@@ -7,6 +7,20 @@ const GROUP_HEADERS = [
   'GT物理压比', 'GT-PT涵道换算流量', 'PT物理压比', 'PT-尾喷管涵道换算流量', '测量燃油流量归一化坐标'
 ];
 
+const GROUP_KEY_MAP = {
+  '工况': 'point_id',
+  '数据角色': 'dataRole',
+  '训练分组': 'trainingGroup',
+  'AC相对换算转速': 'acRelativeCorrectedSpeed',
+  '进气道换算流量': 'inletCorrectedMassFlow',
+  '燃烧室进口换算流量': 'burnerInletCorrectedMassFlow',
+  'GT物理压比': 'gtTotalPressureRatio',
+  'GT-PT涵道换算流量': 'gtPtDuctCorrectedMassFlow',
+  'PT物理压比': 'ptTotalPressureRatio',
+  'PT-尾喷管涵道换算流量': 'ptNozzleDuctCorrectedMassFlow',
+  '测量燃油流量归一化坐标': 'measuredFuelNormalizedCoordinate'
+};
+
 const DEFAULT_PARAMS = [
   { name: 'HPC_K_W', form: '调度', unit: '无量纲', action: '曲线' },
   { name: 'HPC_K_eta', form: '调度', unit: '无量纲', action: '曲线' },
@@ -92,6 +106,8 @@ class SteadyModelAdaptV1 {
     };
     // 可用数据文件列表（从后端获取）
     this.availableDataFiles = [];
+    // 预览数据缓存
+    this.preview = { training: null, test: null };
 
     // 预测输入缓存
     this.predInputs = {
@@ -160,9 +176,15 @@ class SteadyModelAdaptV1 {
         const list = await this.ctx.http.workspace.list();
         if (Array.isArray(list)) this.workspaces = list;
         if (this.workspaces.length > 0 && !this.workspace) {
-          this.workspace = this.workspaces[0];
-          this.projectCreated = true;
-          await this.loadWorkspaceDetails();
+          const ws = this.workspaces[0];
+          // 只有当 workspace 有 jobName 时才恢复项目状态
+          if (ws.jobName) {
+            this.workspace = ws;
+            this.projectCreated = true;
+            this.projectForm.projectName = ws.jobName;
+            await this.loadWorkspaceDetails();
+            if (this.ctx.refreshNav) this.ctx.refreshNav();
+          }
         }
       }
     } catch (e) {
@@ -188,6 +210,27 @@ class SteadyModelAdaptV1 {
             this.loadTaskResult(t.id);
           }
         });
+      }
+      // 恢复表单状态
+      if (this.workspace.jobName) this.projectForm.projectName = this.workspace.jobName;
+      if (this.workspace.trainingDataFile) this.projectForm.trainingData = this.workspace.trainingDataFile;
+      if (this.workspace.testDataFile) this.projectForm.testData = this.workspace.testDataFile;
+      // 如果 workspace 有 initResult，恢复预览
+      if (this.workspace.initResult && this.workspace.initResult.status === 'SUCCEEDED') {
+        this.preview.training = {
+          rows: this.workspace.initResult.measureRows || [],
+          scheduleRows: this.workspace.initResult.scheduleRows || [],
+          rowCount: this.workspace.initResult.rowCount || 0,
+          valid: this.workspace.initResult.valid !== false,
+          missingColumns: this.workspace.initResult.missingColumns || [],
+          groupCount: this.workspace.initResult.groupCount || 0
+        };
+      } else if (this.workspace.trainingDataFile) {
+        // 否则重新预览训练数据
+        await this.loadPreview(this.workspace.trainingDataFile, 'training');
+      }
+      if (this.workspace.testDataFile) {
+        await this.loadPreview(this.workspace.testDataFile, 'test');
       }
       this.render();
     } catch (e) {
@@ -276,12 +319,23 @@ class SteadyModelAdaptV1 {
     );
     const form = el('div', 'form-grid-4');
 
-    const nameInput = input('text', 'projectName', '请输入项目名称', this.projectForm.projectName);
+    const nameInput = input('text', 'projectName', '请输入项目名称（仅限英文、数字、下划线、连字符）', this.projectForm.projectName);
+    nameInput.pattern = '^[A-Za-z0-9._-]+$';
+    nameInput.addEventListener('input', () => {
+      // 过滤非 ASCII 字符
+      const filtered = nameInput.value.replace(/[^A-Za-z0-9._-]/g, '');
+      if (filtered !== nameInput.value) {
+        nameInput.value = filtered;
+        if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('项目名称仅支持英文、数字、下划线、连字符', 'warning');
+      }
+      this.projectForm.projectName = nameInput.value;
+    });
 
     // 模型程序包：使用 ctx.program 信息
     const programName = this.ctx.program && this.ctx.program.name || '稳态试车工况点模型修正V1';
     const pkgOptions = [{ value: '', label: '选择交付程序目录' }, programName];
     const pkgSelect = select(pkgOptions, this.projectForm.modelPackage || '');
+    pkgSelect.addEventListener('change', () => { this.projectForm.modelPackage = pkgSelect.value; });
 
     // 训练数据/测试数据：从后端获取的可用数据文件列表
     const dataFileNames = this.availableDataFiles.map(f => f.fileName);
@@ -289,6 +343,18 @@ class SteadyModelAdaptV1 {
     const testOptions = [{ value: '', label: '选择测试数据（可选）' }, ...dataFileNames];
     const trainSelect = select(trainOptions, this.projectForm.trainingData || '');
     const testSelect = select(testOptions, this.projectForm.testData || '');
+
+    // 选择训练数据后自动预览
+    trainSelect.addEventListener('change', () => {
+      const fn = trainSelect.value;
+      this.projectForm.trainingData = fn;
+      if (fn) this.loadPreview(fn, 'training');
+    });
+    testSelect.addEventListener('change', () => {
+      const fn = testSelect.value;
+      this.projectForm.testData = fn;
+      if (fn) this.loadPreview(fn, 'test');
+    });
 
     form.append(
       this.createField('项目名称', nameInput),
@@ -313,7 +379,7 @@ class SteadyModelAdaptV1 {
     if (measureRows.length > 0) {
       c2.body.append(this.createTable(MEASURE_HEADERS, measureRows));
     } else {
-      c2.body.append(el('p', 'empty-hint', validated ? '暂无测量数据，请检查训练数据文件' : '请先创建并校验项目后加载数据'));
+      c2.body.append(el('p', 'empty-hint', '请选择训练数据后自动加载测量数据'));
     }
     c2.body.append(el('p', 'table-note', '单位、缺失值、越界标记和原始字段名在列标题提示中展示；表内数值由导入文件动态读取。'));
 
@@ -326,7 +392,7 @@ class SteadyModelAdaptV1 {
     if (groupRows.length > 0) {
       c3.body.append(this.createTable(GROUP_HEADERS, groupRows));
     } else {
-      c3.body.append(el('p', 'empty-hint', validated ? '暂无调度变量数据，请检查训练数据文件' : '请先创建并校验项目后加载数据'));
+      c3.body.append(el('p', 'empty-hint', '请选择训练数据后自动加载调度变量与分组'));
     }
     c3.body.append(el('p', 'table-note', '同一训练组采用一致的组号和颜色标识。分组结果可查看但不允许直接手工改写。'));
 
@@ -344,22 +410,58 @@ class SteadyModelAdaptV1 {
     return wrap;
   }
 
-  /* 从后端结果中提取测量数据行，无数据时返回空数组 */
+  /* 从预览数据中提取测量数据行 */
   extractMeasureRows() {
-    const ds = this.datasets.find(d => d.datasetKey === 'trainingData');
-    if (ds && Array.isArray(ds.rows)) {
-      return ds.rows.map(r => MEASURE_HEADERS.map(h => r[h] ?? '—'));
+    const p = this.preview.training;
+    if (p && Array.isArray(p.rows)) {
+      return p.rows.map(r => MEASURE_HEADERS.map(h => {
+        const key = h === '工况' ? 'point_id' : (h === '高度' ? 'Altitude_mean' : h + '_mean');
+        const val = r[key];
+        return val != null ? val : '—';
+      }));
     }
     return [];
   }
 
-  /* 从后端结果中提取调度变量与分组行，无数据时返回空数组 */
+  /* 从预览数据中提取调度变量与分组行 */
   extractGroupRows() {
-    const ds = this.datasets.find(d => d.datasetKey === 'trainingData');
-    if (ds && Array.isArray(ds.groupRows)) {
-      return ds.groupRows.map(r => GROUP_HEADERS.map(h => r[h] ?? '—'));
+    const p = this.preview.training;
+    if (p && Array.isArray(p.scheduleRows)) {
+      const groupLabel = v => {
+        if (v == null || v === 'N/A') return '未分组';
+        const m = /^G(\d+)$/.exec(v);
+        return m ? `组${m[1]}` : v;
+      };
+      const roleLabel = v => v === 'training' ? '训练' : (v === 'test' ? '测试' : (v || '—'));
+      return p.scheduleRows.map(r => GROUP_HEADERS.map(h => {
+        const key = GROUP_KEY_MAP[h] || h;
+        let val = r[key];
+        if (val == null) return '—';
+        if (key === 'trainingGroup') return groupLabel(val);
+        if (key === 'dataRole') return roleLabel(val);
+        if (typeof val === 'number' && !isNaN(val)) {
+          return Number.isInteger(val) ? val : val.toFixed(4);
+        }
+        return val;
+      }));
     }
     return [];
+  }
+
+  /* 加载数据文件预览 */
+  async loadPreview(fileName, type) {
+    this.ctx.log(`正在加载数据预览: ${fileName}...`);
+    try {
+      if (this.ctx.http && this.ctx.http.previewData) {
+        const data = await this.ctx.http.previewData.request('', { method: 'GET', query: { fileName } });
+        this.preview[type] = data;
+        this.projectForm[type === 'training' ? 'trainingData' : 'testData'] = fileName;
+        this.ctx.log(`数据预览完成: ${data.rowCount || 0} 行, ${data.valid ? '字段校验通过' : '缺少字段: ' + (data.missingColumns || []).join(', ')}`);
+        this.render();
+      }
+    } catch (e) {
+      this.ctx.log('数据预览失败: ' + (e.message || e));
+    }
   }
 
   /* ================= 02 参数辨识 ================= */
@@ -1000,7 +1102,7 @@ class SteadyModelAdaptV1 {
   /* ================= 业务动作触发与后端交互 ================= */
   async handleCreateProject() {
     if (this.projectCreated) {
-      this.ctx.log('项目已创建，字段已锁定');
+      if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('项目已创建，字段已锁定', 'warning');
       return;
     }
 
@@ -1009,7 +1111,7 @@ class SteadyModelAdaptV1 {
     const nameInput = root.querySelector('input[name="projectName"]');
     const projectName = nameInput ? nameInput.value.trim() : this.projectForm.projectName;
     if (!projectName) {
-      this.ctx.log('创建失败：请输入项目名称');
+      if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('创建失败：请输入项目名称', 'error');
       return;
     }
 
@@ -1022,11 +1124,11 @@ class SteadyModelAdaptV1 {
     const testData = testSel ? testSel.value : '';
 
     if (!trainingData) {
-      this.ctx.log('创建失败：请选择训练数据');
+      if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('创建失败：请选择训练数据', 'error');
       return;
     }
     if (!modelPackage) {
-      this.ctx.log('创建失败：请选择模型程序包');
+      if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('创建失败：请选择模型程序包', 'error');
       return;
     }
 
@@ -1034,28 +1136,52 @@ class SteadyModelAdaptV1 {
     this.projectForm = { projectName, modelPackage, trainingData, testData };
 
     this.ctx.log('正在创建并校验项目...');
+    if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('正在创建并校验项目...', 'info');
     this.busy = true;
     this.render();
     try {
       if (this.ctx.http && this.ctx.http.workspace) {
         const ws = await this.ctx.http.workspace.create({
-          projectName,
+          jobName: projectName,
           trainingData,
           testData: testData || ''
         });
         this.workspace = ws;
         this.projectCreated = true;
         this.ctx.log(`项目创建成功，工作区 ID: ${ws.id}`);
+        if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('项目创建成功', 'success');
+        // 从 workspace 返回的 initResult 加载预览数据
+        if (ws.initResult) {
+          if (ws.initResult.status === 'SUCCEEDED') {
+            this.preview.training = {
+              rows: ws.initResult.measureRows || [],
+              scheduleRows: ws.initResult.scheduleRows || [],
+              rowCount: ws.initResult.rowCount || 0,
+              valid: ws.initResult.valid !== false,
+              missingColumns: ws.initResult.missingColumns || [],
+              groupCount: ws.initResult.groupCount || 0
+            };
+            this.ctx.log(`MATLAB初始化完成: ${ws.initResult.rowCount || 0} 个工况, ${ws.initResult.groupCount || 0} 个训练分组, DLL哈希: ${(ws.initResult.dllHash || '').substring(0, 12)}...`);
+          } else if (ws.initResult.status === 'FALLBACK') {
+            this.ctx.log(`MATLAB初始化降级: ${ws.initResult.message || ''}`);
+            if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('MATLAB初始化降级: ' + (ws.initResult.message || ''), 'warning');
+            // 降级时使用 previewData 的纯 Java 计算结果
+            if (this.projectForm.trainingData) {
+              await this.loadPreview(this.projectForm.trainingData, 'training');
+            }
+          }
+        }
         await this.loadWorkspaceDetails();
         if (this.ctx.refreshNav) this.ctx.refreshNav();
       } else {
-        // 无后端 HTTP 时仅标记创建完成（开发占位）
         this.projectCreated = true;
         this.ctx.log('项目创建完成（无后端连接，仅本地标记）');
+        if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('项目创建完成（无后端连接）', 'warning');
         if (this.ctx.refreshNav) this.ctx.refreshNav();
       }
     } catch (e) {
       this.ctx.log('创建项目失败: ' + (e.message || e));
+      if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('创建项目失败: ' + (e.message || e), 'error');
     } finally {
       this.busy = false;
       this.render();

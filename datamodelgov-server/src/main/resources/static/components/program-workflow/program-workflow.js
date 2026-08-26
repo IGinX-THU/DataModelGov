@@ -301,7 +301,8 @@ class ProgramWorkflow extends HTMLElement {
       btn.textContent = a.label;
       btn.addEventListener('click', () => {
         if (this.pluginInstance && typeof this.pluginInstance.onHeaderAction === 'function') {
-          this.pluginInstance.onHeaderAction(a.label, section.id);
+          Promise.resolve(this.pluginInstance.onHeaderAction(a.label, section.id))
+            .catch(e => this.setLog('操作失败: ' + (e && e.message || e)));
         } else {
           this.setLog('操作：' + a.label);
         }
@@ -413,7 +414,8 @@ class ProgramWorkflow extends HTMLElement {
         tasks: this.createHttpNamespace('tasks'),
         results: this.createHttpNamespace('results'),
         artifacts: this.createHttpNamespace('artifacts'),
-        availableData: this.createHttpNamespace('available-data')
+        availableData: this.createHttpNamespace('available-data'),
+        previewData: this.createHttpNamespace('preview-data')
       }),
       log: message => this.setLog(message),
       setStatus: (state, text) => this.setEnvStatus(state, text)
