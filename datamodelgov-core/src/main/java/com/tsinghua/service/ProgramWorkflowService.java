@@ -1,15 +1,27 @@
 package com.tsinghua.service;
 
+import cn.edu.tsinghua.iginx.session.Session;
+import cn.edu.tsinghua.iginx.session.SessionExecuteSqlResult;
+import cn.edu.tsinghua.iginx.session_v2.IginXClient;
+import cn.edu.tsinghua.iginx.session_v2.query.IginXRecord;
+import cn.edu.tsinghua.iginx.session_v2.query.IginXTable;
+import cn.edu.tsinghua.iginx.session_v2.query.SimpleQuery;
+import cn.edu.tsinghua.iginx.session_v2.write.Point;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.tsinghua.auth.util.AuthUtil;
 import com.tsinghua.entity.ProgramEntity;
+import com.tsinghua.entity.WorkflowMeasureDataEntity;
+import com.tsinghua.entity.WorkflowScheduleVarEntity;
+import com.tsinghua.entity.WorkflowTaskEntity;
+import com.tsinghua.entity.WorkflowWorkspaceEntity;
 import com.tsinghua.enums.TaskStatus;
 import com.tsinghua.matlab.MatlabFunctionRunner;
 import com.tsinghua.program.config.ProgramConfig;
 import com.tsinghua.program.config.ProgramConfigMapper;
 import com.tsinghua.util.ArchiveUtil;
+import com.tsinghua.util.ConvertUtil;
 import com.tsinghua.util.ProjectContext;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.ss.usermodel.DataFormatter;
@@ -43,6 +55,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
@@ -50,6 +63,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /** Minimal persistent backend for config-driven MATLAB workflows. */
@@ -71,32 +85,50 @@ public class ProgramWorkflowService {
         return thread;
     });
     private final Map<String, MatlabFunctionRunner> running = new ConcurrentHashMap<>();
+    /** 任务取消标志（内存，运行时高频检查） */
+    private final Map<String, Boolean> cancelFlags = new ConcurrentHashMap<>();
     private final Map<String, Object> fileLocks = new ConcurrentHashMap<>();
     private final Map<String, Object> workspaceExecutionLocks = new ConcurrentHashMap<>();
+
+    /** IGINX 存储前缀：工作流工作区元数据 */
+    private static final String WF_WORKSPACE_PREFIX = "relational_system.workflow_workspace";
+    /** IGINX 存储前缀：工作流任务记录 */
+    private static final String WF_TASK_PREFIX = "relational_system.workflow_task";
+    /** IGINX 存储前缀：工作流测量数据行 */
+    private static final String WF_MEASURE_PREFIX = "relational_system.workflow_measure_data";
+    /** IGINX 存储前缀：工作流调度变量行 */
+    private static final String WF_SCHEDULE_PREFIX = "relational_system.workflow_schedule_var";
 
     @Autowired
     private ProgramService programService;
 
+    @Autowired
+    private IginXClient iginxClient;
+
+    @Autowired
+    private Session iginxSession;
+
     @PostConstruct
     public void recoverInterruptedTasks() {
-        Path root = new File("project").toPath();
-        if (!Files.isDirectory(root)) return;
-        try (Stream<Path> files = Files.walk(root)) {
-            for (Path file : (Iterable<Path>) files::iterator) {
-                if (!"task.json".equals(file.getFileName().toString()) || !Files.isRegularFile(file)
-                        || !file.toString().contains("program-workflows")) continue;
-                try {
-                    Map<String, Object> task = readMap(file);
-                    String status = value(task.get("status"));
-                    if (TaskStatus.QUEUED.getValue().equals(status) || TaskStatus.RUNNING.getValue().equals(status) || TaskStatus.CANCELLING.getValue().equals(status)) {
-                        updateTask(file, TaskStatus.FAILED.getValue(), "服务重启导致任务中断", null, true);
-                    }
-                } catch (Exception e) {
-                    log.warn("恢复工作流任务状态失败: {}", file, e);
+        try {
+            // 从 IGINX 查询所有非终态任务
+            String sql = "SELECT * FROM " + WF_TASK_PREFIX + ";";
+            SessionExecuteSqlResult res = iginxSession.executeSql(sql);
+            List<Map<String, Object>> records = ConvertUtil.getRecords(res);
+            if (records == null) return;
+            for (Map<String, Object> record : records) {
+                WorkflowTaskEntity entity = iginxRecordToTaskEntity(record);
+                String status = entity.getStatus();
+                if (TaskStatus.QUEUED.getValue().equals(status) || TaskStatus.RUNNING.getValue().equals(status) || TaskStatus.CANCELLING.getValue().equals(status)) {
+                    entity.setStatus(TaskStatus.FAILED.getValue());
+                    entity.setError("服务重启导致任务中断");
+                    entity.setFinishedAt(System.currentTimeMillis());
+                    updateTaskEntityInIginx(entity);
+                    log.info("恢复工作流任务状态: taskId={} -> FAILED", entity.getTaskId());
                 }
             }
-        } catch (IOException e) {
-            log.warn("扫描历史工作流任务失败", e);
+        } catch (Exception e) {
+            log.warn("从 IGINX 恢复工作流任务状态失败", e);
         }
     }
 
@@ -336,7 +368,8 @@ public class ProgramWorkflowService {
     }
 
     public Map<String, Object> createWorkspace(String name, String version, String projectName,
-                                                 String jobName, String trainingDataFile, String testDataFile) throws Exception {
+                                                 String jobName, String trainingDataFile, String testDataFile,
+                                                 String notes) throws Exception {
         requireSafeQueryValue(name, "name");
         requireSafeQueryValue(version, "version");
         String project = effectiveProject(projectName);
@@ -346,9 +379,80 @@ public class ProgramWorkflowService {
         String id = safeJobName(jobName);
         Path root = workflowRoot(project);
         Path workspace = child(root, id);
-        if (Files.isDirectory(workspace)) {
+        // 检查重名：查 IGINX 是否已有该 workspace 记录（不检查目录，因为目录可能残留）
+        Map<String, Object> existing = queryWorkspaceFromIginxById(id);
+        if (existing != null) {
             throw new IllegalArgumentException("项目名称已存在: " + jobName + "，请使用其他名称");
         }
+
+        // 只做轻量校验，不执行重活
+        if (!StringUtils.hasText(trainingDataFile)) {
+            throw new IllegalArgumentException("请选择训练数据文件");
+        }
+
+        // 先创建 IGINX 记录（status=CREATING），立即返回给前端
+        long now = System.currentTimeMillis();
+        Map<String, Object> record = new LinkedHashMap<>();
+        record.put("id", id);
+        record.put("programName", name);
+        record.put("programVersion", version);
+        record.put("projectName", project);
+        record.put("jobName", jobName != null ? jobName : "");
+        record.put("notes", notes != null ? notes : "");
+        record.put("trainingDataFile", trainingDataFile);
+        record.put("testDataFile", testDataFile != null ? testDataFile : "");
+        record.put("status", TaskStatus.CREATING.getValue());
+        record.put("programFileMd5", entity.getFileMd5());
+        record.put("createdAt", now);
+        record.put("updatedAt", now);
+        record.put("initStatus", "PENDING");
+        record.put("uploadedDatasets", new ArrayList<>());
+        addStatusLabel(record);
+
+        // 保存工作区元数据到 IGINX（轻量，只有基本字段）
+        saveWorkspaceToIginx(record, now);
+
+        // 所有重活（下载、解压、复制文件、校验、MATLAB 初始化）全部异步执行
+        final String trainingFile = trainingDataFile;
+        final String testDataFileFinal = testDataFile;
+        final String notesFinal = notes;
+        final String jobNameFinal = jobName;
+        final long wsTimestamp = now;
+        final String wsId = id;
+        final String nameFinal = name;
+        final String versionFinal = version;
+        final String projectFinal = project;
+        final ProgramEntity entityFinal = entity;
+        final ProgramConfig configFinal = config;
+
+        executor.submit(() -> {
+            log.info("工作区 {} 异步创建任务开始执行", wsId);
+            try {
+                runWorkspaceCreation(entityFinal, configFinal, nameFinal, versionFinal, projectFinal,
+                        wsId, jobNameFinal, trainingFile, testDataFileFinal, notesFinal, wsTimestamp);
+            } catch (Exception e) {
+                log.error("工作区 {} 创建失败", wsId, e);
+                Map<String, Object> wsUpdate = new LinkedHashMap<>();
+                wsUpdate.put("status", TaskStatus.FAILED.getValue());
+                wsUpdate.put("updatedAt", System.currentTimeMillis());
+                wsUpdate.put("initStatus", "FAILED");
+                wsUpdate.put("initMessage", e.getMessage() != null ? e.getMessage() : String.valueOf(e));
+                updateWorkspaceInIginx(wsUpdate, wsTimestamp);
+            }
+        });
+
+        return record;
+    }
+
+    /** 异步执行工作区创建的全部重活：下载、解压、复制文件、校验、MATLAB 初始化 */
+    @SuppressWarnings("unchecked")
+    private void runWorkspaceCreation(ProgramEntity entity, ProgramConfig config, String name, String version,
+                                       String project, String id, String jobName,
+                                       String trainingDataFile, String testDataFile, String notes,
+                                       long wsTimestamp) throws Exception {
+        log.info("工作区 {} 异步创建开始: 下载/解压/复制/校验/MATLAB初始化", id);
+        Path root = workflowRoot(project);
+        Path workspace = child(root, id);
         Path source = child(workspace, "source");
         Path datasets = child(workspace, "datasets");
         Path tasks = child(workspace, "tasks");
@@ -358,6 +462,8 @@ public class ProgramWorkflowService {
         Files.createDirectories(tasks);
         Files.createDirectories(output);
 
+        // 1. 下载并解压程序包
+        log.info("工作区 {} 步骤1: 下载程序包", id);
         String archiveName = safeFileName(entity.getFileName(), "program.zip");
         if (!ArchiveUtil.isSupportedArchive(archiveName)) {
             throw new IllegalArgumentException("Program archive has an unsupported file extension");
@@ -369,7 +475,10 @@ public class ProgramWorkflowService {
         } finally {
             Files.deleteIfExists(archive);
         }
+        log.info("工作区 {} 步骤1完成: 程序包已解压", id);
 
+        // 2. 解析工作目录
+        log.info("工作区 {} 步骤2: 解析工作目录", id);
         String configuredWorkingDirectory = config.getRuntime().getWorkingDirectory().trim();
         Path workingDirectory = resolveInside(source, configuredWorkingDirectory, true);
         if (!Files.isDirectory(workingDirectory)) {
@@ -377,117 +486,113 @@ public class ProgramWorkflowService {
         }
         validateWorkflowFiles(workingDirectory, config);
         installWorkflowAdapter(workingDirectory);
+        log.info("工作区 {} 步骤2完成: 工作目录已就绪", id);
 
-        // 从程序包的 TestData 目录复制用户选中的数据文件到 workspace/datasets
+        // 3. 复制数据文件
+        log.info("工作区 {} 步骤3: 复制数据文件", id);
         Path testDataDir = child(workingDirectory, "TestData");
         List<Map<String, Object>> uploadedDatasets = new ArrayList<>();
 
-        if (StringUtils.hasText(trainingDataFile)) {
-            Path src = child(testDataDir, safeFileName(trainingDataFile, "training.xlsx"));
-            if (!Files.isRegularFile(src)) {
-                throw new IllegalArgumentException("训练数据文件不存在于程序包: " + trainingDataFile);
-            }
-            String storedName = "trainingData-" + safeFileName(trainingDataFile, "training.xlsx");
-            Path dest = child(datasets, storedName);
-            Files.copy(src, dest, StandardCopyOption.REPLACE_EXISTING);
-            Map<String, Object> dsRecord = new LinkedHashMap<>();
-            dsRecord.put("datasetKey", "trainingData");
-            dsRecord.put("fileName", trainingDataFile);
-            dsRecord.put("storedName", storedName);
-            dsRecord.put("size", Files.size(dest));
-            dsRecord.put("sha256", sha256(dest));
-            dsRecord.put("uploadedAt", System.currentTimeMillis());
-            uploadedDatasets.add(dsRecord);
-        } else {
-            throw new IllegalArgumentException("请选择训练数据文件");
+        Path srcTrain = child(testDataDir, safeFileName(trainingDataFile, "training.xlsx"));
+        if (!Files.isRegularFile(srcTrain)) {
+            throw new IllegalArgumentException("训练数据文件不存在于程序包: " + trainingDataFile);
         }
+        String trainStoredName = "trainingData-" + safeFileName(trainingDataFile, "training.xlsx");
+        Path destTrain = child(datasets, trainStoredName);
+        Files.copy(srcTrain, destTrain, StandardCopyOption.REPLACE_EXISTING);
+        Map<String, Object> trainRecord = new LinkedHashMap<>();
+        trainRecord.put("datasetKey", "trainingData");
+        trainRecord.put("fileName", trainingDataFile);
+        trainRecord.put("storedName", trainStoredName);
+        trainRecord.put("size", Files.size(destTrain));
+        trainRecord.put("sha256", sha256(destTrain));
+        trainRecord.put("uploadedAt", System.currentTimeMillis());
+        uploadedDatasets.add(trainRecord);
 
         if (StringUtils.hasText(testDataFile)) {
-            Path src = child(testDataDir, safeFileName(testDataFile, "test.xlsx"));
-            if (!Files.isRegularFile(src)) {
+            Path srcTest = child(testDataDir, safeFileName(testDataFile, "test.xlsx"));
+            if (!Files.isRegularFile(srcTest)) {
                 throw new IllegalArgumentException("测试数据文件不存在于程序包: " + testDataFile);
             }
-            String storedName = "testData-" + safeFileName(testDataFile, "test.xlsx");
-            Path dest = child(datasets, storedName);
-            Files.copy(src, dest, StandardCopyOption.REPLACE_EXISTING);
-            Map<String, Object> dsRecord = new LinkedHashMap<>();
-            dsRecord.put("datasetKey", "testData");
-            dsRecord.put("fileName", testDataFile);
-            dsRecord.put("storedName", storedName);
-            dsRecord.put("size", Files.size(dest));
-            dsRecord.put("sha256", sha256(dest));
-            dsRecord.put("uploadedAt", System.currentTimeMillis());
-            uploadedDatasets.add(dsRecord);
+            String testStoredName = "testData-" + safeFileName(testDataFile, "test.xlsx");
+            Path destTest = child(datasets, testStoredName);
+            Files.copy(srcTest, destTest, StandardCopyOption.REPLACE_EXISTING);
+            Map<String, Object> testRecord = new LinkedHashMap<>();
+            testRecord.put("datasetKey", "testData");
+            testRecord.put("fileName", testDataFile);
+            testRecord.put("storedName", testStoredName);
+            testRecord.put("size", Files.size(destTest));
+            testRecord.put("sha256", sha256(destTest));
+            testRecord.put("uploadedAt", System.currentTimeMillis());
+            uploadedDatasets.add(testRecord);
         }
 
-        // 校验训练数据合同
-        Path trainingPath = child(datasets, uploadedDatasets.stream()
-                .filter(d -> "trainingData".equals(d.get("datasetKey")))
-                .findFirst().map(d -> String.valueOf(d.get("storedName"))).orElse(""));
+        // 4. 校验训练数据合同
+        log.info("工作区 {} 步骤4: 校验训练数据合同", id);
+        Path trainingPath = child(datasets, trainStoredName);
         Map<String, Object> dataContract = validateDataContract(trainingPath);
         if (!Boolean.TRUE.equals(dataContract.get("valid"))) {
             throw new IllegalArgumentException("训练数据合同校验失败: 缺少字段 " +
                     String.join(", ", (List<String>) dataContract.get("missingColumns")));
         }
+        log.info("工作区 {} 步骤4完成: 数据合同校验通过", id);
 
-        long now = System.currentTimeMillis();
-        Map<String, Object> record = new LinkedHashMap<>();
-        record.put("id", id);
-        record.put("programName", name);
-        record.put("programVersion", version);
-        record.put("projectName", project);
-        record.put("jobName", jobName != null ? jobName : "");
-        record.put("trainingDataFile", trainingDataFile);
-        record.put("testDataFile", testDataFile != null ? testDataFile : "");
-        record.put("status", TaskStatus.READY.getValue());
-        record.put("workingDirectory", source.relativize(workingDirectory).toString().replace(File.separatorChar, '/'));
+        // 5. 写 program-config.json（MATLAB 运行时需要）
         String configJson = ProgramConfigMapper.stringify(config);
-        record.put("programFileMd5", entity.getFileMd5());
-        record.put("configSha256", sha256Text(configJson));
-        record.put("requiredFileHashes", requiredFileHashes(workingDirectory, config));
-        record.put("createdAt", now);
-        record.put("updatedAt", now);
-        record.put("datasets", datasetSpecs(config));
-        record.put("actions", actionSpecs(config));
-        record.put("dataContract", dataContract);
-        record.put("initResult", null);
-        writeJson(child(workspace, "workspace.json"), record);
         Files.write(child(workspace, "program-config.json"), configJson.getBytes(StandardCharsets.UTF_8));
-        writeJson(child(workspace, "datasets.json"), uploadedDatasets);
-        record.put("uploadedDatasets", uploadedDatasets);
-        addStatusLabel(record);
 
-        // 异步执行 MATLAB 初始化
-        final String trainingFile = trainingDataFile;
-        executor.submit(() -> {
-            try {
-                Map<String, Object> initResult = runMatlabInit(workingDirectory, trainingFile, workspace);
-                synchronized (lock(child(workspace, "workspace.json"))) {
-                    Map<String, Object> ws = readMap(child(workspace, "workspace.json"));
-                    ws.put("initResult", initResult);
-                    ws.put("status", TaskStatus.READY.getValue());
-                    ws.put("updatedAt", System.currentTimeMillis());
-                    writeJson(child(workspace, "workspace.json"), ws);
-                }
-                log.info("工作区 {} MATLAB 初始化完成: {}", id, initResult.get("status"));
-            } catch (Exception e) {
-                log.warn("工作区 {} MATLAB 初始化失败", id, e);
-                try {
-                    synchronized (lock(child(workspace, "workspace.json"))) {
-                        Map<String, Object> ws = readMap(child(workspace, "workspace.json"));
-                        Map<String, Object> fallback = new LinkedHashMap<>();
-                        fallback.put("status", "FALLBACK");
-                        fallback.put("message", e.getMessage() != null ? e.getMessage() : String.valueOf(e));
-                        ws.put("initResult", fallback);
-                        ws.put("status", TaskStatus.READY.getValue());
-                        ws.put("updatedAt", System.currentTimeMillis());
-                        writeJson(child(workspace, "workspace.json"), ws);
-                    }
-                } catch (IOException ignored) {}
+        // 6. 更新 IGINX：补充完整字段，状态改为 INITIALIZING
+        log.info("工作区 {} 步骤6: 更新状态为 INITIALIZING", id);
+        Map<String, Object> wsUpdate = new LinkedHashMap<>();
+        wsUpdate.put("status", TaskStatus.INITIALIZING.getValue());
+        wsUpdate.put("updatedAt", System.currentTimeMillis());
+        wsUpdate.put("workingDirectory", source.relativize(workingDirectory).toString().replace(File.separatorChar, '/'));
+        wsUpdate.put("workspaceDir", workspace.toAbsolutePath().toString().replace(File.separatorChar, '/'));
+        wsUpdate.put("configSha256", sha256Text(configJson));
+        wsUpdate.put("requiredFileHashes", mapper.writeValueAsString(requiredFileHashes(workingDirectory, config)));
+        wsUpdate.put("uploadedDatasets", mapper.writeValueAsString(uploadedDatasets));
+        wsUpdate.put("initStatus", "INITIALIZING");
+        updateWorkspaceInIginx(wsUpdate, wsTimestamp);
+        log.info("工作区 {} 步骤6完成: IGINX 状态已更新为 INITIALIZING", id);
+
+        // 7. 执行 MATLAB 初始化
+        log.info("工作区 {} 步骤7: 开始 MATLAB 初始化", id);
+        Map<String, Object> initResult = runMatlabInit(workingDirectory, trainingDataFile, workspace);
+        log.info("工作区 {} 步骤7完成: MATLAB 初始化结果 status={}", id, initResult != null ? initResult.get("status") : "null");
+
+        // 8. 将 MATLAB 初始化产生的测量数据和调度变量写入 IGINX（实体表）
+        if (initResult != null && "SUCCEEDED".equals(initResult.get("status"))) {
+            Object measureRows = initResult.get("measureRows");
+            if (measureRows instanceof List) {
+                saveMeasureDataToIginx(id, (List<Map<String, Object>>) measureRows);
             }
-        });
+            Object scheduleRows = initResult.get("scheduleRows");
+            if (scheduleRows instanceof List) {
+                saveScheduleVarsToIginx(id, (List<Map<String, Object>>) scheduleRows);
+            }
+        }
 
-        return record;
+        // 9. 将初始化摘要写入 IGINX 独立字段
+        Map<String, Object> initUpdate = new LinkedHashMap<>();
+        initUpdate.put("status", TaskStatus.READY.getValue());
+        initUpdate.put("updatedAt", System.currentTimeMillis());
+        initUpdate.put("initStatus", value(initResult.get("status")));
+        initUpdate.put("initMessage", value(initResult.get("message")));
+        initUpdate.put("initRowCount", initResult.get("rowCount"));
+        initUpdate.put("initGroupCount", initResult.get("groupCount"));
+        initUpdate.put("initDllHash", value(initResult.get("dllHash")));
+        initUpdate.put("initValid", initResult.get("valid"));
+        initUpdate.put("initBaselineValid", initResult.get("baselineValid"));
+        Object missingCols = initResult.get("missingColumns");
+        if (missingCols instanceof List) {
+            initUpdate.put("initMissingColumns", String.join(",", (List<String>) missingCols));
+        } else {
+            initUpdate.put("initMissingColumns", value(missingCols));
+        }
+        initUpdate.put("initStartedAt", value(initResult.get("startedAt")));
+        initUpdate.put("initCompletedAt", value(initResult.get("completedAt")));
+        updateWorkspaceInIginx(initUpdate, wsTimestamp);
+        log.info("工作区 {} 创建并初始化完成: {}", id, initResult.get("status"));
     }
 
     /**
@@ -572,35 +677,44 @@ public class ProgramWorkflowService {
 
     public List<Map<String, Object>> listWorkspaces(String name, String version, String projectName) throws Exception {
         String project = effectiveProject(projectName);
-        Path root = workflowRoot(project);
-        if (!Files.isDirectory(root)) return Collections.emptyList();
-        List<Map<String, Object>> result = new ArrayList<>();
-        try (Stream<Path> paths = Files.list(root)) {
-            for (Path path : (Iterable<Path>) paths::iterator) {
-                if (!Files.isDirectory(path) || !SAFE_WORKSPACE_DIR.matcher(path.getFileName().toString()).matches()) continue;
-                Path manifest = child(path, "workspace.json");
-                if (!Files.isRegularFile(manifest)) continue;
-                Map<String, Object> workspace = readMap(manifest);
-                if (matchesProgram(workspace, name, version, project)) {
-                    addStatusLabel(workspace);
-                    result.add(workspace);
-                }
-            }
-        }
+        // 从 IGINX 查询
+        List<Map<String, Object>> result = queryWorkspacesFromIginx(name, version, project);
         result.sort((a, b) -> Long.compare(longValue(b.get("createdAt")), longValue(a.get("createdAt"))));
         return result;
     }
 
     public Map<String, Object> getWorkspace(String id, String name, String version, String projectName) throws Exception {
-        Path workspace = requireWorkspace(id, name, version, projectName);
-        Map<String, Object> record = readMap(child(workspace, "workspace.json"));
-        record.put("uploadedDatasets", readListOfMaps(child(workspace, "datasets.json")));
-        addStatusLabel(record);
+        // 从 IGINX 查询
+        Map<String, Object> record = queryWorkspaceFromIginxById(id);
+        if (record == null) throw new IllegalArgumentException("Workspace does not exist");
         return record;
     }
 
     public void deleteWorkspace(String id, String name, String version, String projectName) throws Exception {
         Path workspace = requireWorkspace(id, name, version, projectName);
+        // 从 IGINX 查 workspace timestamp
+        Map<String, Object> wsRecord = queryWorkspaceFromIginxById(id);
+        long wsTimestamp = wsRecord != null ? longValue(wsRecord.get("timestamp")) : 0L;
+
+        // 检查是否有进程在执行中：workspace 处于创建/初始化中，或有任务正在运行
+        String wsStatus = wsRecord != null ? value(wsRecord.get("status")) : "";
+        if (TaskStatus.CREATING.getValue().equals(wsStatus) || TaskStatus.INITIALIZING.getValue().equals(wsStatus)) {
+            throw new IllegalStateException("项目正在创建/初始化中，无法删除");
+        }
+        // 检查是否有运行中的任务
+        List<Map<String, Object>> tasks = queryTasksFromIginx(id);
+        for (Map<String, Object> task : tasks) {
+            String taskStatus = value(task.get("status"));
+            if (TaskStatus.QUEUED.getValue().equals(taskStatus)
+                    || TaskStatus.WORKFLOW_RUNNING.getValue().equals(taskStatus)
+                    || TaskStatus.CANCELLING.getValue().equals(taskStatus)) {
+                throw new IllegalStateException("项目有任务正在运行中，无法删除");
+            }
+        }
+
+        // 先删除 IGINX 中的数据（元数据权威）
+        deleteWorkspaceFromIginx(id, wsTimestamp);
+        // 再删除磁盘文件
         deleteRecursively(workspace);
     }
 
@@ -630,40 +744,53 @@ public class ProgramWorkflowService {
         Path destination = child(datasetDir, storedName);
         file.transferTo(destination.toFile());
 
-        Path index = child(workspace, "datasets.json");
-        synchronized (lock(index)) {
-            List<Map<String, Object>> records = readListOfMaps(index);
-            for (Map<String, Object> old : records) {
-                if (datasetKey.equals(old.get("datasetKey"))) {
-                    Object oldName = old.get("storedName");
-                    if (oldName != null) Files.deleteIfExists(child(datasetDir, String.valueOf(oldName)));
-                }
+        // 从 IGINX 读当前 uploadedDatasets
+        List<Map<String, Object>> records = queryUploadedDatasetsFromIginx(workspaceId);
+        for (Map<String, Object> old : records) {
+            if (datasetKey.equals(old.get("datasetKey"))) {
+                Object oldName = old.get("storedName");
+                if (oldName != null) Files.deleteIfExists(child(datasetDir, String.valueOf(oldName)));
             }
-            records.removeIf(item -> datasetKey.equals(item.get("datasetKey")));
-            Map<String, Object> record = new LinkedHashMap<>();
-            record.put("datasetKey", datasetKey);
-            record.put("label", spec.getLabel());
-            record.put("type", spec.getType());
-            record.put("role", spec.getRole());
-            record.put("required", Boolean.TRUE.equals(spec.getRequired()));
-            record.put("fileName", safeFileName(file.getOriginalFilename(), "dataset.bin"));
-            record.put("storedName", storedName);
-            record.put("size", Files.size(destination));
-            record.put("sha256", sha256(destination));
-            record.put("uploadedAt", System.currentTimeMillis());
-            records.add(record);
-            writeJson(index, records);
-            return publicDataset(record);
         }
+        records.removeIf(item -> datasetKey.equals(item.get("datasetKey")));
+        Map<String, Object> record = new LinkedHashMap<>();
+        record.put("datasetKey", datasetKey);
+        record.put("label", spec.getLabel());
+        record.put("type", spec.getType());
+        record.put("role", spec.getRole());
+        record.put("required", Boolean.TRUE.equals(spec.getRequired()));
+        record.put("fileName", safeFileName(file.getOriginalFilename(), "dataset.bin"));
+        record.put("storedName", storedName);
+        record.put("size", Files.size(destination));
+        record.put("sha256", sha256(destination));
+        record.put("uploadedAt", System.currentTimeMillis());
+        records.add(record);
+        // 更新 IGINX 中的 uploadedDatasets
+        updateWorkspaceFieldInIginx(workspaceId, "uploadedDatasets", mapper.writeValueAsString(records));
+        return publicDataset(record);
     }
 
     public List<Map<String, Object>> listDatasets(String workspaceId, String name, String version,
                                                    String projectName) throws Exception {
         Path workspace = requireWorkspace(workspaceId, name, version, projectName);
-        List<Map<String, Object>> records = readListOfMaps(child(workspace, "datasets.json"));
+        List<Map<String, Object>> records = queryUploadedDatasetsFromIginx(workspaceId);
         List<Map<String, Object>> result = new ArrayList<>();
         for (Map<String, Object> record : records) result.add(publicDataset(record));
         return result;
+    }
+
+    /** 查询工作区的测量数据行（从 IGINX） */
+    public List<Map<String, Object>> listMeasureData(String workspaceId, String name, String version,
+                                                      String projectName) throws Exception {
+        requireWorkspace(workspaceId, name, version, projectName);
+        return queryMeasureDataFromIginx(workspaceId);
+    }
+
+    /** 查询工作区的调度变量行（从 IGINX） */
+    public List<Map<String, Object>> listScheduleVars(String workspaceId, String name, String version,
+                                                       String projectName) throws Exception {
+        requireWorkspace(workspaceId, name, version, projectName);
+        return queryScheduleVarsFromIginx(workspaceId);
     }
 
     public Map<String, Object> createTask(JsonNode request, String name, String version, String projectName) throws Exception {
@@ -675,7 +802,7 @@ public class ProgramWorkflowService {
         ProgramConfig.WorkflowAction action = findAction(config, actionKey);
         if (action == null) throw new IllegalArgumentException("actionKey is not declared by the program config");
 
-        Object[] arguments = resolveArguments(workspace, config, action, request.get("inputs"));
+        Object[] arguments = resolveArguments(workspace, workspaceId, config, action, request.get("inputs"));
         String taskId = UUID.randomUUID().toString();
         Path taskDir = child(child(workspace, "tasks"), taskId);
         Files.createDirectories(taskDir);
@@ -690,7 +817,8 @@ public class ProgramWorkflowService {
         task.put("createdAt", System.currentTimeMillis());
         task.put("cancelRequested", false);
         task.put("logPath", "tasks/" + taskId + "/run.log");
-        writeJson(child(taskDir, "task.json"), task);
+        // 任务元数据只写 IGINX（不写 task.json）
+        saveTaskToIginx(task, taskId, workspaceId);
         executor.submit(() -> {
             Object executionLock = workspaceExecutionLocks.computeIfAbsent(workspace.toString(), key -> new Object());
             synchronized (executionLock) {
@@ -703,28 +831,18 @@ public class ProgramWorkflowService {
 
     public List<Map<String, Object>> listTasks(String workspaceId, String name, String version,
                                                String projectName) throws Exception {
-        Path workspace = requireWorkspace(workspaceId, name, version, projectName);
-        Path tasks = child(workspace, "tasks");
-        List<Map<String, Object>> result = new ArrayList<>();
-        if (!Files.isDirectory(tasks)) return result;
-        try (Stream<Path> paths = Files.list(tasks)) {
-            for (Path task : (Iterable<Path>) paths::iterator) {
-                if (!Files.isDirectory(task) || !SAFE_ID.matcher(task.getFileName().toString()).matches()) continue;
-                Path manifest = child(task, "task.json");
-                if (Files.isRegularFile(manifest)) {
-                    Map<String, Object> t = readMap(manifest);
-                    addStatusLabel(t);
-                    result.add(t);
-                }
-            }
-        }
+        // 从 IGINX 查询
+        List<Map<String, Object>> result = queryTasksFromIginx(workspaceId);
         result.sort((a, b) -> Long.compare(longValue(b.get("createdAt")), longValue(a.get("createdAt"))));
         return result;
     }
 
     public Map<String, Object> getTask(String taskId, String name, String version, String projectName) throws Exception {
         Path task = requireTask(taskId, name, version, projectName);
-        Map<String, Object> record = readMap(child(task, "task.json"));
+        long ts = queryTaskTimestampByTaskId(taskId);
+        WorkflowTaskEntity entity = loadTaskFromIginx(ts);
+        if (entity == null) throw new IllegalStateException("任务记录不存在");
+        Map<String, Object> record = taskEntityToMap(entity);
         addStatusLabel(record);
         return record;
     }
@@ -743,17 +861,19 @@ public class ProgramWorkflowService {
 
     public Map<String, Object> cancelTask(String taskId, String name, String version, String projectName) throws Exception {
         Path taskDir = requireTask(taskId, name, version, projectName);
-        Path manifest = child(taskDir, "task.json");
+        // 从 IGINX 加载任务实体
+        long ts = queryTaskTimestampByTaskId(taskId);
+        WorkflowTaskEntity taskEntity = loadTaskFromIginx(ts);
+        if (taskEntity == null) throw new IllegalStateException("任务记录不存在");
         Map<String, Object> task;
-        synchronized (lock(manifest)) {
-            task = readMap(manifest);
-            String status = value(task.get("status"));
-            if (!isTerminal(status)) {
-                task.put("cancelRequested", true);
-                task.put("status", TaskStatus.CANCELLING.getValue());
-                task.put("updatedAt", System.currentTimeMillis());
-                writeJson(manifest, task);
-            }
+        if (!isTerminal(taskEntity.getStatus())) {
+            taskEntity.setStatus(TaskStatus.CANCELLING.getValue());
+            updateTaskEntityInIginx(taskEntity);
+            cancelFlags.put(taskId, true);
+            task = taskEntityToMap(taskEntity);
+            task.put("cancelRequested", true);
+        } else {
+            task = taskEntityToMap(taskEntity);
         }
         Files.write(child(taskDir, "cancel.flag"), new byte[]{1});
         MatlabFunctionRunner runner = running.get(taskId);
@@ -763,6 +883,15 @@ public class ProgramWorkflowService {
 
     public Map<String, Object> getResult(String taskId, String name, String version, String projectName) throws Exception {
         Path task = requireTask(taskId, name, version, projectName);
+        // 优先从 IGINX 读 result
+        long ts = queryTaskTimestampByTaskId(taskId);
+        WorkflowTaskEntity entity = loadTaskFromIginx(ts);
+        if (entity != null && StringUtils.hasText(entity.getResult())) {
+            try {
+                return mapper.readValue(entity.getResult(), Map.class);
+            } catch (Exception ignored) {}
+        }
+        // 回退到文件
         Path result = child(task, "result.json");
         if (!Files.isRegularFile(result)) throw new IllegalStateException("Task result is not available");
         return readMap(result);
@@ -771,67 +900,61 @@ public class ProgramWorkflowService {
     public Map<String, Object> reviewResult(String taskId, JsonNode request, String name, String version,
                                             String projectName) throws Exception {
         Path taskDir = requireTask(taskId, name, version, projectName);
-        Path manifest = child(taskDir, "task.json");
         String decision = request == null ? "" : text(request, "decision").toUpperCase(Locale.ROOT);
         if (!"APPROVED".equals(decision) && !"REJECTED".equals(decision)) {
             throw new IllegalArgumentException("decision must be APPROVED or REJECTED");
         }
-        synchronized (lock(manifest)) {
-            Map<String, Object> task = readMap(manifest);
-            if (!TaskStatus.COMPLETED.getValue().equals(task.get("status"))) throw new IllegalStateException("只有已完成的任务才能审核");
-            String notes = request == null ? "" : text(request, "notes");
-            if (notes.length() > 2000) throw new IllegalArgumentException("Review notes are too long");
-            task.put("reviewStatus", "APPROVED".equals(decision) ? TaskStatus.REVIEW_APPROVED.getValue() : TaskStatus.REVIEW_REJECTED.getValue());
-            task.put("reviewNotes", notes);
-            task.put("reviewedBy", AuthUtil.getCurrentUsername());
-            task.put("reviewedAt", System.currentTimeMillis());
-            writeJson(manifest, task);
-            return task;
-        }
+        long ts = queryTaskTimestampByTaskId(taskId);
+        WorkflowTaskEntity taskEntity = loadTaskFromIginx(ts);
+        if (taskEntity == null) throw new IllegalStateException("任务记录不存在");
+        if (!TaskStatus.COMPLETED.getValue().equals(taskEntity.getStatus())) throw new IllegalStateException("只有已完成的任务才能审核");
+        String notes = request == null ? "" : text(request, "notes");
+        if (notes.length() > 2000) throw new IllegalArgumentException("Review notes are too long");
+        taskEntity.setReviewStatus("APPROVED".equals(decision) ? TaskStatus.REVIEW_APPROVED.getValue() : TaskStatus.REVIEW_REJECTED.getValue());
+        updateTaskEntityInIginx(taskEntity);
+        Map<String, Object> task = taskEntityToMap(taskEntity);
+        task.put("reviewNotes", notes);
+        task.put("reviewedBy", AuthUtil.getCurrentUsername());
+        task.put("reviewedAt", System.currentTimeMillis());
+        return task;
     }
 
     public Map<String, Object> publishResult(String taskId, String name, String version,
                                              String projectName) throws Exception {
         Path taskDir = requireTask(taskId, name, version, projectName);
-        Path manifest = child(taskDir, "task.json");
-        synchronized (lock(manifest)) {
-            Map<String, Object> task = readMap(manifest);
-            if (!TaskStatus.COMPLETED.getValue().equals(task.get("status"))) throw new IllegalStateException("只有已完成的任务才能发布");
-            if (!TaskStatus.REVIEW_APPROVED.getValue().equals(task.get("reviewStatus"))) throw new IllegalStateException("结果必须审核通过后才能发布");
-            if (!"estimation".equals(task.get("resultType"))) throw new IllegalStateException("Only identified model results can be published");
-            Map<String, Object> result = readMap(child(taskDir, "result.json"));
-            Object summaryObject = result.get("value");
-            if (summaryObject instanceof Map) {
-                Map<?, ?> summary = (Map<?, ?>) summaryObject;
-                if (Boolean.TRUE.equals(summary.get("truthWasRead"))) throw new SecurityException("Truth-contaminated results cannot be published");
-                if (summary.containsKey("passed") && !Boolean.TRUE.equals(summary.get("passed"))) {
-                    throw new IllegalStateException("Result acceptance did not pass");
-                }
-                Object resultSummary = summary.get("resultSummary");
-                if (resultSummary instanceof Map) {
-                    Object acceptance = ((Map<?, ?>) resultSummary).get("acceptance");
-                    if (acceptance instanceof Map && ((Map<?, ?>) acceptance).containsKey("formalAccepted")
-                            && !Boolean.TRUE.equals(((Map<?, ?>) acceptance).get("formalAccepted"))) {
-                        throw new IllegalStateException("Identified model was not formally accepted");
-                    }
+        long ts = queryTaskTimestampByTaskId(taskId);
+        WorkflowTaskEntity taskEntity = loadTaskFromIginx(ts);
+        if (taskEntity == null) throw new IllegalStateException("任务记录不存在");
+        if (!TaskStatus.COMPLETED.getValue().equals(taskEntity.getStatus())) throw new IllegalStateException("只有已完成的任务才能发布");
+        if (!TaskStatus.REVIEW_APPROVED.getValue().equals(taskEntity.getReviewStatus())) throw new IllegalStateException("结果必须审核通过后才能发布");
+        if (!"estimation".equals(taskEntity.getResultType())) throw new IllegalStateException("Only identified model results can be published");
+        Map<String, Object> result = readMap(child(taskDir, "result.json"));
+        Object summaryObject = result.get("value");
+        if (summaryObject instanceof Map) {
+            Map<?, ?> summary = (Map<?, ?>) summaryObject;
+            if (Boolean.TRUE.equals(summary.get("truthWasRead"))) throw new SecurityException("Truth-contaminated results cannot be published");
+            if (summary.containsKey("passed") && !Boolean.TRUE.equals(summary.get("passed"))) {
+                throw new IllegalStateException("Result acceptance did not pass");
+            }
+            Object resultSummary = summary.get("resultSummary");
+            if (resultSummary instanceof Map) {
+                Object acceptance = ((Map<?, ?>) resultSummary).get("acceptance");
+                if (acceptance instanceof Map && ((Map<?, ?>) acceptance).containsKey("formalAccepted")
+                        && !Boolean.TRUE.equals(((Map<?, ?>) acceptance).get("formalAccepted"))) {
+                    throw new IllegalStateException("Identified model was not formally accepted");
                 }
             }
-            Path workspace = taskDir.getParent().getParent();
-            Map<String, Object> publication = new LinkedHashMap<>();
-            publication.put("taskId", taskId);
-            publication.put("actionKey", task.get("actionKey"));
-            publication.put("publishedBy", AuthUtil.getCurrentUsername());
-            publication.put("publishedAt", System.currentTimeMillis());
-            publication.put("status", TaskStatus.PUBLISHED.getValue());
-            synchronized (lock(child(workspace, "published-model.json"))) {
-                writeJson(child(workspace, "published-model.json"), publication);
-            }
-            task.put("publicationStatus", TaskStatus.PUBLISHED.getValue());
-            task.put("publishedBy", publication.get("publishedBy"));
-            task.put("publishedAt", publication.get("publishedAt"));
-            writeJson(manifest, task);
-            return publication;
         }
+        Map<String, Object> publication = new LinkedHashMap<>();
+        publication.put("taskId", taskId);
+        publication.put("actionKey", taskEntity.getActionKey());
+        publication.put("publishedBy", AuthUtil.getCurrentUsername());
+        publication.put("publishedAt", System.currentTimeMillis());
+        publication.put("status", TaskStatus.PUBLISHED.getValue());
+        // 更新任务实体的发布状态
+        taskEntity.setPublicationStatus(TaskStatus.PUBLISHED.getValue());
+        updateTaskEntityInIginx(taskEntity);
+        return publication;
     }
 
     public List<Map<String, Object>> listArtifacts(String taskId, String name, String version,
@@ -876,8 +999,10 @@ public class ProgramWorkflowService {
         try {
             before = snapshotArtifacts(workspace);
             updateTask(manifest, TaskStatus.WORKFLOW_RUNNING.getValue(), null, System.currentTimeMillis(), false);
+            String workspaceId = value(initialTask.get("workspaceId"));
+            Map<String, Object> wsRecord = queryWorkspaceFromIginxById(workspaceId);
             Path workingDirectory = resolveInside(workspace.resolve("source"),
-                    value(readMap(workspace.resolve("workspace.json")).get("workingDirectory")), true);
+                    value(wsRecord != null ? wsRecord.get("workingDirectory") : null), true);
             Path requestFile = taskDir.resolve("request.json");
             Path taskOutput = child(child(workspace, "output"), taskId);
             Files.createDirectories(taskOutput);
@@ -906,12 +1031,11 @@ public class ProgramWorkflowService {
                     }
                 }
                 @Override public boolean isCancellationRequested() {
-                    try { return Boolean.TRUE.equals(readMap(manifest).get("cancelRequested")); }
-                    catch (Exception e) { return false; }
+                    return Boolean.TRUE.equals(cancelFlags.get(taskId));
                 }
             });
             running.put(taskId, runner);
-            if (Boolean.TRUE.equals(readMap(manifest).get("cancelRequested"))) runner.requestCancel();
+            if (Boolean.TRUE.equals(cancelFlags.get(taskId))) runner.requestCancel();
             runner.run();
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("taskId", taskId);
@@ -922,6 +1046,13 @@ public class ProgramWorkflowService {
             result.put("completedAt", System.currentTimeMillis());
             writeJson(taskDir.resolve("result.json"), result);
             writeJson(taskDir.resolve("artifacts.json"), collectArtifacts(workspace, before));
+            // 将结果写入 IGINX task 表 result 字段
+            long taskTs = queryTaskTimestampByTaskId(taskId);
+            WorkflowTaskEntity taskEntity = loadTaskFromIginx(taskTs);
+            if (taskEntity != null) {
+                taskEntity.setResult(mapper.writeValueAsString(result));
+                updateTaskEntityInIginx(taskEntity);
+            }
             updateTask(manifest, TaskStatus.COMPLETED.getValue(), null, null, true);
         } catch (CancellationException e) {
             finishArtifactsQuietly(workspace, taskDir, before);
@@ -929,7 +1060,7 @@ public class ProgramWorkflowService {
         } catch (Exception e) {
             finishArtifactsQuietly(workspace, taskDir, before);
             try {
-                if (Boolean.TRUE.equals(readMap(manifest).get("cancelRequested"))) {
+                if (Boolean.TRUE.equals(cancelFlags.get(taskId))) {
                     updateTaskQuietly(manifest, TaskStatus.CANCELLING.getValue(), "用户取消，当前DLL调用结束后已停止并保存检查点");
                 } else {
                     log.error("MATLAB workflow task {} failed", taskId, e);
@@ -937,14 +1068,13 @@ public class ProgramWorkflowService {
                     if (errMsg.contains("test") && errMsg.contains("not found") || errMsg.contains("测试数据不存在")) {
                         updateTaskQuietly(manifest, TaskStatus.SKIPPED.getValue(), "测试数据不存在，已安全跳过测试验证");
                     } else {
-                        synchronized (lock(manifest)) {
-                            Map<String, Object> task = readMap(manifest);
-                            task.put("status", TaskStatus.WORKFLOW_FAILED.getValue());
-                            task.put("error", safeError(e));
-                            task.put("errorDetail", buildErrorDetail(e, action.getStage(), runLog));
-                            task.put("updatedAt", System.currentTimeMillis());
-                            task.put("completedAt", System.currentTimeMillis());
-                            writeJson(manifest, task);
+                        long ts2 = queryTaskTimestampByTaskId(taskId);
+                        WorkflowTaskEntity taskEntity2 = loadTaskFromIginx(ts2);
+                        if (taskEntity2 != null) {
+                            taskEntity2.setStatus(TaskStatus.WORKFLOW_FAILED.getValue());
+                            taskEntity2.setError(safeError(e));
+                            taskEntity2.setFinishedAt(System.currentTimeMillis());
+                            updateTaskEntityInIginx(taskEntity2);
                         }
                     }
                 }
@@ -954,13 +1084,15 @@ public class ProgramWorkflowService {
             }
         } finally {
             running.remove(taskId);
+            cancelFlags.remove(taskId);
         }
     }
 
-    private Object[] resolveArguments(Path workspace, ProgramConfig config, ProgramConfig.WorkflowAction action,
+    private Object[] resolveArguments(Path workspace, String workspaceId, ProgramConfig config, ProgramConfig.WorkflowAction action,
                                       JsonNode inputs) throws Exception {
         List<String> ordered = action.getInputs() == null ? Collections.emptyList() : action.getInputs();
-        List<Map<String, Object>> uploaded = readListOfMaps(child(workspace, "datasets.json"));
+        // 从 IGINX 查询工作区的 uploadedDatasets
+        List<Map<String, Object>> uploaded = queryUploadedDatasetsFromIginx(workspaceId);
         Map<String, Map<String, Object>> uploadedByKey = new HashMap<>();
         for (Map<String, Object> item : uploaded) uploadedByKey.put(value(item.get("datasetKey")), item);
         Set<String> datasetKeys = new LinkedHashSet<>();
@@ -1067,27 +1199,27 @@ public class ProgramWorkflowService {
         requireWorkspaceId(id, "workspaceId");
         String project = effectiveProject(projectName);
         Path workspace = child(workflowRoot(project), id);
-        Path manifest = child(workspace, "workspace.json");
-        if (!Files.isRegularFile(manifest)) throw new IllegalArgumentException("Workspace does not exist");
-        if (!matchesProgram(readMap(manifest), name, version, project)) throw new SecurityException("Workspace does not belong to this program context");
+        // 从 IGINX 验证 workspace 存在且归属正确
+        Map<String, Object> wsRecord = queryWorkspaceFromIginxById(id);
+        if (wsRecord == null) throw new IllegalArgumentException("Workspace does not exist");
+        if (!matchesProgram(wsRecord, name, version, project)) throw new SecurityException("Workspace does not belong to this program context");
         return workspace;
     }
 
     private Path requireTask(String taskId, String name, String version, String projectName) throws Exception {
         requireId(taskId, "taskId");
         String project = effectiveProject(projectName);
-        Path root = workflowRoot(project);
-        if (!Files.isDirectory(root)) throw new IllegalArgumentException("Task does not exist");
-        try (Stream<Path> workspaces = Files.list(root)) {
-            for (Path workspace : (Iterable<Path>) workspaces::iterator) {
-                if (!Files.isDirectory(workspace) || !SAFE_WORKSPACE_DIR.matcher(workspace.getFileName().toString()).matches()) continue;
-                Path workspaceManifest = child(workspace, "workspace.json");
-                if (!Files.isRegularFile(workspaceManifest) || !matchesProgram(readMap(workspaceManifest), name, version, project)) continue;
-                Path task = child(child(workspace, "tasks"), taskId);
-                if (Files.isRegularFile(child(task, "task.json"))) return task;
-            }
-        }
-        throw new IllegalArgumentException("Task does not exist");
+        // 从 IGINX 查 task 的 workspaceId
+        long ts = queryTaskTimestampByTaskId(taskId);
+        if (ts == 0) throw new IllegalArgumentException("Task does not exist");
+        WorkflowTaskEntity taskEntity = loadTaskFromIginx(ts);
+        if (taskEntity == null) throw new IllegalArgumentException("Task does not exist");
+        String workspaceId = taskEntity.getWorkspaceId();
+        if (workspaceId == null) throw new IllegalArgumentException("Task does not exist");
+        // 验证 workspace 归属
+        Path workspace = requireWorkspace(workspaceId, name, version, projectName);
+        Path taskDir = child(child(workspace, "tasks"), taskId);
+        return taskDir;
     }
 
     private Path workflowRoot(String project) throws IOException {
@@ -1296,28 +1428,30 @@ public class ProgramWorkflowService {
     }
 
     private void updateTask(Path manifest, String status, String error, Long startedAt, boolean completed) throws IOException {
-        synchronized (lock(manifest)) {
-            Map<String, Object> task = readMap(manifest);
-            task.put("status", status);
-            task.put("updatedAt", System.currentTimeMillis());
-            if (startedAt != null) task.put("startedAt", startedAt);
-            if (completed || isTerminal(status)) task.put("completedAt", System.currentTimeMillis());
-            if (error != null) task.put("error", error);
-            if (TaskStatus.COMPLETED.getValue().equals(status) && "estimation".equals(task.get("resultType"))) {
-                task.put("reviewStatus", TaskStatus.PENDING_REVIEW.getValue());
-            }
-            writeJson(manifest, task);
+        long ts = extractTimestampFromTaskPath(manifest);
+        WorkflowTaskEntity task = loadTaskFromIginx(ts);
+        if (task == null) {
+            // IGINX 中不存在，从 JSON 文件回退加载
+            Map<String, Object> taskMap = readMap(manifest);
+            task = mapToTaskEntity(taskMap, value(taskMap.get("id")), value(taskMap.get("workspaceId")), ts);
         }
+        task.setStatus(status);
+        if (startedAt != null) task.setStartedAt(startedAt);
+        if (completed || isTerminal(status)) task.setFinishedAt(System.currentTimeMillis());
+        if (error != null) task.setError(error);
+        if (TaskStatus.COMPLETED.getValue().equals(status) && "estimation".equals(task.getResultType())) {
+            task.setReviewStatus(TaskStatus.PENDING_REVIEW.getValue());
+        }
+        updateTaskEntityInIginx(task);
     }
 
     private void updateTaskMessage(Path manifest, String message) {
         try {
-            synchronized (lock(manifest)) {
-                Map<String, Object> task = readMap(manifest);
-                task.put("statusMessage", message);
-                task.put("updatedAt", System.currentTimeMillis());
-                writeJson(manifest, task);
-            }
+            long ts = extractTimestampFromTaskPath(manifest);
+            WorkflowTaskEntity task = loadTaskFromIginx(ts);
+            if (task == null) return;
+            task.setStatusMessage(message);
+            updateTaskEntityInIginx(task);
         } catch (Exception e) {
             log.debug("Could not persist workflow progress: {}", e.getMessage());
         }
@@ -1501,5 +1635,754 @@ public class ProgramWorkflowService {
         private ArtifactDownload(String fileName, byte[] bytes) { this.fileName = fileName; this.bytes = bytes; }
         public String getFileName() { return fileName; }
         public byte[] getBytes() { return bytes; }
+    }
+
+    // ===================== IGINX 持久化 =====================
+
+    /** 将工作区元数据写入 IGINX */
+    private void saveWorkspaceToIginx(Map<String, Object> record, long timestamp) {
+        try {
+            WorkflowWorkspaceEntity entity = mapToWorkspaceEntity(record, timestamp);
+            List<Point> points = ConvertUtil.entityToPoints(entity, WF_WORKSPACE_PREFIX, timestamp);
+            iginxClient.getWriteClient().writePoints(points);
+            log.info("工作区元数据已保存到 IGINX: id={}, timestamp={}", entity.getId(), timestamp);
+        } catch (Exception e) {
+            log.error("保存工作区元数据到 IGINX 失败", e);
+        }
+    }
+
+    /** 更新工作区元数据（用原始时间戳覆盖写入，IGINX 同时间戳可覆盖） */
+    private void updateWorkspaceInIginx(Map<String, Object> ws, long timestamp) {
+        try {
+            List<Point> points = new ArrayList<>();
+            for (Map.Entry<String, Object> entry : ws.entrySet()) {
+                String fieldName = entry.getKey();
+                Object val = entry.getValue();
+                if (val == null) continue;
+                Point point = ConvertUtil.createFieldPoint(WF_WORKSPACE_PREFIX, fieldName, val, timestamp);
+                if (point != null) points.add(point);
+            }
+            iginxClient.getWriteClient().writePoints(points.stream().filter(Objects::nonNull).collect(Collectors.toList()));
+            log.info("工作区元数据已更新到 IGINX: timestamp={}, 字段数={}", timestamp, points.size());
+        } catch (Exception e) {
+            log.error("更新工作区元数据到 IGINX 失败", e);
+        }
+    }
+
+    /** 更新工作区单个字段到 IGINX */
+    private void updateWorkspaceFieldInIginx(String workspaceId, String fieldName, String value) {
+        try {
+            // 查询 workspace 的 timestamp
+            Map<String, Object> ws = queryWorkspaceFromIginxById(workspaceId);
+            if (ws == null || ws.get("timestamp") == null) {
+                log.warn("更新工作区字段失败: workspaceId={} 不存在", workspaceId);
+                return;
+            }
+            long ts = longValue(ws.get("timestamp"));
+            List<Point> points = new ArrayList<>();
+            points.add(ConvertUtil.createFieldPoint(WF_WORKSPACE_PREFIX, fieldName, value, ts));
+            iginxClient.getWriteClient().writePoints(points.stream().filter(Objects::nonNull).collect(Collectors.toList()));
+        } catch (Exception e) {
+            log.error("更新工作区字段到 IGINX 失败: workspaceId={}, field={}", workspaceId, fieldName, e);
+        }
+    }
+
+    /** 将 Map 转换为 WorkflowWorkspaceEntity */
+    private WorkflowWorkspaceEntity mapToWorkspaceEntity(Map<String, Object> record, long timestamp) throws Exception {
+        WorkflowWorkspaceEntity entity = new WorkflowWorkspaceEntity();
+        entity.setTimestamp(timestamp);
+        entity.setId(value(record.get("id")));
+        entity.setProgramName(value(record.get("programName")));
+        entity.setProgramVersion(value(record.get("programVersion")));
+        entity.setProjectName(value(record.get("projectName")));
+        entity.setJobName(value(record.get("jobName")));
+        entity.setNotes(value(record.get("notes")));
+        entity.setTrainingDataFile(value(record.get("trainingDataFile")));
+        entity.setTestDataFile(value(record.get("testDataFile")));
+        entity.setStatus(value(record.get("status")));
+        entity.setWorkingDirectory(value(record.get("workingDirectory")));
+        entity.setWorkspaceDir(value(record.get("workspaceDir")));
+        entity.setProgramFileMd5(value(record.get("programFileMd5")));
+        entity.setConfigSha256(value(record.get("configSha256")));
+        entity.setCreatedAt(longValue(record.get("createdAt")));
+        entity.setUpdatedAt(longValue(record.get("updatedAt")));
+        // 初始化摘要独立字段
+        entity.setInitStatus(value(record.get("initStatus")));
+        entity.setInitMessage(value(record.get("initMessage")));
+        Object rowCount = record.get("initRowCount");
+        if (rowCount instanceof Number) entity.setInitRowCount(((Number) rowCount).intValue());
+        Object groupCount = record.get("initGroupCount");
+        if (groupCount instanceof Number) entity.setInitGroupCount(((Number) groupCount).intValue());
+        entity.setInitDllHash(value(record.get("initDllHash")));
+        Object initValid = record.get("initValid");
+        if (initValid instanceof Boolean) entity.setInitValid((Boolean) initValid);
+        Object baselineValid = record.get("initBaselineValid");
+        if (baselineValid instanceof Boolean) entity.setInitBaselineValid((Boolean) baselineValid);
+        Object missingCols = record.get("initMissingColumns");
+        if (missingCols instanceof List) {
+            entity.setInitMissingColumns(String.join(",", (List<String>) missingCols));
+        } else if (missingCols instanceof String) {
+            entity.setInitMissingColumns((String) missingCols);
+        }
+        entity.setInitStartedAt(value(record.get("initStartedAt")));
+        entity.setInitCompletedAt(value(record.get("initCompletedAt")));
+        Object uploadedDatasets = record.get("uploadedDatasets");
+        if (uploadedDatasets != null) {
+            entity.setUploadedDatasets(mapper.writeValueAsString(uploadedDatasets));
+        }
+        Object dataContract = record.get("dataContract");
+        if (dataContract != null) {
+            entity.setDataContract(mapper.writeValueAsString(dataContract));
+        }
+        Object requiredFileHashes = record.get("requiredFileHashes");
+        if (requiredFileHashes != null) {
+            entity.setRequiredFileHashes(mapper.writeValueAsString(requiredFileHashes));
+        }
+        return entity;
+    }
+
+    /** 将 IGINX 查询记录转换为 WorkflowWorkspaceEntity */
+    private WorkflowWorkspaceEntity iginxRecordToWorkspaceEntity(Map<String, Object> record) {
+        WorkflowWorkspaceEntity entity = new WorkflowWorkspaceEntity();
+        for (Map.Entry<String, Object> entry : record.entrySet()) {
+            String fullKey = entry.getKey();
+            String fieldName = fullKey.substring(fullKey.lastIndexOf('.') + 1);
+            Object value = entry.getValue();
+            if (value instanceof byte[]) {
+                value = ConvertUtil.bytesToString((byte[]) value);
+            }
+            switch (fieldName) {
+                case "timestamp": entity.setTimestamp(value instanceof Number ? ((Number) value).longValue() : null); break;
+                case "id": entity.setId(String.valueOf(value)); break;
+                case "programName": entity.setProgramName(String.valueOf(value)); break;
+                case "programVersion": entity.setProgramVersion(String.valueOf(value)); break;
+                case "projectName": entity.setProjectName(String.valueOf(value)); break;
+                case "jobName": entity.setJobName(String.valueOf(value)); break;
+                case "notes": entity.setNotes(String.valueOf(value)); break;
+                case "trainingDataFile": entity.setTrainingDataFile(String.valueOf(value)); break;
+                case "testDataFile": entity.setTestDataFile(String.valueOf(value)); break;
+                case "status": entity.setStatus(String.valueOf(value)); break;
+                case "workingDirectory": entity.setWorkingDirectory(String.valueOf(value)); break;
+                case "workspaceDir": entity.setWorkspaceDir(String.valueOf(value)); break;
+                case "programFileMd5": entity.setProgramFileMd5(String.valueOf(value)); break;
+                case "configSha256": entity.setConfigSha256(String.valueOf(value)); break;
+                case "createdAt": entity.setCreatedAt(value instanceof Number ? ((Number) value).longValue() : null); break;
+                case "updatedAt": entity.setUpdatedAt(value instanceof Number ? ((Number) value).longValue() : null); break;
+                case "initStatus": entity.setInitStatus(String.valueOf(value)); break;
+                case "initMessage": entity.setInitMessage(String.valueOf(value)); break;
+                case "initRowCount": entity.setInitRowCount(value instanceof Number ? ((Number) value).intValue() : null); break;
+                case "initGroupCount": entity.setInitGroupCount(value instanceof Number ? ((Number) value).intValue() : null); break;
+                case "initDllHash": entity.setInitDllHash(String.valueOf(value)); break;
+                case "initValid": entity.setInitValid(value instanceof Boolean ? (Boolean) value : Boolean.parseBoolean(String.valueOf(value))); break;
+                case "initBaselineValid": entity.setInitBaselineValid(value instanceof Boolean ? (Boolean) value : Boolean.parseBoolean(String.valueOf(value))); break;
+                case "initMissingColumns": entity.setInitMissingColumns(String.valueOf(value)); break;
+                case "initStartedAt": entity.setInitStartedAt(String.valueOf(value)); break;
+                case "initCompletedAt": entity.setInitCompletedAt(String.valueOf(value)); break;
+                case "uploadedDatasets": entity.setUploadedDatasets(String.valueOf(value)); break;
+                case "dataContract": entity.setDataContract(String.valueOf(value)); break;
+                case "requiredFileHashes": entity.setRequiredFileHashes(String.valueOf(value)); break;
+            }
+        }
+        return entity;
+    }
+
+    /** 将 WorkflowWorkspaceEntity 转换为界面返回的 Map */
+    private Map<String, Object> workspaceEntityToMap(WorkflowWorkspaceEntity entity) {
+        Map<String, Object> ws = new LinkedHashMap<>();
+        ws.put("timestamp", entity.getTimestamp());
+        ws.put("id", entity.getId());
+        ws.put("programName", entity.getProgramName());
+        ws.put("programVersion", entity.getProgramVersion());
+        ws.put("projectName", entity.getProjectName());
+        ws.put("jobName", entity.getJobName());
+        ws.put("notes", entity.getNotes());
+        ws.put("trainingDataFile", entity.getTrainingDataFile());
+        ws.put("testDataFile", entity.getTestDataFile());
+        ws.put("status", entity.getStatus());
+        ws.put("workingDirectory", entity.getWorkingDirectory());
+        ws.put("workspaceDir", entity.getWorkspaceDir());
+        ws.put("programFileMd5", entity.getProgramFileMd5());
+        ws.put("configSha256", entity.getConfigSha256());
+        ws.put("createdAt", entity.getCreatedAt());
+        ws.put("updatedAt", entity.getUpdatedAt());
+        // 初始化摘要独立字段
+        ws.put("initStatus", entity.getInitStatus());
+        ws.put("initMessage", entity.getInitMessage());
+        ws.put("initRowCount", entity.getInitRowCount());
+        ws.put("initGroupCount", entity.getInitGroupCount());
+        ws.put("initDllHash", entity.getInitDllHash());
+        ws.put("initValid", entity.getInitValid());
+        ws.put("initBaselineValid", entity.getInitBaselineValid());
+        if (StringUtils.hasText(entity.getInitMissingColumns())) {
+            ws.put("initMissingColumns", Arrays.asList(entity.getInitMissingColumns().split(",")));
+        } else {
+            ws.put("initMissingColumns", Collections.emptyList());
+        }
+        ws.put("initStartedAt", entity.getInitStartedAt());
+        ws.put("initCompletedAt", entity.getInitCompletedAt());
+        // JSON 字段反序列化
+        if (StringUtils.hasText(entity.getUploadedDatasets())) {
+            try { ws.put("uploadedDatasets", mapper.readValue(entity.getUploadedDatasets(), Object.class)); } catch (Exception ignored) {}
+        }
+        if (StringUtils.hasText(entity.getDataContract())) {
+            try { ws.put("dataContract", mapper.readValue(entity.getDataContract(), Object.class)); } catch (Exception ignored) {}
+        }
+        if (StringUtils.hasText(entity.getRequiredFileHashes())) {
+            try { ws.put("requiredFileHashes", mapper.readValue(entity.getRequiredFileHashes(), Object.class)); } catch (Exception ignored) {}
+        }
+        return ws;
+    }
+
+    /** 从 IGINX 查询工作区的 uploadedDatasets */
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> queryUploadedDatasetsFromIginx(String workspaceId) {
+        try {
+            Map<String, Object> ws = queryWorkspaceFromIginxById(workspaceId);
+            if (ws == null) return new ArrayList<>();
+            Object uploaded = ws.get("uploadedDatasets");
+            if (uploaded instanceof List) return (List<Map<String, Object>>) uploaded;
+            if (uploaded instanceof String && StringUtils.hasText((String) uploaded)) {
+                return mapper.readValue((String) uploaded, List.class);
+            }
+            return new ArrayList<>();
+        } catch (Exception e) {
+            log.error("从 IGINX 查询 uploadedDatasets 失败: workspaceId={}", workspaceId, e);
+            return new ArrayList<>();
+        }
+    }
+
+    /** 从 IGINX 查询工作区列表（SQL 模式） */
+    private List<Map<String, Object>> queryWorkspacesFromIginx(String name, String version, String project) {
+        try {
+            StringBuilder sql = new StringBuilder("SELECT * FROM " + WF_WORKSPACE_PREFIX + " WHERE 1=1");
+            if (StringUtils.hasText(name)) {
+                sql.append(" AND programName = '").append(name).append("'");
+            }
+            if (StringUtils.hasText(version)) {
+                sql.append(" AND programVersion = '").append(version).append("'");
+            }
+            if (StringUtils.hasText(project)) {
+                sql.append(" AND projectName = '").append(project).append("'");
+            }
+            sql.append(" ORDER BY timestamp DESC;");
+            log.info("执行SQL: {}", sql);
+            SessionExecuteSqlResult res = iginxSession.executeSql(sql.toString());
+            List<Map<String, Object>> records = ConvertUtil.getRecords(res);
+            if (records == null) return new ArrayList<>();
+            List<Map<String, Object>> result = new ArrayList<>();
+            for (Map<String, Object> record : records) {
+                WorkflowWorkspaceEntity entity = iginxRecordToWorkspaceEntity(record);
+                Map<String, Object> ws = workspaceEntityToMap(entity);
+                addStatusLabel(ws);
+                result.add(ws);
+            }
+            return result;
+        } catch (Exception e) {
+            log.error("从 IGINX 查询工作区列表失败", e);
+            return new ArrayList<>();
+        }
+    }
+
+    /** 从 IGINX 按 id 查询单个工作区 */
+    private Map<String, Object> queryWorkspaceFromIginxById(String id) {
+        try {
+            String sql = String.format("SELECT * FROM %s WHERE id = '%s' ORDER BY timestamp DESC;",
+                    WF_WORKSPACE_PREFIX, id);
+            log.info("执行SQL: {}", sql);
+            SessionExecuteSqlResult res = iginxSession.executeSql(sql);
+            List<Map<String, Object>> records = ConvertUtil.getRecords(res);
+            if (records == null || records.isEmpty()) return null;
+            WorkflowWorkspaceEntity entity = iginxRecordToWorkspaceEntity(records.get(0));
+            Map<String, Object> ws = workspaceEntityToMap(entity);
+            addStatusLabel(ws);
+            return ws;
+        } catch (Exception e) {
+            log.error("从 IGINX 查询工作区失败: id={}", id, e);
+            return null;
+        }
+    }
+
+    /** 将工作流任务记录写入 IGINX */
+    private void saveTaskToIginx(Map<String, Object> task, String taskId, String workspaceId) {
+        try {
+            long timestamp = longValue(task.get("createdAt"));
+            if (timestamp == 0) timestamp = System.currentTimeMillis();
+            WorkflowTaskEntity entity = mapToTaskEntity(task, taskId, workspaceId, timestamp);
+            List<Point> points = ConvertUtil.entityToPoints(entity, WF_TASK_PREFIX, timestamp);
+            iginxClient.getWriteClient().writePoints(points);
+            log.info("工作流任务记录已保存到 IGINX: taskId={}, timestamp={}", taskId, timestamp);
+        } catch (Exception e) {
+            log.error("保存工作流任务记录到 IGINX 失败", e);
+        }
+    }
+
+    /** 将 Map 转换为 WorkflowTaskEntity */
+    private WorkflowTaskEntity mapToTaskEntity(Map<String, Object> task, String taskId, String workspaceId, long timestamp) {
+        WorkflowTaskEntity entity = new WorkflowTaskEntity();
+        entity.setTimestamp(timestamp);
+        entity.setTaskId(taskId);
+        entity.setWorkspaceId(workspaceId);
+        entity.setActionKey(value(task.get("actionKey")));
+        entity.setEntryPoint(value(task.get("entryPoint")));
+        entity.setStage(value(task.get("stage")));
+        entity.setResultType(value(task.get("resultType")));
+        entity.setStatus(value(task.get("status")));
+        entity.setCreatedAt(longValue(task.get("createdAt")));
+        entity.setStartedAt(longValue(task.get("startedAt")));
+        entity.setFinishedAt(longValue(task.get("finishedAt")));
+        entity.setLogPath(value(task.get("logPath")));
+        entity.setStatusMessage(value(task.get("statusMessage")));
+        entity.setReviewStatus(value(task.get("reviewStatus")));
+        entity.setPublicationStatus(value(task.get("publicationStatus")));
+        return entity;
+    }
+
+    /** 更新任务实体到 IGINX */
+    private void updateTaskEntityInIginx(WorkflowTaskEntity entity) {
+        try {
+            List<Point> points = ConvertUtil.entityToPoints(entity, WF_TASK_PREFIX, entity.getTimestamp());
+            iginxClient.getWriteClient().writePoints(points);
+            log.info("工作流任务已更新到 IGINX: taskId={}, status={}", entity.getTaskId(), entity.getStatus());
+        } catch (Exception e) {
+            log.error("更新工作流任务到 IGINX 失败", e);
+        }
+    }
+
+    /** 从 IGINX 加载任务实体 */
+    private WorkflowTaskEntity loadTaskFromIginx(long timestamp) {
+        try {
+            List<String> measurements = ConvertUtil.iginxFieldNamesConvert(WorkflowTaskEntity.class, WF_TASK_PREFIX);
+            IginXTable table = iginxClient.getQueryClient().query(
+                SimpleQuery.builder()
+                    .addMeasurements(new java.util.HashSet<>(measurements))
+                    .startKey(timestamp - 1)
+                    .endKey(timestamp + 1)
+                    .build()
+            );
+            if (table == null || table.getRecords() == null || table.getRecords().isEmpty()) return null;
+            IginXRecord record = table.getRecords().get(0);
+            WorkflowTaskEntity entity = new WorkflowTaskEntity();
+            entity.setTimestamp(timestamp);
+            for (String path : measurements) {
+                Object value = record.getValue(path);
+                if (value == null) continue;
+                String fieldName = path.substring(path.lastIndexOf('.') + 1);
+                String strValue = value instanceof byte[] ? ConvertUtil.bytesToString((byte[]) value) : value.toString();
+                switch (fieldName) {
+                    case "taskId": entity.setTaskId(strValue); break;
+                    case "workspaceId": entity.setWorkspaceId(strValue); break;
+                    case "actionKey": entity.setActionKey(strValue); break;
+                    case "entryPoint": entity.setEntryPoint(strValue); break;
+                    case "stage": entity.setStage(strValue); break;
+                    case "resultType": entity.setResultType(strValue); break;
+                    case "status": entity.setStatus(strValue); break;
+                    case "createdAt": entity.setCreatedAt(value instanceof Number ? ((Number) value).longValue() : null); break;
+                    case "startedAt": entity.setStartedAt(value instanceof Number ? ((Number) value).longValue() : null); break;
+                    case "finishedAt": entity.setFinishedAt(value instanceof Number ? ((Number) value).longValue() : null); break;
+                    case "logPath": entity.setLogPath(strValue); break;
+                    case "statusMessage": entity.setStatusMessage(strValue); break;
+                    case "reviewStatus": entity.setReviewStatus(strValue); break;
+                    case "publicationStatus": entity.setPublicationStatus(strValue); break;
+                    case "result": entity.setResult(strValue); break;
+                }
+            }
+            return entity;
+        } catch (Exception e) {
+            log.error("从 IGINX 加载工作流任务失败: timestamp={}", timestamp, e);
+            return null;
+        }
+    }
+
+    /** 从任务路径提取 timestamp（taskDir 名为 taskId，需要从 IGINX 查） */
+    private long extractTimestampFromTaskPath(Path manifest) {
+        // taskDir = workspace/tasks/{taskId}，manifest = taskDir/task.json
+        // taskId 不是 timestamp，需要通过 taskId 查 IGINX 获取 timestamp
+        Path taskDir = manifest.getParent();
+        if (taskDir == null) return 0;
+        String taskId = taskDir.getFileName().toString();
+        return queryTaskTimestampByTaskId(taskId);
+    }
+
+    /** 通过 taskId 从 IGINX 查询 timestamp */
+    private long queryTaskTimestampByTaskId(String taskId) {
+        try {
+            String sql = String.format("SELECT timestamp FROM %s WHERE taskId = '%s';", WF_TASK_PREFIX, taskId);
+            SessionExecuteSqlResult res = iginxSession.executeSql(sql);
+            List<Map<String, Object>> records = ConvertUtil.getRecords(res);
+            if (records != null && !records.isEmpty()) {
+                Object tsObj = records.get(0).values().iterator().next();
+                if (tsObj instanceof Number) return ((Number) tsObj).longValue();
+            }
+        } catch (Exception e) {
+            log.error("查询任务 timestamp 失败: taskId={}", taskId, e);
+        }
+        return 0;
+    }
+
+    /** 从 IGINX 查询工作区下的任务列表（SQL 模式） */
+    private List<Map<String, Object>> queryTasksFromIginx(String workspaceId) {
+        try {
+            String sql = String.format("SELECT * FROM %s WHERE workspaceId = '%s' ORDER BY timestamp DESC;",
+                    WF_TASK_PREFIX, workspaceId);
+            log.info("执行SQL: {}", sql);
+            SessionExecuteSqlResult res = iginxSession.executeSql(sql);
+            List<Map<String, Object>> records = ConvertUtil.getRecords(res);
+            if (records == null) return new ArrayList<>();
+            List<Map<String, Object>> result = new ArrayList<>();
+            for (Map<String, Object> record : records) {
+                WorkflowTaskEntity entity = iginxRecordToTaskEntity(record);
+                Map<String, Object> task = taskEntityToMap(entity);
+                addStatusLabel(task);
+                result.add(task);
+            }
+            return result;
+        } catch (Exception e) {
+            log.error("从 IGINX 查询任务列表失败: workspaceId={}", workspaceId, e);
+            return new ArrayList<>();
+        }
+    }
+
+    /** 将 IGINX 查询记录转换为 WorkflowTaskEntity */
+    private WorkflowTaskEntity iginxRecordToTaskEntity(Map<String, Object> record) {
+        WorkflowTaskEntity entity = new WorkflowTaskEntity();
+        for (Map.Entry<String, Object> entry : record.entrySet()) {
+            String fullKey = entry.getKey();
+            String fieldName = fullKey.substring(fullKey.lastIndexOf('.') + 1);
+            Object value = entry.getValue();
+            if (value instanceof byte[]) {
+                value = ConvertUtil.bytesToString((byte[]) value);
+            }
+            switch (fieldName) {
+                case "timestamp": entity.setTimestamp(value instanceof Number ? ((Number) value).longValue() : null); break;
+                case "taskId": entity.setTaskId(String.valueOf(value)); break;
+                case "workspaceId": entity.setWorkspaceId(String.valueOf(value)); break;
+                case "actionKey": entity.setActionKey(String.valueOf(value)); break;
+                case "entryPoint": entity.setEntryPoint(String.valueOf(value)); break;
+                case "stage": entity.setStage(String.valueOf(value)); break;
+                case "resultType": entity.setResultType(String.valueOf(value)); break;
+                case "status": entity.setStatus(String.valueOf(value)); break;
+                case "createdAt": entity.setCreatedAt(value instanceof Number ? ((Number) value).longValue() : null); break;
+                case "startedAt": entity.setStartedAt(value instanceof Number ? ((Number) value).longValue() : null); break;
+                case "finishedAt": entity.setFinishedAt(value instanceof Number ? ((Number) value).longValue() : null); break;
+                case "logPath": entity.setLogPath(String.valueOf(value)); break;
+                case "statusMessage": entity.setStatusMessage(String.valueOf(value)); break;
+                case "reviewStatus": entity.setReviewStatus(String.valueOf(value)); break;
+                case "publicationStatus": entity.setPublicationStatus(String.valueOf(value)); break;
+                case "result": entity.setResult(String.valueOf(value)); break;
+            }
+        }
+        return entity;
+    }
+
+    /** 将 WorkflowTaskEntity 转换为界面返回的 Map */
+    private Map<String, Object> taskEntityToMap(WorkflowTaskEntity entity) {
+        Map<String, Object> task = new LinkedHashMap<>();
+        task.put("id", entity.getTaskId());
+        task.put("taskId", entity.getTaskId());
+        task.put("workspaceId", entity.getWorkspaceId());
+        task.put("actionKey", entity.getActionKey());
+        task.put("entryPoint", entity.getEntryPoint());
+        task.put("stage", entity.getStage());
+        task.put("resultType", entity.getResultType());
+        task.put("status", entity.getStatus());
+        task.put("createdAt", entity.getCreatedAt());
+        task.put("startedAt", entity.getStartedAt());
+        task.put("finishedAt", entity.getFinishedAt());
+        task.put("logPath", entity.getLogPath());
+        task.put("statusMessage", entity.getStatusMessage());
+        task.put("reviewStatus", entity.getReviewStatus());
+        task.put("publicationStatus", entity.getPublicationStatus());
+        if (StringUtils.hasText(entity.getResult())) {
+            try { task.put("result", mapper.readValue(entity.getResult(), Object.class)); } catch (Exception ignored) {}
+        }
+        return task;
+    }
+
+    /** 更新任务状态到 IGINX */
+    private void updateTaskInIginx(String taskId, String workspaceId, String status, String error, long timestamp) {
+        try {
+            List<Point> points = new ArrayList<>();
+            points.add(ConvertUtil.createFieldPoint(WF_TASK_PREFIX, "status", status, timestamp));
+            if (error != null) points.add(ConvertUtil.createFieldPoint(WF_TASK_PREFIX, "error", error, timestamp));
+            points.add(ConvertUtil.createFieldPoint(WF_TASK_PREFIX, "finishedAt", System.currentTimeMillis(), timestamp));
+            iginxClient.getWriteClient().writePoints(points.stream().filter(Objects::nonNull).collect(Collectors.toList()));
+            log.info("工作流任务状态已更新到 IGINX: taskId={}, status={}", taskId, status);
+        } catch (Exception e) {
+            log.error("更新工作流任务状态到 IGINX 失败", e);
+        }
+    }
+
+    /** 将测量数据行批量写入 IGINX（用实体 + entityToPoints） */
+    @SuppressWarnings("unchecked")
+    private void saveMeasureDataToIginx(String workspaceId, List<Map<String, Object>> measureRows) {
+        if (measureRows == null || measureRows.isEmpty()) return;
+        try {
+            List<Point> allPoints = new ArrayList<>();
+            for (int i = 0; i < measureRows.size(); i++) {
+                Map<String, Object> row = measureRows.get(i);
+                long ts = i;
+                WorkflowMeasureDataEntity entity = new WorkflowMeasureDataEntity();
+                entity.setTimestamp(ts);
+                entity.setWorkspaceId(workspaceId);
+                entity.setPointId(value(row.get("point_id")));
+                entity.setRowIndex(i);
+                entity.setNp_mean(toDouble(row.get("Np_mean")));
+                entity.setNg_mean(toDouble(row.get("Ng_mean")));
+                entity.setWf_mean(toDouble(row.get("Wf_mean")));
+                entity.setMkp_mean(toDouble(row.get("Mkp_mean")));
+                entity.setMkg_mean(toDouble(row.get("Mkg_mean")));
+                entity.setTt1_mean(toDouble(row.get("Tt1_mean")));
+                entity.setPt2_mean(toDouble(row.get("Pt2_mean")));
+                entity.setPt3_mean(toDouble(row.get("Pt3_mean")));
+                entity.setTt3_mean(toDouble(row.get("Tt3_mean")));
+                entity.setTt45_mean(toDouble(row.get("Tt45_mean")));
+                entity.setPt45_mean(toDouble(row.get("Pt45_mean")));
+                entity.setPamb_mean(toDouble(row.get("Pamb_mean")));
+                entity.setTamb_mean(toDouble(row.get("Tamb_mean")));
+                entity.setAltitude_mean(toDouble(row.get("Altitude_mean")));
+                entity.setMach_mean(toDouble(row.get("Mach_mean")));
+                allPoints.addAll(ConvertUtil.entityToPoints(entity, WF_MEASURE_PREFIX, ts));
+            }
+            iginxClient.getWriteClient().writePoints(allPoints);
+            log.info("测量数据已保存到 IGINX: workspaceId={}, 行数={}", workspaceId, measureRows.size());
+        } catch (Exception e) {
+            log.error("保存测量数据到 IGINX 失败", e);
+        }
+    }
+
+    /** 将调度变量行批量写入 IGINX（用实体 + entityToPoints） */
+    @SuppressWarnings("unchecked")
+    private void saveScheduleVarsToIginx(String workspaceId, List<Map<String, Object>> scheduleRows) {
+        if (scheduleRows == null || scheduleRows.isEmpty()) return;
+        try {
+            List<Point> allPoints = new ArrayList<>();
+            for (int i = 0; i < scheduleRows.size(); i++) {
+                Map<String, Object> row = scheduleRows.get(i);
+                long ts = i;
+                WorkflowScheduleVarEntity entity = new WorkflowScheduleVarEntity();
+                entity.setTimestamp(ts);
+                entity.setWorkspaceId(workspaceId);
+                entity.setPointId(value(row.get("point_id")));
+                entity.setRowIndex(i);
+                entity.setDataRole(value(row.get("dataRole")));
+                entity.setTrainingGroup(value(row.get("trainingGroup")));
+                entity.setAcRelativeCorrectedSpeed(toDouble(row.get("acRelativeCorrectedSpeed")));
+                entity.setInletCorrectedMassFlow(toDouble(row.get("inletCorrectedMassFlow")));
+                entity.setBurnerInletCorrectedMassFlow(toDouble(row.get("burnerInletCorrectedMassFlow")));
+                entity.setGtTotalPressureRatio(toDouble(row.get("gtTotalPressureRatio")));
+                entity.setGtPtDuctCorrectedMassFlow(toDouble(row.get("gtPtDuctCorrectedMassFlow")));
+                entity.setPtTotalPressureRatio(toDouble(row.get("ptTotalPressureRatio")));
+                entity.setPtNozzleDuctCorrectedMassFlow(toDouble(row.get("ptNozzleDuctCorrectedMassFlow")));
+                entity.setMeasuredFuelNormalizedCoordinate(toDouble(row.get("measuredFuelNormalizedCoordinate")));
+                entity.setAcCorrectedSpeedDll(toDouble(row.get("acCorrectedSpeedDll")));
+                Object converged = row.get("converged");
+                if (converged instanceof Boolean) entity.setConverged((Boolean) converged);
+                else if (converged instanceof String) entity.setConverged(Boolean.parseBoolean((String) converged));
+                entity.setMaxModelResidual(toDouble(row.get("maxModelResidual")));
+                allPoints.addAll(ConvertUtil.entityToPoints(entity, WF_SCHEDULE_PREFIX, ts));
+            }
+            iginxClient.getWriteClient().writePoints(allPoints);
+            log.info("调度变量已保存到 IGINX: workspaceId={}, 行数={}", workspaceId, scheduleRows.size());
+        } catch (Exception e) {
+            log.error("保存调度变量到 IGINX 失败", e);
+        }
+    }
+
+    /** 从 IGINX 查询测量数据行（SQL 模式） */
+    private List<Map<String, Object>> queryMeasureDataFromIginx(String workspaceId) {
+        try {
+            String sql = String.format("SELECT * FROM %s WHERE workspaceId = '%s' ORDER BY timestamp;",
+                    WF_MEASURE_PREFIX, workspaceId);
+            log.info("执行SQL: {}", sql);
+            SessionExecuteSqlResult res = iginxSession.executeSql(sql);
+            List<Map<String, Object>> records = ConvertUtil.getRecords(res);
+            if (records == null) return new ArrayList<>();
+            List<Map<String, Object>> result = new ArrayList<>();
+            for (Map<String, Object> record : records) {
+                WorkflowMeasureDataEntity entity = iginxRecordToMeasureEntity(record);
+                result.add(measureEntityToMap(entity));
+            }
+            return result;
+        } catch (Exception e) {
+            log.error("从 IGINX 查询测量数据失败: workspaceId={}", workspaceId, e);
+            return new ArrayList<>();
+        }
+    }
+
+    /** 从 IGINX 查询调度变量行（SQL 模式） */
+    private List<Map<String, Object>> queryScheduleVarsFromIginx(String workspaceId) {
+        try {
+            String sql = String.format("SELECT * FROM %s WHERE workspaceId = '%s' ORDER BY timestamp;",
+                    WF_SCHEDULE_PREFIX, workspaceId);
+            log.info("执行SQL: {}", sql);
+            SessionExecuteSqlResult res = iginxSession.executeSql(sql);
+            List<Map<String, Object>> records = ConvertUtil.getRecords(res);
+            if (records == null) return new ArrayList<>();
+            List<Map<String, Object>> result = new ArrayList<>();
+            for (Map<String, Object> record : records) {
+                WorkflowScheduleVarEntity entity = iginxRecordToScheduleEntity(record);
+                result.add(scheduleEntityToMap(entity));
+            }
+            return result;
+        } catch (Exception e) {
+            log.error("从 IGINX 查询调度变量失败: workspaceId={}", workspaceId, e);
+            return new ArrayList<>();
+        }
+    }
+
+    /** 将 IGINX 记录转换为测量数据实体 */
+    private WorkflowMeasureDataEntity iginxRecordToMeasureEntity(Map<String, Object> record) {
+        WorkflowMeasureDataEntity entity = new WorkflowMeasureDataEntity();
+        for (Map.Entry<String, Object> entry : record.entrySet()) {
+            String fieldName = entry.getKey().substring(entry.getKey().lastIndexOf('.') + 1);
+            Object value = entry.getValue();
+            if (value instanceof byte[]) value = ConvertUtil.bytesToString((byte[]) value);
+            switch (fieldName) {
+                case "timestamp": entity.setTimestamp(value instanceof Number ? ((Number) value).longValue() : null); break;
+                case "workspaceId": entity.setWorkspaceId(String.valueOf(value)); break;
+                case "pointId": entity.setPointId(String.valueOf(value)); break;
+                case "rowIndex": entity.setRowIndex(value instanceof Number ? ((Number) value).intValue() : null); break;
+                case "Np_mean": entity.setNp_mean(toDouble(value)); break;
+                case "Ng_mean": entity.setNg_mean(toDouble(value)); break;
+                case "Wf_mean": entity.setWf_mean(toDouble(value)); break;
+                case "Mkp_mean": entity.setMkp_mean(toDouble(value)); break;
+                case "Mkg_mean": entity.setMkg_mean(toDouble(value)); break;
+                case "Tt1_mean": entity.setTt1_mean(toDouble(value)); break;
+                case "Pt2_mean": entity.setPt2_mean(toDouble(value)); break;
+                case "Pt3_mean": entity.setPt3_mean(toDouble(value)); break;
+                case "Tt3_mean": entity.setTt3_mean(toDouble(value)); break;
+                case "Tt45_mean": entity.setTt45_mean(toDouble(value)); break;
+                case "Pt45_mean": entity.setPt45_mean(toDouble(value)); break;
+                case "Pamb_mean": entity.setPamb_mean(toDouble(value)); break;
+                case "Tamb_mean": entity.setTamb_mean(toDouble(value)); break;
+                case "Altitude_mean": entity.setAltitude_mean(toDouble(value)); break;
+                case "Mach_mean": entity.setMach_mean(toDouble(value)); break;
+            }
+        }
+        return entity;
+    }
+
+    /** 将 IGINX 记录转换为调度变量实体 */
+    private WorkflowScheduleVarEntity iginxRecordToScheduleEntity(Map<String, Object> record) {
+        WorkflowScheduleVarEntity entity = new WorkflowScheduleVarEntity();
+        for (Map.Entry<String, Object> entry : record.entrySet()) {
+            String fieldName = entry.getKey().substring(entry.getKey().lastIndexOf('.') + 1);
+            Object value = entry.getValue();
+            if (value instanceof byte[]) value = ConvertUtil.bytesToString((byte[]) value);
+            switch (fieldName) {
+                case "timestamp": entity.setTimestamp(value instanceof Number ? ((Number) value).longValue() : null); break;
+                case "workspaceId": entity.setWorkspaceId(String.valueOf(value)); break;
+                case "pointId": entity.setPointId(String.valueOf(value)); break;
+                case "rowIndex": entity.setRowIndex(value instanceof Number ? ((Number) value).intValue() : null); break;
+                case "dataRole": entity.setDataRole(String.valueOf(value)); break;
+                case "trainingGroup": entity.setTrainingGroup(String.valueOf(value)); break;
+                case "acRelativeCorrectedSpeed": entity.setAcRelativeCorrectedSpeed(toDouble(value)); break;
+                case "inletCorrectedMassFlow": entity.setInletCorrectedMassFlow(toDouble(value)); break;
+                case "burnerInletCorrectedMassFlow": entity.setBurnerInletCorrectedMassFlow(toDouble(value)); break;
+                case "gtTotalPressureRatio": entity.setGtTotalPressureRatio(toDouble(value)); break;
+                case "gtPtDuctCorrectedMassFlow": entity.setGtPtDuctCorrectedMassFlow(toDouble(value)); break;
+                case "ptTotalPressureRatio": entity.setPtTotalPressureRatio(toDouble(value)); break;
+                case "ptNozzleDuctCorrectedMassFlow": entity.setPtNozzleDuctCorrectedMassFlow(toDouble(value)); break;
+                case "measuredFuelNormalizedCoordinate": entity.setMeasuredFuelNormalizedCoordinate(toDouble(value)); break;
+                case "acCorrectedSpeedDll": entity.setAcCorrectedSpeedDll(toDouble(value)); break;
+                case "converged": entity.setConverged(value instanceof Boolean ? (Boolean) value : Boolean.parseBoolean(String.valueOf(value))); break;
+                case "maxModelResidual": entity.setMaxModelResidual(toDouble(value)); break;
+            }
+        }
+        return entity;
+    }
+
+    /** 测量数据实体转 Map */
+    private Map<String, Object> measureEntityToMap(WorkflowMeasureDataEntity e) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("point_id", e.getPointId());
+        m.put("rowIndex", e.getRowIndex());
+        m.put("Np_mean", e.getNp_mean());
+        m.put("Ng_mean", e.getNg_mean());
+        m.put("Wf_mean", e.getWf_mean());
+        m.put("Mkp_mean", e.getMkp_mean());
+        m.put("Mkg_mean", e.getMkg_mean());
+        m.put("Tt1_mean", e.getTt1_mean());
+        m.put("Pt2_mean", e.getPt2_mean());
+        m.put("Pt3_mean", e.getPt3_mean());
+        m.put("Tt3_mean", e.getTt3_mean());
+        m.put("Tt45_mean", e.getTt45_mean());
+        m.put("Pt45_mean", e.getPt45_mean());
+        m.put("Pamb_mean", e.getPamb_mean());
+        m.put("Tamb_mean", e.getTamb_mean());
+        m.put("Altitude_mean", e.getAltitude_mean());
+        m.put("Mach_mean", e.getMach_mean());
+        return m;
+    }
+
+    /** 调度变量实体转 Map */
+    private Map<String, Object> scheduleEntityToMap(WorkflowScheduleVarEntity e) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("point_id", e.getPointId());
+        m.put("rowIndex", e.getRowIndex());
+        m.put("dataRole", e.getDataRole());
+        m.put("trainingGroup", e.getTrainingGroup());
+        m.put("acRelativeCorrectedSpeed", e.getAcRelativeCorrectedSpeed());
+        m.put("inletCorrectedMassFlow", e.getInletCorrectedMassFlow());
+        m.put("burnerInletCorrectedMassFlow", e.getBurnerInletCorrectedMassFlow());
+        m.put("gtTotalPressureRatio", e.getGtTotalPressureRatio());
+        m.put("gtPtDuctCorrectedMassFlow", e.getGtPtDuctCorrectedMassFlow());
+        m.put("ptTotalPressureRatio", e.getPtTotalPressureRatio());
+        m.put("ptNozzleDuctCorrectedMassFlow", e.getPtNozzleDuctCorrectedMassFlow());
+        m.put("measuredFuelNormalizedCoordinate", e.getMeasuredFuelNormalizedCoordinate());
+        m.put("acCorrectedSpeedDll", e.getAcCorrectedSpeedDll());
+        m.put("converged", e.getConverged());
+        m.put("maxModelResidual", e.getMaxModelResidual());
+        return m;
+    }
+
+    /** 安全转换为 Double */
+    private Double toDouble(Object value) {
+        if (value == null) return null;
+        if (value instanceof Number) return ((Number) value).doubleValue();
+        String str = value instanceof byte[] ? ConvertUtil.bytesToString((byte[]) value) : String.valueOf(value);
+        if ("—".equals(str) || "NaN".equalsIgnoreCase(str) || str.isEmpty()) return null;
+        try {
+            return Double.parseDouble(str);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /** 删除工作区在 IGINX 中的所有数据 */
+    private void deleteWorkspaceFromIginx(String workspaceId, long workspaceTimestamp) {
+        try {
+            // 删除工作区元数据
+            List<String> wsMeasurements = ConvertUtil.iginxFieldNamesConvert(WorkflowWorkspaceEntity.class, WF_WORKSPACE_PREFIX);
+            iginxClient.getDeleteClient().deleteMeasurementsData(wsMeasurements, workspaceTimestamp - 1, workspaceTimestamp + 1);
+            // 删除该工作区的所有任务
+            deleteRowsByWorkspaceId(WF_TASK_PREFIX, WorkflowTaskEntity.class, workspaceId);
+            // 删除测量数据和调度变量
+            deleteRowsByWorkspaceId(WF_MEASURE_PREFIX, WorkflowMeasureDataEntity.class, workspaceId);
+            deleteRowsByWorkspaceId(WF_SCHEDULE_PREFIX, WorkflowScheduleVarEntity.class, workspaceId);
+            log.info("工作区 IGINX 数据已删除: workspaceId={}", workspaceId);
+        } catch (Exception e) {
+            log.error("删除工作区 IGINX 数据失败: workspaceId={}", workspaceId, e);
+        }
+    }
+
+    /** 按 workspaceId 删除某张表的所有行 */
+    private void deleteRowsByWorkspaceId(String prefix, Class<?> entityClass, String workspaceId) {
+        try {
+            String sql = String.format("SELECT timestamp FROM %s WHERE workspaceId = '%s';", prefix, workspaceId);
+            SessionExecuteSqlResult res = iginxSession.executeSql(sql);
+            List<Map<String, Object>> records = ConvertUtil.getRecords(res);
+            if (records == null || records.isEmpty()) return;
+            List<String> measurements = ConvertUtil.iginxFieldNamesConvert(entityClass, prefix);
+            for (Map<String, Object> r : records) {
+                Object tsObj = r.values().iterator().next();
+                if (tsObj instanceof Number) {
+                    long ts = ((Number) tsObj).longValue();
+                    iginxClient.getDeleteClient().deleteMeasurementsData(measurements, ts - 1, ts + 1);
+                }
+            }
+        } catch (Exception e) {
+            log.error("按 workspaceId 删除行失败: prefix={}, workspaceId={}", prefix, workspaceId, e);
+        }
     }
 }

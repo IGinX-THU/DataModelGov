@@ -156,6 +156,8 @@ class SteadyModelAdaptV1 {
     this.busy = false;
     this.loading = false;
     this.loadingText = '';
+    this.initPolling = false;
+    this.initPollingText = '';
 
     // 状态配置
     this.identifyModel = 'transient';
@@ -173,6 +175,7 @@ class SteadyModelAdaptV1 {
     this.projectForm = {
       projectName: '',
       modelPackage: '',
+      notes: '',
       trainingData: '',
       testData: ''
     };
@@ -202,7 +205,7 @@ class SteadyModelAdaptV1 {
   closeProject() {
     this.workspace = null;
     this.projectCreated = false;
-    this.projectForm = { projectName: '', modelPackage: '', trainingData: '', testData: '' };
+    this.projectForm = { projectName: '', modelPackage: '', notes: '', trainingData: '', testData: '' };
     this.preview = { training: null, test: null };
     this.tasks.clear();
     this.results.clear();
@@ -216,9 +219,9 @@ class SteadyModelAdaptV1 {
     this.render();
   }
 
-  /* 项目创建完成前，除"新建项目与数据"外全部锁定 */
+  /* 项目创建完成前或初始化中，除"新建项目与数据"外全部锁定 */
   getLockedSections() {
-    if (this.projectCreated) return [];
+    if (this.projectCreated && !this.initPolling) return [];
     return ['identify', 'identifiability', 'uq', 'validation', 'prediction', 'results'];
   }
 
@@ -275,6 +278,21 @@ class SteadyModelAdaptV1 {
     if (!this.workspace || !this.ctx.http) return;
     await this.withLoading('正在加载工作区详情...', async () => {
       try {
+        // 先刷新 workspace 状态
+        const ws = await this.ctx.http.workspace.request(this.workspace.id, { method: 'GET' });
+        if (ws) this.workspace = ws;
+
+        const wsStatus = (this.workspace && this.workspace.status) || '';
+        // 如果 workspace 还在创建/初始化中，启动轮询，不加载详情
+        if (wsStatus === 'creating' || wsStatus === 'initializing' ||
+            (this.workspace && this.workspace.initStatus === 'INITIALIZING')) {
+          this.initPolling = true;
+          if (this.ctx.setStatus) this.ctx.setStatus('busy', 'MATLAB 初始化中');
+          this.render();
+          this.pollInitStatus(this.workspace.id);
+          return;
+        }
+
         const [datasets, tasks] = await Promise.all([
           this.ctx.http.datasets.request(this.workspace.id, { method: 'GET' }).catch(() => []),
           this.ctx.http.tasks.list({ workspaceId: this.workspace.id }).catch(() => [])
@@ -294,14 +312,23 @@ class SteadyModelAdaptV1 {
         if (this.workspace.programName) this.projectForm.modelPackage = this.workspace.programName;
         if (this.workspace.trainingDataFile) this.projectForm.trainingData = this.workspace.trainingDataFile;
         if (this.workspace.testDataFile) this.projectForm.testData = this.workspace.testDataFile;
-        if (this.workspace.initResult && this.workspace.initResult.status === 'SUCCEEDED') {
+        if (this.workspace.initStatus === 'SUCCEEDED') {
+          // 从 IGINX 实体表查询测量数据行和调度变量行
+          let measureRows = [];
+          let scheduleRows = [];
+          try {
+            measureRows = await this.ctx.http.workspace.request(`${this.workspace.id}/measure-data`, { method: 'GET' });
+            scheduleRows = await this.ctx.http.workspace.request(`${this.workspace.id}/schedule-vars`, { method: 'GET' });
+          } catch (e) {
+            this.ctx.log('从 IGINX 加载测量数据/调度变量失败: ' + (e.message || e));
+          }
           this.preview.training = {
-            rows: this.workspace.initResult.measureRows || [],
-            scheduleRows: this.workspace.initResult.scheduleRows || [],
-            rowCount: this.workspace.initResult.rowCount || 0,
-            valid: this.workspace.initResult.valid !== false,
-            missingColumns: this.workspace.initResult.missingColumns || [],
-            groupCount: this.workspace.initResult.groupCount || 0
+            rows: Array.isArray(measureRows) ? measureRows : [],
+            scheduleRows: Array.isArray(scheduleRows) ? scheduleRows : [],
+            rowCount: this.workspace.initRowCount || (Array.isArray(measureRows) ? measureRows.length : 0),
+            valid: this.workspace.initValid !== false,
+            missingColumns: this.workspace.initMissingColumns || [],
+            groupCount: this.workspace.initGroupCount || 0
           };
         } else if (this.workspace.trainingDataFile) {
           await this.loadPreview(this.workspace.trainingDataFile, 'training');
@@ -428,9 +455,9 @@ class SteadyModelAdaptV1 {
 
   /* ================= 01 项目与数据 ================= */
   render_data(container) {
-    const validated = this.projectCreated;
-    const statusText = validated ? '已校验' : '待校验';
-    const statusClass = validated ? 'field-status validated' : 'field-status pending';
+    const validated = this.projectCreated && !this.initPolling;
+    const statusText = this.initPolling ? '校验中' : (this.projectCreated ? '已校验' : '待校验');
+    const statusClass = this.initPolling ? 'field-status pending' : (this.projectCreated ? 'field-status validated' : 'field-status pending');
 
     // Card 1: 项目建立与数据合同
     const c1 = this.createCard(
@@ -441,6 +468,15 @@ class SteadyModelAdaptV1 {
 
     const nameInput = input('text', 'projectName', '请输入项目名称', this.projectForm.projectName);
     nameInput.addEventListener('input', () => { this.projectForm.projectName = nameInput.value; });
+
+    // 备注
+    const notesInput = document.createElement('textarea');
+    notesInput.name = 'notes';
+    notesInput.placeholder = '项目备注（可选）';
+    notesInput.value = this.projectForm.notes || '';
+    notesInput.rows = 2;
+    notesInput.style.cssText = 'width:100%;padding:6px 8px;border:1px solid #d4dde5;border-radius:3px;font-size:13px;resize:vertical;box-sizing:border-box;';
+    notesInput.addEventListener('input', () => { this.projectForm.notes = notesInput.value; });
 
     // 模型程序包：使用 ctx.program 信息
     const programName = this.ctx.program && this.ctx.program.name || '稳态试车工况点模型修正V1';
@@ -466,6 +502,7 @@ class SteadyModelAdaptV1 {
     // 项目创建后锁定表单
     if (this.projectCreated) {
       nameInput.disabled = true;
+      notesInput.disabled = true;
       pkgSelect.disabled = true;
       trainSelect.disabled = true;
       testSelect.disabled = true;
@@ -478,17 +515,27 @@ class SteadyModelAdaptV1 {
       this.createField('测试数据', testSelect)
     );
 
-    // 总体校验状态标识，放在最右边
+    // 总体校验状态标识，放在第一行最右边
     const statusWrap = el('div', 'field-status-wrap');
     statusWrap.append(el('span', statusClass, statusText));
     form.append(statusWrap);
 
     c1.body.append(form);
 
+    // 第二行：备注（独占一行）
+    const form2 = el('div', 'form-grid-4');
+    form2.style.marginTop = '12px';
+    const notesField = el('div', 'form-field');
+    notesField.style.gridColumn = '1 / span 4';
+    notesField.append(el('label', '', '备注'));
+    notesField.append(notesInput);
+    form2.append(notesField);
+    c1.body.append(form2);
+
     container.append(c1.card);
 
-    // 数据状态仅在项目创建/打开后显示
-    if (this.projectCreated) {
+    // 数据状态仅在项目创建/打开后显示（初始化中时不显示数据状态，等初始化完成）
+    if (this.projectCreated && !this.initPolling) {
 
     // Card 1b: 数据区 — 文件状态、工况数、字段完整性、数据指纹
     const c1b = this.createCard(
@@ -522,46 +569,54 @@ class SteadyModelAdaptV1 {
 
     } // end if (this.projectCreated) — 数据状态
 
-    // Card 2: 测量数据表（始终显示）
+    // Card 2: 测量数据表（始终显示，初始化中时内容区显示 loading）
     const c2 = this.createCard(
       '测量数据表',
       '每行对应一个稳态工况窗口；全部测量字段保存在同一张表中，固定工况编号并支持横向滚动。'
     );
-    const measureRows = this.extractMeasureRows();
-    c2.body.append(this.createEnhancedTable(MEASURE_HEADERS, measureRows, {
-      unitTips: MEASURE_UNIT_TIPS,
-      anomaly: MEASURE_ANOMALY,
-      freezeCols: 1,
-      groupHeaders: MEASURE_GROUPS
-    }));
-    c2.body.append(el('p', 'table-note', '单位、缺失值、越界标记和原始字段名在列标题提示中展示；表内数值由导入文件动态读取。'));
+    if (this.projectCreated && this.initPolling) {
+      c2.body.append(this.createLoadingPlaceholder('正在加载测量数据...'));
+    } else {
+      const measureRows = this.extractMeasureRows();
+      c2.body.append(this.createEnhancedTable(MEASURE_HEADERS, measureRows, {
+        unitTips: MEASURE_UNIT_TIPS,
+        anomaly: MEASURE_ANOMALY,
+        freezeCols: 1,
+        groupHeaders: MEASURE_GROUPS
+      }));
+      c2.body.append(el('p', 'table-note', '单位、缺失值、越界标记和原始字段名在列标题提示中展示；表内数值由导入文件动态读取。'));
+    }
     container.append(c2.card);
 
-    // Card 3: 调度变量与训练分组表（始终显示）
+    // Card 3: 调度变量与训练分组表（始终显示，初始化中时内容区显示 loading）
     const c3 = this.createCard(
       'AC相对换算转速、调度变量与训练分组',
       '同一表显示各工况辅助变量；按AC相对换算转速聚类后写入训练分组列。'
     );
-    const groupRows = this.extractGroupRows();
-    c3.body.append(this.createEnhancedTable(GROUP_HEADERS, groupRows, {
-      unitTips: GROUP_UNIT_TIPS,
-      freezeCols: 1,
-      cellClass: (header, val) => {
-        if (header === '训练分组' && val) {
-          const m = /^组(\d+)$/.exec(String(val));
-          if (m) return 'group-g' + Math.min(parseInt(m[1]), 6);
+    if (this.projectCreated && this.initPolling) {
+      c3.body.append(this.createLoadingPlaceholder('正在加载调度变量...'));
+    } else {
+      const groupRows = this.extractGroupRows();
+      c3.body.append(this.createEnhancedTable(GROUP_HEADERS, groupRows, {
+        unitTips: GROUP_UNIT_TIPS,
+        freezeCols: 1,
+        cellClass: (header, val) => {
+          if (header === '训练分组' && val) {
+            const m = /^组(\d+)$/.exec(String(val));
+            if (m) return 'group-g' + Math.min(parseInt(m[1]), 6);
+          }
+          return null;
         }
-        return null;
-      }
-    }));
-    const note = el('p', 'table-note', '');
-    note.style.fontWeight = 'bold';
-    note.textContent = '用途:AC相对换算转速用于聚类与HPC调度节点;其余列分别服务于压损、涡轮和燃油偏置调度。';
-    c3.body.append(note);
+      }));
+      const note = el('p', 'table-note', '');
+      note.style.fontWeight = 'bold';
+      note.textContent = '用途:AC相对换算转速用于聚类与HPC调度节点;其余列分别服务于压损、涡轮和燃油偏置调度。';
+      c3.body.append(note);
+    }
     container.append(c3.card);
 
-    // Card 4: 质量与操作区（仅在项目创建/打开后显示）
-    if (this.projectCreated) {
+    // Card 4: 质量与操作区（仅在项目创建且非初始化中时显示）
+    if (this.projectCreated && !this.initPolling) {
     const c4 = this.createCard(
       '质量与操作',
       '显示数据合同校验结果、工况覆盖、分组状态；项目创建后可进入参数辨识。'
@@ -1262,6 +1317,17 @@ class SteadyModelAdaptV1 {
     return { card, head, body };
   }
 
+  createLoadingPlaceholder(text) {
+    const box = el('div', 'loading-placeholder');
+    box.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;';
+    const spinner = el('div', 'loading-spinner');
+    spinner.style.cssText = 'width:32px;height:32px;border:3px solid #e8e8e8;border-top-color:#1890ff;border-radius:50%;animation:dmg-spin .8s linear infinite;';
+    const label = el('div', '', text || '加载中...');
+    label.style.cssText = 'margin-top:12px;font-size:14px;color:#666;';
+    box.append(spinner, label);
+    return box;
+  }
+
   createField(label, control) {
     const wrap = el('div', 'field');
     wrap.append(el('label', 'field-label', label), control);
@@ -1757,7 +1823,7 @@ class SteadyModelAdaptV1 {
             if (this.workspace && this.workspace.id === ws.id) {
               this.workspace = null;
               this.projectCreated = false;
-              this.projectForm = { projectName: '', modelPackage: '', trainingData: '', testData: '' };
+              this.projectForm = { projectName: '', modelPackage: '', notes: '', trainingData: '', testData: '' };
               this.preview = { training: null, test: null };
               this.render();
               if (this.ctx.refreshNav) this.ctx.refreshNav();
@@ -1817,6 +1883,8 @@ class SteadyModelAdaptV1 {
     const modelPackage = pkgSel ? pkgSel.value : this.projectForm.modelPackage;
     const trainingData = trainSel ? trainSel.value : this.projectForm.trainingData;
     const testData = testSel ? testSel.value : '';
+    const notesInputEl = root.querySelector('textarea[name="notes"]');
+    const notes = notesInputEl ? notesInputEl.value : this.projectForm.notes;
 
     if (!trainingData) {
       if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('创建失败：请选择训练数据', 'error');
@@ -1828,7 +1896,7 @@ class SteadyModelAdaptV1 {
     }
 
     // 缓存表单
-    this.projectForm = { projectName, modelPackage, trainingData, testData };
+    this.projectForm = { projectName, modelPackage, notes, trainingData, testData };
 
     this.ctx.log('正在创建并校验项目...');
     if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('正在创建项目...', 'info');
@@ -1837,17 +1905,20 @@ class SteadyModelAdaptV1 {
         // 创建 workspace（后端立即返回，MATLAB 初始化异步执行）
         const ws = await this.ctx.http.workspace.create({
           jobName: projectName,
+          notes: notes || '',
           trainingData,
           testData: testData || ''
         });
         this.workspace = ws;
         this.projectCreated = true;
-        this.ctx.log(`项目已创建，工作区 ID: ${ws.id}，正在执行 MATLAB 初始化...`);
+        this.ctx.log(`项目已创建，工作区 ID: ${ws.id}，MATLAB 初始化异步进行中...`);
+        if (this.ctx.setStatus) this.ctx.setStatus('busy', 'MATLAB 初始化中');
+        if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('项目已创建，MATLAB 初始化进行中', 'info');
         if (this.ctx.refreshNav) this.ctx.refreshNav();
-        this.render(); // 锁定表单
+        this.render(); // 锁定表单，显示"校验中"状态
 
-        // 轮询等待 MATLAB 初始化完成
-        await this.pollInitStatus(ws.id);
+        // 后台轮询初始化状态（不阻塞，完成后自动刷新数据）
+        this.pollInitStatus(ws.id);
       } else {
         this.projectCreated = true;
         this.ctx.log('项目创建完成（无后端连接，仅本地标记）');
@@ -1863,41 +1934,53 @@ class SteadyModelAdaptV1 {
     }
   }
 
-  /* 轮询 workspace 状态，等待 MATLAB 初始化完成 */
+  /* 后台轮询 workspace 初始化状态（非阻塞，完成后自动刷新数据） */
   async pollInitStatus(workspaceId) {
-    const maxAttempts = 120; // 最多轮询 120 次，每次 2 秒，共 4 分钟
-    const interval = 2000;
+    const maxAttempts = 60; // 最多轮询 60 次，每次 5 秒，共 5 分钟
+    const interval = 5000;
+    this.initPolling = true;
     for (let i = 0; i < maxAttempts; i++) {
-      if (this.destroyed) return;
+      if (this.destroyed) { this.initPolling = false; return; }
       try {
         const ws = await this.ctx.http.workspace.request(workspaceId, { method: 'GET' });
         if (!ws) break;
         this.workspace = ws;
         const status = ws.status || 'INITIALIZING';
         if (status === TASK_STATUS.READY) {
-          // 初始化完成，加载结果
-          if (ws.initResult) {
-            if (ws.initResult.status === 'SUCCEEDED') {
-              this.preview.training = {
-                rows: ws.initResult.measureRows || [],
-                scheduleRows: ws.initResult.scheduleRows || [],
-                rowCount: ws.initResult.rowCount || 0,
-                valid: ws.initResult.valid !== false,
-                missingColumns: ws.initResult.missingColumns || [],
-                groupCount: ws.initResult.groupCount || 0
-              };
-              this.ctx.log(`MATLAB初始化完成: ${ws.initResult.rowCount || 0} 个工况, ${ws.initResult.groupCount || 0} 个训练分组, DLL哈希: ${(ws.initResult.dllHash || '').substring(0, 12)}...`);
-              if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('项目初始化完成', 'success');
-            } else if (ws.initResult.status === 'FALLBACK') {
-              this.ctx.log(`MATLAB初始化降级: ${ws.initResult.message || ''}`);
-              if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('MATLAB初始化降级: ' + (ws.initResult.message || ''), 'warning');
-              if (this.projectForm.trainingData) {
-                const data = await this.ctx.http.previewData.request('', { method: 'GET', query: { fileName: this.projectForm.trainingData } });
-                this.preview.training = data;
-              }
+          // 初始化完成，从独立字段读取摘要
+          const initStatus = ws.initStatus || '';
+          if (initStatus === 'SUCCEEDED') {
+            // 从 IGINX 实体表查询测量数据行和调度变量行
+            let measureRows = [];
+            let scheduleRows = [];
+            try {
+              measureRows = await this.ctx.http.workspace.request(`${workspaceId}/measure-data`, { method: 'GET' });
+              scheduleRows = await this.ctx.http.workspace.request(`${workspaceId}/schedule-vars`, { method: 'GET' });
+            } catch (e) {
+              this.ctx.log('从 IGINX 加载测量数据/调度变量失败: ' + (e.message || e));
+            }
+            this.preview.training = {
+              rows: Array.isArray(measureRows) ? measureRows : [],
+              scheduleRows: Array.isArray(scheduleRows) ? scheduleRows : [],
+              rowCount: ws.initRowCount || (Array.isArray(measureRows) ? measureRows.length : 0),
+              valid: ws.initValid !== false,
+              missingColumns: ws.initMissingColumns || [],
+              groupCount: ws.initGroupCount || 0
+            };
+            this.ctx.log(`MATLAB初始化完成: ${ws.initRowCount || 0} 个工况, ${ws.initGroupCount || 0} 个训练分组, DLL哈希: ${(ws.initDllHash || '').substring(0, 12)}...`);
+            if (this.ctx.setStatus) this.ctx.setStatus('ready', '计算环境就绪');
+            if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('项目初始化完成', 'success');
+          } else if (initStatus === 'FALLBACK' || initStatus === 'FAILED') {
+            this.ctx.log(`MATLAB初始化${initStatus === 'FALLBACK' ? '降级' : '失败'}: ${ws.initMessage || ''}`);
+            if (this.ctx.setStatus) this.ctx.setStatus('error', initStatus === 'FALLBACK' ? '初始化降级' : '初始化失败');
+            if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast(`MATLAB初始化${initStatus === 'FALLBACK' ? '降级' : '失败'}: ` + (ws.initMessage || ''), initStatus === 'FALLBACK' ? 'warning' : 'error');
+            if (this.projectForm.trainingData) {
+              const data = await this.ctx.http.previewData.request('', { method: 'GET', query: { fileName: this.projectForm.trainingData } });
+              this.preview.training = data;
             }
           } else {
-            // 没有 initResult，加载纯 Java 预览
+            // initStatus 为空或未知，加载纯 Java 预览
+            if (this.ctx.setStatus) this.ctx.setStatus('ready', '计算环境就绪');
             if (this.projectForm.trainingData) {
               const data = await this.ctx.http.previewData.request('', { method: 'GET', query: { fileName: this.projectForm.trainingData } });
               this.preview.training = data;
@@ -1907,14 +1990,12 @@ class SteadyModelAdaptV1 {
             const testData = await this.ctx.http.previewData.request('', { method: 'GET', query: { fileName: this.projectForm.testData } });
             this.preview.test = testData;
           }
-          this.loading = false;
-          this.loadingText = '';
+          this.initPolling = false;
           this.render();
           return;
         }
-        // 仍在初始化中，更新 loading 文案
-        this.loading = true;
-        this.loadingText = `正在执行 MATLAB 初始化（已等待 ${((i + 1) * interval / 1000).toFixed(0)} 秒）...`;
+        // 仍在初始化中，更新左侧栏状态
+        if (this.ctx.setStatus) this.ctx.setStatus('busy', `MATLAB 初始化中（${((i + 1) * interval / 1000).toFixed(0)}s）`);
         this.render();
       } catch (e) {
         this.ctx.log('轮询初始化状态失败: ' + (e.message || e));
@@ -1922,9 +2003,9 @@ class SteadyModelAdaptV1 {
       await new Promise(r => setTimeout(r, interval));
     }
     // 超时
-    this.loading = false;
-    this.loadingText = '';
+    this.initPolling = false;
     this.ctx.log('MATLAB 初始化等待超时，请稍后刷新查看结果');
+    if (this.ctx.setStatus) this.ctx.setStatus('error', '初始化超时');
     if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('MATLAB 初始化等待超时，请稍后刷新', 'warning');
     this.render();
   }

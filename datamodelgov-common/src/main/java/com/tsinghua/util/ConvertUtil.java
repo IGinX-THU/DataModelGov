@@ -89,6 +89,30 @@ public class ConvertUtil {
     }
 
     /**
+     * 将实体对象转换为 IGINX Point 列表（反射遍历所有字段）
+     * @param entity 实体对象
+     * @param prefix IGINX 存储前缀（如 relational_system.workflow_workspace）
+     * @param timestamp 时间戳（主键）
+     * @return Point 列表
+     */
+    public static <T> List<Point> entityToPoints(T entity, String prefix, long timestamp) {
+        if (entity == null) return new ArrayList<>();
+        List<Point> points = new ArrayList<>();
+        Field[] fields = entity.getClass().getDeclaredFields();
+        for (Field field : fields) {
+            field.setAccessible(true);
+            try {
+                Object value = field.get(entity);
+                if (value == null) continue;
+                points.add(createFieldPoint(prefix, field.getName(), value, timestamp));
+            } catch (IllegalAccessException e) {
+                logger.warn("无法访问字段: {}", field.getName(), e);
+            }
+        }
+        return points;
+    }
+
+    /**
      * 创建字段数据点 - 通用方法
      * 参考ModelFileService的createFieldPoint方法，提取为公共工具方法
      */

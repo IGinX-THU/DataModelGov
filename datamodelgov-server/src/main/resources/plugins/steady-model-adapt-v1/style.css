@@ -730,3 +730,8 @@ input::placeholder { color: #9aa6ad; }
     grid-template-columns: 1fr;
   }
 }
+
+@keyframes dmg-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

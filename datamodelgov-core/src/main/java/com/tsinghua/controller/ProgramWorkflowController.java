@@ -76,10 +76,12 @@ public class ProgramWorkflowController {
             String jobName = body != null ? String.valueOf(body.getOrDefault("jobName", "")) : "";
             String trainingData = body != null ? String.valueOf(body.getOrDefault("trainingData", "")) : "";
             String testData = body != null ? String.valueOf(body.getOrDefault("testData", "")) : "";
+            String notes = body != null ? String.valueOf(body.getOrDefault("notes", "")) : "";
             if ("null".equals(jobName)) jobName = "";
             if ("null".equals(trainingData)) trainingData = "";
             if ("null".equals(testData)) testData = "";
-            return Result.success(workflowService.createWorkspace(name, version, projectName, jobName, trainingData, testData));
+            if ("null".equals(notes)) notes = "";
+            return Result.success(workflowService.createWorkspace(name, version, projectName, jobName, trainingData, testData, notes));
         } catch (Exception e) {
             return failure("创建工作区失败", e);
         }
@@ -156,6 +158,34 @@ public class ProgramWorkflowController {
             return Result.success(workflowService.listDatasets(workspaceId, name, version, projectName));
         } catch (Exception e) {
             return failure("读取数据集失败", e);
+        }
+    }
+
+    @ApiOperation("查询工作区测量数据行")
+    @GetMapping("/workspace/{workspaceId}/measure-data")
+    @RequirePermission(Permission.READ)
+    public Result<?> listMeasureData(@PathVariable("workspaceId") String workspaceId,
+                                     @RequestParam("name") String name,
+                                     @RequestParam("version") String version,
+                                     @RequestParam(value = "projectName", required = false) String projectName) {
+        try {
+            return Result.success(workflowService.listMeasureData(workspaceId, name, version, projectName));
+        } catch (Exception e) {
+            return failure("查询测量数据失败", e);
+        }
+    }
+
+    @ApiOperation("查询工作区调度变量行")
+    @GetMapping("/workspace/{workspaceId}/schedule-vars")
+    @RequirePermission(Permission.READ)
+    public Result<?> listScheduleVars(@PathVariable("workspaceId") String workspaceId,
+                                      @RequestParam("name") String name,
+                                      @RequestParam("version") String version,
+                                      @RequestParam(value = "projectName", required = false) String projectName) {
+        try {
+            return Result.success(workflowService.listScheduleVars(workspaceId, name, version, projectName));
+        } catch (Exception e) {
+            return failure("查询调度变量失败", e);
         }
     }
 

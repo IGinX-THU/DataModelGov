@@ -16,6 +16,8 @@ public enum TaskStatus {
 
     // 程序工作流（program-workflow）文档第 13 节
     PENDING_CONFIG("pending_config", "待配置"),
+    CREATING("creating", "创建中"),
+    INITIALIZING("initializing", "初始化中"),
     READY("ready", "就绪"),
     WORKFLOW_RUNNING("workflow_running", "运行中"),
     CANCELLING("cancelling", "取消中"),
