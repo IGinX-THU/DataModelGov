@@ -1155,7 +1155,7 @@ public class ProgramService {
         byte[] archiveBytes = downloadFromIginx(entity.getStoragePath(), entity.getChunkCount(), entity.getFileMd5());
         File archiveFile = new File(taskDir, entity.getFileName());
         Files.write(archiveFile.toPath(), archiveBytes);
-        ArchiveUtil.extractArchive(archiveFile, taskDir);
+        ArchiveUtil.extractArchive(archiveFile, taskDir, true);
         writeProgramConfig(taskDir, entity);
         String preRunScript = StringUtils.hasText(runtime.getPreRunScript()) ? runtime.getPreRunScript() : "";
         String programDir = FileUtil.findProgramDir(taskDir, preRunScript);
@@ -1289,7 +1289,7 @@ public class ProgramService {
             byte[] archiveBytes = downloadFromIginx(entity.getStoragePath(), entity.getChunkCount(), entity.getFileMd5());
             File archiveFile = new File(taskDir, entity.getFileName());
             Files.write(archiveFile.toPath(), archiveBytes);
-            ArchiveUtil.extractArchive(archiveFile, taskDir);
+            ArchiveUtil.extractArchive(archiveFile, taskDir, true);
             writeProgramConfig(taskDir, entity);
 
             File configFile = new File(taskDir, "program-config.json");

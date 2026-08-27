@@ -91,19 +91,58 @@ const MEASURE_ANOMALY = {
   'Pamb': [50000, 120000], 'Tamb': [200, 350], 'Altitude': [0, 20000], 'Mach': [0, 3]
 };
 
+/** 修正系数物理含义映射（对应 MATLAB local_parameter_definition） */
+const PARAM_MEANING = {
+  'Inlet_K_dP': '进气道总压损失修正',
+  'HPC_K_W': '高压压气机流量修正',
+  'HPC_K_eta': '高压压气机效率修正',
+  'Burner_K_dP': '燃烧室总压损失修正',
+  'GT_K_W': '燃气涡轮流量修正',
+  'GT_K_eta': '燃气涡轮效率修正',
+  'GT_PT_Duct_K_dP': 'GT-PT涵道总压损失修正',
+  'PT_K_W': '动力涡轮流量修正',
+  'PT_K_eta': '动力涡轮效率修正',
+  'PT_Nozzle_Duct_K_dP': 'PT-尾喷管涵道总压损失修正',
+  'Nozzle_K_A8': '尾喷管喉部面积修正',
+  'Wf_bias': '燃油流量测量偏置'
+};
+
+/** 默认参数列表（10个发动机修正系数 + 1个燃油偏置 = 11个） */
 const DEFAULT_PARAMS = [
   { name: 'HPC_K_W', form: '调度', unit: '无量纲', action: '曲线' },
   { name: 'HPC_K_eta', form: '调度', unit: '无量纲', action: '曲线' },
   { name: 'Burner_K_dP', form: '调度', unit: '无量纲', action: '曲线' },
   { name: 'GT_K_W', form: '调度', unit: '无量纲', action: '曲线' },
   { name: 'GT_K_eta', form: '调度', unit: '无量纲', action: '曲线' },
+  { name: 'GT_PT_Duct_K_dP', form: '调度', unit: '无量纲', action: '曲线' },
   { name: 'PT_K_W', form: '调度', unit: '无量纲', action: '曲线' },
   { name: 'PT_K_eta', form: '调度', unit: '无量纲', action: '曲线' },
+  { name: 'PT_Nozzle_Duct_K_dP', form: '调度', unit: '无量纲', action: '曲线' },
   { name: 'Nozzle_K_A8', form: '常值', unit: '无量纲', action: '详情' },
   { name: 'Wf_bias', form: '调度', unit: 'kg/s', action: '曲线' }
 ];
 
 const OUTPUT_VARS = ['Np', 'Ng', 'Pt3', 'Tt3', 'Tt45', 'Pt45'];
+
+/** 输出变量单位映射 */
+const OUTPUT_UNITS = {
+  'Np': 'rpm', 'Ng': 'rpm', 'Pt3': 'Pa', 'Tt3': 'K', 'Tt45': 'K', 'Pt45': 'Pa',
+  'dNp_dt': 'rpm/s', 'dNg_dt': 'rpm/s', 'Pt2': 'Pa'
+};
+
+/** 正则化默认配置（对应 MATLAB Start_SteadyModelAdapt_V2_03/02） */
+const REG_DEFAULTS = {
+  transient: {
+    A: { method: 'tsvd', tsvdRetained: 6, tikhonovScale: 1.00 },
+    B: { method: 'tikhonov', tsvdRetained: 5, tikhonovScale: 0.75 },
+    D: { method: 'tikhonov', tsvdRetained: 6, tikhonovScale: 1.00 }
+  },
+  steady: {
+    A: { method: 'tsvd', tsvdRetained: 4, tikhonovScale: 1.00 },
+    B: { method: 'tikhonov', tsvdRetained: 5, tikhonovScale: 0.50 },
+    D: { method: 'tikhonov', tsvdRetained: 6, tikhonovScale: 1.00 }
+  }
+};
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -150,6 +189,7 @@ class SteadyModelAdaptV1 {
     this.datasets = [];
     this.tasks = new Map();
     this.results = new Map();
+    this.artifacts = new Map();
     this.charts = [];
     this.timers = new Set();
     this.destroyed = false;
@@ -162,6 +202,8 @@ class SteadyModelAdaptV1 {
     // 状态配置
     this.identifyModel = 'transient';
     this.identifyTaskType = 'default';
+    this.regConfig = JSON.parse(JSON.stringify(REG_DEFAULTS.transient));
+    this.identifyErrorTab = 'training';
     this.activeSnapshot = 'pre';
     this.activeUqMethod = 'A';
     this.activeUqTab = 'overall';
@@ -236,7 +278,13 @@ class SteadyModelAdaptV1 {
     } else if (label === '开始辨识') {
       await this.handleStartIdentify();
     } else if (label === '恢复默认配置') {
+      if (this._isIdentifyLocked()) {
+        this.ctx.log('运行后配置已锁定，无法恢复默认');
+        if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('运行后配置已锁定，无法恢复默认', 'warning');
+        return;
+      }
       this.identifyModel = 'transient';
+      this.regConfig = JSON.parse(JSON.stringify(REG_DEFAULTS.transient));
       this.render();
       this.ctx.log('已恢复默认辨识配置（瞬态时刻模型）');
     } else if (label === '生成分析报告' || label === '切换分析对象') {
@@ -302,7 +350,7 @@ class SteadyModelAdaptV1 {
           tasks.forEach(t => {
             this.tasks.set(t.id, t);
             if (t.status === TASK_STATUS.RUNNING || t.status === TASK_STATUS.READY) {
-              this.schedulePoll(t.id, 1000);
+              this.schedulePoll(t.id, 3000);
             } else if (t.status === TASK_STATUS.COMPLETED && !this.results.has(t.id)) {
               this.loadTaskResult(t.id);
             }
@@ -312,8 +360,9 @@ class SteadyModelAdaptV1 {
         if (this.workspace.programName) this.projectForm.modelPackage = this.workspace.programName;
         if (this.workspace.trainingDataFile) this.projectForm.trainingData = this.workspace.trainingDataFile;
         if (this.workspace.testDataFile) this.projectForm.testData = this.workspace.testDataFile;
+        this.projectForm.notes = this.workspace.notes || '';
         if (this.workspace.initStatus === 'SUCCEEDED') {
-          // 从 IGINX 实体表查询测量数据行和调度变量行
+          // 从 IGINX 实体表查询测量数据行和调度变量行（初始化时已存储，无需再读 Excel）
           let measureRows = [];
           let scheduleRows = [];
           try {
@@ -330,11 +379,10 @@ class SteadyModelAdaptV1 {
             missingColumns: this.workspace.initMissingColumns || [],
             groupCount: this.workspace.initGroupCount || 0
           };
+          // 测试数据仅记录文件名，不重新解析 Excel（打开项目时无需重复预览）
+          this.preview.test = null;
         } else if (this.workspace.trainingDataFile) {
           await this.loadPreview(this.workspace.trainingDataFile, 'training');
-        }
-        if (this.workspace.testDataFile) {
-          await this.loadPreview(this.workspace.testDataFile, 'test');
         }
       } catch (e) {
         console.warn('刷新工作区详情失败:', e);
@@ -345,9 +393,13 @@ class SteadyModelAdaptV1 {
   async loadTaskResult(taskId) {
     if (!this.ctx.http || !this.ctx.http.results) return;
     try {
-      const res = await this.ctx.http.results.get(taskId);
+      const [res, artifacts] = await Promise.all([
+        this.ctx.http.results.get(taskId),
+        this.ctx.http.artifacts.request(taskId, { method: 'GET' }).catch(() => null)
+      ]);
       if (res) {
         this.results.set(taskId, res.value !== undefined ? res.value : res);
+        if (Array.isArray(artifacts)) this.artifacts.set(taskId, artifacts);
         this.render();
       }
     } catch (e) {
@@ -355,7 +407,7 @@ class SteadyModelAdaptV1 {
     }
   }
 
-  schedulePoll(taskId, delay = 1000) {
+  schedulePoll(taskId, delay = 3000) {
     if (this.destroyed) return;
     const timer = setTimeout(async () => {
       this.timers.delete(timer);
@@ -381,12 +433,12 @@ class SteadyModelAdaptV1 {
             this.render();
           } else {
             this.ctx.setStatus('running', '任务运行中');
-            this.schedulePoll(taskId, 2000);
+            this.schedulePoll(taskId, 5000);
             this.render();
           }
         }
       } catch (e) {
-        if (!this.destroyed) this.schedulePoll(taskId, 4000);
+        if (!this.destroyed) this.schedulePoll(taskId, 10000);
       }
     }, delay);
     this.timers.add(timer);
@@ -455,9 +507,11 @@ class SteadyModelAdaptV1 {
 
   /* ================= 01 项目与数据 ================= */
   render_data(container) {
-    const validated = this.projectCreated && !this.initPolling;
-    const statusText = this.initPolling ? '校验中' : (this.projectCreated ? '已校验' : '待校验');
-    const statusClass = this.initPolling ? 'field-status pending' : (this.projectCreated ? 'field-status validated' : 'field-status pending');
+    const initStatus = (this.workspace && this.workspace.initStatus) || '';
+    const failed = initStatus === 'FAILED' || initStatus === 'FALLBACK';
+    const validated = this.projectCreated && !this.initPolling && initStatus === 'SUCCEEDED';
+    const statusText = this.initPolling ? '校验中' : (failed ? '校验失败' : (validated ? '已校验' : '待校验'));
+    const statusClass = this.initPolling ? 'field-status pending' : (failed ? 'field-status failed' : (validated ? 'field-status validated' : 'field-status pending'));
 
     // Card 1: 项目建立与数据合同
     const c1 = this.createCard(
@@ -522,14 +576,27 @@ class SteadyModelAdaptV1 {
 
     c1.body.append(form);
 
-    // 第二行：备注（独占一行）
+    // 第二行：备注 + 保存目录（同一行，各占两列）
     const form2 = el('div', 'form-grid-4');
     form2.style.marginTop = '12px';
     const notesField = el('div', 'form-field');
-    notesField.style.gridColumn = '1 / span 4';
+    notesField.style.gridColumn = '1 / span 2';
     notesField.append(el('label', '', '备注'));
     notesField.append(notesInput);
     form2.append(notesField);
+
+    // 项目创建后，在备注右侧显示保存目录
+    if (this.projectCreated && this.workspace && this.workspace.workspaceDir) {
+      const dirField = el('div', 'form-field');
+      dirField.style.gridColumn = '3 / span 2';
+      const dirLabel = el('label', '', '保存目录');
+      const dirValue = el('div', '');
+      dirValue.style.cssText = 'padding:6px 8px;background:#f5f7fa;border:1px solid #e8eaed;border-radius:3px;font-size:11px;color:#5a6a7a;word-break:break-all;font-family:Consolas,monospace;max-height:60px;overflow:auto;';
+      dirValue.textContent = this.workspace.workspaceDir;
+      dirField.append(dirLabel, dirValue);
+      form2.append(dirField);
+    }
+
     c1.body.append(form2);
 
     container.append(c1.card);
@@ -575,7 +642,7 @@ class SteadyModelAdaptV1 {
       '每行对应一个稳态工况窗口；全部测量字段保存在同一张表中，固定工况编号并支持横向滚动。'
     );
     if (this.projectCreated && this.initPolling) {
-      c2.body.append(this.createLoadingPlaceholder('正在加载测量数据...'));
+      c2.body.append(this.createLoadingPlaceholder('正在校验测量数据...'));
     } else {
       const measureRows = this.extractMeasureRows();
       c2.body.append(this.createEnhancedTable(MEASURE_HEADERS, measureRows, {
@@ -594,7 +661,7 @@ class SteadyModelAdaptV1 {
       '同一表显示各工况辅助变量；按AC相对换算转速聚类后写入训练分组列。'
     );
     if (this.projectCreated && this.initPolling) {
-      c3.body.append(this.createLoadingPlaceholder('正在加载调度变量...'));
+      c3.body.append(this.createLoadingPlaceholder('正在计算调度分组...'));
     } else {
       const groupRows = this.extractGroupRows();
       c3.body.append(this.createEnhancedTable(GROUP_HEADERS, groupRows, {
@@ -760,109 +827,347 @@ class SteadyModelAdaptV1 {
     });
   }
 
+  /* 当前是否存在非失败的辨识任务（即配置已锁定） */
+  _isIdentifyLocked() {
+    const identifyTask = this.latestTask('estimateTransient') || this.latestTask('estimateSteady');
+    return identifyTask != null && identifyTask.status !== TASK_STATUS.FAILED;
+  }
+
   /* ================= 02 参数辨识 ================= */
   render_identify(container) {
+    const identifyTask = this.latestTask('estimateTransient') || this.latestTask('estimateSteady');
     const identifyResult = this.latestResult('estimateTransient') || this.latestResult('estimateSteady');
-    const isRunning = this.latestTask('estimateTransient')?.status === TASK_STATUS.RUNNING || this.latestTask('estimateSteady')?.status === TASK_STATUS.RUNNING;
+    const isRunning = identifyTask?.status === TASK_STATUS.RUNNING || identifyTask?.status === TASK_STATUS.READY;
+    const isFailed = identifyTask?.status === TASK_STATUS.FAILED;
+    const isLocked = identifyTask != null && !isFailed;
+    const taskStatus = identifyTask?.status;
 
-    // Card 1: 辨识任务与正则化配置
+    // 从 resultSummary 中提取 MATLAB 返回结构
+    const summary = identifyResult?.resultSummary || identifyResult || {};
+    const acceptance = summary.acceptance || {};
+    const timing = summary.timing || {};
+    const outputInfo = summary.output || {};
+    const paramTable = summary.parameterTable;
+    const baselineMetrics = summary.baseline?.trainingMetrics;
+    const finalMetrics = summary.final?.trainingMetrics;
+    const baselineTestMetrics = summary.baseline?.testMetrics;
+    const finalTestMetrics = summary.final?.testMetrics;
+
+    // ---- Card 1: 辨识任务与正则化配置 ----
     const c1 = this.createCard(
       '辨识任务与正则化配置',
-      '默认采用瞬态时刻模型；路径、正则化配置、辨识流程和结果集中在一个页面。'
+      '路径切换后自动载入该路径的默认 TSVD/Tikhonov 配置，A/B/D 阶段均可独立修改。'
     );
-    const seg = el('div', 'segmented');
+    // 模型路径
+    const pathRow = el('div', 'reg-path-row');
+    pathRow.append(el('span', 'reg-label', '模型路径'));
+    const pathSeg = el('div', 'segmented');
     const seg1 = button('瞬态时刻模型', 'segment' + (this.identifyModel === 'transient' ? ' active' : ''), () => {
       this.identifyModel = 'transient';
+      this.regConfig = JSON.parse(JSON.stringify(REG_DEFAULTS.transient));
       this.render();
     });
     const seg2 = button('稳态模型', 'segment' + (this.identifyModel === 'steady' ? ' active' : ''), () => {
       this.identifyModel = 'steady';
+      this.regConfig = JSON.parse(JSON.stringify(REG_DEFAULTS.steady));
       this.render();
     });
-    const seg3 = button('默认辨识任务', 'segment' + (this.identifyTaskType === 'default' ? ' active' : ''), () => {
-      this.identifyTaskType = 'default';
-      this.render();
-    });
-    seg.append(seg1, seg2, seg3);
-    c1.body.append(seg);
+    pathSeg.append(seg1, seg2);
+    pathRow.append(pathSeg);
+    const defaultTag = el('span', 'field-status optional', '默认辨识任务');
+    defaultTag.style.marginLeft = 'auto';
+    pathRow.append(defaultTag);
+    seg1.disabled = isLocked; seg2.disabled = isLocked;
+    if (isLocked) { seg1.classList.add('disabled'); seg2.classList.add('disabled'); }
+    c1.body.append(pathRow);
 
+    // A/B/D 正则化配置卡片
     const mGrid = el('div', 'method-grid');
-    const rVal = this.identifyModel === 'steady' ? '4' : '6';
-    const sVal = this.identifyModel === 'steady' ? '0.50' : '0.75';
-    mGrid.append(
-      this.createMethodCard('A', '全工况常值', '无阻尼 TSVD', `保留奇异方向 r = ${rVal}`),
-      this.createMethodCard('B', '分组估计', 'Tikhonov', `正则化尺度 s = ${sVal}`),
-      this.createMethodCard('D', '全工况微调', 'Tikhonov', '正则化尺度 s = 1.00')
-    );
+    const STAGE_LABELS = { A: '全工况常值', B: '分组估计', D: '全工况微调' };
+    ['A', 'B', 'D'].forEach(stage => {
+      const cfg = this.regConfig[stage];
+      const stageLabel = stage + ' ' + STAGE_LABELS[stage];
+      const card = el('div', 'method-card reg-card');
+      card.append(el('div', 'method-badge', stage));
+      const info = el('div', 'method-info');
+      info.append(el('h4', 'method-title', stageLabel));
+
+      // 方法选择
+      const methodRow = el('div', 'reg-method-row');
+      const tsvdBtn = button('无阻尼TSVD', 'segment' + (cfg.method === 'tsvd' ? ' active' : ''), () => {
+        cfg.method = 'tsvd';
+        this.render();
+      });
+      const tikhBtn = button('Tikhonov', 'segment' + (cfg.method === 'tikhonov' ? ' active' : ''), () => {
+        cfg.method = 'tikhonov';
+        this.render();
+      });
+      tsvdBtn.disabled = isLocked; tikhBtn.disabled = isLocked;
+      if (isLocked) { tsvdBtn.classList.add('disabled'); tikhBtn.classList.add('disabled'); }
+      methodRow.append(el('span', 'reg-label', '方法'), tsvdBtn, tikhBtn);
+      info.append(methodRow);
+
+      // 参数输入
+      const paramRow = el('div', 'reg-param-row');
+      if (cfg.method === 'tsvd') {
+        paramRow.append(el('span', 'reg-label', '保留奇异方向 r ='));
+        const input = el('input', 'reg-input');
+        input.type = 'number';
+        input.min = '1';
+        input.max = '20';
+        input.value = cfg.tsvdRetained;
+        input.disabled = isLocked;
+        input.addEventListener('change', () => {
+          const v = parseInt(input.value, 10);
+          if (v >= 1) { cfg.tsvdRetained = v; }
+        });
+        paramRow.append(input);
+      } else {
+        paramRow.append(el('span', 'reg-label', '正则化尺度 s ='));
+        const input = el('input', 'reg-input');
+        input.type = 'number';
+        input.min = '0.01';
+        input.step = '0.05';
+        input.value = cfg.tikhonovScale;
+        input.disabled = isLocked;
+        input.addEventListener('change', () => {
+          const v = parseFloat(input.value);
+          if (v > 0) { cfg.tikhonovScale = v; }
+        });
+        paramRow.append(input);
+      }
+      info.append(paramRow);
+
+      // 底部提示
+      const footText = isLocked ? '已锁定，运行结果按此配置生成。' : '可在评估前修改，运行后锁定并写入结果记录。';
+      info.append(el('p', 'method-foot', footText));
+      card.append(info);
+      mGrid.append(card);
+    });
     c1.body.append(mGrid);
 
-    // Card 2: 辨识流程
+    // ---- Card 2: 辨识流程 ----
     const c2 = this.createCard(
       '辨识流程',
-      'A/B/C/D是连续执行阶段，不设置逐阶段运行按钮。'
+      'A/B/C/D 是连续执行阶段，只需启动一次辨识任务。流程条显示各阶段状态。'
     );
     const flow = el('div', 'flow-line');
+    const phase = identifyTask?.phase;
+    const stageStates = this._getStageStates(acceptance, isRunning, isFailed, taskStatus, phase);
     flow.append(
-      this.createFlowStep('A', 'A 全工况常值初估', '建立公共初值', Boolean(identifyResult)),
-      this.createFlowStep('B', 'B 分组组内估计', '按训练分组辨识', Boolean(identifyResult)),
-      this.createFlowStep('C', 'C 调度重构', '组间拟合与常值平均', Boolean(identifyResult)),
-      this.createFlowStep('D', 'D 全工况微调', '联合数据最终修正', Boolean(identifyResult))
+      this.createFlowStep('A', 'A 全工况常值', stageStates.A.label, stageStates.A.state, () => this._showStageLog('A')),
+      this.createFlowStep('B', 'B 分组估计', stageStates.B.label, stageStates.B.state, () => this._showStageLog('B')),
+      this.createFlowStep('C', 'C 调度重构', stageStates.C.label, stageStates.C.state, () => this._showStageLog('C')),
+      this.createFlowStep('D', 'D 全工况微调', stageStates.D.label, stageStates.D.state, () => this._showStageLog('D'))
     );
     c2.body.append(flow);
 
-    // Card 3: 修正系数辨识结果
+    // ---- Card 3: 修正系数辨识结果 ----
     const c3 = this.createCard(
       '修正系数辨识结果',
       '表内同时显示设计点值和节点均值；曲线按钮打开该参数完整调度曲线。'
     );
-    const paramHeaders = ['修正系数', '形式', '设计点值', '节点均值', '单位', '查看'];
-    
-    // 如果已有计算结果则展示真实值，否则展示默认待运行
+    c3.body.append(this._renderParamTable(paramTable, identifyResult));
+
+    // ---- Card 4: 输出误差标准差与计算时间 ----
+    const c4 = this.createCard(
+      '输出误差标准差与计算时间',
+      '修正前后误差直接对照；曲线按钮查看逐工况误差。运行完成后显示总耗时。'
+    );
+    c4.body.append(this._renderErrorTable(baselineMetrics, finalMetrics, baselineTestMetrics, finalTestMetrics, identifyResult));
+
+    // 运行状态与结果信息合并到 Card 4
+    const statusGrid = el('div', 'metrics-grid');
+    statusGrid.style.marginTop = '12px';
+    const totalSeconds = timing.estimationSeconds || identifyResult?.runtime_s;
+    const runtimeText = totalSeconds != null
+      ? `${Number(totalSeconds).toFixed(2)} 秒`
+      : (isRunning ? '正在运行...' : '待运行');
+    statusGrid.append(this.createMetricBox('总计算时间', runtimeText));
+
+    const convergeText = acceptance.allStagesConverged === true
+      ? 'A/B/D 全部收敛'
+      : acceptance.allStagesConverged === false
+        ? `A:${acceptance.stageAConverged ? '✓' : '✗'} B:${acceptance.stageBAllConverged ? '✓' : '✗'} D:${acceptance.stageDConverged ? '✓' : '✗'}`
+        : '待运行';
+    statusGrid.append(this.createMetricBox('收敛状态', convergeText));
+
+    const maxResidual = finalMetrics?.max_model_residual;
+    statusGrid.append(this.createMetricBox('最大共同工作残差', maxResidual != null ? Number(maxResidual).toExponential(3) : '待运行'));
+
+    const formalText = acceptance.formalAccepted === true ? '正式验收通过' : acceptance.formalAccepted === false ? '未通过' : '待运行';
+    statusGrid.append(this.createMetricBox('正式验收状态', formalText));
+
+    c4.body.append(statusGrid);
+
+    // 结果文件位置
+    if (outputInfo.latestMatFile || outputInfo.excelFile || outputInfo.summaryFile) {
+      const fileList = el('div', 'file-list');
+      fileList.style.marginTop = '12px';
+      fileList.append(el('div', 'metric-label', '结果文件位置'));
+      if (outputInfo.latestMatFile) fileList.append(el('div', 'file-item', `MAT: ${outputInfo.latestMatFile}`));
+      if (outputInfo.excelFile) fileList.append(el('div', 'file-item', `Excel: ${outputInfo.excelFile}`));
+      if (outputInfo.summaryFile) fileList.append(el('div', 'file-item', `摘要: ${outputInfo.summaryFile}`));
+      c4.body.append(fileList);
+    }
+
+    const resultRow = el('div', 'two-col-row');
+    resultRow.append(c3.card, c4.card);
+    container.append(c1.card, c2.card, resultRow);
+  }
+
+  /** 获取 A/B/C/D 各阶段状态 */
+  _getStageStates(acceptance, isRunning, isFailed, taskStatus, phase) {
+    if (isFailed) {
+      return {
+        A: { state: 'failed', label: '失败' },
+        B: { state: 'pending', label: '待执行' },
+        C: { state: 'pending', label: '待执行' },
+        D: { state: 'pending', label: '待执行' }
+      };
+    }
+    if (isRunning) {
+      const p = String(phase || '').toUpperCase();
+      const stages = ['A', 'B', 'C', 'D'];
+      if (stages.includes(p)) {
+        const result = {};
+        stages.forEach((s, i) => {
+          const idx = stages.indexOf(p);
+          if (i < idx) result[s] = { state: 'completed', label: '完成' };
+          else if (i === idx) result[s] = { state: 'running', label: '运行中' };
+          else result[s] = { state: 'pending', label: '待执行' };
+        });
+        return result;
+      }
+      // 无阶段进度时按串行语义显示 A 运行中
+      return {
+        A: { state: 'running', label: '运行中' },
+        B: { state: 'pending', label: '待执行' },
+        C: { state: 'pending', label: '待执行' },
+        D: { state: 'pending', label: '待执行' }
+      };
+    }
+    if (acceptance && acceptance.allStagesConverged !== undefined) {
+      return {
+        A: { state: acceptance.stageAConverged ? 'completed' : 'warning', label: acceptance.stageAConverged ? '完成' : '警告' },
+        B: { state: acceptance.stageBAllConverged ? 'completed' : 'warning', label: acceptance.stageBAllConverged ? '完成' : '警告' },
+        C: { state: acceptance.stageAConverged && acceptance.stageBAllConverged ? 'completed' : 'warning', label: acceptance.stageAConverged && acceptance.stageBAllConverged ? '完成' : '警告' },
+        D: { state: acceptance.stageDConverged ? 'completed' : 'warning', label: acceptance.stageDConverged ? '完成' : '警告' }
+      };
+    }
+    return {
+      A: { state: 'pending', label: '待执行' },
+      B: { state: 'pending', label: '待执行' },
+      C: { state: 'pending', label: '待执行' },
+      D: { state: 'pending', label: '待执行' }
+    };
+  }
+
+  /** 渲染修正系数结果表 */
+  _renderParamTable(paramTable, identifyResult) {
+    const paramHeaders = ['修正系数', '物理含义', '形式', '设计点值', '节点均值', '单位', '查看'];
     let paramRows;
-    if (identifyResult && identifyResult.parameterTable && Array.isArray(identifyResult.parameterTable.rows)) {
-      paramRows = identifyResult.parameterTable.rows.map(row => [
-        row.name || row.Parameter || '—',
-        row.form || '调度',
-        row.designPointValue !== undefined ? Number(row.designPointValue).toFixed(4) : (row.design || '1.0000'),
-        row.meanValue !== undefined ? Number(row.meanValue).toFixed(4) : (row.mean || '1.0025'),
-        row.unit || '无量纲',
-        button('曲线', 'btn-table', () => this.ctx.log('查看参数曲线：' + (row.name || '')))
-      ]);
+
+    if (paramTable && Array.isArray(paramTable.rows) && paramTable.rows.length > 0) {
+      paramRows = paramTable.rows.map(row => {
+        const name = row.name || '—';
+        const isScheduled = row.scheduled === true || row.scheduled === 1;
+        const designVal = row.final_design_value != null ? Number(row.final_design_value).toFixed(4) : '—';
+        const meanVal = row.group_mean != null ? Number(row.group_mean).toFixed(4) : '—';
+        const unit = (name === 'Wf_bias') ? 'kg/s' : '无量纲';
+        return [
+          name,
+          PARAM_MEANING[name] || '—',
+          isScheduled ? '调度' : '常值',
+          designVal,
+          meanVal,
+          unit,
+          button(isScheduled ? '曲线' : '详情', 'btn-table', () => this._viewParamCurve(name))
+        ];
+      });
     } else {
       paramRows = DEFAULT_PARAMS.map(p => [
         p.name,
+        PARAM_MEANING[p.name] || '—',
         p.form,
-        identifyResult ? '1.0024' : '动态显示',
-        identifyResult ? '1.0018' : '动态显示',
+        '待运行',
+        '待运行',
         p.unit,
-        button(p.action, 'btn-table', () => this.ctx.log('查看：' + p.name))
+        button(p.action, 'btn-table', () => this._viewParamCurve(p.name))
       ]);
     }
-    c3.body.append(this.createTable(paramHeaders, paramRows));
+    return this.createTable(paramHeaders, paramRows);
+  }
 
-    // Card 4: 输出误差标准差与计算时间
-    const c4 = this.createCard(
-      '输出误差标准差与计算时间',
-      '修正前后误差直接对照；曲线按钮查看逐工况误差。'
-    );
+  /** 渲染输出误差表（训练集/测试集分页） */
+  _renderErrorTable(baselineMetrics, finalMetrics, baselineTestMetrics, finalTestMetrics, identifyResult) {
+    const wrap = el('div');
+
+    // 训练集/测试集切换
+    const tabBar = el('div', 'segmented');
+    const hasTestData = baselineTestMetrics && finalTestMetrics && (baselineTestMetrics.point_count > 0 || finalTestMetrics.point_count > 0);
+    const tabTrain = button('训练集', 'segment' + (this.identifyErrorTab === 'training' ? ' active' : ''), () => {
+      this.identifyErrorTab = 'training';
+      this.render();
+    });
+    const tabTest = button('测试集', 'segment' + (this.identifyErrorTab === 'test' ? ' active' : '') + (hasTestData ? '' : ' disabled'), () => {
+      if (hasTestData) { this.identifyErrorTab = 'test'; this.render(); }
+    });
+    tabBar.append(tabTrain, tabTest);
+    wrap.append(tabBar);
+
+    const useTest = this.identifyErrorTab === 'test' && hasTestData;
+    const baseMetrics = useTest ? baselineTestMetrics : baselineMetrics;
+    const finMetrics = useTest ? finalTestMetrics : finalMetrics;
+
     const errHeaders = ['输出', '修正前标准差', '修正后标准差', '查看'];
-    const errRows = OUTPUT_VARS.map(o => [
-      o,
-      identifyResult ? (o === 'Pt3' ? '12450 Pa' : o === 'Tt3' ? '8.45 K' : '2.14%') : '动态显示',
-      identifyResult ? (o === 'Pt3' ? '1850 Pa' : o === 'Tt3' ? '1.20 K' : '0.35%') : '动态显示',
-      button('曲线', 'btn-table', () => this.ctx.log('查看误差曲线：' + o))
-    ]);
-    c4.body.append(this.createTable(errHeaders, errRows));
+    const baselineByField = this._metricsByFieldMap(baseMetrics);
+    const finalByField = this._metricsByFieldMap(finMetrics);
 
-    const timeBox = el('div', 'metrics-grid');
-    timeBox.style.marginTop = '14px';
-    const runtimeText = identifyResult && identifyResult.runtime_s
-      ? `总耗时: ${Number(identifyResult.runtime_s).toFixed(2)} 秒 (A/B/C/D 已收敛)`
-      : (isRunning ? '正在运行计算中...' : '运行完成后显示总耗时及 A/B/C/D 分阶段耗时');
-    timeBox.append(this.createMetricBox('总计算时间', runtimeText));
-    c4.body.append(timeBox);
+    const errRows = OUTPUT_VARS.map(o => {
+      const base = baselineByField[o] || {};
+      const fin = finalByField[o] || {};
+      return [
+        o,
+        base.rmse != null ? Number(base.rmse).toFixed(3) : '待运行',
+        fin.rmse != null ? Number(fin.rmse).toFixed(3) : '待运行',
+        button('曲线', 'btn-table', () => this._viewErrorCurve(o))
+      ];
+    });
 
-    container.append(c1.card, c2.card, c3.card, c4.card);
+    // 如果有 dNp_dt / dNg_dt（瞬态时刻模型），也显示
+    if (baselineByField['dNp_dt'] || finalByField['dNp_dt']) {
+      ['dNp_dt', 'dNg_dt'].forEach(o => {
+        const base = baselineByField[o] || {};
+        const fin = finalByField[o] || {};
+        if (base.rmse != null || fin.rmse != null) {
+          errRows.push([
+            o,
+            base.rmse != null ? Number(base.rmse).toFixed(3) : '—',
+            fin.rmse != null ? Number(fin.rmse).toFixed(3) : '—',
+            button('曲线', 'btn-table', () => this._viewErrorCurve(o))
+          ]);
+        }
+      });
+    }
+
+    wrap.append(this.createTable(errHeaders, errRows));
+
+    return wrap;
+  }
+
+  /** 将 metrics.byField 转为 { fieldName: row } 映射 */
+  _metricsByFieldMap(metrics) {
+    const map = {};
+    if (!metrics || !metrics.byField) return map;
+    const byField = metrics.byField;
+    if (Array.isArray(byField.rows)) {
+      byField.rows.forEach(row => {
+        const name = row.field || row.Field;
+        if (name) map[name] = row;
+      });
+    }
+    return map;
   }
 
   /* ================= 03 可辨识性 ================= */
@@ -1519,13 +1824,23 @@ class SteadyModelAdaptV1 {
     return card;
   }
 
-  createFlowStep(badge, label, sublabel, isPassed = false) {
-    const step = el('div', 'flow-step' + (isPassed ? ' passed' : ''));
+  createFlowStep(badge, label, sublabel, state, clickHandler = null) {
+    // state 可以是: 'pending', 'running', 'completed', 'warning', 'failed'
+    // 兼容旧的 boolean 参数
+    const stateClass = typeof state === 'boolean'
+      ? (state ? 'completed' : 'pending')
+      : (state || 'pending');
+    const step = el('div', 'flow-step ' + stateClass);
     step.append(
       el('div', 'flow-dot', badge),
       el('div', 'flow-label', label),
       el('div', 'flow-sublabel', sublabel)
     );
+    step.title = '点击查看阶段日志';
+    if (clickHandler) {
+      step.style.cursor = 'pointer';
+      step.addEventListener('click', clickHandler);
+    }
     return step;
   }
 
@@ -1777,6 +2092,7 @@ class SteadyModelAdaptV1 {
           this.projectForm.modelPackage = ws.programName || '';
           this.projectForm.trainingData = ws.trainingDataFile || '';
           this.projectForm.testData = ws.testDataFile || '';
+          this.projectForm.notes = ws.notes || '';
           await this.loadWorkspaceDetails();
           if (this.ctx.refreshNav) this.ctx.refreshNav();
           if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('已打开项目: ' + (ws.jobName || ws.id), 'success');
@@ -2021,11 +2337,14 @@ class SteadyModelAdaptV1 {
         const task = await this.ctx.http.tasks.create({
           workspaceId: this.workspace.id,
           actionKey: actionKey,
-          inputs: { trainingData: '' }
+          inputs: {
+            trainingData: '',
+            regularization: this.regConfig
+          }
         });
         this.ctx.log(`辨识任务已提交 (ID: ${task.id})`);
         this.tasks.set(task.id, task);
-        this.schedulePoll(task.id, 500);
+        this.schedulePoll(task.id, 3000);
       } catch (e) {
         this.ctx.log('启动辨识失败: ' + (e.message || e));
         if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('启动辨识失败: ' + (e.message || e), 'error');
@@ -2045,7 +2364,7 @@ class SteadyModelAdaptV1 {
         });
         this.ctx.log(`可辨识性分析任务已提交 (ID: ${task.id})`);
         this.tasks.set(task.id, task);
-        this.schedulePoll(task.id, 500);
+        this.schedulePoll(task.id, 3000);
       } catch (e) {
         this.ctx.log('启动可辨识性分析失败: ' + (e.message || e));
         if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('启动可辨识性分析失败: ' + (e.message || e), 'error');
@@ -2066,7 +2385,7 @@ class SteadyModelAdaptV1 {
         });
         this.ctx.log(`不确定性评估任务已提交 (ID: ${task.id})`);
         this.tasks.set(task.id, task);
-        this.schedulePoll(task.id, 500);
+        this.schedulePoll(task.id, 3000);
       } catch (e) {
         this.ctx.log('启动评估失败: ' + (e.message || e));
         if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('启动评估失败: ' + (e.message || e), 'error');
@@ -2086,7 +2405,7 @@ class SteadyModelAdaptV1 {
         });
         this.ctx.log(`测试验证任务已提交 (ID: ${task.id})`);
         this.tasks.set(task.id, task);
-        this.schedulePoll(task.id, 500);
+        this.schedulePoll(task.id, 3000);
       } catch (e) {
         this.ctx.log('启动测试验证失败: ' + (e.message || e));
         if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('启动测试验证失败: ' + (e.message || e), 'error');
@@ -2121,7 +2440,7 @@ class SteadyModelAdaptV1 {
         });
         this.ctx.log(`工况预测任务已提交 (ID: ${task.id})`);
         this.tasks.set(task.id, task);
-        this.schedulePoll(task.id, 500);
+        this.schedulePoll(task.id, 3000);
       } catch (e) {
         this.ctx.log('工况预测失败: ' + (e.message || e));
         if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('工况预测失败: ' + (e.message || e), 'error');
@@ -2230,6 +2549,172 @@ class SteadyModelAdaptV1 {
     this.timers.clear();
     this.disposeCharts();
     if (this.mount) this.mount.replaceChildren();
+  }
+
+  /* ================= 图表查看 ================= */
+  _viewParamCurve(paramName) {
+    const pattern = paramName === 'Wf_bias' ? '_wf_bias_schedule.png' : '_health_schedules.png';
+    const title = paramName === 'Wf_bias' ? '燃油测量偏置调度曲线' : `${paramName} 健康调度曲线`;
+    this._viewArtifact(pattern, title);
+  }
+
+  _viewErrorCurve(outputName) {
+    this._viewArtifact('_prediction_error.png', `输出误差对比（${outputName}）`);
+  }
+
+  async _viewArtifact(pattern, title) {
+    const task = this.latestTask('estimateTransient') || this.latestTask('estimateSteady');
+    if (!task) { this._toast('暂无任务结果', 'warning'); return; }
+    const taskId = task.id;
+    let artifacts = this.artifacts.get(taskId);
+    if (!artifacts || artifacts.length === 0) {
+      try {
+        artifacts = await this.ctx.http.artifacts.request(taskId, { method: 'GET' });
+        if (Array.isArray(artifacts)) this.artifacts.set(taskId, artifacts);
+      } catch (e) { artifacts = []; }
+    }
+    // 直接从 artifacts 列表按文件名 pattern 匹配（优先 .png）
+    let artifact = (artifacts || []).find(a => a.name && a.name.endsWith('.png') && a.name.includes(pattern));
+    if (!artifact) artifact = (artifacts || []).find(a => a.name && a.name.includes(pattern));
+    if (!artifact) { this._toast('图表文件未生成或未收集', 'warning'); return; }
+    await this._showImageModal(taskId, artifact.id, artifact.name, title);
+  }
+
+  _toast(message, type = 'info') {
+    if (window.CommonUtils && window.CommonUtils.showToast) {
+      window.CommonUtils.showToast(message, type);
+    } else {
+      this.ctx.log(message);
+    }
+  }
+
+  async _showImageModal(taskId, artifactId, fileName, title) {
+    const overlay = el('div', 'image-modal-overlay');
+    const dialog = el('div', 'image-modal');
+    const header = el('div', 'image-modal-header');
+    const heading = el('h3', '', title);
+    const close = el('button', 'image-modal-close', '✕');
+    close.type = 'button';
+    const img = el('img', 'image-modal-img');
+    img.alt = fileName;
+    close.onclick = () => { this._revokeImage(img); overlay.remove(); };
+    header.append(heading, close);
+    const body = el('div', 'image-modal-body');
+    body.append(img);
+    const footer = el('div', 'image-modal-footer');
+    const download = el('a', 'image-modal-download', '下载原图');
+    download.href = '#';
+    download.onclick = (e) => { e.preventDefault(); this._downloadArtifact(taskId, artifactId, fileName); };
+    footer.append(download);
+    dialog.append(header, body, footer);
+    overlay.append(dialog);
+    overlay.onclick = (e) => { if (e.target === overlay) { this._revokeImage(img); overlay.remove(); } };
+    (this.ctx.shadow || this.mount).appendChild(overlay);
+
+    const baseUrl = (window.AppConfig.api && window.AppConfig.api.baseURL) || '';
+    const params = new URLSearchParams({
+      name: this.ctx.program.name,
+      version: this.ctx.program.version,
+      ...(this.ctx.program.projectName ? { projectName: this.ctx.program.projectName } : {})
+    });
+    const token = (window.AppConfig.getToken ? window.AppConfig.getToken() : null) || localStorage.getItem('jwtToken') || '';
+    if (token) params.set('token', token);
+    const url = `${baseUrl}/api/program/workflow/artifacts/${encodeURIComponent(taskId)}/${encodeURIComponent(artifactId)}?${params}`;
+    try {
+      const headers = window.AppConfig.getAuthHeaders ? window.AppConfig.getAuthHeaders() : {};
+      const response = await fetch(url, { headers });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const buf = await response.arrayBuffer();
+      const blob = new Blob([buf], { type: 'image/png' });
+      img._objUrl = URL.createObjectURL(blob);
+      img.src = img._objUrl;
+    } catch (e) {
+      this._toast('加载图片失败: ' + (e.message || e), 'error');
+      img.replaceWith(el('p', '', '加载图片失败：' + (e.message || e)));
+    }
+  }
+
+  _revokeImage(img) {
+    if (img && img._objUrl) { URL.revokeObjectURL(img._objUrl); img._objUrl = null; }
+  }
+
+  _downloadArtifact(taskId, artifactId, fileName) {
+    this.ctx.http.artifacts.download(`${taskId}/${artifactId}`, fileName)
+      .catch(e => this._toast('下载失败: ' + (e.message || e), 'error'));
+  }
+
+  _showStageLog(stage) {
+    const identifyResult = this.latestResult('estimateTransient') || this.latestResult('estimateSteady') || {};
+    const summary = identifyResult?.resultSummary || identifyResult || {};
+    const lines = [];
+    if (stage === 'A') {
+      const s = summary.stageA || {};
+      lines.push('阶段：A 全工况常值');
+      lines.push(`停止原因：${s.stopReason || '—'}`);
+      lines.push(`迭代次数：${s.iterationCount != null ? s.iterationCount : '—'}`);
+      lines.push(`正则化方法：${s.regularizationMethod || '—'}`);
+      const costFrom = s.costInitial != null ? Number(s.costInitial).toExponential(4) : '—';
+      const costTo = s.costFinal != null ? Number(s.costFinal).toExponential(4) : '—';
+      lines.push(`Cost：${costFrom} → ${costTo}`);
+      lines.push(`保留/截断奇异值：${s.retainedSingularValueCount != null ? s.retainedSingularValueCount : '—'} / ${s.truncatedSingularValueCount != null ? s.truncatedSingularValueCount : '—'}`);
+      lines.push(`待估计参数：${s.parameterCount != null ? s.parameterCount : '—'}`);
+    } else if (stage === 'B') {
+      const groups = summary.groupResults || [];
+      const converged = groups.filter(g => g.solve?.converged === true).length;
+      lines.push('阶段：B 分组估计');
+      lines.push(`训练分组数：${groups.length || '—'}`);
+      lines.push(`已收敛组：${converged} / ${groups.length || '—'}`);
+      if (groups.length) {
+        const reasons = groups.map((g, i) => `组${g.group_id != null ? g.group_id : i + 1}：${g.solve?.stopReason || '—'}`).join('\n');
+        lines.push(`各组停止原因：\n${reasons}`);
+      }
+    } else if (stage === 'C') {
+      lines.push('阶段：C 调度重构');
+      lines.push('说明：调度节点组装与非调度参数合并');
+      lines.push(`调度稳定性有效：${summary.scheduleBeforeRefineTrainingValid === true ? '是' : summary.scheduleBeforeRefineTrainingValid === false ? '否' : '—'}`);
+    } else if (stage === 'D') {
+      const s = summary.stageRefine || {};
+      lines.push('阶段：D 全工况微调');
+      lines.push(`停止原因：${s.stopReason || '—'}`);
+      lines.push(`迭代次数：${s.iterationCount != null ? s.iterationCount : '—'}`);
+      lines.push(`正则化方法：${s.regularizationMethod || '—'}`);
+      const costFrom = s.costInitial != null ? Number(s.costInitial).toExponential(4) : '—';
+      const costTo = s.costFinal != null ? Number(s.costFinal).toExponential(4) : '—';
+      lines.push(`Cost：${costFrom} → ${costTo}`);
+    }
+    const title = `${stage} 阶段日志`;
+    const text = lines.length ? lines.join('\n') : '暂无阶段日志。';
+    this._showLogModal(title, text);
+  }
+
+  _showLogModal(title, text) {
+    const overlay = el('div', 'image-modal-overlay');
+    const dialog = el('div', 'image-modal');
+    dialog.style.width = '560px';
+    dialog.style.maxWidth = '90vw';
+    const header = el('div', 'image-modal-header');
+    const heading = el('h3', '', title);
+    const close = el('button', 'image-modal-close', '✕');
+    close.type = 'button';
+    close.onclick = () => overlay.remove();
+    header.append(heading, close);
+    const body = el('div', 'image-modal-body');
+    body.style.display = 'block';
+    const pre = el('pre', 'log-text', text);
+    pre.style.cssText = 'width:100%;margin:0;padding:12px 14px;background:#f8fafb;border:1px solid var(--line);border-radius:3px;font-size:12px;line-height:1.7;white-space:pre-wrap;font-family:Consolas,"Courier New",monospace;color:var(--text);';
+    body.append(pre);
+    const footer = el('div', 'image-modal-footer');
+    const copy = el('a', 'image-modal-download', '复制日志');
+    copy.href = '#';
+    copy.onclick = (e) => {
+      e.preventDefault();
+      navigator.clipboard.writeText(text).then(() => this._toast('已复制到剪贴板', 'info')).catch(() => this._toast('复制失败', 'error'));
+    };
+    footer.append(copy);
+    dialog.append(header, body, footer);
+    overlay.append(dialog);
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+    (this.ctx.shadow || this.mount).appendChild(overlay);
   }
 }
 

@@ -71,8 +71,10 @@ import java.util.stream.Stream;
 @Service
 public class ProgramWorkflowService {
 
-    private static final Pattern SAFE_ID = Pattern.compile("^[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}$");
+    private static final Pattern SAFE_ID = Pattern.compile("^[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}$|^\\d{1,19}$");
     private static final Pattern SAFE_KEY = Pattern.compile("^[A-Za-z][A-Za-z0-9_-]*$");
+    /** 工作流阶段标记：[DMG:STAGE:<A-D>:START/END] */
+    private static final Pattern STAGE_PATTERN = Pattern.compile("\\[DMG:STAGE:([A-D]):(START|END)\\]");
     /** workspace 目录名：ASCII 安全字符（兼容旧 UUID） */
     private static final Pattern SAFE_WORKSPACE_DIR = Pattern.compile("^[A-Za-z0-9._-]{1,64}$|^[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}$");
     private static final Set<String> ARTIFACT_DIRECTORY_NAMES = new LinkedHashSet<>(Arrays.asList(
@@ -476,8 +478,9 @@ public class ProgramWorkflowService {
         }
         Path archive = child(workspace, archiveName);
         Files.write(archive, programService.downloadProgram(name, version, project));
+        Map<String, String> dirMapping = new LinkedHashMap<>();
         try {
-            ArchiveUtil.extractArchive(archive.toFile(), source.toFile());
+            ArchiveUtil.extractArchive(archive.toFile(), source.toFile(), true, dirMapping);
         } finally {
             Files.deleteIfExists(archive);
         }
@@ -486,6 +489,8 @@ public class ProgramWorkflowService {
         // 2. 解析工作目录
         log.info("工作区 {} 步骤2: 解析工作目录", id);
         String configuredWorkingDirectory = config.getRuntime().getWorkingDirectory().trim();
+        // 如果解压时替换了中文目录名，用映射修正 workingDirectory
+        configuredWorkingDirectory = applyDirMapping(configuredWorkingDirectory, dirMapping);
         Path workingDirectory = resolveInside(source, configuredWorkingDirectory, true);
         if (!Files.isDirectory(workingDirectory)) {
             throw new IllegalArgumentException("runtime.workingDirectory does not exist in the program archive");
@@ -824,10 +829,10 @@ public class ProgramWorkflowService {
         if (action == null) throw new IllegalArgumentException("actionKey is not declared by the program config");
 
         Object[] arguments = resolveArguments(workspace, workspaceId, config, action, request.get("inputs"));
-        String taskId = UUID.randomUUID().toString();
+        long taskTimestamp = System.currentTimeMillis();
+        String taskId = String.valueOf(taskTimestamp);
         Path taskDir = child(child(workspace, "tasks"), taskId);
         Files.createDirectories(taskDir);
-        long taskTimestamp = System.currentTimeMillis();
         WorkflowTaskEntity taskEntity = new WorkflowTaskEntity();
         taskEntity.setTimestamp(taskTimestamp);
         taskEntity.setTaskId(taskId);
@@ -862,11 +867,19 @@ public class ProgramWorkflowService {
 
     public Map<String, Object> getTask(String taskId, String name, String version, String projectName) throws Exception {
         Path task = requireTask(taskId, name, version, projectName);
-        long ts = queryTaskTimestampByTaskId(taskId);
+        long ts = taskTimestamp(taskId);
         WorkflowTaskEntity entity = loadTaskFromIginx(ts);
         if (entity == null) throw new IllegalStateException("任务记录不存在");
         Map<String, Object> record = taskEntityToMap(entity);
         addStatusLabel(record);
+        Path progressFile = child(task, "task-progress.json");
+        if (Files.isRegularFile(progressFile)) {
+            try {
+                Map<String, Object> progress = readMap(progressFile);
+                record.put("phase", progress.get("phase"));
+                record.put("progressMessage", progress.get("message"));
+            } catch (Exception ignored) {}
+        }
         return record;
     }
 
@@ -885,7 +898,7 @@ public class ProgramWorkflowService {
     public Map<String, Object> cancelTask(String taskId, String name, String version, String projectName) throws Exception {
         Path taskDir = requireTask(taskId, name, version, projectName);
         // 从 IGINX 加载任务实体
-        long ts = queryTaskTimestampByTaskId(taskId);
+        long ts = taskTimestamp(taskId);
         WorkflowTaskEntity taskEntity = loadTaskFromIginx(ts);
         if (taskEntity == null) throw new IllegalStateException("任务记录不存在");
         Map<String, Object> task;
@@ -907,7 +920,7 @@ public class ProgramWorkflowService {
     public Map<String, Object> getResult(String taskId, String name, String version, String projectName) throws Exception {
         Path task = requireTask(taskId, name, version, projectName);
         // 优先从 IGINX 读 result
-        long ts = queryTaskTimestampByTaskId(taskId);
+        long ts = taskTimestamp(taskId);
         WorkflowTaskEntity entity = loadTaskFromIginx(ts);
         if (entity != null && StringUtils.hasText(entity.getResult())) {
             try {
@@ -927,7 +940,7 @@ public class ProgramWorkflowService {
         if (!"APPROVED".equals(decision) && !"REJECTED".equals(decision)) {
             throw new IllegalArgumentException("decision must be APPROVED or REJECTED");
         }
-        long ts = queryTaskTimestampByTaskId(taskId);
+        long ts = taskTimestamp(taskId);
         WorkflowTaskEntity taskEntity = loadTaskFromIginx(ts);
         if (taskEntity == null) throw new IllegalStateException("任务记录不存在");
         if (!TaskStatus.COMPLETED.getValue().equals(taskEntity.getStatus())) throw new IllegalStateException("只有已完成的任务才能审核");
@@ -945,7 +958,7 @@ public class ProgramWorkflowService {
     public Map<String, Object> publishResult(String taskId, String name, String version,
                                              String projectName) throws Exception {
         Path taskDir = requireTask(taskId, name, version, projectName);
-        long ts = queryTaskTimestampByTaskId(taskId);
+        long ts = taskTimestamp(taskId);
         WorkflowTaskEntity taskEntity = loadTaskFromIginx(ts);
         if (taskEntity == null) throw new IllegalStateException("任务记录不存在");
         if (!TaskStatus.COMPLETED.getValue().equals(taskEntity.getStatus())) throw new IllegalStateException("只有已完成的任务才能发布");
@@ -1026,6 +1039,8 @@ public class ProgramWorkflowService {
             Map<String, Object> wsRecord = queryWorkspaceFromIginxById(workspaceId);
             Path workingDirectory = resolveInside(workspace.resolve("source"),
                     value(wsRecord != null ? wsRecord.get("workingDirectory") : null), true);
+            // 清理上次可能遗留的 0 字节 MAT 文件（MATLAB save -v7.3 写入失败会留下空文件，导致后续 save 也失败）
+            cleanupZeroByteMatFiles(workingDirectory);
             Path requestFile = taskDir.resolve("request.json");
             Path taskOutput = child(child(workspace, "output"), taskId);
             Files.createDirectories(taskOutput);
@@ -1043,14 +1058,30 @@ public class ProgramWorkflowService {
 
             Object[] adapterArguments = new Object[]{action.getEntryPoint(), requestFile.toFile().getCanonicalPath(),
                     matlabResult.toFile().getCanonicalPath(), matlabManifest.toFile().getCanonicalPath()};
+            // 每次运行前重新安装适配器，确保最新版本
+            installWorkflowAdapter(workingDirectory);
             runner = new MatlabFunctionRunner(workingDirectory.toFile(), "dmg_run_workflow", adapterArguments,
                     runLog.toFile(), programService.enginePool(), new MatlabFunctionRunner.ProgressCancellationSink() {
                 private long lastUpdate;
+                private String phase = "pending";
                 @Override public void onProgress(String message) {
                     long now = System.currentTimeMillis();
+                    java.util.regex.Matcher m = STAGE_PATTERN.matcher(message);
+                    boolean isMarker = m.find();
+                    if (isMarker) {
+                        String stage = m.group(1);
+                        String event = m.group(2);
+                        if ("START".equals(event)) {
+                            phase = stage;
+                        } else if ("END".equals(event)) {
+                            phase = "D".equals(stage) ? "completed" : stage;
+                        }
+                        writeTaskProgress(manifest.getParent(), phase, message);
+                    }
                     if (!message.startsWith("[stdout]") || now - lastUpdate >= 1000L) {
                         lastUpdate = now;
                         updateTaskMessage(manifest, message);
+                        if (!isMarker) writeTaskProgress(manifest.getParent(), phase, message);
                     }
                 }
                 @Override public boolean isCancellationRequested() {
@@ -1070,7 +1101,7 @@ public class ProgramWorkflowService {
             writeJson(taskDir.resolve("result.json"), result);
             writeJson(taskDir.resolve("artifacts.json"), collectArtifacts(workspace, before));
             // 将结果写入 IGINX task 表 result 字段
-            long taskTs = queryTaskTimestampByTaskId(taskId);
+            long taskTs = taskTimestamp(taskId);
             WorkflowTaskEntity taskEntity = loadTaskFromIginx(taskTs);
             if (taskEntity != null) {
                 taskEntity.setResult(mapper.writeValueAsString(result));
@@ -1091,7 +1122,7 @@ public class ProgramWorkflowService {
                     if (errMsg.contains("test") && errMsg.contains("not found") || errMsg.contains("测试数据不存在")) {
                         updateTaskQuietly(manifest, TaskStatus.SKIPPED.getValue(), "测试数据不存在，已安全跳过测试验证");
                     } else {
-                        long ts2 = queryTaskTimestampByTaskId(taskId);
+                        long ts2 = taskTimestamp(taskId);
                         WorkflowTaskEntity taskEntity2 = loadTaskFromIginx(ts2);
                         if (taskEntity2 != null) {
                             taskEntity2.setStatus(TaskStatus.WORKFLOW_FAILED.getValue());
@@ -1233,7 +1264,7 @@ public class ProgramWorkflowService {
         requireId(taskId, "taskId");
         String project = effectiveProject(projectName);
         // 从 IGINX 查 task 的 workspaceId
-        long ts = queryTaskTimestampByTaskId(taskId);
+        long ts = taskTimestamp(taskId);
         if (ts == 0) throw new IllegalArgumentException("Task does not exist");
         WorkflowTaskEntity taskEntity = loadTaskFromIginx(ts);
         if (taskEntity == null) throw new IllegalArgumentException("Task does not exist");
@@ -1287,6 +1318,25 @@ public class ProgramWorkflowService {
             throw new SecurityException("Path escapes managed workflow storage");
         }
         return target;
+    }
+
+    /**
+     * 根据目录重命名映射修正相对路径。
+     * mapping 的 key/value 均为用 "/" 分隔的相对路径。
+     * 如果 path 以某个 key 开头（完整路径段匹配），则替换为对应的 value。
+     */
+    private String applyDirMapping(String path, Map<String, String> mapping) {
+        if (mapping == null || mapping.isEmpty() || path == null) return path;
+        String normalized = path.replace('\\', '/');
+        for (Map.Entry<String, String> e : mapping.entrySet()) {
+            String orig = e.getKey();
+            String replacement = e.getValue();
+            if (normalized.equals(orig)) return replacement.replace('/', File.separatorChar);
+            if (normalized.startsWith(orig + "/")) {
+                return (replacement + normalized.substring(orig.length())).replace('/', File.separatorChar);
+            }
+        }
+        return path;
     }
 
     private Path resolveInside(Path basePath, String relative, boolean requireRelative) throws IOException {
@@ -1440,6 +1490,32 @@ public class ProgramWorkflowService {
         catch (Exception ignored) { }
     }
 
+    /** 清理工作目录下所有 0 字节的 .mat 文件（MATLAB save -v7.3 写入失败会留下空文件，导致后续 save 也失败） */
+    private void cleanupZeroByteMatFiles(Path workingDirectory) {
+        try {
+            Path middleData = workingDirectory.resolve("MiddleData");
+            if (!Files.isDirectory(middleData)) return;
+            try (Stream<Path> files = Files.walk(middleData, 3)) {
+                files.filter(Files::isRegularFile)
+                     .filter(p -> p.getFileName().toString().endsWith(".mat"))
+                     .filter(p -> {
+                         try { return Files.size(p) == 0; }
+                         catch (IOException e) { return false; }
+                     })
+                     .forEach(p -> {
+                         try {
+                             Files.delete(p);
+                             log.info("已清理 0 字节 MAT 文件: {}", p);
+                         } catch (IOException e) {
+                             log.warn("清理 0 字节 MAT 文件失败: {}", p, e);
+                         }
+                     });
+            }
+        } catch (Exception e) {
+            log.debug("清理 0 字节 MAT 文件时出错", e);
+        }
+    }
+
     private void addStatusLabel(Map<String, Object> record) {
         if (record == null) return;
         Object status = record.get("status");
@@ -1492,6 +1568,18 @@ public class ProgramWorkflowService {
             saveTaskToIginx(task);
         } catch (Exception e) {
             log.debug("Could not persist workflow progress: {}", e.getMessage());
+        }
+    }
+
+    private void writeTaskProgress(Path taskDir, String phase, String message) {
+        try {
+            Map<String, Object> progress = new LinkedHashMap<>();
+            progress.put("phase", phase);
+            progress.put("message", message);
+            progress.put("updatedAt", System.currentTimeMillis());
+            writeJson(child(taskDir, "task-progress.json"), progress);
+        } catch (Exception e) {
+            log.debug("Could not write task progress file: {}", e.getMessage());
         }
     }
 
@@ -1916,30 +2004,22 @@ public class ProgramWorkflowService {
         }
     }
 
-    /** 从任务路径提取 timestamp（taskDir 名为 taskId，需要从 IGINX 查） */
+    /** 从 taskId 直接解析 timestamp（taskId 即为时间戳字符串） */
+    private long taskTimestamp(String taskId) {
+        try {
+            return Long.parseLong(taskId);
+        } catch (NumberFormatException e) {
+            log.warn("taskId 不是有效时间戳: {}", taskId);
+            return 0;
+        }
+    }
+
+    /** 从任务路径提取 timestamp（taskDir 名为 taskId，即时间戳） */
     private long extractTimestampFromTaskPath(Path manifest) {
-        // taskDir = workspace/tasks/{taskId}，manifest = taskDir/task.json
-        // taskId 不是 timestamp，需要通过 taskId 查 IGINX 获取 timestamp
         Path taskDir = manifest.getParent();
         if (taskDir == null) return 0;
         String taskId = taskDir.getFileName().toString();
-        return queryTaskTimestampByTaskId(taskId);
-    }
-
-    /** 通过 taskId 从 IGINX 查询 timestamp */
-    private long queryTaskTimestampByTaskId(String taskId) {
-        try {
-            String sql = String.format("SELECT timestamp FROM %s WHERE taskId = '%s';", WF_TASK_PREFIX, taskId);
-            SessionExecuteSqlResult res = iginxSession.executeSql(sql);
-            List<Map<String, Object>> records = ConvertUtil.getRecords(res);
-            if (records != null && !records.isEmpty()) {
-                Object tsObj = records.get(0).values().iterator().next();
-                if (tsObj instanceof Number) return ((Number) tsObj).longValue();
-            }
-        } catch (Exception e) {
-            log.error("查询任务 timestamp 失败: taskId={}", taskId, e);
-        }
-        return 0;
+        return taskTimestamp(taskId);
     }
 
     /** 从 IGINX 查询工作区下的任务列表（SQL 模式） */

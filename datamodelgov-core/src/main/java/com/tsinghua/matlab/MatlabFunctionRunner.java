@@ -19,6 +19,16 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Pattern;
 
+import com.sun.jna.Native;
+import com.sun.jna.Platform;
+import com.sun.jna.win32.StdCallLibrary;
+import com.sun.jna.win32.W32APIOptions;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
+
 /**
  * Standalone runner for a MATLAB function whose inputs and single output cross the
  * MATLAB Engine for Java boundary without being converted to MATLAB source text.
@@ -51,6 +61,13 @@ public final class MatlabFunctionRunner {
             Pattern.compile("^[A-Za-z][A-Za-z0-9_]*$");
     private static final long ENGINE_BORROW_TIMEOUT_SECONDS = 300L;
     private static final long FUTURE_POLL_MILLIS = 250L;
+
+    /** Win32 Kernel32 for DLL search path manipulation (Windows only). */
+    private interface Kernel32 extends StdCallLibrary {
+        Kernel32 INSTANCE = Native.load("kernel32", Kernel32.class, W32APIOptions.DEFAULT_OPTIONS);
+        boolean SetDllDirectory(String path);
+        boolean SetEnvironmentVariable(String name, String value);
+    }
 
     private final File workspaceDirectory;
     private final String entryPoint;
@@ -115,6 +132,18 @@ public final class MatlabFunctionRunner {
             checkCancelled("before workspace setup");
             actualRelease = queryRelease(borrowed);
             emit("MATLAB release: " + actualRelease);
+
+            // 设置 MATLAB 字符集为 UTF-8（.m 文件为 UTF-8 编码，需 UTF-8 才能正确读取中文）
+            // 之前因中文路径导致 loadlibrary 失败而禁用，现在解压时已将中文目录名替换为 undefined，
+            // 路径不含中文，可以安全启用。
+            try {
+                invokeNoOutput(borrowed, "eval", "feature('DefaultCharacterSet', 'UTF-8')");
+            } catch (Exception e) {
+                log.debug("Failed to set MATLAB charset to UTF-8", e);
+            }
+
+            // 将工作目录加入 DLL 搜索路径和 PATH，确保 MATLAB loadlibrary 能找到用户 DLL 及其依赖
+            injectDllSearchPath(workspaceDirectory);
 
             invokeNoOutput(borrowed, "cd", workspaceDirectory.getAbsolutePath());
             checkCancelled("after changing the MATLAB directory");
@@ -242,6 +271,36 @@ public final class MatlabFunctionRunner {
     private void ensureNotRunning() {
         if (engine != null) {
             throw new IllegalStateException("MatlabFunctionRunner is already running");
+        }
+    }
+
+    /**
+     * On Windows, MATLAB R2019b internally calls SetDefaultDllDirectories which restricts
+     * DLL search. SetDefaultDllDirectories(0) cannot reset it (returns false, error 87).
+     * AddDllDirectory doesn't help because MATLAB's loadlibrary uses LoadLibrary (not
+     * LoadLibraryEx with LOAD_LIBRARY_SEARCH_USER_DIRS).
+     *
+     * The actual fix is in dmg_run_workflow.m: it pre-loads GTESS.dll via Java System.load()
+     * with an absolute path, which puts the DLL in the process address space. Subsequent
+     * LoadLibrary("GTESS.dll") calls then find the already-loaded module without searching.
+     *
+     * Here we just set PATH for good measure and log the situation.
+     */
+    private static void injectDllSearchPath(File workspaceDir) {
+        if (!Platform.isWindows()) return;
+        try {
+            Kernel32 k32 = Kernel32.INSTANCE;
+            String wsPath = workspaceDir.getAbsolutePath();
+            String middleDataPath = new File(workspaceDir, "MiddleData").getAbsolutePath();
+            String currentPath = System.getenv("PATH");
+            if (currentPath == null || !currentPath.toLowerCase().contains(middleDataPath.toLowerCase())) {
+                String newPath = middleDataPath + File.pathSeparator + wsPath + File.pathSeparator
+                        + (currentPath == null ? "" : currentPath);
+                k32.SetEnvironmentVariable("PATH", newPath);
+            }
+            log.info("DLL搜索路径: PATH已更新");
+        } catch (Throwable t) {
+            log.warn("注入DLL搜索路径失败", t);
         }
     }
 

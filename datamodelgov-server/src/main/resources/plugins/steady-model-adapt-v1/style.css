@@ -146,6 +146,12 @@ button, input, select, textarea { font: inherit; }
   border: 1px solid #b4dfc4;
 }
 
+.field-status.failed {
+  color: #c21d1d;
+  background: #fde9e9;
+  border: 1px solid #f0b8b8;
+}
+
 .field-status.optional {
   color: #6b7c8a;
   background: #f0f4f7;
@@ -337,6 +343,45 @@ input::placeholder { color: #9aa6ad; }
   border-color: var(--blue);
 }
 
+/* 新增流程状态样式 */
+.flow-step.completed .flow-dot {
+  background: #4caf50;
+  color: #ffffff;
+  border-color: #4caf50;
+}
+.flow-step.completed:not(:last-child)::after {
+  background: #4caf50;
+}
+.flow-step.running .flow-dot {
+  background: var(--blue);
+  color: #ffffff;
+  border-color: var(--blue);
+  animation: pulse 1.2s infinite;
+}
+.flow-step.running:not(:last-child)::after {
+  background: var(--blue);
+}
+.flow-step.warning .flow-dot {
+  background: #ff9800;
+  color: #ffffff;
+  border-color: #ff9800;
+}
+.flow-step.warning:not(:last-child)::after {
+  background: #ff9800;
+}
+.flow-step.failed .flow-dot {
+  background: #e53935;
+  color: #ffffff;
+  border-color: #e53935;
+}
+.flow-step.failed:not(:last-child)::after {
+  background: #e53935;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
 .flow-label {
   font-size: 12px;
   font-weight: 600;
@@ -347,6 +392,51 @@ input::placeholder { color: #9aa6ad; }
   font-size: 11px;
   color: var(--muted);
   margin-top: 2px;
+}
+
+/* ===== 正则化配置卡片 ===== */
+.method-card.reg-card {
+  cursor: default;
+}
+.method-card.reg-card:hover {
+  background: #f8fafb;
+}
+.reg-method-row, .reg-param-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.reg-label {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+input.reg-input,
+select.reg-input {
+  width: 60px;
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  font-size: 12px;
+  text-align: center;
+  height: 26px;
+  box-sizing: border-box;
+}
+.segment.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ===== 结果文件列表 ===== */
+.file-list {
+  padding: 8px 0;
+}
+.file-item {
+  font-size: 12px;
+  color: var(--muted);
+  padding: 2px 0;
+  font-family: monospace;
 }
 
 /* ===== 表格 ===== */
@@ -725,10 +815,147 @@ input::placeholder { color: #9aa6ad; }
   border-color: var(--blue-hover);
 }
 
+/* ===== 左右并排结果区 ===== */
+.two-col-row {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr;
+  gap: 16px;
+  align-items: stretch;
+}
+
+.two-col-row > .card {
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.two-col-row > .card > .card-body {
+  flex: 1 1 auto;
+}
+
 @media (max-width: 1100px) {
-  .method-grid, .form-grid-3, .form-grid-4, .evidence-grid, .charts-grid-3 {
+  .method-grid, .form-grid-3, .form-grid-4, .evidence-grid, .charts-grid-3, .two-col-row {
     grid-template-columns: 1fr;
   }
+}
+
+/* ===== 模型路径与正则化配置 ===== */
+.reg-path-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.reg-path-row .reg-label {
+  color: var(--text-navy);
+  font-weight: 500;
+}
+
+.reg-path-row .segmented {
+  margin-bottom: 0;
+}
+
+.method-info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.method-foot {
+  margin-top: auto;
+  padding-top: 10px;
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+/* ===== 锁定状态 ===== */
+input.reg-input:disabled,
+select:disabled {
+  background: #f4f6f8;
+  color: #8c9ea9;
+  cursor: not-allowed;
+}
+
+/* ===== 图表弹窗 ===== */
+.image-modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, .55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+}
+
+.image-modal {
+  background: #ffffff;
+  border-radius: 4px;
+  max-width: 95vw;
+  max-height: 95vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, .25);
+}
+
+.image-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.image-modal-header h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-navy);
+}
+
+.image-modal-close {
+  border: 0;
+  background: transparent;
+  font-size: 18px;
+  color: #6b7c8a;
+  cursor: pointer;
+}
+
+.image-modal-body {
+  padding: 16px;
+  overflow: auto;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.image-modal-img {
+  max-width: 90vw;
+  max-height: 78vh;
+  border: 1px solid var(--line);
+}
+
+.image-modal-footer {
+  padding: 12px 16px;
+  border-top: 1px solid var(--line);
+  text-align: right;
+}
+
+.image-modal-download {
+  font-size: 12px;
+  color: var(--blue);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.image-modal-download:hover {
+  text-decoration: underline;
 }
 
 @keyframes dmg-spin {

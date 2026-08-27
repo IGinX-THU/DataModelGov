@@ -22,7 +22,10 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.RandomAccessFile;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Set;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.ZipEntry;
@@ -70,6 +73,27 @@ public final class ArchiveUtil {
      * 不支持的格式抛 {@link IOException}。
      */
     public static void extractArchive(File archive, File targetDir) throws IOException {
+        extractArchive(archive, targetDir, false);
+    }
+
+    /**
+     * 根据扩展名自动选择解压器把 archive 解压到 targetDir。
+     * sanitizeNonAscii 为 true 时，解压后将目录名中的非 ASCII 字符替换为 "undefined"，
+     * 避免路径含中文导致 MATLAB HDF5 save(-v7.3) 等操作失败。
+     * 同名替换不会合并：每个含非 ASCII 的目录名各自替换，若结果冲突则追加序号。
+     * 返回原始相对路径（相对于 targetDir）到新相对路径的映射；无替换时返回空 Map。
+     */
+    public static void extractArchive(File archive, File targetDir, boolean sanitizeNonAscii) throws IOException {
+        extractArchive(archive, targetDir, sanitizeNonAscii, null);
+    }
+
+    /**
+     * 根据扩展名自动选择解压器把 archive 解压到 targetDir。
+     * sanitizeNonAscii 为 true 时，解压后将目录名中的非 ASCII 字符替换为 "undefined"。
+     * 若 mappingOut 非 null，将原始相对路径→新相对路径的映射写入其中供调用方修正配置。
+     */
+    public static void extractArchive(File archive, File targetDir, boolean sanitizeNonAscii,
+                                      Map<String, String> mappingOut) throws IOException {
         String ext = getExtension(archive.getName());
         if (".zip".equals(ext) || ".jar".equals(ext)) {
             extractZip(archive, targetDir);
@@ -84,6 +108,79 @@ public final class ArchiveUtil {
         } else {
             throw new IOException("不支持的压缩格式: " + ext);
         }
+        if (sanitizeNonAscii) {
+            Map<String, String> mapping = sanitizeDirectoryNames(targetDir);
+            if (mappingOut != null) {
+                mappingOut.putAll(mapping);
+            }
+        }
+    }
+
+    /**
+     * 递归将目录名中的非 ASCII 字符替换为 "undefined"。
+     * 文件名保持不变。同名冲突时追加 "_2"、"_3" 等序号，防止同级中文目录合并。
+     * 返回原始相对路径→新相对路径的映射（仅含被重命名的目录）。
+     */
+    private static Map<String, String> sanitizeDirectoryNames(File dir) throws IOException {
+        Map<String, String> mapping = new LinkedHashMap<>();
+        sanitizeDirectoryNames(dir, "", mapping);
+        return mapping;
+    }
+
+    private static void sanitizeDirectoryNames(File dir, String relativePrefix, Map<String, String> mapping) throws IOException {
+        File[] children = dir.listFiles();
+        if (children == null) return;
+        // 先处理子目录的子级（自底向上），再重命名当前层
+        for (File child : children) {
+            if (child.isDirectory()) {
+                String childRel = relativePrefix.isEmpty() ? child.getName() : relativePrefix + "/" + child.getName();
+                sanitizeDirectoryNames(child, childRel, mapping);
+            }
+        }
+        // 重新读取（子目录可能已被重命名）
+        children = dir.listFiles();
+        if (children == null) return;
+        Set<String> usedNames = new HashSet<>();
+        for (File child : children) {
+            usedNames.add(child.getName().toLowerCase());
+        }
+        for (File child : children) {
+            if (!child.isDirectory()) continue;
+            String name = child.getName();
+            if (isPureAscii(name)) continue;
+            String base = "undefined";
+            String newName = base;
+            int suffix = 2;
+            while (usedNames.contains(newName.toLowerCase())) {
+                newName = base + "_" + suffix++;
+            }
+            File target = new File(dir, newName);
+            if (!child.renameTo(target)) {
+                throw new IOException("无法重命名目录: " + child + " -> " + target);
+            }
+            usedNames.add(newName.toLowerCase());
+            // 记录原始相对路径→新相对路径的映射
+            String origRel = relativePrefix.isEmpty() ? name : relativePrefix + "/" + name;
+            String newRel = relativePrefix.isEmpty() ? newName : relativePrefix + "/" + newName;
+            mapping.put(origRel, newRel);
+            // 同时记录所有以 origRel 为前缀的已映射路径（修正子路径）
+            Map<String, String> toUpdate = new HashMap<>();
+            for (Map.Entry<String, String> e : mapping.entrySet()) {
+                if (!e.getKey().equals(origRel) && e.getKey().startsWith(origRel + "/")) {
+                    String fixedNew = newRel + e.getKey().substring(origRel.length());
+                    toUpdate.put(e.getKey(), fixedNew);
+                }
+            }
+            mapping.putAll(toUpdate);
+            log.info("目录重命名: {} -> {}", origRel, newRel);
+        }
+    }
+
+    private static boolean isPureAscii(String s) {
+        for (int i = 0; i < s.length(); i++) {
+            if (s.charAt(i) > 127) return false;
+        }
+        return true;
     }
 
     /** 取文件扩展名（小写，含点）。复合扩展名 .tar.gz / .tar.bz2 / .tar.xz 优先匹配。 */
