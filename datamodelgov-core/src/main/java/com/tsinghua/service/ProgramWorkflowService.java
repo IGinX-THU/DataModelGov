@@ -123,7 +123,7 @@ public class ProgramWorkflowService {
                     entity.setStatus(TaskStatus.FAILED.getValue());
                     entity.setError("服务重启导致任务中断");
                     entity.setFinishedAt(System.currentTimeMillis());
-                    updateTaskEntityInIginx(entity);
+                    saveTaskToIginx(entity);
                     log.info("恢复工作流任务状态: taskId={} -> FAILED", entity.getTaskId());
                 }
             }
@@ -392,25 +392,29 @@ public class ProgramWorkflowService {
 
         // 先创建 IGINX 记录（status=CREATING），立即返回给前端
         long now = System.currentTimeMillis();
-        Map<String, Object> record = new LinkedHashMap<>();
-        record.put("id", id);
-        record.put("programName", name);
-        record.put("programVersion", version);
-        record.put("projectName", project);
-        record.put("jobName", jobName != null ? jobName : "");
-        record.put("notes", notes != null ? notes : "");
-        record.put("trainingDataFile", trainingDataFile);
-        record.put("testDataFile", testDataFile != null ? testDataFile : "");
-        record.put("status", TaskStatus.CREATING.getValue());
-        record.put("programFileMd5", entity.getFileMd5());
-        record.put("createdAt", now);
-        record.put("updatedAt", now);
-        record.put("initStatus", "PENDING");
-        record.put("uploadedDatasets", new ArrayList<>());
-        addStatusLabel(record);
+        WorkflowWorkspaceEntity wsEntity = new WorkflowWorkspaceEntity();
+        wsEntity.setTimestamp(now);
+        wsEntity.setId(id);
+        wsEntity.setProgramName(name);
+        wsEntity.setProgramVersion(version);
+        wsEntity.setProjectName(project);
+        wsEntity.setJobName(jobName != null ? jobName : "");
+        wsEntity.setNotes(notes != null ? notes : "");
+        wsEntity.setTrainingDataFile(trainingDataFile);
+        wsEntity.setTestDataFile(testDataFile != null ? testDataFile : "");
+        wsEntity.setStatus(TaskStatus.CREATING.getValue());
+        wsEntity.setProgramFileMd5(entity.getFileMd5());
+        wsEntity.setCreatedAt(now);
+        wsEntity.setUpdatedAt(now);
+        wsEntity.setInitStatus("PENDING");
+        wsEntity.setUploadedDatasets("[]");
 
         // 保存工作区元数据到 IGINX（轻量，只有基本字段）
-        saveWorkspaceToIginx(record, now);
+        saveWorkspaceToIginx(wsEntity);
+
+        // 构建返回给前端的 Map
+        Map<String, Object> record = workspaceEntityToMap(wsEntity);
+        addStatusLabel(record);
 
         // 所有重活（下载、解压、复制文件、校验、MATLAB 初始化）全部异步执行
         final String trainingFile = trainingDataFile;
@@ -432,12 +436,14 @@ public class ProgramWorkflowService {
                         wsId, jobNameFinal, trainingFile, testDataFileFinal, notesFinal, wsTimestamp);
             } catch (Exception e) {
                 log.error("工作区 {} 创建失败", wsId, e);
-                Map<String, Object> wsUpdate = new LinkedHashMap<>();
-                wsUpdate.put("status", TaskStatus.FAILED.getValue());
-                wsUpdate.put("updatedAt", System.currentTimeMillis());
-                wsUpdate.put("initStatus", "FAILED");
-                wsUpdate.put("initMessage", e.getMessage() != null ? e.getMessage() : String.valueOf(e));
-                updateWorkspaceInIginx(wsUpdate, wsTimestamp);
+                WorkflowWorkspaceEntity failUpdate = new WorkflowWorkspaceEntity();
+                failUpdate.setTimestamp(wsTimestamp);
+                failUpdate.setId(wsId);
+                failUpdate.setStatus(TaskStatus.FAILED.getValue());
+                failUpdate.setUpdatedAt(System.currentTimeMillis());
+                failUpdate.setInitStatus("FAILED");
+                failUpdate.setInitMessage(e.getMessage() != null ? e.getMessage() : String.valueOf(e));
+                updateWorkspaceInIginx(failUpdate);
             }
         });
 
@@ -543,16 +549,19 @@ public class ProgramWorkflowService {
 
         // 6. 更新 IGINX：补充完整字段，状态改为 INITIALIZING
         log.info("工作区 {} 步骤6: 更新状态为 INITIALIZING", id);
-        Map<String, Object> wsUpdate = new LinkedHashMap<>();
-        wsUpdate.put("status", TaskStatus.INITIALIZING.getValue());
-        wsUpdate.put("updatedAt", System.currentTimeMillis());
-        wsUpdate.put("workingDirectory", source.relativize(workingDirectory).toString().replace(File.separatorChar, '/'));
-        wsUpdate.put("workspaceDir", workspace.toAbsolutePath().toString().replace(File.separatorChar, '/'));
-        wsUpdate.put("configSha256", sha256Text(configJson));
-        wsUpdate.put("requiredFileHashes", mapper.writeValueAsString(requiredFileHashes(workingDirectory, config)));
-        wsUpdate.put("uploadedDatasets", mapper.writeValueAsString(uploadedDatasets));
-        wsUpdate.put("initStatus", "INITIALIZING");
-        updateWorkspaceInIginx(wsUpdate, wsTimestamp);
+        WorkflowWorkspaceEntity initUpdate = new WorkflowWorkspaceEntity();
+        initUpdate.setTimestamp(wsTimestamp);
+        initUpdate.setId(id);
+        initUpdate.setStatus(TaskStatus.INITIALIZING.getValue());
+        initUpdate.setUpdatedAt(System.currentTimeMillis());
+        initUpdate.setWorkingDirectory(source.relativize(workingDirectory).toString().replace(File.separatorChar, '/'));
+        initUpdate.setWorkspaceDir(workspace.toAbsolutePath().toString().replace(File.separatorChar, '/'));
+        initUpdate.setConfigSha256(sha256Text(configJson));
+        initUpdate.setRequiredFileHashes(mapper.writeValueAsString(requiredFileHashes(workingDirectory, config)));
+        initUpdate.setUploadedDatasets(mapper.writeValueAsString(uploadedDatasets));
+        initUpdate.setDataContract(mapper.writeValueAsString(dataContract));
+        initUpdate.setInitStatus("INITIALIZING");
+        updateWorkspaceInIginx(initUpdate);
         log.info("工作区 {} 步骤6完成: IGINX 状态已更新为 INITIALIZING", id);
 
         // 7. 执行 MATLAB 初始化
@@ -572,26 +581,32 @@ public class ProgramWorkflowService {
             }
         }
 
-        // 9. 将初始化摘要写入 IGINX 独立字段
-        Map<String, Object> initUpdate = new LinkedHashMap<>();
-        initUpdate.put("status", TaskStatus.READY.getValue());
-        initUpdate.put("updatedAt", System.currentTimeMillis());
-        initUpdate.put("initStatus", value(initResult.get("status")));
-        initUpdate.put("initMessage", value(initResult.get("message")));
-        initUpdate.put("initRowCount", initResult.get("rowCount"));
-        initUpdate.put("initGroupCount", initResult.get("groupCount"));
-        initUpdate.put("initDllHash", value(initResult.get("dllHash")));
-        initUpdate.put("initValid", initResult.get("valid"));
-        initUpdate.put("initBaselineValid", initResult.get("baselineValid"));
+        // 9. 将初始化摘要写入 IGINX
+        WorkflowWorkspaceEntity readyUpdate = new WorkflowWorkspaceEntity();
+        readyUpdate.setTimestamp(wsTimestamp);
+        readyUpdate.setId(id);
+        readyUpdate.setStatus(TaskStatus.READY.getValue());
+        readyUpdate.setUpdatedAt(System.currentTimeMillis());
+        readyUpdate.setInitStatus(value(initResult.get("status")));
+        readyUpdate.setInitMessage(value(initResult.get("message")));
+        Object rowCount = initResult.get("rowCount");
+        if (rowCount instanceof Number) readyUpdate.setInitRowCount(((Number) rowCount).intValue());
+        Object groupCount = initResult.get("groupCount");
+        if (groupCount instanceof Number) readyUpdate.setInitGroupCount(((Number) groupCount).intValue());
+        readyUpdate.setInitDllHash(value(initResult.get("dllHash")));
+        Object initValid = initResult.get("valid");
+        if (initValid instanceof Boolean) readyUpdate.setInitValid((Boolean) initValid);
+        Object baselineValid = initResult.get("baselineValid");
+        if (baselineValid instanceof Boolean) readyUpdate.setInitBaselineValid((Boolean) baselineValid);
         Object missingCols = initResult.get("missingColumns");
         if (missingCols instanceof List) {
-            initUpdate.put("initMissingColumns", String.join(",", (List<String>) missingCols));
+            readyUpdate.setInitMissingColumns(String.join(",", (List<String>) missingCols));
         } else {
-            initUpdate.put("initMissingColumns", value(missingCols));
+            readyUpdate.setInitMissingColumns(value(missingCols));
         }
-        initUpdate.put("initStartedAt", value(initResult.get("startedAt")));
-        initUpdate.put("initCompletedAt", value(initResult.get("completedAt")));
-        updateWorkspaceInIginx(initUpdate, wsTimestamp);
+        readyUpdate.setInitStartedAt(value(initResult.get("startedAt")));
+        readyUpdate.setInitCompletedAt(value(initResult.get("completedAt")));
+        updateWorkspaceInIginx(readyUpdate);
         log.info("工作区 {} 创建并初始化完成: {}", id, initResult.get("status"));
     }
 
@@ -766,7 +781,13 @@ public class ProgramWorkflowService {
         record.put("uploadedAt", System.currentTimeMillis());
         records.add(record);
         // 更新 IGINX 中的 uploadedDatasets
-        updateWorkspaceFieldInIginx(workspaceId, "uploadedDatasets", mapper.writeValueAsString(records));
+        Map<String, Object> wsRecord = queryWorkspaceFromIginxById(workspaceId);
+        if (wsRecord != null) {
+            WorkflowWorkspaceEntity wsEntity = iginxRecordToWorkspaceEntity(wsRecord);
+            wsEntity.setUploadedDatasets(mapper.writeValueAsString(records));
+            wsEntity.setUpdatedAt(System.currentTimeMillis());
+            updateWorkspaceInIginx(wsEntity);
+        }
         return publicDataset(record);
     }
 
@@ -806,19 +827,21 @@ public class ProgramWorkflowService {
         String taskId = UUID.randomUUID().toString();
         Path taskDir = child(child(workspace, "tasks"), taskId);
         Files.createDirectories(taskDir);
-        Map<String, Object> task = new LinkedHashMap<>();
-        task.put("id", taskId);
-        task.put("workspaceId", workspaceId);
-        task.put("actionKey", action.getKey());
-        task.put("entryPoint", action.getEntryPoint());
-        task.put("stage", action.getStage());
-        task.put("resultType", action.getResultType());
-        task.put("status", TaskStatus.READY.getValue());
-        task.put("createdAt", System.currentTimeMillis());
-        task.put("cancelRequested", false);
-        task.put("logPath", "tasks/" + taskId + "/run.log");
+        long taskTimestamp = System.currentTimeMillis();
+        WorkflowTaskEntity taskEntity = new WorkflowTaskEntity();
+        taskEntity.setTimestamp(taskTimestamp);
+        taskEntity.setTaskId(taskId);
+        taskEntity.setWorkspaceId(workspaceId);
+        taskEntity.setActionKey(action.getKey());
+        taskEntity.setEntryPoint(action.getEntryPoint());
+        taskEntity.setStage(action.getStage());
+        taskEntity.setResultType(action.getResultType());
+        taskEntity.setStatus(TaskStatus.READY.getValue());
+        taskEntity.setCreatedAt(taskTimestamp);
+        taskEntity.setLogPath("tasks/" + taskId + "/run.log");
         // 任务元数据只写 IGINX（不写 task.json）
-        saveTaskToIginx(task, taskId, workspaceId);
+        saveTaskToIginx(taskEntity);
+        Map<String, Object> task = taskEntityToMap(taskEntity);
         executor.submit(() -> {
             Object executionLock = workspaceExecutionLocks.computeIfAbsent(workspace.toString(), key -> new Object());
             synchronized (executionLock) {
@@ -868,7 +891,7 @@ public class ProgramWorkflowService {
         Map<String, Object> task;
         if (!isTerminal(taskEntity.getStatus())) {
             taskEntity.setStatus(TaskStatus.CANCELLING.getValue());
-            updateTaskEntityInIginx(taskEntity);
+            saveTaskToIginx(taskEntity);
             cancelFlags.put(taskId, true);
             task = taskEntityToMap(taskEntity);
             task.put("cancelRequested", true);
@@ -911,7 +934,7 @@ public class ProgramWorkflowService {
         String notes = request == null ? "" : text(request, "notes");
         if (notes.length() > 2000) throw new IllegalArgumentException("Review notes are too long");
         taskEntity.setReviewStatus("APPROVED".equals(decision) ? TaskStatus.REVIEW_APPROVED.getValue() : TaskStatus.REVIEW_REJECTED.getValue());
-        updateTaskEntityInIginx(taskEntity);
+        saveTaskToIginx(taskEntity);
         Map<String, Object> task = taskEntityToMap(taskEntity);
         task.put("reviewNotes", notes);
         task.put("reviewedBy", AuthUtil.getCurrentUsername());
@@ -953,7 +976,7 @@ public class ProgramWorkflowService {
         publication.put("status", TaskStatus.PUBLISHED.getValue());
         // 更新任务实体的发布状态
         taskEntity.setPublicationStatus(TaskStatus.PUBLISHED.getValue());
-        updateTaskEntityInIginx(taskEntity);
+        saveTaskToIginx(taskEntity);
         return publication;
     }
 
@@ -1051,7 +1074,7 @@ public class ProgramWorkflowService {
             WorkflowTaskEntity taskEntity = loadTaskFromIginx(taskTs);
             if (taskEntity != null) {
                 taskEntity.setResult(mapper.writeValueAsString(result));
-                updateTaskEntityInIginx(taskEntity);
+                saveTaskToIginx(taskEntity);
             }
             updateTask(manifest, TaskStatus.COMPLETED.getValue(), null, null, true);
         } catch (CancellationException e) {
@@ -1074,7 +1097,7 @@ public class ProgramWorkflowService {
                             taskEntity2.setStatus(TaskStatus.WORKFLOW_FAILED.getValue());
                             taskEntity2.setError(safeError(e));
                             taskEntity2.setFinishedAt(System.currentTimeMillis());
-                            updateTaskEntityInIginx(taskEntity2);
+                            saveTaskToIginx(taskEntity2);
                         }
                     }
                 }
@@ -1433,7 +1456,22 @@ public class ProgramWorkflowService {
         if (task == null) {
             // IGINX 中不存在，从 JSON 文件回退加载
             Map<String, Object> taskMap = readMap(manifest);
-            task = mapToTaskEntity(taskMap, value(taskMap.get("id")), value(taskMap.get("workspaceId")), ts);
+            task = new WorkflowTaskEntity();
+            task.setTimestamp(ts);
+            task.setTaskId(value(taskMap.get("id")));
+            task.setWorkspaceId(value(taskMap.get("workspaceId")));
+            task.setActionKey(value(taskMap.get("actionKey")));
+            task.setEntryPoint(value(taskMap.get("entryPoint")));
+            task.setStage(value(taskMap.get("stage")));
+            task.setResultType(value(taskMap.get("resultType")));
+            task.setStatus(value(taskMap.get("status")));
+            task.setCreatedAt(longValue(taskMap.get("createdAt")));
+            task.setStartedAt(longValue(taskMap.get("startedAt")));
+            task.setFinishedAt(longValue(taskMap.get("finishedAt")));
+            task.setLogPath(value(taskMap.get("logPath")));
+            task.setStatusMessage(value(taskMap.get("statusMessage")));
+            task.setReviewStatus(value(taskMap.get("reviewStatus")));
+            task.setPublicationStatus(value(taskMap.get("publicationStatus")));
         }
         task.setStatus(status);
         if (startedAt != null) task.setStartedAt(startedAt);
@@ -1442,7 +1480,7 @@ public class ProgramWorkflowService {
         if (TaskStatus.COMPLETED.getValue().equals(status) && "estimation".equals(task.getResultType())) {
             task.setReviewStatus(TaskStatus.PENDING_REVIEW.getValue());
         }
-        updateTaskEntityInIginx(task);
+        saveTaskToIginx(task);
     }
 
     private void updateTaskMessage(Path manifest, String message) {
@@ -1451,7 +1489,7 @@ public class ProgramWorkflowService {
             WorkflowTaskEntity task = loadTaskFromIginx(ts);
             if (task == null) return;
             task.setStatusMessage(message);
-            updateTaskEntityInIginx(task);
+            saveTaskToIginx(task);
         } catch (Exception e) {
             log.debug("Could not persist workflow progress: {}", e.getMessage());
         }
@@ -1639,106 +1677,26 @@ public class ProgramWorkflowService {
 
     // ===================== IGINX 持久化 =====================
 
-    /** 将工作区元数据写入 IGINX */
-    private void saveWorkspaceToIginx(Map<String, Object> record, long timestamp) {
+    /** 将工作区实体写入 IGINX */
+    private void saveWorkspaceToIginx(WorkflowWorkspaceEntity entity) {
         try {
-            WorkflowWorkspaceEntity entity = mapToWorkspaceEntity(record, timestamp);
-            List<Point> points = ConvertUtil.entityToPoints(entity, WF_WORKSPACE_PREFIX, timestamp);
+            List<Point> points = ConvertUtil.entityToPoints(entity, WF_WORKSPACE_PREFIX, entity.getTimestamp());
             iginxClient.getWriteClient().writePoints(points);
-            log.info("工作区元数据已保存到 IGINX: id={}, timestamp={}", entity.getId(), timestamp);
+            log.info("工作区元数据已保存到 IGINX: id={}, timestamp={}", entity.getId(), entity.getTimestamp());
         } catch (Exception e) {
             log.error("保存工作区元数据到 IGINX 失败", e);
         }
     }
 
-    /** 更新工作区元数据（用原始时间戳覆盖写入，IGINX 同时间戳可覆盖） */
-    private void updateWorkspaceInIginx(Map<String, Object> ws, long timestamp) {
+    /** 更新工作区实体到 IGINX（用原始时间戳覆盖写入） */
+    private void updateWorkspaceInIginx(WorkflowWorkspaceEntity entity) {
         try {
-            List<Point> points = new ArrayList<>();
-            for (Map.Entry<String, Object> entry : ws.entrySet()) {
-                String fieldName = entry.getKey();
-                Object val = entry.getValue();
-                if (val == null) continue;
-                Point point = ConvertUtil.createFieldPoint(WF_WORKSPACE_PREFIX, fieldName, val, timestamp);
-                if (point != null) points.add(point);
-            }
-            iginxClient.getWriteClient().writePoints(points.stream().filter(Objects::nonNull).collect(Collectors.toList()));
-            log.info("工作区元数据已更新到 IGINX: timestamp={}, 字段数={}", timestamp, points.size());
+            List<Point> points = ConvertUtil.entityToPoints(entity, WF_WORKSPACE_PREFIX, entity.getTimestamp());
+            iginxClient.getWriteClient().writePoints(points);
+            log.info("工作区元数据已更新到 IGINX: id={}, timestamp={}", entity.getId(), entity.getTimestamp());
         } catch (Exception e) {
             log.error("更新工作区元数据到 IGINX 失败", e);
         }
-    }
-
-    /** 更新工作区单个字段到 IGINX */
-    private void updateWorkspaceFieldInIginx(String workspaceId, String fieldName, String value) {
-        try {
-            // 查询 workspace 的 timestamp
-            Map<String, Object> ws = queryWorkspaceFromIginxById(workspaceId);
-            if (ws == null || ws.get("timestamp") == null) {
-                log.warn("更新工作区字段失败: workspaceId={} 不存在", workspaceId);
-                return;
-            }
-            long ts = longValue(ws.get("timestamp"));
-            List<Point> points = new ArrayList<>();
-            points.add(ConvertUtil.createFieldPoint(WF_WORKSPACE_PREFIX, fieldName, value, ts));
-            iginxClient.getWriteClient().writePoints(points.stream().filter(Objects::nonNull).collect(Collectors.toList()));
-        } catch (Exception e) {
-            log.error("更新工作区字段到 IGINX 失败: workspaceId={}, field={}", workspaceId, fieldName, e);
-        }
-    }
-
-    /** 将 Map 转换为 WorkflowWorkspaceEntity */
-    private WorkflowWorkspaceEntity mapToWorkspaceEntity(Map<String, Object> record, long timestamp) throws Exception {
-        WorkflowWorkspaceEntity entity = new WorkflowWorkspaceEntity();
-        entity.setTimestamp(timestamp);
-        entity.setId(value(record.get("id")));
-        entity.setProgramName(value(record.get("programName")));
-        entity.setProgramVersion(value(record.get("programVersion")));
-        entity.setProjectName(value(record.get("projectName")));
-        entity.setJobName(value(record.get("jobName")));
-        entity.setNotes(value(record.get("notes")));
-        entity.setTrainingDataFile(value(record.get("trainingDataFile")));
-        entity.setTestDataFile(value(record.get("testDataFile")));
-        entity.setStatus(value(record.get("status")));
-        entity.setWorkingDirectory(value(record.get("workingDirectory")));
-        entity.setWorkspaceDir(value(record.get("workspaceDir")));
-        entity.setProgramFileMd5(value(record.get("programFileMd5")));
-        entity.setConfigSha256(value(record.get("configSha256")));
-        entity.setCreatedAt(longValue(record.get("createdAt")));
-        entity.setUpdatedAt(longValue(record.get("updatedAt")));
-        // 初始化摘要独立字段
-        entity.setInitStatus(value(record.get("initStatus")));
-        entity.setInitMessage(value(record.get("initMessage")));
-        Object rowCount = record.get("initRowCount");
-        if (rowCount instanceof Number) entity.setInitRowCount(((Number) rowCount).intValue());
-        Object groupCount = record.get("initGroupCount");
-        if (groupCount instanceof Number) entity.setInitGroupCount(((Number) groupCount).intValue());
-        entity.setInitDllHash(value(record.get("initDllHash")));
-        Object initValid = record.get("initValid");
-        if (initValid instanceof Boolean) entity.setInitValid((Boolean) initValid);
-        Object baselineValid = record.get("initBaselineValid");
-        if (baselineValid instanceof Boolean) entity.setInitBaselineValid((Boolean) baselineValid);
-        Object missingCols = record.get("initMissingColumns");
-        if (missingCols instanceof List) {
-            entity.setInitMissingColumns(String.join(",", (List<String>) missingCols));
-        } else if (missingCols instanceof String) {
-            entity.setInitMissingColumns((String) missingCols);
-        }
-        entity.setInitStartedAt(value(record.get("initStartedAt")));
-        entity.setInitCompletedAt(value(record.get("initCompletedAt")));
-        Object uploadedDatasets = record.get("uploadedDatasets");
-        if (uploadedDatasets != null) {
-            entity.setUploadedDatasets(mapper.writeValueAsString(uploadedDatasets));
-        }
-        Object dataContract = record.get("dataContract");
-        if (dataContract != null) {
-            entity.setDataContract(mapper.writeValueAsString(dataContract));
-        }
-        Object requiredFileHashes = record.get("requiredFileHashes");
-        if (requiredFileHashes != null) {
-            entity.setRequiredFileHashes(mapper.writeValueAsString(requiredFileHashes));
-        }
-        return entity;
     }
 
     /** 将 IGINX 查询记录转换为 WorkflowWorkspaceEntity */
@@ -1902,49 +1860,14 @@ public class ProgramWorkflowService {
         }
     }
 
-    /** 将工作流任务记录写入 IGINX */
-    private void saveTaskToIginx(Map<String, Object> task, String taskId, String workspaceId) {
-        try {
-            long timestamp = longValue(task.get("createdAt"));
-            if (timestamp == 0) timestamp = System.currentTimeMillis();
-            WorkflowTaskEntity entity = mapToTaskEntity(task, taskId, workspaceId, timestamp);
-            List<Point> points = ConvertUtil.entityToPoints(entity, WF_TASK_PREFIX, timestamp);
-            iginxClient.getWriteClient().writePoints(points);
-            log.info("工作流任务记录已保存到 IGINX: taskId={}, timestamp={}", taskId, timestamp);
-        } catch (Exception e) {
-            log.error("保存工作流任务记录到 IGINX 失败", e);
-        }
-    }
-
-    /** 将 Map 转换为 WorkflowTaskEntity */
-    private WorkflowTaskEntity mapToTaskEntity(Map<String, Object> task, String taskId, String workspaceId, long timestamp) {
-        WorkflowTaskEntity entity = new WorkflowTaskEntity();
-        entity.setTimestamp(timestamp);
-        entity.setTaskId(taskId);
-        entity.setWorkspaceId(workspaceId);
-        entity.setActionKey(value(task.get("actionKey")));
-        entity.setEntryPoint(value(task.get("entryPoint")));
-        entity.setStage(value(task.get("stage")));
-        entity.setResultType(value(task.get("resultType")));
-        entity.setStatus(value(task.get("status")));
-        entity.setCreatedAt(longValue(task.get("createdAt")));
-        entity.setStartedAt(longValue(task.get("startedAt")));
-        entity.setFinishedAt(longValue(task.get("finishedAt")));
-        entity.setLogPath(value(task.get("logPath")));
-        entity.setStatusMessage(value(task.get("statusMessage")));
-        entity.setReviewStatus(value(task.get("reviewStatus")));
-        entity.setPublicationStatus(value(task.get("publicationStatus")));
-        return entity;
-    }
-
-    /** 更新任务实体到 IGINX */
-    private void updateTaskEntityInIginx(WorkflowTaskEntity entity) {
+    /** 将工作流任务实体写入 IGINX */
+    private void saveTaskToIginx(WorkflowTaskEntity entity) {
         try {
             List<Point> points = ConvertUtil.entityToPoints(entity, WF_TASK_PREFIX, entity.getTimestamp());
             iginxClient.getWriteClient().writePoints(points);
-            log.info("工作流任务已更新到 IGINX: taskId={}, status={}", entity.getTaskId(), entity.getStatus());
+            log.info("工作流任务记录已保存到 IGINX: taskId={}, timestamp={}", entity.getTaskId(), entity.getTimestamp());
         } catch (Exception e) {
-            log.error("更新工作流任务到 IGINX 失败", e);
+            log.error("保存工作流任务记录到 IGINX 失败", e);
         }
     }
 
@@ -2096,20 +2019,6 @@ public class ProgramWorkflowService {
             try { task.put("result", mapper.readValue(entity.getResult(), Object.class)); } catch (Exception ignored) {}
         }
         return task;
-    }
-
-    /** 更新任务状态到 IGINX */
-    private void updateTaskInIginx(String taskId, String workspaceId, String status, String error, long timestamp) {
-        try {
-            List<Point> points = new ArrayList<>();
-            points.add(ConvertUtil.createFieldPoint(WF_TASK_PREFIX, "status", status, timestamp));
-            if (error != null) points.add(ConvertUtil.createFieldPoint(WF_TASK_PREFIX, "error", error, timestamp));
-            points.add(ConvertUtil.createFieldPoint(WF_TASK_PREFIX, "finishedAt", System.currentTimeMillis(), timestamp));
-            iginxClient.getWriteClient().writePoints(points.stream().filter(Objects::nonNull).collect(Collectors.toList()));
-            log.info("工作流任务状态已更新到 IGINX: taskId={}, status={}", taskId, status);
-        } catch (Exception e) {
-            log.error("更新工作流任务状态到 IGINX 失败", e);
-        }
     }
 
     /** 将测量数据行批量写入 IGINX（用实体 + entityToPoints） */
