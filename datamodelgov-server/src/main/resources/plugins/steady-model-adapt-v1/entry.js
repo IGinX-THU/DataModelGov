@@ -189,6 +189,7 @@ class SteadyModelAdaptV1 {
     this.datasets = [];
     this.tasks = new Map();
     this.results = new Map();
+    this.loadingResults = new Set();
     this.artifacts = new Map();
     this.charts = [];
     this.timers = new Set();
@@ -210,6 +211,7 @@ class SteadyModelAdaptV1 {
     this.activeValidTab = 'output';
     this.predictionMode = 'pressure';
     this.resultsFilter = 'all';
+    this._activeIdentParam = null;
 
     // 项目创建状态：false 时后续功能锁定
     this.projectCreated = false;
@@ -287,8 +289,16 @@ class SteadyModelAdaptV1 {
       this.regConfig = JSON.parse(JSON.stringify(REG_DEFAULTS.transient));
       this.render();
       this.ctx.log('已恢复默认辨识配置（瞬态时刻模型）');
-    } else if (label === '生成分析报告' || label === '切换分析对象') {
+    } else if (label === '生成分析报告') {
       await this.handleStartIdentifiability();
+    } else if (label === '切换分析对象') {
+      // 纯前端切换：在 A阶段前 / D阶段后 之间切换
+      this.activeSnapshot = this.activeSnapshot === 'pre' ? 'post' : 'pre';
+      this._activeIdentParam = null;
+      this.render();
+      const label2 = this.activeSnapshot === 'pre' ? 'A 阶段前（零修正基准）' : 'D 阶段后（最终辨识）';
+      this.ctx.log(`已切换分析对象：${label2}`);
+      if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast(`已切换至 ${label2}`, 'info');
     } else if (label === '开始评估') {
       await this.handleStartUq();
     } else if (label === '开始验证') {
@@ -347,14 +357,21 @@ class SteadyModelAdaptV1 {
         ]);
         if (Array.isArray(datasets)) this.datasets = datasets;
         if (Array.isArray(tasks)) {
+          const resultPromises = [];
           tasks.forEach(t => {
             this.tasks.set(t.id, t);
-            if (t.status === TASK_STATUS.RUNNING || t.status === TASK_STATUS.READY) {
+            const phase = (t.phase || '').toLowerCase();
+            const isTerminalByPhase = phase === 'completed' || phase === 'failed';
+            if ((t.status === TASK_STATUS.RUNNING || t.status === TASK_STATUS.READY) && !isTerminalByPhase) {
               this.schedulePoll(t.id, 3000);
-            } else if (t.status === TASK_STATUS.COMPLETED && !this.results.has(t.id)) {
-              this.loadTaskResult(t.id);
+            } else if ((t.status === TASK_STATUS.COMPLETED || phase === 'completed') && !this.results.has(t.id) && !this.loadingResults.has(t.id)) {
+              resultPromises.push(this.loadTaskResult(t.id));
+            } else if (t.status === TASK_STATUS.FAILED || phase === 'failed') {
+              this.ctx.log(`任务 ${t.id} 运行失败: ` + (t.error || '未知错误'));
+              this.ctx.setStatus('error', '计算失败');
             }
           });
+          if (resultPromises.length) await Promise.all(resultPromises);
         }
         if (this.workspace.jobName) this.projectForm.projectName = this.workspace.jobName;
         if (this.workspace.programName) this.projectForm.modelPackage = this.workspace.programName;
@@ -392,6 +409,8 @@ class SteadyModelAdaptV1 {
 
   async loadTaskResult(taskId) {
     if (!this.ctx.http || !this.ctx.http.results) return;
+    if (this.loadingResults.has(taskId) || this.results.has(taskId)) return;
+    this.loadingResults.add(taskId);
     try {
       const [res, artifacts] = await Promise.all([
         this.ctx.http.results.get(taskId),
@@ -404,6 +423,8 @@ class SteadyModelAdaptV1 {
       }
     } catch (e) {
       console.warn('读取任务结果失败:', taskId, e);
+    } finally {
+      this.loadingResults.delete(taskId);
     }
   }
 
@@ -415,23 +436,25 @@ class SteadyModelAdaptV1 {
         const task = await this.ctx.http.tasks.get(taskId);
         if (task) {
           this.tasks.set(task.id, task);
-          if (task.status === TASK_STATUS.COMPLETED) {
-            this.ctx.log(`任务 ${task.id} 运行完成`);
+          const phase = (task.phase || '').toLowerCase();
+          if (task.status === TASK_STATUS.COMPLETED || phase === 'completed') {
+            this.ctx.log(task.logLine || `任务 ${task.id} 运行完成`);
             this.ctx.setStatus('ready', '任务已完成');
             await this.loadTaskResult(task.id);
-          } else if (task.status === TASK_STATUS.FAILED) {
-            this.ctx.log(`任务 ${task.id} 运行失败: ` + (task.error || '未知错误'));
+          } else if (task.status === TASK_STATUS.FAILED || phase === 'failed') {
+            this.ctx.log(task.logLine || `任务 ${task.id} 运行失败: ` + (task.error || '未知错误'));
             this.ctx.setStatus('error', '计算失败');
             if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('任务失败: ' + (task.error || ''), 'error');
           } else if (task.status === TASK_STATUS.SKIPPED) {
-            this.ctx.log(`任务 ${task.id} 已跳过: ` + (task.error || ''));
+            this.ctx.log(task.logLine || `任务 ${task.id} 已跳过: ` + (task.error || ''));
             this.ctx.setStatus('ready', '任务已跳过');
             if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('任务已跳过: ' + (task.error || ''), 'info');
           } else if (task.status === TASK_STATUS.CANCELLING) {
-            this.ctx.log(`任务 ${task.id} 取消中...`);
+            this.ctx.log(task.logLine || `任务 ${task.id} 取消中...`);
             this.ctx.setStatus('busy', '任务取消中');
             this.render();
           } else {
+            this.ctx.log(task.logLine || task.progressMessage || '任务运行中');
             this.ctx.setStatus('running', '任务运行中');
             this.schedulePoll(taskId, 5000);
             this.render();
@@ -1174,13 +1197,32 @@ class SteadyModelAdaptV1 {
   /* ================= 03 可辨识性 ================= */
   render_identifiability(container) {
     const identResult = this.latestResult('engineeringIdentifiability');
+    const summary = identResult?.resultSummary || identResult || {};
+    const routeName = this.identifyModel === 'steady' ? 'steady' : 'transient_instant';
+    const snapshotName = this.activeSnapshot === 'pre' ? 'baseline_before_A' : 'final_after_D';
+
+    // 从 conditionSummary 中找到当前 route+snapshot 的行
+    const condRows = (summary.conditionSummary?.rows || []).filter(r => r.route === routeName && r.snapshot === snapshotName);
+    const cond = condRows[0] || null;
+
+    // 从 combinedParameterSummary 中取当前 route 的参数分类
+    const combinedRows = (summary.combinedParameterSummary?.rows || []).filter(r => r.route === routeName);
+
+    // 从 directionDetail 中取当前 route+snapshot 的方向分析
+    const dirRows = (summary.directionDetail?.rows || []).filter(r => r.route === routeName && r.snapshot === snapshotName);
+
+    // 从 svdSpectrum 中取当前 route+snapshot 的 SVD 谱
+    const svdRows = (summary.svdSpectrum?.rows || []).filter(r => r.route === routeName && r.snapshot === snapshotName);
+
+    // 从 weakDirectionTable 中取当前 route+snapshot 的弱方向
+    const weakRows = (summary.weakDirectionTable?.rows || []).filter(r => r.route === routeName && r.snapshot === snapshotName);
 
     // Card 1: 分析对象
     const c1 = this.createCard(
       '分析对象',
       '同时切换和展示两个位置下（A 阶段前 / D 阶段后）的辨识结果进行综合判断。'
     );
-    const seg = el('div', 'segmented');
+    const seg1 = el('div', 'segmented');
     const b1 = button('瞬态时刻模型', 'segment' + (this.identifyModel === 'transient' ? ' active' : ''), () => {
       this.identifyModel = 'transient';
       this.render();
@@ -1189,6 +1231,9 @@ class SteadyModelAdaptV1 {
       this.identifyModel = 'steady';
       this.render();
     });
+    seg1.append(b1, b2);
+
+    const seg2 = el('div', 'segmented');
     const b3 = button('A 阶段前', 'segment' + (this.activeSnapshot === 'pre' ? ' active' : ''), () => {
       this.activeSnapshot = 'pre';
       this.render();
@@ -1197,58 +1242,273 @@ class SteadyModelAdaptV1 {
       this.activeSnapshot = 'post';
       this.render();
     });
-    seg.append(b1, b2, b3, b4);
+    seg2.append(b3, b4);
+
     const tag = el('span', 'field-status optional', '局部线性分析，不等于全局唯一性');
     const segRow = el('div', 'reg-method-row');
-    segRow.append(seg, tag);
+    segRow.append(seg1, seg2, tag);
     c1.body.append(segRow);
 
-    // Card 2: 整体信息质量
+    // Card 2: 整体信息质量（文档 7.2：主结论只显示条件数、有效奇异方向数、正则化后条件状态、观测数、参数数）
     const c2 = this.createCard(
       '整体信息质量',
-      '原始矩阵、标准化矩阵和当前正则化后的条件数必须区分显示。'
+      '显示标准化信息矩阵条件数、有效奇异方向数、TSVD/Tikhonov 作用后的有效条件状态、观测数和待分析参数数。'
     );
+    const fmtCond = v => {
+      if (v == null) return '—';
+      const n = Number(v);
+      if (n >= 1e6) return n.toLocaleString('zh-CN', { maximumFractionDigits: 1 });
+      if (n >= 100) return n.toFixed(1);
+      return n.toFixed(3);
+    };
     const qGrid = el('div', 'metrics-grid');
     qGrid.append(
-      this.createMetricBox('标准化信息矩阵条件数', identResult ? '1.42e+04' : '运行后显示'),
-      this.createMetricBox('当前正则化后条件数', identResult ? '48.5' : '运行后显示'),
-      this.createMetricBox('数值秩 / 有效秩', identResult ? '11 / 6' : '运行后显示'),
-      this.createMetricBox('最小有效奇异值', identResult ? '0.0418' : '运行后显示'),
-      this.createMetricBox('双快照变化', identResult ? '基准与辨识后结论一致' : '运行后归纳')
+      this.createMetricBox('标准化信息矩阵条件数', cond ? fmtCond(cond.information_condition) : '运行后显示'),
+      this.createMetricBox('有效奇异方向数', cond ? String(cond.effective_rank) : '运行后显示'),
+      this.createMetricBox('TSVD 作用后条件数', cond ? fmtCond(cond.tsvd_retained_information_condition) : '运行后显示'),
+      this.createMetricBox('Tikhonov 作用后条件数', cond ? fmtCond(cond.tikhonov_information_condition) : '运行后显示'),
+      this.createMetricBox('观测数', cond ? String(cond.data_residual_count) : '运行后显示'),
+      this.createMetricBox('待分析参数数', cond ? String(cond.parameter_count) : '运行后显示')
     );
     c2.body.append(qGrid);
+    // 数值证据按钮 → 弹窗显示奇异谱和弱方向（文档 7.2：奇异谱放在数值证据详情中，不作为页面主结论）
+    if (cond) {
+      const btnRow = el('div', 'btn-row');
+      btnRow.style.marginTop = '10px';
+      btnRow.append(button('数值证据', 'btn-card', () => this._showNumericalEvidenceModal(cond, svdRows, weakRows)));
+      c2.body.append(btnRow);
+    }
 
-    // Card 3: 逐参数分类与主要补偿参数
+    // Card 3: 逐参数结果（文档 7.3：参数、自身敏感性、补偿依赖、主要补偿参数、基准位置分类、辨识结果位置分类、综合判断与建议）
     const c3 = this.createCard(
-      '逐参数分类与主要补偿参数',
-      '依赖补偿参数必须列出贡献最大的补偿对象，而不只给出“依赖补偿”标签。'
+      '逐参数结果',
+      '每个参数在同一张表中只出现一次。选中依赖补偿参数后点击"查看"显示补偿详情。'
     );
-    const idHeaders = ['参数', '自身敏感性', '补偿依赖', '主要补偿参数', 'A 前类别', 'D 后类别', '证据与建议'];
-    const idRows = DEFAULT_PARAMS.map(p => [
-      p.name,
-      identResult ? (p.name.includes('eta') ? '高敏感' : '中敏感') : '运行后判定',
-      identResult ? (p.name.includes('Burner') ? '独立' : '存在弱补偿') : '运行后判定',
-      identResult ? (p.name.includes('HPC') ? 'Burner_K_dP' : 'PT_K_eta') : '按贡献排序显示',
-      identResult ? '可辨识' : '运行后显示',
-      identResult ? '可辨识' : '运行后显示',
-      button('查看', 'btn-table', () => this.ctx.log('查看证据：' + p.name))
-    ]);
+    const idHeaders = ['参数', '自身敏感性', '补偿依赖', '主要补偿参数', '基准位置分类', '辨识结果位置分类', '综合判断与建议', ''];
+    const idRows = combinedRows.map(r => {
+      const param = r.parameter;
+      const domComp = this._findDominantCompanion(dirRows, param);
+      const baseClass = r.baseline_class || '—';
+      const finalClass = r.final_class || '—';
+      // 自身敏感性：从孤立 RMS 量级判断
+      const isoRms = r.baseline_isolated_rms;
+      const sensitivity = isoRms != null
+        ? (isoRms > 1.0 ? '高敏感' : isoRms > 0.1 ? '中敏感' : '低敏感')
+        : '—';
+      // 补偿依赖程度
+      const compDep = (baseClass === '依赖其他参数补偿' || finalClass === '依赖其他参数补偿') ? '依赖补偿' : '独立';
+      // 主要补偿参数
+      const mainComp = (domComp && domComp.dominant_companion && domComp.dominant_companion !== 'none')
+        ? domComp.dominant_companion : '—';
+      // 综合判断与建议
+      let advice = '保留为独立调度项';
+      const cls = finalClass !== '—' ? finalClass : baseClass;
+      if (cls === '参数自身低敏感') advice = '可考虑固定或增加工况激励';
+      else if (cls === '依赖其他参数补偿') advice = '增强先验约束或增加激励';
+      else if (cls === '参数边界受限') advice = '放宽边界或增加工况覆盖';
+      return [
+        param,
+        sensitivity,
+        compDep,
+        mainComp,
+        baseClass,
+        finalClass,
+        advice,
+        button('查看', 'btn-table', () => this._showCompensationDetailModal(param, dirRows, combinedRows))
+      ];
+    });
+    if (idRows.length === 0) {
+      DEFAULT_PARAMS.forEach(p => {
+        idRows.push([p.name, '—', '—', '—', '运行后显示', '运行后显示', '—', button('查看', 'btn-table', () => {})]);
+      });
+    }
     c3.body.append(this.createTable(idHeaders, idRows));
 
-    // Card 4: 所选参数证据详情
-    const c4 = this.createCard(
-      '所选参数证据详情',
-      '点击表格行后在本页展开，避免与逐参数分类表重复。'
-    );
-    const eGrid = el('div', 'evidence-grid');
-    eGrid.append(
-      this.createEvidenceBox('自身敏感性证据', identResult ? '孤立扰动 ±1% 引起 Pt3/Tt45 显著响应，量级达 4.2%' : '孤立工程扰动、主导输出及响应量级动态显示'),
-      this.createEvidenceBox('补偿关系证据', identResult ? '主要补偿参数为 Burner_K_dP (相对占比 18.4%)，残差下降满足阈值' : '主要补偿参数、变化方向、步长占比和补偿后残差动态显示'),
-      this.createEvidenceBox('工程处置建议', identResult ? '保留该参数作为独立调度项，增强全工况先验约束' : '保留、加强先验、固定参数或增加工况激励的建议动态显示')
-    );
-    c4.body.append(eGrid);
+    container.append(c1.card, c2.card, c3.card);
+  }
 
-    container.append(c1.card, c2.card, c3.card, c4.card);
+  /** 从 directionDetail 中找到某参数的主要补偿参数 */
+  _findDominantCompanion(dirRows, paramName) {
+    const dirs = dirRows.filter(d => d.target_parameter === paramName);
+    if (dirs.length === 0) return null;
+    let best = dirs[0];
+    for (const d of dirs) {
+      if (d.dominant_companion && d.dominant_companion !== 'none' &&
+          Number(d.dominant_companion_step_fraction) > Number(best.dominant_companion_step_fraction || 0)) {
+        best = d;
+      }
+    }
+    return best;
+  }
+
+  /** 显示某参数的补偿详情弹窗（文档 7.3：主要补偿参数、补偿方向、相对补偿幅度、受影响输出、局部范围） */
+  _showCompensationDetailModal(paramName, dirRows, combinedRows) {
+    const paramDirs = dirRows.filter(d => d.target_parameter === paramName);
+    const domComp = this._findDominantCompanion(dirRows, paramName);
+    const combined = combinedRows.find(r => r.parameter === paramName) || {};
+    const snapshotLabel = this.activeSnapshot === 'pre' ? 'A 阶段前（零修正基准）' : 'D 阶段后（稳态辨识模型）';
+
+    const overlay = el('div', 'image-modal-overlay');
+    const dialog = el('div', 'image-modal');
+    dialog.style.maxWidth = '680px';
+    const header = el('div', 'image-modal-header');
+    const heading = el('h3', '', `${paramName} — 补偿详情`);
+    const close = el('button', 'image-modal-close', '✕');
+    close.type = 'button';
+    close.onclick = () => overlay.remove();
+    header.append(heading, close);
+
+    const body = el('div', 'image-modal-body modal-content');
+    body.style.padding = '20px 24px';
+    body.style.maxHeight = '70vh';
+    body.style.overflow = 'auto';
+
+    if (paramDirs.length === 0) {
+      body.append(el('p', '', '当前快照无该参数的方向分析数据。'));
+    } else if (domComp && domComp.dominant_companion && domComp.dominant_companion !== 'none') {
+      // 补偿详情表
+      const sec1 = el('div', '');
+      sec1.style.cssText = 'margin-bottom:16px;';
+      sec1.append(el('h4', '', '补偿关系'));
+      const dHeaders = ['主要补偿参数', '补偿方向', '相对补偿幅度', '受影响输出', '结论适用局部范围'];
+      const compDir = Number(domComp.dominant_companion_delta) >= 0 ? '同向' : '反向';
+      const dRows = [[
+        domComp.dominant_companion,
+        `${compDir}（Δ=${Number(domComp.dominant_companion_delta).toFixed(4)}）`,
+        `${Number(domComp.dominant_companion_step_fraction).toFixed(2)} 个工程步长`,
+        domComp.compensated_dominant_field || '—',
+        snapshotLabel
+      ]];
+      sec1.append(this.createTable(dHeaders, dRows));
+      body.append(sec1);
+
+      // 孤立 vs 补偿后 RMS 对比
+      const sec2 = el('div', '');
+      sec2.style.cssText = 'margin-bottom:16px;';
+      sec2.append(el('h4', '', '孤立扰动 vs 补偿后 RMS 对比'));
+      const rHeaders = ['方向', '孤立RMS', '孤立主导输出', '补偿后RMS', '补偿后主导输出'];
+      const rRows = paramDirs.map(d => [
+        d.sign > 0 ? '+1' : '-1',
+        Number(d.isolated_max_field_rms).toFixed(4),
+        d.isolated_dominant_field || '—',
+        Number(d.compensated_max_field_rms).toFixed(4),
+        d.compensated_dominant_field || '—'
+      ]);
+      sec2.append(this.createTable(rHeaders, rRows));
+      body.append(sec2);
+    } else {
+      body.append(el('p', '', `${paramName}：该参数无补偿需求或为独立参数（${combined.transition || combined.final_class || '—'}）。`));
+    }
+
+    dialog.append(header, body);
+    overlay.append(dialog);
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+    (this.ctx.shadow || this.mount).appendChild(overlay);
+  }
+
+  /** 数值证据弹窗：奇异谱 + 弱方向（文档 7.2：奇异谱和正则化作用曲线放在数值证据详情中） */
+  _showNumericalEvidenceModal(cond, svdRows, weakRows) {
+    const overlay = el('div', 'image-modal-overlay');
+    const dialog = el('div', 'image-modal');
+    dialog.style.maxWidth = '760px';
+    const header = el('div', 'image-modal-header');
+    const heading = el('h3', '', '数值证据');
+    const close = el('button', 'image-modal-close', '✕');
+    close.type = 'button';
+    close.onclick = () => overlay.remove();
+    header.append(heading, close);
+
+    const body = el('div', 'image-modal-body modal-content');
+    body.style.padding = '20px 24px';
+    body.style.maxHeight = '70vh';
+    body.style.overflow = 'auto';
+
+    // 条件数对比
+    const sec1 = el('div', '');
+    sec1.style.cssText = 'margin-bottom:16px;';
+    sec1.append(el('h4', '', '条件数对比'));
+    const fmtC = v => {
+      const n = Number(v);
+      if (n >= 1e6) return n.toLocaleString('zh-CN', { maximumFractionDigits: 1 });
+      if (n >= 100) return n.toFixed(1);
+      return n.toFixed(6);
+    };
+    const cHeaders = ['指标', '数值'];
+    const cRows = [
+      ['标准化信息矩阵条件数', fmtC(cond.information_condition)],
+      ['TSVD 保留后条件数', fmtC(cond.tsvd_retained_information_condition)],
+      ['Tikhonov 增广后条件数', fmtC(cond.tikhonov_information_condition)],
+      ['当前正则化后条件数', fmtC(cond.active_regularized_information_condition)],
+      ['正则化改善倍数', fmtC(cond.active_regularization_improvement_factor)],
+      ['数值秩 / 有效秩', `${cond.numerical_rank} / ${cond.effective_rank}`],
+      ['最小有效奇异值', Number(cond.sigma_min).toFixed(6)],
+      ['TSVD 保留/截断数', `${cond.tsvd_retained_count} / ${cond.tsvd_truncated_count}`]
+    ];
+    sec1.append(this.createTable(cHeaders, cRows));
+    body.append(sec1);
+
+    // SVD 奇异值谱
+    if (svdRows.length > 0) {
+      const sec2 = el('div', '');
+      sec2.style.cssText = 'margin-bottom:16px;';
+      sec2.append(el('h4', '', '奇异值谱'));
+      const chartHost = el('div', '');
+      chartHost.style.cssText = 'width:100%;height:260px;';
+      sec2.append(chartHost);
+      body.append(sec2);
+      setTimeout(() => {
+        try {
+          const chart = this.ctx.echarts.init(chartHost);
+          const xData = svdRows.map(r => `σ${r.singular_index}`);
+          const yData = svdRows.map(r => Number(r.singular_value));
+          const relData = svdRows.map(r => Number(r.relative_singular_value));
+          const option = {
+            tooltip: { trigger: 'axis' },
+            legend: { data: ['奇异值', '相对值'], top: 5 },
+            grid: { left: 60, right: 60, top: 40, bottom: 40 },
+            xAxis: { type: 'category', data: xData, name: '序号' },
+            yAxis: [
+              { type: 'log', name: '奇异值', scale: true },
+              { type: 'log', name: '相对值', scale: true }
+            ],
+            series: [
+              { name: '奇异值', type: 'bar', data: yData, itemStyle: { color: '#1890ff' } },
+              { name: '相对值', type: 'line', yAxisIndex: 1, data: relData, smooth: true, itemStyle: { color: '#ff7d00' } }
+            ]
+          };
+          chart.setOption(option);
+          // 滚动时重新 resize，避免 canvas 被清空后不恢复
+          body.addEventListener('scroll', () => {
+            chart.resize();
+            chart.setOption(option, true);
+          });
+          // 弹窗关闭时销毁图表
+          const origClose = close.onclick;
+          close.onclick = () => { chart.dispose(); origClose(); };
+          overlay.onclick = (e) => { if (e.target === overlay) { chart.dispose(); overlay.remove(); } };
+        } catch (e) { /* ignore */ }
+      }, 50);
+    }
+
+    // 弱方向表
+    if (weakRows.length > 0) {
+      const sec3 = el('div', '');
+      sec3.append(el('h4', '', '弱方向参数载荷'));
+      const wHeaders = ['排序', '奇异值', '参数', '载荷(缩放)', '载荷(绝对)'];
+      const wRows = weakRows.map(r => [
+        String(r.direction_rank_from_weakest),
+        Number(r.singular_value).toExponential(3),
+        r.parameter,
+        Number(r.scaled_loading).toFixed(4),
+        Number(r.absolute_loading).toFixed(4)
+      ]);
+      sec3.append(this.createTable(wHeaders, wRows));
+      body.append(sec3);
+    }
+
+    dialog.append(header, body);
+    overlay.append(dialog);
+    (this.ctx.shadow || this.mount).appendChild(overlay);
   }
 
   /* ================= 04 不确定性评估 ================= */
@@ -1879,8 +2139,9 @@ class SteadyModelAdaptV1 {
     return box;
   }
 
-  createEvidenceBox(title, desc) {
-    const box = el('div', 'evidence-box');
+  createEvidenceBox(title, desc, color) {
+    const cls = 'evidence-box' + (color ? ` ev-${color}` : '');
+    const box = el('div', cls);
     box.append(el('h4', 'evidence-title', title), el('p', 'evidence-desc', desc));
     return box;
   }

@@ -880,6 +880,84 @@ public class ProgramWorkflowService {
                 record.put("progressMessage", progress.get("message"));
             } catch (Exception ignored) {}
         }
+        String taskStatus = String.valueOf(record.getOrDefault("status", ""));
+        String phase = String.valueOf(record.getOrDefault("phase", ""));
+        if (("RUNNING".equals(taskStatus) || "READY".equals(taskStatus))
+                && !"completed".equals(phase) && !"failed".equals(phase)) {
+            Path resultFile = child(task, "result.json");
+            if (Files.isRegularFile(resultFile)) {
+                try {
+                    Map<String, Object> resultMap = readMap(resultFile);
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> value = (Map<String, Object>) resultMap.get("value");
+                    if (value != null) {
+                        String matlabStatus = String.valueOf(value.getOrDefault("status", ""));
+                        if ("SUCCEEDED".equalsIgnoreCase(matlabStatus) || "COMPLETED".equalsIgnoreCase(matlabStatus)) {
+                            record.put("phase", "completed");
+                            record.put("progressMessage", "MATLAB 运行完成");
+                        } else if ("FAILED".equalsIgnoreCase(matlabStatus)) {
+                            record.put("phase", "failed");
+                            record.put("progressMessage", value.getOrDefault("message", "MATLAB 运行失败"));
+                        }
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
+        boolean cancelled = Boolean.TRUE.equals(cancelFlags.get(taskId)) || Files.isRegularFile(child(task, "cancel.flag"));
+        if (cancelled && !"completed".equals(phase) && !"failed".equals(phase)) {
+            record.put("status", TaskStatus.CANCELLING.getValue());
+            record.put("statusLabel", TaskStatus.CANCELLING.getLabel());
+            record.put("phase", "cancelling");
+            record.put("progressMessage", "取消中；当前DLL调用结束后停止");
+        }
+        String currentStatus = String.valueOf(record.getOrDefault("status", ""));
+        String currentPhase = String.valueOf(record.getOrDefault("phase", ""));
+        boolean stillActive = TaskStatus.WORKFLOW_RUNNING.getValue().equals(currentStatus)
+                || TaskStatus.READY.getValue().equals(currentStatus)
+                || TaskStatus.CANCELLING.getValue().equals(currentStatus);
+        if (stillActive && !"completed".equals(currentPhase) && !"failed".equals(currentPhase)) {
+            Path resultFile = child(task, "result.json");
+            if (!Files.isRegularFile(resultFile) && (running == null || !running.containsKey(taskId))) {
+                record.put("status", TaskStatus.WORKFLOW_FAILED.getValue());
+                record.put("statusLabel", TaskStatus.WORKFLOW_FAILED.getLabel());
+                record.put("phase", "failed");
+                record.put("progressMessage", "MATLAB 任务线程已退出且未生成结果");
+                try {
+                    WorkflowTaskEntity taskEntity = loadTaskFromIginx(ts);
+                    if (taskEntity != null) {
+                        taskEntity.setStatus(TaskStatus.WORKFLOW_FAILED.getValue());
+                        taskEntity.setError("MATLAB 任务线程已退出且未生成结果");
+                        taskEntity.setFinishedAt(System.currentTimeMillis());
+                        saveTaskToIginx(taskEntity);
+                    }
+                    writeTaskProgress(task, "failed", "MATLAB 任务线程已退出且未生成结果");
+                } catch (Exception ignored) {}
+            }
+        }
+        Path logFile = child(task, "run.log");
+        if (Files.isRegularFile(logFile)) {
+            try {
+                long size = Files.size(logFile);
+                int tailSize = (int) Math.min(size, 2048);
+                if (tailSize > 0) {
+                    byte[] tail = new byte[tailSize];
+                    try (java.io.RandomAccessFile raf = new java.io.RandomAccessFile(logFile.toFile(), "r")) {
+                        raf.seek(size - tailSize);
+                        raf.readFully(tail);
+                    }
+                    String text = new String(tail, StandardCharsets.UTF_8);
+                    String[] lines = text.split("\\r?\\n");
+                    String last = null;
+                    for (int i = lines.length - 1; i >= 0; i--) {
+                        if (!lines[i].trim().isEmpty()) {
+                            last = lines[i].trim();
+                            break;
+                        }
+                    }
+                    if (last != null) record.put("logLine", last);
+                }
+            } catch (Exception ignored) {}
+        }
         return record;
     }
 
@@ -1034,7 +1112,8 @@ public class ProgramWorkflowService {
         Map<String, Stamp> before = Collections.emptyMap();
         try {
             before = snapshotArtifacts(workspace);
-            updateTask(manifest, TaskStatus.WORKFLOW_RUNNING.getValue(), null, System.currentTimeMillis(), false);
+            boolean cancelled = Boolean.TRUE.equals(cancelFlags.get(taskId));
+            updateTask(manifest, cancelled ? TaskStatus.CANCELLING.getValue() : TaskStatus.WORKFLOW_RUNNING.getValue(), null, System.currentTimeMillis(), false);
             String workspaceId = value(initialTask.get("workspaceId"));
             Map<String, Object> wsRecord = queryWorkspaceFromIginxById(workspaceId);
             Path workingDirectory = resolveInside(workspace.resolve("source"),

@@ -662,6 +662,21 @@ select.reg-input {
   border: 1px solid var(--line);
   border-radius: 4px;
 }
+.evidence-box.ev-blue {
+  background: #e8f4fd;
+  border-color: #b3d8f5;
+}
+.evidence-box.ev-blue .evidence-title { color: #1263b0; }
+.evidence-box.ev-orange {
+  background: #fff4e0;
+  border-color: #f0d8a8;
+}
+.evidence-box.ev-orange .evidence-title { color: #c47b1a; }
+.evidence-box.ev-green {
+  background: #e6f4ea;
+  border-color: #b4dfc4;
+}
+.evidence-box.ev-green .evidence-title { color: #1a7f37; }
 
 .evidence-title {
   font-size: 13px;
@@ -959,6 +974,33 @@ select:disabled {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* 内容型弹窗（表格、图表、文字）：不居中，正常流式布局 */
+.image-modal-body.modal-content {
+  display: block;
+  text-align: left;
+}
+.image-modal-body.modal-content h4 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-navy);
+}
+.image-modal-body.modal-content table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.image-modal-body.modal-content th,
+.image-modal-body.modal-content td {
+  border: 1px solid var(--line);
+  padding: 6px 8px;
+  text-align: left;
+}
+.image-modal-body.modal-content th {
+  background: #f4f6f8;
+  font-weight: 600;
 }
 
 .image-modal-img {
