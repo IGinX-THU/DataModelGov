@@ -715,17 +715,20 @@ class ProgramManagement extends HTMLElement {
         else delete config.template;
         try {
             const pn = this.configProjectName || this.getProjectName();
-            // 1. 先保存 setupScript，避免配置保存触发预热后读取到旧脚本
-            const scriptEl = this.shadowRoot.getElementById('cfgSetupScript');
-            if (scriptEl) {
-                const scriptUrl = window.AppConfig.getApiUrl('program', 'setup-script') + '?name=' + encodeURIComponent(this.configProgramName) + '&version=' + encodeURIComponent(this.configProgramVersion) + (pn ? '&projectName=' + encodeURIComponent(pn) : '');
-                const scriptResult = await window.AppConfig.request(scriptUrl, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'text/plain' },
-                    body: scriptEl.value
-                });
-                if (!(scriptResult && (scriptResult.success || scriptResult.code === 200))) {
-                    throw new Error(scriptResult && (scriptResult.message || scriptResult.msg) || '脚本保存失败');
+            // 1. 先保存 setupScript，避免配置保存触发预热后读取到旧脚本（仅 simulinkRealtime 需要）
+            const executionType = (config.runtime && config.runtime.executionType) || 'simulinkRealtime';
+            if (executionType === 'simulinkRealtime') {
+                const scriptEl = this.shadowRoot.getElementById('cfgSetupScript');
+                if (scriptEl && scriptEl.value) {
+                    const scriptUrl = window.AppConfig.getApiUrl('program', 'setup-script') + '?name=' + encodeURIComponent(this.configProgramName) + '&version=' + encodeURIComponent(this.configProgramVersion) + (pn ? '&projectName=' + encodeURIComponent(pn) : '');
+                    const scriptResult = await window.AppConfig.request(scriptUrl, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'text/plain' },
+                        body: scriptEl.value
+                    });
+                    if (!(scriptResult && (scriptResult.success || scriptResult.code === 200))) {
+                        throw new Error(scriptResult && (scriptResult.message || scriptResult.msg) || '脚本保存失败');
+                    }
                 }
             }
             // 2. 最后保存配置 JSON；后端在配置落库后触发预热
