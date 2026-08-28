@@ -52,7 +52,7 @@ public class OperationLogAspect {
     /**
      * 环绕通知：记录操作日志
      */
-    @Around("controllerPointcut()")
+    @Around("operationLogPointcut()")
     public Object logOperation(ProceedingJoinPoint joinPoint) throws Throwable {
         long startTime = System.currentTimeMillis();
         

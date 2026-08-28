@@ -722,8 +722,27 @@ select.reg-input {
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 8px;
   color: #a4b3be;
   font-size: 11px;
+}
+
+.chart-loading {
+  flex-direction: column;
+  gap: 10px;
+}
+
+.chart-spinner {
+  width: 24px;
+  height: 24px;
+  border: 3px solid #e1e8ed;
+  border-top-color: var(--blue, #1890ff);
+  border-radius: 50%;
+  animation: dmg-spin 0.8s linear infinite;
+}
+
+@keyframes dmg-spin {
+  to { transform: rotate(360deg); }
 }
 
 .chart-legend {
@@ -782,9 +801,9 @@ select.reg-input {
 }
 
 .progress-track {
-  height: 8px;
+  height: 28px;
   background: #e2e9ef;
-  border-radius: 4px;
+  border-radius: 14px;
   overflow: hidden;
   margin: 10px 0 8px;
 }
@@ -794,6 +813,16 @@ select.reg-input {
   background: var(--blue);
   width: 0%;
   transition: width .3s;
+}
+
+.progress-fill.indeterminate {
+  width: 30%;
+  animation: dmg-progress-slide 1.4s ease-in-out infinite;
+}
+
+@keyframes dmg-progress-slide {
+  0% { margin-left: -30%; }
+  100% { margin-left: 100%; }
 }
 
 /* ===== 提示框 ===== */

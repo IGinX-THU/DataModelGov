@@ -190,6 +190,7 @@ class SteadyModelAdaptV1 {
     this.tasks = new Map();
     this.results = new Map();
     this.loadingResults = new Set();
+    this.resultPromises = new Map();
     this.artifacts = new Map();
     this.charts = [];
     this.timers = new Set();
@@ -197,8 +198,10 @@ class SteadyModelAdaptV1 {
     this.busy = false;
     this.loading = false;
     this.loadingText = '';
+    this.workspaceLoading = false;
     this.initPolling = false;
     this.initPollingText = '';
+    this._scheduledPolls = new Set();
 
     // 状态配置
     this.identifyModel = 'transient';
@@ -207,9 +210,12 @@ class SteadyModelAdaptV1 {
     this.identifyErrorTab = 'training';
     this.activeSnapshot = 'pre';
     this.activeUqMethod = 'A';
-    this.activeUqTab = 'overall';
+    this.activeUqTab = 'training';
+    this.uqConfig = { pilotSampleCount: 64, pilotReplicateCount: 3, formalSampleCount: 256, posteriorPredictiveSampleCount: 256, figureVisible: 'off' };
     this.activeValidTab = 'output';
     this.predictionMode = 'pressure';
+    this.activePredictionModel = 'corrected';
+    this._predictionPosterior = 'none';
     this.resultsFilter = 'all';
     this._activeIdentParam = null;
 
@@ -299,12 +305,20 @@ class SteadyModelAdaptV1 {
       const label2 = this.activeSnapshot === 'pre' ? 'A 阶段前（零修正基准）' : 'D 阶段后（最终辨识）';
       this.ctx.log(`已切换分析对象：${label2}`);
       if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast(`已切换至 ${label2}`, 'info');
+    } else if (label === '评估配置') {
+      this._showUqConfigModal();
     } else if (label === '开始评估') {
       await this.handleStartUq();
+    } else if (label === '选择辨识结果') {
+      this._autoSelectValidationInputs();
     } else if (label === '开始验证') {
       await this.handleStartValidation();
+    } else if (label === '选择模型') {
+      this._showPredictionModelModal();
     } else if (label === '运行预测') {
       await this.handleStartPrediction();
+    } else if (label === '打开结果目录') {
+      this._openResultsDirectory();
     } else if (label === '导出所选结果') {
       await this.handleExportResults();
     }
@@ -333,9 +347,11 @@ class SteadyModelAdaptV1 {
   }
 
   async loadWorkspaceDetails() {
-    if (!this.workspace || !this.ctx.http) return;
-    await this.withLoading('正在加载工作区详情...', async () => {
-      try {
+    if (!this.workspace || !this.ctx.http || this.workspaceLoading) return;
+    this.workspaceLoading = true;
+    try {
+      await this.withLoading('正在加载工作区详情...', async () => {
+        try {
         // 先刷新 workspace 状态
         const ws = await this.ctx.http.workspace.request(this.workspace.id, { method: 'GET' });
         if (ws) this.workspace = ws;
@@ -357,21 +373,17 @@ class SteadyModelAdaptV1 {
         ]);
         if (Array.isArray(datasets)) this.datasets = datasets;
         if (Array.isArray(tasks)) {
-          const resultPromises = [];
           tasks.forEach(t => {
-            this.tasks.set(t.id, t);
+            const id = String(t.id);
+            this.tasks.set(id, t);
             const phase = (t.phase || '').toLowerCase();
             const isTerminalByPhase = phase === 'completed' || phase === 'failed';
             if ((t.status === TASK_STATUS.RUNNING || t.status === TASK_STATUS.READY) && !isTerminalByPhase) {
-              this.schedulePoll(t.id, 3000);
-            } else if ((t.status === TASK_STATUS.COMPLETED || phase === 'completed') && !this.results.has(t.id) && !this.loadingResults.has(t.id)) {
-              resultPromises.push(this.loadTaskResult(t.id));
+              this.schedulePoll(id, 3000);
             } else if (t.status === TASK_STATUS.FAILED || phase === 'failed') {
-              this.ctx.log(`任务 ${t.id} 运行失败: ` + (t.error || '未知错误'));
-              this.ctx.setStatus('error', '计算失败');
+              // 失败状态由 render() / _updateEnvStatus() 按当前页面输出
             }
           });
-          if (resultPromises.length) await Promise.all(resultPromises);
         }
         if (this.workspace.jobName) this.projectForm.projectName = this.workspace.jobName;
         if (this.workspace.programName) this.projectForm.modelPackage = this.workspace.programName;
@@ -405,63 +417,86 @@ class SteadyModelAdaptV1 {
         console.warn('刷新工作区详情失败:', e);
       }
     });
-  }
-
-  async loadTaskResult(taskId) {
-    if (!this.ctx.http || !this.ctx.http.results) return;
-    if (this.loadingResults.has(taskId) || this.results.has(taskId)) return;
-    this.loadingResults.add(taskId);
-    try {
-      const [res, artifacts] = await Promise.all([
-        this.ctx.http.results.get(taskId),
-        this.ctx.http.artifacts.request(taskId, { method: 'GET' }).catch(() => null)
-      ]);
-      if (res) {
-        this.results.set(taskId, res.value !== undefined ? res.value : res);
-        if (Array.isArray(artifacts)) this.artifacts.set(taskId, artifacts);
-        this.render();
-      }
-    } catch (e) {
-      console.warn('读取任务结果失败:', taskId, e);
     } finally {
-      this.loadingResults.delete(taskId);
+      this.workspaceLoading = false;
     }
   }
 
+  async loadTaskResult(taskId) {
+    if (!this.ctx.http || !this.ctx.http.results) return null;
+    const key = String(taskId);
+    if (this.results.has(key)) return this.results.get(key);
+    if (this.resultPromises.has(key)) return this.resultPromises.get(key);
+    const promise = (async () => {
+      this.loadingResults.add(key);
+      try {
+        const [res, artifacts] = await Promise.all([
+          this.ctx.http.results.get(key),
+          this.ctx.http.artifacts.request(key, { method: 'GET' }).catch(() => null)
+        ]);
+        if (res) {
+          this.results.set(key, res.value !== undefined ? res.value : res);
+          if (Array.isArray(artifacts)) this.artifacts.set(key, artifacts);
+          this.render();
+          return this.results.get(key);
+        }
+        return null;
+      } catch (e) {
+        console.warn('读取任务结果失败:', key, e);
+        return null;
+      } finally {
+        this.loadingResults.delete(key);
+        this.resultPromises.delete(key);
+      }
+    })();
+    this.resultPromises.set(key, promise);
+    return promise;
+  }
+
   schedulePoll(taskId, delay = 3000) {
-    if (this.destroyed) return;
+    const key = String(taskId);
+    if (this.destroyed || this._scheduledPolls.has(key)) return;
+    this._scheduledPolls.add(key);
     const timer = setTimeout(async () => {
       this.timers.delete(timer);
       try {
-        const task = await this.ctx.http.tasks.get(taskId);
+        const task = await this.ctx.http.tasks.get(key);
         if (task) {
-          this.tasks.set(task.id, task);
+          this.tasks.set(String(task.id), task);
           const phase = (task.phase || '').toLowerCase();
+          // 判断当前任务是否属于当前页面，只在对应页面才 render
+          const taskSection = this._sectionForActionKey(task.actionKey);
+          const shouldRender = taskSection === this.activeSection || this.activeSection === 'results';
           if (task.status === TASK_STATUS.COMPLETED || phase === 'completed') {
-            this.ctx.log(task.logLine || `任务 ${task.id} 运行完成`);
-            this.ctx.setStatus('ready', '任务已完成');
-            await this.loadTaskResult(task.id);
+            this._scheduledPolls.delete(key);
+            if (this._uqLogCallback && task.logLine) this._uqLogCallback(task.logLine, task);
+            await this.loadTaskResult(key);
+            if (shouldRender) this.render();
           } else if (task.status === TASK_STATUS.FAILED || phase === 'failed') {
-            this.ctx.log(task.logLine || `任务 ${task.id} 运行失败: ` + (task.error || '未知错误'));
-            this.ctx.setStatus('error', '计算失败');
+            this._scheduledPolls.delete(key);
+            if (this._uqLogCallback && task.logLine) this._uqLogCallback(task.logLine, task);
+            if (shouldRender) this.render();
             if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('任务失败: ' + (task.error || ''), 'error');
           } else if (task.status === TASK_STATUS.SKIPPED) {
-            this.ctx.log(task.logLine || `任务 ${task.id} 已跳过: ` + (task.error || ''));
-            this.ctx.setStatus('ready', '任务已跳过');
+            this._scheduledPolls.delete(key);
+            if (shouldRender) this.render();
             if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('任务已跳过: ' + (task.error || ''), 'info');
           } else if (task.status === TASK_STATUS.CANCELLING) {
-            this.ctx.log(task.logLine || `任务 ${task.id} 取消中...`);
-            this.ctx.setStatus('busy', '任务取消中');
-            this.render();
+            this._scheduledPolls.delete(key);
+            if (shouldRender) this.render();
           } else {
-            this.ctx.log(task.logLine || task.progressMessage || '任务运行中');
-            this.ctx.setStatus('running', '任务运行中');
-            this.schedulePoll(taskId, 5000);
-            this.render();
+            this._scheduledPolls.delete(key);
+            this.schedulePoll(key, 5000);
+            // 通知打开的日志弹窗追加新日志
+            if (this._uqLogCallback && (task.logLine || task.progressMessage)) {
+              this._uqLogCallback(task.logLine || task.progressMessage, task);
+            }
+            if (shouldRender) this.render();
           }
         }
       } catch (e) {
-        if (!this.destroyed) this.schedulePoll(taskId, 10000);
+        this._scheduledPolls.delete(key);
+        if (!this.destroyed) this.schedulePoll(key, 10000);
       }
     }, delay);
     this.timers.add(timer);
@@ -475,7 +510,128 @@ class SteadyModelAdaptV1 {
 
   latestResult(actionKey) {
     const task = this.latestTask(actionKey);
-    return task ? this.results.get(task.id) : null;
+    return task ? this.results.get(String(task.id)) : null;
+  }
+
+  /* 按需加载指定 actionKey 的最新任务结果 */
+  _ensureResult(actionKey) {
+    const task = this.latestTask(actionKey);
+    if (!task) return;
+    const id = String(task.id);
+    if (this.results.has(id) || this.resultPromises.has(id)) return;
+    // 任务未完成时不请求结果，避免后端 WARN 刷屏
+    const phase = (task.phase || '').toLowerCase();
+    if (task.status !== TASK_STATUS.COMPLETED && phase !== 'completed') return;
+    this.loadTaskResult(id);
+  }
+
+  /* 根据 actionKey 反查所属 section */
+  _sectionForActionKey(actionKey) {
+    const map = {
+      estimateTransient: 'identify',
+      estimateSteady: 'identify',
+      engineeringIdentifiability: 'identifiability',
+      uqMethodA: 'uq',
+      uqMethodB: 'uq',
+      uqRuntimeEstimateA: 'uq',
+      uqRuntimeEstimateB: 'uq',
+      testValidation: 'validation',
+      operatingPointPrediction: 'prediction'
+    };
+    return map[actionKey] || null;
+  }
+
+  /* 根据当前 section 按需加载所需结果 */
+  _ensureResultsForSection(section) {
+    const map = {
+      identify: ['estimateTransient', 'estimateSteady'],
+      identifiability: ['engineeringIdentifiability'],
+      uq: ['uqMethodA', 'uqMethodB'],
+      validation: ['testValidation'],
+      prediction: ['operatingPointPrediction'],
+      results: ['estimateTransient', 'estimateSteady', 'engineeringIdentifiability',
+                'uqMethodA', 'uqMethodB', 'testValidation', 'operatingPointPrediction']
+    };
+    (map[section] || []).forEach(action => this._ensureResult(action));
+  }
+
+  /* 按当前 section 取对应任务 */
+  _taskForSection(section) {
+    if (section === 'data') return null;
+    if (section === 'identify') return this.latestTask('estimateSteady') || this.latestTask('estimateTransient');
+    if (section === 'identifiability') return this.latestTask('engineeringIdentifiability');
+    if (section === 'uq') return this.activeUqMethod === 'B' ? this.latestTask('uqMethodB') : this.latestTask('uqMethodA');
+    if (section === 'validation') return this.latestTask('testValidation');
+    if (section === 'prediction') return this.latestTask('operatingPointPrediction');
+    if (section === 'results') {
+      const all = ['estimateTransient', 'estimateSteady', 'engineeringIdentifiability',
+                   'uqMethodA', 'uqMethodB', 'testValidation', 'operatingPointPrediction'];
+      return all.map(k => this.latestTask(k))
+        .filter(Boolean)
+        .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))[0];
+    }
+    return null;
+  }
+
+  /* 根据当前 section 刷新左下角状态 / 日志 */
+  _updateEnvStatus(section) {
+    if (!this.ctx.setStatus) return;
+    if (section === 'data' && this.initPolling) {
+      this.ctx.setStatus('busy', 'MATLAB 初始化中');
+      this.ctx.log('MATLAB 初始化进行中');
+      return;
+    }
+    const task = this._taskForSection(section);
+    if (!task) {
+      this.ctx.setStatus('ready', '计算环境就绪');
+      this.ctx.log('项目数据已加载');
+      return;
+    }
+    const status = task.status;
+    const phase = (task.phase || '').toLowerCase();
+    const logLine = task.logLine;
+    if (status === TASK_STATUS.COMPLETED || phase === 'completed') {
+      this.ctx.setStatus('ready', '任务已完成');
+      this.ctx.log(logLine || `任务 ${task.id} 已完成`);
+    } else if (status === TASK_STATUS.FAILED || phase === 'failed') {
+      this.ctx.setStatus('error', '计算失败');
+      this.ctx.log(logLine || `任务 ${task.id} 失败: ${task.error || '未知错误'}`);
+    } else if (status === TASK_STATUS.CANCELLING) {
+      this.ctx.setStatus('busy', '任务取消中');
+      this.ctx.log(logLine || `任务 ${task.id} 取消中...`);
+    } else if (status === TASK_STATUS.SKIPPED) {
+      this.ctx.setStatus('ready', '任务已跳过');
+      this.ctx.log(logLine || `任务 ${task.id} 已跳过`);
+    } else if (status === TASK_STATUS.READY) {
+      this.ctx.setStatus('busy', '排队等待中');
+      this.ctx.log('任务已提交，等待前序任务完成后自动开始');
+    } else if (status === TASK_STATUS.RUNNING) {
+      this.ctx.setStatus('running', '任务运行中');
+      this.ctx.log(logLine || task.progressMessage || '任务运行中');
+    } else {
+      this.ctx.setStatus('ready', '计算环境就绪');
+      this.ctx.log('项目数据已加载');
+    }
+  }
+
+  /* 把秒数格式化为易读的中文时长 */
+  _formatDuration(totalSeconds) {
+    if (totalSeconds == null || isNaN(totalSeconds)) return '—';
+    const s = Number(totalSeconds);
+    if (s < 60) return `${s.toFixed(1)} 秒`;
+    if (s < 3600) {
+      const m = Math.floor(s / 60);
+      const rem = s % 60;
+      return rem >= 1 ? `${m}分 ${rem.toFixed(1)}秒` : `${m}分`;
+    }
+    if (s < 86400) {
+      const h = Math.floor(s / 3600);
+      const m = Math.floor((s % 3600) / 60);
+      return m > 0 ? `${h}小时 ${m}分` : `${h}小时`;
+    }
+    const d = Math.floor(s / 86400);
+    const h = Math.floor((s % 86400) / 3600);
+    return h > 0 ? `${d}天 ${h}小时` : `${d}天`;
   }
 
   /* 带 loading 状态的异步操作包装 */
@@ -494,6 +650,8 @@ class SteadyModelAdaptV1 {
 
   render() {
     if (this.destroyed || !this.mount) return;
+    this._ensureResultsForSection(this.activeSection);
+    this._updateEnvStatus(this.activeSection);
     this.disposeCharts();
     this.mount.replaceChildren();
 
@@ -1004,7 +1162,7 @@ class SteadyModelAdaptV1 {
     statusGrid.style.marginTop = '12px';
     const totalSeconds = timing.estimationSeconds || identifyResult?.runtime_s;
     const runtimeText = totalSeconds != null
-      ? `${Number(totalSeconds).toFixed(2)} 秒`
+      ? this._formatDuration(totalSeconds)
       : (isRunning ? '正在运行...' : '待运行');
     statusGrid.append(this.createMetricBox('总计算时间', runtimeText));
 
@@ -1513,50 +1671,79 @@ class SteadyModelAdaptV1 {
 
   /* ================= 04 不确定性评估 ================= */
   render_uq(container) {
-    const uqResult = this.latestResult(this.activeUqMethod === 'B' ? 'uqMethodB' : 'uqMethodA');
-    const isRunning = this.latestTask(this.activeUqMethod === 'B' ? 'uqMethodB' : 'uqMethodA')?.status === TASK_STATUS.RUNNING;
+    const actionKey = this.activeUqMethod === 'B' ? 'uqMethodB' : 'uqMethodA';
+    const uqResult = this.latestResult(actionKey);
+    const uqTask = this.latestTask(actionKey);
+    const isRunning = uqTask?.status === TASK_STATUS.RUNNING;
 
-    // Card 1: 评估方法与运行时间预估
+    // 从结果中提取真实数据
+    const summary = uqResult?.resultSummary || uqResult || {};
+    const postDiag = summary.posteriorDiagnostic || {};
+    const validation = summary.validation || {};
+    const acceptance = summary.acceptance || postDiag.acceptance || validation.acceptance || {};
+    const summaryTable = postDiag.summaryTable;
+    const trainingTable = validation.trainingTable;
+    const testTable = validation.testTable;
+    const trainingSummary = validation.trainingSummary;
+    const testSummary = validation.testSummary;
+
+    // Card 1: 评估方法与运行时间预估（文档 8.1/8.2）
     const c1 = this.createCard(
       '评估方法与运行时间预估',
-      '耗时根据导入工况、有效数据量、后验配置和一次模型回放试算动态估计。'
+      '两种方法独立运行。界面根据当前数据规模、粒子配置和少量 DLL 试算，在执行前显示预计耗时及估算依据。'
     );
     const mGrid = el('div', 'method-grid grid-2');
-    const cardA = this.createMethodCard('A', '关键修正系数评估', '聚焦辨识阶段使用的总体调度修正与燃油偏置。', '预计耗时：待估算', this.activeUqMethod === 'A', () => {
+    const estText = uqResult
+      ? `已完成，总运行时间 ${this._formatDuration(summary.runtime_s)}`
+      : (isRunning ? '正在运行...' : '运行前预估');
+    const cardA = this.createMethodCard('A', '关键修正系数评估', '聚焦辨识阶段使用的总体调度修正与燃油偏置。', estText, this.activeUqMethod === 'A', () => {
       this.activeUqMethod = 'A';
       this.render();
     });
-    const cardB = this.createMethodCard('B', '全修正系数评估', '进一步纳入六部件局部修正和物理引气不确定性。', '预计耗时：待估算', this.activeUqMethod === 'B', () => {
+    const cardB = this.createMethodCard('B', '全修正系数评估', '进一步纳入六部件局部修正和物理引气不确定性。', estText, this.activeUqMethod === 'B', () => {
       this.activeUqMethod = 'B';
       this.render();
     });
     mGrid.append(cardA, cardB);
     c1.body.append(mGrid);
 
-    // Card 2: 参数 95% 置信区间图
+    // 运行状态指标
+    const sGrid = el('div', 'metrics-grid');
+    sGrid.style.marginTop = '12px';
+    const passedText = summary.passed === true ? '通过' : summary.passed === false ? '未通过' : '—';
+    const ess = postDiag.acceptance?.effectiveSampleSize;
+    const minEss = postDiag.acceptance?.minimumEffectiveSampleSize;
+    sGrid.append(
+      this.createMetricBox('验收状态', passedText),
+      this.createMetricBox('总运行时间', summary.runtime_s != null ? this._formatDuration(summary.runtime_s) : (isRunning ? '运行中...' : '运行后显示')),
+      this.createMetricBox('有效样本数', ess != null ? String(ess) : '—'),
+      this.createMetricBox('最低有效样本数门槛', minEss != null ? String(minEss) : '—')
+    );
+    c1.body.append(sGrid);
+
+    // Card 2: 参数 95% 置信区间图（文档 8.3：从 summaryTable 读取下限、中心和上限）
     const c2 = this.createCard(
       '参数 95% 置信区间图',
-      '沿用程序结果图的分块结构；静态设计稿隐藏数值，实际软件按结果动态显示。'
+      '统一使用"95%置信区间"名称。图中包含95%置信区间、后验中心和修正系数辨识结果。'
     );
-    const seg = el('div', 'segmented');
-    seg.append(
-      button('总体调度与燃油', 'segment' + (this.activeUqTab === 'overall' ? ' active' : ''), () => { this.activeUqTab = 'overall'; this.render(); }),
-      button('六部件局部', 'segment' + (this.activeUqTab === 'local' ? ' active' : ''), () => { this.activeUqTab = 'local'; this.render(); }),
-      button('物理引气', 'segment' + (this.activeUqTab === 'bleed' ? ' active' : ''), () => { this.activeUqTab = 'bleed'; this.render(); })
-    );
-    c2.body.append(seg);
-
-    const chartsGrid = el('div', 'charts-grid-3');
-    DEFAULT_PARAMS.forEach(p => {
-      const cell = this.createChartCell(p.name);
-      chartsGrid.append(cell.cell);
-      if (uqResult) {
-        this.renderIntervalMockChart(cell.host, p.name);
-      }
-    });
-    c2.body.append(chartsGrid);
-    c2.body.append(el('div', 'chart-legend', '— 95%置信区间    ● 后验中心    | 修正系数辨识结果'));
-    c2.body.append(el('div', 'hint-note', '不显示SMC温度推进与有效样本量曲线'));
+    if (summaryTable && summaryTable.rows && summaryTable.rows.length > 0) {
+      const pHeaders = ['参数', '单位', '辨识结果', '后验中心', '后验中位数', '后验标准差', '95%下限', '95%上限', '区间宽度'];
+      const pRows = summaryTable.rows.map(r => [
+        r.parameter || r.name || '—',
+        r.unit || '—',
+        r.deterministic_estimate != null ? Number(r.deterministic_estimate).toFixed(4) : '—',
+        r.posterior_mean != null ? Number(r.posterior_mean).toFixed(4) : '—',
+        r.posterior_median != null ? Number(r.posterior_median).toFixed(4) : '—',
+        r.posterior_std != null ? Number(r.posterior_std).toFixed(4) : '—',
+        r.q025 != null ? Number(r.q025).toFixed(4) : '—',
+        r.q975 != null ? Number(r.q975).toFixed(4) : '—',
+        r.credible_width != null ? Number(r.credible_width).toFixed(4) : '—'
+      ]);
+      c2.body.append(this.createTable(pHeaders, pRows));
+      c2.body.append(el('div', 'chart-legend', '— 95%置信区间    ● 后验中心    | 修正系数辨识结果'));
+    } else {
+      c2.body.append(el('p', 'card-subtitle', isRunning ? '正在执行后验采样...' : '运行后显示参数95%置信区间。'));
+    }
 
     // Card 3: 结果解释与验收
     const c3 = this.createCard(
@@ -1564,59 +1751,406 @@ class SteadyModelAdaptV1 {
       '用通俗说明回答工程人员最关心的问题。'
     );
     const list = el('ul', 'check-list');
-    [
-      '可信范围：每个参数的可信区间有多宽',
-      '补偿关系：哪些参数必须联合解释',
-      '多解可能：是否存在不同参数组合解释同一数据',
-      '预测影响：参数不确定性会使输出波动多大',
-      '统计状态：结果是否满足正式使用门槛'
-    ].forEach(t => list.append(el('li', 'check-item', t)));
+    list.style.cssText = 'list-style:none;padding:0;margin:0;';
+    // 每项：加粗标题 + 换行解释
+    const items = [];
+    // 可信范围
+    let credibleDesc = '每个参数的可信区间有多宽';
+    if (summaryTable && summaryTable.rows && summaryTable.rows.length > 0) {
+      const widths = summaryTable.rows.map(r => Number(r.credible_width || 0));
+      const maxW = Math.max(...widths);
+      const minW = Math.min(...widths);
+      const wideParam = summaryTable.rows.find(r => Number(r.credible_width) === maxW);
+      credibleDesc = `最宽区间为 ${wideParam?.parameter || '—'}（宽度 ${maxW.toFixed(4)}），最窄为 ${minW.toFixed(4)}`;
+    }
+    items.push(['可信范围', credibleDesc]);
+    // 补偿关系
+    let compDesc = '哪些参数必须联合解释';
+    if (postDiag.engineeringCompensationTable && postDiag.engineeringCompensationTable.rows) {
+      const compCount = postDiag.engineeringCompensationTable.rows.length;
+      if (compCount > 0) compDesc = `检测到 ${compCount} 组补偿关系，需联合解释`;
+    }
+    items.push(['补偿关系', compDesc]);
+    // 多解可能
+    let multiDesc = '是否存在不同参数组合解释同一数据';
+    if (summaryTable && summaryTable.rows) {
+      const boundaryParams = summaryTable.rows.filter(r => Number(r.lower_boundary_mass || 0) > 0.1 || Number(r.upper_boundary_mass || 0) > 0.1);
+      if (boundaryParams.length > 0) multiDesc = `${boundaryParams.map(r => r.parameter).join('、')} 后验靠近先验边界，存在多解可能`;
+    }
+    items.push(['多解可能', multiDesc]);
+    // 预测影响
+    let predDesc = '参数不确定性会使输出波动多大';
+    if (validation.trainingSummary && validation.trainingSummary.rows) {
+      predDesc = '参数不确定性已传播到输出区间，详见运行日志中的通道覆盖率';
+    }
+    items.push(['预测影响', predDesc]);
+    // 统计状态
+    let statDesc = '结果是否满足正式使用门槛';
+    if (summary.passed === true) {
+      statDesc = '结果满足正式使用门槛';
+    } else if (summary.passed === false) {
+      statDesc = '结果未满足正式使用门槛，请检查验收明细';
+    }
+    items.push(['统计状态', statDesc]);
+
+    items.forEach(([title, desc]) => {
+      const li = el('li', '');
+      li.style.cssText = 'display:flex;gap:10px;margin-bottom:14px;align-items:flex-start;';
+      // 大圆点带对号
+      const dot = el('span', '');
+      dot.style.cssText = 'flex-shrink:0;width:20px;height:20px;border-radius:50%;background:var(--blue,#1890ff);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:12px;line-height:1;margin-top:2px;';
+      dot.textContent = '✓';
+      li.append(dot);
+      const textWrap = el('div', '');
+      textWrap.style.flex = '1';
+      const titleEl = el('div', '');
+      titleEl.style.cssText = 'font-weight:700;font-size:13px;color:var(--text);';
+      titleEl.textContent = title;
+      const descEl = el('div', '');
+      descEl.style.cssText = 'font-size:12px;color:var(--muted);margin-top:2px;';
+      descEl.textContent = desc;
+      textWrap.append(titleEl, descEl);
+      li.append(textWrap);
+      list.append(li);
+    });
     c3.body.append(list);
 
-    // Card 4: 运行进度与时间
+    // 底部提示
+    const tip = el('p', 'card-subtitle', '不显示 SMC 温度推进与有效样本量曲线');
+    tip.style.cssText = 'margin-top:12px;font-size:11px;color:var(--muted);border-top:1px solid var(--line);padding-top:10px;';
+    c3.body.append(tip);
+
+    // Card 2 和 Card 3 并排显示
+    const c2c3Row = el('div', '');
+    c2c3Row.style.cssText = 'display:flex;gap:16px;align-items:stretch;';
+    c2.card.style.flex = '3';
+    c3.card.style.flex = '2';
+    c2c3Row.append(c2.card, c3.card);
+
+    // Card 4: 运行进度与验收（文档 8.2）
     const c4 = this.createCard(
-      '运行进度与时间',
+      '运行进度与验收',
       '正式任务中显示总体进度、当前步骤、已用时间、预计剩余和完成后的总运行时间。'
     );
     const progressTrack = el('div', 'progress-track');
     const fill = el('div', 'progress-fill');
-    fill.style.width = uqResult ? '100%' : (isRunning ? '45%' : '0%');
+    // 根据 progressMessage 中的 beta 值 + replicate 次数估算进度
+    // UQ 10 步：步骤1-5=0-25%, 步骤6-8 SMC采样=25-70% (按 replicate 均分), 步骤9诊断=70-90%, 步骤10预测=90-100%
+    const phasePct = { a: 25, b: 70, c: 90, d: 100, completed: 100 };
+    const phase = ((uqTask?.phase || '').toLowerCase()).trim();
+    const totalReplicates = this.uqConfig?.pilotReplicateCount || 3;
+    let pct = 0;
+    if (uqResult) {
+      pct = 100;
+    } else if (isRunning) {
+      const msg = uqTask?.progressMessage || '';
+      const betaMatch = msg.match(/beta=([0-9.]+)/);
+      if (betaMatch) {
+        // 有 beta 值说明在 SMC 采样阶段
+        const beta = parseFloat(betaMatch[1]);
+        // 检测当前是第几个 replicate：beta=1.0 出现的次数 = 已完成的 replicate 数
+        // logLine 只存最后一行，无法回溯历史，用 stage=1 且 beta 很小来判断新 replicate 开始
+        const stageMatch = msg.match(/stage=\s*(\d+)/);
+        const stage = stageMatch ? parseInt(stageMatch[1], 10) : 1;
+        // 如果 stage=1 且 beta 很小，可能是新 replicate 开始
+        // 用 _lastBeta 跟踪上一次的 beta，如果 beta 从大跳回小说明进入了新 replicate
+        if (this._lastBeta && beta < this._lastBeta * 0.5 && stage === 1) {
+          this._smcReplicate = (this._smcReplicate || 0) + 1;
+        }
+        this._lastBeta = beta;
+        const currentReplicate = Math.min(this._smcReplicate || 0, totalReplicates - 1);
+        // SMC 采样总区间 25%→70%，按 replicate 均分
+        const smcRange = 45; // 25%→70%
+        const perReplicate = smcRange / totalReplicates;
+        pct = 25 + perReplicate * currentReplicate + perReplicate * Math.min(beta, 1);
+      } else if (phasePct[phase] != null) {
+        pct = phasePct[phase];
+      } else {
+        // 根据日志步骤标记估算
+        const stepMatch = msg.match(/\[2\.4UQ\.(\d+)\]/);
+        if (stepMatch) {
+          pct = Math.min(parseInt(stepMatch[1], 10) * 5, 25);
+        } else {
+          pct = 5;
+        }
+      }
+    }
+    fill.style.width = pct + '%';
     progressTrack.append(fill);
-    c4.body.append(progressTrack);
-    c4.body.append(el('p', 'card-subtitle', uqResult ? '后验抽样与区间预测完成' : (isRunning ? '正在执行 MCMC 采样与模型回放...' : '等待开始 / 运行后显示当前步骤')));
 
+    // 已用时间：从 task.startedAt 计算
+    let elapsedText = '—';
+    if (uqResult && summary.runtime_s != null) {
+      elapsedText = this._formatDuration(summary.runtime_s);
+    } else if (isRunning && uqTask?.startedAt) {
+      const elapsed = (Date.now() - Number(uqTask.startedAt)) / 1000;
+      elapsedText = this._formatDuration(elapsed);
+    }
+
+    // 预计剩余：根据进度百分比估算
+    let remainingText = '—';
+    if (uqResult) {
+      remainingText = this._formatDuration(0);
+    } else if (isRunning) {
+      if (uqTask?.startedAt && pct > 5) {
+        const elapsed = (Date.now() - Number(uqTask.startedAt)) / 1000;
+        const total = elapsed / (pct / 100);
+        remainingText = this._formatDuration(Math.max(0, total - elapsed));
+      } else {
+        remainingText = '估算中...';
+      }
+    }
+
+    // 第一行：进度条 + 时间指标
+    const row1 = el('div', '');
+    row1.style.cssText = 'display:flex;align-items:center;gap:16px;';
+    progressTrack.style.flex = '1';
+    row1.append(progressTrack);
     const pGrid = el('div', 'metrics-grid');
-    pGrid.style.marginTop = '12px';
+    pGrid.style.marginTop = '0';
+    pGrid.style.display = 'flex';
+    pGrid.style.gridTemplateColumns = 'none';
+    pGrid.style.flexShrink = '0';
     pGrid.append(
-      this.createMetricBox('已用时间', uqResult ? `${Number(uqResult.runtime_s || 12.5).toFixed(1)} s` : (isRunning ? '运行中...' : '运行后显示')),
-      this.createMetricBox('预计剩余', isRunning ? '约 5 秒' : '运行后显示'),
-      this.createMetricBox('总运行时间', uqResult ? `${Number(uqResult.runtime_s || 12.5).toFixed(1)} 秒` : '完成后显示')
+      this.createMetricBox('已用时间', elapsedText),
+      this.createMetricBox('预计剩余', remainingText),
+      this.createMetricBox('总运行时间', summary.runtime_s != null ? this._formatDuration(summary.runtime_s) : '完成后显示')
     );
-    c4.body.append(pGrid);
-    const btnRow = el('div', 'btn-row');
-    btnRow.append(button('查看运行日志与验收明细', 'btn-card', () => this.ctx.log('查看 UQ 运行日志')));
-    c4.body.append(btnRow);
+    row1.append(pGrid);
+    c4.body.append(row1);
 
-    container.append(c1.card, c2.card, c3.card, c4.card);
+    // 第二行：当前步骤 + 查看运行日志按钮
+    const currentStep = uqTask?.progressMessage || uqTask?.logLine || '';
+    let stepText;
+    if (uqResult) {
+      stepText = '后验抽样与区间预测完成';
+    } else if (isRunning) {
+      // 解析 SMC stage/beta 显示更友好的进度
+      const stageMatch = currentStep.match(/SMC stage=(\d+)/);
+      const betaMatch = currentStep.match(/beta=([0-9.]+)/);
+      const essMatch = currentStep.match(/ESS=([0-9.]+)/);
+      if (stageMatch && betaMatch) {
+        const repNum = (this._smcReplicate || 0) + 1;
+        stepText = `SMC 采样（第 ${repNum}/${totalReplicates} 次）：stage=${stageMatch[1]}, β=${betaMatch[1]}, ESS=${essMatch ? essMatch[1] : '—'}`;
+      } else if (currentStep) {
+        stepText = currentStep;
+      } else {
+        stepText = '任务运行中...';
+      }
+    } else {
+      stepText = '等待开始 / 运行后显示当前步骤';
+    }
+    const stepP = el('p', 'card-subtitle', stepText);
+    if (isRunning && currentStep) {
+      stepP.style.cssText = 'word-break:break-all;font-size:11px;color:var(--muted);max-height:60px;overflow:hidden;';
+    }
+    const row2 = el('div', '');
+    row2.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:8px;';
+    stepP.style.flex = '1';
+    row2.append(stepP);
+    const logBtn = button('查看运行日志与验收明细', 'btn-card', () => this._showUqLogModal(uqTask));
+    logBtn.style.whiteSpace = 'nowrap';
+    logBtn.style.flexShrink = '0';
+    row2.append(logBtn);
+    c4.body.append(row2);
+
+    // 验收子项
+    const accItems = [];
+    if (postDiag.acceptance) {
+      if (postDiag.acceptance.endpointMcsePassed != null) accItems.push(['端点 MCSE 检验', postDiag.acceptance.endpointMcsePassed ? '通过' : '未通过']);
+      if (postDiag.acceptance.effectiveSampleSizePassed != null) accItems.push(['有效样本数检验', postDiag.acceptance.effectiveSampleSizePassed ? '通过' : '未通过']);
+      if (postDiag.acceptance.likelihoodCalibrationPassed != null) accItems.push(['似然标定检验', postDiag.acceptance.likelihoodCalibrationPassed ? '通过' : '未通过']);
+    }
+    if (validation.acceptance) {
+      if (validation.acceptance.testReplayValidityPassed != null) accItems.push(['测试回放有效性', validation.acceptance.testReplayValidityPassed ? '通过' : '未通过']);
+      if (validation.acceptance.predictionIntervalsOrdered != null) accItems.push(['预测区间有序性', validation.acceptance.predictionIntervalsOrdered ? '通过' : '未通过']);
+    }
+    if (accItems.length > 0) {
+      const accGrid = el('div', 'metrics-grid');
+      accGrid.style.marginTop = '12px';
+      accItems.forEach(([label, val]) => accGrid.append(this.createMetricBox(label, val)));
+      c4.body.append(accGrid);
+    }
+
+    container.append(c1.card, c2c3Row, c4.card);
+
+    // 自动触发运行时间预估（仅在未运行、无结果、无预估结果时触发一次）
+    if (!uqResult && !isRunning) {
+      const estKey = this.activeUqMethod === 'B' ? 'uqRuntimeEstimateB' : 'uqRuntimeEstimateA';
+      const estTask = this.latestTask(estKey);
+      const estResult = this.latestResult(estKey);
+      if (!estResult && !estTask && !this._uqEstimateTriggered) {
+        this._uqEstimateTriggered = true;
+        this._startEstimate(estKey);
+      }
+    }
+  }
+
+  /** 提交运行时间预估任务 */
+  async _startEstimate(actionKey) {
+    try {
+      const task = await this.ctx.http.tasks.request('', {
+        method: 'POST',
+        body: {
+          actionKey,
+          inputs: { userCfg: { ...this.uqConfig } }
+        }
+      });
+      if (task && task.id) {
+        this.tasks.set(String(task.id), task);
+        this.schedulePoll(String(task.id), 3000);
+        this.render();
+      }
+    } catch (e) {
+      this._uqEstimateTriggered = false;
+    }
+  }
+  async _showUqLogModal(uqTask) {
+    const overlay = el('div', 'image-modal-overlay');
+    const dialog = el('div', 'image-modal');
+    dialog.style.maxWidth = '820px';
+    const header = el('div', 'image-modal-header');
+    const heading = el('h3', '', '运行日志与验收明细');
+    const close = el('button', 'image-modal-close', '✕');
+    close.type = 'button';
+    const statusTag = el('span', '');
+    statusTag.style.cssText = 'font-size:11px;color:var(--muted);margin-left:8px;';
+    const titleWrap = el('div', '');
+    titleWrap.style.cssText = 'display:flex;align-items:center;gap:8px;';
+    titleWrap.append(heading, statusTag);
+    header.append(titleWrap, close);
+
+    const body = el('div', 'image-modal-body modal-content');
+    body.style.padding = '16px 20px';
+    body.style.maxHeight = '75vh';
+    body.style.overflow = 'auto';
+
+    body.append(el('p', '', '正在加载日志...'));
+    dialog.append(header, body);
+    overlay.append(dialog);
+    (this.ctx.shadow || this.mount).appendChild(overlay);
+
+    const taskId = uqTask?.id;
+    if (!taskId) {
+      body.textContent = '';
+      body.append(el('p', '', '暂无任务。'));
+      close.onclick = () => overlay.remove();
+      return;
+    }
+    const name = this.program?.name || '';
+    const version = this.program?.version || '';
+    const projectName = this.workspace?.projectName || this.projectForm?.projectName || '';
+
+    // 初始加载一次完整日志
+    let pre = null;
+    let autoScroll = true;
+    try {
+      const log = await this.ctx.http.tasks.request(`${taskId}/log`, {
+        method: 'GET',
+        query: { name, version, projectName }
+      });
+      const text = typeof log === 'string' ? log : (log?.data?.content || log?.content || log?.text || JSON.stringify(log, null, 2));
+      body.textContent = '';
+      pre = el('pre', 'log-text', text);
+      pre.style.cssText = 'width:100%;margin:0;padding:12px 14px;background:#f8fafb;border:1px solid var(--line);border-radius:3px;font-size:11px;line-height:1.6;white-space:pre-wrap;word-break:break-all;font-family:Consolas,"Courier New",monospace;color:var(--text);max-height:65vh;overflow:auto;';
+      pre.addEventListener('scroll', () => {
+        autoScroll = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 5;
+      });
+      body.append(pre);
+    } catch (e) {
+      body.textContent = '';
+      body.append(el('p', '', '加载日志失败: ' + (e.message || e)));
+    }
+
+    // 设置初始状态
+    const initPhase = (uqTask?.phase || '').toLowerCase();
+    if (uqTask?.status === TASK_STATUS.COMPLETED || initPhase === 'completed') {
+      statusTag.textContent = '已完成';
+      statusTag.style.color = 'var(--green, #1a7f37)';
+    } else if (uqTask?.status === TASK_STATUS.FAILED || initPhase === 'failed') {
+      statusTag.textContent = '已失败';
+      statusTag.style.color = '#d1242f';
+    } else {
+      statusTag.textContent = '运行中';
+      statusTag.style.color = 'var(--blue, #1890ff)';
+    }
+
+    // 注册回调：schedulePoll 轮询到新日志时追加到弹窗
+    this._uqLogCallback = (logLine, task) => {
+      if (!pre) return;
+      // 追加新行
+      const wasAtBottom = autoScroll;
+      pre.textContent += (pre.textContent.endsWith('\n') || !pre.textContent ? '' : '\n') + logLine;
+      if (wasAtBottom) pre.scrollTop = pre.scrollHeight;
+      // 更新状态标签
+      const phase = (task?.phase || '').toLowerCase();
+      if (task?.status === TASK_STATUS.COMPLETED || phase === 'completed') {
+        statusTag.textContent = '已完成';
+        statusTag.style.color = 'var(--green, #1a7f37)';
+      } else if (task?.status === TASK_STATUS.FAILED || phase === 'failed') {
+        statusTag.textContent = '已失败';
+        statusTag.style.color = '#d1242f';
+      } else {
+        statusTag.textContent = '运行中';
+        statusTag.style.color = 'var(--blue, #1890ff)';
+      }
+    };
+
+    const cleanup = () => {
+      this._uqLogCallback = null;
+      overlay.remove();
+    };
+    close.onclick = cleanup;
+    overlay.onclick = (e) => { if (e.target === overlay) cleanup(); };
   }
 
   /* ================= 05 测试验证 ================= */
   render_validation(container) {
     const valResult = this.latestResult('testValidation');
+    const valTask = this.latestTask('testValidation');
+
+    // 文档第 9 节：测试数据不存在时显示"未提供测试集，本步骤已跳过"，不报程序错误
+    const hasTestData = !!(this.workspace?.testDataName);
+    const valSkipped = valTask?.status === TASK_STATUS.SKIPPED;
 
     // Card 1: 验证输入与边界
     const c1 = this.createCard(
       '验证输入与边界',
       '测试数据不参与辨识；本页只做稳态模型验证。'
     );
+    const identTask = this.latestTask('estimateTransient') || this.latestTask('estimateSteady');
+    const identResult = identTask ? this.results.get(String(identTask.id)) : null;
+    const modelName = identResult?.resultSummary?.steadyModelName || '稳态辨识模型（最新）';
+    const testDataName = this.workspace?.testDataName || '';
+
+    if (!hasTestData || valSkipped) {
+      // 测试数据不存在或任务已跳过
+      const skipNotice = el('div', 'notice-box', '未提供测试集，本步骤已跳过');
+      skipNotice.style.cssText = 'background:#f5f5f5;border-color:#d9d9d9;color:#666;';
+      c1.body.append(skipNotice);
+      container.append(c1.card);
+      return;
+    }
+
     const form = el('div', 'form-grid-3');
     form.append(
-      this.createField('稳态辨识模型', select(['steady_model_adapt_v2_transient_instant_latest.mat', '选择辨识结果'])),
-      this.createField('测试数据', select(['steady_bench_2p4_test_means.xlsx', '选择测试数据']))
+      this.createField('稳态辨识模型', select([
+        { value: '', label: '选择辨识结果' },
+        { value: modelName, label: modelName }
+      ], this._validationModel || '')),
+      this.createField('测试数据', select([
+        { value: '', label: '选择测试数据' },
+        { value: testDataName, label: testDataName }
+      ], this._validationTestData || ''))
     );
     c1.body.append(form);
     const notice = el('div', 'notice-box success', '✓ 稳态模型验证 · 数据隔离检查');
     c1.body.append(notice);
+    if (valTask?.status === TASK_STATUS.READY) {
+      const queueTip = el('div', 'notice-box', '⏳ 任务已提交，正在排队等待前序任务完成...');
+      queueTip.style.cssText = 'background:#fff8e1;border-color:#ffe082;color:#8d6e63;';
+      c1.body.append(queueTip);
+    }
 
     // Card 2: 验证结果分页
     const c2 = this.createCard(
@@ -1635,9 +2169,12 @@ class SteadyModelAdaptV1 {
       tag.style.margin = '0 0 12px';
       c2.body.append(tag);
 
+      const valTask = this.latestTask('testValidation');
+      const valRunning = valTask?.status === TASK_STATUS.RUNNING;
+      const valQueued = valTask?.status === TASK_STATUS.READY;
       const chartsGrid = el('div', 'charts-grid-3');
       OUTPUT_VARS.forEach(o => {
-        const cell = this.createChartCell(o);
+        const cell = this.createChartCell(o, valRunning);
         chartsGrid.append(cell.cell);
         if (valResult) {
           this.renderValidationComparisonChart(cell.host, o);
@@ -1694,6 +2231,17 @@ class SteadyModelAdaptV1 {
     );
     segRow.append(seg, el('span', 'field-status optional', '单工况 · 稳态模型'));
     c1.body.append(segRow);
+    const modelLabel = this.activePredictionModel === 'baseline' ? '零修正基准模型（A阶段前）' : '稳态辨识模型（D阶段后）';
+    const postLabel = !this._predictionPosterior || this._predictionPosterior === 'none'
+      ? '仅确定性预测' : `方法${this._predictionPosterior}后验区间`;
+    const modelTag = el('div', 'reg-method-row');
+    modelTag.append(
+      el('span', 'field-status', '当前模型：'),
+      el('span', 'field-status ok', modelLabel),
+      el('span', 'field-status optional', postLabel)
+    );
+    modelTag.style.margin = '8px 0';
+    c1.body.append(modelTag);
     const hint = this.predictionMode === 'pressure'
       ? '不经过总距角与控制闭环；燃油输入为模型实际输入，不应用燃油测量值。'
       : '由 DLL 根据高度和静温重构环境压力，无需同时输入高度和 Pamb。';
@@ -1752,40 +2300,70 @@ class SteadyModelAdaptV1 {
     }
     c2.body.append(form);
 
-    // Card 3: 预测输出与 95% 置信区间
+    // Card 3: 确定性预测输出（文档第 10 节：首先显示确定性输出、共同工作最大残差和收敛状态）
     const c3 = this.createCard(
-      '预测输出与 95% 置信区间',
-      '确定性结果、后验中心、模型输出区间和可观测量区间均在运行后读取。'
+      '确定性预测输出',
+      '稳态辨识模型的确定性输出、共同工作最大残差和收敛状态。'
     );
-    const pHeaders = ['输出', '稳态辨识模型', '区间下界', '区间上界', '状态'];
-    const pRows = OUTPUT_VARS.map(o => [
-      o,
-      predResult ? (o === 'Pt3' ? '825400 Pa' : o === 'Tt3' ? '582.4 K' : o === 'Tt45' ? '978.2 K' : '1.000') : '运行后显示',
-      predResult ? (o === 'Pt3' ? '818200 Pa' : o === 'Tt3' ? '578.1 K' : o === 'Tt45' ? '971.0 K' : '0.992') : '运行后显示',
-      predResult ? (o === 'Pt3' ? '832600 Pa' : o === 'Tt3' ? '586.7 K' : o === 'Tt45' ? '985.4 K' : '1.008') : '运行后显示',
-      predResult ? '预测完成' : '待运行'
-    ]);
-    c3.body.append(this.createTable(pHeaders, pRows));
+    const predSummary = predResult?.resultSummary || predResult || {};
+    const predTable = predSummary.predictionTable;
+    const predRow0 = (predTable && Array.isArray(predTable.rows) && predTable.rows.length > 0) ? predTable.rows[0] : null;
+    const hasPosterior = predSummary.posteriorPredictionPerformed || (predSummary.posteriorPrediction && predSummary.posteriorPrediction.intervalTable);
+    const intervalTable = hasPosterior ? (predSummary.posteriorPrediction?.intervalTable) : null;
+    const intervalRows = (intervalTable && Array.isArray(intervalTable.rows)) ? intervalTable.rows : [];
 
-    // Card 4: 区间图与运行验收
-    const c4 = this.createCard(
-      '区间图与运行验收',
-      '单工况正式后验可选择关键修正系数评估或全修正系数评估后验。'
+    // 确定性输出表
+    const detHeaders = ['输出', '稳态辨识模型输出', '单位'];
+    const detRows = OUTPUT_VARS.map(o => {
+      const colMap = { 'Np': 'corrected_Np_rpm', 'Ng': 'corrected_Ng_rpm', 'Pt3': 'corrected_Pt3_Pa', 'Tt3': 'corrected_Tt3_K', 'Tt45': 'corrected_Tt45_K', 'Pt45': 'corrected_Pt45_Pa' };
+      const col = colMap[o];
+      const val = predRow0 ? predRow0[col] : null;
+      return [o, val != null ? Number(val).toFixed(2) : '运行后显示', OUTPUT_UNITS[o] || '—'];
+    });
+    c3.body.append(this.createTable(detHeaders, detRows));
+
+    // 共同工作最大残差和收敛状态
+    const maxResidual = predRow0 ? predRow0.max_model_residual : null;
+    const convergeTag = predRow0 ? predRow0.converge_tag : null;
+    const valid = predRow0 ? predRow0.valid : null;
+    const statusGrid = el('div', 'metric-grid-3');
+    statusGrid.append(
+      this.createMetricBox('共同工作最大残差', maxResidual != null ? Number(maxResidual).toExponential(3) : '待运行'),
+      this.createMetricBox('收敛状态', valid != null ? (valid ? '收敛' : '未收敛') : '待运行'),
+      this.createMetricBox('预测有效', predSummary.passed != null ? (predSummary.passed ? '是' : '否') : '待运行')
     );
+    c3.body.append(statusGrid);
+
+    // Card 4: 后验区间图（文档第 10 节：选择后验后同一入口计算95%置信区间）
+    const c4 = this.createCard(
+      '后验区间与运行验收',
+      hasPosterior ? '模型输出区间、可观测量区间、后验中心和稳态辨识模型确定性输出。' : '选择方法 A 或 B 后验后，运行预测可显示 95% 置信区间。'
+    );
+    const predTask = this.latestTask('operatingPointPrediction');
+    const predRunning = predTask?.status === TASK_STATUS.RUNNING;
     const chartsGrid = el('div', 'charts-grid-3');
     OUTPUT_VARS.forEach(o => {
-      const cell = this.createChartCell(o);
+      const cell = this.createChartCell(o, predRunning);
       chartsGrid.append(cell.cell);
-      if (predResult) {
-        this.renderPredictionIntervalChart(cell.host, o);
+      if (hasPosterior) {
+        const row = intervalRows.find(r => r.output_name === o);
+        if (row) {
+          this.renderPredictionIntervalChart(cell.host, o, row);
+        }
       }
     });
     c4.body.append(chartsGrid);
-    c4.body.append(el('div', 'chart-legend', '— 95%置信区间    ● 后验中心    | 稳态辨识模型'));
-    const acceptRow = el('div', 'reg-method-row');
-    acceptRow.append(el('span', 'field-status ok', '收敛与有效后验质量验收'));
-    acceptRow.style.justifyContent = 'flex-end';
-    c4.body.append(acceptRow);
+    if (hasPosterior) {
+      c4.body.append(el('div', 'chart-legend', '■ 模型输出区间    □ 可观测量区间    ● 后验中心    | 稳态辨识模型确定性输出'));
+      const postInfo = predSummary.posteriorPrediction || {};
+      const acceptRow = el('div', 'reg-method-row');
+      acceptRow.append(
+        el('span', 'field-status ok', `后验方法：${postInfo.method || '—'}`),
+        el('span', 'field-status optional', `有效后验质量：${postInfo.validPosteriorMass != null ? Number(postInfo.validPosteriorMass).toFixed(3) : '—'}`),
+        el('span', postInfo.passed ? 'field-status ok' : 'field-status', `区间验收：${postInfo.passed ? '通过' : '未通过'}`)
+      );
+      c4.body.append(acceptRow);
+    }
 
     container.append(c1.card, c2.card, c3.card, c4.card);
   }
@@ -1823,23 +2401,24 @@ class SteadyModelAdaptV1 {
     );
     const rHeaders = ['任务类型', '方法或路径', '状态', '主要产物', '操作'];
     const rRows = [
-      ['参数辨识', '瞬态时刻模型路径', this.latestTask('estimateTransient')?.status || '待运行', '参数表、调度曲线、误差标准差', button('打开', 'btn-table', () => this.ctx.setSection('identify'))],
-      ['可辨识性', '双位置综合分析', this.latestTask('engineeringIdentifiability')?.status || '待运行', '秩分析、补偿依赖、分析报告', button('打开', 'btn-table', () => this.ctx.setSection('identifiability'))],
-      ['关键修正系数评估', '方法 A', this.latestTask('uqMethodA')?.status || '待运行', '参数后验、95%置信区间', button('打开', 'btn-table', () => this.ctx.setSection('uq'))],
-      ['全修正系数评估', '方法 B', this.latestTask('uqMethodB')?.status || '待运行', '分块后验、局部引气区间', button('打开', 'btn-table', () => this.ctx.setSection('uq'))],
-      ['测试验证', '稳态模型回放', this.latestTask('testValidation')?.status || '待运行', '输出对比图、RMSE改善率', button('打开', 'btn-table', () => this.ctx.setSection('validation'))],
-      ['工况预测', '单工况直接预测', this.latestTask('operatingPointPrediction')?.status || '待运行', '确定性预测中心、后验区间', button('打开', 'btn-table', () => this.ctx.setSection('prediction'))]
+      ['参数辨识', '瞬态时刻模型路径', this._statusLabel(this.latestTask('estimateTransient')?.status) || '待运行', '参数表、调度曲线、误差标准差', button('打开', 'btn-table', () => this.ctx.setSection('identify'))],
+      ['可辨识性', '双位置综合分析', this._statusLabel(this.latestTask('engineeringIdentifiability')?.status) || '待运行', '秩分析、补偿依赖、分析报告', button('打开', 'btn-table', () => this.ctx.setSection('identifiability'))],
+      ['关键修正系数评估', '方法 A', this._statusLabel(this.latestTask('uqMethodA')?.status) || '待运行', '参数后验、95%置信区间', button('打开', 'btn-table', () => this.ctx.setSection('uq'))],
+      ['全修正系数评估', '方法 B', this._statusLabel(this.latestTask('uqMethodB')?.status) || '待运行', '分块后验、局部引气区间', button('打开', 'btn-table', () => this.ctx.setSection('uq'))],
+      ['测试验证', '稳态模型回放', this._statusLabel(this.latestTask('testValidation')?.status) || '待运行', '输出对比图、RMSE改善率', button('打开', 'btn-table', () => this.ctx.setSection('validation'))],
+      ['工况预测', '单工况直接预测', this._statusLabel(this.latestTask('operatingPointPrediction')?.status) || '待运行', '确定性预测中心、后验区间', button('打开', 'btn-table', () => this.ctx.setSection('prediction'))]
     ];
     c2.body.append(this.createTable(rHeaders, rRows));
     c2.body.append(el('p', 'table-note', allTasksList.length === 0 ? '尚无运行记录时，引导用户返回相应页面开始任务。' : `已记录 ${allTasksList.length} 条任务执行记录。`));
 
-    // Card 3: 所选结果详情
+    // Card 3: 所选结果详情（与 Card 2 并排显示）
     const c3 = this.createCard(
       '所选结果详情',
       '仅展示当前选择，不修改原始结果文件。'
     );
     const latestIdentTask = this.latestTask('estimateTransient') || this.latestTask('estimateSteady');
     const dList = el('ul', 'check-list');
+    dList.style.cssText = 'list-style:none;padding:0;margin:0;';
     [
       '输入数据与模型指纹',
       '运行配置与停止原因',
@@ -1849,55 +2428,222 @@ class SteadyModelAdaptV1 {
       '稳态辨识模型状态'
     ].forEach((label, i) => {
       const vals = latestIdentTask
-        ? [
-            'SHA256: 7f8a91b... (兼容)',
-            'Stage D 微调达阈值收敛 (10 iters)',
-            '验收通过 (FormalAccepted)',
-            'result.mat / summary.md',
-            'Start_SteadyModelAdapt_V2_03',
-            latestIdentTask.reviewStatus === TASK_STATUS.REVIEW_APPROVED ? '已审核通过' : '待审核'
-          ]
+        ? this._buildResultDetailValues(latestIdentTask)
         : ['尚未选择结果', '尚未选择结果', '尚未选择结果', '尚未选择结果', '尚未选择结果', '尚未选择结果'];
-      dList.append(el('li', 'check-item', label + '：' + vals[i]));
+      const li = el('li', 'check-item');
+      li.style.cssText = 'display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;';
+      const dot = el('span', '');
+      dot.style.cssText = 'flex-shrink:0;width:10px;height:10px;border-radius:50%;background:var(--blue,#1890ff);margin-top:5px;';
+      li.append(dot);
+      const textWrap = el('div', '');
+      textWrap.style.flex = '1';
+      textWrap.append(el('div', '', label + '：' + vals[i]));
+      li.append(textWrap);
+      dList.append(li);
     });
     c3.body.append(dList);
     const btnRow = el('div', 'btn-row');
     btnRow.append(
       button('复制调用方式', 'btn-card', () => {
-        if (navigator.clipboard) {
-          navigator.clipboard.writeText('result = Start_SteadyModelAdapt_V2_03_TransientInstantEstimation("steady_bench_2p4_train_means.xlsx");');
+        if (!latestIdentTask) {
+          if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('请先完成参数辨识', 'warning');
+          return;
         }
-        this.ctx.log('已复制 MATLAB 调用代码至剪贴板');
+        const entryPoint = latestIdentTask.entryPoint || 'Start_SteadyModelAdapt_V2_03_TransientInstantEstimation';
+        const code = `result = ${entryPoint}(...);`;
+        if (navigator.clipboard) navigator.clipboard.writeText(code);
+        this.ctx.log(`已复制调用方式：${code}`);
+        if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('已复制 MATLAB 调用代码至剪贴板', 'success');
       }),
       button('设为稳态辨识模型', 'btn-card primary', async () => {
-        if (latestIdentTask) {
-          try {
-            await this.ctx.http.results.request(latestIdentTask.id + '/publish', { method: 'POST' });
-            this.ctx.log('已成功发布为当前稳态辨识模型');
-            this.render();
-          } catch (e) {
-            this.ctx.log('发布失败: ' + (e.message || e));
-          }
-        } else {
+        if (!latestIdentTask || latestIdentTask.status !== TASK_STATUS.COMPLETED) {
+          if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('需要已完成的辨识任务才能发布', 'warning');
           this.ctx.log('暂无已完成的辨识结果可发布');
+          return;
+        }
+        // 文档第 11 节：只有指纹兼容、结果通过验收且未读取参数真值时才允许发布
+        const identResult = this.results.get(String(latestIdentTask.id));
+        const identSummary = identResult?.resultSummary || identResult || {};
+        const identAcceptance = identSummary.acceptance || {};
+        const checks = [];
+        if (!identAcceptance.formalAccepted) checks.push('结果未通过正式验收');
+        if (identSummary.truthWasRead === true) checks.push('结果读取了参数真值');
+        if (latestIdentTask.reviewStatus !== TASK_STATUS.REVIEW_APPROVED && latestIdentTask.reviewStatus !== 'review_approved' && latestIdentTask.reviewStatus !== 'approved') {
+          checks.push('结果未审核通过');
+        }
+        if (checks.length > 0) {
+          const msg = '发布条件不满足：' + checks.join('；');
+          this.ctx.log(msg);
+          if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast(msg, 'warning');
+          return;
+        }
+        try {
+          await this.ctx.http.results.request(latestIdentTask.id + '/publish', { method: 'POST' });
+          this.ctx.log('已成功发布为当前稳态辨识模型');
+          if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('已发布为当前稳态辨识模型', 'success');
+          this.render();
+        } catch (e) {
+          this.ctx.log('发布失败: ' + (e.message || e));
+          if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('发布失败: ' + (e.message || e), 'error');
         }
       })
     );
     c3.body.append(btnRow);
+
+    // Card 2 和 Card 3 并排显示
+    const c2c3Row = el('div', '');
+    c2c3Row.style.cssText = 'display:flex;gap:16px;align-items:flex-start;';
+    c2.card.style.flex = '3';
+    c3.card.style.flex = '2';
+    c2c3Row.append(c2.card, c3.card);
 
     // Card 4: 追溯与导出
     const c4 = this.createCard(
       '追溯与导出',
       '结果运行后保存输入、模型、配置、日志、图形和报告之间的对应关系。'
     );
+    // 根据选中任务的真实数据判断追溯状态和具体内容
+    const traceTask = latestIdentTask;
+    const traceResult = traceTask ? this.results.get(String(traceTask.id)) : null;
+    const traceSummary = traceResult?.resultSummary || traceResult || {};
+    const traceArtifacts = traceTask ? (this.artifacts.get(String(traceTask.id)) || []) : [];
+    const traceAcceptance = traceSummary.acceptance || {};
+    const traceInput = traceSummary.input || {};
+    const traceTiming = traceSummary.timing || {};
+
+    // 构建四类追溯的具体内容
+    const inputDetail = [
+      `训练数据：${traceInput.trainingFile || '—'}`,
+      `训练工况数：${traceInput.trainingPointCount || '—'}`,
+      `测试数据：${traceInput.testFile || '无'}`,
+      `测试工况数：${traceInput.testPointCount || '—'}`,
+      `进口边界模式：${traceInput.inletBoundaryMode || '—'}`
+    ];
+    const modelDetail = [
+      `正式入口：${traceTask?.entryPoint || traceSummary.program || '—'}`,
+      `路由：${traceSummary.route || traceSummary.routeLabel || '—'}`,
+      `产物文件：${traceArtifacts.map(a => a.name || a.fileName || a).join('、') || '无'}`
+    ];
+    const configDetail = [
+      `正则化配置：${traceSummary.options ? JSON.stringify(traceSummary.options) : '—'}`,
+      `阶段A耗时：${(traceTiming.stageASeconds||0).toFixed(1)} s`,
+      `阶段B耗时：${(traceTiming.stageBSeconds||0).toFixed(1)} s`,
+      `阶段C耗时：${(traceTiming.stageCSeconds||0).toFixed(1)} s`,
+      `阶段D耗时：${(traceTiming.stageDSeconds||0).toFixed(1)} s`
+    ];
+    const conclusionDetail = [
+      `全部阶段收敛：${traceAcceptance.allStagesConverged ? '是' : '否'}`,
+      `正式验收通过：${traceAcceptance.formalAccepted ? '是' : '否'}`,
+      `训练回放有效：${traceAcceptance.trainingReplayValid ? '是' : '否'}`,
+      `测试回放有效：${traceAcceptance.testReplayValid ? '是' : '否'}`,
+      `任务状态：${this._statusLabel(traceTask?.status)}`,
+      `发布状态：${traceTask?.publicationStatus === 'published' ? '已发布' : '未发布'}`
+    ];
+
+    const traceItems = [
+      { label: '输入可追溯', ok: !!(traceInput.trainingFile || traceInput.testFile), detail: inputDetail },
+      { label: '模型可追溯', ok: !!(traceSummary.program || traceTask?.entryPoint), detail: modelDetail },
+      { label: '配置可追溯', ok: !!(traceSummary.options || traceSummary.route), detail: configDetail },
+      { label: '结论可追溯', ok: !!(traceAcceptance.formalAccepted !== undefined || traceTask?.status === TASK_STATUS.COMPLETED), detail: conclusionDetail }
+    ];
+
     const tRow = el('div', 'reg-method-row');
     tRow.style.marginTop = '0';
-    ['输入可追溯', '模型可追溯', '配置可追溯', '结论可追溯'].forEach(t => {
-      tRow.append(el('span', 'field-status optional', t));
+    tRow.style.flexWrap = 'wrap';
+    traceItems.forEach((t, idx) => {
+      const cls = t.ok ? 'field-status ok' : 'field-status optional';
+      const text = (t.ok ? '✓ ' : '') + t.label;
+      const tag = el('span', cls, text);
+      if (t.ok) {
+        tag.style.cursor = 'pointer';
+        tag.onclick = () => {
+          const existing = c4.body.querySelector(`#trace-detail-${idx}`);
+          if (existing) {
+            existing.remove();
+            return;
+          }
+          const detailBox = el('div', '');
+          detailBox.id = `trace-detail-${idx}`;
+          detailBox.style.cssText = 'width:100%;margin-top:8px;padding:12px;background:var(--bg,#f7f8fa);border-radius:4px;border:1px solid var(--line,#e8e8e8);';
+          const title = el('div', '');
+          title.style.cssText = 'font-weight:600;font-size:12px;margin-bottom:8px;color:var(--text);';
+          title.textContent = t.label + '：';
+          detailBox.append(title);
+          t.detail.forEach(line => {
+            const item = el('div', '');
+            item.style.cssText = 'font-size:12px;color:var(--muted,#666);margin-bottom:4px;padding-left:12px;border-left:2px solid var(--line,#e8e8e8);';
+            item.textContent = line;
+            detailBox.append(item);
+          });
+          // 插到当前标签所在行之后
+          tRow.insertAdjacentElement('afterend', detailBox);
+        };
+      }
+      tRow.append(tag);
     });
     c4.body.append(tRow);
 
-    container.append(c1.card, c2.card, c3.card, c4.card);
+    container.append(c1.card, c2c3Row, c4.card);
+  }
+
+  /** 状态标签映射 */
+  _statusLabel(status) {
+    const map = {
+      pending_config: '待配置',
+      ready: '就绪',
+      workflow_running: '运行中',
+      running: '运行中',
+      cancelling: '取消中',
+      completed: '已完成',
+      success: '已完成',
+      skipped: '已跳过',
+      workflow_failed: '已失败',
+      failed: '已失败',
+      pending_review: '等待审核'
+    };
+    return map[status] || status || '待运行';
+  }
+
+  /** 从辨识任务构建详情值列表（从真实 result/artifacts 读取） */
+  _buildResultDetailValues(task) {
+    const result = this.results.get(String(task.id));
+    const summary = result?.resultSummary || result || {};
+    const artifacts = this.artifacts.get(String(task.id)) || [];
+    const acceptance = summary.acceptance || {};
+    const timing = summary.timing || {};
+    const input = summary.input || {};
+
+    // 输入数据与模型指纹
+    const trainFile = input.trainingFile || '—';
+    const testFile = input.testFile || '无';
+    const trainPoints = input.trainingPointCount || '—';
+    const fingerprint = artifacts.length > 0 ? artifacts[0].sha256?.substring(0, 12) + '... (兼容)' : '运行后显示';
+    const item1 = `训练: ${trainFile}（${trainPoints}点）, 测试: ${testFile}, 指纹: ${fingerprint}`;
+
+    // 运行配置与停止原因
+    const totalSeconds = (timing.estimationSeconds || 0) + (timing.stageASeconds || 0) + (timing.stageBSeconds || 0)
+      + (timing.stageCSeconds || 0) + (timing.stageDSeconds || 0);
+    const stopReason = acceptance.allStagesConverged ? '全部阶段达阈值收敛' : '运行后显示';
+    const item2 = `${stopReason}, 总耗时 ${totalSeconds.toFixed(1)} s（A=${(timing.stageASeconds||0).toFixed(1)}, B=${(timing.stageBSeconds||0).toFixed(1)}, C=${(timing.stageCSeconds||0).toFixed(1)}, D=${(timing.stageDSeconds||0).toFixed(1)}）`;
+
+    // 验收状态与复核意见
+    const formalAccepted = acceptance.formalAccepted ? '验收通过' : '待验收';
+    const reviewStatus = task.reviewStatus || summary.reviewStatus || '待审核';
+    const item3 = `${formalAccepted}（${this._statusLabel(task.status)}）, 审核: ${reviewStatus === 'approved' || reviewStatus === TASK_STATUS.REVIEW_APPROVED ? '已审核通过' : '待审核'}`;
+
+    // 结果文件与图形
+    const artifactNames = artifacts.map(a => a.name || a.fileName || String(a)).join(', ') || '运行后生成';
+    const item4 = artifactNames;
+
+    // MATLAB 调用方式
+    const entryPoint = task.entryPoint || summary.program || '—';
+    const item5 = entryPoint;
+
+    // 稳态辨识模型状态
+    const published = task.publicationStatus === 'published';
+    const item6 = published ? '已发布为当前稳态辨识模型' : (task.status === TASK_STATUS.COMPLETED ? '已完成，待发布' : '运行后显示');
+
+    return [item1, item2, item3, item4, item5, item6];
   }
 
   /* ================= 辅助创建卡片组件 ================= */
@@ -2146,10 +2892,18 @@ class SteadyModelAdaptV1 {
     return box;
   }
 
-  createChartCell(title) {
+  createChartCell(title, isRunning) {
     const cell = el('div', 'chart-cell');
     cell.append(el('h4', 'chart-cell-title', title));
-    const host = el('div', 'chart-host', '待运行后生成图表');
+    const host = el('div', 'chart-host');
+    if (isRunning) {
+      host.className = 'chart-host chart-loading';
+      const spinner = el('div', 'chart-spinner');
+      host.append(spinner);
+      host.append(el('span', '', '运行中...'));
+    } else {
+      host.textContent = '待运行后生成图表';
+    }
     cell.append(host);
     return { cell, host };
   }
@@ -2662,16 +3416,105 @@ class SteadyModelAdaptV1 {
     });
   }
 
+  _showUqConfigModal() {
+    const overlay = el('div', 'image-modal-overlay');
+    const dialog = el('div', 'image-modal');
+    dialog.style.maxWidth = '520px';
+    const header = el('div', 'image-modal-header');
+    const heading = el('h3', '', '评估配置');
+    const close = el('button', 'image-modal-close', '✕');
+    close.type = 'button';
+    close.onclick = () => overlay.remove();
+    header.append(heading, close);
+
+    const body = el('div', 'image-modal-body modal-content');
+    body.style.padding = '20px 24px';
+    body.style.maxHeight = '70vh';
+    body.style.overflow = 'auto';
+
+    const cfg = this.uqConfig;
+    const fields = [
+      { key: 'pilotSampleCount', label: '先导粒子数', hint: '每组精确 SMC 先导粒子数，默认 64' },
+      { key: 'pilotReplicateCount', label: '先导随机种子数', hint: '独立先导随机种子数，默认 3' },
+      { key: 'formalSampleCount', label: '正式粒子数', hint: '正式精确 SMC 粒子数，默认 256' },
+      { key: 'posteriorPredictiveSampleCount', label: '后验预测样本数', hint: '后验预测样本数，默认 256' }
+    ];
+    fields.forEach(f => {
+      const row = el('div', '');
+      row.style.cssText = 'margin-bottom:14px;';
+      const label = el('label', '');
+      label.style.cssText = 'display:block;font-size:12px;font-weight:600;color:var(--text-navy);margin-bottom:4px;';
+      label.textContent = f.label;
+      row.append(label);
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.value = cfg[f.key];
+      input.min = '1';
+      input.style.cssText = 'width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:3px;font-size:12px;';
+      input.dataset.key = f.key;
+      row.append(input);
+      const hint = el('p', '');
+      hint.style.cssText = 'margin:4px 0 0;font-size:11px;color:var(--muted);';
+      hint.textContent = f.hint;
+      row.append(hint);
+      body.append(row);
+    });
+
+    // figureVisible 选择
+    const figRow = el('div', '');
+    figRow.style.cssText = 'margin-bottom:14px;';
+    const figLabel = el('label', '');
+    figLabel.style.cssText = 'display:block;font-size:12px;font-weight:600;color:var(--text-navy);margin-bottom:4px;';
+    figLabel.textContent = '图形显示';
+    figRow.append(figLabel);
+    const figSel = document.createElement('select');
+    figSel.style.cssText = 'width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:3px;font-size:12px;';
+    [['off', '关闭（推荐）'], ['on', '开启']].forEach(([v, t]) => {
+      const opt = document.createElement('option');
+      opt.value = v;
+      opt.textContent = t;
+      if (cfg.figureVisible === v) opt.selected = true;
+      figSel.append(opt);
+    });
+    figRow.append(figSel);
+    body.append(figRow);
+
+    // 确认按钮
+    const btnRow = el('div', 'btn-row');
+    btnRow.style.cssText = 'margin-top:16px;text-align:right;';
+    const confirmBtn = button('确认', 'btn-card', () => {
+      body.querySelectorAll('input[type=number]').forEach(inp => {
+        const k = inp.dataset.key;
+        const v = parseInt(inp.value, 10);
+        if (!isNaN(v) && v > 0) cfg[k] = v;
+      });
+      cfg.figureVisible = figSel.value;
+      overlay.remove();
+      this.ctx.log(`评估配置已更新：粒子数=${cfg.formalSampleCount}, 先导=${cfg.pilotSampleCount}×${cfg.pilotReplicateCount}, 预测=${cfg.posteriorPredictiveSampleCount}, 图形=${cfg.figureVisible}`);
+      if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('评估配置已保存', 'success');
+    });
+    confirmBtn.classList.add('primary');
+    btnRow.append(confirmBtn);
+    body.append(btnRow);
+
+    dialog.append(header, body);
+    overlay.append(dialog);
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+    (this.ctx.shadow || this.mount).appendChild(overlay);
+  }
+
   async handleStartUq() {
     if (!this.workspace) await this.handleCreateProject();
     const actionKey = this.activeUqMethod === 'B' ? 'uqMethodB' : 'uqMethodA';
     this.ctx.log(`启动不确定性评估（${actionKey}）...`);
+    this._smcReplicate = 0;
+    this._lastBeta = 0;
     await this.withLoading('正在提交不确定性评估...', async () => {
       try {
         const task = await this.ctx.http.tasks.create({
           workspaceId: this.workspace.id,
           actionKey: actionKey,
-          inputs: { userCfg: { figureVisible: 'off' } }
+          inputs: { userCfg: { ...this.uqConfig } }
         });
         this.ctx.log(`不确定性评估任务已提交 (ID: ${task.id})`);
         this.tasks.set(task.id, task);
@@ -2681,6 +3524,137 @@ class SteadyModelAdaptV1 {
         if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('启动评估失败: ' + (e.message || e), 'error');
       }
     });
+  }
+
+  _showPredictionModelModal() {
+    const identTask = this.latestTask('estimateTransient') || this.latestTask('estimateSteady');
+    const identDone = identTask?.status === TASK_STATUS.COMPLETED;
+    const uqTaskA = this.latestTask('uqMethodA');
+    const uqTaskB = this.latestTask('uqMethodB');
+    const uqADone = uqTaskA?.status === TASK_STATUS.COMPLETED;
+    const uqBDone = uqTaskB?.status === TASK_STATUS.COMPLETED;
+
+    const overlay = el('div', 'image-modal-overlay');
+    const dialog = el('div', 'image-modal');
+    dialog.style.maxWidth = '480px';
+    const header = el('div', 'image-modal-header');
+    const heading = el('h3', '', '选择预测模型');
+    const close = el('button', 'image-modal-close', '✕');
+    close.type = 'button';
+    header.append(heading, close);
+    dialog.append(header);
+
+    const body = el('div', '');
+    body.style.cssText = 'padding:16px;';
+
+    // 第一组：选择模型
+    const modelTitle = el('div', '');
+    modelTitle.style.cssText = 'font-weight:600;font-size:13px;margin-bottom:8px;';
+    modelTitle.textContent = '预测模型';
+    body.append(modelTitle);
+
+    const modelOpts = [
+      { value: 'corrected', label: '稳态辨识模型（D阶段后）', desc: '修正后的最终模型', enabled: identDone },
+      { value: 'baseline', label: '零修正基准模型（A阶段前）', desc: '修正前的原始模型', enabled: true }
+    ];
+    modelOpts.forEach(opt => {
+      const row = el('label', '');
+      row.style.cssText = `display:flex;align-items:flex-start;gap:10px;padding:10px;border:1px solid var(--line);border-radius:4px;margin-bottom:8px;${opt.enabled ? 'cursor:pointer;' : 'opacity:0.5;cursor:not-allowed;'}`;
+      const radio = el('input', '');
+      radio.type = 'radio';
+      radio.name = 'pred-model';
+      radio.value = opt.value;
+      if (!opt.enabled) radio.disabled = true;
+      if (this.activePredictionModel === opt.value || (!this.activePredictionModel && opt.value === 'corrected')) radio.checked = true;
+      radio.style.marginTop = '3px';
+      const textWrap = el('div', '');
+      textWrap.style.flex = '1';
+      textWrap.append(el('div', '', opt.label));
+      const d = el('div', '');
+      d.style.cssText = 'font-size:11px;color:var(--muted);margin-top:2px;';
+      d.textContent = opt.enabled ? opt.desc : (opt.value === 'corrected' ? '请先完成参数辨识' : opt.desc);
+      textWrap.append(d);
+      row.append(radio, textWrap);
+      body.append(row);
+    });
+
+    // 第二组：后验来源（仅稳态辨识模型可选）
+    const posteriorTitle = el('div', '');
+    posteriorTitle.style.cssText = 'font-weight:600;font-size:13px;margin:12px 0 8px;';
+    posteriorTitle.textContent = '后验区间来源（可选）';
+    body.append(posteriorTitle);
+
+    const postDesc = el('p', 'card-subtitle', '选择后验来源后，预测同时输出95%置信区间。不选则只输出确定性预测。');
+    postDesc.style.cssText = 'margin:0 0 8px;font-size:11px;color:var(--muted);';
+    body.append(postDesc);
+
+    const postOpts = [
+      { value: 'none', label: '不使用后验（仅确定性预测）', enabled: true },
+      { value: 'A', label: '方法 A — 关键修正系数后验', enabled: uqADone },
+      { value: 'B', label: '方法 B — 全修正系数后验', enabled: uqBDone }
+    ];
+    postOpts.forEach(opt => {
+      const row = el('label', '');
+      row.style.cssText = `display:flex;align-items:center;gap:10px;padding:8px;border:1px solid var(--line);border-radius:4px;margin-bottom:6px;${opt.enabled ? 'cursor:pointer;' : 'opacity:0.5;cursor:not-allowed;'}`;
+      const radio = el('input', '');
+      radio.type = 'radio';
+      radio.name = 'pred-posterior';
+      radio.value = opt.value;
+      if (!opt.enabled) radio.disabled = true;
+      if ((this._predictionPosterior || 'none') === opt.value) radio.checked = true;
+      radio.style.marginTop = '2px';
+      const textWrap = el('div', '');
+      textWrap.style.flex = '1';
+      textWrap.append(el('div', '', opt.label));
+      if (opt.value !== 'none' && !opt.enabled) {
+        const d = el('div', '');
+        d.style.cssText = 'font-size:11px;color:var(--muted);margin-top:2px;';
+        d.textContent = '请先完成对应不确定性评估';
+        textWrap.append(d);
+      }
+      row.append(radio, textWrap);
+      body.append(row);
+    });
+
+    const btnRow = el('div', '');
+    btnRow.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;margin-top:12px;';
+    const cancelBtn = button('取消', 'btn-card', () => overlay.remove());
+    const confirmBtn = button('确认选择', 'btn-card primary', () => {
+      const modelSelected = body.querySelector('input[name="pred-model"]:checked');
+      const postSelected = body.querySelector('input[name="pred-posterior"]:checked');
+      if (modelSelected) this.activePredictionModel = modelSelected.value;
+      if (postSelected) this._predictionPosterior = postSelected.value;
+      const modelLabel = this.activePredictionModel === 'baseline' ? '零修正基准模型' : '稳态辨识模型';
+      const postLabel = this._predictionPosterior === 'none' ? '仅确定性预测' : `方法${this._predictionPosterior}后验区间`;
+      this.ctx.log(`已选择预测模型：${modelLabel}，${postLabel}`);
+      if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast(`已选择：${modelLabel} · ${postLabel}`, 'success');
+      overlay.remove();
+      this.render();
+    });
+    btnRow.append(cancelBtn, confirmBtn);
+    body.append(btnRow);
+    dialog.append(body);
+    overlay.append(dialog);
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+    close.onclick = () => overlay.remove();
+    (this.ctx.shadow || this.mount).appendChild(overlay);
+  }
+
+  _autoSelectValidationInputs() {
+    const identTask = this.latestTask('estimateTransient') || this.latestTask('estimateSteady');
+    if (!identTask || identTask.status !== TASK_STATUS.COMPLETED) {
+      if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('请先完成参数辨识', 'warning');
+      this.ctx.log('请先完成参数辨识后再选择辨识结果');
+      return;
+    }
+    const identResult = this.results.get(String(identTask.id));
+    const modelName = identResult?.resultSummary?.steadyModelName || '稳态辨识模型（最新）';
+    const testDataName = this.workspace?.testDataName || '';
+    this._validationModel = modelName;
+    this._validationTestData = testDataName;
+    this.ctx.log(`已选择辨识结果：${modelName}，测试数据：${testDataName}`);
+    if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('已自动选择稳态辨识模型和测试数据', 'success');
+    this.render();
   }
 
   async handleStartValidation() {
@@ -2724,8 +3698,10 @@ class SteadyModelAdaptV1 {
           actionKey: 'operatingPointPrediction',
           inputs: {
             modelInput,
-            estimationResultFile: '',
-            posteriorOptions: { method: 'A', runId: 'latest' }
+            estimationResultFile: this.activePredictionModel === 'baseline' ? 'baseline' : 'latest',
+            posteriorOptions: this._predictionPosterior && this._predictionPosterior !== 'none'
+              ? { method: this._predictionPosterior, runId: 'latest' }
+              : null
           }
         });
         this.ctx.log(`工况预测任务已提交 (ID: ${task.id})`);
@@ -2738,19 +3714,194 @@ class SteadyModelAdaptV1 {
     });
   }
 
-  async handleExportResults() {
-    this.ctx.log('正在导出结果产物清单...');
-    if (!this.workspace) return;
-    try {
-      const allTasks = Array.from(this.tasks.values()).filter(t => t.status === TASK_STATUS.COMPLETED);
-      if (allTasks.length === 0) {
-        this.ctx.log('暂无已完成的任务产物可导出');
-        return;
-      }
-      this.ctx.log(`共可导出 ${allTasks.length} 个任务的产物`);
-    } catch (e) {
-      this.ctx.log('导出失败: ' + (e.message || e));
+  _openResultsDirectory() {
+    if (!this.workspace) {
+      if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('请先创建项目', 'warning');
+      return;
     }
+    // 确定要打开的任务：优先选中的，否则最新完成的
+    let taskId = this._selectedResultTaskId;
+    if (!taskId) {
+      const identTask = this.latestTask('estimateTransient') || this.latestTask('estimateSteady');
+      if (identTask) taskId = String(identTask.id);
+    }
+    if (!taskId) {
+      this.ctx.log('暂无任务结果目录可打开');
+      if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('暂无任务结果目录', 'info');
+      return;
+    }
+    // 列出产物文件
+    const artifacts = this.artifacts.get(taskId) || [];
+    if (artifacts.length === 0) {
+      this.ctx.log(`任务 ${taskId} 暂无产物文件`);
+      if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('该任务暂无产物文件', 'info');
+      return;
+    }
+    // 弹窗展示产物列表，支持下载
+    this._showArtifactsModal(taskId, artifacts);
+  }
+
+  _showArtifactsModal(taskId, artifacts) {
+    const overlay = el('div', 'image-modal-overlay');
+    const dialog = el('div', 'image-modal');
+    dialog.style.maxWidth = '560px';
+    const header = el('div', 'image-modal-header');
+    const heading = el('h3', '', '结果产物目录');
+    const close = el('button', 'image-modal-close', '✕');
+    close.type = 'button';
+    header.append(heading, close);
+    dialog.append(header);
+
+    const body = el('div', '');
+    body.style.cssText = 'padding:16px;max-height:400px;overflow-y:auto;';
+    const desc = el('p', 'card-subtitle', `任务 ${taskId} 的产物文件：`);
+    desc.style.margin = '0 0 12px';
+    body.append(desc);
+
+    artifacts.forEach(a => {
+      const name = a.name || a.fileName || String(a);
+      const size = a.size ? `（${this._formatFileSize(a.size)}）` : '';
+      const row = el('div', '');
+      row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line);';
+      const nameEl = el('span', '');
+      nameEl.style.cssText = 'font-size:12px;color:var(--text);';
+      nameEl.textContent = name + size;
+      const dlBtn = button('下载', 'btn-table', () => this._downloadArtifact(taskId, a));
+      row.append(nameEl, dlBtn);
+      body.append(row);
+    });
+
+    dialog.append(body);
+    overlay.append(dialog);
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+    close.onclick = () => overlay.remove();
+    (this.ctx.shadow || this.mount).appendChild(overlay);
+  }
+
+  _formatFileSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+  }
+
+  async _downloadArtifact(taskId, artifact) {
+    const artifactId = artifact.id || artifact.name || artifact.fileName || String(artifact);
+    this.ctx.log(`正在下载产物: ${artifactId}`);
+    try {
+      if (this.ctx.http && this.ctx.http.artifacts) {
+        const res = await this.ctx.http.artifacts.request(`${taskId}/${artifactId}`, { method: 'GET', responseType: 'blob' });
+        const blob = res instanceof Blob ? res : new Blob([res]);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = artifact.name || artifact.fileName || artifactId;
+        a.click();
+        URL.revokeObjectURL(url);
+        this.ctx.log(`已下载: ${a.download}`);
+      }
+    } catch (e) {
+      this.ctx.log('下载失败: ' + (e.message || e));
+      if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('下载失败: ' + (e.message || e), 'error');
+    }
+  }
+
+  async handleExportResults() {
+    if (!this.workspace) {
+      if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('请先创建项目', 'warning');
+      return;
+    }
+    // 确定要导出的任务：优先选中的，否则最新完成的辨识任务
+    let task;
+    if (this._selectedResultTaskId) {
+      task = this.tasks.get(this._selectedResultTaskId);
+    }
+    if (!task) {
+      task = this.latestTask('estimateTransient') || this.latestTask('estimateSteady');
+    }
+    if (!task) {
+      this.ctx.log('暂无任务可导出');
+      if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('暂无任务可导出', 'info');
+      return;
+    }
+    this.ctx.log(`正在导出任务 ${task.id} 的追溯报告...`);
+
+    // 从真实数据构建追溯报告（文档第 11 节六项记录）
+    const result = this.results.get(String(task.id));
+    const summary = result?.resultSummary || result || {};
+    const artifacts = this.artifacts.get(String(task.id)) || [];
+    const acceptance = summary.acceptance || {};
+    const timing = summary.timing || {};
+    const input = summary.input || {};
+
+    const lines = [];
+    lines.push('结果追溯报告');
+    lines.push('============');
+    lines.push('');
+    lines.push(`生成时间：${new Date().toLocaleString('zh-CN')}`);
+    lines.push(`项目：${this.workspace?.jobName || this.workspace?.id || '—'}`);
+    lines.push('');
+    lines.push('1. 任务类型、正式入口和模型路径');
+    lines.push(`   任务类型：${task.actionKey}`);
+    lines.push(`   正式入口：${task.entryPoint || summary.program || '—'}`);
+    lines.push(`   路由：${summary.route || summary.routeLabel || '—'}`);
+    lines.push('');
+    lines.push('2. 训练/测试数据、DLL、配置和算法指纹');
+    lines.push(`   训练数据：${input.trainingFile || '—'}（${input.trainingPointCount || '—'} 工况）`);
+    lines.push(`   测试数据：${input.testFile || '无'}（${input.testPointCount || '—'} 工况）`);
+    lines.push(`   进口边界模式：${input.inletBoundaryMode || '—'}`);
+    const sha = artifacts.length > 0 ? (artifacts[0].sha256 || '—') : '—';
+    lines.push(`   算法指纹（SHA256）：${sha}`);
+    lines.push('');
+    lines.push('3. 正则化及后验运行配置');
+    lines.push(`   配置：${summary.options ? JSON.stringify(summary.options) : '—'}`);
+    lines.push(`   阶段A耗时：${(timing.stageASeconds||0).toFixed(1)} s`);
+    lines.push(`   阶段B耗时：${(timing.stageBSeconds||0).toFixed(1)} s`);
+    lines.push(`   阶段C耗时：${(timing.stageCSeconds||0).toFixed(1)} s`);
+    lines.push(`   阶段D耗时：${(timing.stageDSeconds||0).toFixed(1)} s`);
+    lines.push(`   总耗时：${((timing.estimationSeconds||0)+(timing.stageASeconds||0)+(timing.stageBSeconds||0)+(timing.stageCSeconds||0)+(timing.stageDSeconds||0)).toFixed(1)} s`);
+    lines.push('');
+    lines.push('4. 开始时间、结束时间和总运行时间');
+    lines.push(`   开始时间：${task.createdAt ? new Date(Number(task.createdAt)).toLocaleString('zh-CN') : '—'}`);
+    lines.push(`   结束时间：${task.finishedAt ? new Date(Number(task.finishedAt)).toLocaleString('zh-CN') : (result?.completedAt ? new Date(Number(result.completedAt)).toLocaleString('zh-CN') : '—')}`);
+    const totalRun = (task.createdAt && (task.finishedAt || result?.completedAt))
+      ? Math.round((Number(task.finishedAt || result.completedAt) - Number(task.createdAt)) / 1000) : 0;
+    lines.push(`   总运行时间：${totalRun} 秒`);
+    lines.push('');
+    lines.push('5. MAT、Excel、摘要、日志和图形文件');
+    if (artifacts.length === 0) {
+      lines.push('   无产物文件');
+    } else {
+      artifacts.forEach(a => {
+        const name = a.name || a.fileName || String(a);
+        const size = a.size ? ` (${this._formatFileSize(a.size)})` : '';
+        lines.push(`   - ${name}${size}`);
+      });
+    }
+    lines.push('');
+    lines.push('6. 收敛、验收、警告和审核状态');
+    lines.push(`   全部阶段收敛：${acceptance.allStagesConverged ? '是' : '否'}`);
+    lines.push(`   阶段A收敛：${acceptance.stageAConverged ? '是' : '否'}`);
+    lines.push(`   阶段B收敛：${acceptance.stageBAllConverged ? '是' : '否'}`);
+    lines.push(`   阶段D收敛：${acceptance.stageDConverged ? '是' : '否'}`);
+    lines.push(`   正式验收通过：${acceptance.formalAccepted ? '是' : '否'}`);
+    lines.push(`   训练回放有效：${acceptance.trainingReplayValid ? '是' : '否'}`);
+    lines.push(`   测试回放有效：${acceptance.testReplayValid ? '是' : '否'}`);
+    lines.push(`   任务状态：${this._statusLabel(task.status)}`);
+    lines.push(`   审核状态：${task.reviewStatus || '待审核'}`);
+    lines.push(`   发布状态：${task.publicationStatus === 'published' ? '已发布' : '未发布'}`);
+    lines.push('');
+    lines.push('=============================');
+
+    const text = lines.join('\n');
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `结果追溯报告_${task.actionKey}_${task.id}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+    this.ctx.log(`已导出追溯报告：${a.download}`);
+    if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('已导出追溯报告', 'success');
   }
 
   /* ================= ECharts 图表渲染 ================= */
@@ -2798,23 +3949,37 @@ class SteadyModelAdaptV1 {
     this.charts.push(chart);
   }
 
-  renderPredictionIntervalChart(host, outputName) {
+  renderPredictionIntervalChart(host, outputName, row) {
     if (!this.ctx.echarts || !host) return;
     const chart = this.ctx.echarts.init(host, null, { renderer: 'canvas' });
-    const x = ['新工况'];
-    const lower = [98.5];
-    const center = [100.2];
-    const upper = [101.8];
+    const x = [row.point_id || '新工况'];
+    // 从 intervalTable 真实数据读取四类信息
+    const det = Number(row.deterministic_frozen_model);
+    const modelLower = Number(row.model_lower);
+    const modelMedian = Number(row.model_median);
+    const modelUpper = Number(row.model_upper);
+    const obsLower = Number(row.observable_lower);
+    const obsMedian = Number(row.observable_median);
+    const obsUpper = Number(row.observable_upper);
+    const unit = row.unit || '';
 
     chart.setOption({
       animation: false,
-      grid: { left: 40, right: 15, top: 15, bottom: 25 },
+      title: { text: `${outputName} (${unit})`, left: 'center', textStyle: { fontSize: 11 } },
+      grid: { left: 50, right: 15, top: 30, bottom: 30 },
       xAxis: { type: 'category', data: x, axisLabel: { fontSize: 10 } },
       yAxis: { type: 'value', scale: true, axisLabel: { fontSize: 10 } },
       series: [
-        { name: '区间下界', type: 'line', data: lower, lineStyle: { opacity: 0 }, stack: 'pred-band', symbol: 'none' },
-        { name: '95%置信区间', type: 'line', data: [upper[0] - lower[0]], areaStyle: { color: 'rgba(43, 107, 149, 0.25)' }, lineStyle: { opacity: 0 }, stack: 'pred-band', symbol: 'none' },
-        { name: '稳态辨识模型', type: 'scatter', data: center, itemStyle: { color: '#2b6b95' }, symbolSize: 8 }
+        // 模型输出区间（错位显示）
+        { name: '模型输出区间', type: 'line', data: [modelLower], lineStyle: { opacity: 0 }, stack: 'model-band', symbol: 'none', xAxisIndex: 0 },
+        { name: '模型输出区间', type: 'line', data: [modelUpper - modelLower], areaStyle: { color: 'rgba(43, 107, 149, 0.25)' }, lineStyle: { opacity: 0 }, stack: 'model-band', symbol: 'none' },
+        // 可观测量区间（错位显示）
+        { name: '可观测量区间', type: 'line', data: [obsLower], lineStyle: { opacity: 0 }, stack: 'obs-band', symbol: 'none' },
+        { name: '可观测量区间', type: 'line', data: [obsUpper - obsLower], areaStyle: { color: 'rgba(200, 100, 50, 0.20)' }, lineStyle: { opacity: 0 }, stack: 'obs-band', symbol: 'none' },
+        // 后验中心
+        { name: '后验中心', type: 'scatter', data: [modelMedian], itemStyle: { color: '#2b6b95' }, symbolSize: 8 },
+        // 稳态辨识模型确定性输出
+        { name: '稳态辨识模型', type: 'scatter', data: [det], itemStyle: { color: '#e8554e' }, symbol: 'rect', symbolSize: 8 }
       ]
     });
     this.charts.push(chart);
@@ -2855,7 +4020,7 @@ class SteadyModelAdaptV1 {
   async _viewArtifact(pattern, title) {
     const task = this.latestTask('estimateTransient') || this.latestTask('estimateSteady');
     if (!task) { this._toast('暂无任务结果', 'warning'); return; }
-    const taskId = task.id;
+    const taskId = String(task.id);
     let artifacts = this.artifacts.get(taskId);
     if (!artifacts || artifacts.length === 0) {
       try {

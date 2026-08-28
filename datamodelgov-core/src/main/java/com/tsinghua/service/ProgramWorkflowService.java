@@ -87,6 +87,8 @@ public class ProgramWorkflowService {
         return thread;
     });
     private final Map<String, MatlabFunctionRunner> running = new ConcurrentHashMap<>();
+    /** 服务启动时间，用于判断 workflow_running 任务是否为重启前遗留 */
+    private final long serviceStartTime = System.currentTimeMillis();
     /** 任务取消标志（内存，运行时高频检查） */
     private final Map<String, Boolean> cancelFlags = new ConcurrentHashMap<>();
     private final Map<String, Object> fileLocks = new ConcurrentHashMap<>();
@@ -121,12 +123,14 @@ public class ProgramWorkflowService {
             for (Map<String, Object> record : records) {
                 WorkflowTaskEntity entity = iginxRecordToTaskEntity(record);
                 String status = entity.getStatus();
-                if (TaskStatus.QUEUED.getValue().equals(status) || TaskStatus.RUNNING.getValue().equals(status) || TaskStatus.CANCELLING.getValue().equals(status)) {
-                    entity.setStatus(TaskStatus.FAILED.getValue());
+                if (TaskStatus.QUEUED.getValue().equals(status) || TaskStatus.RUNNING.getValue().equals(status)
+                        || TaskStatus.WORKFLOW_RUNNING.getValue().equals(status) || TaskStatus.READY.getValue().equals(status)
+                        || TaskStatus.CANCELLING.getValue().equals(status)) {
+                    entity.setStatus(TaskStatus.WORKFLOW_FAILED.getValue());
                     entity.setError("服务重启导致任务中断");
                     entity.setFinishedAt(System.currentTimeMillis());
                     saveTaskToIginx(entity);
-                    log.info("恢复工作流任务状态: taskId={} -> FAILED", entity.getTaskId());
+                    log.info("恢复工作流任务状态: taskId={} -> WORKFLOW_FAILED", entity.getTaskId());
                 }
             }
         } catch (Exception e) {
@@ -861,6 +865,9 @@ public class ProgramWorkflowService {
                                                String projectName) throws Exception {
         // 从 IGINX 查询
         List<Map<String, Object>> result = queryTasksFromIginx(workspaceId);
+        Map<String, Map<String, Object>> unique = new LinkedHashMap<>();
+        for (Map<String, Object> t : result) unique.putIfAbsent(String.valueOf(t.get("id")), t);
+        result = new ArrayList<>(unique.values());
         result.sort((a, b) -> Long.compare(longValue(b.get("createdAt")), longValue(a.get("createdAt"))));
         return result;
     }
@@ -892,12 +899,31 @@ public class ProgramWorkflowService {
                     Map<String, Object> value = (Map<String, Object>) resultMap.get("value");
                     if (value != null) {
                         String matlabStatus = String.valueOf(value.getOrDefault("status", ""));
+                        WorkflowTaskEntity taskEntity = loadTaskFromIginx(ts);
                         if ("SUCCEEDED".equalsIgnoreCase(matlabStatus) || "COMPLETED".equalsIgnoreCase(matlabStatus)) {
+                            record.put("status", TaskStatus.COMPLETED.getValue());
+                            record.put("statusLabel", TaskStatus.COMPLETED.getLabel());
                             record.put("phase", "completed");
                             record.put("progressMessage", "MATLAB 运行完成");
+                            if (taskEntity != null) {
+                                taskEntity.setStatus(TaskStatus.COMPLETED.getValue());
+                                taskEntity.setFinishedAt(System.currentTimeMillis());
+                                saveTaskToIginx(taskEntity);
+                            }
+                            writeTaskProgress(task, "completed", "MATLAB 运行完成");
                         } else if ("FAILED".equalsIgnoreCase(matlabStatus)) {
+                            String error = String.valueOf(value.getOrDefault("message", "MATLAB 运行失败"));
+                            record.put("status", TaskStatus.WORKFLOW_FAILED.getValue());
+                            record.put("statusLabel", TaskStatus.WORKFLOW_FAILED.getLabel());
                             record.put("phase", "failed");
-                            record.put("progressMessage", value.getOrDefault("message", "MATLAB 运行失败"));
+                            record.put("progressMessage", error);
+                            if (taskEntity != null) {
+                                taskEntity.setStatus(TaskStatus.WORKFLOW_FAILED.getValue());
+                                taskEntity.setError(error);
+                                taskEntity.setFinishedAt(System.currentTimeMillis());
+                                saveTaskToIginx(taskEntity);
+                            }
+                            writeTaskProgress(task, "failed", error);
                         }
                     }
                 } catch (Exception ignored) {}
@@ -912,16 +938,17 @@ public class ProgramWorkflowService {
         }
         String currentStatus = String.valueOf(record.getOrDefault("status", ""));
         String currentPhase = String.valueOf(record.getOrDefault("phase", ""));
-        boolean stillActive = TaskStatus.WORKFLOW_RUNNING.getValue().equals(currentStatus)
-                || TaskStatus.READY.getValue().equals(currentStatus)
+        boolean shouldCheckRunner = TaskStatus.WORKFLOW_RUNNING.getValue().equals(currentStatus)
                 || TaskStatus.CANCELLING.getValue().equals(currentStatus);
-        if (stillActive && !"completed".equals(currentPhase) && !"failed".equals(currentPhase)) {
+        if (shouldCheckRunner && !"completed".equals(currentPhase) && !"failed".equals(currentPhase)) {
             Path resultFile = child(task, "result.json");
             if (!Files.isRegularFile(resultFile) && (running == null || !running.containsKey(taskId))) {
-                record.put("status", TaskStatus.WORKFLOW_FAILED.getValue());
-                record.put("statusLabel", TaskStatus.WORKFLOW_FAILED.getLabel());
-                record.put("phase", "failed");
-                record.put("progressMessage", "MATLAB 任务线程已退出且未生成结果");
+                long started = longValue(record.getOrDefault("startedAt", record.getOrDefault("createdAt", 0L)));
+                if (started < serviceStartTime) {
+                    record.put("status", TaskStatus.WORKFLOW_FAILED.getValue());
+                    record.put("statusLabel", TaskStatus.WORKFLOW_FAILED.getLabel());
+                    record.put("phase", "failed");
+                    record.put("progressMessage", "MATLAB 任务线程已退出且未生成结果");
                 try {
                     WorkflowTaskEntity taskEntity = loadTaskFromIginx(ts);
                     if (taskEntity != null) {
@@ -933,6 +960,7 @@ public class ProgramWorkflowService {
                     writeTaskProgress(task, "failed", "MATLAB 任务线程已退出且未生成结果");
                 } catch (Exception ignored) {}
             }
+        }
         }
         Path logFile = child(task, "run.log");
         if (Files.isRegularFile(logFile)) {
