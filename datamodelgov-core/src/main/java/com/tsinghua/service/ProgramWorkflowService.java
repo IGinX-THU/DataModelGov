@@ -1130,6 +1130,47 @@ public class ProgramWorkflowService {
         return new ArtifactDownload(value(selected.get("name")), Files.readAllBytes(file));
     }
 
+    /**
+     * 打包任务所有产物为 ZIP（含 result.json、run.log、artifacts.json 及全部产物文件）。
+     * 与联合仿真 package-download 一致的后端打包方式。
+     */
+    public byte[] packageTask(String taskId, String name, String version, String projectName) throws Exception {
+        Path task = requireTask(taskId, name, version, projectName);
+        Path workspace = task.getParent().getParent();
+        // 收集产物文件的实际路径
+        Path artifactManifest = child(task, "artifacts.json");
+        List<Map<String, Object>> storedArtifacts = Files.isRegularFile(artifactManifest)
+                ? readListOfMaps(artifactManifest) : Collections.emptyList();
+        java.util.Map<String, Path> filesToZip = new java.util.LinkedHashMap<>();
+        // 任务元数据文件
+        for (String meta : new String[]{"result.json", "run.log", "artifacts.json", "task-progress.json", "request.json"}) {
+            Path p = child(task, meta);
+            if (Files.isRegularFile(p)) filesToZip.put(meta, p);
+        }
+        // 产物文件（按 artifacts.json 中的 relativePath 解析）
+        for (Map<String, Object> artifact : storedArtifacts) {
+            String relativePath = value(artifact.get("relativePath"));
+            String displayName = value(artifact.get("name"));
+            if (StringUtils.hasText(relativePath)) {
+                Path file = resolveInside(workspace, relativePath, true);
+                if (Files.isRegularFile(file) && isAllowedArtifactPath(workspace, file)) {
+                    String zipPath = "artifacts/" + (StringUtils.hasText(displayName) ? displayName : file.getFileName().toString());
+                    filesToZip.put(zipPath, file);
+                }
+            }
+        }
+        // 创建 ZIP
+        java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+        try (java.util.zip.ZipOutputStream zipOut = new java.util.zip.ZipOutputStream(baos)) {
+            for (java.util.Map.Entry<String, Path> entry : filesToZip.entrySet()) {
+                zipOut.putNextEntry(new java.util.zip.ZipEntry(entry.getKey()));
+                Files.copy(entry.getValue(), zipOut);
+                zipOut.closeEntry();
+            }
+        }
+        return baos.toByteArray();
+    }
+
     @SuppressWarnings("unchecked")
     private void runTask(Path workspace, Path taskDir, Map<String, Object> initialTask,
                          ProgramConfig.WorkflowAction action, Object[] arguments) {

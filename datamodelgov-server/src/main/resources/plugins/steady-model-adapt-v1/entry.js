@@ -1482,7 +1482,61 @@ class SteadyModelAdaptV1 {
     }
     c3.body.append(this.createTable(idHeaders, idRows));
 
-    container.append(c1.card, c2.card, c3.card);
+    // Card 4: 所选参数证据详情（三个证据卡片网格布局）
+    const c4 = this.createCard(
+      '所选参数证据详情',
+      '点击表格行后在本页展开，避免与逐参数分类表重复。'
+    );
+    const eGrid = el('div', 'evidence-grid');
+    // 根据是否有结果生成证据描述
+    const hasResult = !!identResult;
+    const selParam = this._selectedIdentParam;
+    const selCombined = selParam ? combinedRows.find(r => r.parameter === selParam) : null;
+    const selDomComp = selParam ? this._findDominantCompanion(dirRows, selParam) : null;
+    const selDirs = selParam ? dirRows.filter(d => d.target_parameter === selParam) : [];
+
+    // 自身敏感性证据
+    let sensDesc;
+    if (hasResult && selParam && selDirs.length > 0) {
+      const isoRms = selCombined?.baseline_isolated_rms;
+      const domField = selDirs[0]?.isolated_dominant_field || '—';
+      sensDesc = `孤立扰动 ±1% 主导输出 ${domField}，RMS 量级 ${isoRms != null ? Number(isoRms).toFixed(4) : '—'}`;
+    } else if (hasResult) {
+      sensDesc = '请在上方表格中点击"查看"选择参数后显示自身敏感性证据';
+    } else {
+      sensDesc = '孤立工程扰动、主导输出及响应量级动态显示';
+    }
+    eGrid.append(this.createEvidenceBox('自身敏感性证据', sensDesc, 'blue'));
+
+    // 补偿关系证据
+    let compDesc;
+    if (hasResult && selParam && selDomComp && selDomComp.dominant_companion && selDomComp.dominant_companion !== 'none') {
+      const compDir = Number(selDomComp.dominant_companion_delta) >= 0 ? '同向' : '反向';
+      const frac = Number(selDomComp.dominant_companion_step_fraction).toFixed(2);
+      compDesc = `主要补偿参数为 ${selDomComp.dominant_companion}（${compDir}，${frac} 个工程步长），受影响输出 ${selDomComp.compensated_dominant_field || '—'}`;
+    } else if (hasResult && selParam) {
+      compDesc = `${selParam}：无补偿需求或为独立参数`;
+    } else {
+      compDesc = '主要补偿参数、变化方向、步长占比和补偿后残差动态显示';
+    }
+    eGrid.append(this.createEvidenceBox('补偿关系证据', compDesc, 'orange'));
+
+    // 工程处置建议
+    let adviceDesc;
+    if (hasResult && selParam && selCombined) {
+      const cls = selCombined.final_class || selCombined.baseline_class || '—';
+      if (cls === '参数自身低敏感') adviceDesc = '可考虑固定或增加工况激励';
+      else if (cls === '依赖其他参数补偿') adviceDesc = '增强先验约束或增加激励';
+      else if (cls === '参数边界受限') adviceDesc = '放宽边界或增加工况覆盖';
+      else adviceDesc = '保留该参数作为独立调度项';
+    } else {
+      adviceDesc = '保留、加强先验、固定参数或增加工况激励的建议动态显示';
+    }
+    eGrid.append(this.createEvidenceBox('工程处置建议', adviceDesc, 'green'));
+
+    c4.body.append(eGrid);
+
+    container.append(c1.card, c2.card, c3.card, c4.card);
   }
 
   /** 从 directionDetail 中找到某参数的主要补偿参数 */
@@ -1834,8 +1888,8 @@ class SteadyModelAdaptV1 {
     );
     const progressTrack = el('div', 'progress-track');
     const fill = el('div', 'progress-fill');
-    // 根据 progressMessage 中的 beta 值 + replicate 次数估算进度
-    // UQ 10 步：步骤1-5=0-25%, 步骤6-8 SMC采样=25-70% (按 replicate 均分), 步骤9诊断=70-90%, 步骤10预测=90-100%
+    // 根据 progressMessage 中的 beta 值 + UQ 步骤号估算进度
+    // UQ 10 步：步骤1-5=0-25%, 步骤6先导SMC=25-55%(3组replicate), 步骤7正式SMC=55-80%, 步骤8诊断=80-90%, 步骤9-10预测=90-100%
     const phasePct = { a: 25, b: 70, c: 90, d: 100, completed: 100 };
     const phase = ((uqTask?.phase || '').toLowerCase()).trim();
     const totalReplicates = this.uqConfig?.pilotReplicateCount || 3;
@@ -1844,35 +1898,46 @@ class SteadyModelAdaptV1 {
       pct = 100;
     } else if (isRunning) {
       const msg = uqTask?.progressMessage || '';
+      // 先检测 UQ 步骤号 [2.4UQ.N]
+      const stepMatch = msg.match(/\[2\.4UQ\.(\d+)\]/);
+      if (stepMatch) {
+        this._uqStep = parseInt(stepMatch[1], 10);
+      }
+      const uqStep = this._uqStep || 0;
       const betaMatch = msg.match(/beta=([0-9.]+)/);
       if (betaMatch) {
-        // 有 beta 值说明在 SMC 采样阶段
         const beta = parseFloat(betaMatch[1]);
-        // 检测当前是第几个 replicate：beta=1.0 出现的次数 = 已完成的 replicate 数
-        // logLine 只存最后一行，无法回溯历史，用 stage=1 且 beta 很小来判断新 replicate 开始
         const stageMatch = msg.match(/stage=\s*(\d+)/);
         const stage = stageMatch ? parseInt(stageMatch[1], 10) : 1;
-        // 如果 stage=1 且 beta 很小，可能是新 replicate 开始
-        // 用 _lastBeta 跟踪上一次的 beta，如果 beta 从大跳回小说明进入了新 replicate
-        if (this._lastBeta && beta < this._lastBeta * 0.5 && stage === 1) {
-          this._smcReplicate = (this._smcReplicate || 0) + 1;
+        if (uqStep <= 6) {
+          // 步骤6：先导 SMC，3组 replicate，区间 25%→55%
+          if (this._lastBeta && beta < this._lastBeta * 0.5 && stage === 1) {
+            this._smcReplicate = (this._smcReplicate || 0) + 1;
+          }
+          this._lastBeta = beta;
+          const currentReplicate = Math.min(this._smcReplicate || 0, totalReplicates - 1);
+          const smcRange = 30; // 25%→55%
+          const perReplicate = smcRange / totalReplicates;
+          pct = 25 + perReplicate * currentReplicate + perReplicate * Math.min(beta, 1);
+        } else if (uqStep === 7) {
+          // 步骤7：正式 SMC，区间 55%→80%
+          this._lastBeta = beta;
+          pct = 55 + 25 * Math.min(beta, 1);
+        } else if (uqStep === 8) {
+          // 步骤8：诊断，区间 80%→90%
+          pct = 80 + 10 * Math.min(beta, 1);
+        } else {
+          // 步骤9-10：预测，区间 90%→100%
+          pct = 90 + 10 * Math.min(beta, 1);
         }
-        this._lastBeta = beta;
-        const currentReplicate = Math.min(this._smcReplicate || 0, totalReplicates - 1);
-        // SMC 采样总区间 25%→70%，按 replicate 均分
-        const smcRange = 45; // 25%→70%
-        const perReplicate = smcRange / totalReplicates;
-        pct = 25 + perReplicate * currentReplicate + perReplicate * Math.min(beta, 1);
+      } else if (uqStep > 0) {
+        // 有步骤号但没有 beta（非 SMC 阶段）
+        const stepPct = { 1: 3, 2: 8, 3: 12, 4: 18, 5: 22, 6: 25, 7: 55, 8: 80, 9: 90, 10: 95 };
+        pct = stepPct[uqStep] || 5;
       } else if (phasePct[phase] != null) {
         pct = phasePct[phase];
       } else {
-        // 根据日志步骤标记估算
-        const stepMatch = msg.match(/\[2\.4UQ\.(\d+)\]/);
-        if (stepMatch) {
-          pct = Math.min(parseInt(stepMatch[1], 10) * 5, 25);
-        } else {
-          pct = 5;
-        }
+        pct = 5;
       }
     }
     fill.style.width = pct + '%';
@@ -1930,8 +1995,15 @@ class SteadyModelAdaptV1 {
       const betaMatch = currentStep.match(/beta=([0-9.]+)/);
       const essMatch = currentStep.match(/ESS=([0-9.]+)/);
       if (stageMatch && betaMatch) {
-        const repNum = (this._smcReplicate || 0) + 1;
-        stepText = `SMC 采样（第 ${repNum}/${totalReplicates} 次）：stage=${stageMatch[1]}, β=${betaMatch[1]}, ESS=${essMatch ? essMatch[1] : '—'}`;
+        const uqStep = this._uqStep || 6;
+        if (uqStep <= 6) {
+          const repNum = (this._smcReplicate || 0) + 1;
+          stepText = `先导SMC（第 ${repNum}/${totalReplicates} 次）：stage=${stageMatch[1]}, β=${betaMatch[1]}, ESS=${essMatch ? essMatch[1] : '—'}`;
+        } else if (uqStep === 7) {
+          stepText = `正式SMC：stage=${stageMatch[1]}, β=${betaMatch[1]}, ESS=${essMatch ? essMatch[1] : '—'}`;
+        } else {
+          stepText = `SMC stage=${stageMatch[1]}, β=${betaMatch[1]}, ESS=${essMatch ? essMatch[1] : '—'}`;
+        }
       } else if (currentStep) {
         stepText = currentStep;
       } else {
@@ -2300,10 +2372,10 @@ class SteadyModelAdaptV1 {
     }
     c2.body.append(form);
 
-    // Card 3: 确定性预测输出（文档第 10 节：首先显示确定性输出、共同工作最大残差和收敛状态）
+    // Card 3: 预测输出与 95% 置信区间（与 Card 2 并排显示）
     const c3 = this.createCard(
-      '确定性预测输出',
-      '稳态辨识模型的确定性输出、共同工作最大残差和收敛状态。'
+      '预测输出与 95% 置信区间',
+      '确定性结果、后验中心、模型输出区间和可观测量区间均在运行后读取。'
     );
     const predSummary = predResult?.resultSummary || predResult || {};
     const predTable = predSummary.predictionTable;
@@ -2312,19 +2384,29 @@ class SteadyModelAdaptV1 {
     const intervalTable = hasPosterior ? (predSummary.posteriorPrediction?.intervalTable) : null;
     const intervalRows = (intervalTable && Array.isArray(intervalTable.rows)) ? intervalTable.rows : [];
 
-    // 确定性输出表
-    const detHeaders = ['输出', '稳态辨识模型输出', '单位'];
+    // 预测输出表：确定性输出 + 后验区间（如果有）
+    const detHeaders = hasPosterior
+      ? ['输出', '稳态辨识模型', '区间下界', '后验中心', '区间上界', '单位']
+      : ['输出', '稳态辨识模型', '单位'];
     const detRows = OUTPUT_VARS.map(o => {
       const colMap = { 'Np': 'corrected_Np_rpm', 'Ng': 'corrected_Ng_rpm', 'Pt3': 'corrected_Pt3_Pa', 'Tt3': 'corrected_Tt3_K', 'Tt45': 'corrected_Tt45_K', 'Pt45': 'corrected_Pt45_Pa' };
       const col = colMap[o];
       const val = predRow0 ? predRow0[col] : null;
-      return [o, val != null ? Number(val).toFixed(2) : '运行后显示', OUTPUT_UNITS[o] || '—'];
+      const valStr = val != null ? Number(val).toFixed(2) : '运行后显示';
+      const unit = OUTPUT_UNITS[o] || '—';
+      if (hasPosterior) {
+        const iRow = intervalRows.find(r => r.output_name === o);
+        const lower = iRow ? Number(iRow.model_lower).toFixed(2) : '—';
+        const center = iRow ? Number(iRow.model_median).toFixed(2) : '—';
+        const upper = iRow ? Number(iRow.model_upper).toFixed(2) : '—';
+        return [o, valStr, lower, center, upper, unit];
+      }
+      return [o, valStr, unit];
     });
     c3.body.append(this.createTable(detHeaders, detRows));
 
     // 共同工作最大残差和收敛状态
     const maxResidual = predRow0 ? predRow0.max_model_residual : null;
-    const convergeTag = predRow0 ? predRow0.converge_tag : null;
     const valid = predRow0 ? predRow0.valid : null;
     const statusGrid = el('div', 'metric-grid-3');
     statusGrid.append(
@@ -2334,9 +2416,9 @@ class SteadyModelAdaptV1 {
     );
     c3.body.append(statusGrid);
 
-    // Card 4: 后验区间图（文档第 10 节：选择后验后同一入口计算95%置信区间）
+    // Card 4: 区间图与运行验收（文档第 10 节：选择后验后同一入口计算95%置信区间）
     const c4 = this.createCard(
-      '后验区间与运行验收',
+      '区间图与运行验收',
       hasPosterior ? '模型输出区间、可观测量区间、后验中心和稳态辨识模型确定性输出。' : '选择方法 A 或 B 后验后，运行预测可显示 95% 置信区间。'
     );
     const predTask = this.latestTask('operatingPointPrediction');
@@ -2353,8 +2435,8 @@ class SteadyModelAdaptV1 {
       }
     });
     c4.body.append(chartsGrid);
+    c4.body.append(el('div', 'chart-legend', '■ 模型输出区间    □ 可观测量区间    ● 后验中心    | 稳态辨识模型确定性输出'));
     if (hasPosterior) {
-      c4.body.append(el('div', 'chart-legend', '■ 模型输出区间    □ 可观测量区间    ● 后验中心    | 稳态辨识模型确定性输出'));
       const postInfo = predSummary.posteriorPrediction || {};
       const acceptRow = el('div', 'reg-method-row');
       acceptRow.append(
@@ -2365,7 +2447,14 @@ class SteadyModelAdaptV1 {
       c4.body.append(acceptRow);
     }
 
-    container.append(c1.card, c2.card, c3.card, c4.card);
+    // Card 2 和 Card 3 并排显示
+    const c2c3Row = el('div', '');
+    c2c3Row.style.cssText = 'display:flex;gap:16px;align-items:flex-start;';
+    c2.card.style.flex = '1';
+    c3.card.style.flex = '1';
+    c2c3Row.append(c2.card, c3.card);
+
+    container.append(c1.card, c2c3Row, c4.card);
   }
 
   /* ================= 07 结果中心 ================= */
@@ -2399,24 +2488,51 @@ class SteadyModelAdaptV1 {
       '项目结果记录',
       '不在设计稿填入示例时间、耗时和结果数值。'
     );
-    const rHeaders = ['任务类型', '方法或路径', '状态', '主要产物', '操作'];
-    const rRows = [
-      ['参数辨识', '瞬态时刻模型路径', this._statusLabel(this.latestTask('estimateTransient')?.status) || '待运行', '参数表、调度曲线、误差标准差', button('打开', 'btn-table', () => this.ctx.setSection('identify'))],
-      ['可辨识性', '双位置综合分析', this._statusLabel(this.latestTask('engineeringIdentifiability')?.status) || '待运行', '秩分析、补偿依赖、分析报告', button('打开', 'btn-table', () => this.ctx.setSection('identifiability'))],
-      ['关键修正系数评估', '方法 A', this._statusLabel(this.latestTask('uqMethodA')?.status) || '待运行', '参数后验、95%置信区间', button('打开', 'btn-table', () => this.ctx.setSection('uq'))],
-      ['全修正系数评估', '方法 B', this._statusLabel(this.latestTask('uqMethodB')?.status) || '待运行', '分块后验、局部引气区间', button('打开', 'btn-table', () => this.ctx.setSection('uq'))],
-      ['测试验证', '稳态模型回放', this._statusLabel(this.latestTask('testValidation')?.status) || '待运行', '输出对比图、RMSE改善率', button('打开', 'btn-table', () => this.ctx.setSection('validation'))],
-      ['工况预测', '单工况直接预测', this._statusLabel(this.latestTask('operatingPointPrediction')?.status) || '待运行', '确定性预测中心、后验区间', button('打开', 'btn-table', () => this.ctx.setSection('prediction'))]
-    ];
+    const rHeaders = ['任务类型', '方法或路径', '状态', '创建时间', '操作'];
+    // actionKey → 中文标签和所属筛选分类
+    const actionKeyMeta = {
+      estimateTransient: { label: '参数辨识', method: '瞬态时刻模型路径', filter: 'identify', section: 'identify' },
+      estimateSteady: { label: '参数辨识', method: '稳态模型路径', filter: 'identify', section: 'identify' },
+      engineeringIdentifiability: { label: '可辨识性', method: '双位置综合分析', filter: 'identifiability', section: 'identifiability' },
+      uqMethodA: { label: '关键修正系数评估', method: '方法 A', filter: 'uq', section: 'uq' },
+      uqMethodB: { label: '全修正系数评估', method: '方法 B', filter: 'uq', section: 'uq' },
+      testValidation: { label: '测试验证', method: '稳态模型回放', filter: 'validation', section: 'validation' },
+      operatingPointPrediction: { label: '工况预测', method: '单工况直接预测', filter: 'prediction', section: 'prediction' }
+    };
+    let filteredTasks = allTasksList;
+    if (this.resultsFilter !== 'all') {
+      filteredTasks = allTasksList.filter(t => {
+        const meta = actionKeyMeta[t.actionKey];
+        return meta && meta.filter === this.resultsFilter;
+      });
+    }
+    // 如果没有选中任务，或选中的任务不在当前筛选范围内，自动选中筛选范围内的最新任务
+    if (!this._selectedResultTaskId || !filteredTasks.find(t => String(t.id) === this._selectedResultTaskId)) {
+      const latestFiltered = filteredTasks[0];
+      this._selectedResultTaskId = latestFiltered ? String(latestFiltered.id) : null;
+    }
+    const rRows = filteredTasks.map(t => {
+      const meta = actionKeyMeta[t.actionKey] || { label: t.actionKey || '—', method: '—', section: null };
+      const created = t.createdAt ? new Date(Number(t.createdAt)).toLocaleString('zh-CN', { hour12: false }) : '—';
+      const isSelected = this._selectedResultTaskId === String(t.id);
+      const selectBtn = button(isSelected ? '已选中' : '选中', 'btn-table' + (isSelected ? ' primary' : ''), () => {
+        this._selectedResultTaskId = String(t.id);
+        this.render();
+      });
+      return [meta.label, meta.method, this._statusLabel(t.status) || '待运行', created, selectBtn];
+    });
     c2.body.append(this.createTable(rHeaders, rRows));
     c2.body.append(el('p', 'table-note', allTasksList.length === 0 ? '尚无运行记录时，引导用户返回相应页面开始任务。' : `已记录 ${allTasksList.length} 条任务执行记录。`));
+
+    // 当前选中的任务（Card 3 和 Card 4 都跟随这个）
+    const selectedTask = this._selectedResultTaskId ? this.tasks.get(this._selectedResultTaskId) : null;
 
     // Card 3: 所选结果详情（与 Card 2 并排显示）
     const c3 = this.createCard(
       '所选结果详情',
       '仅展示当前选择，不修改原始结果文件。'
     );
-    const latestIdentTask = this.latestTask('estimateTransient') || this.latestTask('estimateSteady');
+    const latestIdentTask = selectedTask;
     const dList = el('ul', 'check-list');
     dList.style.cssText = 'list-style:none;padding:0;margin:0;';
     [
@@ -2459,6 +2575,12 @@ class SteadyModelAdaptV1 {
         if (!latestIdentTask || latestIdentTask.status !== TASK_STATUS.COMPLETED) {
           if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('需要已完成的辨识任务才能发布', 'warning');
           this.ctx.log('暂无已完成的辨识结果可发布');
+          return;
+        }
+        // 只有辨识任务才能发布
+        const isIdentTask = latestIdentTask.actionKey === 'estimateTransient' || latestIdentTask.actionKey === 'estimateSteady';
+        if (!isIdentTask) {
+          if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('只有参数辨识结果才能发布为稳态辨识模型', 'warning');
           return;
         }
         // 文档第 11 节：只有指纹兼容、结果通过验收且未读取参数真值时才允许发布
@@ -3398,6 +3520,8 @@ class SteadyModelAdaptV1 {
 
   async handleStartIdentifiability() {
     if (!this.workspace) await this.handleCreateProject();
+    // 前置校验：需要已完成参数辨识
+    if (!this._checkIdentCompleted('可辨识性分析')) return;
     this.ctx.log('启动工程可辨识性分析...');
     await this.withLoading('正在提交可辨识性分析...', async () => {
       try {
@@ -3505,10 +3629,13 @@ class SteadyModelAdaptV1 {
 
   async handleStartUq() {
     if (!this.workspace) await this.handleCreateProject();
+    // 前置校验：需要已完成参数辨识
+    if (!this._checkIdentCompleted('不确定性评估')) return;
     const actionKey = this.activeUqMethod === 'B' ? 'uqMethodB' : 'uqMethodA';
     this.ctx.log(`启动不确定性评估（${actionKey}）...`);
     this._smcReplicate = 0;
     this._lastBeta = 0;
+    this._uqStep = 0;
     await this.withLoading('正在提交不确定性评估...', async () => {
       try {
         const task = await this.ctx.http.tasks.create({
@@ -3640,6 +3767,18 @@ class SteadyModelAdaptV1 {
     (this.ctx.shadow || this.mount).appendChild(overlay);
   }
 
+  /** 前置校验：检查参数辨识是否已完成 */
+  _checkIdentCompleted(actionName) {
+    const identTask = this.latestTask('estimateTransient') || this.latestTask('estimateSteady');
+    if (!identTask || identTask.status !== TASK_STATUS.COMPLETED) {
+      const msg = `请先完成参数辨识后再执行${actionName}`;
+      this.ctx.log(msg);
+      if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast(msg, 'warning');
+      return false;
+    }
+    return true;
+  }
+
   _autoSelectValidationInputs() {
     const identTask = this.latestTask('estimateTransient') || this.latestTask('estimateSteady');
     if (!identTask || identTask.status !== TASK_STATUS.COMPLETED) {
@@ -3659,6 +3798,8 @@ class SteadyModelAdaptV1 {
 
   async handleStartValidation() {
     if (!this.workspace) await this.handleCreateProject();
+    // 前置校验：需要已完成参数辨识
+    if (!this._checkIdentCompleted('测试验证')) return;
     this.ctx.log('启动测试集稳态模型验证...');
     await this.withLoading('正在提交测试验证...', async () => {
       try {
@@ -3679,6 +3820,20 @@ class SteadyModelAdaptV1 {
 
   async handleStartPrediction() {
     if (!this.workspace) await this.handleCreateProject();
+    // 前置校验：需要已完成参数辨识
+    if (!this._checkIdentCompleted('工况预测')) return;
+    // 如果选了后验，还需要对应的 UQ 已完成
+    if (this._predictionPosterior && this._predictionPosterior !== 'none') {
+      const uqActionKey = this._predictionPosterior === 'B' ? 'uqMethodB' : 'uqMethodA';
+      const uqTask = this.latestTask(uqActionKey);
+      if (!uqTask || uqTask.status !== TASK_STATUS.COMPLETED) {
+        const uqLabel = this._predictionPosterior === 'B' ? '全修正系数评估（方法B）' : '关键修正系数评估（方法A）';
+        const msg = `选择后验区间需要先完成${uqLabel}`;
+        this.ctx.log(msg);
+        if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast(msg, 'warning');
+        return;
+      }
+    }
     this.ctx.log('启动单工况预测计算...');
     await this.withLoading('正在提交预测计算...', async () => {
       try {
@@ -3786,18 +3941,12 @@ class SteadyModelAdaptV1 {
 
   async _downloadArtifact(taskId, artifact) {
     const artifactId = artifact.id || artifact.name || artifact.fileName || String(artifact);
+    const fileName = artifact.name || artifact.fileName || artifactId;
     this.ctx.log(`正在下载产物: ${artifactId}`);
     try {
-      if (this.ctx.http && this.ctx.http.artifacts) {
-        const res = await this.ctx.http.artifacts.request(`${taskId}/${artifactId}`, { method: 'GET', responseType: 'blob' });
-        const blob = res instanceof Blob ? res : new Blob([res]);
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = artifact.name || artifact.fileName || artifactId;
-        a.click();
-        URL.revokeObjectURL(url);
-        this.ctx.log(`已下载: ${a.download}`);
+      if (this.ctx.http && this.ctx.http.artifacts && this.ctx.http.artifacts.download) {
+        await this.ctx.http.artifacts.download(`${taskId}/${artifactId}`, fileName);
+        this.ctx.log(`已下载: ${fileName}`);
       }
     } catch (e) {
       this.ctx.log('下载失败: ' + (e.message || e));
@@ -3823,85 +3972,177 @@ class SteadyModelAdaptV1 {
       if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('暂无任务可导出', 'info');
       return;
     }
-    this.ctx.log(`正在导出任务 ${task.id} 的追溯报告...`);
 
-    // 从真实数据构建追溯报告（文档第 11 节六项记录）
+    // 确保产物列表已加载（用于报告内容）
+    let artifacts = this.artifacts.get(String(task.id));
+    if (!artifacts) {
+      try {
+        if (this.ctx.http && this.ctx.http.artifacts) {
+          artifacts = await this.ctx.http.artifacts.request(task.id);
+          if (Array.isArray(artifacts)) this.artifacts.set(String(task.id), artifacts);
+        }
+      } catch (e) { /* ignore */ }
+    }
+    artifacts = artifacts || [];
+
+    this.ctx.log(`正在导出任务 ${task.id} 的全部结果（ZIP打包 + HTML追溯报告）...`);
+
+    // 1. 调后端打包接口下载 ZIP（含 result.json、run.log、artifacts.json 及全部产物文件）
+    try {
+      if (this.ctx.http && this.ctx.http.artifacts && this.ctx.http.artifacts.download) {
+        await this.ctx.http.artifacts.download(`${task.id}/package`, `workflow_task_${task.id}.zip`);
+        this.ctx.log(`已下载 ZIP 包：workflow_task_${task.id}.zip`);
+      }
+    } catch (e) {
+      this.ctx.log('下载 ZIP 包失败: ' + (e.message || e));
+    }
+
+    // 2. 同时生成 HTML 追溯报告（与联合仿真报告方式一致，可打印为 PDF）
     const result = this.results.get(String(task.id));
     const summary = result?.resultSummary || result || {};
-    const artifacts = this.artifacts.get(String(task.id)) || [];
     const acceptance = summary.acceptance || {};
     const timing = summary.timing || {};
     const input = summary.input || {};
 
-    const lines = [];
-    lines.push('结果追溯报告');
-    lines.push('============');
-    lines.push('');
-    lines.push(`生成时间：${new Date().toLocaleString('zh-CN')}`);
-    lines.push(`项目：${this.workspace?.jobName || this.workspace?.id || '—'}`);
-    lines.push('');
-    lines.push('1. 任务类型、正式入口和模型路径');
-    lines.push(`   任务类型：${task.actionKey}`);
-    lines.push(`   正式入口：${task.entryPoint || summary.program || '—'}`);
-    lines.push(`   路由：${summary.route || summary.routeLabel || '—'}`);
-    lines.push('');
-    lines.push('2. 训练/测试数据、DLL、配置和算法指纹');
-    lines.push(`   训练数据：${input.trainingFile || '—'}（${input.trainingPointCount || '—'} 工况）`);
-    lines.push(`   测试数据：${input.testFile || '无'}（${input.testPointCount || '—'} 工况）`);
-    lines.push(`   进口边界模式：${input.inletBoundaryMode || '—'}`);
-    const sha = artifacts.length > 0 ? (artifacts[0].sha256 || '—') : '—';
-    lines.push(`   算法指纹（SHA256）：${sha}`);
-    lines.push('');
-    lines.push('3. 正则化及后验运行配置');
-    lines.push(`   配置：${summary.options ? JSON.stringify(summary.options) : '—'}`);
-    lines.push(`   阶段A耗时：${(timing.stageASeconds||0).toFixed(1)} s`);
-    lines.push(`   阶段B耗时：${(timing.stageBSeconds||0).toFixed(1)} s`);
-    lines.push(`   阶段C耗时：${(timing.stageCSeconds||0).toFixed(1)} s`);
-    lines.push(`   阶段D耗时：${(timing.stageDSeconds||0).toFixed(1)} s`);
-    lines.push(`   总耗时：${((timing.estimationSeconds||0)+(timing.stageASeconds||0)+(timing.stageBSeconds||0)+(timing.stageCSeconds||0)+(timing.stageDSeconds||0)).toFixed(1)} s`);
-    lines.push('');
-    lines.push('4. 开始时间、结束时间和总运行时间');
-    lines.push(`   开始时间：${task.createdAt ? new Date(Number(task.createdAt)).toLocaleString('zh-CN') : '—'}`);
-    lines.push(`   结束时间：${task.finishedAt ? new Date(Number(task.finishedAt)).toLocaleString('zh-CN') : (result?.completedAt ? new Date(Number(result.completedAt)).toLocaleString('zh-CN') : '—')}`);
-    const totalRun = (task.createdAt && (task.finishedAt || result?.completedAt))
-      ? Math.round((Number(task.finishedAt || result.completedAt) - Number(task.createdAt)) / 1000) : 0;
-    lines.push(`   总运行时间：${totalRun} 秒`);
-    lines.push('');
-    lines.push('5. MAT、Excel、摘要、日志和图形文件');
-    if (artifacts.length === 0) {
-      lines.push('   无产物文件');
-    } else {
-      artifacts.forEach(a => {
-        const name = a.name || a.fileName || String(a);
-        const size = a.size ? ` (${this._formatFileSize(a.size)})` : '';
-        lines.push(`   - ${name}${size}`);
-      });
-    }
-    lines.push('');
-    lines.push('6. 收敛、验收、警告和审核状态');
-    lines.push(`   全部阶段收敛：${acceptance.allStagesConverged ? '是' : '否'}`);
-    lines.push(`   阶段A收敛：${acceptance.stageAConverged ? '是' : '否'}`);
-    lines.push(`   阶段B收敛：${acceptance.stageBAllConverged ? '是' : '否'}`);
-    lines.push(`   阶段D收敛：${acceptance.stageDConverged ? '是' : '否'}`);
-    lines.push(`   正式验收通过：${acceptance.formalAccepted ? '是' : '否'}`);
-    lines.push(`   训练回放有效：${acceptance.trainingReplayValid ? '是' : '否'}`);
-    lines.push(`   测试回放有效：${acceptance.testReplayValid ? '是' : '否'}`);
-    lines.push(`   任务状态：${this._statusLabel(task.status)}`);
-    lines.push(`   审核状态：${task.reviewStatus || '待审核'}`);
-    lines.push(`   发布状态：${task.publicationStatus === 'published' ? '已发布' : '未发布'}`);
-    lines.push('');
-    lines.push('=============================');
+    const PDFGen = window.CommonUtils && window.CommonUtils.LocalPDFGenerator;
+    if (PDFGen) {
+      const pdf = new PDFGen();
+      pdf.addTitle('结果追溯报告');
+      pdf.addText(`项目：${this.workspace?.jobName || this.workspace?.id || '—'}`, 12);
+      pdf.addText(`生成时间：${new Date().toLocaleString('zh-CN')}`, 12);
+      pdf.addSeparator();
 
-    const text = lines.join('\n');
-    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `结果追溯报告_${task.actionKey}_${task.id}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
-    this.ctx.log(`已导出追溯报告：${a.download}`);
-    if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('已导出追溯报告', 'success');
+      pdf.addSubtitle('1. 任务类型、正式入口和模型路径');
+      pdf.addText(`任务类型：${task.actionKey}`, 12);
+      pdf.addText(`正式入口：${task.entryPoint || summary.program || '—'}`, 12);
+      pdf.addText(`路由：${summary.route || summary.routeLabel || '—'}`, 12);
+      pdf.addSeparator();
+
+      pdf.addSubtitle('2. 训练/测试数据、DLL、配置和算法指纹');
+      pdf.addText(`训练数据：${input.trainingFile || '—'}（${input.trainingPointCount || '—'} 工况）`, 12);
+      pdf.addText(`测试数据：${input.testFile || '无'}（${input.testPointCount || '—'} 工况）`, 12);
+      pdf.addText(`进口边界模式：${input.inletBoundaryMode || '—'}`, 12);
+      pdf.addText(`产物文件数：${artifacts.length}`, 12);
+      if (artifacts.length > 0) {
+        pdf.addTable(
+          ['文件名', '大小', 'SHA256'],
+          artifacts.map(a => [
+            a.name || a.fileName || String(a),
+            a.size ? this._formatFileSize(a.size) : '—',
+            a.sha256 ? a.sha256.substring(0, 16) + '...' : '—'
+          ])
+        );
+      }
+      pdf.addSeparator();
+
+      pdf.addSubtitle('3. 正则化及后验运行配置');
+      pdf.addText(`配置：${summary.options ? JSON.stringify(summary.options) : '—'}`, 11);
+      pdf.addText(`阶段A耗时：${(timing.stageASeconds||0).toFixed(1)} s`, 12);
+      pdf.addText(`阶段B耗时：${(timing.stageBSeconds||0).toFixed(1)} s`, 12);
+      pdf.addText(`阶段C耗时：${(timing.stageCSeconds||0).toFixed(1)} s`, 12);
+      pdf.addText(`阶段D耗时：${(timing.stageDSeconds||0).toFixed(1)} s`, 12);
+      const totalEst = (timing.estimationSeconds||0)+(timing.stageASeconds||0)+(timing.stageBSeconds||0)+(timing.stageCSeconds||0)+(timing.stageDSeconds||0);
+      pdf.addText(`总耗时：${totalEst.toFixed(1)} s`, 12);
+      pdf.addSeparator();
+
+      pdf.addSubtitle('4. 开始时间、结束时间和总运行时间');
+      pdf.addText(`开始时间：${task.createdAt ? new Date(Number(task.createdAt)).toLocaleString('zh-CN') : '—'}`, 12);
+      const endTime = task.finishedAt || result?.completedAt;
+      pdf.addText(`结束时间：${endTime ? new Date(Number(endTime)).toLocaleString('zh-CN') : '—'}`, 12);
+      const totalRun = (task.createdAt && endTime) ? Math.round((Number(endTime) - Number(task.createdAt)) / 1000) : 0;
+      pdf.addText(`总运行时间：${totalRun} 秒`, 12);
+      pdf.addSeparator();
+
+      pdf.addSubtitle('5. MAT、Excel、摘要、日志和图形文件');
+      if (artifacts.length === 0) {
+        pdf.addText('无产物文件', 12);
+      } else {
+        pdf.addTable(
+          ['文件名', '大小', '修改时间'],
+          artifacts.map(a => [
+            a.name || a.fileName || String(a),
+            a.size ? this._formatFileSize(a.size) : '—',
+            a.modifiedAt ? new Date(a.modifiedAt).toLocaleString('zh-CN', { hour12: false }) : '—'
+          ])
+        );
+      }
+      pdf.addSeparator();
+
+      pdf.addSubtitle('6. 收敛、验收、警告和审核状态');
+      pdf.addTable(
+        ['检查项', '状态'],
+        [
+          ['全部阶段收敛', acceptance.allStagesConverged ? '是' : '否'],
+          ['阶段A收敛', acceptance.stageAConverged ? '是' : '否'],
+          ['阶段B收敛', acceptance.stageBAllConverged ? '是' : '否'],
+          ['阶段D收敛', acceptance.stageDConverged ? '是' : '否'],
+          ['正式验收通过', acceptance.formalAccepted ? '是' : '否'],
+          ['训练回放有效', acceptance.trainingReplayValid ? '是' : '否'],
+          ['测试回放有效', acceptance.testReplayValid ? '是' : '否'],
+          ['任务状态', this._statusLabel(task.status)],
+          ['审核状态', task.reviewStatus || '待审核'],
+          ['发布状态', task.publicationStatus === 'published' ? '已发布' : '未发布']
+        ]
+      );
+
+      const htmlContent = pdf.generateHTML();
+      const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `结果追溯报告_${task.actionKey}_${task.id}.html`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } else {
+      const html = this._buildSimpleHtmlReport(task, summary, artifacts, acceptance, timing, input, result);
+      const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `结果追溯报告_${task.actionKey}_${task.id}.html`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    this.ctx.log(`导出完成：ZIP 产物包 + HTML 追溯报告`);
+    if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('已导出 ZIP 产物包及 HTML 追溯报告', 'success');
+  }
+
+  /** 降级用的简单 HTML 报告 */
+  _buildSimpleHtmlReport(task, summary, artifacts, acceptance, timing, input, result) {
+    const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const rows = artifacts.map(a => `<tr><td>${esc(a.name||a.fileName)}</td><td>${a.size?this._formatFileSize(a.size):'—'}</td><td>${esc(a.sha256||'—').substring(0,16)}</td></tr>`).join('');
+    return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>结果追溯报告</title>
+<style>body{font-family:SimSun,Microsoft YaHei,Arial,sans-serif;font-size:12pt;margin:40px;line-height:1.5}
+table{width:100%;border-collapse:collapse;margin:10px 0}th,td{border:1px solid #ddd;padding:8px}th{background:#f2f2f2}
+h1{text-align:center}h2{font-size:14pt;border-bottom:1px solid #999;padding-bottom:5px}</style></head><body>
+<h1>结果追溯报告</h1>
+<p>项目：${esc(this.workspace?.jobName || this.workspace?.id)}　生成时间：${new Date().toLocaleString('zh-CN')}</p>
+<h2>1. 任务类型、正式入口和模型路径</h2>
+<p>任务类型：${esc(task.actionKey)}<br>正式入口：${esc(task.entryPoint || summary.program)}<br>路由：${esc(summary.route || summary.routeLabel)}</p>
+<h2>2. 训练/测试数据、DLL、配置和算法指纹</h2>
+<p>训练数据：${esc(input.trainingFile)}（${input.trainingPointCount||'—'} 工况）<br>测试数据：${esc(input.testFile||'无')}（${input.testPointCount||'—'} 工况）<br>进口边界模式：${input.inletBoundaryMode||'—'}</p>
+<table><tr><th>文件名</th><th>大小</th><th>SHA256</th></tr>${rows}</table>
+<h2>3. 正则化及后验运行配置</h2>
+<p>配置：${esc(summary.options?JSON.stringify(summary.options):'—')}</p>
+<p>阶段A：${(timing.stageASeconds||0).toFixed(1)}s　阶段B：${(timing.stageBSeconds||0).toFixed(1)}s　阶段C：${(timing.stageCSeconds||0).toFixed(1)}s　阶段D：${(timing.stageDSeconds||0).toFixed(1)}s</p>
+<h2>4. 开始时间、结束时间和总运行时间</h2>
+<p>开始：${task.createdAt?new Date(Number(task.createdAt)).toLocaleString('zh-CN'):'—'}　结束：${(task.finishedAt||result?.completedAt)?new Date(Number(task.finishedAt||result.completedAt)).toLocaleString('zh-CN'):'—'}</p>
+<h2>5. 产物文件</h2>
+<table><tr><th>文件名</th><th>大小</th><th>SHA256</th></tr>${rows}</table>
+<h2>6. 收敛、验收、审核状态</h2>
+<table><tr><th>检查项</th><th>状态</th></tr>
+<tr><td>全部阶段收敛</td><td>${acceptance.allStagesConverged?'是':'否'}</td></tr>
+<tr><td>阶段A收敛</td><td>${acceptance.stageAConverged?'是':'否'}</td></tr>
+<tr><td>阶段B收敛</td><td>${acceptance.stageBAllConverged?'是':'否'}</td></tr>
+<tr><td>阶段D收敛</td><td>${acceptance.stageDConverged?'是':'否'}</td></tr>
+<tr><td>正式验收通过</td><td>${acceptance.formalAccepted?'是':'否'}</td></tr>
+<tr><td>训练回放有效</td><td>${acceptance.trainingReplayValid?'是':'否'}</td></tr>
+<tr><td>测试回放有效</td><td>${acceptance.testReplayValid?'是':'否'}</td></tr>
+<tr><td>任务状态</td><td>${esc(this._statusLabel(task.status))}</td></tr>
+<tr><td>审核状态</td><td>${esc(task.reviewStatus||'待审核')}</td></tr>
+<tr><td>发布状态</td><td>${task.publicationStatus==='published'?'已发布':'未发布'}</td></tr>
+</table></body></html>`;
   }
 
   /* ================= ECharts 图表渲染 ================= */

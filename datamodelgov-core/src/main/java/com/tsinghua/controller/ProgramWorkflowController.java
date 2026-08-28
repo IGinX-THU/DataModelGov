@@ -343,6 +343,28 @@ public class ProgramWorkflowController {
         }
     }
 
+    @ApiOperation("打包下载工作流任务全部产物")
+    @GetMapping("/artifacts/{taskId}/package")
+    @RequirePermission(Permission.READ)
+    @OperationLog(value = "打包下载工作流产物", type = OperationLog.OperationType.EXPORT, recordResult = false)
+    public ResponseEntity<byte[]> packageTask(@PathVariable("taskId") String taskId,
+                                              @RequestParam("name") String name,
+                                              @RequestParam("version") String version,
+                                              @RequestParam(value = "projectName", required = false) String projectName) {
+        try {
+            byte[] zipBytes = workflowService.packageTask(taskId, name, version, projectName);
+            String zipName = "workflow_task_" + taskId + ".zip";
+            String encoded = URLEncoder.encode(zipName, StandardCharsets.UTF_8.name()).replace("+", "%20");
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encoded)
+                    .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                    .body(zipBytes);
+        } catch (Exception e) {
+            log.warn("打包下载工作流产物失败: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(null);
+        }
+    }
+
     private Result<?> failure(String prefix, Exception e) {
         if (e instanceof IllegalArgumentException || e instanceof IllegalStateException || e instanceof SecurityException) {
             log.warn("{}: {}", prefix, e.getMessage());

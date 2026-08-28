@@ -793,13 +793,6 @@ select.reg-input {
 
 .check-item:last-child { border-bottom: 0; }
 
-.check-item::before {
-  content: '•';
-  color: var(--blue);
-  font-size: 16px;
-  line-height: 1;
-}
-
 .progress-track {
   height: 28px;
   background: #e2e9ef;
