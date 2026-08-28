@@ -591,7 +591,7 @@ class SteadyModelAdaptV1 {
       dirField.style.gridColumn = '3 / span 2';
       const dirLabel = el('label', '', '保存目录');
       const dirValue = el('div', '');
-      dirValue.style.cssText = 'padding:6px 8px;background:#f5f7fa;border:1px solid #e8eaed;border-radius:3px;font-size:11px;color:#5a6a7a;word-break:break-all;font-family:Consolas,monospace;max-height:60px;overflow:auto;';
+      dirValue.style.cssText = 'padding:6px 8px;background:#f5f7fa;border:1px solid #e8eaed;border-radius:3px;font-size:11px;color:#5a6a7a;word-break:break-all;font-family:Consolas,monospace;line-height:1.5;';
       dirValue.textContent = this.workspace.workspaceDir;
       dirField.append(dirLabel, dirValue);
       form2.append(dirField);
@@ -1000,7 +1000,7 @@ class SteadyModelAdaptV1 {
 
     c4.body.append(statusGrid);
 
-    // 结果文件位置
+    // 结果文件位置（放在左侧卡片 c3 中，路径较长需要更宽的显示区域）
     if (outputInfo.latestMatFile || outputInfo.excelFile || outputInfo.summaryFile) {
       const fileList = el('div', 'file-list');
       fileList.style.marginTop = '12px';
@@ -1008,7 +1008,7 @@ class SteadyModelAdaptV1 {
       if (outputInfo.latestMatFile) fileList.append(el('div', 'file-item', `MAT: ${outputInfo.latestMatFile}`));
       if (outputInfo.excelFile) fileList.append(el('div', 'file-item', `Excel: ${outputInfo.excelFile}`));
       if (outputInfo.summaryFile) fileList.append(el('div', 'file-item', `摘要: ${outputInfo.summaryFile}`));
-      c4.body.append(fileList);
+      c3.body.append(fileList);
     }
 
     const resultRow = el('div', 'two-col-row');
@@ -1180,8 +1180,14 @@ class SteadyModelAdaptV1 {
       '同时切换和展示两个位置下（A 阶段前 / D 阶段后）的辨识结果进行综合判断。'
     );
     const seg = el('div', 'segmented');
-    const b1 = button('瞬态时刻模型', 'segment active');
-    const b2 = button('稳态模型', 'segment');
+    const b1 = button('瞬态时刻模型', 'segment' + (this.identifyModel === 'transient' ? ' active' : ''), () => {
+      this.identifyModel = 'transient';
+      this.render();
+    });
+    const b2 = button('稳态模型', 'segment' + (this.identifyModel === 'steady' ? ' active' : ''), () => {
+      this.identifyModel = 'steady';
+      this.render();
+    });
     const b3 = button('A 阶段前', 'segment' + (this.activeSnapshot === 'pre' ? ' active' : ''), () => {
       this.activeSnapshot = 'pre';
       this.render();
@@ -1191,7 +1197,10 @@ class SteadyModelAdaptV1 {
       this.render();
     });
     seg.append(b1, b2, b3, b4);
-    c1.body.append(seg);
+    const tag = el('span', 'field-status optional', '局部线性分析，不等于全局唯一性');
+    const segRow = el('div', 'reg-method-row');
+    segRow.append(seg, tag);
+    c1.body.append(segRow);
 
     // Card 2: 整体信息质量
     const c2 = this.createCard(
@@ -1200,10 +1209,10 @@ class SteadyModelAdaptV1 {
     );
     const qGrid = el('div', 'metrics-grid');
     qGrid.append(
-      this.createMetricBox('标准化信息矩阵条件数', identResult ? '1.42e+04' : '动态显示'),
-      this.createMetricBox('当前正则化后条件数', identResult ? '48.5' : '动态显示'),
-      this.createMetricBox('数值秩 / 有效秩', identResult ? '11 / 6' : '动态显示'),
-      this.createMetricBox('最小有效奇异值', identResult ? '0.0418' : '动态显示'),
+      this.createMetricBox('标准化信息矩阵条件数', identResult ? '1.42e+04' : '运行后显示'),
+      this.createMetricBox('当前正则化后条件数', identResult ? '48.5' : '运行后显示'),
+      this.createMetricBox('数值秩 / 有效秩', identResult ? '11 / 6' : '运行后显示'),
+      this.createMetricBox('最小有效奇异值', identResult ? '0.0418' : '运行后显示'),
       this.createMetricBox('双快照变化', identResult ? '基准与辨识后结论一致' : '运行后归纳')
     );
     c2.body.append(qGrid);
@@ -1216,11 +1225,11 @@ class SteadyModelAdaptV1 {
     const idHeaders = ['参数', '自身敏感性', '补偿依赖', '主要补偿参数', 'A 前类别', 'D 后类别', '证据与建议'];
     const idRows = DEFAULT_PARAMS.map(p => [
       p.name,
-      identResult ? (p.name.includes('eta') ? '高敏感' : '中敏感') : '动态显示',
-      identResult ? (p.name.includes('Burner') ? '独立' : '存在弱补偿') : '动态显示',
+      identResult ? (p.name.includes('eta') ? '高敏感' : '中敏感') : '运行后判定',
+      identResult ? (p.name.includes('Burner') ? '独立' : '存在弱补偿') : '运行后判定',
       identResult ? (p.name.includes('HPC') ? 'Burner_K_dP' : 'PT_K_eta') : '按贡献排序显示',
-      identResult ? '可辨识' : '动态显示',
-      identResult ? '可辨识' : '动态显示',
+      identResult ? '可辨识' : '运行后显示',
+      identResult ? '可辨识' : '运行后显示',
       button('查看', 'btn-table', () => this.ctx.log('查看证据：' + p.name))
     ]);
     c3.body.append(this.createTable(idHeaders, idRows));
@@ -1252,24 +1261,16 @@ class SteadyModelAdaptV1 {
       '耗时根据导入工况、有效数据量、后验配置和一次模型回放试算动态估计。'
     );
     const mGrid = el('div', 'method-grid grid-2');
-    const cardA = this.createMethodCard('A', '关键修正系数评估', '聚焦辨识阶段使用的总体调度修正与燃油偏置。', '', this.activeUqMethod === 'A', () => {
+    const cardA = this.createMethodCard('A', '关键修正系数评估', '聚焦辨识阶段使用的总体调度修正与燃油偏置。', '预计耗时：待估算', this.activeUqMethod === 'A', () => {
       this.activeUqMethod = 'A';
       this.render();
     });
-    const cardB = this.createMethodCard('B', '全修正系数评估', '进一步纳入六部件局部修正和物理引气不确定性。', '', this.activeUqMethod === 'B', () => {
+    const cardB = this.createMethodCard('B', '全修正系数评估', '进一步纳入六部件局部修正和物理引气不确定性。', '预计耗时：待估算', this.activeUqMethod === 'B', () => {
       this.activeUqMethod = 'B';
       this.render();
     });
     mGrid.append(cardA, cardB);
     c1.body.append(mGrid);
-
-    const estGrid = el('div', 'metrics-grid');
-    estGrid.style.marginTop = '14px';
-    estGrid.append(
-      this.createMetricBox('关键修正系数评估', '预计耗时：约 8~15 秒'),
-      this.createMetricBox('全修正系数评估', '预计耗时：约 20~40 秒')
-    );
-    c1.body.append(estGrid);
 
     // Card 2: 参数 95% 置信区间图
     const c2 = this.createCard(
@@ -1294,6 +1295,7 @@ class SteadyModelAdaptV1 {
     });
     c2.body.append(chartsGrid);
     c2.body.append(el('div', 'chart-legend', '— 95%置信区间    ● 后验中心    | 修正系数辨识结果'));
+    c2.body.append(el('div', 'hint-note', '不显示SMC温度推进与有效样本量曲线'));
 
     // Card 3: 结果解释与验收
     const c3 = this.createCard(
@@ -1381,16 +1383,20 @@ class SteadyModelAdaptV1 {
         }
       });
       c2.body.append(chartsGrid);
-      c2.body.append(el('div', 'chart-legend', '— 零修正模型    — 稳态辨识模型    — 测量值'));
+      const legend = el('div', 'chart-legend');
+      legend.innerHTML = '<span class="legend-line baseline">— 零修正模型</span>' +
+                         '<span class="legend-line corrected">— 稳态辨识模型</span>' +
+                         '<span class="legend-line measured">— 测量值</span>';
+      c2.body.append(legend);
     } else {
       const vHeaders = ['输出', '零修正模型 RMSE', '稳态辨识模型 RMSE', '改善幅度'];
       const vRows = [
-        ['Np', valResult ? '2.45%' : '动态显示', valResult ? '0.32%' : '动态显示', valResult ? '-86.9%' : '动态显示'],
-        ['Ng', valResult ? '3.10%' : '动态显示', valResult ? '0.41%' : '动态显示', valResult ? '-86.8%' : '动态显示'],
-        ['Pt3', valResult ? '4.82%' : '动态显示', valResult ? '0.65%' : '动态显示', valResult ? '-86.5%' : '动态显示'],
-        ['Tt3', valResult ? '3.50%' : '动态显示', valResult ? '0.48%' : '动态显示', valResult ? '-86.3%' : '动态显示'],
-        ['Tt45', valResult ? '4.15%' : '动态显示', valResult ? '0.55%' : '动态显示', valResult ? '-86.7%' : '动态显示'],
-        ['Pt45', valResult ? '3.80%' : '动态显示', valResult ? '0.50%' : '动态显示', valResult ? '-86.8%' : '动态显示']
+        ['Np', valResult ? '2.45%' : '运行后显示', valResult ? '0.32%' : '运行后显示', valResult ? '-86.9%' : '运行后显示'],
+        ['Ng', valResult ? '3.10%' : '运行后显示', valResult ? '0.41%' : '运行后显示', valResult ? '-86.8%' : '运行后显示'],
+        ['Pt3', valResult ? '4.82%' : '运行后显示', valResult ? '0.65%' : '运行后显示', valResult ? '-86.5%' : '运行后显示'],
+        ['Tt3', valResult ? '3.50%' : '运行后显示', valResult ? '0.48%' : '运行后显示', valResult ? '-86.3%' : '运行后显示'],
+        ['Tt45', valResult ? '4.15%' : '运行后显示', valResult ? '0.55%' : '运行后显示', valResult ? '-86.7%' : '运行后显示'],
+        ['Pt45', valResult ? '3.80%' : '运行后显示', valResult ? '0.50%' : '运行后显示', valResult ? '-86.8%' : '运行后显示']
       ];
       c2.body.append(this.createTable(vHeaders, vRows));
     }
@@ -1400,8 +1406,12 @@ class SteadyModelAdaptV1 {
       '提示',
       '不同单位的输出不直接相加为一个未经归一化的总误差。'
     );
-    const info = el('div', 'notice-box info', 'ℹ 测试数据未用于参数更新；不读取隐藏真值');
-    c3.body.append(info);
+    const tagRow = el('div', 'reg-method-row');
+    tagRow.append(
+      el('span', 'field-status optional', '测试数据未用于参数更新'),
+      el('span', 'field-status optional', '不读取隐藏真值')
+    );
+    c3.body.append(tagRow);
 
     container.append(c1.card, c2.card, c3.card);
   }
@@ -1415,12 +1425,14 @@ class SteadyModelAdaptV1 {
       '预测方式',
       '首轮只支持单工况，不设计批量预测。'
     );
+    const segRow = el('div', 'reg-method-row');
     const seg = el('div', 'segmented');
     seg.append(
       button('直接环境边界', 'segment' + (this.predictionMode === 'pressure' ? ' active' : ''), () => { this.predictionMode = 'pressure'; this.render(); }),
       button('高度环境边界', 'segment' + (this.predictionMode === 'altitude' ? ' active' : ''), () => { this.predictionMode = 'altitude'; this.render(); })
     );
-    c1.body.append(seg);
+    segRow.append(seg, el('span', 'field-status optional', '单工况 · 稳态模型'));
+    c1.body.append(segRow);
     const hint = this.predictionMode === 'pressure'
       ? '不经过总距角与控制闭环；燃油输入为模型实际输入，不应用燃油测量值。'
       : '由 DLL 根据高度和静温重构环境压力，无需同时输入高度和 Pamb。';
@@ -1487,9 +1499,9 @@ class SteadyModelAdaptV1 {
     const pHeaders = ['输出', '稳态辨识模型', '区间下界', '区间上界', '状态'];
     const pRows = OUTPUT_VARS.map(o => [
       o,
-      predResult ? (o === 'Pt3' ? '825400 Pa' : o === 'Tt3' ? '582.4 K' : o === 'Tt45' ? '978.2 K' : '1.000') : '动态显示',
-      predResult ? (o === 'Pt3' ? '818200 Pa' : o === 'Tt3' ? '578.1 K' : o === 'Tt45' ? '971.0 K' : '0.992') : '动态显示',
-      predResult ? (o === 'Pt3' ? '832600 Pa' : o === 'Tt3' ? '586.7 K' : o === 'Tt45' ? '985.4 K' : '1.008') : '动态显示',
+      predResult ? (o === 'Pt3' ? '825400 Pa' : o === 'Tt3' ? '582.4 K' : o === 'Tt45' ? '978.2 K' : '1.000') : '运行后显示',
+      predResult ? (o === 'Pt3' ? '818200 Pa' : o === 'Tt3' ? '578.1 K' : o === 'Tt45' ? '971.0 K' : '0.992') : '运行后显示',
+      predResult ? (o === 'Pt3' ? '832600 Pa' : o === 'Tt3' ? '586.7 K' : o === 'Tt45' ? '985.4 K' : '1.008') : '运行后显示',
       predResult ? '预测完成' : '待运行'
     ]);
     c3.body.append(this.createTable(pHeaders, pRows));
@@ -1509,6 +1521,10 @@ class SteadyModelAdaptV1 {
     });
     c4.body.append(chartsGrid);
     c4.body.append(el('div', 'chart-legend', '— 95%置信区间    ● 后验中心    | 稳态辨识模型'));
+    const acceptRow = el('div', 'reg-method-row');
+    acceptRow.append(el('span', 'field-status ok', '收敛与有效后验质量验收'));
+    acceptRow.style.justifyContent = 'flex-end';
+    c4.body.append(acceptRow);
 
     container.append(c1.card, c2.card, c3.card, c4.card);
   }
@@ -1562,16 +1578,28 @@ class SteadyModelAdaptV1 {
       '仅展示当前选择，不修改原始结果文件。'
     );
     const latestIdentTask = this.latestTask('estimateTransient') || this.latestTask('estimateSteady');
-    const dGrid = el('div', 'metrics-grid');
-    dGrid.append(
-      this.createMetricBox('输入数据与模型指纹', latestIdentTask ? 'SHA256: 7f8a91b... (兼容)' : '尚未选择结果'),
-      this.createMetricBox('运行配置与停止原因', latestIdentTask ? 'Stage D 微调达阈值收敛 (10 iters)' : '尚未选择结果'),
-      this.createMetricBox('验收状态与复核意见', latestIdentTask ? '验收通过 (FormalAccepted)' : '尚未选择结果'),
-      this.createMetricBox('结果文件与图形', latestIdentTask ? 'result.mat / summary.md' : '尚未选择结果'),
-      this.createMetricBox('MATLAB 调用方式', latestIdentTask ? 'Start_SteadyModelAdapt_V2_03' : '尚未选择结果'),
-      this.createMetricBox('稳态辨识模型状态', latestIdentTask && latestIdentTask.reviewStatus === TASK_STATUS.REVIEW_APPROVED ? '已审核通过' : '待审核')
-    );
-    c3.body.append(dGrid);
+    const dList = el('ul', 'check-list');
+    [
+      '输入数据与模型指纹',
+      '运行配置与停止原因',
+      '验收状态与复核意见',
+      '结果文件与图形',
+      'MATLAB 调用方式',
+      '稳态辨识模型状态'
+    ].forEach((label, i) => {
+      const vals = latestIdentTask
+        ? [
+            'SHA256: 7f8a91b... (兼容)',
+            'Stage D 微调达阈值收敛 (10 iters)',
+            '验收通过 (FormalAccepted)',
+            'result.mat / summary.md',
+            'Start_SteadyModelAdapt_V2_03',
+            latestIdentTask.reviewStatus === TASK_STATUS.REVIEW_APPROVED ? '已审核通过' : '待审核'
+          ]
+        : ['尚未选择结果', '尚未选择结果', '尚未选择结果', '尚未选择结果', '尚未选择结果', '尚未选择结果'];
+      dList.append(el('li', 'check-item', label + '：' + vals[i]));
+    });
+    c3.body.append(dList);
     const btnRow = el('div', 'btn-row');
     btnRow.append(
       button('复制调用方式', 'btn-card', () => {
@@ -1601,10 +1629,10 @@ class SteadyModelAdaptV1 {
       '追溯与导出',
       '结果运行后保存输入、模型、配置、日志、图形和报告之间的对应关系。'
     );
-    const tRow = el('div', 'btn-row');
+    const tRow = el('div', 'reg-method-row');
     tRow.style.marginTop = '0';
     ['输入可追溯', '模型可追溯', '配置可追溯', '结论可追溯'].forEach(t => {
-      tRow.append(button(t, 'btn-card', () => this.ctx.log('查看追溯链：' + t)));
+      tRow.append(el('span', 'field-status optional', t));
     });
     c4.body.append(tRow);
 
