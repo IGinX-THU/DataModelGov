@@ -1124,30 +1124,31 @@ class SteadyModelAdaptV1 {
     const baselineByField = this._metricsByFieldMap(baseMetrics);
     const finalByField = this._metricsByFieldMap(finMetrics);
 
-    const errRows = OUTPUT_VARS.map(o => {
+    // 从实际数据中动态提取输出变量列表（瞬态时刻模型用 dNp_dt/dNg_dt，稳态模型用 Np/Ng）
+    const allFields = Object.keys(baselineByField).length > 0
+      ? Object.keys(baselineByField)
+      : Object.keys(finalByField);
+    // 优先按 OUTPUT_VARS 顺序排列，再追加未列出的
+    const orderedFields = [
+      ...OUTPUT_VARS.filter(o => allFields.includes(o)),
+      ...allFields.filter(o => !OUTPUT_VARS.includes(o))
+    ];
+
+    const errRows = orderedFields.map(o => {
       const base = baselineByField[o] || {};
       const fin = finalByField[o] || {};
       return [
         o,
-        base.rmse != null ? Number(base.rmse).toFixed(3) : '待运行',
-        fin.rmse != null ? Number(fin.rmse).toFixed(3) : '待运行',
+        base.rmse != null ? Number(base.rmse).toFixed(3) : '—',
+        fin.rmse != null ? Number(fin.rmse).toFixed(3) : '—',
         button('曲线', 'btn-table', () => this._viewErrorCurve(o))
       ];
     });
 
-    // 如果有 dNp_dt / dNg_dt（瞬态时刻模型），也显示
-    if (baselineByField['dNp_dt'] || finalByField['dNp_dt']) {
-      ['dNp_dt', 'dNg_dt'].forEach(o => {
-        const base = baselineByField[o] || {};
-        const fin = finalByField[o] || {};
-        if (base.rmse != null || fin.rmse != null) {
-          errRows.push([
-            o,
-            base.rmse != null ? Number(base.rmse).toFixed(3) : '—',
-            fin.rmse != null ? Number(fin.rmse).toFixed(3) : '—',
-            button('曲线', 'btn-table', () => this._viewErrorCurve(o))
-          ]);
-        }
+    // 无数据时显示待运行占位
+    if (errRows.length === 0) {
+      OUTPUT_VARS.forEach(o => {
+        errRows.push([o, '待运行', '待运行', button('曲线', 'btn-table', () => this._viewErrorCurve(o))]);
       });
     }
 
