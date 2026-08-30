@@ -78,7 +78,7 @@ public final class ArchiveUtil {
 
     /**
      * 根据扩展名自动选择解压器把 archive 解压到 targetDir。
-     * sanitizeNonAscii 为 true 时，解压后将目录名中的非 ASCII 字符替换为 "undefined"，
+     * sanitizeNonAscii 为 true 时，解压后将目录名中的非 ASCII 字符替换为 "u"，
      * 避免路径含中文导致 MATLAB HDF5 save(-v7.3) 等操作失败。
      * 同名替换不会合并：每个含非 ASCII 的目录名各自替换，若结果冲突则追加序号。
      * 返回原始相对路径（相对于 targetDir）到新相对路径的映射；无替换时返回空 Map。
@@ -89,7 +89,7 @@ public final class ArchiveUtil {
 
     /**
      * 根据扩展名自动选择解压器把 archive 解压到 targetDir。
-     * sanitizeNonAscii 为 true 时，解压后将目录名中的非 ASCII 字符替换为 "undefined"。
+     * sanitizeNonAscii 为 true 时，解压后将目录名中的非 ASCII 字符替换为 "u"。
      * 若 mappingOut 非 null，将原始相对路径→新相对路径的映射写入其中供调用方修正配置。
      */
     public static void extractArchive(File archive, File targetDir, boolean sanitizeNonAscii,
@@ -117,7 +117,7 @@ public final class ArchiveUtil {
     }
 
     /**
-     * 递归将目录名中的非 ASCII 字符替换为 "undefined"。
+     * 递归将目录名中的非 ASCII 字符替换为 "u"。
      * 文件名保持不变。同名冲突时追加 "_2"、"_3" 等序号，防止同级中文目录合并。
      * 返回原始相对路径→新相对路径的映射（仅含被重命名的目录）。
      */
@@ -148,7 +148,7 @@ public final class ArchiveUtil {
             if (!child.isDirectory()) continue;
             String name = child.getName();
             if (isPureAscii(name)) continue;
-            String base = "undefined";
+            String base = "u";
             String newName = base;
             int suffix = 2;
             while (usedNames.contains(newName.toLowerCase())) {

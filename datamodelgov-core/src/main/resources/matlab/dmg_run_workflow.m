@@ -14,6 +14,10 @@ for i = 1:argumentCount
     arguments{i} = request.(field);
 end
 startedAt = datestr(now, 31);
+% 预加载 GTESS.dll：MATLAB R2019b 的 SetDefaultDllDirectories 限制了 DLL 搜索路径，
+% loadlibrary 无法通过 PATH 找到 DLL 依赖。先用 Java System.load() 以绝对路径加载
+% GTESS.dll，使其进入进程地址空间，后续 loadlibrary("GTESS.dll") 即可直接命中。
+local_preload_gtess_dll();
 try
     result = feval(entryPoint, arguments{:});
     save(char(resultFile), 'result', '-v7.3');
@@ -101,6 +105,44 @@ if isempty(data)
     value = [];
 else
     value = operation(data(:));
+end
+end
+
+function local_preload_gtess_dll()
+%LOCAL_PRELOAD_GTESS_DLL 用 Java System.load 预加载 GTESS.dll 及其依赖。
+% MATLAB R2019b 的 loadlibrary 受 SetDefaultDllDirectories 限制，
+% 无法通过 PATH 搜索 DLL 依赖（如 VCRUNTIME140.dll）。
+% 先用 java.lang.System.load() 以绝对路径加载 GTESS.dll 依赖的 runtime，
+% 再加载 GTESS.dll 本体，使其进入进程地址空间，
+% 后续 loadlibrary("GTESS.dll") 直接命中已加载模块，不再触发搜索。
+try
+    candidates = { ...
+        fullfile(pwd, 'GTESS.dll'), ...
+        fullfile(pwd, 'MiddleData', 'control_model_runtime', 'mode1', 'GTESS.dll')};
+    dllPath = '';
+    for i = 1:numel(candidates)
+        if isfile(candidates{i})
+            dllPath = candidates{i};
+            break;
+        end
+    end
+    if isempty(dllPath)
+        return;  % 当前工作目录没有 GTESS.dll，跳过预加载
+    end
+    % 先加载 GTESS.dll 依赖的 VC runtime（从 MATLAB bin 目录或 System32）
+    matlabRoot = fullfile(matlabroot, 'bin', 'win64');
+    vcrPath = fullfile(matlabRoot, 'vcruntime140.dll');
+    if isfile(vcrPath)
+        try java.lang.System.load(vcrPath); catch, end
+    end
+    msvcpPath = fullfile(matlabRoot, 'msvcp140.dll');
+    if isfile(msvcpPath)
+        try java.lang.System.load(msvcpPath); catch, end
+    end
+    % 加载 GTESS.dll 本体
+    java.lang.System.load(dllPath);
+catch
+    % 预加载失败不中断流程，让后续 loadlibrary 报出原始错误
 end
 end
 

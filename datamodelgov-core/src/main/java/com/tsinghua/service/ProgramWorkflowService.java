@@ -638,10 +638,11 @@ public class ProgramWorkflowService {
                 matlabManifest.toFile().getAbsolutePath()
         };
 
+        File substRoot = withSubstDrive(workingDirectory, "init_" + System.currentTimeMillis());
+        File runDir = substRoot != workingDirectory.toFile() ? substRoot : workingDirectory.toFile();
         MatlabFunctionRunner runner = new MatlabFunctionRunner(
-                workingDirectory.toFile(), "dmg_init_project", args,
+                runDir, "dmg_init_project", args,
                 logFile.toFile(), programService.enginePool());
-
         try {
             runner.run();
         } catch (Exception e) {
@@ -650,6 +651,8 @@ public class ProgramWorkflowService {
             fallback.put("status", "FALLBACK");
             fallback.put("message", e.getMessage() != null ? e.getMessage() : String.valueOf(e));
             return fallback;
+        } finally {
+            cleanupSubstDrive(substRoot);
         }
 
         try {
@@ -1179,6 +1182,7 @@ public class ProgramWorkflowService {
         Path runLog = taskDir.resolve("run.log");
         MatlabFunctionRunner runner = null;
         Map<String, Stamp> before = Collections.emptyMap();
+        File substRoot = null;
         try {
             before = snapshotArtifacts(workspace);
             boolean cancelled = Boolean.TRUE.equals(cancelFlags.get(taskId));
@@ -1204,11 +1208,14 @@ public class ProgramWorkflowService {
             for (int i = 0; i < arguments.length; i++) adapterRequest.put("arg" + (i + 1), arguments[i]);
             writeJson(requestFile, adapterRequest);
 
-            Object[] adapterArguments = new Object[]{action.getEntryPoint(), requestFile.toFile().getCanonicalPath(),
-                    matlabResult.toFile().getCanonicalPath(), matlabManifest.toFile().getCanonicalPath()};
             // 每次运行前重新安装适配器，确保最新版本
             installWorkflowAdapter(workingDirectory);
-            runner = new MatlabFunctionRunner(workingDirectory.toFile(), "dmg_run_workflow", adapterArguments,
+            // 创建 subst 虚拟盘符，规避 Windows MAX_PATH 260 限制
+            substRoot = withSubstDrive(workingDirectory, taskId);
+            File runDir = substRoot != workingDirectory.toFile() ? substRoot : workingDirectory.toFile();
+            Object[] adapterArguments = new Object[]{action.getEntryPoint(), requestFile.toFile().getCanonicalPath(),
+                    matlabResult.toFile().getCanonicalPath(), matlabManifest.toFile().getCanonicalPath()};
+            runner = new MatlabFunctionRunner(runDir, "dmg_run_workflow", adapterArguments,
                     runLog.toFile(), programService.enginePool(), new MatlabFunctionRunner.ProgressCancellationSink() {
                 private long lastUpdate;
                 private String phase = "pending";
@@ -1287,6 +1294,7 @@ public class ProgramWorkflowService {
         } finally {
             running.remove(taskId);
             cancelFlags.remove(taskId);
+            cleanupSubstDrive(substRoot);
         }
     }
 
@@ -1428,7 +1436,13 @@ public class ProgramWorkflowService {
         Path projectRoot = new File("project").getCanonicalFile().toPath();
         Files.createDirectories(projectRoot);
         String safeProj = project != null && !project.isEmpty() ? project : ProjectContext.getCurrentProject("unknown");
-        Path root = child(projectRoot, safeProj).resolve("program-workflows");
+        Path parent = child(projectRoot, safeProj);
+        // 优先使用短目录名 pwf，兼容旧目录 program-workflows
+        Path root = parent.resolve("pwf");
+        Path legacy = parent.resolve("program-workflows");
+        if (!Files.isDirectory(root) && Files.isDirectory(legacy)) {
+            root = legacy;
+        }
         Files.createDirectories(root);
         return root;
     }
@@ -1457,6 +1471,59 @@ public class ProgramWorkflowService {
             for (int i = 0; i < 6; i++) out.append(String.format("%02x", bytes[i]));
             return out.toString();
         } catch (Exception e) { throw new IllegalStateException(e); }
+    }
+
+    /**
+     * 为工作目录创建 Windows subst 虚拟盘符，返回短路径。
+     * MATLAB HDF5 save(-v7.3) 在 Windows 上有 MAX_PATH 260 限制，
+     * 且 mfilename('fullpath') 会解析 junction 回长路径，
+     * 因此用 subst 映射盘符（如 Z:），使 MATLAB 内部所有路径都基于盘符。
+     * 非 Windows 或创建失败时原样返回。
+     */
+    private File withSubstDrive(Path workingDirectory, String taskId) {
+        if (!File.separator.equals("\\")) return workingDirectory.toFile();
+        String drive = null;
+        try {
+            // 找一个未使用的盘符
+            for (char c = 'Z'; c >= 'D'; c--) {
+                String d = c + ":";
+                File root = new File(d + "\\");
+                if (!root.exists()) { drive = d; break; }
+            }
+            if (drive == null) {
+                log.warn("无可用盘符, 使用原始路径");
+                return workingDirectory.toFile();
+            }
+            // subst <drive>: <target>
+            ProcessBuilder pb = new ProcessBuilder("cmd", "/c", "subst", drive,
+                    workingDirectory.toFile().getCanonicalPath());
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            p.getInputStream().close();
+            int code = p.waitFor();
+            File mapped = new File(drive + "\\");
+            if (code == 0 && mapped.isDirectory()) {
+                log.info("已创建 subst: {} -> {}", drive, workingDirectory);
+                return mapped;
+            }
+            log.warn("创建 subst 失败, code={}, 使用原始路径", code);
+        } catch (Exception e) {
+            log.warn("创建 subst 异常, 使用原始路径", e);
+        }
+        return workingDirectory.toFile();
+    }
+
+    /** 删除运行时创建的 subst 盘符 */
+    private void cleanupSubstDrive(File driveRoot) {
+        if (driveRoot == null) return;
+        try {
+            String path = driveRoot.getAbsolutePath();
+            // 只处理 X:\ 形式的盘符根目录
+            if (path.length() != 3 || path.charAt(1) != ':' || path.charAt(2) != '\\') return;
+            String drive = path.substring(0, 2);
+            new ProcessBuilder("cmd", "/c", "subst", drive, "/D").start().waitFor();
+            log.info("已清理 subst: {}", drive);
+        } catch (Exception ignored) {}
     }
 
     private Path child(Path parent, String child) throws IOException {

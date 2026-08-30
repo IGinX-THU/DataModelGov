@@ -3853,7 +3853,7 @@ class SteadyModelAdaptV1 {
           actionKey: 'operatingPointPrediction',
           inputs: {
             modelInput,
-            estimationResultFile: this.activePredictionModel === 'baseline' ? 'baseline' : 'latest',
+            estimationResultFile: '',
             posteriorOptions: this._predictionPosterior && this._predictionPosterior !== 'none'
               ? { method: this._predictionPosterior, runId: 'latest' }
               : null
