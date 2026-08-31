@@ -632,14 +632,19 @@ public class ProgramWorkflowService {
         Path matlabManifest = child(initDir, "init_manifest.json");
         Path logFile = child(initDir, "init.log");
 
+        String workspaceCanonical = workspace.toFile().getCanonicalPath();
+        String workingDirCanonical = workingDirectory.toFile().getCanonicalPath();
+        String workingRel = workingDirCanonical.startsWith(workspaceCanonical) ?
+                workingDirCanonical.substring(workspaceCanonical.length() + 1) : "";
+
+        File substRoot = withSubstDrive(workspace, "init_" + System.currentTimeMillis());
+        File runDir = substRoot.equals(workspace.toFile()) ? workingDirectory.toFile() :
+                new File(substRoot, workingRel).getAbsoluteFile();
         Object[] args = new Object[]{
                 trainingDataFile != null ? trainingDataFile : "",
-                matlabResult.toFile().getAbsolutePath(),
-                matlabManifest.toFile().getAbsolutePath()
+                toSubstPath(matlabResult.toFile().getCanonicalPath(), workspaceCanonical, substRoot),
+                toSubstPath(matlabManifest.toFile().getCanonicalPath(), workspaceCanonical, substRoot)
         };
-
-        File substRoot = withSubstDrive(workingDirectory, "init_" + System.currentTimeMillis());
-        File runDir = substRoot != workingDirectory.toFile() ? substRoot : workingDirectory.toFile();
         MatlabFunctionRunner runner = new MatlabFunctionRunner(
                 runDir, "dmg_init_project", args,
                 logFile.toFile(), programService.enginePool());
@@ -1191,6 +1196,11 @@ public class ProgramWorkflowService {
             Map<String, Object> wsRecord = queryWorkspaceFromIginxById(workspaceId);
             Path workingDirectory = resolveInside(workspace.resolve("source"),
                     value(wsRecord != null ? wsRecord.get("workingDirectory") : null), true);
+            String workspaceCanonical = workspace.toFile().getCanonicalPath();
+            String workingDirCanonical = workingDirectory.toFile().getCanonicalPath();
+            String workingRel = workingDirCanonical.startsWith(workspaceCanonical) ?
+                    workingDirCanonical.substring(workspaceCanonical.length() + 1) : "";
+
             // 清理上次可能遗留的 0 字节 MAT 文件（MATLAB save -v7.3 写入失败会留下空文件，导致后续 save 也失败）
             cleanupZeroByteMatFiles(workingDirectory);
             Path requestFile = taskDir.resolve("request.json");
@@ -1203,18 +1213,24 @@ public class ProgramWorkflowService {
                 uqConfig.put("cancelFile", child(taskDir, "cancel.flag").toFile().getCanonicalPath());
                 arguments[0] = uqConfig;
             }
-            Map<String, Object> adapterRequest = new LinkedHashMap<>();
-            adapterRequest.put("argumentCount", arguments.length);
-            for (int i = 0; i < arguments.length; i++) adapterRequest.put("arg" + (i + 1), arguments[i]);
-            writeJson(requestFile, adapterRequest);
 
             // 每次运行前重新安装适配器，确保最新版本
             installWorkflowAdapter(workingDirectory);
-            // 创建 subst 虚拟盘符，规避 Windows MAX_PATH 260 限制
-            substRoot = withSubstDrive(workingDirectory, taskId);
-            File runDir = substRoot != workingDirectory.toFile() ? substRoot : workingDirectory.toFile();
-            Object[] adapterArguments = new Object[]{action.getEntryPoint(), requestFile.toFile().getCanonicalPath(),
-                    matlabResult.toFile().getCanonicalPath(), matlabManifest.toFile().getCanonicalPath()};
+            // 创建 subst 虚拟盘符，映射整个 workspace（包含 datasets/output/tasks），规避 MAX_PATH 并统一盘符
+            substRoot = withSubstDrive(workspace, taskId);
+            File runDir = substRoot.equals(workspace.toFile()) ? workingDirectory.toFile() :
+                    new File(substRoot, workingRel).getAbsoluteFile();
+            Object[] substArguments = toSubstArguments(arguments, workspaceCanonical, substRoot);
+
+            Map<String, Object> adapterRequest = new LinkedHashMap<>();
+            adapterRequest.put("argumentCount", substArguments.length);
+            for (int i = 0; i < substArguments.length; i++) adapterRequest.put("arg" + (i + 1), substArguments[i]);
+            writeJson(requestFile, adapterRequest);
+
+            Object[] adapterArguments = new Object[]{action.getEntryPoint(),
+                    toSubstPath(requestFile.toFile().getCanonicalPath(), workspaceCanonical, substRoot),
+                    toSubstPath(matlabResult.toFile().getCanonicalPath(), workspaceCanonical, substRoot),
+                    toSubstPath(matlabManifest.toFile().getCanonicalPath(), workspaceCanonical, substRoot)};
             runner = new MatlabFunctionRunner(runDir, "dmg_run_workflow", adapterArguments,
                     runLog.toFile(), programService.enginePool(), new MatlabFunctionRunner.ProgressCancellationSink() {
                 private long lastUpdate;
@@ -1524,6 +1540,47 @@ public class ProgramWorkflowService {
             new ProcessBuilder("cmd", "/c", "subst", drive, "/D").start().waitFor();
             log.info("已清理 subst: {}", drive);
         } catch (Exception ignored) {}
+    }
+
+    /** 把 workspace 下的绝对路径都转换为 subst 盘符路径，传给 MATLAB 以保持一致 */
+    private Object[] toSubstArguments(Object[] args, String workspaceCanonical, File substRoot) {
+        Object[] result = new Object[args.length];
+        for (int i = 0; i < args.length; i++) {
+            result[i] = toSubstValue(args[i], workspaceCanonical, substRoot);
+        }
+        return result;
+    }
+
+    private Object toSubstValue(Object value, String workspaceCanonical, File substRoot) {
+        if (value instanceof String) {
+            return toSubstPath((String) value, workspaceCanonical, substRoot);
+        }
+        if (value instanceof Map) {
+            Map<Object, Object> copy = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> e : ((Map<?, ?>) value).entrySet()) {
+                copy.put(e.getKey(), toSubstValue(e.getValue(), workspaceCanonical, substRoot));
+            }
+            return copy;
+        }
+        if (value instanceof List) {
+            List<Object> copy = new ArrayList<>(((List<?>) value).size());
+            for (Object v : (List<?>) value) copy.add(toSubstValue(v, workspaceCanonical, substRoot));
+            return copy;
+        }
+        return value;
+    }
+
+    private String toSubstPath(String s, String workspaceCanonical, File substRoot) {
+        if (s == null || s.isEmpty() || !File.separator.equals("\\")) return s;
+        if (s.regionMatches(true, 0, workspaceCanonical, 0, workspaceCanonical.length())) {
+            if (s.length() == workspaceCanonical.length()) return substRoot.getAbsolutePath();
+            char sep = s.charAt(workspaceCanonical.length());
+            if (sep == File.separatorChar || sep == '/') {
+                String rel = s.substring(workspaceCanonical.length() + 1);
+                return new File(substRoot, rel).getAbsolutePath();
+            }
+        }
+        return s;
     }
 
     private Path child(Path parent, String child) throws IOException {

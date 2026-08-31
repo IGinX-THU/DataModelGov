@@ -4189,13 +4189,14 @@ class SteadyModelAdaptV1 {
       const pdf = new PDFGen();
       pdf.addTitle('结果追溯报告');
       pdf.addText(`项目：${this.workspace?.jobName || this.workspace?.id || '—'}`, 12);
+      pdf.addText(`保存目录（虚拟盘映射源）：${this.workspace?.workspaceDir || '—'}`, 12);
       pdf.addText(`生成时间：${new Date().toLocaleString('zh-CN')}`, 12);
       pdf.addSeparator();
 
       pdf.addSubtitle('1. 任务类型、正式入口和模型路径');
       pdf.addText(`任务类型：${task.actionKey}`, 12);
       pdf.addText(`正式入口：${task.entryPoint || summary.program || '—'}`, 12);
-      pdf.addText(`路由：${summary.route || summary.routeLabel || '—'}`, 12);
+      pdf.addText(`模型路径：${summary.route || summary.routeLabel || '—'}`, 12);
       pdf.addSeparator();
 
       pdf.addSubtitle('2. 训练/测试数据、DLL、配置和算法指纹');
@@ -4250,6 +4251,9 @@ class SteadyModelAdaptV1 {
       pdf.addSeparator();
 
       pdf.addSubtitle('6. 收敛、验收、警告和审核状态');
+      const warnings = summary.warnings
+        ? (Array.isArray(summary.warnings) ? summary.warnings.join('；') : String(summary.warnings))
+        : (acceptance.allStagesConverged ? '无' : '存在未收敛阶段');
       pdf.addTable(
         ['检查项', '状态'],
         [
@@ -4260,6 +4264,7 @@ class SteadyModelAdaptV1 {
           ['正式验收通过', acceptance.formalAccepted ? '是' : '否'],
           ['训练回放有效', acceptance.trainingReplayValid ? '是' : '否'],
           ['测试回放有效', acceptance.testReplayValid ? '是' : '否'],
+          ['警告', warnings],
           ['任务状态', this._statusLabel(task.status)],
           ['审核状态', task.reviewStatus || '待审核'],
           ['发布状态', task.publicationStatus === 'published' ? '已发布' : '未发布']
@@ -4303,15 +4308,18 @@ class SteadyModelAdaptV1 {
   /** 降级用的简单 HTML 报告 */
   _buildSimpleHtmlReport(task, summary, artifacts, acceptance, timing, input, result) {
     const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const warningText = summary.warnings
+        ? (Array.isArray(summary.warnings) ? summary.warnings.join('；') : String(summary.warnings))
+        : (acceptance.allStagesConverged ? '无' : '存在未收敛阶段');
     const rows = artifacts.map(a => `<tr><td>${esc(a.name||a.fileName)}</td><td>${a.size?this._formatFileSize(a.size):'—'}</td><td>${esc(a.sha256||'—')}</td></tr>`).join('');
     return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>结果追溯报告</title>
 <style>body{font-family:SimSun,Microsoft YaHei,Arial,sans-serif;font-size:12pt;margin:40px;line-height:1.5}
 table{width:100%;border-collapse:collapse;margin:10px 0;table-layout:fixed}th,td{border:1px solid #ddd;padding:8px;word-break:break-all}th{background:#f2f2f2}
 h1{text-align:center}h2{font-size:14pt;border-bottom:1px solid #999;padding-bottom:5px}</style></head><body>
 <h1>结果追溯报告</h1>
-<p>项目：${esc(this.workspace?.jobName || this.workspace?.id)}　生成时间：${new Date().toLocaleString('zh-CN')}</p>
+<p>项目：${esc(this.workspace?.jobName || this.workspace?.id)}　保存目录（虚拟盘映射源）：${esc(this.workspace?.workspaceDir || '—')}　生成时间：${new Date().toLocaleString('zh-CN')}</p>
 <h2>1. 任务类型、正式入口和模型路径</h2>
-<p>任务类型：${esc(task.actionKey)}<br>正式入口：${esc(task.entryPoint || summary.program)}<br>路由：${esc(summary.route || summary.routeLabel)}</p>
+<p>任务类型：${esc(task.actionKey)}<br>正式入口：${esc(task.entryPoint || summary.program)}<br>模型路径：${esc(summary.route || summary.routeLabel)}</p>
 <h2>2. 训练/测试数据、DLL、配置和算法指纹</h2>
 <p>训练数据：${esc(input.trainingFile)}（${input.trainingPointCount||'—'} 工况）<br>测试数据：${esc(input.testFile||'无')}（${input.testPointCount||'—'} 工况）<br>进口边界模式：${input.inletBoundaryMode||'—'}</p>
 <table><tr><th>文件名</th><th>大小</th><th>SHA256</th></tr>${rows}</table>
@@ -4320,9 +4328,9 @@ h1{text-align:center}h2{font-size:14pt;border-bottom:1px solid #999;padding-bott
 <p>阶段A：${(timing.stageASeconds||0).toFixed(1)}s　阶段B：${(timing.stageBSeconds||0).toFixed(1)}s　阶段C：${(timing.stageCSeconds||0).toFixed(1)}s　阶段D：${(timing.stageDSeconds||0).toFixed(1)}s</p>
 <h2>4. 开始时间、结束时间和总运行时间</h2>
 <p>开始：${task.createdAt?new Date(Number(task.createdAt)).toLocaleString('zh-CN'):'—'}　结束：${(task.finishedAt||result?.completedAt)?new Date(Number(task.finishedAt||result.completedAt)).toLocaleString('zh-CN'):'—'}</p>
-<h2>5. 产物文件</h2>
+<h2>5. MAT、Excel、摘要、日志和图形文件</h2>
 <table><tr><th>文件名</th><th>大小</th><th>SHA256</th></tr>${rows}</table>
-<h2>6. 收敛、验收、审核状态</h2>
+<h2>6. 收敛、验收、警告和审核状态</h2>
 <table><tr><th>检查项</th><th>状态</th></tr>
 <tr><td>全部阶段收敛</td><td>${acceptance.allStagesConverged?'是':'否'}</td></tr>
 <tr><td>阶段A收敛</td><td>${acceptance.stageAConverged?'是':'否'}</td></tr>
@@ -4331,6 +4339,7 @@ h1{text-align:center}h2{font-size:14pt;border-bottom:1px solid #999;padding-bott
 <tr><td>正式验收通过</td><td>${acceptance.formalAccepted?'是':'否'}</td></tr>
 <tr><td>训练回放有效</td><td>${acceptance.trainingReplayValid?'是':'否'}</td></tr>
 <tr><td>测试回放有效</td><td>${acceptance.testReplayValid?'是':'否'}</td></tr>
+<tr><td>警告</td><td>${esc(warningText)}</td></tr>
 <tr><td>任务状态</td><td>${esc(this._statusLabel(task.status))}</td></tr>
 <tr><td>审核状态</td><td>${esc(task.reviewStatus||'待审核')}</td></tr>
 <tr><td>发布状态</td><td>${task.publicationStatus==='published'?'已发布':'未发布'}</td></tr>
