@@ -237,13 +237,15 @@ class SteadyModelAdaptV1 {
 
     // 预测输入缓存
     this.predInputs = {
+      pointId: 'PRED_PT_1',
       pamb: 101325,
       altitude: 0,
       tamb: 288.15,
       mach: 0,
       wf: 0.12,
       mkp: 1500,
-      mkg: 200
+      mkg: 200,
+      npInitial: ''
     };
   }
 
@@ -2399,50 +2401,65 @@ class SteadyModelAdaptV1 {
       '单工况输入',
       '切换环境边界方式后只显示需要填写的字段。'
     );
-    const form = el('div', 'form-grid-3');
+    const form = el('div', '');
+    form.style.cssText = 'display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;';
     if (this.predictionMode === 'pressure') {
+      const pointInput = input('text', 'pointId', '请输入工况名称', this.predInputs.pointId);
+      pointInput.addEventListener('change', e => { this.predInputs.pointId = e.target.value; });
+      const pointField = this.createField('工况名称', pointInput);
       const pambInput = input('number', 'pamb', '请输入或由高度计算', this.predInputs.pamb);
       pambInput.addEventListener('change', e => { this.predInputs.pamb = Number(e.target.value); });
-      const tambInput = input('number', 'tamb', '请输入', this.predInputs.tamb);
+      const tambInput = input('number', 'tamb', '请输入环境温度', this.predInputs.tamb);
       tambInput.addEventListener('change', e => { this.predInputs.tamb = Number(e.target.value); });
-      const machInput = input('number', 'mach', '请输入', this.predInputs.mach);
+      const machInput = input('number', 'mach', '请输入马赫数', this.predInputs.mach);
       machInput.addEventListener('change', e => { this.predInputs.mach = Number(e.target.value); });
-      const wfInput = input('number', 'wf', '请输入', this.predInputs.wf);
+      const wfInput = input('number', 'wf', '请输入燃油流量', this.predInputs.wf);
       wfInput.addEventListener('change', e => { this.predInputs.wf = Number(e.target.value); });
-      const mkpInput = input('number', 'mkp', '请输入', this.predInputs.mkp);
+      const mkpInput = input('number', 'mkp', '请输入Mkp', this.predInputs.mkp);
       mkpInput.addEventListener('change', e => { this.predInputs.mkp = Number(e.target.value); });
-      const mkgInput = input('number', 'mkg', '请输入', this.predInputs.mkg);
+      const mkgInput = input('number', 'mkg', '请输入Mkg', this.predInputs.mkg);
       mkgInput.addEventListener('change', e => { this.predInputs.mkg = Number(e.target.value); });
+      const npInput = input('number', 'npInitial', '可选；留空时自动生成', this.predInputs.npInitial);
+      npInput.addEventListener('change', e => { this.predInputs.npInitial = e.target.value === '' ? '' : Number(e.target.value); });
 
       form.append(
-        this.createField('环境压力 (Pamb)', pambInput),
-        this.createField('环境静温 (Tamb)', tambInput),
-        this.createField('马赫数 (Mach)', machInput),
-        this.createField('模型燃油流量 (Wf_model)', wfInput),
-        this.createField('PT 轴负载 (Mkp)', mkpInput),
-        this.createField('GT 附件负载 (Mkg)', mkgInput)
+        pointField,
+        this.createField('环境压力', pambInput),
+        this.createField('环境温度', tambInput),
+        this.createField('马赫数', machInput),
+        this.createField('模型燃油流量', wfInput),
+        this.createField('PT轴负载扭矩', mkpInput),
+        this.createField('GT轴附件负载扭矩', mkgInput),
+        this.createField('转速初值', npInput)
       );
     } else {
+      const pointInput = input('text', 'pointId', '请输入工况名称', this.predInputs.pointId);
+      pointInput.addEventListener('change', e => { this.predInputs.pointId = e.target.value; });
+      const pointField = this.createField('工况名称', pointInput);
       const altInput = input('number', 'altitude', '请输入', this.predInputs.altitude);
       altInput.addEventListener('change', e => { this.predInputs.altitude = Number(e.target.value); });
-      const tambInput = input('number', 'tamb', '请输入', this.predInputs.tamb);
+      const tambInput = input('number', 'tamb', '请输入环境温度', this.predInputs.tamb);
       tambInput.addEventListener('change', e => { this.predInputs.tamb = Number(e.target.value); });
-      const machInput = input('number', 'mach', '请输入', this.predInputs.mach);
+      const machInput = input('number', 'mach', '请输入马赫数', this.predInputs.mach);
       machInput.addEventListener('change', e => { this.predInputs.mach = Number(e.target.value); });
-      const wfInput = input('number', 'wf', '请输入', this.predInputs.wf);
+      const wfInput = input('number', 'wf', '请输入燃油流量', this.predInputs.wf);
       wfInput.addEventListener('change', e => { this.predInputs.wf = Number(e.target.value); });
-      const mkpInput = input('number', 'mkp', '请输入', this.predInputs.mkp);
+      const mkpInput = input('number', 'mkp', '请输入Mkp', this.predInputs.mkp);
       mkpInput.addEventListener('change', e => { this.predInputs.mkp = Number(e.target.value); });
-      const mkgInput = input('number', 'mkg', '请输入', this.predInputs.mkg);
+      const mkgInput = input('number', 'mkg', '请输入Mkg', this.predInputs.mkg);
       mkgInput.addEventListener('change', e => { this.predInputs.mkg = Number(e.target.value); });
+      const npInput = input('number', 'npInitial', '可选；留空时自动生成', this.predInputs.npInitial);
+      npInput.addEventListener('change', e => { this.predInputs.npInitial = e.target.value === '' ? '' : Number(e.target.value); });
 
       form.append(
-        this.createField('高度 (Altitude)', altInput),
-        this.createField('环境静温 (Tamb)', tambInput),
-        this.createField('马赫数 (Mach)', machInput),
-        this.createField('模型燃油流量 (Wf_model)', wfInput),
-        this.createField('PT 轴负载 (Mkp)', mkpInput),
-        this.createField('GT 附件负载 (Mkg)', mkgInput)
+        pointField,
+        this.createField('高度', altInput),
+        this.createField('环境温度', tambInput),
+        this.createField('马赫数', machInput),
+        this.createField('模型燃油流量', wfInput),
+        this.createField('PT轴负载扭矩', mkpInput),
+        this.createField('GT轴附件负载扭矩', mkgInput),
+        this.createField('转速初值', npInput)
       );
     }
     c2.body.append(form);
@@ -2474,42 +2491,63 @@ class SteadyModelAdaptV1 {
       }
     }
 
-    // 预测输出表：确定性输出 + 后验区间（如果有）
-    const detHeaders = hasPosterior
-      ? ['输出', '稳态辨识模型', '区间下界', '后验中心', '区间上界', '单位']
-      : ['输出', '稳态辨识模型', '单位'];
+    // 预测输出表：与效果图对齐，5 列：输出 / 稳态辨识模型 / 区间下界 / 区间上界 / 状态
+    const detHeaders = ['输出', '稳态辨识模型', '区间下界', '区间上界', '状态'];
     const detRows = OUTPUT_VARS.map(o => {
       const colMap = { 'Np': 'corrected_Np_rpm', 'Ng': 'corrected_Ng_rpm', 'Pt3': 'corrected_Pt3_Pa', 'Tt3': 'corrected_Tt3_K', 'Tt45': 'corrected_Tt45_K', 'Pt45': 'corrected_Pt45_Pa' };
       const col = colMap[o];
       const val = predRow0 ? predRow0[col] : null;
       const valStr = val != null ? Number(val).toFixed(2) : '运行后显示';
-      const unit = OUTPUT_UNITS[o] || '—';
-      if (hasPosterior) {
-        const iRow = intervalRows.find(r => r.output_name === o);
-        const lower = iRow ? Number(iRow.model_lower).toFixed(2) : '—';
-        const center = iRow ? Number(iRow.model_median).toFixed(2) : '—';
-        const upper = iRow ? Number(iRow.model_upper).toFixed(2) : '—';
-        return [o, valStr, lower, center, upper, unit];
+      let lower = '运行后显示';
+      let upper = '运行后显示';
+      let status = '待运行';
+      if (predRow0) {
+        if (hasPosterior) {
+          const iRow = intervalRows.find(r => r.output_name === o);
+          if (iRow) {
+            const lo = Number(iRow.model_lower);
+            const up = Number(iRow.model_upper);
+            if (isFinite(lo)) lower = lo.toFixed(2);
+            if (isFinite(up)) upper = up.toFixed(2);
+            if (isFinite(lo) && isFinite(up) && val != null) {
+              const detVal = Number(val);
+              status = (detVal >= lo && detVal <= up) ? '区间覆盖' : '区间未覆盖';
+            } else {
+              status = '—';
+            }
+          } else {
+            status = '—';
+          }
+        } else {
+          status = '完成';
+        }
       }
-      return [o, valStr, unit];
+      return [o, valStr, lower, upper, status];
     });
     c3.body.append(this.createTable(detHeaders, detRows));
 
-    // 共同工作最大残差和收敛状态
+    // 共同工作最大残差和收敛状态（文档第 10 节：页面首先显示确定性输出、最大残差和收敛状态）
     const maxResidual = predRow0 ? predRow0.max_model_residual : null;
     const valid = predRow0 ? predRow0.valid : null;
-    const statusGrid = el('div', 'metric-grid-3');
+    const fmtResidual = (v) => {
+      const n = Number(v);
+      if (!isFinite(n)) return '—';
+      if (n === 0) return '0';
+      if (Math.abs(n) < 1e-6) return n.toExponential(3);
+      return n.toFixed(6);
+    };
+    const statusGrid = el('div', 'metrics-grid');
+    statusGrid.style.marginTop = '12px';
     statusGrid.append(
-      this.createMetricBox('共同工作最大残差', maxResidual != null ? Number(maxResidual).toExponential(3) : '待运行'),
-      this.createMetricBox('收敛状态', valid != null ? (valid ? '收敛' : '未收敛') : '待运行'),
-      this.createMetricBox('预测有效', predSummary.passed != null ? (predSummary.passed ? '是' : '否') : '待运行')
+      this.createMetricBox('共同工作最大残差', maxResidual != null ? fmtResidual(maxResidual) : '待运行'),
+      this.createMetricBox('收敛状态', valid != null ? (valid ? '收敛' : '未收敛') : '待运行')
     );
     c3.body.append(statusGrid);
 
-    // Card 4: 区间图与运行验收（文档第 10 节：选择后验后同一入口计算95%置信区间）
+    // Card 4: 区间图与运行验收
     const c4 = this.createCard(
       '区间图与运行验收',
-      hasPosterior ? '模型输出区间、可观测量区间、后验中心和稳态辨识模型确定性输出。' : '选择方法 A 或 B 后验后，运行预测可显示 95% 置信区间。'
+      hasPosterior ? '95% 置信区间、后验中心和稳态辨识模型确定性输出。' : '选择方法 A 或 B 后验后，运行预测可显示 95% 置信区间。'
     );
     const predTask = this.latestTask('operatingPointPrediction');
     const predRunning = predTask?.status === TASK_STATUS.RUNNING;
@@ -2550,20 +2588,35 @@ class SteadyModelAdaptV1 {
       : '| 稳态辨识模型'));
     if (hasPosterior) {
       const postInfo = predSummary.posteriorPrediction || {};
-      const acceptRow = el('div', 'reg-method-row');
-      acceptRow.append(
-        el('span', 'field-status ok', `后验方法：${postInfo.method || '—'}`),
+      const acceptWrap = el('div', 'reg-method-row');
+      acceptWrap.style.justifyContent = 'space-between';
+      acceptWrap.style.alignItems = 'center';
+      acceptWrap.style.marginTop = '12px';
+      const acceptInfo = el('div', 'reg-method-row');
+      acceptInfo.append(
+        el('span', 'field-status optional', `后验方法：${postInfo.method || '—'}`),
         el('span', 'field-status optional', `有效后验质量：${postInfo.validPosteriorMass != null ? Number(postInfo.validPosteriorMass).toFixed(3) : '—'}`),
         el('span', postInfo.passed ? 'field-status ok' : 'field-status', `区间验收：${postInfo.passed ? '通过' : '未通过'}`)
       );
-      c4.body.append(acceptRow);
+      const acceptBtn = el('span', '', '收敛与有效后验质量验收');
+      acceptBtn.style.cssText = postInfo.passed
+        ? 'display:inline-block;background:#237a54;color:#fff;border:1px solid #237a54;padding:6px 16px;border-radius:4px;font-size:12px;line-height:1;'
+        : 'display:inline-block;background:#2b6b95;color:#fff;border:1px solid #2b6b95;padding:6px 16px;border-radius:4px;font-size:12px;line-height:1;';
+      acceptWrap.append(acceptInfo, acceptBtn);
+      c4.body.append(acceptWrap);
     }
 
     // Card 2 和 Card 3 并排显示
     const c2c3Row = el('div', '');
-    c2c3Row.style.cssText = 'display:flex;gap:16px;align-items:flex-start;';
+    c2c3Row.style.cssText = 'display:flex;gap:16px;align-items:stretch;';
     c2.card.style.flex = '1';
+    c2.card.style.display = 'flex';
+    c2.card.style.flexDirection = 'column';
+    c2.body.style.flex = '1 1 auto';
     c3.card.style.flex = '1';
+    c3.card.style.display = 'flex';
+    c3.card.style.flexDirection = 'column';
+    c3.body.style.flex = '1 1 auto';
     c2c3Row.append(c2.card, c3.card);
 
     container.append(c1.card, c2c3Row, c4.card);
@@ -3947,8 +4000,10 @@ class SteadyModelAdaptV1 {
     this.ctx.log('启动单工况预测计算...');
     await this.withLoading('正在提交预测计算...', async () => {
       try {
+        const npInit = this.predInputs.npInitial;
+        const hasNpInit = npInit !== '' && npInit != null && isFinite(Number(npInit)) && Number(npInit) > 0;
         const modelInput = {
-          point_id: 'PRED_PT_1',
+          point_id: this.predInputs.pointId || 'PRED_PT_1',
           inletBoundaryMode: this.predictionMode === 'pressure' ? 2 : 3,
           Pamb: this.predInputs.pamb,
           Altitude: this.predInputs.altitude,
@@ -3958,6 +4013,7 @@ class SteadyModelAdaptV1 {
           Mkp: this.predInputs.mkp,
           Mkg: this.predInputs.mkg
         };
+        if (hasNpInit) modelInput.Np_initial = Number(npInit);
         const task = await this.ctx.http.tasks.create({
           workspaceId: this.workspace.id,
           actionKey: 'operatingPointPrediction',
