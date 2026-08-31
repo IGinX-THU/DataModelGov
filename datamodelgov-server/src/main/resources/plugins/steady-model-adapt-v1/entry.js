@@ -2442,7 +2442,15 @@ class SteadyModelAdaptV1 {
     );
     const predSummary = predResult?.resultSummary || predResult || {};
     const predTable = predSummary.predictionTable;
-    const predRow0 = (predTable && Array.isArray(predTable.rows) && predTable.rows.length > 0) ? predTable.rows[0] : null;
+    // predTable.rows 可能是数组（多行）或单个对象（rowCount=1 时 MATLAB struct 不是数组）
+    let predRow0 = null;
+    if (predTable) {
+      if (Array.isArray(predTable.rows) && predTable.rows.length > 0) {
+        predRow0 = predTable.rows[0];
+      } else if (predTable.rows && typeof predTable.rows === 'object' && !Array.isArray(predTable.rows)) {
+        predRow0 = predTable.rows;
+      }
+    }
     const hasPosterior = predSummary.posteriorPredictionPerformed || (predSummary.posteriorPrediction && predSummary.posteriorPrediction.intervalTable);
     const intervalTable = hasPosterior ? (predSummary.posteriorPrediction?.intervalTable) : null;
     const intervalRows = (intervalTable && Array.isArray(intervalTable.rows)) ? intervalTable.rows : [];
@@ -2487,10 +2495,6 @@ class SteadyModelAdaptV1 {
     const predTask = this.latestTask('operatingPointPrediction');
     const predRunning = predTask?.status === TASK_STATUS.RUNNING;
     const chartsGrid = el('div', 'charts-grid-3');
-    console.debug('[prediction] predResult?', !!predResult, 'predTable?', !!predTable, 'predRow0?', !!predRow0, 'hasPosterior?', hasPosterior);
-    if (predResult && predRow0) {
-      console.debug('[prediction] predTable columns:', predTable?.columns, 'predRow0 keys:', Object.keys(predRow0), 'predRow0:', predRow0);
-    }
     OUTPUT_VARS.forEach(o => {
       const cell = this.createChartCell(o, predRunning);
       chartsGrid.append(cell.cell);
@@ -4265,7 +4269,12 @@ h1{text-align:center}h2{font-size:14pt;border-bottom:1px solid #999;padding-bott
     // 瞬态路线 field 用 dNp_dt/dNg_dt，稳态路线用 Np/Ng
     const summary = valResult?.resultSummary || valResult || {};
     const predTable = summary.predictionTable;
-    const allRows = (predTable && Array.isArray(predTable.rows)) ? predTable.rows : [];
+    // rows 可能是数组（多行）或单个对象（rowCount=1 时）
+    let allRows = [];
+    if (predTable) {
+      if (Array.isArray(predTable.rows)) allRows = predTable.rows;
+      else if (predTable.rows && typeof predTable.rows === 'object') allRows = [predTable.rows];
+    }
     // 输出名 → predictionTable field 名映射
     const fieldMap = { 'Np': ['Np', 'dNp_dt', 'Np_rpm'], 'Ng': ['Ng', 'dNg_dt', 'Ng_rpm'],
       'Pt3': ['Pt3', 'Pt3_Pa'], 'Tt3': ['Tt3', 'Tt3_K'], 'Tt45': ['Tt45', 'Tt45_K'], 'Pt45': ['Pt45', 'Pt45_Pa'] };
