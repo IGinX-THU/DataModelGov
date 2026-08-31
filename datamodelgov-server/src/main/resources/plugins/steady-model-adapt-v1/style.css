@@ -763,7 +763,7 @@ select.reg-input {
 }
 .legend-line.baseline { color: #c05050; }
 .legend-line.corrected { color: #4e79a7; }
-.legend-line.measured { color: #59a14f; }
+.legend-line.measured { color: #000000; }
 
 .hint-note {
   margin-top: 10px;

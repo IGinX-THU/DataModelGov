@@ -4337,7 +4337,7 @@ h1{text-align:center}h2{font-size:14pt;border-bottom:1px solid #999;padding-bott
       xAxis: { type: 'category', data: pts, axisLabel: { fontSize: 10 } },
       yAxis: { type: 'value', scale: true, axisLabel: { fontSize: 10 } },
       series: [
-        { name: '零修正模型', type: 'line', data: zeroModel, lineStyle: { color: '#8c9ea9', type: 'dashed' }, symbol: 'none' },
+        { name: '零修正模型', type: 'line', data: zeroModel, lineStyle: { color: '#c05050', width: 1.5 }, symbol: 'none' },
         { name: '稳态辨识模型', type: 'line', data: adaptModel, lineStyle: { color: '#2b6b95', width: 2 }, symbol: 'circle', symbolSize: 4 },
         { name: '测量值', type: 'line', data: measured, lineStyle: { color: '#000000', width: 1.5 }, symbol: 'diamond', symbolSize: 5 }
       ]
