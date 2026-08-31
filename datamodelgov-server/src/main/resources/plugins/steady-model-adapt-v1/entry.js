@@ -448,6 +448,12 @@ class SteadyModelAdaptV1 {
       } finally {
         this.loadingResults.delete(key);
         this.resultPromises.delete(key);
+        // 如果是 _ensureResult 触发的 loading，所有结果加载完后清除
+        if (this.loading && this.loadingResults.size === 0 && this.loadingText === '正在加载结果...') {
+          this.loading = false;
+          this.loadingText = '';
+          this.render();
+        }
       }
     })();
     this.resultPromises.set(key, promise);
@@ -523,6 +529,11 @@ class SteadyModelAdaptV1 {
     // 任务未完成时不请求结果，避免后端 WARN 刷屏
     const phase = (task.phase || '').toLowerCase();
     if (task.status !== TASK_STATUS.COMPLETED && phase !== 'completed') return;
+    // 标记 loading 状态，让 render() 显示加载覆盖层
+    if (!this.loading && !this.loadingResults.size) {
+      this.loading = true;
+      this.loadingText = '正在加载结果...';
+    }
     this.loadTaskResult(id);
   }
 
