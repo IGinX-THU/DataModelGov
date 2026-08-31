@@ -289,15 +289,11 @@ class SteadyModelAdaptV1 {
     } else if (label === '开始辨识') {
       await this.handleStartIdentify();
     } else if (label === '恢复默认配置') {
-      if (this._isIdentifyLocked()) {
-        this.ctx.log('运行后配置已锁定，无法恢复默认');
-        if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('运行后配置已锁定，无法恢复默认', 'warning');
-        return;
-      }
       this.identifyModel = 'transient';
       this.regConfig = JSON.parse(JSON.stringify(REG_DEFAULTS.transient));
+      this._unlockIdentify = true;
       this.render();
-      this.ctx.log('已恢复默认辨识配置（瞬态时刻模型）');
+      this.ctx.log('已恢复默认辨识配置（瞬态时刻模型），可重新配置并辨识');
     } else if (label === '生成分析报告') {
       await this.handleStartIdentifiability();
     } else if (label === '切换分析对象') {
@@ -351,6 +347,7 @@ class SteadyModelAdaptV1 {
 
   async loadWorkspaceDetails() {
     if (!this.workspace || !this.ctx.http || this.workspaceLoading) return;
+    this._unlockIdentify = false;
     this.workspaceLoading = true;
     try {
       await this.withLoading('正在加载工作区详情...', async () => {
@@ -1035,7 +1032,7 @@ class SteadyModelAdaptV1 {
     const identifyResult = this.latestResult('estimateTransient') || this.latestResult('estimateSteady');
     const isRunning = identifyTask?.status === TASK_STATUS.RUNNING || identifyTask?.status === TASK_STATUS.READY;
     const isFailed = identifyTask?.status === TASK_STATUS.FAILED;
-    const isLocked = identifyTask != null && !isFailed;
+    const isLocked = (identifyTask != null && !isFailed) && !this._unlockIdentify;
     const taskStatus = identifyTask?.status;
 
     // 从 resultSummary 中提取 MATLAB 返回结构
@@ -2618,16 +2615,16 @@ class SteadyModelAdaptV1 {
       '项目结果记录',
       '不在设计稿填入示例时间、耗时和结果数值。'
     );
-    const rHeaders = ['任务类型', '方法或路径', '状态', '创建时间', '操作'];
-    // actionKey → 中文标签和所属筛选分类
+    const rHeaders = ['任务类型', '方法或路径', '状态', '主要产物', '操作'];
+    // actionKey → 中文标签、所属筛选分类和主要产物
     const actionKeyMeta = {
-      estimateTransient: { label: '参数辨识', method: '瞬态时刻模型路径', filter: 'identify', section: 'identify' },
-      estimateSteady: { label: '参数辨识', method: '稳态模型路径', filter: 'identify', section: 'identify' },
-      engineeringIdentifiability: { label: '可辨识性', method: '双位置综合分析', filter: 'identifiability', section: 'identifiability' },
-      uqMethodA: { label: '关键修正系数评估', method: '方法 A', filter: 'uq', section: 'uq' },
-      uqMethodB: { label: '全修正系数评估', method: '方法 B', filter: 'uq', section: 'uq' },
-      testValidation: { label: '测试验证', method: '稳态模型回放', filter: 'validation', section: 'validation' },
-      operatingPointPrediction: { label: '工况预测', method: '单工况直接预测', filter: 'prediction', section: 'prediction' }
+      estimateTransient: { label: '参数辨识', method: '瞬态时刻模型路径', filter: 'identify', artifact: '参数、调度曲线、误差' },
+      estimateSteady: { label: '参数辨识', method: '稳态模型路径', filter: 'identify', artifact: '参数、调度曲线、误差' },
+      engineeringIdentifiability: { label: '可辨识性', method: '双位置综合分析', filter: 'identifiability', artifact: '分类、补偿方向、报告' },
+      uqMethodA: { label: '关键修正系数评估', method: '方法 A', filter: 'uq', artifact: '后验、可信区间、预测' },
+      uqMethodB: { label: '全修正系数评估', method: '方法 B', filter: 'uq', artifact: '分块后验、可信区间、预测' },
+      testValidation: { label: '测试验证', method: '稳态模型回放', filter: 'validation', artifact: '输出对比、误差标准差' },
+      operatingPointPrediction: { label: '工况预测', method: '单工况直接预测', filter: 'prediction', artifact: '预测中心、可信区间' }
     };
     let filteredTasks = allTasksList;
     if (this.resultsFilter !== 'all') {
@@ -2642,14 +2639,18 @@ class SteadyModelAdaptV1 {
       this._selectedResultTaskId = latestFiltered ? String(latestFiltered.id) : null;
     }
     const rRows = filteredTasks.map(t => {
-      const meta = actionKeyMeta[t.actionKey] || { label: t.actionKey || '—', method: '—', section: null };
-      const created = t.createdAt ? new Date(Number(t.createdAt)).toLocaleString('zh-CN', { hour12: false }) : '—';
+      const meta = actionKeyMeta[t.actionKey] || { label: t.actionKey || '—', method: '—', filter: null, artifact: '—' };
+      const res = (t.result && t.result.value !== undefined) ? t.result.value : (t.result || this.results.get(String(t.id)));
+      const sum = res?.resultSummary || res || {};
+      const entry = t.entryPoint || sum.program || meta.method;
+      const route = sum.routeLabel || sum.route || '';
+      const methodPath = route ? `${entry} · ${route}` : entry;
       const isSelected = this._selectedResultTaskId === String(t.id);
-      const selectBtn = button(isSelected ? '已选中' : '选中', 'btn-table' + (isSelected ? ' primary' : ''), () => {
+      const openBtn = button(isSelected ? '已打开' : '打开', 'btn-table' + (isSelected ? ' primary' : ''), () => {
         this._selectedResultTaskId = String(t.id);
         this.render();
       });
-      return [meta.label, meta.method, this._statusLabel(t.status) || '待运行', created, selectBtn];
+      return [meta.label, methodPath, this._statusLabel(t.status) || '待运行', meta.artifact, openBtn];
     });
     c2.body.append(this.createTable(rHeaders, rRows));
     c2.body.append(el('p', 'table-note', allTasksList.length === 0 ? '尚无运行记录时，引导用户返回相应页面开始任务。' : `已记录 ${allTasksList.length} 条任务执行记录。`));
@@ -2663,6 +2664,10 @@ class SteadyModelAdaptV1 {
       '仅展示当前选择，不修改原始结果文件。'
     );
     const latestIdentTask = selectedTask;
+    const isIdentTask = latestIdentTask && (latestIdentTask.actionKey === 'estimateTransient' || latestIdentTask.actionKey === 'estimateSteady');
+    const isCompleted = latestIdentTask && latestIdentTask.status === TASK_STATUS.COMPLETED;
+    const reviewApproved = isIdentTask && latestIdentTask.reviewStatus === TASK_STATUS.REVIEW_APPROVED;
+    const reviewRejected = isIdentTask && latestIdentTask.reviewStatus === TASK_STATUS.REVIEW_REJECTED;
     const dList = el('ul', 'check-list');
     dList.style.cssText = 'list-style:none;padding:0;margin:0;';
     [
@@ -2684,6 +2689,45 @@ class SteadyModelAdaptV1 {
       const textWrap = el('div', '');
       textWrap.style.flex = '1';
       textWrap.append(el('div', '', label + '：' + vals[i]));
+      if (label === '验收状态与复核意见' && isIdentTask && isCompleted) {
+        const reviewLine = el('div', '');
+        reviewLine.style.cssText = 'margin-top:4px;display:flex;align-items:center;gap:12px;';
+        const doReview = async (decision) => {
+          try {
+            await this.ctx.http.results.request(latestIdentTask.id + '/review', {
+              method: 'POST',
+              body: JSON.stringify({ decision, notes: '' }),
+              headers: { 'Content-Type': 'application/json' }
+            });
+            latestIdentTask.reviewStatus = decision === 'APPROVED' ? TASK_STATUS.REVIEW_APPROVED : TASK_STATUS.REVIEW_REJECTED;
+            this.ctx.log(`结果已${decision === 'APPROVED' ? '审核通过' : '驳回'}`);
+            if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast(decision === 'APPROVED' ? '结果已审核通过' : '结果已驳回', decision === 'APPROVED' ? 'success' : 'warning');
+            this.render();
+          } catch (e) {
+            this.ctx.log((decision === 'APPROVED' ? '审核' : '驳回') + '失败: ' + (e.message || e));
+            if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast((decision === 'APPROVED' ? '审核' : '驳回') + '失败: ' + (e.message || e), 'error');
+          }
+        };
+        const reviewVal = reviewApproved ? 'APPROVED' : reviewRejected ? 'REJECTED' : '';
+        const makeRadio = (value, text, checked) => {
+          const lbl = el('label', '');
+          lbl.style.cssText = 'display:inline-flex;align-items:center;gap:4px;cursor:pointer;font-size:12px;';
+          const inp = el('input', '');
+          inp.type = 'radio';
+          inp.name = 'review-' + latestIdentTask.id;
+          inp.value = value;
+          if (checked) inp.checked = true;
+          inp.onchange = async () => { if (inp.checked) await doReview(value); };
+          lbl.append(inp, el('span', '', text));
+          return lbl;
+        };
+        reviewLine.append(
+          el('span', '', '审核：'),
+          makeRadio('APPROVED', '通过', reviewVal === 'APPROVED'),
+          makeRadio('REJECTED', '驳回', reviewVal === 'REJECTED')
+        );
+        textWrap.append(reviewLine);
+      }
       li.append(textWrap);
       dList.append(li);
     });
@@ -2692,54 +2736,62 @@ class SteadyModelAdaptV1 {
     btnRow.append(
       button('复制调用方式', 'btn-card', () => {
         if (!latestIdentTask) {
-          if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('请先完成参数辨识', 'warning');
+          if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('请先选择一条结果记录', 'warning');
           return;
         }
-        const entryPoint = latestIdentTask.entryPoint || 'Start_SteadyModelAdapt_V2_03_TransientInstantEstimation';
+        const entryPoint = latestIdentTask.entryPoint || '—';
         const code = `result = ${entryPoint}(...);`;
         if (navigator.clipboard) navigator.clipboard.writeText(code);
         this.ctx.log(`已复制调用方式：${code}`);
         if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('已复制 MATLAB 调用代码至剪贴板', 'success');
-      }),
-      button('设为稳态辨识模型', 'btn-card primary', async () => {
-        if (!latestIdentTask || latestIdentTask.status !== TASK_STATUS.COMPLETED) {
-          if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('需要已完成的辨识任务才能发布', 'warning');
-          this.ctx.log('暂无已完成的辨识结果可发布');
-          return;
-        }
-        // 只有辨识任务才能发布
-        const isIdentTask = latestIdentTask.actionKey === 'estimateTransient' || latestIdentTask.actionKey === 'estimateSteady';
-        if (!isIdentTask) {
-          if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('只有参数辨识结果才能发布为稳态辨识模型', 'warning');
-          return;
-        }
-        // 文档第 11 节：只有指纹兼容、结果通过验收且未读取参数真值时才允许发布
-        const identResult = this.results.get(String(latestIdentTask.id));
-        const identSummary = identResult?.resultSummary || identResult || {};
-        const identAcceptance = identSummary.acceptance || {};
-        const checks = [];
-        if (!identAcceptance.formalAccepted) checks.push('结果未通过正式验收');
-        if (identSummary.truthWasRead === true) checks.push('结果读取了参数真值');
-        if (latestIdentTask.reviewStatus !== TASK_STATUS.REVIEW_APPROVED && latestIdentTask.reviewStatus !== 'review_approved' && latestIdentTask.reviewStatus !== 'approved') {
-          checks.push('结果未审核通过');
-        }
-        if (checks.length > 0) {
-          const msg = '发布条件不满足：' + checks.join('；');
-          this.ctx.log(msg);
-          if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast(msg, 'warning');
-          return;
-        }
-        try {
-          await this.ctx.http.results.request(latestIdentTask.id + '/publish', { method: 'POST' });
-          this.ctx.log('已成功发布为当前稳态辨识模型');
-          if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('已发布为当前稳态辨识模型', 'success');
-          this.render();
-        } catch (e) {
-          this.ctx.log('发布失败: ' + (e.message || e));
-          if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('发布失败: ' + (e.message || e), 'error');
-        }
       })
     );
+    if (isIdentTask && isCompleted) {
+      btnRow.append(
+
+        button('设为稳态辨识模型', 'btn-card primary', async () => {
+          if (!latestIdentTask || latestIdentTask.status !== TASK_STATUS.COMPLETED) {
+            if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('需要已完成的辨识任务才能发布', 'warning');
+            this.ctx.log('暂无已完成的辨识结果可发布');
+            return;
+          }
+          if (!isIdentTask) {
+            if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('只有参数辨识结果才能发布为稳态辨识模型', 'warning');
+            return;
+          }
+          // 文档第 11 节：只有指纹兼容、结果通过验收且未读取参数真值时才允许发布
+          const identResult = this.results.get(String(latestIdentTask.id));
+          const identSummary = identResult?.resultSummary || identResult || {};
+          const identAcceptance = identSummary.acceptance || {};
+          const checks = [];
+          if (!identAcceptance.formalAccepted) checks.push('结果未通过正式验收');
+          if (identSummary.truthWasRead === true) checks.push('结果读取了参数真值');
+          if (latestIdentTask.reviewStatus !== TASK_STATUS.REVIEW_APPROVED && latestIdentTask.reviewStatus !== 'review_approved' && latestIdentTask.reviewStatus !== 'approved') {
+            checks.push('结果未审核通过');
+          }
+          if (checks.length > 0) {
+            const msg = '发布条件不满足：' + checks.join('；');
+            this.ctx.log(msg);
+            if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast(msg, 'warning');
+            return;
+          }
+          try {
+            await this.ctx.http.results.request(latestIdentTask.id + '/publish', { method: 'POST' });
+            latestIdentTask.publicationStatus = TASK_STATUS.PUBLISHED;
+            this.ctx.log('已成功发布为当前稳态辨识模型');
+            if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('已发布为当前稳态辨识模型', 'success');
+            this.render();
+          } catch (e) {
+            this.ctx.log('发布失败: ' + (e.message || e));
+            if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('发布失败: ' + (e.message || e), 'error');
+          }
+        })
+      );
+    } else if (isCompleted) {
+      btnRow.append(button('设为稳态辨识模型', 'btn-card primary disabled', () => {
+        if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('只有参数辨识结果可以发布', 'warning');
+      }));
+    }
     c3.body.append(btnRow);
 
     // Card 2 和 Card 3 并排显示
@@ -2754,9 +2806,10 @@ class SteadyModelAdaptV1 {
       '追溯与导出',
       '结果运行后保存输入、模型、配置、日志、图形和报告之间的对应关系。'
     );
-    // 根据选中任务的真实数据判断追溯状态和具体内容
+    // 根据选中任务的真实数据判断追溯状态和具体内容，优先使用任务实体自带结果
     const traceTask = latestIdentTask;
-    const traceResult = traceTask ? this.results.get(String(traceTask.id)) : null;
+    const taskTraceResult = traceTask && traceTask.result && traceTask.result.value !== undefined ? traceTask.result.value : traceTask?.result;
+    const traceResult = taskTraceResult || (traceTask ? this.results.get(String(traceTask.id)) : null);
     const traceSummary = traceResult?.resultSummary || traceResult || {};
     const traceArtifacts = traceTask ? (this.artifacts.get(String(traceTask.id)) || []) : [];
     const traceAcceptance = traceSummary.acceptance || {};
@@ -2783,11 +2836,15 @@ class SteadyModelAdaptV1 {
       `阶段C耗时：${(traceTiming.stageCSeconds||0).toFixed(1)} s`,
       `阶段D耗时：${(traceTiming.stageDSeconds||0).toFixed(1)} s`
     ];
+    const warningText = traceSummary.warnings
+      ? (Array.isArray(traceSummary.warnings) ? traceSummary.warnings.join('；') : String(traceSummary.warnings))
+      : (traceAcceptance.allStagesConverged ? '无' : '存在未收敛阶段');
     const conclusionDetail = [
       `全部阶段收敛：${traceAcceptance.allStagesConverged ? '是' : '否'}`,
       `正式验收通过：${traceAcceptance.formalAccepted ? '是' : '否'}`,
       `训练回放有效：${traceAcceptance.trainingReplayValid ? '是' : '否'}`,
       `测试回放有效：${traceAcceptance.testReplayValid ? '是' : '否'}`,
+      `警告：${warningText}`,
       `任务状态：${this._statusLabel(traceTask?.status)}`,
       `发布状态：${traceTask?.publicationStatus === 'published' ? '已发布' : '未发布'}`
     ];
@@ -2802,38 +2859,25 @@ class SteadyModelAdaptV1 {
     const tRow = el('div', 'reg-method-row');
     tRow.style.marginTop = '0';
     tRow.style.flexWrap = 'wrap';
-    traceItems.forEach((t, idx) => {
+    traceItems.forEach((t) => {
       const cls = t.ok ? 'field-status ok' : 'field-status optional';
       const text = (t.ok ? '✓ ' : '') + t.label;
       const tag = el('span', cls, text);
-      if (t.ok) {
-        tag.style.cursor = 'pointer';
-        tag.onclick = () => {
-          const existing = c4.body.querySelector(`#trace-detail-${idx}`);
-          if (existing) {
-            existing.remove();
-            return;
-          }
-          const detailBox = el('div', '');
-          detailBox.id = `trace-detail-${idx}`;
-          detailBox.style.cssText = 'width:100%;margin-top:8px;padding:12px;background:var(--bg,#f7f8fa);border-radius:4px;border:1px solid var(--line,#e8e8e8);';
-          const title = el('div', '');
-          title.style.cssText = 'font-weight:600;font-size:12px;margin-bottom:8px;color:var(--text);';
-          title.textContent = t.label + '：';
-          detailBox.append(title);
-          t.detail.forEach(line => {
-            const item = el('div', '');
-            item.style.cssText = 'font-size:12px;color:var(--muted,#666);margin-bottom:4px;padding-left:12px;border-left:2px solid var(--line,#e8e8e8);';
-            item.textContent = line;
-            detailBox.append(item);
-          });
-          // 插到当前标签所在行之后
-          tRow.insertAdjacentElement('afterend', detailBox);
-        };
-      }
       tRow.append(tag);
     });
     c4.body.append(tRow);
+
+    // HTML 追溯报告导出入口放在追溯卡片内
+    const c4btns = el('div', 'btn-row');
+    c4btns.style.marginTop = '12px';
+    c4btns.append(button('结果追溯报告', 'btn-card', () => {
+      if (!traceTask) {
+        if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('请先选择一条结果记录', 'warning');
+        return;
+      }
+      this._exportHtmlReport(traceTask);
+    }));
+    c4.body.append(c4btns);
 
     container.append(c1.card, c2c3Row, c4.card);
   }
@@ -2858,7 +2902,9 @@ class SteadyModelAdaptV1 {
 
   /** 从辨识任务构建详情值列表（从真实 result/artifacts 读取） */
   _buildResultDetailValues(task) {
-    const result = this.results.get(String(task.id));
+    // 优先从任务实体自带的结果 JSON 读取（后端任务表已记录），未加载再查 this.results
+    const taskResult = task.result && task.result.value !== undefined ? task.result.value : task.result;
+    const result = taskResult || this.results.get(String(task.id));
     const summary = result?.resultSummary || result || {};
     const artifacts = this.artifacts.get(String(task.id)) || [];
     const acceptance = summary.acceptance || {};
@@ -2869,19 +2915,22 @@ class SteadyModelAdaptV1 {
     const trainFile = input.trainingFile || '—';
     const testFile = input.testFile || '无';
     const trainPoints = input.trainingPointCount || '—';
-    const fingerprint = artifacts.length > 0 ? artifacts[0].sha256?.substring(0, 12) + '... (兼容)' : '运行后显示';
-    const item1 = `训练: ${trainFile}（${trainPoints}点）, 测试: ${testFile}, 指纹: ${fingerprint}`;
+    const artifactFp = artifacts.length > 0 ? artifacts[0].sha256?.substring(0, 12) + '...' : '—';
+    const dllName = input.dllFile || this.workspace?.programName || '—';
+    const algoFp = summary.schemaVersion || '—';
+    const item1 = `训练: ${trainFile}（${trainPoints}点）, 测试: ${testFile}, DLL: ${dllName}, 算法指纹: ${algoFp}, 产物指纹: ${artifactFp}`;
 
-    // 运行配置与停止原因
+    // 运行配置与停止原因（文档 11.4：开始时间、结束时间和总运行时间）
     const totalSeconds = (timing.estimationSeconds || 0) + (timing.stageASeconds || 0) + (timing.stageBSeconds || 0)
       + (timing.stageCSeconds || 0) + (timing.stageDSeconds || 0);
+    const startStr = task.createdAt ? new Date(Number(task.createdAt)).toLocaleString('zh-CN') : '—';
+    const endStr = task.finishedAt ? new Date(Number(task.finishedAt)).toLocaleString('zh-CN') : '—';
     const stopReason = acceptance.allStagesConverged ? '全部阶段达阈值收敛' : '运行后显示';
-    const item2 = `${stopReason}, 总耗时 ${totalSeconds.toFixed(1)} s（A=${(timing.stageASeconds||0).toFixed(1)}, B=${(timing.stageBSeconds||0).toFixed(1)}, C=${(timing.stageCSeconds||0).toFixed(1)}, D=${(timing.stageDSeconds||0).toFixed(1)}）`;
+    const item2 = `开始: ${startStr}, 结束: ${endStr}, ${stopReason}, 总耗时 ${totalSeconds.toFixed(1)} s（A=${(timing.stageASeconds||0).toFixed(1)}, B=${(timing.stageBSeconds||0).toFixed(1)}, C=${(timing.stageCSeconds||0).toFixed(1)}, D=${(timing.stageDSeconds||0).toFixed(1)}）`;
 
-    // 验收状态与复核意见
+    // 验收状态与复核意见（复核 UI 在 render_results 中单独渲染）
     const formalAccepted = acceptance.formalAccepted ? '验收通过' : '待验收';
-    const reviewStatus = task.reviewStatus || summary.reviewStatus || '待审核';
-    const item3 = `${formalAccepted}（${this._statusLabel(task.status)}）, 审核: ${reviewStatus === 'approved' || reviewStatus === TASK_STATUS.REVIEW_APPROVED ? '已审核通过' : '待审核'}`;
+    const item3 = `${formalAccepted}（${this._statusLabel(task.status)}）`;
 
     // 结果文件与图形
     const artifactNames = artifacts.map(a => a.name || a.fileName || String(a)).join(', ') || '运行后生成';
@@ -3630,6 +3679,7 @@ class SteadyModelAdaptV1 {
       await this.handleCreateProject();
     }
     const actionKey = this.identifyModel === 'steady' ? 'estimateSteady' : 'estimateTransient';
+    this._unlockIdentify = false;
     this.ctx.log(`启动参数辨识（${actionKey}）...`);
     await this.withLoading('正在提交辨识任务...', async () => {
       try {
@@ -4109,19 +4159,7 @@ class SteadyModelAdaptV1 {
       return;
     }
 
-    // 确保产物列表已加载（用于报告内容）
-    let artifacts = this.artifacts.get(String(task.id));
-    if (!artifacts) {
-      try {
-        if (this.ctx.http && this.ctx.http.artifacts) {
-          artifacts = await this.ctx.http.artifacts.request(task.id);
-          if (Array.isArray(artifacts)) this.artifacts.set(String(task.id), artifacts);
-        }
-      } catch (e) { /* ignore */ }
-    }
-    artifacts = artifacts || [];
-
-    this.ctx.log(`正在导出任务 ${task.id} 的全部结果（ZIP打包 + HTML追溯报告）...`);
+    this.ctx.log(`正在导出任务 ${task.id} 的 ZIP 产物包...`);
 
     // 1. 调后端打包接口下载 ZIP（含 result.json、run.log、artifacts.json 及全部产物文件）
     try {
@@ -4133,12 +4171,18 @@ class SteadyModelAdaptV1 {
       this.ctx.log('下载 ZIP 包失败: ' + (e.message || e));
     }
 
-    // 2. 同时生成 HTML 追溯报告（与联合仿真报告方式一致，可打印为 PDF）
+    this.ctx.log(`导出完成：ZIP 产物包`);
+    if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('已导出 ZIP 产物包', 'success');
+  }
+
+  /** 导出 HTML 追溯报告 */
+  _exportHtmlReport(task) {
     const result = this.results.get(String(task.id));
     const summary = result?.resultSummary || result || {};
     const acceptance = summary.acceptance || {};
     const timing = summary.timing || {};
     const input = summary.input || {};
+    let artifacts = this.artifacts.get(String(task.id)) || [];
 
     const PDFGen = window.CommonUtils && window.CommonUtils.LocalPDFGenerator;
     if (PDFGen) {
@@ -4165,14 +4209,15 @@ class SteadyModelAdaptV1 {
           artifacts.map(a => [
             a.name || a.fileName || String(a),
             a.size ? this._formatFileSize(a.size) : '—',
-            a.sha256 ? a.sha256.substring(0, 16) + '...' : '—'
+            a.sha256 || '—'
           ])
         );
       }
       pdf.addSeparator();
 
       pdf.addSubtitle('3. 正则化及后验运行配置');
-      pdf.addText(`配置：${summary.options ? JSON.stringify(summary.options) : '—'}`, 11);
+      pdf.addText('配置：', 11);
+      pdf.addCodeBlock(summary.options ? JSON.stringify(summary.options, null, 2) : '—');
       pdf.addText(`阶段A耗时：${(timing.stageASeconds||0).toFixed(1)} s`, 12);
       pdf.addText(`阶段B耗时：${(timing.stageBSeconds||0).toFixed(1)} s`, 12);
       pdf.addText(`阶段C耗时：${(timing.stageCSeconds||0).toFixed(1)} s`, 12);
@@ -4221,36 +4266,47 @@ class SteadyModelAdaptV1 {
         ]
       );
 
+      pdf.addWatermark();
       const htmlContent = pdf.generateHTML();
-      const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `结果追溯报告_${task.actionKey}_${task.id}.html`;
-      a.click();
-      URL.revokeObjectURL(url);
+      this._openPrintPreview(htmlContent, `结果追溯报告_${task.actionKey}_${task.id}.html`);
     } else {
       const html = this._buildSimpleHtmlReport(task, summary, artifacts, acceptance, timing, input, result);
+      this._openPrintPreview(html, `结果追溯报告_${task.actionKey}_${task.id}.html`);
+    }
+
+    this.ctx.log('正在打开结果追溯报告打印预览...');
+    if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('正在打开结果追溯报告打印预览，请在弹窗中选择保存为PDF', 'success');
+  }
+
+  /** 打印预览；若弹窗被阻止则降级为 HTML 下载 */
+  _openPrintPreview(html, fileName) {
+    const printWindow = window.open('', '_blank');
+    if (printWindow && printWindow.document) {
+      printWindow.document.write(html);
+      printWindow.document.close();
+      printWindow.onload = () => {
+        printWindow.print();
+        printWindow.onafterprint = () => { printWindow.close(); };
+        setTimeout(() => { if (!printWindow.closed) printWindow.close(); }, 30000);
+      };
+    } else {
       const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `结果追溯报告_${task.actionKey}_${task.id}.html`;
+      a.download = fileName;
       a.click();
       URL.revokeObjectURL(url);
     }
-
-    this.ctx.log(`导出完成：ZIP 产物包 + HTML 追溯报告`);
-    if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('已导出 ZIP 产物包及 HTML 追溯报告', 'success');
   }
 
   /** 降级用的简单 HTML 报告 */
   _buildSimpleHtmlReport(task, summary, artifacts, acceptance, timing, input, result) {
     const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    const rows = artifacts.map(a => `<tr><td>${esc(a.name||a.fileName)}</td><td>${a.size?this._formatFileSize(a.size):'—'}</td><td>${esc(a.sha256||'—').substring(0,16)}</td></tr>`).join('');
+    const rows = artifacts.map(a => `<tr><td>${esc(a.name||a.fileName)}</td><td>${a.size?this._formatFileSize(a.size):'—'}</td><td>${esc(a.sha256||'—')}</td></tr>`).join('');
     return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>结果追溯报告</title>
 <style>body{font-family:SimSun,Microsoft YaHei,Arial,sans-serif;font-size:12pt;margin:40px;line-height:1.5}
-table{width:100%;border-collapse:collapse;margin:10px 0}th,td{border:1px solid #ddd;padding:8px}th{background:#f2f2f2}
+table{width:100%;border-collapse:collapse;margin:10px 0;table-layout:fixed}th,td{border:1px solid #ddd;padding:8px;word-break:break-all}th{background:#f2f2f2}
 h1{text-align:center}h2{font-size:14pt;border-bottom:1px solid #999;padding-bottom:5px}</style></head><body>
 <h1>结果追溯报告</h1>
 <p>项目：${esc(this.workspace?.jobName || this.workspace?.id)}　生成时间：${new Date().toLocaleString('zh-CN')}</p>
