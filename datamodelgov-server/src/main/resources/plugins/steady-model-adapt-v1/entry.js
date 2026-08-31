@@ -1430,7 +1430,7 @@ class SteadyModelAdaptV1 {
     segRow.append(seg1, seg2, tag);
     c1.body.append(segRow);
 
-    // Card 2: 整体信息质量（文档 7.2：主结论只显示条件数、有效奇异方向数、正则化后条件状态、观测数、参数数）
+    // Card 2: 整体信息质量（文档 7.2：条件数、有效奇异方向数、正则化后条件状态、观测数、待分析参数数）
     const c2 = this.createCard(
       '整体信息质量',
       '显示标准化信息矩阵条件数、有效奇异方向数、TSVD/Tikhonov 作用后的有效条件状态、观测数和待分析参数数。'
@@ -1438,26 +1438,39 @@ class SteadyModelAdaptV1 {
     const fmtCond = v => {
       if (v == null) return '—';
       const n = Number(v);
+      if (!isFinite(n)) return '—';
       if (n >= 1e6) return n.toLocaleString('zh-CN', { maximumFractionDigits: 1 });
       if (n >= 100) return n.toFixed(1);
       return n.toFixed(3);
+    };
+    const fmtRegularized = (c) => {
+      if (!c) return '运行后显示';
+      const condStr = fmtCond(c.active_regularized_information_condition);
+      const method = c.active_regularization_method || '—';
+      return `${condStr} (${method})`;
     };
     const qGrid = el('div', 'metrics-grid');
     qGrid.append(
       this.createMetricBox('标准化信息矩阵条件数', cond ? fmtCond(cond.information_condition) : '运行后显示'),
       this.createMetricBox('有效奇异方向数', cond ? String(cond.effective_rank) : '运行后显示'),
-      this.createMetricBox('TSVD 作用后条件数', cond ? fmtCond(cond.tsvd_retained_information_condition) : '运行后显示'),
-      this.createMetricBox('Tikhonov 作用后条件数', cond ? fmtCond(cond.tikhonov_information_condition) : '运行后显示'),
+      this.createMetricBox('TSVD/Tikhonov 作用后条件数', cond ? fmtRegularized(cond) : '运行后显示'),
       this.createMetricBox('观测数', cond ? String(cond.data_residual_count) : '运行后显示'),
       this.createMetricBox('待分析参数数', cond ? String(cond.parameter_count) : '运行后显示')
     );
     c2.body.append(qGrid);
-    // 数值证据按钮 → 弹窗显示奇异谱和弱方向（文档 7.2：奇异谱放在数值证据详情中，不作为页面主结论）
+    // 数值证据：奇异谱和正则化作用曲线不作为页面主结论，以详情链接提供
     if (cond) {
-      const btnRow = el('div', 'btn-row');
-      btnRow.style.marginTop = '10px';
-      btnRow.append(button('数值证据', 'btn-card', () => this._showNumericalEvidenceModal(cond, svdRows, weakRows)));
-      c2.body.append(btnRow);
+      const note = el('p', 'card-foot-note');
+      note.textContent = '奇异谱和正则化作用曲线不作为页面主结论，详见 ';
+      const numLink = el('a', '', '数值证据详情');
+      numLink.href = '#';
+      numLink.style.cssText = 'font-size:12px;color:var(--blue);text-decoration:underline;cursor:pointer;';
+      numLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        this._showNumericalEvidenceModal(cond, svdRows, weakRows);
+      });
+      note.append(numLink);
+      c2.body.append(note);
     }
 
     // Card 3: 逐参数结果（文档 7.3：参数、自身敏感性、补偿依赖、主要补偿参数、基准位置分类、辨识结果位置分类、综合判断与建议）
@@ -1495,7 +1508,15 @@ class SteadyModelAdaptV1 {
         baseClass,
         finalClass,
         advice,
-        button('查看', 'btn-table', () => this._showCompensationDetailModal(param, dirRows, combinedRows))
+        button('查看', 'btn-table', () => {
+          this._activeIdentParam = param;
+          this.render();
+          setTimeout(() => {
+            const host = this.ctx.shadow || this.mount;
+            const target = host.querySelector('#ident-evidence-detail');
+            if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }, 0);
+        })
       ];
     });
     if (idRows.length === 0) {
@@ -1513,7 +1534,7 @@ class SteadyModelAdaptV1 {
     const eGrid = el('div', 'evidence-grid');
     // 根据是否有结果生成证据描述
     const hasResult = !!identResult;
-    const selParam = this._selectedIdentParam;
+    const selParam = this._activeIdentParam;
     const selCombined = selParam ? combinedRows.find(r => r.parameter === selParam) : null;
     const selDomComp = selParam ? this._findDominantCompanion(dirRows, selParam) : null;
     const selDirs = selParam ? dirRows.filter(d => d.target_parameter === selParam) : [];
@@ -1531,18 +1552,26 @@ class SteadyModelAdaptV1 {
     }
     eGrid.append(this.createEvidenceBox('自身敏感性证据', sensDesc, 'blue'));
 
-    // 补偿关系证据
-    let compDesc;
+    // 补偿关系证据：以表格形式展示文档 7.3 要求的 5 个详情字段
+    let compEvidence;
+    const snapshotLabel = this.activeSnapshot === 'pre' ? 'A 阶段前（零修正基准）' : 'D 阶段后（稳态辨识模型）';
     if (hasResult && selParam && selDomComp && selDomComp.dominant_companion && selDomComp.dominant_companion !== 'none') {
       const compDir = Number(selDomComp.dominant_companion_delta) >= 0 ? '同向' : '反向';
       const frac = Number(selDomComp.dominant_companion_step_fraction).toFixed(2);
-      compDesc = `主要补偿参数为 ${selDomComp.dominant_companion}（${compDir}，${frac} 个工程步长），受影响输出 ${selDomComp.compensated_dominant_field || '—'}`;
+      const compRows = [
+        ['主要补偿参数', selDomComp.dominant_companion],
+        ['补偿方向', `${compDir}（Δ=${Number(selDomComp.dominant_companion_delta).toFixed(4)}）`],
+        ['相对补偿幅度', `${frac} 个工程步长`],
+        ['受影响输出', selDomComp.compensated_dominant_field || '—'],
+        ['结论适用局部范围', snapshotLabel]
+      ];
+      compEvidence = this.createTable(['字段', '值'], compRows);
     } else if (hasResult && selParam) {
-      compDesc = `${selParam}：无补偿需求或为独立参数`;
+      compEvidence = el('p', 'evidence-desc', `${selParam}：无补偿需求或为独立参数（${snapshotLabel}）`);
     } else {
-      compDesc = '主要补偿参数、变化方向、步长占比和补偿后残差动态显示';
+      compEvidence = el('p', 'evidence-desc', '主要补偿参数、变化方向、步长占比和补偿后残差动态显示');
     }
-    eGrid.append(this.createEvidenceBox('补偿关系证据', compDesc, 'orange'));
+    eGrid.append(this.createEvidenceBox('补偿关系证据', compEvidence, 'orange'));
 
     // 工程处置建议
     let adviceDesc;
@@ -1557,6 +1586,7 @@ class SteadyModelAdaptV1 {
     }
     eGrid.append(this.createEvidenceBox('工程处置建议', adviceDesc, 'green'));
 
+    c4.card.id = 'ident-evidence-detail';
     c4.body.append(eGrid);
 
     container.append(c1.card, c2.card, c3.card, c4.card);
@@ -1574,71 +1604,6 @@ class SteadyModelAdaptV1 {
       }
     }
     return best;
-  }
-
-  /** 显示某参数的补偿详情弹窗（文档 7.3：主要补偿参数、补偿方向、相对补偿幅度、受影响输出、局部范围） */
-  _showCompensationDetailModal(paramName, dirRows, combinedRows) {
-    const paramDirs = dirRows.filter(d => d.target_parameter === paramName);
-    const domComp = this._findDominantCompanion(dirRows, paramName);
-    const combined = combinedRows.find(r => r.parameter === paramName) || {};
-    const snapshotLabel = this.activeSnapshot === 'pre' ? 'A 阶段前（零修正基准）' : 'D 阶段后（稳态辨识模型）';
-
-    const overlay = el('div', 'image-modal-overlay');
-    const dialog = el('div', 'image-modal');
-    dialog.style.maxWidth = '680px';
-    const header = el('div', 'image-modal-header');
-    const heading = el('h3', '', `${paramName} — 补偿详情`);
-    const close = el('button', 'image-modal-close', '✕');
-    close.type = 'button';
-    close.onclick = () => overlay.remove();
-    header.append(heading, close);
-
-    const body = el('div', 'image-modal-body modal-content');
-    body.style.padding = '20px 24px';
-    body.style.maxHeight = '70vh';
-    body.style.overflow = 'auto';
-
-    if (paramDirs.length === 0) {
-      body.append(el('p', '', '当前快照无该参数的方向分析数据。'));
-    } else if (domComp && domComp.dominant_companion && domComp.dominant_companion !== 'none') {
-      // 补偿详情表
-      const sec1 = el('div', '');
-      sec1.style.cssText = 'margin-bottom:16px;';
-      sec1.append(el('h4', '', '补偿关系'));
-      const dHeaders = ['主要补偿参数', '补偿方向', '相对补偿幅度', '受影响输出', '结论适用局部范围'];
-      const compDir = Number(domComp.dominant_companion_delta) >= 0 ? '同向' : '反向';
-      const dRows = [[
-        domComp.dominant_companion,
-        `${compDir}（Δ=${Number(domComp.dominant_companion_delta).toFixed(4)}）`,
-        `${Number(domComp.dominant_companion_step_fraction).toFixed(2)} 个工程步长`,
-        domComp.compensated_dominant_field || '—',
-        snapshotLabel
-      ]];
-      sec1.append(this.createTable(dHeaders, dRows));
-      body.append(sec1);
-
-      // 孤立 vs 补偿后 RMS 对比
-      const sec2 = el('div', '');
-      sec2.style.cssText = 'margin-bottom:16px;';
-      sec2.append(el('h4', '', '孤立扰动 vs 补偿后 RMS 对比'));
-      const rHeaders = ['方向', '孤立RMS', '孤立主导输出', '补偿后RMS', '补偿后主导输出'];
-      const rRows = paramDirs.map(d => [
-        d.sign > 0 ? '+1' : '-1',
-        Number(d.isolated_max_field_rms).toFixed(4),
-        d.isolated_dominant_field || '—',
-        Number(d.compensated_max_field_rms).toFixed(4),
-        d.compensated_dominant_field || '—'
-      ]);
-      sec2.append(this.createTable(rHeaders, rRows));
-      body.append(sec2);
-    } else {
-      body.append(el('p', '', `${paramName}：该参数无补偿需求或为独立参数（${combined.transition || combined.final_class || '—'}）。`));
-    }
-
-    dialog.append(header, body);
-    overlay.append(dialog);
-    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
-    (this.ctx.shadow || this.mount).appendChild(overlay);
   }
 
   /** 数值证据弹窗：奇异谱 + 弱方向（文档 7.2：奇异谱和正则化作用曲线放在数值证据详情中） */
@@ -3175,7 +3140,12 @@ class SteadyModelAdaptV1 {
   createEvidenceBox(title, desc, color) {
     const cls = 'evidence-box' + (color ? ` ev-${color}` : '');
     const box = el('div', cls);
-    box.append(el('h4', 'evidence-title', title), el('p', 'evidence-desc', desc));
+    box.append(el('h4', 'evidence-title', title));
+    if (desc && typeof desc === 'object' && desc.nodeType) {
+      box.append(desc);
+    } else {
+      box.append(el('p', 'evidence-desc', desc));
+    }
     return box;
   }
 
