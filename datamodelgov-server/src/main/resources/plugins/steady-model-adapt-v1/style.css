@@ -719,12 +719,16 @@ select.reg-input {
   background: #fbfcfd;
   border: 1px dashed #e1e8ed;
   border-radius: 3px;
+  position: relative;
+  overflow: hidden;
+  color: #a4b3be;
+  font-size: 11px;
+}
+.chart-host.chart-loading {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  color: #a4b3be;
-  font-size: 11px;
 }
 
 .chart-loading {

@@ -658,12 +658,15 @@ class SteadyModelAdaptV1 {
 
     const view = el('div', 'section-view');
     view.style.position = 'relative';
+    this.mount.append(view);
     const renderer = this['render_' + this.activeSection];
     if (renderer) {
       renderer.call(this, view);
     } else {
       this.render_data(view);
     }
+    // 图表渲染后统一 resize，确保尺寸正确
+    this.charts.forEach(c => { try { c.resize(); } catch (e) {} });
 
     // loading 覆盖层
     if (this.loading) {
@@ -683,8 +686,6 @@ class SteadyModelAdaptV1 {
         document.head.append(style);
       }
     }
-
-    this.mount.appendChild(view);
   }
 
   /* ================= 01 项目与数据 ================= */
@@ -2242,6 +2243,10 @@ class SteadyModelAdaptV1 {
       return;
     }
 
+    // 自动回显：打开项目时自动选择辨识结果和测试数据
+    if (!this._validationModel) this._validationModel = modelName;
+    if (!this._validationTestData) this._validationTestData = testDataName;
+
     const form = el('div', 'form-grid-3');
     form.append(
       this.createField('稳态辨识模型', select([
@@ -2287,7 +2292,7 @@ class SteadyModelAdaptV1 {
         const cell = this.createChartCell(o, valRunning);
         chartsGrid.append(cell.cell);
         if (valResult) {
-          this.renderValidationComparisonChart(cell.host, o);
+          this.renderValidationComparisonChart(cell.host, o, valResult);
         }
       });
       c2.body.append(chartsGrid);
@@ -2297,16 +2302,36 @@ class SteadyModelAdaptV1 {
                          '<span class="legend-line measured">— 测量值</span>';
       c2.body.append(legend);
     } else {
-      const vHeaders = ['输出', '零修正模型 RMSE', '稳态辨识模型 RMSE', '改善幅度'];
-      const vRows = [
-        ['Np', valResult ? '2.45%' : '运行后显示', valResult ? '0.32%' : '运行后显示', valResult ? '-86.9%' : '运行后显示'],
-        ['Ng', valResult ? '3.10%' : '运行后显示', valResult ? '0.41%' : '运行后显示', valResult ? '-86.8%' : '运行后显示'],
-        ['Pt3', valResult ? '4.82%' : '运行后显示', valResult ? '0.65%' : '运行后显示', valResult ? '-86.5%' : '运行后显示'],
-        ['Tt3', valResult ? '3.50%' : '运行后显示', valResult ? '0.48%' : '运行后显示', valResult ? '-86.3%' : '运行后显示'],
-        ['Tt45', valResult ? '4.15%' : '运行后显示', valResult ? '0.55%' : '运行后显示', valResult ? '-86.7%' : '运行后显示'],
-        ['Pt45', valResult ? '3.80%' : '运行后显示', valResult ? '0.50%' : '运行后显示', valResult ? '-86.8%' : '运行后显示']
-      ];
-      c2.body.append(this.createTable(vHeaders, vRows));
+      // 误差标准差对比图表：柱状图对比零修正 vs 稳态辨识模型 RMSE
+      const summary = valResult?.resultSummary || valResult || {};
+      const baselineByField = this._metricsByFieldMap(summary.baseline?.metrics);
+      const correctedByField = this._metricsByFieldMap(summary.corrected?.metrics);
+      const rmseHost = el('div', 'chart-host');
+      rmseHost.style.height = '240px';
+      c2.body.append(rmseHost);
+      if (this.ctx.echarts && valResult) {
+        const chart = this.ctx.echarts.init(rmseHost, null, { renderer: 'canvas' });
+        const baseData = OUTPUT_VARS.map(o => {
+          const v = baselineByField[o]?.rmse;
+          return v != null ? Number(v) : 0;
+        });
+        const corrData = OUTPUT_VARS.map(o => {
+          const v = correctedByField[o]?.rmse;
+          return v != null ? Number(v) : 0;
+        });
+        chart.setOption({
+          animation: false,
+          grid: { left: 50, right: 20, top: 30, bottom: 30 },
+          legend: { data: ['零修正模型', '稳态辨识模型'], top: 0, textStyle: { fontSize: 11 } },
+          xAxis: { type: 'category', data: OUTPUT_VARS, axisLabel: { fontSize: 10 } },
+          yAxis: { type: 'value', scale: true, axisLabel: { fontSize: 10 } },
+          series: [
+            { name: '零修正模型', type: 'bar', data: baseData, itemStyle: { color: '#8c9ea9' } },
+            { name: '稳态辨识模型', type: 'bar', data: corrData, itemStyle: { color: '#2b6b95' } }
+          ]
+        });
+        this.charts.push(chart);
+      }
     }
 
     // Card 3: 提示
@@ -2462,18 +2487,44 @@ class SteadyModelAdaptV1 {
     const predTask = this.latestTask('operatingPointPrediction');
     const predRunning = predTask?.status === TASK_STATUS.RUNNING;
     const chartsGrid = el('div', 'charts-grid-3');
+    console.debug('[prediction] predResult?', !!predResult, 'predTable?', !!predTable, 'predRow0?', !!predRow0, 'hasPosterior?', hasPosterior);
+    if (predResult && predRow0) {
+      console.debug('[prediction] predTable columns:', predTable?.columns, 'predRow0 keys:', Object.keys(predRow0), 'predRow0:', predRow0);
+    }
     OUTPUT_VARS.forEach(o => {
       const cell = this.createChartCell(o, predRunning);
       chartsGrid.append(cell.cell);
-      if (hasPosterior) {
-        const row = intervalRows.find(r => r.output_name === o);
-        if (row) {
-          this.renderPredictionIntervalChart(cell.host, o, row);
+      if (predResult) {
+        const fieldMap = { 'Np': ['corrected_Np_rpm','corrected_Np','Np','dNp_dt'], 'Ng': ['corrected_Ng_rpm','corrected_Ng','Ng','dNg_dt'],
+          'Pt3': ['corrected_Pt3_Pa','corrected_Pt3','Pt3'], 'Tt3': ['corrected_Tt3_K','corrected_Tt3','Tt3'],
+          'Tt45': ['corrected_Tt45_K','corrected_Tt45','Tt45'], 'Pt45': ['corrected_Pt45_Pa','corrected_Pt45','Pt45'] };
+        const candidates = fieldMap[o] || [o];
+        let detVal = null;
+        if (predRow0) {
+          for (const c of candidates) {
+            if (predRow0[c] != null) { detVal = predRow0[c]; break; }
+          }
+          if (detVal == null && predTable && Array.isArray(predTable.rows)) {
+            const row = predTable.rows.find(r => candidates.includes(r.field));
+            if (row) detVal = row.corrected_model;
+          }
+        }
+        if (hasPosterior) {
+          const row = intervalRows.find(r => r.output_name === o);
+          if (row) {
+            this.renderPredictionIntervalChart(cell.host, o, row);
+          } else if (detVal != null) {
+            this.renderPredictionDeterministicChart(cell.host, o, detVal);
+          }
+        } else if (detVal != null) {
+          this.renderPredictionDeterministicChart(cell.host, o, detVal);
         }
       }
     });
     c4.body.append(chartsGrid);
-    c4.body.append(el('div', 'chart-legend', '■ 模型输出区间    □ 可观测量区间    ● 后验中心    | 稳态辨识模型确定性输出'));
+    c4.body.append(el('div', 'chart-legend', hasPosterior
+      ? '■ 模型输出区间    □ 可观测量区间    ● 后验中心    | 稳态辨识模型确定性输出'
+      : '● 稳态辨识模型确定性输出'));
     if (hasPosterior) {
       const postInfo = predSummary.posteriorPrediction || {};
       const acceptRow = el('div', 'reg-method-row');
@@ -3061,8 +3112,6 @@ class SteadyModelAdaptV1 {
       const spinner = el('div', 'chart-spinner');
       host.append(spinner);
       host.append(el('span', '', '运行中...'));
-    } else {
-      host.textContent = '待运行后生成图表';
     }
     cell.append(host);
     return { cell, host };
@@ -4206,13 +4255,27 @@ h1{text-align:center}h2{font-size:14pt;border-bottom:1px solid #999;padding-bott
     this.charts.push(chart);
   }
 
-  renderValidationComparisonChart(host, outputName) {
+  renderValidationComparisonChart(host, outputName, valResult) {
     if (!this.ctx.echarts || !host) return;
     const chart = this.ctx.echarts.init(host, null, { renderer: 'canvas' });
-    const pts = ['点1', '点2', '点3', '点4', '点5', '点6', '点7'];
-    const measured = [100, 95, 90, 85, 80, 75, 70];
-    const zeroModel = [104, 98, 94, 89, 83, 78, 73];
-    const adaptModel = [100.2, 95.1, 90.2, 85.1, 80.1, 75.2, 70.1];
+
+    // 从 valResult.predictionTable 读取真实数据
+    // MATLAB table 经 local_summarize 后为 { kind:'table', columns:[...], rowCount:N, rows:[...] }
+    // predictionTable 每行: { point_id, field, measured, baseline_model, corrected_model, ... }
+    // 瞬态路线 field 用 dNp_dt/dNg_dt，稳态路线用 Np/Ng
+    const summary = valResult?.resultSummary || valResult || {};
+    const predTable = summary.predictionTable;
+    const allRows = (predTable && Array.isArray(predTable.rows)) ? predTable.rows : [];
+    // 输出名 → predictionTable field 名映射
+    const fieldMap = { 'Np': ['Np', 'dNp_dt', 'Np_rpm'], 'Ng': ['Ng', 'dNg_dt', 'Ng_rpm'],
+      'Pt3': ['Pt3', 'Pt3_Pa'], 'Tt3': ['Tt3', 'Tt3_K'], 'Tt45': ['Tt45', 'Tt45_K'], 'Pt45': ['Pt45', 'Pt45_Pa'] };
+    const fieldNames = fieldMap[outputName] || [outputName];
+    const rows = allRows.filter(r => fieldNames.includes(r.field));
+
+    const pts = rows.map(r => r.point_id || '');
+    const measured = rows.map(r => Number(r.measured));
+    const zeroModel = rows.map(r => Number(r.baseline_model));
+    const adaptModel = rows.map(r => Number(r.corrected_model));
 
     chart.setOption({
       animation: false,
@@ -4223,6 +4286,22 @@ h1{text-align:center}h2{font-size:14pt;border-bottom:1px solid #999;padding-bott
         { name: '零修正模型', type: 'line', data: zeroModel, lineStyle: { color: '#8c9ea9', type: 'dashed' }, symbol: 'none' },
         { name: '稳态辨识模型', type: 'line', data: adaptModel, lineStyle: { color: '#2b6b95', width: 2 }, symbol: 'circle', symbolSize: 4 },
         { name: '测量值', type: 'line', data: measured, lineStyle: { color: '#237a54', width: 1.5 }, symbol: 'diamond', symbolSize: 5 }
+      ]
+    });
+    this.charts.push(chart);
+  }
+
+  renderPredictionDeterministicChart(host, outputName, detVal) {
+    if (!this.ctx.echarts || !host) return;
+    const chart = this.ctx.echarts.init(host, null, { renderer: 'canvas' });
+    chart.setOption({
+      animation: false,
+      title: { text: outputName, left: 'center', textStyle: { fontSize: 11 } },
+      grid: { left: 50, right: 15, top: 30, bottom: 30 },
+      xAxis: { type: 'category', data: ['新工况'], axisLabel: { fontSize: 10 } },
+      yAxis: { type: 'value', scale: true, axisLabel: { fontSize: 10 } },
+      series: [
+        { name: '稳态辨识模型', type: 'scatter', data: [Number(detVal)], itemStyle: { color: '#e8554e' }, symbol: 'rect', symbolSize: 10 }
       ]
     });
     this.charts.push(chart);
