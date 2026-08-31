@@ -211,6 +211,7 @@ class SteadyModelAdaptV1 {
     this.activeSnapshot = 'pre';
     this.activeUqMethod = 'A';
     this.activeUqTab = 'training';
+    this.activeUqParamTab = 'overall';
     this.uqConfig = { pilotSampleCount: 64, pilotReplicateCount: 3, formalSampleCount: 256, posteriorPredictiveSampleCount: 256, figureVisible: 'off' };
     this.activeValidTab = 'output';
     this.predictionMode = 'pressure';
@@ -1286,18 +1287,26 @@ class SteadyModelAdaptV1 {
 
     // 训练集/测试集切换
     const tabBar = el('div', 'segmented');
-    const hasTestData = baselineTestMetrics && finalTestMetrics && (baselineTestMetrics.point_count > 0 || finalTestMetrics.point_count > 0);
+    const hasTestMetrics = baselineTestMetrics && finalTestMetrics && (baselineTestMetrics.point_count > 0 || finalTestMetrics.point_count > 0);
+    const hasTestDataFile = !!(this.workspace?.testDataFile);
     const tabTrain = button('训练集', 'segment' + (this.identifyErrorTab === 'training' ? ' active' : ''), () => {
       this.identifyErrorTab = 'training';
       this.render();
     });
-    const tabTest = button('测试集', 'segment' + (this.identifyErrorTab === 'test' ? ' active' : '') + (hasTestData ? '' : ' disabled'), () => {
-      if (hasTestData) { this.identifyErrorTab = 'test'; this.render(); }
+    const tabTest = button('测试集', 'segment' + (this.identifyErrorTab === 'test' ? ' active' : '') + (hasTestDataFile ? '' : ' disabled'), () => {
+      if (hasTestDataFile) { this.identifyErrorTab = 'test'; this.render(); }
     });
     tabBar.append(tabTrain, tabTest);
     wrap.append(tabBar);
 
-    const useTest = this.identifyErrorTab === 'test' && hasTestData;
+    // 测试集 tab：有测试数据文件但辨识入口未返回测试集误差时，显示提示
+    const useTest = this.identifyErrorTab === 'test' && hasTestDataFile;
+    if (useTest && !hasTestMetrics) {
+      const notice = el('div', 'notice-box', '测试集误差在"测试验证"页面执行独立验证后查看。参数辨识入口默认不评估测试集。');
+      notice.style.cssText = 'background:#f5f5f5;border-color:#d9d9d9;color:#666;margin-top:12px;';
+      wrap.append(notice);
+      return wrap;
+    }
     const baseMetrics = useTest ? baselineTestMetrics : baselineMetrics;
     const finMetrics = useTest ? finalTestMetrics : finalMetrics;
 
@@ -1781,20 +1790,39 @@ class SteadyModelAdaptV1 {
       '统一使用"95%置信区间"名称。图中包含95%置信区间、后验中心和修正系数辨识结果。'
     );
     if (summaryTable && summaryTable.rows && summaryTable.rows.length > 0) {
-      const pHeaders = ['参数', '单位', '辨识结果', '后验中心', '后验中位数', '后验标准差', '95%下限', '95%上限', '区间宽度'];
-      const pRows = summaryTable.rows.map(r => [
-        r.parameter || r.name || '—',
-        r.unit || '—',
-        r.deterministic_estimate != null ? Number(r.deterministic_estimate).toFixed(4) : '—',
-        r.posterior_mean != null ? Number(r.posterior_mean).toFixed(4) : '—',
-        r.posterior_median != null ? Number(r.posterior_median).toFixed(4) : '—',
-        r.posterior_std != null ? Number(r.posterior_std).toFixed(4) : '—',
-        r.q025 != null ? Number(r.q025).toFixed(4) : '—',
-        r.q975 != null ? Number(r.q975).toFixed(4) : '—',
-        r.credible_width != null ? Number(r.credible_width).toFixed(4) : '—'
-      ]);
-      c2.body.append(this.createTable(pHeaders, pRows));
-      c2.body.append(el('div', 'chart-legend', '— 95%置信区间    ● 后验中心    | 修正系数辨识结果'));
+      const rows = summaryTable.rows;
+      // 按参数类别分三组：总体调度与燃油、六部件局部、物理引气
+      const groupMap = {
+        overall: /_K_W_|Wf_bias|Nozzle_K_A8/,
+        local: /_K_eta_|Burner_K_dP_/,
+        bleed: /_Duct_K_dP_/
+      };
+      const filtered = rows.filter(r => groupMap[this.activeUqParamTab || 'overall'].test(r.name));
+      if (filtered.length === 0) {
+        c2.body.append(el('p', 'card-subtitle', '当前分类下无参数。'));
+      } else {
+        const tabRow = el('div', 'reg-method-row');
+        tabRow.style.marginBottom = '12px';
+        const tabLabels = [
+          { key: 'overall', label: '总体调度与燃油' },
+          { key: 'local', label: '六部件局部' },
+          { key: 'bleed', label: '物理引气' }
+        ];
+        tabLabels.forEach(({ key, label }) => {
+          const btn = document.createElement('button');
+          btn.textContent = label;
+          btn.className = 'segment' + (this.activeUqParamTab === key ? ' active' : '');
+          btn.onclick = () => { this.activeUqParamTab = key; this.render(); };
+          tabRow.append(btn);
+        });
+        c2.body.append(tabRow);
+
+        const chartHost = el('div', '');
+        chartHost.style.cssText = 'width:100%;height:' + Math.max(260, filtered.length * 28 + 60) + 'px;';
+        c2.body.append(chartHost);
+        c2.body.append(el('div', 'chart-legend', '— 95%置信区间    ● 后验中心    | 修正系数辨识结果'));
+        setTimeout(() => this.renderUqParameterChart(chartHost, filtered), 0);
+      }
     } else {
       c2.body.append(el('p', 'card-subtitle', isRunning ? '正在执行后验采样...' : '运行后显示参数95%置信区间。'));
     }
@@ -1827,9 +1855,19 @@ class SteadyModelAdaptV1 {
     items.push(['补偿关系', compDesc]);
     // 多解可能
     let multiDesc = '是否存在不同参数组合解释同一数据';
-    if (summaryTable && summaryTable.rows) {
-      const boundaryParams = summaryTable.rows.filter(r => Number(r.lower_boundary_mass || 0) > 0.1 || Number(r.upper_boundary_mass || 0) > 0.1);
-      if (boundaryParams.length > 0) multiDesc = `${boundaryParams.map(r => r.parameter).join('、')} 后验靠近先验边界，存在多解可能`;
+    const sampling = postDiag.samplingDiagnostic;
+    const idTable = postDiag.identifiabilityTable;
+    if (sampling && Number(sampling.modeCount) > 1) {
+      const masses = sampling.modeMass || [];
+      const total = masses.reduce((a, b) => a + Number(b), 0) || 1;
+      const parts = masses.map((m, i) => `模态${i + 1}（${(Number(m) / total * 100).toFixed(1)}%）`).join('、');
+      multiDesc = `后验存在 ${sampling.modeCount} 个显著模态（${parts}），不同参数组合可能解释同一数据`;
+    } else if (idTable && idTable.rows) {
+      const lowSens = idTable.rows.filter(r => r.classification === '参数自身低敏感');
+      if (lowSens.length > 0) {
+        const names = lowSens.slice(0, 5).map(r => r.name || r.parameter || '—').join('、');
+        multiDesc = `${names}${lowSens.length > 5 ? ' 等' : ''} 自身敏感性低，可能存在多解`;
+      }
     }
     items.push(['多解可能', multiDesc]);
     // 预测影响
@@ -2182,7 +2220,7 @@ class SteadyModelAdaptV1 {
     const valTask = this.latestTask('testValidation');
 
     // 文档第 9 节：测试数据不存在时显示"未提供测试集，本步骤已跳过"，不报程序错误
-    const hasTestData = !!(this.workspace?.testDataName);
+    const hasTestData = !!(this.workspace?.testDataFile);
     const valSkipped = valTask?.status === TASK_STATUS.SKIPPED;
 
     // Card 1: 验证输入与边界
@@ -2193,7 +2231,7 @@ class SteadyModelAdaptV1 {
     const identTask = this.latestTask('estimateTransient') || this.latestTask('estimateSteady');
     const identResult = identTask ? this.results.get(String(identTask.id)) : null;
     const modelName = identResult?.resultSummary?.steadyModelName || '稳态辨识模型（最新）';
-    const testDataName = this.workspace?.testDataName || '';
+    const testDataName = this.workspace?.testDataFile || '';
 
     if (!hasTestData || valSkipped) {
       // 测试数据不存在或任务已跳过
@@ -3788,7 +3826,7 @@ class SteadyModelAdaptV1 {
     }
     const identResult = this.results.get(String(identTask.id));
     const modelName = identResult?.resultSummary?.steadyModelName || '稳态辨识模型（最新）';
-    const testDataName = this.workspace?.testDataName || '';
+    const testDataName = this.workspace?.testDataFile || '';
     this._validationModel = modelName;
     this._validationTestData = testDataName;
     this.ctx.log(`已选择辨识结果：${modelName}，测试数据：${testDataName}`);
@@ -4221,6 +4259,45 @@ h1{text-align:center}h2{font-size:14pt;border-bottom:1px solid #999;padding-bott
         { name: '后验中心', type: 'scatter', data: [modelMedian], itemStyle: { color: '#2b6b95' }, symbolSize: 8 },
         // 稳态辨识模型确定性输出
         { name: '稳态辨识模型', type: 'scatter', data: [det], itemStyle: { color: '#e8554e' }, symbol: 'rect', symbolSize: 8 }
+      ]
+    });
+    this.charts.push(chart);
+  }
+
+  /* 参数 95% 置信区间图：水平误差条 */
+  renderUqParameterChart(host, rows) {
+    if (!this.ctx.echarts || !host) return;
+    const chart = this.ctx.echarts.init(host, null, { renderer: 'canvas' });
+    const yData = rows.map(r => r.name || r.parameter || '');
+    const lower = rows.map(r => Number(r.q025 || 0));
+    const width = rows.map(r => Number(r.q975 || r.q025 || 0) - Number(r.q025 || 0));
+    const center = rows.map((r, i) => [Number(r.posterior_median != null ? r.posterior_median : (r.posterior_mean || 0)), i]);
+    const ident = rows.map((r, i) => [Number(r.deterministic_estimate || 0), i]);
+
+    chart.setOption({
+      animation: false,
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: { type: 'shadow' },
+        formatter: (params) => {
+          const i = params[0].dataIndex;
+          const r = rows[i];
+          if (!r) return '';
+          return `<div style="font-size:12px">${r.name}</div>` +
+            `<div style="font-size:11px;color:#666">95%区间：[${Number(r.q025).toFixed(4)}, ${Number(r.q975).toFixed(4)}]</div>` +
+            `<div style="font-size:11px;color:#666">后验中心：${Number(r.posterior_median != null ? r.posterior_median : r.posterior_mean).toFixed(4)}</div>` +
+            `<div style="font-size:11px;color:#666">辨识结果：${Number(r.deterministic_estimate).toFixed(4)}</div>`;
+        }
+      },
+      legend: { data: ['95%置信区间', '后验中心', '修正系数辨识结果'], bottom: 0, textStyle: { fontSize: 11 } },
+      grid: { left: 110, right: 30, top: 10, bottom: 35 },
+      xAxis: { type: 'value', scale: true, splitLine: { show: true, lineStyle: { color: '#f0f0f0' } }, axisLabel: { fontSize: 10 } },
+      yAxis: { type: 'category', data: yData, inverse: true, axisLabel: { fontSize: 10 }, axisLine: { show: false }, axisTick: { show: false } },
+      series: [
+        { name: '置信下界', type: 'bar', stack: 'interval', data: lower, itemStyle: { color: 'transparent' }, silent: true, emphasis: { disabled: true }, z: 1 },
+        { name: '95%置信区间', type: 'bar', stack: 'interval', data: width, itemStyle: { color: 'rgba(60, 140, 190, 0.55)' }, barWidth: 10, emphasis: { disabled: true }, z: 2 },
+        { name: '后验中心', type: 'scatter', data: center, symbol: 'circle', symbolSize: 8, itemStyle: { color: '#fff', borderColor: '#2b6b95', borderWidth: 2 }, z: 3 },
+        { name: '修正系数辨识结果', type: 'scatter', data: ident, symbol: 'rect', symbolSize: [2, 14], itemStyle: { color: '#d04e4e' }, z: 4 }
       ]
     });
     this.charts.push(chart);
