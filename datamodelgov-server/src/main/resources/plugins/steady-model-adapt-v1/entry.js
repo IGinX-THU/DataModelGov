@@ -2299,7 +2299,7 @@ class SteadyModelAdaptV1 {
       const legend = el('div', 'chart-legend');
       legend.innerHTML = '<span class="legend-line baseline">— 零修正模型</span>' +
                          '<span class="legend-line corrected">— 稳态辨识模型</span>' +
-                         '<span class="legend-line measured">— 测量值</span>';
+                         '<span class="legend-line measured" style="color:#000">— 测量值</span>';
       c2.body.append(legend);
     } else {
       // 误差标准差对比图表：柱状图对比零修正 vs 稳态辨识模型 RMSE
@@ -2334,19 +2334,20 @@ class SteadyModelAdaptV1 {
       }
     }
 
-    // Card 3: 提示
-    const c3 = this.createCard(
-      '提示',
-      '不同单位的输出不直接相加为一个未经归一化的总误差。'
-    );
+    // 在验证结果分页卡片内部下方添加提示
+    const hint = el('div', 'notice-box', '"误差标准差对比"页按输出变量显示零修正模型和稳态辨识模型的误差标准差及改善幅度。');
+    hint.style.cssText = 'background:#f5f7fa;border-color:#e8eaed;color:#5a6a7a;margin-top:12px;font-size:12px;';
+    c2.body.append(hint);
     const tagRow = el('div', 'reg-method-row');
-    tagRow.append(
-      el('span', 'field-status optional', '测试数据未用于参数更新'),
-      el('span', 'field-status optional', '不读取隐藏真值')
-    );
-    c3.body.append(tagRow);
+    tagRow.style.marginTop = '8px';
+    const tag1 = el('span', 'field-status', '测试数据未用于参数更新');
+    tag1.style.cssText = 'background:#e6f7e6;color:#237a54;border:1px solid #52c41a;padding:2px 10px;border-radius:3px;font-size:12px;';
+    const tag2 = el('span', 'field-status', '不读取隐藏真值');
+    tag2.style.cssText = 'background:#e6f7e6;color:#237a54;border:1px solid #52c41a;padding:2px 10px;border-radius:3px;font-size:12px;';
+    tagRow.append(tag1, tag2);
+    c2.body.append(tagRow);
 
-    container.append(c1.card, c2.card, c3.card);
+    container.append(c1.card, c2.card);
   }
 
   /* ================= 06 工况预测 ================= */
@@ -2453,7 +2454,14 @@ class SteadyModelAdaptV1 {
     }
     const hasPosterior = predSummary.posteriorPredictionPerformed || (predSummary.posteriorPrediction && predSummary.posteriorPrediction.intervalTable);
     const intervalTable = hasPosterior ? (predSummary.posteriorPrediction?.intervalTable) : null;
-    const intervalRows = (intervalTable && Array.isArray(intervalTable.rows)) ? intervalTable.rows : [];
+    let intervalRows = [];
+    if (intervalTable) {
+      if (Array.isArray(intervalTable.rows)) {
+        intervalRows = intervalTable.rows;
+      } else if (intervalTable.rows && typeof intervalTable.rows === 'object') {
+        intervalRows = [intervalTable.rows];
+      }
+    }
 
     // 预测输出表：确定性输出 + 后验区间（如果有）
     const detHeaders = hasPosterior
@@ -2527,8 +2535,8 @@ class SteadyModelAdaptV1 {
     });
     c4.body.append(chartsGrid);
     c4.body.append(el('div', 'chart-legend', hasPosterior
-      ? '■ 模型输出区间    □ 可观测量区间    ● 后验中心    | 稳态辨识模型确定性输出'
-      : '● 稳态辨识模型确定性输出'));
+      ? '— 95%置信区间    ● 后验中心    | 稳态辨识模型'
+      : '| 稳态辨识模型'));
     if (hasPosterior) {
       const postInfo = predSummary.posteriorPrediction || {};
       const acceptRow = el('div', 'reg-method-row');
@@ -4294,7 +4302,7 @@ h1{text-align:center}h2{font-size:14pt;border-bottom:1px solid #999;padding-bott
       series: [
         { name: '零修正模型', type: 'line', data: zeroModel, lineStyle: { color: '#8c9ea9', type: 'dashed' }, symbol: 'none' },
         { name: '稳态辨识模型', type: 'line', data: adaptModel, lineStyle: { color: '#2b6b95', width: 2 }, symbol: 'circle', symbolSize: 4 },
-        { name: '测量值', type: 'line', data: measured, lineStyle: { color: '#237a54', width: 1.5 }, symbol: 'diamond', symbolSize: 5 }
+        { name: '测量值', type: 'line', data: measured, lineStyle: { color: '#000000', width: 1.5 }, symbol: 'diamond', symbolSize: 5 }
       ]
     });
     this.charts.push(chart);
@@ -4305,12 +4313,11 @@ h1{text-align:center}h2{font-size:14pt;border-bottom:1px solid #999;padding-bott
     const chart = this.ctx.echarts.init(host, null, { renderer: 'canvas' });
     chart.setOption({
       animation: false,
-      title: { text: outputName, left: 'center', textStyle: { fontSize: 11 } },
-      grid: { left: 50, right: 15, top: 30, bottom: 30 },
-      xAxis: { type: 'category', data: ['新工况'], axisLabel: { fontSize: 10 } },
-      yAxis: { type: 'value', scale: true, axisLabel: { fontSize: 10 } },
+      grid: { left: 15, right: 15, top: 5, bottom: 35 },
+      xAxis: { type: 'value', scale: true, splitLine: { show: false }, axisLabel: { fontSize: 9 } },
+      yAxis: { type: 'category', data: ['新工况'], axisLabel: { show: false }, axisTick: { show: false }, axisLine: { show: false } },
       series: [
-        { name: '稳态辨识模型', type: 'scatter', data: [Number(detVal)], itemStyle: { color: '#e8554e' }, symbol: 'rect', symbolSize: 10 }
+        { name: '稳态辨识模型', type: 'scatter', data: [[Number(detVal), 0]], itemStyle: { color: '#d04e4e' }, symbol: 'rect', symbolSize: [2, 18] }
       ]
     });
     this.charts.push(chart);
@@ -4319,35 +4326,38 @@ h1{text-align:center}h2{font-size:14pt;border-bottom:1px solid #999;padding-bott
   renderPredictionIntervalChart(host, outputName, row) {
     if (!this.ctx.echarts || !host) return;
     const chart = this.ctx.echarts.init(host, null, { renderer: 'canvas' });
-    const x = [row.point_id || '新工况'];
-    // 从 intervalTable 真实数据读取四类信息
-    const det = Number(row.deterministic_frozen_model);
-    const modelLower = Number(row.model_lower);
-    const modelMedian = Number(row.model_median);
-    const modelUpper = Number(row.model_upper);
-    const obsLower = Number(row.observable_lower);
-    const obsMedian = Number(row.observable_median);
-    const obsUpper = Number(row.observable_upper);
+    const label = row.point_id || '新工况';
     const unit = row.unit || '';
+    const lower = Number(row.model_lower);
+    const upper = Number(row.model_upper);
+    const center = Number(row.model_median);
+    const det = Number(row.deterministic_frozen_model);
+    const yData = [label];
+    const hasInterval = isFinite(lower) && isFinite(upper) && isFinite(center) && upper >= lower;
+    const tooltip = hasInterval
+      ? `${outputName}${unit ? ` (${unit})` : ''}<br/>95%置信区间：[${lower.toFixed(2)}, ${upper.toFixed(2)}]<br/>后验中心：${center.toFixed(2)}<br/>稳态辨识模型：${isFinite(det) ? det.toFixed(2) : '—'}`
+      : `${outputName}${unit ? ` (${unit})` : ''}<br/>稳态辨识模型：${isFinite(det) ? det.toFixed(2) : '—'}`;
+
+    const series = [];
+    if (hasInterval) {
+      series.push(
+        { name: '95%置信区间', type: 'bar', stack: 'interval', data: [lower], itemStyle: { color: 'transparent' }, silent: true, emphasis: { disabled: true }, z: 1 },
+        { name: '95%置信区间', type: 'bar', stack: 'interval', data: [upper - lower], itemStyle: { color: 'rgba(60, 140, 190, 0.55)' }, barWidth: 12, emphasis: { disabled: true }, z: 2 },
+        { name: '后验中心', type: 'scatter', data: [[center, 0]], symbol: 'circle', symbolSize: 9, itemStyle: { color: '#fff', borderColor: '#2b6b95', borderWidth: 2 }, z: 3 }
+      );
+    }
+    if (isFinite(det)) {
+      series.push({ name: '稳态辨识模型', type: 'scatter', data: [[det, 0]], symbol: 'rect', symbolSize: [2, 18], itemStyle: { color: '#d04e4e' }, z: 4 });
+    }
 
     chart.setOption({
       animation: false,
-      title: { text: `${outputName} (${unit})`, left: 'center', textStyle: { fontSize: 11 } },
-      grid: { left: 50, right: 15, top: 30, bottom: 30 },
-      xAxis: { type: 'category', data: x, axisLabel: { fontSize: 10 } },
-      yAxis: { type: 'value', scale: true, axisLabel: { fontSize: 10 } },
-      series: [
-        // 模型输出区间（错位显示）
-        { name: '模型输出区间', type: 'line', data: [modelLower], lineStyle: { opacity: 0 }, stack: 'model-band', symbol: 'none', xAxisIndex: 0 },
-        { name: '模型输出区间', type: 'line', data: [modelUpper - modelLower], areaStyle: { color: 'rgba(43, 107, 149, 0.25)' }, lineStyle: { opacity: 0 }, stack: 'model-band', symbol: 'none' },
-        // 可观测量区间（错位显示）
-        { name: '可观测量区间', type: 'line', data: [obsLower], lineStyle: { opacity: 0 }, stack: 'obs-band', symbol: 'none' },
-        { name: '可观测量区间', type: 'line', data: [obsUpper - obsLower], areaStyle: { color: 'rgba(200, 100, 50, 0.20)' }, lineStyle: { opacity: 0 }, stack: 'obs-band', symbol: 'none' },
-        // 后验中心
-        { name: '后验中心', type: 'scatter', data: [modelMedian], itemStyle: { color: '#2b6b95' }, symbolSize: 8 },
-        // 稳态辨识模型确定性输出
-        { name: '稳态辨识模型', type: 'scatter', data: [det], itemStyle: { color: '#e8554e' }, symbol: 'rect', symbolSize: 8 }
-      ]
+      tooltip: { trigger: 'axis', formatter: () => tooltip },
+      legend: { data: hasInterval ? ['95%置信区间', '后验中心', '稳态辨识模型'] : ['稳态辨识模型'], bottom: 0, textStyle: { fontSize: 9 } },
+      grid: { left: 15, right: 15, top: 5, bottom: 35 },
+      xAxis: { type: 'value', scale: true, splitLine: { show: false }, axisLabel: { fontSize: 9 } },
+      yAxis: { type: 'category', data: yData, axisLabel: { show: false }, axisTick: { show: false }, axisLine: { show: false } },
+      series
     });
     this.charts.push(chart);
   }
