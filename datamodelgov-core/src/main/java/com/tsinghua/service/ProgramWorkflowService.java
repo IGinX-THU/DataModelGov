@@ -387,9 +387,10 @@ public class ProgramWorkflowService {
         String id = safeJobName(jobName);
         Path root = workflowProgramRoot(project, name, version);
         Path workspace = child(root, id);
-        // 检查重名：查 IGINX 是否已有该 workspace 记录（不检查目录，因为目录可能残留）
-        Map<String, Object> existing = queryWorkspaceFromIginxById(id);
-        if (existing != null) {
+        // 检查重名：在同一项目+程序+版本下查是否已有同名工作区
+        boolean duplicate = queryWorkspacesFromIginx(name, version, project).stream()
+                .anyMatch(ws -> id.equals(value(ws.get("id"))));
+        if (duplicate) {
             throw new IllegalArgumentException("项目名称已存在: " + jobName + "，请使用其他名称");
         }
 
@@ -718,16 +719,18 @@ public class ProgramWorkflowService {
     }
 
     public Map<String, Object> getWorkspace(String id, String name, String version, String projectName) throws Exception {
-        // 从 IGINX 查询
-        Map<String, Object> record = queryWorkspaceFromIginxById(id);
+        // 从 IGINX 查询（带程序名+版本+项目名条件）
+        String project = effectiveProject(projectName);
+        Map<String, Object> record = queryWorkspaceFromIginxById(id, name, version, project);
         if (record == null) throw new IllegalArgumentException("Workspace does not exist");
         return record;
     }
 
     public void deleteWorkspace(String id, String name, String version, String projectName) throws Exception {
         Path workspace = requireWorkspace(id, name, version, projectName);
-        // 从 IGINX 查 workspace timestamp
-        Map<String, Object> wsRecord = queryWorkspaceFromIginxById(id);
+        String project = effectiveProject(projectName);
+        // 从 IGINX 查 workspace timestamp（带程序名+版本+项目名条件）
+        Map<String, Object> wsRecord = queryWorkspaceFromIginxById(id, name, version, project);
         long wsTimestamp = wsRecord != null ? longValue(wsRecord.get("timestamp")) : 0L;
 
         // 检查是否有进程在执行中：workspace 处于创建/初始化中，或有任务正在运行
@@ -827,8 +830,9 @@ public class ProgramWorkflowService {
         record.put("sha256", sha256(destination));
         record.put("uploadedAt", System.currentTimeMillis());
         records.add(record);
-        // 更新 IGINX 中的 uploadedDatasets
-        Map<String, Object> wsRecord = queryWorkspaceFromIginxById(workspaceId);
+        // 更新 IGINX 中的 uploadedDatasets（带程序名+版本+项目名条件）
+        String project = effectiveProject(projectName);
+        Map<String, Object> wsRecord = queryWorkspaceFromIginxById(workspaceId, name, version, project);
         if (wsRecord != null) {
             WorkflowWorkspaceEntity wsEntity = iginxRecordToWorkspaceEntity(wsRecord);
             wsEntity.setUploadedDatasets(mapper.writeValueAsString(records));
@@ -1468,10 +1472,9 @@ public class ProgramWorkflowService {
         requireWorkspaceId(id, "workspaceId");
         String project = effectiveProject(projectName);
         Path workspace = child(workflowProgramRoot(project, name, version), id);
-        // 从 IGINX 验证 workspace 存在且归属正确
-        Map<String, Object> wsRecord = queryWorkspaceFromIginxById(id);
+        // 从 IGINX 验证 workspace 存在且归属正确（带程序名+版本+项目名条件）
+        Map<String, Object> wsRecord = queryWorkspaceFromIginxById(id, name, version, project);
         if (wsRecord == null) throw new IllegalArgumentException("Workspace does not exist");
-        if (!matchesProgram(wsRecord, name, version, project)) throw new SecurityException("Workspace does not belong to this program context");
         return workspace;
     }
 
@@ -2254,13 +2257,27 @@ public class ProgramWorkflowService {
         }
     }
 
-    /** 从 IGINX 按 id 查询单个工作区 */
+    /** 从 IGINX 按 id 查询单个工作区（全局，不区分程序/项目，仅用于内部无上下文的场景） */
     private Map<String, Object> queryWorkspaceFromIginxById(String id) {
+        return queryWorkspaceFromIginxById(id, null, null, null);
+    }
+
+    /** 从 IGINX 按 id + 程序名 + 版本 + 项目名 查询单个工作区 */
+    private Map<String, Object> queryWorkspaceFromIginxById(String id, String name, String version, String project) {
         try {
-            String sql = String.format("SELECT * FROM %s WHERE id = '%s' ORDER BY timestamp DESC;",
-                    WF_WORKSPACE_PREFIX, id);
+            StringBuilder sql = new StringBuilder("SELECT * FROM " + WF_WORKSPACE_PREFIX + " WHERE id = '" + id + "'");
+            if (StringUtils.hasText(name)) {
+                sql.append(" AND programName = '").append(name).append("'");
+            }
+            if (StringUtils.hasText(version)) {
+                sql.append(" AND programVersion = '").append(version).append("'");
+            }
+            if (StringUtils.hasText(project)) {
+                sql.append(" AND projectName = '").append(project).append("'");
+            }
+            sql.append(" ORDER BY timestamp DESC;");
             log.info("执行SQL: {}", sql);
-            SessionExecuteSqlResult res = iginxSession.executeSql(sql);
+            SessionExecuteSqlResult res = iginxSession.executeSql(sql.toString());
             List<Map<String, Object>> records = ConvertUtil.getRecords(res);
             if (records == null || records.isEmpty()) return null;
             WorkflowWorkspaceEntity entity = iginxRecordToWorkspaceEntity(records.get(0));
@@ -2268,7 +2285,7 @@ public class ProgramWorkflowService {
             addStatusLabel(ws);
             return ws;
         } catch (Exception e) {
-            log.error("从 IGINX 查询工作区失败: id={}", id, e);
+            log.error("从 IGINX 查询工作区失败: id={}, name={}, version={}, project={}", id, name, version, project, e);
             return null;
         }
     }

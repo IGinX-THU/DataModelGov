@@ -421,7 +421,7 @@ class ProgramUpload extends HTMLElement {
                                 const cached = username ? JSON.parse(localStorage.getItem('currentProject_' + username) || 'null') : null;
                                 currentProject = cached && cached.name ? cached.name : null;
                             } catch (e) {}
-                            await window.ProgramLauncher.open({ name: programId, version, projectName: currentProject });
+                            await window.ProgramLauncher.open({ name: name, version, projectName: currentProject });
                         } catch (openError) {
                             console.error('打开预置程序失败:', openError);
                             if (window.CommonUtils && window.CommonUtils.showToast) {
