@@ -147,6 +147,10 @@ public class ProgramService {
     @Autowired
     private DataTableService dataTableService;
 
+    @Autowired
+    @org.springframework.context.annotation.Lazy
+    private ProgramWorkflowService programWorkflowService;
+
     private String safeProjectName(String projectName) {
         String proj = (projectName != null && !projectName.isEmpty()) ? projectName : ProjectContext.getCurrentProject("unknown");
         return proj.replaceAll("[^\\x00-\\x7F]+", "undefined");
@@ -928,6 +932,8 @@ public class ProgramService {
                     FileUtil.deleteDirectory(programDir);
                     log.info("已删除程序目录: {}", programDir.getAbsolutePath());
                 }
+                // 删除该程序的所有工作区
+                programWorkflowService.deleteWorkspacesByProgram(name, version, actualProjectName);
             } else {
                 String actualProjectName = StringUtils.hasText(projectName) ? projectName : ProjectContext.getCurrentProject("unknown");
                 List<ProgramEntity> queryMetas = queryMetaList(name, actualProjectName);
@@ -956,6 +962,8 @@ public class ProgramService {
                         FileUtil.deleteDirectory(programDir);
                         log.info("已删除程序目录: {}", programDir.getAbsolutePath());
                     }
+                    // 删除该程序版本的所有工作区
+                    programWorkflowService.deleteWorkspacesByProgram(meta.getName(), meta.getVersion(), meta.getProjectName());
                 }
             }
         } catch (Exception e) {

@@ -385,7 +385,7 @@ public class ProgramWorkflowService {
         ProgramConfig config = parseWorkflowConfig(entity);
 
         String id = safeJobName(jobName);
-        Path root = workflowRoot(project);
+        Path root = workflowProgramRoot(project, name, version);
         Path workspace = child(root, id);
         // 检查重名：查 IGINX 是否已有该 workspace 记录（不检查目录，因为目录可能残留）
         Map<String, Object> existing = queryWorkspaceFromIginxById(id);
@@ -465,7 +465,7 @@ public class ProgramWorkflowService {
                                        String trainingDataFile, String testDataFile, String notes,
                                        long wsTimestamp) throws Exception {
         log.info("工作区 {} 异步创建开始: 下载/解压/复制/校验/MATLAB初始化", id);
-        Path root = workflowRoot(project);
+        Path root = workflowProgramRoot(project, name, version);
         Path workspace = child(root, id);
         Path source = child(workspace, "source");
         Path datasets = child(workspace, "datasets");
@@ -750,6 +750,34 @@ public class ProgramWorkflowService {
         deleteWorkspaceFromIginx(id, wsTimestamp);
         // 再删除磁盘文件
         deleteRecursively(workspace);
+    }
+
+    /** 删除指定程序的所有工作区（程序删除时调用） */
+    public void deleteWorkspacesByProgram(String programName, String version, String projectName) {
+        try {
+            String project = effectiveProject(projectName);
+            List<Map<String, Object>> workspaces = queryWorkspacesFromIginx(programName, version, project);
+            for (Map<String, Object> ws : workspaces) {
+                String wsId = value(ws.get("id"));
+                long wsTimestamp = longValue(ws.get("timestamp"));
+                if (wsId.isEmpty()) continue;
+                try {
+                    deleteWorkspaceFromIginx(wsId, wsTimestamp);
+                } catch (Exception e) {
+                    log.error("删除工作区 IGINX 数据失败: wsId={}", wsId, e);
+                }
+                // 删除磁盘文件
+                try {
+                    Path workspacePath = child(workflowProgramRoot(project, programName, version), wsId);
+                    if (Files.exists(workspacePath)) deleteRecursively(workspacePath);
+                } catch (Exception e) {
+                    log.error("删除工作区目录失败: wsId={}", wsId, e);
+                }
+            }
+            log.info("已删除程序 {} 版本 {} 的 {} 个工作区", programName, version, workspaces.size());
+        } catch (Exception e) {
+            log.error("按程序删除工作区失败: programName={}, version={}", programName, version, e);
+        }
     }
 
     private void deleteRecursively(Path path) throws IOException {
@@ -1439,7 +1467,7 @@ public class ProgramWorkflowService {
     private Path requireWorkspace(String id, String name, String version, String projectName) throws Exception {
         requireWorkspaceId(id, "workspaceId");
         String project = effectiveProject(projectName);
-        Path workspace = child(workflowRoot(project), id);
+        Path workspace = child(workflowProgramRoot(project, name, version), id);
         // 从 IGINX 验证 workspace 存在且归属正确
         Map<String, Object> wsRecord = queryWorkspaceFromIginxById(id);
         if (wsRecord == null) throw new IllegalArgumentException("Workspace does not exist");
@@ -1476,6 +1504,16 @@ public class ProgramWorkflowService {
         }
         Files.createDirectories(root);
         return root;
+    }
+
+    /** 工作区根目录下按程序名+版本再分一层，避免不同程序的工作区目录名冲突 */
+    private Path workflowProgramRoot(String project, String name, String version) throws IOException {
+        Path root = workflowRoot(project);
+        String safeName = name.replaceAll("[^A-Za-z0-9._-]", "_");
+        String safeVer = version.replaceAll("[^A-Za-z0-9._-]", "_");
+        Path programRoot = child(root, safeName + "_" + safeVer);
+        Files.createDirectories(programRoot);
+        return programRoot;
     }
 
     private String safeProject(String project) {
