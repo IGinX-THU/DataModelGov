@@ -2388,7 +2388,7 @@ public class ProgramWorkflowService {
             }
             sql.append(" ORDER BY timestamp DESC;");
             log.info("执行SQL: {}", sql);
-            SessionExecuteSqlResult res = iginxSession.executeSql(sql);
+            SessionExecuteSqlResult res = iginxSession.executeSql(sql.toString());
             List<Map<String, Object>> records = ConvertUtil.getRecords(res);
             if (records == null) return new ArrayList<>();
             List<Map<String, Object>> result = new ArrayList<>();
