@@ -395,6 +395,14 @@ class SteadyModelAdaptV1 {
               this.regConfig = JSON.parse(JSON.stringify(REG_DEFAULTS.transient));
             }
           }
+          // 根据最新 UQ 任务恢复评估方法选择
+          const uqB = this.latestTask('uqMethodB');
+          const uqA = this.latestTask('uqMethodA');
+          if (uqB && (!uqA || Number(uqB.createdAt || 0) >= Number(uqA.createdAt || 0))) {
+            this.activeUqMethod = 'B';
+          } else if (uqA) {
+            this.activeUqMethod = 'A';
+          }
         }
         if (this.workspace.jobName) this.projectForm.projectName = this.workspace.jobName;
         if (this.workspace.programName) this.projectForm.modelPackage = this.workspace.programName;
