@@ -739,7 +739,7 @@ public class ProgramWorkflowService {
             throw new IllegalStateException("项目正在创建/初始化中，无法删除");
         }
         // 检查是否有运行中的任务
-        List<Map<String, Object>> tasks = queryTasksFromIginx(id);
+        List<Map<String, Object>> tasks = queryTasksFromIginx(id, name, version, project);
         for (Map<String, Object> task : tasks) {
             String taskStatus = value(task.get("status"));
             if (TaskStatus.QUEUED.getValue().equals(taskStatus)
@@ -883,6 +883,10 @@ public class ProgramWorkflowService {
         taskEntity.setTimestamp(taskTimestamp);
         taskEntity.setTaskId(taskId);
         taskEntity.setWorkspaceId(workspaceId);
+        taskEntity.setProgramName(name);
+        taskEntity.setProgramVersion(version);
+        String project = effectiveProject(projectName);
+        taskEntity.setProjectName(project);
         taskEntity.setActionKey(action.getKey());
         taskEntity.setEntryPoint(action.getEntryPoint());
         taskEntity.setStage(action.getStage());
@@ -905,8 +909,9 @@ public class ProgramWorkflowService {
 
     public List<Map<String, Object>> listTasks(String workspaceId, String name, String version,
                                                String projectName) throws Exception {
-        // 从 IGINX 查询
-        List<Map<String, Object>> result = queryTasksFromIginx(workspaceId);
+        String project = effectiveProject(projectName);
+        // 从 IGINX 查询（带程序名+版本+项目名条件）
+        List<Map<String, Object>> result = queryTasksFromIginx(workspaceId, name, version, project);
         Map<String, Map<String, Object>> unique = new LinkedHashMap<>();
         for (Map<String, Object> t : result) unique.putIfAbsent(String.valueOf(t.get("id")), t);
         result = new ArrayList<>(unique.values());
@@ -2364,11 +2369,20 @@ public class ProgramWorkflowService {
         return taskTimestamp(taskId);
     }
 
-    /** 从 IGINX 查询工作区下的任务列表（SQL 模式） */
-    private List<Map<String, Object>> queryTasksFromIginx(String workspaceId) {
+    /** 从 IGINX 查询工作区下的任务列表（SQL 模式，带程序名+版本+项目名条件） */
+    private List<Map<String, Object>> queryTasksFromIginx(String workspaceId, String name, String version, String project) {
         try {
-            String sql = String.format("SELECT * FROM %s WHERE workspaceId = '%s' ORDER BY timestamp DESC;",
-                    WF_TASK_PREFIX, workspaceId);
+            StringBuilder sql = new StringBuilder("SELECT * FROM " + WF_TASK_PREFIX + " WHERE workspaceId = '" + workspaceId + "'");
+            if (StringUtils.hasText(name)) {
+                sql.append(" AND programName = '").append(name).append("'");
+            }
+            if (StringUtils.hasText(version)) {
+                sql.append(" AND programVersion = '").append(version).append("'");
+            }
+            if (StringUtils.hasText(project)) {
+                sql.append(" AND projectName = '").append(project).append("'");
+            }
+            sql.append(" ORDER BY timestamp DESC;");
             log.info("执行SQL: {}", sql);
             SessionExecuteSqlResult res = iginxSession.executeSql(sql);
             List<Map<String, Object>> records = ConvertUtil.getRecords(res);
@@ -2382,7 +2396,7 @@ public class ProgramWorkflowService {
             }
             return result;
         } catch (Exception e) {
-            log.error("从 IGINX 查询任务列表失败: workspaceId={}", workspaceId, e);
+            log.error("从 IGINX 查询任务列表失败: workspaceId={}, name={}, version={}, project={}", workspaceId, name, version, project, e);
             return new ArrayList<>();
         }
     }

@@ -24,6 +24,21 @@ public class WorkflowTaskEntity {
     private String workspaceId;
 
     /**
+     * 程序名称（与 ProgramTaskEntity 一致，用于按程序过滤任务）
+     */
+    private String programName;
+
+    /**
+     * 程序版本
+     */
+    private String programVersion;
+
+    /**
+     * 项目名称
+     */
+    private String projectName;
+
+    /**
      * 动作 Key
      */
     private String actionKey;
