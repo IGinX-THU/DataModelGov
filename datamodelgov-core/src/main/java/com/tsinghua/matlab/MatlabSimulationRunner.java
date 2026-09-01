@@ -7,7 +7,8 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.io.Closeable;
 import java.io.File;
-import java.io.FileWriter;
+import java.io.FileOutputStream;
+import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
@@ -207,7 +208,8 @@ public class MatlabSimulationRunner implements Closeable {
      * 抛出异常表示运行失败（异常信息已包含 MATLAB 报错内容）。
      */
     public void run() throws Exception {
-        matlabLog = new PrintWriter(new FileWriter(new File(taskDir, "run.log"), true), true);
+        matlabLog = new PrintWriter(new OutputStreamWriter(
+                new FileOutputStream(new File(taskDir, "run.log"), true), StandardCharsets.UTF_8), true);
         try {
             startEngine();
             prepare();
@@ -235,7 +237,8 @@ public class MatlabSimulationRunner implements Closeable {
     }
 
     public void prewarm() throws Exception {
-        matlabLog = new PrintWriter(new FileWriter(new File(taskDir, "prewarm.log"), true), true);
+        matlabLog = new PrintWriter(new OutputStreamWriter(
+                new FileOutputStream(new File(taskDir, "prewarm.log"), true), StandardCharsets.UTF_8), true);
         try {
             startEngine();
             prepare();

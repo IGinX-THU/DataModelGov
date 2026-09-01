@@ -6,8 +6,9 @@ import lombok.extern.slf4j.Slf4j;
 import java.io.BufferedWriter;
 import java.io.Closeable;
 import java.io.File;
-import java.io.FileWriter;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.io.Writer;
 import java.util.Objects;
@@ -309,7 +310,8 @@ public final class MatlabFunctionRunner {
         if (parent != null && !parent.isDirectory()) {
             throw new IOException("MATLAB log parent directory does not exist: " + parent);
         }
-        logWriter = new PrintWriter(new BufferedWriter(new FileWriter(logFile, true)), true);
+        logWriter = new PrintWriter(new BufferedWriter(
+                new OutputStreamWriter(new FileOutputStream(logFile, true), java.nio.charset.StandardCharsets.UTF_8)), true);
     }
 
     private void closeLog() {
