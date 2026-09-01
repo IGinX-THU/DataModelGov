@@ -1303,34 +1303,12 @@ class SteadyModelAdaptV1 {
     return this.createTable(paramHeaders, paramRows);
   }
 
-  /** 渲染输出误差表（训练集/测试集分页） */
+  /** 渲染输出误差表（训练集） */
   _renderErrorTable(baselineMetrics, finalMetrics, baselineTestMetrics, finalTestMetrics, identifyResult) {
     const wrap = el('div');
 
-    // 训练集/测试集切换
-    const tabBar = el('div', 'segmented');
-    const hasTestMetrics = baselineTestMetrics && finalTestMetrics && (baselineTestMetrics.point_count > 0 || finalTestMetrics.point_count > 0);
-    const hasTestDataFile = !!(this.workspace?.testDataFile);
-    const tabTrain = button('训练集', 'segment' + (this.identifyErrorTab === 'training' ? ' active' : ''), () => {
-      this.identifyErrorTab = 'training';
-      this.render();
-    });
-    const tabTest = button('测试集', 'segment' + (this.identifyErrorTab === 'test' ? ' active' : '') + (hasTestDataFile ? '' : ' disabled'), () => {
-      if (hasTestDataFile) { this.identifyErrorTab = 'test'; this.render(); }
-    });
-    tabBar.append(tabTrain, tabTest);
-    wrap.append(tabBar);
-
-    // 测试集 tab：有测试数据文件但辨识入口未返回测试集误差时，显示提示
-    const useTest = this.identifyErrorTab === 'test' && hasTestDataFile;
-    if (useTest && !hasTestMetrics) {
-      const notice = el('div', 'notice-box', '测试集误差在"测试验证"页面执行独立验证后查看。参数辨识入口默认不评估测试集。');
-      notice.style.cssText = 'background:#f5f5f5;border-color:#d9d9d9;color:#666;margin-top:12px;';
-      wrap.append(notice);
-      return wrap;
-    }
-    const baseMetrics = useTest ? baselineTestMetrics : baselineMetrics;
-    const finMetrics = useTest ? finalTestMetrics : finalMetrics;
+    const baseMetrics = baselineMetrics;
+    const finMetrics = finalMetrics;
 
     const errHeaders = ['输出', '修正前标准差', '修正后标准差', '查看'];
     const baselineByField = this._metricsByFieldMap(baseMetrics);
