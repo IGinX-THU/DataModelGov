@@ -369,7 +369,10 @@ class SteadyModelAdaptV1 {
 
         const [datasets, tasks] = await Promise.all([
           this.ctx.http.datasets.request(this.workspace.id, { method: 'GET' }).catch(() => []),
-          this.ctx.http.tasks.list({ workspaceId: this.workspace.id }).catch(() => [])
+          this.ctx.http.tasks.list({ workspaceId: this.workspace.id }).catch((e) => {
+            console.warn('加载任务列表失败:', e);
+            return [];
+          })
         ]);
         if (Array.isArray(datasets)) this.datasets = datasets;
         if (Array.isArray(tasks)) {
@@ -2113,10 +2116,12 @@ class SteadyModelAdaptV1 {
 
   /** 提交运行时间预估任务 */
   async _startEstimate(actionKey) {
+    if (!this.workspace || !this.workspace.id) return;
     try {
       const task = await this.ctx.http.tasks.request('', {
         method: 'POST',
         body: {
+          workspaceId: this.workspace.id,
           actionKey,
           inputs: { userCfg: { ...this.uqConfig } }
         }
@@ -3709,6 +3714,10 @@ class SteadyModelAdaptV1 {
     if (!this.workspace) {
       await this.handleCreateProject();
     }
+    if (!this.workspace || !this.workspace.id) {
+      if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('请先打开或创建项目', 'warning');
+      return;
+    }
     const actionKey = this.identifyModel === 'steady' ? 'estimateSteady' : 'estimateTransient';
     this._unlockIdentify = false;
     this.ctx.log(`启动参数辨识（${actionKey}）...`);
@@ -3733,7 +3742,10 @@ class SteadyModelAdaptV1 {
   }
 
   async handleStartIdentifiability() {
-    if (!this.workspace) await this.handleCreateProject();
+    if (!this.workspace || !this.workspace.id) {
+      if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('请先打开或创建项目', 'warning');
+      return;
+    }
     // 前置校验：需要已完成参数辨识
     if (!this._checkIdentCompleted('可辨识性分析')) return;
     this.ctx.log('启动工程可辨识性分析...');
@@ -3842,7 +3854,10 @@ class SteadyModelAdaptV1 {
   }
 
   async handleStartUq() {
-    if (!this.workspace) await this.handleCreateProject();
+    if (!this.workspace || !this.workspace.id) {
+      if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('请先打开或创建项目', 'warning');
+      return;
+    }
     // 前置校验：需要已完成参数辨识
     if (!this._checkIdentCompleted('不确定性评估')) return;
     const actionKey = this.activeUqMethod === 'B' ? 'uqMethodB' : 'uqMethodA';
@@ -4011,7 +4026,10 @@ class SteadyModelAdaptV1 {
   }
 
   async handleStartValidation() {
-    if (!this.workspace) await this.handleCreateProject();
+    if (!this.workspace || !this.workspace.id) {
+      if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('请先打开或创建项目', 'warning');
+      return;
+    }
     // 前置校验：需要已完成参数辨识
     if (!this._checkIdentCompleted('测试验证')) return;
     this.ctx.log('启动测试集稳态模型验证...');
@@ -4033,7 +4051,10 @@ class SteadyModelAdaptV1 {
   }
 
   async handleStartPrediction() {
-    if (!this.workspace) await this.handleCreateProject();
+    if (!this.workspace || !this.workspace.id) {
+      if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('请先打开或创建项目', 'warning');
+      return;
+    }
     // 前置校验：需要已完成参数辨识
     if (!this._checkIdentCompleted('工况预测')) return;
     // 如果选了后验，还需要对应的 UQ 已完成

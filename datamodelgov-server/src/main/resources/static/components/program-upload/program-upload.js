@@ -407,7 +407,7 @@ class ProgramUpload extends HTMLElement {
             this._setUploadBusy(uploadBtn, true, '创建中...');
             try {
                 if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('正在创建预置程序...', 'info');
-                const url = window.AppConfig.getApiUrl('program', 'preset-programs') + '/' + encodeURIComponent(programId) + '/upload?version=' + encodeURIComponent(version);
+                const url = window.AppConfig.getApiUrl('program', 'preset-programs') + '/' + encodeURIComponent(programId) + '/upload?version=' + encodeURIComponent(version) + '&name=' + encodeURIComponent(name);
                 const result = await window.AppConfig.request(url, { method: 'POST' });
                 if (result && (result.success || result.code === 200)) {
                     if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('预置程序创建成功: ' + programId, 'success');

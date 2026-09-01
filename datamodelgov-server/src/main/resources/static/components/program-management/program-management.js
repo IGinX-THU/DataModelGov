@@ -763,6 +763,7 @@ class ProgramManagement extends HTMLElement {
             this.total = (countResult && countResult.data) || 0;
             this.renderTable();
             this.renderPagination();
+            if (window.loadProjectTree) window.loadProjectTree();
         } catch (e) {
             console.error('加载程序列表失败:', e);
             if (window.CommonUtils && window.CommonUtils.showToast) {
@@ -1057,6 +1058,7 @@ class ProgramManagement extends HTMLElement {
             if (result && (result.success || result.code === 200)) {
                 if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('删除成功', 'success');
                 this.loadPrograms();
+                if (window.loadProjectTree) window.loadProjectTree();
             } else {
                 throw new Error(result.message || '删除失败');
             }

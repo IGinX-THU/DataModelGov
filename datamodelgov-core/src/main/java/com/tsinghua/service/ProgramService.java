@@ -511,7 +511,9 @@ public class ProgramService {
      * 上传预置程序：从 classpath:programs/<程序名>/ 读取源码包+配置+脚本，存入 IGinX。
      * configJson 和 setupScript 分别存到两个字段。
      */
-    public Map<String, Object> uploadPresetProgram(String programName, String version, String projectName) throws Exception {
+    public Map<String, Object> uploadPresetProgram(String programName, String version, String projectName, String displayName) throws Exception {
+        // displayName 为用户输入的程序名称，若提供则覆盖 programName 作为存储名
+        String effectiveName = (displayName != null && !displayName.trim().isEmpty()) ? displayName.trim() : programName;
         String base = "programs/" + programName + "/";
         // 1. 找到源码压缩包
         org.springframework.core.io.support.PathMatchingResourcePatternResolver resolver =
@@ -547,14 +549,14 @@ public class ProgramService {
         // 4. 存入 IGinX
         String programVersion = (version != null && !version.isEmpty()) ? version : "1.0";
         String projName = (projectName != null && !projectName.isEmpty()) ? projectName : ProjectContext.getCurrentProject("unknown");
-        String storagePath = buildStoragePath(projName, programName, programVersion);
+        String storagePath = buildStoragePath(projName, effectiveName, programVersion);
 
         if (dataPermissionService.existTablePrefix(storagePath)) {
-            throw new IllegalArgumentException("仿真程序资产已存在: " + programName + " " + programVersion);
+            throw new IllegalArgumentException("仿真程序资产已存在: " + effectiveName + " " + programVersion);
         }
 
         // 解压验证
-        File programDir = getProgramDir(projName, programName, programVersion);
+        File programDir = getProgramDir(projName, effectiveName, programVersion);
         if (programDir.exists()) FileUtil.deleteDirectory(programDir);
         programDir.mkdirs();
         File tempArchive = new File(programDir, archiveFilename);
@@ -582,7 +584,7 @@ public class ProgramService {
 
         // 保存元数据
         ProgramEntity programMetaDto = new ProgramEntity();
-        programMetaDto.setName(programName);
+        programMetaDto.setName(effectiveName);
         programMetaDto.setVersion(programVersion);
         programMetaDto.setDescription("预置程序: " + programName);
         programMetaDto.setFileName(archiveFilename);
@@ -593,7 +595,7 @@ public class ProgramService {
         programMetaDto.setProjectName(projName);
         programMetaDto.setAuthor(AuthUtil.getCurrentUsername());
         programMetaDto.setStatus("READY");
-        programMetaDto.setConfigJson(configContent != null ? configContent : buildDefaultConfig(programName).toString());
+        programMetaDto.setConfigJson(configContent != null ? configContent : buildDefaultConfig(effectiveName).toString());
         programMetaDto.setSetupScript(setupScriptContent);
         saveProgramMetadata(programMetaDto);
         dataPermissionService.saveTablePrefix(storagePath);
