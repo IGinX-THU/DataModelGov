@@ -384,6 +384,17 @@ class SteadyModelAdaptV1 {
               // 失败状态由 render() / _updateEnvStatus() 按当前页面输出
             }
           });
+          // 根据最新辨识任务恢复模型路径选择
+          const latestIdent = this.latestIdentifyTask();
+          if (latestIdent) {
+            if (latestIdent.actionKey === 'estimateSteady') {
+              this.identifyModel = 'steady';
+              this.regConfig = JSON.parse(JSON.stringify(REG_DEFAULTS.steady));
+            } else if (latestIdent.actionKey === 'estimateTransient') {
+              this.identifyModel = 'transient';
+              this.regConfig = JSON.parse(JSON.stringify(REG_DEFAULTS.transient));
+            }
+          }
         }
         if (this.workspace.jobName) this.projectForm.projectName = this.workspace.jobName;
         if (this.workspace.programName) this.projectForm.modelPackage = this.workspace.programName;
