@@ -1194,13 +1194,24 @@ class SteadyModelAdaptV1 {
     c4.body.append(statusGrid);
 
     // 结果文件位置（放在左侧卡片 c3 中，路径较长需要更宽的显示区域）
-    if (outputInfo.latestMatFile || outputInfo.excelFile || outputInfo.summaryFile) {
+    const figs = Array.isArray(outputInfo.figureFiles) ? outputInfo.figureFiles : (outputInfo.figureFiles ? [outputInfo.figureFiles] : []);
+    if (outputInfo.latestMatFile || outputInfo.excelFile || outputInfo.summaryFile || figs.length) {
       const fileList = el('div', 'file-list');
       fileList.style.marginTop = '12px';
       fileList.append(el('div', 'metric-label', '结果文件位置'));
       if (outputInfo.latestMatFile) fileList.append(el('div', 'file-item', `MAT: ${outputInfo.latestMatFile}`));
       if (outputInfo.excelFile) fileList.append(el('div', 'file-item', `Excel: ${outputInfo.excelFile}`));
       if (outputInfo.summaryFile) fileList.append(el('div', 'file-item', `摘要: ${outputInfo.summaryFile}`));
+      if (figs.length) {
+        figs.forEach(f => {
+          const item = el('div', 'file-item');
+          item.textContent = `PNG: ${f}`;
+          item.style.color = 'var(--blue, #1890ff)';
+          item.style.cursor = 'pointer';
+          item.onclick = () => this._viewArtifact(String(f).split(/[\\/]/).pop(), '图片预览');
+          fileList.append(item);
+        });
+      }
       c3.body.append(fileList);
     }
 
@@ -1794,9 +1805,8 @@ class SteadyModelAdaptV1 {
         c2.body.append(tabRow);
 
         const chartHost = el('div', '');
-        chartHost.style.cssText = 'width:100%;height:' + Math.max(260, filtered.length * 28 + 60) + 'px;';
+        chartHost.style.cssText = 'width:100%;height:' + Math.max(260, filtered.length * 28 + 80) + 'px;';
         c2.body.append(chartHost);
-        c2.body.append(el('div', 'chart-legend', '— 95%置信区间    ● 后验中心    | 修正系数辨识结果'));
         setTimeout(() => this.renderUqParameterChart(chartHost, filtered), 0);
       }
     } else {
@@ -2271,11 +2281,6 @@ class SteadyModelAdaptV1 {
         }
       });
       c2.body.append(chartsGrid);
-      const legend = el('div', 'chart-legend');
-      legend.innerHTML = '<span class="legend-line baseline">— 零修正模型</span>' +
-                         '<span class="legend-line corrected">— 稳态辨识模型</span>' +
-                         '<span class="legend-line measured" style="color:#000">— 测量值</span>';
-      c2.body.append(legend);
     } else {
       // 误差标准差对比图表：柱状图对比零修正 vs 稳态辨识模型 RMSE
       const summary = valResult?.resultSummary || valResult || {};
@@ -2545,9 +2550,6 @@ class SteadyModelAdaptV1 {
       }
     });
     c4.body.append(chartsGrid);
-    c4.body.append(el('div', 'chart-legend', hasPosterior
-      ? '— 95%置信区间    ● 后验中心    | 稳态辨识模型'
-      : '| 稳态辨识模型'));
     if (hasPosterior) {
       const postInfo = predSummary.posteriorPrediction || {};
       const acceptWrap = el('div', 'reg-method-row');
@@ -4398,7 +4400,8 @@ h1{text-align:center}h2{font-size:14pt;border-bottom:1px solid #999;padding-bott
 
     chart.setOption({
       animation: false,
-      grid: { left: 40, right: 15, top: 15, bottom: 25 },
+      legend: { data: ['零修正模型', '稳态辨识模型', '测量值'], left: 'center', bottom: 0, textStyle: { fontSize: 9 } },
+      grid: { left: 40, right: 15, top: 15, bottom: 45 },
       xAxis: { type: 'category', data: pts, axisLabel: { fontSize: 10 } },
       yAxis: { type: 'value', scale: true, axisLabel: { fontSize: 10 } },
       series: [
@@ -4415,7 +4418,8 @@ h1{text-align:center}h2{font-size:14pt;border-bottom:1px solid #999;padding-bott
     const chart = this.ctx.echarts.init(host, null, { renderer: 'canvas' });
     chart.setOption({
       animation: false,
-      grid: { left: 15, right: 15, top: 5, bottom: 35 },
+      legend: { data: ['稳态辨识模型'], left: 'center', bottom: 0, textStyle: { fontSize: 9 } },
+      grid: { left: 15, right: 15, top: 5, bottom: 60 },
       xAxis: { type: 'value', scale: true, splitLine: { show: false }, axisLabel: { fontSize: 9 } },
       yAxis: { type: 'category', data: ['新工况'], axisLabel: { show: false }, axisTick: { show: false }, axisLine: { show: false } },
       series: [
@@ -4455,8 +4459,8 @@ h1{text-align:center}h2{font-size:14pt;border-bottom:1px solid #999;padding-bott
     chart.setOption({
       animation: false,
       tooltip: { trigger: 'axis', formatter: () => tooltip },
-      legend: { data: hasInterval ? ['95%置信区间', '后验中心', '稳态辨识模型'] : ['稳态辨识模型'], bottom: 0, textStyle: { fontSize: 9 } },
-      grid: { left: 15, right: 15, top: 5, bottom: 35 },
+      legend: { data: hasInterval ? ['95%置信区间', '后验中心', '稳态辨识模型'] : ['稳态辨识模型'], left: 'center', bottom: 0, textStyle: { fontSize: 9 } },
+      grid: { left: 15, right: 15, top: 5, bottom: 60 },
       xAxis: { type: 'value', scale: true, splitLine: { show: false }, axisLabel: { fontSize: 9 } },
       yAxis: { type: 'category', data: yData, axisLabel: { show: false }, axisTick: { show: false }, axisLine: { show: false } },
       series
@@ -4489,8 +4493,8 @@ h1{text-align:center}h2{font-size:14pt;border-bottom:1px solid #999;padding-bott
             `<div style="font-size:11px;color:#666">辨识结果：${Number(r.deterministic_estimate).toFixed(4)}</div>`;
         }
       },
-      legend: { data: ['95%置信区间', '后验中心', '修正系数辨识结果'], bottom: 0, textStyle: { fontSize: 11 } },
-      grid: { left: 110, right: 30, top: 10, bottom: 35 },
+      legend: { data: ['95%置信区间', '后验中心', '修正系数辨识结果'], left: 'center', bottom: 0, itemGap: 16, textStyle: { fontSize: 11 } },
+      grid: { left: 110, right: 30, top: 10, bottom: 55 },
       xAxis: { type: 'value', scale: true, splitLine: { show: true, lineStyle: { color: '#f0f0f0' } }, axisLabel: { fontSize: 10 } },
       yAxis: { type: 'category', data: yData, inverse: true, axisLabel: { fontSize: 10 }, axisLine: { show: false }, axisTick: { show: false } },
       series: [
