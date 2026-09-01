@@ -379,7 +379,7 @@ class SteadyModelAdaptV1 {
             const phase = (t.phase || '').toLowerCase();
             const isTerminalByPhase = phase === 'completed' || phase === 'failed';
             if ((t.status === TASK_STATUS.RUNNING || t.status === TASK_STATUS.READY) && !isTerminalByPhase) {
-              this.schedulePoll(id, 3000);
+              this.schedulePoll(id, 5000);
             } else if (t.status === TASK_STATUS.FAILED || phase === 'failed') {
               // 失败状态由 render() / _updateEnvStatus() 按当前页面输出
             }
@@ -459,7 +459,7 @@ class SteadyModelAdaptV1 {
     return promise;
   }
 
-  schedulePoll(taskId, delay = 3000) {
+  schedulePoll(taskId, delay = 5000) {
     const key = String(taskId);
     if (this.destroyed || this._scheduledPolls.has(key)) return;
     this._scheduledPolls.add(key);
@@ -514,8 +514,23 @@ class SteadyModelAdaptV1 {
       .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))[0];
   }
 
+  /** 取 estimateTransient / estimateSteady 中 createdAt 最大的任务 */
+  latestIdentifyTask() {
+    const t = this.latestTask('estimateTransient');
+    const s = this.latestTask('estimateSteady');
+    if (!t) return s || null;
+    if (!s) return t;
+    return Number(t.createdAt || 0) >= Number(s.createdAt || 0) ? t : s;
+  }
+
   latestResult(actionKey) {
     const task = this.latestTask(actionKey);
+    return task ? this.results.get(String(task.id)) : null;
+  }
+
+  /** 取最新辨识任务对应的结果 */
+  latestIdentifyResult() {
+    const task = this.latestIdentifyTask();
     return task ? this.results.get(String(task.id)) : null;
   }
 
@@ -569,7 +584,7 @@ class SteadyModelAdaptV1 {
   /* 按当前 section 取对应任务 */
   _taskForSection(section) {
     if (section === 'data') return null;
-    if (section === 'identify') return this.latestTask('estimateSteady') || this.latestTask('estimateTransient');
+    if (section === 'identify') return this.latestIdentifyTask();
     if (section === 'identifiability') return this.latestTask('engineeringIdentifiability');
     if (section === 'uq') return this.activeUqMethod === 'B' ? this.latestTask('uqMethodB') : this.latestTask('uqMethodA');
     if (section === 'validation') return this.latestTask('testValidation');
@@ -1022,14 +1037,14 @@ class SteadyModelAdaptV1 {
 
   /* 当前是否存在非失败的辨识任务（即配置已锁定） */
   _isIdentifyLocked() {
-    const identifyTask = this.latestTask('estimateTransient') || this.latestTask('estimateSteady');
+    const identifyTask = this.latestIdentifyTask();
     return identifyTask != null && identifyTask.status !== TASK_STATUS.FAILED;
   }
 
   /* ================= 02 参数辨识 ================= */
   render_identify(container) {
-    const identifyTask = this.latestTask('estimateTransient') || this.latestTask('estimateSteady');
-    const identifyResult = this.latestResult('estimateTransient') || this.latestResult('estimateSteady');
+    const identifyTask = this.latestIdentifyTask();
+    const identifyResult = this.latestIdentifyResult();
     const isRunning = identifyTask?.status === TASK_STATUS.RUNNING || identifyTask?.status === TASK_STATUS.READY;
     const isFailed = identifyTask?.status === TASK_STATUS.FAILED;
     const isLocked = (identifyTask != null && !isFailed) && !this._unlockIdentify;
@@ -1146,7 +1161,12 @@ class SteadyModelAdaptV1 {
     );
     const flow = el('div', 'flow-line');
     const phase = identifyTask?.phase;
-    const stageStates = this._getStageStates(acceptance, isRunning, isFailed, taskStatus, phase);
+    // 解锁重新配置时，不显示旧任务的阶段状态
+    const showStageProgress = !this._unlockIdentify;
+    const stageStates = showStageProgress
+      ? this._getStageStates(acceptance, isRunning, isFailed, taskStatus, phase)
+      : { A: { state: 'pending', label: '待执行' }, B: { state: 'pending', label: '待执行' },
+          C: { state: 'pending', label: '待执行' }, D: { state: 'pending', label: '待执行' } };
     flow.append(
       this.createFlowStep('A', 'A 全工况常值', stageStates.A.label, stageStates.A.state, () => this._showStageLog('A')),
       this.createFlowStep('B', 'B 分组估计', stageStates.B.label, stageStates.B.state, () => this._showStageLog('B')),
@@ -1235,8 +1255,8 @@ class SteadyModelAdaptV1 {
       const stages = ['A', 'B', 'C', 'D'];
       if (stages.includes(p)) {
         const result = {};
+        const idx = stages.indexOf(p);
         stages.forEach((s, i) => {
-          const idx = stages.indexOf(p);
           if (i < idx) result[s] = { state: 'completed', label: '完成' };
           else if (i === idx) result[s] = { state: 'running', label: '运行中' };
           else result[s] = { state: 'pending', label: '待执行' };
@@ -1363,8 +1383,11 @@ class SteadyModelAdaptV1 {
 
   /* ================= 03 可辨识性 ================= */
   render_identifiability(container) {
+    const identTask = this.latestTask('engineeringIdentifiability');
     const identResult = this.latestResult('engineeringIdentifiability');
+    const isRunning = identTask?.status === TASK_STATUS.RUNNING || identTask?.status === TASK_STATUS.READY;
     const summary = identResult?.resultSummary || identResult || {};
+    const ph = isRunning ? '运行中...' : '运行后显示';
     const routeName = this.identifyModel === 'steady' ? 'steady' : 'transient_instant';
     const snapshotName = this.activeSnapshot === 'pre' ? 'baseline_before_A' : 'final_after_D';
 
@@ -1430,33 +1453,42 @@ class SteadyModelAdaptV1 {
       return n.toFixed(3);
     };
     const fmtRegularized = (c) => {
-      if (!c) return '运行后显示';
+      if (!c) return ph;
       const condStr = fmtCond(c.active_regularized_information_condition);
       const method = c.active_regularization_method || '—';
       return `${condStr} (${method})`;
     };
     const qGrid = el('div', 'metrics-grid');
     qGrid.append(
-      this.createMetricBox('标准化信息矩阵条件数', cond ? fmtCond(cond.information_condition) : '运行后显示'),
-      this.createMetricBox('有效奇异方向数', cond ? String(cond.effective_rank) : '运行后显示'),
-      this.createMetricBox('TSVD/Tikhonov 作用后条件数', cond ? fmtRegularized(cond) : '运行后显示'),
-      this.createMetricBox('观测数', cond ? String(cond.data_residual_count) : '运行后显示'),
-      this.createMetricBox('待分析参数数', cond ? String(cond.parameter_count) : '运行后显示')
+      this.createMetricBox('标准化信息矩阵条件数', cond ? fmtCond(cond.information_condition) : ph),
+      this.createMetricBox('有效奇异方向数', cond ? String(cond.effective_rank) : ph),
+      this.createMetricBox('TSVD/Tikhonov 作用后条件数', cond ? fmtRegularized(cond) : ph),
+      this.createMetricBox('观测数', cond ? String(cond.data_residual_count) : ph),
+      this.createMetricBox('待分析参数数', cond ? String(cond.parameter_count) : ph)
     );
-    c2.body.append(qGrid);
-    // 数值证据：奇异谱和正则化作用曲线不作为页面主结论，以详情链接提供
-    if (cond) {
-      const note = el('p', 'card-foot-note');
-      note.textContent = '奇异谱和正则化作用曲线不作为页面主结论，详见 ';
-      const numLink = el('a', '', '数值证据详情');
-      numLink.href = '#';
-      numLink.style.cssText = 'font-size:12px;color:var(--blue);text-decoration:underline;cursor:pointer;';
-      numLink.addEventListener('click', (e) => {
-        e.preventDefault();
-        this._showNumericalEvidenceModal(cond, svdRows, weakRows);
-      });
-      note.append(numLink);
-      c2.body.append(note);
+    if (isRunning) {
+      const loading = el('div', 'chart-loading');
+      loading.style.cssText = 'height:160px;display:flex;align-items:center;justify-content:center;';
+      const spinner = el('div', 'chart-spinner');
+      const text = el('span', '', '可辨识性分析中...');
+      loading.append(spinner, text);
+      c2.body.append(loading);
+    } else {
+      c2.body.append(qGrid);
+      // 数值证据：奇异谱和正则化作用曲线不作为页面主结论，以详情链接提供
+      if (cond) {
+        const note = el('p', 'card-foot-note');
+        note.textContent = '奇异谱和正则化作用曲线不作为页面主结论，详见 ';
+        const numLink = el('a', '', '数值证据详情');
+        numLink.href = '#';
+        numLink.style.cssText = 'font-size:12px;color:var(--blue);text-decoration:underline;cursor:pointer;';
+        numLink.addEventListener('click', (e) => {
+          e.preventDefault();
+          this._showNumericalEvidenceModal(cond, svdRows, weakRows);
+        });
+        note.append(numLink);
+        c2.body.append(note);
+      }
     }
 
     // Card 3: 逐参数结果（文档 7.3：参数、自身敏感性、补偿依赖、主要补偿参数、基准位置分类、辨识结果位置分类、综合判断与建议）
@@ -2072,7 +2104,7 @@ class SteadyModelAdaptV1 {
       });
       if (task && task.id) {
         this.tasks.set(String(task.id), task);
-        this.schedulePoll(String(task.id), 3000);
+        this.schedulePoll(String(task.id), 5000);
         this.render();
       }
     } catch (e) {
@@ -2192,7 +2224,7 @@ class SteadyModelAdaptV1 {
       '验证输入与边界',
       '测试数据不参与辨识；本页只做稳态模型验证。'
     );
-    const identTask = this.latestTask('estimateTransient') || this.latestTask('estimateSteady');
+    const identTask = this.latestIdentifyTask();
     const identResult = identTask ? this.results.get(String(identTask.id)) : null;
     const modelName = identResult?.resultSummary?.steadyModelName || '稳态辨识模型（最新）';
     const testDataName = this.workspace?.testDataFile || '';
@@ -3673,7 +3705,7 @@ class SteadyModelAdaptV1 {
         });
         this.ctx.log(`辨识任务已提交 (ID: ${task.id})`);
         this.tasks.set(task.id, task);
-        this.schedulePoll(task.id, 3000);
+        this.schedulePoll(task.id, 5000);
       } catch (e) {
         this.ctx.log('启动辨识失败: ' + (e.message || e));
         if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('启动辨识失败: ' + (e.message || e), 'error');
@@ -3695,7 +3727,7 @@ class SteadyModelAdaptV1 {
         });
         this.ctx.log(`可辨识性分析任务已提交 (ID: ${task.id})`);
         this.tasks.set(task.id, task);
-        this.schedulePoll(task.id, 3000);
+        this.schedulePoll(task.id, 5000);
       } catch (e) {
         this.ctx.log('启动可辨识性分析失败: ' + (e.message || e));
         if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('启动可辨识性分析失败: ' + (e.message || e), 'error');
@@ -3808,7 +3840,7 @@ class SteadyModelAdaptV1 {
         });
         this.ctx.log(`不确定性评估任务已提交 (ID: ${task.id})`);
         this.tasks.set(task.id, task);
-        this.schedulePoll(task.id, 3000);
+        this.schedulePoll(task.id, 5000);
       } catch (e) {
         this.ctx.log('启动评估失败: ' + (e.message || e));
         if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('启动评估失败: ' + (e.message || e), 'error');
@@ -3817,7 +3849,7 @@ class SteadyModelAdaptV1 {
   }
 
   _showPredictionModelModal() {
-    const identTask = this.latestTask('estimateTransient') || this.latestTask('estimateSteady');
+    const identTask = this.latestIdentifyTask();
     const identDone = identTask?.status === TASK_STATUS.COMPLETED;
     const uqTaskA = this.latestTask('uqMethodA');
     const uqTaskB = this.latestTask('uqMethodB');
@@ -3932,7 +3964,7 @@ class SteadyModelAdaptV1 {
 
   /** 前置校验：检查参数辨识是否已完成 */
   _checkIdentCompleted(actionName) {
-    const identTask = this.latestTask('estimateTransient') || this.latestTask('estimateSteady');
+    const identTask = this.latestIdentifyTask();
     if (!identTask || identTask.status !== TASK_STATUS.COMPLETED) {
       const msg = `请先完成参数辨识后再执行${actionName}`;
       this.ctx.log(msg);
@@ -3943,7 +3975,7 @@ class SteadyModelAdaptV1 {
   }
 
   _autoSelectValidationInputs() {
-    const identTask = this.latestTask('estimateTransient') || this.latestTask('estimateSteady');
+    const identTask = this.latestIdentifyTask();
     if (!identTask || identTask.status !== TASK_STATUS.COMPLETED) {
       if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('请先完成参数辨识', 'warning');
       this.ctx.log('请先完成参数辨识后再选择辨识结果');
@@ -3973,7 +4005,7 @@ class SteadyModelAdaptV1 {
         });
         this.ctx.log(`测试验证任务已提交 (ID: ${task.id})`);
         this.tasks.set(task.id, task);
-        this.schedulePoll(task.id, 3000);
+        this.schedulePoll(task.id, 5000);
       } catch (e) {
         this.ctx.log('启动测试验证失败: ' + (e.message || e));
         if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('启动测试验证失败: ' + (e.message || e), 'error');
@@ -4027,7 +4059,7 @@ class SteadyModelAdaptV1 {
         });
         this.ctx.log(`工况预测任务已提交 (ID: ${task.id})`);
         this.tasks.set(task.id, task);
-        this.schedulePoll(task.id, 3000);
+        this.schedulePoll(task.id, 5000);
       } catch (e) {
         this.ctx.log('工况预测失败: ' + (e.message || e));
         if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('工况预测失败: ' + (e.message || e), 'error');
@@ -4043,7 +4075,7 @@ class SteadyModelAdaptV1 {
     // 确定要打开的任务：优先选中的，否则最新完成的
     let taskId = this._selectedResultTaskId;
     if (!taskId) {
-      const identTask = this.latestTask('estimateTransient') || this.latestTask('estimateSteady');
+      const identTask = this.latestIdentifyTask();
       if (identTask) taskId = String(identTask.id);
     }
     if (!taskId) {
@@ -4131,7 +4163,7 @@ class SteadyModelAdaptV1 {
       task = this.tasks.get(this._selectedResultTaskId);
     }
     if (!task) {
-      task = this.latestTask('estimateTransient') || this.latestTask('estimateSteady');
+      task = this.latestIdentifyTask();
     }
     if (!task) {
       this.ctx.log('暂无任务可导出');
@@ -4518,7 +4550,7 @@ h1{text-align:center}h2{font-size:14pt;border-bottom:1px solid #999;padding-bott
   }
 
   async _viewArtifact(pattern, title) {
-    const task = this.latestTask('estimateTransient') || this.latestTask('estimateSteady');
+    const task = this.latestIdentifyTask();
     if (!task) { this._toast('暂无任务结果', 'warning'); return; }
     const taskId = String(task.id);
     let artifacts = this.artifacts.get(taskId);
@@ -4599,7 +4631,7 @@ h1{text-align:center}h2{font-size:14pt;border-bottom:1px solid #999;padding-bott
   }
 
   _showStageLog(stage) {
-    const identifyResult = this.latestResult('estimateTransient') || this.latestResult('estimateSteady') || {};
+    const identifyResult = this.latestIdentifyResult() || {};
     const summary = identifyResult?.resultSummary || identifyResult || {};
     const lines = [];
     if (stage === 'A') {

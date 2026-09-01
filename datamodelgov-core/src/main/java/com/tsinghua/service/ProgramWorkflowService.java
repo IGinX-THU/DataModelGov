@@ -75,6 +75,8 @@ public class ProgramWorkflowService {
     private static final Pattern SAFE_KEY = Pattern.compile("^[A-Za-z][A-Za-z0-9_-]*$");
     /** 工作流阶段标记：[DMG:STAGE:<A-D>:START/END] */
     private static final Pattern STAGE_PATTERN = Pattern.compile("\\[DMG:STAGE:([A-D]):(START|END)\\]");
+    /** 中文阶段文本匹配：用户代码输出的"阶段A：cost..."等文本，用于无 DMG:STAGE 标记的包 */
+    private static final Pattern CN_STAGE_PATTERN = Pattern.compile("阶段([A-D])[^：]*：");
     /** workspace 目录名：ASCII 安全字符（兼容旧 UUID） */
     private static final Pattern SAFE_WORKSPACE_DIR = Pattern.compile("^[A-Za-z0-9._-]{1,64}$|^[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}$");
     private static final Set<String> ARTIFACT_DIRECTORY_NAMES = new LinkedHashSet<>(Arrays.asList(
@@ -1248,6 +1250,19 @@ public class ProgramWorkflowService {
                             phase = "D".equals(stage) ? "completed" : stage;
                         }
                         writeTaskProgress(manifest.getParent(), phase, message);
+                    } else {
+                        // 无 DMG:STAGE 标记时，通过中文阶段文本推断阶段进度
+                        // 注意：不在此处检测完成标记，phase=completed 由任务完成流程
+                        // （runTask 写 manifest → getTask 检测 manifest）统一设置，
+                        // 否则会提前终止前端轮询。
+                        java.util.regex.Matcher cnMatcher = CN_STAGE_PATTERN.matcher(message);
+                        if (cnMatcher.find()) {
+                            String stage = cnMatcher.group(1);
+                            if (!stage.equals(phase)) {
+                                phase = stage;
+                                writeTaskProgress(manifest.getParent(), phase, message);
+                            }
+                        }
                     }
                     if (!message.startsWith("[stdout]") || now - lastUpdate >= 1000L) {
                         lastUpdate = now;
