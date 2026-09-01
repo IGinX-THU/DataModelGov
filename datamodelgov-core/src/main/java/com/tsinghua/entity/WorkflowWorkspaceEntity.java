@@ -74,6 +74,11 @@ public class WorkflowWorkspaceEntity {
     private String programFileMd5;
 
     /**
+     * 程序元数据时间戳（ProgramEntity.timestamp，作为外键加强关联）
+     */
+    private Long programTimestamp;
+
+    /**
      * 配置 SHA256
      */
     private String configSha256;

@@ -413,6 +413,7 @@ public class ProgramWorkflowService {
         wsEntity.setTestDataFile(testDataFile != null ? testDataFile : "");
         wsEntity.setStatus(TaskStatus.CREATING.getValue());
         wsEntity.setProgramFileMd5(entity.getFileMd5());
+        wsEntity.setProgramTimestamp(entity.getTimestamp());
         wsEntity.setCreatedAt(now);
         wsEntity.setUpdatedAt(now);
         wsEntity.setInitStatus("PENDING");
@@ -887,6 +888,9 @@ public class ProgramWorkflowService {
         taskEntity.setProgramVersion(version);
         String project = effectiveProject(projectName);
         taskEntity.setProjectName(project);
+        // 存上程序时间戳加强关联
+        ProgramEntity progEntity = requireWorkflowProgram(name, version, project);
+        taskEntity.setProgramTimestamp(progEntity.getTimestamp());
         taskEntity.setActionKey(action.getKey());
         taskEntity.setEntryPoint(action.getEntryPoint());
         taskEntity.setStage(action.getStage());
@@ -2444,6 +2448,7 @@ public class ProgramWorkflowService {
         task.put("stage", entity.getStage());
         task.put("resultType", entity.getResultType());
         task.put("status", entity.getStatus());
+        task.put("error", entity.getError());
         task.put("createdAt", entity.getCreatedAt());
         task.put("startedAt", entity.getStartedAt());
         task.put("finishedAt", entity.getFinishedAt());

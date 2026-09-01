@@ -39,6 +39,11 @@ public class WorkflowTaskEntity {
     private String projectName;
 
     /**
+     * 程序元数据时间戳（ProgramEntity.timestamp，作为外键加强关联）
+     */
+    private Long programTimestamp;
+
+    /**
      * 动作 Key
      */
     private String actionKey;
