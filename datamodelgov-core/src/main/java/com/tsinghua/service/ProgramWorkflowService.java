@@ -876,6 +876,25 @@ public class ProgramWorkflowService {
         if (action == null) throw new IllegalArgumentException("actionKey is not declared by the program config");
 
         Object[] arguments = resolveArguments(workspace, workspaceId, config, action, request.get("inputs"));
+        // UQ-B 步骤12 需要 trainingNpReferenceTable（训练工况 Np 设定值参考表）。
+        // 如果前端没传，从工作区初始化时保存的测量数据中自动构造。
+        if ("uq".equalsIgnoreCase(value(action.getStage())) && arguments != null) {
+            for (int i = 0; i < arguments.length; i++) {
+                if (arguments[i] instanceof Map) {
+                    Map<?, ?> arg = (Map<?, ?>) arguments[i];
+                    Object userCfgObj = arg.get("userCfg");
+                    if (userCfgObj instanceof Map) {
+                        Map<String, Object> userCfg = (Map<String, Object>) userCfgObj;
+                        if (!userCfg.containsKey("trainingNpReferenceTable")) {
+                            Map<String, Object> npRef = buildTrainingNpReference(workspaceId);
+                            if (npRef != null) {
+                                userCfg.put("trainingNpReferenceTable", npRef);
+                            }
+                        }
+                    }
+                }
+            }
+        }
         long taskTimestamp = System.currentTimeMillis();
         String taskId = String.valueOf(taskTimestamp);
         Path taskDir = child(child(workspace, "tasks"), taskId);
@@ -1412,6 +1431,35 @@ public class ProgramWorkflowService {
             }
         }
         return arguments;
+    }
+
+    /**
+     * 从工作区初始化时保存的测量数据中构造 trainingNpReferenceTable。
+     * 返回 {point_id: [...], Np_ref_rpm: [...]} 供 MATLAB struct2table 转换。
+     */
+    private Map<String, Object> buildTrainingNpReference(String workspaceId) {
+        try {
+            List<Map<String, Object>> measureRows = queryMeasureDataFromIginx(workspaceId);
+            if (measureRows == null || measureRows.isEmpty()) return null;
+            List<String> pointIds = new ArrayList<>();
+            List<Object> npRefs = new ArrayList<>();
+            for (Map<String, Object> row : measureRows) {
+                String pointId = value(row.get("point_id"));
+                Object npMean = row.get("Np_mean");
+                if (StringUtils.hasText(pointId) && npMean != null) {
+                    pointIds.add(pointId);
+                    npRefs.add(npMean);
+                }
+            }
+            if (pointIds.isEmpty()) return null;
+            Map<String, Object> table = new LinkedHashMap<>();
+            table.put("point_id", pointIds);
+            table.put("Np_ref_rpm", npRefs);
+            return table;
+        } catch (Exception e) {
+            log.warn("构造 trainingNpReferenceTable 失败: workspaceId={}", workspaceId, e);
+            return null;
+        }
     }
 
     private JsonNode inputValue(JsonNode inputs, String name, int index) {

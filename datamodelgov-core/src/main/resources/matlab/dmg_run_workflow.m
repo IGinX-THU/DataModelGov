@@ -13,6 +13,22 @@ for i = 1:argumentCount
     end
     arguments{i} = request.(field);
 end
+% 平台适配：如果 userCfg.trainingNpReferenceTable 是 struct（从 JSON 解码），
+% 转为 MATLAB table，供 UQ-B 步骤12 使用
+for i = 1:argumentCount
+    if isstruct(arguments{i}) && isfield(arguments{i}, 'userCfg') ...
+            && isstruct(arguments{i}.userCfg) ...
+            && isfield(arguments{i}.userCfg, 'trainingNpReferenceTable') ...
+            && isstruct(arguments{i}.userCfg.trainingNpReferenceTable)
+        tbl_struct = arguments{i}.userCfg.trainingNpReferenceTable;
+        try
+            arguments{i}.userCfg.trainingNpReferenceTable = ...
+                struct2table(tbl_struct);
+        catch
+            % 转换失败保持原样，让 MATLAB 包代码自行处理
+        end
+    end
+end
 startedAt = datestr(now, 31);
 % 预加载 GTESS.dll：MATLAB R2019b 的 SetDefaultDllDirectories 限制了 DLL 搜索路径，
 % loadlibrary 无法通过 PATH 找到 DLL 依赖。先用 Java System.load() 以绝对路径加载
