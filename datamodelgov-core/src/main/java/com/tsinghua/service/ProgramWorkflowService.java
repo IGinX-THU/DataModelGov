@@ -1446,19 +1446,20 @@ public class ProgramWorkflowService {
 
     /** 清理 UQ 缓存文件，避免上次运行留下的损坏缓存导致 load 失败 */
     private void cleanUqCacheFiles(Path workspace) {
-        Path source = child(workspace, "source");
-        // 查找 source 下的所有 MiddleData 目录中的 exact_training_cache 文件
-        try (Stream<Path> walk = Files.walk(source)) {
-            walk.filter(Files::isRegularFile)
-                .filter(p -> p.getFileName().toString().startsWith("exact_training_cache_"))
-                .forEach(p -> {
-                    try {
-                        Files.delete(p);
-                        log.info("已清理 UQ 缓存文件: {}", p);
-                    } catch (IOException e) {
-                        log.warn("清理 UQ 缓存文件失败: {}", p, e);
-                    }
-                });
+        try {
+            Path source = child(workspace, "source");
+            try (Stream<Path> walk = Files.walk(source)) {
+                walk.filter(Files::isRegularFile)
+                    .filter(p -> p.getFileName().toString().startsWith("exact_training_cache_"))
+                    .forEach(p -> {
+                        try {
+                            Files.delete(p);
+                            log.info("已清理 UQ 缓存文件: {}", p);
+                        } catch (IOException e) {
+                            log.warn("清理 UQ 缓存文件失败: {}", p, e);
+                        }
+                    });
+            }
         } catch (Exception e) {
             log.warn("扫描 UQ 缓存文件失败", e);
         }
