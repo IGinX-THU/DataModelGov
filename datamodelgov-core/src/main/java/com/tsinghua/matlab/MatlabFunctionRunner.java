@@ -148,8 +148,14 @@ public final class MatlabFunctionRunner {
 
             invokeNoOutput(borrowed, "cd", workspaceDirectory.getAbsolutePath());
             checkCancelled("after changing the MATLAB directory");
-            invokeNoOutput(borrowed, "addpath", workspaceDirectory.getAbsolutePath());
-            checkCancelled("before invoking " + entryPoint);
+            // 将工作目录置于 MATLAB 搜索路径最前面，确保 mfilename('fullpath') 定位到
+            // 工作区副本而非程序包原始解压目录；rehash 刷新函数调度缓存。
+            invokeNoOutput(borrowed, "eval", "addpath('" + workspaceDirectory.getAbsolutePath().replace("'", "''") + "', '-begin')");
+            checkCancelled("after addpath");
+            invokeNoOutput(borrowed, "eval", "rehash");
+            checkCancelled("after rehash");
+            invokeNoOutput(borrowed, "eval", "clear functions");
+            checkCancelled("after clear functions");
 
             emit("Invoking MATLAB function: " + entryPoint);
             Object result = await(borrowed.fevalAsync(entryPoint, matlabWriter("stdout"),
