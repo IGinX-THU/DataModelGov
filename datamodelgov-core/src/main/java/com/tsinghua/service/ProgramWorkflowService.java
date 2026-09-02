@@ -878,18 +878,25 @@ public class ProgramWorkflowService {
         Object[] arguments = resolveArguments(workspace, workspaceId, config, action, request.get("inputs"));
         // UQ-B 步骤12 需要 trainingNpReferenceTable（训练工况 Np 设定值参考表）。
         // 如果前端没传，从工作区初始化时保存的测量数据中自动构造。
+        log.info("UQ注入检查: actionKey={}, stage={}, action.stage={}, arguments.length={}",
+                action.getKey(), action.getStage(), value(action.getStage()), arguments == null ? 0 : arguments.length);
         if ("uq".equalsIgnoreCase(value(action.getStage())) && arguments != null) {
             for (int i = 0; i < arguments.length; i++) {
+                log.info("UQ注入检查: arguments[{}].type={}", i, arguments[i] == null ? "null" : arguments[i].getClass().getName());
                 if (arguments[i] instanceof Map) {
                     Map<?, ?> arg = (Map<?, ?>) arguments[i];
                     Object userCfgObj = arg.get("userCfg");
+                    log.info("UQ注入检查: userCfg.type={}", userCfgObj == null ? "null" : userCfgObj.getClass().getName());
                     if (userCfgObj instanceof Map) {
                         Map<String, Object> userCfg = (Map<String, Object>) userCfgObj;
                         if (!userCfg.containsKey("trainingNpReferenceTable")) {
                             Map<String, Object> npRef = buildTrainingNpReference(workspaceId);
+                            log.info("UQ注入检查: npRef={}", npRef == null ? "null" : ("rows=" + ((List<?>) npRef.get("point_id")).size()));
                             if (npRef != null) {
                                 userCfg.put("trainingNpReferenceTable", npRef);
                             }
+                        } else {
+                            log.info("UQ注入检查: trainingNpReferenceTable 已存在");
                         }
                     }
                 }
@@ -1436,30 +1443,121 @@ public class ProgramWorkflowService {
     /**
      * 从工作区初始化时保存的测量数据中构造 trainingNpReferenceTable。
      * 返回 {point_id: [...], Np_ref_rpm: [...]} 供 MATLAB struct2table 转换。
+     * 优先从 IGINX 查询；若失败则从工作区 datasets 目录的训练数据 Excel 直接读取。
      */
     private Map<String, Object> buildTrainingNpReference(String workspaceId) {
+        // 方案1：从 IGINX 查询测量数据
         try {
             List<Map<String, Object>> measureRows = queryMeasureDataFromIginx(workspaceId);
-            if (measureRows == null || measureRows.isEmpty()) return null;
-            List<String> pointIds = new ArrayList<>();
-            List<Object> npRefs = new ArrayList<>();
-            for (Map<String, Object> row : measureRows) {
-                String pointId = value(row.get("point_id"));
-                Object npMean = row.get("Np_mean");
-                if (StringUtils.hasText(pointId) && npMean != null) {
-                    pointIds.add(pointId);
-                    npRefs.add(npMean);
+            if (measureRows != null && !measureRows.isEmpty()) {
+                List<String> pointIds = new ArrayList<>();
+                List<Object> npRefs = new ArrayList<>();
+                for (Map<String, Object> row : measureRows) {
+                    String pointId = value(row.get("point_id"));
+                    Object npMean = row.get("Np_mean");
+                    if (StringUtils.hasText(pointId) && npMean != null) {
+                        pointIds.add(pointId);
+                        npRefs.add(npMean);
+                    }
+                }
+                if (!pointIds.isEmpty()) {
+                    Map<String, Object> table = new LinkedHashMap<>();
+                    table.put("point_id", pointIds);
+                    table.put("Np_ref_rpm", npRefs);
+                    log.info("trainingNpReferenceTable 从 IGINX 构造成功: {} 行", pointIds.size());
+                    return table;
                 }
             }
-            if (pointIds.isEmpty()) return null;
-            Map<String, Object> table = new LinkedHashMap<>();
-            table.put("point_id", pointIds);
-            table.put("Np_ref_rpm", npRefs);
-            return table;
+            log.warn("trainingNpReferenceTable: IGINX 查询无数据, 尝试从 Excel 读取");
         } catch (Exception e) {
-            log.warn("构造 trainingNpReferenceTable 失败: workspaceId={}", workspaceId, e);
+            log.warn("trainingNpReferenceTable: IGINX 查询失败, 尝试从 Excel 读取", e);
+        }
+        // 方案2：从工作区 datasets 目录的训练数据 Excel 直接读取
+        try {
+            Map<String, Object> fromExcel = buildTrainingNpReferenceFromExcel(workspaceId);
+            if (fromExcel != null) {
+                log.info("trainingNpReferenceTable 从 Excel 构造成功: {} 行",
+                        ((List<?>) fromExcel.get("point_id")).size());
+            }
+            return fromExcel;
+        } catch (Exception e) {
+            log.warn("trainingNpReferenceTable: Excel 读取也失败", e);
             return null;
         }
+    }
+
+    /** 从工作区 datasets 目录的训练数据 Excel 文件直接读取 point_id 和 Np_mean */
+    private Map<String, Object> buildTrainingNpReferenceFromExcel(String workspaceId) throws Exception {
+        // 查询工作区记录获取训练数据文件名和程序标识
+        Map<String, Object> wsRecord = queryWorkspaceFromIginxById(workspaceId);
+        if (wsRecord == null || wsRecord.isEmpty()) {
+            log.warn("trainingNpReferenceTable: 工作区不存在: {}", workspaceId);
+            return null;
+        }
+        String trainingFile = value(wsRecord.get("trainingDataFile"));
+        if (!StringUtils.hasText(trainingFile)) {
+            log.warn("trainingNpReferenceTable: 工作区未设置 trainingDataFile");
+            return null;
+        }
+        // 定位工作区目录
+        String project = value(wsRecord.get("projectName"));
+        String name = value(wsRecord.get("programName"));
+        String version = value(wsRecord.get("programVersion"));
+        Path root = workflowProgramRoot(project, name, version);
+        Path workspace = child(root, workspaceId);
+        Path datasets = child(workspace, "datasets");
+        // 在 datasets 目录中查找匹配的文件
+        Path excelFile = null;
+        try (Stream<Path> paths = Files.list(datasets)) {
+            for (Path p : (Iterable<Path>) paths::iterator) {
+                if (Files.isRegularFile(p) && p.getFileName().toString().contains(trainingFile)) {
+                    excelFile = p;
+                    break;
+                }
+            }
+        }
+        if (excelFile == null) {
+            log.warn("trainingNpReferenceTable: datasets 目录中找不到训练数据文件: {}", trainingFile);
+            return null;
+        }
+        // 读取 Excel
+        List<String> pointIds = new ArrayList<>();
+        List<Object> npRefs = new ArrayList<>();
+        try (InputStream in = Files.newInputStream(excelFile);
+             Workbook wb = WorkbookFactory.create(in)) {
+            Sheet sheet = wb.getSheetAt(0);
+            Row headerRow = sheet.getRow(0);
+            if (headerRow == null) return null;
+            DataFormatter formatter = new DataFormatter();
+            int colPointId = -1, colNp = -1;
+            for (int c = 0; c < headerRow.getLastCellNum(); c++) {
+                String colName = formatter.formatCellValue(headerRow.getCell(c)).trim();
+                if ("point_id".equals(colName)) colPointId = c;
+                else if ("Np_mean".equals(colName)) colNp = c;
+            }
+            if (colPointId < 0 || colNp < 0) {
+                log.warn("trainingNpReferenceTable: Excel 缺少 point_id 或 Np_mean 列");
+                return null;
+            }
+            for (int r = 1; r <= sheet.getLastRowNum(); r++) {
+                Row row = sheet.getRow(r);
+                if (row == null) continue;
+                String pid = formatter.formatCellValue(row.getCell(colPointId)).trim();
+                String npStr = formatter.formatCellValue(row.getCell(colNp)).trim();
+                if (StringUtils.hasText(pid) && StringUtils.hasText(npStr)) {
+                    try {
+                        double np = Double.parseDouble(npStr);
+                        pointIds.add(pid);
+                        npRefs.add(np);
+                    } catch (NumberFormatException ignored) {}
+                }
+            }
+        }
+        if (pointIds.isEmpty()) return null;
+        Map<String, Object> table = new LinkedHashMap<>();
+        table.put("point_id", pointIds);
+        table.put("Np_ref_rpm", npRefs);
+        return table;
     }
 
     private JsonNode inputValue(JsonNode inputs, String name, int index) {
