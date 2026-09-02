@@ -1480,10 +1480,15 @@ public class ProgramWorkflowService {
     private Path requireWorkspace(String id, String name, String version, String projectName) throws Exception {
         requireWorkspaceId(id, "workspaceId");
         String project = effectiveProject(projectName);
-        Path workspace = child(workflowProgramRoot(project, name, version), id);
         // 从 IGINX 验证 workspace 存在且归属正确（带程序名+版本+项目名条件）
         Map<String, Object> wsRecord = queryWorkspaceFromIginxById(id, name, version, project);
         if (wsRecord == null) throw new IllegalArgumentException("Workspace does not exist");
+        // 用 IGinX 记录里的实际 programName/programVersion/projectName 定位目录，
+        // 避免调用方传的 name/version 与工作区实际所属程序不一致时定位到错误目录
+        String actualName = StringUtils.hasText(value(wsRecord.get("programName"))) ? value(wsRecord.get("programName")) : name;
+        String actualVersion = StringUtils.hasText(value(wsRecord.get("programVersion"))) ? value(wsRecord.get("programVersion")) : version;
+        String actualProject = StringUtils.hasText(value(wsRecord.get("projectName"))) ? value(wsRecord.get("projectName")) : project;
+        Path workspace = child(workflowProgramRoot(actualProject, actualName, actualVersion), id);
         return workspace;
     }
 
