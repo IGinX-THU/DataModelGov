@@ -34,6 +34,9 @@ startedAt = datestr(now, 31);
 % loadlibrary 无法通过 PATH 找到 DLL 依赖。先用 Java System.load() 以绝对路径加载
 % GTESS.dll，使其进入进程地址空间，后续 loadlibrary("GTESS.dll") 即可直接命中。
 local_preload_gtess_dll();
+% R2019b 兼容：exportgraphics 是 R2020a 才有的函数。
+% 在工作目录放一个 polyfill 文件，用 print 替代，避免画图失败导致任务 FAILED
+local_install_exportgraphics_polyfill();
 try
     result = feval(entryPoint, arguments{:});
     save(char(resultFile), 'result', '-v7.3');
@@ -171,5 +174,36 @@ cleanup = onCleanup(@() fclose(fileId));
 count = fprintf(fileId, '%s', jsonencode(value));
 if count <= 0
     error('DMG:Workflow:ManifestWriteFailed', '工作流清单写入失败：%s。', path);
+end
+end
+
+function local_install_exportgraphics_polyfill()
+%R2019b 兼容：exportgraphics 是 R2020a 引入的函数。
+%如果当前 MATLAB 版本没有该函数，在工作目录(pwd)放一个 polyfill 文件，
+%用 print -dpng 替代，使程序包代码中的 exportgraphics 调用不再报错。
+if exist('exportgraphics', 'file')
+    return;  % 已有原生函数，无需 polyfill
+end
+polyfillPath = fullfile(pwd, 'exportgraphics.m');
+polyfillCode = strjoin({
+    'function exportgraphics(obj, file, varargin)'
+    '% polyfill for R2019b: use print instead of exportgraphics'
+    'res = 150;'
+    'if nargin >= 3 && isstruct(varargin{1}) && isfield(varargin{1}, ''Resolution'')'
+    '    res = round(varargin{1}.Resolution);'
+    'end'
+    '[fpath, fname, ext] = fileparts(file);'
+    'if isempty(ext), ext = ''.png''; end'
+    'tmpFile = fullfile(tempdir, [fname ext]);'
+    'print(obj, tmpFile, sprintf(''-r%d'', res), ''-dpng'');'
+    'copyfile(tmpFile, fullfile(fpath, [fname ext]));'
+    'if exist(tmpFile, ''file''), delete(tmpFile); end'
+    'end'
+}, char(10));
+fid = fopen(polyfillPath, 'w', 'n', 'UTF-8');
+if fid >= 0
+    fprintf(fid, '%s', polyfillCode);
+    fclose(fid);
+    rehash;
 end
 end
