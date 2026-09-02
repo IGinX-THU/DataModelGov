@@ -365,7 +365,8 @@ class ProgramWorkflow extends HTMLElement {
     const token = window.AppConfig.getToken ? window.AppConfig.getToken() : localStorage.getItem('jwtToken');
     const query = token ? `?token=${encodeURIComponent(token)}` : '';
     const pluginId = extension.entry;
-    const moduleUrl = `${baseUrl}/${encodeURIComponent(pluginId)}/entry.js${query}`;
+    const cacheBust = `_=${Date.now()}`;
+    const moduleUrl = `${baseUrl}/${encodeURIComponent(pluginId)}/entry.js${query ? query + '&' : '?'}${cacheBust}`;
     const module = await import(/* @vite-ignore */ moduleUrl);
     if (sequence !== this._loadSequence) return;
 

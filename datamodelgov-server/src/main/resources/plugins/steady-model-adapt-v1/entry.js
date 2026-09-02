@@ -4177,21 +4177,6 @@ class SteadyModelAdaptV1 {
     return (bytes / 1024 / 1024).toFixed(1) + ' MB';
   }
 
-  async _downloadArtifact(taskId, artifact) {
-    const artifactId = artifact.id || artifact.name || artifact.fileName || String(artifact);
-    const fileName = artifact.name || artifact.fileName || artifactId;
-    this.ctx.log(`正在下载产物: ${artifactId}`);
-    try {
-      if (this.ctx.http && this.ctx.http.artifacts && this.ctx.http.artifacts.download) {
-        await this.ctx.http.artifacts.download(`${taskId}/${artifactId}`, fileName);
-        this.ctx.log(`已下载: ${fileName}`);
-      }
-    } catch (e) {
-      this.ctx.log('下载失败: ' + (e.message || e));
-      if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('下载失败: ' + (e.message || e), 'error');
-    }
-  }
-
   async handleExportResults() {
     if (!this.workspace) {
       if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('请先创建项目', 'warning');
@@ -4211,20 +4196,22 @@ class SteadyModelAdaptV1 {
       return;
     }
 
-    this.ctx.log(`正在导出任务 ${task.id} 的 ZIP 产物包...`);
+    await this.withLoading('正在导出 ZIP 产物包...', async () => {
+      this.ctx.log(`正在导出任务 ${task.id} 的 ZIP 产物包...`);
 
-    // 1. 调后端打包接口下载 ZIP（含 result.json、run.log、artifacts.json 及全部产物文件）
-    try {
-      if (this.ctx.http && this.ctx.http.artifacts && this.ctx.http.artifacts.download) {
-        await this.ctx.http.artifacts.download(`${task.id}/package`, `workflow_task_${task.id}.zip`);
-        this.ctx.log(`已下载 ZIP 包：workflow_task_${task.id}.zip`);
+      // 1. 调后端打包接口下载 ZIP（含 result.json、run.log、artifacts.json 及全部产物文件）
+      try {
+        if (this.ctx.http && this.ctx.http.artifacts && this.ctx.http.artifacts.download) {
+          await this.ctx.http.artifacts.download(`${task.id}/package`, `workflow_task_${task.id}.zip`);
+          this.ctx.log(`已下载 ZIP 包：workflow_task_${task.id}.zip`);
+        }
+      } catch (e) {
+        this.ctx.log('下载 ZIP 包失败: ' + (e.message || e));
       }
-    } catch (e) {
-      this.ctx.log('下载 ZIP 包失败: ' + (e.message || e));
-    }
 
-    this.ctx.log(`导出完成：ZIP 产物包`);
-    if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('已导出 ZIP 产物包', 'success');
+      this.ctx.log(`导出完成：ZIP 产物包`);
+      if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('已导出 ZIP 产物包', 'success');
+    });
   }
 
   /** 导出 HTML 追溯报告 */
@@ -4666,6 +4653,20 @@ h1{text-align:center}h2{font-size:14pt;border-bottom:1px solid #999;padding-bott
   }
 
   _downloadArtifact(taskId, artifactId, fileName) {
+    // 兼容旧调用方式：_showImageModal 传 (taskId, artifactId, fileName)
+    // _showArtifactsModal 传 (taskId, artifactObject)
+    if (typeof artifactId === 'object' && artifactId !== null) {
+      const a = artifactId;
+      const id = a.id || a.name || a.fileName;
+      const fname = a.name || a.fileName || id;
+      if (!id || id === '[object Object]') {
+        this._toast('下载失败: 产物标识无效', 'error');
+        return;
+      }
+      this.ctx.http.artifacts.download(`${taskId}/${id}`, fname)
+        .catch(e => this._toast('下载失败: ' + (e.message || e), 'error'));
+      return;
+    }
     this.ctx.http.artifacts.download(`${taskId}/${artifactId}`, fileName)
       .catch(e => this._toast('下载失败: ' + (e.message || e), 'error'));
   }

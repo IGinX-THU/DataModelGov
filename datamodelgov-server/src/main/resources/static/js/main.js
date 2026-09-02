@@ -2810,9 +2810,12 @@ function showSimulationRecord() {
                     } else if (nodeType === 'program') {
                         const programName = node.getAttribute('data-program-name');
                         const programVersion = node.getAttribute('data-program-version');
-                        console.log('点击程序节点:', programName, programVersion);
+                        const _username = window.AppConfig.getUsername();
+                        const _cachedProject = _username ? JSON.parse(window.localStorage.getItem('currentProject_' + _username) || 'null') : null;
+                        const _projectName = _cachedProject ? _cachedProject.name : null;
+                        console.log('点击程序节点:', programName, programVersion, 'projectName:', _projectName);
                         if (window.ProgramLauncher) {
-                            window.ProgramLauncher.open({ name: programName, version: programVersion })
+                            window.ProgramLauncher.open({ name: programName, version: programVersion, projectName: _projectName })
                                 .catch(error => console.error('打开程序失败:', error));
                         }
                     }
@@ -3420,9 +3423,12 @@ function showSimulationRecord() {
                             if (parts.length >= 4 && parts[0] === 'programs_system') {
                                 const programName = parts[parts.length - 2];
                                 const programVersion = parts[parts.length - 1];
+                                const _username = window.AppConfig.getUsername();
+                                const _cachedProject = _username ? JSON.parse(window.localStorage.getItem('currentProject_' + _username) || 'null') : null;
+                                const _projectName = _cachedProject ? _cachedProject.name : null;
 
                                 if (window.ProgramLauncher) {
-                                    window.ProgramLauncher.open({ name: programName, version: programVersion })
+                                    window.ProgramLauncher.open({ name: programName, version: programVersion, projectName: _projectName })
                                         .catch(error => console.error('打开程序失败:', error));
                                 }
                             }
@@ -3844,9 +3850,12 @@ function bindProjectTreeEvents() {
                 } else if (nodeType === 'program') {
                     const programName = node.getAttribute('data-program-name');
                     const programVersion = node.getAttribute('data-program-version');
-                    console.log('点击程序节点:', programName, programVersion);
+                    const _username = window.AppConfig.getUsername();
+                    const _cachedProject = _username ? JSON.parse(window.localStorage.getItem('currentProject_' + _username) || 'null') : null;
+                    const _projectName = _cachedProject ? _cachedProject.name : null;
+                    console.log('点击程序节点:', programName, programVersion, 'projectName:', _projectName);
                     if (window.ProgramLauncher) {
-                        window.ProgramLauncher.open({ name: programName, version: programVersion })
+                        window.ProgramLauncher.open({ name: programName, version: programVersion, projectName: _projectName })
                             .catch(error => console.error('打开程序失败:', error));
                     }
                 }

@@ -1162,14 +1162,18 @@ public class ProgramWorkflowService {
 
     public ArtifactDownload getArtifact(String taskId, String artifactId, String name, String version,
                                          String projectName) throws Exception {
-        requireId(artifactId, "artifactId");
+        if (!StringUtils.hasText(artifactId) || "[object Object]".equals(artifactId)) {
+            throw new IllegalArgumentException("Invalid artifactId");
+        }
         Path task = requireTask(taskId, name, version, projectName);
         Map<String, Object> selected = null;
         Path artifactManifest = child(task, "artifacts.json");
         List<Map<String, Object>> storedArtifacts = Files.isRegularFile(artifactManifest)
                 ? readListOfMaps(artifactManifest) : Collections.emptyList();
         for (Map<String, Object> artifact : storedArtifacts) {
-            if (artifactId.equals(artifact.get("id"))) { selected = artifact; break; }
+            if (artifactId.equals(artifact.get("id")) || artifactId.equals(artifact.get("name"))) {
+                selected = artifact; break;
+            }
         }
         if (selected == null) throw new IllegalArgumentException("Artifact does not exist");
         String relativePath = value(selected.get("relativePath"));
@@ -1502,8 +1506,16 @@ public class ProgramWorkflowService {
         if (taskEntity == null) throw new IllegalArgumentException("Task does not exist");
         String workspaceId = taskEntity.getWorkspaceId();
         if (workspaceId == null) throw new IllegalArgumentException("Task does not exist");
-        // 验证 workspace 归属
-        Path workspace = requireWorkspace(workspaceId, name, version, projectName);
+        // 优先用任务记录里的 programName/programVersion/projectName 定位 workspace，
+        // 避免调用方传的 name/version 与任务实际所属程序不一致时定位失败
+        String taskProgramName = taskEntity.getProgramName();
+        String taskProgramVersion = taskEntity.getProgramVersion();
+        String taskProjectName = taskEntity.getProjectName();
+        Path workspace = requireWorkspace(
+                workspaceId,
+                StringUtils.hasText(taskProgramName) ? taskProgramName : name,
+                StringUtils.hasText(taskProgramVersion) ? taskProgramVersion : version,
+                StringUtils.hasText(taskProjectName) ? taskProjectName : projectName);
         Path taskDir = child(child(workspace, "tasks"), taskId);
         return taskDir;
     }
