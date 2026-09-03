@@ -143,9 +143,10 @@ public class ProgramController {
     public Result<Map<String, Object>> uploadPresetProgram(
             @PathVariable("id") String id,
             @RequestParam(value = "version", required = false, defaultValue = "1.0") String version,
-            @RequestParam(value = "projectName", required = false) String projectName) {
+            @RequestParam(value = "projectName", required = false) String projectName,
+            @RequestParam(value = "name", required = false) String displayName) {
         try {
-            Map<String, Object> result = programService.uploadPresetProgram(id, version, projectName);
+            Map<String, Object> result = programService.uploadPresetProgram(id, version, projectName, displayName);
             return Result.success("预置程序已上传", result);
         } catch (Exception e) {
             log.error("上传预置程序失败", e);
@@ -154,8 +155,7 @@ public class ProgramController {
     }
 
     @ApiOperation("列出可用的预置配置（扫描 programs/ 目录）")
-    @GetMapping("/config-templates")
-    @RequirePermission(Permission.READ)
+    @GetMapping("/config-templates")    @RequirePermission(Permission.READ)
     public Result<List<Map<String, String>>> listConfigTemplates() {
         List<Map<String, String>> templates = new java.util.ArrayList<>();
         try {

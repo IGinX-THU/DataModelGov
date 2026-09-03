@@ -1,0 +1,143 @@
+{
+  "runtime": {
+    "executionType": "matlabWorkflow",
+    "workingDirectory": "稳态试车工况点模型修正V1/SteadyModelAdaptFromTestV1"
+  },
+  "workflow": {
+    "requiredFiles": [
+      "GTESS.dll",
+      "GTESS.h",
+      "blockAndFunctions.h",
+      "types_TMATS.H",
+      "Turboshaft-TS-Split.mdl",
+      "Turboshaft-TS.mdl",
+      "MiddleData/RunModelSHT_V2_design_state.mat"
+    ],
+    "datasets": [
+      {
+        "key": "trainingData",
+        "label": "训练数据",
+        "type": "xlsx",
+        "role": "training",
+        "required": true,
+        "requiredColumns": ["point_id", "Np_mean", "Ng_mean", "Wf_mean", "Tt45_mean", "Pt45_mean", "Mkp_mean", "Mkg_mean", "Pt2_mean", "Tt1_mean", "Pt3_mean", "Tt3_mean", "Pamb_mean", "Tamb_mean", "Altitude_mean", "Mach_mean"]
+      },
+      {
+        "key": "testData",
+        "label": "独立测试数据",
+        "type": "xlsx",
+        "role": "test",
+        "required": false,
+        "requiredColumns": ["point_id", "Np_mean", "Ng_mean", "Wf_mean", "Tt45_mean", "Pt45_mean", "Mkp_mean", "Mkg_mean", "Pt2_mean", "Tt1_mean", "Pt3_mean", "Tt3_mean", "Pamb_mean", "Tamb_mean", "Altitude_mean", "Mach_mean"]
+      }
+    ],
+    "actions": [
+      {
+        "key": "estimateSteady",
+        "label": "稳态模型参数辨识",
+        "entryPoint": "Start_SteadyModelAdapt_V2_02_SteadyModelParameterEstimation",
+        "stage": "identification",
+        "inputs": ["trainingData"],
+        "resultType": "estimation"
+      },
+      {
+        "key": "estimateTransient",
+        "label": "瞬态时刻模型参数辨识",
+        "entryPoint": "Start_SteadyModelAdapt_V2_03_TransientInstantEstimation",
+        "stage": "identification",
+        "inputs": ["trainingData"],
+        "resultType": "estimation"
+      },
+      {
+        "key": "engineeringIdentifiability",
+        "label": "工程可辨识性分析",
+        "entryPoint": "Start_SteadyModelAdapt_V2_16_EngineeringIdentifiabilityAnalysis",
+        "stage": "identifiability",
+        "inputs": [],
+        "resultType": "identifiability"
+      },
+      {
+        "key": "uqMethodA",
+        "label": "不确定性评估方法A",
+        "entryPoint": "Start_SteadyModelUQ_00_RunAll",
+        "stage": "uq",
+        "inputs": ["userCfg"],
+        "resultType": "uncertainty"
+      },
+      {
+        "key": "uqMethodB",
+        "label": "不确定性评估方法B",
+        "entryPoint": "Start_SteadyModelUQ_B_00_RunAll",
+        "stage": "uq",
+        "inputs": ["userCfg"],
+        "resultType": "uncertainty"
+      },
+      {
+        "key": "testValidation",
+        "label": "独立测试验证",
+        "entryPoint": "Start_SteadyModelAdapt_V2_05_TestDataValidation",
+        "stage": "validation",
+        "inputs": ["testData"],
+        "resultType": "validation"
+      },
+      {
+        "key": "operatingPointPrediction",
+        "label": "任意工况预测",
+        "entryPoint": "Start_SteadyModelPredict_01_InputDrivenPrediction",
+        "stage": "prediction",
+        "inputs": ["modelInput", "estimationResultFile", "posteriorOptions"],
+        "resultType": "prediction"
+      }
+    ]
+  },
+  "parameters": [],
+  "signals": [],
+  "ui": {
+    "title": "稳态试车工况点模型修正V1",
+    "subtitle": "稳态试车工况点模型\n自适应修正",
+    "layout": "workflow",
+    "sections": [
+      {
+        "id": "data",
+        "title": "新建项目与数据",
+        "hint": "在一个页面内完成项目建立、测量数据检查、辅助变量计算和训练工况分组。"
+      },
+      {
+        "id": "identify",
+        "title": "参数辨识",
+        "hint": "默认采用瞬态时刻模型；路径、正则化配置、辨识流程和结果集中在一个页面。"
+      },
+      {
+        "id": "identifiability",
+        "title": "可辨识性",
+        "hint": "同时展示整体信息质量、逐参数分类和主要补偿参数，帮助判断辨识结果能否独立解释。"
+      },
+      {
+        "id": "uq",
+        "title": "不确定性评估",
+        "hint": "分别评估关键修正系数和全部修正系数，并给出参数95%置信区间及预测影响。"
+      },
+      {
+        "id": "validation",
+        "title": "测试验证",
+        "hint": "仅使用稳态模型，在独立测试工况上比较零修正模型、稳态辨识模型和测量数据。"
+      },
+      {
+        "id": "prediction",
+        "title": "工况预测",
+        "hint": "输入单个新工况，在无测量输出条件下给出稳态辨识模型预测和后验95%置信区间。"
+      },
+      {
+        "id": "results",
+        "title": "结果中心",
+        "hint": "按项目和任务组织辨识、可辨识性、不确定、验证与预测结果。"
+      }
+    ],
+    "extension": {
+      "enabled": true,
+      "mode": "override",
+      "entry": "steady-model-adapt-v1",
+      "css": "style.css"
+    }
+  }
+}

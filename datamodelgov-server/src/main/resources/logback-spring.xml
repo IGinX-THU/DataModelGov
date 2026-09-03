@@ -140,6 +140,8 @@
     <!-- 4. 最终的策略 -->
     <!-- project default level -->
     <logger name="net.sh.rgface.serive" level="ERROR" />
+    <!-- Apache POI 的 XMLHelper 在某些 Xerces 实现上设置安全属性失败，属于无害警告 -->
+    <logger name="org.apache.poi.util.XMLHelper" level="ERROR" />
 
     <root level="info">
         <appender-ref ref="CONSOLE" />

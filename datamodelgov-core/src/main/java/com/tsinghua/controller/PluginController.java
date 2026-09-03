@@ -60,7 +60,12 @@ public class PluginController {
     public void downloadEntryJs(@PathVariable("id") String id, HttpServletResponse response) throws IOException {
         String content = pluginService.readEntryJs(id);
         if (content == null) {
-            response.sendError(404, "插件入口 JS 不存在");
+            log.warn("插件入口 JS 不存在: id={}, 已加载插件: {}", id, pluginService.list().stream()
+                    .map(PluginEntity::getId).collect(java.util.stream.Collectors.toList()));
+            response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+            response.setContentType("text/plain; charset=UTF-8");
+            response.getWriter().write("/* plugin entry.js not found: " + id + " */");
+            response.getWriter().flush();
             return;
         }
         response.setContentType("application/javascript; charset=UTF-8");
@@ -75,7 +80,10 @@ public class PluginController {
     public void downloadCss(@PathVariable("id") String id, HttpServletResponse response) throws IOException {
         String content = pluginService.readCss(id);
         if (content == null) {
-            response.sendError(404, "插件 CSS 不存在");
+            response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+            response.setContentType("text/plain; charset=UTF-8");
+            response.getWriter().write("/* plugin style.css not found: " + id + " */");
+            response.getWriter().flush();
             return;
         }
         response.setContentType("text/css; charset=UTF-8");

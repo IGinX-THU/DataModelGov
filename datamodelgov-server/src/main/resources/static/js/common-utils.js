@@ -383,6 +383,16 @@ class LocalPDFGenerator {
         this.checkPageBreak();
     }
 
+    // 添加代码块（保留缩进换行）
+    addCodeBlock(code) {
+        this.content.push({
+            type: 'code',
+            code: code
+        });
+        this.yPosition += this.lineHeight * 4; // 估算代码块高度
+        this.checkPageBreak();
+    }
+
     // 添加图片（通过Canvas捕获）
     async addImage(element, title, description) {
         try {
@@ -626,10 +636,11 @@ class LocalPDFGenerator {
         '.section { margin: 20px 0; }' +
         '.text { margin: 10px 0; text-align: justify; }' +
         '.table { width: 100%; border-collapse: collapse; margin: 10px 0; table-layout: fixed; }' +
-        '.table th, .table td { border: 1px solid #ddd; padding: 8px; text-align: left; word-wrap: break-word; min-width: 0; }' +
+        '.table th, .table td { border: 1px solid #ddd; padding: 8px; text-align: left; word-wrap: break-word; word-break: break-all; min-width: 0; }' +
         '.table th { background-color: #f2f2f2; font-weight: bold; }' +
         '.image-title { font-weight: bold; margin: 10px 0 5px 0; }' +
         '.report-image { max-width: 100%; height: auto; }' +
+        '.code { background: #f7f7f7; border: 1px solid #ddd; padding: 10px; white-space: pre-wrap; word-break: break-all; font-family: Consolas, Monaco, monospace; font-size: 9pt; margin: 10px 0; border-radius: 4px; }' +
         '.separator { height: 1px; background-color: #ccc; margin: 20px 0; }' +
         '@page { size: A4; margin: 2cm; }' +
         '@media print { body { font-family: SimSun, Microsoft YaHei, SimHei, Arial, sans-serif !important; } }' +
@@ -640,16 +651,20 @@ class LocalPDFGenerator {
         '<div class="content">';
 
         // 添加内容
+        const escapeHtml = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         console.log('开始生成HTML，content数组内容:', this.content);
         this.content.forEach(item => {
             console.log('处理item:', item.type, item);
             switch(item.type) {
                 case 'text':
                     if (item.bold) {
-                        html += '<div style="font-weight: bold; font-size: ' + item.fontSize + 'pt; margin: 5px 0; font-family: SimSun, Microsoft YaHei, SimHei, Arial, sans-serif;">' + item.text + '</div>';
+                        html += '<div style="font-weight: bold; font-size: ' + item.fontSize + 'pt; margin: 5px 0; word-break: break-all; font-family: SimSun, Microsoft YaHei, SimHei, Arial, sans-serif;">' + item.text + '</div>';
                     } else {
-                        html += '<div style="font-size: ' + item.fontSize + 'pt; margin: 5px 0; font-family: SimSun, Microsoft YaHei, SimHei, Arial, sans-serif;">' + item.text + '</div>';
+                        html += '<div style="font-size: ' + item.fontSize + 'pt; margin: 5px 0; word-break: break-all; font-family: SimSun, Microsoft YaHei, SimHei, Arial, sans-serif;">' + item.text + '</div>';
                     }
+                    break;
+                case 'code':
+                    html += '<pre class="code">' + escapeHtml(item.code) + '</pre>';
                     break;
                 case 'title':
                     html += '<div class="title" style="font-family: SimSun, Microsoft YaHei, SimHei, Arial, sans-serif;">' + item.text + '</div>';

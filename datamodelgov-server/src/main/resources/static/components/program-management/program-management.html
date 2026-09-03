@@ -48,6 +48,7 @@
                 <button class="modal-close" id="configCloseBtn">✕</button>
             </div>
             <div class="modal-body" style="display:flex;flex-direction:column;gap:12px;">
+                <!-- 第一行：预置配置 -->
                 <div class="config-toolbar">
                     <label>预置配置：</label>
                     <select id="cfgPresetSelect" style="min-width:140px;">
@@ -55,30 +56,43 @@
                     </select>
                     <button class="btn btn-sm" id="cfgApplyPresetBtn" type="button">加载</button>
                 </div>
+                <!-- 第二行：执行类型 + 页面模板（页面模板仅 simulinkRealtime 可见） -->
                 <div class="config-toolbar">
-                    <label>信号采集脚本上传：</label>
-                    <button class="btn btn-sm" id="cfgUploadScriptBtn" type="button">上传 .m 文件</button>
-                    <input type="file" id="cfgUploadScriptInput" accept=".m,text/plain" hidden>
-                    <span style="flex:1"></span>
-                    <label>页面模板：</label>
-                    <select id="cfgTemplateSelect" style="min-width:140px;">
-                        <option value="">无（内联UI）</option>
+                    <label>执行类型：</label>
+                    <select id="cfgExecutionType" style="min-width:160px;">
+                        <option value="simulinkRealtime">Simulink 实时仿真</option>
+                        <option value="matlabWorkflow">MATLAB 函数工作流</option>
                     </select>
                     <span style="flex:1"></span>
-                    <label>配置文件导入：</label>
-                    <button class="btn btn-sm" id="cfgUploadJsonBtn" type="button">上传 JSON</button>
-                    <input type="file" id="cfgUploadJsonInput" accept=".json,application/json" hidden>
+                    <span id="cfgTemplateGroup" style="display:inline-flex;align-items:center;gap:6px;">
+                        <label>页面模板：</label>
+                        <select id="cfgTemplateSelect" style="min-width:140px;">
+                            <option value="">无（内联UI）</option>
+                        </select>
+                    </span>
                 </div>
                 <div style="display:flex;gap:12px;align-items:stretch;flex:1;min-height:0;">
-                    <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:12px;overflow-y:auto;min-height:0;">
+                    <!-- 左列：信号采集脚本（仅 simulinkRealtime） -->
+                    <div id="cfgScriptColumn" style="flex:1;min-width:0;display:flex;flex-direction:column;gap:12px;overflow-y:auto;min-height:0;">
                         <div class="config-section" style="flex:1;display:flex;flex-direction:column;min-height:0;">
-                            <h4>信号采集脚本</h4>
+                            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                                <h4 style="margin:0;">信号采集脚本</h4>
+                                <span id="cfgScriptUploadGroup" style="display:inline-flex;align-items:center;gap:6px;">
+                                    <button class="btn btn-sm" id="cfgUploadScriptBtn" type="button">上传 .m 文件</button>
+                                    <input type="file" id="cfgUploadScriptInput" accept=".m,text/plain" hidden>
+                                </span>
+                            </div>
                             <textarea id="cfgSetupScript" placeholder="function dmg_setup()&#10;% 信号采集脚本&#10;...&#10;end" style="flex:1;min-height:0;width:100%;font-family:monospace;font-size:12px;"></textarea>
                         </div>
                     </div>
+                    <!-- 中列：运行配置 + 参数/信号/页面布局/扩展 -->
                     <div style="width:800px;flex-shrink:0;display:flex;flex-direction:column;gap:12px;overflow-y:auto;min-height:0;">
                         <div class="config-section">
-                            <h4>运行配置</h4>
+                            <h4 id="cfgRuntimeTitle">运行配置</h4>
+                            <div class="form-row" id="cfgWorkingDirectoryRow">
+                                <label>工作目录</label>
+                                <input type="text" id="cfgWorkingDirectory" placeholder="程序包内相对目录">
+                            </div>
                             <div class="form-row">
                                 <label>预运行脚本</label>
                                 <input type="text" id="cfgPreRunScript" placeholder="RunCtrlSysModelSHT">
@@ -169,7 +183,13 @@
                     </div>
                     <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:12px;overflow-y:auto;min-height:0;">
                         <div class="config-section" style="flex:1;display:flex;flex-direction:column;min-height:0;">
-                            <h4>原始 JSON</h4>
+                            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                                <h4 style="margin:0;">原始 JSON</h4>
+                                <span style="display:inline-flex;align-items:center;gap:6px;">
+                                    <button class="btn btn-sm" id="cfgUploadJsonBtn" type="button">上传 JSON</button>
+                                    <input type="file" id="cfgUploadJsonInput" accept=".json,application/json" hidden>
+                                </span>
+                            </div>
                             <textarea id="cfgRawJson" style="flex:1;min-height:0;width:100%;"></textarea>
                         </div>
                     </div>

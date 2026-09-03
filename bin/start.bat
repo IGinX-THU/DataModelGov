@@ -74,9 +74,9 @@ echo.
 
 REM Start application
 if defined CONFIG_PATH (
-    "!JAVA_CMD!" -Xmx2g -Xms1g -XX:+UseG1GC -XX:+UseStringDeduplication -jar "!APP_JAR!" --spring.config.location=!CONFIG_PATH! --spring.profiles.active=standalone
+    "!JAVA_CMD!" -Dfile.encoding=UTF-8 -Xmx2g -Xms1g -XX:+UseG1GC -XX:+UseStringDeduplication -jar "!APP_JAR!" --spring.config.location=!CONFIG_PATH! --spring.profiles.active=standalone
 ) else (
-    "!JAVA_CMD!" -Xmx2g -Xms1g -XX:+UseG1GC -XX:+UseStringDeduplication -jar "!APP_JAR!" --spring.profiles.active=standalone
+    "!JAVA_CMD!" -Dfile.encoding=UTF-8 -Xmx2g -Xms1g -XX:+UseG1GC -XX:+UseStringDeduplication -jar "!APP_JAR!" --spring.profiles.active=standalone
 )
 
 if errorlevel 1 (

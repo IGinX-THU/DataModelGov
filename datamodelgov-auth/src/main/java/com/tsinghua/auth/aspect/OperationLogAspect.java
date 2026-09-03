@@ -17,6 +17,7 @@ import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
 import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
 import java.lang.reflect.Method;
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -51,7 +52,7 @@ public class OperationLogAspect {
     /**
      * 环绕通知：记录操作日志
      */
-    @Around("controllerPointcut()")
+    @Around("operationLogPointcut()")
     public Object logOperation(ProceedingJoinPoint joinPoint) throws Throwable {
         long startTime = System.currentTimeMillis();
         
@@ -234,20 +235,27 @@ public class OperationLogAspect {
     }
 
     /**
-     * 判断是否为敏感参数
+     * 判断是否为敏感参数或不可序列化的容器参数
      */
     private boolean isSensitiveParameter(String paramName, Object paramValue) {
         if (paramName == null) {
             return false;
         }
-        
+
         String lowerParamName = paramName.toLowerCase();
-        return lowerParamName.contains("password") ||
+        if (lowerParamName.contains("password") ||
                lowerParamName.contains("pwd") ||
                lowerParamName.contains("token") ||
                lowerParamName.contains("secret") ||
                lowerParamName.contains("key") ||
-               lowerParamName.contains("credential");
+               lowerParamName.contains("credential")) {
+            return true;
+        }
+        // HttpServletResponse/HttpServletRequest 等 servlet 容器对象不可序列化，
+        // 强行 JSON 化会触发 getOutputStream()，破坏控制器已写入的响应体
+        if (paramValue instanceof HttpServletResponse) return true;
+        if (paramValue instanceof HttpServletRequest) return true;
+        return false;
     }
 
     /**

@@ -115,6 +115,7 @@ document.addEventListener('DOMContentLoaded', function() {
             'programManagement',
             'programUpload',
             'programRun',
+            'programWorkflow',
             'userManual'
         ];
         
@@ -668,6 +669,15 @@ document.addEventListener('DOMContentLoaded', function() {
                         return;
                     case 'showProgramUpload':
                         console.log('仿真程序上传菜单被点击');
+                        // 检查是否已打开项目
+                        const usernameUpload = window.localStorage.getItem('username');
+                        const cachedProjectUpload = usernameUpload ? JSON.parse(window.localStorage.getItem('currentProject_' + usernameUpload) || 'null') : null;
+                        if (!cachedProjectUpload) {
+                            if (window.CommonUtils && window.CommonUtils.showToast) {
+                                window.CommonUtils.showToast('请先选择或创建项目', 'error');
+                            }
+                            return;
+                        }
                         clearWorkspace();
                         showComponent('programUpload');
                         return;
@@ -1308,7 +1318,9 @@ document.addEventListener('DOMContentLoaded', function() {
             console.log('程序上传成功:', e.detail);
             if (window.loadProjectTree) window.loadProjectTree();
             const pm = document.getElementById('programManagement');
-            if (pm && pm.loadPrograms) pm.loadPrograms();
+            if (pm && pm.loadPrograms && pm.style.display !== 'none' && !pm.hidden) {
+                pm.loadPrograms();
+            }
         });
     }
 
@@ -2233,7 +2245,8 @@ function showSimulationRecord() {
             'visualAnalysis',
             'simulationArchiveList',
             'programUpload',
-            'programRun'
+            'programRun',
+            'programWorkflow'
         ];
 
         if (componentsRequiringProject.includes(componentId)) {
@@ -2797,24 +2810,14 @@ function showSimulationRecord() {
                     } else if (nodeType === 'program') {
                         const programName = node.getAttribute('data-program-name');
                         const programVersion = node.getAttribute('data-program-version');
-                        console.log('点击程序节点:', programName, programVersion);
-                        if (window.hideAllComponents) {
-                            window.hideAllComponents();
+                        const _username = window.AppConfig.getUsername();
+                        const _cachedProject = _username ? JSON.parse(window.localStorage.getItem('currentProject_' + _username) || 'null') : null;
+                        const _projectName = _cachedProject ? _cachedProject.name : null;
+                        console.log('点击程序节点:', programName, programVersion, 'projectName:', _projectName);
+                        if (window.ProgramLauncher) {
+                            window.ProgramLauncher.open({ name: programName, version: programVersion, projectName: _projectName })
+                                .catch(error => console.error('打开程序失败:', error));
                         }
-                        const oldEl = document.getElementById('programRun');
-                        const parent = oldEl ? oldEl.parentElement : null;
-                        if (oldEl) oldEl.remove();
-                        const programRun = document.createElement('program-run');
-                        programRun.id = 'programRun';
-                        programRun.style.display = 'none';
-                        if (parent) parent.appendChild(programRun);
-                        programRun.setAttribute('data-name', programName);
-                        programRun.setAttribute('data-version', programVersion);
-                        if (window.showComponent) {
-                            window.showComponent('programRun');
-                        }
-                        // _doShow() 已负责加载配置和文件列表，无需再调 loadProgramFiles
-                        // 这里只确保组件已初始化（show() 可能在 init() 完成前被调，有 retry 机制）
                     }
                 }
             };
@@ -3420,23 +3423,13 @@ function showSimulationRecord() {
                             if (parts.length >= 4 && parts[0] === 'programs_system') {
                                 const programName = parts[parts.length - 2];
                                 const programVersion = parts[parts.length - 1];
+                                const _username = window.AppConfig.getUsername();
+                                const _cachedProject = _username ? JSON.parse(window.localStorage.getItem('currentProject_' + _username) || 'null') : null;
+                                const _projectName = _cachedProject ? _cachedProject.name : null;
 
-                                const oldEl = document.getElementById('programRun');
-                                const parent = oldEl ? oldEl.parentElement : null;
-                                if (oldEl && parent) {
-                                    oldEl.remove();
-                                }
-                                const programRun = document.createElement('program-run');
-                                programRun.id = 'programRun';
-                                programRun.style.display = 'none';
-                                if (parent) parent.appendChild(programRun);
-                                programRun.setAttribute('data-name', programName);
-                                programRun.setAttribute('data-version', programVersion);
-
-                                clearWorkspace();
-                                showComponent('programRun');
-                                if (programRun.loadProgramFiles) {
-                                    programRun.loadProgramFiles(programName, programVersion);
+                                if (window.ProgramLauncher) {
+                                    window.ProgramLauncher.open({ name: programName, version: programVersion, projectName: _projectName })
+                                        .catch(error => console.error('打开程序失败:', error));
                                 }
                             }
                         }
@@ -3857,24 +3850,13 @@ function bindProjectTreeEvents() {
                 } else if (nodeType === 'program') {
                     const programName = node.getAttribute('data-program-name');
                     const programVersion = node.getAttribute('data-program-version');
-                    console.log('点击程序节点:', programName, programVersion);
-                    if (window.hideAllComponents) {
-                        window.hideAllComponents();
-                    }
-                    const oldEl = document.getElementById('programRun');
-                    const parent = oldEl ? oldEl.parentElement : null;
-                    if (oldEl) oldEl.remove();
-                    const programRun = document.createElement('program-run');
-                    programRun.id = 'programRun';
-                    programRun.style.display = 'none';
-                    if (parent) parent.appendChild(programRun);
-                    programRun.setAttribute('data-name', programName);
-                    programRun.setAttribute('data-version', programVersion);
-                    if (window.showComponent) {
-                        window.showComponent('programRun');
-                    }
-                    if (programRun.loadProgramFiles) {
-                        programRun.loadProgramFiles(programName, programVersion);
+                    const _username = window.AppConfig.getUsername();
+                    const _cachedProject = _username ? JSON.parse(window.localStorage.getItem('currentProject_' + _username) || 'null') : null;
+                    const _projectName = _cachedProject ? _cachedProject.name : null;
+                    console.log('点击程序节点:', programName, programVersion, 'projectName:', _projectName);
+                    if (window.ProgramLauncher) {
+                        window.ProgramLauncher.open({ name: programName, version: programVersion, projectName: _projectName })
+                            .catch(error => console.error('打开程序失败:', error));
                     }
                 }
             }

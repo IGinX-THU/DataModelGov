@@ -106,7 +106,7 @@ public class ProgramService {
     private void initMatlabHome() {
         MatlabSimulationRunner.configureMatlabHome(matlabHome);
         // 创建引擎池（pool-size 从 yml 读取，默认 4）
-        enginePool = new MatlabEnginePool(enginePoolSize);
+        enginePool = new MatlabEnginePool(enginePoolSize, matlabHome);
         log.info("MATLAB 引擎池大小: {}", enginePoolSize);
         // 引擎模式启用时，随 Spring Boot 启动常驻 MATLAB 引擎（异步，不阻塞启动）
         if (matlabEngineEnabled) {
@@ -124,6 +124,14 @@ public class ProgramService {
         if (enginePool != null) enginePool.shutdown();
     }
 
+    /** Shared MATLAB engine pool for other program execution services in this package. */
+    MatlabEnginePool enginePool() {
+        if (enginePool == null) {
+            throw new IllegalStateException("MATLAB engine pool is not initialized");
+        }
+        return enginePool;
+    }
+
     @Autowired
     private DataPermissionService dataPermissionService;
 
@@ -139,6 +147,10 @@ public class ProgramService {
     @Autowired
     private DataTableService dataTableService;
 
+    @Autowired
+    @org.springframework.context.annotation.Lazy
+    private ProgramWorkflowService programWorkflowService;
+
     private String safeProjectName(String projectName) {
         String proj = (projectName != null && !projectName.isEmpty()) ? projectName : ProjectContext.getCurrentProject("unknown");
         return proj.replaceAll("[^\\x00-\\x7F]+", "undefined");
@@ -151,7 +163,7 @@ public class ProgramService {
         return dir;
     }
 
-    private File getProgramDir(String projectName, String name, String version) {
+    public File getProgramDir(String projectName, String name, String version) {
         String safeProj = safeProjectName(projectName);
         String safeVersion = version.replace('.', '_');
         File dir = new File(TASK_BASE_DIR + "/" + safeProj + "/program/" + name + "_" + safeVersion);
@@ -503,12 +515,15 @@ public class ProgramService {
      * 上传预置程序：从 classpath:programs/<程序名>/ 读取源码包+配置+脚本，存入 IGinX。
      * configJson 和 setupScript 分别存到两个字段。
      */
-    public Map<String, Object> uploadPresetProgram(String programName, String version, String projectName) throws Exception {
+    public Map<String, Object> uploadPresetProgram(String programName, String version, String projectName, String displayName) throws Exception {
+        // displayName 为用户输入的程序名称，若提供则覆盖 programName 作为存储名
+        String effectiveName = (displayName != null && !displayName.trim().isEmpty()) ? displayName.trim() : programName;
         String base = "programs/" + programName + "/";
         // 1. 找到源码压缩包
         org.springframework.core.io.support.PathMatchingResourcePatternResolver resolver =
                 new org.springframework.core.io.support.PathMatchingResourcePatternResolver();
         org.springframework.core.io.Resource[] resources = resolver.getResources("classpath:" + base + "*");
+        Arrays.sort(resources, Comparator.comparingInt(resource -> presetArchivePriority(resource.getFilename())));
         String archiveFilename = null;
         byte[] archiveBytes = null;
         for (org.springframework.core.io.Resource res : resources) {
@@ -538,14 +553,14 @@ public class ProgramService {
         // 4. 存入 IGinX
         String programVersion = (version != null && !version.isEmpty()) ? version : "1.0";
         String projName = (projectName != null && !projectName.isEmpty()) ? projectName : ProjectContext.getCurrentProject("unknown");
-        String storagePath = buildStoragePath(projName, programName, programVersion);
+        String storagePath = buildStoragePath(projName, effectiveName, programVersion);
 
         if (dataPermissionService.existTablePrefix(storagePath)) {
-            throw new IllegalArgumentException("仿真程序资产已存在: " + programName + " " + programVersion);
+            throw new IllegalArgumentException("仿真程序资产已存在: " + effectiveName + " " + programVersion);
         }
 
         // 解压验证
-        File programDir = getProgramDir(projName, programName, programVersion);
+        File programDir = getProgramDir(projName, effectiveName, programVersion);
         if (programDir.exists()) FileUtil.deleteDirectory(programDir);
         programDir.mkdirs();
         File tempArchive = new File(programDir, archiveFilename);
@@ -573,7 +588,7 @@ public class ProgramService {
 
         // 保存元数据
         ProgramEntity programMetaDto = new ProgramEntity();
-        programMetaDto.setName(programName);
+        programMetaDto.setName(effectiveName);
         programMetaDto.setVersion(programVersion);
         programMetaDto.setDescription("预置程序: " + programName);
         programMetaDto.setFileName(archiveFilename);
@@ -584,7 +599,7 @@ public class ProgramService {
         programMetaDto.setProjectName(projName);
         programMetaDto.setAuthor(AuthUtil.getCurrentUsername());
         programMetaDto.setStatus("READY");
-        programMetaDto.setConfigJson(configContent != null ? configContent : buildDefaultConfig(programName).toString());
+        programMetaDto.setConfigJson(configContent != null ? configContent : buildDefaultConfig(effectiveName).toString());
         programMetaDto.setSetupScript(setupScriptContent);
         saveProgramMetadata(programMetaDto);
         dataPermissionService.saveTablePrefix(storagePath);
@@ -603,6 +618,17 @@ public class ProgramService {
         result.put("fileMd5", fileMd5);
         log.info("预置程序上传成功: {} {}, 块数: {}", programName, programVersion, totalChunks);
         return result;
+    }
+
+    private int presetArchivePriority(String filename) {
+        if (filename == null) return Integer.MAX_VALUE;
+        String lower = filename.toLowerCase(Locale.ROOT);
+        if (lower.endsWith(".zip")) return 0;
+        if (lower.endsWith(".7z")) return 1;
+        if (lower.endsWith(".rar")) return 2;
+        if (lower.endsWith(".tar.gz") || lower.endsWith(".tgz")) return 3;
+        if (lower.endsWith(".tar")) return 4;
+        return Integer.MAX_VALUE;
     }
 
     /**
@@ -906,6 +932,8 @@ public class ProgramService {
                     FileUtil.deleteDirectory(programDir);
                     log.info("已删除程序目录: {}", programDir.getAbsolutePath());
                 }
+                // 删除该程序的所有工作区
+                programWorkflowService.deleteWorkspacesByProgram(name, version, actualProjectName);
             } else {
                 String actualProjectName = StringUtils.hasText(projectName) ? projectName : ProjectContext.getCurrentProject("unknown");
                 List<ProgramEntity> queryMetas = queryMetaList(name, actualProjectName);
@@ -934,6 +962,8 @@ public class ProgramService {
                         FileUtil.deleteDirectory(programDir);
                         log.info("已删除程序目录: {}", programDir.getAbsolutePath());
                     }
+                    // 删除该程序版本的所有工作区
+                    programWorkflowService.deleteWorkspacesByProgram(meta.getName(), meta.getVersion(), meta.getProjectName());
                 }
             }
         } catch (Exception e) {
@@ -967,7 +997,7 @@ public class ProgramService {
         // doRun 线程 borrow 到引擎后会把状态改为 RUNNING
         boolean willQueue = isEngineMode() && (prewarming.get() || (enginePool.idleCount() == 0
                 && enginePool.totalCount() >= enginePool.maxEngines()));
-        task.setStatus(willQueue ? TaskStatus.QUEUED : TaskStatus.RUNNING);
+        task.setStatus(willQueue ? TaskStatus.QUEUED.getValue() : TaskStatus.RUNNING.getValue());
         task.setStopTime(alignedStopTime);
         task.setFixedStep(fixedStep);
         task.setModelFile(modelFile);
@@ -985,7 +1015,7 @@ public class ProgramService {
         new Thread(() -> doRun(taskTimestamp, entity, alignedStopTime, fixedStep, modelFile, params), "program-run-" + taskTimestamp).start();
 
         Map<String, Object> data = new HashMap<>();
-        data.put("status", willQueue ? TaskStatus.QUEUED : TaskStatus.RUNNING);
+        data.put("status", willQueue ? TaskStatus.QUEUED.getValue() : TaskStatus.RUNNING.getValue());
         data.put("taskTimestamp", taskTimestamp);
         // 回传对齐后的停止时间，前端据此校正时间轴与游标上限
         data.put("stopTime", alignedStopTime);
@@ -1135,7 +1165,7 @@ public class ProgramService {
         byte[] archiveBytes = downloadFromIginx(entity.getStoragePath(), entity.getChunkCount(), entity.getFileMd5());
         File archiveFile = new File(taskDir, entity.getFileName());
         Files.write(archiveFile.toPath(), archiveBytes);
-        ArchiveUtil.extractArchive(archiveFile, taskDir);
+        ArchiveUtil.extractArchive(archiveFile, taskDir, true);
         writeProgramConfig(taskDir, entity);
         String preRunScript = StringUtils.hasText(runtime.getPreRunScript()) ? runtime.getPreRunScript() : "";
         String programDir = FileUtil.findProgramDir(taskDir, preRunScript);
@@ -1231,7 +1261,7 @@ public class ProgramService {
             if (task == null) {
                 task = queryLatestTask(name, version, projectName);
             }
-            if (task != null && TaskStatus.RUNNING.equals(task.getStatus())) {
+            if (task != null && task.getStatus().equals(TaskStatus.RUNNING.getValue())) {
                 Long ts = task.getTimestamp();
                 if (ts != null) {
                     // 引擎模式：直接给 Simulink 发 stop 命令，仿真立即终止且已记录数据保留
@@ -1241,20 +1271,20 @@ public class ProgramService {
                         pauseFlags.remove(ts);
                         // 不在此处 setFinished：让 doRun 线程的 pollLoop 退出 + exportResults 完成后，
                         // 由 finally 块统一设 finished=true，确保"已执行停止命令"、"仿真结束"等日志能通过 SSE 推送到前端
-                        updateTaskStatus(ts, TaskStatus.STOPPED, null, null, null, null);
+                        updateTaskStatus(ts, TaskStatus.STOPPED.getValue(), null, null, null, null);
                         Map<String, Object> stopped = new HashMap<>();
-                        stopped.put("status", TaskStatus.STOPPED);
+                        stopped.put("status", TaskStatus.STOPPED.getValue());
                         return Result.success("已停止", stopped);
                     }
                     // 引擎不可用或 runner 已退出：直接标记停止
                     pauseFlags.remove(ts);
                     LiveDataBuffer buffer = liveDataMap.get(ts);
                     if (buffer != null) buffer.setFinished(true);
-                    updateTaskStatus(ts, TaskStatus.STOPPED, null, null, null, null);
+                    updateTaskStatus(ts, TaskStatus.STOPPED.getValue(), null, null, null, null);
                 }
             }
             Map<String, Object> data = new HashMap<>();
-            data.put("status", TaskStatus.STOPPED);
+            data.put("status", TaskStatus.STOPPED.getValue());
             return Result.success("已停止", data);
         } catch (Exception e) {
             log.error("停止异常", e);
@@ -1269,17 +1299,17 @@ public class ProgramService {
             byte[] archiveBytes = downloadFromIginx(entity.getStoragePath(), entity.getChunkCount(), entity.getFileMd5());
             File archiveFile = new File(taskDir, entity.getFileName());
             Files.write(archiveFile.toPath(), archiveBytes);
-            ArchiveUtil.extractArchive(archiveFile, taskDir);
+            ArchiveUtil.extractArchive(archiveFile, taskDir, true);
             writeProgramConfig(taskDir, entity);
 
             File configFile = new File(taskDir, "program-config.json");
             if (!configFile.exists()) {
-                updateTaskStatus(taskTimestamp, TaskStatus.FAILED, "缺少 program-config.json", null, null, null);
+                updateTaskStatus(taskTimestamp, TaskStatus.FAILED.getValue(), "缺少 program-config.json", null, null, null);
                 return;
             }
             ProgramConfig pgConfig = ProgramConfigMapper.parse(new String(Files.readAllBytes(configFile.toPath()), StandardCharsets.UTF_8));
             if (pgConfig == null) {
-                updateTaskStatus(taskTimestamp, TaskStatus.FAILED, "program-config.json 解析失败", null, null, null);
+                updateTaskStatus(taskTimestamp, TaskStatus.FAILED.getValue(), "program-config.json 解析失败", null, null, null);
                 return;
             }
             ProgramConfig.RuntimeConfig runtime = pgConfig.getRuntime();
@@ -1338,7 +1368,7 @@ public class ProgramService {
             File logFile = new File(taskDir, "run.log");
 
             if (!isEngineMode()) {
-                updateTaskStatus(taskTimestamp, TaskStatus.FAILED,
+                updateTaskStatus(taskTimestamp, TaskStatus.FAILED.getValue(),
                         "MATLAB Engine 模式未启用，无法运行仿真（已移除 matlab -batch 回退方案）",
                         null, null, null);
                 return;
@@ -1350,7 +1380,7 @@ public class ProgramService {
                     Thread.sleep(1000);
                 }
                 if (prewarming.get()) {
-                    updateTaskStatus(taskTimestamp, TaskStatus.FAILED, "等待 MATLAB 预热超时", null, logFile.getAbsolutePath(), null);
+                    updateTaskStatus(taskTimestamp, TaskStatus.FAILED.getValue(), "等待 MATLAB 预热超时", null, logFile.getAbsolutePath(), null);
                     return;
                 }
                 liveBuffer.appendLogLine("[MATLAB] 后台预热完成，开始运行仿真...");
@@ -1367,7 +1397,7 @@ public class ProgramService {
 
             File csv = new File(taskDir, "signals.csv");
             if (!csv.exists()) {
-                updateTaskStatus(taskTimestamp, TaskStatus.FAILED, "未生成 signals.csv", null, logFile.getAbsolutePath(), null);
+                updateTaskStatus(taskTimestamp, TaskStatus.FAILED.getValue(), "未生成 signals.csv", null, logFile.getAbsolutePath(), null);
                 return;
             }
             log.info("程序运行成功，结果文件: {}", csv.getAbsolutePath());
@@ -1377,7 +1407,7 @@ public class ProgramService {
             // Import result CSV to IGinX with key column
             String outputTable = importResultCsvToIginx(csv, entity, taskTimestamp, modelFile);
 
-            updateTaskStatus(taskTimestamp, TaskStatus.SUCCESS, null, csv.getAbsolutePath(), logFile.getAbsolutePath(), taskDir.getAbsolutePath());
+            updateTaskStatus(taskTimestamp, TaskStatus.SUCCESS.getValue(), null, csv.getAbsolutePath(), logFile.getAbsolutePath(), taskDir.getAbsolutePath());
             if (outputTable != null) {
                 ProgramTaskEntity task = runningTasks.get(taskTimestamp);
                 if (task == null) task = loadTask(taskTimestamp);
@@ -1388,7 +1418,7 @@ public class ProgramService {
             }
         } catch (Exception e) {
             log.error("运行程序失败", e);
-            updateTaskStatus(taskTimestamp, TaskStatus.FAILED, e.getMessage(), null, null, null);
+            updateTaskStatus(taskTimestamp, TaskStatus.FAILED.getValue(), e.getMessage(), null, null, null);
         } finally {
             processMap.remove(taskTimestamp);
             runningTasks.remove(taskTimestamp);
@@ -1411,7 +1441,7 @@ public class ProgramService {
                               String setupScript, String signalCacheKey, LiveDataBuffer liveBuffer) {
         if (!StringUtils.hasText(modelFile)) {
             log.warn("未指定 Simulink 模型");
-            updateTaskStatus(taskTimestamp, TaskStatus.FAILED, "未指定 Simulink 模型", null, null, null);
+            updateTaskStatus(taskTimestamp, TaskStatus.FAILED.getValue(), "未指定 Simulink 模型", null, null, null);
             return RUN_FAILED;
         }
         String modelName = modelFile.replaceAll("\\.(slx|mdl)$", "");
@@ -1443,8 +1473,8 @@ public class ProgramService {
         try {
             // borrow 成功（或即将成功），从 QUEUED 切换到 RUNNING
             ProgramTaskEntity curTask = runningTasks.get(taskTimestamp);
-            if (curTask != null && TaskStatus.QUEUED.equals(curTask.getStatus())) {
-                updateTaskStatus(taskTimestamp, TaskStatus.RUNNING, null, null, null, null);
+            if (curTask != null && curTask.getStatus().equals(TaskStatus.QUEUED.getValue())) {
+                updateTaskStatus(taskTimestamp, TaskStatus.RUNNING.getValue(), null, null, null, null);
             }
             runner.run();
             if (runner.isUserStopped()) {
@@ -1459,13 +1489,13 @@ public class ProgramService {
                 log.error("MATLAB Engine 不可用，本次及后续仿真将直接 FAILED。"
                         + "请确认本机已安装与 engine.jar 匹配的 MATLAB 版本，"
                         + "或通过 matlab.engine.home 指定安装目录。原因: {}", t.toString());
-                updateTaskStatus(taskTimestamp, TaskStatus.FAILED,
+                updateTaskStatus(taskTimestamp, TaskStatus.FAILED.getValue(),
                         "MATLAB Engine 不可用: " + t.getMessage(), null,
                         new File(taskDir, "run.log").getAbsolutePath(), null);
                 return RUN_FAILED;
             }
             log.error("引擎仿真失败", t);
-            updateTaskStatus(taskTimestamp, TaskStatus.FAILED, t.getMessage(), null,
+            updateTaskStatus(taskTimestamp, TaskStatus.FAILED.getValue(), t.getMessage(), null,
                     new File(taskDir, "run.log").getAbsolutePath(), null);
             return RUN_FAILED;
         } finally {
@@ -1671,7 +1701,7 @@ public class ProgramService {
             data.put("newRows", new ArrayList<String[]>());
             data.put("totalRows", 0);
             data.put("currentSimTime", 0.0);
-            data.put("finished", !TaskStatus.RUNNING.equals(task.getStatus()));
+            data.put("finished", !task.getStatus().equals(TaskStatus.RUNNING.getValue()));
         }
         // 以任务实体中的状态为准，覆盖 buffer 中可能滞后的值
         data.put("status", task.getStatus());
@@ -1744,7 +1774,7 @@ public class ProgramService {
                 // 降级：查 IGinX（仅在缓存未命中时，如服务重启后恢复运行状态）
                 task = queryLatestTask(name, version, projectName);
             }
-            if (task == null || !TaskStatus.RUNNING.equals(task.getStatus())) {
+            if (task == null || !task.getStatus().equals(TaskStatus.RUNNING.getValue())) {
                 log.warn("暂停失败：无运行中的仿真任务 (found={}, status={})",
                         task != null, task != null ? task.getStatus() : "null");
                 return Result.error("无运行中的仿真任务");
@@ -2268,7 +2298,7 @@ public class ProgramService {
             if (name != null && !name.equals(task.getProgramName())) match = false;
             if (version != null && !version.equals(task.getProgramVersion())) match = false;
             if (projectName != null && !projectName.equals(task.getProjectName())) match = false;
-            if (match && TaskStatus.RUNNING.equals(task.getStatus())) {
+            if (match && task.getStatus().equals(TaskStatus.RUNNING.getValue())) {
                 return task;
             }
         }
@@ -2288,7 +2318,7 @@ public class ProgramService {
             if (version != null && !version.equals(task.getProgramVersion())) match = false;
             if (projectName != null && !projectName.equals(task.getProjectName())) match = false;
             if (!match) continue;
-            if (!TaskStatus.RUNNING.equals(task.getStatus()) && !TaskStatus.QUEUED.equals(task.getStatus())) continue;
+            if (!task.getStatus().equals(TaskStatus.RUNNING.getValue()) && !task.getStatus().equals(TaskStatus.QUEUED.getValue())) continue;
             if (latest == null || task.getTimestamp() > latest.getTimestamp()) {
                 latest = task;
             }
@@ -2343,7 +2373,7 @@ public class ProgramService {
      */
     private boolean checkRestartedTask(ProgramTaskEntity task) {
         if (task == null) return false;
-        if (!TaskStatus.RUNNING.equals(task.getStatus()) && !TaskStatus.QUEUED.equals(task.getStatus())) {
+        if (!task.getStatus().equals(TaskStatus.RUNNING.getValue()) && !task.getStatus().equals(TaskStatus.QUEUED.getValue())) {
             return false;
         }
         Long ts = task.getTimestamp();
@@ -2355,8 +2385,8 @@ public class ProgramService {
                 return false;
             }
         }
-        updateTaskStatus(ts, TaskStatus.FAILED, "服务重启，仿真进程已终止", null, null, null);
-        task.setStatus(TaskStatus.FAILED);
+        updateTaskStatus(ts, TaskStatus.FAILED.getValue(), "服务重启，仿真进程已终止", null, null, null);
+        task.setStatus(TaskStatus.FAILED.getValue());
         task.setError("服务重启，仿真进程已终止");
         return true;
     }
@@ -2372,7 +2402,7 @@ public class ProgramService {
         // 检查是否处于暂停状态：pause 端点只设内存 pauseFlags + pause.flag 文件，不更新 IGinX 状态。
         // 刷新页面后 results 需要返回 "paused" 让前端恢复按钮显示"恢复"。
         boolean isPaused = Boolean.TRUE.equals(pauseFlags.get(task.getTimestamp()));
-        if (!isPaused && TaskStatus.RUNNING.equals(task.getStatus()) && task.getTimestamp() != null) {
+        if (!isPaused && task.getStatus().equals(TaskStatus.RUNNING.getValue()) && task.getTimestamp() != null) {
             // 降级检查：服务重启后 pauseFlags 丢失，用 pause.flag 文件判断
             File taskDir = new File(getTaskBaseDir(projectName), String.valueOf(task.getTimestamp()));
             isPaused = new File(taskDir, "pause.flag").exists();

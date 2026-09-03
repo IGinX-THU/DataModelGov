@@ -403,22 +403,40 @@ class ProgramUpload extends HTMLElement {
             }
             if (hasError) return;
             const programId = presetSelect.value;
+            const uploadBtn = this.getElement('uploadBtn');
+            this._setUploadBusy(uploadBtn, true, '创建中...');
             try {
                 if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('正在创建预置程序...', 'info');
-                const url = window.AppConfig.getApiUrl('program', 'preset-programs') + '/' + encodeURIComponent(programId) + '/upload?version=' + encodeURIComponent(version);
+                const url = window.AppConfig.getApiUrl('program', 'preset-programs') + '/' + encodeURIComponent(programId) + '/upload?version=' + encodeURIComponent(version) + '&name=' + encodeURIComponent(name);
                 const result = await window.AppConfig.request(url, { method: 'POST' });
                 if (result && (result.success || result.code === 200)) {
                     if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('预置程序创建成功: ' + programId, 'success');
                     this.dispatchEvent(new CustomEvent('upload-success', { bubbles: true, composed: true }));
                     this.hide();
-                    const pm = document.getElementById('programManagement');
-                    if (pm && pm.loadPrograms) pm.loadPrograms();
+                    if (window.ProgramLauncher) {
+                        try {
+                            const username = window.AppConfig.getUsername ? window.AppConfig.getUsername() : localStorage.getItem('username');
+                            let currentProject = null;
+                            try {
+                                const cached = username ? JSON.parse(localStorage.getItem('currentProject_' + username) || 'null') : null;
+                                currentProject = cached && cached.name ? cached.name : null;
+                            } catch (e) {}
+                            await window.ProgramLauncher.open({ name: name, version, projectName: currentProject });
+                        } catch (openError) {
+                            console.error('打开预置程序失败:', openError);
+                            if (window.CommonUtils && window.CommonUtils.showToast) {
+                                window.CommonUtils.showToast('程序已创建，但打开失败: ' + openError.message, 'warning');
+                            }
+                        }
+                    }
                 } else {
                     throw new Error(result.message || '创建失败');
                 }
             } catch (e) {
                 console.error('创建预置程序失败:', e);
                 if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('创建失败: ' + e.message, 'error');
+            } finally {
+                this._setUploadBusy(uploadBtn, false, '确认上传');
             }
         } else {
             // 手动上传模式：验证选择了文件，走原有上传逻辑
@@ -428,6 +446,8 @@ class ProgramUpload extends HTMLElement {
                 hasError = true;
             }
             if (hasError) return;
+            const uploadBtn = this.getElement('uploadBtn');
+            this._setUploadBusy(uploadBtn, true, '上传中...');
             const formData = new FormData();
             formData.append('file', file);
             formData.append('name', name);
@@ -445,8 +465,16 @@ class ProgramUpload extends HTMLElement {
             } catch (e) {
                 console.error('创建失败:', e);
                 if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('创建失败: ' + e.message, 'error');
+            } finally {
+                this._setUploadBusy(uploadBtn, false, '确认上传');
             }
         }
+    }
+
+    _setUploadBusy(button, busy, label) {
+        if (!button) return;
+        button.disabled = busy;
+        if (label) button.textContent = label;
     }
 }
 

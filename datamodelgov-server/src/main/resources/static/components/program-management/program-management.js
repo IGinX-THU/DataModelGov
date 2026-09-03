@@ -94,7 +94,9 @@ class ProgramManagement extends HTMLElement {
         const cfgApplyPresetBtn = this.shadowRoot.getElementById('cfgApplyPresetBtn');
         const cfgUploadScriptBtn = this.shadowRoot.getElementById('cfgUploadScriptBtn');
         const cfgUploadScriptInput = this.shadowRoot.getElementById('cfgUploadScriptInput');
+        const cfgExecutionType = this.shadowRoot.getElementById('cfgExecutionType');
 
+        if (cfgExecutionType) cfgExecutionType.addEventListener('change', () => this.updateExecutionFields());
         if (configCloseBtn) configCloseBtn.addEventListener('click', () => this.closeConfig());
         if (configCancelBtn) configCancelBtn.addEventListener('click', () => this.closeConfig());
         if (configSaveBtn) configSaveBtn.addEventListener('click', () => this.saveConfig());
@@ -172,7 +174,7 @@ class ProgramManagement extends HTMLElement {
         const c = config || {};
         const result = {
             programName: c.programName || (program && program.name) || '',
-            runtime: c.runtime || { preRunScript: '', simulinkModel: '', stopTime: 30, fixedStep: '', fixedStepBaseValue: null, fixedStepHint: '' },
+            runtime: c.runtime || { executionType: 'simulinkRealtime', preRunScript: '', simulinkModel: '', stopTime: 30, fixedStep: '', fixedStepBaseValue: null, fixedStepHint: '' },
             parameters: c.parameters || [],
             derivedVars: c.derivedVars || [],
             signals: c.signals || [],
@@ -395,9 +397,39 @@ class ProgramManagement extends HTMLElement {
         this.editingConfig = null;
     }
 
+    updateExecutionFields() {
+        const executionType = this.shadowRoot.getElementById('cfgExecutionType')?.value || 'simulinkRealtime';
+        const workflow = executionType === 'matlabWorkflow';
+        const workingDirectoryRow = this.shadowRoot.getElementById('cfgWorkingDirectoryRow');
+        if (workingDirectoryRow) workingDirectoryRow.style.display = workflow ? '' : 'none';
+        // 页面模板仅 simulinkRealtime 可见
+        const templateGroup = this.shadowRoot.getElementById('cfgTemplateGroup');
+        if (templateGroup) templateGroup.style.display = workflow ? 'none' : 'inline-flex';
+        // 左列信号采集脚本区仅 simulinkRealtime 可见
+        const scriptColumn = this.shadowRoot.getElementById('cfgScriptColumn');
+        if (scriptColumn) scriptColumn.style.display = workflow ? 'none' : 'flex';
+        // 运行配置标题随类型变化
+        const runtimeTitle = this.shadowRoot.getElementById('cfgRuntimeTitle');
+        if (runtimeTitle) runtimeTitle.textContent = workflow ? '工作流配置' : '运行配置';
+        const simulinkFieldIds = [
+            'cfgPreRunScript', 'cfgSkipPreRunOnReuse', 'cfgPrewarm', 'cfgSimulinkModel',
+            'cfgSimulinkModels', 'cfgStopTime', 'cfgFixedStep', 'cfgFixedStepBaseValue', 'cfgFixedStepHint'
+        ];
+        simulinkFieldIds.forEach(id => {
+            const row = this.shadowRoot.getElementById(id)?.closest('.form-row');
+            if (row) row.style.display = workflow ? 'none' : '';
+        });
+        ['paramConfigList', 'signalConfigList'].forEach(id => {
+            const section = this.shadowRoot.getElementById(id)?.closest('.config-section');
+            if (section) section.style.display = workflow ? 'none' : '';
+        });
+    }
+
     renderConfigForm(config) {
         const rt = config.runtime || {};
         const set = (id, v) => { const el = this.shadowRoot.getElementById(id); if (el) el.value = v != null ? v : ''; };
+        set('cfgExecutionType', rt.executionType || 'simulinkRealtime');
+        set('cfgWorkingDirectory', rt.workingDirectory || '');
         set('cfgPreRunScript', rt.preRunScript);
         const skipPreRunEl = this.shadowRoot.getElementById('cfgSkipPreRunOnReuse');
         if (skipPreRunEl) skipPreRunEl.checked = rt.skipPreRunOnReuse !== false;
@@ -423,6 +455,7 @@ class ProgramManagement extends HTMLElement {
         this.renderParamRows(config.parameters || []);
         this.renderSignalRows(config.signals || []);
         this.renderSectionRows(config.ui && config.ui.sections || []);
+        this.updateExecutionFields();
         const raw = this.shadowRoot.getElementById('cfgRawJson');
         if (raw) raw.value = JSON.stringify(config, null, 2);
     }
@@ -535,7 +568,12 @@ class ProgramManagement extends HTMLElement {
         }
         const val = (id) => this.shadowRoot.getElementById(id)?.value || '';
         const num = (id, dflt) => { const v = parseFloat(val(id)); return isNaN(v) ? dflt : v; };
-        const runtime = {
+        const executionType = val('cfgExecutionType') || 'simulinkRealtime';
+        const runtime = executionType === 'matlabWorkflow' ? {
+            executionType,
+            workingDirectory: val('cfgWorkingDirectory')
+        } : {
+            executionType,
             preRunScript: val('cfgPreRunScript'),
             skipPreRunOnReuse: this.shadowRoot.getElementById('cfgSkipPreRunOnReuse')?.checked === true,
             prewarm: this.shadowRoot.getElementById('cfgPrewarm')?.checked === true,
@@ -677,17 +715,20 @@ class ProgramManagement extends HTMLElement {
         else delete config.template;
         try {
             const pn = this.configProjectName || this.getProjectName();
-            // 1. 先保存 setupScript，避免配置保存触发预热后读取到旧脚本
-            const scriptEl = this.shadowRoot.getElementById('cfgSetupScript');
-            if (scriptEl) {
-                const scriptUrl = window.AppConfig.getApiUrl('program', 'setup-script') + '?name=' + encodeURIComponent(this.configProgramName) + '&version=' + encodeURIComponent(this.configProgramVersion) + (pn ? '&projectName=' + encodeURIComponent(pn) : '');
-                const scriptResult = await window.AppConfig.request(scriptUrl, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'text/plain' },
-                    body: scriptEl.value
-                });
-                if (!(scriptResult && (scriptResult.success || scriptResult.code === 200))) {
-                    throw new Error(scriptResult && (scriptResult.message || scriptResult.msg) || '脚本保存失败');
+            // 1. 先保存 setupScript，避免配置保存触发预热后读取到旧脚本（仅 simulinkRealtime 需要）
+            const executionType = (config.runtime && config.runtime.executionType) || 'simulinkRealtime';
+            if (executionType === 'simulinkRealtime') {
+                const scriptEl = this.shadowRoot.getElementById('cfgSetupScript');
+                if (scriptEl && scriptEl.value) {
+                    const scriptUrl = window.AppConfig.getApiUrl('program', 'setup-script') + '?name=' + encodeURIComponent(this.configProgramName) + '&version=' + encodeURIComponent(this.configProgramVersion) + (pn ? '&projectName=' + encodeURIComponent(pn) : '');
+                    const scriptResult = await window.AppConfig.request(scriptUrl, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'text/plain' },
+                        body: scriptEl.value
+                    });
+                    if (!(scriptResult && (scriptResult.success || scriptResult.code === 200))) {
+                        throw new Error(scriptResult && (scriptResult.message || scriptResult.msg) || '脚本保存失败');
+                    }
                 }
             }
             // 2. 最后保存配置 JSON；后端在配置落库后触发预热
@@ -722,6 +763,7 @@ class ProgramManagement extends HTMLElement {
             this.total = (countResult && countResult.data) || 0;
             this.renderTable();
             this.renderPagination();
+            if (window.loadProjectTree) window.loadProjectTree();
         } catch (e) {
             console.error('加载程序列表失败:', e);
             if (window.CommonUtils && window.CommonUtils.showToast) {
@@ -946,16 +988,20 @@ class ProgramManagement extends HTMLElement {
         }
     }
 
-    _doShowProgramRun(name, version) {
-        const programRun = document.getElementById('programRun');
-        if (!programRun) {
-            console.error('未找到 program-run 组件');
-            return;
+    async _doShowProgramRun(name, version) {
+        try {
+            if (!window.ProgramLauncher) throw new Error('程序启动器未加载');
+            await window.ProgramLauncher.open({
+                name,
+                version,
+                projectName: this.getProjectName()
+            });
+        } catch (e) {
+            console.error('打开程序失败:', e);
+            if (window.CommonUtils && window.CommonUtils.showToast) {
+                window.CommonUtils.showToast('打开程序失败: ' + e.message, 'error');
+            }
         }
-        programRun.setAttribute('data-name', name);
-        programRun.setAttribute('data-version', version);
-        if (window.showComponent) window.showComponent('programRun');
-        if (programRun.loadProgramFiles) programRun.loadProgramFiles(name, version);
     }
 
     switchProject(projectName) {
@@ -1012,6 +1058,7 @@ class ProgramManagement extends HTMLElement {
             if (result && (result.success || result.code === 200)) {
                 if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('删除成功', 'success');
                 this.loadPrograms();
+                if (window.loadProjectTree) window.loadProjectTree();
             } else {
                 throw new Error(result.message || '删除失败');
             }

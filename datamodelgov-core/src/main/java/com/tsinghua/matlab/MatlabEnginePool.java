@@ -24,6 +24,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class MatlabEnginePool {
 
     private final int maxEngines;
+    private final String matlabHome;
     private final LinkedBlockingQueue<MatlabEngine> idle = new LinkedBlockingQueue<>();
     /** key=引擎，value="模型名|固定步长" 组合键，用于 Fast Restart 匹配 */
     private final Map<MatlabEngine, String> loadedModels = new ConcurrentHashMap<>();
@@ -36,13 +37,18 @@ public class MatlabEnginePool {
     /**
      * @param maxEngines 最大并发引擎数（含常驻引擎）
      */
-    public MatlabEnginePool(int maxEngines) {
+    public MatlabEnginePool(int maxEngines, String matlabHome) {
         this.maxEngines = Math.max(1, maxEngines);
+        this.matlabHome = matlabHome;
+    }
+
+    public MatlabEnginePool(int maxEngines) {
+        this(maxEngines, null);
     }
 
     /** 默认构造：1 个引擎（兼容旧调用） */
     public MatlabEnginePool() {
-        this(1);
+        this(1, null);
     }
 
     /**
@@ -60,7 +66,7 @@ public class MatlabEnginePool {
         Thread t = new Thread(() -> {
             try {
                 log.info("[MATLAB-POOL] 正在启动常驻 MATLAB 引擎 (1/{})...", maxEngines);
-                MatlabNativeLibrary.prepare(null);
+                MatlabNativeLibrary.prepare(matlabHome);
                 MatlabNativeLibrary.installHeadlessSuppressor();
                 long t0 = System.currentTimeMillis();
                 MatlabEngine eng = MatlabEngine.startMatlab();
