@@ -17,15 +17,32 @@ end
 % 转为 MATLAB table，供 UQ-B 步骤12 使用
 for i = 1:argumentCount
     if isstruct(arguments{i}) && isfield(arguments{i}, 'userCfg') ...
-            && isstruct(arguments{i}.userCfg) ...
-            && isfield(arguments{i}.userCfg, 'trainingNpReferenceTable') ...
-            && isstruct(arguments{i}.userCfg.trainingNpReferenceTable)
-        tbl_struct = arguments{i}.userCfg.trainingNpReferenceTable;
-        try
-            arguments{i}.userCfg.trainingNpReferenceTable = ...
-                struct2table(tbl_struct);
-        catch
-            % 转换失败保持原样，让 MATLAB 包代码自行处理
+            && isstruct(arguments{i}.userCfg)
+        % struct -> table 转换
+        if isfield(arguments{i}.userCfg, 'trainingNpReferenceTable') ...
+                && isstruct(arguments{i}.userCfg.trainingNpReferenceTable)
+            tbl_struct = arguments{i}.userCfg.trainingNpReferenceTable;
+            try
+                arguments{i}.userCfg.trainingNpReferenceTable = ...
+                    struct2table(tbl_struct);
+            catch
+                % 转换失败保持原样，让 MATLAB 包代码自行处理
+            end
+        end
+        % 如果仍没有 trainingNpReferenceTable，从训练数据 Excel 自动构造
+        if ~isfield(arguments{i}.userCfg, 'trainingNpReferenceTable') ...
+                || isempty(arguments{i}.userCfg.trainingNpReferenceTable)
+            try
+                tbl = local_build_training_np_reference();
+                if ~isempty(tbl)
+                    arguments{i}.userCfg.trainingNpReferenceTable = tbl;
+                    fprintf('[DMG] 已自动构造 trainingNpReferenceTable (%d 行)\n', ...
+                        height(tbl));
+                end
+            catch ex
+                fprintf('[DMG] 自动构造 trainingNpReferenceTable 失败: %s\n', ...
+                    ex.message);
+            end
         end
     end
 end
@@ -205,5 +222,46 @@ if fid >= 0
     fprintf(fid, '%s', polyfillCode);
     fclose(fid);
     rehash;
+end
+end
+
+function tbl = local_build_training_np_reference()
+% 从当前工作目录下的 TestData 或上级 datasets 目录读取训练数据，
+% 构造 trainingNpReferenceTable（point_id + Np_ref_rpm）。
+% MATLAB 包代码用 mfilename('fullpath') 定位程序根目录，pwd 就是程序根目录。
+tbl = [];
+% 方案1：pwd/TestData 下的默认训练数据文件
+trainingFile = fullfile(pwd, 'TestData', 'steady_bench_2p4_training_means.xlsx');
+if ~isfile(trainingFile)
+    % 方案2：向上查找 datasets 目录
+    % pwd 是 source/xxx/yyy/SteadyModelAdaptFromTestV1
+    % workspace 是 source/xxx/yyy 的上两级
+    candidate = pwd;
+    for depth = 1:6
+        candidate = fileparts(candidate);
+        dsDir = fullfile(candidate, 'datasets');
+        if isfolder(dsDir)
+            files = dir(fullfile(dsDir, '*training*.xlsx'));
+            if ~isempty(files)
+                trainingFile = fullfile(dsDir, files(1).name);
+                break;
+            end
+        end
+    end
+end
+if ~isfile(trainingFile)
+    return;
+end
+try
+    data = readtable(trainingFile, 'FileType', 'spreadsheet', 'TextType', 'string');
+    if ~ismember('point_id', data.Properties.VariableNames) ...
+            || ~ismember('Np_mean', data.Properties.VariableNames)
+        return;
+    end
+    pointId = string(data.point_id);
+    npRef = data.Np_mean;
+    tbl = table(pointId, npRef, 'VariableNames', {'point_id', 'Np_ref_rpm'});
+catch
+    tbl = [];
 end
 end
