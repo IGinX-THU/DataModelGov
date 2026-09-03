@@ -937,7 +937,34 @@ public class ProgramWorkflowService {
         for (Map<String, Object> t : result) unique.putIfAbsent(String.valueOf(t.get("id")), t);
         result = new ArrayList<>(unique.values());
         result.sort((a, b) -> Long.compare(longValue(b.get("createdAt")), longValue(a.get("createdAt"))));
+        // 为运行中的任务补充 task-progress.json 中的 phase/progressMessage，
+        // 使前端刷新页面后能立即恢复进度条和预计剩余时间，而不必等第一次 poll
+        enrichRunningTasksWithProgress(result, workspaceId, name, version, project);
         return result;
+    }
+
+    /** 仅为运行中（RUNNING/READY）的任务读取 task-progress.json，填充 phase 和 progressMessage */
+    private void enrichRunningTasksWithProgress(List<Map<String, Object>> tasks,
+                                                 String workspaceId, String name, String version, String project) {
+        Path workspacePath = null;
+        for (Map<String, Object> task : tasks) {
+            String status = String.valueOf(task.getOrDefault("status", ""));
+            if (!TaskStatus.WORKFLOW_RUNNING.getValue().equals(status) && !TaskStatus.READY.getValue().equals(status)) {
+                continue;
+            }
+            try {
+                if (workspacePath == null) {
+                    workspacePath = requireWorkspace(workspaceId, name, version, project);
+                }
+                Path taskDir = child(child(workspacePath, "tasks"), String.valueOf(task.get("id")));
+                Path progressFile = child(taskDir, "task-progress.json");
+                if (Files.isRegularFile(progressFile)) {
+                    Map<String, Object> progress = readMap(progressFile);
+                    if (progress.get("phase") != null) task.put("phase", progress.get("phase"));
+                    if (progress.get("message") != null) task.put("progressMessage", progress.get("message"));
+                }
+            } catch (Exception ignored) {}
+        }
     }
 
     public Map<String, Object> getTask(String taskId, String name, String version, String projectName) throws Exception {

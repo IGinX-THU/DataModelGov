@@ -242,10 +242,10 @@ class SteadyModelAdaptV1 {
       altitude: 0,
       tamb: 288.15,
       mach: 0,
-      wf: 0.12,
-      mkp: 1500,
-      mkg: 200,
-      npInitial: ''
+      wf: 0.151914044493225,
+      mkp: 999.2787955783252,
+      mkg: 0,
+      npInitial: 20800
     };
   }
 
@@ -355,6 +355,7 @@ class SteadyModelAdaptV1 {
         // 先刷新 workspace 状态
         const ws = await this.ctx.http.workspace.request(this.workspace.id, { method: 'GET' });
         if (ws) this.workspace = ws;
+        this._restorePredictionPreference();
 
         const wsStatus = (this.workspace && this.workspace.status) || '';
         // 如果 workspace 还在创建/初始化中，启动轮询，不加载详情
@@ -405,6 +406,13 @@ class SteadyModelAdaptV1 {
             this.activeUqMethod = 'B';
           } else if (uqA) {
             this.activeUqMethod = 'A';
+          }
+          // 从最新运行中 UQ 任务的 progressMessage 恢复 _uqStep，
+          // 避免刷新后进度条从 0 开始（_smcReplicate 无法从单条日志重建，但 _uqStep 可以）
+          const uqRunning = [uqB, uqA].find(t => t && (t.status === TASK_STATUS.RUNNING || t.status === TASK_STATUS.READY));
+          if (uqRunning) {
+            const stepMatch = (uqRunning.progressMessage || '').match(/\[2\.4UQ\.(\d+)\]/);
+            if (stepMatch) this._uqStep = parseInt(stepMatch[1], 10);
           }
         }
         if (this.workspace.jobName) this.projectForm.projectName = this.workspace.jobName;
@@ -1946,7 +1954,10 @@ class SteadyModelAdaptV1 {
     const fill = el('div', 'progress-fill');
     // 根据 progressMessage 中的 beta 值 + UQ 步骤号估算进度
     // UQ 10 步：步骤1-5=0-25%, 步骤6先导SMC=25-55%(3组replicate), 步骤7正式SMC=55-80%, 步骤8诊断=80-90%, 步骤9-10预测=90-100%
+    // phasePct 是各阶段完成时的进度（用于已完成阶段的回退）
+    // phaseStartPct 是各阶段开始时的进度（用于运行中任务的最低进度保障，避免刷新后进度后退）
     const phasePct = { a: 25, b: 70, c: 90, d: 100, completed: 100 };
+    const phaseStartPct = { a: 0, b: 25, c: 70, d: 90, completed: 100 };
     const phase = ((uqTask?.phase || '').toLowerCase()).trim();
     const totalReplicates = this.uqConfig?.pilotReplicateCount || 3;
     let pct = 0;
@@ -1990,10 +2001,16 @@ class SteadyModelAdaptV1 {
         // 有步骤号但没有 beta（非 SMC 阶段）
         const stepPct = { 1: 3, 2: 8, 3: 12, 4: 18, 5: 22, 6: 25, 7: 55, 8: 80, 9: 90, 10: 95 };
         pct = stepPct[uqStep] || 5;
-      } else if (phasePct[phase] != null) {
-        pct = phasePct[phase];
+      } else if (phaseStartPct[phase] != null) {
+        // 无步骤号时用阶段起始进度作为保底，而不是阶段完成进度
+        pct = phaseStartPct[phase];
       } else {
         pct = 5;
+      }
+      // 刷新后 _smcReplicate 归零会导致步骤6进度后退，用阶段起始进度兜底
+      const phaseStart = phaseStartPct[phase];
+      if (phaseStart != null && pct < phaseStart) {
+        pct = phaseStart;
       }
     }
     fill.style.width = pct + '%';
@@ -2013,7 +2030,7 @@ class SteadyModelAdaptV1 {
     if (uqResult) {
       remainingText = this._formatDuration(0);
     } else if (isRunning) {
-      if (uqTask?.startedAt && pct > 5) {
+      if (uqTask?.startedAt && pct > 1) {
         const elapsed = (Date.now() - Number(uqTask.startedAt)) / 1000;
         const total = elapsed / (pct / 100);
         remainingText = this._formatDuration(Math.max(0, total - elapsed));
@@ -2472,16 +2489,19 @@ class SteadyModelAdaptV1 {
     );
     const predSummary = predResult?.resultSummary || predResult || {};
     const predTable = predSummary.predictionTable;
-    // predTable.rows 可能是数组（多行）或单个对象（rowCount=1 时 MATLAB struct 不是数组）
-    let predRow0 = null;
-    if (predTable) {
-      if (Array.isArray(predTable.rows) && predTable.rows.length > 0) {
-        predRow0 = predTable.rows[0];
-      } else if (predTable.rows && typeof predTable.rows === 'object' && !Array.isArray(predTable.rows)) {
-        predRow0 = predTable.rows;
-      }
-    }
-    const hasPosterior = predSummary.posteriorPredictionPerformed || (predSummary.posteriorPrediction && predSummary.posteriorPrediction.intervalTable);
+    const firstTableRow = table => {
+      if (!table || !table.rows) return null;
+      if (Array.isArray(table.rows)) return table.rows[0] || null;
+      return typeof table.rows === 'object' ? table.rows : null;
+    };
+    const predRow0 = firstTableRow(predTable);
+    const baselineRow = firstTableRow(predSummary.baseline?.prediction);
+    const correctedRow = firstTableRow(predSummary.corrected?.prediction);
+    const selectedPredictionRow = this.activePredictionModel === 'baseline'
+      ? baselineRow
+      : (correctedRow || predRow0);
+    const hasPosteriorResult = predSummary.posteriorPredictionPerformed || (predSummary.posteriorPrediction && predSummary.posteriorPrediction.intervalTable);
+    const hasPosterior = this.activePredictionModel === 'corrected' && hasPosteriorResult;
     const intervalTable = hasPosterior ? (predSummary.posteriorPrediction?.intervalTable) : null;
     let intervalRows = [];
     if (intervalTable) {
@@ -2492,12 +2512,12 @@ class SteadyModelAdaptV1 {
       }
     }
 
-    // 预测输出表：与效果图对齐，5 列：输出 / 稳态辨识模型 / 区间下界 / 区间上界 / 状态
-    const detHeaders = ['输出', '稳态辨识模型', '区间下界', '区间上界', '状态'];
+    // 预测输出表：与效果图对齐，5 列：输出 / 当前模型 / 区间下界 / 区间上界 / 状态
+    const outputModelLabel = this.activePredictionModel === 'baseline' ? '零修正基准模型' : '稳态辨识模型';
+    const detHeaders = ['输出', outputModelLabel, '区间下界', '区间上界', '状态'];
     const detRows = OUTPUT_VARS.map(o => {
-      const colMap = { 'Np': 'corrected_Np_rpm', 'Ng': 'corrected_Ng_rpm', 'Pt3': 'corrected_Pt3_Pa', 'Tt3': 'corrected_Tt3_K', 'Tt45': 'corrected_Tt45_K', 'Pt45': 'corrected_Pt45_Pa' };
-      const col = colMap[o];
-      const val = predRow0 ? predRow0[col] : null;
+      const correctedColMap = { 'Np': 'corrected_Np_rpm', 'Ng': 'corrected_Ng_rpm', 'Pt3': 'corrected_Pt3_Pa', 'Tt3': 'corrected_Tt3_K', 'Tt45': 'corrected_Tt45_K', 'Pt45': 'corrected_Pt45_Pa' };
+      const val = selectedPredictionRow?.[o] ?? (this.activePredictionModel === 'corrected' && predRow0 ? predRow0[correctedColMap[o]] : null);
       const valStr = val != null ? Number(val).toFixed(2) : '运行后显示';
       let lower = '运行后显示';
       let upper = '运行后显示';
@@ -2528,8 +2548,8 @@ class SteadyModelAdaptV1 {
     c3.body.append(this.createTable(detHeaders, detRows));
 
     // 共同工作最大残差和收敛状态（文档第 10 节：页面首先显示确定性输出、最大残差和收敛状态）
-    const maxResidual = predRow0 ? predRow0.max_model_residual : null;
-    const valid = predRow0 ? predRow0.valid : null;
+    const maxResidual = selectedPredictionRow?.max_model_residual ?? (this.activePredictionModel === 'corrected' ? predRow0?.max_model_residual : null);
+    const valid = selectedPredictionRow?.valid ?? (this.activePredictionModel === 'corrected' ? predRow0?.valid : null);
     const fmtResidual = (v) => {
       const n = Number(v);
       if (!isFinite(n)) return '—';
@@ -2561,8 +2581,8 @@ class SteadyModelAdaptV1 {
           'Pt3': ['corrected_Pt3_Pa','corrected_Pt3','Pt3'], 'Tt3': ['corrected_Tt3_K','corrected_Tt3','Tt3'],
           'Tt45': ['corrected_Tt45_K','corrected_Tt45','Tt45'], 'Pt45': ['corrected_Pt45_Pa','corrected_Pt45','Pt45'] };
         const candidates = fieldMap[o] || [o];
-        let detVal = null;
-        if (predRow0) {
+        let detVal = selectedPredictionRow?.[o] ?? null;
+        if (detVal == null && this.activePredictionModel === 'corrected' && predRow0) {
           for (const c of candidates) {
             if (predRow0[c] != null) { detVal = predRow0[c]; break; }
           }
@@ -3882,6 +3902,33 @@ class SteadyModelAdaptV1 {
     });
   }
 
+  _predictionPreferenceKey() {
+    return this.workspace?.id ? `steady-model-prediction:${this.workspace.id}` : null;
+  }
+
+  _savePredictionPreference() {
+    const key = this._predictionPreferenceKey();
+    if (!key) return;
+    try {
+      localStorage.setItem(key, JSON.stringify({
+        model: this.activePredictionModel,
+        posterior: this._predictionPosterior
+      }));
+    } catch (_) {}
+  }
+
+  _restorePredictionPreference() {
+    const key = this._predictionPreferenceKey();
+    if (!key) return;
+    try {
+      const saved = JSON.parse(localStorage.getItem(key) || '{}');
+      if (saved.model === 'baseline' || saved.model === 'corrected') this.activePredictionModel = saved.model;
+      if (saved.posterior === 'none' || saved.posterior === 'A' || saved.posterior === 'B') this._predictionPosterior = saved.posterior;
+      if (this.activePredictionModel === 'baseline') this._predictionPosterior = 'none';
+      if (this._predictionPosterior !== 'none') this.activePredictionModel = 'corrected';
+    } catch (_) {}
+  }
+
   _showPredictionModelModal() {
     const identTask = this.latestIdentifyTask();
     const identDone = identTask?.status === TASK_STATUS.COMPLETED;
@@ -3940,7 +3987,7 @@ class SteadyModelAdaptV1 {
     posteriorTitle.textContent = '后验区间来源（可选）';
     body.append(posteriorTitle);
 
-    const postDesc = el('p', 'card-subtitle', '选择后验来源后，预测同时输出95%置信区间。不选则只输出确定性预测。');
+    const postDesc = el('p', 'card-subtitle', '后验区间仅适用于稳态辨识模型；选择方法 A/B 时会自动切换到稳态辨识模型。零修正基准模型仅支持确定性预测。');
     postDesc.style.cssText = 'margin:0 0 8px;font-size:11px;color:var(--muted);';
     body.append(postDesc);
 
@@ -3972,6 +4019,30 @@ class SteadyModelAdaptV1 {
       body.append(row);
     });
 
+    const modelRadios = Array.from(body.querySelectorAll('input[name="pred-model"]'));
+    const posteriorRadios = Array.from(body.querySelectorAll('input[name="pred-posterior"]'));
+    const syncPosteriorAvailability = () => {
+      const selectedModel = body.querySelector('input[name="pred-model"]:checked')?.value;
+      posteriorRadios.forEach(radio => {
+        if (radio.value === 'none') return;
+        const available = postOpts.find(opt => opt.value === radio.value)?.enabled === true;
+        radio.disabled = selectedModel === 'baseline' || !available;
+      });
+      if (selectedModel === 'baseline') {
+        const none = posteriorRadios.find(radio => radio.value === 'none');
+        if (none) none.checked = true;
+      }
+    };
+    modelRadios.forEach(radio => radio.addEventListener('change', syncPosteriorAvailability));
+    posteriorRadios.forEach(radio => radio.addEventListener('change', () => {
+      if (radio.checked && radio.value !== 'none') {
+        const corrected = modelRadios.find(item => item.value === 'corrected');
+        if (corrected && !corrected.disabled) corrected.checked = true;
+        syncPosteriorAvailability();
+      }
+    }));
+    syncPosteriorAvailability();
+
     const btnRow = el('div', '');
     btnRow.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;margin-top:12px;';
     const cancelBtn = button('取消', 'btn-card', () => overlay.remove());
@@ -3980,6 +4051,9 @@ class SteadyModelAdaptV1 {
       const postSelected = body.querySelector('input[name="pred-posterior"]:checked');
       if (modelSelected) this.activePredictionModel = modelSelected.value;
       if (postSelected) this._predictionPosterior = postSelected.value;
+      if (this.activePredictionModel === 'baseline') this._predictionPosterior = 'none';
+      if (this._predictionPosterior !== 'none') this.activePredictionModel = 'corrected';
+      this._savePredictionPreference();
       const modelLabel = this.activePredictionModel === 'baseline' ? '零修正基准模型' : '稳态辨识模型';
       const postLabel = this._predictionPosterior === 'none' ? '仅确定性预测' : `方法${this._predictionPosterior}后验区间`;
       this.ctx.log(`已选择预测模型：${modelLabel}，${postLabel}`);
@@ -4093,7 +4167,7 @@ class SteadyModelAdaptV1 {
             modelInput,
             estimationResultFile: '',
             posteriorOptions: this._predictionPosterior && this._predictionPosterior !== 'none'
-              ? { method: this._predictionPosterior, runId: 'latest' }
+              ? { method: this._predictionPosterior }
               : null
           }
         });

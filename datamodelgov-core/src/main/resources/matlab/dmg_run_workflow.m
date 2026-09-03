@@ -53,6 +53,10 @@ if strncmp(entryPoint, 'Start_SteadyModelUQ_', ...
         numel('Start_SteadyModelUQ_'))
     local_validate_uq_cache_files();
 end
+if strncmp(entryPoint, 'Start_SteadyModelPredict_', ...
+        numel('Start_SteadyModelPredict_'))
+    local_rebase_uq_manifests();
+end
 % R2019b 兼容：exportgraphics 是 R2020a 才有的函数。
 % 在工作目录放一个 polyfill 文件，用 print 替代，避免画图失败导致任务 FAILED
 local_install_exportgraphics_polyfill();
@@ -229,6 +233,91 @@ for i = 1:numel(files)
         fprintf('[DMG] 已隔离损坏的UQ缓存：%s\n', file);
     end
 end
+end
+
+function local_rebase_uq_manifests()
+programRoot = pwd;
+projectRoot = fileparts(programRoot);
+local_rebase_uq_manifest_namespace(programRoot, projectRoot, ...
+    'steady_model_uq_v2');
+local_rebase_uq_manifest_namespace(programRoot, projectRoot, ...
+    'steady_model_uq_method_b');
+end
+
+function local_rebase_uq_manifest_namespace(programRoot, projectRoot, namespace)
+middleRoot = fullfile(programRoot, 'MiddleData', namespace);
+latestFile = fullfile(middleRoot, 'latest_manifest.mat');
+if exist(latestFile, 'file') ~= 2
+    return;
+end
+try
+    loaded = load(latestFile, 'manifest');
+    if ~isfield(loaded, 'manifest') || ~isstruct(loaded.manifest) || ...
+            ~isfield(loaded.manifest, 'runId')
+        return;
+    end
+    manifest = loaded.manifest;
+    runDir = fullfile(middleRoot, char(manifest.runId));
+    if exist(runDir, 'dir') ~= 7
+        return;
+    end
+    manifest.programRoot = programRoot;
+    manifest.runDir = runDir;
+    manifest.reportDir = fullfile(projectRoot, 'report_outputs', ...
+        namespace, char(manifest.runId));
+    if isfield(manifest, 'stepFiles')
+        for i = 1:numel(manifest.stepFiles)
+            if ~isempty(manifest.stepFiles{i})
+                [~, name, ext] = fileparts(char(manifest.stepFiles{i}));
+                manifest.stepFiles{i} = fullfile(runDir, [name ext]);
+            end
+        end
+    end
+    local_rebase_uq_contract(manifest, programRoot, middleRoot);
+    runManifestFile = fullfile(runDir, 'manifest.mat');
+    save(runManifestFile, 'manifest');
+    save(latestFile, 'manifest');
+    fprintf('[DMG] 已更新UQ运行清单路径：%s\n', char(manifest.runId));
+catch ex
+    fprintf('[DMG] 更新UQ运行清单路径失败：%s\n', ex.message);
+end
+end
+
+function local_rebase_uq_contract(manifest, programRoot, middleRoot)
+if ~isfield(manifest, 'stepFiles') || isempty(manifest.stepFiles) || ...
+        isempty(manifest.stepFiles{1}) || exist(manifest.stepFiles{1}, 'file') ~= 2
+    return;
+end
+loaded = load(manifest.stepFiles{1}, 'payload');
+if ~isfield(loaded, 'payload') || ~isstruct(loaded.payload) || ...
+        ~isfield(loaded.payload, 'contract')
+    return;
+end
+payload = loaded.payload;
+contract = payload.contract;
+if isfield(contract, 'deterministicResultFile')
+    [~, name, ext] = fileparts(char(contract.deterministicResultFile));
+    contract.deterministicResultFile = fullfile(programRoot, 'MiddleData', [name ext]);
+end
+if isfield(contract, 'cacheFile')
+    [~, name, ext] = fileparts(char(contract.cacheFile));
+    contract.cacheFile = fullfile(middleRoot, [name ext]);
+end
+if isfield(contract, 'testFile')
+    [~, name, ext] = fileparts(char(contract.testFile));
+    contract.testFile = fullfile(programRoot, 'TestData', [name ext]);
+end
+if isfield(contract, 'trainingFile')
+    marker = [filesep 'source' filesep];
+    markerAt = strfind(lower(programRoot), lower(marker));
+    if ~isempty(markerAt)
+        workspaceRoot = programRoot(1:markerAt(1) - 1);
+        [~, name, ext] = fileparts(char(contract.trainingFile));
+        contract.trainingFile = fullfile(workspaceRoot, 'datasets', [name ext]);
+    end
+end
+payload.contract = contract;
+save(manifest.stepFiles{1}, 'payload', '-v7.3');
 end
 
 function local_install_exportgraphics_polyfill()
