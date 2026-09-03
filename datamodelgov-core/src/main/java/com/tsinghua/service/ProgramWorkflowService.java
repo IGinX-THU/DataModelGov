@@ -878,25 +878,16 @@ public class ProgramWorkflowService {
         Object[] arguments = resolveArguments(workspace, workspaceId, config, action, request.get("inputs"));
         // UQ-B 步骤12 需要 trainingNpReferenceTable（训练工况 Np 设定值参考表）。
         // 如果前端没传，从工作区初始化时保存的测量数据中自动构造。
-        log.info("UQ注入检查: actionKey={}, stage={}, action.stage={}, arguments.length={}",
-                action.getKey(), action.getStage(), value(action.getStage()), arguments == null ? 0 : arguments.length);
         if ("uq".equalsIgnoreCase(value(action.getStage())) && arguments != null) {
             for (int i = 0; i < arguments.length; i++) {
-                log.info("UQ注入检查: arguments[{}].type={}", i, arguments[i] == null ? "null" : arguments[i].getClass().getName());
                 if (arguments[i] instanceof Map) {
-                    Map<?, ?> arg = (Map<?, ?>) arguments[i];
-                    Object userCfgObj = arg.get("userCfg");
-                    log.info("UQ注入检查: userCfg.type={}", userCfgObj == null ? "null" : userCfgObj.getClass().getName());
-                    if (userCfgObj instanceof Map) {
-                        Map<String, Object> userCfg = (Map<String, Object>) userCfgObj;
-                        if (!userCfg.containsKey("trainingNpReferenceTable")) {
-                            Map<String, Object> npRef = buildTrainingNpReference(workspaceId);
-                            log.info("UQ注入检查: npRef={}", npRef == null ? "null" : ("rows=" + ((List<?>) npRef.get("point_id")).size()));
-                            if (npRef != null) {
-                                userCfg.put("trainingNpReferenceTable", npRef);
-                            }
-                        } else {
-                            log.info("UQ注入检查: trainingNpReferenceTable 已存在");
+                    Map<String, Object> userCfg = (Map<String, Object>) arguments[i];
+                    if (!userCfg.containsKey("trainingNpReferenceTable")) {
+                        Map<String, Object> npRef = buildTrainingNpReference(workspaceId);
+                        if (npRef != null) {
+                            userCfg.put("trainingNpReferenceTable", npRef);
+                            log.info("已注入 trainingNpReferenceTable: actionKey={}, rows={}",
+                                    action.getKey(), ((List<?>) npRef.get("point_id")).size());
                         }
                     }
                 }
@@ -906,10 +897,6 @@ public class ProgramWorkflowService {
         String taskId = String.valueOf(taskTimestamp);
         Path taskDir = child(child(workspace, "tasks"), taskId);
         Files.createDirectories(taskDir);
-        // 清理 UQ 缓存文件，避免上次运行留下的损坏缓存导致 load 失败
-        if ("uq".equalsIgnoreCase(value(action.getStage()))) {
-            cleanUqCacheFiles(workspace);
-        }
         WorkflowTaskEntity taskEntity = new WorkflowTaskEntity();
         taskEntity.setTimestamp(taskTimestamp);
         taskEntity.setTaskId(taskId);
@@ -1442,27 +1429,6 @@ public class ProgramWorkflowService {
             }
         }
         return arguments;
-    }
-
-    /** 清理 UQ 缓存文件，避免上次运行留下的损坏缓存导致 load 失败 */
-    private void cleanUqCacheFiles(Path workspace) {
-        try {
-            Path source = child(workspace, "source");
-            try (Stream<Path> walk = Files.walk(source)) {
-                walk.filter(Files::isRegularFile)
-                    .filter(p -> p.getFileName().toString().startsWith("exact_training_cache_"))
-                    .forEach(p -> {
-                        try {
-                            Files.delete(p);
-                            log.info("已清理 UQ 缓存文件: {}", p);
-                        } catch (IOException e) {
-                            log.warn("清理 UQ 缓存文件失败: {}", p, e);
-                        }
-                    });
-            }
-        } catch (Exception e) {
-            log.warn("扫描 UQ 缓存文件失败", e);
-        }
     }
 
     /**

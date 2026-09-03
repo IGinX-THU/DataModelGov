@@ -13,29 +13,27 @@ for i = 1:argumentCount
     end
     arguments{i} = request.(field);
 end
-% 平台适配：如果 userCfg.trainingNpReferenceTable 是 struct（从 JSON 解码），
-% 转为 MATLAB table，供 UQ-B 步骤12 使用
+% 平台适配：工作流 inputs 中的 userCfg 会直接成为当前参数。
 for i = 1:argumentCount
-    if isstruct(arguments{i}) && isfield(arguments{i}, 'userCfg') ...
-            && isstruct(arguments{i}.userCfg)
-        % struct -> table 转换
-        if isfield(arguments{i}.userCfg, 'trainingNpReferenceTable') ...
-                && isstruct(arguments{i}.userCfg.trainingNpReferenceTable)
-            tbl_struct = arguments{i}.userCfg.trainingNpReferenceTable;
+    if isstruct(arguments{i})
+        if isfield(arguments{i}, 'trainingNpReferenceTable') ...
+                && isstruct(arguments{i}.trainingNpReferenceTable)
+            ref = arguments{i}.trainingNpReferenceTable;
             try
-                arguments{i}.userCfg.trainingNpReferenceTable = ...
-                    struct2table(tbl_struct);
+                pointId = string(ref.point_id(:));
+                npRef = double(ref.Np_ref_rpm(:));
+                arguments{i}.trainingNpReferenceTable = table(pointId, npRef, ...
+                    'VariableNames', {'point_id', 'Np_ref_rpm'});
             catch
-                % 转换失败保持原样，让 MATLAB 包代码自行处理
+                arguments{i}.trainingNpReferenceTable = [];
             end
         end
-        % 如果仍没有 trainingNpReferenceTable，从训练数据 Excel 自动构造
-        if ~isfield(arguments{i}.userCfg, 'trainingNpReferenceTable') ...
-                || isempty(arguments{i}.userCfg.trainingNpReferenceTable)
+        if ~isfield(arguments{i}, 'trainingNpReferenceTable') ...
+                || isempty(arguments{i}.trainingNpReferenceTable)
             try
                 tbl = local_build_training_np_reference();
                 if ~isempty(tbl)
-                    arguments{i}.userCfg.trainingNpReferenceTable = tbl;
+                    arguments{i}.trainingNpReferenceTable = tbl;
                     fprintf('[DMG] 已自动构造 trainingNpReferenceTable (%d 行)\n', ...
                         height(tbl));
                 end
@@ -51,6 +49,10 @@ startedAt = datestr(now, 31);
 % loadlibrary 无法通过 PATH 找到 DLL 依赖。先用 Java System.load() 以绝对路径加载
 % GTESS.dll，使其进入进程地址空间，后续 loadlibrary("GTESS.dll") 即可直接命中。
 local_preload_gtess_dll();
+if strncmp(entryPoint, 'Start_SteadyModelUQ_', ...
+        numel('Start_SteadyModelUQ_'))
+    local_validate_uq_cache_files();
+end
 % R2019b 兼容：exportgraphics 是 R2020a 才有的函数。
 % 在工作目录放一个 polyfill 文件，用 print 替代，避免画图失败导致任务 FAILED
 local_install_exportgraphics_polyfill();
@@ -191,6 +193,41 @@ cleanup = onCleanup(@() fclose(fileId));
 count = fprintf(fileId, '%s', jsonencode(value));
 if count <= 0
     error('DMG:Workflow:ManifestWriteFailed', '工作流清单写入失败：%s。', path);
+end
+end
+
+function local_validate_uq_cache_files()
+files = dir(fullfile(pwd, 'MiddleData', '**', 'exact_training_cache_*.mat'));
+required = {'schemaVersion','contractHash','residualDimension','keys', ...
+    'theta','residual','valid','evaluationCount','updatedAt'};
+for i = 1:numel(files)
+    file = fullfile(files(i).folder, files(i).name);
+    validCache = false;
+    try
+        loaded = load(file, 'cache');
+        if isfield(loaded, 'cache') && isstruct(loaded.cache) ...
+                && isscalar(loaded.cache) ...
+                && all(isfield(loaded.cache, required))
+            cache = loaded.cache;
+            count = numel(cache.keys);
+            validCache = isnumeric(cache.theta) && isnumeric(cache.residual) ...
+                && size(cache.theta, 2) == count ...
+                && size(cache.residual, 2) == count ...
+                && size(cache.residual, 1) == cache.residualDimension ...
+                && numel(cache.valid) == count;
+        end
+    catch
+        validCache = false;
+    end
+    if ~validCache
+        quarantine = [file '.corrupt-' datestr(now, 'yyyymmddTHHMMSSFFF')];
+        [moved, message] = movefile(file, quarantine, 'f');
+        if ~moved
+            error('DMG:Workflow:CorruptUqCacheQuarantineFailed', ...
+                '检测到损坏的UQ缓存但无法隔离：%s；%s', file, message);
+        end
+        fprintf('[DMG] 已隔离损坏的UQ缓存：%s\n', file);
+    end
 end
 end
 
