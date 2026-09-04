@@ -774,9 +774,17 @@ class SteadyModelAdaptV1 {
     const programName = this.ctx.program && this.ctx.program.name || '稳态试车工况点模型修正V1';
     const pkgOptions = [{ value: '', label: '选择交付程序目录' }, programName];
     const pkgSelect = select(pkgOptions, this.projectForm.modelPackage || '');
-    pkgSelect.addEventListener('change', () => { this.projectForm.modelPackage = pkgSelect.value; });
+    pkgSelect.addEventListener('change', () => {
+      const newPkg = pkgSelect.value || '';
+      if (newPkg !== (this.projectForm.modelPackage || '')) {
+        this.projectForm.trainingData = '';
+        this.projectForm.testData = '';
+      }
+      this.projectForm.modelPackage = newPkg;
+      this.render();
+    });
 
-    // 训练数据/测试数据：从后端获取的可用数据文件列表
+    // 训练数据/测试数据：从后端获取的可用数据文件列表；必须先选模型程序包
     const dataFileNames = this.availableDataFiles.map(f => f.fileName);
     const trainOptions = [{ value: '', label: '选择训练试车数据' }, ...dataFileNames];
     const testOptions = [{ value: '', label: '选择测试数据（可选）' }, ...dataFileNames];
@@ -784,20 +792,20 @@ class SteadyModelAdaptV1 {
     const testSelect = select(testOptions, this.projectForm.testData || '');
 
     // 选择数据只记录文件名，不立即加载预览；创建项目后才加载
-    trainSelect.addEventListener('change', () => {
-      this.projectForm.trainingData = trainSelect.value;
-    });
-    testSelect.addEventListener('change', () => {
-      this.projectForm.testData = testSelect.value;
-    });
+    trainSelect.addEventListener('change', () => { this.projectForm.trainingData = trainSelect.value; });
+    testSelect.addEventListener('change', () => { this.projectForm.testData = testSelect.value; });
 
-    // 项目创建后锁定表单
+    // 项目创建后锁定表单；未创建时训练/测试数据必须先选模型程序包
     if (this.projectCreated) {
       nameInput.disabled = true;
       notesInput.disabled = true;
       pkgSelect.disabled = true;
       trainSelect.disabled = true;
       testSelect.disabled = true;
+    } else {
+      const canSelectData = !!this.projectForm.modelPackage;
+      trainSelect.disabled = !canSelectData;
+      testSelect.disabled = !canSelectData;
     }
 
     form.append(
@@ -855,13 +863,17 @@ class SteadyModelAdaptV1 {
       const missing = preview && preview.missingColumns ? preview.missingColumns.join(', ') : '';
       const fingerprint = preview && preview.fingerprint ? preview.fingerprint
         : (this.workspace && this.workspace.uploadedDatasets ? (this.workspace.uploadedDatasets.find(d => d.datasetKey === label) || {}).sha256 : '');
+      const fpCell = fingerprint ? el('div', '', String(fingerprint)) : null;
+      if (fpCell) {
+        fpCell.style.cssText = 'white-space:normal;word-break:break-all;font-family:monospace;font-size:11px;';
+      }
       dataStatusRows.push([
         label,
         exists ? file : '—',
         exists ? '已导入' : '未导入',
         exists ? rowCount : '—',
         exists ? (valid ? '完整' : '缺失: ' + missing) : '—',
-        fingerprint ? String(fingerprint).substring(0, 12) + '...' : '—'
+        fingerprint ? fpCell : '—'
       ]);
     };
     addDataStatus('trainingData', this.projectForm.trainingData, this.preview.training);
@@ -2743,7 +2755,7 @@ class SteadyModelAdaptV1 {
       dot.style.cssText = 'flex-shrink:0;width:10px;height:10px;border-radius:50%;background:var(--blue,#1890ff);margin-top:5px;';
       li.append(dot);
       const textWrap = el('div', '');
-      textWrap.style.flex = '1';
+      textWrap.style.cssText = 'flex:1;word-break:break-all;';
       textWrap.append(el('div', '', label + '：' + vals[i]));
       if (label === '验收状态与复核意见' && isIdentTask && isCompleted) {
         const reviewLine = el('div', '');
@@ -2971,7 +2983,7 @@ class SteadyModelAdaptV1 {
     const trainFile = input.trainingFile || '—';
     const testFile = input.testFile || '无';
     const trainPoints = input.trainingPointCount || '—';
-    const artifactFp = artifacts.length > 0 ? artifacts[0].sha256?.substring(0, 12) + '...' : '—';
+    const artifactFp = artifacts.length > 0 ? (artifacts[0].sha256 || '—') : '—';
     const dllName = input.dllFile || this.workspace?.programName || '—';
     const algoFp = summary.schemaVersion || '—';
     const item1 = `训练: ${trainFile}（${trainPoints}点）, 测试: ${testFile}, DLL: ${dllName}, 算法指纹: ${algoFp}, 产物指纹: ${artifactFp}`;
