@@ -256,15 +256,27 @@ class SteadyModelAdaptV1 {
 
   /* 关闭当前项目：重置状态，不删除 workspace 数据 */
   closeProject() {
+    this._clearAllPolls();
     this.workspace = null;
     this.projectCreated = false;
     this.projectForm = { projectName: '', modelPackage: '', notes: '', trainingData: '', testData: '' };
     this.preview = { training: null, test: null };
     this.tasks.clear();
     this.results.clear();
+    this.artifacts.clear();
+    this.resultPromises.clear();
+    this.loadingResults.clear();
+    this.initPolling = false;
     this.render();
     if (this.ctx.refreshNav) this.ctx.refreshNav();
     if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('已关闭当前项目', 'info');
+  }
+
+  /* 清理所有轮询定时器和相关状态 */
+  _clearAllPolls() {
+    this._scheduledPolls.clear();
+    this.timers.forEach(t => clearTimeout(t));
+    this.timers.clear();
   }
 
   async setSection(sectionId) {
@@ -3502,6 +3514,14 @@ class SteadyModelAdaptV1 {
         name.textContent = (ws.jobName || ws.id) + '  ·  加载中...';
         try {
           close();
+          // 清理上一个工作区的轮询定时器和缓存状态
+          this._clearAllPolls();
+          this.tasks.clear();
+          this.results.clear();
+          this.artifacts.clear();
+          this.resultPromises.clear();
+          this.loadingResults.clear();
+          this.initPolling = false;
           this.workspace = ws;
           this.projectCreated = true;
           this.projectForm.projectName = ws.jobName || '';
