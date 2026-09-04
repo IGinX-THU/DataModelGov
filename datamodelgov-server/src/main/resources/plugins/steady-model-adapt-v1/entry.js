@@ -202,6 +202,7 @@ class SteadyModelAdaptV1 {
     this.initPolling = false;
     this.initPollingText = '';
     this._scheduledPolls = new Set();
+    this._pollGeneration = 0;
 
     // 状态配置
     this.identifyModel = 'transient';
@@ -256,6 +257,14 @@ class SteadyModelAdaptV1 {
 
   /* 关闭当前项目：重置状态，不删除 workspace 数据 */
   closeProject() {
+    this._resetState();
+    this.render();
+    if (this.ctx.refreshNav) this.ctx.refreshNav();
+    if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('已关闭当前项目', 'info');
+  }
+
+  /* 重置所有运行态：轮询、任务、结果、缓存、表单、配置选择等 */
+  _resetState() {
     this._clearAllPolls();
     this.workspace = null;
     this.projectCreated = false;
@@ -266,14 +275,48 @@ class SteadyModelAdaptV1 {
     this.artifacts.clear();
     this.resultPromises.clear();
     this.loadingResults.clear();
+    this.datasets = [];
     this.initPolling = false;
-    this.render();
-    if (this.ctx.refreshNav) this.ctx.refreshNav();
-    if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('已关闭当前项目', 'info');
+    this.initPollingText = '';
+    this.workspaceLoading = false;
+    this.busy = false;
+    this.loading = false;
+    this.loadingText = '';
+    // 重置配置选择
+    this.identifyModel = 'transient';
+    this.identifyTaskType = 'default';
+    this.regConfig = JSON.parse(JSON.stringify(REG_DEFAULTS.transient));
+    this.identifyErrorTab = 'training';
+    this.activeSnapshot = 'pre';
+    this.activeUqMethod = 'A';
+    this.activeUqTab = 'training';
+    this.activeUqParamTab = 'overall';
+    this.activeValidTab = 'output';
+    this.predictionMode = 'pressure';
+    this.activePredictionModel = 'corrected';
+    this._predictionPosterior = 'none';
+    this.resultsFilter = 'all';
+    this._activeIdentParam = null;
+    this._unlockIdentify = false;
+    this._uqLogCallback = null;
+    this._uqEstimateTriggered = false;
+    // 重置预测输入为默认值
+    this.predInputs = {
+      pointId: 'PRED_PT_1',
+      pamb: 101325,
+      altitude: 0,
+      tamb: 288.15,
+      mach: 0,
+      wf: 0.151914044493225,
+      mkp: 999.2787955783252,
+      mkg: 0,
+      npInitial: 20800
+    };
   }
 
   /* 清理所有轮询定时器和相关状态 */
   _clearAllPolls() {
+    this._pollGeneration++;
     this._scheduledPolls.clear();
     this.timers.forEach(t => clearTimeout(t));
     this.timers.clear();
@@ -505,10 +548,15 @@ class SteadyModelAdaptV1 {
     const key = String(taskId);
     if (this.destroyed || this._scheduledPolls.has(key)) return;
     this._scheduledPolls.add(key);
+    const gen = this._pollGeneration;
     const timer = setTimeout(async () => {
       this.timers.delete(timer);
+      // 工作区已切换或已清理，停止轮询
+      if (gen !== this._pollGeneration) { this._scheduledPolls.delete(key); return; }
       try {
         const task = await this.ctx.http.tasks.get(key);
+        // await 后再次检查 generation
+        if (gen !== this._pollGeneration) { this._scheduledPolls.delete(key); return; }
         if (task) {
           this.tasks.set(String(task.id), task);
           const phase = (task.phase || '').toLowerCase();
@@ -519,6 +567,7 @@ class SteadyModelAdaptV1 {
             this._scheduledPolls.delete(key);
             if (this._uqLogCallback && task.logLine) this._uqLogCallback(task.logLine, task);
             await this.loadTaskResult(key);
+            if (gen !== this._pollGeneration) return;
             if (shouldRender) this.render();
           } else if (task.status === TASK_STATUS.FAILED || phase === 'failed') {
             this._scheduledPolls.delete(key);
@@ -534,6 +583,7 @@ class SteadyModelAdaptV1 {
             if (shouldRender) this.render();
           } else {
             this._scheduledPolls.delete(key);
+            if (gen !== this._pollGeneration) return;
             this.schedulePoll(key, 5000);
             // 通知打开的日志弹窗追加新日志
             if (this._uqLogCallback && (task.logLine || task.progressMessage)) {
@@ -544,7 +594,7 @@ class SteadyModelAdaptV1 {
         }
       } catch (e) {
         this._scheduledPolls.delete(key);
-        if (!this.destroyed) this.schedulePoll(key, 10000);
+        if (!this.destroyed && gen === this._pollGeneration) this.schedulePoll(key, 10000);
       }
     }, delay);
     this.timers.add(timer);
@@ -3514,14 +3564,8 @@ class SteadyModelAdaptV1 {
         name.textContent = (ws.jobName || ws.id) + '  ·  加载中...';
         try {
           close();
-          // 清理上一个工作区的轮询定时器和缓存状态
-          this._clearAllPolls();
-          this.tasks.clear();
-          this.results.clear();
-          this.artifacts.clear();
-          this.resultPromises.clear();
-          this.loadingResults.clear();
-          this.initPolling = false;
+          // 重置所有运行态，清理上一个工作区的轮询、任务、结果、配置选择等
+          this._resetState();
           this.workspace = ws;
           this.projectCreated = true;
           this.projectForm.projectName = ws.jobName || '';
@@ -3618,6 +3662,9 @@ class SteadyModelAdaptV1 {
       if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('项目已创建，字段已锁定', 'warning');
       return;
     }
+
+    // 重置运行态，确保不残留上一个项目的轮询、任务、结果等
+    this._resetState();
 
     // 从 DOM 读取表单值
     const root = this.mount;
@@ -4665,8 +4712,7 @@ h1{text-align:center}h2{font-size:14pt;border-bottom:1px solid #999;padding-bott
 
   destroy() {
     this.destroyed = true;
-    this.timers.forEach(t => clearTimeout(t));
-    this.timers.clear();
+    this._resetState();
     this.disposeCharts();
     if (this.mount) this.mount.replaceChildren();
   }
