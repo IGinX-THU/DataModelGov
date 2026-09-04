@@ -585,11 +585,11 @@ public class ProgramWorkflowService {
         if (initResult != null && "SUCCEEDED".equals(initResult.get("status"))) {
             Object measureRows = initResult.get("measureRows");
             if (measureRows instanceof List) {
-                saveMeasureDataToIginx(id, (List<Map<String, Object>>) measureRows);
+                saveMeasureDataToIginx(id, wsTimestamp, (List<Map<String, Object>>) measureRows);
             }
             Object scheduleRows = initResult.get("scheduleRows");
             if (scheduleRows instanceof List) {
-                saveScheduleVarsToIginx(id, (List<Map<String, Object>>) scheduleRows);
+                saveScheduleVarsToIginx(id, wsTimestamp, (List<Map<String, Object>>) scheduleRows);
             }
         }
 
@@ -2627,13 +2627,13 @@ public class ProgramWorkflowService {
 
     /** 将测量数据行批量写入 IGINX（用实体 + entityToPoints） */
     @SuppressWarnings("unchecked")
-    private void saveMeasureDataToIginx(String workspaceId, List<Map<String, Object>> measureRows) {
+    private void saveMeasureDataToIginx(String workspaceId, long wsTimestamp, List<Map<String, Object>> measureRows) {
         if (measureRows == null || measureRows.isEmpty()) return;
         try {
             List<Point> allPoints = new ArrayList<>();
             for (int i = 0; i < measureRows.size(); i++) {
                 Map<String, Object> row = measureRows.get(i);
-                long ts = i;
+                long ts = wsTimestamp + i;
                 WorkflowMeasureDataEntity entity = new WorkflowMeasureDataEntity();
                 entity.setTimestamp(ts);
                 entity.setWorkspaceId(workspaceId);
@@ -2665,13 +2665,13 @@ public class ProgramWorkflowService {
 
     /** 将调度变量行批量写入 IGINX（用实体 + entityToPoints） */
     @SuppressWarnings("unchecked")
-    private void saveScheduleVarsToIginx(String workspaceId, List<Map<String, Object>> scheduleRows) {
+    private void saveScheduleVarsToIginx(String workspaceId, long wsTimestamp, List<Map<String, Object>> scheduleRows) {
         if (scheduleRows == null || scheduleRows.isEmpty()) return;
         try {
             List<Point> allPoints = new ArrayList<>();
             for (int i = 0; i < scheduleRows.size(); i++) {
                 Map<String, Object> row = scheduleRows.get(i);
-                long ts = i;
+                long ts = wsTimestamp + i;
                 WorkflowScheduleVarEntity entity = new WorkflowScheduleVarEntity();
                 entity.setTimestamp(ts);
                 entity.setWorkspaceId(workspaceId);
