@@ -135,8 +135,7 @@ public final class MatlabFunctionRunner {
             emit("MATLAB release: " + actualRelease);
 
             // 设置 MATLAB 字符集为 UTF-8（.m 文件为 UTF-8 编码，需 UTF-8 才能正确读取中文）
-            // 之前因中文路径导致 loadlibrary 失败而禁用，现在解压时已将中文目录名替换为 undefined，
-            // 路径不含中文，可以安全启用。
+            // 解压时 ArchiveUtil 已将中文目录名替换为 u/u_2 等，路径不含中文，可以安全启用。
             try {
                 invokeNoOutput(borrowed, "eval", "feature('DefaultCharacterSet', 'UTF-8')");
             } catch (Exception e) {
@@ -167,6 +166,11 @@ public final class MatlabFunctionRunner {
         } finally {
             engine = null;
             if (borrowed != null) {
+                // 归还引擎前切到 MATLAB tempdir，避免引擎 cwd 残留在已被清理的 subst 盘符上
+                // （上一个任务 cleanupSubstDrive 后 Z: 消失，下一个任务借到引擎会报 "无法访问文件"）
+                try {
+                    invokeNoOutput(borrowed, "eval", "cd(tempdir)");
+                } catch (Exception ignored) {}
                 enginePool.release(borrowed);
                 emit("MATLAB engine returned to pool");
             }

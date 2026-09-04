@@ -153,12 +153,22 @@ public class ProgramService {
 
     private String safeProjectName(String projectName) {
         String proj = (projectName != null && !projectName.isEmpty()) ? projectName : ProjectContext.getCurrentProject("unknown");
-        return proj.replaceAll("[^\\x00-\\x7F]+", "undefined");
+        return proj;
+    }
+
+    /** 旧版将非 ASCII 替换为 undefined 的目录名，用于兼容已存在的旧目录 */
+    private String legacySafeProjectName(String projectName) {
+        return safeProjectName(projectName).replaceAll("[^\\x00-\\x7F]+", "undefined");
     }
 
     private File getTaskBaseDir(String projectName) {
         String safeProj = safeProjectName(projectName);
         File dir = new File(TASK_BASE_DIR + "/" + safeProj + "/job/program-tasks");
+        if (!dir.exists()) {
+            // 兼容旧目录：非 ASCII 曾被替换为 undefined
+            File legacy = new File(TASK_BASE_DIR + "/" + legacySafeProjectName(projectName) + "/job/program-tasks");
+            if (legacy.exists()) return legacy;
+        }
         if (!dir.exists()) dir.mkdirs();
         return dir;
     }
@@ -167,6 +177,11 @@ public class ProgramService {
         String safeProj = safeProjectName(projectName);
         String safeVersion = version.replace('.', '_');
         File dir = new File(TASK_BASE_DIR + "/" + safeProj + "/program/" + name + "_" + safeVersion);
+        if (!dir.exists()) {
+            // 兼容旧目录：非 ASCII 曾被替换为 undefined
+            File legacy = new File(TASK_BASE_DIR + "/" + legacySafeProjectName(projectName) + "/program/" + name + "_" + safeVersion);
+            if (legacy.exists()) return legacy;
+        }
         return dir;
     }
 
