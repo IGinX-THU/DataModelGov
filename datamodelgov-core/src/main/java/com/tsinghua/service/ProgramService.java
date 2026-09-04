@@ -153,12 +153,22 @@ public class ProgramService {
 
     private String safeProjectName(String projectName) {
         String proj = (projectName != null && !projectName.isEmpty()) ? projectName : ProjectContext.getCurrentProject("unknown");
-        return proj.replaceAll("[^\\x00-\\x7F]+", "undefined");
+        return proj;
+    }
+
+    /** 旧版将非 ASCII 替换为 undefined 的目录名，用于兼容已存在的旧目录 */
+    private String legacySafeProjectName(String projectName) {
+        return safeProjectName(projectName).replaceAll("[^\\x00-\\x7F]+", "undefined");
     }
 
     private File getTaskBaseDir(String projectName) {
         String safeProj = safeProjectName(projectName);
         File dir = new File(TASK_BASE_DIR + "/" + safeProj + "/job/program-tasks");
+        if (!dir.exists()) {
+            // 兼容旧目录：非 ASCII 曾被替换为 undefined
+            File legacy = new File(TASK_BASE_DIR + "/" + legacySafeProjectName(projectName) + "/job/program-tasks");
+            if (legacy.exists()) return legacy;
+        }
         if (!dir.exists()) dir.mkdirs();
         return dir;
     }
@@ -167,6 +177,11 @@ public class ProgramService {
         String safeProj = safeProjectName(projectName);
         String safeVersion = version.replace('.', '_');
         File dir = new File(TASK_BASE_DIR + "/" + safeProj + "/program/" + name + "_" + safeVersion);
+        if (!dir.exists()) {
+            // 兼容旧目录：非 ASCII 曾被替换为 undefined
+            File legacy = new File(TASK_BASE_DIR + "/" + legacySafeProjectName(projectName) + "/program/" + name + "_" + safeVersion);
+            if (legacy.exists()) return legacy;
+        }
         return dir;
     }
 
@@ -515,7 +530,7 @@ public class ProgramService {
      * 上传预置程序：从 classpath:programs/<程序名>/ 读取源码包+配置+脚本，存入 IGinX。
      * configJson 和 setupScript 分别存到两个字段。
      */
-    public Map<String, Object> uploadPresetProgram(String programName, String version, String projectName, String displayName) throws Exception {
+    public Map<String, Object> uploadPresetProgram(String programName, String version, String projectName, String displayName, String description) throws Exception {
         // displayName 为用户输入的程序名称，若提供则覆盖 programName 作为存储名
         String effectiveName = (displayName != null && !displayName.trim().isEmpty()) ? displayName.trim() : programName;
         String base = "programs/" + programName + "/";
@@ -590,7 +605,7 @@ public class ProgramService {
         ProgramEntity programMetaDto = new ProgramEntity();
         programMetaDto.setName(effectiveName);
         programMetaDto.setVersion(programVersion);
-        programMetaDto.setDescription("预置程序: " + programName);
+        programMetaDto.setDescription(StringUtils.hasText(description) ? description.trim() : "预置程序: " + programName);
         programMetaDto.setFileName(archiveFilename);
         programMetaDto.setFileSize((long) archiveBytes.length);
         programMetaDto.setChunkCount(totalChunks);

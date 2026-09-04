@@ -77,8 +77,8 @@ public class ProgramWorkflowService {
     private static final Pattern STAGE_PATTERN = Pattern.compile("\\[DMG:STAGE:([A-D]):(START|END)\\]");
     /** 中文阶段文本匹配：用户代码输出的"阶段A：cost..."等文本，用于无 DMG:STAGE 标记的包 */
     private static final Pattern CN_STAGE_PATTERN = Pattern.compile("阶段([A-D])[^：]*：");
-    /** workspace 目录名：ASCII 安全字符（兼容旧 UUID） */
-    private static final Pattern SAFE_WORKSPACE_DIR = Pattern.compile("^[A-Za-z0-9._-]{1,64}$|^[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}$");
+    /** workspace 目录名：允许中文等非 ASCII 字符（与 safeJobName 一致），兼容旧 UUID */
+    private static final Pattern SAFE_WORKSPACE_DIR = Pattern.compile("^[^\\\\/:*?\"<>|]{1,128}$|^[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}$");
     private static final Set<String> ARTIFACT_DIRECTORY_NAMES = new LinkedHashSet<>(Arrays.asList(
             "output", "outputs", "result", "results", "report", "reports", "report_outputs"));
 
@@ -93,8 +93,9 @@ public class ProgramWorkflowService {
     private final long serviceStartTime = System.currentTimeMillis();
     /** 任务取消标志（内存，运行时高频检查） */
     private final Map<String, Boolean> cancelFlags = new ConcurrentHashMap<>();
-    private final Map<String, Object> fileLocks = new ConcurrentHashMap<>();
+    /** 同一 workspace 的任务串行执行锁（MATLAB 代码在 source 目录复制依赖文件，非并发安全） */
     private final Map<String, Object> workspaceExecutionLocks = new ConcurrentHashMap<>();
+    private final Map<String, Object> fileLocks = new ConcurrentHashMap<>();
 
     /** IGINX 存储前缀：工作流工作区元数据 */
     private static final String WF_WORKSPACE_PREFIX = "relational_system.workflow_workspace";
@@ -586,11 +587,11 @@ public class ProgramWorkflowService {
         if (initResult != null && "SUCCEEDED".equals(initResult.get("status"))) {
             Object measureRows = initResult.get("measureRows");
             if (measureRows instanceof List) {
-                saveMeasureDataToIginx(id, (List<Map<String, Object>>) measureRows);
+                saveMeasureDataToIginx(id, wsTimestamp, (List<Map<String, Object>>) measureRows);
             }
             Object scheduleRows = initResult.get("scheduleRows");
             if (scheduleRows instanceof List) {
-                saveScheduleVarsToIginx(id, (List<Map<String, Object>>) scheduleRows);
+                saveScheduleVarsToIginx(id, wsTimestamp, (List<Map<String, Object>>) scheduleRows);
             }
         }
 
@@ -770,10 +771,13 @@ public class ProgramWorkflowService {
                 } catch (Exception e) {
                     log.error("删除工作区 IGINX 数据失败: wsId={}", wsId, e);
                 }
-                // 删除磁盘文件
+                // 删除磁盘文件：直接用 IGINX 里存的 workspaceDir
                 try {
-                    Path workspacePath = child(workflowProgramRoot(project, programName, version), wsId);
-                    if (Files.exists(workspacePath)) deleteRecursively(workspacePath);
+                    String dir = value(ws.get("workspaceDir"));
+                    if (StringUtils.hasText(dir)) {
+                        Path workspacePath = new File(dir).getCanonicalFile().toPath();
+                        if (Files.exists(workspacePath)) deleteRecursively(workspacePath);
+                    }
                 } catch (Exception e) {
                     log.error("删除工作区目录失败: wsId={}", wsId, e);
                 }
@@ -919,8 +923,9 @@ public class ProgramWorkflowService {
         saveTaskToIginx(taskEntity);
         Map<String, Object> task = taskEntityToMap(taskEntity);
         executor.submit(() -> {
-            Object executionLock = workspaceExecutionLocks.computeIfAbsent(workspace.toString(), key -> new Object());
-            synchronized (executionLock) {
+            // 同一 workspace 的任务串行执行：MATLAB 代码在 source 目录复制依赖文件，非并发安全
+            Object lock = workspaceExecutionLocks.computeIfAbsent(workspaceId, k -> new Object());
+            synchronized (lock) {
                 runTask(workspace, taskDir, task, action, arguments);
             }
         });
@@ -1517,12 +1522,13 @@ public class ProgramWorkflowService {
             log.warn("trainingNpReferenceTable: 工作区未设置 trainingDataFile");
             return null;
         }
-        // 定位工作区目录
-        String project = value(wsRecord.get("projectName"));
-        String name = value(wsRecord.get("programName"));
-        String version = value(wsRecord.get("programVersion"));
-        Path root = workflowProgramRoot(project, name, version);
-        Path workspace = child(root, workspaceId);
+        // 直接用 IGINX 里存的 workspaceDir 定位
+        String dir = value(wsRecord.get("workspaceDir"));
+        if (!StringUtils.hasText(dir) || !Files.isDirectory(new File(dir).toPath())) {
+            log.warn("trainingNpReferenceTable: 工作区目录不存在: {}", dir);
+            return null;
+        }
+        Path workspace = new File(dir).getCanonicalFile().toPath();
         Path datasets = child(workspace, "datasets");
         // 在 datasets 目录中查找匹配的文件
         Path excelFile = null;
@@ -1651,13 +1657,13 @@ public class ProgramWorkflowService {
         // 从 IGINX 验证 workspace 存在且归属正确（带程序名+版本+项目名条件）
         Map<String, Object> wsRecord = queryWorkspaceFromIginxById(id, name, version, project);
         if (wsRecord == null) throw new IllegalArgumentException("Workspace does not exist");
-        // 用 IGinX 记录里的实际 programName/programVersion/projectName 定位目录，
-        // 避免调用方传的 name/version 与工作区实际所属程序不一致时定位到错误目录
-        String actualName = StringUtils.hasText(value(wsRecord.get("programName"))) ? value(wsRecord.get("programName")) : name;
-        String actualVersion = StringUtils.hasText(value(wsRecord.get("programVersion"))) ? value(wsRecord.get("programVersion")) : version;
-        String actualProject = StringUtils.hasText(value(wsRecord.get("projectName"))) ? value(wsRecord.get("projectName")) : project;
-        Path workspace = child(workflowProgramRoot(actualProject, actualName, actualVersion), id);
-        return workspace;
+        // 直接用 IGINX 里存的 workspaceDir 定位，不猜目录名
+        String dir = value(wsRecord.get("workspaceDir"));
+        if (StringUtils.hasText(dir)) {
+            Path ws = new File(dir).getCanonicalFile().toPath();
+            if (Files.isDirectory(ws)) return ws;
+        }
+        throw new IllegalArgumentException("Workspace directory not found: " + dir);
     }
 
     private Path requireTask(String taskId, String name, String version, String projectName) throws Exception {
@@ -1689,12 +1695,8 @@ public class ProgramWorkflowService {
         Files.createDirectories(projectRoot);
         String safeProj = project != null && !project.isEmpty() ? project : ProjectContext.getCurrentProject("unknown");
         Path parent = child(projectRoot, safeProj);
-        // 优先使用短目录名 pwf，兼容旧目录 program-workflows
-        Path root = parent.resolve("pwf");
-        Path legacy = parent.resolve("program-workflows");
-        if (!Files.isDirectory(root) && Files.isDirectory(legacy)) {
-            root = legacy;
-        }
+        // 新工作区统一用 workflow 目录，旧目录 pwf / program-workflows 保持不动
+        Path root = parent.resolve("workflow");
         Files.createDirectories(root);
         return root;
     }
@@ -1709,30 +1711,16 @@ public class ProgramWorkflowService {
         return programRoot;
     }
 
-    private String safeProject(String project) {
-        String cleaned = project.replaceAll("[^A-Za-z0-9._-]", "_");
-        if (cleaned.isEmpty() || ".".equals(cleaned) || "..".equals(cleaned)) cleaned = "project";
-        return cleaned.substring(0, Math.min(48, cleaned.length())) + "-" + shortHash(project);
-    }
-
-    /** 将用户输入的项目名转换为安全的目录名，与 ProgramService.safeProjectName 一致：非 ASCII 替换为 undefined */
+    /** 将用户输入的工作区名称转换为安全的目录名（保留中文，仅去除文件系统非法字符） */
     private String safeJobName(String jobName) {
         String input = jobName != null ? jobName.trim() : "";
         if (input.isEmpty()) throw new IllegalArgumentException("项目名称不能为空");
-        String cleaned = input.replaceAll("[^\\x00-\\x7F]+", "undefined");
+        // 仅替换 Windows 文件系统非法字符，保留中文等非 ASCII 字符
+        String cleaned = input.replaceAll("[\\\\/:*?\"<>|]", "_");
         if (cleaned.isEmpty() || ".".equals(cleaned) || "..".equals(cleaned)) {
             throw new IllegalArgumentException("项目名称包含非法字符: " + jobName);
         }
         return cleaned.substring(0, Math.min(128, cleaned.length()));
-    }
-
-    private String shortHash(String value) {
-        try {
-            byte[] bytes = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
-            StringBuilder out = new StringBuilder();
-            for (int i = 0; i < 6; i++) out.append(String.format("%02x", bytes[i]));
-            return out.toString();
-        } catch (Exception e) { throw new IllegalStateException(e); }
     }
 
     /**
@@ -1742,7 +1730,7 @@ public class ProgramWorkflowService {
      * 因此用 subst 映射盘符（如 Z:），使 MATLAB 内部所有路径都基于盘符。
      * 非 Windows 或创建失败时原样返回。
      */
-    private File withSubstDrive(Path workingDirectory, String taskId) {
+    private synchronized File withSubstDrive(Path workingDirectory, String taskId) {
         if (!File.separator.equals("\\")) return workingDirectory.toFile();
         String drive = null;
         try {
@@ -2645,13 +2633,13 @@ public class ProgramWorkflowService {
 
     /** 将测量数据行批量写入 IGINX（用实体 + entityToPoints） */
     @SuppressWarnings("unchecked")
-    private void saveMeasureDataToIginx(String workspaceId, List<Map<String, Object>> measureRows) {
+    private void saveMeasureDataToIginx(String workspaceId, long wsTimestamp, List<Map<String, Object>> measureRows) {
         if (measureRows == null || measureRows.isEmpty()) return;
         try {
             List<Point> allPoints = new ArrayList<>();
             for (int i = 0; i < measureRows.size(); i++) {
                 Map<String, Object> row = measureRows.get(i);
-                long ts = i;
+                long ts = wsTimestamp + i;
                 WorkflowMeasureDataEntity entity = new WorkflowMeasureDataEntity();
                 entity.setTimestamp(ts);
                 entity.setWorkspaceId(workspaceId);
@@ -2683,13 +2671,13 @@ public class ProgramWorkflowService {
 
     /** 将调度变量行批量写入 IGINX（用实体 + entityToPoints） */
     @SuppressWarnings("unchecked")
-    private void saveScheduleVarsToIginx(String workspaceId, List<Map<String, Object>> scheduleRows) {
+    private void saveScheduleVarsToIginx(String workspaceId, long wsTimestamp, List<Map<String, Object>> scheduleRows) {
         if (scheduleRows == null || scheduleRows.isEmpty()) return;
         try {
             List<Point> allPoints = new ArrayList<>();
             for (int i = 0; i < scheduleRows.size(); i++) {
                 Map<String, Object> row = scheduleRows.get(i);
-                long ts = i;
+                long ts = wsTimestamp + i;
                 WorkflowScheduleVarEntity entity = new WorkflowScheduleVarEntity();
                 entity.setTimestamp(ts);
                 entity.setWorkspaceId(workspaceId);

@@ -202,6 +202,7 @@ class SteadyModelAdaptV1 {
     this.initPolling = false;
     this.initPollingText = '';
     this._scheduledPolls = new Set();
+    this._pollGeneration = 0;
 
     // 状态配置
     this.identifyModel = 'transient';
@@ -256,15 +257,69 @@ class SteadyModelAdaptV1 {
 
   /* 关闭当前项目：重置状态，不删除 workspace 数据 */
   closeProject() {
+    this._resetState();
+    this.render();
+    if (this.ctx.refreshNav) this.ctx.refreshNav();
+    if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('已关闭当前项目', 'info');
+  }
+
+  /* 重置所有运行态：轮询、任务、结果、缓存、表单、配置选择等 */
+  _resetState() {
+    this._clearAllPolls();
     this.workspace = null;
     this.projectCreated = false;
     this.projectForm = { projectName: '', modelPackage: '', notes: '', trainingData: '', testData: '' };
     this.preview = { training: null, test: null };
     this.tasks.clear();
     this.results.clear();
-    this.render();
-    if (this.ctx.refreshNav) this.ctx.refreshNav();
-    if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('已关闭当前项目', 'info');
+    this.artifacts.clear();
+    this.resultPromises.clear();
+    this.loadingResults.clear();
+    this.datasets = [];
+    this.initPolling = false;
+    this.initPollingText = '';
+    this.workspaceLoading = false;
+    this.busy = false;
+    this.loading = false;
+    this.loadingText = '';
+    // 重置配置选择
+    this.identifyModel = 'transient';
+    this.identifyTaskType = 'default';
+    this.regConfig = JSON.parse(JSON.stringify(REG_DEFAULTS.transient));
+    this.identifyErrorTab = 'training';
+    this.activeSnapshot = 'pre';
+    this.activeUqMethod = 'A';
+    this.activeUqTab = 'training';
+    this.activeUqParamTab = 'overall';
+    this.activeValidTab = 'output';
+    this.predictionMode = 'pressure';
+    this.activePredictionModel = 'corrected';
+    this._predictionPosterior = 'none';
+    this.resultsFilter = 'all';
+    this._activeIdentParam = null;
+    this._unlockIdentify = false;
+    this._uqLogCallback = null;
+    this._uqEstimateTriggered = false;
+    // 重置预测输入为默认值
+    this.predInputs = {
+      pointId: 'PRED_PT_1',
+      pamb: 101325,
+      altitude: 0,
+      tamb: 288.15,
+      mach: 0,
+      wf: 0.151914044493225,
+      mkp: 999.2787955783252,
+      mkg: 0,
+      npInitial: 20800
+    };
+  }
+
+  /* 清理所有轮询定时器和相关状态 */
+  _clearAllPolls() {
+    this._pollGeneration++;
+    this._scheduledPolls.clear();
+    this.timers.forEach(t => clearTimeout(t));
+    this.timers.clear();
   }
 
   async setSection(sectionId) {
@@ -493,10 +548,15 @@ class SteadyModelAdaptV1 {
     const key = String(taskId);
     if (this.destroyed || this._scheduledPolls.has(key)) return;
     this._scheduledPolls.add(key);
+    const gen = this._pollGeneration;
     const timer = setTimeout(async () => {
       this.timers.delete(timer);
+      // 工作区已切换或已清理，停止轮询
+      if (gen !== this._pollGeneration) { this._scheduledPolls.delete(key); return; }
       try {
         const task = await this.ctx.http.tasks.get(key);
+        // await 后再次检查 generation
+        if (gen !== this._pollGeneration) { this._scheduledPolls.delete(key); return; }
         if (task) {
           this.tasks.set(String(task.id), task);
           const phase = (task.phase || '').toLowerCase();
@@ -507,6 +567,7 @@ class SteadyModelAdaptV1 {
             this._scheduledPolls.delete(key);
             if (this._uqLogCallback && task.logLine) this._uqLogCallback(task.logLine, task);
             await this.loadTaskResult(key);
+            if (gen !== this._pollGeneration) return;
             if (shouldRender) this.render();
           } else if (task.status === TASK_STATUS.FAILED || phase === 'failed') {
             this._scheduledPolls.delete(key);
@@ -522,6 +583,7 @@ class SteadyModelAdaptV1 {
             if (shouldRender) this.render();
           } else {
             this._scheduledPolls.delete(key);
+            if (gen !== this._pollGeneration) return;
             this.schedulePoll(key, 5000);
             // 通知打开的日志弹窗追加新日志
             if (this._uqLogCallback && (task.logLine || task.progressMessage)) {
@@ -532,7 +594,7 @@ class SteadyModelAdaptV1 {
         }
       } catch (e) {
         this._scheduledPolls.delete(key);
-        if (!this.destroyed) this.schedulePoll(key, 10000);
+        if (!this.destroyed && gen === this._pollGeneration) this.schedulePoll(key, 10000);
       }
     }, delay);
     this.timers.add(timer);
@@ -774,9 +836,17 @@ class SteadyModelAdaptV1 {
     const programName = this.ctx.program && this.ctx.program.name || '稳态试车工况点模型修正V1';
     const pkgOptions = [{ value: '', label: '选择交付程序目录' }, programName];
     const pkgSelect = select(pkgOptions, this.projectForm.modelPackage || '');
-    pkgSelect.addEventListener('change', () => { this.projectForm.modelPackage = pkgSelect.value; });
+    pkgSelect.addEventListener('change', () => {
+      const newPkg = pkgSelect.value || '';
+      if (newPkg !== (this.projectForm.modelPackage || '')) {
+        this.projectForm.trainingData = '';
+        this.projectForm.testData = '';
+      }
+      this.projectForm.modelPackage = newPkg;
+      this.render();
+    });
 
-    // 训练数据/测试数据：从后端获取的可用数据文件列表
+    // 训练数据/测试数据：从后端获取的可用数据文件列表；必须先选模型程序包
     const dataFileNames = this.availableDataFiles.map(f => f.fileName);
     const trainOptions = [{ value: '', label: '选择训练试车数据' }, ...dataFileNames];
     const testOptions = [{ value: '', label: '选择测试数据（可选）' }, ...dataFileNames];
@@ -784,20 +854,20 @@ class SteadyModelAdaptV1 {
     const testSelect = select(testOptions, this.projectForm.testData || '');
 
     // 选择数据只记录文件名，不立即加载预览；创建项目后才加载
-    trainSelect.addEventListener('change', () => {
-      this.projectForm.trainingData = trainSelect.value;
-    });
-    testSelect.addEventListener('change', () => {
-      this.projectForm.testData = testSelect.value;
-    });
+    trainSelect.addEventListener('change', () => { this.projectForm.trainingData = trainSelect.value; });
+    testSelect.addEventListener('change', () => { this.projectForm.testData = testSelect.value; });
 
-    // 项目创建后锁定表单
+    // 项目创建后锁定表单；未创建时训练/测试数据必须先选模型程序包
     if (this.projectCreated) {
       nameInput.disabled = true;
       notesInput.disabled = true;
       pkgSelect.disabled = true;
       trainSelect.disabled = true;
       testSelect.disabled = true;
+    } else {
+      const canSelectData = !!this.projectForm.modelPackage;
+      trainSelect.disabled = !canSelectData;
+      testSelect.disabled = !canSelectData;
     }
 
     form.append(
@@ -855,13 +925,17 @@ class SteadyModelAdaptV1 {
       const missing = preview && preview.missingColumns ? preview.missingColumns.join(', ') : '';
       const fingerprint = preview && preview.fingerprint ? preview.fingerprint
         : (this.workspace && this.workspace.uploadedDatasets ? (this.workspace.uploadedDatasets.find(d => d.datasetKey === label) || {}).sha256 : '');
+      const fpCell = fingerprint ? el('div', '', String(fingerprint)) : null;
+      if (fpCell) {
+        fpCell.style.cssText = 'white-space:normal;word-break:break-all;font-family:monospace;font-size:11px;';
+      }
       dataStatusRows.push([
         label,
         exists ? file : '—',
         exists ? '已导入' : '未导入',
         exists ? rowCount : '—',
         exists ? (valid ? '完整' : '缺失: ' + missing) : '—',
-        fingerprint ? String(fingerprint).substring(0, 12) + '...' : '—'
+        fingerprint ? fpCell : '—'
       ]);
     };
     addDataStatus('trainingData', this.projectForm.trainingData, this.preview.training);
@@ -2743,7 +2817,7 @@ class SteadyModelAdaptV1 {
       dot.style.cssText = 'flex-shrink:0;width:10px;height:10px;border-radius:50%;background:var(--blue,#1890ff);margin-top:5px;';
       li.append(dot);
       const textWrap = el('div', '');
-      textWrap.style.flex = '1';
+      textWrap.style.cssText = 'flex:1;word-break:break-all;';
       textWrap.append(el('div', '', label + '：' + vals[i]));
       if (label === '验收状态与复核意见' && isIdentTask && isCompleted) {
         const reviewLine = el('div', '');
@@ -2971,7 +3045,7 @@ class SteadyModelAdaptV1 {
     const trainFile = input.trainingFile || '—';
     const testFile = input.testFile || '无';
     const trainPoints = input.trainingPointCount || '—';
-    const artifactFp = artifacts.length > 0 ? artifacts[0].sha256?.substring(0, 12) + '...' : '—';
+    const artifactFp = artifacts.length > 0 ? (artifacts[0].sha256 || '—') : '—';
     const dllName = input.dllFile || this.workspace?.programName || '—';
     const algoFp = summary.schemaVersion || '—';
     const item1 = `训练: ${trainFile}（${trainPoints}点）, 测试: ${testFile}, DLL: ${dllName}, 算法指纹: ${algoFp}, 产物指纹: ${artifactFp}`;
@@ -3490,6 +3564,8 @@ class SteadyModelAdaptV1 {
         name.textContent = (ws.jobName || ws.id) + '  ·  加载中...';
         try {
           close();
+          // 重置所有运行态，清理上一个工作区的轮询、任务、结果、配置选择等
+          this._resetState();
           this.workspace = ws;
           this.projectCreated = true;
           this.projectForm.projectName = ws.jobName || '';
@@ -3586,6 +3662,9 @@ class SteadyModelAdaptV1 {
       if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast('项目已创建，字段已锁定', 'warning');
       return;
     }
+
+    // 重置运行态，确保不残留上一个项目的轮询、任务、结果等
+    this._resetState();
 
     // 从 DOM 读取表单值
     const root = this.mount;
@@ -4633,8 +4712,7 @@ h1{text-align:center}h2{font-size:14pt;border-bottom:1px solid #999;padding-bott
 
   destroy() {
     this.destroyed = true;
-    this.timers.forEach(t => clearTimeout(t));
-    this.timers.clear();
+    this._resetState();
     this.disposeCharts();
     if (this.mount) this.mount.replaceChildren();
   }

@@ -144,9 +144,10 @@ public class ProgramController {
             @PathVariable("id") String id,
             @RequestParam(value = "version", required = false, defaultValue = "1.0") String version,
             @RequestParam(value = "projectName", required = false) String projectName,
-            @RequestParam(value = "name", required = false) String displayName) {
+            @RequestParam(value = "name", required = false) String displayName,
+            @RequestParam(value = "description", required = false) String description) {
         try {
-            Map<String, Object> result = programService.uploadPresetProgram(id, version, projectName, displayName);
+            Map<String, Object> result = programService.uploadPresetProgram(id, version, projectName, displayName, description);
             return Result.success("预置程序已上传", result);
         } catch (Exception e) {
             log.error("上传预置程序失败", e);
