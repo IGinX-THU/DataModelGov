@@ -93,6 +93,8 @@ public class ProgramWorkflowService {
     private final long serviceStartTime = System.currentTimeMillis();
     /** 任务取消标志（内存，运行时高频检查） */
     private final Map<String, Boolean> cancelFlags = new ConcurrentHashMap<>();
+    /** 同一 workspace 的任务串行执行锁（MATLAB 代码在 source 目录复制依赖文件，非并发安全） */
+    private final Map<String, Object> workspaceExecutionLocks = new ConcurrentHashMap<>();
     private final Map<String, Object> fileLocks = new ConcurrentHashMap<>();
 
     /** IGINX 存储前缀：工作流工作区元数据 */
@@ -921,7 +923,11 @@ public class ProgramWorkflowService {
         saveTaskToIginx(taskEntity);
         Map<String, Object> task = taskEntityToMap(taskEntity);
         executor.submit(() -> {
-            runTask(workspace, taskDir, task, action, arguments);
+            // 同一 workspace 的任务串行执行：MATLAB 代码在 source 目录复制依赖文件，非并发安全
+            Object lock = workspaceExecutionLocks.computeIfAbsent(workspaceId, k -> new Object());
+            synchronized (lock) {
+                runTask(workspace, taskDir, task, action, arguments);
+            }
         });
         addStatusLabel(task);
         return task;
@@ -1724,7 +1730,7 @@ public class ProgramWorkflowService {
      * 因此用 subst 映射盘符（如 Z:），使 MATLAB 内部所有路径都基于盘符。
      * 非 Windows 或创建失败时原样返回。
      */
-    private File withSubstDrive(Path workingDirectory, String taskId) {
+    private synchronized File withSubstDrive(Path workingDirectory, String taskId) {
         if (!File.separator.equals("\\")) return workingDirectory.toFile();
         String drive = null;
         try {
