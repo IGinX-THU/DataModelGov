@@ -325,3 +325,24 @@
 .wb-row-active td { background: #f0fdfa; }
 .wb-legend { display: flex; gap: 18px; font-size: 12px; color: #6b7280; }
 .wb-chart-placeholder { border: 1px dashed #d1d5db; border-radius: 6px; background: #fafafa; min-height: 180px; display: flex; align-items: center; justify-content: center; max-width: 1180px; }
+
+/* ===== 运行时 loading 遮罩(旧版同款:进度条+当前子步骤+已运行时间) ===== */
+.wb-loading-overlay { position: absolute; inset: 0; z-index: 900; background: rgba(255,255,255,.82); backdrop-filter: blur(2px); display: flex; align-items: center; justify-content: center; }
+.wb-loading-box { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.10); padding: 26px 34px; width: 380px; max-width: 86vw; text-align: center; }
+.wb-loading-spinner { width: 34px; height: 34px; margin: 0 auto 14px; border: 3px solid #ccfbf1; border-top-color: #0f766e; border-radius: 50%; animation: wb-spin .8s linear infinite; }
+@keyframes wb-spin { to { transform: rotate(360deg); } }
+.wb-loading-title { font-size: 15px; font-weight: 700; color: #111827; margin-bottom: 12px; }
+.wb-loading-bar { height: 6px; border-radius: 3px; background: #e5e7eb; overflow: hidden; margin-bottom: 12px; }
+.wb-loading-bar i { display: block; height: 100%; width: 36%; border-radius: 3px; background: linear-gradient(90deg, #14b8a6, #0f766e); animation: wb-slide 1.4s ease-in-out infinite; }
+@keyframes wb-slide { 0% { margin-left: -36%; } 100% { margin-left: 100%; } }
+.wb-loading-sub { font-size: 12px; color: #6b7280; min-height: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 6px; }
+.wb-loading-time { font-size: 12px; color: #0f766e; font-variant-numeric: tabular-nums; }
+html.dark-mode .wb-loading-overlay { background: rgba(17,24,39,.72); }
+html.dark-mode .wb-loading-box { background: #1f2937; border-color: #374151; }
+html.dark-mode .wb-loading-title { color: #f9fafb; }
+html.dark-mode .wb-loading-bar { background: #374151; }
+
+/* ===== 表格内嵌 loading(数据解析运行中) ===== */
+.wb-inline-loading { display: inline-flex; align-items: center; gap: 10px; color: #0f766e; font-size: 13px; font-weight: 600; }
+.wb-inline-spinner { width: 16px; height: 16px; border: 2px solid #ccfbf1; border-top-color: #0f766e; border-radius: 50%; display: inline-block; animation: wb-spin .8s linear infinite; }
+html.dark-mode .wb-inline-loading { color: #5eead4; }

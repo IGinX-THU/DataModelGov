@@ -171,8 +171,10 @@
 
             // 训练工况表(数据来自 prepare 真实解析)
             const prepDone = Array.isArray(t.conditions) && t.conditions.length > 0;
-            const condStatus = WB().h('span', { class: 'wb-tag ' + (prepDone ? 'wb-tag-teal' : (t.prepMessage && t.prepMessage.indexOf('失败') >= 0 ? 'wb-tag-red' : 'wb-tag-gray')) },
+            const prepRunning = state.prepWait || t.status === 'PREPARING';
+            const condStatus = WB().h('span', { class: 'wb-tag ' + (prepDone ? 'wb-tag-teal' : prepRunning ? 'wb-tag-amber' : (t.prepMessage && t.prepMessage.indexOf('失败') >= 0 ? 'wb-tag-red' : 'wb-tag-gray')) },
                 prepDone ? ('准备完成 ' + t.conditions.length + ' 工况')
+                    : prepRunning ? '解析算法运行中...'
                     : (t.prepMessage ? (t.prepMessage.indexOf('失败') >= 0 ? '解析失败' : '解析中...') : (t.trainingFile ? '待解析' : '等待上传')));
             const condTable = WB().h('table', { class: 'wb-table' },
                 WB().h('tr', null, ['编号', 'Np / rpm', 'Ng / rpm', 'Wf / kg/s', '有效样本数', '分组'].map(x => WB().h('th', null, x))));
@@ -185,6 +187,11 @@
                     WB().h('td', null, str(c.wf != null ? c.wf : c.Wf)),
                     WB().h('td', null, str(c.samples != null ? c.samples : c.count)),
                     WB().h('td', null, str(c.group != null ? c.group : c.groupId || ('G' + (i + 1)))))));
+            } else if (prepRunning) {
+                condTable.appendChild(WB().h('tr', null, WB().h('td', { colspan: '6', style: 'text-align:center;padding:22px 0' },
+                    WB().h('span', { class: 'wb-inline-loading' },
+                        WB().h('span', { class: 'wb-inline-spinner' }),
+                        '解析算法运行中,正在识别稳态工况点与分组...'))));
             } else {
                 condTable.appendChild(WB().h('tr', null, WB().h('td', { colspan: '6', class: 'wb-hint' },
                     t.trainingFile
@@ -200,8 +207,8 @@
                     (conds.length ? '显示 ' + Math.min(conds.length, 20) + ' / ' + conds.length + ' 工况 · ' : '')
                     + '来源 ' + (t.trainingFile ? fileName(t.trainingFile) : '待上传'))));
 
-            // 准备记录提示条(真实准备状态)
-            if (t.prepMessage) {
+            // 准备记录提示条(真实准备状态;解析进行中不显示上一次的旧消息)
+            if (t.prepMessage && !prepRunning) {
                 const failed = t.prepMessage.indexOf('失败') >= 0;
                 wrap.appendChild(WB().h('div', { class: failed ? 'wb-tag wb-tag-red' : 'wb-infobar', style: failed ? 'display:inline-block;padding:4px 10px;border-radius:6px;margin-bottom:12px' : '' },
                     t.prepMessage));
@@ -214,9 +221,9 @@
             // 底部动作(01-03:重新准备数据 | 进入系数辨识)
             wrap.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'margin-top:16px' },
                 WB().h('button', {
-                    class: 'wb-btn wb-btn-outline' + (t.trainingFile ? '' : ' disabled'),
-                    onclick: () => { if (t.trainingFile) runPrepare(); }
-                }, '重新准备数据'),
+                    class: 'wb-btn wb-btn-outline' + (t.trainingFile && !prepRunning ? '' : ' disabled'),
+                    onclick: () => { if (t.trainingFile && !prepRunning) runPrepare(); }
+                }, prepRunning ? '解析中...' : '重新准备数据'),
                 WB().h('div', { class: 'wb-spacer' }),
                 WB().h('button', {
                     class: 'wb-btn wb-btn-primary' + (prepDone ? '' : ' disabled'),
@@ -397,6 +404,7 @@
                             if (resp && (resp.success || resp.code === 200)) {
                                 if (resp.data) state.task = resp.data;
                                 state.log = [];
+                                showRunLoading('辨识运行中');
                                 renderBody();
                                 startPolling();
                             } else {
@@ -699,6 +707,7 @@
                             if (resp && (resp.success || resp.code === 200) && resp.data) {
                                 state.task = resp.data;
                                 toast('UQ评估已发起', 'success');
+                                showRunLoading('UQ 评估运行中');
                                 renderBody();
                                 startPolling();
                             } else {
@@ -774,6 +783,54 @@
             }
         }
 
+        /* ---------- 运行 loading 遮罩(旧版同款:进度条+当前子步骤+已运行时间) ---------- */
+        function showRunLoading(title) {
+            const host = document.querySelector('.workspace-content');
+            if (!host) return;
+            if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
+            let el = host.querySelector('.wb-loading-overlay');
+            if (!el) {
+                el = document.createElement('div');
+                el.className = 'wb-loading-overlay';
+                el.innerHTML = '<div class="wb-loading-box">'
+                    + '<div class="wb-loading-spinner"></div>'
+                    + '<div class="wb-loading-title"></div>'
+                    + '<div class="wb-loading-bar"><i></i></div>'
+                    + '<div class="wb-loading-sub"></div>'
+                    + '<div class="wb-loading-time"></div>'
+                    + '</div>';
+                host.appendChild(el);
+            }
+            el.dataset.title = title;
+            state.loadingTitle = title;
+            updateRunLoading();
+            if (!state.loadingTick) state.loadingTick = setInterval(updateRunLoading, 1000);
+        }
+        function updateRunLoading() {
+            const host = document.querySelector('.workspace-content');
+            const el = host && host.querySelector('.wb-loading-overlay');
+            if (!el) return;
+            const t = state.task || {};
+            el.querySelector('.wb-loading-title').textContent = state.loadingTitle || '运行中';
+            const logs = state.log || [];
+            el.querySelector('.wb-loading-sub').textContent =
+                logs.length ? String(logs[logs.length - 1]) : (t.message || '');
+            const st = t.startedAt || t.uqStartedAt;
+            el.querySelector('.wb-loading-time').textContent =
+                st ? '已运行 ' + fmtDuration(Date.now() - st) : '';
+        }
+        function hideRunLoading() {
+            if (state.loadingTick) { clearInterval(state.loadingTick); state.loadingTick = null; }
+            state.loadingTitle = null;
+            const el = document.querySelector('.wb-loading-overlay');
+            if (el) el.remove();
+        }
+        function fmtDuration(ms) {
+            const s = Math.max(0, Math.floor(ms / 1000));
+            const m = Math.floor(s / 60), h = Math.floor(m / 60);
+            return (h ? h + '时' : '') + (m ? m + '分' : '') + (s % 60) + '秒';
+        }
+
         /* ---------- 轮询 ---------- */
         function poll() {
             const prevStatus = state.task ? state.task.status : null;
@@ -790,6 +847,18 @@
                     }
                     const t = state.task || {};
                     const changed = t.status !== prevStatus || t.uqStatus !== prevUq || t.prepMessage !== prevPrep;
+                    // 运行中显示旧版同款 loading 遮罩,结束后自动隐藏
+                    const uqRunning = t.uqStatus === 'EXECUTING' || t.uqStatus === 'PREPARING';
+                    const prepRunning = state.prepWait || t.status === 'PREPARING';
+                    if (prepRunning) {
+                        showRunLoading(state.loadingTitle || '数据准备中');
+                    } else if (t.status === 'RUNNING' || t.status === 'STOP_REQUESTED') {
+                        showRunLoading(state.loadingTitle || '辨识运行中');
+                    } else if (uqRunning && state.tab === 'uq') {
+                        showRunLoading(state.loadingTitle || 'UQ 评估运行中');
+                    } else {
+                        hideRunLoading();
+                    }
                     if (t.status === 'COMPLETED' && state.tab !== 'uq' && prevStatus !== 'COMPLETED') {
                         stopPolling();
                         state.tab = 'result';
@@ -805,7 +874,7 @@
                 .catch(() => { });
         }
         function startPolling() { stopPolling(); state.timer = setInterval(poll, 2500); poll(); }
-        function stopPolling() { if (state.timer) { clearInterval(state.timer); state.timer = null; } }
+        function stopPolling() { if (state.timer) { clearInterval(state.timer); state.timer = null; } hideRunLoading(); }
 
         /** 数据准备(preview):真实解析工况分组;完成后由 poll 刷新页面 */
         function runPrepare() {
@@ -816,6 +885,8 @@
                 .then(resp => {
                     if (resp && (resp.success || resp.code === 200)) {
                         state.prepWait = true;
+                        showRunLoading('数据准备中');
+                        renderBody();
                         startPolling();
                     } else {
                         toast((resp && resp.message) || '发起数据准备失败', 'error');
