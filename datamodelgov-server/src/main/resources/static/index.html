@@ -9,17 +9,21 @@
     <link rel="stylesheet" href="./css/icons.css">
     <link rel="stylesheet" href="./css/main.css">
     <link rel="stylesheet" href="./css/desktop-shell.css">
+    <link rel="stylesheet" href="./components/workbench/workbench.css?v=r4">
     <script>
-        // 页面加载前立即检查登录状态，避免先显示index.html再跳转
+        // 旧版页面仅作为"旧版界面"入口:未登录去登录页;
+        // 已登录且未显式要求旧版(?legacy=1)时直接进新版工作台,避免"登录后还看到旧页"
         (function() {
-            const tokenKey = 'jwtToken';
-            const token = localStorage.getItem(tokenKey);
+            const token = localStorage.getItem('jwtToken');
+            const wantLegacy = window.location.search.indexOf('legacy=1') !== -1;
             if (!token) {
-                window.location.href = '/login.html';
+                window.location.replace('/login.html');
+            } else if (!wantLegacy) {
+                window.location.replace('/workbench.html');
             }
         })();
     </script>
-    <script src="./config/app-config.js"></script>
+    <script src="./config/app-config.js?v=r4"></script>
 </head>
 <body>
 <!-- 页面初始化Loading遮罩层 -->
@@ -623,6 +627,9 @@
             <program-run id="programRun" style="display: none;"></program-run>
             <!-- 程序工作流组件 -->
             <program-workflow id="programWorkflow" hidden></program-workflow>
+            <!-- 工作台(UI-R131 新主界面) -->
+            <workbench-root id="workbenchRoot" style="display: none;"></workbench-root>
+            <workbench-shell id="workbenchShell" style="display: none;"></workbench-shell>
         </div>
     </div>
 
@@ -663,7 +670,7 @@
     </div>
 </div>
 
-<script src="./config/app-config.js"></script>
+<script src="./config/app-config.js?v=r4"></script>
 <script src="./js/menu-permission.js"></script>
 <script src="./js/main-menu-permission.js"></script>
 <script src="./js/button-id-mapping.js"></script>
@@ -704,6 +711,10 @@
 <script src="./components/program-run/program-run.js"></script>
 <script src="./components/program-workflow/program-workflow.js"></script>
 <script src="./js/program-launcher.js"></script>
+<script src="./components/workbench/workbench-common.js?v=r4"></script>
+<script src="./components/workbench/workbench-root.js?v=r4"></script>
+<script src="./components/workbench/workbench-shell.js?v=r4"></script>
+<script src="./components/workbench/workbench-task.js?v=r4"></script>
 <script src="./components/user-manual/user-manual.js"></script>
     <script src="./components/user-management/user-management.js"></script>
     <script src="./components/permission-management/permission-management.js"></script>

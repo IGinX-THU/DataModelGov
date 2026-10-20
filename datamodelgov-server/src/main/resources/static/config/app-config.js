@@ -424,8 +424,30 @@ window.AppConfig = {
             const queryString = new URLSearchParams(params).toString();
             url += (url.includes('?') ? '&' : '?') + queryString;
         }
-        
+
         return this.request(url, { method: 'DELETE' });
+    },
+
+    // ===== 工作台域 API:按相对路径调用 /api/engine/** =====
+    async engineGet(path, params) {
+        let url = this.api.baseURL + '/api/engine/' + path;
+        if (params) url += '?' + new URLSearchParams(params).toString();
+        return this.request(url, { method: 'GET' });
+    },
+
+    async enginePost(path, data) {
+        return this.request(this.api.baseURL + '/api/engine/' + path, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data || {})
+        });
+    },
+
+    async engineUpload(path, formData) {
+        return this.request(this.api.baseURL + '/api/engine/' + path, {
+            method: 'POST',
+            body: formData
+        });
     },
 
     // 处理认证失败

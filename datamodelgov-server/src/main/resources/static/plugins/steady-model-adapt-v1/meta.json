@@ -1,0 +1,8 @@
+{
+  "id": "steady-model-adapt-v1",
+  "name": "稳态试车工况点模型修正 V1",
+  "description": "稳态试车数据导入、参数辨识、工程可辨识性、不确定性评估、独立测试验证、单工况预测及结果治理工作流",
+  "program": "稳态试车工况点模型修正V1",
+  "version": "1.0.0",
+  "author": "DataModelGov"
+}

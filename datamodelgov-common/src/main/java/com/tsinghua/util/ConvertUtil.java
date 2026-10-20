@@ -1,426 +1,317 @@
 package com.tsinghua.util;
 
 import cn.edu.tsinghua.iginx.session.SessionExecuteSqlResult;
-import cn.edu.tsinghua.iginx.thrift.DataType;
 import cn.edu.tsinghua.iginx.session_v2.write.Point;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.BeanUtils;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.nio.charset.StandardCharsets;
-import java.util.*;
-
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
- * 类型转换: Entity - Vo转换
- * @author songpeijiang
- * @since 2024/4/10
+ * 实体与 IGINX 数据点之间的转换工具(全项目唯一副本,位于 common 供 auth/core 共用)。
+ * 约定:实体的每个字段对应一个 measurement = prefix + "." + 字段名,key 用业务时间戳,
+ * 与 SELECT * FROM prefix 的关系型查询方式配套(一个字段一列)。
  */
-public class ConvertUtil {
-    public static final Logger logger = LoggerFactory.getLogger(ConvertUtil.class);
+public final class ConvertUtil {
 
-    public static <T> T entityConvert(Object source, Class<T> target) {
-        if (source == null) {
-            return null;
-        }
-        T targetObject = null;
-        try {
-            targetObject = target.newInstance();
-            BeanUtils.copyProperties(source, targetObject);
-        } catch (Exception e) {
-            logger.error("convert error ", e);
-        }
-        return targetObject;
+    private static final Logger logger = LoggerFactory.getLogger(ConvertUtil.class);
+
+    private ConvertUtil() {
     }
 
-    public static <T> List<T> entityListConvert(Collection<?> sourceList, Class<T> target) {
-        if (sourceList == null) {
-            return null;
-        }
-        List<T> targetList = new ArrayList<>(sourceList.size());
+    /* ==================== 写入方向 ==================== */
 
-        try {
-            for (Object source : sourceList) {
-                T targetObject = target.newInstance();
-                BeanUtils.copyProperties(source, targetObject);
-                targetList.add(targetObject);
-            }
-        } catch (Exception e) {
-            logger.error("convert error ", e);
-        }
-        return targetList;
-    }
-
-
-    /**
-     * 将字符串转换为 UTF-8 编码的字节数组
-     * 这是最通用、兼容性最好的编码
-     */
-    public static byte[] stringToBytes(String str) {
-        if (str == null) {
-            return new byte[0]; // 或 return null，根据您的业务逻辑
-        }
-        return str.getBytes(StandardCharsets.UTF_8);
-    }
-
-    /**
-     * 将字节数组解码为 UTF-8 字符串
-     */
-    public static String bytesToString(byte[] bytes) {
-        if (bytes == null || bytes.length == 0) {
-            return ""; // 或 return null
-        }
-        return new String(bytes, StandardCharsets.UTF_8);
-    }
-
-    /**
-     * 获取到所有字段
-     */
-    public static List<String> iginxFieldNamesConvert(Class<?> clazz, String prefix) {
-        List<String> fieldNames = new ArrayList<>();
-        Field[] fields = clazz.getDeclaredFields();
-
-        for (Field field : fields) {
-            fieldNames.add(String.format("%s.%s", prefix, field.getName()));
-        }
-
-        return fieldNames;
-    }
-
-    /**
-     * 将实体对象转换为 IGINX Point 列表（反射遍历所有字段）
-     * @param entity 实体对象
-     * @param prefix IGINX 存储前缀（如 relational_system.workflow_workspace）
-     * @param timestamp 时间戳（主键）
-     * @return Point 列表
-     */
-    public static <T> List<Point> entityToPoints(T entity, String prefix, long timestamp) {
-        if (entity == null) return new ArrayList<>();
+    /** 将实体字段平铺为 IGINX 数据点:measurement=prefix.字段名,key=timestamp,跳过 null 字段。 */
+    public static List<Point> entityToPoints(Object entity, String prefix, Long timestamp) {
         List<Point> points = new ArrayList<>();
-        Field[] fields = entity.getClass().getDeclaredFields();
-        for (Field field : fields) {
-            field.setAccessible(true);
-            try {
-                Object value = field.get(entity);
-                if (value == null) continue;
-                points.add(createFieldPoint(prefix, field.getName(), value, timestamp));
-            } catch (IllegalAccessException e) {
-                logger.warn("无法访问字段: {}", field.getName(), e);
+        if (entity == null || timestamp == null) {
+            return points;
+        }
+        long key = timestamp;
+        for (Field field : collectFields(entity.getClass())) {
+            Object value = readField(entity, field);
+            if (value == null) {
+                continue;
             }
+            points.add(createFieldPoint(prefix, field.getName(), value, key));
         }
         return points;
     }
 
-    /**
-     * 创建字段数据点 - 通用方法
-     * 参考ModelFileService的createFieldPoint方法，提取为公共工具方法
-     */
-    public static Point createFieldPoint(String basePath, String fieldName, Object value, long timestamp) {
-        String measurement = String.format("%s.%s", basePath, fieldName);
-
-        Point.Builder builder = Point.builder()
-                .measurement(measurement)
-                .key(timestamp);
-
-        // 根据值的类型设置对应的值类型
-        if (value == null) {
-            return null;
-        } else if (value instanceof Boolean) {
-            builder.booleanValue((Boolean) value)
-                    .dataType(DataType.BOOLEAN);
-        } else if (value instanceof Integer) {
-            builder.intValue(((Integer) value))
-                    .dataType(DataType.INTEGER);
-        } else if (value instanceof Long) {
-            builder.longValue((Long) value)
-                    .dataType(DataType.LONG);
-        } else if (value instanceof Float) {
-            builder.floatValue(((Float) value))
-                    .dataType(DataType.FLOAT);
-        } else if (value instanceof Double) {
-            builder.doubleValue(((Double) value))
-                    .dataType(DataType.DOUBLE);
-        } else {
-            // 默认转换为字节数组存储
-            builder.binaryValue(value.toString().getBytes(StandardCharsets.UTF_8))
-                    .dataType(DataType.BINARY);
+    /** 实体字段对应的 measurement 名清单(prefix.字段名)。 */
+    public static List<String> iginxFieldNamesConvert(Class<?> clazz, String prefix) {
+        List<String> names = new ArrayList<>();
+        for (Field field : collectFields(clazz)) {
+            names.add(prefix + "." + field.getName());
         }
-
-        return builder.build();
+        return names;
     }
 
+    public static Point createFieldPoint(String basePath, String fieldName, String value, long key) {
+        return Point.builder().measurement(measurement(basePath, fieldName)).key(key).value(value).build();
+    }
+
+    public static Point createFieldPoint(String basePath, String fieldName, Long value, long key) {
+        return Point.builder().measurement(measurement(basePath, fieldName)).key(key).longValue(value == null ? 0L : value).build();
+    }
+
+    public static Point createFieldPoint(String basePath, String fieldName, Integer value, long key) {
+        return Point.builder().measurement(measurement(basePath, fieldName)).key(key).intValue(value == null ? 0 : value).build();
+    }
+
+    public static Point createFieldPoint(String basePath, String fieldName, long value, long key) {
+        return Point.builder().measurement(measurement(basePath, fieldName)).key(key).longValue(value).build();
+    }
+
+    public static Point createFieldPoint(String basePath, String fieldName, Boolean value, long key) {
+        return Point.builder().measurement(measurement(basePath, fieldName)).key(key).booleanValue(value != null && value).build();
+    }
+
+    public static Point createFieldPoint(String basePath, String fieldName, Object value, long key) {
+        return buildObjectPoint(measurement(basePath, fieldName), key, value);
+    }
+
+    private static Point buildObjectPoint(String measurement, long key, Object value) {
+        Point.Builder b = Point.builder().measurement(measurement).key(key);
+        if (value instanceof byte[]) {
+            b.binaryValue((byte[]) value);
+        } else if (value instanceof Integer) {
+            b.intValue((Integer) value);
+        } else if (value instanceof Long) {
+            b.longValue((Long) value);
+        } else if (value instanceof Boolean) {
+            b.booleanValue((Boolean) value);
+        } else if (value instanceof Float) {
+            b.floatValue((Float) value);
+        } else if (value instanceof Double) {
+            b.doubleValue((Double) value);
+        } else {
+            b.value(value == null ? "" : String.valueOf(value));
+        }
+        return b.build();
+    }
+
+    private static String measurement(String basePath, String fieldName) {
+        return basePath + "." + fieldName;
+    }
+
+    /* ==================== 读取方向 ==================== */
+
     /**
-     * 将记录映射为实体 - 通用方法
+     * IGINX SQL 查询结果转行记录列表:每行 Map,key 为完整 measurement 路径。
+     * 注意:值保持原始类型(byte[] 不转换)——多处调用方按 byte[] 强转后再自行解码。
      */
-    public static <T> T mapToEntity(T entity, Map<String, Object> record, String tablePrefix) {
+    public static List<Map<String, Object>> getRecords(SessionExecuteSqlResult res) {
+        List<Map<String, Object>> records = new ArrayList<>();
+        if (res == null) {
+            return records;
+        }
+        List<String> paths = res.getPaths();
+        List<List<Object>> rows = res.getValues();
+        if (paths == null || rows == null) {
+            return records;
+        }
+        for (List<Object> row : rows) {
+            Map<String, Object> record = new LinkedHashMap<>();
+            for (int j = 0; j < paths.size() && j < row.size(); j++) {
+                record.put(paths.get(j), row.get(j));
+            }
+            records.add(record);
+        }
+        return records;
+    }
 
-        // 使用ConvertUtil的通用方法设置字段值 - 参考ModelFileService.queryMeta
-        record.forEach((k, v) -> {
-            String fieldName = k.replace(tablePrefix + ".", "");
-            ConvertUtil.setEntityField(entity, tablePrefix, fieldName, v);
-        });
-
+    /** 用查询结果的一行填充实体:列名去掉 prefix. 前缀后按字段名反射赋值。 */
+    public static <T> T mapToEntity(T entity, Map<String, Object> row, String prefix) {
+        if (entity == null || row == null) {
+            return entity;
+        }
+        String dotPrefix = prefix == null ? "" : prefix + ".";
+        Map<String, Object> fields = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> e : row.entrySet()) {
+            String key = e.getKey();
+            String fieldName = key != null && key.startsWith(dotPrefix) ? key.substring(dotPrefix.length()) : key;
+            fields.put(fieldName, e.getValue());
+        }
+        for (Field field : collectFields(entity.getClass())) {
+            if (!fields.containsKey(field.getName())) {
+                continue;
+            }
+            setEntityField(entity, prefix, field.getName(), fields.get(field.getName()));
+        }
         return entity;
     }
-    /**
-     * 根据字段名设置实体属性 - 通用方法
-     * 参考ModelFileService的setDtoField方法，提取为公共工具方法
-     * 需要传入实体类、字段映射前缀、字段名和值
-     */
-    public static <T> void setEntityField(T entity, String prefix, String fieldName, Object value) {
+
+    /** 反射设置实体字段:byte[] 转 UTF-8 字符串,数值/布尔做基本类型适配。 */
+    public static void setEntityField(Object entity, String prefix, String fieldName, Object value) {
         try {
-            String fullFieldName = prefix + "." + fieldName;
-            
-            // 使用反射设置字段值
-            Field field = null;
-            try {
-                field = entity.getClass().getDeclaredField(fieldName);
-                field.setAccessible(true);
-            } catch (NoSuchFieldException e) {
-                // 如果实体类中没有该字段，则忽略
-                logger.debug("实体类中不存在字段: {}", fieldName);
+            Field field = findField(entity.getClass(), fieldName);
+            if (field == null) {
                 return;
             }
-
-            // 根据字段类型设置值
-            if (value instanceof byte[]) {
-                String stringValue = new String((byte[]) value, StandardCharsets.UTF_8);
-                setFieldValue(entity, field, stringValue);
-            } else if (value instanceof String) {
-                setFieldValue(entity, field, value);
-            } else if (value instanceof Boolean) {
-                setFieldValue(entity, field, value);
-            } else if (value instanceof Long) {
-                setFieldValue(entity, field, value);
-            } else if (value instanceof Integer) {
-                // 根据字段类型转换Integer
-                Class<?> fieldType = field.getType();
-                if (fieldType == Long.class || fieldType == long.class) {
-                    setFieldValue(entity, field, ((Integer) value).longValue());
-                } else if (fieldType == Integer.class || fieldType == int.class) {
-                    setFieldValue(entity, field, value);
-                } else if (fieldType == Boolean.class || fieldType == boolean.class) {
-                    setFieldValue(entity, field, ((Integer) value) == 1);
-                } else {
-                    setFieldValue(entity, field, value.toString());
-                }
-            } else {
-                setFieldValue(entity, field, value.toString());
+            field.setAccessible(true);
+            Object converted = coerce(value, field.getType());
+            if (converted != null || !field.getType().isPrimitive()) {
+                field.set(entity, converted);
             }
         } catch (Exception e) {
-            logger.warn("设置字段 {} 失败: {}", fieldName, e.getMessage());
+            logger.debug("设置实体字段失败: {}.{} = {}", entity.getClass().getSimpleName(), fieldName, value, e);
         }
     }
 
-    /**
-     * 设置字段值的辅助方法
-     */
-    private static <T> void setFieldValue(T entity, Field field, Object value) throws IllegalAccessException {
-        Class<?> fieldType = field.getType();
-        
-        if (value == null) {
-            field.set(entity, null);
-            return;
+    /** DTO 同名字段拷贝到目标实体(含基本类型适配)。 */
+    public static <T> T entityConvert(Object source, Class<T> targetType) {
+        if (source == null) {
+            return null;
         }
-        
-        if (fieldType == String.class) {
-            field.set(entity, value.toString());
-        } else if (fieldType == Boolean.class || fieldType == boolean.class) {
-            if (value instanceof Boolean) {
-                field.set(entity, value);
-            } else if (value instanceof String) {
-                field.set(entity, Boolean.valueOf((String) value));
-            } else if (value instanceof Integer) {
-                field.set(entity, ((Integer) value) == 1);
+        try {
+            T target = targetType.newInstance();
+            Map<String, Field> targetFields = new LinkedHashMap<>();
+            for (Field f : collectFields(targetType)) {
+                targetFields.put(f.getName(), f);
             }
-        } else if (fieldType == Long.class || fieldType == long.class) {
-            if (value instanceof Long) {
-                field.set(entity, value);
-            } else if (value instanceof Integer) {
-                field.set(entity, ((Integer) value).longValue());
-            } else if (value instanceof String) {
-                try {
-                    field.set(entity, Long.parseLong((String) value));
-                } catch (NumberFormatException e) {
-                    logger.warn("无法将字符串 {} 转换为 Long", value);
+            for (Field sf : collectFields(source.getClass())) {
+                Field tf = targetFields.get(sf.getName());
+                if (tf == null) {
+                    continue;
+                }
+                Object value = readField(source, sf);
+                if (value == null) {
+                    continue;
+                }
+                Object converted = coerce(value, tf.getType());
+                if (converted != null || !tf.getType().isPrimitive()) {
+                    tf.setAccessible(true);
+                    tf.set(target, converted);
                 }
             }
-        } else if (fieldType == Integer.class || fieldType == int.class) {
-            if (value instanceof Integer) {
-                field.set(entity, value);
-            } else if (value instanceof Long) {
-                field.set(entity, ((Long) value).intValue());
-            } else if (value instanceof String) {
-                try {
-                    field.set(entity, Integer.parseInt((String) value));
-                } catch (NumberFormatException e) {
-                    logger.warn("无法将字符串 {} 转换为 Integer", value);
-                }
-            }
-        } else {
-            // 其他类型直接toString
-            field.set(entity, value.toString());
+            return target;
+        } catch (Exception e) {
+            logger.error("实体转换失败: {} -> {}", source.getClass().getSimpleName(), targetType.getSimpleName(), e);
+            return null;
         }
     }
 
+    /** 实体列表批量转换。 */
+    public static <T> List<T> entityListConvert(Collection<?> sourceList, Class<T> targetType) {
+        List<T> targetList = new ArrayList<>();
+        if (sourceList == null) {
+            return targetList;
+        }
+        for (Object source : sourceList) {
+            T target = entityConvert(source, targetType);
+            if (target != null) {
+                targetList.add(target);
+            }
+        }
+        return targetList;
+    }
+
+    /* ==================== 通用转换 ==================== */
+
     /**
-     * 单位换算处理
-     * 根据运算符和换算值对原始数据进行单位转换
-     * 
-     * @param value 原始值
-     * @param operator 运算符 (multiply, divide, add, subtract)
-     * @param conversionValue 换算值
-     * @return 转换后的值
+     * 数据绑定运算:none/加/减/乘/除,conversionValue 为数值或分数(如 9/5);其余原样返回。
+     * 兼容两套运算符写法:multiply/divide/add/subtract、mul/div/sub、+ - * /、加减乘除。
+     * 整数值收敛为 Long 返回。
      */
     public static Object convertValue(Object value, String operator, String conversionValue) {
-        if (value == null || operator == null || conversionValue == null || 
-            "none".equals(operator) || conversionValue.trim().isEmpty()) {
+        if (value == null || operator == null || "none".equalsIgnoreCase(operator) || operator.trim().isEmpty()) {
             return value;
         }
-        
+        double cv;
         try {
-            double numericValue = ((Number) value).doubleValue();
-            double factor = parseConversionValue(conversionValue);
-            
-            switch (operator.toLowerCase()) {
-                case "multiply":
-                    return numericValue * factor;
-                case "divide":
-                    if (factor == 0) {
-                        logger.warn("除数不能为0，跳过单位转换");
-                        return value;
-                    }
-                    return numericValue / factor;
-                case "add":
-                    return numericValue + factor;
-                case "subtract":
-                    return numericValue - factor;
-                default:
-                    logger.warn("未知的运算符: {}，跳过单位转换", operator);
-                    return value;
-            }
+            cv = parseConversionValue(conversionValue);
         } catch (Exception e) {
-            logger.error("单位转换失败: value={}, operator={}, conversionValue={}, error={}", 
-                        value, operator, conversionValue, e.getMessage());
+            return value;
+        }
+        String op = operator.trim().toLowerCase();
+        boolean isAdd = op.equals("+") || op.equals("add") || op.equals("加");
+        boolean isSub = op.equals("-") || op.equals("sub") || op.equals("subtract") || op.equals("减");
+        boolean isMul = op.equals("*") || op.equals("mul") || op.equals("multiply") || op.equals("乘");
+        boolean isDiv = op.equals("/") || op.equals("div") || op.equals("divide") || op.equals("除");
+        if (!isAdd && !isSub && !isMul && !isDiv) {
+            return value;
+        }
+        try {
+            double base = Double.parseDouble(String.valueOf(value).trim());
+            double out;
+            if (isAdd) {
+                out = base + cv;
+            } else if (isSub) {
+                out = base - cv;
+            } else if (isMul) {
+                out = base * cv;
+            } else {
+                out = cv == 0 ? base : base / cv;
+            }
+            if (out == Math.floor(out) && !Double.isInfinite(out)) {
+                return (long) out;
+            }
+            return out;
+        } catch (Exception e) {
             return value;
         }
     }
-    
+
     /**
-     * 解析换算值
-     * 支持小数、整数和分数格式（如 9/5）
-     * 
-     * @param value 换算值字符串
-     * @return 解析后的数值
+     * 解析换算值:支持小数、整数和分数格式(如 9/5)。
      */
-    private static double parseConversionValue(String value) {
+    public static double parseConversionValue(String value) {
         if (value == null || value.trim().isEmpty()) {
             return 1.0;
         }
-        
         value = value.trim();
-        
-        // 处理分数格式 (如 9/5)
         if (value.contains("/")) {
             String[] parts = value.split("/");
             if (parts.length == 2) {
-                try {
-                    double numerator = Double.parseDouble(parts[0].trim());
-                    double denominator = Double.parseDouble(parts[1].trim());
-                    if (denominator != 0) {
-                        return numerator / denominator;
-                    }
-                } catch (NumberFormatException e) {
-                    logger.warn("分数格式解析失败: {}", value);
+                double numerator = Double.parseDouble(parts[0].trim());
+                double denominator = Double.parseDouble(parts[1].trim());
+                if (denominator != 0) {
+                    return numerator / denominator;
                 }
             }
         }
-        
-        // 处理普通数值
-        try {
-            return Double.parseDouble(value);
-        } catch (NumberFormatException e) {
-            logger.warn("数值格式解析失败: {}", value);
-            return 1.0;
-        }
+        return Double.parseDouble(value);
     }
-    
-    /**
-     * 批量单位换算
-     * 对映射关系中的所有字段进行单位转换
-     * 
-     * @param mappings 映射关系列表
-     * @param data 原始数据
-     * @return 转换后的数据
-     */
-    public static java.util.Map<String, Object> batchConvertValue(
-            java.util.List<java.util.Map<String, Object>> mappings, 
-            java.util.Map<String, Object> data) {
-        
-        java.util.Map<String, Object> result = new java.util.HashMap<>(data);
-        
-        for (java.util.Map<String, Object> mapping : mappings) {
+
+    /** 批量单位换算:对映射关系中的所有字段进行单位转换。 */
+    public static Map<String, Object> batchConvertValue(List<Map<String, Object>> mappings, Map<String, Object> data) {
+        Map<String, Object> result = new LinkedHashMap<>(data);
+        for (Map<String, Object> mapping : mappings) {
             String sourceField = (String) mapping.get("sourceField");
             String targetField = (String) mapping.get("targetField");
             String operator = (String) mapping.get("operator");
             String conversionValue = (String) mapping.get("conversionValue");
-            
             if (sourceField != null && targetField != null && data.containsKey(sourceField)) {
-                Object originalValue = data.get(sourceField);
-                Object convertedValue = convertValue(originalValue, operator, conversionValue);
-                result.put(targetField, convertedValue);
-                
-                logger.debug("单位转换: {} {} {} = {} -> {}", 
-                           sourceField, originalValue, getConversionDescription(operator, conversionValue), 
-                           convertedValue, targetField);
+                result.put(targetField, convertValue(data.get(sourceField), operator, conversionValue));
             }
         }
-        
         return result;
     }
-    
-    /**
-     * 获取转换描述
-     * 用于日志显示转换过程
-     */
-    private static String getConversionDescription(String operator, String conversionValue) {
-        if ("none".equals(operator) || conversionValue == null || conversionValue.trim().isEmpty()) {
-            return "无转换";
-        }
-        
-        String opSymbol;
-        switch (operator.toLowerCase()) {
-            case "multiply": opSymbol = "×"; break;
-            case "divide": opSymbol = "÷"; break;
-            case "add": opSymbol = "+"; break;
-            case "subtract": opSymbol = "-"; break;
-            default: opSymbol = operator; break;
-        }
-        
-        return String.format("%s %s %s", operator, opSymbol, conversionValue);
-    }
-    
-    /**
-     * 验证转换参数
-     * 检查运算符和换算值是否有效
-     */
+
+    /** 验证转换参数:运算符与换算值是否有效。 */
     public static boolean validateConversionParams(String operator, String conversionValue) {
         if (operator == null || conversionValue == null) {
             return false;
         }
-        
-        // 检查运算符
-        if (!java.util.Arrays.asList("none", "multiply", "divide", "add", "subtract").contains(operator.toLowerCase())) {
+        String op = operator.trim().toLowerCase();
+        boolean known = op.equals("none") || op.equals("+") || op.equals("add") || op.equals("加")
+                || op.equals("-") || op.equals("sub") || op.equals("subtract") || op.equals("减")
+                || op.equals("*") || op.equals("mul") || op.equals("multiply") || op.equals("乘")
+                || op.equals("/") || op.equals("div") || op.equals("divide") || op.equals("除");
+        if (!known) {
             return false;
         }
-        
-        // 如果不是无转换，检查换算值
-        if (!"none".equals(operator) && conversionValue.trim().isEmpty()) {
-            return false;
+        if ("none".equals(op)) {
+            return true;
         }
-        
-        // 尝试解析换算值
         try {
             parseConversionValue(conversionValue);
             return true;
@@ -429,30 +320,92 @@ public class ConvertUtil {
         }
     }
 
-    /**
-     * 获取session结果转换
-     *
-     */
-    public static List<Map<String, Object>> getRecords(SessionExecuteSqlResult res) {
-        List<String> header = res.getPaths();
-        List<Map<String, Object>> records = new ArrayList<>();
-        List<List<Object>>  rows = res.getValues();
-        rows.forEach(row -> {
-            Map<String, Object> rs = new LinkedHashMap<>();
-            for (int i=0; i<=header.size() -1; i++){
-                Object value = row.get(i);
-                if (value instanceof byte[]) {
-                    rs.put(header.get(i), new String((byte[]) value, StandardCharsets.UTF_8));
-                } else {
-                    rs.put(header.get(i), row.get(i));
-                }
-            }
-            records.add(rs);
-        });
-        return records;
+    /** 字符串转 UTF-8 字节数组。 */
+    public static byte[] stringToBytes(String str) {
+        if (str == null) {
+            return new byte[0];
+        }
+        return str.getBytes(StandardCharsets.UTF_8);
     }
 
+    /** 文件分片字节合并为 UTF-8 字符串。 */
+    public static String bytesToString(byte[] bytes) {
+        if (bytes == null) {
+            return "";
+        }
+        return new String(bytes, StandardCharsets.UTF_8);
+    }
+
+    /* ==================== 反射辅助 ==================== */
+
+    private static List<Field> collectFields(Class<?> clazz) {
+        List<Field> fields = new ArrayList<>();
+        for (Class<?> c = clazz; c != null && c != Object.class; c = c.getSuperclass()) {
+            for (Field f : c.getDeclaredFields()) {
+                if (Modifier.isStatic(f.getModifiers())) continue;
+                fields.add(f);
+            }
+        }
+        return fields;
+    }
+
+    private static Field findField(Class<?> clazz, String name) {
+        for (Class<?> c = clazz; c != null && c != Object.class; c = c.getSuperclass()) {
+            try {
+                return c.getDeclaredField(name);
+            } catch (NoSuchFieldException ignored) {
+            }
+        }
+        return null;
+    }
+
+    private static Object readField(Object entity, Field field) {
+        try {
+            field.setAccessible(true);
+            return field.get(entity);
+        } catch (Exception e) {
+            logger.debug("读取字段失败: {}.{}", entity.getClass().getSimpleName(), field.getName(), e);
+            return null;
+        }
+    }
+
+    private static Object coerce(Object value, Class<?> type) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof byte[]) {
+            value = bytesToString((byte[]) value);
+        }
+        String type3 = type.getSimpleName();
+        try {
+            if (type == String.class) {
+                if (value instanceof Double || value instanceof Float) {
+                    double d = ((Number) value).doubleValue();
+                    return d == Math.floor(d) && !Double.isInfinite(d) ? String.valueOf((long) d) : String.valueOf(d);
+                }
+                return String.valueOf(value);
+            }
+            if (type == Integer.class || type3.equals("int")) {
+                return value instanceof Number ? ((Number) value).intValue() : Integer.parseInt(String.valueOf(value).trim());
+            }
+            if (type == Long.class || type3.equals("long")) {
+                return value instanceof Number ? ((Number) value).longValue() : Long.parseLong(String.valueOf(value).trim());
+            }
+            if (type == Double.class || type3.equals("double")) {
+                return value instanceof Number ? ((Number) value).doubleValue() : Double.parseDouble(String.valueOf(value).trim());
+            }
+            if (type == Float.class || type3.equals("float")) {
+                return value instanceof Number ? ((Number) value).floatValue() : Float.parseFloat(String.valueOf(value).trim());
+            }
+            if (type == Boolean.class || type3.equals("boolean")) {
+                if (value instanceof Boolean) return value;
+                String s = String.valueOf(value).trim();
+                return "true".equalsIgnoreCase(s) || "1".equals(s);
+            }
+        } catch (Exception e) {
+            logger.debug("字段值类型转换失败: {} -> {}", value, type3);
+            return null;
+        }
+        return value;
+    }
 }
-
-
-

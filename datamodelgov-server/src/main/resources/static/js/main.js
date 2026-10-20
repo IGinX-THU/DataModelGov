@@ -116,6 +116,8 @@ document.addEventListener('DOMContentLoaded', function() {
             'programUpload',
             'programRun',
             'programWorkflow',
+            'workbenchRoot',
+            'workbenchShell',
             'userManual'
         ];
         
@@ -203,12 +205,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
     };
-    
-    // 0. 动态加载数据源树和项目树
-    // 显示全局loading
-    window.showGlobalLoading('正在加载数据资源...');
-    loadDataSourceTree();
-    loadProjectTree();
 
     // 移除页面初始化Loading遮罩层
     const pageLoadingOverlay = document.getElementById('pageLoadingOverlay');
@@ -4084,3 +4080,34 @@ function renderProjectTree(treeData) {
 
     return html;
 }
+
+// ===== 新主界面(UI-R131 工作台):登录后默认进入工作台入口 =====
+(function () {
+    function enterWorkbench() {
+        try {
+            if (window.AppConfig && typeof window.AppConfig.isLoggedIn === 'function' && window.AppConfig.isLoggedIn()) {
+                if (typeof window.showComponent === 'function') {
+                    console.log('🚀 进入新版工作台界面');
+                    window.showComponent('workbenchRoot');
+                }
+            }
+        } catch (e) {
+            console.warn('工作台入口加载失败', e);
+        }
+    }
+    
+    // 页面加载完成后立即进入工作台，不加载旧组件
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+        setTimeout(() => {
+            console.log('🏁 页面加载完成，直接进入工作台');
+            enterWorkbench();
+        }, 100);
+    } else {
+        window.addEventListener('DOMContentLoaded', () => {
+            setTimeout(() => {
+                console.log('🏁 DOM加载完成，直接进入工作台');
+                enterWorkbench();
+            }, 100);
+        });
+    }
+})();

@@ -1,0 +1,1202 @@
+{
+ "version": "R06/UI-R131",
+ "deliveryRoot": "program/Delivery_V1_20261019_R06/程序",
+ "note": "20项公开功能注册表;来源:关联图features+调用手册附录A;entry/config路径相对deliveryRoot",
+ "features": [
+  {
+   "id": "F-01",
+   "name": "稳态试车均值辨识",
+   "entry": "programs/m_program_adaptive_tune/Start_TC24_00_Offline.m",
+   "config": "programs/m_program_adaptive_tune/sht_tc24_estimation_options.m",
+   "dictionary": "docs/modules/TC24/配置字典.csv",
+   "inputs": "训练均值Excel，测试均值可为空；选择steady或transient_instant路径。",
+   "outputs": "完整稳态调度模型Excel、燃油偏置、训练及可选测试误差。",
+   "limits": "总入口支持准备、辨识、读取等明确操作；不要把无参数说明当成已执行。",
+   "figures": [
+    "01-03",
+    "01-04",
+    "01-05",
+    "01-06",
+    "01-07"
+   ],
+   "groups": [
+    1,
+    2
+   ],
+   "sha": "B904DDCE7F5EA5FABA4A8BA272C8382B2EB1CB9781B8BD1B11C8BFF8C4F3CA87",
+   "workbench": "modeling",
+   "module": "TC24",
+   "actions": [
+    "identify",
+    "uq",
+    "requestStop",
+    "resume"
+   ]
+  },
+  {
+   "id": "F-02",
+   "name": "新试车数据更新稳态模型",
+   "entry": "programs/m_program_adaptive_tune/Start_TC27_SteadyModelUpdate_01.m",
+   "config": "programs/m_program_adaptive_tune/sht_tc27_estimation_options.m",
+   "dictionary": "docs/modules/TC27/配置字典.csv",
+   "inputs": "TC24父模型、旧均值、新完整试车历程、I/II及辨识路径。",
+   "outputs": "更新后的稳态调度、全部节点及燃油偏置、分来源训练和测试评价。",
+   "limits": "空测试集已修复；每条路径和I/II独立保存，不自动选优。",
+   "figures": [
+    "01-17",
+    "01-04",
+    "01-05",
+    "01-07"
+   ],
+   "groups": [
+    1,
+    2
+   ],
+   "sha": "746D8935B3A4E28DEE83CF1DFD8978773B8E814165751FEB9F92A30A9DE12732",
+   "workbench": "modeling",
+   "module": "TC27",
+   "actions": [
+    "preview",
+    "run",
+    "requestStop",
+    "resume"
+   ],
+   "offlineTwin": "Run_TC27_SteadyUpdate_Offline.m"
+  },
+  {
+   "id": "F-03",
+   "name": "过渡态试车瞬态参数辨识",
+   "entry": "programs/m_program_adaptive_tune/Start_TC27_TransientModelUpdate_01.m",
+   "config": "programs/m_program_adaptive_tune/sht_tc27_transient_prepare.m",
+   "dictionary": "docs/modules/TC27/配置字典.csv",
+   "inputs": "匹配稳态父模型、确认的大幅事件及前史、热资产。",
+   "outputs": "13项瞬态参数与组合模型Excel、事件拟合、运行资产关联。",
+   "limits": "固定稳态和燃油项；不以整段原始记录不经选段直接辨识。",
+   "figures": [
+    "03-01",
+    "03-02",
+    "03-03",
+    "03-04",
+    "03-05",
+    "03-06",
+    "03-09",
+    "03-10",
+    "03-11"
+   ],
+   "groups": [
+    3,
+    2
+   ],
+   "sha": "881509ABA548E6402BBB1DD41CB7BCF2CDE4CC48906485D2A418BA01259826BA",
+   "workbench": "modeling",
+   "module": "TC27",
+   "actions": [
+    "preview",
+    "run",
+    "requestStop",
+    "resume"
+   ],
+   "offlineTwin": "Run_TC27_TransientUpdate_Offline.m"
+  },
+  {
+   "id": "F-04",
+   "name": "稳态飞参建模",
+   "entry": "programs/m_program_adaptive_tune/Start_FlightModelAdapt_14_SteadyTask.m",
+   "config": "programs/m_program_adaptive_tune/sht_f3_steady_task.m",
+   "dictionary": "docs/modules/F3/配置字典.csv",
+   "inputs": "本架次飞参、实际父模型、独立测量先验、预处理确认。",
+   "outputs": "本架次稳态参数和燃油偏置、完整训练输出、正式模型Excel。",
+   "limits": "预览/确认/执行/读取按公开动作组织；没有本架次测试集不伪造独立测试。",
+   "figures": [
+    "04-01",
+    "04-02",
+    "04-03",
+    "04-04",
+    "04-06",
+    "04-07",
+    "04-08",
+    "04-09",
+    "04-10",
+    "04-12"
+   ],
+   "groups": [
+    4,
+    2
+   ],
+   "sha": "E2FA528BC892AB3D495EE193CAE06BC4E5A0A50903004C1660BBA810CE36EA98",
+   "workbench": "modeling",
+   "module": "F3",
+   "actions": [
+    "check",
+    "preview",
+    "confirm",
+    "estimate",
+    "run",
+    "status",
+    "requestPause",
+    "resume",
+    "readResult"
+   ]
+  },
+  {
+   "id": "F-05",
+   "name": "过渡态飞参建模",
+   "entry": "programs/m_program_adaptive_tune/Start_FlightModelAdapt_11_TransientCoefficientEstimation.m",
+   "config": "programs/m_program_adaptive_tune/sht_f3_transient_task.m",
+   "dictionary": "docs/modules/F3/配置字典.csv",
+   "inputs": "本架次稳态模型、确认的大幅事件、局部准备前史、配套热配置。",
+   "outputs": "13项瞬态参数、组合模型、事件训练输出与独立评价。",
+   "limits": "固定父模型稳态项；局部准备段和正式拟合段分清，按当前实现保留传感器状态。",
+   "figures": [
+    "05-01",
+    "05-02",
+    "05-03",
+    "05-04",
+    "05-05",
+    "05-06",
+    "05-07",
+    "05-08",
+    "05-09",
+    "05-12"
+   ],
+   "groups": [
+    5,
+    2
+   ],
+   "sha": "62BB822F7F74E49236C7E882AB8FAE36E5440B66CC17B019B6D640FC1F8EE9D5",
+   "workbench": "modeling",
+   "module": "F3",
+   "actions": [
+    "config",
+    "check",
+    "preview",
+    "confirm",
+    "estimate",
+    "run",
+    "status",
+    "requestPause",
+    "resume",
+    "read"
+   ]
+  },
+  {
+   "id": "F-06",
+   "name": "发动机个性化模型自演化",
+   "entry": "programs/m_program_adaptive_tune/Start_Stage4_02_EvolutionTask.m",
+   "config": "programs/m_program_adaptive_tune/sht_stage4_evolution_task.m",
+   "dictionary": "docs/modules/Stage4/配置字典.csv",
+   "inputs": "同一发动机试车初始模型、任意架次清单、显式父关系。",
+   "outputs": "逐架次模型、全部节点趋势、独立UQ记录、保持/趋势预测及评价。",
+   "limits": "只更新现行稳态、燃油及装机参数；瞬态固定。不用最后保存的模型猜父模型。",
+   "figures": [
+    "06-01",
+    "06-02",
+    "06-03",
+    "06-04",
+    "06-05",
+    "06-07",
+    "06-09",
+    "06-10",
+    "06-12",
+    "06-14",
+    "06-15",
+    "06-20"
+   ],
+   "groups": [
+    6,
+    2
+   ],
+   "sha": "61E9F4A989FD3B88D82B1B976C3A83B405F54D68006F67AD53E61B969ED0B38A",
+   "workbench": "modeling",
+   "module": "Stage4",
+   "actions": [
+    "check",
+    "estimateTime",
+    "preview",
+    "confirm",
+    "bindParent",
+    "run",
+    "status",
+    "requestPause",
+    "resume",
+    "readResult",
+    "parameters",
+    "trend",
+    "freezePrediction",
+    "predictionRun",
+    "predictionRequestPause",
+    "predictionResume",
+    "predictionEvaluate",
+    "uqRun",
+    "uqStatus",
+    "uqRead",
+    "exportConfiguration",
+    "loadConfiguration"
+   ]
+  },
+  {
+   "id": "F-07-TC24",
+   "name": "试车稳态模型不确定性评估",
+   "entry": "programs/m_program_adaptive_tune/Start_TC24_07_UncertaintyAssessment.m",
+   "config": "programs/m_program_adaptive_tune/sht_tc24_b_config.m",
+   "dictionary": "docs/modules/TC24/配置字典.csv",
+   "inputs": "与数据匹配的确定性Excel、明确选择B/C/D及概率和测量先验。",
+   "outputs": "参数和输出区间、后验样本或局部近似结果、独立评估身份。",
+   "limits": "方法D局部近似不等于全局正式采样；不从准备短例推定完整UQ通过。",
+   "figures": [
+    "01-08",
+    "01-09",
+    "01-10",
+    "01-27",
+    "02-05",
+    "02-09"
+   ],
+   "groups": [
+    1,
+    2
+   ],
+   "sha": "D3BECFB9274F4E2DFFE6FA9B1814FA063E07881961A504B71CD659792230646A",
+   "workbench": "modeling",
+   "module": "TC24",
+   "actions": [
+    "run",
+    "requestStop",
+    "resume"
+   ]
+  },
+  {
+   "id": "F-07-TC27",
+   "name": "更新后试车模型不确定性评估",
+   "entry": "programs/m_program_adaptive_tune/Start_TC27_UQ_ModelAssessment_01.m",
+   "config": "programs/m_program_adaptive_tune/sht_tc27_uq_d_options.m",
+   "dictionary": "docs/modules/TC27/配置字典.csv",
+   "inputs": "对应确定性Excel、C或D配置、数据与固定参数范围。",
+   "outputs": "与目标模型绑定的局部或采样评估及区间。",
+   "limits": "localSampleCount默认512、至少整数128；不是C全局粒子数。组合模型瞬态项不自动联合采样。",
+   "figures": [
+    "01-27",
+    "01-09",
+    "01-10",
+    "03-12",
+    "02-05"
+   ],
+   "groups": [
+    1,
+    3,
+    2
+   ],
+   "sha": "FECD14A0769E82D6C707FBECB460B73C77C44ED6C58836A551FDFFDDFF4AE265",
+   "workbench": "modeling",
+   "module": "TC27",
+   "actions": [
+    "run",
+    "publish",
+    "requestStop",
+    "resume"
+   ],
+   "offlineTwin": "Run_TC27_UQ_Offline.m"
+  },
+  {
+   "id": "F-07-F3",
+   "name": "飞参模型不确定性评估",
+   "entry": "programs/m_program_adaptive_tune/Start_FlightModelAdapt_15_UncertaintyTask.m",
+   "config": "programs/m_program_adaptive_tune/sht_f3_steady_task.m",
+   "dictionary": "docs/modules/F3/配置字典.csv",
+   "inputs": "实际飞参模型、数据、评估对象、概率来源和C/D配置。",
+   "outputs": "独立评估记录、参数/输出区间与质量说明。",
+   "limits": "截图中的区间只作布局示例；无计算时不显示结果。过渡态联合区间须按实际支持范围。",
+   "figures": [
+    "04-13",
+    "04-14",
+    "04-15",
+    "05-13",
+    "02-09"
+   ],
+   "groups": [
+    4,
+    5,
+    2
+   ],
+   "sha": "B833FE31D9BC625C1FEE5DFAA595AC2F5318527EB87AA9066E6818570EB45F69",
+   "workbench": "modeling",
+   "module": "F3",
+   "actions": [
+    "check",
+    "estimate",
+    "run",
+    "read",
+    "status",
+    "requestPause"
+   ]
+  },
+  {
+   "id": "F-08-TC24",
+   "name": "试车模型新稳态工况预测",
+   "entry": "programs/m_program_adaptive_tune/Start_SteadyModelPredict_01_InputDrivenPrediction.m",
+   "config": "programs/m_program_adaptive_tune/Start_SteadyModelPredict_01_InputDrivenPrediction.m",
+   "dictionary": "docs/modules/TC24/配置字典.csv",
+   "inputs": "用户指定新边界、当前模型Excel，可选匹配UQ。",
+   "outputs": "确定性预测、逐点失败原因及已支持的输出区间。",
+   "limits": "新输入不等于测试集；区间必须在新输入重新传播。",
+   "figures": [
+    "01-11",
+    "01-12",
+    "01-24",
+    "02-07"
+   ],
+   "groups": [
+    1,
+    2
+   ],
+   "sha": "6DB15EDE42C3C6885DE75E827FDA53F6D5F114CC429B7DA0AF41CF4FEC5BCB23",
+   "workbench": "modeling",
+   "module": "TC24",
+   "actions": [
+    "run"
+   ]
+  },
+  {
+   "id": "F-08-TC27",
+   "name": "更新试车模型新稳态工况预测",
+   "entry": "programs/m_program_adaptive_tune/Start_TC27_SteadyModelPredict_01.m",
+   "config": "programs/m_program_adaptive_tune/Start_TC27_SteadyModelPredict_01.m",
+   "dictionary": "docs/modules/TC27/配置字典.csv",
+   "inputs": "显式TC27模型与自选工况，可选匹配D局部评估。",
+   "outputs": "自主稳态输出与可选局部传播区间。",
+   "limits": "保持燃油偏置与模型身份一致；不复制训练区间。",
+   "figures": [
+    "01-25",
+    "03-13",
+    "03-14",
+    "03-15",
+    "03-16"
+   ],
+   "groups": [
+    1,
+    3,
+    2
+   ],
+   "sha": "5D97BE4D9B6CB9861974DEAAFB109137C0CEC678B8496F971F15F2905E484056",
+   "workbench": "modeling",
+   "module": "TC27",
+   "actions": [
+    "run"
+   ],
+   "offlineTwin": "Run_TC27_SteadyPredict_Offline.m"
+  },
+  {
+   "id": "F-08-F3-point",
+   "name": "飞参模型新稳态工况预测",
+   "entry": "programs/m_program_adaptive_tune/Start_FlightModelAdapt_16_IndependentPredictionTask.m",
+   "config": "programs/m_program_adaptive_tune/Start_FlightModelAdapt_16_IndependentPredictionTask.m",
+   "dictionary": "docs/modules/F3/配置字典.csv",
+   "inputs": "用户新边界、实际飞参模型及可选匹配评估。",
+   "outputs": "独立工况确定性结果、受支持的区间与失败信息。",
+   "limits": "当前边界与Mkg等限制按实际合同；不把未来输出当初始化输入。",
+   "figures": [
+    "04-17",
+    "04-18",
+    "04-19",
+    "04-26"
+   ],
+   "groups": [
+    4,
+    2
+   ],
+   "sha": "1851795979935116F9D9BFC23043F21713876D606FD3BDCEAEE3DC73E3FBD4F8",
+   "workbench": "modeling",
+   "module": "F3",
+   "actions": [
+    "configuration",
+    "check",
+    "estimate",
+    "run",
+    "read"
+   ]
+  },
+  {
+   "id": "F-08-F3-history",
+   "name": "飞参组合模型历程回放与预测",
+   "entry": "programs/m_program_adaptive_tune/Start_FlightModelAdapt_13_TransientModelPrediction.m",
+   "config": "programs/m_program_adaptive_tune/Start_FlightModelAdapt_13_TransientModelPrediction.m",
+   "dictionary": "docs/modules/F3/配置字典.csv",
+   "inputs": "已声明的输入历程、组合模型、轴速/热/传感器初态。",
+   "outputs": "历程输出及取得独立测量后的误差。",
+   "limits": "当前记录回放与无未来输出驱动扩展分开；不宣称所有input-only情形已验证。",
+   "figures": [
+    "05-11",
+    "05-14",
+    "05-15"
+   ],
+   "groups": [
+    5,
+    2
+   ],
+   "sha": "268FB782FC99D709283A03D388839D4DC93635AB713C205D3BDA7CF26040CA80",
+   "workbench": "modeling",
+   "module": "F3",
+   "actions": [
+    "capabilities",
+    "checkData",
+    "estimateData",
+    "runInput",
+    "read",
+    "compare"
+   ]
+  },
+  {
+   "id": "F-09-3",
+   "name": "三部件设计点配置",
+   "entry": "programs/m_program_adaptive_tune/design_point_modeling/RunModelSHT_V1_2DP_Auto.m",
+   "config": "programs/m_program_adaptive_tune/design_point_modeling/sht_design_point_config.m",
+   "dictionary": "docs/modules/UI/配置字典.csv",
+   "inputs": "三部件源MDL、已知设计目标及求解配置。",
+   "outputs": "设计点计算、参数比较、带时间备份后的可选MDL写入。",
+   "limits": "保留原V1不动，Auto负责受控写入；不依赖六部件源MDL。",
+   "figures": [
+    "07-01",
+    "07-02",
+    "07-04",
+    "07-05",
+    "07-06",
+    "07-07"
+   ],
+   "groups": [
+    7
+   ],
+   "sha": "529B1A897B037166A20B565122AF3710DA57FE4B7CE487175C0B036093C1E13A",
+   "workbench": "testbench",
+   "module": "DesignPoint",
+   "actions": [
+    "compute",
+    "verify",
+    "commit",
+    "inspect",
+    "export",
+    "simpleTest"
+   ]
+  },
+  {
+   "id": "F-09-6",
+   "name": "六部件设计点配置",
+   "entry": "programs/m_program_adaptive_tune/design_point_modeling/RunModelSHT_V2_2DP_Auto.m",
+   "config": "programs/m_program_adaptive_tune/design_point_modeling/sht_design_point_config.m",
+   "dictionary": "docs/modules/UI/配置字典.csv",
+   "inputs": "六部件源MDL、2/25/3截面目标、功率分配及求解配置。",
+   "outputs": "六部件设计结果、全部待写参数比较及可选MDL写入。",
+   "limits": "保留原V2；写正式MDL前明确确认及备份，写入后复现检查。",
+   "figures": [
+    "07-01",
+    "07-03",
+    "07-04",
+    "07-05",
+    "07-06",
+    "07-07"
+   ],
+   "groups": [
+    7
+   ],
+   "sha": "884C8E1E9DBDEA34753370776D1FC020B572C326192BB5AB0307A040259061BB",
+   "workbench": "testbench",
+   "module": "DesignPoint",
+   "actions": [
+    "compute",
+    "verify",
+    "commit",
+    "inspect",
+    "export",
+    "simpleTest"
+   ]
+  },
+  {
+   "id": "F-10",
+   "name": "起动停车模型构造",
+   "entry": "programs/m_program_adaptive_tune/startupstop_modeling/Start_StartStopModeling_01.m",
+   "config": "programs/m_program_adaptive_tune/startupstop_modeling/sht_startstop_modeling_config.m",
+   "dictionary": "docs/modules/StartStop/配置字典.csv",
+   "inputs": "实际源模型、扩图范围、控制/初态和独立输出目录。",
+   "outputs": "低速候选特性、校核、起停测试、正式可保存模型包。",
+   "limits": "建模不等于直接运行既有模型；低速失败和未覆盖域必须保留。",
+   "figures": [
+    "07-08",
+    "07-12",
+    "07-13",
+    "07-15",
+    "07-16",
+    "07-17",
+    "07-18",
+    "07-19",
+    "07-20",
+    "07-21",
+    "07-22",
+    "07-23",
+    "07-25",
+    "07-26"
+   ],
+   "groups": [
+    7
+   ],
+   "sha": "20143E87E2D236FF5C5D2BF13155A085777A6E86FB24518C15B72B21AA9CFBD9",
+   "workbench": "testbench",
+   "module": "StartStop",
+   "actions": [
+    "prepare",
+    "runStage",
+    "requestPause",
+    "status",
+    "resume",
+    "savePackage",
+    "loadResult",
+    "fullmodeConfig",
+    "inventory",
+    "resultView"
+   ]
+  },
+  {
+   "id": "F-10-thermal",
+   "name": "新设计热资产准备",
+   "entry": "programs/m_program_adaptive_tune/Start_TC27_02_ThermalModelPreparation.m",
+   "config": "programs/m_program_adaptive_tune/Start_TC27_02_ThermalModelPreparation.m",
+   "dictionary": "docs/modules/TC27/配置字典.csv",
+   "inputs": "设计解、匹配DLL/MDL/MAP、热参考工况与金属先验。",
+   "outputs": "热参数、参考表及可随完整模型保存的运行资产。",
+   "limits": "局部/五点热链不是全域校准；不把旧热表改签成新设计。",
+   "figures": [
+    "07-14",
+    "07-24",
+    "07-28",
+    "07-29"
+   ],
+   "groups": [
+    7
+   ],
+   "sha": "29D01B661B036075A571A5926A285033F91FC22430B2018CFD327AA6F8F48F29",
+   "workbench": "testbench",
+   "module": "TC27",
+   "actions": [
+    "prepareOnly",
+    "run",
+    "resultView"
+   ]
+  },
+  {
+   "id": "F-11",
+   "name": "全模式人工操纵仿真",
+   "entry": "programs/m_program_adaptive_tune/Start_FullModeSimulation_01.m",
+   "config": "programs/m_program_adaptive_tune/sht_fullmode_default_config.m",
+   "dictionary": "docs/modules/StartStop/配置字典.csv",
+   "inputs": "运行模型、明确初态、三位置油门、负载与传感器配置。",
+   "outputs": "会话状态、操纵回执、全部输出、快照及结果。",
+   "limits": "起动命令与数值开始/暂停不同；五挡80/90/95/100/105%；正恒功率或Mkp不从静止起动。",
+   "figures": [
+    "08-01",
+    "08-02",
+    "08-03",
+    "08-04",
+    "08-05",
+    "08-06",
+    "08-07",
+    "08-08",
+    "08-11",
+    "08-13",
+    "08-19",
+    "08-20"
+   ],
+   "groups": [
+    8
+   ],
+   "sha": "0DAAAD5A4D21F309D7B24B4F1359AC7F850FB0C125DA7D5D3387FC2F6C80C6EB",
+   "workbench": "testbench",
+   "module": "FullMode",
+   "actions": [
+    "prepare",
+    "submit",
+    "advance",
+    "pause",
+    "resume",
+    "status",
+    "save",
+    "close",
+    "restore"
+   ],
+   "offlineTwin": "Run_FullModeSimulation_Offline.m"
+  },
+  {
+   "id": "F-11-offline",
+   "name": "全模式独立离线推进",
+   "entry": "programs/m_program_adaptive_tune/Run_FullModeSimulation_Offline.m",
+   "config": "programs/m_program_adaptive_tune/sht_fullmode_default_config.m",
+   "dictionary": "docs/modules/StartStop/配置字典.csv",
+   "inputs": "同一配置及操纵计划、完整状态、独立输出目录。",
+   "outputs": "与人工会话同核心的连续输出、保存及恢复证据。",
+   "limits": "不依赖GUI；完整状态恢复必须核对版本，不以Excel代替动态快照。",
+   "figures": [
+    "08-09",
+    "08-10",
+    "08-14",
+    "08-15",
+    "08-16",
+    "08-25",
+    "08-26",
+    "08-27",
+    "08-28"
+   ],
+   "groups": [
+    8
+   ],
+   "sha": "4196391FECD23451BACA43BE8DF64AC9468B4C00A20E2ACDD4469F72F83273FA",
+   "workbench": "testbench",
+   "module": "FullMode",
+   "actions": [
+    "run"
+   ]
+  },
+  {
+   "id": "F-12",
+   "name": "多系统联合仿真",
+   "entry": "programs/AFO_V_2/Start_AFO_Multisystem.m",
+   "config": "programs/AFO_V_2/sht_afo_config.m",
+   "dictionary": "docs/modules/UI/配置字典.csv",
+   "inputs": "配套AFO SLX和独立DLL、系统启用项、初态、常值及在线指令。",
+   "outputs": "各系统输出、全通道Excel、配置和运行记录。",
+   "limits": "基准为Dll_Control_AFO_V8_5_R2019b.slx；同实例暂停，不提供全模式式物理起停和跨进程续算。",
+   "figures": [
+    "09-01",
+    "09-02",
+    "09-03",
+    "09-04",
+    "09-05",
+    "09-06",
+    "09-08",
+    "09-09",
+    "09-10",
+    "09-11",
+    "09-13",
+    "09-14",
+    "09-15"
+   ],
+   "groups": [
+    9
+   ],
+   "sha": "3088425E7E0B3E8C162C30777E6167A0EA7C7CB93A334D6C8DEB82BD0FEDCBE0",
+   "workbench": "testbench",
+   "module": "AFO",
+   "actions": [
+    "prepare",
+    "run",
+    "submit",
+    "save",
+    "results",
+    "configNew",
+    "resultView"
+   ]
+  }
+ ],
+ "groups": [
+  {
+   "id": 1,
+   "title": "项目入口与稳态试车建模",
+   "steps": [
+    {
+     "title": "进入项目",
+     "figures": [
+      "01-23",
+      "01-02"
+     ]
+    },
+    {
+     "title": "导入与配置",
+     "figures": [
+      "01-03",
+      "01-04",
+      "01-17"
+     ]
+    },
+    {
+     "title": "辨识与监视",
+     "figures": [
+      "01-05",
+      "01-13",
+      "01-26"
+     ]
+    },
+    {
+     "title": "输出与参数",
+     "figures": [
+      "01-06",
+      "01-07",
+      "01-22"
+     ]
+    },
+    {
+     "title": "保存与关联",
+     "figures": [
+      "01-18",
+      "01-19",
+      "01-20"
+     ]
+    },
+    {
+     "title": "可选UQ",
+     "figures": [
+      "01-08",
+      "01-09",
+      "01-10",
+      "01-27"
+     ]
+    },
+    {
+     "title": "新工况预测",
+     "figures": [
+      "01-11",
+      "01-24",
+      "01-25",
+      "01-21"
+     ]
+    }
+   ]
+  },
+  {
+   "id": 2,
+   "title": "模型成果与多记录关联",
+   "steps": [
+    {
+     "title": "查找模型",
+     "figures": [
+      "02-01"
+     ]
+    },
+    {
+     "title": "追溯模型与数据",
+     "figures": [
+      "02-02",
+      "02-03",
+      "02-04",
+      "02-08"
+     ]
+    },
+    {
+     "title": "管理多份UQ",
+     "figures": [
+      "02-05",
+      "02-06",
+      "02-09"
+     ]
+    },
+    {
+     "title": "选择预测对象",
+     "figures": [
+      "02-07"
+     ]
+    }
+   ]
+  },
+  {
+   "id": 3,
+   "title": "过渡态试车建模",
+   "steps": [
+    {
+     "title": "数据与父模型",
+     "figures": [
+      "03-01",
+      "03-04"
+     ]
+    },
+    {
+     "title": "提取大幅事件",
+     "figures": [
+      "03-02",
+      "03-03"
+     ]
+    },
+    {
+     "title": "配置与运行",
+     "figures": [
+      "03-05",
+      "03-06",
+      "03-07",
+      "03-08"
+     ]
+    },
+    {
+     "title": "输出和瞬态参数",
+     "figures": [
+      "03-09",
+      "03-10"
+     ]
+    },
+    {
+     "title": "保存组合模型",
+     "figures": [
+      "03-11"
+     ]
+    },
+    {
+     "title": "可选UQ与预测",
+     "figures": [
+      "03-12",
+      "03-13",
+      "03-14",
+      "03-15",
+      "03-16"
+     ]
+    }
+   ]
+  },
+  {
+   "id": 4,
+   "title": "稳态飞参建模",
+   "steps": [
+    {
+     "title": "本架次与父模型",
+     "figures": [
+      "04-01",
+      "04-02"
+     ]
+    },
+    {
+     "title": "预处理与确认",
+     "figures": [
+      "04-03",
+      "04-04",
+      "04-05",
+      "04-06"
+     ]
+    },
+    {
+     "title": "辨识和监视",
+     "figures": [
+      "04-07",
+      "04-08",
+      "04-23"
+     ]
+    },
+    {
+     "title": "训练输出与全部参数",
+     "figures": [
+      "04-09",
+      "04-10",
+      "04-11",
+      "04-25"
+     ]
+    },
+    {
+     "title": "保存及可选UQ",
+     "figures": [
+      "04-12",
+      "04-13",
+      "04-14",
+      "04-15",
+      "04-16"
+     ]
+    },
+    {
+     "title": "独立工况预测",
+     "figures": [
+      "04-17",
+      "04-18",
+      "04-19",
+      "04-26"
+     ]
+    }
+   ]
+  },
+  {
+   "id": 5,
+   "title": "过渡态飞参建模",
+   "steps": [
+    {
+     "title": "本架次稳态模型",
+     "figures": [
+      "05-01",
+      "05-02"
+     ]
+    },
+    {
+     "title": "选取大幅事件和前史",
+     "figures": [
+      "05-03",
+      "05-04"
+     ]
+    },
+    {
+     "title": "辨识配置与运行",
+     "figures": [
+      "05-05",
+      "05-06",
+      "05-07"
+     ]
+    },
+    {
+     "title": "输出与13项瞬态参数",
+     "figures": [
+      "05-08",
+      "05-09",
+      "05-10",
+      "05-11"
+     ]
+    },
+    {
+     "title": "保存与查看",
+     "figures": [
+      "05-12",
+      "05-13",
+      "05-15"
+     ]
+    },
+    {
+     "title": "历程回放与独立评价",
+     "figures": [
+      "05-14",
+      "05-16"
+     ]
+    }
+   ]
+  },
+  {
+   "id": 6,
+   "title": "发动机个性化模型自演化",
+   "steps": [
+    {
+     "title": "选择试车初始模型",
+     "figures": [
+      "06-01",
+      "06-02"
+     ]
+    },
+    {
+     "title": "登记架次与实际父模型",
+     "figures": [
+      "06-03",
+      "06-04"
+     ]
+    },
+    {
+     "title": "配置与逐架次执行",
+     "figures": [
+      "06-05",
+      "06-06",
+      "06-07",
+      "06-08"
+     ]
+    },
+    {
+     "title": "本架次拟合与参数",
+     "figures": [
+      "06-09",
+      "06-10",
+      "06-11"
+     ]
+    },
+    {
+     "title": "跨架次趋势及可选UQ",
+     "figures": [
+      "06-12",
+      "06-13",
+      "06-14"
+     ]
+    },
+    {
+     "title": "保持与趋势两种预测",
+     "figures": [
+      "06-15",
+      "06-16",
+      "06-17",
+      "06-18",
+      "06-19"
+     ]
+    },
+    {
+     "title": "保存及后续测量评价",
+     "figures": [
+      "06-20",
+      "06-21",
+      "06-22"
+     ]
+    }
+   ]
+  },
+  {
+   "id": 7,
+   "title": "设计点配置与起动停车建模",
+   "steps": [
+    {
+     "title": "源模型与设计目标",
+     "figures": [
+      "07-01",
+      "07-02",
+      "07-03"
+     ]
+    },
+    {
+     "title": "求解及比较",
+     "figures": [
+      "07-04",
+      "07-06",
+      "07-07"
+     ]
+    },
+    {
+     "title": "备份后写入MDL",
+     "figures": [
+      "07-05"
+     ]
+    },
+    {
+     "title": "低速扩图与运行配置",
+     "figures": [
+      "07-08",
+      "07-12",
+      "07-13",
+      "07-15",
+      "07-16",
+      "07-17",
+      "07-18"
+     ]
+    },
+    {
+     "title": "热资产与简单测试",
+     "figures": [
+      "07-14",
+      "07-09",
+      "07-10",
+      "07-19",
+      "07-20",
+      "07-21",
+      "07-22",
+      "07-23",
+      "07-24",
+      "07-28",
+      "07-29"
+     ]
+    },
+    {
+     "title": "保存完整模型并转仿真",
+     "figures": [
+      "07-11",
+      "07-25",
+      "07-26",
+      "07-27"
+     ]
+    }
+   ]
+  },
+  {
+   "id": 8,
+   "title": "全模式仿真",
+   "steps": [
+    {
+     "title": "选择模型和初态",
+     "figures": [
+      "08-01",
+      "08-09",
+      "08-18",
+      "08-29"
+     ]
+    },
+    {
+     "title": "核对准备状态",
+     "figures": [
+      "08-02",
+      "08-10",
+      "08-17"
+     ]
+    },
+    {
+     "title": "起动或非零初态运行",
+     "figures": [
+      "08-03",
+      "08-04",
+      "08-05",
+      "08-11"
+     ]
+    },
+    {
+     "title": "主操纵与监视",
+     "figures": [
+      "08-06",
+      "08-12",
+      "08-13",
+      "08-19",
+      "08-21",
+      "08-22",
+      "08-23",
+      "08-24",
+      "08-25",
+      "08-30"
+     ]
+    },
+    {
+     "title": "停车或结束",
+     "figures": [
+      "08-07",
+      "08-08",
+      "08-16",
+      "08-20"
+     ]
+    },
+    {
+     "title": "保存与状态恢复",
+     "figures": [
+      "08-14",
+      "08-15",
+      "08-26",
+      "08-27",
+      "08-28"
+     ]
+    }
+   ]
+  },
+  {
+   "id": 9,
+   "title": "多系统联合仿真",
+   "steps": [
+    {
+     "title": "选择配套AFO及子系统",
+     "figures": [
+      "09-01",
+      "09-12"
+     ]
+    },
+    {
+     "title": "启动与人工施加",
+     "figures": [
+      "09-11",
+      "09-13"
+     ]
+    },
+    {
+     "title": "各系统监视",
+     "figures": [
+      "09-02",
+      "09-03",
+      "09-04",
+      "09-05",
+      "09-06"
+     ]
+    },
+    {
+     "title": "在线负载调整",
+     "figures": [
+      "09-08",
+      "09-09"
+     ]
+    },
+    {
+     "title": "同实例暂停及结束",
+     "figures": [
+      "09-10",
+      "09-14"
+     ]
+    },
+    {
+     "title": "保存与历史查看",
+     "figures": [
+      "09-07",
+      "09-15"
+     ]
+    }
+   ]
+  }
+ ]
+}

@@ -3,8 +3,8 @@
  * Enables the application to work without external network access
  */
 
-const CACHE_NAME = 'datamodelgov-v1';
-const STATIC_CACHE = 'datamodelgov-static-v1';
+const CACHE_NAME = 'datamodelgov-v2';
+const STATIC_CACHE = 'datamodelgov-static-v2';
 
 // Assets to cache for offline use
 const STATIC_ASSETS = [
@@ -103,7 +103,34 @@ self.addEventListener('fetch', (event) => {
         return;
     }
     
-    // For static assets, try cache first, then network
+    // For HTML navigation requests, use network-first to avoid stale content
+    const isNavigation = event.request.mode === 'navigate';
+    const isHTML = event.request.headers.get('accept') && event.request.headers.get('accept').includes('text/html');
+    
+    if (isNavigation || isHTML) {
+        event.respondWith(
+            fetch(event.request)
+                .then((response) => {
+                    if (response && response.ok) {
+                        const responseToCache = response.clone();
+                        caches.open(STATIC_CACHE)
+                            .then((cache) => {
+                                cache.put(event.request, responseToCache);
+                            });
+                    }
+                    return response;
+                })
+                .catch((error) => {
+                    console.error('[Service Worker] Network fetch failed, trying cache:', error);
+                    return caches.match(event.request).then((cachedResponse) => {
+                        return cachedResponse || caches.match('/index.html');
+                    });
+                })
+        );
+        return;
+    }
+    
+    // For other static assets, try cache first, then network
     event.respondWith(
         caches.match(event.request)
             .then((response) => {
@@ -130,10 +157,7 @@ self.addEventListener('fetch', (event) => {
                     })
                     .catch((error) => {
                         console.error('[Service Worker] Fetch failed:', error);
-                        // Return a fallback for HTML requests
-                        if (event.request.mode === 'navigate') {
-                            return caches.match('/index.html');
-                        }
+                        return undefined;
                     });
             })
     );
