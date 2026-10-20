@@ -1,0 +1,236 @@
+﻿Module,Field,Type,Unit,Default,DefaultSource,AllowedValues,Meaning,ChangeImpact,Category
+R011,modelMode,scalar integer,1,1,sht_startstop_default_config.m,0或1,0三部件1六部件,改变MDL图和热拓扑必须新会话,用户必选
+R011,paths.cRoot,char,path,按目录特征解析或包内同级C,sht_fullmode_default_config.m,存在的配对C目录,所选C工程位置,同时核对M根普通初始化资产不得只改C,路径
+R011,paths.matlabRoot,char,path,当前M入口目录,sht_startstop_default_config.m,本实际程序根目录,源码及隐式中间文件根,恢复时不允许指向另一源码目录,派生勿改
+R011,paths.splitModel,char,path,所选拓扑MDL,sht_startstop_default_config.m,三部件Turboshaft-TS.mdl或六部件Turboshaft-TS-Split.mdl,历史字段名不表示只用于拆分,改变模型必须新身份与配套资产,路径
+R011,paths.dll,char,path,cRoot/x64/Release/GTESS.dll,sht_startstop_default_config.m,本次配对x64 DLL,起停实际加载库,不能只换DLL不换头或更换其他消费者包,路径
+R011,paths.matlabHeader,char,path,M/GTESS.h,sht_startstop_default_config.m,与DLL配套公共头,loadlibrary解析入口,影响公开结构与桥接必须成对核验,路径
+R011,paths.branchRoot,char,path,M父目录,sht_startstop_default_config.m,当前包布局,路径搜索基点,不是业务参数,派生勿改
+R011,paths.outputRoot,char,path,M父目录/report_outputs/StartupStop,sht_startstop_default_config.m,可写短路径,旧分阶段入口报告根,全模式另用fullmode.outputDirectory,路径
+R011,fullmode.version,integer,1,26100701,sht_fullmode_default_config.m,固定,全模式会话状态协议,不能改版本以绕开恢复检查,固定合同
+R011,fullmode.active,logical,1,true,sht_fullmode_default_config.m,固定,使连续核心进入人工会话分支,不手动改为自动任务脚本,内部
+R011,fullmode.recordPeriodS,double,s,0.1,sht_fullmode_default_config.m,固定0.1,记录周期10Hz,不改变积分或控制周期,固定合同
+R011,fullmode.maximumAcceptedSteps,positive integer,step,80000,sht_fullmode_default_config.m,有限正整数,数值步预算,用尽仅数值终止不代表物理停车,用户
+R011,fullmode.npRatio,double,1,0.9,sht_fullmode_default_config.m,运行操纵用0.8/0.9/0.95/1/1.05,运行Np目标相对所选模型设计Np,不直接改轴速且不改变慢车14000rpm,用户
+R011,fullmode.loadMode,char,1,dual_collective,sht_fullmode_default_config.m,power或mkp或dual_collective,每会话固定的负载模式,切换模式须新会话不能在线暗换,用户
+R011,fullmode.load.powerW,double,W,0,sht_fullmode_default_config.m,有限非负且工况可配平,PT测功器直接实际功率,正值不能stopped初态使用,用户
+R011,fullmode.load.mkpNm,double,N*m,0,sht_fullmode_default_config.m,有限非负且工况可配平,PT直接外部扭矩,不带旋翼惯量且正值不能静止起动,用户
+R011,fullmode.load.mainPitchDeg,double,deg,6,sht_fullmode_default_config.m,默认0到14,主桨总距,通过旋翼侧转速形成负载不改发动机轴速,用户
+R011,fullmode.load.tailPitchDeg,double,deg,5,sht_fullmode_default_config.m,默认-8到18,尾桨总距,与主桨独立操纵,用户
+R011,fullmode.powerEngagementRpm,double,rpm,1000,sht_fullmode_default_config.m,有限正值,正恒功率有效接入转速门槛,低于门槛报告pending不使用小分母加载,高级模型
+R011,fullmode.tailToMainPowerRatio,double,1,0.10,sht_fullmode_default_config.m,有效非负比例,设计尾桨与主桨功率分配,改变旋翼负载模型需验证,高级模型
+R011,fullmode.tailDesignPitchDeg,double,deg,10,sht_fullmode_default_config.m,有限非零且工程合理,尾桨负载设计总距基准,改变尾桨气动映射,高级模型
+R011,fullmode.mainPitchBoundsDeg,1x2 double,deg,[0 14],sht_fullmode_default_config.m,下限不大于上限,主桨命令范围,扩大不代表新负载包线已验证,高级模型
+R011,fullmode.tailPitchBoundsDeg,1x2 double,deg,[-8 18],sht_fullmode_default_config.m,下限不大于上限,尾桨命令范围,扩大不代表反推或实机工况已标定,高级模型
+R011,fullmode.densityKgPerM3,double,kg/m^3,1.225,sht_fullmode_default_config.m,有限正值,旋翼负载空气密度,仅改变负载不是整个发动机环境输入,高级模型
+R011,fullmode.designDensityKgPerM3,double,kg/m^3,1.225,sht_fullmode_default_config.m,有限正值,旋翼设计密度基准,与设计气动扭矩配套,高级模型
+R011,fullmode.initialKind,char,1,stopped,sht_fullmode_default_config.m,stopped或idle或cruise或maximum,会话初态类别,非零初态准备时配平不保证热平衡,用户
+R011,fullmode.initialNpRatio,double,1,0.90,sht_fullmode_default_config.m,0小于值且不大于1.05,cruise初态Np比例,idle改用14000rpm且maximum使用1所以这两类不取此值,用户
+R011,fullmode.initialThermalState,vector double,K,[],sht_fullmode_default_config.m,三部件14或六部件27个相容温度,初始金属温度状态,空值用热资产默认温度不代表充分热平衡,高级初态
+R011,fullmode.thermalEnabled,logical,1,true,sht_fullmode_default_config.m,true或false,Visser热模型开关,开时必须有相容热参数与参考间隙资产,用户
+R011,fullmode.coldBlowDurationS,double,s,30,sht_fullmode_default_config.m,有限正值,冷吹最长持续时间,不等同起动暖机时间,用户
+R011,fullmode.randomSeed,integer,1,1701,sht_fullmode_default_config.m,本轮未发现有效读取,配置中遗留字段,不要依赖其改变噪声改sensor.randomSeed,已知无效字段
+R011,fullmode.sensor.mode,char,1,identity,sht_fullmode_default_config.m,identity或firstOrder,传感器理想或FOH一阶动态,偏置噪声仍由对应字段决定,用户
+R011,fullmode.sensor.bias,scalar or vector,各通道单位,[],sht_sensor_step.m,空/标量/符合23槽长度向量,动态后添加的偏置,派生通道不允许独立误差且Tt45兼容槽强制同步,用户
+R011,fullmode.sensor.noiseStd,scalar or vector,各通道单位,[],sht_sensor_step.m,非负且符合23槽长度,动态后白噪声标准差,不能用方差代替标准差,用户
+R011,fullmode.sensor.timeConstant,scalar or vector,s,0,sht_sensor_step.m,非负且符合23槽长度,一阶传感器时间常数,firstOrder才起动态作用且零表示无滞后,用户
+R011,fullmode.sensor.randomSeed,integer,1,1701,sht_fullmode_default_config.m,MATLAB rng有效种子,实际测量噪声序列种子,快照保存随机状态恢复时不重抽,用户
+R011,fullmode.sensor.biasModel.enabled,logical,1,false,sht_fullmode_default_config.m,true或false,是否启用共用流量相关偏置生成器,开启还需其spec等配套参数不能仅勾选后假定已标定,高级测量
+R011,fullmode.sensor.pressureChannel,char,1,Pt2隐式默认,sht_startstop_run_continuous_mission.m,全模式当前保持Pt2,基础压力测点,公共sensor支持Pt1但本入口plant未提供Pt1不可直接切,固定测点合同
+R011,fullmode.outputDirectory,char,path,自动新建R011时间目录,sht_fullmode_session.m,可写短路径,运行及失败诊断报告目录,并不代替M根MiddleData写权限,路径
+R011,fullmode.assetDirectory,char,path,M/TestData/fullmode/model0或1,sht_fullmode_default_config.m,含所选拓扑低速MAP,已有低速模型图来源,不能拿普通原图或另一构型代替,路径
+R011,fullmode.seedPoolFile,char,path,见手册两种默认stage05路径,sht_fullmode_default_config.m,含result.finalMatrix.points的配套MAT,低速气路求解初值池,改变须核对图和设计身份,路径
+R011,fullmode.saveDirectory,char,path,默认无字段,Run_FullModeSimulation_Offline.m,新的可写结果目录,离线结束时可选保存,只有传入user中明确有此字段才自动save,离线可选
+R011,plan.durationS,double,s,350,Run_FullModeSimulation_Offline.m,有限正值,离线数值观察窗,到时不代表物理停车可显式采用450s,离线
+R011,plan.commands,cell array,1,默认idle/start/run/normal_stop命令表,Run_FullModeSimulation_Offline.m,每项标量结构,命令执行计划,不复制另一物理求解器,离线
+R011,plan.commands{}.atTimeS,double,s,每条显式给定,Run_FullModeSimulation_Offline.m,有限非负,最早可提交的仿真时刻,还须满足whenMode且会话状态有效,离线
+R011,plan.commands{}.whenMode,char,1,省略,Run_FullModeSimulation_Offline.m,实际mode字符串或省略,状态条件,空字符串不会当省略处理这是现有注释差异,离线
+R011,command.requestId,char,1,必须给定,sht_fullmode_session.m,非空且不超过128字符,操作幂等编号,同ID异内容拒绝,命令
+R011,command.action,char,1,必须给定,sht_fullmode_session.m,见接口映射命令表,操纵动作,区分数值动作与物理命令,命令
+R011,command.value,typed value,动作单位,按动作给定,sht_fullmode_session.m,见接口映射,油门/挡位/负载值,提交不等于已生效,命令
+R011,aboveIdleOverrides,scalar struct,按控制器字段,未覆盖,sht_startstop_prepare_control.m,同拓扑且不改运行包的明确高级覆盖,普通控制器和执行机构试验覆盖,需核对默认及影响不作为普通操纵开关,高级控制
+R011,stage6.timeStepS,double,s,0.025,sht_startstop_default_config.m,固定0.025,积分步长,全模式合同不允许改记录周期来替换,固定合同
+R011,stage6.integrationMethod,char,1,euler2,sht_startstop_default_config.m,固定euler2,Heun二阶欧拉,旧euler1仅历史对照不属正式全模式设置,固定合同
+R011,stage6.startupIdleHoldS,double,s,60,sht_startstop_default_config.m,当前合同60,Ng连续稳定暖机时间,不是达到Np慢车立即切控制,固定控制口径
+R011,stage6.startupIdleNgRpm,double,rpm,model0=25010.52;model1=28643.94,sht_startstop_default_config.m,与本模型负载慢车配平相容,暖机Ng目标,新设计不能沿用未核定旧目标,高级标定
+R011,stage6.idleNpRpm,double,rpm,14000,sht_startstop_default_config.m,当前合同14000,暖机结束后的Np慢车目标,不随运行五挡改变,固定控制口径
+R011,stage6.temperatureSoftLimitK,double,K,1000,sht_startstop_default_config.m,有限正值且不超过同源硬限,起动阶段软温限,非法值由prepare_control回退硬限不应以此调大限制,高级控制
+R011,stage7.assetFile,char,path,按拓扑默认热资产,sht_startstop_default_config.m,含parameterAsset且拓扑相容,标称热模型来源,控制模型与热参考必须配套,路径
+R011,stage7.enabled,logical,1,由fullmode.thermalEnabled派生,sht_fullmode_session.m,不独立修改,底层热核开关,会话准备时重设,派生勿改
+R012,schema,integer,1,26101301,sht_startstop_modeling_config.m,固定,建模任务合同,不改版本绕过身份,候选固定
+R012,taskId,char,1,空,sht_startstop_modeling_config.m,字母数字下划线短横线,建模任务标识,新模型或代码变更用新任务,候选用户
+R012,engineId,char,1,空,sht_startstop_modeling_config.m,用户发动机标识,工程对象记录,不是物理参数不自动选资产,候选用户
+R012,modelMode,integer,1,0,sht_startstop_modeling_config.m,0或1,三或六部件建模,不能把六部件结果冒充三部件,候选用户
+R012,taskDirectory,char,path,空必须选择新目录,sht_startstop_modeling_config.m,独占新可写目录,私有任务与阶段状态,拒绝覆盖别的任务或正式目录,候选路径
+R012,source.codeDirectory,char,path,可识别包根否则空,sht_startstop_modeling_config.m,配对实际原算法目录,原物理算法来源,不自动从主程序临时路径借文件,候选路径
+R012,source.modelDirectory,char,path,与识别源相同或显式给定,sht_startstop_modeling_config.m,含所选MDL及其mapPath,原模型资产来源,文件叶路径须有效且offDesignMode=2,候选路径
+R012,source.dllDirectory,char,path,空时取modelDirectory,sht_startstop_modeling_config.m,含配对DLL和头,候选物理内核,不重新编译或自动换根DLL,候选路径
+R012,source.modelFile,char,filename,按modelMode选MDL名,sht_startstop_modeling_config.m,所选目录内叶文件名不含路径或..,建模MDL,不通过任意路径越出来源目录,候选路径
+R012,source.thermalFile,char,path,空,sht_startstop_modeling_config.m,thermal阶段需相容parameterAsset,热校核输入,缺失不能声称热能力已验证,候选路径
+R012,source.designStateFile,char,path,空,sht_startstop_modeling_config.m,三部件不用;六部件design需自身V2状态,六部件设计复现资料,R111新设计完整消费仍需G11核验,候选路径
+R012,engineOverrides,scalar struct,按底层字段,空结构,sht_startstop_modeling_config.m,mapIO/extension/lowSpeedSolver/startStop/stage5/stage6/stage7/aboveIdleOverrides,当前任务物理及求解覆盖,禁止藏file/directory/path/root字段;不覆盖拓扑和运行目录,候选高级
+R012,display.showFigures,logical,1,false,sht_startstop_modeling_config.m,true或false,显示结果图,不改变物理计算身份,候选用户
+R012,display.generateMapFigures,logical,1,true,sht_startstop_modeling_config.m,true或false,生成扩图比较图,不等于新的物理计算,候选用户
+R012,requestedStages,cellstr,1,{},sht_startstop_modeling_config.m,maps/design/matrix/physics/continuous/thermal,明确本次计算阶段,空仅准备不隐式启动长任务,候选用户
+R012,estimate.mapsSeconds,1x2 double,s,[10 60],sht_startstop_modeling_config.m,历史成本参考,扩图粗估,不是实测预算或停止条件,候选估时
+R012,estimate.matrixSeconds,1x2 double,s,[30 600],sht_startstop_modeling_config.m,历史成本参考,有限矩阵粗估,全矩阵和自动搜索不一定落入该范围,候选估时
+R012,estimate.continuousCaseSeconds,1x2 double,s,[180 420],sht_startstop_modeling_config.m,历史成本参考,单连续案例粗估,依硬件配置及收敛而变,候选估时
+R012,estimate.thermalCaseSeconds,1x2 double,s,[250 500],sht_startstop_modeling_config.m,历史成本参考,单热案例粗估,不为全部算例完成承诺,候选估时
+R011,extension.AC,struct,字段/向量混合;遵守源码顺序,"基础默认或最终派生: struct('lockedFlowFraction', 0.08, ... 'lockedPressureLoss', 0.06, 'zeroEfficiency', 0.50);",sht_startstop_default_config.m:77,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,该部件低速工程外推先验结构;子字段见下表,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,extension.CC,struct,字段/向量混合;遵守源码顺序,"基础默认或最终派生: struct('lockedFlowFraction', 0.10, ... 'lockedPressureLoss', 0.09, 'zeroEfficiency', 0.50);",sht_startstop_default_config.m:79,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,该部件低速工程外推先验结构;子字段见下表,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,extension.GT1,struct,字段/向量混合;遵守源码顺序,"基础默认或最终派生: local_turbine_extension(0.34, 1.80, 0.025);",sht_startstop_default_config.m:81,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,该部件低速工程外推先验结构;子字段见下表,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,extension.GT2,struct,字段/向量混合;遵守源码顺序,"基础默认或最终派生: local_turbine_extension(0.32, 1.75, 0.025);",sht_startstop_default_config.m:82,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,该部件低速工程外推先验结构;子字段见下表,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,extension.PT1,struct,字段/向量混合;遵守源码顺序,"基础默认或最终派生: local_turbine_extension(0.30, 1.55, 0.020);",sht_startstop_default_config.m:83,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,该部件低速工程外推先验结构;子字段见下表,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,extension.PT2,struct,字段/向量混合;遵守源码顺序,"基础默认或最终派生: local_turbine_extension(0.28, 1.50, 0.020);",sht_startstop_default_config.m:84,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,该部件低速工程外推先验结构;子字段见下表,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,mapComparison,struct,1,基础默认或最终派生: struct();,sht_startstop_default_config.m:55,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,图比较显示配置容器不单独编辑,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,mapComparison.imageResolutionDpi,numeric scalar/vector by expression,dpi,基础默认或最终派生: 160;,sht_startstop_default_config.m:58,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,图像输出分辨率,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,mapComparison.showFigures,logical,s,基础默认或最终派生: true;,sht_startstop_default_config.m:57,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,显示比较图,旧自动任务/结果显示参数;全模式会话按显式命令推进不自动照此转段,建模/分阶段任务
+R011,mapComparison.stage5RunRoot,numeric scalar/vector by expression,1,基础默认或最终派生: '';,sht_startstop_default_config.m:56,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,明确的阶段五历史比较目录,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,mapIO.compressorHighPathNodes,numeric scalar/vector by expression,s,"基础默认或最终派生: [1.25, 1.50, 1.75, 2.00];",sht_startstop_default_config.m:46,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,压气机高Rline新增节点,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,mapIO.compressorLowPathNodes,numeric scalar/vector by expression,s,"基础默认或最终派生: [-0.50, -0.35, -0.20, -0.10, -0.05];",sht_startstop_default_config.m:45,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,压气机低Rline新增节点,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,mapIO.generateFigures,logical,s,基础默认或最终派生: true;,sht_startstop_default_config.m:50,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,生成扩图图像,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,mapIO.lowSpeedNodes,numeric scalar/vector by expression,s,"基础默认或最终派生: [0, 0.01, 0.02, 0.05, 0.10, ... 0.15, 0.20, 0.30, 0.40];",sht_startstop_default_config.m:40,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,新增低速相对换算转速节点,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,mapIO.originalRegionTolerance,numeric scalar/vector by expression,1,基础默认或最终派生: 0;,sht_startstop_default_config.m:39,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,原始图冻结区域允许变化,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,mapIO.roundTripTolerance,numeric scalar/vector by expression,1,基础默认或最终派生: 64 * eps;,sht_startstop_default_config.m:38,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,原图区MAP读写往返容差,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,mapIO.showFigures,logical,s,基础默认或最终派生: true;,sht_startstop_default_config.m:51,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,显示并保留扩图图窗,旧自动任务/结果显示参数;全模式会话按显式命令推进不自动照此转段,建模/分阶段任务
+R011,mapIO.transitionNodeFraction,numeric scalar/vector by expression,1,基础默认或最终派生: 0.92;,sht_startstop_default_config.m:42,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,原图最低线下方的过渡节点比例,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,mapIO.turbineHighBetaNodes,numeric scalar/vector by expression,s,"基础默认或最终派生: [1.25, 1.50, 2.00];",sht_startstop_default_config.m:48,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,涡轮高beta新增节点,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,mapIO.turbineHighSpeedNodes,numeric scalar/vector by expression,s,"基础默认或最终派生: [1.10, 1.20, 1.30];",sht_startstop_default_config.m:49,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,涡轮高转速补充线,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,mapIO.turbineLowBetaNodes,numeric scalar/vector by expression,s,"基础默认或最终派生: [-0.10, -0.05, -0.02];",sht_startstop_default_config.m:47,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,涡轮低beta新增节点,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,maps.AC,struct,字段/向量混合;遵守源码顺序,"基础默认或最终派生: local_map('compressor', ... 'HPC02_backup_before_surge_line_endpoint_20260706.MAP', ... 'AC_StartupStop_LowSpeed.MAP');",sht_startstop_default_config.m:61,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,该部件图类型及源图/低速输出图文件名三字段,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,maps.CC,struct,字段/向量混合;遵守源码顺序,"基础默认或最终派生: local_map('compressor', 'SingleStgRadialCompr.MAP', ... 'CC_StartupStop_LowSpeed.MAP');",sht_startstop_default_config.m:64,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,该部件图类型及源图/低速输出图文件名三字段,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,maps.GT1,struct,字段/向量混合;遵守源码顺序,"基础默认或最终派生: local_map('turbine', 'HPT02.MAP', ... 'GT1_StartupStop_LowSpeed.MAP');",sht_startstop_default_config.m:66,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,该部件图类型及源图/低速输出图文件名三字段,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,maps.GT2,struct,字段/向量混合;遵守源码顺序,"基础默认或最终派生: local_map('turbine', 'HPT02.MAP', ... 'GT2_StartupStop_LowSpeed.MAP');",sht_startstop_default_config.m:68,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,该部件图类型及源图/低速输出图文件名三字段,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,maps.PT1,struct,字段/向量混合;遵守源码顺序,"基础默认或最终派生: local_map('turbine', 'LPT02.MAP', ... 'PT1_StartupStop_LowSpeed.MAP');",sht_startstop_default_config.m:70,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,该部件图类型及源图/低速输出图文件名三字段,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,maps.PT2,struct,字段/向量混合;遵守源码顺序,"基础默认或最终派生: local_map('turbine', 'LPT02.MAP', ... 'PT2_StartupStop_LowSpeed.MAP');",sht_startstop_default_config.m:72,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,该部件图类型及源图/低速输出图文件名三字段,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,schemaVersion,numeric scalar/vector by expression,1,基础默认或最终派生: 26082401;,sht_startstop_default_config.m:28,固定26082401,起停底层配置协议版本保持26082401,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,固定合同
+R011,stage5.calibrationEnabled,logical,1,基础默认或最终派生: true;,sht_startstop_default_config.m:174,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,是否搜索新增低速图参数,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,stage5.calibrationLowerBound,numeric scalar/vector by expression,1,"基础默认或最终派生: [ ... 0.03, 0.01, 0.04, 0.02, ... 0.12, 1.15, 0.12, 1.15, 0.12, 1.15, 0.12, 1.15];",sht_startstop_default_config.m:179,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,扩图参数搜索下界,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,stage5.calibrationParameterNames,cellstr,s,"基础默认或最终派生: { ... 'AC_flow', 'AC_pressure_loss', 'CC_flow', 'CC_pressure_loss', ... 'GT1_flow', 'GT1_max_pr', 'GT2_flow', 'GT2_max_pr', ... 'PT1_flow', 'PT1_max_pr', 'PT2_flow', 'PT2_max_pr'};",sht_startstop_default_config.m:175,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,允许标定的扩图参数名称,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,stage5.calibrationSubsetBranches,cellstr,s,"基础默认或最终派生: {'stationary', 'lagging', ... 'synchronous'};",sht_startstop_default_config.m:193,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,标定选用轴速分支,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,stage5.calibrationSubsetNgRatio,numeric scalar/vector by expression,1,"基础默认或最终派生: [0.01, 0.02, 0.05, 0.10, 0.15, 0.30, ... cfg.startStop.idleNgRatio];",sht_startstop_default_config.m:191,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,标定搜索选用Ng节点,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,stage5.calibrationSubsetStates,cellstr,s,"基础默认或最终派生: {'no_fuel', 'fired_low_fuel'};",sht_startstop_default_config.m:195,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,标定选用供油状态,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,stage5.calibrationUpperBound,numeric scalar/vector by expression,1,"基础默认或最终派生: [ ... 0.20, 0.20, 0.25, 0.25, ... 0.55, 2.50, 0.55, 2.50, 0.55, 2.50, 0.55, 2.50];",sht_startstop_default_config.m:182,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,扩图参数搜索上界,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,stage5.coordinateInitialStepFraction,numeric scalar/vector by expression,1,基础默认或最终派生: 0.12;,sht_startstop_default_config.m:188,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,坐标搜索起始相对步长,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,stage5.coordinateSearchRounds,numeric scalar/vector by expression,s,基础默认或最终派生: 2;,sht_startstop_default_config.m:187,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,坐标搜索轮数,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,stage5.coordinateStepReduction,numeric scalar/vector by expression,1,基础默认或最终派生: 0.5;,sht_startstop_default_config.m:189,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,搜索步长缩减因子,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,stage5.energyStateNames,cellstr,s,"基础默认或最终派生: {'no_fuel', 'pre_ignition', 'fired_low_fuel'};",sht_startstop_default_config.m:147,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,无油/点火前/点火后扫描状态,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,stage5.enhancedDesignOutputRelativeTolerance,numeric scalar/vector by expression,1,基础默认或最终派生: 1e-3;,sht_startstop_default_config.m:164,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,设计点增强起停路径相对普通路径的复现验收门限,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,stage5.enhancedDesignResidualTolerance,numeric scalar/vector by expression,1,基础默认或最终派生: 1e-7;,sht_startstop_default_config.m:162,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,设计点增强起停路径相对普通路径的复现验收门限,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,stage5.enhancedDesignVariableRelativeTolerance,numeric scalar/vector by expression,字段/向量混合;遵守源码顺序,基础默认或最终派生: 1e-3;,sht_startstop_default_config.m:163,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,设计点增强起停路径相对普通路径的复现验收门限,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,stage5.firedMinimumNgRatio,numeric scalar/vector by expression,1,基础默认或最终派生: cfg.startStop.lightOffNgRatio;,sht_startstop_default_config.m:148,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,点火扫描最低Ng,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,stage5.firedPreconditionTimeS,numeric scalar/vector by expression,s,基础默认或最终派生: cfg.startStop.ignitionDelayS + ... cfg.startStop.flameBuildS + 0.25;,sht_startstop_default_config.m:149,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,点火状态预置物理时间,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,stage5.fuelScheduleKgPerS,numeric scalar/vector by expression,kg/s,"基础默认或最终派生: [cfg.startStop.lightOffFuelKgPerS, ... cfg.startStop.idleFuelKgPerS];",sht_startstop_default_config.m:153,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,矩阵燃油调度值,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,stage5.fuelScheduleNgRatio,numeric scalar/vector by expression,1,"基础默认或最终派生: [cfg.startStop.lightOffNgRatio, ... cfg.startStop.idleNgRatio];",sht_startstop_default_config.m:151,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,矩阵燃油调度Ng坐标,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,stage5.gasVariableMaximum,numeric scalar/vector by expression,字段/向量混合;遵守源码顺序,"基础默认或最终派生: [20, cfg.lowSpeedSolver.acPathMaximum, ... cfg.lowSpeedSolver.ccPathMaximum, 5, 5, 5, 5];",sht_startstop_default_config.m:169,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,气路共同变量上界,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,stage5.gasVariableMinimum,numeric scalar/vector by expression,字段/向量混合;遵守源码顺序,"基础默认或最终派生: [0, -0.5, -0.5, 1, 1, 1, 1];",sht_startstop_default_config.m:168,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,气路共同变量下界,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,stage5.lowSpeedHeuristicSeed,numeric scalar/vector by expression,字段/向量混合;遵守源码顺序,基础默认或最终派生: ... [0.05; 0.8; 0.8; 1.05; 1.05; 1.05; 1.05];,sht_startstop_default_config.m:166,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,气路启发式初始匹配变量,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,stage5.matrixMaximumResidualTolerance,numeric scalar/vector by expression,1,基础默认或最终派生: 1e-5;,sht_startstop_default_config.m:156,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,矩阵最大残差验收门限,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,stage5.matrixResidualRmsTolerance,numeric scalar/vector by expression,1,基础默认或最终派生: 1e-6;,sht_startstop_default_config.m:155,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,矩阵残差RMS验收门限,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,stage5.maximumCondition,numeric scalar/vector by expression,1,基础默认或最终派生: 1e10;,sht_startstop_default_config.m:158,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,标准化矩阵最大条件数,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,stage5.maximumReleasedParameters,numeric scalar/vector by expression,s,基础默认或最终派生: 4;,sht_startstop_default_config.m:186,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,一次释放扩图参数个数上限,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,stage5.maximumRetryCount,numeric scalar/vector by expression,1,基础默认或最终派生: 24;,sht_startstop_default_config.m:165,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,低速矩阵备用初猜最大尝试数,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,stage5.minimumObjectiveImprovement,numeric scalar/vector by expression,1,基础默认或最终派生: 1e-8;,sht_startstop_default_config.m:190,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,扩图目标最小改善量,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,stage5.ngRatio,numeric scalar/vector by expression,1,"基础默认或最终派生: [0, 0.01, 0.02, 0.05, 0.10, ... 0.15, 0.20, 0.30, cfg.startStop.idleNgRatio];",sht_startstop_default_config.m:143,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,低速矩阵Ng相对转速集合,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,stage5.npBranchFactors,numeric scalar/vector by expression,s,"基础默认或最终派生: [0, 0.6, 1.0];",sht_startstop_default_config.m:146,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,Np与Ng设计比例的分支系数,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,stage5.npBranchNames,cellstr,s,"基础默认或最终派生: {'stationary', 'lagging', 'synchronous'};",sht_startstop_default_config.m:145,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,Np与Ng比例分支名称,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,stage5.requiredRank,numeric scalar/vector by expression,K,基础默认或最终派生: 7;,sht_startstop_default_config.m:157,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,所选拓扑气路矩阵要求秩,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,stage5.sensitivityRelativeStep,numeric scalar/vector by expression,1,基础默认或最终派生: 0.12;,sht_startstop_default_config.m:185,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,扩图参数筛选扰动步长,主要用于扩图或矩阵校核;不在R011每次会话自动重新标定,建模/分阶段任务
+R011,stage6.caseLabels,numeric scalar/vector by expression,s,基础默认或最终派生: cfg.stage6.formalCaseLabels;,sht_startstop_default_config.m:289,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,所选算例标签,旧自动任务/结果显示参数;全模式会话按显式命令推进不自动照此转段,高级配置非日常操纵
+R011,stage6.caseNames,numeric scalar/vector by expression,s,基础默认或最终派生: cfg.stage6.formalCaseNames;,sht_startstop_default_config.m:288,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,本次旧阶段六实际选择算例,旧自动任务/结果显示参数;全模式会话按显式命令推进不自动照此转段,高级配置非日常操纵
+R011,stage6.cruiseNpRatio,numeric scalar/vector by expression,1,基础默认或最终派生: 1.00;,sht_startstop_default_config.m:232,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,旧自动任务巡航Np目标,旧自动任务/结果显示参数;全模式会话按显式命令推进不自动照此转段,高级配置非日常操纵
+R011,stage6.cruisePitchDeg,numeric scalar/vector by expression,deg,基础默认或最终派生: 10.0;,sht_startstop_default_config.m:235,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,旧自动任务巡航总距,旧自动任务/结果显示参数;全模式会话按显式命令推进不自动照此转段,高级配置非日常操纵
+R011,stage6.cruiseRampS,numeric scalar/vector by expression,s,基础默认或最终派生: 20.0;,sht_startstop_default_config.m:217,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,旧自动任务巡航过渡时间,旧自动任务/结果显示参数;全模式会话按显式命令推进不自动照此转段,高级配置非日常操纵
+R011,stage6.cruiseStableDwellS,numeric scalar/vector by expression,s,基础默认或最终派生: 5.0;,sht_startstop_default_config.m:218,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,旧自动任务巡航稳定保持,旧自动任务/结果显示参数;全模式会话按显式命令推进不自动照此转段,高级配置非日常操纵
+R011,stage6.formalCaseLabels,cellstr,s,"基础默认或最终派生: {'标称', '高温环境', '低温环境', ... '起动机能力降低', '点火/火焰建立变慢', '轴系摩擦增大', ... '轴系与旋翼惯量增大', '旋翼负载增大', '中等不利组合'};",sht_startstop_default_config.m:283,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,算例显示名称,旧自动任务/结果显示参数;全模式会话按显式命令推进不自动照此转段,高级配置非日常操纵
+R011,stage6.formalCaseNames,cellstr,s,"基础默认或最终派生: {'nominal', 'hot_ambient', 'cold_ambient', ... 'weak_starter', 'slow_ignition', 'high_friction', ... 'high_inertia', 'high_load', 'combined_adverse'};",sht_startstop_default_config.m:280,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,旧完整鲁棒性算例名称,旧自动任务/结果显示参数;全模式会话按显式命令推进不自动照此转段,高级配置非日常操纵
+R011,stage6.gasPathActivationNgRatio,numeric scalar/vector by expression,1,基础默认或最终派生: 0.04;,sht_startstop_default_config.m:228,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,连续气路激活最低Ng比例,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,stage6.idleBeforeShutdownS,numeric scalar/vector by expression,s,基础默认或最终派生: 5.0;,sht_startstop_default_config.m:221,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,正常停车前慢车保持,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,stage6.idleCaptureRampS,numeric scalar/vector by expression,s,基础默认或最终派生: 10.0;,sht_startstop_default_config.m:207,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,暖机Ng目标及接载过渡时间,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,stage6.idleFuelFeedforwardKgPerS,numeric scalar/vector by expression,kg/s,基础默认或最终派生: 0.043;,sht_startstop_default_config.m:238,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,点火到自持燃油参考非暖机固定燃油,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,stage6.idleHandoverRampS,numeric scalar/vector by expression,s,基础默认或最终派生: 3.0;,sht_startstop_default_config.m:213,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,Ng转Np慢车接管过渡时间,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,stage6.idleNpRatio,numeric scalar/vector by expression,1,基础默认或最终派生: cfg.stage6.idleNpRpm/cfg.startStop.designNpRpm;,sht_startstop_default_config.m:379,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,14000rpm除以当前设计Np派生比例,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,stage6.idlePitchDeg,numeric scalar/vector by expression,deg,基础默认或最终派生: 6.0;,sht_startstop_default_config.m:234,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,慢车总距,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,stage6.idleStableDwellS,numeric scalar/vector by expression,s,基础默认或最终派生: 3.0;,sht_startstop_default_config.m:205,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,慢车稳定判定持续时间,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,stage6.ignitionEnableNgRatio,numeric scalar/vector by expression,1,基础默认或最终派生: 0.20;,sht_startstop_default_config.m:229,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,连续任务允许点火Ng比例,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,stage6.initialHoldS,numeric scalar/vector by expression,s,基础默认或最终派生: 1.0;,sht_startstop_default_config.m:203,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,自动任务初始停留,旧自动任务/结果显示参数;全模式会话按显式命令推进不自动照此转段,高级配置非日常操纵
+R011,stage6.maximumCondition,numeric scalar/vector by expression,1,基础默认或最终派生: cfg.stage5.maximumCondition;,sht_startstop_default_config.m:269,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,连续矩阵条件数上限,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,stage6.maximumCruiseHoldS,numeric scalar/vector by expression,s,基础默认或最终派生: 30.0;,sht_startstop_default_config.m:219,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,旧自动任务巡航停留上限,旧自动任务/结果显示参数;全模式会话按显式命令推进不自动照此转段,高级配置非日常操纵
+R011,stage6.maximumIdleSettleS,numeric scalar/vector by expression,s,基础默认或最终派生: 60.0;,sht_startstop_default_config.m:206,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,慢车稳定等待时限,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,stage6.maximumMissionS,numeric scalar/vector by expression,s,基础默认或最终派生: 480.0;,sht_startstop_default_config.m:224,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,旧自动任务总时限,旧自动任务/结果显示参数;全模式会话按显式命令推进不自动照此转段,高级配置非日常操纵
+R011,stage6.maximumNormalizedRootStep,numeric scalar/vector by expression,1,基础默认或最终派生: 0.35;,sht_startstop_default_config.m:257,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,根延续跳变诊断阈值,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,stage6.maximumPlotPoints,numeric scalar/vector by expression,s,基础默认或最终派生: 4000;,sht_startstop_default_config.m:276,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,只限制绘图点数不删原记录,旧自动任务/结果显示参数;全模式会话按显式命令推进不自动照此转段,高级配置非日常操纵
+R011,stage6.maximumResidualTolerance,numeric scalar/vector by expression,1,基础默认或最终派生: 3e-5;,sht_startstop_default_config.m:265,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,连续气路最大残差验收,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,stage6.maximumRootRetries,numeric scalar/vector by expression,s,基础默认或最终派生: 8;,sht_startstop_default_config.m:258,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,连续步根候选尝试上限,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,stage6.maximumShutdownS,numeric scalar/vector by expression,s,基础默认或最终派生: 240.0;,sht_startstop_default_config.m:222,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,停车时限,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,stage6.maximumSpeedRatio,numeric scalar/vector by expression,1,基础默认或最终派生: 1.10;,sht_startstop_default_config.m:270,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,转速包线诊断上限,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,stage6.maximumStartupS,numeric scalar/vector by expression,s,基础默认或最终派生: 80.0; % 达到稳定慢车的时限，不把暖机时间混入,sht_startstop_default_config.m:204,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,达到稳定慢车的时限不含暖机保持,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,stage6.maximumTt45K,numeric scalar/vector by expression,K,基础默认或最终派生: cfg.startStop.maximumGasTemperatureK;,sht_startstop_default_config.m:271,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,同源硬温限派生值,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,stage6.ngDotStableToleranceRpmPerS,numeric scalar/vector by expression,rpm/s,基础默认或最终派生: 80;,sht_startstop_default_config.m:250,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,Ng加速度稳定带,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,stage6.npDotStableToleranceRpmPerS,numeric scalar/vector by expression,rpm/s,基础默认或最终派生: 80;,sht_startstop_default_config.m:251,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,Np加速度稳定带,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,stage6.npStableToleranceRatio,numeric scalar/vector by expression,1,基础默认或最终派生: 0.025;,sht_startstop_default_config.m:249,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,Np稳定判据相对误差,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,stage6.requiredRank,numeric scalar/vector by expression,K,基础默认或最终派生: cfg.stage5.requiredRank;,sht_startstop_default_config.m:268,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,连续共同工作矩阵要求秩,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,stage6.residualRmsTolerance,numeric scalar/vector by expression,1,基础默认或最终派生: 1e-5;,sht_startstop_default_config.m:262,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,连续气路RMS验收,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,stage6.returnRampS,numeric scalar/vector by expression,s,基础默认或最终派生: 20.0;,sht_startstop_default_config.m:220,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,自动回慢车目标过渡时间,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,stage6.rootVariableScale,numeric scalar/vector by expression,字段/向量混合;遵守源码顺序,基础默认或最终派生: [20; 2.5; 2.5; 4; 4; 4; 4];,sht_startstop_default_config.m:256,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,气路根变化标准化尺度,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,stage6.showFigures,logical,s,基础默认或最终派生: true;,sht_startstop_default_config.m:274,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,旧阶段六显示图窗,旧自动任务/结果显示参数;全模式会话按显式命令推进不自动照此转段,高级配置非日常操纵
+R011,stage6.shutdownMaximumResidualTolerance,numeric scalar/vector by expression,1,基础默认或最终派生: 3e-4;,sht_startstop_default_config.m:267,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,停车最大残差验收,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,stage6.shutdownResidualRmsTolerance,numeric scalar/vector by expression,1,基础默认或最终派生: 1e-4;,sht_startstop_default_config.m:266,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,停车气路RMS验收,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,stage6.solverAccuracyRequired,numeric scalar/vector by expression,1,基础默认或最终派生: 1e-5;,sht_startstop_default_config.m:261,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,连续任务内层气路精度,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,stage6.startPitchDeg,numeric scalar/vector by expression,deg,基础默认或最终派生: 0.0;,sht_startstop_default_config.m:233,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,起动总距,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,stage6.startupControlStrategy,char,1,基础默认或最终派生: 'stable_idle_R008';,sht_startstop_default_config.m:214,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,现行稳定暖机控制方案身份,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,stage6.startupNgErrorGain,numeric scalar/vector by expression,1/s,基础默认或最终派生: 1.0; % 1/s，Ng参考误差反馈,sht_startstop_default_config.m:212,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,Ng暖机转速误差反馈增益,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,stage6.startupNgToleranceRpm,numeric scalar/vector by expression,rpm,基础默认或最终派生: 190.0; % 设计Ng的0.5%，工程稳定带,sht_startstop_default_config.m:210,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,Ng稳定暖机误差带,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,stage6.stopSpeedToleranceRpm,numeric scalar/vector by expression,rpm,基础默认或最终派生: cfg.startStop.stopHoldSpeedRpm;,sht_startstop_default_config.m:252,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,自动任务停转速度判据,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,stage6.temperatureFuelIntegralGainKgPerS2K,numeric scalar/vector by expression,kg/(s^2*K),基础默认或最终派生: 2.0e-4;,sht_startstop_default_config.m:247,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,软温限燃油上限积分增益,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,stage6.temperatureFuelRecoveryRateKgPerS2,numeric scalar/vector by expression,kg/s^2,基础默认或最终派生: 2.0e-3;,sht_startstop_default_config.m:248,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,软温限解除速率,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,stage6.temperatureMinimumFuelKgPerS,numeric scalar/vector by expression,kg/s,基础默认或最终派生: 0.015;,sht_startstop_default_config.m:244,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,起动软限温最小燃油,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,stage6.zeroHoldAfterStopS,numeric scalar/vector by expression,s,基础默认或最终派生: 1.0;,sht_startstop_default_config.m:223,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,物理停转后保持,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,stage7.caseNames,numeric scalar/vector by expression,s,基础默认或最终派生: cfg.stage7.formalCaseNames;,sht_startstop_default_config.m:311,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,本次实际热算例集合,旧自动任务/结果显示参数;全模式会话按显式命令推进不自动照此转段,高级配置非日常操纵
+R011,stage7.formalCaseNames,cellstr,s,"基础默认或最终派生: {'cold_no_feedback', ... 'cold_full_coupled', 'warm_full_coupled'};",sht_startstop_default_config.m:309,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,完整冷无反馈/冷全耦合/暖全耦合集合,旧自动任务/结果显示参数;全模式会话按显式命令推进不自动照此转段,高级配置非日常操纵
+R011,stage7.maximumMissionS,numeric scalar/vector by expression,s,基础默认或最终派生: 620.0;,sht_startstop_default_config.m:298,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,旧热任务总观察时限,旧自动任务/结果显示参数;全模式会话按显式命令推进不自动照此转段,高级配置非日常操纵
+R011,stage7.maximumTemperatureK,numeric scalar/vector by expression,K,基础默认或最终派生: 2000.0;,sht_startstop_default_config.m:301,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,热节点温度上界,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,stage7.maximumThermalRateKPerS,numeric scalar/vector by expression,K/s,基础默认或最终派生: 600.0;,sht_startstop_default_config.m:304,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,热节点最大温变率诊断,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,stage7.minimumHeatRedistributionK,numeric scalar/vector by expression,K,基础默认或最终派生: 1.0e-6;,sht_startstop_default_config.m:307,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,判定内部热重新分配的温度阈值,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,stage7.minimumTemperatureK,numeric scalar/vector by expression,K,基础默认或最终派生: 150.0;,sht_startstop_default_config.m:300,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,热节点温度下界,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,stage7.normalizedEnergyResidualTolerance,numeric scalar/vector by expression,1,基础默认或最终派生: 1.0e-9;,sht_startstop_default_config.m:305,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,热能量平衡残差门限,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,stage7.postStopHeatSoakS,numeric scalar/vector by expression,s,基础默认或最终派生: 120.0;,sht_startstop_default_config.m:297,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,停转后的热浸时间,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,stage7.showFigures,logical,s,基础默认或最终派生: true;,sht_startstop_default_config.m:308,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,旧阶段七图窗显示,旧自动任务/结果显示参数;全模式会话按显式命令推进不自动照此转段,高级配置非日常操纵
+R011,stage7.warmInitialFraction,numeric scalar/vector by expression,1,基础默认或最终派生: 0.50;,sht_startstop_default_config.m:299,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,暖态金属初温插值比例,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,stage7.zeroFlowStoredEnergyRelativeTolerance,numeric scalar/vector by expression,1,基础默认或最终派生: 1.0e-10;,sht_startstop_default_config.m:306,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,零流量热浸储能漂移门限,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,startStop.collectivePitchDeg,numeric scalar/vector by expression,deg,基础默认或最终派生: 6;,sht_startstop_default_config.m:128,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,旧物理核总距参考,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,startStop.configVersion,numeric scalar/vector by expression,1,基础默认或最终派生: 26091204;,sht_startstop_default_config.m:100,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,起停30项独立初始化接口版本,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,startStop.designNgRpm,numeric scalar/vector by expression,rpm,基础默认或最终派生: 38000;,sht_startstop_default_config.m:104,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,本模型GT设计转速,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,startStop.designNpRpm,numeric scalar/vector by expression,rpm,基础默认或最终派生: 20800;,sht_startstop_default_config.m:103,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,本模型PT设计转速,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,startStop.designRotorPowerW,numeric scalar/vector by expression,W,基础默认或最终派生: 2176600;,sht_startstop_default_config.m:127,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,旋翼设计负载功率,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,startStop.flameBuildS,numeric scalar/vector by expression,s,基础默认或最终派生: 1.50;,sht_startstop_default_config.m:110,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,火焰建立时间,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,startStop.freewheelSpeedToleranceRpm,numeric scalar/vector by expression,rpm,基础默认或最终派生: 5;,sht_startstop_default_config.m:134,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,自由轮判据转速容差,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,startStop.gtAccessoryPowerW,numeric scalar/vector by expression,W,基础默认或最终派生: 3000;,sht_startstop_default_config.m:124,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,GT外部附件功率,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,startStop.hpsCoulombLossNm,numeric scalar/vector by expression,N*m,基础默认或最终派生: 2.5;,sht_startstop_default_config.m:118,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,对应轴或旋翼库仑摩擦扭矩,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,startStop.hpsInertiaKgM2,numeric scalar/vector by expression,kg*m^2,基础默认或最终派生: 0.283;,sht_startstop_default_config.m:115,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,GT轴惯量,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,startStop.hpsViscousLossNmPerKrpm,numeric scalar/vector by expression,N*m/krpm,基础默认或最终派生: 0.30;,sht_startstop_default_config.m:119,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,对应轴或旋翼与转速成正比的摩擦系数,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,startStop.hpsWindageLossNmPerKrpm2,numeric scalar/vector by expression,N*m/(krpm^2),基础默认或最终派生: 0.015;,sht_startstop_default_config.m:120,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,对应轴与转速平方相关的风阻系数,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,startStop.idleFuelKgPerS,numeric scalar/vector by expression,kg/s,基础默认或最终派生: 0.070;,sht_startstop_default_config.m:114,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,低速矩阵扫描的慢车燃油参考非连续闭环燃油,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,startStop.idleNgRatio,numeric scalar/vector by expression,1,基础默认或最终派生: 0.65;,sht_startstop_default_config.m:105,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,C起停慢车判据相对Ng,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,startStop.ignitionDelayS,numeric scalar/vector by expression,s,基础默认或最终派生: 0.50;,sht_startstop_default_config.m:109,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,点火延迟,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,startStop.lightOffFuelKgPerS,numeric scalar/vector by expression,kg/s,基础默认或最终派生: 0.025;,sht_startstop_default_config.m:113,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,点火阶段燃油参考,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,startStop.lightOffNgRatio,numeric scalar/vector by expression,1,基础默认或最终派生: 0.12;,sht_startstop_default_config.m:106,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,允许点火Ng比例,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,startStop.maximumGasTemperatureK,numeric scalar/vector by expression,K,基础默认或最终派生: 1400;,sht_startstop_default_config.m:102,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,气路硬温限;连续准备覆盖为同源控制器限值,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,startStop.nozzleAreaM2,numeric scalar/vector by expression,m^2,基础默认或最终派生: 0.10573;,sht_startstop_default_config.m:137,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,尾喷管面积,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,startStop.profileTorqueFraction,numeric scalar/vector by expression,1,基础默认或最终派生: 0.15;,sht_startstop_default_config.m:131,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,旋翼剖面阻力扭矩占比,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,startStop.ptCoulombLossNm,numeric scalar/vector by expression,N*m,基础默认或最终派生: 1.0;,sht_startstop_default_config.m:121,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,对应轴或旋翼库仑摩擦扭矩,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,startStop.ptEngineInertiaKgM2,numeric scalar/vector by expression,kg*m^2,基础默认或最终派生: 0.40;,sht_startstop_default_config.m:116,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,PT发动机侧惯量,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,startStop.ptViscousLossNmPerKrpm,numeric scalar/vector by expression,N*m/krpm,基础默认或最终派生: 0.12;,sht_startstop_default_config.m:122,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,对应轴或旋翼与转速成正比的摩擦系数,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,startStop.ptWindageLossNmPerKrpm2,numeric scalar/vector by expression,N*m/(krpm^2),基础默认或最终派生: 0.008;,sht_startstop_default_config.m:123,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,对应轴与转速平方相关的风阻系数,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,startStop.rotorCoulombLossNm,numeric scalar/vector by expression,N*m,基础默认或最终派生: 2.0;,sht_startstop_default_config.m:132,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,对应轴或旋翼库仑摩擦扭矩,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,startStop.rotorReflectedInertiaKgM2,numeric scalar/vector by expression,kg*m^2,基础默认或最终派生: 1.20;,sht_startstop_default_config.m:117,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,折算到PT侧旋翼惯量,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,startStop.rotorViscousLossNmPerKrpm,numeric scalar/vector by expression,N*m/krpm,基础默认或最终派生: 0.05;,sht_startstop_default_config.m:133,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,对应轴或旋翼与转速成正比的摩擦系数,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,startStop.selfSustainNgRatio,numeric scalar/vector by expression,1,基础默认或最终派生: 0.42;,sht_startstop_default_config.m:107,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,自持Ng比例,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,startStop.starterCutoutNgRatio,numeric scalar/vector by expression,1,基础默认或最终派生: 0.55;,sht_startstop_default_config.m:108,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,起动机脱开Ng比例,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,startStop.starterStallTorqueNm,numeric scalar/vector by expression,N*m,基础默认或最终派生: 95;,sht_startstop_default_config.m:111,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,零速起动机扭矩,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,startStop.starterZeroTorqueSpeedRatio,numeric scalar/vector by expression,1,基础默认或最终派生: 0.62;,sht_startstop_default_config.m:112,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,起动机零扭矩转速比例,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,startStop.stopHoldSpeedRpm,numeric scalar/vector by expression,rpm,基础默认或最终派生: 0.5;,sht_startstop_default_config.m:135,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,物理停转判据,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,startStop.thetaDesignDeg,numeric scalar/vector by expression,deg,基础默认或最终派生: 12;,sht_startstop_default_config.m:130,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,主桨设计总距,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,startStop.thetaZeroDeg,numeric scalar/vector by expression,deg,基础默认或最终派生: 0;,sht_startstop_default_config.m:129,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,主桨总距零点,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+R011,startStop.timeStepS,numeric scalar/vector by expression,s,基础默认或最终派生: 0.01;,sht_startstop_default_config.m:136,保持给定类型/维数;数值限制和构型覆盖以源码及配套模型为准,物理核默认步长;连续仿真准备时覆盖为0.025s,修改需新配置身份及相应数值核验;不凭覆盖成功宣称物理适用,高级配置非日常操纵
+I05,aboveIdleOverrides.controller.t45Protection.riseLeadTimeS,finite nonnegative scalar,s,fullmode power/mkp: Tctrl+1/actuator.gain (current 0.065); otherwise 0,sht_startstop_prepare_control.m,>=0; 0 reproduces legacy P,因果正向温升超前，不读取未来值,新会话配置；旧检查点不得改签,高级控制

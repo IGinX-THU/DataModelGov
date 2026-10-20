@@ -16,8 +16,14 @@
         show({ workbench, project } = {}) {
             this._config = WB().WORKBENCHES[workbench];
             if (!this._config) { console.error('未知工作台:', workbench); return; }
+            // 确保project对象有必要的字段
+            const p = project || WB().DEMO.project;
+            if (!p.id) {
+                p.id = 'demo-' + Date.now();
+                p.name = p.name || '演示项目';
+            }
             this._ctx = {
-                project: project || WB().DEMO.project,
+                project: p,
                 navigate: (key) => this._navigate(key),
                 enterTask: (b) => this._enterTask(b)
             };
@@ -103,7 +109,8 @@
                     project: this._ctx.project,
                     back: (gotoModels) => {
                         this._navigate(gotoModels ? 'models' : 'tasks');
-                    }
+                    },
+                    navigate: (key) => this._navigate(key)
                 }));
                 main.scrollTop = 0;
             }

@@ -309,3 +309,19 @@
 .wb-kv { display: grid; grid-template-columns: 180px 1fr; gap: 8px 18px; font-size: 13px; }
 .wb-kv .k { color: #6b7280; }
 .wb-kv .v { color: #111827; word-break: break-all; }
+
+/* ===== 稳态建模任务页(01-03~01-06)页签与辅助 ===== */
+.wb-tabs { display: flex; gap: 26px; border-bottom: 2px solid #e5e7eb; margin: 6px 0 18px; }
+.wb-tab { padding: 8px 2px 10px; font-size: 14px; color: #6b7280; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; user-select: none; }
+.wb-tab:hover { color: #0f766e; }
+.wb-tab.active { color: #0f766e; font-weight: 700; border-bottom-color: #0f766e; }
+.wb-tab.disabled { opacity: .45; cursor: not-allowed; }
+.wb-infobar { display: flex; align-items: center; gap: 8px; background: #f0fdfa; border: 1px solid #99f6e4; color: #115e59; border-radius: 6px; padding: 9px 14px; font-size: 13px; margin-bottom: 14px; max-width: 1180px; }
+.wb-param-list { border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden; background: #fff; }
+.wb-param-item { display: flex; justify-content: space-between; align-items: center; padding: 9px 12px; font-size: 13px; color: #374151; cursor: pointer; border-bottom: 1px solid #f3f4f6; }
+.wb-param-item:last-child { border-bottom: none; }
+.wb-param-item:hover { background: #f0fdfa; }
+.wb-param-item.active { background: #f0fdfa; color: #0f766e; font-weight: 700; }
+.wb-row-active td { background: #f0fdfa; }
+.wb-legend { display: flex; gap: 18px; font-size: 12px; color: #6b7280; }
+.wb-chart-placeholder { border: 1px dashed #d1d5db; border-radius: 6px; background: #fafafa; min-height: 180px; display: flex; align-items: center; justify-content: center; max-width: 1180px; }

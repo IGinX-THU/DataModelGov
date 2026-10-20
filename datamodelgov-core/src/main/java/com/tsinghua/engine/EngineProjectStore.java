@@ -60,12 +60,46 @@ public class EngineProjectStore {
         return new File(root, "projects/" + projectId);
     }
 
+    /**
+     * 解析项目工作目录(与旧版 ProgramService 同根):
+     * - 留空 → 系统生成 `project/<项目名>`(相对服务工作目录,旧版 TASK_BASE_DIR 同名);
+     * - 相对路径(如 myproj/job)→ 相对服务工作目录解析;
+     * - 绝对路径 → 原样使用。
+     * 解析结果写入 workdir 字段回显;元数据(project.json/task.json/models)仍在 dataRoot,
+     * 大文件(任务输入/输出/日志)按旧版布局落 `<workdir>/job/program-tasks/<taskId>`。
+     */
+    private String resolveWorkdir(EngineProject p) {
+        String loc = p.getLocation();
+        File dir;
+        if (loc != null && !loc.trim().isEmpty()) {
+            dir = new File(loc.trim());
+        } else {
+            dir = new File("project", safeName(p.getName()));
+        }
+        if (!dir.exists() && !dir.mkdirs()) {
+            log.warn("保存位置不可创建,回退默认工作目录: {}", dir);
+            dir = new File("project", safeName(p.getId()));
+            if (!dir.exists() && !dir.mkdirs()) throw new IllegalStateException("默认工作目录创建失败");
+        }
+        return dir.getAbsolutePath();
+    }
+
+    /** 目录名安全化:去掉路径分隔与非法字符,空则回退 id。 */
+    private static String safeName(String name) {
+        String s = name == null ? "" : name.trim();
+        s = s.replaceAll("[\\\\/:*?\"<>|]", "_");
+        if (s.isEmpty() || s.equals(".")) s = "unnamed";
+        return s;
+    }
+
     public EngineProject saveProject(EngineProject p) throws IOException {
         if (p.getId() == null || p.getId().isEmpty()) p.setId(newId());
         if (p.getCreatedAt() == null) p.setCreatedAt(System.currentTimeMillis());
         File dir = projectDir(p.getId());
         if (!dir.exists() && !dir.mkdirs()) throw new IOException("无法创建项目目录: " + dir);
+        p.setWorkdir(resolveWorkdir(p));
         mapper.writerWithDefaultPrettyPrinter().writeValue(new File(dir, "project.json"), p);
+        log.info("项目工作目录已就绪: {} -> {}", p.getName(), p.getWorkdir());
         return p;
     }
 
@@ -96,6 +130,22 @@ public class EngineProjectStore {
 
     public File taskDir(String projectId, String taskId) {
         return new File(projectDir(projectId), "tasks/" + taskId);
+    }
+
+    /**
+     * 任务大文件工作目录:与旧版 ProgramService 布局一致,
+     * `<项目工作目录>/job/program-tasks/<taskId>`;无项目时回退元数据目录。
+     */
+    public File taskWorkDir(String projectId, String taskId) {
+        try {
+            EngineProject p = getProject(projectId);
+            if (p != null && p.getWorkdir() != null && !p.getWorkdir().isEmpty()) {
+                return new File(new File(new File(p.getWorkdir()), "job"), "program-tasks/" + taskId);
+            }
+        } catch (IOException e) {
+            log.warn("读取项目工作目录失败,回退默认: {}", projectId);
+        }
+        return taskDir(projectId, taskId);
     }
 
     public ModelingTask saveTask(ModelingTask t) throws IOException {

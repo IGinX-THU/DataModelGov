@@ -1,0 +1,57 @@
+{
+  "schemaVersion": "TC24_RUNTIME_SELECTION_V1",
+  "packageId": "TC24_SS_R011_20261010",
+  "modelMode": 0,
+  "enableRni": false,
+  "runtimeRelative": "MiddleData/three_component/runtime_packages/TC24_SS_R011_20261010",
+  "assets": [
+    {
+      "name": "GTESS.dll",
+      "sha256": "86B6856A47A1AB81B9D8A87F8D8989F7AF4FA17B560A0C1C66B3D558CB4B46C2",
+      "matchFormalSource": false,
+      "source": "C:\\VSCode\\Report\\05_程序\\涡轴发动机试车飞行数据自适应建模程序\\m_program_adaptive_tune\\MiddleData\\three_component\\runtime_packages\\TC24_SS_R011_20261010\\GTESS.dll"
+    },
+    {
+      "name": "GTESS.h",
+      "sha256": "B69DE8E7789008124642DB58B792685378E563A6832ED43B49A73CD197970847",
+      "matchFormalSource": false,
+      "source": "C:\\VSCode\\Report\\05_程序\\涡轴发动机试车飞行数据自适应建模程序\\m_program_adaptive_tune\\MiddleData\\three_component\\runtime_packages\\TC24_SS_R011_20261010\\GTESS.h"
+    },
+    {
+      "name": "blockAndFunctions.h",
+      "sha256": "EE77B01D2703EF1E15F907D6B82D78D6AAA2EDEA48BADA3C8249B12E91823253",
+      "matchFormalSource": false,
+      "source": "C:\\VSCode\\Report\\05_程序\\涡轴发动机试车飞行数据自适应建模程序\\m_program_adaptive_tune\\MiddleData\\three_component\\runtime_packages\\TC24_SS_R011_20261010\\blockAndFunctions.h"
+    },
+    {
+      "name": "types_TMATS.H",
+      "sha256": "3C129B490B877A02EF21F7D1923CB55D76A9BD6F083C317D029EF2C643F853F2",
+      "matchFormalSource": false,
+      "source": "C:\\VSCode\\Report\\05_程序\\涡轴发动机试车飞行数据自适应建模程序\\m_program_adaptive_tune\\MiddleData\\three_component\\runtime_packages\\TC24_SS_R011_20261010\\types_TMATS.H"
+    },
+    {
+      "name": "Turboshaft-TS.mdl",
+      "sha256": "3FF921CA6451559DA0F0277DDCBA3282789FA6C8D96028C2A060C369A18CE356",
+      "matchFormalSource": true,
+      "source": "C:\\VSCode\\Report\\05_程序\\涡轴发动机试车飞行数据自适应建模程序\\m_program_adaptive_tune\\Turboshaft-TS.mdl"
+    },
+    {
+      "name": "HPC02.MAP",
+      "sha256": "6CD1C4EDDB39543520C1A81775F6FBB77BDE8E6B6B8C6EC0FC6CA7A52FC62FE3",
+      "matchFormalSource": true,
+      "source": "C:\\VSCode\\Report\\05_程序\\涡轴发动机试车飞行数据自适应建模程序\\m_program_adaptive_tune\\HPC02.MAP"
+    },
+    {
+      "name": "HPT02.MAP",
+      "sha256": "626E97F64257E11932E9ECA720FCACDD8D1E7DE2B1F8580D1C81F6D51941CDDC",
+      "matchFormalSource": true,
+      "source": "C:\\VSCode\\Report\\05_程序\\涡轴发动机试车飞行数据自适应建模程序\\m_program_adaptive_tune\\HPT02.MAP"
+    },
+    {
+      "name": "LPT02.MAP",
+      "sha256": "24C9C5CD0931308F5F72B465E07014D0E47FFF805AB346C5392CF752DF1CD67A",
+      "matchFormalSource": true,
+      "source": "C:\\VSCode\\Report\\05_程序\\涡轴发动机试车飞行数据自适应建模程序\\m_program_adaptive_tune\\LPT02.MAP"
+    }
+  ]
+}

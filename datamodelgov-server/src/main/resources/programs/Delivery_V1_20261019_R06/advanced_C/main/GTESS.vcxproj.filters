@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;hm;inl;inc;xsd</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav</Extensions>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="sourcecode\Ambient_TMATS_body.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="sourcecode\blockAndFunctions.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="sourcecode\Burner_TMATS_body.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="sourcecode\calcPs_GTESS.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="sourcecode\CompressorF_TMATS_body.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="sourcecode\Compressor_TMATS_body.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="sourcecode\engineACE.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="sourcecode\engineMain.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="sourcecode\engineTurboshaft.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="sourcecode\shtTransientEffects.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="sourcecode\shtLowSpeedSolver.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="sourcecode\shtStartStop.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="sourcecode\engineUnmixedFan.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="sourcecode\functions_TMATS.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="sourcecode\FVABI_GTESS_body.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="sourcecode\h2tc_TMATS.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="sourcecode\interp1Ac_TMATS.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="sourcecode\interp2Ac_TMATS.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="sourcecode\interp3Ac_TMATS.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="sourcecode\Mixer_TMATS_body.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="sourcecode\newtonSolver.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="sourcecode\Nozzle_TMATS_body.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="sourcecode\PcalcStat_TMATS.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="sourcecode\pt2sc_TMATS.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="sourcecode\Rcalc_GTP.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="sourcecode\sp2tc_TMATS.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="sourcecode\t2gc_TMATS.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="sourcecode\t2hc_TMATS.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="sourcecode\Turbine_TMATS_body.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="SourceCode\engineMixedFan-F100.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="sourcecode\blockAndFunctions.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="sourcecode\componentBody.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="sourcecode\constants_TMATS.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="sourcecode\engineACE.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="sourcecode\engineMixedFan.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="sourcecode\engineTurboshaft.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="sourcecode\shtTransientEffects.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="sourcecode\shtLowSpeedSolver.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="sourcecode\shtStartStop.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="sourcecode\engineUnmixedFan.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="sourcecode\functions_TMATS.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="sourcecode\newtonSolver.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="sourcecode\types_TMATS.H">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="MixedFan-F100.mdl">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="MixedFan-PT.mdl">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="Turboshaft-TS.mdl">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="MixedFan-222-GenMap.mdl">
+      <Filter>Resource Files</Filter>
+    </None>
+  </ItemGroup>
+</Project>

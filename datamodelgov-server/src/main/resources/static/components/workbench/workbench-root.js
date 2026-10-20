@@ -72,7 +72,10 @@
             const typeSelect = WB().h('select', { id: 'wbNewType' },
                 WB().h('option', null, '个性化自适应建模'),
                 WB().h('option', null, '系统联合仿真'));
-            const locInput = WB().h('input', { id: 'wbNewLoc', value: 'D:/EngineProjects/E001' });
+            const locInput = WB().h('input', {
+                id: 'wbNewLoc',
+                placeholder: '(可选)相对路径,留空由系统生成并回显'
+            });
             const nameErr = WB().h('div', { class: 'wb-field-err', style: 'display:none' }, '请填写项目名称');
             const createBtn = WB().h('button', {
                 class: 'wb-btn wb-btn-primary disabled',
@@ -87,7 +90,7 @@
             });
             engineInput.addEventListener('input', () => {
                 const v = engineInput.value.trim().toUpperCase();
-                locInput.value = 'D:/EngineProjects/' + (v || 'E001');
+                locInput.placeholder = '(可选)如 projects/' + (v || 'E001') + ',留空由系统生成';
             });
 
             const panel = WB().h('div', {
@@ -159,7 +162,8 @@
                         WB().h('td', null, p.type
                             ? WB().h('span', { class: 'wb-tag wb-tag-' + (tag || 'gray') }, p.type)
                             : WB().h('span', { class: 'wb-hint', style: 'margin:0' }, '未标注')),
-                        WB().h('td', { class: 'wb-hint', style: 'margin:0' }, p.location || '已保存'),
+                        WB().h('td', { class: 'wb-hint', style: 'margin:0;word-break:break-all' },
+                            p.workdir || p.location || '系统默认目录'),
                         WB().h('td', { style: 'width:60px;text-align:right;color:#9ca3af' }, '进入 ›'));
                 }));
             holder.appendChild(table);
@@ -192,7 +196,7 @@
 
         _enter(workbenchKey, project) {
             const p = {
-                id: project.id || '',
+                id: project.id || 'demo-' + Date.now(), // 确保id不为空
                 name: project.name,
                 engineId: project.engineId || 'E-001',
                 engineDesc: project.engineDesc || WB().DEMO.project.engineDesc,

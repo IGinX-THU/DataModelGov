@@ -1,0 +1,50 @@
+{
+  "schemaVersion": "F3_COST_R2019B_R042",
+  "version": "1.4.0_TF_R002",
+  "transient": {
+    "source": "R035 historical exact selected-window fit: 1698.5 s with 14 initial vectors cached; cold estimate 2400-2700 s, 644.6 s local history, 13 parameters, two updates",
+    "scope": "Three-component Visser16, forward differences; parent and dependency changes require bounded verification",
+    "integrationStepSeconds": [0.002, 0.013],
+    "equilibriumSeconds": [1, 8],
+    "exportSeconds": [10, 90],
+    "meaning": "Engineering allowances anchored to historical whole-run timing, not independently profiled per-step measurements or confidence bounds"
+  },
+  "backend": "Windows x64 MATLAB 9.7.0.1190202 R2019b basic MATLAB, isolated F3 Visser16",
+  "hardware": "Project workstation; processor model and exclusive load not recorded in timing evidence",
+  "measurementSource": "R040 points_summary.json, 2026-10-02",
+  "measurementSourceSha256": "38B49F89471033C9769A58D6F694FA68933547F4E82E65DB8943DC76C8B7379C",
+  "referencePointCount": 9,
+  "referenceParameterCount": 32,
+  "referenceJacobianSeconds": [14.5008136, 13.1346809],
+  "referenceTiming": "Forward difference candidates and full nominal equilibrium; excludes Excel export and MATLAB startup; repeated cold initialization, not a cached Jacobian",
+  "loadAllowance": [0.7, 2.0],
+  "setupAllowance_s": [5, 60],
+  "exportAllowance_s": [5, 45],
+  "allowanceMeaning": "Engineering allowances, not measured quantiles; update by a separately reviewed cost version",
+  "scope": "R2 transient_instant, steady_only, set1, independent_nodes, nominal Visser16; no optimizer or statistics toolbox",
+  "scaling": "Point count times candidate parameter vectors; complete-window sample counts affect means but do not multiply DLL point solves",
+  "routes": {
+    "source": "R040 R2 point Jacobian measurement above; R1 and history multipliers below are explicit engineering budgets pending route-specific timing",
+    "steadyPointMultiplier": [2, 20],
+    "historyStepSeconds": [0.001, 0.01],
+    "independentSeedAttempts": 3,
+    "meaning": "History counts actual preparation plus fit integration steps and local equilibrium for every candidate; not a measured runtime quantile or guarantee"
+  },
+  "prediction": {
+    "source": "B2 transient-instant point-vector timing; independent steady equilibrium multiplier is an engineering allowance, not yet a measured C2 baseline",
+    "steadySolveMultiplier": [2, 20],
+    "setupAllowance_s": [10, 90],
+    "exportAllowance_s": [5, 90],
+    "scope": "input-only point prediction; all selected main particles and conditional draws, public-model multistart, seven independent input directions",
+    "limits": "No bound on ill-conditioned or multiple steady roots; no MATLAB startup, queue wait or repeated user runs"
+  },
+  "uq": {
+    "source": "B2 20261004 R2019b, 3 points and 30-column full Jacobian, 3.5 to 4.7 seconds",
+    "pointVectorSeconds": [0.03763440860215054, 0.05053763440860215],
+    "loadAllowance": [0.7, 3.0],
+    "ioAllowance_s": [10, 90],
+    "inputDirections": 8,
+    "scope": "R2 steady points, nominal Visser16; C/D cost extrapolation, not C/D measured timing",
+    "limitations": "Hardware/exclusive load not recorded; include preparation and export physics; no independent prediction or failure retry bound"
+  }
+}

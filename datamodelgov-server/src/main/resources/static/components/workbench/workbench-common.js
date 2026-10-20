@@ -103,38 +103,35 @@ window.Workbench = (() => {
         return h('span', { class: 'wb-tag wb-tag-' + (kind || 'gray') }, text);
     }
 
-    /* ===== 个性化建模 · 项目概况(图 01-02)===== */
+    /* ===== 个性化建模 · 项目概况(图 01-02;任务/模型为真实接口数据)===== */
     pages['modeling.overview'] = (ctx) => {
         const p = ctx.project;
         const wrap = h('div', null, pageHeader('项目概况', p.name + ' / 个性化自适应建模'));
 
-        // 建模任务
-        const table = h('table', { class: 'wb-table' },
-            h('tr', null, ['任务名称', '任务类型', '最近运行', '状态', '模型成果'].map(t => h('th', null, t))),
-            DEMO.tasks.map(t => h('tr', { class: 'clickable' },
-                h('td', { class: 'wb-link' }, t.name),
-                h('td', null, t.type),
-                h('td', null, t.lastRun),
-                h('td', null, statusTag(t.status, t.statusKind)),
-                h('td', null, t.model))));
+        // 建模任务(真实任务列表,无演示数据)
+        const tableHolder = h('div', null, h('div', { class: 'wb-empty' }, '正在加载任务...'));
         wrap.appendChild(h('div', { class: 'wb-section' },
             h('div', { class: 'wb-section-head' },
                 h('div', { class: 'wb-section-title' }, '建模任务'),
                 h('div', { style: 'display:flex;gap:10px' },
                     h('button', { class: 'wb-btn wb-btn-primary',
-                        onclick: () => ctx.enterTask(DEMO.businesses[0]) }, '+ 基础稳态点建模'),
-                    h('button', { class: 'wb-btn wb-btn-outline' }, '新增试车更新'))),
-            table,
+                        onclick: () => ctx.enterTask({ id: 'steady', name: '基础稳态点建模' }) }, '+ 基础稳态点建模'),
+                    h('button', {
+                        class: 'wb-btn wb-btn-outline disabled', title: 'TC27 试车数据更新(2.7)后行接入',
+                        onclick: () => window.CommonUtils && window.CommonUtils.showToast &&
+                            window.CommonUtils.showToast('TC27 试车数据更新(2.7)后行接入', 'info')
+                    }, '新增试车更新'))),
+            tableHolder,
             h('div', { class: 'wb-actions-row' },
-                h('button', { class: 'wb-btn wb-btn-outline' }, '打开任务'),
-                h('button', { class: 'wb-btn wb-btn-outline' }, '导入模型'))));
+                h('button', { class: 'wb-btn wb-btn-outline', onclick: () => ctx.enterTask({ id: 'steady', name: '基础稳态点建模' }) }, '打开任务'),
+                h('button', { class: 'wb-btn wb-btn-outline', onclick: () => importModel(ctx) }, '导入模型'))));
 
         // 计算基准
         const rows = [
             ['来源', '当前选定运行包;初值由算法配置返回'],
             ['导入已有成果', '进入模型成果;不自动作为本任务初值'],
-            ['不确定性评估', '尚未生成个性化模型'],
-            ['当前任务', '台架标定01 / 2.4基础稳态点建模']
+            ['不确定性评估', '完成辨识并登记模型成果后开放'],
+            ['当前任务', '从上方任务表选择或新建']
         ];
         wrap.appendChild(h('div', { class: 'wb-section' },
             h('div', { class: 'wb-section-title', style: 'margin-bottom:12px' }, '本任务的计算基准'),
@@ -143,14 +140,115 @@ window.Workbench = (() => {
                     h('div', { class: 'wb-field' }, h('label', null, '运行包 / 初始参数配置'),
                         h('input', { readonly: '', value: 'B00 · 当前配套三部件基准' })),
                     h('div', { class: 'wb-field' }, h('label', null, '发动机 / 模型模式'),
-                        h('input', { readonly: '', value: p.engineId + ' / 三部件' }))),
+                        h('input', { readonly: '', value: (p.engineId || '—') + ' / 三部件' }))),
                 h('table', { class: 'wb-table', style: 'margin-top:14px' },
                     rows.map(r => h('tr', null, h('td', { style: 'width:180px;color:#6b7280' }, r[0]), h('td', null, r[1]))))),
             h('div', { class: 'wb-actions-row' },
-                h('button', { class: 'wb-btn wb-btn-outline' }, '选择预测模型'),
+                h('button', { class: 'wb-btn wb-btn-outline', onclick: () => ctx.navigate('predictions') }, '选择预测模型'),
                 h('button', { class: 'wb-btn wb-btn-outline', onclick: () => ctx.navigate('records') }, '运行记录'))));
+
+        loadOverviewTasks(ctx, tableHolder);
         return wrap;
     };
+
+function loadOverviewTasks(ctx, holder) {
+        if (!ctx.project || !ctx.project.id) {
+            console.warn('项目信息不完整:', ctx.project);
+            holder.innerHTML = '';
+            holder.appendChild(h('div', { class: 'wb-empty' }, '本地演示项目无任务;请从项目入口进入真实项目。'));
+            return;
+        }
+        
+        // 先检查基本API是否可用
+        window.AppConfig.engineGet('projects')
+            .then(resp => {
+                console.log('项目列表API响应:', resp);
+                
+                // 修复：只使用查询参数，不在路径中传参
+                const apiUrl = 'projects/detail';
+                console.log('请求项目详情API:', apiUrl, '参数:', { projectId: ctx.project.id });
+                
+                return window.AppConfig.engineGet(apiUrl, { projectId: ctx.project.id });
+            })
+            .then(resp => {
+                console.log('项目详情响应:', resp);
+                
+                const tasks = resp && resp.data && Array.isArray(resp.data.tasks)
+                    ? resp.data.tasks.filter(t => t.kind === 'steady') : [];
+                const models = resp && resp.data && Array.isArray(resp.data.models) ? resp.data.models : [];
+                
+                console.log('过滤后的任务:', tasks);
+                console.log('模型:', models);
+                
+                holder.innerHTML = '';
+                if (!tasks.length) {
+                    holder.appendChild(h('div', { class: 'wb-empty' },
+                        '暂无建模任务;点击右上角"+ 基础稳态点建模"新建。'));
+                    return;
+                }
+                holder.appendChild(h('table', { class: 'wb-table' },
+                    h('tr', null, ['任务名称', '任务类型', '最近运行', '状态', '模型成果'].map(t => h('th', null, t))),
+                    tasks.map(t => {
+                        const model = models.find(mo => mo.taskId === t.id);
+                        return h('tr', {
+                            class: 'clickable',
+                            onclick: () => ctx.enterTask({ id: 'steady', name: '基础稳态点建模' })
+                        },
+                            h('td', { class: 'wb-link' }, t.name || t.id),
+                            h('td', null, '稳态试车建模'),
+                            h('td', null, t.runId || '—'),
+                            h('td', null, statusTag(t.status, t.status === 'COMPLETED' ? 'teal' : (t.status === 'FAILED' ? 'red' : 'amber'))),
+                            h('td', null, model ? model.name : '尚未生成'));
+                    })));
+            })
+            .catch(error => {
+                console.error('项目详情API调用失败:', error);
+                holder.innerHTML = '';
+                
+                // 显示更详细的错误信息
+                const errorMsg = error.message || '未知错误';
+                const errorDetail = h('div', { style: 'font-size:12px;color:#666;margin-top:8px' }, 
+                    '错误详情: ' + errorMsg + (error.stack ? '\n' + error.stack.substring(0, 200) + '...' : ''));
+                
+                holder.appendChild(h('div', { class: 'wb-empty' }, 
+                    '任务列表加载失败;请确认服务可用。', errorDetail));
+            });
+    }
+
+    /** 导入模型:选择 Excel 上传到项目目录并登记为模型成果(与导入数据同机制)。 */
+    function importModel(ctx) {
+        if (!ctx.project || !ctx.project.id) {
+            window.CommonUtils && window.CommonUtils.showToast &&
+                window.CommonUtils.showToast('本地演示项目不支持导入;请进入真实项目', 'error');
+            return;
+        }
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.xlsx,.xls';
+        input.addEventListener('change', async () => {
+            const f = input.files && input.files[0];
+            if (!f) return;
+            const fd = new FormData();
+            fd.append('file', f);
+            window.CommonUtils && window.CommonUtils.showToast &&
+                window.CommonUtils.showToast('正在导入:' + f.name, 'info');
+            try {
+                const resp = await window.AppConfig.engineUpload(
+                    'projects/' + encodeURIComponent(ctx.project.id) + '/models/import', fd);
+                if (resp && (resp.success || resp.code === 200) && resp.data) {
+                    window.CommonUtils && window.CommonUtils.showToast &&
+                        window.CommonUtils.showToast('模型已导入并登记:' + resp.data.name, 'success');
+                } else {
+                    window.CommonUtils && window.CommonUtils.showToast &&
+                        window.CommonUtils.showToast((resp && resp.message) || '导入失败', 'error');
+                }
+            } catch (e) {
+                window.CommonUtils && window.CommonUtils.showToast &&
+                    window.CommonUtils.showToast('导入失败:' + e.message, 'error');
+            }
+        });
+        input.click();
+    }
 
     /* ===== 个性化建模 · 建模任务 ===== */
     pages['modeling.tasks'] = (ctx) => {
@@ -172,12 +270,12 @@ window.Workbench = (() => {
         const wrap = h('div', null, pageHeader('模型成果', ctx.project.engineId + ' / 稳态试车建模 / 模型版本与数据、评估关联'));
         const tableHolder = h('div', null, h('div', { class: 'wb-empty' }, '正在加载模型成果...'));
         wrap.appendChild(tableHolder);
-        if (ctx.project.id) loadRealModels(ctx, tableHolder); else renderDemoModels(ctx, wrap, tableHolder);
+        if (ctx.project.id) loadRealModels(ctx, wrap, tableHolder); else renderDemoModels(ctx, wrap, tableHolder);
         return wrap;
     };
 
-    function loadRealModels(ctx, holder) {
-        window.AppConfig.engineGet('projects/models', { projectId: ctx.project.id })
+    function loadRealModels(ctx, wrap, holder) {
+        window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id) + '/models')
             .then(resp => {
                 const models = resp && resp.data;
                 if (!Array.isArray(models)) throw new Error('bad resp');
@@ -199,7 +297,7 @@ window.Workbench = (() => {
                             m.createdAt ? new Date(m.createdAt).toLocaleString() : '—'))));
                 holder.appendChild(table);
             })
-            .catch(() => renderDemoModels(ctx, null, holder));
+            .catch(() => renderDemoModels(ctx, wrap, holder));
     }
 
     function renderDemoModels(ctx, wrap, holder) {
@@ -209,7 +307,7 @@ window.Workbench = (() => {
             h('td', null, m.stage), h('td', null, m.path), h('td', null, m.data), h('td', null, m.parent),
             h('td', null, statusTag(m.status, m.statusKind)),
             h('td', null, m.uq.split('\n').map((line, i) => h('div', { style: 'font-size:12px;' + (i ? 'color:#9ca3af' : '') }, line)))));
-        const sel = DEMO.models.find(m => m.checked);
+        const sel = DEMO.models.find(m => m.checked) || DEMO.models[0];
         holder.innerHTML = '';
         holder.appendChild(h('div', { class: 'wb-section' },
             h('div', { class: 'wb-filter-bar' },

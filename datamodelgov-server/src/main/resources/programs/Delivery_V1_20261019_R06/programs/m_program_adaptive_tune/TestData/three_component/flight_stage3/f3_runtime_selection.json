@@ -1,0 +1,7 @@
+{
+    "schemaVersion":  "F3_RUNTIME_SELECTION_V1",
+    "packageId":  "F3_DLL_MAIN_20261010",
+    "runtimeRelativePath":  "MiddleData/three_component/flight_stage3/F3_DLL_MAIN_20261010/runtime",
+    "manifestName":  "f3_runtime_manifest.json",
+    "manifestSHA256":  "71EBF628AD3F8B0EFDB98F736754766EB1F879BA3F7D32A5C10DCAC7F6452E13"
+}

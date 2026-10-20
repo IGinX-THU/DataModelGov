@@ -22,6 +22,8 @@ public final class EngineModels {
         private String type;
         private String engineId;
         private String location;
+        /** 解析后的物理工作目录(保存位置落盘;location 为空时在 dataRoot 下) */
+        private String workdir;
         private String desc;
         private String owner;
         private Long createdAt;
@@ -33,6 +35,7 @@ public final class EngineModels {
             m.put("type", type);
             m.put("engineId", engineId);
             m.put("location", location);
+            m.put("workdir", workdir);
             m.put("desc", desc);
             m.put("owner", owner);
             m.put("createdAt", createdAt);
@@ -43,6 +46,8 @@ public final class EngineModels {
     /** 建模任务(首链:稳态试车建模 kind=steady)。 */
     @Data
     public static class ModelingTask {
+        /** 空闲可操作:已创建/数据就绪/准备失败后回到此状态 */
+        public static final String ST_READY = "READY";
         public static final String ST_PREPARING = "PREPARING";
         public static final String ST_RUNNING = "RUNNING";
         public static final String ST_COMPLETED = "COMPLETED";
@@ -69,6 +74,20 @@ public final class EngineModels {
         private Map<String, Object> result = new LinkedHashMap<>();
         /** 运行日志尾部 */
         private List<String> logTail = new ArrayList<>();
+        /** 准备(preview)返回的工况与分组明细(编号/Np/Ng/Wf/样本数/分组),真实解析结果 */
+        private List<Map<String, Object>> conditions = new ArrayList<>();
+        /** 准备记录说明(如 PREP_01 · 数据、配置与运行包一致) */
+        private String prepMessage;
+
+        /* ---------- 可选UQ(F-07-TC24):与确定性辨识相互独立 ---------- */
+        /** UQ_EXECUTING | UQ_COMPLETED | UQ_FAILED */
+        private String uqStatus;
+        private String uqMessage;
+        /** 合同要求 UQ runId 带 tc24_ 前缀,结果另存不覆盖确定性 */
+        private String uqRunId;
+        private Long uqStartedAt;
+        private Long uqFinishedAt;
+        private Map<String, Object> uqResult = new LinkedHashMap<>();
     }
 
     /** 模型成果:以模型为中心,关联任务、数据与交付文件。 */

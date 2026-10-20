@@ -281,6 +281,12 @@ window.AppConfig = {
             headers: { ...this.getAuthHeaders(), ...(options.headers || {}) }
         };
 
+        // FormData 上传由浏览器自动设置 multipart boundary，不能带 application/json
+        // 但必须保留 Authorization 认证头
+        if (options.body instanceof FormData) {
+            delete config.headers['Content-Type'];
+        }
+
         // 如果是登录或刷新接口，不需要token
         if (url.includes('/api/auth/login') || url.includes('/api/auth/refresh')) {
             delete config.headers[this.auth.tokenHeader];
@@ -444,10 +450,10 @@ window.AppConfig = {
     },
 
     async engineUpload(path, formData) {
-        return this.request(this.api.baseURL + '/api/engine/' + path, {
-            method: 'POST',
-            body: formData
-        });
+        const url = this.api.baseURL + '/api/engine/' + path;
+        console.log('上传URL:', url);
+        // request() 会自动附加 Authorization;FormData 时自动去掉 Content-Type 让浏览器设 boundary
+        return this.request(url, { method: 'POST', body: formData });
     },
 
     // 处理认证失败

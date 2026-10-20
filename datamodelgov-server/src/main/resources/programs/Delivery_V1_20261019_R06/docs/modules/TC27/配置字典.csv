@@ -1,0 +1,144 @@
+Group,Field,Meaning,Unit,Type,Default,DefaultSource,Allowed,Effect,Level,Support
+稳态公开,request.upstreamModelFile,TC24正式确定性模型Excel,文件路径,char或string标量,必填,Start_TC27_SteadyModelUpdate_01.m,实际存在且与route一致,决定参数字典父调度和工程先验规则,常用,当前支持
+稳态公开,request.steadyTrainingFile,原试车完整有效稳态窗口均值Excel,文件路径,char或string标量,必填,Start_TC27_SteadyModelUpdate_01.m,point_id和sample_count及测量均值列完整,参与训练分组和更新不是测试,常用,当前支持
+稳态公开,request.trainingHistoryFile,新增完整训练测量历程Excel,文件路径,char或string标量,必填,Start_TC27_SteadyModelUpdate_01.m,符合20列历程合同,从完整记录提取稳态小幅和事件,常用,当前支持
+稳态公开,request.outputDirectory,独立任务根目录,文件路径,char或string标量,必填,Start_TC27_SteadyModelUpdate_01.m,父目录存在且新任务未占用或有匹配预览,放置MiddleData报告和停续状态,常用,当前支持
+稳态公开,request.route,稳态系数求值路线,无,char,transient_instant,Start_TC27_SteadyModelUpdate_01.m,steady或transient_instant,自由轴速稳态或固定测量轴速热平衡,常用,当前四组合支持
+稳态公开,request.method,调度融合方法,无,char,II,Start_TC27_SteadyModelUpdate_01.m,I或II,I重构组曲线或II保留旧节点并按证据插点,常用,当前四组合支持
+稳态公开,request.testPointFiles,独立测试均值文件列表,文件路径,cell路径列表,空cell,Start_TC27_SteadyModelUpdate_01.m,每个文件实际存在,只在估计冻结后验证不参加分组,常用,当前支持
+稳态公开,request.testHistoryFiles,独立测试历程文件列表,文件路径,cell路径列表,空cell,Start_TC27_SteadyModelUpdate_01.m,每个文件实际存在,分来源稳态窗口及小幅历程验证,常用,当前支持
+稳态公开,request.includeSmallHistory,稳态微调是否加入小幅历程,无,logical,true,Start_TC27_SteadyModelUpdate_01.m,true或false,关闭后D1仍做第二轮纯点微调,常用,当前支持
+稳态公开,request.execute,是否实际进入05和06,无,logical,false,Start_TC27_SteadyModelUpdate_01.m,false或true,纯inspect不触发DLL正式执行进入同一核心,常用,当前支持
+稳态公开,request.preview,只执行05并保存选段预览,无,logical,false,Start_TC27_SteadyModelUpdate_01.m,true时execute和resume须false,写准备资产和范围索引但不辨识,常用,当前支持
+稳态公开,request.resume,恢复同配置安全停止点,无,logical,false,Start_TC27_SteadyModelUpdate_01.m,true需execute且已有同身份任务,不允许跨源包或参数变更重签,常用,当前支持
+稳态公开,request.plot,是否绘制准备等结果图,无,logical,false,Start_TC27_SteadyModelUpdate_01.m,false或true,可能增加图形和文件I/O,常用,当前支持
+稳态公开,request.runTag,任务标签,无,char,UI_R051,Start_TC27_SteadyModelUpdate_01.m,用户标识且应与独立任务区分,影响runId和日志命名不改物理模型,常用,当前支持
+稳态公开,request.runtimeDirectory,本次显式运行包目录,文件路径,char或string标量,selected选择JSON,Start_TC27_SteadyModelUpdate_01.m,完整匹配的三部件TC27包,贯穿首次配置和实际求值;离线薄入口未转换相对值,专家,当前支持但应传绝对路径
+稳态公开,request.timingHistoryDirectory,可比较运行时间校准记录目录,文件路径,char或string标量,输出父目录下TC27_timing_history,Start_TC27_SteadyModelUpdate_01.m,不能与任务根相同,只校准粗估不改变求解停止或配置,调试,当前支持
+稳态公开,request.estimationOptions,高级稳态辨识及05配置覆盖,无,标量struct,空struct,Start_TC27_SteadyModelUpdate_01.m,输入输出续算等reserved字段不能放在这里,公开明确身份优先内部选项其次,调试,当前支持
+稳态内部,estimationOptions.thermalMode,增强热模型模式,无,整数,3,sht_tc27_estimation_options.m,配置核可0或1或3;正式TC27流程使用3,1为Kurzke15有限点核证据;0不等于正式点辨识可用,专家,正式仅Visser3完整范围
+稳态内部,estimationOptions.maxIterationB,每组B最大更新次数,次,正整数,10,sht_tc27_estimation_options.m,数值求解器允许范围,改变计算预算不保证达到驻点,调试,当前支持
+稳态内部,estimationOptions.maxIterationD0,联合稳态点D0最大更新次数,次,正整数,10,sht_tc27_estimation_options.m,数值求解器允许范围,D0不含历程使用中心差分,调试,当前支持
+稳态内部,estimationOptions.maxIterationD1,历程辅助或第二轮点D1最大更新次数,次,正整数,10,sht_tc27_estimation_options.m,数值求解器允许范围,含历程默认前向差分和准备复用,调试,当前支持
+稳态内部,estimationOptions.regularizationB,B正则方式,无,char,tikhonov,sht_tc27_estimation_options.m,tikhonov或tsvd,TSVD无阻尼且实际保留数可能减少,调试,当前支持
+稳态内部,estimationOptions.regularizationD,D正则方式,无,char,tikhonov,sht_tc27_estimation_options.m,tikhonov或tsvd,用完整正则解不施加统一比例,调试,当前支持
+稳态内部,estimationOptions.retainedB,B的TSVD请求保留维数,个,正整数,6,sht_tc27_estimation_options.m,受有效秩和求解接受限制,仅TSVD生效不代表全部参数可辨识,调试,当前支持
+稳态内部,estimationOptions.retainedD,D的TSVD请求保留维数,个,正整数,6,sht_tc27_estimation_options.m,受有效秩和求解接受限制,最终诊断使用实际接受维数,调试,当前支持
+稳态内部,estimationOptions.lambdaD,D的Tikhonov因子,无,正数,steady为0.01;transient_instant为0.02,sht_tc27_estimation_options.m,用户明确取值,实际标准化精度权重lambda平方;越大约束越强,调试,当前支持
+稳态内部,estimationOptions.pointHistoryWeights,稳态点与小幅历程总权重,无,1x2数值,[0.7 0.3],sht_tc27_estimation_options.m,非负且和大于0,先按各块真实样本数通道数平均再加权,常用,当前支持
+稳态内部,estimationOptions.steadySourceWeights,原均值和新历程稳态窗口来源权重,无,1x2数值,[0.5 0.5],sht_tc27_estimation_options.m,各元素大于0,调节两个训练来源影响;不读取测试来自动调权,常用,当前支持
+稳态内部,estimationOptions.difference,B差分方式,无,char,central,sht_tc27_estimation_options.m,当前中心差分;底层有forward,不能把B常值子集掩码直接当全局节点,专家,当前中心方式证据
+稳态内部,estimationOptions.differenceD0,D0差分方式,无,char,central,sht_tc27_estimation_options.m,central或forward底层支持,D0无历程保留中心差分,专家,当前默认已有限回归
+稳态内部,estimationOptions.differenceD1,D1差分方式,无,char,forward,sht_tc27_estimation_options.m,关闭或无小幅历程时沿用D0,影响DLL量和近似准备审查,专家,当前默认已验证范围
+稳态内部,estimationOptions.objectiveImprovementTolerance,真实总目标小改善停止阈值,比例,非负数,0.001,sht_tc27_estimation_options.m,0.001表示0.1%,小改善不自动代表一阶驻点,调试,当前支持
+稳态内部,estimationOptions.integrationStep_s,辨识历程积分步长,s,正数,0.1,sht_tc27_estimation_options.m,正式采用0.1或0.025且须对齐记录,不改变原记录/造数/控制周期,常用,当前支持
+稳态内部,estimationOptions.validationIntegrationStep_s,独立历程验证积分步长,s,正数,0.025,sht_tc27_estimation_options.m,正式采用0.1或0.025且须对齐记录,比较时必须说明与辨识步长是否一致,调试,当前支持
+稳态内部,estimationOptions.localWarmup_s,局部初始化后准备历史长度,s,非负数,60,sht_tc27_estimation_options.m,不能越过连续块可用开始,减小会影响准备初态与模型近似,专家,当前支持
+稳态内部,estimationOptions.reusePreparationForJacobian,同轮差分复用当前准备断点,无,logical,true,sht_tc27_estimation_options.m,false或true,真实候选仍推进自身准备;最终真实Jacobian另审查,专家,当前支持
+稳态内部,estimationOptions.stopAfterC,底层调试在C后返回,无,logical,false,sht_tc27_estimation_options.m,false或true,不会形成公开完整D交付;GUI正常运行不得误设,专家,仅底层调试
+稳态内部,estimationOptions.outputBatch,内部默认批次,无,char,TC27_R021_LocalPrepared,sht_tc27_estimation_options.m,字母数字下划线,显式outputDirectory优先;不要以旧批次续用历史状态,专家,当前支持
+稳态内部,estimationOptions.reusePointFitFile,导入同数据物理身份的已有点阶段,文件路径,char,空字符串,sht_tc27_estimation_options.m,公开新业务reserved禁止覆盖,研发复用保留原身份不重签,专家,仅内部研发非公开业务
+预处理,estimationOptions.minimumSteadyDuration_s,保护后有效稳态段最短时长,s,整数,10,Start_TC27_05_DataPreparation.m,5或10或15或20,完整保留有效段;不是最大长度,常用,当前支持
+预处理,estimationOptions.minimumSmallDuration_s,小幅变化拟合段最短时长,s,整数,10,Start_TC27_05_DataPreparation.m,5或10或15或20,不设最大时长或最低激励要求,常用,当前支持
+预处理,estimationOptions.steadyGuard_s,稳态两端保护时长,s,非负数,1,Start_TC27_05_DataPreparation.m,以实际记录周期转整数点,影响最终有效均值与样本数,调试,当前支持
+预处理,estimationOptions.initializationExclusion_s,每个连续块首段排除时长,s,非负数,5,sht_tc27_segment_history.m,按连续块开始计算,不跨缺测连接热历史,调试,当前支持
+预处理,estimationOptions.screeningLevel,稳态筛选等级,无,char,S3,sht_tc27_segment_history.m,S2或S3或S4或S5,含导数噪声下限;S5最宽松,常用,当前支持
+预处理,estimationOptions.clusterSpan,三部件HPC相对换算转速全组跨度,无,正数,0.02,Start_TC27_05_DataPreparation.m,不是固定工况数或节点数,原2.3与新2.6稳态点共同分组,调试,当前支持
+预处理,estimationOptions.exceedanceGap_s,短分类越限间隔合并限值,s,非负数,0.3,sht_tc27_segment_history.m,仅在有效同连续块可并,不插值缺测记录,调试,当前支持
+预处理,estimationOptions.smallAmplitudeLimit,小幅段整体工程幅度上限,无,正数,0.20,sht_tc27_segment_history.m,相对固定工程跨度,分类只用平滑量拟合仍用原测量,调试,当前支持
+预处理,estimationOptions.eventLeadIn_s,事件拟合前平台长度,s,非负数,10,sht_tc27_segment_history.m,受连续块起点限制,不是局部热准备长度,调试,当前支持
+预处理,estimationOptions.eventRecovery_s,事件拟合恢复段长度,s,非负数,30,sht_tc27_segment_history.m,受连续块终点限制,包含恢复而不是只拟合快速核心,调试,当前支持
+预处理,estimationOptions.eventGap_s,大幅事件核心间隔合并限值,s,非负数,1,sht_tc27_segment_history.m,同一有效连续块,影响事件段数量及计算量,调试,当前支持
+瞬态公开,request.steadyModelFile,父TC27 Visser稳态Excel,文件路径,char或string标量,必填,sht_tc27_transient_prepare.m,配套同名身份JSON与当前选包匹配,冻结稳态调度和燃油偏置,常用,当前支持
+瞬态公开,request.trainingHistoryFile,完整瞬态训练测量文件,文件路径,char或string标量,必填,sht_tc27_transient_prepare.m,符合20列合同,公开入口筛事件而不是全历程直接拟合,常用,当前支持
+瞬态公开,request.testHistoryFiles,可选独立测试历程,文件路径,cell路径列表,空cell,sht_tc27_transient_prepare.m,不能与训练文件相同,不参与系数更新,常用,当前支持
+瞬态公开,request.outputDirectory,瞬态独立任务根,文件路径,char或string标量,必填,sht_tc27_transient_prepare.m,父目录存在且不与输入目录相同,生成准备选择摘要组合和运行控制,常用,当前支持
+瞬态公开,request.route及request.method,父稳态路径和方法一致性检查,无,char,由父Excel恢复,Start_TC27_TransientModelUpdate_01.m,如提供必须与父模型一致,不独立重新选择稳态方法,常用,当前支持
+瞬态公开,request.selectionMode,事件自动或人工选择,无,char,automatic,sht_tc27_transient_prepare.m,automatic或manual,manual需显式Nx2范围;automatic须无人工范围,常用,当前支持
+瞬态公开,request.eventRanges_s,人工拟合起止时间草稿,s,Nx2数值,0x2空数组,sht_tc27_transient_prepare.m,结束大于开始且落记录网格同连续块,生成拟合与积分记录索引,常用,当前支持
+瞬态公开,request.screeningOptions,事件及数据质量筛选覆盖,无,标量struct,空struct,sht_tc27_transient_prepare.m,对应上方预处理字段,不能从测试数据生成训练范围,调试,当前支持
+瞬态公开,request.localWarmup_s,事件局部准备长度,s,非负数,60,sht_tc27_transient_prepare.m,不超过60,前平台拟合和准备积分是不同范围,专家,当前支持
+瞬态公开,request.runTag,瞬态任务标签,无,char,UI_R068,Start_TC27_TransientModelUpdate_01.m,字母数字下划线,不覆盖其他任务输出,常用,当前支持
+瞬态公开,request.execute及preview及resume,核查选段执行和恢复状态,无,logical,全false,Start_TC27_TransientModelUpdate_01.m,preview与execute互斥;resume须execute,inspect只核查;preview写准备;execute计算,常用,当前支持
+瞬态公开,request.runtimeDirectory,公开请求显式选运行包,文件路径,不支持,无,sht_tc27_transient_prepare.m,当前未消费此字段,按TC27选择JSON和父模型身份校验,专家,当前缺口不虚构支持
+瞬态数值,estimationOptions.lambda,零中心瞬态正则因子,无,正数,0.1,Start_TC27_07_TransientParameterEstimation.m,当前Tikhonov,实际标准化权重lambda平方=0.01,调试,当前支持
+瞬态数值,estimationOptions.priorScale,瞬态13系数工程先验尺度,无,正数标量,0.3,Start_TC27_07_TransientParameterEstimation.m,同时用于全部13方向,不等于快速初值或向估计结果正则,调试,当前支持
+瞬态数值,estimationOptions.maxIterations,瞬态最大更新次数,次,非负整数,6,Start_TC27_TransientModelUpdate_01.m,短验证可显式1但非充分收敛,停止还看总目标小改善与真实审查,调试,当前支持
+瞬态数值,estimationOptions.differenceStep,瞬态前向差分步长,无,正数,0.01,Start_TC27_07_TransientParameterEstimation.m,留在[-0.5 1]边界内,影响Jacobian与DLL回放数量,专家,当前支持
+瞬态数值,estimationOptions.integrationStep_s,瞬态辨识积分步长,s,标量,0.1,Start_TC27_TransientModelUpdate_01.m,0.1或0.025,不把原记录抽稀或改变传感器周期,常用,当前支持
+瞬态数值,estimationOptions.validationIntegrationStep_s,瞬态独立测试积分步长,s,标量,0.025,Start_TC27_TransientModelUpdate_01.m,0.1或0.025,验证口径须单列,调试,当前支持
+瞬态数值,estimationOptions.objectiveImprovementTolerance,瞬态总目标小改善停止阈值,比例,非负数,0.001,Start_TC27_07_TransientParameterEstimation.m,0.1%默认,不等于真实驻点已通过,调试,当前支持
+瞬态数值,estimationOptions.reusePreparationForJacobian,当前准备状态用于同轮前向差分,无,logical,true,Start_TC27_TransientModelUpdate_01.m,false或true,最后真实Jacobian审查与近似驻点分开,专家,当前支持
+瞬态内部,options.dataScope,底层07拟合范围,无,char,底层full_history;公开固定event_windows,Start_TC27_07_TransientParameterEstimation.m,full_history或event_windows,公开UI不得把默认行为误写为全历程,专家,底层对照而非公开选择
+瞬态内部,options.validateTruth,是否读取隐藏真值作独立评价,无,logical,false,Start_TC27_07_TransientParameterEstimation.m,业务公开入口固定false,估计不能依赖真值,专家,仅隔离验证
+UQ公开,request.method,稳态系数评估方法,无,char,D,Start_TC27_UQ_ModelAssessment_01.m,D或C或CD,D快速局部;C非线性目标;CD只准备一次D,常用,当前支持
+UQ公开,request.options,模型数据及UQ数值设置,无,标量struct,必填,Start_TC27_UQ_ModelAssessment_01.m,字段必须被uq_contract识别,不是GUI控件结构,常用,当前支持
+UQ公开,request.execute,是否进入正式推断,无,logical,false,Start_TC27_UQ_ModelAssessment_01.m,false或true,false仍准备合同和可能的05资产,常用,当前支持
+UQ公开,request.resume,相同合同安全恢复,无,logical,false,Start_TC27_UQ_ModelAssessment_01.m,true须execute且状态可恢复,不能改签数据包或源码,常用,当前支持
+UQ公开,request.publish,是否做预测及正式Excel交付,无,logical,true,Start_TC27_UQ_ModelAssessment_01.m,false或true,false只有推断结果并非完整交付,常用,当前支持
+UQ公开,request.timingHistoryDirectory,可比UQ耗时记录目录,文件路径,char,输出父目录下uq_timing_history,Start_TC27_UQ_ModelAssessment_01.m,独立可写目录,同合同已完成记录可校准估时,调试,当前支持
+UQ输入,options.modelFile,所选TC27稳态模型Excel,文件路径,char,必填,sht_tc27_uq_contract.m,三部件Visser且I/II和两路线之一,不能把非零瞬态组合UQ冒充此能力,常用,当前支持
+UQ输入,options.modelIdentityFile,确定性模型身份JSON,文件路径,char,模型旁约定同名identity,sht_tc27_uq_input_contract.m,可显式替换为同模型合法身份,锁定模型包及上游,常用,当前支持
+UQ输入,options.upstreamModelFile,TC24字典及工程先验模型Excel,文件路径,char,必填,sht_tc27_uq_input_contract.m,实际存在且身份匹配,不读取TC24后验作先验,常用,当前支持
+UQ输入,options.steadyTrainingFile,原训练完整窗口均值,文件路径,char,必填,sht_tc27_uq_input_contract.m,与确定性/准备身份相容,作为当前数据目标一部分,常用,当前支持
+UQ输入,options.trainingHistoryFile,新增完整训练历程,文件路径,char,必填,sht_tc27_uq_input_contract.m,与准备数据身份相容,只提取有效均值用于当前UQ,常用,当前支持
+UQ输入,options.testPointFiles及testHistoryFiles,独立测试来源列表,文件路径,cell,空cell,sht_tc27_uq_input_contract.m,存在时分别验证;训练不使用,无测试也可推断/交付,常用,当前支持
+UQ输入,options.preparedFile,已核验05准备MAT缓存,文件路径,char,优先模型旁合法准备缓存,sht_tc27_uq_input_contract.m,缺失或不匹配不能盲复用,没有时从原Excel重做05,调试,内部资产非正式接口
+UQ输入,options.preparationOptions,05重生成时的筛选选项,无,标量struct,空struct,sht_tc27_uq_input_contract.m,不得暗中覆盖显式输入身份,改变有效均值与协方差真实样本数,专家,当前支持
+UQ输入,options.outputDirectory,评估独立任务根,文件路径,char,必填,sht_tc27_uq_contract.m,可写且不得用其他任务目录,生成合同缓存控制后验及报告,常用,当前支持
+UQ输入,options.route及modelMethod,所选模型路线方法一致性约束,无,char,由模型决定可空,sht_tc27_uq_contract.m,提供时必须与模型一致,不是把一种路线结果换标签,常用,当前支持
+UQ当前,options.observationMode,似然使用的数据范围,无,char,steady_points,sht_tc27_uq_c_options.m和d_options.m,当前只允许steady_points,points_and_histories会明确拒绝,常用,联合历程未支持
+UQ当前,options.integrationStep_s,预留回放积分配置,s,标量,0.1,sht_tc27_uq_c_options.m和d_options.m,公开C/D只允许0.1或0.025,稳态点目标没有历程积分但身份仍记录,调试,当前支持
+UQ当前,options.errorModel,测量加工程误差模型,无,char,tc24_engineering,sht_tc27_uq_c_options.m和d_options.m,公开当前口径;legacy_R007仅历史,改变概率目标须新合同,专家,当前工程口径
+UQ当前,options.nuisanceAnchorMode,附加参数局部响应参考方式,无,char,reference,sht_tc27_uq_c_options.m和d_options.m,reference;two_anchor为历史对照,附加参数近似不等于全部直接采样,专家,当前支持
+UQ当前,options.historyDiscrepancy,历程模型差异预留口径,无,char,correlated_engineering,sht_tc27_uq_c_options.m和d_options.m,与tc24_engineering配套,当前无历程观测不产生历程似然,专家,本目标下不启用历程块
+UQ当前,options.historyCorrelationTime_s,历程相关时间尺度,s,正数,5,sht_tc27_uq_c_options.m和d_options.m,正数,当前稳态点目标无该历程块,专家,预留不冒称联合能力
+UQ当前,options.curveCorrelationLengthScale,同曲线节点先验相关长度倍率,无,正数,1,sht_tc27_uq_c_options.m和d_options.m,正数,改变独立零中心相关截断先验结构须新合同,专家,当前支持
+UQ当前,options.thermalReuseEnabled,冻结参考Jacobian纠温并精确检查,无,logical,按模型route决定,sht_tc27_uq_c_options.m和d_options.m,仅transient_instant可默认true;steady须false,失效回退原完整热解;不固定温度,专家,当前有限新包证据
+UQ当前,options.predictionHistoriesEnabled,评估后是否传播测试历程,无,logical,false,sht_tc27_uq_c_options.m和d_options.m,当前稳态UQ默认关闭,不能把历史history_01均值命名当历程预测,专家,当前正式默认关闭
+UQ当前,options.tag及deliveryTag,内部合同与正式交付标签,无,char,R021,sht_tc27_uq_c_options.m和d_options.m,deliveryTag字母数字下划线,不等于允许续用旧合同,常用,当前支持
+UQ当前,options.outputBatch,内部批次默认位置,无,char,TC27_R021_LocalPrepared,sht_tc27_uq_c_options.m和d_options.m,显式outputDirectory优先,业务用独立输出避免覆盖,专家,当前支持
+UQ当前,options.plot,评估/预测绘图开关,无,logical,true,sht_tc27_uq_contract.m,false或true,影响图形和I/O不改变统计目标,常用,当前支持
+UQ当前,options.randomSeed,误差传播与D等公共种子,无,整数,20260912,sht_tc27_uq_contract.m,合法rng整数,固定概率/数值准备随机设置,常用,当前支持
+UQ当前,options.measurementSamples,测量传播样本数量,组,正整数,32,sht_tc27_uq_contract.m,至少16,改变协方差数值准备与耗时,专家,当前支持
+UQ D,options.dMaxIterations,D局部最大更新次数,次,正整数,3,sht_tc27_uq_d_options.m,正整数,维持快速初评不自动迁移C工作量,调试,当前支持
+UQ D及C/CD准备,options.localSampleCount,D局部后验样本数,组,numeric有限实数标量整数,512,sht_tc27_uq_d_options.m及sht_tc27_uq_c_options.m及sht_tc27_uq_contract.m,整数且至少128,模型读取和运行包准备之前校验;不是C的particleCount;不等于统计校准,调试,当前支持
+UQ C,options.steadyCBackend,C求值后端,无,char,direct_dll,sht_tc27_uq_c_options.m,direct_dll为当前;其他仅历史分支,本轮不恢复代理研究,专家,当前正式只直接DLL
+UQ C,options.particleCount,C主粒子数,组,正整数,512,sht_tc27_uq_contract.m,至少24;缩减仅标短测,不是交付联合行数或独立有效样本数,调试,当前支持
+UQ C,options.cSamplerProfile,C粒子移动配置,无,char,quality,sht_tc27_uq_c_options.m,quality或legacy_reference,legacy仅同目标对照不续签旧状态,专家,当前quality基线
+UQ C,options.cDirectMoveSweeps,中间温度层移动次数,次,正整数,quality为6;legacy为2,sht_tc27_uq_c_options.m,正整数,直接影响粒子稳定性及耗时,专家,当前支持
+UQ C,options.cDirectFinalMoveSweeps,末层移动次数,次,正整数,quality为32;legacy为8,sht_tc27_uq_c_options.m,正整数,不应为提速随意恢复低移动基线,专家,当前支持
+UQ C,options.cConditionalEssFraction,条件ESS升温目标比例,无,0至1实数,0.8,sht_tc27_uq_c_options.m,严格大于0小于1,决定下一温度步不等于重采样门限,专家,当前支持
+UQ C,options.cResampleEssFraction,普通权重ESS重采样门限比例,无,0至1实数,0.55,sht_tc27_uq_c_options.m,严格大于0小于1,按需重采样不每层强制,专家,当前支持
+UQ C,options.cSamplingSeed,仅C粒子采样独立种子,无,整数或空,空代表randomSeed加200,sht_tc27_uq_c_options.m,0至2^32-1或空,不改变误差传播D及有界积分种子,调试,当前支持
+UQ C,options.cBoundedNuisance,有界附加参数边际目标,无,logical,true,sht_tc27_uq_c_options.m,true为当前C目标,不能为提速改成另一概率目标,专家,当前支持
+UQ C,options.cBoxIntegrationCount,附加参数有界数值积分点数,点,正整数,512,sht_tc27_uq_c_options.m,正整数,影响有界目标数值精度和计算量,专家,当前支持
+UQ C,options.cConditionalDrawCount,每主样本的附加条件抽样数,行,正整数,8,sht_tc27_uq_c_options.m,正整数,4096联合行不等于4096独立主粒子,专家,当前支持
+UQ研究,options.surrogateTrainingCount及blindCount及exactCorrectionCount,历史代理训练盲测及精确校正预算,组,正整数,320和24和256,c_options覆盖和uq_contract,本轮当前direct_dll不走代理,不得因源码字段存在恢复暂停研究,专家,非当前正式路径
+UQ研究,options.maxRefinementRounds及cSurrogateMode及cFinalMoveSweeps,历史代理加密及移动设置,无,整数或char,2和full_latent_shared_matern和128,c_options覆盖和uq_contract,旧分支字段,当前直接DLL不训练SVD或GP,专家,非当前正式路径
+UQ研究,options.cBridgeParticles及cBridgeMoveSweeps及cBridgeFinalSweeps,历史代理桥粒子移动预算,组或次,正整数,256和2和4,sht_tc27_uq_c_options.m,旧surrogate_bridge分支,本轮不启用,专家,非当前正式路径
+UQ研究,options.cBridgeMaximumStages及cBridgeBypassProbability及cSurrogateLikelihoodPower及cBridgeRefinementCount,历史代理桥阶段与防御配置,无,数值,16和0.1和0.8和128,sht_tc27_uq_c_options.m,旧分支参数,不能当当前C质量设置的必要参数,专家,非当前正式路径
+预测公开,request.modelFile及identityFile,稳态或组合Excel及配套身份,文件路径,char或string标量,必填,Start_TC27_SteadyModelPredict_01.m,工作簿和身份SHA及schema对应,组合必须同时有两附加表且不降级读取,常用,当前支持
+预测公开,request.conditions,自主新工况条件,表或文件,table或Excel/CSV路径,必填,Start_TC27_SteadyModelPredict_01.m,9必需列;Mkg可选,不要求NpNg测量或测试集,常用,当前支持
+预测公开,request.outputDirectory,预测独立新目录,文件路径,char或string标量,必填,Start_TC27_SteadyModelPredict_01.m,父目录已存在且位于程序之外,保存自含预测ExcelJSON日志MAT,常用,当前支持
+预测公开,request.execute,执行预测而非只核合同,无,logical或0/1,默认true,Start_TC27_SteadyModelPredict_01.m,false时配置构造前返回,与辨识入口默认false不同须显式控制,常用,当前支持
+预测公开,request.runtimeDirectory,本次物理求值包,文件路径,char,selected,Start_TC27_SteadyModelPredict_01.m,匹配完整TC27包,函数支持;离线薄入口未转换其相对路径,专家,当前支持应传绝对值
+预测公开,request.sourceRuntimeDirectory,原模型生成包,文件路径,char,等于本次执行包,Start_TC27_SteadyModelPredict_01.m,匹配模型原SHA包,用于旧参数新求值不改签旧文件,专家,当前支持应传绝对值
+预测公开,request.reevaluateModelParameters,跨包只继承参数的显式声明,无,logical,默认不允许跨包,Start_TC27_SteadyModelPredict_01.m,跨包必须逻辑true,不继承旧UQ或检查点;记录两种身份,专家,当前支持
+后验预测,request.modelFile及identityFile及posteriorFile,同模型同包的稳态后验输入,文件路径,char,必填,Start_TC27_UQ_NewConditionPrediction_01.m,后验来源模型route方法热包清单身份匹配,不支持非零瞬态组合UQ,常用,当前源码存在及原身份证据
+后验预测,request.fuelInputKind,独立预测燃油物理或测量口径,无,char,必填,Start_TC27_UQ_NewConditionPrediction_01.m,physical或measured,physical用Wf_model_kg_s;measured用Wf_measured_kg_s扣一次,常用,当前支持
+后验预测,request.sampleIds,只使用指定后验样本的诊断子集,无,唯一正整数行号列表,全部样本,Start_TC27_UQ_NewConditionPrediction_01.m,不越界且不重复,子集输出必须非正式诊断标记,调试,当前支持
+后验预测,request.execute,后验预测预检开关,无,不支持,无,Start_TC27_UQ_NewConditionPrediction_01.m,入口目前直接执行,不得在GUI中虚构execute=false不计算,专家,当前缺口
+查看,makePlots或makePlot,保存结果的可选绘图,无,logical,false,三个ResultView入口,false或true,true可能写图;不调用DLL不等于绝对零写入,常用,当前支持
+停续,outputDirectory,请求停止的完整任务目录,文件路径,char或string,必填,Start_TC27_RequestStop_01.m和UQ_RequestStop_01.m,须已有run_control,请求不强杀DLL;确认停后同身份resume,常用,当前支持
+内核固定,solver.gradientTolerance及stepTolerance及costTolerance,驻点和小步停止默认阈值,无,实数,1e-5和1e-5和1e-7,sht_tc27_regularized_solve.m,公开高级选项未贯通这三项,不能把用户新增同名字段当实际生效,专家,固定内核非公开配置
+内核固定,solver.gcvRecommendation,正则因子推荐,无,实数,候选0.01至10,sht_tc27_regularized_solve.m,仅结果推荐,不自动选择或重跑参数,调试,结果字段非输入
+热资产,options.runtimeDirectory,热生成的物理源包,文件路径,char,selected,sht_tc27_thermal_output_plan.m,physical范围可尚无新热MAT,避免新热资产生成与完整校验循环依赖,专家,维护功能非普通造数
+热资产,options.assetDirectory,新热资产唯一候选输出目录,文件路径,char,必须显式提供,sht_tc27_thermal_output_plan.m,不得覆盖当前历史绑定热资产或已有候选,无参数调用先拒绝再计算,专家,当前支持
+热资产,options.referencePointIndices,热参考工况索引,无,正整数列表,1:12,sht_tc27_thermal_output_plan.m,1:12中的非重复整数,改变参考表需独立生成校验发布,专家,当前支持需单独许可
+运行包,tc27_runtime_selection.json.runtimeRelative,当前选包相对tune路径,文件路径,JSON字符串,MiddleData/three_component/runtime_packages/TC27_SS_R011_20261010,sht_tc27_runtime_package.m,已验收完整包,正常任务不自动复制根DLL或切换选包,专家,当前支持
+离线入口,configFile,集中配置文件,文件路径,char或string,必填,四个Run_TC27_Offline入口,稳态瞬态预测可MAT(request)或UTF8JSON;UQ仅JSON,由同一公开核心执行不是复制算法,常用,当前支持
+离线稳态,request.operation,独立入口动作,无,char,update,Run_TC27_SteadyUpdate_Offline.m,update或preview或resume或stop或predict,preview和resume动作会覆盖相应执行标志,常用,当前支持
+离线UQ,request.action,独立UQ入口动作,无,char,assess,Run_TC27_UQ_Offline.m,assess或stop或predict_new,仅assess用嵌套options;predict_new目前直接计算,常用,当前支持
+合成造数,options.sets,生成的合成试车集合,无,cell,train和test,Start_TC27_04_BenchDataGeneration.m,train或test,默认写固定TestData;真实数据导入不调用,专家,高级可选非安全独立输出
+合成造数,options.plot,绘制造数真值/测量对比,无,logical,true,Start_TC27_04_BenchDataGeneration.m,false或true,真值只留开发验证不交付辨识,专家,高级可选

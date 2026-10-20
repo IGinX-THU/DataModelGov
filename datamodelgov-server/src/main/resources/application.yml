@@ -77,4 +77,14 @@ offline:
   enabled: true
   cache-path: ./offline-cache
 
+# 工作台引擎接入配置
+engine:
+  # R06 交付树根(含 programs/m_program_adaptive_tune)。
+  # 留空则按:工作区 datamodelgov-server/src/main/resources/programs/Delivery_V1_20261019_R06 → classpath 解压 顺序探测。
+  r06:
+    root:
+  # 工作台数据根:项目元数据/程序工作副本(r06-runtime)/默认项目工作目录
+  data:
+    root: data/engine
+
 

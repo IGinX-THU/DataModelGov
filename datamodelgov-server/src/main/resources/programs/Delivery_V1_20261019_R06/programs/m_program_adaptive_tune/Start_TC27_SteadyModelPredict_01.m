@@ -1,0 +1,243 @@
+function result=Start_TC27_SteadyModelPredict_01(request)
+%START_TC27_STEADYMODELPREDICT_01 独立预测TC27稳态或组合模型的新工况。
+% 必需配置：modelFile、identityFile、conditions、outputDirectory。
+% conditions为表或Excel/CSV；字段见names。Wf_kg_s是物理燃油，不扣偏置。
+% execute=false只核合同与输入，在任何配置构造及DLL加载之前返回。
+clock=tic;
+assert(nargin==1&&isstruct(request)&&isscalar(request),'TC27:Predict:Request', ...
+    '请传入单个预测配置结构体。');
+required={'modelFile','identityFile','conditions','outputDirectory'};
+local_required(request,required);
+execute=true;
+if isfield(request,'execute'),execute=request.execute;end
+assert(isscalar(execute)&&(islogical(execute)||isnumeric(execute))&& ...
+    ismember(double(execute),[0,1]),'TC27:Predict:Execute','execute必须为0或1。');
+modelFile=sht_tc27_canonical_path(request.modelFile);
+identityFile=sht_tc27_canonical_path(request.identityFile);
+assert(isfile(modelFile)&&isfile(identityFile),'TC27:Predict:MissingModel', ...
+    '模型Excel或配套身份文件不存在。');
+outputDirectory=sht_tc27_canonical_path(request.outputDirectory);
+assert(isfolder(fileparts(outputDirectory))&&~isfolder(outputDirectory)&&~isfile(outputDirectory), ...
+    'TC27:Predict:Output','预测输出须指定父目录已存在的全新独立目录。');
+codeRoot=sht_tc27_canonical_path(fileparts(mfilename('fullpath')));
+assert(~strcmpi(outputDirectory,codeRoot)&& ...
+    ~startsWith(lower(outputDirectory),lower([codeRoot,filesep])), ...
+    'TC27:Predict:Reserved','预测结果不能写入程序或其运行资产目录。');
+id=local_json(identityFile);
+local_required(id,{'schema','modelSHA256'});
+assert(strcmpi(id.modelSHA256,sht_tc27_file_identity(modelFile)), ...
+    'TC27:Predict:ModelIdentity','模型Excel与身份文件SHA不匹配。');
+% 生成包负责核验模型身份；求值包负责本次物理计算。通常二者相同。
+selection='selected';
+if isfield(request,'runtimeDirectory')&&~isempty(request.runtimeDirectory)
+    selection=request.runtimeDirectory;
+end
+package=sht_tc27_runtime_package(selection);
+sourceSelection=package.directory;
+if isfield(request,'sourceRuntimeDirectory')&&~isempty(request.sourceRuntimeDirectory)
+    sourceSelection=request.sourceRuntimeDirectory;
+end
+sourcePackage=sht_tc27_runtime_package(sourceSelection);
+reevaluated=~isequaln(sourcePackage.identity,package.identity);
+if reevaluated
+    assert(isfield(request,'reevaluateModelParameters')&& ...
+        isequal(request.reevaluateModelParameters,true), ...
+        'TC27:Predict:ExplicitReevaluation', ...
+        '跨包求值须明确reevaluateModelParameters=true；原Excel身份不会改变。');
+end
+[~,sheets]=xlsfinfo(modelFile);
+hasCombined=ismember({'TransientCorrections','CombinedManifest'},sheets);
+assert(~any(hasCombined)||all(hasCombined),'TC27:Predict:ModelContract', ...
+    '组合模型必须同时包含TransientCorrections和CombinedManifest。');
+combined=all(hasCombined);
+if combined
+    assert(strcmp(id.schema,'TC27_TRANSIENT_MODEL_PROVENANCE_V1'), ...
+        'TC27:Predict:ModelIdentity','组合工作簿不得按旧稳态身份降级读取。');
+    local_required(id,{'parentSteadySHA256','runtimePackage','runtimeManifestSHA256'});
+    c=sht_tc27_transient_combined_delivery('read',[],modelFile, ...
+        struct('runtimeDirectory',sourcePackage.directory));
+    assert(strcmpi(id.parentSteadySHA256,c.parentSteadySHA256)&& ...
+        strcmp(id.runtimePackage,c.runtimePackageId)&& ...
+        strcmpi(id.runtimeManifestSHA256,c.runtimeManifestSHA256), ...
+        'TC27:Predict:ModelIdentity','组合身份与工作簿父模型或运行包不匹配。');
+    % 原reader只补route/method元数据；瞬态值必须来自专用组合reader。
+    model=sht_tc27_delivery('read',[],modelFile);
+    model.finalSchedule=c.steadySchedule;model.npBranchModel=c.npBranchModel;
+    model.runId=c.runId;h=c.transientCoefficients(:);
+    transientTable=c.transientTable;
+    contract='combined';
+else
+    assert(strcmp(id.schema,'TC27_MODEL_IDENTITY_V1'), ...
+        'TC27:Predict:ModelIdentity','稳态工作簿需要原稳态身份合同。');
+    local_required(id,{'route','method','modelMode','thermalMode', ...
+        'runtimePackageId','dllSHA256','thermalSHA256'});
+    model=sht_tc27_delivery('read',[],modelFile);
+    assert(strcmp(id.route,model.route)&&strcmp(id.method,model.method)&& ...
+        id.modelMode==0&&id.thermalMode==model.thermalMode, ...
+        'TC27:Predict:ModelIdentity','稳态模型路线或热模式与身份不一致。');
+    names=["K_Jg";"K_Jp";"K_tau_HPC";"K_tau_Burner";"K_tau_GT";"K_tau_PT"; ...
+        "K_gapW_HPC";"K_gapEta_HPC";"K_gapEta_GT";"K_gapEta_PT"; ...
+        "K_diskTau_HPC";"K_diskTau_GT";"K_diskTau_PT"];
+    h=zeros(13,1);
+    transientTable=table((58:70).',names,h,repmat("steady_contract_zero",13,1), ...
+        'VariableNames',{'hIndex','parameter','value','source'});
+    contract='steady';
+end
+if ~combined
+    assert(strcmp(sourcePackage.id,id.runtimePackageId)&& ...
+        strcmpi(sht_tc27_file_identity(fullfile(sourcePackage.directory,'GTESS.dll')),id.dllSHA256), ...
+        'TC27:Predict:RuntimeIdentity','运行包或DLL与模型身份不一致。');
+    if model.thermalMode==1,thermalFile=sourcePackage.kurzkeFile;
+    else,thermalFile=sourcePackage.thermalFile;end
+    assert(strcmpi(sht_tc27_file_identity(thermalFile),id.thermalSHA256), ...
+        'TC27:Predict:ThermalIdentity','热资产与模型身份不一致。');
+end
+data=request.conditions;inputFile='';inputSHA='';
+if ischar(data)||isstring(data)
+    inputFile=sht_tc27_canonical_path(data);
+    assert(isfile(inputFile),'TC27:Predict:Conditions','工况文件不存在。');
+    inputSHA=sht_tc27_file_identity(inputFile);data=readtable(inputFile);
+end
+names={'point_id','Pt1_Pa','Tt1_K','Pamb_Pa','Tamb_K', ...
+    'Altitude_m','Mach','Mkp_Nm','Wf_kg_s'};
+assert(istable(data)&&height(data)>0&&all(ismember(names,data.Properties.VariableNames)), ...
+    'TC27:Predict:Columns','请提供全部独立输入字段，不需要目标Np/Ng或测试集。');
+mkgDefault=~ismember('Mkg_Nm',data.Properties.VariableNames);
+if mkgDefault,data.Mkg_Nm=zeros(height(data),1);end
+for name=[names(2:end),{'Mkg_Nm'}]
+    v=data.(name{1});assert(isnumeric(v)&&isvector(v)&&numel(v)==height(data)&&all(isfinite(v)), ...
+        'TC27:Predict:Numeric','%s必须为单列有限数值。',name{1});
+end
+assert(all(data.Pt1_Pa>0)&all(data.Tt1_K>0)&all(data.Pamb_Pa>0)& ...
+    all(data.Tamb_K>0)&all(data.Mach>=0)&all(data.Wf_kg_s>0)&all(data.Mkp_Nm>=0), ...
+    'TC27:Predict:Physical','压力、温度、燃油或负载输入不符合物理范围。');
+assert(numel(unique(string(data.point_id)))==height(data)&& ...
+    all(strlength(string(data.point_id))>0),'TC27:Predict:Ids','工况编号必须非空且唯一。');
+s=model.finalSchedule;health=s.designHealth(:);health(59:71)=h;
+result=struct('status','ready','executed',false,'modelFile',modelFile, ...
+    'modelSHA256',sht_tc27_file_identity(modelFile),'modelRunId',model.runId, ...
+    'route',model.route,'method',model.method,'modelContract',contract, ...
+    'runtimePackage',package.id,'runtimeManifestSHA256',sht_tc27_file_identity(package.manifestFile), ...
+    'npBranchModel',model.npBranchModel,'conditions',data,'mkgDefaulted',mkgDefault, ...
+    'transientParameters',transientTable,'inheritedFuelBias',s.fuelBias, ...
+    'health',health,'inletBoundaryMode',1,'fuelMeaning','physical_no_bias_subtraction', ...
+    'uqStatus','not_available_for_this_prediction','prediction',table(), ...
+    'inputFile',inputFile,'inputSHA256',inputSHA,'resultFile','', ...
+    'outputDirectory',outputDirectory,'elapsed_s',toc(clock));
+result.sourceRuntimePackage=sourcePackage.id;
+result.sourceRuntimeManifestSHA256=sht_tc27_file_identity(sourcePackage.manifestFile);
+result.parametersReevaluatedOnDifferentRuntime=reevaluated;
+if reevaluated
+    fprintf('显式跨包参数回放：生成包=%s，求值包=%s；不继承原后验。\n', ...
+        sourcePackage.id,package.id);
+end
+fprintf('TC27独立预测：合同=%s，%d个新工况，物理燃油直传。\n',contract,height(data));
+result.estimatedTime=sht_tc27_runtime_estimate('prediction',struct(), ...
+    struct('predictionPoints',height(data),'route',model.route));
+if ~execute,return;end
+% 至此只进行了文件读取；配置内部基准配平也计入总耗时，不在预检执行。
+mkdir(outputDirectory);logFile=fullfile(outputDirectory,'prediction_console.log');
+diary(logFile);logCleanup=onCleanup(@()diary('off'));
+cfg=sht_tc27_config(model.thermalMode,'joint_full',package.directory);
+engine=sht_engine_open(cfg.engine);engineCleanup=onCleanup(@()sht_engine_close(engine));
+sht_health_schedule_initialize_dll(engine,sht_tc27_schedule_profile(s),s.designHealth);
+result.initializationElapsed_s=toc(clock);solveClock=tic;
+resultRows=table();details=cell(height(data),1);
+for j=1:height(data)
+    row=data(j,:);point=table(string(row.point_id),row.Wf_kg_s,row.Mkp_Nm, ...
+        row.Tamb_K,row.Mach,row.Mkg_Nm,row.Pamb_Pa,row.Altitude_m, ...
+        'VariableNames',{'point_id','Wf_mean','Mkp_mean','Tamb_mean', ...
+        'Mach_mean','Mkg_mean','Pamb_mean','Altitude_mean'});
+    [branch,~]=sht_np_branch_delivery('query',model.npBranchModel,point,1);
+    x=cfg.engine.initial.state;bounds=[5000,70000;5000,70000];
+    if branch.Np_branch_available
+        x(1)=branch.Np_branch_center_rpm;
+        bounds(1,:)=[branch.Np_branch_lower_rpm,branch.Np_branch_upper_rpm];
+    end
+    b=cfg.engine.boundary;b.inletBoundaryMode=1;
+    b.Pt1=row.Pt1_Pa;b.Tt1=row.Tt1_K;b.Pamb=row.Pamb_Pa;
+    b.Tamb=row.Tamb_K;b.altitude=row.Altitude_m;b.Mach=row.Mach;
+    b.Mkp=row.Mkp_Nm;b.Mkg=row.Mkg_Nm;
+    b.ptLoadInputMode='torque';b.gtLoadInputMode='torque';
+    b.health=health;b.healthScheduleEnabled=1;
+    try
+        e=sht_thermal_equilibrium_solve(engine,x,row.Wf_kg_s,b,'steady_predict', ...
+            struct('maximumIterations',20,'maximumCommonWorkRetries',2, ...
+            'finalJacobianAudit',false,'speedBounds_rpm',bounds));
+        % 只读本次调用上下文：直接验证到达DLL的实际13值，不额外求值。
+        dllInput=engine.callContext.stepIn.Value;
+        dllTransient=dllInput(99:111);
+        assert(isequal(dllTransient(:),h)&&dllInput(3)==row.Wf_kg_s, ...
+            'TC27:Predict:ParameterTransfer','DLL参数或物理燃油传递不一致。');
+        y=e.output;valid=e.physicalValid;reason=string(e.stopReason);
+        values=[y.Np,y.Ng,y.Pt3,y.Tt3,y.Pt45,y.Tt45,y.Pt5,y.Tt5,y.WIn];
+        details{j}=struct('physicalValid',valid,'stopReason',char(reason), ...
+            'evaluationCount',e.evaluationCount,'finalCommonWorkResidual',e.finalCommonWorkResidual, ...
+            'state',e.state,'dllTransientCoefficients',dllInput(99:111), ...
+            'dllFuel_kg_s',dllInput(3),'boundaryHealth',health, ...
+            'loadLibraryDiagnostics',engine.loadLibraryDiagnostics);
+    catch failure
+        if strcmp(failure.identifier,'TC27:Predict:ParameterTransfer'),rethrow(failure);end
+        valid=false;reason=string(failure.identifier)+": "+string(failure.message);values=nan(1,9);
+        details{j}=struct('physicalValid',false,'stopReason',char(reason), ...
+            'evaluationCount',NaN,'finalCommonWorkResidual',NaN,'state',[]);
+    end
+    out=table(string(row.point_id),branch.Np_branch_available,valid,reason, ...
+        values(1),values(2),values(3),values(4),values(5),values(6),values(7),values(8),values(9), ...
+        'VariableNames',{'point_id','npBranchAvailable','valid','stopReason','Np_rpm','Ng_rpm', ...
+        'Pt3_Pa','Tt3_K','Pt45_Pa','Tt45_K','Pt6_Pa','Tt6_K','Wa2_kg_s'});
+    resultRows=[resultRows;out]; %#ok<AGROW>
+    fprintf('TC27独立预测 %d/%d：%s，累计%.1fs。\n',j,height(data),char(reason),toc(clock));
+end
+result.solveElapsed_s=toc(solveClock);clear engineCleanup;
+result.status='completed';if ~all(resultRows.valid),result.status='completed_with_invalid_points';end
+result.executed=true;result.prediction=resultRows;result.details=details;
+result.elapsed_s=toc(clock);result.logFile=logFile;
+result.resultFile=fullfile(outputDirectory,'tc27_new_condition_prediction.xlsx');
+result.identityFile=fullfile(outputDirectory,'tc27_new_condition_prediction_identity.json');
+writetable(resultRows,result.resultFile,'Sheet','Prediction');
+inputs=data;inputs.Mkg_defaulted=repmat(mkgDefault,height(data),1);
+writetable(inputs,result.resultFile,'Sheet','Inputs');
+writetable(transientTable,result.resultFile,'Sheet','TransientCorrections');
+fuel=s.fuelBias;
+bias=table(fuel.xNodes,fuel.biasNodes,repmat(fuel.wfDesign,numel(fuel.xNodes),1), ...
+    'VariableNames',{'measured_fuel_ratio','bias_kg_s','reference_fuel_kg_s'});
+writetable(bias,result.resultFile,'Sheet','InheritedFuelBias');
+manifest=table("TC27_STEADY_PREDICTION_EXCEL_V1",string(result.status),string(contract), ...
+    string(result.modelSHA256),string(model.runId),string(model.route),string(model.method), ...
+    string(package.id),string(result.runtimeManifestSHA256), ...
+    "physical_no_bias_subtraction",string(result.uqStatus),result.elapsed_s, ...
+    result.initializationElapsed_s,result.solveElapsed_s,string(sourcePackage.id), ...
+    string(result.sourceRuntimeManifestSHA256),reevaluated, ...
+    'VariableNames',{'schema','status','model_contract','model_sha256','model_run_id', ...
+    'route','method','runtime_package_id','runtime_manifest_sha256','fuel_meaning', ...
+    'uq_status','elapsed_s','initialization_elapsed_s','solve_elapsed_s', ...
+    'source_runtime_package_id','source_runtime_manifest_sha256','parameters_reevaluated'});
+writetable(manifest,result.resultFile,'Sheet','PredictionManifest');
+identity=struct('schema','TC27_PREDICTION_IDENTITY_V1','resultSHA256', ...
+    sht_tc27_file_identity(result.resultFile),'modelSHA256',result.modelSHA256, ...
+    'runtimeManifestSHA256',result.runtimeManifestSHA256,'inputSHA256',inputSHA, ...
+    'sourceRuntimePackage',sourcePackage.id, ...
+    'sourceRuntimeManifestSHA256',result.sourceRuntimeManifestSHA256, ...
+    'parametersReevaluatedOnDifferentRuntime',reevaluated);
+local_write_json(result.identityFile,identity);
+result.deliveryElapsed_s=toc(clock);
+save(fullfile(outputDirectory,'tc27_new_condition_prediction.mat'),'result','-v7.3');
+fprintf('预测交付%s；模型与输入自含保存，总计%.3fs。\n',result.resultFile,result.deliveryElapsed_s);
+end
+
+function local_required(s,names)
+assert(isstruct(s)&&isscalar(s),'TC27:Predict:Required','配置或身份须为单个结构体。');
+for j=1:numel(names)
+    assert(isfield(s,names{j})&&~isempty(s.(names{j})), ...
+        'TC27:Predict:Required','缺少%s。',names{j});
+end
+end
+function value=local_json(file)
+fid=fopen(file,'r','n','UTF-8');assert(fid>=0,'TC27:Predict:Identity','无法读取身份JSON。');
+cleanup=onCleanup(@()fclose(fid));value=jsondecode(fread(fid,Inf,'*char').');
+end
+function local_write_json(file,value)
+fid=fopen(file,'w','n','UTF-8');assert(fid>=0,'TC27:Predict:Write','无法写入身份JSON。');
+cleanup=onCleanup(@()fclose(fid));fprintf(fid,'%s\n',jsonencode(value));
+end

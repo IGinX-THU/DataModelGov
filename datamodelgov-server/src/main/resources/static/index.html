@@ -726,20 +726,7 @@
 <script src="./lib/docx-preview/docx-preview.min.js"></script>
 <script src="./js/main.js"></script>
 
-<!-- Service Worker Registration -->
-<script>
-if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js')
-            .then((registration) => {
-                console.log('Service Worker registered:', registration);
-            })
-            .catch((error) => {
-                console.log('Service Worker registration failed:', error);
-            });
-    });
-}
-</script>
+<!-- Service Worker 已下线:不再注册,历史注册由 /sw.js 自注销清理 -->
 
 <!-- 修改密码模态框 -->
 <change-password></change-password>

@@ -1,0 +1,63 @@
+function o=sht_tc27_uq_c_options(user)
+%SHT_TC27_UQ_C_OPTIONS 现行C稳态点观测的默认配置，显式用户设置优先。
+% 联合历程接口仍受原验证门限制，本次提速不恢复历史代理或联合推断。
+% 积分步长是模型设置，不改变原始记录周期或有效窗口；稳态模式没有
+% 历程积分。D只提供C的数值参考与提议，不替代C的非线性精确校正。
+if nargin<1,user=struct();end
+validateattributes(user,{'struct'},{'scalar'});
+o=struct('tag','R021','outputBatch','TC27_R021_LocalPrepared','observationMode','steady_points', ...
+    'integrationStep_s',0.1,'dMaxIterations',3,'localSampleCount',512, ...
+    'errorModel','tc24_engineering','nuisanceAnchorMode','reference', ...
+    'historyDiscrepancy','correlated_engineering','historyCorrelationTime_s',5, ...
+    'curveCorrelationLengthScale',1,'deliveryTag','R021', ...
+    'cBoundedNuisance',true,'cBoxIntegrationCount',512,'cConditionalDrawCount',8, ...
+    'cSurrogateMode','full_latent_shared_matern','cFinalMoveSweeps',128, ...
+    'cDirectMoveSweeps',6,'cDirectFinalMoveSweeps',32, ...
+    'cSamplerProfile','quality','cConditionalEssFraction',.8,'cResampleEssFraction',.55, ...
+    'steadyCBackend','direct_dll','thermalReuseEnabled',false,'surrogateTrainingCount',320, ...
+    'cBridgeParticles',256,'cBridgeMoveSweeps',2,'cBridgeFinalSweeps',4, ...
+    'cBridgeMaximumStages',16,'cBridgeBypassProbability',.1, ...
+    'cSurrogateLikelihoodPower',.8,'cBridgeRefinementCount',128,'cSamplingSeed',[]);
+names=fieldnames(user);
+for j=1:numel(names),o.(names{j})=user.(names{j});end
+% C也使用D参考准备；局部样本数不是particleCount，必须在昂贵准备前校验。
+validateattributes(o.localSampleCount,{'numeric'}, ...
+    {'scalar','real','finite','integer','>=',128},mfilename,'options.localSampleCount');
+% R073只改采样核和预算，不改概率目标。旧核供同目标对照，不能续签旧断点。
+assert(ismember(o.cSamplerProfile,{'quality','legacy_reference'}), ...
+    'TC27:UQ:SamplerProfile','C采样配置只能是quality或legacy_reference。');
+if strcmp(o.cSamplerProfile,'legacy_reference')
+    if ~isfield(user,'cDirectMoveSweeps'),o.cDirectMoveSweeps=2;end
+    if ~isfield(user,'cDirectFinalMoveSweeps'),o.cDirectFinalMoveSweeps=8;end
+end
+% 参考热矩阵只对已验证的固定轴速点算子默认开启，实际Excel路径优先。
+% 显式false保持原完整求解；不改签既有合同或恢复历史检查点。
+route='';
+if isfield(user,'modelFile') && ~isempty(user.modelFile) && isfile(char(user.modelFile))
+    model=sht_tc27_delivery('read',[],char(user.modelFile));route=model.route;
+elseif isfield(user,'route') && ~isempty(user.route)
+    route=char(string(user.route));
+end
+if ~isfield(user,'thermalReuseEnabled')
+    o.thermalReuseEnabled=strcmp(route,'transient_instant');
+end
+validateattributes(o.thermalReuseEnabled,{'logical'},{'scalar'});
+assert(~o.thermalReuseEnabled || strcmp(route,'transient_instant'), ...
+    'TC27:UQ:CReuseRoute','热平衡复用只适用于瞬态时刻路径，稳态路径请使用false。');
+% 仅覆盖C粒子随机种子：误差传播、D参考及有界积分种子保持不变。
+% 空值严格保留原randomSeed+200的采样序列。
+if ~isempty(o.cSamplingSeed)
+    validateattributes(o.cSamplingSeed,{'numeric'}, ...
+        {'scalar','real','finite','integer','>=',0,'<=',2^32-1});
+end
+assert(ismember(o.observationMode,{'steady_points','points_and_histories'}), ...
+    'TC27:UQ:CObservationMode','请选择steady_points或points_and_histories。');
+assert(strcmp(o.observationMode,'steady_points'),'TC27:UQ:HistoriesNotValidated', ...
+    '新模型UQ尚未验收points_and_histories，禁止沿用历史代理。');
+if ~isfield(o,'predictionHistoriesEnabled')
+    o.predictionHistoriesEnabled=strcmp(o.observationMode,'points_and_histories');
+end
+validateattributes(o.integrationStep_s,{'numeric'},{'scalar','real','finite','positive'});
+assert(ismember(o.integrationStep_s,[0.1,0.025]),'TC27:UQ:CIntegrationStep', ...
+    'C方法integrationStep_s请选择0.1或0.025秒。');
+end

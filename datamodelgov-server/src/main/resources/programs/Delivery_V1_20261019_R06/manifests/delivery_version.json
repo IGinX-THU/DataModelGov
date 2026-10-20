@@ -1,0 +1,17 @@
+{
+  "version": "R06",
+  "revision": "UI-R131",
+  "source": "R05",
+  "sourceManifestSHA256": "5120E733AE8A24192A1C7B1844BCC949837CF41BB836D2E67723DA05047CC06A",
+  "programBaseline": "R04 accepted; same program and physical asset bytes as R05",
+  "format": "five top-level deliverables",
+  "engineAlgorithmChanged": false,
+  "runtimeRootRelative": "程序",
+  "rootItems": [
+    "程序",
+    "完整界面设计说明书.docx",
+    "程序与界面功能关联图.html",
+    "界面页面与操作流程关联图.html",
+    "程序调用与独立使用手册.docx"
+  ]
+}

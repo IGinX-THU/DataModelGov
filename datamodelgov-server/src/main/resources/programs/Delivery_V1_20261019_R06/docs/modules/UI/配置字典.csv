@@ -1,0 +1,92 @@
+Module,Field,Type,Unit,Default,Meaning,AllowedAndImpact,Source
+DesignPoint,schema,numeric,1,26101401,配置版本,程序管理不可修改,sht_design_point_config.m
+DesignPoint,modelMode,integer,1,0,模型拓扑,0三部件或1六部件必须对应入口与变量数,sht_design_point_config.m
+DesignPoint,sourceDirectory,char,path,模块父目录,源MDL和MAP目录,建议显式绝对路径且所选MDL同目录MAP齐备,sht_design_point_config.m
+DesignPoint,codeDirectory,char,path,sourceDirectory,配套DLL头文件和加载助手,与源模型保持核定身份不能拿AFO替代,sht_design_point_config.m
+DesignPoint,taskDirectory,char,path,空则源目录下MiddleData/design_point/任务号,本次任务输出,必须是未存在的新目录建议显式可写路径,sht_design_point_config.m
+DesignPoint,engineId,char,1,空,发动机标识,业务应给有意义编号源码未强制非空,sht_design_point_config.m
+DesignPoint,taskId,char,1,空则时间加UUID,任务标识,每次新任务独立保存,sht_design_point_config.m
+DesignPoint,modelFile,char,path,按拓扑自动选MDL名,模型文件名,程序管理不可用户覆盖,sht_design_point_config.m
+DesignPoint,display.showFigures,logical,1,false,保留显示设置,当前无实现绘图调用不能承诺作用,sht_design_point_config.m
+DesignPoint,estimateSeconds,numeric vector,s,"[10 120]",求解及复现粗略预计时间,不是倒计时或收敛判据需结合硬件更新,sht_design_point_config.m
+DesignPoint,design.NpRpm,double,rpm,三20900/六20800,设计PT轴速,正值影响设计约束和默认初值,private/sht_dp_v1_solver.m;private/sht_dp_v2_solver.m
+DesignPoint,design.NgRpm,double,rpm,38000,设计GT轴速,正值影响设计约束和默认初值,private/sht_dp_v1_solver.m;private/sht_dp_v2_solver.m
+DesignPoint,design.Wf0,double,kg/s,三0.15171/六0.151914044493225,燃油初值,正值最终燃油由求解决定,private/sht_dp_v1_solver.m;private/sht_dp_v2_solver.m
+DesignPoint,design.nozzleAreaM2,double,m2,0.10573,喷管面积,正值作为设计边界非健康系数,private/sht_dp_v1_solver.m;private/sht_dp_v2_solver.m
+DesignPoint,design.loadPowerW,double,W,2176600,PT负载功率,非负不是kW,private/sht_dp_v1_solver.m;private/sht_dp_v2_solver.m
+DesignPoint,design.accessoryPowerW,double,W,0,GT外部附件功率,非负不包含内部HPC功率,private/sht_dp_v1_solver.m;private/sht_dp_v2_solver.m
+DesignPoint,design.targetTt4K,double,K,1620,燃烧室出口设计总温,正值作为设计约束,private/sht_dp_v1_solver.m;private/sht_dp_v2_solver.m
+DesignPoint6,design.targetTt2K,double,K,288.15,2截面总温目标,与DLL进气道出口核对且Tt2小于Tt25小于Tt3,private/sht_dp_v2_solver.m
+DesignPoint6,design.targetPt2Pa,double,Pa,98285.25,2截面总压目标,与DLL进气道出口核对且Pt2小于Pt25小于Pt3,private/sht_dp_v2_solver.m
+DesignPoint6,design.targetTt25K,double,K,478.95,AC出口25截面总温目标,不能用摄氏度输入,private/sht_dp_v2_solver.m
+DesignPoint6,design.targetPt25Pa,double,Pa,478500,AC出口25截面总压目标,不能用kPa输入,private/sht_dp_v2_solver.m
+DesignPoint6,design.targetTt3K,double,K,702.307986952118,CC出口3截面总温目标,显式冻结目标不运行V1,private/sht_dp_v2_solver.m
+DesignPoint6,design.targetPt3Pa,double,Pa,1572564,CC出口3截面总压目标,显式冻结目标不读取三部件MDL,private/sht_dp_v2_solver.m
+DesignPoint6,design.targetGTExitPressurePa,double,Pa,395927.73735746136,GT整体出口压力目标,有限正物理值需保持热力可行性,private/sht_dp_v2_solver.m
+DesignPoint6,design.targetPTExitPressurePa,double,Pa,108055.52351408009,PT整体出口压力目标,有限正物理值需满足喷管可行性,private/sht_dp_v2_solver.m
+DesignPoint6,design.gtStageOneWorkFraction,double,1,0.5,GT一级轴功率份额,严格0至1不含端点不是等压比,private/sht_dp_v2_solver.m
+DesignPoint6,design.ptStageOneWorkFraction,double,1,0.5,PT一级轴功率份额,严格0至1不含端点,private/sht_dp_v2_solver.m
+DesignPoint6,component.AC.RlineDes,double,1,0.6,AC设计图线坐标,与私有设计锚点一致不能当健康系数,private/sht_dp_v2_solver.m
+DesignPoint6,component.CC.RlineDes,double,1,0.6,CC设计图线坐标,与私有设计锚点一致不能当健康系数,private/sht_dp_v2_solver.m
+DesignPoint3,solver.initial,numeric vector,混合,"[6.693;.6;3.820;3.568;Np;Ng;Wf0]",7维设计猜值,顺序W2/Rline/PRGT/PRPT/Np/Ng/Wf,private/sht_dp_v1_solver.m
+DesignPoint3,solver.scale,numeric vector,混合,"[10;1;5;5;Np;Ng;.3]",7维数值尺度,必须全部正值用于求导与步长归一化,private/sht_dp_v1_solver.m
+DesignPoint3,solver.lower,numeric vector,混合,"[.5;-.5;1.01;1.01;1000;5000;.03]",7维搜索下界,对应变量顺序且小于upper,private/sht_dp_v1_solver.m
+DesignPoint3,solver.upper,numeric vector,混合,"[20;1.5;10;10;40000;80000;.4]",7维搜索上界,不是已验证工作包线,private/sht_dp_v1_solver.m
+DesignPoint6,solver.initial,numeric vector,混合,"[6.7;2;2;1.9;1.9;Wf0;0;0;0;0;0;0]",12维设计猜值,顺序见手册第4节,private/sht_dp_v2_solver.m
+DesignPoint6,solver.scale,numeric vector,混合,"[10;5;5;5;5;.2;.05;.05;.05;.05;.05;.05]",12维数值尺度,全部正值,private/sht_dp_v2_solver.m
+DesignPoint6,solver.lower,numeric vector,混合,"[.5;1.01;1.01;1.01;1.01;.05;-.2;-.2;-.2;-.2;-.2;-.2]",12维搜索下界,对应变量顺序且小于upper,private/sht_dp_v2_solver.m
+DesignPoint6,solver.upper,numeric vector,混合,"[15;8;8;8;8;.35;.2;.2;.2;.2;.2;.2]",12维搜索上界,不是已验证工作包线,private/sht_dp_v2_solver.m
+DesignPoint,solver.finiteDifferenceStep,double,1,1e-4,归一化有限差分步长,专业调试项应为正值勿为加快随意改大,private/sht_dp_v1_solver.m;private/sht_dp_v2_solver.m
+DesignPoint,solver.maximumIterations,positive integer,次,40,最大设计迭代,达到上限不自动成为通过,private/sht_dp_v1_solver.m;private/sht_dp_v2_solver.m
+DesignPoint,solver.residualTolerance,double,1,1e-8,设计残差停止阈值,与模式2复现判据不同,private/sht_dp_v1_solver.m;private/sht_dp_v2_solver.m
+DesignPoint,solver.minimumLineSearchFactor,double,1,0.00390625,原设计求解器内部最小试探比例,1/256不属于参数辨识算法配置,private/sht_dp_v1_solver.m;private/sht_dp_v2_solver.m
+DesignPoint,solver.maximumNormalizedStep,double,1,0.5,原设计求解器最大归一化步长,专业数值项不作为通用辨识更新比例,private/sht_dp_v1_solver.m;private/sht_dp_v2_solver.m
+DesignPoint6,solver.maximumFeasibilityAttempts,integer,次,16,初值可行性最多尝试,仅初始喷管可行性处理,private/sht_dp_v2_solver.m
+DesignPoint6,solver.pressureRatioExcessRetention,double,1,0.9,初值涡轮压比超1部分保留比例,仅初值处理不改变正式设计约束,private/sht_dp_v2_solver.m
+DesignPoint6,solver.initialNozzlePressureRatio,double,1,1.001,初值喷管压力比余量,不作为设计目标,private/sht_dp_v2_solver.m
+DesignPoint,tolerance.operationalResidual,double,1,1e-7,模式2残差阈值,不得仅为通过而放宽,private/sht_dp_v1_solver.m;private/sht_dp_v2_solver.m
+DesignPoint,tolerance.designReplayRelative,double,1,1e-7,设计输出复现相对差,同配置比较,private/sht_dp_v1_solver.m;private/sht_dp_v2_solver.m
+DesignPoint,tolerance.scaleReplayRelative,double,1,1e-8,缩放系数复现相对差,保留原精度,private/sht_dp_v1_solver.m;private/sht_dp_v2_solver.m
+DesignPoint6,tolerance.workSplit,double,1,1e-7,级功率分配误差,不是压比分配,private/sht_dp_v2_solver.m
+DesignPoint6,tolerance.compressorStationRelative,double,1,1e-7,压气机截面目标相对差,2/25/3截面核对,private/sht_dp_v2_solver.m
+DesignPoint6,tolerance.designFieldReplayRelative,double,1,1e-8,设计字段复现相对差,不能替代物理输出检查,private/sht_dp_v2_solver.m
+DesignPoint6,tolerance.designFieldTrimRelative,double,1,1e-7,设计字段回算相对差,专业核查项,private/sht_dp_v2_solver.m
+DesignPoint6,tolerance.pressureRatioClosureRelative,double,1,1e-10,压比闭合相对差,专业核查项,private/sht_dp_v2_solver.m
+DesignPoint6,tolerance.station2TargetRelative,double,1,1e-10,入口2截面目标相对差,不另建M侧进气道模型,private/sht_dp_v2_solver.m
+DesignPoint6,tolerance.manualMdlParameterRelative,double,1,1e-8,人工MDL字段相对差,逐项核原始文本,private/sht_dp_v2_solver.m
+DesignPoint6,tolerance.designAnchorResidual,double,1,1e-12,设计锚点严格残差,前六项解析代入后的检查,private/sht_dp_v2_solver.m
+DesignPoint,interface,struct,1,GTESS及512/128接口,程序管理内部接口,用户不可覆盖,sht_design_point_config.m
+StartStopSimple,adapterDirectory,char,path,用户显式给定,已核定R012适配器,未发布前不将开发工作树设默认,Start_StartStopModeling_SimpleTest.m
+StartStopSimple,codeDirectory,char,path,用户显式给定,起停算法核心,不同于纯设计点codeDirectory合同,Start_StartStopModeling_SimpleTest.m
+StartStopSimple,taskDirectory,char,path,用户显式给定,低速简单测试新目录,不可覆盖历史任务,Start_StartStopModeling_SimpleTest.m
+StartStopSimple,showFigures,logical,1,false,测试图开关,不代表连续起停热测试,Start_StartStopModeling_SimpleTest.m
+StartStopSimple,engineOverrides,struct,混合,空结构,起停高级覆盖参数,以起停Owner字典为准本批不扩展,Start_StartStopModeling_SimpleTest.m
+AFO,schema,char,1,SHT_AFO_CONFIG_V1,配置版本,程序管理,sht_afo_config.m
+AFO,sourceDir,char,path,当前模块目录,成套AFO源目录,不可指向主算法DLL目录,sht_afo_config.m
+AFO,outputDir,char,path,模块外report_outputs/multisystem/时间目录,任务输出,显式新目录推荐不可覆盖,sht_afo_config.m
+AFO,engineId,char,1,ENGINE-001,发动机编号,非空,sht_afo_config.m
+AFO,runId,char,1,RUN-001,运行编号,非空且建议每次唯一,sht_afo_config.m
+AFO,duration,double,s,60,仿真终止时刻,有限正值且0.025整数倍,sht_afo_config.m;sht_afo_prepare.m
+AFO,recordStep,double,s,0.1,数据记录周期,正值且模型步长整数倍不改变积分,sht_afo_config.m;sht_afo_prepare.m
+AFO,pace,char,1,realtime,运行节奏,realtime或fast不保证硬实时,sht_afo_config.m
+AFO,externalAir,logical,1,false,外部8路流量回灌开关,不等于是否计算空气系统,sht_afo_config.m
+AFO,loadMode,char,1,power,PT负载方式,power/torque/pitch/dual_pitch运行中不可切换,sht_afo_config.m
+AFO,npRatio,double,1,1,相对设计Np挡位,仅0.8/0.9/0.95/1/1.05,sht_afo_config.m;sht_afo_session.m
+AFO,powerW,double,W,2176600,PT外部负载功率,有限非负代码未限制最大包线,sht_afo_config.m
+AFO,mkpNm,double,Nm,2176600/(20800*pi/30),PT外部负载扭矩,有限非负不是GT附件Mkg,sht_afo_config.m
+AFO,pitchDeg,double,deg,12,原等效总距,6至14,sht_afo_config.m
+AFO,mainPitchDeg,double,deg,12,主桨总距,默认6至14且合成等效总距仍合法,sht_afo_config.m
+AFO,tailPitchDeg,double,deg,10,尾桨总距,默认-8至18且成对提交,sht_afo_config.m
+AFO,tailToMainPowerRatio,double,1,0.10,尾桨与主桨设计功率比,有限非负工程先验未物理标定,sht_afo_config.m
+AFO,tailDesignPitchDeg,double,deg,10,尾桨参考总距,有限正值,sht_afo_config.m
+AFO,mainPitchBounds,double vector,deg,[6 14],主桨允许范围,工程配置不得据修改后范围宣称校准,sht_afo_config.m
+AFO,tailPitchBounds,double vector,deg,[-8 18],尾桨允许范围,工程配置且合成约束不取消,sht_afo_config.m
+AFO,legacyPulses,logical,1,false,历史脉冲回归开关,正常业务保持false避免隐藏输入,sht_afo_config.m
+AFO,initialTransitionConfirmed,logical,1,false,接受从既定初态过渡,初始目标不同必须显式true不自动配平,sht_afo_config.m
+AFO,logEverySeconds,double,s,5,命令行日志间隔,有限正值按仿真时间服务,sht_afo_config.m
+AFO,plots,logical,1,false,结束后绘制默认图,Start使用结果Excel绘图,sht_afo_config.m
+AFO,designNpRpm,double,rpm,20800由初始化读取,实际设计转速,prepare派生不可手填覆盖,sht_afo_prepare.m
+AFO,designPowerW,double,W,2176600由初始化读取,实际设计功率,prepare派生不可手填覆盖,sht_afo_prepare.m
+AFO,modelStep,double,s,0.025由初始化读取,积分步长,prepare派生不是recordStep,sht_afo_prepare.m
+AFO,verificationOriginalSources,logical,1,正常配置不存在,原常值源回归开关,仅测试使用且要求legacyPulses=true,sht_afo_prepare.m
+AFO,copiedFromRunId,char,1,从结果复制时生成,配置来源运行编号,只作来源不能当续算标志,sht_afo_results.m
