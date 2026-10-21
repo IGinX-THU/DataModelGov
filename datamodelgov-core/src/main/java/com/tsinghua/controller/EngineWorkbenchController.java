@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.File;
 import java.io.IOException;
@@ -404,6 +405,23 @@ public class EngineWorkbenchController {
         }
     }
 
+    @ApiOperation("取消UQ评估(协作取消,结果作废)")
+    @PostMapping("/projects/{pid}/tasks/{tid}/uq/stop")
+    @RequirePermission(Permission.CREATE)
+    public Result<Boolean> cancelUq(@PathVariable("pid") String pid,
+                                    @PathVariable("tid") String tid) {
+        try {
+            EngineModels.ModelingTask t = store.getTask(pid, tid);
+            if (t == null) return Result.error("任务不存在");
+            String denied = accessDenied(store.getProject(pid));
+            if (denied != null) return Result.error(denied);
+            boolean ok = tc24Service.requestUqCancel(pid, tid);
+            return ok ? Result.success(true) : Result.error("当前没有可取消的评估");
+        } catch (IOException e) {
+            return Result.error("取消UQ评估失败: " + e.getMessage());
+        }
+    }
+
     @ApiOperation("UQ评估记录列表(一份模型可多份评估)")
     @GetMapping("/projects/{pid}/uq-records")
     @RequirePermission(Permission.READ)
@@ -620,6 +638,21 @@ public class EngineWorkbenchController {
         } catch (Exception e) {
             log.error("发起输出预测失败", e);
             return Result.error("发起输出预测失败: " + e.getMessage());
+        }
+    }
+
+    @ApiOperation("UQ评估日志流(SSE推送实时日志)")
+    @GetMapping(value = "/projects/{pid}/tasks/{tid}/uq-log-stream")
+    @RequirePermission(Permission.READ)
+    public SseEmitter uqLogStream(@PathVariable("pid") String pid,
+                                  @PathVariable("tid") String tid) {
+        try {
+            SseEmitter emitter = new SseEmitter(Long.MAX_VALUE);
+            tc24Service.subscribeUqLogs(tid, emitter);
+            return emitter;
+        } catch (Exception e) {
+            log.error("创建UQ日志流失败", e);
+            return new SseEmitter(0L);
         }
     }
 

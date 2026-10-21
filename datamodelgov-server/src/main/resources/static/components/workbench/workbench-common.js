@@ -158,6 +158,15 @@ window.Workbench = (() => {
             pl.setAttribute('stroke-width', s.bold ? '2' : '1.4');
             if (s.dash) pl.setAttribute('stroke-dasharray', '5 4');
             svg.appendChild(pl);
+            if (s.dots) {
+                pts.forEach(p => {
+                    const c = document.createElementNS(svgNS, 'circle');
+                    c.setAttribute('cx', p[0]); c.setAttribute('cy', p[1]);
+                    c.setAttribute('r', s.bold ? '3.2' : '2.6');
+                    c.setAttribute('fill', s.color || colors[si % colors.length]);
+                    svg.appendChild(c);
+                });
+            }
         });
         // X标签(最多8个)
         const xl = opt.xLabels || [];

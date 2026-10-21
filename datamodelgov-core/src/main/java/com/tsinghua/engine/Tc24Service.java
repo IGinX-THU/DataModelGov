@@ -26,6 +26,7 @@ import java.util.stream.Stream;
 
 import com.tsinghua.engine.EngineModels.ModelingTask;
 import com.tsinghua.engine.EngineModels.UqRecord;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
  * 首链接入层:稳态试车建模(TC24,F-01)。
@@ -58,6 +59,8 @@ public class Tc24Service {
     private final ExecutorService executor = Executors.newFixedThreadPool(2);
     private final Map<String, MatlabFunctionRunner> running = new ConcurrentHashMap<>();
     private final Map<String, List<String>> logBuffers = new ConcurrentHashMap<>();
+    private final Map<String, SseEmitter> uqLogEmitters = new ConcurrentHashMap<>();
+    private final Map<String, Boolean> uqCancelPending = new ConcurrentHashMap<>();
     private volatile MatlabEnginePool enginePool;
 
     public Tc24Service(EngineProjectStore store) {
@@ -265,6 +268,47 @@ public class Tc24Service {
     }
 
     /**
+     * 取消UQ评估:引擎runner协作取消(requestCancel),准备阶段则记pending待执行体检查。
+     * 取消受理即落终态(FAILED+已取消),前端轮询立刻回到可重新发起的状态;
+     * MATLAB侧在最近的协作检查点退出,catch里幂等重写同一状态,不产生二次影响。
+     */
+    public boolean requestUqCancel(String projectId, String taskId) {
+        try {
+            EngineModels.ModelingTask t = store.getTask(projectId, taskId);
+            if (t == null) return false;
+            String uqStatus = t.getUqStatus();
+            if (!"EXECUTING".equals(uqStatus) && !"PREPARING".equals(uqStatus)) return false;
+            MatlabFunctionRunner runner = running.get(taskId + ":uq");
+            if (runner != null) {
+                runner.requestCancel();
+                emitLog(taskId, "已请求取消UQ评估;程序将在最近检查点退出");
+            } else {
+                uqCancelPending.put(taskId + ":uq", true);
+                emitLog(taskId, "已请求取消UQ评估(准备阶段)");
+            }
+            long now = System.currentTimeMillis();
+            t.setUqStatus("FAILED");
+            t.setUqFinishedAt(now);
+            t.setUqMessage("已手动取消评估;结果不保存,可重新发起");
+            store.saveTask(t);
+            UqRecord rec = null;
+            for (UqRecord r : store.listUqRecords(projectId)) {
+                if (taskId.equals(r.getTaskId()) && UqRecord.ST_EXECUTING.equals(r.getStatus())) { rec = r; break; }
+            }
+            if (rec != null) {
+                rec.setStatus(UqRecord.ST_FAILED);
+                rec.setFinishedAt(now);
+                rec.setMessage("已手动取消评估");
+                store.saveUqRecord(rec);
+            }
+            return true;
+        } catch (IOException e) {
+            log.warn("UQ取消状态写回失败", e);
+            return false;
+        }
+    }
+
+    /**
      * 请求停止(合同路径):通过引擎调用 Start_TC24_00_Offline(task='stop'),
      * 由 sht_tc24_run_control 在 {outputDirectory}/run_control/ 落 stop_request,
      * 运行中的辨识在最近安全点保存检查点后结束;不强制中断引擎。
@@ -323,6 +367,32 @@ public class Tc24Service {
     public List<String> logTail(String taskId) {
         List<String> buf = logBuffers.get(taskId);
         return buf == null ? new ArrayList<>() : new ArrayList<>(buf);
+    }
+
+    /**
+     * 订阅UQ评估日志流(SSE)。
+     * 建立连接时先回放缓冲中已有的日志行(页面刷新后不丢历史),之后每次emitLog实时推送。
+     */
+    public void subscribeUqLogs(String taskId, SseEmitter emitter) {
+        uqLogEmitters.put(taskId, emitter);
+
+        try {
+            List<String> buf = logBuffers.get(taskId);
+            if (buf != null) {
+                synchronized (buf) {
+                    for (String line : buf) {
+                        emitter.send(SseEmitter.event().data(line));
+                    }
+                }
+            }
+            if (buf == null || buf.isEmpty()) {
+                emitter.send(SseEmitter.event().data("[系统] 已连接UQ日志流,等待程序输出..."));
+            }
+        } catch (Exception e) {
+            log.warn("UQ日志回放失败: {}", taskId, e);
+            uqLogEmitters.remove(taskId);
+            try { emitter.complete(); } catch (Exception ignore) { }
+        }
     }
 
     /* ---------- 结果结构化(task='read' 回读,白名单子集) ---------- */
@@ -475,6 +545,9 @@ public class Tc24Service {
         task.setUqMessage("准备UQ程序工作副本");
         task.setUqRunId(record.getRunId());
         store.saveTask(task);
+        // UQ 日志缓冲:emitLog 依赖它,缺了日志会被静默丢弃(前端只见"等待日志输出...")
+        logBuffers.put(key, new ArrayList<>());
+        uqCancelPending.remove(key + ":uq");
         emitLog(key, "发起UQ评估: method=" + method + ", runId=" + record.getRunId());
 
         final String m = method;
@@ -501,6 +574,10 @@ public class Tc24Service {
                 store.saveTask(t);
                 emitLog(key, "调用 Start_TC24_00_Offline, task=uq, method=" + m);
 
+                // 准备阶段(引擎runner尚未注册)收到取消请求:直接以取消结束
+                if (uqCancelPending.remove(key + ":uq") != null) {
+                    throw new java.util.concurrent.CancellationException("已在准备阶段取消");
+                }
                 runner = new MatlabFunctionRunner(adapterDir, "dmg_tc24_task",
                         new Object[]{configFile.getAbsolutePath()},
                         new File(workDir, "uq-run.log"), enginePool,
@@ -509,6 +586,10 @@ public class Tc24Service {
                             @Override public boolean isCancellationRequested() { return false; }
                         });
                 running.put(key + ":uq", runner);
+                if (uqCancelPending.remove(key + ":uq") != null) {
+                    runner.requestCancel();
+                    throw new java.util.concurrent.CancellationException("已在启动阶段取消");
+                }
                 Object result = prepPayload(runner.run(), new File(adapterDir, "uq-result.json"));
 
                 t = store.getTask(task.getProjectId(), task.getId());
@@ -554,6 +635,24 @@ public class Tc24Service {
                     }
                 }
                 emitLog(key, "UQ评估结束: " + fresh.getStatus());
+            } catch (java.util.concurrent.CancellationException ce) {
+                // 协作取消(requestCancel):用户主动取消,不计为程序失败
+                log.info("TC24 UQ被用户取消: {}", key);
+                try {
+                    EngineModels.ModelingTask t = store.getTask(task.getProjectId(), task.getId());
+                    t.setUqStatus("FAILED");
+                    t.setUqFinishedAt(System.currentTimeMillis());
+                    t.setUqMessage("已手动取消评估;结果不保存,可重新发起");
+                    store.saveTask(t);
+                    UqRecord fresh = store.getUqRecord(record.getProjectId(), record.getId());
+                    fresh.setStatus(UqRecord.ST_FAILED);
+                    fresh.setFinishedAt(System.currentTimeMillis());
+                    fresh.setMessage("已手动取消评估");
+                    store.saveUqRecord(fresh);
+                } catch (IOException io) {
+                    log.error("UQ取消状态写回失败", io);
+                }
+                emitLog(key, "UQ评估已被用户取消");
             } catch (Exception e) {
                 log.error("TC24 UQ执行失败: {}", key, e);
                 try {
@@ -573,6 +672,10 @@ public class Tc24Service {
                 emitLog(key, "UQ评估失败: " + e.getMessage());
             } finally {
                 running.remove(key + ":uq");
+                SseEmitter em = uqLogEmitters.remove(key);
+                if (em != null) {
+                    try { em.complete(); } catch (Exception ignore) { }
+                }
             }
         });
         return record;
@@ -1176,6 +1279,22 @@ public class Tc24Service {
         synchronized (buf) {
             buf.add(line);
             if (buf.size() > 200) buf.remove(0);
+        }
+        
+        // 推送到SSE监听器
+        SseEmitter emitter = uqLogEmitters.get(taskId);
+        if (emitter != null) {
+            try {
+                emitter.send(SseEmitter.event().data(line));
+            } catch (Exception e) {
+                log.warn("发送UQ日志到SSE失败: {}", taskId, e);
+                uqLogEmitters.remove(taskId);
+                try {
+                    emitter.complete();
+                } catch (Exception ce) {
+                    log.warn("关闭SSE发射器失败", ce);
+                }
+            }
         }
     }
 
