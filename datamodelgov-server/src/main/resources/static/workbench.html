@@ -6,7 +6,7 @@
     <title>数据与模型一体化管理平台</title>
     <link rel="icon" type="image/x-icon" href="./images/favicon.png">
     <link rel="stylesheet" href="./css/reset.css">
-    <link rel="stylesheet" href="./components/workbench/workbench.css?v=r6">
+    <link rel="stylesheet" href="./components/workbench/workbench.css?v=r8">
     <script>
         // 页面加载前检查登录状态,未登录跳转登录页;登录后登录页会跳回本页
         (function () {
@@ -17,16 +17,16 @@
         // 独立工作台模式标记:组件内"旧版界面"按钮据此跳转 index.html
         window.__WB_STANDALONE__ = true;
     </script>
-    <script src="./config/app-config.js?v=r6"></script>
+    <script src="./config/app-config.js?v=r8"></script>
 </head>
 <body>
     <workbench-root id="workbenchRoot" style="display: none;"></workbench-root>
     <workbench-shell id="workbenchShell" style="display: none;"></workbench-shell>
 
-    <script src="./components/workbench/workbench-common.js?v=r6"></script>
-    <script src="./components/workbench/workbench-root.js?v=r6"></script>
-    <script src="./components/workbench/workbench-shell.js?v=r6"></script>
-    <script src="./components/workbench/workbench-task.js?v=r6"></script>
+    <script src="./components/workbench/workbench-common.js?v=r8"></script>
+    <script src="./components/workbench/workbench-root.js?v=r8"></script>
+    <script src="./components/workbench/workbench-shell.js?v=r8"></script>
+    <script src="./components/workbench/workbench-task.js?v=r8"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function () {
             if (!window.AppConfig || !window.AppConfig.isLoggedIn || !window.AppConfig.isLoggedIn()) {

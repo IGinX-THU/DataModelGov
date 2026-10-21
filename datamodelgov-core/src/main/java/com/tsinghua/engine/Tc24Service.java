@@ -25,6 +25,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import com.tsinghua.engine.EngineModels.ModelingTask;
+import com.tsinghua.engine.EngineModels.UqRecord;
 
 /**
  * 首链接入层:稳态试车建模(TC24,F-01)。
@@ -215,6 +216,7 @@ public class Tc24Service {
                 } else if ("failed".equals(status)) {
                     t.setStatus(ModelingTask.ST_FAILED);
                     t.setMessage("辨识程序返回失败,详见日志");
+                    t.setErrorKind(ModelingTask.ERR_NUMERIC);
                     emitLog(key, "程序返回失败");
                 } else {
                     t.setStatus(ModelingTask.ST_COMPLETED);
@@ -223,6 +225,25 @@ public class Tc24Service {
                 }
                 t.setResult(summarizeResult(result, outputDir));
                 store.saveTask(t);
+
+                // 结果结构化(仅成功/诊断完成):task='read' 回读 result_view.mat,
+                // 生成前端曲线、节点表、逐通道误差所需的明细 JSON(01-06/01-07)
+                if (ModelingTask.ST_COMPLETED.equals(t.getStatus())) {
+                    try {
+                        File detail = readResultDetail(outputDir, t.getRunId(),
+                                "dmg_result_detail.json", DETAIL_FIELDS_IDENTIFY);
+                        if (detail != null && detail.exists()) {
+                            t = store.getTask(task.getProjectId(), task.getId());
+                            t.setResultDetailFile(detail.getAbsolutePath());
+                            store.saveTask(t);
+                            emitLog(key, "结果明细已生成(曲线与节点表可浏览)");
+                        } else {
+                            emitLog(key, "未找到 result_view.mat,结果明细跳过");
+                        }
+                    } catch (Exception re) {
+                        emitLog(key, "结果明细生成失败(不影响辨识结果): " + re.getMessage());
+                    }
+                }
             } catch (Exception e) {
                 log.error("TC24 任务执行失败: {}", key, e);
                 try {
@@ -230,6 +251,7 @@ public class Tc24Service {
                     t.setStatus(ModelingTask.ST_FAILED);
                     t.setFinishedAt(System.currentTimeMillis());
                     t.setMessage(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+                    t.setErrorKind(classifyError(e.getMessage()));
                     store.saveTask(t);
                 } catch (IOException io) {
                     log.error("任务状态写回失败", io);
@@ -303,19 +325,157 @@ public class Tc24Service {
         return buf == null ? new ArrayList<>() : new ArrayList<>(buf);
     }
 
+    /* ---------- 结果结构化(task='read' 回读,白名单子集) ---------- */
+
+    /** 辨识明细白名单(对应 sht_tc24_result_view identification 视图;曲线/节点表/误差/耗时) */
+    private static final String[] DETAIL_FIELDS_IDENTIFY = {
+            "kind", "status", "runId", "route", "message", "fuelBiasUnit",
+            "parameterClassTable", "scheduleNodeTable", "finalSchedule", "groupEstimateTable",
+            "predictionTrainingTable", "predictionTestTable",
+            "baseline", "final", "acceptance", "residualStatistics", "timing", "execution"
+    };
+
+    /**
+     * 回读 {outputDir}/{runId}/result_view.mat,生成明细 JSON。
+     * @param fields 白名单字段;null 时由适配器保留顶层全部标量/表字段(Excel 视图用 parameterTable)
+     */
+    private File readResultDetail(File outputDir, String runId, String detailFileName,
+                                  String[] fields) throws IOException {
+        File viewMat = new File(new File(outputDir, runId == null ? "" : runId), "result_view.mat");
+        if (!viewMat.exists()) {
+            // 兼容 session.directory 直接落在 outputDir 的情形
+            File alt = new File(outputDir, "result_view.mat");
+            if (!alt.exists()) return null;
+            viewMat = alt;
+        }
+        File out = new File(viewMat.getParentFile(), detailFileName);
+        return runReadAdapter(viewMat.getAbsolutePath(), out, fields) ? out : null;
+    }
+
+    /** 回读交付 Excel(UQ parameterTable 视图)生成明细 JSON。 */
+    private File readExcelDetail(File excel, File out) throws IOException {
+        return runReadAdapter(excel.getAbsolutePath(), out, null) ? out : null;
+    }
+
+    /** 生成并执行 task='read' 适配器;fields 非空时只保留白名单顶层字段。 */
+    private boolean runReadAdapter(String resultFile, File detailOut, String[] fields) throws IOException {
+        if (detailOut.exists()) return true; // 已生成过,直接复用
+        try {
+            File programCopy = ensureWorkingCopy();
+            File adapterDir = new File(dataRoot, "r06-runtime/read-adapter");
+            if (!adapterDir.exists() && !adapterDir.mkdirs()) throw new IOException("无法创建回读适配器目录");
+
+            String keep = "[]";
+            if (fields != null) {
+                StringBuilder sb = new StringBuilder("{");
+                for (int i = 0; i < fields.length; i++) {
+                    if (i > 0) sb.append(',');
+                    sb.append('\'').append(fields[i]).append('\'');
+                }
+                sb.append('}');
+                keep = sb.toString();
+            }
+
+            StringBuilder m = new StringBuilder();
+            m.append("function r = dmg_tc24_read(configFile)\n");
+            m.append("c = jsondecode(fileread(configFile));\n");
+            m.append("addpath('").append(programCopy.getAbsolutePath().replace('\\', '/')).append("', '-begin');\n");
+            m.append("rehash;\n");
+            m.append("view = Start_TC24_00_Offline(struct('task','read','resultFile',c.resultFile));\n");
+            m.append("view = dmg_jsonable_view(view);\n");
+            m.append("keep = ").append(keep).append(";\n");
+            m.append("if ~isempty(keep)\n");
+            m.append("    v = struct(); f = fieldnames(view);\n");
+            m.append("    for i = 1:numel(f)\n");
+            m.append("        if any(strcmp(f{i}, keep)), v.(f{i}) = view.(f{i}); end\n");
+            m.append("    end\n");
+            m.append("    view = v;\n");
+            m.append("end\n");
+            m.append("payload = jsonencode(view);\n");
+            m.append("fid = fopen(c.detailFile, 'w', 'n', 'UTF-8');\n");
+            m.append("fwrite(fid, payload, 'char');\n");
+            m.append("fclose(fid);\n");
+            m.append("r = 'ok';\n");
+            m.append("end\n");
+            // 表→struct 转换(比 dmg_jsonable 多处理缺失值与非标量)
+            m.append("function s = dmg_jsonable_view(v)\n");
+            m.append("if isa(v,'table')\n");
+            m.append("    s = dmg_jsonable_view(table2struct(v));\n");
+            m.append("elseif isstruct(v)\n");
+            m.append("    s = v; f = fieldnames(s);\n");
+            m.append("    for i = 1:numel(s)\n");
+            m.append("        for j = 1:numel(f)\n");
+            m.append("            s(i).(f{j}) = dmg_jsonable_view(s(i).(f{j}));\n");
+            m.append("        end\n");
+            m.append("    end\n");
+            m.append("elseif iscell(v)\n");
+            m.append("    for i = 1:numel(v), v{i} = dmg_jsonable_view(v{i}); end\n");
+            m.append("    s = v;\n");
+            m.append("elseif isstring(v)\n");
+            m.append("    s = char(v);\n");
+            m.append("else\n");
+            m.append("    s = v;\n");
+            m.append("end\n");
+            m.append("end\n");
+            Files.write(new File(adapterDir, "dmg_tc24_read.m").toPath(),
+                    m.toString().getBytes(StandardCharsets.UTF_8));
+
+            Map<String, Object> cfg = new LinkedHashMap<>();
+            cfg.put("resultFile", resultFile.replace('\\', '/'));
+            cfg.put("detailFile", detailOut.getAbsolutePath().replace('\\', '/'));
+            File configFile = new File(adapterDir, "read-config.json");
+            Files.write(configFile.toPath(),
+                    new com.fasterxml.jackson.databind.ObjectMapper()
+                            .writerWithDefaultPrettyPrinter().writeValueAsBytes(cfg));
+
+            MatlabFunctionRunner runner = new MatlabFunctionRunner(adapterDir, "dmg_tc24_read",
+                    new Object[]{configFile.getAbsolutePath()},
+                    new File(adapterDir, "read.log"), enginePool);
+            runner.run();
+            return detailOut.exists();
+        } catch (Exception e) {
+            log.warn("结果明细回读失败: {}", resultFile, e);
+            return false;
+        }
+    }
+
+    /** 错误分类(图01-16):交付文件/写盘问题与数值问题分开呈现。 */
+    private String classifyError(String message) {
+        String lower = message == null ? "" : message.toLowerCase();
+        if (lower.contains("excel") || lower.contains("save") || lower.contains("write")
+                || lower.contains("export") || lower.contains("deliver") || lower.contains("disk")
+                || lower.contains("保存") || lower.contains("写")) {
+            return ModelingTask.ERR_SAVE;
+        }
+        return ModelingTask.ERR_NUMERIC;
+    }
+
     /**
      * 可选UQ评估(F-07-TC24):Start_TC24_00_Offline(task='uq',method=B|C|D),
-     * options 走 sht_tc24_b_config 集中默认;runId 带 tc24_ 前缀(合同要求);
-     * 结果另存 uq-output,不覆盖确定性辨识结果。
+     * options 走 sht_tc24_b_config 集中默认(particleCount 允许 512/1024);runId 带 tc24_ 前缀;
+     * 结果另存 uq-output,不覆盖确定性辨识结果。完成后登记 UqRecord 并关联到模型成果。
      */
-    public ModelingTask runUq(ModelingTask task, String method, String deterministicWorkbook) throws IOException {
+    public UqRecord runUq(ModelingTask task, String method, String deterministicWorkbook,
+                          Integer particleCount, String modelAssetId) throws IOException {
         final String key = task.getId();
+        final UqRecord record = new UqRecord();
+        record.setProjectId(task.getProjectId());
+        record.setTaskId(task.getId());
+        record.setModelAssetId(modelAssetId);
+        record.setMethod(method);
+        record.setParticleCount(particleCount);
+        record.setStatus(UqRecord.ST_EXECUTING);
+        record.setMessage("准备UQ程序工作副本");
+        String ts = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss").format(new java.util.Date());
+        record.setRunId("tc24_" + method.toLowerCase() + "_" + ts);
+        record.setStartedAt(System.currentTimeMillis());
+        store.saveUqRecord(record);
+
         task.setUqStatus("PREPARING");
         task.setUqMessage("准备UQ程序工作副本");
-        String ts = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss").format(new java.util.Date());
-        task.setUqRunId("tc24_" + method.toLowerCase() + "_" + ts);
+        task.setUqRunId(record.getRunId());
         store.saveTask(task);
-        emitLog(key, "发起UQ评估: method=" + method + ", runId=" + task.getUqRunId());
+        emitLog(key, "发起UQ评估: method=" + method + ", runId=" + record.getRunId());
 
         final String m = method;
         executor.submit(() -> {
@@ -327,8 +487,13 @@ public class Tc24Service {
                 if (!adapterDir.exists() && !adapterDir.mkdirs()) throw new IOException("无法创建适配器目录");
                 File uqOutputDir = new File(workDir, "uq-output");
                 if (!uqOutputDir.exists() && !uqOutputDir.mkdirs()) throw new IOException("无法创建UQ输出目录");
-                File configFile = writeUqAdapterAndConfig(adapterDir, programCopy, task, m, deterministicWorkbook, uqOutputDir);
+                File configFile = writeUqAdapterAndConfig(adapterDir, programCopy, task, m,
+                        deterministicWorkbook, uqOutputDir, particleCount);
 
+                UqRecord fresh = store.getUqRecord(record.getProjectId(), record.getId());
+                fresh.setStatus(UqRecord.ST_EXECUTING);
+                fresh.setMessage("UQ 评估执行中(方法 " + m + ")");
+                store.saveUqRecord(fresh);
                 EngineModels.ModelingTask t = store.getTask(task.getProjectId(), task.getId());
                 t.setUqStatus("EXECUTING");
                 t.setUqMessage("UQ 评估执行中(方法 " + m + ")");
@@ -349,16 +514,46 @@ public class Tc24Service {
                 t = store.getTask(task.getProjectId(), task.getId());
                 t.setUqFinishedAt(System.currentTimeMillis());
                 String status = extractStatus(result);
+                fresh = store.getUqRecord(record.getProjectId(), record.getId());
+                fresh.setFinishedAt(System.currentTimeMillis());
+                File delivery = findUqDeliveryExcel(uqOutputDir, fresh.getRunId());
                 if ("failed".equals(status)) {
                     t.setUqStatus("FAILED");
                     t.setUqMessage("UQ程序返回失败,详见日志");
+                    fresh.setStatus(UqRecord.ST_FAILED);
+                    fresh.setMessage("UQ程序返回失败,详见日志");
                 } else {
                     t.setUqStatus("COMPLETED");
                     t.setUqMessage("UQ评估完成;结果另存,不覆盖确定性估计值");
+                    fresh.setStatus(UqRecord.ST_COMPLETED);
+                    fresh.setMessage("UQ评估完成;结果另存,不覆盖确定性估计值");
+                    fresh.setDeliveryFile(delivery != null ? delivery.getAbsolutePath() : null);
                 }
                 t.setUqResult(summarizeResult(result, uqOutputDir));
                 store.saveTask(t);
-                emitLog(key, "UQ评估结束: " + t.getUqStatus());
+                store.saveUqRecord(fresh);
+
+                // 交付 Excel 关联到模型成果(02-05:一份模型可多份UQ)
+                if (modelAssetId != null && !modelAssetId.isEmpty() && delivery != null) {
+                    linkUqToModel(task.getProjectId(), modelAssetId, fresh.getId());
+                }
+
+                // 结果结构化:回读交付 Excel 的参数区间表(01-09)
+                if (fresh.getDeliveryFile() != null) {
+                    try {
+                        File detail2 = readExcelDetail(new File(fresh.getDeliveryFile()),
+                                new File(uqOutputDir, fresh.getRunId() + "_dmg_uq_detail.json"));
+                        if (detail2 != null && detail2.exists()) {
+                            fresh = store.getUqRecord(record.getProjectId(), record.getId());
+                            fresh.setDetailFile(detail2.getAbsolutePath());
+                            store.saveUqRecord(fresh);
+                            emitLog(key, "UQ结果明细已生成(参数区间表可浏览)");
+                        }
+                    } catch (Exception re) {
+                        emitLog(key, "UQ结果明细生成失败(不影响评估结果): " + re.getMessage());
+                    }
+                }
+                emitLog(key, "UQ评估结束: " + fresh.getStatus());
             } catch (Exception e) {
                 log.error("TC24 UQ执行失败: {}", key, e);
                 try {
@@ -367,6 +562,11 @@ public class Tc24Service {
                     t.setUqFinishedAt(System.currentTimeMillis());
                     t.setUqMessage(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
                     store.saveTask(t);
+                    UqRecord fresh = store.getUqRecord(record.getProjectId(), record.getId());
+                    fresh.setStatus(UqRecord.ST_FAILED);
+                    fresh.setFinishedAt(System.currentTimeMillis());
+                    fresh.setMessage("UQ评估失败: " + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
+                    store.saveUqRecord(fresh);
                 } catch (IOException io) {
                     log.error("UQ状态写回失败", io);
                 }
@@ -375,8 +575,35 @@ public class Tc24Service {
                 running.remove(key + ":uq");
             }
         });
-        return task;
+        return record;
     }
+
+    /** UQ 交付 Excel(2p4_uq_method_*.xlsx)位于 {uq-output}/{runId}/ 下;兼容一层子目录扫描。 */
+    private File findUqDeliveryExcel(File uqOutputDir, String runId) {
+        File[] candidates = uqOutputDir.listFiles((d, n) -> n.startsWith("2p4_uq_method_") && n.endsWith(".xlsx"));
+        if (candidates != null && candidates.length > 0) return candidates[0];
+        File runDir = new File(uqOutputDir, runId == null ? "" : runId);
+        File[] inRun = runDir.listFiles((d, n) -> n.startsWith("2p4_uq_method_") && n.endsWith(".xlsx"));
+        return inRun != null && inRun.length > 0 ? inRun[0] : null;
+    }
+
+    /** 把 UQ 记录 id 追加到模型成果的 uqRecordIds(去重)。 */
+    private void linkUqToModel(String projectId, String modelAssetId, String uqRecordId) {
+        try {
+            for (EngineModels.ModelAsset a : store.listModels(projectId)) {
+                if (modelAssetId.equals(a.getId())) {
+                    if (a.getUqRecordIds() == null) a.setUqRecordIds(new ArrayList<>());
+                    if (!a.getUqRecordIds().contains(uqRecordId)) a.getUqRecordIds().add(uqRecordId);
+                    store.saveModel(a);
+                    return;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("UQ记录关联模型失败: {} -> {}", uqRecordId, modelAssetId, e);
+        }
+    }
+
+    private String projectId0(String pid) { return pid; }
 
     /**
      * 数据准备(F-01 preview):Start_TC24_01_PreprocessPreview(route, options),
@@ -570,11 +797,44 @@ public class Tc24Service {
 
     /**
      * 输出预测(F-08:Start_TC24_00_Offline task='predict' → Start_SteadyModelPredict_01)。
-     * 单工况确定性预测,异步执行;记录状态经 store 持久化,前端轮询项目预测列表。
+     * 多工况逐条独立执行(图01-12:部分失败保留有效结果);选择UQ记录时经
+     * posteriorOptions.workbookFile 做区间再传播(图01-24/02-07);异步,逐工况回写。
      */
     public EngineModels.PredictionRecord runPrediction(EngineModels.PredictionRecord rec) throws IOException {
         final String pid = rec.getProjectId();
-        emitLog(pid, "发起输出预测(model=" + rec.getModelName() + ")");
+        // 单工况兼容:老调用只填 inputs,包装为 P01
+        if ((rec.getConditions() == null || rec.getConditions().isEmpty())
+                && rec.getInputs() != null && !rec.getInputs().isEmpty()) {
+            EngineModels.PredictionCondition c = new EngineModels.PredictionCondition();
+            c.setId("P01");
+            c.setInputs(rec.getInputs());
+            c.setStatus("EXECUTING");
+            rec.getConditions().add(c);
+        }
+        if (rec.getConditions() == null || rec.getConditions().isEmpty()) {
+            throw new IOException("预测输入为空");
+        }
+        // 解析显式选择的UQ记录 → 交付 Excel(posteriorOptions.workbookFile)
+        final String posteriorFile;
+        if (rec.getUqRecordId() != null && !rec.getUqRecordId().isEmpty()) {
+            EngineModels.UqRecord uq = store.getUqRecord(pid, rec.getUqRecordId());
+            if (uq == null || uq.getDeliveryFile() == null) {
+                throw new IOException("所选UQ记录不存在或尚无交付文件;区间需来自实际计算,不能移植");
+            }
+            posteriorFile = uq.getDeliveryFile();
+        } else {
+            posteriorFile = null;
+        }
+        for (EngineModels.PredictionCondition c : rec.getConditions()) {
+            c.setStatus("EXECUTING");
+        }
+        rec.setStatus(EngineModels.PredictionRecord.ST_EXECUTING);
+        rec.setMessage("预测执行中(0/" + rec.getConditions().size() + ")");
+        store.savePrediction(rec);
+        emitLog(pid, "发起输出预测(model=" + rec.getModelName() + ",工况数=" + rec.getConditions().size()
+                + (posteriorFile != null ? ",含UQ区间传播" : ",确定性") + ")");
+
+        final String uqId = rec.getUqRecordId();
         executor.submit(() -> {
             try {
                 File programCopy = ensureWorkingCopy();
@@ -582,69 +842,53 @@ public class Tc24Service {
                 File adapterDir = new File(workDir, "adapter");
                 if (!adapterDir.exists() && !adapterDir.mkdirs()) throw new IOException("无法创建适配器目录");
                 String runId = "pred_" + new java.text.SimpleDateFormat("yyyyMMdd_HHmmss").format(new java.util.Date());
-                File outDir = new File(workDir, "output_" + runId);
-                if (!outDir.exists() && !outDir.mkdirs()) throw new IOException("无法创建预测输出目录");
-
-                String programPath = programCopy.getAbsolutePath().replace('\\', '/');
-                StringBuilder m = new StringBuilder();
-                m.append("function r = dmg_tc24_task(configFile)\n");
-                m.append("% TC24 接入适配器(独立稳态预测;由数据与模型一体化管理软件生成)\n");
-                m.append("c = jsondecode(fileread(configFile));\n");
-                m.append("addpath('").append(programPath).append("', '-begin');\n");
-                m.append("rehash;\n");
-                m.append("o = struct('runId', c.runId, 'outputDirectory', c.outputDirectory, 'plotEnabled', false);\n");
-                m.append("cfg = struct('task', 'predict', 'modelInput', c.modelInput, 'modelFile', c.modelFile, ...\n");
-                m.append("    'posterior', [], 'options', o);\n");
-                m.append("r = Start_TC24_00_Offline(cfg);\n");
-                m.append("r = dmg_jsonable(r);\n");
-                m.append("payload = jsonencode(r);\n");
-                m.append("fid = fopen(c.resultFile, 'w', 'n', 'UTF-8');\n");
-                m.append("fwrite(fid, payload, 'char');\n");
-                m.append("fclose(fid);\n");
-                m.append("r = payload;\n");
-                m.append("end\n");
-                m.append(matlabJsonableFn());
-                Files.write(new File(adapterDir, "dmg_tc24_task.m").toPath(),
-                        m.toString().getBytes(StandardCharsets.UTF_8));
-
-                Map<String, Object> cfg = new LinkedHashMap<>();
-                cfg.put("modelInput", rec.getInputs());
-                cfg.put("modelFile", abs(rec.getModelFile()));
-                cfg.put("outputDirectory", outDir.getAbsolutePath().replace('\\', '/'));
-                cfg.put("runId", runId);
-                cfg.put("resultFile", new File(adapterDir, "predict-result.json").getAbsolutePath().replace('\\', '/'));
-                File configFile = new File(adapterDir, "predict-config.json");
-                Files.write(configFile.toPath(),
-                        new com.fasterxml.jackson.databind.ObjectMapper()
-                                .writerWithDefaultPrettyPrinter().writeValueAsBytes(cfg));
                 rec.setRunId(runId);
                 store.savePrediction(rec);
 
-                MatlabFunctionRunner runner = new MatlabFunctionRunner(adapterDir, "dmg_tc24_task",
-                        new Object[]{configFile.getAbsolutePath()},
-                        new File(workDir, "predict.log"), enginePool);
-                Object result = runner.run();
+                int done = 0;
+                for (EngineModels.PredictionCondition cond : rec.getConditions()) {
+                    File outDir = new File(workDir, "output_" + runId + "/" + cond.getId());
+                    if (!outDir.exists() && !outDir.mkdirs()) throw new IOException("无法创建预测输出目录");
+                    try {
+                        runSinglePrediction(programCopy, adapterDir, rec, cond, outDir, posteriorFile);
+                    } catch (Exception ce) {
+                        cond.setStatus("FAILED");
+                        cond.setMessage("求解失败: " + (ce.getMessage() == null ? ce.getClass().getSimpleName() : ce.getMessage()));
+                    }
+                    cond.setFinishedAt(System.currentTimeMillis());
+                    done++;
+                    EngineModels.PredictionRecord fresh = findPrediction(pid, rec.getId());
+                    if (fresh == null) fresh = rec;
+                    fresh.setConditions(rec.getConditions());
+                    fresh.setMessage("预测执行中(" + done + "/" + rec.getConditions().size() + ")");
+                    store.savePrediction(fresh);
+                    emitLog(pid, "工况 " + cond.getId() + " " + cond.getStatus());
+                }
 
                 EngineModels.PredictionRecord fresh = findPrediction(pid, rec.getId());
                 if (fresh == null) fresh = rec;
                 fresh.setRunId(runId);
+                fresh.setUqRecordId(uqId);
                 fresh.setFinishedAt(System.currentTimeMillis());
-                Object parsed = parseJsonFile(new File(adapterDir, "predict-result.json"));
-                String st = extractStatus(parsed instanceof Map ? parsed : result);
-                if (st != null && (st.contains("fail") || st.contains("error"))) {
+                long ok = rec.getConditions().stream().filter(c -> "COMPLETED".equals(c.getStatus())).count();
+                if (ok == 0) {
                     fresh.setStatus(EngineModels.PredictionRecord.ST_FAILED);
-                    fresh.setMessage("程序返回失败状态: " + st);
+                    fresh.setMessage("全部工况求解失败;详见各工况失败诊断");
+                } else if (ok < rec.getConditions().size()) {
+                    fresh.setStatus(EngineModels.PredictionRecord.ST_COMPLETED);
+                    fresh.setMessage("已完成 " + ok + " / " + rec.getConditions().size()
+                            + " 工况;失败工况保留诊断,不并入有效结果");
                 } else {
                     fresh.setStatus(EngineModels.PredictionRecord.ST_COMPLETED);
-                    fresh.setMessage("预测完成");
-                    if (parsed instanceof Map) {
-                        fresh.setResult(summarizeResult(parsed, outDir));
-                    } else {
-                        fresh.setResult(summarizeResult(result, outDir));
-                    }
+                    fresh.setMessage(posteriorFile != null
+                            ? "预测完成;区间来自所选UQ记录在新输入下的重新传播"
+                            : "预测完成(确定性计算)");
+                }
+                if (!rec.getConditions().isEmpty()) {
+                    fresh.setResult(rec.getConditions().get(0).getResult());
                 }
                 store.savePrediction(fresh);
-                emitLog(pid, "输出预测" + (EngineModels.PredictionRecord.ST_COMPLETED.equals(fresh.getStatus()) ? "完成" : "失败"));
+                emitLog(pid, "输出预测结束: " + fresh.getStatus());
             } catch (Exception e) {
                 log.error("输出预测失败: {}", pid, e);
                 try {
@@ -661,6 +905,90 @@ public class Tc24Service {
             }
         });
         return rec;
+    }
+
+    /** 单工况预测:生成适配器与配置,同步执行,回填工况结果与输出Excel路径。 */
+    private void runSinglePrediction(File programCopy, File adapterDir, EngineModels.PredictionRecord rec,
+                                     EngineModels.PredictionCondition cond, File outDir,
+                                     String posteriorFile) throws Exception {
+        String programPath = programCopy.getAbsolutePath().replace('\\', '/');
+        String adapterName = "dmg_tc24_predict.m";
+        File adapterFile = new File(adapterDir, adapterName);
+        if (!adapterFile.exists()) {
+            StringBuilder m = new StringBuilder();
+            m.append("function r = dmg_tc24_predict(configFile)\n");
+            m.append("% TC24 接入适配器(独立稳态预测;由数据与模型一体化管理软件生成)\n");
+            m.append("c = jsondecode(fileread(configFile));\n");
+            m.append("addpath('").append(programPath).append("', '-begin');\n");
+            m.append("rehash;\n");
+            m.append("o = struct('runId', c.runId, 'outputDirectory', c.outputDirectory, 'plotEnabled', false);\n");
+            m.append("posterior = [];\n");
+            m.append("if isfield(c,'posteriorFile') && ~isempty(c.posteriorFile)\n");
+            m.append("    posterior = struct('workbookFile', c.posteriorFile);\n");
+            m.append("end\n");
+            m.append("cfg = struct('task', 'predict', 'modelInput', c.modelInput, 'modelFile', c.modelFile, ...\n");
+            m.append("    'posterior', posterior, 'options', o);\n");
+            m.append("r = Start_TC24_00_Offline(cfg);\n");
+            m.append("r = dmg_jsonable(r);\n");
+            m.append("payload = jsonencode(r);\n");
+            m.append("fid = fopen(c.resultFile, 'w', 'n', 'UTF-8');\n");
+            m.append("fwrite(fid, payload, 'char');\n");
+            m.append("fclose(fid);\n");
+            m.append("r = payload;\n");
+            m.append("end\n");
+            m.append(matlabJsonableFn());
+            Files.write(adapterFile.toPath(), m.toString().getBytes(StandardCharsets.UTF_8));
+        }
+
+        String condRunId = rec.getRunId() + "_" + cond.getId();
+        Map<String, Object> cfg = new LinkedHashMap<>();
+        cfg.put("modelInput", cond.getInputs());
+        cfg.put("modelFile", abs(rec.getModelFile()));
+        if (posteriorFile != null) cfg.put("posteriorFile", abs(posteriorFile));
+        cfg.put("outputDirectory", outDir.getAbsolutePath().replace('\\', '/'));
+        cfg.put("runId", condRunId);
+        File resultFile = new File(adapterDir, "predict-" + cond.getId() + "-result.json");
+        cfg.put("resultFile", resultFile.getAbsolutePath().replace('\\', '/'));
+
+        File configFile = new File(adapterDir, "predict-" + cond.getId() + "-config.json");
+        Files.write(configFile.toPath(),
+                new com.fasterxml.jackson.databind.ObjectMapper()
+                        .writerWithDefaultPrettyPrinter().writeValueAsBytes(cfg));
+
+        MatlabFunctionRunner runner = new MatlabFunctionRunner(adapterDir, "dmg_tc24_predict",
+                new Object[]{configFile.getAbsolutePath()},
+                new File(outDir.getParentFile(), "predict-" + cond.getId() + ".log"), enginePool);
+        Object result = runner.run();
+
+        Object parsed = parseJsonFile(resultFile);
+        String st = extractStatus(parsed instanceof Map ? parsed : result);
+        Map<String, Object> summary = summarizeResult(parsed instanceof Map ? parsed : result, outDir);
+        cond.setResult(summary);
+        File excel = findPredictionExcel(outDir);
+        if (excel != null) cond.setExcelFile(excel.getAbsolutePath());
+        if (st != null && (st.contains("fail") || st.contains("error"))) {
+            cond.setStatus("FAILED");
+            cond.setMessage("程序返回失败状态: " + st);
+        } else if ("completed_diagnostic".equalsIgnoreCase(st)) {
+            cond.setStatus("COMPLETED");
+            cond.setMessage("计算完成(诊断):部分输出未通过物理有效性检查,已如实标注");
+        } else {
+            cond.setStatus("COMPLETED");
+            cond.setMessage(posteriorFile != null ? "确定性输出与区间计算完成" : "确定性计算完成");
+        }
+    }
+
+    private File findPredictionExcel(File outDir) {
+        File[] files = outDir.listFiles((d, n) -> n.endsWith(".xlsx"));
+        if (files != null && files.length > 0) return files[0];
+        File[] sub = outDir.listFiles(File::isDirectory);
+        if (sub != null) {
+            for (File d : sub) {
+                File f = findPredictionExcel(d);
+                if (f != null) return f;
+            }
+        }
+        return null;
     }
 
     private EngineModels.PredictionRecord findPrediction(String pid, String id) throws IOException {
@@ -739,9 +1067,10 @@ public class Tc24Service {
         return f.getAbsolutePath().replace('\\', '/');
     }
 
-    /** UQ 适配器:task='uq',options 走 sht_tc24_b_config 集中默认再覆盖业务字段。 */
+    /** UQ 适配器:task='uq',options 走 sht_tc24_b_config 集中默认再覆盖业务字段;particleCount 允许 512/1024。 */
     private File writeUqAdapterAndConfig(File adapterDir, File programCopy, EngineModels.ModelingTask task,
-                                         String method, String deterministicWorkbook, File uqOutputDir) throws IOException {
+                                         String method, String deterministicWorkbook, File uqOutputDir,
+                                         Integer particleCount) throws IOException {
         String programPath = programCopy.getAbsolutePath().replace('\\', '/');
 
         StringBuilder m = new StringBuilder();
@@ -751,6 +1080,12 @@ public class Tc24Service {
         m.append("addpath('").append(programPath).append("', '-begin');\n");
         m.append("rehash;\n");
         m.append("o = sht_tc24_b_config();\n");
+        // sht_tc24_b_config 默认 route='transient_instant';必须覆盖为任务实际路线,
+        // 否则加载确定性交付Excel时报 RouteMismatch(steady vs transient_instant)
+        m.append("o.route = c.route;\n");
+        m.append("if isfield(c,'particleCount') && ~isempty(c.particleCount)\n");
+        m.append("    o.particleCount = double(c.particleCount);\n");
+        m.append("end\n");
         m.append("o.trainingFile = c.trainingFile;\n");
         m.append("if isfield(c,'testFile') && ~isempty(c.testFile)\n");
         m.append("    o.testFile = c.testFile;\n");
@@ -777,6 +1112,8 @@ public class Tc24Service {
         Map<String, Object> cfg = new LinkedHashMap<>();
         cfg.put("task", "uq");
         cfg.put("method", method);
+        cfg.put("route", task.getRoute() == null ? "steady" : task.getRoute());
+        if (particleCount != null) cfg.put("particleCount", particleCount);
         cfg.put("trainingFile", abs(task.getTrainingFile()));
         cfg.put("testFile", task.getTestFile() == null || task.getTestFile().isEmpty()
                 ? "" : abs(task.getTestFile()));

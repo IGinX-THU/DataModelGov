@@ -19,6 +19,7 @@ import com.tsinghua.engine.EngineModels.EngineProject;
 import com.tsinghua.engine.EngineModels.ModelAsset;
 import com.tsinghua.engine.EngineModels.ModelingTask;
 import com.tsinghua.engine.EngineModels.PredictionRecord;
+import com.tsinghua.engine.EngineModels.UqRecord;
 
 /**
  * 工作台域模型文件存储:
@@ -242,5 +243,40 @@ public class EngineProjectStore {
         }
         out.sort(Comparator.comparing(PredictionRecord::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())));
         return out;
+    }
+
+    /* ---------- UQ评估记录(F-07) ---------- */
+
+    public UqRecord saveUqRecord(UqRecord r) throws IOException {
+        if (r.getId() == null || r.getId().isEmpty()) {
+            r.setId(newId());
+            if (r.getStartedAt() == null) r.setStartedAt(System.currentTimeMillis());
+        }
+        File dir = new File(projectDir(r.getProjectId()), "uq");
+        if (!dir.exists() && !dir.mkdirs()) throw new IOException("无法创建UQ记录目录: " + dir);
+        mapper.writerWithDefaultPrettyPrinter().writeValue(new File(dir, r.getId() + ".json"), r);
+        return r;
+    }
+
+    public List<UqRecord> listUqRecords(String projectId) throws IOException {
+        List<UqRecord> out = new ArrayList<>();
+        File dir = new File(projectDir(projectId), "uq");
+        File[] files = dir.listFiles((d, n) -> n.endsWith(".json"));
+        if (files == null) return out;
+        for (File f : files) {
+            try {
+                out.add(mapper.readValue(f, UqRecord.class));
+            } catch (Exception e) {
+                log.warn("读取UQ记录失败: {}", f.getName(), e);
+            }
+        }
+        out.sort(Comparator.comparing(UqRecord::getStartedAt, Comparator.nullsLast(Comparator.reverseOrder())));
+        return out;
+    }
+
+    public UqRecord getUqRecord(String projectId, String uqId) throws IOException {
+        File f = new File(projectDir(projectId), "uq/" + uqId + ".json");
+        if (!f.exists()) return null;
+        return mapper.readValue(f, UqRecord.class);
     }
 }

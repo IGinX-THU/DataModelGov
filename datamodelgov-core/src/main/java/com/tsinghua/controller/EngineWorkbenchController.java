@@ -295,11 +295,12 @@ public class EngineWorkbenchController {
         }
     }
 
-    @ApiOperation("导入模型文件(上传到项目目录并登记为模型成果)")
+    @ApiOperation("导入模型文件(Excel交付工作簿+可选identity.json,上传并登记为模型成果)")
     @PostMapping("/projects/{pid}/models/import")
     @RequirePermission(Permission.CREATE)
     public Result<EngineModels.ModelAsset> importModel(@PathVariable("pid") String pid,
-                                                       @RequestParam("file") MultipartFile file) {
+                                                       @RequestParam("file") MultipartFile file,
+                                                       @RequestParam(value = "identityFile", required = false) MultipartFile identityFile) {
         try {
             EngineModels.EngineProject p = store.getProject(pid);
             String denied = accessDenied(p);
@@ -307,7 +308,7 @@ public class EngineWorkbenchController {
             String safe = file.getOriginalFilename() == null ? "model.xlsx"
                     : new File(file.getOriginalFilename()).getName();
             if (!safe.toLowerCase().endsWith(".xlsx") && !safe.toLowerCase().endsWith(".xls")) {
-                return Result.error("仅支持 Excel 模型文件(.xlsx/.xls)");
+                return Result.error("仅支持 Excel 模型文件(.xlsx/.xls);交付合同为 Excel 工作簿+identity.json");
             }
             File dir = p.getWorkdir() != null && !p.getWorkdir().isEmpty()
                     ? new File(new File(p.getWorkdir()), "models")
@@ -325,6 +326,14 @@ public class EngineWorkbenchController {
             m.setRoute("—");
             m.setEngineId(p.getEngineId());
             m.setDeliveryWorkbookFile(dest.getAbsolutePath());
+            m.setResultStatus("已导入");
+            if (identityFile != null && !identityFile.isEmpty()) {
+                String iname = new File(identityFile.getOriginalFilename() == null
+                        ? "identity.json" : identityFile.getOriginalFilename()).getName();
+                File idest = new File(dir, iname);
+                identityFile.transferTo(idest);
+                m.setIdentityFile(idest.getAbsolutePath());
+            }
             return Result.success(store.saveModel(m));
         } catch (Exception e) {
             log.error("导入模型失败", e);
@@ -346,13 +355,13 @@ public class EngineWorkbenchController {
         return Result.success(tc24Service.requestStop(pid, tid));
     }
 
-    @ApiOperation("发起可选UQ评估(F-07-TC24: Start_TC24_07,method=B|C|D)")
+    @ApiOperation("发起可选UQ评估(F-07-TC24: Start_TC24_07,method=B|C|D,particleCount=512|1024)")
     @PostMapping("/projects/{pid}/tasks/{tid}/uq")
     @RequirePermission(Permission.CREATE)
-    public Result<EngineModels.ModelingTask> runUq(@PathVariable("pid") String pid,
-                                                   @PathVariable("tid") String tid,
-                                                   @RequestParam(value = "method", defaultValue = "B") String method,
-                                                   @RequestBody(required = false) Map<String, Object> body) {
+    public Result<EngineModels.UqRecord> runUq(@PathVariable("pid") String pid,
+                                               @PathVariable("tid") String tid,
+                                               @RequestParam(value = "method", defaultValue = "B") String method,
+                                               @RequestBody(required = false) Map<String, Object> body) {
         try {
             EngineModels.ModelingTask t = store.getTask(pid, tid);
             if (t == null) return Result.error("任务不存在");
@@ -380,10 +389,71 @@ public class EngineWorkbenchController {
             }
             String m = method == null ? "B" : method.trim().toUpperCase();
             if (!m.matches("[BCD]")) return Result.error("评估方法仅支持 B/C/D");
-            return Result.success(tc24Service.runUq(t, m, asset.getDeliveryWorkbookFile()));
-        } catch (IOException e) {
+            Integer particleCount = null;
+            if (body != null && body.get("particleCount") != null) {
+                particleCount = Integer.parseInt(String.valueOf(body.get("particleCount")));
+                if (particleCount != 512 && particleCount != 1024) {
+                    return Result.error("粒子数仅支持 512 或 1024(程序合同 sht_tc24_b_config)");
+                }
+            }
+            return Result.success(tc24Service.runUq(t, m, asset.getDeliveryWorkbookFile(),
+                    particleCount, asset.getId()));
+        } catch (Exception e) {
             log.error("发起UQ评估失败", e);
             return Result.error("发起UQ评估失败: " + e.getMessage());
+        }
+    }
+
+    @ApiOperation("UQ评估记录列表(一份模型可多份评估)")
+    @GetMapping("/projects/{pid}/uq-records")
+    @RequirePermission(Permission.READ)
+    public Result<List<EngineModels.UqRecord>> listUqRecords(@PathVariable("pid") String pid) {
+        try {
+            String denied = accessDenied(store.getProject(pid));
+            if (denied != null) return Result.error(denied);
+            return Result.success(store.listUqRecords(pid));
+        } catch (IOException e) {
+            return Result.error("读取UQ记录失败: " + e.getMessage());
+        }
+    }
+
+    @ApiOperation("UQ评估结果明细(参数区间表,task='read' 回读交付Excel)")
+    @GetMapping("/projects/{pid}/uq-records/{uid}/detail")
+    @RequirePermission(Permission.READ)
+    public Result<Object> uqDetail(@PathVariable("pid") String pid,
+                                   @PathVariable("uid") String uid) {
+        try {
+            String denied = accessDenied(store.getProject(pid));
+            if (denied != null) return Result.error(denied);
+            EngineModels.UqRecord r = store.getUqRecord(pid, uid);
+            if (r == null) return Result.error("UQ记录不存在");
+            if (r.getDetailFile() == null || !new File(r.getDetailFile()).exists()) {
+                return Result.error("结果明细尚未生成或评估未完成");
+            }
+            return Result.success(new com.fasterxml.jackson.databind.ObjectMapper()
+                    .readValue(new File(r.getDetailFile()), Object.class));
+        } catch (IOException e) {
+            return Result.error("读取UQ明细失败: " + e.getMessage());
+        }
+    }
+
+    @ApiOperation("辨识结果明细(曲线/节点表/逐通道误差,task='read' 回读 result_view.mat)")
+    @GetMapping("/projects/{pid}/tasks/{tid}/result-detail")
+    @RequirePermission(Permission.READ)
+    public Result<Object> resultDetail(@PathVariable("pid") String pid,
+                                       @PathVariable("tid") String tid) {
+        try {
+            String denied = accessDenied(store.getProject(pid));
+            if (denied != null) return Result.error(denied);
+            EngineModels.ModelingTask t = store.getTask(pid, tid);
+            if (t == null) return Result.error("任务不存在");
+            if (t.getResultDetailFile() == null || !new File(t.getResultDetailFile()).exists()) {
+                return Result.error("结果明细尚未生成;辨识完成后自动生成");
+            }
+            return Result.success(new com.fasterxml.jackson.databind.ObjectMapper()
+                    .readValue(new File(t.getResultDetailFile()), Object.class));
+        } catch (IOException e) {
+            return Result.error("读取结果明细失败: " + e.getMessage());
         }
     }
 
@@ -401,7 +471,8 @@ public class EngineWorkbenchController {
             if (!EngineModels.ModelingTask.ST_COMPLETED.equals(t.getStatus())) {
                 return Result.error("任务尚未完成,不能保存模型成果");
             }
-            String excel = findDeliveryWorkbook(new File(store.taskWorkDir(pid, tid), "output"));
+            String routeHint = "steady".equals(t.getRoute()) ? "steady" : "transient_instant";
+            String excel = findDeliveryWorkbook(new File(store.taskWorkDir(pid, tid), "output"), routeHint);
             EngineModels.ModelAsset m = new EngineModels.ModelAsset();
             m.setProjectId(pid);
             m.setTaskId(tid);
@@ -412,12 +483,35 @@ public class EngineWorkbenchController {
             m.setRoute("steady".equals(t.getRoute()) ? "稳态方程" : "瞬态时刻方程");
             m.setDeliveryWorkbookFile(excel);
             m.setMetrics(t.getResult() == null ? new LinkedHashMap<>() : new LinkedHashMap<>(t.getResult()));
+            // 溯源字段(图02-03):训练/测试数据、结果状态;测试可为空,不影响交付
+            m.setTrainingFile(t.getTrainingFile());
+            m.setTestFile(t.getTestFile());
+            m.setResultStatus(resolveResultStatus(t));
             EngineModels.EngineProject p = store.getProject(pid);
             m.setEngineId(p == null ? null : p.getEngineId());
             return Result.success(store.saveModel(m));
         } catch (IOException e) {
             return Result.error("保存模型成果失败: " + e.getMessage());
         }
+    }
+
+    /** 结果状态:已交付 | 诊断(未收敛但有效仍可交付,convergenceDoesNotBlockDelivery)。 */
+    private String resolveResultStatus(EngineModels.ModelingTask t) {
+        try {
+            if (t.getResultDetailFile() != null) {
+                File f = new File(t.getResultDetailFile());
+                if (f.exists()) {
+                    Map<String, Object> detail = new com.fasterxml.jackson.databind.ObjectMapper().readValue(f, Map.class);
+                    Object acc = detail.get("acceptance");
+                    if (acc instanceof Map) {
+                        Object eligible = ((Map<?, ?>) acc).get("deliveryEligible");
+                        if (Boolean.FALSE.equals(eligible)) return "诊断(未收敛但有效)";
+                    }
+                }
+            }
+        } catch (Exception ignore) {
+        }
+        return "已交付";
     }
 
     @ApiOperation("模型成果列表")
@@ -461,12 +555,12 @@ public class EngineWorkbenchController {
         return resp;
     }
 
-    @ApiOperation("发起输出预测(F-08:Start_SteadyModelPredict,单工况确定性)")
+    @ApiOperation("发起输出预测(F-08;body: {inputs}单工况 或 {conditions:[{id,inputs}]}多工况, uqRecordId可选)")
     @PostMapping("/projects/{pid}/predict")
     @RequirePermission(Permission.CREATE)
     public Result<EngineModels.PredictionRecord> runPrediction(@PathVariable("pid") String pid,
                                                                @RequestParam("modelAssetId") String modelAssetId,
-                                                               @RequestBody Map<String, Object> inputs) {
+                                                               @RequestBody Map<String, Object> body) {
         try {
             String denied = accessDenied(store.getProject(pid));
             if (denied != null) return Result.error(denied);
@@ -478,12 +572,7 @@ public class EngineWorkbenchController {
                     || !new File(asset.getDeliveryWorkbookFile()).exists()) {
                 return Result.error("模型交付文件不存在;请重新登记模型成果");
             }
-            Map<String, Object> in = inputs == null ? new LinkedHashMap<>() : inputs;
-            if (!in.containsKey("inletBoundaryMode")) {
-                Object alt = in.get("Altitude");
-                in.put("inletBoundaryMode", alt != null && !String.valueOf(alt).isEmpty() ? 3
-                        : (in.containsKey("Pt1") ? 1 : 2));
-            }
+            Map<String, Object> bodyMap = body == null ? new LinkedHashMap<>() : body;
             EngineModels.PredictionRecord rec = new EngineModels.PredictionRecord();
             rec.setProjectId(pid);
             rec.setModelAssetId(asset.getId());
@@ -491,14 +580,99 @@ public class EngineWorkbenchController {
             rec.setModelFile(asset.getDeliveryWorkbookFile());
             rec.setStatus(EngineModels.PredictionRecord.ST_EXECUTING);
             rec.setMessage("预测执行中");
-            rec.setInputs(in);
             rec.setCreatedAt(System.currentTimeMillis());
+            rec.setUqRecordId(bodyMap.get("uqRecordId") == null ? null
+                    : String.valueOf(bodyMap.get("uqRecordId")));
+
+            // 多工况 conditions:[{id,inputs}] ;单工况 inputs 兼容
+            Object conds = bodyMap.get("conditions");
+            List<Map<String, Object>> inputs = new ArrayList<>();
+            if (conds instanceof List) {
+                int i = 0;
+                for (Object o : (List<?>) conds) {
+                    if (!(o instanceof Map)) continue;
+                    Map<?, ?> cm = (Map<?, ?>) o;
+                    Map<String, Object> in = normalizePredictInputs((Map<String, Object>) cm.get("inputs"));
+                    String id = cm.get("id") != null ? String.valueOf(cm.get("id"))
+                            : String.format("P%02d", ++i);
+                    in.put("_cid", id);
+                    inputs.add(in);
+                }
+            }
+            if (inputs.isEmpty()) {
+                Map<String, Object> in = normalizePredictInputs(bodyMap);
+                in.put("_cid", "P01");
+                inputs.add(in);
+            }
+            for (Map<String, Object> in : inputs) {
+                EngineModels.PredictionCondition c = new EngineModels.PredictionCondition();
+                String cid = String.valueOf(in.remove("_cid"));
+                c.setId(cid);
+                c.setInputs(in);
+                c.setStatus("EXECUTING");
+                rec.getConditions().add(c);
+            }
+            if (!rec.getConditions().isEmpty()) {
+                rec.setInputs(rec.getConditions().get(0).getInputs());
+            }
             store.savePrediction(rec);
             return Result.success(tc24Service.runPrediction(rec));
-        } catch (IOException e) {
+        } catch (Exception e) {
             log.error("发起输出预测失败", e);
             return Result.error("发起输出预测失败: " + e.getMessage());
         }
+    }
+
+    /** 补全 inletBoundaryMode(未显式给定时按字段推断),校验数值。 */
+    private Map<String, Object> normalizePredictInputs(Map<String, Object> raw) {
+        Map<String, Object> in = raw == null ? new LinkedHashMap<>() : new LinkedHashMap<>(raw);
+        if (!in.containsKey("inletBoundaryMode")) {
+            Object alt = in.get("Altitude");
+            in.put("inletBoundaryMode", alt != null && !String.valueOf(alt).isEmpty() ? 3
+                    : (in.containsKey("Pt1") ? 1 : 2));
+        }
+        return in;
+    }
+
+    @ApiOperation("下载预测输出Excel(按工况;cond缺省取最后一个完成的工况)")
+    @GetMapping("/projects/{pid}/predictions/{recId}/export")
+    @RequirePermission(Permission.READ)
+    public javax.servlet.http.HttpServletResponse exportPrediction(@PathVariable("pid") String pid,
+                                                                   @PathVariable("recId") String recId,
+                                                                   @RequestParam(value = "cond", required = false) String cond,
+                                                                   javax.servlet.http.HttpServletResponse resp) throws IOException {
+        String denied = accessDenied(store.getProject(pid));
+        if (denied != null) {
+            resp.sendError(javax.servlet.http.HttpServletResponse.SC_FORBIDDEN, denied);
+            return resp;
+        }
+        EngineModels.PredictionRecord target = null;
+        for (EngineModels.PredictionRecord r : store.listPredictions(pid)) {
+            if (recId.equals(r.getId())) { target = r; break; }
+        }
+        if (target == null) {
+            resp.sendError(javax.servlet.http.HttpServletResponse.SC_NOT_FOUND, "预测记录不存在");
+            return resp;
+        }
+        File excel = null;
+        List<EngineModels.PredictionCondition> list = target.getConditions();
+        if (list != null) {
+            for (int i = list.size() - 1; i >= 0; i--) {
+                EngineModels.PredictionCondition c = list.get(i);
+                if (cond != null && !cond.isEmpty() && !cond.equals(c.getId())) continue;
+                if (c.getExcelFile() != null && new File(c.getExcelFile()).exists()) { excel = new File(c.getExcelFile()); break; }
+            }
+        }
+        if (excel == null) {
+            resp.sendError(javax.servlet.http.HttpServletResponse.SC_NOT_FOUND, "该记录尚无输出Excel");
+            return resp;
+        }
+        resp.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        resp.setHeader("Content-Disposition", "attachment; filename=\""
+                + excel.getName().replaceAll("[^A-Za-z0-9._-]", "_") + "\"");
+        resp.setContentLengthLong(excel.length());
+        java.nio.file.Files.copy(excel.toPath(), resp.getOutputStream());
+        return resp;
     }
 
     @ApiOperation("输出预测记录列表")
@@ -514,17 +688,28 @@ public class EngineWorkbenchController {
         }
     }
 
-    private String findDeliveryWorkbook(File outputDir) {
-        File[] files = outputDir.listFiles((d, n) -> n.endsWith(".xlsx"));
-        if (files == null || files.length == 0) return null;
-        File best = null;
-        for (File f : files) {
-            if (f.getName().startsWith("2p4_deterministic")) {
-                best = f;
-                break;
-            }
-            if (best == null) best = f;
-        }
+    /** 交付 Excel:优先 2p4_deterministic_<route>(路线必须与任务一致,否则UQ报RouteMismatch);递归查找。 */
+    private String findDeliveryWorkbook(File outputDir, String routeHint) {
+        File best = findWorkbookRecursive(outputDir, 0, routeHint);
         return best == null ? null : best.getAbsolutePath();
+    }
+
+    private File findWorkbookRecursive(File dir, int depth, String routeHint) {
+        if (dir == null || depth > 4 || !dir.isDirectory()) return null;
+        File routeMatch = null, fallback = null;
+        File[] files = dir.listFiles();
+        if (files == null) return null;
+        for (File f : files) {
+            if (f.isDirectory()) {
+                File sub = findWorkbookRecursive(f, depth + 1, routeHint);
+                if (sub != null && routeMatch == null) routeMatch = sub;
+            } else if (f.getName().endsWith(".xlsx")) {
+                String name = f.getName();
+                if (name.startsWith("2p4_deterministic_" + routeHint)) return f;
+                if (name.startsWith("2p4_deterministic") && routeMatch == null) routeMatch = f;
+                if (fallback == null) fallback = f;
+            }
+        }
+        return routeMatch != null ? routeMatch : fallback;
     }
 }
