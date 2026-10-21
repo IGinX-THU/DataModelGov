@@ -134,12 +134,12 @@ public final class MatlabFunctionRunner {
             actualRelease = queryRelease(borrowed);
             emit("MATLAB release: " + actualRelease);
 
-            // 设置 MATLAB 字符集为 UTF-8（.m 文件为 UTF-8 编码，需 UTF-8 才能正确读取中文）
-            // 解压时 ArchiveUtil 已将中文目录名替换为 u/u_2 等，路径不含中文，可以安全启用。
+            // 程序 .m 源码为 GBK 编码(sht_r2019b_preflight 校验字面量),会话字符集必须与之一致,
+            // 设为 UTF-8 会把 GBK 中文读成乱码导致 preflight 断言失败。
             try {
-                invokeNoOutput(borrowed, "eval", "feature('DefaultCharacterSet', 'UTF-8')");
+                invokeNoOutput(borrowed, "eval", "feature('DefaultCharacterSet', 'GBK')");
             } catch (Exception e) {
-                log.debug("Failed to set MATLAB charset to UTF-8", e);
+                log.debug("Failed to set MATLAB charset to GBK", e);
             }
 
             // 将工作目录加入 DLL 搜索路径和 PATH，确保 MATLAB loadlibrary 能找到用户 DLL 及其依赖

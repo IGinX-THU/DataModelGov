@@ -127,7 +127,7 @@
                     createBtn.classList.add('disabled');
                     try {
                         const pid = encodeURIComponent(ctx.project.id || '');
-                        const resp = await window.AppConfig.enginePost('projects/' + pid + '/tasks?projectId=' + pid, {
+                        const resp = await window.AppConfig.enginePost('projects/' + pid + '/tasks', {
                             kind: 'steady', name: nameInput.value.trim() || '稳态建模任务',
                             route: routeSel.value, runId: 'WB_01'
                         });
@@ -257,7 +257,7 @@
                         const pid = encodeURIComponent(ctx.project.id || '');
                         const tid = encodeURIComponent(t.id);
                         const path = 'projects/' + pid + '/tasks/' + tid + '/files' +
-                            '?projectId=' + pid + '&taskId=' + tid + '&kind=' + encodeURIComponent(kind);
+                            '?kind=' + encodeURIComponent(kind);
                         console.log('上传文件:', f.name, '到:', path);
                         // 走统一封装:自动带 Authorization,FormData 由浏览器设置 multipart boundary
                         const resp = await window.AppConfig.engineUpload(path, fd);
@@ -360,7 +360,8 @@
                     WB().h('div', { class: 'wb-spacer' }),
                     WB().h('button', {
                         class: 'wb-btn wb-btn-outline',
-                        onclick: () => toast('高级求解设置由程序合同管理,界面暂不开放修改', 'info')
+                        // 求解设置由程序合同(config.json)统一下发,此处只读展示,不提供界面修改
+                        onclick: () => loadConfigDrawer(drawer, false)
                     }, '高级求解设置')));
                 return view;
             }
@@ -396,11 +397,9 @@
                     class: 'wb-btn wb-btn-primary',
                     onclick: async () => {
                         try {
-                            const q = 'projectId=' + encodeURIComponent(ctx.project.id || '')
-                                + '&taskId=' + encodeURIComponent(t.id);
                             const resp = await window.AppConfig.enginePost(
                                 'projects/' + encodeURIComponent(ctx.project.id || '') + '/tasks/'
-                                + encodeURIComponent(t.id) + '/run?' + q, {});
+                                + encodeURIComponent(t.id) + '/run', {});
                             if (resp && (resp.success || resp.code === 200)) {
                                 if (resp.data) state.task = resp.data;
                                 state.log = [];
@@ -472,11 +471,9 @@
                         onclick: async () => {
                             if (t.status === 'STOP_REQUESTED') return;
                             try {
-                                const q = 'projectId=' + encodeURIComponent(ctx.project.id || '')
-                                    + '&taskId=' + encodeURIComponent(t.id);
                                 await window.AppConfig.enginePost(
                                     'projects/' + encodeURIComponent(ctx.project.id || '') + '/tasks/'
-                                    + encodeURIComponent(t.id) + '/stop?' + q, {});
+                                    + encodeURIComponent(t.id) + '/stop', {});
                                 toast('已请求停止;等待程序到达安全点');
                                 t.status = 'STOP_REQUESTED';
                                 renderBody();
@@ -589,11 +586,9 @@
                     class: 'wb-btn wb-btn-primary',
                     onclick: async () => {
                         try {
-                            const q = 'projectId=' + encodeURIComponent(ctx.project.id || '')
-                                + '&taskId=' + encodeURIComponent(t.id);
                             const resp = await window.AppConfig.enginePost(
                                 'projects/' + encodeURIComponent(ctx.project.id || '') + '/tasks/'
-                                + encodeURIComponent(t.id) + '/save-model?' + q,
+                                + encodeURIComponent(t.id) + '/save-model',
                                 { name: (t.name || '稳态建模') + '-模型' });
                             if (resp && (resp.success || resp.code === 200)) {
                                 toast('已登记到模型成果', 'success');
@@ -698,9 +693,7 @@
                         const assetId = opt && opt.value ? opt.value : '';
                         if (!assetId) { toast('请先在建模结果页登记模型成果', 'error'); return; }
                         try {
-                            const q = 'projectId=' + encodeURIComponent(ctx.project.id || '')
-                                + '&taskId=' + encodeURIComponent(t.id)
-                                + '&method=' + encodeURIComponent(methodSel.value);
+                            const q = 'method=' + encodeURIComponent(methodSel.value);
                             const resp = await window.AppConfig.enginePost(
                                 'projects/' + encodeURIComponent(ctx.project.id || '') + '/tasks/'
                                 + encodeURIComponent(t.id) + '/uq?' + q, { modelAssetId: assetId });
@@ -873,7 +866,7 @@
                 })
                 .catch(() => { });
         }
-        function startPolling() { stopPolling(); state.timer = setInterval(poll, 2500); poll(); }
+        function startPolling() { stopPolling(); state.timer = setInterval(poll, 5000); poll(); }
         function stopPolling() { if (state.timer) { clearInterval(state.timer); state.timer = null; } hideRunLoading(); }
 
         /** 数据准备(preview):真实解析工况分组;完成后由 poll 刷新页面 */
@@ -881,7 +874,7 @@
             const pid = encodeURIComponent(ctx.project.id || '');
             const tid = encodeURIComponent(state.task.id);
             toast('正在解析训练数据(工况与分组)...', 'info');
-            window.AppConfig.enginePost('projects/' + pid + '/tasks/' + tid + '/prepare?projectId=' + pid + '&taskId=' + tid, {})
+            window.AppConfig.enginePost('projects/' + pid + '/tasks/' + tid + '/prepare', {})
                 .then(resp => {
                     if (resp && (resp.success || resp.code === 200)) {
                         state.prepWait = true;

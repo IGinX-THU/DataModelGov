@@ -568,6 +568,118 @@ public class Tc24Service {
 
     /* ---------- 内部 ---------- */
 
+    /**
+     * 输出预测(F-08:Start_TC24_00_Offline task='predict' → Start_SteadyModelPredict_01)。
+     * 单工况确定性预测,异步执行;记录状态经 store 持久化,前端轮询项目预测列表。
+     */
+    public EngineModels.PredictionRecord runPrediction(EngineModels.PredictionRecord rec) throws IOException {
+        final String pid = rec.getProjectId();
+        emitLog(pid, "发起输出预测(model=" + rec.getModelName() + ")");
+        executor.submit(() -> {
+            try {
+                File programCopy = ensureWorkingCopy();
+                File workDir = store.taskWorkDir(pid, "predict");
+                File adapterDir = new File(workDir, "adapter");
+                if (!adapterDir.exists() && !adapterDir.mkdirs()) throw new IOException("无法创建适配器目录");
+                String runId = "pred_" + new java.text.SimpleDateFormat("yyyyMMdd_HHmmss").format(new java.util.Date());
+                File outDir = new File(workDir, "output_" + runId);
+                if (!outDir.exists() && !outDir.mkdirs()) throw new IOException("无法创建预测输出目录");
+
+                String programPath = programCopy.getAbsolutePath().replace('\\', '/');
+                StringBuilder m = new StringBuilder();
+                m.append("function r = dmg_tc24_task(configFile)\n");
+                m.append("% TC24 接入适配器(独立稳态预测;由数据与模型一体化管理软件生成)\n");
+                m.append("c = jsondecode(fileread(configFile));\n");
+                m.append("addpath('").append(programPath).append("', '-begin');\n");
+                m.append("rehash;\n");
+                m.append("o = struct('runId', c.runId, 'outputDirectory', c.outputDirectory, 'plotEnabled', false);\n");
+                m.append("cfg = struct('task', 'predict', 'modelInput', c.modelInput, 'modelFile', c.modelFile, ...\n");
+                m.append("    'posterior', [], 'options', o);\n");
+                m.append("r = Start_TC24_00_Offline(cfg);\n");
+                m.append("r = dmg_jsonable(r);\n");
+                m.append("payload = jsonencode(r);\n");
+                m.append("fid = fopen(c.resultFile, 'w', 'n', 'UTF-8');\n");
+                m.append("fwrite(fid, payload, 'char');\n");
+                m.append("fclose(fid);\n");
+                m.append("r = payload;\n");
+                m.append("end\n");
+                m.append(matlabJsonableFn());
+                Files.write(new File(adapterDir, "dmg_tc24_task.m").toPath(),
+                        m.toString().getBytes(StandardCharsets.UTF_8));
+
+                Map<String, Object> cfg = new LinkedHashMap<>();
+                cfg.put("modelInput", rec.getInputs());
+                cfg.put("modelFile", abs(rec.getModelFile()));
+                cfg.put("outputDirectory", outDir.getAbsolutePath().replace('\\', '/'));
+                cfg.put("runId", runId);
+                cfg.put("resultFile", new File(adapterDir, "predict-result.json").getAbsolutePath().replace('\\', '/'));
+                File configFile = new File(adapterDir, "predict-config.json");
+                Files.write(configFile.toPath(),
+                        new com.fasterxml.jackson.databind.ObjectMapper()
+                                .writerWithDefaultPrettyPrinter().writeValueAsBytes(cfg));
+                rec.setRunId(runId);
+                store.savePrediction(rec);
+
+                MatlabFunctionRunner runner = new MatlabFunctionRunner(adapterDir, "dmg_tc24_task",
+                        new Object[]{configFile.getAbsolutePath()},
+                        new File(workDir, "predict.log"), enginePool);
+                Object result = runner.run();
+
+                EngineModels.PredictionRecord fresh = findPrediction(pid, rec.getId());
+                if (fresh == null) fresh = rec;
+                fresh.setRunId(runId);
+                fresh.setFinishedAt(System.currentTimeMillis());
+                Object parsed = parseJsonFile(new File(adapterDir, "predict-result.json"));
+                String st = extractStatus(parsed instanceof Map ? parsed : result);
+                if (st != null && (st.contains("fail") || st.contains("error"))) {
+                    fresh.setStatus(EngineModels.PredictionRecord.ST_FAILED);
+                    fresh.setMessage("程序返回失败状态: " + st);
+                } else {
+                    fresh.setStatus(EngineModels.PredictionRecord.ST_COMPLETED);
+                    fresh.setMessage("预测完成");
+                    if (parsed instanceof Map) {
+                        fresh.setResult(summarizeResult(parsed, outDir));
+                    } else {
+                        fresh.setResult(summarizeResult(result, outDir));
+                    }
+                }
+                store.savePrediction(fresh);
+                emitLog(pid, "输出预测" + (EngineModels.PredictionRecord.ST_COMPLETED.equals(fresh.getStatus()) ? "完成" : "失败"));
+            } catch (Exception e) {
+                log.error("输出预测失败: {}", pid, e);
+                try {
+                    EngineModels.PredictionRecord fresh = findPrediction(pid, rec.getId());
+                    if (fresh == null) fresh = rec;
+                    fresh.setStatus(EngineModels.PredictionRecord.ST_FAILED);
+                    fresh.setFinishedAt(System.currentTimeMillis());
+                    fresh.setMessage("预测失败: " + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
+                    store.savePrediction(fresh);
+                } catch (IOException io) {
+                    log.error("预测失败状态写回失败", io);
+                }
+                emitLog(pid, "输出预测失败: " + e.getMessage());
+            }
+        });
+        return rec;
+    }
+
+    private EngineModels.PredictionRecord findPrediction(String pid, String id) throws IOException {
+        for (EngineModels.PredictionRecord r : store.listPredictions(pid)) {
+            if (id != null && id.equals(r.getId())) return r;
+        }
+        return null;
+    }
+
+    private Object parseJsonFile(File f) {
+        if (!f.exists()) return null;
+        try {
+            return new com.fasterxml.jackson.databind.ObjectMapper().readValue(f, Object.class);
+        } catch (IOException e) {
+            log.warn("解析结果 JSON 失败: {}", f, e);
+            return null;
+        }
+    }
+
     private File writeAdapterAndConfig(File adapterDir, File programCopy, EngineModels.ModelingTask task,
                                        File outputDir) throws IOException {
         String programPath = programCopy.getAbsolutePath().replace('\\', '/');

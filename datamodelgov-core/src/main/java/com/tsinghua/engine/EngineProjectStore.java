@@ -18,6 +18,7 @@ import java.util.UUID;
 import com.tsinghua.engine.EngineModels.EngineProject;
 import com.tsinghua.engine.EngineModels.ModelAsset;
 import com.tsinghua.engine.EngineModels.ModelingTask;
+import com.tsinghua.engine.EngineModels.PredictionRecord;
 
 /**
  * 工作台域模型文件存储:
@@ -93,7 +94,8 @@ public class EngineProjectStore {
     }
 
     public EngineProject saveProject(EngineProject p) throws IOException {
-        if (p.getId() == null || p.getId().isEmpty()) p.setId(newId());
+        // 项目 id 与 IginX 元数据表主键对齐:时间戳(字符串形式承载)
+        if (p.getId() == null || p.getId().isEmpty()) p.setId(String.valueOf(System.currentTimeMillis()));
         if (p.getCreatedAt() == null) p.setCreatedAt(System.currentTimeMillis());
         File dir = projectDir(p.getId());
         if (!dir.exists() && !dir.mkdirs()) throw new IOException("无法创建项目目录: " + dir);
@@ -210,6 +212,35 @@ public class EngineProjectStore {
             }
         }
         out.sort(Comparator.comparing(ModelAsset::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())));
+        return out;
+    }
+
+    /* ---------- 输出预测记录 ---------- */
+
+    public PredictionRecord savePrediction(PredictionRecord r) throws IOException {
+        if (r.getId() == null || r.getId().isEmpty()) {
+            r.setId(newId());
+            r.setCreatedAt(System.currentTimeMillis());
+        }
+        File dir = new File(projectDir(r.getProjectId()), "predictions");
+        if (!dir.exists() && !dir.mkdirs()) throw new IOException("无法创建预测目录: " + dir);
+        mapper.writerWithDefaultPrettyPrinter().writeValue(new File(dir, r.getId() + ".json"), r);
+        return r;
+    }
+
+    public List<PredictionRecord> listPredictions(String projectId) throws IOException {
+        List<PredictionRecord> out = new ArrayList<>();
+        File dir = new File(projectDir(projectId), "predictions");
+        File[] files = dir.listFiles((d, n) -> n.endsWith(".json"));
+        if (files == null) return out;
+        for (File f : files) {
+            try {
+                out.add(mapper.readValue(f, PredictionRecord.class));
+            } catch (Exception e) {
+                log.warn("读取预测记录失败: {}", f.getName(), e);
+            }
+        }
+        out.sort(Comparator.comparing(PredictionRecord::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())));
         return out;
     }
 }

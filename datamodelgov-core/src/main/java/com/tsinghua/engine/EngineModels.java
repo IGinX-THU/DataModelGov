@@ -109,4 +109,29 @@ public final class EngineModels {
         private String deliveryWorkbookFile;
         private Map<String, Object> metrics = new LinkedHashMap<>();
     }
+
+    /** 输出预测记录(F-08 独立稳态预测):一次一个新工况,确定性输出。 */
+    @Data
+    public static class PredictionRecord {
+        public static final String ST_EXECUTING = "EXECUTING";
+        public static final String ST_COMPLETED = "COMPLETED";
+        public static final String ST_FAILED = "FAILED";
+
+        private String id;
+        private String projectId;
+        private String modelAssetId;
+        private String modelName;
+        /** 下发给程序的模型 Excel 绝对路径 */
+        private String modelFile;
+        private String runId;
+        /** EXECUTING | COMPLETED | FAILED */
+        private String status;
+        private String message;
+        /** 预测输入(Pt1/Tt1/Pamb/Tamb/Mach/Altitude/Wf_model/Mkp/Mkg/inletBoundaryMode) */
+        private Map<String, Object> inputs = new LinkedHashMap<>();
+        /** 程序返回的预测结果(Np/Ng/收敛状态等可序列化摘要) */
+        private Map<String, Object> result = new LinkedHashMap<>();
+        private Long createdAt;
+        private Long finishedAt;
+    }
 }

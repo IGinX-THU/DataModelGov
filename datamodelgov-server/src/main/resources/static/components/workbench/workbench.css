@@ -346,3 +346,11 @@ html.dark-mode .wb-loading-bar { background: #374151; }
 .wb-inline-loading { display: inline-flex; align-items: center; gap: 10px; color: #0f766e; font-size: 13px; font-weight: 600; }
 .wb-inline-spinner { width: 16px; height: 16px; border: 2px solid #ccfbf1; border-top-color: #0f766e; border-radius: 50%; display: inline-block; animation: wb-spin .8s linear infinite; }
 html.dark-mode .wb-inline-loading { color: #5eead4; }
+
+/* ===== 链接型按钮(模型交付文件下载等) ===== */
+a.wb-btn { display: inline-block; text-decoration: none; }
+
+/* ===== 项目入口分页条 ===== */
+.wb-root-pager { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-top: 1px solid #e5e7eb; background: #fafafa; }
+.wb-root-pager .wb-btn { min-width: 34px; padding: 5px 10px; font-size: 13px; }
+.wb-root-pager .wb-hint { margin-right: auto; }

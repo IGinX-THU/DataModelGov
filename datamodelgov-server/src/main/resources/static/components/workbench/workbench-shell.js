@@ -16,12 +16,12 @@
         show({ workbench, project } = {}) {
             this._config = WB().WORKBENCHES[workbench];
             if (!this._config) { console.error('未知工作台:', workbench); return; }
-            // 确保project对象有必要的字段
-            const p = project || WB().DEMO.project;
-            if (!p.id) {
-                p.id = 'demo-' + Date.now();
-                p.name = p.name || '演示项目';
+            // 必须携带真实项目id(来自项目列表/新建接口),不再提供任何演示兜底
+            if (!project || !project.id) {
+                if (window.Workbench && window.Workbench.toast) window.Workbench.toast('项目缺少有效id,无法进入工作台。', 'error');
+                return;
             }
+            const p = project;
             this._ctx = {
                 project: p,
                 navigate: (key) => this._navigate(key),
