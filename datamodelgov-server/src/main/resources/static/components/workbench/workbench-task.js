@@ -360,10 +360,54 @@
                     WB().h('div', { class: 'wb-spacer' }),
                     WB().h('button', {
                         class: 'wb-btn wb-btn-outline',
-                        // 求解设置由程序合同(config.json)统一下发,此处只读展示,不提供界面修改
-                        onclick: () => loadConfigDrawer(drawer, false)
+                        // 与"检查配置"职责不同:此处只读展示 A/B/D 三阶段求解方法合同(01-04),
+                        // 检查配置则做数据/路径/运行包一致性校验并给结论
+                        onclick: () => loadSolverDrawer(drawer)
                     }, '高级求解设置')));
                 return view;
+            }
+
+            /** 高级求解设置(11.3 高级区):只读展示正则化/迭代上限/采样等高级参数及其来源,
+             *  与"检查配置"(数据/路径/运行包一致性校验)职责不同;界面不提供修改。 */
+            function loadSolverDrawer(container) {
+                const pid = encodeURIComponent(ctx.project.id || '');
+                const tid = encodeURIComponent(state.task.id);
+                const ADV_KEYS = /solve|solver|tsvd|tikhonov|lambda|regul|iter|迭代|正则|奇异|先验|prior|sample|采样|步长|step|微调|上限/i;
+                window.AppConfig.engineGet('projects/' + pid + '/tasks/' + tid + '/config')
+                    .then(resp => {
+                        container.innerHTML = '';
+                        const cfg = resp && (resp.success || resp.code === 200) && resp.data ? resp.data : null;
+                        const box = WB().h('div', { class: 'wb-card', style: 'padding:14px;max-width:1180px;margin-bottom:12px' },
+                            WB().h('div', { class: 'wb-section-title', style: 'margin-bottom:8px' }, '高级求解设置(程序合同只读)'),
+                            WB().h('table', { class: 'wb-table' },
+                                WB().h('tr', null, ['阶段', '方法', '关键设置'].map(x => WB().h('th', null, x))),
+                                WB().h('tr', null, WB().h('td', null, 'A 全工况常值'), WB().h('td', null, '无阻尼TSVD'), WB().h('td', null, '保留6个奇异值')),
+                                WB().h('tr', null, WB().h('td', null, 'B 组内辨识'), WB().h('td', null, 'Tikhonov'), WB().h('td', null, '按组配置先验尺度')),
+                                WB().h('tr', null, WB().h('td', null, 'D 联合微调'), WB().h('td', null, 'Tikhonov'), WB().h('td', null, 'λ = 0.02;总上限20次'))));
+                        const adv = WB().h('div', { class: 'wb-kv', style: 'max-width:1180px;margin-top:10px' });
+                        let advCount = 0;
+                        if (cfg) {
+                            Object.keys(cfg).forEach(k => {
+                                if (!ADV_KEYS.test(k)) return;
+                                const v = cfg[k];
+                                if (v == null || typeof v === 'object') return;
+                                adv.appendChild(WB().h('div', { class: 'k' }, k));
+                                adv.appendChild(WB().h('div', { class: 'v' }, String(v)));
+                                advCount++;
+                            });
+                        }
+                        if (advCount) {
+                            box.appendChild(WB().h('div', { class: 'wb-section-title', style: 'margin:10px 0 6px' }, '本次下发的高级参数'));
+                            box.appendChild(adv);
+                        } else {
+                            box.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin-top:10px' },
+                                '本次配置中未包含可展示的高级参数;以上为当前程序合同默认求解设置。'));
+                        }
+                        box.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin-top:8px' },
+                            '来源:sht_tc24_estimation_options / sht_tc24_b_config 集中配置;单位与适用范围见程序交付配置字典。如需调整,请在程序管理中修改配置,运行界面不改。'));
+                        container.appendChild(box);
+                    })
+                    .catch(e => toast('读取求解设置失败:' + e.message, 'error'));
             }
 
             /** 拉取并展示本次真实下发的配置(config.json 回读);检查模式额外给出一致性结论。 */
@@ -831,8 +875,7 @@
             const prevPrep = state.task ? state.task.prepMessage : null;
             window.AppConfig.engineGet(
                 'projects/' + encodeURIComponent(ctx.project.id || '') + '/tasks/'
-                + encodeURIComponent(state.task.id) + '/status',
-                { projectId: ctx.project.id || '', taskId: state.task.id })
+                + encodeURIComponent(state.task.id) + '/status')
                 .then(resp => {
                     if (resp && (resp.success || resp.code === 200) && resp.data) {
                         state.task = resp.data.task;
