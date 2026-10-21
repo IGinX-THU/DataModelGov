@@ -993,7 +993,6 @@ function loadOverviewTasks(ctx, holder) {
         const modeSel = h('select', { style: 'width:100%' }, Object.keys(PREDICT_FIELDS).map(k =>
             h('option', { value: k }, PREDICT_FIELDS[k].label)));
         const condsHolder = h('div', null);
-        const addCondBtn = h('button', { class: 'wb-btn wb-btn-outline' }, '＋ 添加工况');
         const runBtn = h('button', { class: 'wb-btn wb-btn-primary disabled' }, '计算预测');
         const saveBtn = h('button', { class: 'wb-btn wb-btn-outline disabled' }, '保存预测记录');
         const resultHolder = h('div', null, h('div', { class: 'wb-empty' }, '尚未计算——配置输入后开始预测。空白不代表零误差。'));
@@ -1005,7 +1004,7 @@ function loadOverviewTasks(ctx, holder) {
         let uqRecords = [];
 
         function buildCondInputs(mode) {
-            const grid = h('div', { class: 'wb-form-grid', style: 'margin-top:8px' });
+            const grid = h('div', { class: 'wb-form-grid', style: 'margin-top:8px;grid-template-columns:repeat(4,1fr)' });
             PREDICT_FIELDS[mode].fields.forEach(name => {
                 const unit = PREDICT_UNITS[name] && PREDICT_UNITS[name] !== '—' ? ' / ' + PREDICT_UNITS[name] : '';
                 grid.appendChild(h('div', { class: 'wb-field' },
@@ -1055,7 +1054,6 @@ function loadOverviewTasks(ctx, holder) {
                 c.grid = fresh;
             });
         });
-        addCondBtn.addEventListener('click', () => addCondition());
 
         function condInputs(c) {
             const inputs = {};
@@ -1214,25 +1212,122 @@ function loadOverviewTasks(ctx, holder) {
             }
             const condList = Array.isArray(rec.conditions) && rec.conditions.length ? rec.conditions
                 : [{ id: 'P01', status: rec.status, message: rec.message, result: rec.result }];
-            // 关键输出提取(01-12汇总表):兼容顶层/outputs嵌套与大小写
+            // 已有输出的工况才渲染行;全部无输出时给出明确空态而不是空表
+            const withResult = condList.filter(c => c.result && Object.keys(c.result).length);
+            if (!withResult.length && !condList.some(c => c.status === 'FAILED')) {
+                resultHolder.appendChild(h('div', { class: 'wb-hint', style: 'margin:8px 0' },
+                    '本次运行未产生可展示的单工况输出对象;输出Excel与完整结果以导出文件为准。'));
+                return;
+            }
+            // 关键输出提取(01-12汇总表):递归任意嵌套(≤3层)按通道名取值,兼容顶层/outputs/output等结构
             const pickOut = (c, name) => {
-                const r = c.result || {};
-                const pools = [r, r.outputs || {}, r.summary || {}];
-                for (const pool of pools) {
-                    if (pool == null) continue;
-                    for (const k of Object.keys(pool)) {
-                        if (k.toLowerCase() === name.toLowerCase() && isFinite(parseFloat(pool[k]))) return parseFloat(pool[k]);
-                    }
+                let found = null;
+                const walk = (obj, depth) => {
+                    if (found != null || obj == null || typeof obj !== 'object' || depth > 3) return;
+                    if (Array.isArray(obj)) { obj.forEach(o => walk(o, depth + 1)); return; }
+                    Object.keys(obj).forEach(k => {
+                        if (found != null) return;
+                        const v = obj[k];
+                        if (typeof v !== 'object' && k.toLowerCase() === name.toLowerCase()
+                            && v != null && isFinite(parseFloat(v))) { found = parseFloat(v); return; }
+                        if (v && typeof v === 'object') walk(v, depth + 1);
+                    });
+                };
+                walk(c.result || {}, 0);
+                return found;
+            };
+            // 诊断展开过滤输入回显等元数据,只留输出与执行信息(不再整包dump)
+            const META_KEY = /^(input|modelInput|inputContract|schemaVersion|createdAt|inputSummary)$/i;
+            const stripMeta = v => {
+                if (v && typeof v === 'object' && !Array.isArray(v)) {
+                    const out = {};
+                    Object.keys(v).forEach(k => { if (!META_KEY.test(k)) out[k] = stripMeta(v[k]); });
+                    return Object.keys(out).length ? out : undefined;
                 }
-                return null;
+                return v;
             };
             const fmtOut = v => v == null ? '—' : (Math.abs(v) >= 1000 ? v.toFixed(0) : Math.abs(v) >= 1 ? v.toFixed(3) : v.toFixed(4));
+            // 01-11/01-24 单工况通道表:输出|单位|确定性计算值|95%候选参数输出区间(区间来自程序intervalTable)
+            const OUTPUT_UNITS = { Np: 'rpm', Ng: 'rpm', Ptb3: 'Pa', Ttb3: 'K', Pt45: 'Pa', Tt45: 'K', Pt6: 'Pa', Tt6: 'K', Wa2: 'kg/s' };
+            const findIntervalTable = c => {
+                let hit = null;
+                const walk = (obj, depth) => {
+                    if (hit || obj == null || typeof obj !== 'object' || depth > 3) return;
+                    if (Array.isArray(obj)) { obj.forEach(o => walk(o, depth + 1)); return; }
+                    Object.keys(obj).forEach(k => {
+                        if (hit) return;
+                        const v = obj[k];
+                        if (/interval/i.test(k) && Array.isArray(v) && v.length
+                            && v.some(e => e && e.model_lower != null)) hit = v;
+                        else if (v && typeof v === 'object') walk(v, depth + 1);
+                    });
+                };
+                walk(c.result || {}, 0);
+                return hit;
+            };
+            const condChannelTable = c => {
+                const it = findIntervalTable(c);
+                const rows = ['Np', 'Ng', 'Ptb3', 'Ttb3', 'Pt45', 'Tt45', 'Pt6', 'Tt6', 'Wa2'];
+                const rowOf = n => it ? it.find(e => e && String(e.output_name || '').trim() === n) : null;
+                const vals = rows.map(n => {
+                    const r0 = rowOf(n);
+                    return (r0 && r0.deterministic_frozen_model != null && isFinite(r0.deterministic_frozen_model))
+                        ? parseFloat(r0.deterministic_frozen_model) : pickOut(c, n);
+                });
+                if (vals.every(v => v == null)) return null;
+                const hasIv = !!it;
+                const fmtIv = e => (e && e.model_lower != null && isFinite(e.model_lower) && isFinite(e.model_upper))
+                    ? '[' + Number(e.model_lower).toFixed(1) + ', ' + Number(e.model_upper).toFixed(1) + ']'
+                    : '未计算';
+                return h('table', { class: 'wb-table', style: 'margin-top:8px' },
+                    h('tr', null, ['输出', '单位', '确定性计算值', hasIv ? '95%候选参数输出区间' : '区间状态'].map(x => h('th', null, x))),
+                    rows.map((n, i) => h('tr', null,
+                        h('td', null, n),
+                        h('td', { class: 'wb-hint' }, (rowOf(n) && rowOf(n).unit) || OUTPUT_UNITS[n]),
+                        h('td', null, fmtOut(vals[i])),
+                        h('td', { class: 'wb-hint' }, hasIv ? fmtIv(rowOf(n)) : '未计算'))));
+            };
+            const actionsRow = () => h('div', { class: 'wb-actions-row', style: 'margin-top:12px' },
+                saveBtn,
+                h('a', { class: 'wb-btn wb-btn-outline' + (condList.some(c => c.excelFile) ? '' : ' disabled'),
+                    href: condList.some(c => c.excelFile) ? predExportUrl(rec.id) : '#' }, '导出预测Excel'),
+                h('div', { class: 'wb-spacer' }),
+                h('button', { class: 'wb-btn wb-btn-outline', onclick: () => ctx.navigate('models') }, '返回模型成果'),
+                h('button', { class: 'wb-btn wb-btn-outline', onclick: () => addCondition() }, '添加工况'));
+
+            // 单工况完成(01-11):直接平铺"P01 预测结果"+通道表,不套工况汇总表
+            if (condList.length === 1 && condList[0].status === 'COMPLETED') {
+                const c = condList[0];
+                const doneText = rec.uqRecordId ? '确定性及候选区间已计算' : '确定性计算已完成';
+                resultHolder.appendChild(h('div', { style: 'display:flex;justify-content:space-between;align-items:baseline;margin:4px 0 8px' },
+                    h('div', { class: 'wb-section-title', style: 'margin:0' }, c.id + ' 预测结果'),
+                    h('span', { style: 'color:#0f766e;font-weight:600;font-size:13px' }, doneText)));
+                const ct = condChannelTable(c);
+                if (ct) resultHolder.appendChild(ct);
+                else {
+                    resultHolder.appendChild(h('div', { class: 'wb-hint', style: 'margin:6px 0' },
+                        '程序返回中未包含可展示的输出通道数值;完整输出以导出Excel为准。'));
+                    resultHolder.appendChild(renderValue(stripMeta(c.result) || {}, false));
+                }
+                resultHolder.appendChild(h('div', { class: 'wb-hint', style: 'margin-top:6px' },
+                    (rec.runId || '') + ' · ' + (rec.uqRecordId
+                        ? '条件参数输出区间,不含新测量误差' : '确定性计算 · 全部输出可展开') + ';无测量值,不计算误差。'));
+                if (c.message && c.message.indexOf('诊断') >= 0) {
+                    resultHolder.appendChild(h('div', { class: 'wb-infobar', style: 'border-left:4px solid #d97706;background:#fffbeb;margin-top:8px' },
+                        '⚠ ' + c.message));
+                }
+                resultHolder.appendChild(actionsRow());
+                return;
+            }
+
+            // 多工况/失败(01-12):汇总表 + 单工况查看展开
             const tbl = h('table', { class: 'wb-table' },
                 h('tr', null, ['工况', '状态', 'Np / rpm', 'Ng / rpm', 'Tt45 / K', '说明', ''].map(t => h('th', null, t))));
             condList.forEach(c => {
+                const channelTbl = condChannelTable(c);
                 const diag = h('div', { style: 'display:none;margin-top:6px;padding:8px;background:#f8fafc;border-radius:6px' },
                     h('div', { class: 'wb-hint', style: 'margin:0 0 4px' }, '单工况输出(全部输出可展开;无测量值,不计算误差):'),
-                    renderValue(c.result || {}, false));
+                    channelTbl ? channelTbl : renderValue(stripMeta(c.result) || {}, false));
                 const viewBtn = h('button', { class: 'wb-btn wb-btn-outline' }, '查看');
                 viewBtn.addEventListener('click', () => {
                     diag.style.display = diag.style.display === 'none' ? '' : 'none';
@@ -1248,7 +1343,7 @@ function loadOverviewTasks(ctx, holder) {
                     });
                 }
                 tbl.appendChild(h('tr', null,
-                    h('td', { style: 'font-weight:600' }, c.id),
+                    h('td', { style: 'font-weight:600' }, c.id || '—'),
                     h('td', null, statusTag(c.status === 'COMPLETED' ? '已完成' : c.status === 'FAILED' ? '失败' : '执行中',
                         c.status === 'COMPLETED' ? 'teal' : c.status === 'FAILED' ? 'red' : 'amber')),
                     h('td', null, fmtOut(pickOut(c, 'Np'))),
@@ -1259,13 +1354,7 @@ function loadOverviewTasks(ctx, holder) {
                     h('td', null, viewBtn, diagBtn, diag)));
             });
             resultHolder.appendChild(tbl);
-            resultHolder.appendChild(h('div', { class: 'wb-actions-row', style: 'margin-top:12px' },
-                saveBtn,
-                h('a', { class: 'wb-btn wb-btn-outline' + (condList.some(c => c.excelFile) ? '' : ' disabled'),
-                    href: condList.some(c => c.excelFile) ? predExportUrl(rec.id) : '#' }, '导出预测Excel'),
-                h('div', { class: 'wb-spacer' }),
-                h('button', { class: 'wb-btn wb-btn-outline', onclick: () => ctx.navigate('models') }, '返回模型成果'),
-                h('button', { class: 'wb-btn wb-btn-outline', onclick: () => addCondition() }, '添加工况')));
+            resultHolder.appendChild(actionsRow());
         }
 
         async function loadHistory() {
@@ -1301,22 +1390,21 @@ function loadOverviewTasks(ctx, holder) {
                 .map(k => k + '=' + inputs[k]).join(' ');
         }
 
-        body.appendChild(h('div', { class: 'wb-section', style: 'display:grid;grid-template-columns:1fr 1fr;gap:22px' },
-            h('div', { class: 'wb-card', style: 'padding:14px' },
-                h('div', { class: 'wb-section-title', style: 'margin-bottom:14px' }, '预测输入'),
-                h('div', { class: 'wb-field' }, h('label', null, '预测模型(已登记)'), modelSel),
-                h('div', { class: 'wb-field', style: 'margin-top:10px' }, h('label', null, '不确定性评估(可选;区间在新输入下重新传播)'), uqSel),
-                h('div', { class: 'wb-field', style: 'margin-top:10px' }, h('label', null, '环境边界输入方式'), modeSel),
-                h('div', { style: 'margin-top:10px' },
-                    h('div', { style: 'display:flex;align-items:center;gap:10px' },
-                        h('div', { style: 'font-weight:700;color:#111827' }, '预测工况'),
-                        h('div', { class: 'wb-hint', style: 'margin:0' }, '物理燃油输入,不重复扣除燃油测量偏置'),
-                        h('div', { class: 'wb-spacer' }), addCondBtn),
-                    h('div', { style: 'margin-top:8px' }, condsHolder)),
-                h('div', { class: 'wb-actions-row', style: 'margin-top:14px' }, runBtn)),
-            h('div', { class: 'wb-card', style: 'padding:14px' },
-                h('div', { class: 'wb-section-title', style: 'margin-bottom:14px' }, '预测结果'),
-                resultHolder)));
+        // 01-11 布局:顶部三下拉一行三列 → 工况输入(4列网格) → 计算按钮 → 结果 → 记录
+        body.appendChild(h('div', { class: 'wb-form-grid', style: 'grid-template-columns:1fr 1fr 1fr;margin-bottom:6px' },
+            h('div', { class: 'wb-field' }, h('label', null, '模型'), modelSel),
+            h('div', { class: 'wb-field' }, h('label', null, '不确定性评估'), uqSel),
+            h('div', { class: 'wb-field' }, h('label', null, '边界输入方式'), modeSel)));
+        body.appendChild(h('div', { style: 'display:flex;justify-content:space-between;align-items:center;margin:2px 0 8px' },
+            h('div', { class: 'wb-hint', style: 'margin:0;font-weight:600' }, '预测工况'),
+            h('button', { class: 'wb-btn wb-btn-outline' , onclick: () => addCondition() }, '＋ 添加工况')));
+        body.appendChild(condsHolder);
+        body.appendChild(h('div', { style: 'display:flex;justify-content:space-between;align-items:center;margin:6px 0 14px' },
+            h('div', { class: 'wb-hint', style: 'margin:0' }, '物理燃油输入；不重复扣除燃油测量偏置。'),
+            runBtn));
+        body.appendChild(h('div', { class: 'wb-section' },
+            h('div', { class: 'wb-section-title', style: 'margin-bottom:12px' }, '预测结果'),
+            resultHolder));
         body.appendChild(h('div', { class: 'wb-section' },
             h('div', { class: 'wb-section-title', style: 'margin-bottom:12px' }, '预测记录(点击行查看结果)'),
             historyHolder));
@@ -1355,32 +1443,62 @@ function loadOverviewTasks(ctx, holder) {
     async function loadRunRecords(ctx, holder) {
         holder.innerHTML = '';
         try {
-            const resp = await window.AppConfig.engineGet('projects/detail', { projectId: ctx.project.id });
-            const tasks = resp && (resp.success || resp.code === 200) && resp.data && Array.isArray(resp.data.tasks)
-                ? resp.data.tasks : null;
-            if (!tasks) throw new Error((resp && resp.message) || '接口返回异常');
-            if (!tasks.length) {
-                holder.appendChild(h('div', { class: 'wb-empty' }, '暂无运行记录——发起数据准备或辨识后在此查看。'));
+            // 运行维度统计:每次执行(稳态辨识/数据准备/UQ评估/输出预测)各一条,以运行标识runId为身份
+            const [taskResp, uqResp, predResp] = await Promise.all([
+                window.AppConfig.engineGet('projects/detail', { projectId: ctx.project.id }),
+                window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id) + '/uq-records').catch(() => null),
+                window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id) + '/predictions').catch(() => null)
+            ]);
+            const tasks = taskResp && (taskResp.success || taskResp.code === 200) && taskResp.data && Array.isArray(taskResp.data.tasks)
+                ? taskResp.data.tasks : null;
+            if (!tasks) throw new Error((taskResp && taskResp.message) || '接口返回异常');
+            const uqList = uqResp && uqResp.success && Array.isArray(uqResp.data) ? uqResp.data : [];
+            const predList = predResp && predResp.success && Array.isArray(predResp.data) ? predResp.data : [];
+            if (!tasks.length && !uqList.length && !predList.length) {
+                holder.appendChild(h('div', { class: 'wb-empty' }, '暂无运行记录——发起数据准备、辨识、评估或预测后在此查看。'));
                 return;
             }
+            const rows = [];
+            tasks.forEach(t => rows.push({
+                kind: '稳态辨识', runId: t.runId || '—', ref: t.name || t.id,
+                status: t.status === 'FAILED' && t.errorKind === 'SAVE_FAILED' ? '保存失败'
+                    : t.status === 'FAILED' && t.errorKind === 'NUMERIC_FAILED' ? '数值失败' : t.status,
+                kindTag: t.status === 'FAILED' ? (t.errorKind === 'SAVE_FAILED' ? ['保存失败', 'amber'] : t.errorKind === 'NUMERIC_FAILED' ? ['数值失败', 'red'] : null) : null,
+                startedAt: t.startedAt, finishedAt: t.finishedAt,
+                note: (t.prepMessage ? '准备:' + t.prepMessage + (t.message ? '；' : '') : '') + (t.message || '—')
+            }));
+            uqList.forEach(r => rows.push({
+                kind: 'UQ评估', runId: r.runId || r.id, ref: '方法' + (r.method || '—') + (r.particleCount ? ' · ' + r.particleCount + '粒子' : ''),
+                status: r.status || '—', kindTag: null,
+                startedAt: r.startedAt, finishedAt: r.finishedAt,
+                note: r.message || '—'
+            }));
+            predList.forEach(r => rows.push({
+                kind: '输出预测', runId: r.runId || r.id, ref: r.modelName || '—',
+                status: r.status || '—', kindTag: null,
+                startedAt: r.createdAt, finishedAt: r.finishedAt,
+                note: (r.message || '—') + (Array.isArray(r.conditions)
+                    ? ' · 工况 ' + r.conditions.map(c => c.id + (c.status === 'FAILED' ? '(失败)' : '')).join(' ') : '')
+            }));
+            rows.sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0));
+            holder.appendChild(h('div', { class: 'wb-hint', style: 'margin-bottom:8px' },
+                '以运行(runId)为维度:每次辨识、评估、预测执行各一条;同一任务多次重跑按运行标识区分,历史只读。'));
             holder.appendChild(h('table', { class: 'wb-table' },
-                h('tr', null, ['任务', '运行标识', '状态', '开始时间', '结束时间', '耗时', '消息'].map(t => h('th', null, t))),
-                tasks.map(t => {
-                    const st = RUN_STATUS[t.status] || [t.status || '—', 'gray'];
-                    const dur = t.startedAt && t.finishedAt ? fmtSpan(t.finishedAt - t.startedAt) : '—';
-                    // 01-16:保存失败与数值失败分开呈现
-                    const kindTag = t.status === 'FAILED' && t.errorKind === 'SAVE_FAILED'
-                        ? statusTag('保存失败', 'amber') + ' ' : (t.status === 'FAILED' && t.errorKind === 'NUMERIC_FAILED'
-                            ? statusTag('数值失败', 'red') + ' ' : '');
+                h('tr', null, ['类型', '运行标识', '关联对象', '状态', '开始时间', '结束时间', '耗时', '说明'].map(t => h('th', null, t))),
+                rows.map(rw => {
+                    const st = RUN_STATUS[rw.status] || [rw.status || '—', 'gray'];
+                    const dur = rw.startedAt && rw.finishedAt ? fmtSpan(rw.finishedAt - rw.startedAt) : '—';
                     return h('tr', null,
-                        h('td', { style: 'font-weight:600;color:#111827' }, t.name || t.id),
-                        h('td', { class: 'wb-hint' }, t.runId || '—'),
-                        h('td', null, statusTag(st[0], st[1])),
-                        h('td', { class: 'wb-hint' }, t.startedAt ? new Date(t.startedAt).toLocaleString() : '—'),
-                        h('td', { class: 'wb-hint' }, t.finishedAt ? new Date(t.finishedAt).toLocaleString() : '—'),
+                        h('td', { style: 'font-weight:600;color:#111827' }, rw.kind),
+                        h('td', { class: 'wb-hint' }, rw.runId),
+                        h('td', null, rw.ref),
+                        h('td', null, rw.kindTag
+                            ? [h('span', { style: 'display:inline-flex;margin-right:6px' }, statusTag(rw.kindTag[0], rw.kindTag[1])), statusTag(st[0], st[1])]
+                            : statusTag(st[0], st[1])),
+                        h('td', { class: 'wb-hint' }, rw.startedAt ? new Date(rw.startedAt).toLocaleString() : '—'),
+                        h('td', { class: 'wb-hint' }, rw.finishedAt ? new Date(rw.finishedAt).toLocaleString() : '—'),
                         h('td', { class: 'wb-hint' }, dur),
-                        h('td', { class: 'wb-hint', style: 'word-break:break-all;max-width:360px' },
-                            kindTag ? [h('span', { style: 'display:inline-flex;margin-right:6px' }, kindTag), (t.message || '—')] : (t.message || '—')));
+                        h('td', { class: 'wb-hint', style: 'word-break:break-all;max-width:360px' }, rw.note));
                 })));
         } catch (e) {
             holder.appendChild(h('div', { class: 'wb-empty' }, '运行记录加载失败:' + e.message));

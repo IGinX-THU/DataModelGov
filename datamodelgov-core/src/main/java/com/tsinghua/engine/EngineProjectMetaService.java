@@ -74,6 +74,7 @@ public class EngineProjectMetaService {
             if (!AuthUtil.isAdmin()) {
                 sql.append(" AND owner = '").append(AuthUtil.getCurrentUsername()).append("'");
             }
+            sql.append(" ORDER BY createTime DESC ");
             if (pageNum != null && pageSize != null) {
                 sql.append(" LIMIT ").append(pageSize);
                 sql.append(" OFFSET ").append((pageNum - 1) * pageSize);
