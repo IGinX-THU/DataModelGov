@@ -342,6 +342,13 @@ public class EngineWorkbenchController {
         }
     }
 
+    @ApiOperation("全局MATLAB日志尾(工作台底部状态栏滚动显示)")
+    @GetMapping("/engine-log")
+    @RequirePermission(Permission.READ)
+    public Result<List<String>> engineLog(@RequestParam(value = "n", defaultValue = "20") int n) {
+        return Result.success(com.tsinghua.engine.MatlabLogRing.tail(Math.min(Math.max(n, 1), 300)));
+    }
+
     @ApiOperation("请求停止辨识")
     @PostMapping("/projects/{pid}/tasks/{tid}/stop")
     @RequirePermission(Permission.CREATE)

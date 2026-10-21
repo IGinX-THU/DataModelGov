@@ -76,15 +76,56 @@
                         WB().h('div', { class: 'wb-identity-meta' }, '本地项目'))),
                 WB().h('main', { class: 'wb-main' })));
 
-            // 状态栏
+            // 状态栏:MATLAB日志行滚动(左,同旧版program-run footer-log) + 引擎状态(右) + 固定说明
             app.appendChild(WB().h('footer', { class: 'wb-statusbar' },
-                WB().h('span', null, '引擎: MATLAB R2019b · 本地运行'),
-                WB().h('span', null, '界面结构依据 UI-R131 · 程序绑定以 R06 交付包为准 · 页面示例数据仅作展示')));
+                WB().h('span', {
+                    class: 'wb-engine-log',
+                    style: 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap',
+                    title: '加载中...'
+                }, 'MATLAB 日志加载中...'),
+                WB().h('span', { class: 'wb-engine-status', style: 'flex-shrink:0' }, 'MATLAB 引擎状态查询中...'),
+                WB().h('span', { style: 'flex-shrink:0' }, '界面结构依据 UI-R131 · 程序绑定以 R06 交付包为准')));
+            this._startEngineStatusPolling();
 
             this.appendChild(app);
             this._app = app;
             const first = cfg.nav.find(n => !n.badge);
             if (first) this._navigate(first.key);
+        }
+
+        /** 状态栏轮询(单例):MATLAB日志尾(/engine-log)+引擎状态(/api/program/engine-status)。 */
+        _startEngineStatusPolling() {
+            const refresh = async () => {
+                const logs = document.querySelectorAll('.wb-engine-log');
+                const sts = document.querySelectorAll('.wb-engine-status');
+                if (logs.length) {
+                    try {
+                        const resp = await window.AppConfig.request(
+                            window.AppConfig.api.baseURL + '/api/engine/engine-log?n=20');
+                        const rows = resp && (resp.success || resp.code === 200) && Array.isArray(resp.data)
+                            ? resp.data : [];
+                        if (rows.length) {
+                            const last = rows[rows.length - 1];
+                            logs.forEach(el => {
+                                el.textContent = last;
+                                el.title = rows.join('\n');
+                            });
+                        }
+                    } catch (e) { /* 日志拉取容错 */ }
+                }
+                if (sts.length) {
+                    let msg = 'MATLAB 引擎状态未知';
+                    try {
+                        const resp = await window.AppConfig.request(
+                            window.AppConfig.getApiUrl('program', 'engine-status'));
+                        if (resp && resp.code === 200 && resp.data && resp.data.message) msg = resp.data.message;
+                    } catch (e) { /* 保持未知 */ }
+                    sts.forEach(el => { el.textContent = msg; });
+                }
+            };
+            refresh();
+            if (window.__WB_ENGINE_TIMER__) clearInterval(window.__WB_ENGINE_TIMER__);
+            window.__WB_ENGINE_TIMER__ = setInterval(refresh, 5000);
         }
 
         _navigate(key) {

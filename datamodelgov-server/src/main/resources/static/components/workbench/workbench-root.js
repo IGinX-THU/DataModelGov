@@ -40,13 +40,6 @@
                     WB().h('div', { class: 'wb-topbar-right' },
                         WB().h('span', { class: 'wb-hint', style: 'margin:0' }, username ? '当前用户:' + username : ''),
                         WB().h('button', {
-                            class: 'wb-btn wb-btn-outline', title: '进入旧的资产管理工作界面',
-                            onclick: () => {
-                                if (window.__WB_STANDALONE__) window.location.href = '/index.html?legacy=1';
-                                else this.hide();
-                            }
-                        }, '旧版界面'),
-                        WB().h('button', {
                             class: 'wb-btn wb-btn-outline', title: '退出登录',
                             onclick: () => window.AppConfig && window.AppConfig.logout()
                         }, '登出'))));

@@ -76,7 +76,7 @@ window.Workbench = (() => {
             nav: [
                 { key: 'overview', label: '项目概况', icon: 'gauge' },
                 { key: 'fullmode', label: '全模式仿真', icon: 'engine', badge: '建设中' },
-                { key: 'afo', label: '多系统联合仿真', icon: 'joint', badge: '接入中' },
+                { key: 'afo', label: '多系统联合仿真', icon: 'joint' },
                 { key: 'records', label: '仿真记录', icon: 'clock' }
             ]
         }
@@ -1423,6 +1423,7 @@ function loadOverviewTasks(ctx, holder) {
 
     function recordsPage(ctx, scope) {
         const isSim = scope === 'sim';
+        if (isSim) return afoRecordsPage(ctx);
         const wrap = h('div', null, pageHeader(isSim ? '仿真记录' : '运行记录',
             isSim ? '全模式仿真与多系统联合仿真的执行记录;历史只读'
                 : '建模任务执行历史(含数据准备/辨识);只读'));
@@ -1437,6 +1438,192 @@ function loadOverviewTasks(ctx, holder) {
         if (isSim || !ctx.project || !ctx.project.id) {
             holder.appendChild(h('div', { class: 'wb-empty' }, isSim ? '暂无仿真记录' : '本地演示项目无记录'));
         }
+        return wrap;
+    }
+
+    /** 多系统联合仿真记录页(09-07/09-08):列表 + 只读查看 + 配置比较与通道叠加。 */
+    function afoRecordsPage(ctx) {
+        const pid = ctx.project.id || '';
+        const api = () => window.AppConfig.engineGet('projects/' + encodeURIComponent(pid) + '/afo/sessions');
+        const wrap = h('div', null, pageHeader('仿真记录',
+            (ctx.project.engineId || '—') + ' 仿真执行历史;历史只读,原运行包与配置保持不变,不自动采用当前最新DLL重新解释历史结果'));
+        const listHolder = h('div', null, h('div', { class: 'wb-empty' }, '正在加载仿真记录...'));
+        const selHolder = h('div', null);
+        const cmpHolder = h('div', null);
+        const checked = {};
+        wrap.appendChild(h('div', { class: 'wb-section' },
+            h('div', { class: 'wb-section-head' },
+                h('div', { class: 'wb-section-title' }, (ctx.project.engineId || 'E') + ' 仿真记录'),
+                h('button', { class: 'wb-btn wb-btn-outline', onclick: () => ctx.navigate('records') }, '刷新')),
+            listHolder));
+        wrap.appendChild(selHolder);
+        wrap.appendChild(cmpHolder);
+
+        function renderList(rows) {
+            listHolder.innerHTML = '';
+            if (!rows.length) {
+                listHolder.appendChild(h('div', { class: 'wb-empty' },
+                    '暂无仿真记录——在"多系统联合仿真"发起准备并运行后,每次执行在此留档(以运行编号为身份)。'));
+                return;
+            }
+            const tbl = h('table', { class: 'wb-table' },
+                h('tr', null, ['', '运行', '输入与空气配置', '仿真时长', '记录状态', '操作'].map((x, i) =>
+                    h('th', i === 0 ? { style: 'width:34px' } : null, x))));
+            rows.forEach(r => {
+                const cfg = r.config || {};
+                const cb = h('input', { type: 'checkbox' });
+                if (checked[r.runId]) cb.checked = true;
+                cb.addEventListener('change', () => {
+                    if (cb.checked) checked[r.runId] = true; else delete checked[r.runId];
+                    renderActions(rows);
+                });
+                const stateTxt = r.phase === 'ENDED' ? '完整' : r.phase === 'FAILED' ? '人工结束/失败' : r.phase;
+                tbl.appendChild(h('tr', null,
+                    h('td', { onclick: ev => ev.stopPropagation() }, cb),
+                    h('td', { style: 'font-weight:600' }, r.runId || '—'),
+                    h('td', { class: 'wb-hint' },
+                        (cfg.loadMode === 'external' ? '外部回灌' : (cfg.externalAir ? '外部回灌' : '人工指令 / 内部引气'))
+                        + ' · ' + (cfg.pace === 'fast' ? '尽快计算' : '实时节奏')),
+                    h('td', null, cfg.duration != null ? Number(cfg.duration).toFixed(3) + ' s' : '—'),
+                    h('td', null, stateTxt + (r.hasExcel ? ' · Excel可导出' : r.hasResult ? ' · 结果已保存' : '')),
+                    h('td', null,
+                        h('button', {
+                            class: 'wb-btn wb-btn-outline',
+                            onclick: () => {
+                                ctx.navigate('afo');
+                                setTimeout(() => { if (window.__WB_AFO_OPEN__) window.__WB_AFO_OPEN__(r.runId); }, 60);
+                            }
+                        }, '查看(只读)'))));
+            });
+            listHolder.appendChild(tbl);
+        }
+
+        function renderActions(rows) {
+            selHolder.innerHTML = '';
+            const ids = Object.keys(checked).filter(id => rows.some(r => r.runId === id));
+            if (!ids.length) { cmpHolder.innerHTML = ''; return; }
+            const first = rows.find(r => r.runId === ids[0]);
+            selHolder.appendChild(h('div', { class: 'wb-actions-row', style: 'margin-top:14px' },
+                h('button', {
+                    class: 'wb-btn wb-btn-primary',
+                    onclick: () => {
+                        ctx.navigate('afo');
+                        setTimeout(() => { if (window.__WB_AFO_OPEN__) window.__WB_AFO_OPEN__(ids[0]); }, 60);
+                    }
+                }, '打开只读记录 ' + ids[0]),
+                h('button', {
+                    class: 'wb-btn wb-btn-outline' + (ids.length === 2 ? '' : ' disabled'),
+                    title: ids.length === 2 ? '' : '勾选两份记录进行比较',
+                    onclick: () => { if (ids.length === 2) compareSessions(ids[0], ids[1]); }
+                }, '比较所选记录'),
+                h('button', {
+                    class: 'wb-btn wb-btn-outline',
+                    onclick: () => {
+                        ctx.navigate('afo');
+                        setTimeout(() => { if (window.__WB_AFO_REUSE__) window.__WB_AFO_REUSE__(first); }, 60);
+                    }
+                }, '用该配置新建')));
+        }
+
+        /** 配置比较(09-08):配置项并排 + 可比性提示 + 同轴通道叠加(按实际仿真时间对齐,缺失留空不补零)。 */
+        async function compareSessions(idA, idB) {
+            cmpHolder.innerHTML = '';
+            cmpHolder.appendChild(h('div', { class: 'wb-empty' }, '正在加载两份记录(result.json)...'));
+            const load = async id => {
+                const resp = await window.AppConfig.engineGet('projects/' + encodeURIComponent(pid)
+                    + '/afo/sessions/' + encodeURIComponent(id) + '/result');
+                return resp && (resp.success || resp.code === 200) ? resp.data : null;
+            };
+            try {
+                const [ra, rb] = await Promise.all([load(idA), load(idB)]);
+                cmpHolder.innerHTML = '';
+                if (!ra || !rb) {
+                    cmpHolder.appendChild(h('div', { class: 'wb-hint' }, '比较需要两份已保存的完整结果(result.json);未保存的运行先在原会话结束保存。'));
+                    return;
+                }
+                const ca = ra.config || {}, cb2 = rb.config || {};
+                const cmpRows = [
+                    ['发动机编号', ca.engineId, cb2.engineId],
+                    ['空气回灌', ca.externalAir ? '外部8路回灌' : '内部引气', cb2.externalAir ? '外部8路回灌' : '内部引气'],
+                    ['负载方式', (AFO_LOAD.find(l => l[0] === ca.loadMode) || [])[1] || ca.loadMode, (AFO_LOAD.find(l => l[0] === cb2.loadMode) || [])[1] || cb2.loadMode],
+                    ['Np挡位', ca.npRatio, cb2.npRatio],
+                    ['时长 / 记录步长', ca.duration + ' s / ' + ca.recordStep + ' s', cb2.duration + ' s / ' + cb2.recordStep + ' s'],
+                    ['运行节奏', ca.pace, cb2.pace]
+                ];
+                const tbl = h('table', { class: 'wb-table' },
+                    h('tr', null, ['配置项', '记录A · ' + idA, '记录B · ' + idB].map(x => h('th', null, x))),
+                    cmpRows.map(r => h('tr', null,
+                        h('td', { style: 'color:#6b7280' }, r[0]),
+                        h('td', null, String(r[1])),
+                        h('td', null, String(r[2])))));
+                cmpHolder.appendChild(h('div', { class: 'wb-section-title', style: 'margin:16px 0 8px' }, '比较两次仿真'));
+                cmpHolder.appendChild(tbl);
+                const sameInputs = String(ca.externalAir) === String(cb2.externalAir)
+                    && String(ca.npRatio) === String(cb2.npRatio) && String(ca.loadMode) === String(cb2.loadMode);
+                cmpHolder.appendChild(h('div', { class: sameInputs ? 'wb-infobar' : 'wb-infobar', style: 'border-left:4px solid ' + (sameInputs ? '#b88c23' : '#b91c1c') + ';background:#fff9e9;margin-top:10px' },
+                    sameInputs
+                        ? '⚠ 可比较相同输入下的配置影响。没有实测数据,不能仅凭两次仿真判定哪个模型更准确。'
+                        : '⚠ 两次运行的输入或空气配置不同——先核对配置差异再下结论;不能把不同输入的输出差当成模型差异。'));
+
+                // 通道叠加:共同通道按时间对齐;不同单位不共用纵轴(每组一张图)
+                cmpHolder.appendChild(h('div', { class: 'wb-section-title', style: 'margin:16px 0 8px' }, '选择同量纲通道对比'));
+                cmpHolder.appendChild(h('div', { class: 'wb-hint', style: 'margin-bottom:8px' },
+                    'Np / Ng / 温度 / 流量 / 负载可分别叠加;不同单位不共用纵轴。按实际仿真时间对齐,不压缩成相同长度;缺失时间段留空,不补零。'));
+                const CH = [
+                    ['Np / rpm', AFO_GROUP.engine, AFO_E.Np], ['Ng / rpm', AFO_GROUP.engine, AFO_E.Ng],
+                    ['Tt45 / K', AFO_GROUP.engine, AFO_E.Tt45], ['入口流量W2 / kg/s', AFO_GROUP.engine, AFO_E.W2],
+                    ['PT负载功率 / kW', AFO_GROUP.load, 4], ['发动机燃油 / kg/s', AFO_GROUP.fuel_engine, 0]
+                ];
+                const sel = h('select', null, CH.map((c, i) => h('option', { value: String(i) }, c[0])));
+                const chartBox = h('div', { style: 'margin-top:8px' });
+                const draw = () => {
+                    const [label, g, j] = CH[parseInt(sel.value, 10) || 0];
+                    const mk = (r, name) => ({
+                        name: name,
+                        values: (r.values || []).map(row => { const cell = row && row[g]; return cell ? (cell[j] != null ? cell[j] : null) : null; })
+                    });
+                    const sa = mk(ra, idA), sb = mk(rb, idB);
+                    const n = Math.max(sa.values.length, sb.values.length);
+                    const labels = [];
+                    const step = Math.max(1, Math.ceil(n / 8));
+                    const tRef = (ra.time && rb.time && ra.time.length >= rb.time.length) ? ra.time : (rb.time || []);
+                    for (let i = 0; i < n; i++) if (i % step === 0) labels.push(tRef && tRef[i] != null ? Number(tRef[i]).toFixed(1) : String(i));
+                    chartBox.innerHTML = '';
+                    chartBox.appendChild(chartLegend([{ ...sa, color: '#0e7490' }, { ...sb, color: '#b91c1c' }]));
+                    chartBox.appendChild(lineChart({ series: [sa, sb], xLabels: labels, xTitle: '时间 / s' }));
+                };
+                sel.addEventListener('change', draw);
+                cmpHolder.appendChild(h('div', { class: 'wb-field', style: 'max-width:360px' }, h('label', null, '对比通道'), sel));
+                cmpHolder.appendChild(chartBox);
+                draw();
+                cmpHolder.appendChild(h('div', { class: 'wb-actions-row', style: 'margin-top:10px' },
+                    h('button', {
+                        class: 'wb-btn wb-btn-outline',
+                        onclick: () => {
+                            const blob = new Blob(['\ufeff' + JSON.stringify({ recordA: idA, configA: ca, recordB: idB, configB: cb2 }, null, 1)],
+                                { type: 'application/json' });
+                            const a = document.createElement('a');
+                            a.href = URL.createObjectURL(blob);
+                            a.download = 'afo_compare_' + idA + '_' + idB + '.json';
+                            a.click();
+                            URL.revokeObjectURL(a.href);
+                        }
+                    }, '导出对比配置')));
+            } catch (e) {
+                cmpHolder.innerHTML = '';
+                cmpHolder.appendChild(h('div', { class: 'wb-hint' }, '比较失败:' + e.message));
+            }
+        }
+
+        (async () => {
+            try {
+                const resp = await api();
+                renderList(resp && (resp.success || resp.code === 200) && Array.isArray(resp.data) ? resp.data : []);
+            } catch (e) {
+                listHolder.innerHTML = '';
+                listHolder.appendChild(h('div', { class: 'wb-empty' }, '仿真记录加载失败:' + e.message));
+            }
+        })();
         return wrap;
     }
 
@@ -1514,21 +1701,54 @@ function loadOverviewTasks(ctx, holder) {
 
     /* ===== 数字试车台 ===== */
     pages['testbench.overview'] = (ctx) => {
+        const pid = encodeURIComponent(ctx.project.id || '');
+        const sessionsHolder = h('div', null, h('div', { class: 'wb-empty' }, '正在加载仿真记录...'));
         const wrap = h('div', null, pageHeader('项目概况', ctx.project.name + ' / 系统联合仿真'));
         wrap.appendChild(h('div', { class: 'wb-section', style: 'display:grid;grid-template-columns:1fr 1fr;gap:20px' },
             h('div', { class: 'wb-card' },
                 h('div', { class: 'wb-section-title' }, '多系统联合仿真'),
                 h('div', { class: 'wb-hint', style: 'margin:8px 0 14px' }, 'AFO_V_2 · Dll_Control_AFO_V8_5_R2019b · 39 组 247 通道 + 4 回退标志'),
-                h('span', { class: 'wb-tag wb-tag-amber' }, '接入中(V8_5 会话合同)'),
-                h('div', { style: 'margin-top:14px' }, h('button', { class: 'wb-btn wb-btn-outline disabled' }, '进入'))),
+                h('span', { class: 'wb-tag wb-tag-teal' }, '已接入(sht_afo_session会话合同)'),
+                h('div', { style: 'margin-top:14px' }, h('button', {
+                    class: 'wb-btn wb-btn-primary',
+                    onclick: () => ctx.navigate('afo')
+                }, '进入'))),
             h('div', { class: 'wb-card' },
                 h('div', { class: 'wb-section-title' }, '全模式仿真'),
                 h('div', { class: 'wb-hint', style: 'margin:8px 0 14px' }, '三位置油门 · 五挡Np · 负载互斥 · 命令状态机 · 快照恢复(F-11)'),
                 h('span', { class: 'wb-tag wb-tag-gray' }, '建设中'),
                 h('div', { style: 'margin-top:14px' }, h('button', { class: 'wb-btn wb-btn-outline disabled' }, '进入')))));
         wrap.appendChild(h('div', { class: 'wb-section' },
-            h('div', { class: 'wb-section-title', style: 'margin-bottom:12px' }, '仿真记录'),
-            h('div', { class: 'wb-empty' }, '暂无仿真记录')));
+            h('div', { class: 'wb-section-head' },
+                h('div', { class: 'wb-section-title' }, '最近仿真记录'),
+                h('button', { class: 'wb-btn wb-btn-outline', onclick: () => ctx.navigate('records') }, '全部记录')),
+            sessionsHolder));
+        window.AppConfig.engineGet('projects/' + pid + '/afo/sessions')
+            .then(resp => {
+                const rows = resp && (resp.success || resp.code === 200) && Array.isArray(resp.data) ? resp.data : [];
+                sessionsHolder.innerHTML = '';
+                if (!rows.length) {
+                    sessionsHolder.appendChild(h('div', { class: 'wb-empty' },
+                        '暂无仿真记录——进入"多系统联合仿真"发起准备并运行后在此留档。'));
+                    return;
+                }
+                sessionsHolder.appendChild(h('table', { class: 'wb-table' },
+                    h('tr', null, ['运行', '配置', '状态', '创建时间'].map(x => h('th', null, x))),
+                    rows.slice(0, 5).map(r => {
+                        const c = r.config || {};
+                        return h('tr', { class: 'clickable', onclick: () => ctx.navigate('afo') },
+                            h('td', { style: 'font-weight:600' }, r.runId || '—'),
+                            h('td', { class: 'wb-hint' },
+                                (c.externalAir ? '外部回灌' : '内部引气') + ' · ' + (c.loadMode || '—')
+                                + ' · ' + (c.duration != null ? c.duration + ' s' : '—')),
+                            h('td', null, r.phase === 'ENDED' ? '完整' : r.phase === 'FAILED' ? '失败' : (r.phase || '—')),
+                            h('td', { class: 'wb-hint' }, r.createdAt ? new Date(r.createdAt).toLocaleString() : '—'));
+                    })));
+            })
+            .catch(() => {
+                sessionsHolder.innerHTML = '';
+                sessionsHolder.appendChild(h('div', { class: 'wb-empty' }, '仿真记录加载失败'));
+            });
         return wrap;
     };
 
@@ -1542,8 +1762,614 @@ function loadOverviewTasks(ctx, holder) {
     }
     pages['testbench.fullmode'] = (ctx) => placeholderPage('全模式仿真', '准备初态与试车条件', '页面建设中',
         '将按 F-11 合同实现:仿真准备(模型/初态:停止·慢车·巡航·设计转速;负载方式:轴功率·Mkp扭矩·总距角互斥)→ 操纵与监视(三位置油门、五挡Np 80/90/95/100/105%、命令状态机:草稿→已提交→已接收→已施加/已拒绝)→ 本次结果(输出/全通道/热状态/命令/配置文件;Excel+快照MAT+manifest)。依据 R06《程序调用与独立使用手册》第13章。');
-    pages['testbench.afo'] = (ctx) => placeholderPage('多系统联合仿真', 'AFO_V_2 · 总控 + 发动机/控制/燃油/滑油/空气', 'AFO_V_2(V8_5)接入中',
-        '将按 F-12 合同实现:总控页(初始状态、常值输入、运行进度、关键输出)+ 五系统输出页;准备→运行→施加常值→暂停/继续→停止→保存→历史只读→配置比较。251 项通道(247 原始 + 4 回退标志)按系统分组显示,常用输出置顶、全量可检索。依据 R06《程序调用与独立使用手册》第14章 sht_afo_session 合同。');
+    /* ===== 多系统联合仿真(F-12,AFO_V_2;sht_afo_session合同)===== */
+    // 通道组索引按 sht_afo_channels 顺序固定(status.values/result.values 的组下标)
+    const AFO_GROUP = { engine: 0, load: 1, fuel_command: 2, fuel_engine: 3, fuel_detailed: 4, air01: 5, air02: 6, air03: 7, air04: 8, air05: 9, air06: 10, air07: 11, air08: 12 };
+    const AFO_E = { Pt1: 0, Tt1: 1, Pt3: 2, Tt3: 3, Pt45: 4, Tt45: 5, Pt5: 6, Tt5: 7, Np: 8, Ng: 9, W2: 10, PT_drive_torque: 11, HPC_corrected: 12, GT_pr: 13, PT_pr: 14 };
+    const AFO_NP_STEPS = [['0.8', '80%'], ['0.9', '90%'], ['0.95', '95%'], ['1', '100%'], ['1.05', '105%']];
+    const AFO_PACE = [['realtime', '实时节奏(物理时间同步)'], ['fast', '尽快计算(不与墙钟同步)']];
+    const AFO_LOAD = [['power', '恒实际PT功率 / kW'], ['torque', '恒扭矩 / N·m'], ['pitch', '恒总距角 / deg'], ['dual_pitch', '主/尾桨双总距角 / deg']];
+
+    pages['testbench.afo'] = (ctx) => {
+        const pid = ctx.project.id || '';
+        const api = p => window.AppConfig.engineGet('projects/' + encodeURIComponent(pid) + '/afo' + p);
+        const apiPost = (p, body) => window.AppConfig.enginePost('projects/' + encodeURIComponent(pid) + '/afo' + p, body || {});
+        const S = window.__WB_AFO__ = window.__WB_AFO__ || {
+            phase: 'IDLE', message: '', live: null, samples: [], lastSampleT: -1,
+            result: null, readonlyRunId: null, readonlyLoading: false, tab: 'main',
+            cfg: { engineId: ctx.project.engineId || 'ENGINE-001', duration: '30', recordStep: '0.1', pace: 'realtime', loadMode: 'power', powerW: '2176600', mkpNm: '1000', pitchDeg: '12', mainPitchDeg: '12', tailPitchDeg: '10', externalAir: false, npRatio: '1' }
+        };
+        S.tab = S.tab || 'main';
+        const running = () => S.phase === 'RUNNING' || S.phase === 'PAUSED';
+        const canCmd = () => running();
+
+        const wrap = h('div', null,
+            h('div', { style: 'margin-bottom:12px;display:flex;justify-content:space-between;align-items:baseline' },
+                h('div', null,
+                    h('div', { class: 'wb-page-title', style: 'font-size:20px;margin-bottom:2px' }, '多系统联合仿真'),
+                    h('div', { class: 'wb-page-sub' },
+                        (ctx.project.engineId || '—') + ' / ' + (S.readonlyRunId ? ('记录只读 ' + S.readonlyRunId)
+                            : (S.live && S.live.runId ? S.live.runId : '燃油 · 滑油 · 空气'))),
+                h('div', { class: 'wb-hint', style: 'margin:0' }, '基准 Dll_Control_AFO_V8_5_R2019b · 同实例暂停 · 燃油/滑油/空气耦合'))));
+        const statusBar = h('div', { style: 'margin-bottom:12px' });
+        const tabBar = h('div', { class: 'wb-tabs', style: 'margin-bottom:12px' });
+        const body = h('div', null, h('div', { class: 'wb-empty' }, '正在加载会话状态...'));
+        const foot = h('div', null);
+        wrap.appendChild(statusBar);
+        wrap.appendChild(tabBar);
+        wrap.appendChild(body);
+        wrap.appendChild(foot);
+
+        const TABS = [['main', '总控'], ['engine', '发动机'], ['control', '控制'], ['fuel', '燃油'], ['oil', '滑油'], ['air', '空气']];
+        function paintTabs() {
+            tabBar.innerHTML = '';
+            TABS.forEach(([k, label]) => tabBar.appendChild(h('div', {
+                class: 'wb-tab' + (S.tab === k ? ' active' : ''),
+                onclick: () => { S.tab = k; renderAll(); }
+            }, label)));
+        }
+
+        /* —— 状态条(09-13):相位 | 仿真时间 | 主控按钮 —— */
+        function paintStatus() {
+            statusBar.innerHTML = '';
+            const t = S.live && typeof S.live.time === 'number' ? S.live.time : (S.result ? S.result.finalSimulationTime : 0);
+            const phaseLabel = S.readonlyRunId ? ['历史记录 · 只读', 'gray']
+                : S.phase === 'RUNNING' ? ['正在运行', 'teal']
+                : S.phase === 'PAUSED' ? ['已暂停(保持状态)', 'amber']
+                : S.phase === 'PREPARING' ? ['准备中(运行副本/身份校验/模型初始化)', 'amber']
+                : S.phase === 'READY' ? ['已就绪 · 未运行', 'teal']
+                : S.phase === 'ENDED' ? ['已结束 · 记录已保存', 'gray']
+                : S.phase === 'FAILED' ? ['失败', 'red'] : ['空闲 · 新建运行', 'gray'];
+            const bar = h('div', { class: 'wb-infobar', style: 'display:flex;align-items:center;gap:18px;padding:10px 16px' },
+                h('span', { class: 'wb-tag wb-tag-' + phaseLabel[1] }, phaseLabel[0]),
+                h('span', { style: 'font-weight:600' }, '仿真时间 ' + Number(t || 0).toFixed(3) + ' s'),
+                h('span', { class: 'wb-hint', style: 'margin:0' }, S.message || (S.readonlyRunId ? '完整记录已保存' : '内部引气 / 外部系统同步计算')),
+                h('div', { class: 'wb-spacer' }));
+            statusBar.appendChild(bar);
+            const actions = h('div', { class: 'wb-actions-row', style: 'margin:8px 0 0' });
+            if (S.readonlyRunId) {
+                actions.appendChild(h('button', { class: 'wb-btn wb-btn-outline', onclick: () => exitReadonly() }, '‹ 返回仿真准备'));
+                actions.appendChild(h('div', { class: 'wb-spacer' }));
+                actions.appendChild(h('button', { class: 'wb-btn wb-btn-outline', onclick: () => window.open(excelUrl(S.readonlyRunId), '_blank') }, '导出Excel'));
+                actions.appendChild(h('button', { class: 'wb-btn wb-btn-primary', onclick: () => reuseConfig() }, '用此配置新建'));
+            } else if (S.phase === 'RUNNING' || S.phase === 'PAUSED') {
+                actions.appendChild(h('button', {
+                    class: 'wb-btn wb-btn-primary',
+                    onclick: () => sendCmd(S.phase === 'RUNNING' ? 'pause' : 'resume', 0)
+                }, S.phase === 'RUNNING' ? '暂停' : '继续'));
+                actions.appendChild(h('button', {
+                    class: 'wb-btn wb-btn-outline',
+                    onclick: () => { if (confirm('结束计算?当前有效记录将保存,暂停不卸载、不自动断油。')) sendCmd('stop', 0); }
+                }, '结束计算'));
+            } else if (S.phase === 'READY') {
+                actions.appendChild(h('button', { class: 'wb-btn wb-btn-primary', onclick: () => startRun() }, '开始运行'));
+                actions.appendChild(h('button', { class: 'wb-btn wb-btn-outline', onclick: () => closeSession() }, '放弃并关闭(改配置重新准备)'));
+            } else if (S.phase === 'ENDED' || S.phase === 'FAILED') {
+                actions.appendChild(h('button', { class: 'wb-btn wb-btn-outline', onclick: () => window.open(excelUrl(S.live && S.live.runId ? S.live.runId : ''), '_blank') }, '导出Excel'));
+                actions.appendChild(h('button', { class: 'wb-btn wb-btn-primary', onclick: () => closeSession() }, '新建运行(关闭本会话)'));
+            }
+            bar.appendChild(actions);
+        }
+
+        const excelUrl = runId => {
+            const cfg0 = window.AppConfig;
+            return cfg0.api.baseURL + '/api/engine/projects/' + encodeURIComponent(pid)
+                + '/afo/sessions/' + encodeURIComponent(runId) + '/excel?token=' + encodeURIComponent(cfg0.getToken() || '');
+        };
+
+        /* —— 数据抽取:运行中 samples(实时) / 历史 result —— */
+        function pushSample(live) {
+            const t = live.time;
+            if (typeof t !== 'number' || t <= S.lastSampleT) return;
+            S.lastSampleT = t;
+            const v = live.values || [];
+            const eng = v[AFO_GROUP.engine] || [];
+            const load = v[AFO_GROUP.load] || [];
+            S.samples.push({
+                t: t, Np: eng[AFO_E.Np], Ng: eng[AFO_E.Ng], Tt3: eng[AFO_E.Tt3], Tt45: eng[AFO_E.Tt45],
+                W2: eng[AFO_E.W2], Mkp: load[0], Pload: load[4],
+                Wf_cmd: (v[AFO_GROUP.fuel_command] || [])[0], Wf: (v[AFO_GROUP.fuel_engine] || [])[0]
+            });
+            if (S.samples.length > 4000) S.samples.splice(0, S.samples.length - 4000);
+        }
+
+        function seriesFromSamples(keys) {
+            return keys.map(k => ({ name: k, values: S.samples.map(s => s[k]) }));
+        }
+        function seriesFromResult(g, js) {
+            const vals = (S.result.values || []).map(row => row && row[g]);
+            return js.map(j => ({ name: j, values: vals.map(cell => (cell && cell[j] != null) ? cell[j] : null) }));
+        }
+        function lineByTime(values, labels0) {
+            const xLabels = [];
+            const n = values.length;
+            const step = Math.max(1, Math.ceil(n / 8));
+            for (let i = 0; i < n; i++) if (i % step === 0) xLabels.push(labels0 && labels0.length ? Number(labels0[i]).toFixed(1) : String(i));
+            return xLabels;
+        }
+
+        /* —— 页签渲染 —— */
+        function paintBody() {
+            body.innerHTML = '';
+            if (S.readonlyLoading) {
+                body.appendChild(h('div', { class: 'wb-empty' }, '正在加载历史记录(result.json)...'));
+                return;
+            }
+            const src = S.readonlyRunId ? 'result' : (running() || S.phase === 'ENDED' || S.phase === 'FAILED') ? 'live' : 'idle';
+            if (S.tab === 'main') paintMain(src);
+            else paintSystemTab(src);
+        }
+
+        /* —— 总控(09-13) —— */
+        function paintMain(src) {
+            if (src === 'idle') { paintConfigForm(); return; }
+            const live = S.live || {};
+            // Np挡位 + 负载施加(运行中;09-13)
+            if (canCmd()) {
+                body.appendChild(h('div', { class: 'wb-infobar' },
+                    '负载方式:' + (AFO_LOAD.find(l => l[0] === loadMode())[1] || '—') + '。空气耦合与负载类型已锁定;当前无待生效命令。'));
+                const npRow = h('div', { style: 'display:flex;gap:10px;align-items:center;margin:12px 0' });
+                const curRatio = live.applied && live.applied[0] != null ? live.applied[0] / designNp() : 1;
+                AFO_NP_STEPS.forEach(([val, label]) => {
+                    npRow.appendChild(h('button', {
+                        class: 'wb-btn ' + (Math.abs(parseFloat(val) - curRatio) < 1e-9 ? 'wb-btn-primary' : 'wb-btn-outline'),
+                        onclick: () => sendCmd('np', parseFloat(val))
+                    }, label));
+                });
+                body.appendChild(h('div', { class: 'wb-section-title', style: 'margin-bottom:8px' }, 'Np运行挡位'));
+                body.appendChild(npRow);
+                body.appendChild(h('div', { class: 'wb-hint', style: 'margin-bottom:12px' },
+                    '当前生效目标: ' + npText() + ';状态: ' + (live.pending ? '有待生效命令(' + live.pending.kind + ')' : '无')));
+                // 负载草稿(09-13:按当前负载方式显示对应输入)
+                const lm = loadMode();
+                const unitTxt = lm === 'power' ? 'PT功率草稿 / kW' : lm === 'torque' ? '扭矩草稿 / N·m' : lm === 'pitch' ? '总距角草稿 / deg' : '主桨总距角草稿 / deg';
+                const draft = h('input', { value: loadDraftDefault(lm), id: 'afo-load-draft' });
+                body.appendChild(h('div', { class: 'wb-form-grid', style: 'grid-template-columns:320px 200px;max-width:620px;align-items:end' },
+                    h('div', { class: 'wb-field' }, h('label', null, unitTxt), draft),
+                    h('div', null, h('button', { class: 'wb-btn wb-btn-outline', style: 'width:100%', onclick: () => applyLoadDraft() }, '✓ 施加负载'))));
+            } else if (S.phase === 'ENDED' || S.phase === 'FAILED') {
+                body.appendChild(h('div', { class: 'wb-infobar' },
+                    S.phase === 'FAILED' ? ('运行失败:' + (S.message || '') + ';有效部分不丢弃,历史与Excel仍可读。') : '运行结束;全通道Excel与result已保存,可进入各系统页签查看曲线。'));
+            }
+            // 关键输出大数字(09-13/09-01)
+            body.appendChild(kvBig(src === 'result' ? bigFromResult() : bigFromLive()));
+            // 命令回执表(events)
+            const events = (src === 'result' ? (S.result.events || []) : (live.events || []));
+            body.appendChild(h('div', { class: 'wb-section-title', style: 'margin:16px 0 8px' }, '本次操纵记录'));
+            if (events.length) {
+                const tbl = h('table', { class: 'wb-table' },
+                    h('tr', null, ['命令', '接收', '生效', '当前状态'].map(x => h('th', null, x))));
+                events.slice(-12).forEach(ev => {
+                    tbl.appendChild(h('tr', null,
+                        h('td', null, cmdText(ev)),
+                        h('td', { class: 'wb-hint' }, fmtT(ev.acceptedTime)),
+                        h('td', { class: 'wb-hint' }, fmtT(ev.appliedTime)),
+                        h('td', null, ev.status === 'applied' ? '已生效,按实际轴速观察响应'
+                            : ev.status === 'accepted' ? '已接收,等待主步生效'
+                            : ev.status === 'rejected' ? ('已回退:' + (ev.reason || '')) : (ev.status || '—'))));
+                });
+                body.appendChild(tbl);
+            } else {
+                body.appendChild(h('div', { class: 'wb-hint' }, '本次运行无在线操纵(初始配置见准备记录)。'));
+            }
+            body.appendChild(h('div', { class: 'wb-hint', style: 'margin-top:12px' },
+                '修改模型、空气配置或负载类型需新建运行;暂停不卸载,不自动断油。'));
+        }
+
+        const loadMode = () => (S.result && S.result.config) ? S.result.config.loadMode : S.cfg.loadMode;
+        const designNp = () => (S.result && S.result.config && S.result.config.designNpRpm) || 20800;
+        const npText = () => {
+            const live = S.live || {};
+            const a = live.applied || [];
+            return a[0] != null ? ('' + Math.round(a[0]) + ' rpm / 负载 ' + (a[1] != null ? Number(a[1]).toFixed(1) : '—')) : '—';
+        };
+        const loadDraftDefault = lm => lm === 'torque' ? String(S.cfg.mkpNm) : lm === 'pitch' ? String(S.cfg.pitchDeg) : lm === 'dual_pitch' ? String(S.cfg.mainPitchDeg) : String(S.cfg.powerW);
+        const fmtT = t => (t == null || isNaN(t)) ? '—' : Number(t).toFixed(3) + ' s';
+        const cmdText = ev => {
+            const v = ev.value;
+            switch (ev.kind) {
+                case 'np': return 'Np → ' + Math.round(parseFloat(v) * 100) + '%';
+                case 'load':
+                    const lm = loadMode();
+                    return lm === 'power' ? 'PT功率 → ' + Number(v).toFixed(2) + ' kW'
+                        : lm === 'torque' ? '扭矩 → ' + Number(v).toFixed(1) + ' N·m'
+                        : lm === 'pitch' ? '总距角 → ' + Number(v).toFixed(2) + '°'
+                        : '主/尾桨 → ' + (Array.isArray(v) ? v.map(x => Number(x).toFixed(1) + '°').join(' / ') : v);
+                case 'pause': return '暂停';
+                case 'resume': return '继续';
+                case 'stop': return '结束计算';
+                default: return ev.kind + ' ' + JSON.stringify(v);
+            }
+        };
+
+        function bigFromLive() {
+            const live = S.live || {};
+            const v = live.values || [];
+            const eng = v[AFO_GROUP.engine] || [];
+            return [
+                ['Np实际', eng[AFO_E.Np], 'rpm'], ['Ng实际', eng[AFO_E.Ng], 'rpm'],
+                ['发动机燃油', (v[AFO_GROUP.fuel_engine] || [])[0], 'kg/s'],
+                ['Tt45', eng[AFO_E.Tt45], 'K']
+            ];
+        }
+        function bigFromResult() {
+            const g = AFO_GROUP.engine;
+            const last = (arr, j) => {
+                const vals = (S.result.values || []).map(row => row && row[g]);
+                for (let i = vals.length - 1; i >= 0; i--) { const c = vals[i]; if (c && c[j] != null) return c[j]; }
+                return null;
+            };
+            return [
+                ['Np实际轴速', last(0, AFO_E.Np), 'rpm'], ['Ng实际轴速', last(0, AFO_E.Ng), 'rpm'],
+                ['Tt45', last(0, AFO_E.Tt45), 'K'], ['入口流量W2', last(0, AFO_E.W2), 'kg/s']
+            ];
+        }
+        function kvBig(items) {
+            const grid = h('div', { style: 'display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin:14px 0' });
+            items.forEach(([label, v, unit]) => grid.appendChild(h('div', { style: 'background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:12px 16px' },
+                h('div', { class: 'wb-hint', style: 'margin:0 0 4px' }, label),
+                h('div', { style: 'font-size:24px;font-weight:700;color:#111827' }, v == null || !isFinite(Number(v)) ? '—' : Number(v).toFixed(3)),
+                h('div', { class: 'wb-hint', style: 'margin:0' }, unit || ''))));
+            return grid;
+        }
+
+        /* —— 准备配置表单(09-11准备:检查成套包并展示真实初态) —— */
+        function paintConfigForm() {
+            body.appendChild(h('div', { class: 'wb-infobar' },
+                '准备会创建独立运行副本(原SLX/DLL/MDL不写入),校验成套身份后初始化模型;准备完成才能开始运行。'));
+            const c = S.cfg;
+            const f = {};
+            const mk = (label, key, unit) => {
+                f[key] = h('input', { value: c[key] });
+                return h('div', { class: 'wb-field' }, h('label', null, label + (unit ? ' / ' + unit : '')), f[key]);
+            };
+            const paceSel = h('select', null, AFO_PACE.map(([v, l]) => h('option', { value: v, selected: c.pace === v ? '' : null }, l)));
+            const loadSel = h('select', null, AFO_LOAD.map(([v, l]) => h('option', { value: v, selected: c.loadMode === v ? '' : null }, l)));
+            const airSel = h('select', null, h('option', { value: 'internal', selected: !c.externalAir ? '' : null }, '内部引气(外部空气系统仍计算,8路不回灌)'),
+                h('option', { value: 'external', selected: c.externalAir ? '' : null }, '外部8路回灌(经一步延迟生效)'));
+            const loadBox = h('div', { class: 'wb-form-grid', style: 'grid-template-columns:1fr 1fr' });
+            const paintLoadFields = () => {
+                const lm = loadSel.value;
+                loadBox.innerHTML = '';
+                if (lm === 'power') loadBox.appendChild(mk('PT功率', 'powerW', 'kW'));
+                else if (lm === 'torque') loadBox.appendChild(mk('扭矩', 'mkpNm', 'N·m'));
+                else if (lm === 'pitch') loadBox.appendChild(mk('总距角', 'pitchDeg', 'deg'));
+                else { loadBox.appendChild(mk('主桨总距角', 'mainPitchDeg', 'deg')); loadBox.appendChild(mk('尾桨总距角', 'tailPitchDeg', 'deg')); }
+            };
+            loadSel.addEventListener('change', paintLoadFields);
+            body.appendChild(h('div', { class: 'wb-form-grid', style: 'grid-template-columns:repeat(3,1fr);max-width:1080px' },
+                mk('发动机编号', 'engineId'),
+                mk('仿真时长', 'duration', 's'),
+                mk('记录步长', 'recordStep', 's(积分步0.025整数倍)'),
+                h('div', { class: 'wb-field' }, h('label', null, '运行节奏'), paceSel),
+                h('div', { class: 'wb-field' }, h('label', null, '负载方式(运行中锁定)'), loadSel),
+                h('div', { class: 'wb-field' }, h('label', null, '空气回灌'), airSel)));
+            body.appendChild(loadBox);
+            const btn = h('button', {
+                class: 'wb-btn wb-btn-primary',
+                onclick: async () => {
+                    btn.classList.add('disabled');
+                    try {
+                        const cfgReq = {
+                            engineId: f.engineId.value.trim() || 'ENGINE-001',
+                            duration: parseFloat(f.duration.value),
+                            recordStep: parseFloat(f.recordStep.value),
+                            pace: paceSel.value,
+                            loadMode: loadSel.value,
+                            powerW: parseFloat(f.powerW ? f.powerW.value : c.powerW),
+                            mkpNm: parseFloat(f.mkpNm ? f.mkpNm.value : c.mkpNm),
+                            pitchDeg: parseFloat(f.pitchDeg ? f.pitchDeg.value : c.pitchDeg),
+                            mainPitchDeg: parseFloat(f.mainPitchDeg ? f.mainPitchDeg.value : c.mainPitchDeg),
+                            tailPitchDeg: parseFloat(f.tailPitchDeg ? f.tailPitchDeg.value : c.tailPitchDeg),
+                            externalAir: airSel.value === 'external',
+                            npRatio: parseFloat(c.npRatio)
+                        };
+                        if (!isFinite(cfgReq.duration) || cfgReq.duration <= 0) throw new Error('仿真时长须为正数');
+                        if (!isFinite(cfgReq.recordStep) || cfgReq.recordStep <= 0) throw new Error('记录步长须为正数');
+                        S.cfg = Object.assign({}, S.cfg, cfgReq);
+                        await apiPost('/prepare', cfgReq);
+                        toast('准备已发起;运行副本与模型初始化需要一些时间', 'info');
+                        startPoll();
+                    } catch (e) { toast('准备失败:' + e.message, 'error'); }
+                    btn.classList.remove('disabled');
+                }
+            }, '准备并校验(创建运行副本)');
+            body.appendChild(h('div', { class: 'wb-actions-row', style: 'margin-top:14px' },
+                btn,
+                h('button', { class: 'wb-btn wb-btn-outline', onclick: () => { ctx.navigate('records'); } }, '查看历史仿真记录')));
+            body.appendChild(h('div', { class: 'wb-hint', style: 'margin-top:10px' },
+                'Np初值挡位为100%(设计转速点);运行中可施加80/90/95/100/105%与负载在线指令。'));
+        }
+
+        /* —— 系统页签(09-01/02/05):曲线 + 通道核对 —— */
+        function paintSystemTab(src) {
+            const tab = S.tab;
+            if (tab === 'engine') {
+                body.appendChild(h('div', { class: 'wb-infobar' },
+                    '发动机内部轴扭矩与外部PT负载扭矩分开展示;不将计算量冒充传感器测量。'));
+                body.appendChild(kvBig(src === 'result' ? bigFromResult() : bigFromLive()));
+                const grids = h('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:18px' });
+                grids.appendChild(chartCard('两轴转速 / rpm', chartFor(['Np', 'Ng'], src)));
+                grids.appendChild(chartCard('燃气温度 / K', chartFor(['Tt3', 'Tt45'], src)));
+                body.appendChild(grids);
+                body.appendChild(h('div', { class: 'wb-hint', style: 'margin-top:10px' },
+                    '其他通道:各截面温压、流量、实际压比、换算转速、共同工作残差——全通道见交付Excel(通道筛选在底部)。'));
+            } else if (tab === 'control') {
+                body.appendChild(h('div', { class: 'wb-infobar' },
+                    '修改指令请返回总控。这里查看控制响应、实际负载和操纵记录,不设置第二套指令。'));
+                const grids = h('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:18px' });
+                grids.appendChild(chartCard('Np响应 / rpm', chartFor(['Np'], src)));
+                grids.appendChild(chartCard('PT实际负载 / kW', chartFor(['Pload'], src)));
+                body.appendChild(grids);
+                body.appendChild(h('div', { class: 'wb-section-title', style: 'margin:16px 0 8px' }, '本次操纵记录'));
+                body.appendChild(eventsTable(src));
+            } else if (tab === 'fuel') {
+                body.appendChild(h('div', { class: 'wb-infobar' },
+                    '燃油三路分开:控制器指令 / 发动机实际采用 / 通往滑油散热器的详细流量;不把详细流量冒充主供油。'));
+                body.appendChild(chartCard('燃油流量 / kg/s', chartFor(['Wf_cmd', 'Wf'], src), true));
+            } else if (tab === 'oil') {
+                body.appendChild(h('div', { class: 'wb-infobar' },
+                    '滑油系统按轴承腔/散热器/通风分组展示;原始轴承出口温度保持K,仅混温支路换算摄氏度。'));
+                if (src === 'result') {
+                    body.appendChild(chartCard('滑油关键通道(通道筛选可选)', oilChart(), true));
+                } else {
+                    body.appendChild(h('div', { class: 'wb-hint', style: 'margin:8px 0' },
+                        '运行中滑油全量通道以交付Excel为准;结束保存后本页提供曲线浏览。'));
+                }
+            } else if (tab === 'air') {
+                body.appendChild(h('div', { class: 'wb-infobar' },
+                    (S.result && S.result.config && S.result.config.externalAir) || (S.cfg && S.cfg.externalAir)
+                        ? '外部回灌模式:8路流量经一步延迟回灌发动机;G04仍提供滑油边界。'
+                        : '内部引气模式:外部空气系统仍计算,但8路流量不回灌发动机;G04仍提供滑油边界。'));
+                if (src === 'result') {
+                    const grids = h('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:18px' });
+                    grids.appendChild(chartCard('外部空气1~4路 / kg/s', airChart(0, 4), true));
+                    grids.appendChild(chartCard('外部空气5~8路 / kg/s', airChart(4, 8), true));
+                    body.appendChild(grids);
+                } else {
+                    body.appendChild(h('div', { class: 'wb-hint', style: 'margin:8px 0' },
+                        '运行中空气8路流量在总控实时值可见;结束保存后本页提供分路曲线。'));
+                }
+                body.appendChild(h('div', { class: 'wb-section-title', style: 'margin:16px 0 8px' }, '发动机边界核对'));
+                body.appendChild(h('table', { class: 'wb-table' },
+                    h('tr', null, ['位置', '流量来源', '温度 / 压力 / 焓 / 油气比'].map(x => h('th', null, x))),
+                    h('tr', null, h('td', null, '第1~8组'), h('td', null, '外部回灌启用时由8路结果替换'), h('td', null, '保留发动机模板')),
+                    h('tr', null, h('td', null, '第9~10组'), h('td', null, '始终保留发动机模板'), h('td', null, '保留发动机模板')),
+                    h('tr', null, h('td', null, '采用边界'), h('td', null, '回灌经原有一步延迟生效'), h('td', null, '同时保存模板、合并值、延迟值'))));
+            }
+        }
+
+        function chartCard(title, chart, wide) {
+            return h('div', { style: 'background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:12px;' + (wide ? '' : '') },
+                h('div', { style: 'font-weight:600;margin-bottom:6px' }, title),
+                chart || h('div', { class: 'wb-hint' }, '暂无曲线数据'));
+        }
+
+        /** 曲线:运行中→samples;历史→result.values。keys含'Pload/Wf_cmd'等映射到组索引。 */
+        function chartFor(keys, src) {
+            if (src === 'result') {
+                if (!S.result || !S.result.values || !S.result.values.length) return null;
+                const time = S.result.time || [];
+                const KEYMAP = {
+                    Np: [AFO_GROUP.engine, AFO_E.Np, 'Np'], Ng: [AFO_GROUP.engine, AFO_E.Ng, 'Ng'],
+                    Tt3: [AFO_GROUP.engine, AFO_E.Tt3, 'Tt3'], Tt45: [AFO_GROUP.engine, AFO_E.Tt45, 'Tt45'],
+                    W2: [AFO_GROUP.engine, AFO_E.W2, 'W2'],
+                    Pload: [AFO_GROUP.load, 4, 'Pload'], Mkp: [AFO_GROUP.load, 0, 'Mkp'],
+                    Wf_cmd: [AFO_GROUP.fuel_command, 0, 'Wf_command'], Wf: [AFO_GROUP.fuel_engine, 0, 'Wf_engine']
+                };
+                const series = keys.map(k => {
+                    const m = KEYMAP[k];
+                    if (!m) return null;
+                    const vals = (S.result.values || []).map(row => {
+                        const cell = row && row[m[0]];
+                        return cell ? (cell[m[1]] != null ? cell[m[1]] : null) : null;
+                    });
+                    return { name: m[2], values: vals };
+                }).filter(Boolean);
+                if (!series.length) return null;
+                const box = h('div', null);
+                box.appendChild(chartLegend(series));
+                box.appendChild(lineChart({ series, xLabels: lineByTime(series[0].values, time), xTitle: '时间 / s' }));
+                return box;
+            }
+            // 实时/运行结束未保存:samples
+            if (S.samples.length < 2) return h('div', { class: 'wb-hint' }, '采样积累中(记录步长见配置)...');
+            const series = keys.map(k => ({ name: k, values: S.samples.map(s => s[k]) }));
+            const box = h('div', null);
+            box.appendChild(chartLegend(series));
+            box.appendChild(lineChart({
+                series, xLabels: lineByTime(S.samples.map(s => s.t)), xTitle: '时间 / s'
+            }));
+            return box;
+        }
+
+        function oilChart() {
+            const chs = (S.result.channels || []);
+            const g = chs.findIndex(c => c.id === 'oil_air_temperature');
+            if (g < 0) return null;
+            const series = seriesFromResult(g, [0]);
+            series[0].name = '滑油-空气温度';
+            const box = h('div', null);
+            box.appendChild(chartLegend(series));
+            box.appendChild(lineChart({ series, xLabels: lineByTime(series[0].values, S.result.time), xTitle: '时间 / s' }));
+            return box;
+        }
+        function airChart(from, to) {
+            const series = [];
+            for (let k = from; k < to; k++) {
+                const g = AFO_GROUP['air0' + (k + 1)];
+                if (g == null) continue;
+                const s = seriesFromResult(g, [0])[0];
+                s.name = '第' + (k + 1) + '路';
+                series.push(s);
+            }
+            if (!series.length) return null;
+            const box = h('div', null);
+            box.appendChild(chartLegend(series));
+            box.appendChild(lineChart({ series, xLabels: lineByTime(series[0].values, S.result.time), xTitle: '时间 / s' }));
+            return box;
+        }
+        function eventsTable(src) {
+            const events = src === 'result' ? (S.result.events || []) : ((S.live || {}).events || []);
+            if (!events.length) return h('div', { class: 'wb-hint' }, '无操纵记录。');
+            const tbl = h('table', { class: 'wb-table' },
+                h('tr', null, ['接收时刻', '操纵内容', '生效时刻', '状态'].map(x => h('th', null, x))));
+            events.forEach(ev => tbl.appendChild(h('tr', null,
+                h('td', { class: 'wb-hint' }, fmtT(ev.acceptedTime)),
+                h('td', null, cmdText(ev)),
+                h('td', { class: 'wb-hint' }, fmtT(ev.appliedTime)),
+                h('td', null, ev.status === 'applied' ? '已生效' : ev.status === 'accepted' ? '已接收' : (ev.reason ? '已回退:' + ev.reason : ev.status)))));
+            return tbl;
+        }
+
+        /* —— 底部共同游标(09-01) —— */
+        function paintFoot() {
+            foot.innerHTML = '';
+            const span = S.result && S.result.time ? S.result.time : S.samples.map(s => s.t);
+            const last = span.length ? span[span.length - 1] : 0;
+            foot.appendChild(h('div', { class: 'wb-infobar', style: 'display:flex;gap:26px' },
+                h('span', null, '⏱ 共同游标 ' + Number(last).toFixed(3) + ' s'),
+                h('span', { class: 'wb-hint', style: 'margin:0' }, '范围 0.000 ~ ' + Number(last).toFixed(3) + ' s'),
+                h('div', { class: 'wb-spacer' }),
+                S.live && S.live.runId || S.readonlyRunId
+                    ? h('a', { style: 'color:#096b77;text-decoration:underline;font-size:13px', href: excelUrl(S.readonlyRunId || S.live.runId), target: '_blank' }, '导出可见数据(全通道Excel)')
+                    : h('span', { class: 'wb-hint', style: 'margin:0' }, '导出可见数据(运行保存后可用)')));
+        }
+
+        function renderAll() {
+            paintStatus();
+            paintTabs();
+            paintBody();
+            paintFoot();
+        }
+        /** 轮询轻更新:phase不变时只刷新状态条数字与总控,不重建输入框。 */
+        function lightUpdate() {
+            paintStatus();
+            if (S.tab === 'main' && canCmd()) { paintBody(); }
+            paintFoot();
+        }
+
+        /* —— 动作 —— */
+        async function sendCmd(kind, value) {
+            try {
+                await apiPost('/command', { kind: kind, value: value });
+                toast(kind === 'pause' ? '已请求暂停' : kind === 'resume' ? '已请求继续' : kind === 'stop' ? '已请求结束计算' : '命令已提交,等待主步生效', 'info');
+                refresh();
+            } catch (e) { toast('命令失败:' + e.message, 'error'); }
+        }
+        async function applyLoadDraft() {
+            const inp = document.getElementById('afo-load-draft');
+            const v = inp ? parseFloat(inp.value) : NaN;
+            if (!isFinite(v)) { toast('请输入负载数值', 'error'); return; }
+            const lm = S.cfg.loadMode;
+            sendCmd('load', lm === 'dual_pitch' ? [v, parseFloat(S.cfg.tailPitchDeg)] : v);
+        }
+        async function startRun() {
+            try {
+                await apiPost('/run', {});
+                toast('仿真已启动', 'success');
+                startPoll();
+            } catch (e) { toast('启动失败:' + e.message, 'error'); }
+        }
+        async function closeSession() {
+            try {
+                await apiPost('/close', {});
+                toast('会话已关闭;可新建运行', 'success');
+                S.phase = 'IDLE'; S.live = null; S.samples = []; S.lastSampleT = -1; S.message = '';
+                renderAll();
+            } catch (e) { toast('关闭失败:' + e.message, 'error'); }
+        }
+        function reuseConfig() {
+            const r = S.result;
+            if (r && r.config) {
+                S.cfg = Object.assign({}, S.cfg, {
+                    engineId: r.config.engineId, duration: r.config.duration, recordStep: r.config.recordStep,
+                    pace: r.config.pace, loadMode: r.config.loadMode, powerW: r.config.powerW, mkpNm: r.config.mkpNm,
+                    pitchDeg: r.config.pitchDeg, mainPitchDeg: r.config.mainPitchDeg, tailPitchDeg: r.config.tailPitchDeg,
+                    externalAir: !!r.config.externalAir
+                });
+            }
+            exitReadonly();
+        }
+        function exitReadonly() {
+            S.readonlyRunId = null; S.result = null; S.tab = 'main'; S.phase = 'IDLE';
+            S.live = null; S.samples = []; S.lastSampleT = -1; S.message = '';
+            renderAll(); refresh();
+        }
+
+        /* —— 历史(记录只读):拉result.json —— */
+        async function loadReadonly(runId) {
+            S.readonlyRunId = runId;
+            S.readonlyLoading = true;
+            S.result = null;
+            S.tab = 'main';
+            renderAll();
+            try {
+                const resp = await api('/sessions/' + encodeURIComponent(runId) + '/result');
+                if (resp && (resp.success || resp.code === 200) && resp.data) {
+                    S.result = resp.data;
+                } else {
+                    toast((resp && resp.message) || '结果尚未生成', 'error');
+                    S.readonlyRunId = null;
+                }
+            } catch (e) {
+                toast('历史结果加载失败:' + e.message, 'error');
+                S.readonlyRunId = null;
+            }
+            S.readonlyLoading = false;
+            renderAll();
+        }
+        window.__WB_AFO_OPEN__ = runId => { S.tab = 'main'; loadReadonly(runId); };
+        window.__WB_AFO_REUSE__ = rec => {
+            const r = rec && rec.config ? rec : (S.result || {});
+            const c = r.config || {};
+            S.cfg = Object.assign({}, S.cfg, {
+                engineId: c.engineId || S.cfg.engineId, duration: c.duration != null ? c.duration : S.cfg.duration,
+                recordStep: c.recordStep != null ? c.recordStep : S.cfg.recordStep, pace: c.pace || S.cfg.pace,
+                loadMode: c.loadMode || S.cfg.loadMode, powerW: c.powerW != null ? c.powerW : S.cfg.powerW,
+                mkpNm: c.mkpNm != null ? c.mkpNm : S.cfg.mkpNm, pitchDeg: c.pitchDeg != null ? c.pitchDeg : S.cfg.pitchDeg,
+                mainPitchDeg: c.mainPitchDeg != null ? c.mainPitchDeg : S.cfg.mainPitchDeg,
+                tailPitchDeg: c.tailPitchDeg != null ? c.tailPitchDeg : S.cfg.tailPitchDeg,
+                externalAir: !!c.externalAir
+            });
+            exitReadonly();
+        };
+
+        /* —— 轮询 —— */
+        let polling = false;
+        async function refresh() {
+            if (polling) return;
+            polling = true;
+            try {
+                const resp = await api('/status');
+                const d = resp && (resp.success || resp.code === 200) && resp.data ? resp.data : {};
+                const prev = S.phase;
+                if (!S.readonlyRunId) {
+                    S.phase = d.phase || 'IDLE';
+                    S.message = d.message || '';
+                    S.live = d.live || null;
+                    if (S.live && typeof S.live.time === 'number') pushSample(S.live);
+                }
+                if (S.phase !== prev) renderAll();
+                else lightUpdate();
+            } catch (e) { /* 轮询容错 */ }
+            polling = false;
+        }
+        function startPoll() {
+            if (window.__WB_AFO_TIMER__) clearInterval(window.__WB_AFO_TIMER__);
+            window.__WB_AFO_TIMER__ = setInterval(() => {
+                if (!S.readonlyRunId && ['PREPARING', 'READY', 'RUNNING', 'PAUSED', 'ENDED'].includes(S.phase)) refresh();
+            }, 2000);
+        }
+
+        if (window.__WB_AFO_TIMER__) clearInterval(window.__WB_AFO_TIMER__);
+        window.__WB_AFO_TIMER__ = setInterval(() => {
+            if (!S.readonlyRunId && ['PREPARING', 'READY', 'RUNNING', 'PAUSED', 'ENDED'].includes(S.phase)) refresh();
+        }, 2000);
+        renderAll();
+        refresh();
+        return wrap;
+    };
     pages['testbench.records'] = (ctx) => recordsPage(ctx, 'sim');
 
     /* ---------- API ---------- */

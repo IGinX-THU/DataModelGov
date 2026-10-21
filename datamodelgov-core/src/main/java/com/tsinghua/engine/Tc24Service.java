@@ -71,7 +71,9 @@ public class Tc24Service {
     void init() {
         if (engineEnabled) {
             enginePool = new MatlabEnginePool(poolSize, matlabHome);
-            log.info("TC24 接入层 MATLAB 引擎池已创建: poolSize={}", poolSize);
+            // 预热:启动常驻引擎(旧版程序预热已移除,新版辨识/UQ首次执行不再现启MATLAB)
+            enginePool.init();
+            log.info("TC24 接入层 MATLAB 引擎池已创建并预热(常驻1引擎): poolSize={}", poolSize);
         } else {
             log.info("MATLAB 引擎被禁用(matlab.engine.enabled=false),TC24 任务将直接失败");
         }
@@ -1274,6 +1276,7 @@ public class Tc24Service {
     }
 
     private void emitLog(String taskId, String line) {
+        MatlabLogRing.append(line);
         List<String> buf = logBuffers.get(taskId);
         if (buf == null) return;
         synchronized (buf) {

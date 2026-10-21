@@ -151,6 +151,34 @@ public class EngineProjectStore {
         return taskDir(projectId, taskId);
     }
 
+    /* ---------- 多系统联合仿真(AFO_V_2 会话) ---------- */
+
+    /**
+     * AFO会话大文件工作目录(扁平,项目工作目录下一级):
+     * `<项目工作目录>/afo/<runId>`(status.json/inbox/runtime/result.json/交付Excel);
+     * 无项目或工作目录缺失时回退元数据目录 projects/{pid}/afo-work/<runId>。
+     */
+    public File afoWorkDir(String projectId, String runId) {
+        try {
+            EngineProject p = getProject(projectId);
+            if (p != null && p.getWorkdir() != null && !p.getWorkdir().isEmpty()) {
+                return new File(new File(p.getWorkdir()), "afo/" + runId);
+            }
+        } catch (IOException e) {
+            log.warn("读取项目工作目录失败,AFO会话回退元数据目录: {}", projectId);
+        }
+        return new File(new File(projectDir(projectId), "afo-work"), runId);
+    }
+
+    /** AFO会话元数据文件(projects/{pid}/afo/{runId}.json),与 predictions/uq 同模式。 */
+    public File afoSessionFile(String projectId, String runId) {
+        return new File(projectDir(projectId), "afo/" + runId + ".json");
+    }
+
+    public File afoSessionDir(String projectId) {
+        return new File(projectDir(projectId), "afo");
+    }
+
     public ModelingTask saveTask(ModelingTask t) throws IOException {
         if (t.getId() == null || t.getId().isEmpty()) {
             t.setId(newId());
