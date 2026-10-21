@@ -95,9 +95,26 @@ window.Workbench = (() => {
         return h('span', { class: 'wb-tag wb-tag-' + (kind || 'gray') }, text);
     }
 
+    /** 自包含toast:workbench.html不加载common-utils.js,提示条就地注入body,不依赖外部组件。 */
+    let toastHost = null;
     function toast(msg, kind) {
-        if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast(msg, kind || 'info');
-        else console.log('[workbench]', msg);
+        if (window.CommonUtils && window.CommonUtils.showToast) { window.CommonUtils.showToast(msg, kind || 'info'); return; }
+        if (!toastHost || !toastHost.isConnected) {
+            toastHost = h('div', { style: 'position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:99999;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none' });
+            document.body.appendChild(toastHost);
+        }
+        const bg = kind === 'error' ? '#b91c1c' : kind === 'success' ? '#0f766e' : '#334155';
+        const item = h('div', {
+            style: 'background:' + bg + ';color:#fff;padding:9px 18px;border-radius:6px;font-size:13px;max-width:70vw;'
+                + 'box-shadow:0 4px 14px rgba(0,0,0,.18);opacity:0;transition:opacity .2s',
+            title: msg
+        }, String(msg));
+        toastHost.appendChild(item);
+        requestAnimationFrame(() => { item.style.opacity = '1'; });
+        setTimeout(() => {
+            item.style.opacity = '0';
+            setTimeout(() => { if (item.parentNode) item.parentNode.removeChild(item); }, 250);
+        }, kind === 'error' ? 5200 : 3200);
     }
 
     /** 模型交付文件下载地址(带 token;import() 场景同插件认证约定)。 */
@@ -479,6 +496,7 @@ function loadOverviewTasks(ctx, holder) {
         // 子页签:模型清单 | 来源关系(02-01/02-03)
         const tabBar = h('div', { class: 'wb-tabs', style: 'margin-bottom:12px' });
         const listHolder = h('div', null, h('div', { class: 'wb-empty' }, '正在加载模型成果...'));
+        const summaryHolder = h('div', null);
         const actionsBar = h('div', { class: 'wb-actions-row', style: 'margin-top:14px' });
         [['list', '模型清单'], ['relation', '来源关系']].forEach(([key, label]) => {
             tabBar.appendChild(h('div', {
@@ -489,6 +507,7 @@ function loadOverviewTasks(ctx, holder) {
         body.appendChild(filterBar);
         body.appendChild(tabBar);
         body.appendChild(listHolder);
+        body.appendChild(summaryHolder);
         body.appendChild(actionsBar);
 
         [fBusiness, fStage, fRoute, fName].forEach(el => el.addEventListener('change', () => loadModels(ctx)));
@@ -510,8 +529,21 @@ function loadOverviewTasks(ctx, holder) {
             return uqRecords.filter(r => r.modelAssetId === mid && r.status === 'COMPLETED').length;
         }
 
+        /** UQ列副行(02-01):按方法汇总"2采样 / 1局部近似"。 */
+        function uqSubLine(mid) {
+            const mine = uqRecords.filter(r => r.modelAssetId === mid && r.status === 'COMPLETED');
+            if (!mine.length) return '可新建匹配评估';
+            const sampling = mine.filter(r => r.method === 'B' || r.method === 'C').length;
+            const local = mine.filter(r => r.method === 'D').length;
+            const parts = [];
+            if (sampling) parts.push(sampling + '采样');
+            if (local) parts.push(local + '局部近似');
+            return parts.join(' / ');
+        }
+
         function renderList() {
             listHolder.innerHTML = '';
+            summaryHolder.innerHTML = '';
             const shown = models.filter(match);
             if (MODEL_VIEW.tab === 'relation') {
                 renderRelation(shown);
@@ -526,10 +558,10 @@ function loadOverviewTasks(ctx, holder) {
                 return;
             }
             const total = h('span', { class: 'wb-hint', style: 'margin:0' },
-                shown.length + ' 份模型 · ' + uqRecords.length + ' 条评估来源路径');
-            listHolder.appendChild(h('div', { style: 'text-align:right;margin-bottom:6px' }, total));
+                shown.length + '份模型 · ' + new Set(models.map(m => m.parentModelId || 'root')).size + '条来源路径');
+            listHolder.appendChild(h('div', { style: 'display:flex;justify-content:flex-end;margin-bottom:6px' }, total));
             const tbl = h('table', { class: 'wb-table' },
-                h('tr', null, ['', '模型名称', '来源阶段', '计算路径', '训练数据', '父模型', '结果状态', '不确定性评估'].map((x, i) =>
+                h('tr', null, ['', '模型名称 / 版本', '来源阶段', '计算路径', '训练数据', '父模型', '结果状态', '不确定性评估'].map((x, i) =>
                     h('th', i === 0 ? { style: 'width:34px' } : null, x))));
             shown.forEach(m => {
                 const parent = models.find(p => p.id === m.parentModelId);
@@ -539,48 +571,146 @@ function loadOverviewTasks(ctx, holder) {
                     if (cb.checked) MODEL_VIEW.checked[m.id] = true; else delete MODEL_VIEW.checked[m.id];
                     renderActions();
                 });
+                const diag = m.resultStatus === '诊断(未收敛但有效)';
+                const uqN = uqCount(m.id);
                 tbl.appendChild(h('tr', { class: 'clickable', onclick: () => { MODEL_VIEW.tab = 'detail'; MODEL_VIEW.detailId = m.id; renderModelsBody(ctx, body); } },
                     h('td', { onclick: ev => ev.stopPropagation() }, cb),
-                    h('td', { style: 'font-weight:600;color:#111827' }, m.name || m.id),
+                    h('td', null,
+                        h('div', { style: 'font-weight:600;color:#111827' }, m.name || m.id),
+                        h('div', { class: 'wb-hint', style: 'margin:0' },
+                            (m.sourceBusiness === '导入模型' ? '导入模型' : '基础/更新模型') + ' · ' + (m.route || '—'))),
                     h('td', null, m.stage || '—'),
                     h('td', null, m.route || '—'),
                     h('td', { class: 'wb-hint' }, m.trainingFile ? String(m.trainingFile).split(/[\\/]/).pop() : '—'),
                     h('td', { class: 'wb-hint' }, parent ? parent.name : (m.parentModelId ? m.parentModelId : '基准配置')),
-                    h('td', null, statusTag(m.resultStatus === '已交付' ? '已完成' : m.resultStatus === '已导入' ? '已完成' : '待配置',
-                        m.resultStatus === '诊断(未收敛但有效)' ? 'amber' : 'teal')),
-                    h('td', { class: 'wb-hint' }, uqCount(m.id) ? uqCount(m.id) + ' 份记录' : '未评估')));
+                    h('td', null,
+                        h('div', { style: diag ? 'color:#b45309;font-weight:600' : 'color:#0f766e;font-weight:600' },
+                            diag ? '已交付' : (m.resultStatus || '已保存')),
+                        diag ? h('div', { class: 'wb-hint', style: 'margin:0' }, '未收敛但有效,可进下游') : null),
+                    h('td', null,
+                        h('div', { style: 'font-weight:' + (uqN ? '600' : '400') + ';color:' + (uqN ? '#0f766e' : '#6b7280') },
+                            uqN ? uqN + '份记录' : '未评估'),
+                        h('div', { class: 'wb-hint', style: 'margin:0' }, uqSubLine(m.id)))));
             });
             listHolder.appendChild(tbl);
             renderActions();
         }
 
-        /** 来源关系(02-02/02-04):父模型链 + 同父并列方案;不继承旧模型UQ。 */
+        /** 来源关系(02-02):按父模型分组的树形视图——左父模型卡,右同父子方案卡,右缘关联评估;不继承旧模型UQ。 */
         function renderRelation(shown) {
             if (!shown.length) {
                 listHolder.appendChild(h('div', { class: 'wb-empty' }, '暂无模型;来源关系随模型登记生成。'));
                 return;
             }
-            listHolder.appendChild(h('div', { class: 'wb-hint', style: 'margin-bottom:8px' },
+            listHolder.appendChild(h('div', { class: 'wb-hint', style: 'margin-bottom:10px' },
                 '按父模型链回溯;同父并列方案各自独立,不继承父模型的UQ区间。'));
-            listHolder.appendChild(h('table', { class: 'wb-table' },
-                h('tr', null, ['模型', '父模型 / 基准', '训练数据', '交付文件', '登记时间'].map(x => h('th', null, x))),
-                shown.map(m => {
-                    const parent = models.find(p => p.id === m.parentModelId);
-                    return h('tr', { class: 'clickable', onclick: () => { MODEL_VIEW.tab = 'detail'; MODEL_VIEW.detailId = m.id; renderModelsBody(ctx, body); } },
-                        h('td', { style: 'font-weight:600;color:#111827' }, m.name || m.id),
-                        h('td', null, parent ? parent.name : '基准配置'),
-                        h('td', { class: 'wb-hint' }, m.trainingFile ? String(m.trainingFile).split(/[\\/]/).pop() : '—'),
-                        h('td', { class: 'wb-hint', style: 'word-break:break-all' },
-                            m.deliveryWorkbookFile ? String(m.deliveryWorkbookFile).split(/[\\/]/).pop() : '—'),
-                        h('td', { class: 'wb-hint' }, m.createdAt ? new Date(m.createdAt).toLocaleString() : '—'));
-                })));
-        }
 
-        /** 底部动作(02-01):查看详情/比较已选/新工况预测。 */
-        function renderActions() {
+            // 分组:根模型(无父模型)与其子模型同块
+            const byParent = {};
+            shown.forEach(m => {
+                const key = m.parentModelId || '';
+                (byParent[key] = byParent[key] || { roots: [], children: [] });
+                if (m.parentModelId) byParent[key].children.push(m);
+                else byParent[key].roots.push(m);
+            });
+            const painted = new Set();
+            const modelCard = (m, selected) => h('div', {
+                style: 'border:1px solid ' + (selected ? '#0f766e' : '#e5e7eb') + ';background:' + (selected ? '#e5f1f2' : '#fff')
+                    + ';border-radius:6px;padding:10px 14px;cursor:pointer;min-width:230px',
+                onclick: () => {
+                    MODEL_VIEW.checked = {};
+                    MODEL_VIEW.checked[m.id] = true;
+                    renderList();
+                }
+            },
+                h('div', { style: 'font-weight:600;color:#111827' }, m.name || m.id),
+                h('div', { class: 'wb-hint', style: 'margin:0' }, m.route || '—'),
+                h('div', { class: 'wb-hint', style: 'margin:0' },
+                    '训练: ' + (m.trainingFile ? String(m.trainingFile).split(/[\\/]/).pop() : '—')));
+
+            const drawBlock = (rootArr, children) => {
+                const root = rootArr[0];
+                rootArr.forEach(r => painted.add(r.id));
+                children.forEach(c => painted.add(c.id));
+                const uqOnRoot = uqCount(root.id);
+                const block = h('div', { style: 'display:grid;grid-template-columns:minmax(200px,280px) 24px minmax(240px,1fr) 150px;gap:0 8px;align-items:center;padding:18px 0;border-bottom:1px solid #f1f5f9' },
+                    // 左:父模型卡 + 其UQ记录提示
+                    h('div', null,
+                        modelCard(root, !!MODEL_VIEW.checked[root.id]),
+                        uqOnRoot ? h('div', { style: 'margin-top:8px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;padding:7px 12px;font-size:12px;color:#0369a1' },
+                            '⇊ ' + root.name + ': ' + uqOnRoot + '份UQ记录') : null),
+                    // 中:连线
+                    children.length ? h('div', { style: 'height:100%;display:flex;align-items:center;justify-content:center;color:#94a3b8' }, '—') : h('div', null),
+                    // 右:子方案卡列表
+                    children.length
+                        ? h('div', { style: 'display:flex;flex-direction:column;gap:10px' },
+                            children.map(c => modelCard(c, !!MODEL_VIEW.checked[c.id])))
+                        : h('div', { class: 'wb-hint' }, '无更新派生模型'),
+                    // 右缘:关联评估
+                    h('div', { style: 'display:flex;flex-direction:column;gap:10px' },
+                        (children.length ? children : [root]).map(t => {
+                            const n = uqCount(t.id);
+                            return h('div', { style: 'font-size:12px;' + (n ? 'color:#0f766e;font-weight:600' : 'color:#6b7280') },
+                                n ? (uqRecords.filter(r => r.modelAssetId === t.id && r.status === 'COMPLETED')[0] || {}).runId || n + '份记录' : '未评估');
+                        })));
+                listHolder.appendChild(block);
+            };
+
+            // 有子模型的根优先成块;剩余独立模型单独成块
+            Object.keys(byParent).forEach(pid => {
+                const grp = byParent[pid];
+                if (!pid && grp.roots.length) {
+                    grp.roots.forEach(root => {
+                        const kids = shown.filter(m => m.parentModelId === root.id);
+                        drawBlock([root], kids);
+                    });
+                }
+            });
+            shown.filter(m => !painted.has(m.id)).forEach(m => drawBlock([m], []));
+
+            // 底部说明 + 动作(02-02)
             actionsBar.innerHTML = '';
             const checkedIds = Object.keys(MODEL_VIEW.checked).filter(id => models.some(m => m.id === id));
+            actionsBar.appendChild(h('button', {
+                class: 'wb-btn wb-btn-primary' + (checkedIds.length === 1 ? '' : ' disabled'),
+                onclick: () => {
+                    if (checkedIds.length !== 1) return;
+                    MODEL_VIEW.tab = 'detail'; MODEL_VIEW.detailId = checkedIds[0]; renderModelsBody(ctx, body);
+                }
+            }, '打开已选模型详情'));
+            const firstChecked = checkedIds.length ? models.find(m => m.id === checkedIds[0]) : null;
+            actionsBar.appendChild(h('button', {
+                class: 'wb-btn wb-btn-outline' + (firstChecked && uqCount(firstChecked.id) ? '' : ' disabled'),
+                onclick: () => {
+                    if (!firstChecked) return;
+                    window.__WB_OPEN_MODEL_UQ__ = firstChecked.id;
+                    MODEL_VIEW.tab = 'detail'; MODEL_VIEW.detailId = firstChecked.id; renderModelsBody(ctx, body);
+                }
+            }, firstChecked ? ('查看 ' + (firstChecked.name || '') + ' 的评估记录') : '查看评估记录'));
+        }
+
+        /** 底部动作(02-01):已选摘要 + 查看详情/来源关系/比较已选/新工况预测。 */
+        function renderActions() {
+            actionsBar.innerHTML = '';
+            summaryHolder.innerHTML = '';
+            if (MODEL_VIEW.tab === 'relation') return;
+            const checkedIds = Object.keys(MODEL_VIEW.checked).filter(id => models.some(m => m.id === id));
             const checkedRows = checkedIds.map(id => models.find(m => m.id === id));
+            // 已选摘要区(02-01):勾选后显示所选模型的方法/数据/父模型/UQ概览
+            if (checkedRows.length === 1) {
+                const m = checkedRows[0];
+                const parent = models.find(p => p.id === m.parentModelId);
+                const uqRec = uqRecords.find(r => r.modelAssetId === m.id && r.status === 'COMPLETED');
+                summaryHolder.appendChild(h('div', { style: 'border-top:1px solid #f1f5f9;margin-top:14px;padding-top:12px' },
+                    h('div', { style: 'display:flex;gap:18px;align-items:baseline;flex-wrap:wrap' },
+                        h('span', { style: 'font-weight:600;font-size:15px' }, '已选 ' + (m.name || m.id)),
+                        h('span', { class: 'wb-hint', style: 'margin:0' },
+                            (m.stage || '—') + ' · ' + (m.route || '—'))),
+                    h('div', { class: 'wb-hint', style: 'margin:6px 0 0;display:flex;gap:26px;flex-wrap:wrap' },
+                        h('span', null, '训练数据 ' + (m.trainingFile ? String(m.trainingFile).split(/[\\/]/).pop() : '—')),
+                        h('span', null, '父模型 ' + (parent ? parent.name : '基准配置')),
+                        h('span', null, uqRec ? ((uqRec.runId || 'UQ') + ' · 方法' + (uqRec.method || '—')) : '未评估'))));
+            }
             actionsBar.appendChild(h('button', {
                 class: 'wb-btn wb-btn-primary' + (checkedRows.length ? '' : ' disabled'),
                 onclick: () => {
@@ -589,6 +719,10 @@ function loadOverviewTasks(ctx, holder) {
                     MODEL_VIEW.tab = 'detail'; MODEL_VIEW.detailId = m.id; renderModelsBody(ctx, body);
                 }
             }, '查看模型详情'));
+            actionsBar.appendChild(h('button', {
+                class: 'wb-btn wb-btn-outline',
+                onclick: () => { MODEL_VIEW.tab = 'relation'; renderModelsBody(ctx, body); }
+            }, '查看来源关系'));
             actionsBar.appendChild(h('button', {
                 class: 'wb-btn wb-btn-outline' + (checkedIds.length >= 2 ? '' : ' disabled'),
                 title: checkedIds.length >= 2 ? '' : '勾选两份及以上模型后可比较',
@@ -671,11 +805,24 @@ function loadOverviewTasks(ctx, holder) {
                 return;
             }
             const parent = models.find(p => p.id === m.parentModelId);
+            // 顶部按钮行(02-03):返回模型清单 | 打开建模任务 | 新工况预测
             body.appendChild(h('div', { style: 'display:flex;align-items:center;gap:14px;margin-bottom:4px' },
                 h('button', { class: 'wb-btn wb-btn-outline', onclick: () => { MODEL_VIEW.tab = 'list'; MODEL_VIEW.detailId = null; renderModelsBody(ctx, body); } }, '‹ 返回模型清单'),
-                h('div', { class: 'wb-page-title', style: 'margin:0' }, '模型成果 / ' + (m.name || m.id))));
+                h('div', { class: 'wb-page-title', style: 'margin:0' }, '模型成果 / ' + (m.name || m.id)),
+                h('div', { class: 'wb-spacer' }),
+                m.taskId ? h('button', {
+                    class: 'wb-btn wb-btn-outline',
+                    onclick: () => {
+                        if (ctx.openTask) ctx.openTask();
+                        else toast('请从"建模任务"进入该模型来源任务(' + (m.taskId || '') + ')', 'info');
+                    }
+                }, '打开建模任务') : null,
+                h('button', {
+                    class: 'wb-btn wb-btn-primary',
+                    onclick: () => { window.__WB_PREDICT_MODEL__ = m; ctx.navigate('predictions'); }
+                }, '新工况预测')));
             body.appendChild(h('div', { class: 'wb-page-sub' },
-                (m.sourceBusiness || '—') + ' · ' + (m.stage || '—') + ' / ' + (m.route || '—') + ' / ' + (m.engineId || '—')));
+                (m.sourceBusiness || '—') + ' · ' + (m.stage || '—') + ' / ' + (m.route || '—') + ' / ' + (m.engineId || '—') + ' · 三部件'));
 
             const tabBar = h('div', { class: 'wb-tabs', style: 'margin-bottom:12px' });
             const holder = h('div', null);
@@ -695,18 +842,33 @@ function loadOverviewTasks(ctx, holder) {
             function paint() {
                 holder.innerHTML = '';
                 if (sub === 'src') {
+                    const myUq = uqRecords.filter(r => r.modelAssetId === m.id && r.status === 'COMPLETED');
                     if (m.resultStatus === '诊断(未收敛但有效)') {
                         holder.appendChild(h('div', { class: 'wb-infobar', style: 'border-left:4px solid #d97706;background:#fffbeb' },
-                            '⚠ 模型以诊断身份交付:未收敛但有效;小目标改进已停止,可进入支持的下游。'));
+                            '⚠ 模型已交付;小目标改进停止,一阶段驻点检查未通过;可进入支持的下游。'));
                     }
+                    // 溯源行(02-03):父模型 | 当前建模方式 | 本次参数范围 | 关联UQ
                     holder.appendChild(h('table', { class: 'wb-table', style: 'max-width:1180px' },
-                        h('tr', null, ['父模型', '当前建模方式', '训练数据', '独立测试', '结果状态'].map(x => h('th', null, x))),
+                        h('tr', null, ['父模型', '当前建模方式', '本次参数范围', '关联UQ'].map(x => h('th', null, x))),
                         h('tr', null,
                             h('td', null, parent ? parent.name : '基准配置'),
                             h('td', null, (m.stage || '—') + ' / ' + (m.route || '—')),
-                            h('td', { class: 'wb-hint' }, m.trainingFile ? String(m.trainingFile).split(/[\\/]/).pop() : '—'),
-                            h('td', { class: 'wb-hint' }, m.testFile ? String(m.testFile).split(/[\\/]/).pop() : '未提供'),
-                            h('td', null, m.resultStatus || '—'))));
+                            h('td', null, '稳态系数、燃油偏置'),
+                            h('td', null, myUq.length
+                                ? myUq.map(r => r.runId || r.id).join('、')
+                                : h('span', { class: 'wb-hint' }, '未评估')))));
+                    // 输入数据与实际用途(02-03):真实训练/测试文件及其角色
+                    holder.appendChild(h('div', { style: 'display:flex;justify-content:space-between;align-items:baseline;margin:16px 0 8px' },
+                        h('div', { class: 'wb-section-title', style: 'margin:0' }, '输入数据与实际用途')));
+                    const usageRows = [];
+                    if (m.trainingFile) usageRows.push(['训练数据', String(m.trainingFile).split(/[\\/]/).pop(), '稳态训练点', '参与辨识与训练误差']);
+                    if (m.testFile) usageRows.push(['独立测试', String(m.testFile).split(/[\\/]/).pop(), '独立测试', '测试误差单独报告,不并入训练']);
+                    holder.appendChild(usageRows.length
+                        ? h('table', { class: 'wb-table', style: 'max-width:1180px' },
+                            h('tr', null, ['数据批次', '原始文件', '本次角色', '实际使用范围'].map(x => h('th', null, x))),
+                            usageRows.map(r => h('tr', null, r.map((c, i) => h('td', i > 0 ? { class: 'wb-hint' } : null, c)))))
+                        : h('div', { class: 'wb-hint' }, '导入模型未携带数据批次信息;数据血缘见交付 identity.json。'));
+                    // 本次模型交付(02-03):工作簿 + 身份文件 + 输出位置
                     holder.appendChild(h('div', { class: 'wb-section-title', style: 'margin:16px 0 8px' }, '本次模型交付'));
                     holder.appendChild(h('table', { class: 'wb-table', style: 'max-width:1180px' },
                         h('tr', null, ['文件', '说明', ''].map(x => h('th', null, x))),
@@ -720,7 +882,12 @@ function loadOverviewTasks(ctx, holder) {
                             h('td', null, String(m.identityFile).split(/[\\/]/).pop()),
                             h('td', { class: 'wb-hint' }, '模型身份文件(导入携带)'),
                             h('td', null, '')) : null));
+                    if (m.deliveryWorkbookFile) {
+                        holder.appendChild(h('div', { class: 'wb-hint', style: 'margin-top:4px' },
+                            '输出位置: ' + String(m.deliveryWorkbookFile).replace(/[\\/][^\\/]+$/, '')));
+                    }
                     holder.appendChild(h('div', { class: 'wb-actions-row', style: 'margin-top:10px' },
+                        h('button', { class: 'wb-btn wb-btn-outline', onclick: () => { MODEL_VIEW.tab = 'relation'; renderModelsBody(ctx, body); } }, '查看数据关联模型'),
                         h('button', { class: 'wb-btn wb-btn-primary', onclick: () => { window.__WB_PREDICT_MODEL__ = m; ctx.navigate('predictions'); } }, '新工况预测')));
                 } else if (sub === 'param') {
                     const ph = h('div', null, h('div', { class: 'wb-hint' }, '正在加载参数与节点表...'));
@@ -811,8 +978,15 @@ function loadOverviewTasks(ctx, holder) {
     };
 
     pages['modeling.predictions'] = (ctx) => {
-        const wrap = h('div', null, pageHeader('输出预测',
-            '独立稳态工况预测:选择已登记模型,给定环境、燃油及负载,由模型自主输出(不使用目标测量,不经控制闭环)'));
+        const pre0 = window.__WB_PREDICT_MODEL__;
+        const wrap = h('div', null,
+            h('div', { style: 'margin-bottom:14px' },
+                h('div', { class: 'wb-page-title', style: 'font-size:20px;margin-bottom:2px' }, '独立稳态输出预测'),
+                h('div', { class: 'wb-page-sub' },
+                    (ctx.project.engineId || '—') + ' / ' + (pre0 ? (pre0.name || pre0.id) : '模型待选')
+                    + ' / 新工况输入，不需要目标测量输出')));
+        const body = h('div', null);
+        wrap.appendChild(body);
 
         const modelSel = h('select', { style: 'width:100%' });
         const uqSel = h('select', { style: 'width:100%' }, h('option', { value: '' }, '不使用(确定性预测)'));
@@ -1019,7 +1193,7 @@ function loadOverviewTasks(ctx, holder) {
             return box;
         }
 
-        /** 结果区(01-11/01-12):多工况逐条状态 + 失败诊断展开 + 导出Excel。 */
+        /** 结果区(01-11/01-12):多工况逐条状态 + 关键输出列 + 单工况查看 + 失败诊断展开 + 导出Excel。 */
         function renderLatest(rec) {
             resultHolder.innerHTML = '';
             if (!rec) {
@@ -1040,11 +1214,29 @@ function loadOverviewTasks(ctx, holder) {
             }
             const condList = Array.isArray(rec.conditions) && rec.conditions.length ? rec.conditions
                 : [{ id: 'P01', status: rec.status, message: rec.message, result: rec.result }];
+            // 关键输出提取(01-12汇总表):兼容顶层/outputs嵌套与大小写
+            const pickOut = (c, name) => {
+                const r = c.result || {};
+                const pools = [r, r.outputs || {}, r.summary || {}];
+                for (const pool of pools) {
+                    if (pool == null) continue;
+                    for (const k of Object.keys(pool)) {
+                        if (k.toLowerCase() === name.toLowerCase() && isFinite(parseFloat(pool[k]))) return parseFloat(pool[k]);
+                    }
+                }
+                return null;
+            };
+            const fmtOut = v => v == null ? '—' : (Math.abs(v) >= 1000 ? v.toFixed(0) : Math.abs(v) >= 1 ? v.toFixed(3) : v.toFixed(4));
             const tbl = h('table', { class: 'wb-table' },
-                h('tr', null, ['工况', '状态', '说明', ''].map(t => h('th', null, t))));
+                h('tr', null, ['工况', '状态', 'Np / rpm', 'Ng / rpm', 'Tt45 / K', '说明', ''].map(t => h('th', null, t))));
             condList.forEach(c => {
-                const diag = h('div', { style: 'display:none;margin-top:6px;padding:8px;background:#fef2f2;border-radius:6px' },
+                const diag = h('div', { style: 'display:none;margin-top:6px;padding:8px;background:#f8fafc;border-radius:6px' },
+                    h('div', { class: 'wb-hint', style: 'margin:0 0 4px' }, '单工况输出(全部输出可展开;无测量值,不计算误差):'),
                     renderValue(c.result || {}, false));
+                const viewBtn = h('button', { class: 'wb-btn wb-btn-outline' }, '查看');
+                viewBtn.addEventListener('click', () => {
+                    diag.style.display = diag.style.display === 'none' ? '' : 'none';
+                });
                 const diagBtn = c.status === 'FAILED'
                     ? h('button', { class: 'wb-btn wb-btn-outline' }, '查看失败详情')
                     : (c.excelFile ? h('a', {
@@ -1059,9 +1251,12 @@ function loadOverviewTasks(ctx, holder) {
                     h('td', { style: 'font-weight:600' }, c.id),
                     h('td', null, statusTag(c.status === 'COMPLETED' ? '已完成' : c.status === 'FAILED' ? '失败' : '执行中',
                         c.status === 'COMPLETED' ? 'teal' : c.status === 'FAILED' ? 'red' : 'amber')),
+                    h('td', null, fmtOut(pickOut(c, 'Np'))),
+                    h('td', null, fmtOut(pickOut(c, 'Ng'))),
+                    h('td', null, fmtOut(pickOut(c, 'Tt45'))),
                     h('td', { class: 'wb-hint', style: 'word-break:break-all' },
                         (c.message || '—') + (c.status === 'FAILED' ? ' · 未形成有效结果,不并入成功子集' : '')),
-                    h('td', null, diagBtn, diag)));
+                    h('td', null, viewBtn, diagBtn, diag)));
             });
             resultHolder.appendChild(tbl);
             resultHolder.appendChild(h('div', { class: 'wb-actions-row', style: 'margin-top:12px' },
@@ -1106,7 +1301,7 @@ function loadOverviewTasks(ctx, holder) {
                 .map(k => k + '=' + inputs[k]).join(' ');
         }
 
-        wrap.appendChild(h('div', { class: 'wb-section', style: 'display:grid;grid-template-columns:1fr 1fr;gap:22px' },
+        body.appendChild(h('div', { class: 'wb-section', style: 'display:grid;grid-template-columns:1fr 1fr;gap:22px' },
             h('div', { class: 'wb-card', style: 'padding:14px' },
                 h('div', { class: 'wb-section-title', style: 'margin-bottom:14px' }, '预测输入'),
                 h('div', { class: 'wb-field' }, h('label', null, '预测模型(已登记)'), modelSel),
@@ -1122,7 +1317,7 @@ function loadOverviewTasks(ctx, holder) {
             h('div', { class: 'wb-card', style: 'padding:14px' },
                 h('div', { class: 'wb-section-title', style: 'margin-bottom:14px' }, '预测结果'),
                 resultHolder)));
-        wrap.appendChild(h('div', { class: 'wb-section' },
+        body.appendChild(h('div', { class: 'wb-section' },
             h('div', { class: 'wb-section-title', style: 'margin-bottom:12px' }, '预测记录(点击行查看结果)'),
             historyHolder));
         addCondition();

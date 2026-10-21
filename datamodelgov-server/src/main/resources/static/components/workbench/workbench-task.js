@@ -31,8 +31,8 @@
     }
 
     function toast(msg, kind) {
-        if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast(msg, kind || 'info');
-        else if (window.Workbench && window.Workbench.toast) window.Workbench.toast(msg, kind || 'info');
+        if (window.Workbench && window.Workbench.toast) window.Workbench.toast(msg, kind || 'info');
+        else if (window.CommonUtils && window.CommonUtils.showToast) window.CommonUtils.showToast(msg, kind || 'info');
         else console.log('Toast:', msg);
     }
 
@@ -187,6 +187,12 @@
             const t = state.task;
             const wrap = WB().h('div', null);
 
+            // 页面标题区(01-03):任务名 / 建模类型 / 起点模型
+            wrap.appendChild(WB().h('div', { style: 'margin-bottom:14px' },
+                WB().h('div', { class: 'wb-section-title', style: 'font-size:20px;margin-bottom:2px' }, '工况与分组'),
+                WB().h('div', { class: 'wb-hint', style: 'margin:0' },
+                    (t.name || '稳态建模') + ' / 基础稳态点建模 / 起点模型 B00')));
+
             // 建模类型 / 计算基准
             wrap.appendChild(WB().h('div', { class: 'wb-form-grid', style: 'max-width:980px;margin-bottom:16px' },
                 WB().h('div', { class: 'wb-field' }, WB().h('label', null, '建模类型(本任务固定)'),
@@ -322,6 +328,14 @@
             const t = state.task;
             const wrap = WB().h('div', null);
             const running = t.status === 'RUNNING' || t.status === 'STOP_REQUESTED';
+
+            // 页面标题区(01-04/01-05):任务名 / B00 / 训练工况 · 独立测试
+            wrap.appendChild(WB().h('div', { style: 'margin-bottom:14px' },
+                WB().h('div', { class: 'wb-section-title', style: 'font-size:20px;margin-bottom:2px' }, '稳态系数辨识'),
+                WB().h('div', { class: 'wb-hint', style: 'margin:0' },
+                    (t.name || '稳态建模') + ' / B00 / ' + (t.runId || 'BENCH_01') + ' / '
+                    + (t.conditions && t.conditions.length ? '训练' + t.conditions.length + '工况' : '待数据准备')
+                    + (t.testFile ? ' · 已提供独立测试' : ' · 未提供独立测试'))));
 
             wrap.appendChild(WB().h('div', { class: 'wb-form-grid', style: 'max-width:980px;margin-bottom:16px' },
                 WB().h('div', { class: 'wb-field' }, WB().h('label', null, '计算路径'),
@@ -1149,6 +1163,11 @@
             state.uqNew = false;
 
             // —— 配置页(01-08) ——
+            const ROUTE_NAME_UQ = { steady: '稳态方程', transient_instant: '瞬态时刻方程' };
+            wrap.appendChild(WB().h('div', { style: 'margin-bottom:14px' },
+                WB().h('div', { class: 'wb-section-title', style: 'font-size:20px;margin-bottom:2px' }, '不确定性评估'),
+                WB().h('div', { class: 'wb-hint', style: 'margin:0' },
+                    (t.name || '稳态建模') + ' / 对应模型待选 / 不覆盖确定性估计值 / ' + (ROUTE_NAME_UQ[t.route] || t.route || '稳态方程'))));
             const modelSel = WB().h('select', null, WB().h('option', null, '正在加载模型成果...'));
             const methodSel = WB().h('select', null,
                 WB().h('option', { value: 'B' }, 'B · 后验采样(正式V2配置)'),
@@ -1167,46 +1186,46 @@
             wrap.appendChild(WB().h('div', { class: 'wb-infobar' },
                 'UQ 与所选确定性模型身份匹配;结果另存,不覆盖确定性估计值。'));
 
-            // 评估配置表(01-08;采样数量为合同允许值 512/1024,来自 sht_tc24_b_config)
+            // 评估配置表(01-08:评估配置|当前设置|操作 三列;采样数量为合同允许值 512/1024,来自 sht_tc24_b_config)
             const particleSel = WB().h('select', null,
                 WB().h('option', { value: '512' }, '512(默认)'),
                 WB().h('option', { value: '1024' }, '1024'));
             const cfgTable = WB().h('table', { class: 'wb-table' },
-                WB().h('tr', null, ['评估配置', '当前设置'].map(x => WB().h('th', null, x))));
+                WB().h('tr', null, ['评估配置', '当前设置', '操作'].map(x => WB().h('th', null, x))));
             [
-                ['参数先验', '使用本次明确的先验配置'],
-                ['输入及输出测量误差', '建模独立配置'],
-                ['采样数量(粒子数)', particleSel],
-                ['训练输出区间', '本次计算'],
-                ['独立测试输出区间', t.testFile ? '本次计算' : '未提供测试数据']
-            ].forEach(([k, v]) => cfgTable.appendChild(WB().h('tr', null,
-                WB().h('td', null, k), WB().h('td', null, v))));
+                ['参数先验', '使用本次明确的先验配置', '随交付程序配置'],
+                ['输入及输出测量误差', '建模独立配置', '随交付程序配置'],
+                ['采样数量(粒子数)', particleSel, '下拉直接修改'],
+                ['训练输出区间', '本次计算', '已选择'],
+                ['独立测试输出区间', t.testFile ? '本次计算' : '未提供测试数据', t.testFile ? '已选择' : '不适用']
+            ].forEach(([k, v, op]) => cfgTable.appendChild(WB().h('tr', null,
+                WB().h('td', null, k),
+                typeof v === 'string' ? WB().h('td', null, v) : WB().h('td', null, v),
+                WB().h('td', { class: 'wb-hint' }, op))));
             wrap.appendChild(cfgTable);
 
-            wrap.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin:14px 0 4px' },
-                '预计用时:暂无可靠估计'));
-            wrap.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin-bottom:14px' },
-                '原因:少于2条同类有效记录;完成后保存实际用时。'));
-
+            // 预计用时 + 右侧查看已有评估(01-08)
             const prevDrawer = WB().h('div', null);
-            wrap.appendChild(prevDrawer);
-            wrap.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'max-width:1180px' },
+            wrap.appendChild(WB().h('div', { style: 'display:flex;justify-content:space-between;align-items:flex-start;max-width:1180px;margin:14px 0 0' },
+                WB().h('div', null,
+                    WB().h('div', { class: 'wb-hint', style: 'margin:0 0 2px' }, '预计用时:暂无可靠估计'),
+                    WB().h('div', { class: 'wb-hint', style: 'margin:0' }, '原因:少于2条同类有效记录;完成后保存实际用时。')),
                 WB().h('button', {
                     class: 'wb-btn wb-btn-outline',
                     onclick: () => { prevDrawer.innerHTML = ''; prevDrawer.appendChild(uqRecordList()); }
-                }, '查看此模型的已有评估'),
+                }, '查看此模型的已有评估')));
+            wrap.appendChild(prevDrawer);
+
+            wrap.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'max-width:1180px;margin-top:16px' },
                 WB().h('button', {
                     class: 'wb-btn wb-btn-outline',
                     // 01-08 检查评估条件:模型/数据/方法核对后再发起
                     onclick: () => {
-                        console.log('检查评估条件 clicked');
                         const opt = modelSel.selectedOptions && modelSel.selectedOptions[0];
-                        console.log('Selected model option:', opt);
                         const problems = [];
                         if (!opt || !opt.value) problems.push('尚未选择待评估模型(先在建模结果页登记模型成果)');
                         if (!t.trainingFile) problems.push('缺少训练数据');
                         if (t.uqStatus === 'EXECUTING' || t.uqStatus === 'PREPARING') problems.push('已有评估执行中');
-                        console.log('Problems found:', problems);
                         if (problems.length) toast('评估条件不满足:' + problems.join(';'), 'error');
                         else toast('评估条件检查通过:模型、推断数据与方法可发起;' + (t.testFile ? '独立测试将一并计算区间。' : '未提供独立测试,仅训练输出区间。'), 'success');
                     }
@@ -1242,14 +1261,12 @@
                 WB().h('button', {
                     class: 'wb-btn wb-btn-outline',
                     onclick: () => { stopPolling(); state.tab = 'result'; renderBody(); }
-                }, '返回建模结果')));
+                }, '← 返回建模结果')));
             return wrap;
 
             function loadModelsInto(sel) {
-                console.log('Loading models into select element:', sel);
                 window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id) + '/models')
                     .then(resp => {
-                        console.log('Models response:', resp);
                         const models = resp && Array.isArray(resp.data) ? resp.data : [];
                         sel.innerHTML = '';
                         if (!models.length) {
@@ -1260,12 +1277,9 @@
                             const option = WB().h('option', { value: mo.id },
                                 (mo.name || mo.id) + (mo.deliveryWorkbookFile ? ' · ' + fileName(mo.deliveryWorkbookFile) : ''));
                             sel.appendChild(option);
-                            console.log('Added model option:', mo.name || mo.id, mo.id);
                         });
-                        console.log('Total models loaded:', models.length);
                     })
                     .catch(err => {
-                        console.error('Failed to load models:', err);
                         sel.innerHTML = '';
                         sel.appendChild(WB().h('option', { value: '' }, '模型成果加载失败'));
                     });
@@ -1300,11 +1314,9 @@
                         const base = (window.AppConfig.api && window.AppConfig.api.baseURL) || '';
                         const token = window.AppConfig.getToken ? window.AppConfig.getToken() : '';
                         const url = base + '/api/engine/projects/' + pid + '/tasks/' + tid + '/uq-log-stream?token=' + encodeURIComponent(token || '');
-                        console.log('Connecting to UQ log stream:', url);
                         state.uqLogEventSource = new EventSource(url);
                         
                         state.uqLogEventSource.onmessage = function(event) {
-                            console.log('Received UQ log:', event.data);
                             if (!state.log) state.log = [];
                             state.log.push(event.data);
                             logBox.textContent = state.log.join('\n');
@@ -1312,7 +1324,6 @@
                         };
                         
                         state.uqLogEventSource.onerror = function(error) {
-                            console.error('UQ log stream error:', error);
                             state.uqLogEventSource.close();
                             state.uqLogEventSource = null;
                         };
@@ -1342,10 +1353,21 @@
                     .then(resp => {
                         holder.innerHTML = '';
                         const d = resp && (resp.success || resp.code === 200) ? resp.data : null;
-                        const tbl = d && (d.parameterTable || (d.delivery && d.delivery.parameterTable));
+                        if (!d) { holder.appendChild(uqSummaryKv(t)); return; }
+                        // 参数区间表(01-09):确定性值/后验均值/候选区间分列
+                        const tbl = d.parameterTable || (d.delivery && d.delivery.parameterTable);
                         if (Array.isArray(tbl) && tbl.length) {
+                            holder.appendChild(WB().h('div', { class: 'wb-section-title', style: 'margin-bottom:6px' }, '参数分布区间(确定性值 / 后验均值 / 候选区间)'));
                             holder.appendChild(WB().dataTable(tbl, { maxRows: 20 }));
-                        } else {
+                        }
+                        // 输出区间与测量对照(01-10):兼容多种字段命名,存在才显示
+                        const outTbl = ['outputIntervalTable', 'outputTable', 'trainingOutputTable', 'outputIntervals', 'predictionIntervalTable']
+                            .map(k => d[k] || (d.delivery && d.delivery[k])).find(v => Array.isArray(v) && v.length);
+                        if (outTbl) {
+                            holder.appendChild(WB().h('div', { class: 'wb-section-title', style: 'margin:16px 0 6px' },
+                                '输出区间与测量对照(95%候选区间;参数引起的输出变化,非完整测量散布)'));
+                            holder.appendChild(WB().dataTable(outTbl, { maxRows: 20 }));
+                        } else if (!Array.isArray(tbl) || !tbl.length) {
                             holder.appendChild(uqSummaryKv(t));
                         }
                     })
