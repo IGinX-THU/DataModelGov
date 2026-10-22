@@ -304,7 +304,7 @@
                 WB().h('button', {
                     class: 'wb-btn wb-btn-outline' + (t.trainingFile && t.historyFile && !prepRunning ? '' : ' disabled'),
                     title: (t.trainingFile && t.historyFile) ? '' : '需先上传原训练均值与新增试车历程',
-                    onclick: () => { if (t.trainingFile && t.historyFile && !prepRunning) runPrepare(); }
+                    onclick: () => { if (t.trainingFile && t.historyFile && !prepRunning) window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000; runPrepare(); }
                 }, prepRunning ? '数据准备中...' : '重新准备数据'),
                 WB().h('div', { class: 'wb-spacer' }),
                 WB().h('button', {
@@ -442,7 +442,7 @@
             wrap.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'margin-top:16px' },
                 WB().h('button', {
                     class: 'wb-btn wb-btn-outline' + (t.trainingFile && !prepRunning ? '' : ' disabled'),
-                    onclick: () => { if (t.trainingFile && !prepRunning) runPrepare(); }
+                    onclick: () => { if (t.trainingFile && !prepRunning) window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000; runPrepare(); }
                 }, prepRunning ? '解析中...' : '重新准备数据'),
                 WB().h('div', { class: 'wb-spacer' }),
                 WB().h('button', {
@@ -501,7 +501,7 @@
                     WB().h('div', { style: 'display:flex;gap:10px' }, nameBox, pickBtn,
                         withPreview ? WB().h('button', {
                             class: 'wb-btn wb-btn-outline' + (t.trainingFile ? '' : ' disabled'),
-                            onclick: () => { if (t.trainingFile) runPrepare(); }
+                            onclick: () => { if (t.trainingFile) window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000; runPrepare(); }
                         }, '预览数据') : null));
                 row.appendChild(fileInput);
                 return row;
@@ -1788,7 +1788,15 @@
                 })
                 .catch(() => { });
         }
-        function startPolling() { stopPolling(); state.timer = setInterval(poll, 5000); poll(); }
+        function startPolling() {
+            stopPolling();
+            window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000; // 活动心跳:让底部状态栏轮询保持
+            state.timer = setInterval(() => {
+                window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;
+                poll();
+            }, 5000);
+            poll();
+        }
         function stopPolling() {
             if (state.timer) {
                 clearInterval(state.timer);

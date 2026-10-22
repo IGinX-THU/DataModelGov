@@ -219,7 +219,15 @@ public class AfoService {
             if (cur != null && !isTerminal(cur.phase)) {
                 throw new IllegalStateException("已有AFO会话在" + cur.phase + "(runId=" + cur.runId + "),请先结束并关闭");
             }
-            String runId = "M-R" + new java.text.SimpleDateFormat("yyyyMMdd_HHmmss").format(new java.util.Date());
+            String runId;
+            Object userRunId = cfg.get("runId");
+            if (userRunId != null && String.valueOf(userRunId).trim()
+                    .matches("[A-Za-z0-9_\\-]{1,80}")) {
+                runId = String.valueOf(userRunId).trim(); // 尊重用户自定义编号
+            } else {
+                runId = "M-R" + new java.text.SimpleDateFormat("yyyyMMdd_HHmmss").format(new java.util.Date());
+            }
+            cfg.put("runId", runId); // 回写:MATLAB侧status/Excel与Java元数据/前端定位三方一致
             // 合同目录 outputDir(M-R...)必须由 sht_afo_prepare 自行创建
             // (其断言"结果目录已存在,不覆盖");Java 侧 adapter/config 放旁边的
             // 临时工作区 _work_<runId>,不触碰合同目录

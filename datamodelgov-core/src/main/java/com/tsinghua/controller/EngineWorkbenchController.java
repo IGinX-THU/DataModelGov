@@ -301,13 +301,8 @@ public class EngineWorkbenchController {
                 }
                 return Result.success(tc24Service.startTc27Run(t));
             }
-            if (!EngineModels.ModelingTask.ST_READY.equals(t.getStatus())
-                    && !EngineModels.ModelingTask.ST_PREPARING.equals(t.getStatus())
-                    && !EngineModels.ModelingTask.ST_FAILED.equals(t.getStatus())
-                    && !EngineModels.ModelingTask.ST_COMPLETED.equals(t.getStatus())
-                    && !EngineModels.ModelingTask.ST_STOPPED.equals(t.getStatus())) {
-                return Result.error("任务正在执行中,不能重复发起");
-            }
+            // 不再按状态拦截重复发起:停止受理即落终态后允许立刻重新辨识,
+            // 旧执行由运行代数守卫过期,不会写回覆盖新一次运行
             tc24Service.runIdentification(t);
             return Result.success(t);
         } catch (IOException e) {
@@ -442,7 +437,8 @@ public class EngineWorkbenchController {
         } catch (IOException e) {
             return Result.error("读取项目失败: " + e.getMessage());
         }
-        return Result.success(tc24Service.requestStop(pid, tid));
+        boolean ok = tc24Service.requestStop(pid, tid);
+        return ok ? Result.success(true) : Result.error("当前没有可停止的辨识执行");
     }
 
     @ApiOperation("发起可选UQ评估(F-07-TC24: Start_TC24_07,method=B|C|D,particleCount=512|1024)")

@@ -1150,6 +1150,7 @@ function loadOverviewTasks(ctx, holder) {
         function pollPrediction(recId, done) {
             const started = Date.now();
             const timer = setInterval(async () => {
+                window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000; // 活动心跳
                 try {
                     const resp = await window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id) + '/predictions');
                     const list = resp && (resp.success || resp.code === 200) && Array.isArray(resp.data) ? resp.data : [];
@@ -1875,9 +1876,21 @@ function loadOverviewTasks(ctx, holder) {
         function seriesFromSamples(keys) {
             return keys.map(k => ({ name: k, values: S.samples.map(s => s[k]) }));
         }
+        function resultCell(g, i, j) {
+            const vals = S.result.values || [];
+            const n = (S.result.time || []).length;
+            if (!vals.length || !n) return null;
+            const w0 = Array.isArray(vals[0]) ? vals[0].length : -1;
+            const colMajor = vals.length > n && Array.isArray(vals[1]) && vals[1].length === w0;
+            const cell = colMajor ? vals[i + g * n] : (vals[i] ? vals[i][g] : null);
+            return (cell && cell[j] != null) ? cell[j] : null;
+        }
         function seriesFromResult(g, js) {
-            const vals = (S.result.values || []).map(row => row && row[g]);
-            return js.map(j => ({ name: j, values: vals.map(cell => (cell && cell[j] != null) ? cell[j] : null) }));
+            const n = (S.result.time || []).length;
+            return js.map(j => ({
+                name: '通道' + (j + 1),
+                values: Array.from({ length: n }, (_, i) => resultCell(g, i, j))
+            }));
         }
         function lineByTime(values, labels0) {
             const xLabels = [];
@@ -1894,7 +1907,8 @@ function loadOverviewTasks(ctx, holder) {
                 body.appendChild(h('div', { class: 'wb-empty' }, '正在加载历史记录(result.json)...'));
                 return;
             }
-            const src = S.readonlyRunId ? 'result' : (running() || S.phase === 'ENDED' || S.phase === 'FAILED') ? 'live' : 'idle';
+            const src = S.readonlyRunId || S.result ? 'result'
+                : (running() || S.phase === 'ENDED' || S.phase === 'FAILED') ? 'live' : 'idle';
             if (S.tab === 'main') paintMain(src);
             else paintSystemTab(src);
         }
@@ -1993,14 +2007,18 @@ function loadOverviewTasks(ctx, holder) {
         }
         function bigFromResult() {
             const g = AFO_GROUP.engine;
-            const last = (arr, j) => {
-                const vals = (S.result.values || []).map(row => row && row[g]);
-                for (let i = vals.length - 1; i >= 0; i--) { const c = vals[i]; if (c && c[j] != null) return c[j]; }
+            const last = (j) => {
+                const n = (S.result.time || []).length;
+                const vals = S.result.values || [];
+                for (let i = n - 1; i >= 0; i--) {
+                    const v = resultCell(g, i, j);
+                    if (v != null) return v;
+                }
                 return null;
             };
             return [
-                ['Np实际轴速', last(0, AFO_E.Np), 'rpm'], ['Ng实际轴速', last(0, AFO_E.Ng), 'rpm'],
-                ['Tt45', last(0, AFO_E.Tt45), 'K'], ['入口流量W2', last(0, AFO_E.W2), 'kg/s']
+                ['Np实际轴速', last(AFO_E.Np), 'rpm'], ['Ng实际轴速', last(AFO_E.Ng), 'rpm'],
+                ['Tt45', last(AFO_E.Tt45), 'K'], ['入口流量W2', last(AFO_E.W2), 'kg/s']
             ];
         }
         function kvBig(items) {
@@ -2159,11 +2177,7 @@ function loadOverviewTasks(ctx, holder) {
                 const series = keys.map(k => {
                     const m = KEYMAP[k];
                     if (!m) return null;
-                    const vals = (S.result.values || []).map(row => {
-                        const cell = row && row[m[0]];
-                        return cell ? (cell[m[1]] != null ? cell[m[1]] : null) : null;
-                    });
-                    return { name: m[2], values: vals };
+                    return { name: m[2], values: seriesFromResult(m[0], [m[1]])[0].values };
                 }).filter(Boolean);
                 if (!series.length) return null;
                 const box = h('div', null);
@@ -2233,6 +2247,23 @@ function loadOverviewTasks(ctx, holder) {
                 S.live && S.live.runId || S.readonlyRunId
                     ? h('a', { style: 'color:#096b77;text-decoration:underline;font-size:13px', href: excelUrl(S.readonlyRunId || S.live.runId), target: '_blank' }, '导出可见数据(全通道Excel)')
                     : h('span', { class: 'wb-hint', style: 'margin:0' }, '导出可见数据(运行保存后可用)')));
+        }
+
+        /** 运行结束(未在历史只读模式)时自动拉取本会话result.json,供各系统页渲染全量曲线。 */
+        function ensureSessionResult() {
+            if (S.result || S.resultLoading || S.readonlyRunId) return;
+            const runId = S.live && S.live.runId;
+            if (!runId || S.phase !== 'ENDED') return;
+            S.resultLoading = true;
+            window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id)
+                    + '/afo/sessions/' + encodeURIComponent(runId) + '/result')
+                .then(resp => {
+                    if (resp && (resp.success || resp.code === 200) && resp.data) {
+                        S.result = resp.data;
+                        renderAll();
+                    }
+                })
+                .catch(() => { });
         }
 
         function renderAll() {
@@ -2349,6 +2380,7 @@ function loadOverviewTasks(ctx, holder) {
                     S.live = d.live || null;
                     if (S.live && typeof S.live.time === 'number') pushSample(S.live);
                 }
+                if (S.phase === 'ENDED' && !S.result) ensureSessionResult();
                 if (S.phase !== prev) renderAll();
                 else lightUpdate();
             } catch (e) { /* 轮询容错 */ }
@@ -2357,7 +2389,10 @@ function loadOverviewTasks(ctx, holder) {
         function startPoll() {
             if (window.__WB_AFO_TIMER__) clearInterval(window.__WB_AFO_TIMER__);
             window.__WB_AFO_TIMER__ = setInterval(() => {
-                if (!S.readonlyRunId && ['PREPARING', 'READY', 'RUNNING', 'PAUSED', 'ENDED'].includes(S.phase)) refresh();
+                if (!S.readonlyRunId && ['PREPARING', 'READY', 'RUNNING', 'PAUSED', 'ENDED'].includes(S.phase)) {
+                    window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000; // 活动心跳
+                    refresh();
+                }
             }, 2000);
         }
 
@@ -2367,6 +2402,7 @@ function loadOverviewTasks(ctx, holder) {
         }, 2000);
         renderAll();
         refresh();
+        if (S.phase === 'ENDED') ensureSessionResult();
         return wrap;
     };
     pages['testbench.records'] = (ctx) => recordsPage(ctx, 'sim');

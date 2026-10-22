@@ -93,9 +93,12 @@
             if (first) this._navigate(first.key);
         }
 
-        /** 状态栏轮询(单例):MATLAB日志尾(/engine-log)+引擎状态(/api/program/engine-status)。 */
+        /** 状态栏轮询(单例):MATLAB日志尾(/engine-log)+引擎状态(/api/program/engine-status)。
+         *  仅当工作台内有活动任务/会话时轮询(各页面通过 __WB_ENGINE_POLL_UNTIL__ 心跳续期);
+         *  空闲时零请求。 */
         _startEngineStatusPolling() {
             const refresh = async () => {
+                if ((window.__WB_ENGINE_POLL_UNTIL__ || 0) < Date.now()) return; // 空闲:不请求
                 const logs = document.querySelectorAll('.wb-engine-log');
                 const sts = document.querySelectorAll('.wb-engine-status');
                 if (logs.length) {

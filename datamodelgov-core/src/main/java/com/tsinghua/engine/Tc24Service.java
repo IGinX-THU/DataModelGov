@@ -213,6 +213,11 @@ public class Tc24Service {
                 File configFile = writeAdapterAndConfig(adapterDir, programCopy, task, outputDir);
 
                 EngineModels.ModelingTask t = store.getTask(task.getProjectId(), task.getId());
+                // 准备期间受理了停止(代数已递增):放弃本次执行,保持已停止终态
+                if (genRef.get() != gen) {
+                    emitLog(key, "执行已在启动前被停止,放弃本次运行");
+                    return;
+                }
                 t.setStatus(ModelingTask.ST_RUNNING);
                 t.setStartedAt(System.currentTimeMillis());
                 t.setMessage("MATLAB 辨识执行中");
@@ -356,11 +361,23 @@ public class Tc24Service {
     public boolean requestStop(String projectId, String taskId) {
         try {
             EngineModels.ModelingTask t = store.getTask(projectId, taskId);
-            if (t == null || running.get(taskId) == null) return false;
+            if (t == null) return false;
+            String st = t.getStatus();
+            boolean busy = ModelingTask.ST_RUNNING.equals(st) || ModelingTask.ST_PREPARING.equals(st)
+                    || ModelingTask.ST_STOP_REQUESTED.equals(st);
+            if (!busy) return false;
+            // 受理即落终态(与取消UQ评估同逻辑):立即置 STOPPED,前端马上回到可重新辨识页面;
+            // 同时递增运行代数,使在跑/准备中的执行过期,不再写回状态
+            runGens.computeIfAbsent(taskId, k -> new java.util.concurrent.atomic.AtomicLong()).incrementAndGet();
             t.setStatus(ModelingTask.ST_STOPPED);
             t.setFinishedAt(System.currentTimeMillis());
             t.setMessage("已手动停止;可重新发起辨识");
             store.saveTask(t);
+            if (running.get(taskId) == null) {
+                // 无在跑引擎执行(如服务重启遗留的RUNNING状态):状态已自愈为已停止,无需写stop_request
+                emitLog(taskId, "任务无在跑执行,已直接标记为停止");
+                return true;
+            }
             emitLog(taskId, "已提交安全停止请求(task=stop);程序将在最近安全点结束");
         } catch (IOException e) {
             log.warn("停止状态写回失败", e);
