@@ -65,6 +65,18 @@ public class EngineProjectMetaService {
         }
     }
 
+    /** 删除项目元数据行(id为主键时间戳;DELETETIME仅删该时间点数据)。 */
+    public boolean delete(Long id) {
+        if (id == null) return false;
+        try {
+            iginxSession.executeSql(String.format("DELETE FROM %s WHERE id = %s;", META_PREFIX, id));
+            return true;
+        } catch (Exception e) {
+            log.error("删除工作台项目元数据失败: id={}", id, e);
+            return false;
+        }
+    }
+
     /** 分页列表:管理员可见全部,普通用户仅本人项目(owner SQL 条件,与旧版程序列表一致)。 */
     public List<EngineProjectEntity> queryList(String name, Integer pageNum, Integer pageSize) {
         List<EngineProjectEntity> out = new ArrayList<>();

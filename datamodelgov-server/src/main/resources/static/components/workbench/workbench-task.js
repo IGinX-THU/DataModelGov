@@ -146,6 +146,7 @@
 
         /* ---------- 首个任务创建卡(进入任务页但尚无任务时显示) ---------- */
         function createCard() {
+            if (ctx.updateMode) return createCardUpdate();
             const nameInput = WB().h('input', { value: '稳态建模-' + new Date().toISOString().slice(5, 10) });
             const routeSel = WB().h('select', null,
                 WB().h('option', { value: 'steady' }, '稳态方程(由稳态均值数据新建)'),
@@ -182,8 +183,192 @@
                         '训练数据为必要输入;独立测试数据可为空,训练结果必显。')));
         }
 
+        /** 新建TC27稳态更新任务(F-02):上游父模型 + 方法I/II + 路径 + 小幅段。 */
+        function createCardUpdate() {
+            const nameInput = WB().h('input', { value: '新增试车稳态更新-' + new Date().toISOString().slice(5, 10) });
+            const modelSel = WB().h('select', null, WB().h('option', null, '正在加载模型成果...'));
+            const methodSel = WB().h('select', null,
+                WB().h('option', { value: 'I' }, '方法I(按当前混合工况分组形成节点后拟合)'),
+                WB().h('option', { value: 'II', selected: '' }, '方法II(保留原节点位置,按数据覆盖补充节点)'));
+            const routeSel = WB().h('select', null,
+                WB().h('option', { value: 'steady' }, '稳态方程'),
+                WB().h('option', { value: 'transient_instant', selected: '' }, '瞬态时刻方程'));
+            const smallChk = WB().h('input', { type: 'checkbox', checked: '' });
+            window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id || '') + '/models')
+                .then(resp => {
+                    const models = resp && Array.isArray(resp.data)
+                        ? resp.data.filter(m => m.deliveryWorkbookFile) : [];
+                    modelSel.innerHTML = '';
+                    if (!models.length) {
+                        modelSel.appendChild(WB().h('option', { value: '' }, '尚无可用模型——先完成基础建模并登记(需交付Excel)'));
+                        return;
+                    }
+                    models.forEach(m => modelSel.appendChild(WB().h('option', { value: m.id },
+                        (m.name || m.id) + ' · ' + (m.stage || '') + ' · ' + (m.route || ''))));
+                })
+                .catch(() => {
+                    modelSel.innerHTML = '';
+                    modelSel.appendChild(WB().h('option', { value: '' }, '模型成果加载失败'));
+                });
+            const createBtn = WB().h('button', {
+                class: 'wb-btn wb-btn-primary',
+                onclick: async () => {
+                    if (!modelSel.value) { toast('请选择上游TC24父模型(需已登记交付Excel)', 'error'); return; }
+                    createBtn.classList.add('disabled');
+                    try {
+                        const pid = encodeURIComponent(ctx.project.id || '');
+                        const resp = await window.AppConfig.enginePost('projects/' + pid + '/tasks', {
+                            kind: 'steady_update', name: nameInput.value.trim() || '新增试车稳态更新任务',
+                            upstreamModelId: modelSel.value, updateMethod: methodSel.value,
+                            route: routeSel.value, includeSmallHistory: smallChk.checked,
+                            runId: 'WB_U01'
+                        });
+                        if (resp && (resp.success || resp.code === 200) && resp.data) {
+                            state.task = resp.data;
+                            state.tab = 'data';
+                            renderBody();
+                        } else {
+                            toast((resp && resp.message) || '创建更新任务失败', 'error');
+                        }
+                    } catch (e) { toast('创建更新任务失败:' + e.message, 'error'); }
+                    createBtn.classList.remove('disabled');
+                }
+            }, '创建更新任务');
+            return WB().h('div', { class: 'wb-card', style: 'max-width:760px' },
+                WB().h('div', { class: 'wb-section-title', style: 'margin-bottom:6px' }, '新增试车稳态更新'),
+                WB().h('div', { class: 'wb-hint', style: 'margin:0 0 14px' },
+                    '用新增试车记录更新已有三部件稳态模型(F-02,Start_TC27_SteadyModelUpdate_01);只更新稳态系数,父模型路径需一致。'),
+                WB().h('div', { class: 'wb-form-grid' },
+                    WB().h('div', { class: 'wb-field' }, WB().h('label', null, '任务名称'), nameInput),
+                    WB().h('div', { class: 'wb-field' }, WB().h('label', null, '上游模型(需路径一致)'), modelSel),
+                    WB().h('div', { class: 'wb-field' }, WB().h('label', null, '调度更新方法'), methodSel),
+                    WB().h('div', { class: 'wb-field' }, WB().h('label', null, '计算路径'), routeSel)),
+                WB().h('div', { style: 'display:flex;align-items:center;gap:8px;margin-top:8px' },
+                    smallChk, WB().h('span', { class: 'wb-hint', style: 'margin:0' },
+                        '使用识别出的小幅变化段辅助稳态辨识')),
+                WB().h('div', { class: 'wb-actions-row', style: 'margin-top:12px' },
+                    createBtn,
+                    WB().h('span', { class: 'wb-hint', style: 'margin:0' },
+                        '两方法、两路径分别独立保存;公开合同与完整求解证据分开,不默认切换方法或路径。')));
+        }
+
+        /* ---------- 页签一(更新任务,01-17):TC27数据使用方式 ---------- */
+        function dataTabUpdate() {
+            const t = state.task;
+            const wrap = WB().h('div', null);
+
+            wrap.appendChild(WB().h('div', { style: 'margin-bottom:14px' },
+                WB().h('div', { class: 'wb-section-title', style: 'font-size:20px;margin-bottom:2px' }, '工况与分组'),
+                WB().h('div', { class: 'wb-hint', style: 'margin:0' },
+                    (t.name || '稳态更新') + ' / 结合新增试车记录更新')));
+
+            wrap.appendChild(WB().h('div', { class: 'wb-infobar' },
+                '当前使用已有稳态模型与新增试车记录;只更新稳态系数。'));
+
+            const ROUTE_NAME27 = { steady: '稳态方程', transient_instant: '瞬态时刻方程' };
+            wrap.appendChild(WB().h('div', { class: 'wb-form-grid', style: 'grid-template-columns:1fr 1fr;max-width:1180px' },
+                WB().h('div', { class: 'wb-field' }, WB().h('label', null, '建模类型(本任务固定)'),
+                    WB().h('input', { readonly: '', value: '新增试车稳态更新 / 2.7' })),
+                WB().h('div', { class: 'wb-field' }, WB().h('label', null, '上游模型(需路径一致)'),
+                    WB().h('input', { readonly: '', value: fileName(t.upstreamModelFile) || '—' })),
+                WB().h('div', { class: 'wb-field' }, WB().h('label', null, '调度更新方法(创建后锁定)'),
+                    WB().h('input', { readonly: '', value: (t.updateMethod || 'II') + ' · ' + (ROUTE_NAME27[t.route] || t.route) })),
+                WB().h('div', { class: 'wb-field' }, WB().h('label', null, '小幅变化段辅助辨识'),
+                    WB().h('input', { readonly: '', value: (t.includeSmallHistory === false ? '不使用' : '使用') }))));
+
+            wrap.appendChild(fileRow('原训练均值 Excel', 'training', t.trainingFile, true));
+            wrap.appendChild(fileRow('新增训练历程 Excel(完整试车记录)', 'history', t.historyFile, false));
+            wrap.appendChild(fileRow('原试车测试集 Excel(可选)', 'test', t.testFile, false));
+            wrap.appendChild(fileRow('新增测试历程 Excel(可选)', 'historyTest', t.historyTestFile, false));
+
+            const prepDone = t.prepMessage && t.prepMessage.length;
+            const prepRunning = state.prepWait || t.status === 'PREPARING';
+            wrap.appendChild(WB().h('div', { class: 'wb-section' },
+                WB().h('div', { class: 'wb-section-head' },
+                    WB().h('div', { class: 'wb-section-title' }, '数据处理结果'),
+                    prepRunning ? WB().h('span', { class: 'wb-tag wb-tag-amber' }, '05数据准备运行中...')
+                        : prepDone ? WB().h('span', { class: 'wb-tag wb-tag-teal' }, '准备完成')
+                        : WB().h('span', { class: 'wb-tag wb-tag-gray' }, '待准备')),
+                WB().h('div', { style: 'padding:10px 0' },
+                    prepRunning
+                        ? WB().h('span', { class: 'wb-inline-loading' }, WB().h('span', { class: 'wb-inline-spinner' }),
+                            '正在解析原工况均值与新窗口、识别小幅变化段...')
+                        : WB().h('div', null, prepDone ? String(t.prepMessage) : '上传完成后点击"重新准备数据",由程序完成05预览(原工况+新窗口均值、分组、小幅段)。')),
+                WB().h('div', { class: 'wb-hint', style: 'margin-top:6px' },
+                    '预览身份随输出目录保存;执行更新复用本次05结果,不重复准备。')));
+
+            wrap.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin:8px 0 12px' },
+                '两方法、两路径分别保存;公开合同与完整求解证据分开,不默认切换方法或路径。'));
+
+            wrap.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'margin-top:10px' },
+                WB().h('button', {
+                    class: 'wb-btn wb-btn-outline' + (t.trainingFile && t.historyFile && !prepRunning ? '' : ' disabled'),
+                    title: (t.trainingFile && t.historyFile) ? '' : '需先上传原训练均值与新增试车历程',
+                    onclick: () => { if (t.trainingFile && t.historyFile && !prepRunning) runPrepare(); }
+                }, prepRunning ? '数据准备中...' : '重新准备数据'),
+                WB().h('div', { class: 'wb-spacer' }),
+                WB().h('button', {
+                    class: 'wb-btn wb-btn-primary' + (prepDone ? '' : ' disabled'),
+                    title: prepDone ? '' : '请先完成数据准备(05预览)',
+                    onclick: () => { if (prepDone) { state.tab = 'run'; renderBody(); } }
+                }, '配置并执行更新')));
+            return wrap;
+        }
+
+        /* ---------- 更新结果页:摘要 + 登记模型成果 ---------- */
+        function resultTabUpdate() {
+            const t = state.task;
+            const r = t.result || {};
+            const wrap = WB().h('div', null);
+            wrap.appendChild(WB().h('div', { style: 'margin-bottom:14px' },
+                WB().h('div', { class: 'wb-section-title', style: 'font-size:20px;margin-bottom:2px' }, '建模结果'),
+                WB().h('div', { class: 'wb-hint', style: 'margin:0' },
+                    (t.name || '稳态更新') + ' / 方法' + (t.updateMethod || 'II')
+                    + ' / ' + (t.route === 'steady' ? '稳态方程' : '瞬态时刻方程'))));
+            if (t.status !== 'COMPLETED') {
+                wrap.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin:10px 0' },
+                    '更新尚未完成;两方法、两路径分别独立保存,不以训练替代测试。'));
+                return wrap;
+            }
+            const kv = WB().h('div', { class: 'wb-kv', style: 'max-width:1180px' });
+            [
+                ['运行标识', r.runId || '—'],
+                ['计算路径 / 方法', (r.route || t.route) + ' / 方法' + (r.method || t.updateMethod)],
+                ['上游模型 runId', r.upstreamRunId || '—'],
+                ['输出目录', r.outputDirectory || '—'],
+                ['交付工作簿', r.deliveryWorkbookFile ? fileName(r.deliveryWorkbookFile) : '未找到(检查tc27输出)'],
+                ['结果状态', '已交付(方法/路径独立保存,不自动选优)']
+            ].forEach(([k, v]) => {
+                kv.appendChild(WB().h('div', { class: 'k' }, k));
+                kv.appendChild(WB().h('div', { class: 'v' }, String(v)));
+            });
+            wrap.appendChild(kv);
+            wrap.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin:10px 0' },
+                '更新后的稳态调度、全部节点及燃油偏置以交付Excel为准;分来源训练与测试评价随交付提供;该更新模型可另行发起新的不确定性评估。'));
+            wrap.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'margin-top:12px' },
+                WB().h('button', {
+                    class: 'wb-btn wb-btn-primary',
+                    onclick: async () => {
+                        try {
+                            const resp = await window.AppConfig.enginePost(
+                                'projects/' + encodeURIComponent(ctx.project.id || '') + '/tasks/'
+                                + encodeURIComponent(t.id) + '/save-model',
+                                { name: (t.name || '稳态更新') + '-模型' });
+                            if (resp && (resp.success || resp.code === 200)) {
+                                toast(r.deliveryWorkbookFile ? '已登记到模型成果(2.7 数据更新,父模型已溯源)' : '已登记,但未找到交付Excel', r.deliveryWorkbookFile ? 'success' : 'error');
+                                stopPolling();
+                                ctx.back(true);
+                            } else {
+                                toast((resp && resp.message) || '登记失败', 'error');
+                            }
+                        } catch (e) { toast('登记失败:' + e.message, 'error'); }
+                    }
+                }, '登记到模型成果')));
+            return wrap;
+        }
         /* ---------- 页签一:工况与分组(01-03) ---------- */
         function dataTab() {
+            if (state.task && state.task.kind === 'steady_update') return dataTabUpdate();
             const t = state.task;
             const wrap = WB().h('div', null);
 
@@ -607,6 +792,7 @@
         /* ---------- 页签三:建模结果(01-06 / 01-07;数据来自 result-detail 真实回读) ---------- */
         const CHANNEL_UNITS = { Np: 'rpm', Ng: 'rpm', Ptb3: 'Pa', Ttb3: 'K', Pt45: 'Pa', Tt45: 'K', Pt6: 'Pa', Tt6: 'K', Wa2: 'kg/s' };
         function resultTab() {
+            if (state.task && state.task.kind === 'steady_update') return resultTabUpdate();
             const t = state.task;
             const wrap = WB().h('div', null);
 
@@ -1341,7 +1527,6 @@
                     '结果另存,不覆盖确定性估计值;未计算或质量受限的区间如实标注。'));
                 const holder = WB().h('div', null, WB().h('div', { class: 'wb-hint' }, '正在加载参数区间表...'));
                 box.appendChild(holder);
-                box.appendChild(uqSummaryKv(t));
                 window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id || '') + '/uq-records')
                     .then(resp => {
                         const list = resp && (resp.success || resp.code === 200) && Array.isArray(resp.data) ? resp.data : [];
@@ -1354,36 +1539,126 @@
                         holder.innerHTML = '';
                         const d = resp && (resp.success || resp.code === 200) ? resp.data : null;
                         if (!d) { holder.appendChild(uqSummaryKv(t)); return; }
-                        // 参数区间表(01-09):确定性值/后验均值/候选区间分列
-                        const tbl = d.parameterTable || (d.delivery && d.delivery.parameterTable);
-                        if (Array.isArray(tbl) && tbl.length) {
-                            holder.appendChild(WB().h('div', { class: 'wb-section-title', style: 'margin-bottom:6px' }, '参数分布区间(确定性值 / 后验均值 / 候选区间)'));
-                            holder.appendChild(WB().dataTable(tbl, { maxRows: 20 }));
-                        }
-                        // 输出区间与测量对照(01-10):兼容多种字段命名,存在才显示
-                        const outTbl = ['outputIntervalTable', 'outputTable', 'trainingOutputTable', 'outputIntervals', 'predictionIntervalTable']
-                            .map(k => d[k] || (d.delivery && d.delivery[k])).find(v => Array.isArray(v) && v.length);
-                        if (outTbl) {
-                            holder.appendChild(WB().h('div', { class: 'wb-section-title', style: 'margin:16px 0 6px' },
-                                '输出区间与测量对照(95%候选区间;参数引起的输出变化,非完整测量散布)'));
-                            holder.appendChild(WB().dataTable(outTbl, { maxRows: 20 }));
-                        } else if (!Array.isArray(tbl) || !tbl.length) {
-                            holder.appendChild(uqSummaryKv(t));
-                        }
+                        renderUqDetail(holder, d);
                     })
                     .catch(() => { holder.innerHTML = ''; holder.appendChild(uqSummaryKv(t)); });
                 return box;
             }
 
+            /** 交付Excel回读JSON里找表字段:名称正则或行特征(后验列)匹配,大小写不敏感,下探两层。 */
+            function uqTable(d, nameRe, colRe) {
+                if (!d) return null;
+                const shapeOk = arr => Array.isArray(arr) && arr.length
+                    && arr.some(e => e && typeof e === 'object' && Object.keys(e).some(k => colRe.test(k)));
+                let hit = null;
+                const walk = (obj, depth) => {
+                    if (hit || obj == null || typeof obj !== 'object' || depth > 2) return;
+                    if (Array.isArray(obj)) { obj.forEach(o => walk(o, depth + 1)); return; }
+                    Object.keys(obj).forEach(k => {
+                        if (hit) return;
+                        const v = obj[k];
+                        if (Array.isArray(v) && v.length && (nameRe.test(k) || shapeOk(v))) hit = v;
+                        else if (v && typeof v === 'object') walk(v, depth + 1);
+                    });
+                };
+                walk(d, 0);
+                return hit;
+            }
+            const UQ_NUM = v => (v == null || v === '' || !isFinite(parseFloat(v))) ? null : parseFloat(v);
+            const UQ_FMT = v => { const n = UQ_NUM(v); if (n == null) return '—';
+                const a = Math.abs(n); return a >= 1000 ? n.toFixed(1) : a >= 1 ? n.toFixed(4) : n.toPrecision(4); };
+
+            /** UQ结果(按旧版设计):参数95%候选区间表(中文列) + 结果解释与验收 + 训练输出区间。 */
+            function renderUqDetail(holder, d) {
+                // —— 1. 参数 95% 候选区间表(交付 ParameterSummary;01-09 确定性值/后验均值/候选区间分列) ——
+                const ps = uqTable(d, /parametersummary/i, /posteriorQ025|credible_width|credibleLow/i);
+                if (ps) {
+                    holder.appendChild(WB().h('div', { class: 'wb-section-title', style: 'margin-bottom:6px' },
+                        '参数 95% 候选区间(确定性值 / 后验均值 / 候选区间 分列,' + ps.length + ' 项)'));
+                    const fmtIv = r => {
+                        const lo = UQ_NUM(r.posteriorQ025), hi = UQ_NUM(r.posteriorQ975);
+                        return (lo == null || hi == null) ? '—' : '[' + UQ_FMT(lo) + ', ' + UQ_FMT(hi) + ']';
+                    };
+                    const tbl = WB().h('table', { class: 'wb-table' },
+                        WB().h('tr', null, ['参数', '单位', '确定性估计', '后验均值', '后验中位数',
+                            '95%候选区间', '区间宽度', '先验均值', '标准差收缩'].map(x => WB().h('th', null, x))));
+                    ps.forEach(r => {
+                        tbl.appendChild(WB().h('tr', null,
+                            WB().h('td', null, String(r.name || r.parameter || '—')),
+                            WB().h('td', { class: 'wb-hint' }, String(r.unit || '—')),
+                            WB().h('td', null, UQ_FMT(r.deterministicEstimate)),
+                            WB().h('td', null, UQ_FMT(r.posteriorMean)),
+                            WB().h('td', { class: 'wb-hint' }, UQ_FMT(r.posteriorMedian)),
+                            WB().h('td', null, fmtIv(r)),
+                            WB().h('td', { class: 'wb-hint' }, UQ_FMT(r.credibleWidth95)),
+                            WB().h('td', { class: 'wb-hint' }, UQ_FMT(r.priorMean)),
+                            WB().h('td', { class: 'wb-hint' },
+                                UQ_NUM(r.stdContraction) != null ? (UQ_NUM(r.stdContraction) * 100).toFixed(1) + ' %' : '—')));
+                    });
+                    holder.appendChild(tbl);
+
+                    // —— 2. 结果解释与验收(旧版通俗说明) ——
+                    const widths = ps.map(r => UQ_NUM(r.credibleWidth95)).filter(v => v != null);
+                    const shrink = ps.map(r => UQ_NUM(r.stdContraction)).filter(v => v != null);
+                    let wideDesc = '每个参数的可信区间有多宽';
+                    if (widths.length) {
+                        const maxW = Math.max.apply(null, widths), minW = Math.min.apply(null, widths);
+                        const wide = ps.find(r => UQ_NUM(r.credibleWidth95) === maxW);
+                        const narrow = ps.find(r => UQ_NUM(r.credibleWidth95) === minW);
+                        wideDesc = '最宽区间为 ' + (wide && (wide.name || wide.parameter) || '—') + '(宽度 ' + UQ_FMT(maxW)
+                            + '),最窄为 ' + (narrow && (narrow.name || narrow.parameter) || '—') + '(宽度 ' + UQ_FMT(minW) + ')';
+                    }
+                    let shrinkDesc = '数据把参数先验不确定收窄了多少';
+                    if (shrink.length) {
+                        const avg = shrink.reduce((a, b) => a + b, 0) / shrink.length;
+                        shrinkDesc = '平均标准差收缩 ' + (avg * 100).toFixed(1) + '%,收缩越大说明数据对参数的约束越强';
+                    }
+                    const items = [['可信范围', wideDesc], ['数据约束强度', shrinkDesc]];
+                    const ul = WB().h('ul', { style: 'list-style:none;padding:0;margin:0' });
+                    items.forEach(([k, v]) => ul.appendChild(WB().h('li', { style: 'margin:4px 0' },
+                        WB().h('b', null, k + ':'), WB().h('span', { class: 'wb-hint', style: 'margin:0 0 0 6px' }, v))));
+                    holder.appendChild(WB().h('div', { class: 'wb-section-title', style: 'margin:16px 0 6px' }, '结果解释与验收'));
+                    holder.appendChild(ul);
+                } else {
+                    holder.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin:8px 0' },
+                        '交付Excel中未包含参数摘要表(ParameterSummary);完整结果以下载Excel为准。'));
+                }
+
+                // —— 3. 训练输出区间与测量对照(01-10;交付 TrainingIntervals 表) ——
+                const ti = uqTable(d, /trainingintervals/i, /measured|observed|output|interval|lower/i);
+                if (ti) {
+                    holder.appendChild(WB().h('div', { class: 'wb-section-title', style: 'margin:16px 0 6px' },
+                        '训练输出区间与测量对照(参数引起的输出变化,非完整测量散布)'));
+                    holder.appendChild(WB().dataTable(ti, { maxRows: 20 }));
+                }
+                const vi = uqTable(d, /testintervals/i, /measured|observed|output|interval|lower/i);
+                if (vi) {
+                    holder.appendChild(WB().h('div', { class: 'wb-section-title', style: 'margin:16px 0 6px' },
+                        '独立测试输出区间与测量对照'));
+                    holder.appendChild(WB().dataTable(vi, { maxRows: 20 }));
+                }
+                if (!ps && !ti && !vi) holder.appendChild(uqSummaryKv(t));
+            }
+
+            /** 兜底摘要(精选中文卡;明细JSON生成失败时依然可读,绝不dump原始键值)。 */
             function uqSummaryKv(t) {
                 const r = t.uqResult || {};
-                const kv = WB().h('div', { class: 'wb-kv' });
-                Object.keys(r).forEach(k => {
-                    const v = r[k];
-                    if (v == null) return;
+                const delivery = r.delivery || {};
+                const posterior = r.posterior || {};
+                const num = v => (v == null || !isFinite(Number(v))) ? '—' : Number(v).toLocaleString();
+                const kv = WB().h('div', { class: 'wb-kv', style: 'max-width:1180px' });
+                [
+                    ['评估方法', ({ B: 'B · 后验采样(SMC)', C: 'C · 主参数采样及附加参数近似', D: 'D · 局部近似评估' })[r.method] || r.method || '—'],
+                    ['后验采样是否通过验收', r.passed === true ? '通过' : r.passed === false ? '未通过(区间仅供诊断)' : '—'],
+                    ['参数维度', delivery.parameterCount || '—'],
+                    ['后验样本数', delivery.sampleCount || '—'],
+                    ['后验有效样本量 ESS', delivery.posteriorEss != null ? Number(delivery.posteriorEss).toFixed(1) : (posterior.ess != null ? num(posterior.ess) : '—')],
+                    ['实际计算耗时', r.execution && r.execution.actualActiveSeconds != null
+                        ? (Number(r.execution.actualActiveSeconds) / 3600).toFixed(2) + ' 小时' : '—'],
+                    ['交付工作簿', delivery.workbookFile ? fileName(delivery.workbookFile) : '—']
+                ].forEach(([k, v]) => {
                     kv.appendChild(WB().h('div', { class: 'k' }, k));
-                    kv.appendChild(WB().h('div', { class: 'v' },
-                        typeof v === 'object' ? JSON.stringify(v) : String(v)));
+                    kv.appendChild(WB().h('div', { class: 'v' }, String(v)));
                 });
                 return kv;
             }
@@ -1568,7 +1843,8 @@
             try {
                 const resp = await window.AppConfig.engineGet('projects/detail', { projectId: ctx.project.id });
                 if (resp && (resp.success || resp.code === 200) && resp.data) {
-                    const tasks = (resp.data.tasks || []).filter(x => x.kind === 'steady');
+                    const want = ctx.updateMode ? 'steady_update' : 'steady';
+                    const tasks = (resp.data.tasks || []).filter(x => x.kind === want);
                     if (tasks.length) {
                         state.task = tasks[0];
                         state.tab = state.task.status === 'COMPLETED' ? 'result'

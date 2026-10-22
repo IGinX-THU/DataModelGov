@@ -140,7 +140,7 @@
         }
 
         _enterTask(business) {
-            if (business && business.id === 'steady') {
+            if (business && (business.id === 'steady' || business.id === 'steady_update')) {
                 this._navKey = 'tasks';
                 this._app.querySelectorAll('.wb-nav-item').forEach(n =>
                     n.classList.toggle('active', n.dataset.nav === 'tasks'));
@@ -148,6 +148,7 @@
                 main.innerHTML = '';
                 main.appendChild(window.Workbench.renderSteadyTask({
                     project: this._ctx.project,
+                    updateMode: business.id === 'steady_update',
                     back: (gotoModels) => {
                         this._navigate(gotoModels ? 'models' : 'tasks');
                     },

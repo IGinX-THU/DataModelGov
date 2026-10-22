@@ -125,6 +125,7 @@
 
         /** 项目分页列表:owner 隔离由后端 SQL 条件完成;交互仿旧版程序管理列表。 */
         async _loadProjects() {
+            const self = this;
             const holder = this.querySelector('#wbProjectList');
             if (!holder) return;
             holder.innerHTML = '';
@@ -179,7 +180,7 @@
                     WB().h('tr', null, ['项目', '发动机', '类型', '创建人', '位置', ''].map(t => WB().h('th', null, t))),
                     projects.map(p => WB().h('tr', {
                         class: 'clickable',
-                        onclick: () => this._enter(TYPE_TO_WORKBENCH[p.type] || 'modeling', p)
+                        onclick: () => self._enter(TYPE_TO_WORKBENCH[p.type] || 'modeling', p)
                     },
                         WB().h('td', { style: 'font-weight:600;color:#111827' }, p.name),
                         WB().h('td', null, p.engineId || '—'),
@@ -189,9 +190,61 @@
                         WB().h('td', null, p.owner || '—'),
                         WB().h('td', { class: 'wb-hint', style: 'word-break:break-all' },
                             p.workdir || p.location || '系统默认目录'),
-                        WB().h('td', { style: 'width:60px;text-align:right;color:#9ca3af' }, '进入 ›')))));
+                        WB().h('td', { style: 'width:150px;text-align:right;white-space:nowrap' },
+                            WB().h('button', {
+                                class: 'wb-btn wb-btn-primary', style: 'margin-right:10px;padding:4px 14px',
+                                onclick: ev => {
+                                    ev.stopPropagation();
+                                    self._enter(TYPE_TO_WORKBENCH[p.type] || 'modeling', p);
+                                }
+                            }, '进入'),
+                            WB().h('button', {
+                                class: 'wb-btn wb-btn-outline', style: 'padding:4px 14px;color:#b91c1c;border-color:#f3c1c1',
+                                title: '删除该项目(任务/模型/评估/预测/仿真记录一并删除,不可恢复)',
+                                onclick: ev => {
+                                    ev.stopPropagation();
+                                    self._deleteProject(p);
+                                }
+                            }, '删除'))))));
             }
             this._renderPager(paging);
+        }
+
+        /** 删除项目(公用确认弹窗):元数据+任务/模型/评估/预测/仿真记录;工作目录仅清本系统写入部分。 */
+        async _deleteProject(p) {
+            if (!p || !p.id) return;
+            if (!window.showConfirmDialog) {
+                if (window.confirm('确定删除项目「' + p.name + '」?删除后不可恢复。')) {
+                    return this._doDeleteProject(p);
+                }
+                return;
+            }
+            window.showConfirmDialog('删除项目',
+                '确定删除项目「' + p.name + '」?<br>将删除项目元数据、建模任务与数据、模型成果、不确定性评估、输出预测、多系统仿真记录;'
+                + '保存位置下由本系统写入的 afo/ 与 job/ 目录一并清除,其他文件保留。<br><b>删除后不可恢复。</b>',
+                () => this._doDeleteProject(p));
+        }
+
+        async _doDeleteProject(p) {
+            try {
+                const resp = await window.AppConfig.request(
+                    window.AppConfig.api.baseURL + '/api/engine/projects/' + encodeURIComponent(p.id),
+                    { method: 'DELETE' });
+                if (resp && (resp.success || resp.code === 200)) {
+                    if (window.CommonUtils && window.CommonUtils.showToast) {
+                        window.CommonUtils.showToast('项目「' + p.name + '」已删除', 'success');
+                    }
+                    this._loadProjects();
+                } else {
+                    if (window.CommonUtils && window.CommonUtils.showToast) {
+                        window.CommonUtils.showToast((resp && resp.message) || '删除失败', 'error');
+                    }
+                }
+            } catch (e) {
+                if (window.CommonUtils && window.CommonUtils.showToast) {
+                    window.CommonUtils.showToast('删除失败:' + e.message, 'error');
+                }
+            }
         }
 
         /** 分页条:上一页 / 页码(当前±2) / 下一页 + 共N条第x/y页。 */

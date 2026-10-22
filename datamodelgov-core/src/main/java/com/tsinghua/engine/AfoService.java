@@ -44,9 +44,6 @@ public class AfoService {
 
     private final EngineProjectStore store;
 
-    @Value("${engine.r06.root:}")
-    private String deliveryRoot;
-
     @Value("${engine.data.root:data/engine}")
     private String dataRoot;
 
@@ -74,6 +71,7 @@ public class AfoService {
         Long createdAt;
         Long finishedAt;
         Map<String, Object> config;
+        String programDir;
         MatlabEngine engine;
         boolean engineOwned;
     }
@@ -83,29 +81,32 @@ public class AfoService {
         log.info("AFO_V_2 多系统联合仿真接入层就绪(dataRoot={})", dataRoot);
     }
 
-    /* ---------- 程序副本与目录 ---------- */
-
-    /** 根路径交付树(用户维护的program目录);jar内程序解压也落这里的programs下,不自建目录。 */
-    private static final String[] ROOT_TREE_VARIANTS = {
-            "program/Delivery_V1_20261019_R06/程序/programs/AFO_V_2",   // 中文结构(现有)
-            "program/Delivery_V1_20261019_R06/programs/AFO_V_2"         // 英文结构兼容
-    };
+    /* ---------- 程序源解析 ---------- */
 
     /**
-     * 解析AFO_V_2程序源目录。不做副本:合同 sht_afo_prepare 自己把运行资产复制到
-     * 会话目录 runtime/(SHA记账,缓存也指向会话),源目录全程只读。
-     * 顺序:engine.r06.root → 根路径交付树 → 工作区resources(IDE) → target/classes
-     * → 仅当程序只在jar内时,解压到根路径交付树programs/下(MATLAB无法addpath jar内路径)。
+     * 解析AFO_V_2程序源目录:
+     * 1. 用户项目工作目录 <workdir>/programs/AFO_V_2(用户自备程序,优先);
+     * 2. target/classes(IDE开发兜底);
+     * 3. 均无且程序在jar内 → 解压到根目录 programs/AFO_V_2(MATLAB无法addpath jar内路径)。
      */
-    private synchronized File ensureAfoSource() throws IOException {
-        File src = resolveAfoSource();
-        if (src != null) return src;
-        File extracted = new File(ROOT_TREE_VARIANTS[1]);
-        File marker = new File(extracted, ".afo-extracted-ok");
-        if (marker.exists()) return extracted;
+    private synchronized File ensureAfoSource(String projectId) throws IOException {
+        File user = new File(workProgramsDir(projectId), "AFO_V_2");
+        if (new File(user, "sht_afo_config.m").isFile()) return user;
+
+        File classes = new File("target/classes/" + R06_IN_CLASSPATH + "/AFO_V_2");
+        File classes2 = new File("datamodelgov-server/target/classes/" + R06_IN_CLASSPATH + "/AFO_V_2");
+        if (new File(classes, "sht_afo_config.m").isFile()) return classes;
+        if (new File(classes2, "sht_afo_config.m").isFile()) return classes2;
+
+        // jar兜底:解压到项目工作目录programs下(与创建项目时的provision一致)
         Path jar = classpathProgramJar();
-        if (jar == null) throw new IOException("未找到 AFO_V_2 程序(engine.r06.root / program交付树 / 工作区resources / classpath)");
-        log.info("从jar解压 AFO_V_2 程序到根路径交付树: {} -> {}", jar, extracted);
+        if (jar == null) {
+            throw new IOException("未找到AFO_V_2程序:请在项目工作目录 "
+                    + workProgramsDir(projectId).getAbsolutePath() + " 下放置 AFO_V_2 程序目录,"
+                    + "或确认部署包内含交付程序");
+        }
+        log.info("从jar解压 AFO_V_2 程序到项目工作目录: {} -> {}", jar, user);
+        File extracted = user;
         Files.createDirectories(extracted.toPath());
         try (java.util.zip.ZipFile zf = new java.util.zip.ZipFile(jar.toFile())) {
             String prefix = R06_IN_CLASSPATH + "/AFO_V_2/";
@@ -118,48 +119,70 @@ public class AfoService {
                 Files.copy(zf.getInputStream(e), out.toPath(), StandardCopyOption.REPLACE_EXISTING);
             }
         }
-        Files.write(marker.toPath(), "ok".getBytes(StandardCharsets.UTF_8));
         return extracted;
     }
 
-    /** 源解析:engine.r06.root → 根路径交付树 → 工作区resources(IDE) → target/classes。 */
-    private File resolveAfoSource() {
-        if (deliveryRoot != null && !deliveryRoot.trim().isEmpty()) {
-            File direct = new File(new File(deliveryRoot.trim()), AFO_SUBDIR);
-            if (direct.isDirectory()) return direct;
+    /** 项目工作目录下的程序源位置:<workdir>/program;workdir缺失时回退元数据目录。 */
+    private File workProgramsDir(String projectId) throws IOException {
+        try {
+            EngineModels.EngineProject proj = store.getProject(projectId);
+            if (proj != null && proj.getWorkdir() != null && !proj.getWorkdir().isEmpty()) {
+                return new File(new File(proj.getWorkdir()), "program");
+            }
+        } catch (IOException e) {
+            log.warn("读取项目工作目录失败,程序源回退元数据目录: {}", projectId);
         }
-        for (String v : ROOT_TREE_VARIANTS) {
-            File f = new File(v);
-            if (f.isDirectory()) return f;
-        }
-        String[] fallbacks = {
-                "datamodelgov-server/src/main/resources/" + R06_IN_CLASSPATH + "/AFO_V_2",
-                "src/main/resources/" + R06_IN_CLASSPATH + "/AFO_V_2",
-                "datamodelgov-server/target/classes/" + R06_IN_CLASSPATH + "/AFO_V_2",
-                "target/classes/" + R06_IN_CLASSPATH + "/AFO_V_2"
-        };
-        for (String fb : fallbacks) {
-            File f = new File(fb);
-            if (f.isDirectory()) return f;
-        }
-        return null;
+        return new File(store.projectDir(projectId), "program");
     }
 
     /** 定位fat jar自身(含R06交付树的启动jar)。 */
     private Path classpathProgramJar() {
         try (Stream<Path> roots = Files.walk(Paths.get("").toAbsolutePath(), 3)) {
-            return roots.filter(p -> p.getFileName() != null
-                            && p.getFileName().toString().endsWith(".jar")
-                            && p.getFileName().toString().startsWith("datamodelgov-server"))
+            return roots.filter(pp -> pp.getFileName() != null
+                            && pp.getFileName().toString().endsWith(".jar")
+                            && pp.getFileName().toString().startsWith("datamodelgov-server"))
                     .findFirst().orElse(null);
         } catch (IOException e) {
             return null;
         }
     }
 
-
     private void logLine(String line) {
         MatlabLogRing.append("[AFO" + (session != null && session.runId != null ? " " + session.runId : "") + "] " + line);
+    }
+
+
+    /**
+     * 创建项目时预置程序源:把交付树中的 AFO_V_2 复制到 <workdir>/programs/AFO_V_2
+     * (已存在则跳过,不覆盖用户自备程序)。来源:工作区resources → target/classes → jar。
+     */
+    public void provisionProgramForProject(String projectId) throws IOException {
+        File target = new File(workProgramsDir(projectId), "AFO_V_2");
+        if (new File(target, "sht_afo_config.m").isFile()) return; // 已有(用户自备或已拷),不覆盖
+        File src = new File("datamodelgov-server/src/main/resources/" + R06_IN_CLASSPATH + "/AFO_V_2");
+        if (!src.isDirectory()) src = new File("src/main/resources/" + R06_IN_CLASSPATH + "/AFO_V_2");
+        if (!src.isDirectory()) src = new File("target/classes/" + R06_IN_CLASSPATH + "/AFO_V_2");
+        if (!src.isDirectory()) src = new File("datamodelgov-server/target/classes/" + R06_IN_CLASSPATH + "/AFO_V_2");
+        if (src.isDirectory()) {
+            log.info("预置AFO_V_2程序到项目工作目录: {} -> {}", src, target);
+            copyRecursively(src.toPath(), target.toPath());
+            return;
+        }
+        Path jar = classpathProgramJar();
+        if (jar == null) throw new IOException("未找到AFO_V_2程序源(resources/classpath/jar均无)");
+        log.info("从jar解压预置AFO_V_2程序: {} -> {}", jar, target);
+        Files.createDirectories(target.toPath());
+        try (java.util.zip.ZipFile zf = new java.util.zip.ZipFile(jar.toFile())) {
+            String prefix = R06_IN_CLASSPATH + "/AFO_V_2/";
+            java.util.Enumeration<? extends java.util.zip.ZipEntry> en = zf.entries();
+            while (en.hasMoreElements()) {
+                java.util.zip.ZipEntry e = en.nextElement();
+                if (e.isDirectory() || !e.getName().startsWith(prefix)) continue;
+                File out = new File(target, e.getName().substring(prefix.length()));
+                Files.createDirectories(out.getParentFile().toPath());
+                Files.copy(zf.getInputStream(e), out.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            }
+        }
     }
 
     /* ---------- 会话管理 ---------- */
@@ -231,7 +254,7 @@ public class AfoService {
 
     private void runPrepare(AfoSession s) {
         try {
-            File progCopy = ensureAfoSource();
+            File progCopy = ensureAfoSource(s.projectId);
             writeAdapter(s, progCopy);
             MatlabEngine eng = MatlabEngine.startMatlab();
             s.engine = eng;
@@ -241,9 +264,10 @@ public class AfoService {
             } catch (Exception ce) {
                 log.warn("AFO引擎字符集设置失败(沿用默认)", ce);
             }
+            s.programDir = progCopy.getAbsolutePath();
             s.message = "MATLAB已启动;准备运行副本(复制资产/校验身份/初始化模型)"; logLine("MATLAB引擎已启动,开始准备运行副本");
             // 引擎内调 session('prepare', cfg);适配器读JSON构造cfg
-            feval(s, "prepare");
+            feval(s, "prepare", progCopy.getAbsolutePath());
             logLine("准备完成,等待开始运行"); s.phase = "READY";
             s.message = "准备完成;可开始运行";
             writeSessionIndex(s);
@@ -272,12 +296,12 @@ public class AfoService {
 
     private void runRun(AfoSession s) {
         try {
-            feval(s, "run");
+            feval(s, "run", s.programDir);
             // 运行结束:取结果JSON供前端历史曲线,再让程序保存Excel/result.mat
             logLine("仿真计算结束,保存Excel与result.mat"); s.message = "保存结果(Excel与result.mat)";
-            feval(s, "save");
-            feval(s, "result");
-            feval(s, "close");
+            feval(s, "save", s.programDir);
+            feval(s, "result", s.programDir);
+            feval(s, "close", s.programDir);
             logLine("结果已保存,会话结束"); s.phase = "ENDED";
             s.message = "运行结束;结果已保存";
             s.finishedAt = System.currentTimeMillis();
@@ -322,7 +346,7 @@ public class AfoService {
         if (s.engine == null) throw new IllegalStateException("会话引擎已关闭;结果已在运行结束时保存");
         executor.submit(() -> {
             try {
-                feval(s, "save");
+                feval(s, "save", s.programDir);
                 s.message = "结果已保存";
                 writeSessionIndex(s);
             } catch (Exception e) {
@@ -343,7 +367,7 @@ public class AfoService {
         }
         if (s.engine != null) {
             try {
-                feval(s, "close");
+                feval(s, "close", s.programDir);
             } catch (Exception e) {
                 log.warn("AFO session close失败(仍关闭引擎)", e);
             }
@@ -424,13 +448,13 @@ public class AfoService {
     private void writeAdapter(AfoSession s, File progCopy) throws IOException {
         File ad = new File(s.adapterDir);
         if (!ad.exists() && !ad.mkdirs()) throw new IOException("无法创建适配器目录");
-        String progPath = progCopy.getAbsolutePath().replace('\\', '/');
         StringBuilder m = new StringBuilder();
         m.append("function r = dmg_afo_task(configFile)\n");
         m.append("% AFO_V_2 multisystem session adapter (generated by DataModelGov)\n");
         m.append("% ASCII-only: engine charset is GBK; keep this file free of non-ASCII text.\n");
+        m.append("% programDir comes from the config JSON (ASCII-escaped), so Chinese paths survive.\n");
         m.append("c = jsondecode(fileread(configFile));\n");
-        m.append("addpath('").append(progPath).append("', '-begin');\n");
+        m.append("addpath(c.programDir, '-begin');\n");
         m.append("rehash;\n");
         m.append("cfg = sht_afo_config(c.outputDir);\n");
         m.append("f = fieldnames(c.cfg);\n");
@@ -449,9 +473,10 @@ public class AfoService {
     }
 
     /** feval一个session动作:写action配置→feval→读取JSON结果落 outputDir/afo-result.json。 */
-    private void feval(AfoSession s, String action) throws Exception {
+    private void feval(AfoSession s, String action, String progDir) throws Exception {
         Map<String, Object> call = new LinkedHashMap<>();
         call.put("action", action);
+        call.put("programDir", progDir.replace('\\', '/'));
         call.put("outputDir", s.outputDir.replace('\\', '/'));
         call.put("cfg", s.config == null ? new LinkedHashMap<>() : s.config);
         String resultFile = new File(s.adapterDir, "action-" + action + ".json").getAbsolutePath().replace('\\', '/');
@@ -509,6 +534,8 @@ public class AfoService {
         idx.put("outputDir", s.outputDir);
         // 元数据与predictions/uq同模式:projects/{pid}/afo/{runId}.json(列表/追溯入口)
         try {
+            File metaDir = store.afoSessionDir(s.projectId);
+            if (!metaDir.exists() && !metaDir.mkdirs()) throw new IOException("无法创建元数据目录: " + metaDir);
             new com.fasterxml.jackson.databind.ObjectMapper()
                     .writerWithDefaultPrettyPrinter()
                     .writeValue(store.afoSessionFile(s.projectId, s.runId), idx);
@@ -526,6 +553,21 @@ public class AfoService {
     }
 
     /* ---------- 工具 ---------- */
+
+    private static void copyRecursively(Path src, Path dest) throws IOException {
+        Files.walkFileTree(src, new java.nio.file.SimpleFileVisitor<Path>() {
+            @Override
+            public java.nio.file.FileVisitResult preVisitDirectory(Path dir, java.nio.file.attribute.BasicFileAttributes attrs) throws IOException {
+                Files.createDirectories(dest.resolve(src.relativize(dir)));
+                return java.nio.file.FileVisitResult.CONTINUE;
+            }
+            @Override
+            public java.nio.file.FileVisitResult visitFile(Path file, java.nio.file.attribute.BasicFileAttributes attrs) throws IOException {
+                Files.copy(file, dest.resolve(src.relativize(file)), StandardCopyOption.REPLACE_EXISTING);
+                return java.nio.file.FileVisitResult.CONTINUE;
+            }
+        });
+    }
 
     private static void deleteRecursively(File f) throws IOException {
         if (!f.exists()) return;

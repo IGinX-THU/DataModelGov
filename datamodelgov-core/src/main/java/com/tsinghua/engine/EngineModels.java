@@ -76,6 +76,20 @@ public final class EngineModels {
         private Long createdAt;
         private Long startedAt;
         private Long finishedAt;
+
+        /* ---------- TC27稳态更新(kind=steady_update,F-02) ---------- */
+        /** 调度更新方法: I | II(独立保存,不自动选优) */
+        private String updateMethod;
+        /** 新增训练历程(完整试车记录Excel) */
+        private String historyFile;
+        /** 新增测试历程(可选) */
+        private String historyTestFile;
+        /** 上游TC24父模型交付Excel(需路径一致) */
+        private String upstreamModelFile;
+        /** 上游父模型成果id(溯源) */
+        private String upstreamModelId;
+        /** 使用识别出的小幅变化段辅助稳态辨识(合同默认true) */
+        private Boolean includeSmallHistory = Boolean.TRUE;
         /** 程序返回的原始结果(键值),仅保存可序列化摘要 */
         private Map<String, Object> result = new LinkedHashMap<>();
         /** 辨识完整结果浏览 JSON(task='read' 回读 result_view.mat 的白名单子集) */

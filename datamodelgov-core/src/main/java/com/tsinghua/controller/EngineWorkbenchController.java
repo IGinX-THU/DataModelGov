@@ -11,6 +11,7 @@ import io.swagger.annotations.ApiOperation;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -46,6 +47,9 @@ public class EngineWorkbenchController {
     private Tc24Service tc24Service;
 
     @Autowired
+    private com.tsinghua.engine.AfoService afoService;
+
+    @Autowired
     private com.tsinghua.engine.EngineProjectMetaService metaService;
 
     /* ---------- 项目 ---------- */
@@ -76,21 +80,47 @@ public class EngineWorkbenchController {
         p.setDesc((String) body.get("desc"));
         p.setOwner(com.tsinghua.auth.util.AuthUtil.getCurrentUsername());
         try {
+            // 同名校验:项目名唯一,避免同名目录互相覆盖(workdir按项目名生成)
+            for (com.tsinghua.entity.EngineProjectEntity e : metaService.queryList(null, 1, 500)) {
+                if (p.getName() != null && p.getName().equals(e.getName())) {
+                    return Result.error("项目名称已存在: " + p.getName() + ",请更换名称");
+                }
+            }
             p = store.saveProject(p);
-            metaService.save(new com.tsinghua.entity.EngineProjectEntity()
-                    .setId(Long.parseLong(p.getId()))
-                    .setName(p.getName())
-                    .setType(p.getType())
-                    .setEngineId(p.getEngineId())
-                    .setLocation(p.getLocation())
-                    .setWorkdir(p.getWorkdir())
-                    .setDesc(p.getDesc())
-                    .setOwner(p.getOwner())
-                    .setCreateTime(p.getCreatedAt()));
+            // 创建即预置程序源到项目工作目录(<workdir>/programs/<程序>),完整项目隔离;
+            // 预置失败不阻塞创建(运行时ensureTc24Source/ensureAfoSource仍会兜底),仅记录
+            try {
+                if ("系统联合仿真".equals(p.getType())) {
+                    afoService.provisionProgramForProject(p.getId());
+                } else {
+                    tc24Service.provisionProgramForProject(p.getId());
+                }
+            } catch (Exception pe) {
+                log.warn("项目程序源预置失败(运行时将兜底): {} -> {}", p.getName(), pe.getMessage());
+            }
             return Result.success(p);
         } catch (Exception e) {
             log.error("创建项目失败", e);
             return Result.error("创建项目失败: " + e.getMessage());
+        }
+    }
+
+    @ApiOperation("删除项目(元数据+任务/模型/评估/预测/会话记录;工作目录仅清本系统写入部分)")
+    @DeleteMapping("/projects/{pid}")
+    @RequirePermission(Permission.CREATE)
+    public Result<Boolean> deleteProject(@PathVariable("pid") String pid) {
+        try {
+            EngineModels.EngineProject p = store.getProject(pid);
+            if (p == null) return Result.error("项目不存在");
+            String denied = accessDenied(p);
+            if (denied != null) return Result.error(denied);
+            store.deleteProject(pid);
+            metaService.delete(Long.parseLong(pid));
+            log.info("项目已删除: {} ({})", p.getName(), pid);
+            return Result.success(true);
+        } catch (Exception e) {
+            log.error("删除项目失败", e);
+            return Result.error("删除项目失败: " + e.getMessage());
         }
     }
 
@@ -176,6 +206,29 @@ public class EngineWorkbenchController {
             t.setRoute((String) body.getOrDefault("route", "steady"));
             t.setRunId((String) body.getOrDefault("runId", "WB_01"));
             t.setStatus(EngineModels.ModelingTask.ST_READY);
+            if ("steady_update".equals(t.getKind())) {
+                // TC27稳态更新(F-02):必需上游父模型(交付Excel)与新增历程;方法I/II独立保存
+                t.setName((String) body.getOrDefault("name", "新增试车稳态更新任务"));
+                t.setUpdateMethod((String) body.getOrDefault("updateMethod", "II"));
+                Object inc = body.get("includeSmallHistory");
+                t.setIncludeSmallHistory(inc == null || Boolean.parseBoolean(String.valueOf(inc)));
+                String upstreamModelId = (String) body.get("upstreamModelId");
+                if (upstreamModelId == null || upstreamModelId.isEmpty()) {
+                    return Result.error("请选择上游TC24父模型");
+                }
+                EngineModels.ModelAsset parent = null;
+                for (EngineModels.ModelAsset a : store.listModels(pid)) {
+                    if (upstreamModelId.equals(a.getId())) { parent = a; break; }
+                }
+                if (parent == null || parent.getDeliveryWorkbookFile() == null
+                        || !new File(parent.getDeliveryWorkbookFile()).isFile()) {
+                    return Result.error("上游父模型缺少交付Excel,不能作为TC27更新基础");
+                }
+                t.setUpstreamModelId(upstreamModelId);
+                t.setUpstreamModelFile(parent.getDeliveryWorkbookFile());
+                t.setMessage("待上传原均值与新增试车历程");
+                return Result.success(store.saveTask(t));
+            }
             t.setMessage("待上传数据");
             return Result.success(store.saveTask(t));
         } catch (IOException e) {
@@ -203,10 +256,16 @@ public class EngineWorkbenchController {
             file.transferTo(dest);
             if ("test".equals(kind)) {
                 t.setTestFile(dest.getAbsolutePath());
+            } else if ("history".equals(kind)) {
+                t.setHistoryFile(dest.getAbsolutePath());
+            } else if ("historyTest".equals(kind)) {
+                t.setHistoryTestFile(dest.getAbsolutePath());
             } else {
                 t.setTrainingFile(dest.getAbsolutePath());
             }
-            t.setMessage("已上传" + ("test".equals(kind) ? "测试" : "训练") + "数据: " + safe);
+            String kindTxt = "test".equals(kind) ? "原测试集" : "history".equals(kind) ? "新增训练历程"
+                    : "historyTest".equals(kind) ? "新增测试历程" : "原训练均值";
+            t.setMessage("已上传" + kindTxt + ": " + safe);
             return Result.success(store.saveTask(t));
         } catch (Exception e) {
             log.error("上传任务数据失败", e);
@@ -226,6 +285,17 @@ public class EngineWorkbenchController {
             if (denied != null) return Result.error(denied);
             if (t.getTrainingFile() == null || t.getTrainingFile().isEmpty()) {
                 return Result.error("请先上传训练数据");
+            }
+            if ("steady_update".equals(t.getKind())) {
+                // TC27执行:须先完成05预览(prepMessage非空),再execute跑06
+                if (t.getUpstreamModelFile() == null) return Result.error("缺少上游TC24父模型");
+                if (t.getHistoryFile() == null || t.getHistoryFile().isEmpty()) {
+                    return Result.error("请先上传新增试车历程");
+                }
+                if (t.getPrepMessage() == null || t.getPrepMessage().isEmpty()) {
+                    return Result.error("请先完成数据准备(05预览),再执行更新");
+                }
+                return Result.success(tc24Service.startTc27Run(t));
             }
             if (!EngineModels.ModelingTask.ST_READY.equals(t.getStatus())
                     && !EngineModels.ModelingTask.ST_PREPARING.equals(t.getStatus())
@@ -273,6 +343,14 @@ public class EngineWorkbenchController {
             if (denied != null) return Result.error(denied);
             if (t.getTrainingFile() == null || t.getTrainingFile().isEmpty()) {
                 return Result.error("请先上传训练数据");
+            }
+            if ("steady_update".equals(t.getKind())) {
+                // TC27(F-02):准备=05预览;必需父模型与新增历程
+                if (t.getUpstreamModelFile() == null) return Result.error("缺少上游TC24父模型");
+                if (t.getHistoryFile() == null || t.getHistoryFile().isEmpty()) {
+                    return Result.error("请先上传新增试车历程");
+                }
+                return Result.success(tc24Service.startTc27Prepare(t));
             }
             return Result.success(tc24Service.runPrepare(t));
         } catch (IOException e) {
@@ -452,11 +530,22 @@ public class EngineWorkbenchController {
             if (denied != null) return Result.error(denied);
             EngineModels.UqRecord r = store.getUqRecord(pid, uid);
             if (r == null) return Result.error("UQ记录不存在");
-            if (r.getDetailFile() == null || !new File(r.getDetailFile()).exists()) {
+            if (!EngineModels.UqRecord.ST_COMPLETED.equals(r.getStatus())) {
                 return Result.error("结果明细尚未生成或评估未完成");
             }
+            // 明细JSON缺失时即时补生成(历史记录同样生效);交付Excel定位含delivery.workbookFile回补
+            File detail = new File(r.getDetailFile() == null ? "" : r.getDetailFile());
+            if (!detail.isFile()) {
+                File excel = tc24Service.findUqDeliveryForRecord(pid, r);
+                if (excel == null) return Result.error("未找到UQ交付Excel,无法生成结果明细");
+                detail = tc24Service.readExcelDetail(pid, excel,
+                        new File(excel.getParentFile(), r.getRunId() + "_dmg_uq_detail.json"));
+                if (detail == null) return Result.error("结果明细生成失败(回读程序未通过),请查看运行日志");
+                r.setDetailFile(detail.getAbsolutePath());
+                store.saveUqRecord(r);
+            }
             return Result.success(new com.fasterxml.jackson.databind.ObjectMapper()
-                    .readValue(new File(r.getDetailFile()), Object.class));
+                    .readValue(detail, Object.class));
         } catch (IOException e) {
             return Result.error("读取UQ明细失败: " + e.getMessage());
         }
@@ -497,20 +586,35 @@ public class EngineWorkbenchController {
                 return Result.error("任务尚未完成,不能保存模型成果");
             }
             String routeHint = "steady".equals(t.getRoute()) ? "steady" : "transient_instant";
-            String excel = findDeliveryWorkbook(new File(store.taskWorkDir(pid, tid), "output"), routeHint);
+            String excel;
+            String sourceBusiness;
+            String stage;
+            String parentModelId = null;
+            if ("steady_update".equals(t.getKind())) {
+                // TC27更新模型:交付Excel在tc27目录;溯源父模型,阶段2.7数据更新
+                excel = findTc27DeliveryWorkbook(new File(store.taskWorkDir(pid, tid), "tc27"));
+                sourceBusiness = "新试车数据更新";
+                stage = "2.7 数据更新";
+                parentModelId = t.getUpstreamModelId();
+            } else {
+                excel = findDeliveryWorkbook(new File(store.taskWorkDir(pid, tid), "output"), routeHint);
+                sourceBusiness = "稳态试车建模";
+                stage = "2.4 基础建模";
+            }
             EngineModels.ModelAsset m = new EngineModels.ModelAsset();
             m.setProjectId(pid);
             m.setTaskId(tid);
             m.setName(body != null && body.get("name") != null ? (String) body.get("name")
                     : t.getName() + "-模型");
-            m.setSourceBusiness("稳态试车建模");
-            m.setStage("2.4 基础建模");
+            m.setSourceBusiness(sourceBusiness);
+            m.setStage(stage);
             m.setRoute("steady".equals(t.getRoute()) ? "稳态方程" : "瞬态时刻方程");
             m.setDeliveryWorkbookFile(excel);
             m.setMetrics(t.getResult() == null ? new LinkedHashMap<>() : new LinkedHashMap<>(t.getResult()));
             // 溯源字段(图02-03):训练/测试数据、结果状态;测试可为空,不影响交付
             m.setTrainingFile(t.getTrainingFile());
             m.setTestFile(t.getTestFile());
+            m.setParentModelId(parentModelId);
             m.setResultStatus(resolveResultStatus(t));
             EngineModels.EngineProject p = store.getProject(pid);
             m.setEngineId(p == null ? null : p.getEngineId());
@@ -518,6 +622,25 @@ public class EngineWorkbenchController {
         } catch (IOException e) {
             return Result.error("保存模型成果失败: " + e.getMessage());
         }
+    }
+
+    /** TC27交付Excel:tc27目录深度2内最新.xlsx。 */
+    private String findTc27DeliveryWorkbook(File dir) {
+        if (!dir.isDirectory()) return null;
+        File best = null;
+        File[] level0 = dir.listFiles(File::isFile);
+        if (level0 != null) for (File f : level0) {
+            if (f.getName().toLowerCase().endsWith(".xlsx")
+                    && (best == null || f.lastModified() > best.lastModified())) best = f;
+        }
+        File[] level1 = dir.listFiles(File::isDirectory);
+        if (level1 != null) for (File d : level1) {
+            File[] fs = d.listFiles((dd, n) -> n.toLowerCase().endsWith(".xlsx"));
+            if (fs != null) for (File f : fs) {
+                if (best == null || f.lastModified() > best.lastModified()) best = f;
+            }
+        }
+        return best != null ? best.getAbsolutePath() : null;
     }
 
     /** 结果状态:已交付 | 诊断(未收敛但有效仍可交付,convergenceDoesNotBlockDelivery)。 */

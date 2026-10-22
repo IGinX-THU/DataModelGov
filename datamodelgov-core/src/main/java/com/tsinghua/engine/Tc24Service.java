@@ -40,9 +40,6 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 public class Tc24Service {
 
     /** R06 交付树根:支持绝对/相对文件路径;留空时自动探测工作区 resources 目录或从 classpath 解压。 */
-    @Value("${engine.r06.root:}")
-    private String deliveryRoot;
-
     @Value("${engine.data.root:data/engine}")
     private String dataRoot;
 
@@ -84,56 +81,83 @@ public class Tc24Service {
     /** 程序包相对目录(工作副本根下保持交付树 programs/ 布局,便于相对引用 C_runtime 等)。 */
     private static final String PROG_SUBPATH = "programs/m_program_adaptive_tune";
 
-    private File runtimeRoot() {
-        return new File(dataRoot, "r06-runtime/programs");
-    }
+    private static final String PROG_NAME = "m_program_adaptive_tune";
 
-    private File programWorkingCopy() {
-        return new File(runtimeRoot(), "m_program_adaptive_tune");
+    /** 项目工作目录下的程序源位置:<workdir>/program;workdir缺失时回退元数据目录。 */
+    private File workProgramsDir(String projectId) throws IOException {
+        try {
+            EngineModels.EngineProject proj = store.getProject(projectId);
+            if (proj != null && proj.getWorkdir() != null && !proj.getWorkdir().isEmpty()) {
+                return new File(new File(proj.getWorkdir()), "program");
+            }
+        } catch (IOException e) {
+            log.warn("读取项目工作目录失败,程序源回退元数据目录: {}", projectId);
+        }
+        return new File(store.projectDir(projectId), "program");
     }
 
     /**
-     * 解析交付树中的 m_program_adaptive_tune 源目录。
-     * 顺序:显式配置 engine.r06.root → 工作区 resources(IDE 直接运行) → classpath(fat jar 内解压)。
+     * 解析TC24程序源目录(只认两处):
+     * 1. 用户项目工作目录 <workdir>/programs/m_program_adaptive_tune(创建项目时预置,用户可自备,优先);
+     * 2. target/classes(IDE开发兜底)。
      */
-    private File resolveProgramSource() {
-        if (deliveryRoot != null && !deliveryRoot.trim().isEmpty()) {
-            File root = new File(deliveryRoot.trim());
-            File direct = new File(root, PROG_SUBPATH);
-            if (direct.isDirectory()) return direct;
-            if (new File(root, "Start_TC24_00_Offline.m").isFile()) return root;
-            log.warn("engine.r06.root 配置路径不含 m_program_adaptive_tune: {}", deliveryRoot);
-        }
-        String[] fallbacks = {
-                "datamodelgov-server/src/main/resources/" + R06_IN_CLASSPATH + "/m_program_adaptive_tune",
-                "src/main/resources/" + R06_IN_CLASSPATH + "/m_program_adaptive_tune",
-                "target/classes/" + R06_IN_CLASSPATH + "/m_program_adaptive_tune",
-                "datamodelgov-server/target/classes/" + R06_IN_CLASSPATH + "/m_program_adaptive_tune"
+    private File resolveTc24Source(String projectId) throws IOException {
+        File user = new File(workProgramsDir(projectId), PROG_NAME);
+        if (new File(user, "Start_TC24_00_Offline.m").isFile()) return user;
+        String[] classes = {
+                "target/classes/" + R06_IN_CLASSPATH + "/" + PROG_NAME,
+                "datamodelgov-server/target/classes/" + R06_IN_CLASSPATH + "/" + PROG_NAME
         };
-        for (String fb : fallbacks) {
-            File f = new File(fb);
-            if (f.isDirectory()) return f;
+        for (String c : classes) {
+            File f = new File(c);
+            if (new File(f, "Start_TC24_00_Offline.m").isFile()) return f;
         }
         return null;
     }
 
-    /** 可写工作副本:不存在时从交付树复制,或从 classpath(fat jar)解压。 */
-    private synchronized File ensureWorkingCopy() throws IOException {
-        File copy = programWorkingCopy();
-        File marker = new File(copy, ".working-copy-ok");
-        if (marker.exists()) return copy;
-        File src = resolveProgramSource();
-        if (src != null) {
-            log.info("复制 TC24 程序工作副本: {} -> {}", src, copy);
-            if (copy.exists()) deleteRecursively(copy);
-            copyRecursively(src.toPath(), copy.toPath());
+    /** 源不存在时从classpath(BOOT-INF/classes)预置到工作目录。 */
+    private synchronized File ensureTc24Source(String projectId) throws IOException {
+        File src = resolveTc24Source(projectId);
+        if (src != null) return src;
+        File dest = new File(workProgramsDir(projectId), PROG_NAME);
+        log.info("TC24程序未在工作目录,从classpath预置: {} -> {}", "classpath", dest);
+        extractClasspathProgram(dest);
+        if (new File(dest, "Start_TC24_00_Offline.m").isFile()) return dest;
+        throw new IOException("未找到TC24程序(workdir与classpath均无);请确认部署包含交付程序");
+    }
+
+    /**
+     * 创建项目时预置TC24程序源:复制/解压到 <workdir>/programs/m_program_adaptive_tune
+     * (已存在则跳过,不覆盖用户自备程序)。来源:工作区resources → target/classes → classpath。
+     */
+    public void provisionProgramForProject(String projectId) throws IOException {
+        File target = new File(workProgramsDir(projectId), PROG_NAME);
+        if (new File(target, "Start_TC24_00_Offline.m").isFile()) return; // 已有,不覆盖
+        File src = resolveProgramSourceAny();
+        if (src == null) {
+            extractClasspathProgram(target);
         } else {
-            log.info("未找到文件系统交付树,从 classpath 解压 R06 程序到工作副本: {}", copy);
-            if (copy.exists()) deleteRecursively(copy);
-            extractClasspathProgram(copy);
+            copyRecursively(src.toPath(), target.toPath());
         }
-        Files.write(marker.toPath(), new byte[0]);
-        return copy;
+        if (!new File(target, "Start_TC24_00_Offline.m").isFile()) {
+            throw new IOException("TC24程序预置失败: 未形成可用入口 " + target);
+        }
+        log.info("TC24程序已预置到项目工作目录: {}", target);
+    }
+
+    /** 预置来源(打包资源优先):工作区resources → target/classes(r06-runtime工作副本体系已废除)。 */
+    private File resolveProgramSourceAny() {
+        String[] candidates = {
+                "datamodelgov-server/src/main/resources/" + R06_IN_CLASSPATH + "/" + PROG_NAME,
+                "src/main/resources/" + R06_IN_CLASSPATH + "/" + PROG_NAME,
+                "target/classes/" + R06_IN_CLASSPATH + "/" + PROG_NAME,
+                "datamodelgov-server/target/classes/" + R06_IN_CLASSPATH + "/" + PROG_NAME
+        };
+        for (String c : candidates) {
+            File f = new File(c);
+            if (f.isDirectory()) return f;
+        }
+        return null;
     }
 
     /** 从 classpath(含 Spring Boot fat jar 的 BOOT-INF/classes)解压 m_program_adaptive_tune 全部资源。 */
@@ -176,7 +200,7 @@ public class Tc24Service {
         executor.submit(() -> {
             MatlabFunctionRunner runner = null;
             try {
-                File programCopy = ensureWorkingCopy();
+                File programCopy = ensureTc24Source(task.getProjectId());
                 File workDir = store.taskWorkDir(task.getProjectId(), task.getId());
                 File adapterDir = new File(workDir, "adapter");
                 if (!adapterDir.exists() && !adapterDir.mkdirs()) throw new IOException("无法创建适配器目录");
@@ -235,7 +259,7 @@ public class Tc24Service {
                 // 生成前端曲线、节点表、逐通道误差所需的明细 JSON(01-06/01-07)
                 if (ModelingTask.ST_COMPLETED.equals(t.getStatus())) {
                     try {
-                        File detail = readResultDetail(outputDir, t.getRunId(),
+                        File detail = readResultDetail(task.getProjectId(), outputDir, t.getRunId(),
                                 "dmg_result_detail.json", DETAIL_FIELDS_IDENTIFY);
                         if (detail != null && detail.exists()) {
                             t = store.getTask(task.getProjectId(), task.getId());
@@ -331,7 +355,7 @@ public class Tc24Service {
             try {
                 File workDir = store.taskWorkDir(projectId, taskId);
                 File outputDir = new File(workDir, "output");
-                File programCopy = ensureWorkingCopy();
+                File programCopy = ensureTc24Source(projectId);
                 File adapterDir = new File(workDir, "adapter");
                 if (!adapterDir.exists() && !adapterDir.mkdirs()) throw new IOException("无法创建适配器目录");
 
@@ -411,7 +435,7 @@ public class Tc24Service {
      * 回读 {outputDir}/{runId}/result_view.mat,生成明细 JSON。
      * @param fields 白名单字段;null 时由适配器保留顶层全部标量/表字段(Excel 视图用 parameterTable)
      */
-    private File readResultDetail(File outputDir, String runId, String detailFileName,
+    private File readResultDetail(String projectId, File outputDir, String runId, String detailFileName,
                                   String[] fields) throws IOException {
         File viewMat = new File(new File(outputDir, runId == null ? "" : runId), "result_view.mat");
         if (!viewMat.exists()) {
@@ -421,20 +445,20 @@ public class Tc24Service {
             viewMat = alt;
         }
         File out = new File(viewMat.getParentFile(), detailFileName);
-        return runReadAdapter(viewMat.getAbsolutePath(), out, fields) ? out : null;
+        return runReadAdapter(viewMat.getAbsolutePath(), out, fields, projectId) ? out : null;
     }
 
     /** 回读交付 Excel(UQ parameterTable 视图)生成明细 JSON。 */
-    private File readExcelDetail(File excel, File out) throws IOException {
-        return runReadAdapter(excel.getAbsolutePath(), out, null) ? out : null;
+    public File readExcelDetail(String projectId, File excel, File out) throws IOException {
+        return runReadAdapter(excel.getAbsolutePath(), out, null, projectId) ? out : null;
     }
 
     /** 生成并执行 task='read' 适配器;fields 非空时只保留白名单顶层字段。 */
-    private boolean runReadAdapter(String resultFile, File detailOut, String[] fields) throws IOException {
+    private boolean runReadAdapter(String resultFile, File detailOut, String[] fields, String projectId) throws IOException {
         if (detailOut.exists()) return true; // 已生成过,直接复用
         try {
-            File programCopy = ensureWorkingCopy();
-            File adapterDir = new File(dataRoot, "r06-runtime/read-adapter");
+            File programCopy = ensureTc24Source(projectId);
+            File adapterDir = new File(dataRoot, "tmp/read-adapter");
             if (!adapterDir.exists() && !adapterDir.mkdirs()) throw new IOException("无法创建回读适配器目录");
 
             String keep = "[]";
@@ -556,7 +580,7 @@ public class Tc24Service {
         executor.submit(() -> {
             MatlabFunctionRunner runner = null;
             try {
-                File programCopy = ensureWorkingCopy();
+                File programCopy = ensureTc24Source(task.getProjectId());
                 File workDir = store.taskWorkDir(task.getProjectId(), task.getId());
                 File adapterDir = new File(workDir, "adapter");
                 if (!adapterDir.exists() && !adapterDir.mkdirs()) throw new IOException("无法创建适配器目录");
@@ -624,7 +648,7 @@ public class Tc24Service {
                 // 结果结构化:回读交付 Excel 的参数区间表(01-09)
                 if (fresh.getDeliveryFile() != null) {
                     try {
-                        File detail2 = readExcelDetail(new File(fresh.getDeliveryFile()),
+                        File detail2 = readExcelDetail(task.getProjectId(), new File(fresh.getDeliveryFile()),
                                 new File(uqOutputDir, fresh.getRunId() + "_dmg_uq_detail.json"));
                         if (detail2 != null && detail2.exists()) {
                             fresh = store.getUqRecord(record.getProjectId(), record.getId());
@@ -683,13 +707,42 @@ public class Tc24Service {
         return record;
     }
 
-    /** UQ 交付 Excel(2p4_uq_method_*.xlsx)位于 {uq-output}/{runId}/ 下;兼容一层子目录扫描。 */
+    /**
+     * UQ 交付 Excel:交付合同为 posterior_<method>.xlsx(Excel/子目录)及旧式 2p4_uq_method_*.xlsx,
+     * 位置跨 {uq-output}/{runId}/Excel/ 等多层,故递归深度3按扩展名找最新。
+     */
     private File findUqDeliveryExcel(File uqOutputDir, String runId) {
-        File[] candidates = uqOutputDir.listFiles((d, n) -> n.startsWith("2p4_uq_method_") && n.endsWith(".xlsx"));
-        if (candidates != null && candidates.length > 0) return candidates[0];
-        File runDir = new File(uqOutputDir, runId == null ? "" : runId);
-        File[] inRun = runDir.listFiles((d, n) -> n.startsWith("2p4_uq_method_") && n.endsWith(".xlsx"));
-        return inRun != null && inRun.length > 0 ? inRun[0] : null;
+        try (Stream<Path> walk = Files.walk(uqOutputDir.toPath(), 3)) {
+            return walk.map(Path::toFile)
+                    .filter(f -> f.isFile() && f.getName().toLowerCase().endsWith(".xlsx"))
+                    .max(Comparator.comparingLong(File::lastModified))
+                    .orElse(null);
+        } catch (IOException e) {
+            log.warn("扫描UQ交付目录失败: {}", uqOutputDir, e);
+            return null;
+        }
+    }
+
+
+    /** 为UQ记录定位交付Excel:记录字段优先,缺失时从任务result摘要的delivery.workbookFile回补。 */
+    public File findUqDeliveryForRecord(String projectId, EngineModels.UqRecord record) throws IOException {
+        if (record.getDeliveryFile() != null && new File(record.getDeliveryFile()).isFile()) {
+            return new File(record.getDeliveryFile());
+        }
+        EngineModels.ModelingTask task = store.getTask(projectId, record.getTaskId());
+        if (task != null && task.getUqResult() != null) {
+            Object delivery = task.getUqResult().get("delivery");
+            if (delivery instanceof Map) {
+                Object wf = ((Map<?, ?>) delivery).get("workbookFile");
+                if (wf != null && new File(String.valueOf(wf)).isFile()) {
+                    record.setDeliveryFile(String.valueOf(wf));
+                    store.saveUqRecord(record);
+                    return new File(String.valueOf(wf));
+                }
+            }
+        }
+        File dir = store.taskWorkDir(projectId, record.getTaskId());
+        return findUqDeliveryExcel(new File(dir, "uq-output"), record.getRunId());
     }
 
     /** 把 UQ 记录 id 追加到模型成果的 uqRecordIds(去重)。 */
@@ -710,6 +763,203 @@ public class Tc24Service {
 
     private String projectId0(String pid) { return pid; }
 
+    /* ---------- TC27 稳态试车更新(kind=steady_update,F-02) ---------- */
+
+    /**
+     * TC27准备:Start_TC27_SteadyModelUpdate_01(preview=true,execute=false)只跑05数据准备,
+     * 在tc27目录形成preview identity;配置并执行更新(execute=true)在同一目录复用05结果跑06。
+     */
+    public EngineModels.ModelingTask startTc27Prepare(EngineModels.ModelingTask task) throws IOException {
+        final String key = task.getId();
+        task.setStatus(EngineModels.ModelingTask.ST_PREPARING);
+        task.setMessage("TC27数据准备中(05:原工况均值+新窗口+小幅段)");
+        store.saveTask(task);
+        logBuffers.put(key, new ArrayList<>());
+        emitLog(key, "发起TC27数据准备: route=" + task.getRoute() + ", method=" + task.getUpdateMethod()
+                + ", upstream=" + fileName0(task.getUpstreamModelFile()));
+        executor.submit(() -> tc27Exec(task, "prepare"));
+        return task;
+    }
+
+    /** TC27执行更新(execute=true,复用preview):06辨识后交付更新模型Excel。 */
+    public EngineModels.ModelingTask startTc27Run(EngineModels.ModelingTask task) throws IOException {
+        final String key = task.getId();
+        task.setStatus(EngineModels.ModelingTask.ST_RUNNING);
+        task.setMessage("TC27模型更新执行中(06稳态调度辨识)");
+        task.setStartedAt(System.currentTimeMillis());
+        store.saveTask(task);
+        logBuffers.putIfAbsent(key, new ArrayList<>());
+        emitLog(key, "发起TC27模型更新: method=" + task.getUpdateMethod());
+        executor.submit(() -> tc27Exec(task, "run"));
+        return task;
+    }
+
+    private void tc27Exec(EngineModels.ModelingTask task, String action) {
+        final String key = task.getId();
+        boolean isPrepare = "prepare".equals(action);
+        try {
+            File programCopy = ensureTc24Source(task.getProjectId());
+            File workDir = store.taskWorkDir(task.getProjectId(), task.getId());
+            File adapterDir = new File(workDir, "adapter");
+            if (!adapterDir.exists() && !adapterDir.mkdirs()) throw new IOException("无法创建适配器目录");
+            File outDir = new File(workDir, "tc27");
+            if (!outDir.exists() && !outDir.mkdirs()) throw new IOException("无法创建TC27输出目录");
+            writeTc27Adapter(adapterDir, programCopy);
+
+            Map<String, Object> request = new LinkedHashMap<>();
+            request.put("upstreamModelFile", task.getUpstreamModelFile().replace('\\', '/'));
+            request.put("steadyTrainingFile", task.getTrainingFile().replace('\\', '/'));
+            request.put("trainingHistoryFile", task.getHistoryFile().replace('\\', '/'));
+            request.put("testPointFiles", task.getTestFile() != null
+                    ? new ArrayList<>(java.util.Collections.singletonList(
+                            task.getTestFile().replace('\\', '/'))) : new ArrayList<>());
+            request.put("testHistoryFiles", task.getHistoryTestFile() != null
+                    ? new ArrayList<>(java.util.Collections.singletonList(
+                            task.getHistoryTestFile().replace('\\', '/'))) : new ArrayList<>());
+            request.put("route", task.getRoute() == null ? "steady" : task.getRoute());
+            request.put("method", task.getUpdateMethod() == null ? "II" : task.getUpdateMethod());
+            request.put("includeSmallHistory", task.getIncludeSmallHistory() == null || task.getIncludeSmallHistory());
+            request.put("plot", false);
+            request.put("runTag", task.getRunId() == null ? "WB01" : task.getRunId());
+            request.put("outputDirectory", outDir.getAbsolutePath().replace('\\', '/'));
+            if (isPrepare) {
+                request.put("preview", true);
+                request.put("execute", false);
+            } else {
+                request.put("preview", false);
+                request.put("execute", true);
+            }
+
+            Map<String, Object> call = new LinkedHashMap<>();
+            call.put("action", action);
+            call.put("outputDir", outDir.getAbsolutePath().replace('\\', '/'));
+            call.put("request", request);
+            File resultFile = new File(adapterDir, "tc27-" + action + "-result.json");
+            call.put("resultFile", resultFile.getAbsolutePath().replace('\\', '/'));
+            File cf = new File(adapterDir, "tc27-" + action + "-config.json");
+            com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
+            om.configure(com.fasterxml.jackson.core.JsonGenerator.Feature.ESCAPE_NON_ASCII, true);
+            Files.write(cf.toPath(), om.writeValueAsBytes(call));
+
+            emitLog(key, isPrepare ? "调用 Start_TC27_SteadyModelUpdate_01(preview): 只跑05数据准备"
+                    : "调用 Start_TC27_SteadyModelUpdate_01(execute): 06稳态调度辨识");
+            MatlabFunctionRunner runner = new MatlabFunctionRunner(adapterDir, "dmg_tc27_task",
+                    new Object[]{cf.getAbsolutePath()},
+                    new File(workDir, "tc27-" + action + ".log"), enginePool,
+                    new MatlabFunctionRunner.ProgressCancellationSink() {
+                        @Override public void onProgress(String message) { emitLog(key, message); }
+                        @Override public boolean isCancellationRequested() { return false; }
+                    });
+            running.put(key + ":tc27", runner);
+            runner.run();
+
+            Map<String, Object> result = resultFile.exists()
+                    ? new com.fasterxml.jackson.databind.ObjectMapper().readValue(resultFile, Map.class)
+                    : new LinkedHashMap<>();
+            EngineModels.ModelingTask t = store.getTask(task.getProjectId(), task.getId());
+            if (t == null) return;
+            if (isPrepare) {
+                t.setStatus(EngineModels.ModelingTask.ST_READY);
+                t.setPrepMessage(summarizeTc27Prepared(result));
+                t.setMessage("数据准备完成;可配置并执行更新");
+                emitLog(key, "TC27数据准备完成");
+            } else {
+                File delivery = findTc27Delivery(outDir);
+                t.setStatus(EngineModels.ModelingTask.ST_COMPLETED);
+                t.setFinishedAt(System.currentTimeMillis());
+                t.setMessage(delivery != null ? "更新完成;更新模型已交付,可登记到模型成果"
+                        : "更新完成;未找到交付Excel,请检查tc27输出");
+                t.setErrorKind(null);
+                Map<String, Object> sum = new LinkedHashMap<>();
+                sum.put("runId", result.getOrDefault("runId", ""));
+                sum.put("route", result.getOrDefault("route", t.getRoute()));
+                sum.put("method", result.getOrDefault("method", t.getUpdateMethod()));
+                sum.put("upstreamRunId", result.getOrDefault("upstreamRunId", ""));
+                sum.put("outputDirectory", outDir.getAbsolutePath());
+                if (delivery != null) sum.put("deliveryWorkbookFile", delivery.getAbsolutePath());
+                t.setResult(sum);
+                emitLog(key, "TC27模型更新完成" + (delivery != null ? ": " + delivery.getName() : "(无交付Excel)"));
+            }
+            store.saveTask(t);
+        } catch (Exception e) {
+            log.error("TC27 {} 执行失败: {}", action, key, e);
+            try {
+                EngineModels.ModelingTask t = store.getTask(task.getProjectId(), task.getId());
+                if (t != null) {
+                    t.setStatus(isPrepare ? EngineModels.ModelingTask.ST_READY : EngineModels.ModelingTask.ST_FAILED);
+                    if (!isPrepare) {
+                        t.setFinishedAt(System.currentTimeMillis());
+                        t.setErrorKind(EngineModels.ModelingTask.ERR_NUMERIC);
+                    }
+                    t.setMessage((isPrepare ? "TC27数据准备失败: " : "TC27模型更新失败: ")
+                            + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
+                    store.saveTask(t);
+                }
+            } catch (IOException io) {
+                log.error("TC27状态写回失败", io);
+            }
+            emitLog(key, "TC27 " + action + " 失败: " + e.getMessage());
+        } finally {
+            running.remove(key + ":tc27");
+        }
+    }
+
+    /** 05准备摘要(展示"数据处理结果"行);程序result缺字段时回退通用描述。 */
+    private String summarizeTc27Prepared(Map<String, Object> result) {
+        if (result == null || result.isEmpty()) return "数据准备完成(摘要未返回,详见日志)";
+        StringBuilder sb = new StringBuilder();
+        Object st = result.get("status");
+        if (st != null) sb.append("状态 ").append(st).append("; ");
+        Object est = result.get("estimatedTime");
+        if (est != null) sb.append("粗估 ").append(est).append("; ");
+        Object rid = result.get("runId");
+        if (rid != null) sb.append("runId ").append(rid);
+        return sb.length() == 0 ? "数据准备完成" : sb.toString();
+    }
+
+    /** TC27交付Excel:更新模型工作簿,在tc27目录深度2内找最新.xlsx。 */
+    private File findTc27Delivery(File outDir) {
+        File best = null;
+        try (Stream<Path> walk = Files.walk(outDir.toPath(), 2)) {
+            best = walk.map(Path::toFile)
+                    .filter(f -> f.isFile() && f.getName().toLowerCase().endsWith(".xlsx"))
+                    .max(Comparator.comparingLong(File::lastModified))
+                    .orElse(null);
+        } catch (IOException e) {
+            log.warn("扫描TC27交付目录失败: {}", outDir, e);
+        }
+        return best;
+    }
+
+    /** dmg_tc27_task.m:JSON request → Start_TC27_SteadyModelUpdate_01 → JSON回写(ASCII安全)。 */
+    private void writeTc27Adapter(File adapterDir, File programCopy) throws IOException {
+        File f = new File(adapterDir, "dmg_tc27_task.m");
+        if (f.exists()) return;
+        StringBuilder m = new StringBuilder();
+        m.append("function r = dmg_tc27_task(configFile)\n");
+        m.append("% TC27 steady-model update adapter (generated by DataModelGov)\n");
+        m.append("% ASCII-only: engine charset is GBK; keep this file free of non-ASCII text.\n");
+        m.append("c = jsondecode(fileread(configFile));\n");
+        m.append("addpath('").append(programCopy.getAbsolutePath().replace('\\', '/')).append("', '-begin');\n");
+        m.append("rehash;\n");
+        m.append("req = struct();\n");
+        m.append("fld = fieldnames(c.request);\n");
+        m.append("for k = 1:numel(fld), req.(fld{k}) = c.request.(fld{k}); end\n");
+        m.append("if ~iscell(req.testPointFiles), req.testPointFiles = {}; end\n");
+        m.append("if ~iscell(req.testHistoryFiles), req.testHistoryFiles = {}; end\n");
+        m.append("r = Start_TC27_SteadyModelUpdate_01(req);\n");
+        m.append("r = dmg_jsonable(r);\n");
+        m.append("payload = jsonencode(r);\n");
+        m.append("fid = fopen(c.resultFile, 'w', 'n', 'UTF-8');\n");
+        m.append("fwrite(fid, payload, 'char');\n");
+        m.append("fclose(fid);\n");
+        m.append("r = 'ok';\n");
+        m.append("end\n");
+        Files.write(f.toPath(), m.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
+    private String fileName0(String p) { return p == null ? "" : new File(p).getName(); }
+
     /**
      * 数据准备(F-01 preview):Start_TC24_01_PreprocessPreview(route, options),
      * 真实解析训练/测试 Excel 的工况分组(clusterSpan 等),结果回填 task.conditions。
@@ -719,7 +969,7 @@ public class Tc24Service {
         emitLog(key, "发起数据准备(task=preview)");
         executor.submit(() -> {
             try {
-                File programCopy = ensureWorkingCopy();
+                File programCopy = ensureTc24Source(task.getProjectId());
                 File workDir = store.taskWorkDir(task.getProjectId(), task.getId());
                 File adapterDir = new File(workDir, "adapter");
                 if (!adapterDir.exists() && !adapterDir.mkdirs()) throw new IOException("无法创建适配器目录");
@@ -942,7 +1192,7 @@ public class Tc24Service {
         final String uqId = rec.getUqRecordId();
         executor.submit(() -> {
             try {
-                File programCopy = ensureWorkingCopy();
+                File programCopy = ensureTc24Source(pid);
                 File workDir = store.taskWorkDir(pid, "predict");
                 File adapterDir = new File(workDir, "adapter");
                 if (!adapterDir.exists() && !adapterDir.mkdirs()) throw new IOException("无法创建适配器目录");
