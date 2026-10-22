@@ -210,6 +210,39 @@ public class EngineWorkbenchController {
             t.setRoute((String) body.getOrDefault("route", "steady"));
             t.setRunId((String) body.getOrDefault("runId", "WB_01"));
             t.setStatus(EngineModels.ModelingTask.ST_READY);
+            if ("transient_update".equals(t.getKind())) {
+                // TC27瞬态更新(F-03):父模型须为TC27组合稳态模型,计算路径一致
+                t.setName((String) body.getOrDefault("name", "新增试车瞬态更新任务"));
+                Object upId = body.get("upstreamModelId");
+                if (upId == null || String.valueOf(upId).isEmpty()) {
+                    return Result.error("请选择上游TC27组合稳态模型");
+                }
+                EngineModels.ModelAsset parent = null;
+                for (EngineModels.ModelAsset a : store.listModels(pid)) {
+                    if (String.valueOf(upId).equals(a.getId())) { parent = a; break; }
+                }
+                if (parent == null || parent.getDeliveryWorkbookFile() == null
+                        || !new File(parent.getDeliveryWorkbookFile()).isFile()) {
+                    return Result.error("上游模型缺少交付Excel,不能作为TC27瞬态更新基础");
+                }
+                if (!"瞬态时刻方程".equals(parent.getRoute())) {
+                    return Result.error("计算路径与上游父模型不一致:TC27瞬态更新的父模型须为「瞬态时刻方程」路线");
+                }
+                t.setTransientUpstreamModelId(parent.getId());
+                t.setTransientUpstreamFile(parent.getDeliveryWorkbookFile());
+                Object sm = body.get("selectionMode");
+                t.setSelectionMode(sm == null ? "automatic" : String.valueOf(sm));
+                Object eo = body.get("estimationOptions");
+                if (eo instanceof Map) {
+                    Map<String, Object> eoMap = new LinkedHashMap<>();
+                    for (Map.Entry<String, Object> en : ((Map<String, Object>) eo).entrySet()) {
+                        eoMap.put(en.getKey(), en.getValue());
+                    }
+                    t.setEstimationOptions(eoMap);
+                }
+                t.setMessage("待上传瞬态训练历程");
+                return Result.success(store.saveTask(t));
+            }
             if ("steady_update".equals(t.getKind())) {
                 // TC27稳态更新(F-02):必需上游父模型(交付Excel)与新增历程;方法I/II独立保存
                 t.setName((String) body.getOrDefault("name", "新增试车稳态更新任务"));
@@ -302,6 +335,16 @@ public class EngineWorkbenchController {
             if (t.getTrainingFile() == null || t.getTrainingFile().isEmpty()) {
                 return Result.error("请先上传训练数据");
             }
+            if ("transient_update".equals(t.getKind())) {
+                if (t.getTransientUpstreamFile() == null) return Result.error("缺少上游TC27组合稳态模型");
+                if (t.getHistoryFile() == null || t.getHistoryFile().isEmpty()) {
+                    return Result.error("请先上传瞬态训练历程Excel");
+                }
+                if (t.getPrepMessage() == null || t.getPrepMessage().isEmpty()) {
+                    return Result.error("请先完成数据准备(事件选段+05),再执行辨识");
+                }
+                return Result.success(tc24Service.startTc27TransientRun(t));
+            }
             if ("steady_update".equals(t.getKind())) {
                 // TC27执行:须先完成05预览(prepMessage非空),再execute跑06
                 if (t.getUpstreamModelFile() == null) return Result.error("缺少上游TC24父模型");
@@ -354,6 +397,13 @@ public class EngineWorkbenchController {
             if (denied != null) return Result.error(denied);
             if (t.getTrainingFile() == null || t.getTrainingFile().isEmpty()) {
                 return Result.error("请先上传训练数据");
+            }
+            if ("transient_update".equals(t.getKind())) {
+                if (t.getTransientUpstreamFile() == null) return Result.error("缺少上游TC27组合稳态模型");
+                if (t.getHistoryFile() == null || t.getHistoryFile().isEmpty()) {
+                    return Result.error("请先上传瞬态训练历程Excel(20列)");
+                }
+                return Result.success(tc24Service.startTc27TransientPrepare(t));
             }
             if ("steady_update".equals(t.getKind())) {
                 // TC27(F-02):准备=05预览;必需父模型与新增历程
@@ -602,7 +652,13 @@ public class EngineWorkbenchController {
             String sourceBusiness;
             String stage;
             String parentModelId = null;
-            if ("steady_update".equals(t.getKind())) {
+            if ("transient_update".equals(t.getKind())) {
+                // TC27瞬态更新模型:组合瞬态模型在tc27-transient目录;阶段2.7瞬态
+                excel = findTc27DeliveryWorkbook(new File(store.taskWorkDir(pid, tid), "tc27-transient"));
+                sourceBusiness = "瞬态试车建模";
+                stage = "2.7 瞬态更新";
+                parentModelId = t.getTransientUpstreamModelId();
+            } else if ("steady_update".equals(t.getKind())) {
                 // TC27更新模型:交付Excel在tc27目录;溯源父模型,阶段2.7数据更新
                 excel = findTc27DeliveryWorkbook(new File(store.taskWorkDir(pid, tid), "tc27"));
                 sourceBusiness = "新试车数据更新";

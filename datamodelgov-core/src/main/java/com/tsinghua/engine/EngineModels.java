@@ -90,6 +90,18 @@ public final class EngineModels {
         private String upstreamModelId;
         /** 使用识别出的小幅变化段辅助稳态辨识(合同默认true) */
         private Boolean includeSmallHistory = Boolean.TRUE;
+
+        /* ---------- TC27瞬态更新(kind=transient_update,F-03) ---------- */
+        /** 上游TC27组合稳态模型交付Excel(冻结稳态载体) */
+        private String transientUpstreamFile;
+        /** 上游模型成果id(溯源) */
+        private String transientUpstreamModelId;
+        /** 事件选段模式: automatic | manual */
+        private String selectionMode = "automatic";
+        /** manual模式的瞬态事件时间范围 Nx2(秒) */
+        private List<Double[]> eventRangesS = new ArrayList<>();
+        /** 估计配置白名单摘要(lambda/maxIterations/integrationStep_s等,透传estimationOptions) */
+        private Map<String, Object> estimationOptions = new LinkedHashMap<>();
         /** 程序返回的原始结果(键值),仅保存可序列化摘要 */
         private Map<String, Object> result = new LinkedHashMap<>();
         /** 辨识完整结果浏览 JSON(task='read' 回读 result_view.mat 的白名单子集) */

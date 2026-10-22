@@ -44,7 +44,7 @@ window.Workbench = (() => {
     const DEMO = {
         businesses: [
             { id: 'steady', name: '稳态试车建模', desc: '由稳态均值数据新建模型(TC24),或用新试车记录更新稳态系数(TC27)', enabled: true },
-            { id: 'transient', name: '过渡态试车建模', desc: '固定稳态父模型,选定大幅变化事件辨识13项瞬态系数(TC27 瞬态)', enabled: false },
+            { id: 'transient', name: '过渡态试车建模', desc: '固定稳态父模型,选定大幅变化事件辨识13项瞬态系数(TC27 瞬态)', enabled: true },
             { id: 'flightSteady', name: '稳态飞参建模', desc: '从实际飞参提取有效稳态窗口,更新稳态及相关参数(F3 Start14)', enabled: false },
             { id: 'flightTransient', name: '过渡态飞参建模', desc: '选取飞行大幅事件,更新瞬态参数(F3 Start11/12/13)', enabled: false },
             { id: 'evolution', name: '发动机个性化模型自演化', desc: '从试车模型起步,逐架次更新并比较趋势与预测(Stage4)', enabled: false }

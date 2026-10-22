@@ -971,6 +971,195 @@ public class Tc24Service {
         return best;
     }
 
+    /* ---------- TC27瞬态更新(kind=transient_update,F-03) ---------- */
+
+    /** TC27瞬态交付Excel:outputDirectory深度3内最新xlsx。 */
+    private File findTc27TransientDelivery(File outDir) {
+        try (Stream<Path> walk = Files.walk(outDir.toPath(), 3)) {
+            return walk.map(Path::toFile)
+                    .filter(f -> f.isFile() && f.getName().toLowerCase().endsWith(".xlsx"))
+                    .max(Comparator.comparingLong(File::lastModified))
+                    .orElse(null);
+        } catch (IOException e) {
+            log.warn("扫描TC27瞬态交付目录失败: {}", outDir, e);
+            return null;
+        }
+    }
+
+    /** 训练拟合曲线CSV(training_fit*.csv),深度4内最新。 */
+    private File findTc27TrainingFit(File outDir) {
+        try (Stream<Path> walk = Files.walk(outDir.toPath(), 4)) {
+            return walk.map(Path::toFile)
+                    .filter(f -> f.isFile() && f.getName().toLowerCase().contains("training_fit"))
+                    .max(Comparator.comparingLong(File::lastModified))
+                    .orElse(null);
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    /** TC27瞬态准备:Start_TC27_TransientModelUpdate_01(preview=true)事件选段+05准备;outputDirectory由程序自建。 */
+    public EngineModels.ModelingTask startTc27TransientPrepare(EngineModels.ModelingTask task) throws IOException {
+        final String key = task.getId();
+        task.setStatus(EngineModels.ModelingTask.ST_PREPARING);
+        task.setMessage("TC27瞬态数据准备中(事件选段+05)");
+        store.saveTask(task);
+        logBuffers.put(key, new ArrayList<>());
+        emitLog(key, "发起TC27瞬态数据准备: upstream=" + fileName0(task.getTransientUpstreamFile()));
+        executor.submit(() -> tc27TransientExec(task, "prepare"));
+        return task;
+    }
+
+    /** TC27瞬态执行(execute=true):复用preview跑07瞬态辨识,交付组合瞬态模型。 */
+    public EngineModels.ModelingTask startTc27TransientRun(EngineModels.ModelingTask task) throws IOException {
+        final String key = task.getId();
+        task.setStatus(EngineModels.ModelingTask.ST_RUNNING);
+        task.setMessage("TC27瞬态辨识执行中(07)");
+        task.setStartedAt(System.currentTimeMillis());
+        store.saveTask(task);
+        logBuffers.putIfAbsent(key, new ArrayList<>());
+        emitLog(key, "发起TC27瞬态辨识执行");
+        executor.submit(() -> tc27TransientExec(task, "run"));
+        return task;
+    }
+
+    private void tc27TransientExec(EngineModels.ModelingTask task, String action) {
+        final String key = task.getId();
+        boolean isPrepare = "prepare".equals(action);
+        try {
+            File programCopy = ensureTc24Source(task.getProjectId());
+            File workDir = store.taskWorkDir(task.getProjectId(), task.getId());
+            File workTmp = new File(workDir, "tc27t-work");
+            if (!workTmp.exists() && !workTmp.mkdirs()) throw new IOException("无法创建TC27瞬态适配器目录");
+            File adapterDir = workTmp;
+            File outDir = new File(workDir, "tc27-transient");
+            writeTc27TransientAdapter(adapterDir, programCopy);
+
+            Map<String, Object> request = new LinkedHashMap<>();
+            request.put("steadyModelFile", task.getTransientUpstreamFile().replace('\\', '/'));
+            request.put("trainingHistoryFile", task.getHistoryFile().replace('\\', '/'));
+            request.put("testHistoryFiles", task.getHistoryTestFile() != null
+                    ? java.util.Collections.singletonList(task.getHistoryTestFile().replace('\\', '/'))
+                    : new ArrayList<>());
+            request.put("selectionMode", task.getSelectionMode() == null ? "automatic" : task.getSelectionMode());
+            if (task.getEventRangesS() != null && !task.getEventRangesS().isEmpty()) {
+                List<List<Double>> ranges = new ArrayList<>();
+                for (Double[] pair : task.getEventRangesS()) {
+                    ranges.add(java.util.Arrays.asList(pair[0], pair[1]));
+                }
+                request.put("eventRanges_s", ranges);
+            }
+            request.put("runTag", task.getRunId() == null ? "WB_T01" : task.getRunId());
+            if (task.getEstimationOptions() != null && !task.getEstimationOptions().isEmpty()) {
+                request.put("estimationOptions", task.getEstimationOptions());
+            }
+            request.put("outputDirectory", outDir.getAbsolutePath().replace('\\', '/'));
+            if (isPrepare) {
+                request.put("preview", true);
+                request.put("execute", false);
+            } else {
+                request.put("preview", false);
+                request.put("execute", true);
+            }
+
+            Map<String, Object> call = new LinkedHashMap<>();
+            call.put("action", action);
+            call.put("outputDir", outDir.getAbsolutePath().replace('\\', '/'));
+            call.put("request", request);
+            File resultFile = new File(adapterDir, "tc27t-" + action + "-result.json");
+            call.put("resultFile", resultFile.getAbsolutePath().replace('\\', '/'));
+            File cf = new File(adapterDir, "tc27t-" + action + "-config.json");
+            com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
+            om.configure(com.fasterxml.jackson.core.JsonGenerator.Feature.ESCAPE_NON_ASCII, true);
+            Files.write(cf.toPath(), om.writeValueAsBytes(call));
+
+            emitLog(key, isPrepare ? "调用 Start_TC27_TransientModelUpdate_01(preview)"
+                    : "调用 Start_TC27_TransientModelUpdate_01(execute)");
+            MatlabFunctionRunner runner = new MatlabFunctionRunner(adapterDir, "dmg_tc27_transient_task",
+                    new Object[]{cf.getAbsolutePath()},
+                    new File(workDir, "tc27t-" + action + ".log"), enginePool,
+                    new MatlabFunctionRunner.ProgressCancellationSink() {
+                        @Override public void onProgress(String message) { emitLog(key, message); }
+                        @Override public boolean isCancellationRequested() { return false; }
+                    });
+            running.put(key + ":tc27t", runner);
+            runner.run();
+
+            Map<String, Object> result = resultFile.exists()
+                    ? new com.fasterxml.jackson.databind.ObjectMapper().readValue(resultFile, Map.class)
+                    : new LinkedHashMap<>();
+            EngineModels.ModelingTask tk = store.getTask(task.getProjectId(), task.getId());
+            if (tk == null) return;
+            if (isPrepare) {
+                tk.setStatus(EngineModels.ModelingTask.ST_READY);
+                tk.setPrepMessage(summarizeTc27Prepared(result));
+                tk.setMessage("瞬态数据准备完成;可配置并执行更新");
+                emitLog(key, "TC27瞬态数据准备完成");
+            } else {
+                File delivery = findTc27TransientDelivery(outDir);
+                tk.setStatus(delivery != null ? EngineModels.ModelingTask.ST_COMPLETED : EngineModels.ModelingTask.ST_FAILED);
+                tk.setFinishedAt(System.currentTimeMillis());
+                tk.setMessage(delivery != null ? "组合瞬态模型已交付,可登记到模型成果"
+                        : "辨识完成但未找到组合模型交付Excel");
+                Map<String, Object> sum = new LinkedHashMap<>();
+                sum.put("runId", result.getOrDefault("runId", ""));
+                sum.put("outputDirectory", outDir.getAbsolutePath());
+                if (delivery != null) sum.put("deliveryWorkbookFile", delivery.getAbsolutePath());
+                File fitCsv = findTc27TrainingFit(outDir);
+                if (fitCsv != null) sum.put("trainingFitCsv", fitCsv.getAbsolutePath());
+                tk.setResult(sum);
+                emitLog(key, "TC27瞬态辨识完成" + (delivery != null ? ": " + delivery.getName() : "(无交付Excel)"));
+            }
+            store.saveTask(tk);
+        } catch (Exception e) {
+            log.error("TC27瞬态 {} 执行失败: {}", action, key, e);
+            try {
+                EngineModels.ModelingTask tk = store.getTask(task.getProjectId(), task.getId());
+                if (tk != null) {
+                    tk.setStatus(isPrepare ? EngineModels.ModelingTask.ST_READY : EngineModels.ModelingTask.ST_FAILED);
+                    if (!isPrepare) {
+                        tk.setFinishedAt(System.currentTimeMillis());
+                        tk.setErrorKind(EngineModels.ModelingTask.ERR_NUMERIC);
+                    }
+                    tk.setMessage((isPrepare ? "TC27瞬态数据准备失败: " : "TC27瞬态辨识失败: ")
+                            + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
+                    store.saveTask(tk);
+                }
+            } catch (IOException io) {
+                log.error("TC27瞬态状态写回失败", io);
+            }
+            emitLog(key, "TC27瞬态 " + action + " 失败: " + e.getMessage());
+        } finally {
+            running.remove(key + ":tc27t");
+        }
+    }
+
+    /** dmg_tc27_transient_task.m 生成(TC27瞬态合同,含 dmg_jsonable 定义)。 */
+    private void writeTc27TransientAdapter(File adapterDir, File programCopy) throws IOException {
+        File f = new File(adapterDir, "dmg_tc27_transient_task.m");
+        StringBuilder m = new StringBuilder();
+        m.append("function r = dmg_tc27_transient_task(configFile)\n");
+        m.append("% TC27 transient update adapter (generated by DataModelGov)\n");
+        m.append("% ASCII-only: engine charset is GBK; keep this file free of non-ASCII text.\n");
+        m.append("c = jsondecode(fileread(configFile));\n");
+        m.append("addpath('").append(programCopy.getAbsolutePath().replace('\\', '/')).append("', '-begin');\n");
+        m.append("rehash;\n");
+        m.append("req = struct();\n");
+        m.append("fld = fieldnames(c.request);\n");
+        m.append("for k = 1:numel(fld), req.(fld{k}) = c.request.(fld{k}); end\n");
+        m.append("if ~iscell(req.testHistoryFiles), req.testHistoryFiles = {}; end\n");
+        m.append("r = Start_TC27_TransientModelUpdate_01(req);\n");
+        m.append("r = dmg_jsonable(r);\n");
+        m.append("payload = jsonencode(r);\n");
+        m.append("fid = fopen(c.resultFile, 'w', 'n', 'UTF-8');\n");
+        m.append("fwrite(fid, payload, 'char');\n");
+        m.append("fclose(fid);\n");
+        m.append("r = 'ok';\n");
+        m.append("end\n");
+        m.append(matlabJsonableFn());
+        Files.write(f.toPath(), m.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
     /** dmg_tc27_task.m:JSON request → Start_TC27_SteadyModelUpdate_01 → JSON回写(ASCII安全)。 */
     private void writeTc27Adapter(File adapterDir, File programCopy) throws IOException {
         File f = new File(adapterDir, "dmg_tc27_task.m");

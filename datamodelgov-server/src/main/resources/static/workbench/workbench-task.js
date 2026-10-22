@@ -51,7 +51,8 @@
      * ctx: { project, back() }
      */
     function renderSteadyTask(ctx) {
-        const state = { task: null, log: [], timer: null, tab: 'data', logOpen: false, paramIdx: 2 };
+        const state = { task: null, log: [], timer: null, tab: 'data', logOpen: false, paramIdx: 2,
+            transientMode: !!ctx.transientMode };
         const root = WB().h('div', null);
 
         // 从概况页/记录页指定打开既有任务(01-23:真实开始位置,不要求重新创建)
@@ -78,7 +79,8 @@
         // 页头(01-03):标题 + 面包屑元信息
         const titleRow = WB().h('div', { style: 'display:flex;align-items:center;gap:14px;margin-bottom:4px' },
             WB().h('button', { class: 'wb-btn wb-btn-outline', onclick: () => { stopPolling(); ctx.back(); } }, '‹ 返回'),
-            WB().h('div', { class: 'wb-page-title', style: 'margin:0' }, '稳态系数辨识'));
+            WB().h('div', { class: 'wb-page-title', style: 'margin:0' },
+                state.transientMode ? '瞬态系数辨识' : '稳态系数辨识'));
         const metaRow = WB().h('div', { class: 'wb-page-sub' }, '');
         root.appendChild(titleRow);
         root.appendChild(metaRow);
@@ -388,8 +390,125 @@
                 }, '登记到模型成果')));
             return wrap;
         }
+        /* ---------- TC27瞬态(F-03):工况与分组(03-01~03-05) ---------- */
+        function dataTabTransient() {
+            const t = state.task;
+            const wrap = WB().h('div', null);
+
+            wrap.appendChild(WB().h('div', { style: 'margin-bottom:14px' },
+                WB().h('div', { class: 'wb-section-title', style: 'font-size:20px;margin-bottom:2px' }, '工况与分组'),
+                WB().h('div', { class: 'wb-hint', style: 'margin:0' },
+                    (t.name || '瞬态更新') + ' / 结合瞬态训练历程辨识13项瞬态系数')));
+
+            wrap.appendChild(WB().h('div', { class: 'wb-infobar' },
+                '固定稳态父模型与瞬态历程;大幅事件选段后辨识13项瞬态参数,交付组合瞬态模型。'));
+
+            const selMode = WB().h('select', null,
+                WB().h('option', { value: 'automatic', selected: (t.selectionMode !== 'manual') ? '' : null }, '自动选段(按残差与阈值识别大幅事件)'),
+                WB().h('option', { value: 'manual', selected: (t.selectionMode === 'manual') ? '' : null }, '手动指定事件时间范围'));
+            const RANGE_HELP = '格式: 起始秒,结束秒(每行一段);manual模式必填';
+            const rangesTa = WB().h('textarea', {
+                rows: '4', style: 'width:100%;font-family:monospace;font-size:12px',
+                placeholder: RANGE_HELP
+            });
+            wrap.appendChild(WB().h('div', { class: 'wb-form-grid', style: 'grid-template-columns:1fr 1fr;max-width:1180px' },
+                WB().h('div', { class: 'wb-field' }, WB().h('label', null, '建模类型(本任务固定)'),
+                    WB().h('input', { readonly: '', value: '新增试车瞬态更新 / 2.7 瞬态' })),
+                WB().h('div', { class: 'wb-field' }, WB().h('label', null, '上游组合稳态模型(冻结稳态载体)'),
+                    WB().h('input', { readonly: '', value: fileName(t.transientUpstreamFile) || '—' })),
+                WB().h('div', { class: 'wb-field' }, WB().h('label', null, '事件选段模式'),
+                    selMode),
+                WB().h('div', { class: 'wb-field' }, WB().h('label', null, '手动事件范围(automatic时忽略)'),
+                    rangesTa)));
+
+            wrap.appendChild(fileRow('瞬态训练历程 Excel(20列完整记录)', 'history', t.historyFile, false));
+            wrap.appendChild(fileRow('瞬态测试历程 Excel(可选)', 'historyTest', t.historyTestFile, false));
+
+            wrap.appendChild(WB().h('div', { class: 'wb-section' },
+                WB().h('div', { class: 'wb-section-head' },
+                    WB().h('div', { class: 'wb-section-title' }, '数据处理结果'),
+                    (state.prepWait || t.status === 'PREPARING')
+                        ? WB().h('span', { class: 'wb-tag wb-tag-amber' }, '事件选段+05准备运行中...')
+                        : (t.prepMessage && t.prepMessage.length && t.status === 'READY')
+                            ? WB().h('span', { class: 'wb-tag wb-tag-teal' }, '准备完成')
+                            : WB().h('span', { class: 'wb-tag wb-tag-gray' }, '待准备')),
+                WB().h('div', { style: 'padding:10px 0' },
+                    (state.prepWait || t.status === 'PREPARING')
+                        ? WB().h('span', { class: 'wb-inline-loading' }, WB().h('span', { class: 'wb-inline-spinner' }),
+                            '正在选择大幅事件并生成瞬态准备数据...')
+                        : WB().h('div', null, (t.status === 'READY' && t.prepMessage) ? String(t.prepMessage)
+                            : '上传历程后点击"重新准备数据",由程序完成事件选段与05准备。')),
+                WB().h('div', { class: 'wb-hint', style: 'margin-top:6px' },
+                    'preview身份随输出目录保存;执行辨识复用本次准备结果。')));
+
+            wrap.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'margin-top:10px' },
+                WB().h('button', {
+                    class: 'wb-btn wb-btn-outline' + (t.historyFile && !prepRunning ? '' : ' disabled'),
+                    title: t.historyFile ? '' : '需先上传瞬态训练历程',
+                    onclick: () => { if (t.historyFile && !prepRunning) window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000; runPrepare(); }
+                }, prepRunning ? '数据准备中...' : '重新准备数据'),
+                WB().h('div', { class: 'wb-spacer' }),
+                WB().h('button', {
+                    class: 'wb-btn wb-btn-primary' + (t.status === 'READY' ? '' : ' disabled'),
+                    title: t.status === 'READY' ? '' : '请先完成数据准备',
+                    onclick: () => { if (t.status === 'READY') { state.tab = 'run'; renderBody(); } }
+                }, '配置并执行辨识')));
+            return wrap;
+        }
+
+        /* ---------- TC27瞬态:结果页(03-09~03-11) ---------- */
+        function resultTabTransient() {
+            const t = state.task;
+            const r = t.result || {};
+            const wrap = WB().h('div', null);
+            wrap.appendChild(WB().h('div', { style: 'margin-bottom:14px' },
+                WB().h('div', { class: 'wb-section-title', style: 'font-size:20px;margin-bottom:2px' }, '建模结果'),
+                WB().h('div', { class: 'wb-hint', style: 'margin:0' },
+                    (t.name || '瞬态更新') + ' / 组合瞬态模型 / 13项瞬态系数')));
+            if (t.status !== 'COMPLETED') {
+                wrap.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin:10px 0' },
+                    '辨识尚未完成;组合瞬态模型=稳态载体+13项瞬态系数+燃油偏置。'));
+                return wrap;
+            }
+            const kv = WB().h('div', { class: 'wb-kv', style: 'max-width:1180px' });
+            [
+                ['运行标识', r.runId || '—'],
+                ['输出目录', r.outputDirectory || '—'],
+                ['交付组合模型', r.deliveryWorkbookFile ? fileName(r.deliveryWorkbookFile) : '未找到(检查tc27-transient输出)'],
+                ['训练拟合曲线', r.trainingFitCsv ? fileName(r.trainingFitCsv) : '—'],
+                ['结果状态', '已交付(组合模型=稳态载体+13项瞬态系数+燃油偏置)']
+            ].forEach(([k, v]) => {
+                kv.appendChild(WB().h('div', { class: 'k' }, k));
+                kv.appendChild(WB().h('div', { class: 'v' }, String(v)));
+            });
+            wrap.appendChild(kv);
+            wrap.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin:10px 0' },
+                '组合瞬态模型可直接进入不确定性评估或新稳态工况预测;训练拟合曲线数据随交付CSV提供。'));
+            wrap.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'margin-top:12px' },
+                WB().h('button', {
+                    class: 'wb-btn wb-btn-primary',
+                    onclick: async () => {
+                        try {
+                            const resp = await window.AppConfig.enginePost(
+                                'projects/' + encodeURIComponent(ctx.project.id || '') + '/tasks/'
+                                + encodeURIComponent(t.id) + '/save-model',
+                                { name: (t.name || '瞬态更新') + '-组合模型' });
+                            if (resp && (resp.success || resp.code === 200)) {
+                                toast(r.deliveryWorkbookFile ? '组合瞬态模型已登记到模型成果' : '已登记,但未找到交付Excel', r.deliveryWorkbookFile ? 'success' : 'error');
+                                stopPolling();
+                                ctx.back(true);
+                            } else {
+                                toast((resp && resp.message) || '登记失败', 'error');
+                            }
+                        } catch (e) { toast('登记失败:' + e.message, 'error'); }
+                    }
+                }, '登记到模型成果')));
+            return wrap;
+        }
+
         /* ---------- 页签一:工况与分组(01-03) ---------- */
         function dataTab() {
+            if (state.task && state.task.kind === 'transient_update') return dataTabTransient();
             if (state.task && state.task.kind === 'steady_update') return dataTabUpdate();
             const t = state.task;
             const wrap = WB().h('div', null);
@@ -821,6 +940,7 @@
         /* ---------- 页签三:建模结果(01-06 / 01-07;数据来自 result-detail 真实回读) ---------- */
         const CHANNEL_UNITS = { Np: 'rpm', Ng: 'rpm', Ptb3: 'Pa', Ttb3: 'K', Pt45: 'Pa', Tt45: 'K', Pt6: 'Pa', Tt6: 'K', Wa2: 'kg/s' };
         function resultTab() {
+            if (state.task && state.task.kind === 'transient_update') return resultTabTransient();
             if (state.task && state.task.kind === 'steady_update') return resultTabUpdate();
             const t = state.task;
             const wrap = WB().h('div', null);
@@ -1883,7 +2003,8 @@
             try {
                 const resp = await window.AppConfig.engineGet('projects/detail', { projectId: ctx.project.id });
                 if (resp && (resp.success || resp.code === 200) && resp.data) {
-                    const want = ctx.updateMode ? 'steady_update' : 'steady';
+                    const want = ctx.transientMode ? 'transient_update'
+                        : ctx.updateMode ? 'steady_update' : 'steady';
                     const tasks = ctx.forceCreate ? []
                         : (resp.data.tasks || []).filter(x => x.kind === want);
                     if (tasks.length) {

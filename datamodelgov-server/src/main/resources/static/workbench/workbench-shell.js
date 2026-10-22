@@ -147,7 +147,7 @@
         }
 
         _enterTask(business) {
-            if (business && (business.id === 'steady' || business.id === 'steady_update')) {
+            if (business && (business.id === 'steady' || business.id === 'steady_update' || business.id === 'transient')) {
                 this._navKey = 'tasks';
                 this._app.querySelectorAll('.wb-nav-item').forEach(n =>
                     n.classList.toggle('active', n.dataset.nav === 'tasks'));
@@ -157,6 +157,7 @@
                     project: this._ctx.project,
                     updateMode: business.id === 'steady_update',
                     forceCreate: business.id === 'steady_update' && business.forceCreate === true,
+                    transientMode: business.id === 'transient',
                     back: (gotoModels) => {
                         this._navigate(gotoModels ? 'models' : 'tasks');
                     },
