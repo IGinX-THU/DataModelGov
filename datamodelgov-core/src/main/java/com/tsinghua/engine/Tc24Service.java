@@ -995,6 +995,7 @@ public class Tc24Service {
         m.append("fclose(fid);\n");
         m.append("r = 'ok';\n");
         m.append("end\n");
+        m.append(matlabJsonableFn());
         Files.write(f.toPath(), m.toString().getBytes(StandardCharsets.UTF_8));
     }
 

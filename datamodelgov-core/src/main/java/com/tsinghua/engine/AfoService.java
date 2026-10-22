@@ -105,17 +105,35 @@ public class AfoService {
         log.info("从jar解压 AFO_V_2 程序到项目工作目录: {} -> {}", jar, user);
         File extracted = user;
         Files.createDirectories(extracted.toPath());
+        // fat jar 里资源在 BOOT-INF/classes/ 前缀下,两种前缀都试
+        String[] prefixes = {
+                "BOOT-INF/classes/" + R06_IN_CLASSPATH + "/AFO_V_2/",
+                R06_IN_CLASSPATH + "/AFO_V_2/"
+        };
+        int extractedCount = 0;
         try (java.util.zip.ZipFile zf = new java.util.zip.ZipFile(jar.toFile())) {
-            String prefix = R06_IN_CLASSPATH + "/AFO_V_2/";
             java.util.Enumeration<? extends java.util.zip.ZipEntry> en = zf.entries();
             while (en.hasMoreElements()) {
                 java.util.zip.ZipEntry e = en.nextElement();
-                if (e.isDirectory() || !e.getName().startsWith(prefix)) continue;
-                File out = new File(extracted, e.getName().substring(prefix.length()));
+                if (e.isDirectory()) continue;
+                String rel = null;
+                for (String prefix : prefixes) {
+                    if (e.getName().startsWith(prefix)) { rel = e.getName().substring(prefix.length()); break; }
+                }
+                if (rel == null || rel.isEmpty()) continue;
+                File out = new File(extracted, rel);
                 Files.createDirectories(out.getParentFile().toPath());
                 Files.copy(zf.getInputStream(e), out.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                extractedCount++;
             }
         }
+        // 解压后验证:关键入口文件必须存在,否则删除半成品并抛错(快速失败,不留空目录)
+        if (!new File(extracted, "sht_afo_config.m").isFile()) {
+            deleteRecursively(extracted);
+            throw new IOException("jar 内未找到 AFO_V_2 程序资源(解压 " + extractedCount
+                    + " 个文件);请确认部署包含 programs/Delivery_V1_20261019_R06 交付树");
+        }
+        log.info("AFO_V_2 解压完成: {} 个文件", extractedCount);
         return extracted;
     }
 
