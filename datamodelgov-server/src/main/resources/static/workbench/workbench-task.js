@@ -1804,8 +1804,11 @@
                     } else if (state.tab === 'run' || (state.tab === 'uq' && changed)) {
                         renderBody();
                     } else if (state.tab === 'data' && changed) {
-                        const prepDone = Array.isArray(t.conditions) && t.conditions.length > 0;
-                        if (prepDone) { stopPolling(); state.prepWait = false; toast('数据准备完成,工况与分组已更新', 'success'); }
+                        // TC24 看conditions;TC27更新任务看prepMessage(后端READY+摘要即完成)
+                        const prepDone = t.kind === 'steady_update'
+                            ? !!(t.prepMessage && t.prepMessage.length)
+                            : (Array.isArray(t.conditions) && t.conditions.length > 0);
+                        if (prepDone) { stopPolling(); state.prepWait = false; toast('数据准备完成', 'success'); }
                         renderBody();
                     }
                 })
