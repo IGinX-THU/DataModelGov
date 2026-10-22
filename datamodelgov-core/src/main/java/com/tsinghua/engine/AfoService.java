@@ -220,20 +220,22 @@ public class AfoService {
                 throw new IllegalStateException("已有AFO会话在" + cur.phase + "(runId=" + cur.runId + "),请先结束并关闭");
             }
             String runId = "M-R" + new java.text.SimpleDateFormat("yyyyMMdd_HHmmss").format(new java.util.Date());
-            // 会话大文件落项目工作目录 <workdir>/job/afo-sessions/<runId>(与任务大文件同体系)
+            // 合同目录 outputDir(M-R...)必须由 sht_afo_prepare 自行创建
+            // (其断言"结果目录已存在,不覆盖");Java 侧 adapter/config 放旁边的
+            // 临时工作区 _work_<runId>,不触碰合同目录
             File outputDir = store.afoWorkDir(projectId, runId);
-            if (!outputDir.exists() && !outputDir.mkdirs()) throw new IOException("无法创建AFO会话目录: " + outputDir);
+            File workTmp = new File(store.afoWorkDir(projectId, "_work_" + runId), "adapter");
+            if (!workTmp.exists() && !workTmp.mkdirs()) throw new IOException("无法创建AFO适配器临时目录: " + workTmp);
 
             AfoSession s = new AfoSession();
             s.projectId = projectId;
             s.runId = runId;
             s.engineId = String.valueOf(cfg.getOrDefault("engineId", "ENGINE-001"));
             s.outputDir = outputDir.getAbsolutePath();
-            s.adapterDir = new File(outputDir, "adapter").getAbsolutePath();
+            s.adapterDir = workTmp.getAbsolutePath();
             s.createdAt = System.currentTimeMillis();
             s.config = cfg;
             s.message = "准备AFO程序工作副本";
-            if (!new File(s.adapterDir).mkdirs()) throw new IOException("无法创建适配器目录");
             session = s;
 
             writeSessionIndex(s);
@@ -539,14 +541,7 @@ public class AfoService {
         } catch (Exception e) {
             log.warn("AFO会话元数据写入失败", e);
         }
-        // 会话目录内保留一份(随结果归档,合同status.json/result.json的同级快照)
-        try {
-            new com.fasterxml.jackson.databind.ObjectMapper()
-                    .writerWithDefaultPrettyPrinter()
-                    .writeValue(new File(s.outputDir, "session.json"), idx);
-        } catch (Exception e) {
-            log.warn("AFO会话索引写入失败", e);
-        }
+
     }
 
     /* ---------- 工具 ---------- */

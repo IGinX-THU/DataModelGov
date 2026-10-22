@@ -52,6 +52,8 @@ public class Tc24Service {
     private final EngineProjectStore store;
     private final ExecutorService executor = Executors.newFixedThreadPool(2);
     private final Map<String, MatlabFunctionRunner> running = new ConcurrentHashMap<>();
+    /** 每任务运行代数:受理停止即落终态后允许立刻重新发起,旧执行按代数识别自己已过期,不再写回状态 */
+    private final Map<String, java.util.concurrent.atomic.AtomicLong> runGens = new ConcurrentHashMap<>();
     private final Map<String, List<String>> logBuffers = new ConcurrentHashMap<>();
     private final Map<String, SseEmitter> uqLogEmitters = new ConcurrentHashMap<>();
     private final Map<String, Boolean> uqCancelPending = new ConcurrentHashMap<>();
@@ -188,6 +190,9 @@ public class Tc24Service {
      */
     public ModelingTask runIdentification(ModelingTask task) throws IOException {
         final String key = task.getId();
+        final java.util.concurrent.atomic.AtomicLong genRef =
+                runGens.computeIfAbsent(key, k -> new java.util.concurrent.atomic.AtomicLong());
+        final long gen = genRef.incrementAndGet();
         task.setStatus(ModelingTask.ST_PREPARING);
         task.setMessage("准备程序工作副本");
         task.setLogTail(new ArrayList<>());
@@ -232,6 +237,11 @@ public class Tc24Service {
                 running.put(key, runner);
                 Object result = prepPayload(runner.run(), new File(adapterDir, "result.json"));
 
+                // 手动停止受理即落终态;若期间已重新发起辨识(代数已变),旧执行不再写回,避免覆盖新一次运行
+                if (genRef.get() != gen) {
+                    emitLog(key, "旧执行已在安全点结束;检测到重新发起的辨识,结果写回跳过");
+                    return;
+                }
                 t = store.getTask(task.getProjectId(), task.getId());
                 t.setFinishedAt(System.currentTimeMillis());
                 String status = extractStatus(result);
@@ -272,19 +282,24 @@ public class Tc24Service {
                 }
             } catch (Exception e) {
                 log.error("TC24 任务执行失败: {}", key, e);
-                try {
-                    EngineModels.ModelingTask t = store.getTask(task.getProjectId(), task.getId());
-                    t.setStatus(ModelingTask.ST_FAILED);
-                    t.setFinishedAt(System.currentTimeMillis());
-                    t.setMessage(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
-                    t.setErrorKind(classifyError(e.getMessage()));
-                    store.saveTask(t);
-                } catch (IOException io) {
-                    log.error("任务状态写回失败", io);
+                if (genRef.get() != gen) {
+                    emitLog(key, "旧执行失败;检测到重新发起的辨识,状态写回跳过");
+                } else {
+                    try {
+                        EngineModels.ModelingTask t = store.getTask(task.getProjectId(), task.getId());
+                        t.setStatus(ModelingTask.ST_FAILED);
+                        t.setFinishedAt(System.currentTimeMillis());
+                        t.setMessage(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+                        t.setErrorKind(classifyError(e.getMessage()));
+                        store.saveTask(t);
+                    } catch (IOException io) {
+                        log.error("任务状态写回失败", io);
+                    }
+                    emitLog(key, "任务失败: " + e.getMessage());
                 }
-                emitLog(key, "任务失败: " + e.getMessage());
             } finally {
-                running.remove(key);
+                // 两参 remove:重新发起后 running 里已映射到新执行的 runner,不能误删
+                if (runner != null) running.remove(key, runner);
             }
         });
         return task;
@@ -335,15 +350,18 @@ public class Tc24Service {
      * 请求停止(合同路径):通过引擎调用 Start_TC24_00_Offline(task='stop'),
      * 由 sht_tc24_run_control 在 {outputDirectory}/run_control/ 落 stop_request,
      * 运行中的辨识在最近安全点保存检查点后结束;不强制中断引擎。
+     * 受理即落终态(与取消UQ评估同逻辑):立即置 STOPPED,前端马上回到可重新辨识页面;
+     * 运行中程序在最近安全点退出后,旧执行按代数守卫不再重复写回状态。
      */
     public boolean requestStop(String projectId, String taskId) {
         try {
             EngineModels.ModelingTask t = store.getTask(projectId, taskId);
             if (t == null || running.get(taskId) == null) return false;
-            t.setStatus(ModelingTask.ST_STOP_REQUESTED);
-            t.setMessage("已请求停止;等待程序到达安全点");
+            t.setStatus(ModelingTask.ST_STOPPED);
+            t.setFinishedAt(System.currentTimeMillis());
+            t.setMessage("已手动停止;可重新发起辨识");
             store.saveTask(t);
-            emitLog(taskId, "已提交安全停止请求(task=stop)");
+            emitLog(taskId, "已提交安全停止请求(task=stop);程序将在最近安全点结束");
         } catch (IOException e) {
             log.warn("停止状态写回失败", e);
             return false;

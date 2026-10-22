@@ -934,3 +934,36 @@ window.showConfirmDialog = function(title, message, onConfirm) {
             }, 300);
         }
     }
+
+/* 全局Loading遮罩(自 DatasetMan 移植的模式:请求层统一loading + 并发计数)。
+ * 仅当页面未提供实现时注册(index.html 的 main.js 版本挂在 workspace-content 下,
+ * 新版工作台页面无该容器,此版本挂 body 且层级盖过工作台11000)。 */
+if (typeof window.showGlobalLoading !== 'function') {
+    let globalLoadingCount = 0;
+    window.showGlobalLoading = function (message = '正在加载...', updateText = true) {
+        globalLoadingCount++;
+        let overlay = document.getElementById('globalLoadingOverlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'globalLoadingOverlay';
+            overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;'
+                + 'background:rgba(255,255,255,0.72);display:flex;flex-direction:column;'
+                + 'align-items:center;justify-content:center;z-index:21000;gap:14px';
+            overlay.innerHTML = '<div style="width:38px;height:38px;border:3px solid #d8e3e8;'
+                + 'border-top-color:#0f766e;border-radius:50%;animation:gcu-spin .8s linear infinite"></div>'
+                + '<div class="gcu-text" style="color:#334155;font-size:13px">正在加载...</div>'
+                + '<style>@keyframes gcu-spin{to{transform:rotate(360deg)}}</style>';
+            document.body.appendChild(overlay);
+        }
+        if (updateText) {
+            const textEl = overlay.querySelector('.gcu-text');
+            if (textEl) textEl.textContent = message;
+        }
+    };
+    window.hideGlobalLoading = function () {
+        globalLoadingCount = Math.max(0, globalLoadingCount - 1);
+        if (globalLoadingCount > 0) return; // 并发请求未全部结束,遮罩保持
+        const overlay = document.getElementById('globalLoadingOverlay');
+        if (overlay) overlay.remove();
+    };
+}

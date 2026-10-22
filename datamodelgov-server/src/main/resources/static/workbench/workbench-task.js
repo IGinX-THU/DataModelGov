@@ -739,19 +739,25 @@
                 view.appendChild(cfgDrawer);
                 view.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'max-width:1180px;margin-top:14px' },
                     WB().h('button', {
-                        class: 'wb-btn wb-btn-outline' + (t.status === 'STOP_REQUESTED' ? ' disabled' : ''),
+                        class: 'wb-btn wb-btn-outline',
                         onclick: async () => {
-                            if (t.status === 'STOP_REQUESTED') return;
                             try {
-                                await window.AppConfig.enginePost(
+                                const resp = await window.AppConfig.enginePost(
                                     'projects/' + encodeURIComponent(ctx.project.id || '') + '/tasks/'
                                     + encodeURIComponent(t.id) + '/stop', {});
-                                toast('已请求停止;等待程序到达安全点');
-                                t.status = 'STOP_REQUESTED';
-                                renderBody();
+                                if (resp && (resp.success || resp.code === 200)) {
+                                    // 受理即落终态:停止轮询并立即回到重新辨识页(与取消UQ评估同逻辑)
+                                    t.status = 'STOPPED';
+                                    t.message = '已手动停止;可重新发起辨识';
+                                    stopPolling();
+                                    renderBody();
+                                    toast('已请求停止;程序将在最近安全点结束,可重新发起辨识', 'success');
+                                } else {
+                                    toast((resp && resp.message) || '停止请求失败', 'error');
+                                }
                             } catch (e) { toast('停止请求失败:' + e.message, 'error'); }
                         }
-                    }, t.status === 'STOP_REQUESTED' ? '已请求停止' : '请求停止'),
+                    }, '请求停止'),
                     WB().h('div', { class: 'wb-spacer' }),
                     WB().h('button', {
                         class: 'wb-btn wb-btn-outline',
