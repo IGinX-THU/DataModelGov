@@ -30,14 +30,10 @@ import com.tsinghua.engine.EngineModels.UqRecord;
  *   <workdir>/job/program-tasks/<taskId>/     建模任务运行数据(input/output/adapter/日志)
  *   <workdir>/job/afo/<runId>/                多系统仿真会话数据
  *   <workdir>/program/<程序名>/               程序源(创建项目时预置,实际运行用)
- * dataRoot/projects 仅作为IginX不可用时的文件式回退与一次性迁移来源。
  */
 @Slf4j
 @Service
 public class EngineProjectStore {
-
-    @Value("${engine.data.root:data/engine}")
-    private String dataRoot;
 
     @org.springframework.beans.factory.annotation.Autowired
     private EngineProjectMetaService metaService;
@@ -45,34 +41,19 @@ public class EngineProjectStore {
     private final ObjectMapper mapper = new ObjectMapper()
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
-    private File root;
-
-    @PostConstruct
-    void init() {
-        root = new File(dataRoot);
-        if (!root.exists() && root.mkdirs()) {
-            log.info("工作台数据目录已创建: {}", root.getAbsolutePath());
-        }
-    }
-
     private static String newId() {
         return UUID.randomUUID().toString().replace("-", "").substring(0, 12);
     }
 
     /* ---------- 项目 ---------- */
 
-    /** 项目元数据目录(系统数据目录,与IginX项目主数据并存;不进用户工作目录):dataRoot/projects/<pid>。 */
-    public File projectDir(String projectId) {
-        try {
-            com.tsinghua.entity.EngineProjectEntity e =
-                    metaService.queryById(Long.parseLong(projectId));
-            if (e != null && e.getWorkdir() != null && !e.getWorkdir().isEmpty()) {
-                return new File(new File(new File(e.getWorkdir()), "job"), "meta");
-            }
-        } catch (Exception ignore) {
-            // IginX 不可用/新项目尚未登记:回退文件式目录
+    /** 项目元数据目录:<workdir>/job/meta(workdir由IginX项目主数据反查;IginX为硬依赖)。 */
+    public File projectDir(String projectId) throws IOException {
+        EngineProject p = getProject(projectId);
+        if (p == null || p.getWorkdir() == null || p.getWorkdir().isEmpty()) {
+            throw new IOException("项目不存在或工作目录未配置: " + projectId);
         }
-        return new File(root, "projects/" + projectId);
+        return new File(new File(new File(p.getWorkdir()), "job"), "meta");
     }
 
     /**
@@ -80,7 +61,7 @@ public class EngineProjectStore {
      * - 留空 → 系统生成 `project/<项目名>`(相对服务工作目录,旧版 TASK_BASE_DIR 同名);
      * - 相对路径(如 myproj/job)→ 相对服务工作目录解析;
      * - 绝对路径 → 原样使用。
-     * 解析结果写入 workdir 字段回显;元数据(project.json/task.json/models)仍在 dataRoot,
+     * 解析结果写入 workdir 字段回显;元数据(tasks/models等)入IginX,
      * 大文件(任务输入/输出/日志)按旧版布局落 `<workdir>/job/program-tasks/<taskId>`。
      */
     private String resolveWorkdir(EngineProject p) {
@@ -112,20 +93,11 @@ public class EngineProjectStore {
         if (p.getId() == null || p.getId().isEmpty()) p.setId(String.valueOf(System.currentTimeMillis()));
         if (p.getCreatedAt() == null) p.setCreatedAt(System.currentTimeMillis());
         p.setWorkdir(resolveWorkdir(p));
-        // 工作目录防覆盖:目录已存在且属于其他项目(含project.json)时拒绝创建
+        // 工作目录防覆盖:目录已存在且非空时拒绝创建(项目目录专属,删除项目即删整个目录)
         File wd = new File(p.getWorkdir());
-        File marker = new File(wd, "project.json");
-        if (marker.exists()) {
-            try {
-                EngineProject existing = mapper.readValue(marker, EngineProject.class);
-                if (existing.getId() != null && !existing.getId().equals(p.getId())) {
-                    throw new IOException("保存位置已被项目「" + existing.getName() + "」占用,请更换保存位置");
-                }
-            } catch (IOException owned) {
-                if (owned.getMessage() != null && owned.getMessage().contains("占用")) throw owned;
-                log.warn("保存位置已有其他内容(project.json不可读),拒绝覆盖: {}", wd);
-                throw new IOException("保存位置已存在项目数据,请更换保存位置");
-            }
+        String[] existingFiles = wd.exists() ? wd.list() : null;
+        if (existingFiles != null && existingFiles.length > 0) {
+            throw new IOException("保存位置已存在内容: " + wd.getAbsolutePath() + ",请更换保存位置");
         }
         if (!wd.exists() && !wd.mkdirs()) throw new IOException("无法创建项目工作目录: " + wd);
         // IginX 行先落:此后 projectDir 反查 workdir 才可达,元数据才写得到工作目录
@@ -151,10 +123,57 @@ public class EngineProjectStore {
         return p;
     }
 
+    /** 项目档案唯一来源:IginX engine_projects 主数据(列表/详情/运行定位统一走这里)。 */
     public EngineProject getProject(String projectId) throws IOException {
-        File f = new File(projectDir(projectId), "project.json");
-        if (!f.exists()) return null;
-        return mapper.readValue(f, EngineProject.class);
+        return getProject(projectId, null);
+    }
+
+    /** 带 名称兜底 的项目查询(删除等场景由前端一并传名)。 */
+    public EngineProject getProject(String projectId, String nameFallback) throws IOException {
+        com.tsinghua.entity.EngineProjectEntity e;
+        try {
+            e = metaService.queryById(Long.parseLong(projectId));
+            if (e == null && nameFallback != null && !nameFallback.trim().isEmpty()) {
+                e = metaService.queryByName(nameFallback.trim());
+            }
+            if (e == null) return null;
+            EngineProject p = new EngineProject();
+            p.setId(e.getId() == null ? projectId : String.valueOf(e.getId()));
+            p.setName(e.getName());
+            p.setType(e.getType());
+            p.setEngineId(e.getEngineId());
+            p.setLocation(e.getLocation());
+            p.setWorkdir(e.getWorkdir());
+            p.setDesc(e.getDesc());
+            p.setOwner(e.getOwner());
+            p.setCreatedAt(e.getCreateTime());
+            return p;
+        } catch (NumberFormatException nfe) {
+            return null;
+        }
+    }
+
+    /** IginX engine_projects 行 → EngineProject(主数据字段;明细仍在工作目录/旧文件位置)。 */
+    private EngineProject fromIginxMeta(String projectId) {
+        try {
+            com.tsinghua.entity.EngineProjectEntity e =
+                    metaService.queryById(Long.parseLong(projectId));
+            if (e == null) return null;
+            EngineProject p = new EngineProject();
+            p.setId(e.getId() == null ? projectId : String.valueOf(e.getId()));
+            p.setName(e.getName());
+            p.setType(e.getType());
+            p.setEngineId(e.getEngineId());
+            p.setLocation(e.getLocation());
+            p.setWorkdir(e.getWorkdir());
+            p.setDesc(e.getDesc());
+            p.setOwner(e.getOwner());
+            p.setCreatedAt(e.getCreateTime());
+            return p;
+        } catch (Exception e2) {
+            log.warn("IginX项目主数据查询失败: {}", projectId, e2);
+            return null;
+        }
     }
 
     /**
@@ -164,19 +183,10 @@ public class EngineProjectStore {
      */
     public void deleteProject(String projectId) throws IOException {
         EngineProject p = getProject(projectId);
-        File dir = projectDir(projectId);
-        if (dir.exists()) deleteRecursively(dir);
+        // 工作目录即项目专属目录(系统为项目生成/用户指定):整个删除
         if (p != null && p.getWorkdir() != null && !p.getWorkdir().isEmpty()) {
             File wd = new File(p.getWorkdir());
-            // 本系统写入部分:job/(任务/会话/元数据) 与 program/(预置程序副本);用户其他文件不动
-            for (String sub : new String[]{"job", "program"}) {
-                File s = new File(wd, sub);
-                if (s.exists()) deleteRecursively(s);
-            }
-            File marker = new File(wd, "project.json");
-            if (marker.exists()) marker.delete();
-            String[] remain = wd.list();
-            if (remain != null && remain.length == 0) wd.delete();
+            if (wd.exists()) deleteRecursively(wd);
         }
     }
 
@@ -188,17 +198,15 @@ public class EngineProjectStore {
                 .forEach(File::delete);
     }
 
+    /** 项目列表:唯一来源为IginX主数据(与列表分页/owner隔离同口径)。 */
     public List<EngineProject> listProjects() throws IOException {
         List<EngineProject> out = new ArrayList<>();
-        File projects = new File(root, "projects");
-        File[] dirs = projects.listFiles(File::isDirectory);
-        if (dirs == null) return out;
-        for (File d : dirs) {
+        for (com.tsinghua.entity.EngineProjectEntity e : metaService.queryList(null, 1, 500)) {
             try {
-                EngineProject p = getProject(d.getName());
-                if (p != null) out.add(p);
-            } catch (Exception e) {
-                log.warn("读取项目失败: {}", d.getName(), e);
+                EngineProject proj = fromIginxMeta(String.valueOf(e.getId()));
+                if (proj != null) out.add(proj);
+            } catch (Exception ex) {
+                log.warn("读取项目失败: {}", e.getId(), ex);
             }
         }
         out.sort(Comparator.comparing(EngineProject::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())));
@@ -207,7 +215,7 @@ public class EngineProjectStore {
 
     /* ---------- 任务 ---------- */
 
-    public File taskDir(String projectId, String taskId) {
+    public File taskDir(String projectId, String taskId) throws IOException {
         return new File(projectDir(projectId), "tasks/" + taskId);
     }
 
@@ -215,16 +223,12 @@ public class EngineProjectStore {
      * 任务大文件工作目录:与旧版 ProgramService 布局一致,
      * `<项目工作目录>/job/program-tasks/<taskId>`;无项目时回退元数据目录。
      */
-    public File taskWorkDir(String projectId, String taskId) {
-        try {
-            EngineProject p = getProject(projectId);
-            if (p != null && p.getWorkdir() != null && !p.getWorkdir().isEmpty()) {
-                return new File(new File(new File(p.getWorkdir()), "job"), "program-tasks/" + taskId);
-            }
-        } catch (IOException e) {
-            log.warn("读取项目工作目录失败,回退默认: {}", projectId);
+    public File taskWorkDir(String projectId, String taskId) throws IOException {
+        EngineProject p = getProject(projectId);
+        if (p == null || p.getWorkdir() == null || p.getWorkdir().isEmpty()) {
+            throw new IOException("项目不存在或工作目录未配置: " + projectId);
         }
-        return taskDir(projectId, taskId);
+        return new File(new File(new File(p.getWorkdir()), "job"), "program-tasks/" + taskId);
     }
 
     /* ---------- 多系统联合仿真(AFO_V_2 会话) ---------- */
@@ -234,24 +238,20 @@ public class EngineProjectStore {
      * `<项目工作目录>/afo/<runId>`(status.json/inbox/runtime/result.json/交付Excel);
      * 无项目或工作目录缺失时回退元数据目录 projects/{pid}/afo-work/<runId>。
      */
-    public File afoWorkDir(String projectId, String runId) {
-        try {
-            EngineProject p = getProject(projectId);
-            if (p != null && p.getWorkdir() != null && !p.getWorkdir().isEmpty()) {
-                return new File(new File(new File(p.getWorkdir()), "job"), "afo/" + runId);
-            }
-        } catch (IOException e) {
-            log.warn("读取项目工作目录失败,AFO会话回退元数据目录: {}", projectId);
+    public File afoWorkDir(String projectId, String runId) throws IOException {
+        EngineProject p = getProject(projectId);
+        if (p == null || p.getWorkdir() == null || p.getWorkdir().isEmpty()) {
+            throw new IOException("项目不存在或工作目录未配置: " + projectId);
         }
-        return new File(new File(projectDir(projectId), "afo-work"), runId);
+        return new File(new File(new File(p.getWorkdir()), "job"), "afo/" + runId);
     }
 
     /** AFO会话元数据文件(projects/{pid}/afo/{runId}.json),与 predictions/uq 同模式。 */
-    public File afoSessionFile(String projectId, String runId) {
+    public File afoSessionFile(String projectId, String runId) throws IOException {
         return new File(projectDir(projectId), "afo/" + runId + ".json");
     }
 
-    public File afoSessionDir(String projectId) {
+    public File afoSessionDir(String projectId) throws IOException {
         return new File(projectDir(projectId), "afo");
     }
 
@@ -291,7 +291,7 @@ public class EngineProjectStore {
 
     /* ---------- 模型成果 ---------- */
 
-    public File modelFile(String projectId, String modelId) {
+    public File modelFile(String projectId, String modelId) throws IOException {
         return new File(projectDir(projectId), "models/" + modelId + ".json");
     }
 

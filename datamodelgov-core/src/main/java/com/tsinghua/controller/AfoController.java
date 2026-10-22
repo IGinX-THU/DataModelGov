@@ -143,10 +143,12 @@ public class AfoController {
     @RequirePermission(Permission.READ)
     public ResponseEntity<FileSystemResource> excel(@PathVariable("pid") String pid,
                                                     @PathVariable("runId") String runId) {
-        File f = afoService.resultExcel(pid, runId);
-        if (f == null || !f.exists()) return ResponseEntity.notFound().build();
-        String name = f.getName();
+        File f;
+        String name;
         try {
+            f = afoService.resultExcel(pid, runId);
+            if (f == null || !f.exists()) return ResponseEntity.notFound().build();
+            name = f.getName();
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION,
                             "attachment; filename*=UTF-8''" + URLEncoder.encode(name, "UTF-8"))

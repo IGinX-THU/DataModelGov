@@ -22,7 +22,7 @@ public final class EngineModels {
         private String type;
         private String engineId;
         private String location;
-        /** 解析后的物理工作目录(保存位置落盘;location 为空时在 dataRoot 下) */
+        /** 解析后的物理工作目录(保存位置落盘;location 为空时在 project/项目名 下(旧版同根)) */
         private String workdir;
         private String desc;
         private String owner;

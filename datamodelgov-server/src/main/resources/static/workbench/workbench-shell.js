@@ -37,7 +37,7 @@
             const cfg = this._config;
             const p = this._ctx.project;
             this.innerHTML = '';
-            this.appendChild(WB().h('link', { rel: 'stylesheet', href: './components/workbench/workbench.css?v=r2' }));
+            this.appendChild(WB().h('link', { rel: 'stylesheet', href: './workbench/workbench.css?v=r33' }));
 
             const app = WB().h('div', { class: 'wb-app' });
 

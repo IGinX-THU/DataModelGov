@@ -43,13 +43,14 @@ public class EngineProjectMetaService {
         return entity;
     }
 
+    /** 按主键(createTime,id与其相等)查询;未命中时的名称兜底由调用方 queryByName 完成。 */
     public EngineProjectEntity queryById(Long id) {
         if (id == null) return null;
         try {
-            String sql = String.format("SELECT * FROM %s WHERE id = %s LIMIT 1;", META_PREFIX, id);
+            String sql = String.format("SELECT * FROM %s WHERE createTime = %s LIMIT 1;", META_PREFIX, id);
             return queryOne(sql);
         } catch (Exception e) {
-            log.error("查询工作台项目失败: id={}", id, e);
+            log.warn("按createTime查询项目失败: id={}", id, e);
             return null;
         }
     }
@@ -65,16 +66,24 @@ public class EngineProjectMetaService {
         }
     }
 
-    /** 删除项目元数据行(id为主键时间戳;DELETETIME仅删该时间点数据)。 */
+    /**
+     * 删除项目元数据行——与旧版程序删除同模式:SQL DELETE 不允许值过滤
+     * (delete clause can not use value or path filter),须走 DeleteClient
+     * 按时间戳区间删除数据点(行时间戳=createTime=保存时传入的id)。
+     */
     public boolean delete(Long id) {
         if (id == null) return false;
         try {
-            iginxSession.executeSql(String.format("DELETE FROM %s WHERE id = %s;", META_PREFIX, id));
-            return true;
+            List<String> measurements =
+                    com.tsinghua.util.ConvertUtil.iginxFieldNamesConvert(
+                            com.tsinghua.entity.EngineProjectEntity.class, META_PREFIX);
+            iginxClient.getDeleteClient().deleteMeasurementsData(measurements, id - 1, id + 1);
         } catch (Exception e) {
             log.error("删除工作台项目元数据失败: id={}", id, e);
             return false;
         }
+        // 删除后回查验证:行仍存在则视为未生效
+        return queryById(id) == null;
     }
 
     /** 分页列表:管理员可见全部,普通用户仅本人项目(owner SQL 条件,与旧版程序列表一致)。 */

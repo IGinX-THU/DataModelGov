@@ -44,9 +44,6 @@ public class AfoService {
 
     private final EngineProjectStore store;
 
-    @Value("${engine.data.root:data/engine}")
-    private String dataRoot;
-
     private final Object sessionLock = new Object();
     private volatile AfoSession session;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -78,7 +75,7 @@ public class AfoService {
 
     @PostConstruct
     void init() {
-        log.info("AFO_V_2 多系统联合仿真接入层就绪(dataRoot={})", dataRoot);
+        log.info("AFO_V_2 多系统联合仿真接入层就绪");
     }
 
     /* ---------- 程序源解析 ---------- */
@@ -416,12 +413,12 @@ public class AfoService {
         return new com.fasterxml.jackson.databind.ObjectMapper().readValue(f, Map.class);
     }
 
-    public File resultExcel(String projectId, String runId) {
+    public File resultExcel(String projectId, String runId) throws IOException {
         return findExcel(afoOutputDir(projectId, runId));
     }
 
     /** 会话输出目录:优先元数据记录的outputDir,回退项目工作目录推算。 */
-    private File afoOutputDir(String projectId, String runId) {
+    private File afoOutputDir(String projectId, String runId) throws IOException {
         File meta = store.afoSessionFile(projectId, runId);
         if (meta.exists()) {
             try {

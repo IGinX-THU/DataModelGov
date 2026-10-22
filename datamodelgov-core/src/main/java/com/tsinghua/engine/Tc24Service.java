@@ -40,9 +40,6 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 public class Tc24Service {
 
     /** R06 交付树根:支持绝对/相对文件路径;留空时自动探测工作区 resources 目录或从 classpath 解压。 */
-    @Value("${engine.data.root:data/engine}")
-    private String dataRoot;
-
     @Value("${matlab.engine.home:}")
     private String matlabHome;
 
@@ -458,7 +455,7 @@ public class Tc24Service {
         if (detailOut.exists()) return true; // 已生成过,直接复用
         try {
             File programCopy = ensureTc24Source(projectId);
-            File adapterDir = new File(dataRoot, "tmp/read-adapter");
+            File adapterDir = new File(System.getProperty("java.io.tmpdir"), "datamodelgov-read-adapter");
             if (!adapterDir.exists() && !adapterDir.mkdirs()) throw new IOException("无法创建回读适配器目录");
 
             String keep = "[]";

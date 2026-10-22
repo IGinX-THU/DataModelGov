@@ -108,14 +108,18 @@ public class EngineWorkbenchController {
     @ApiOperation("删除项目(元数据+任务/模型/评估/预测/会话记录;工作目录仅清本系统写入部分)")
     @DeleteMapping("/projects/{pid}")
     @RequirePermission(Permission.CREATE)
-    public Result<Boolean> deleteProject(@PathVariable("pid") String pid) {
+    public Result<Boolean> deleteProject(@PathVariable("pid") String pid,
+                                         @RequestParam(value = "name", required = false) String name) {
         try {
-            EngineModels.EngineProject p = store.getProject(pid);
+            EngineModels.EngineProject p = store.getProject(pid, name);
             if (p == null) return Result.error("项目不存在");
             String denied = accessDenied(p);
             if (denied != null) return Result.error(denied);
             store.deleteProject(pid);
-            metaService.delete(Long.parseLong(pid));
+            boolean metaDeleted = metaService.delete(Long.parseLong(pid));
+            if (!metaDeleted) {
+                return Result.error("项目记录删除未生效(IginX),请稍后重试或联系管理员");
+            }
             log.info("项目已删除: {} ({})", p.getName(), pid);
             return Result.success(true);
         } catch (Exception e) {

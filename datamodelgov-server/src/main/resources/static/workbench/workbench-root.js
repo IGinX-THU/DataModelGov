@@ -29,7 +29,7 @@
 
         _render() {
             this.innerHTML = '';
-            this.appendChild(WB().h('link', { rel: 'stylesheet', href: './components/workbench/workbench.css?v=r4' }));
+            this.appendChild(WB().h('link', { rel: 'stylesheet', href: './workbench/workbench.css?v=r33' }));
             const username = localStorage.getItem('username') || '';
 
             const rootEl = WB().h('div', { class: 'wb-root' },
@@ -250,7 +250,8 @@
         async _doDeleteProject(p) {
             try {
                 const resp = await window.AppConfig.request(
-                    window.AppConfig.api.baseURL + '/api/engine/projects/' + encodeURIComponent(p.id),
+                    window.AppConfig.api.baseURL + '/api/engine/projects/' + encodeURIComponent(p.id)
+                    + '?name=' + encodeURIComponent(p.name || ''),
                     { method: 'DELETE' });
                 if (resp && (resp.success || resp.code === 200)) {
                     if (window.CommonUtils && window.CommonUtils.showToast) {
