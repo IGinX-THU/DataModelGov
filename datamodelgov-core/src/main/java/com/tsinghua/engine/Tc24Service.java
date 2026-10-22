@@ -377,7 +377,11 @@ public class Tc24Service {
 
                 MatlabFunctionRunner stopRunner = new MatlabFunctionRunner(adapterDir, "dmg_tc24_stop",
                         new Object[]{configFile.getAbsolutePath()},
-                        new File(workDir, "stop.log"), enginePool);
+                        new File(workDir, "stop.log"), enginePool,
+                        new MatlabFunctionRunner.ProgressCancellationSink() {
+                            @Override public void onProgress(String message) { emitLog(taskId, message); }
+                            @Override public boolean isCancellationRequested() { return false; }
+                        });
                 stopRunner.run();
                 emitLog(taskId, "安全停止请求已写入运行控制目录");
             } catch (Exception e) {
@@ -523,7 +527,11 @@ public class Tc24Service {
 
             MatlabFunctionRunner runner = new MatlabFunctionRunner(adapterDir, "dmg_tc24_read",
                     new Object[]{configFile.getAbsolutePath()},
-                    new File(adapterDir, "read.log"), enginePool);
+                    new File(adapterDir, "read.log"), enginePool,
+                    new MatlabFunctionRunner.ProgressCancellationSink() {
+                        @Override public void onProgress(String message) { MatlabLogRing.append(message); }
+                        @Override public boolean isCancellationRequested() { return false; }
+                    });
             runner.run();
             return detailOut.exists();
         } catch (Exception e) {
@@ -1040,7 +1048,11 @@ public class Tc24Service {
 
                 MatlabFunctionRunner runner = new MatlabFunctionRunner(adapterDir, "dmg_tc24_task",
                         new Object[]{configFile.getAbsolutePath()},
-                        new File(workDir, "prepare.log"), enginePool);
+                        new File(workDir, "prepare.log"), enginePool,
+                        new MatlabFunctionRunner.ProgressCancellationSink() {
+                            @Override public void onProgress(String message) { emitLog(key, message); }
+                            @Override public boolean isCancellationRequested() { return false; }
+                        });
                 running.put(key + ":prep", runner);
                 Object result = runner.run();
                 running.remove(key + ":prep");
@@ -1309,7 +1321,11 @@ public class Tc24Service {
 
         MatlabFunctionRunner runner = new MatlabFunctionRunner(adapterDir, "dmg_tc24_predict",
                 new Object[]{configFile.getAbsolutePath()},
-                new File(outDir.getParentFile(), "predict-" + cond.getId() + ".log"), enginePool);
+                new File(outDir.getParentFile(), "predict-" + cond.getId() + ".log"), enginePool,
+                new MatlabFunctionRunner.ProgressCancellationSink() {
+                    @Override public void onProgress(String message) { emitLog(rec.getProjectId(), message); }
+                    @Override public boolean isCancellationRequested() { return false; }
+                });
         Object result = runner.run();
 
         Object parsed = parseJsonFile(resultFile);
