@@ -460,6 +460,8 @@ public class AfoService {
         m.append("for k = 1:numel(f), cfg.(f{k}) = c.cfg.(f{k}); end\n");
         m.append("switch lower(c.action)\n");
         m.append("    case 'prepare', r = sht_afo_session('prepare', cfg);\n");
+        m.append("    case 'close'\n");
+        m.append("        sht_afo_session('close'); r = 'ok'; % close has no output\n");
         m.append("    otherwise, r = sht_afo_session(lower(c.action));\n");
         m.append("end\n");
         m.append("payload = jsonencode(r);\n");
