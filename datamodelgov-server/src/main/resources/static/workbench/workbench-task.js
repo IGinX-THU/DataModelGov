@@ -276,10 +276,10 @@
                 WB().h('div', { class: 'wb-field' }, WB().h('label', null, '小幅变化段辅助辨识'),
                     WB().h('input', { readonly: '', value: (t.includeSmallHistory === false ? '不使用' : '使用') }))));
 
-            wrap.appendChild(fileRow('原训练均值 Excel', 'training', t.trainingFile, true));
-            wrap.appendChild(fileRow('新增训练历程 Excel(完整试车记录)', 'history', t.historyFile, false));
-            wrap.appendChild(fileRow('原试车测试集 Excel(可选)', 'test', t.testFile, false));
-            wrap.appendChild(fileRow('新增测试历程 Excel(可选)', 'historyTest', t.historyTestFile, false));
+            wrap.appendChild(fileRow('原训练均值 Excel', 'training', t.trainingFile, true, t));
+            wrap.appendChild(fileRow('新增训练历程 Excel(完整试车记录)', 'history', t.historyFile, false, t));
+            wrap.appendChild(fileRow('原试车测试集 Excel(可选)', 'test', t.testFile, false, t));
+            wrap.appendChild(fileRow('新增测试历程 Excel(可选)', 'historyTest', t.historyTestFile, false, t));
 
             const prepDone = t.prepMessage && t.prepMessage.length;
             const prepRunning = state.prepWait || t.status === 'PREPARING';
@@ -386,8 +386,8 @@
                     WB().h('input', { readonly: '', value: 'B00 · 当前配套运行包' }))));
 
             // 训练/测试数据行(01-03:输入框 + 选择文件 + 预览数据)
-            wrap.appendChild(fileRow('训练数据 Excel', 'training', t.trainingFile, true));
-            wrap.appendChild(fileRow('独立测试 Excel(可选)', 'test', t.testFile, false));
+            wrap.appendChild(fileRow('训练数据 Excel', 'training', t.trainingFile, true, t));
+            wrap.appendChild(fileRow('独立测试 Excel(可选)', 'test', t.testFile, false, t));
 
             // 训练工况表(数据来自 prepare 真实解析)
             const prepDone = Array.isArray(t.conditions) && t.conditions.length > 0;
@@ -451,61 +451,62 @@
                     onclick: () => { if (prepDone) { state.tab = 'run'; renderBody(); } }
                 }, '进入系数辨识')));
             return wrap;
+        }
 
-            function fileRow(label, kind, filePath, withPreview) {
-                const nameBox = WB().h('input', { readonly: '', value: filePath ? fileName(filePath) : '未提供', style: 'flex:1' });
-                const pickBtn = WB().h('button', {
-                    class: 'wb-btn wb-btn-outline',
-                    onclick: () => fileInput.click()
-                }, '选择文件');
-                const fileInput = WB().h('input', { type: 'file', accept: '.xlsx,.xls', style: 'display:none' });
-                fileInput.addEventListener('change', async () => {
-                    const f = fileInput.files && fileInput.files[0];
-                    if (!f) return;
-                    
-                    // 确保FormData可用
-                    const fd = new FormData();
-                    if (!fd) {
-                        toast('浏览器不支持文件上传', 'error');
-                        return;
-                    }
-                    
-                    fd.append('file', f);
-                    nameBox.value = '上传中:' + f.name + '...';
-                    
-                    try {
-                        const pid = encodeURIComponent(ctx.project.id || '');
-                        const tid = encodeURIComponent(t.id);
-                        const path = 'projects/' + pid + '/tasks/' + tid + '/files' +
-                            '?kind=' + encodeURIComponent(kind);
-                        console.log('上传文件:', f.name, '到:', path);
-                        // 走统一封装:自动带 Authorization,FormData 由浏览器设置 multipart boundary
-                        const resp = await window.AppConfig.engineUpload(path, fd);
-                        console.log('上传响应:', resp);
-                        if (resp && (resp.success || resp.code === 200) && resp.data) {
-                            state.task = resp.data;
-                            toast((kind === 'training' ? '训练' : '测试') + '数据已上传', 'success');
-                        } else {
-                            toast((resp && resp.message) || '上传失败', 'error');
-                            nameBox.value = filePath ? fileName(filePath) : '未提供';
-                        }
-                    } catch (e) {
-                        console.error('上传失败:', e);
-                        toast('上传失败:' + e.message, 'error');
+        /* ---------- 文件上传行组件(共用于 dataTab 和 dataTabUpdate) ---------- */
+        function fileRow(label, kind, filePath, withPreview, t) {
+            const nameBox = WB().h('input', { readonly: '', value: filePath ? fileName(filePath) : '未提供', style: 'flex:1' });
+            const pickBtn = WB().h('button', {
+                class: 'wb-btn wb-btn-outline',
+                onclick: () => fileInput.click()
+            }, '选择文件');
+            const fileInput = WB().h('input', { type: 'file', accept: '.xlsx,.xls', style: 'display:none' });
+            fileInput.addEventListener('change', async () => {
+                const f = fileInput.files && fileInput.files[0];
+                if (!f) return;
+                
+                // 确保FormData可用
+                const fd = new FormData();
+                if (!fd) {
+                    toast('浏览器不支持文件上传', 'error');
+                    return;
+                }
+                
+                fd.append('file', f);
+                nameBox.value = '上传中:' + f.name + '...';
+                
+                try {
+                    const pid = encodeURIComponent(ctx.project.id || '');
+                    const tid = encodeURIComponent(t.id);
+                    const path = 'projects/' + pid + '/tasks/' + tid + '/files' +
+                        '?kind=' + encodeURIComponent(kind);
+                    console.log('上传文件:', f.name, '到:', path);
+                    // 走统一封装:自动带 Authorization,FormData 由浏览器设置 multipart boundary
+                    const resp = await window.AppConfig.engineUpload(path, fd);
+                    console.log('上传响应:', resp);
+                    if (resp && (resp.success || resp.code === 200) && resp.data) {
+                        state.task = resp.data;
+                        toast((kind === 'training' ? '训练' : '测试') + '数据已上传', 'success');
+                    } else {
+                        toast((resp && resp.message) || '上传失败', 'error');
                         nameBox.value = filePath ? fileName(filePath) : '未提供';
                     }
-                    renderBody();
-                });
-                const row = WB().h('div', { class: 'wb-field', style: 'max-width:980px;margin-bottom:14px' },
-                    WB().h('label', null, label),
-                    WB().h('div', { style: 'display:flex;gap:10px' }, nameBox, pickBtn,
-                        withPreview ? WB().h('button', {
-                            class: 'wb-btn wb-btn-outline' + (t.trainingFile ? '' : ' disabled'),
-                            onclick: () => { if (t.trainingFile) window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000; runPrepare(); }
-                        }, '预览数据') : null));
-                row.appendChild(fileInput);
-                return row;
-            }
+                } catch (e) {
+                    console.error('上传失败:', e);
+                    toast('上传失败:' + e.message, 'error');
+                    nameBox.value = filePath ? fileName(filePath) : '未提供';
+                }
+                renderBody();
+            });
+            const row = WB().h('div', { class: 'wb-field', style: 'max-width:980px;margin-bottom:14px' },
+                WB().h('label', null, label),
+                WB().h('div', { style: 'display:flex;gap:10px' }, nameBox, pickBtn,
+                    withPreview ? WB().h('button', {
+                        class: 'wb-btn wb-btn-outline' + (t.trainingFile ? '' : ' disabled'),
+                        onclick: () => { if (t.trainingFile) window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000; runPrepare(); }
+                    }, '预览数据') : null));
+            row.appendChild(fileInput);
+            return row;
         }
 
         /* ---------- 页签二:稳态系数辨识(01-04 配置 / 01-05 运行) ---------- */
