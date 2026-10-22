@@ -210,19 +210,41 @@
             this._renderPager(paging);
         }
 
-        /** 删除项目(公用确认弹窗):元数据+任务/模型/评估/预测/仿真记录;工作目录仅清本系统写入部分。 */
-        async _deleteProject(p) {
+        /**
+         * 删除项目确认:自包含弹窗(与旧版algorithm-detail的showDeleteConfirmDialog同模式,
+         * 直接创建DOM,不依赖全局函数/加载顺序);确认后走_doDeleteProject。
+         */
+        _deleteProject(p) {
             if (!p || !p.id) return;
-            if (!window.showConfirmDialog) {
-                if (window.confirm('确定删除项目「' + p.name + '」?删除后不可恢复。')) {
-                    return this._doDeleteProject(p);
-                }
-                return;
+            try {
+                const overlay = document.createElement('div');
+                overlay.className = 'delete-confirm-dialog-overlay';
+                overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;'
+                    + 'background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:20000';
+                const dialog = document.createElement('div');
+                dialog.className = 'delete-confirm-dialog';
+                dialog.style.cssText = 'background:white;border-radius:8px;padding:24px;max-width:440px;width:90%;'
+                    + 'box-shadow:0 8px 32px rgba(0,0,0,.3)';
+                dialog.innerHTML = '<h3 style="margin:0 0 12px 0;font-size:18px;font-weight:600;color:#1f2329">'
+                    + '删除项目「' + (p.name || '') + '」</h3>'
+                    + '<p style="margin:0 0 20px 0;color:#646a73;line-height:1.6;font-size:13px">'
+                    + '将删除项目元数据、建模任务与数据、模型成果、不确定性评估、输出预测、多系统仿真记录;'
+                    + '保存位置下由本系统写入的 program/ 与 job/ 目录一并清除,其他文件保留。<b>删除后不可恢复。</b></p>'
+                    + '<div style="display:flex;justify-content:flex-end;gap:12px">'
+                    + '<button class="dlg-cancel" style="padding:8px 16px;border:1px solid #c9cdd4;border-radius:4px;'
+                    + 'background:white;color:#1f2329;cursor:pointer;font-size:14px">取消</button>'
+                    + '<button class="dlg-ok" style="padding:8px 16px;border:none;border-radius:4px;'
+                    + 'background:#b91c1c;color:white;cursor:pointer;font-size:14px">确认删除</button></div>';
+                overlay.appendChild(dialog);
+                document.body.appendChild(overlay);
+                const close = () => { overlay.remove(); };
+                overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+                dialog.querySelector('.dlg-cancel').addEventListener('click', close);
+                dialog.querySelector('.dlg-ok').addEventListener('click', () => { close(); this._doDeleteProject(p); });
+            } catch (e) {
+                console.error('删除弹窗创建失败', e);
+                if (window.confirm('删除项目「' + (p.name || '') + '」?删除后不可恢复。')) this._doDeleteProject(p);
             }
-            window.showConfirmDialog('删除项目',
-                '确定删除项目「' + p.name + '」?<br>将删除项目元数据、建模任务与数据、模型成果、不确定性评估、输出预测、多系统仿真记录;'
-                + '保存位置下由本系统写入的 afo/ 与 job/ 目录一并清除,其他文件保留。<br><b>删除后不可恢复。</b>',
-                () => this._doDeleteProject(p));
         }
 
         async _doDeleteProject(p) {

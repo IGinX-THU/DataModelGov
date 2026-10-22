@@ -3,43 +3,6 @@
  * 界面结构依据《完整界面设计说明书》UI-R131(9 图组 / 190 效果图);
  * 图中数值为展示样例,程序绑定以 R06 交付包 F-xx 合同为准。
  */
-/* 全局确认弹窗(与js/main.js同款样式;workbench.html不引main.js,这里兜底提供)。
- * main.js同时存在时,后加载者覆盖,样式一致无冲突。 */
-if (typeof window.showConfirmDialog !== 'function') {
-    window.showConfirmDialog = function(title, message, onConfirm) {
-        const existing = document.querySelector('.confirm-dialog-overlay');
-        if (existing) existing.remove();
-        const overlay = document.createElement('div');
-        overlay.className = 'confirm-dialog-overlay';
-        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;'
-            + 'align-items:center;justify-content:center;z-index:1000;opacity:0;transition:opacity .3s ease';
-        const dialog = document.createElement('div');
-        dialog.className = 'confirm-dialog';
-        dialog.style.cssText = 'background:white;border-radius:8px;padding:24px;max-width:420px;width:90%;'
-            + 'box-shadow:0 8px 32px rgba(0,0,0,.3);transform:scale(.9);transition:transform .3s ease';
-        dialog.innerHTML = '<h3 style="margin:0 0 12px 0;font-size:18px;font-weight:600;color:#1f2329">' + title + '</h3>'
-            + '<p style="margin:0 0 24px 0;color:#646a73;line-height:1.6;font-size:13px">' + message + '</p>'
-            + '<div style="display:flex;justify-content:flex-end;gap:12px">'
-            + '<button class="confirm-btn cancel" style="padding:8px 16px;border:1px solid #c9cdd4;border-radius:4px;'
-            + 'background:white;color:#1f2329;cursor:pointer;font-size:14px">取消</button>'
-            + '<button class="confirm-btn ok" style="padding:8px 16px;border:none;border-radius:4px;'
-            + 'background:#b91c1c;color:white;cursor:pointer;font-size:14px">确认删除</button></div>';
-        overlay.appendChild(dialog);
-        document.body.appendChild(overlay);
-        requestAnimationFrame(() => {
-            overlay.style.opacity = '1';
-            dialog.style.transform = 'scale(1)';
-        });
-        const close = () => {
-            overlay.style.opacity = '0';
-            setTimeout(() => overlay.remove(), 250);
-        };
-        overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
-        dialog.querySelector('.cancel').addEventListener('click', close);
-        dialog.querySelector('.ok').addEventListener('click', () => { close(); onConfirm && onConfirm(); });
-    };
-}
-
 window.Workbench = (() => {
 
     /* ---------- 小工具 ---------- */

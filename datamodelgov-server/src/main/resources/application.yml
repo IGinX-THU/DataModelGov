@@ -46,6 +46,11 @@ spring:
   web:
     resources:
       static-locations: file:./static/,classpath:/static/
+      # 静态资源禁用缓存:前端脚本频繁迭代,浏览器必须每次回源验证,
+      # 否则改代码后页面仍旧(HTML/JS走旧缓存,版本号查询参数也随旧HTML一起失效)
+      cache:
+        cachecontrol:
+          no-cache: true
 
 #启用Swagger文档
 springfox:

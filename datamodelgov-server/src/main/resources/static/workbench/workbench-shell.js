@@ -125,7 +125,11 @@
             };
             refresh();
             if (window.__WB_ENGINE_TIMER__) clearInterval(window.__WB_ENGINE_TIMER__);
-            window.__WB_ENGINE_TIMER__ = setInterval(refresh, 5000);
+            window.__WB_ENGINE_TIMER__ = setInterval(() => {
+                // 页面隐藏/切后台时不发请求;回到前台下一轮自动恢复
+                if (document.hidden) return;
+                refresh();
+            }, 15000);
         }
 
         _navigate(key) {
