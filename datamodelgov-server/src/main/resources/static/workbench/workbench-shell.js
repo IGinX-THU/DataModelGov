@@ -156,6 +156,7 @@
                 main.appendChild(window.Workbench.renderSteadyTask({
                     project: this._ctx.project,
                     updateMode: business.id === 'steady_update',
+                    forceCreate: business.id === 'steady_update' && business.forceCreate === true,
                     back: (gotoModels) => {
                         this._navigate(gotoModels ? 'models' : 'tasks');
                     },

@@ -298,7 +298,7 @@ window.Workbench = (() => {
                     h('button', { class: 'wb-btn wb-btn-primary',
                         onclick: () => ctx.enterTask({ id: 'steady', name: '基础稳态点建模' }) }, '+ 基础稳态点建模'),
                     h('button', { class: 'wb-btn wb-btn-outline',
-                        onclick: () => ctx.enterTask({ id: 'steady_update', name: '新增试车稳态更新' }) }, '新增试车更新'))),
+                        onclick: () => ctx.enterTask({ id: 'steady_update', name: '新增试车稳态更新', forceCreate: true }) }, '新增试车更新'))),
             tableHolder,
             h('div', { class: 'wb-actions-row' },
                 h('button', { class: 'wb-btn wb-btn-outline', onclick: () => ctx.enterTask({ id: 'steady', name: '基础稳态点建模' }) }, '打开任务'),

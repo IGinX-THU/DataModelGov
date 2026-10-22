@@ -186,6 +186,7 @@
         /** 新建TC27稳态更新任务(F-02):上游父模型 + 方法I/II + 路径 + 小幅段。 */
         function createCardUpdate() {
             const nameInput = WB().h('input', { value: '新增试车稳态更新-' + new Date().toISOString().slice(5, 10) });
+            const prefill = window.__WB_TC27_PREFILL__;
             const modelSel = WB().h('select', null, WB().h('option', null, '正在加载模型成果...'));
             const methodSel = WB().h('select', null,
                 WB().h('option', { value: 'I' }, '方法I(按当前混合工况分组形成节点后拟合)'),
@@ -203,13 +204,28 @@
                         modelSel.appendChild(WB().h('option', { value: '' }, '尚无可用模型——先完成基础建模并登记(需交付Excel)'));
                         return;
                     }
-                    models.forEach(m => modelSel.appendChild(WB().h('option', { value: m.id },
+                    const ROUTE_CODE = { '稳态方程': 'steady', '瞬态时刻方程': 'transient_instant' };
+                    models.forEach(m => modelSel.appendChild(WB().h('option', { value: m.id, 'data-route': ROUTE_CODE[m.route] || '' },
                         (m.name || m.id) + ' · ' + (m.stage || '') + ' · ' + (m.route || ''))));
+                    if (prefill && prefill.upstreamModelId && models.some(m => m.id === prefill.upstreamModelId)) {
+                        modelSel.value = prefill.upstreamModelId;
+                        methodSel.value = prefill.updateMethod || methodSel.value;
+                        routeSel.value = prefill.route || routeSel.value;
+                    }
+                    syncRoute();
                 })
                 .catch(() => {
                     modelSel.innerHTML = '';
                     modelSel.appendChild(WB().h('option', { value: '' }, '模型成果加载失败'));
                 });
+            // 路径由上游父模型决定(需一致):选中后自动带出并锁定
+            const syncRoute = () => {
+                const opt = modelSel.selectedOptions && modelSel.selectedOptions[0];
+                const r = opt ? opt.getAttribute('data-route') : '';
+                if (r) { routeSel.value = r; routeSel.setAttribute('disabled', ''); }
+                else { routeSel.removeAttribute('disabled'); }
+            };
+            modelSel.addEventListener('change', syncRoute);
             const createBtn = WB().h('button', {
                 class: 'wb-btn wb-btn-primary',
                 onclick: async () => {
@@ -271,8 +287,14 @@
                     WB().h('input', { readonly: '', value: '新增试车稳态更新 / 2.7' })),
                 WB().h('div', { class: 'wb-field' }, WB().h('label', null, '上游模型(需路径一致)'),
                     WB().h('input', { readonly: '', value: fileName(t.upstreamModelFile) || '—' })),
-                WB().h('div', { class: 'wb-field' }, WB().h('label', null, '调度更新方法(创建后锁定)'),
-                    WB().h('input', { readonly: '', value: (t.updateMethod || 'II') + ' · ' + (ROUTE_NAME27[t.route] || t.route) })),
+                WB().h('div', { class: 'wb-field' }, WB().h('label', null, '调度更新方法(创建时确定)'),
+                    WB().h('input', { readonly: '', value: (t.updateMethod || 'II') + ' · ' + (ROUTE_NAME27[t.route] || t.route) }),
+                    WB().h('div', { class: 'wb-hint', style: 'margin:4px 0 0' },
+                        '方法/路径变更即新任务;'),
+                    WB().h('button', {
+                        class: 'wb-btn wb-btn-outline', style: 'margin-top:6px;padding:4px 10px;font-size:12px',
+                        onclick: () => { window.__WB_TC27_PREFILL__ = { upstreamModelId: t.upstreamModelId, updateMethod: t.updateMethod, route: t.route }; state.task = null; renderBody(); }
+                    }, '换方法/路径 → 新建更新任务')),
                 WB().h('div', { class: 'wb-field' }, WB().h('label', null, '小幅变化段辅助辨识'),
                     WB().h('input', { readonly: '', value: (t.includeSmallHistory === false ? '不使用' : '使用') }))));
 
@@ -1859,7 +1881,8 @@
                 const resp = await window.AppConfig.engineGet('projects/detail', { projectId: ctx.project.id });
                 if (resp && (resp.success || resp.code === 200) && resp.data) {
                     const want = ctx.updateMode ? 'steady_update' : 'steady';
-                    const tasks = (resp.data.tasks || []).filter(x => x.kind === want);
+                    const tasks = ctx.forceCreate ? []
+                        : (resp.data.tasks || []).filter(x => x.kind === want);
                     if (tasks.length) {
                         state.task = tasks[0];
                         state.tab = state.task.status === 'COMPLETED' ? 'result'

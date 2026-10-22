@@ -228,6 +228,18 @@ public class EngineWorkbenchController {
                         || !new File(parent.getDeliveryWorkbookFile()).isFile()) {
                     return Result.error("上游父模型缺少交付Excel,不能作为TC27更新基础");
                 }
+                // 计算路径必须与上游父模型一致(Excel manifest 会硬校验,提前到创建时拦截)
+                String parentRoute = "稳态方程".equals(parent.getRoute()) ? "steady"
+                        : "瞬态时刻方程".equals(parent.getRoute()) ? "transient_instant" : null;
+                String reqRoute = (String) body.getOrDefault("route", parentRoute);
+                if (parentRoute == null) {
+                    return Result.error("上游父模型的计算路径无法识别,不能作为TC27更新基础");
+                }
+                if (!parentRoute.equals(reqRoute)) {
+                    return Result.error("计算路径与上游父模型不一致:父模型为「" + parent.getRoute()
+                            + "」,请选择一致的计算路径");
+                }
+                t.setRoute(parentRoute);
                 t.setUpstreamModelId(upstreamModelId);
                 t.setUpstreamModelFile(parent.getDeliveryWorkbookFile());
                 t.setMessage("待上传原均值与新增试车历程");

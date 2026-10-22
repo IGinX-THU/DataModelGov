@@ -840,10 +840,10 @@ public class Tc24Service {
         try {
             File programCopy = ensureTc24Source(task.getProjectId());
             File workDir = store.taskWorkDir(task.getProjectId(), task.getId());
-            File adapterDir = new File(workDir, "adapter");
-            if (!adapterDir.exists() && !adapterDir.mkdirs()) throw new IOException("无法创建适配器目录");
+            // 合同目录 tc27 由程序自行创建(preview 断言目录必须不存在);适配器放 tc27-work 临时区
             File outDir = new File(workDir, "tc27");
-            if (!outDir.exists() && !outDir.mkdirs()) throw new IOException("无法创建TC27输出目录");
+            File adapterDir = new File(workDir, "tc27-work");
+            if (!adapterDir.exists() && !adapterDir.mkdirs()) throw new IOException("无法创建TC27适配器目录");
             writeTc27Adapter(adapterDir, programCopy);
 
             Map<String, Object> request = new LinkedHashMap<>();
