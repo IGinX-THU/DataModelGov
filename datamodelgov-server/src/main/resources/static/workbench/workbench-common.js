@@ -306,7 +306,7 @@ window.Workbench = (() => {
             tableHolder,
             h('div', { class: 'wb-actions-row' },
                 h('button', { class: 'wb-btn wb-btn-outline', onclick: () => ctx.navigate('records') }, '打开任务'),
-                h('button', { class: 'wb-btn wb-btn-outline', onclick: () => importModel(ctx) }, '导入模型'))));
+                h('button', { class: 'wb-btn wb-btn-outline', onclick: () => ctx.navigate('models') }, '导入模型'))));
 
         // —— 本任务的计算基准(01-02:两个只读字段 + 属性/内容表 + 选择预测模型/运行记录) ——
         const baseRows = h('table', { class: 'wb-table', style: 'margin-top:14px' },
@@ -424,20 +424,31 @@ window.Workbench = (() => {
                         '共 ' + files.length + ' 个数据文件;文件反查模型见模型成果详情(02-04)。'));
                 }
 
-                /* 待处理异常(说明书2.1:需要处理的异常) */
+                /* 待处理异常(说明书2.1):取最近运行记录(SQL分页接口)中的失败任务,最新10条 */
                 issuesHolder.innerHTML = '';
-                const issues = tasks.filter(tk => tk.status === 'FAILED');
-                if (!issues.length) {
-                    issuesHolder.appendChild(h('div', { class: 'wb-empty' }, '无待处理异常。'));
-                } else {
-                    issuesHolder.appendChild(h('table', { class: 'wb-table' },
-                        h('tr', null, ['任务', '类型', '异常信息'].map(t => h('th', null, t))),
-                        issues.slice(0, 6).map(tk => h('tr', { class: 'clickable', onclick: () => openTask(tk) },
-                            h('td', { class: 'wb-link' }, tk.name || tk.id),
-                            h('td', { class: 'wb-hint' }, OV_KIND[tk.kind] || tk.kind),
-                            h('td', { class: 'wb-hint', style: 'word-break:break-all;max-width:300px' },
-                                String(tk.message || tk.prepMessage || '执行失败;详情见任务页日志'))))));
-                }
+                issuesHolder.appendChild(h('div', { class: 'wb-empty' }, '正在检查异常...'));
+                window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id) + '/records/list', { pageNum: 1, pageSize: 50 })
+                    .then(rresp => {
+                        issuesHolder.innerHTML = '';
+                        const recs = rresp && (rresp.success || rresp.code === 200) && Array.isArray(rresp.data) ? rresp.data : [];
+                        const issues = recs.filter(r => r.status === 'FAILED').slice(0, 10);
+                        if (!issues.length) {
+                            issuesHolder.appendChild(h('div', { class: 'wb-empty' }, '无待处理异常。'));
+                            return;
+                        }
+                        issuesHolder.appendChild(h('table', { class: 'wb-table' },
+                            h('tr', null, ['任务', '类型', '异常信息'].map(t => h('th', null, t))),
+                            issues.map(r => h('tr', { class: 'clickable', onclick: () => openTask({ id: r.taskId, kind: r.kind, name: r.name }) },
+                                h('td', { class: 'wb-link' }, r.name || r.taskId),
+                                h('td', { class: 'wb-hint' }, OV_KIND[r.kind] || r.kind),
+                                h('td', { class: 'wb-hint', style: 'word-break:break-all;max-width:300px' },
+                                    String(r.errorKind === 'SAVE_FAILED' ? '[保存失败] ' : r.errorKind === 'NUMERIC_FAILED' ? '[数值失败] ' : '')
+                                        + (r.message || '执行失败;详情见任务页日志'))))));
+                    })
+                    .catch(() => {
+                        issuesHolder.innerHTML = '';
+                        issuesHolder.appendChild(h('div', { class: 'wb-empty' }, '异常列表加载失败。'));
+                    });
             })
             .catch(error => {
                 [tasksHolder, filesHolder, issuesHolder].forEach(hd => {
