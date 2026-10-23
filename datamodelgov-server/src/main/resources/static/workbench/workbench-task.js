@@ -127,7 +127,10 @@
                 state.uqLogEventSource = null;
             }
             
-            if (state.tab !== 'run') stopPolling();
+            // 数据准备/辨识进行中不允许renderBody杀掉轮询(否则spinner永久卡住)
+            const busy = state.prepWait || (state.task && (state.task.status === 'PREPARING'
+                || state.task.status === 'RUNNING' || state.task.status === 'STOP_REQUESTED'));
+            if (state.tab !== 'run' && !busy) stopPolling();
             body.innerHTML = '';
             if (!ctx.project.id) { body.appendChild(noTaskView()); paintTabs(); paintMeta(); return; }
             if (!state.task) { body.appendChild(createCard()); paintTabs(); paintMeta(); return; }
@@ -1964,6 +1967,7 @@
             window.AppConfig.enginePost('projects/' + pid + '/tasks/' + tid + '/prepare', {})
                 .then(resp => {
                     if (resp && (resp.success || resp.code === 200)) {
+                        if (resp.data) state.task = resp.data; // 同步PREPARING态,避免首轮poll误判状态变化
                         state.prepWait = true;
                         showRunLoading('数据准备中');
                         renderBody();

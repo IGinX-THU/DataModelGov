@@ -104,7 +104,9 @@
         }
 
         function renderBody() {
-            if (state.tab !== 'run' && state.tab !== 'update' && state.tab !== 'event') stopPolling();
+            // 检查/执行进行中不允许renderBody杀掉轮询
+            const busy = state.prepWait || (state.task && ['PREPARING', 'RUNNING', 'STOP_REQUESTED'].includes(state.task.status));
+            if (!busy) stopPolling();
             body.innerHTML = '';
             if (state.tab === 'data') body.appendChild(dataTab());
             else if (!state.task) { body.appendChild(emptyHint('请先在「' + TABS[0][1] + '」完成任务创建与数据检查。')); paintTabs(); paintMeta(); return; }
@@ -661,7 +663,9 @@
         }
 
         function renderBody() {
-            if (state.tab !== 'sorties') stopPolling();
+            // 核验/执行进行中不允许renderBody杀掉轮询
+            const busy = state.prepWait || (state.task && ['PREPARING', 'RUNNING', 'STOP_REQUESTED'].includes(state.task.status));
+            if (!busy) stopPolling();
             body.innerHTML = '';
             if (state.tab === 'overview') body.appendChild(overviewTab());
             else if (state.tab === 'sorties') body.appendChild(sortiesTab());

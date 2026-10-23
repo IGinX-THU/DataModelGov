@@ -76,9 +76,9 @@ window.Workbench = (() => {
             nav: [
                 { key: 'overview', label: '项目概况', icon: 'gauge' },
                 { key: 'startstop', label: '起动停车建模', icon: 'tasks' },
+                { key: 'models', label: '模型成果', icon: 'layers' },
                 { key: 'fullmode', label: '全模式仿真', icon: 'engine' },
                 { key: 'afo', label: '多系统联合仿真', icon: 'joint' },
-                { key: 'models', label: '模型成果', icon: 'layers' },
                 { key: 'records', label: '仿真记录', icon: 'clock' }
             ]
         }
@@ -2136,28 +2136,50 @@ function loadOverviewTasks(ctx, holder) {
             }, label)));
         }
 
-        /* ---- 模型准备(07-12/13): 源模型与每份输入 ---- */
+        /* ---- 模型准备(07-01): 从明确的源模型开始 + 本次目的 + 来源检查 ---- */
         function prepareTab() {
             const mmSel = h('select', null,
-                h('option', { value: '0', selected: S.modelMode === 0 ? '' : null }, '三部件(B-001 · Turboshaft-TS.mdl)'),
-                h('option', { value: '1', selected: S.modelMode === 1 ? '' : null }, '六部件(Turboshaft-TS-Split.mdl)'));
-            return h('div', { class: 'wb-card', style: 'max-width:860px' },
-                h('div', { class: 'wb-section-title', style: 'margin-bottom:6px' }, '源模型与工作目录'),
-                h('div', { class: 'wb-hint', style: 'margin:0 0 14px' },
-                    '源模型说明三/六部件拓扑、地图、MDL、DLL、设计点与热资产身份;两个独立模型工程不互为运行前置。'),
-                h('div', { class: 'wb-form-grid' },
-                    h('div', { class: 'wb-field' }, h('label', null, '本次工作源模型'), mmSel)),
-                h('div', { class: 'wb-section-title', style: 'margin:14px 0 8px' }, '每份输入'),
+                h('option', { value: '0', selected: S.modelMode === 0 ? '' : null }, 'B-001 / 三部件'),
+                h('option', { value: '1', selected: S.modelMode === 1 ? '' : null }, 'B-001 / 六部件'));
+            const purpose = [
+                ['只做设计点配置', '求解、备份写入、模式2简单测试', '保存设计点成果'],
+                ['设计点配置与起停建模', '先完成设计点,再扩图与起停校核', '保存起停模型包'],
+                ['已有设计点配置,继续起停建模', '读取匹配设计记录并进行复现检查', '不无依据重复求解']
+            ];
+            return h('div', null,
+                h('div', { class: 'wb-section-title', style: 'margin:4px 0 8px' }, '从明确的源模型开始'),
+                h('div', { class: 'wb-form-grid', style: 'grid-template-columns:1fr 1fr;max-width:1180px;margin-bottom:14px' },
+                    h('div', { class: 'wb-field' }, h('label', null, '建模任务'),
+                        h('input', { readonly: '', value: (ctx.project.engineId || 'E-001') + ' / 设计点与低速模型完善' })),
+                    h('div', { class: 'wb-field' }, h('label', null, '源模型'), mmSel)),
                 h('table', { class: 'wb-table' },
-                    h('tr', null, ['输入', '来源与说明'].map(x => h('th', null, x))),
-                    h('tr', null, h('td', null, '原MDL与MAP'), h('td', { class: 'wb-hint' }, '程序目录内 Turboshaft-TS*.mdl + HPC02/HPT02/LPT02.MAP;只读名称,不猜测替代文件')),
-                    h('tr', null, h('td', null, 'DLL与加载助手'), h('td', { class: 'wb-hint' }, 'GTESS.dll/头文件随程序目录;同一版本原算法')),
-                    h('tr', null, h('td', null, '设计状态(可选)'), h('td', { class: 'wb-hint' }, 'V1/V2各自设计解;不提供时保持原默认')),
-                    h('tr', null, h('td', null, '热资产(可选)'), h('td', { class: 'wb-hint' }, '三类热MAT与独立检查点;五参考点不称为完整统计热包'))),
+                    h('tr', null, ['本次目的', '包含的工作', '完成后'].map(x => h('th', null, x))),
+                    purpose.map((r0, i) => h('tr', i === 1 ? { style: 'background:#eef7f5' } : null,
+                        h('td', null, r0[0]), h('td', { class: 'wb-hint' }, r0[1]), h('td', null, r0[2])))),
+                h('div', { class: 'wb-section-title', style: 'margin:16px 0 8px' }, '来源检查'),
+                h('table', { class: 'wb-table' },
+                    h('tr', null, ['来源检查', '实际文件', '状态'].map(x => h('th', null, x))),
+                    h('tr', null,
+                        h('td', null, 'MDL与MAP'),
+                        h('td', { class: 'wb-hint' }, '按所选版本读取,不按最新文件查找(Turboshaft-TS*.mdl + HPC02/HPT02/LPT02.MAP)'),
+                        h('td', null, '待检查')),
+                    h('tr', null,
+                        h('td', null, 'DLL与加载助手'),
+                        h('td', { class: 'wb-hint' }, 'GTESS.dll/头文件随程序目录;同一版本原算法'),
+                        h('td', null, '待检查')),
+                    h('tr', null,
+                        h('td', null, '设计状态 / 热资产(可选)'),
+                        h('td', { class: 'wb-hint' }, 'V1/V2各自设计解与三类热MAT;不提供时保持原默认'),
+                        h('td', null, '待检查'))),
+                h('div', { class: 'wb-hint', style: 'margin:10px 0 0' },
+                    '设计点复现、低速矩阵、连续起停分别记录;原V1/V2入口保留;新入口写MDL前必须备份;两个独立模型工程不互为运行前置。'),
                 h('div', { class: 'wb-actions-row', style: 'margin-top:12px' },
-                    h('div', { class: 'wb-hint', style: 'margin:0' }, '准备由各任务首次执行时自检(不加载DLL、不计算);依赖不相容时明确停止准备。'),
+                    h('button', { class: 'wb-btn wb-btn-outline', onclick: () => ctx.navigate('overview') }, '← 返回项目'),
                     h('div', { class: 'wb-spacer' }),
-                    h('button', { class: 'wb-btn wb-btn-primary', onclick: () => { S.modelMode = parseInt(mmSel.value, 10); S.tab = 'design'; renderBody(); } }, '→ 设计点配置')));
+                    h('button', {
+                        class: 'wb-btn wb-btn-primary',
+                        onclick: () => { S.modelMode = parseInt(mmSel.value, 10); S.tab = 'design'; renderBody(); }
+                    }, '→ 检查源模型并继续')));
         }
 
         /* ---- 设计点配置(07-02~08): 已知目标 + 求解 + 比较 + commit ---- */

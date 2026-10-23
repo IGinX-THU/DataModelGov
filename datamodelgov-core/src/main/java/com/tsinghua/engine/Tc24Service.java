@@ -812,6 +812,7 @@ public class Tc24Service {
     public EngineModels.ModelingTask startTc27Prepare(EngineModels.ModelingTask task) throws IOException {
         final String key = task.getId();
         task.setStatus(EngineModels.ModelingTask.ST_PREPARING);
+        task.setPrepMessage(null); // 清掉上一次结果,避免运行中被误判为已准备完成
         task.setMessage("TC27数据准备中(05:原工况均值+新窗口+小幅段)");
         store.saveTask(task);
         logBuffers.put(key, new ArrayList<>());
@@ -1002,6 +1003,7 @@ public class Tc24Service {
     public EngineModels.ModelingTask startTc27TransientPrepare(EngineModels.ModelingTask task) throws IOException {
         final String key = task.getId();
         task.setStatus(EngineModels.ModelingTask.ST_PREPARING);
+        task.setPrepMessage(null); // 清掉上一次结果,避免运行中被误判为已准备完成
         task.setMessage("TC27瞬态数据准备中(事件选段+05)");
         store.saveTask(task);
         logBuffers.put(key, new ArrayList<>());
