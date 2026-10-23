@@ -73,6 +73,60 @@ public class EngineWorkbenchController {
         return null;
     }
 
+    /**
+     * 新建试车更新任务的数据预填(图01-17:同一稳态任务的TC27数据使用方式):
+     * 原训练均值/原测试集取上游父模型的溯源数据(缺溯源时回退来源任务);
+     * 新增历程继承同父最近一次更新任务已上传文件。均复制进本任务input目录,不跨任务引用。
+     */
+    private void prefillUpdateFiles(String pid, EngineModels.ModelingTask t, EngineModels.ModelAsset parent) {
+        try {
+            File dir = new File(store.taskWorkDir(pid, t.getId()), "input");
+            if (!dir.exists() && !dir.mkdirs()) return;
+            // 1) 原均值/原测试:父模型溯源数据 → 回退来源任务
+            String baseTraining = parent.getTrainingFile();
+            String baseTest = parent.getTestFile();
+            EngineModels.ModelingTask baseTask = parent.getTaskId() == null ? null : store.getTask(pid, parent.getTaskId());
+            if (baseTraining == null && baseTask != null) baseTraining = baseTask.getTrainingFile();
+            if (baseTest == null && baseTask != null) baseTest = baseTask.getTestFile();
+            if (baseTraining != null) t.setTrainingFile(copyIntoInput(dir, baseTraining));
+            if (baseTest != null) t.setTestFile(copyIntoInput(dir, baseTest));
+            // 2) 新增历程:同父最近一次更新任务已上传的历程(含其原测试覆写)
+            for (EngineModels.ModelingTask x : store.listTasks(pid)) {
+                if (x.getId().equals(t.getId())) continue;
+                if (!"steady_update".equals(x.getKind()) || !parent.getId().equals(x.getUpstreamModelId())) continue;
+                if (t.getHistoryFile() == null && x.getHistoryFile() != null) {
+                    t.setHistoryFile(copyIntoInput(dir, x.getHistoryFile()));
+                }
+                if (x.getHistoryTestFile() != null) {
+                    t.setHistoryTestFile(copyIntoInput(dir, x.getHistoryTestFile()));
+                }
+                break; // listTasks按创建时间倒序,首个同父任务即最近一次
+            }
+            if (t.getTrainingFile() != null || t.getHistoryFile() != null) {
+                t.setMessage("已预填历史数据(原均值" + (t.getTrainingFile() != null ? "已带入" : "缺失")
+                        + ";新增历程" + (t.getHistoryFile() != null ? "已带入" : "待上传")
+                        + ");可替换后重新准备数据");
+            }
+        } catch (Exception e) {
+            log.warn("更新任务数据预填失败: {}", t.getId(), e);
+        }
+    }
+
+    /** 把历史数据文件复制进本任务input目录(复制而非引用,避免源任务删除后断链);失败返回null不阻断创建。 */
+    private String copyIntoInput(File dir, String srcPath) {
+        try {
+            File s = new File(srcPath);
+            if (!s.isFile()) return null;
+            File d = new File(dir, s.getName());
+            java.nio.file.Files.copy(s.toPath(), d.toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            return d.getAbsolutePath();
+        } catch (Exception e) {
+            log.warn("预填文件复制失败: {}", srcPath, e);
+            return null;
+        }
+    }
+
     @ApiOperation("创建项目(类型/发动机/保存位置;元数据入IginX,owner=当前用户)")
     @PostMapping("/projects")
     @RequirePermission(Permission.CREATE)
@@ -306,7 +360,9 @@ public class EngineWorkbenchController {
                 t.setUpstreamModelId(upstreamModelId);
                 t.setUpstreamModelFile(parent.getDeliveryWorkbookFile());
                 t.setMessage("待上传原均值与新增试车历程");
-                return Result.success(store.saveTask(t));
+                EngineModels.ModelingTask saved = store.saveTask(t);
+                prefillUpdateFiles(pid, saved, parent);
+                return Result.success(store.saveTask(saved));
             }
             t.setMessage("待上传数据");
             return Result.success(store.saveTask(t));
