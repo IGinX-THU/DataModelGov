@@ -102,6 +102,30 @@ public final class EngineModels {
         private List<Double[]> eventRangesS = new ArrayList<>();
         /** 估计配置白名单摘要(lambda/maxIterations/integrationStep_s等,透传estimationOptions) */
         private Map<String, Object> estimationOptions = new LinkedHashMap<>();
+
+        /* ---------- F3飞参建模(kind=flight_steady|flight_transient,F-04/F-05) ---------- */
+        /** 训练飞参Excel(Data表合同) */
+        private String identificationFile;
+        /** 独立验证Excel(可选) */
+        private String validationFile;
+        /** 父模型来源: 2p4 | 2p7 | flight | combined */
+        private String parentSource;
+        /** 父模型路线: steady | transient_instant */
+        private String parentRoute;
+        /** 父模型Excel(试车父或已有飞行模型) */
+        private String parentWorkbook;
+        /** 上游父模型成果id(溯源) */
+        private String parentModelId;
+        /** F3业务编号(engineId) */
+        private String f3EngineId;
+        /** 架次编号(sortieId) */
+        private String f3SortieId;
+        /** 数据方法: steady_only | steady_plus_small_history */
+        private String dataMethod = "steady_only";
+        /** A阶段确认凭据(B阶段必需) */
+        private String confirmationFile;
+        /** F3结果目录(readResult用) */
+        private String f3ResultDir;
         /** 程序返回的原始结果(键值),仅保存可序列化摘要 */
         private Map<String, Object> result = new LinkedHashMap<>();
         /** 辨识完整结果浏览 JSON(task='read' 回读 result_view.mat 的白名单子集) */

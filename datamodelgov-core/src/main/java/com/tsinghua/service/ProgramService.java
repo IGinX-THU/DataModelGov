@@ -113,7 +113,8 @@ public class ProgramService {
     }
 
     /** Shared MATLAB engine pool for other program execution services in this package. */
-    MatlabEnginePool enginePool() {
+    /** Shared MATLAB engine pool for other program execution services(跨包共享:工作台飞参建模等). */
+    public MatlabEnginePool enginePool() {
         if (enginePool == null) {
             throw new IllegalStateException("MATLAB engine pool is not initialized");
         }

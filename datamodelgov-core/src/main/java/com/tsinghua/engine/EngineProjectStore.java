@@ -255,6 +255,26 @@ public class EngineProjectStore {
         return new File(projectDir(projectId), "afo");
     }
 
+    /* ---------- 数字试车台(testbench:全模式会话/设计点/起动停车) ---------- */
+
+    /** testbench任务大文件工作目录:<workdir>/job/testbench/<key>。 */
+    public File testbenchWorkDir(String projectId, String key) throws IOException {
+        EngineProject p = getProject(projectId);
+        if (p == null || p.getWorkdir() == null || p.getWorkdir().isEmpty()) {
+            throw new IOException("项目不存在或工作目录未配置: " + projectId);
+        }
+        return new File(new File(new File(p.getWorkdir()), "job"), "testbench/" + key);
+    }
+
+    /** testbench元数据文件(projects/{pid}/testbench/{key}.json)。 */
+    public File testbenchSessionFile(String projectId, String key) throws IOException {
+        return new File(projectDir(projectId), "testbench/" + key + ".json");
+    }
+
+    public File testbenchSessionDir(String projectId) throws IOException {
+        return new File(projectDir(projectId), "testbench");
+    }
+
     public ModelingTask saveTask(ModelingTask t) throws IOException {
         if (t.getId() == null || t.getId().isEmpty()) {
             t.setId(newId());

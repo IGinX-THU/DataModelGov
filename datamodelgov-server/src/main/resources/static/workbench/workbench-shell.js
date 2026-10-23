@@ -147,6 +147,24 @@
         }
 
         _enterTask(business) {
+            if (business && (business.id === 'flightSteady' || business.id === 'flightTransient' || business.id === 'evolution')) {
+                this._navKey = 'tasks';
+                this._app.querySelectorAll('.wb-nav-item').forEach(n =>
+                    n.classList.toggle('active', n.dataset.nav === 'tasks'));
+                const main = this._app.querySelector('.wb-main');
+                main.innerHTML = '';
+                main.appendChild(window.Workbench.renderFlightTask({
+                    project: this._ctx.project,
+                    flightKind: business.id === 'flightSteady' ? 'flight_steady'
+                        : business.id === 'evolution' ? 'evolution' : 'flight_transient',
+                    back: (gotoModels) => {
+                        this._navigate(gotoModels ? 'models' : 'tasks');
+                    },
+                    navigate: (key) => this._navigate(key)
+                }));
+                main.scrollTop = 0;
+                return;
+            }
             if (business && (business.id === 'steady' || business.id === 'steady_update' || business.id === 'transient')) {
                 this._navKey = 'tasks';
                 this._app.querySelectorAll('.wb-nav-item').forEach(n =>

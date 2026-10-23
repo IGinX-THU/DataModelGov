@@ -24,6 +24,8 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -48,6 +50,9 @@ public class EngineWorkbenchController {
 
     @Autowired
     private com.tsinghua.engine.AfoService afoService;
+
+    @Autowired
+    private com.tsinghua.engine.F3FlightService f3FlightService;
 
     @Autowired
     private com.tsinghua.engine.EngineProjectMetaService metaService;
@@ -210,6 +215,29 @@ public class EngineWorkbenchController {
             t.setRoute((String) body.getOrDefault("route", "steady"));
             t.setRunId((String) body.getOrDefault("runId", "WB_01"));
             t.setStatus(EngineModels.ModelingTask.ST_READY);
+            if ("flight_steady".equals(t.getKind()) || "flight_transient".equals(t.getKind())
+                    || "evolution".equals(t.getKind())) {
+                // F3飞参建模(F-04/F-05)与自演化(F-06):父模型来源与路线;确认/执行阶段逐项校验
+                t.setName((String) body.getOrDefault("name",
+                        "flight_steady".equals(t.getKind()) ? "稳态飞参建模任务"
+                                : "flight_transient".equals(t.getKind()) ? "过渡态飞参建模任务" : "模型自演化任务"));
+                Object ps = body.get("parentSource");
+                t.setParentSource(ps == null ? "2p4" : String.valueOf(ps));
+                Object pr = body.get("parentRoute");
+                t.setParentRoute(pr == null ? "steady" : String.valueOf(pr));
+                Object pmId = body.get("parentModelId");
+                if (pmId != null && !String.valueOf(pmId).isEmpty()) {
+                    t.setParentModelId(String.valueOf(pmId));
+                }
+                Object eid = body.get("f3EngineId");
+                t.setF3EngineId(eid == null || String.valueOf(eid).isEmpty() ? p.getEngineId() : String.valueOf(eid));
+                Object sid = body.get("f3SortieId");
+                t.setF3SortieId(sid == null || String.valueOf(sid).isEmpty() ? "SORTIE-01" : String.valueOf(sid));
+                Object dm = body.get("dataMethod");
+                t.setDataMethod(dm == null ? "steady_only" : String.valueOf(dm));
+                t.setMessage("待上传飞参训练Excel(Data表)");
+                return Result.success(store.saveTask(t));
+            }
             if ("transient_update".equals(t.getKind())) {
                 // TC27瞬态更新(F-03):父模型须为TC27组合稳态模型,计算路径一致
                 t.setName((String) body.getOrDefault("name", "新增试车瞬态更新任务"));
@@ -305,6 +333,10 @@ public class EngineWorkbenchController {
             file.transferTo(dest);
             if ("test".equals(kind)) {
                 t.setTestFile(dest.getAbsolutePath());
+            } else if ("identification".equals(kind)) {
+                t.setIdentificationFile(dest.getAbsolutePath());
+            } else if ("validation".equals(kind)) {
+                t.setValidationFile(dest.getAbsolutePath());
             } else if ("history".equals(kind)) {
                 t.setHistoryFile(dest.getAbsolutePath());
             } else if ("historyTest".equals(kind)) {
@@ -332,8 +364,21 @@ public class EngineWorkbenchController {
             if (t == null) return Result.error("任务不存在");
             String denied = accessDenied(store.getProject(pid));
             if (denied != null) return Result.error(denied);
-            if (t.getTrainingFile() == null || t.getTrainingFile().isEmpty()) {
+            boolean f3Family = "flight_steady".equals(t.getKind()) || "flight_transient".equals(t.getKind())
+                    || "evolution".equals(t.getKind());
+            if (!f3Family && (t.getTrainingFile() == null || t.getTrainingFile().isEmpty())) {
                 return Result.error("请先上传训练数据");
+            }
+            if ("flight_steady".equals(t.getKind()) || "flight_transient".equals(t.getKind())) {
+                // F3 B阶段: 需A阶段确认凭据
+                if (t.getConfirmationFile() == null || t.getConfirmationFile().isEmpty()) {
+                    return Result.error("请先完成数据意图确认,再执行建模");
+                }
+                return Result.success(f3FlightService.run(t));
+            }
+            if ("evolution".equals(t.getKind())) {
+                // F-06 自演化整批执行(适配器内逐架次自动确认,无需A阶段凭据)
+                return Result.success(f3FlightService.run(t));
             }
             if ("transient_update".equals(t.getKind())) {
                 if (t.getTransientUpstreamFile() == null) return Result.error("缺少上游TC27组合稳态模型");
@@ -395,8 +440,24 @@ public class EngineWorkbenchController {
             if (t == null) return Result.error("任务不存在");
             String denied = accessDenied(store.getProject(pid));
             if (denied != null) return Result.error(denied);
-            if (t.getTrainingFile() == null || t.getTrainingFile().isEmpty()) {
+            boolean f3Family = "flight_steady".equals(t.getKind()) || "flight_transient".equals(t.getKind())
+                    || "evolution".equals(t.getKind());
+            if (!f3Family && (t.getTrainingFile() == null || t.getTrainingFile().isEmpty())) {
                 return Result.error("请先上传训练数据");
+            }
+            if ("flight_steady".equals(t.getKind()) || "flight_transient".equals(t.getKind())) {
+                // F3 A阶段: 数据意图确认(禁父模型);必需训练飞参Excel
+                if (t.getIdentificationFile() == null || t.getIdentificationFile().isEmpty()) {
+                    return Result.error("请先上传飞参训练Excel(Data表)");
+                }
+                return Result.success(f3FlightService.prepare(t));
+            }
+            if ("evolution".equals(t.getKind())) {
+                // F-06 自演化:准备=check(输入/父依赖核验,不计算)
+                if (t.getIdentificationFile() == null || t.getIdentificationFile().isEmpty()) {
+                    return Result.error("请先上传根架次测量Excel(Data表)");
+                }
+                return Result.success(f3FlightService.prepare(t));
             }
             if ("transient_update".equals(t.getKind())) {
                 if (t.getTransientUpstreamFile() == null) return Result.error("缺少上游TC27组合稳态模型");
@@ -652,7 +713,19 @@ public class EngineWorkbenchController {
             String sourceBusiness;
             String stage;
             String parentModelId = null;
-            if ("transient_update".equals(t.getKind())) {
+            if ("flight_steady".equals(t.getKind()) || "flight_transient".equals(t.getKind())
+                    || "evolution".equals(t.getKind())) {
+                // F3飞参/自演化模型:delivery/model.xlsx;阶段按kind
+                File f3Out = new File(store.taskWorkDir(pid, tid),
+                        "flight_steady".equals(t.getKind()) ? "f3-steady"
+                                : "flight_transient".equals(t.getKind()) ? "f3-transient" : "evolution");
+                excel = findF3DeliveryWorkbook(f3Out);
+                sourceBusiness = "evolution".equals(t.getKind()) ? "模型自演化"
+                        : "flight_transient".equals(t.getKind()) ? "过渡态飞参建模" : "稳态飞参建模";
+                stage = "evolution".equals(t.getKind()) ? "自演化"
+                        : "flight_transient".equals(t.getKind()) ? "F3 瞬态" : "F3 稳态";
+                parentModelId = t.getParentModelId();
+            } else if ("transient_update".equals(t.getKind())) {
                 // TC27瞬态更新模型:组合瞬态模型在tc27-transient目录;阶段2.7瞬态
                 excel = findTc27DeliveryWorkbook(new File(store.taskWorkDir(pid, tid), "tc27-transient"));
                 sourceBusiness = "瞬态试车建模";
@@ -707,6 +780,21 @@ public class EngineWorkbenchController {
             if (fs != null) for (File f : fs) {
                 if (best == null || f.lastModified() > best.lastModified()) best = f;
             }
+        }
+        return best != null ? best.getAbsolutePath() : null;
+    }
+
+    /** F3交付Excel:结果子目录深度3内最新.xlsx。 */
+    private String findF3DeliveryWorkbook(File dir) {
+        if (!dir.isDirectory()) return null;
+        File best = null;
+        try (java.util.stream.Stream<Path> walk = java.nio.file.Files.walk(dir.toPath(), 3)) {
+            best = walk.map(Path::toFile)
+                    .filter(f -> f.isFile() && f.getName().toLowerCase().endsWith(".xlsx"))
+                    .max(Comparator.comparingLong(File::lastModified))
+                    .orElse(null);
+        } catch (IOException e) {
+            log.warn("扫描F3交付目录失败: {}", dir, e);
         }
         return best != null ? best.getAbsolutePath() : null;
     }
