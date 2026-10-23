@@ -122,6 +122,8 @@ public final class EngineModels {
         private String f3SortieId;
         /** 数据方法: steady_only | steady_plus_small_history */
         private String dataMethod = "steady_only";
+        /** 正则化强度λ(F3合同默认0.05) */
+        private Double regularizationStrength;
         /** A阶段确认凭据(B阶段必需) */
         private String confirmationFile;
         /** F3结果目录(readResult用) */

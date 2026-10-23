@@ -1,21 +1,25 @@
 /**
- * 飞参建模任务页(F-04 稳态飞参 / F-05 过渡态飞参)。
- * 与 workbench-task.js 同族页面结构:创建卡 → 工况与分组(数据意图确认) → 执行 → 结果登记。
- * 入口:window.Workbench.renderFlightTask({ project, flightKind, back, navigate })
+ * 飞参建模任务页(G4 稳态飞参 / G5 过渡态飞参)与自演化任务页(G6)。
+ * 版式依据 R06《完整界面设计说明书》:
+ *   稳态飞参四页: 架次数据与工况覆盖 / 稳态参数更新 / 不确定性评估 / 飞行模型结果 (04-01~04-26)
+ *   过渡态飞参四页: 架次与模型 / 飞行事件与准备 / 瞬态参数辨识 / 飞行模型结果 (05-01~05-16)
+ *   自演化五视图: 演化总览 / 架次与执行 / 架次模型结果 / 不确定性评估 / 下一架次预测 (06-01~06-22)
+ * 入口:
+ *   window.Workbench.renderFlightTask({ project, flightKind:'flight_steady'|'flight_transient', back, navigate })
+ *   window.Workbench.renderEvolutionTask({ project, back, navigate })
  */
 (function () {
     const WB = () => window.Workbench;
 
-    const KIND_LABEL = {
-        flight_steady: { title: '稳态飞参建模', sub: 'F-04 · Start_FlightModelAdapt_14 · 从实际飞参提取有效稳态窗口', evolution: false },
-        flight_transient: { title: '过渡态飞参建模', sub: 'F-05 · Start_FlightModelAdapt_11/12/13 · 选取飞行大幅事件更新瞬态参数', evolution: false },
-        evolution: { title: '模型自演化', sub: 'F-06 · Start_Stage4_02_EvolutionTask · 逐架次数据确认与整批建模编排', evolution: true }
+    const KIND = {
+        flight_steady: { title: '稳态飞参建模' },
+        flight_transient: { title: '过渡态飞参建模' }
     };
 
-    function renderFlightTask(ctx) {
+    function taskPage(ctx) {
         const isSteady = ctx.flightKind === 'flight_steady';
-        const L = KIND_LABEL[ctx.flightKind] || KIND_LABEL.flight_steady;
-        const state = { task: null, log: [], timer: null, tab: 'data', prepWait: false };
+        const L = KIND[ctx.flightKind] || KIND.flight_steady;
+        const state = { task: null, log: [], timer: null, tab: 'data', prepWait: false, draft: {} };
         const root = WB().h('div', null);
 
         // 指定打开既有任务(记录页跳转)
@@ -32,7 +36,7 @@
                         state.log = resp.data.logTail || [];
                     } else {
                         state.task = null;
-                        if (window.Workbench && window.Workbench.toast) window.Workbench.toast((resp && resp.message) || '任务不存在', 'error');
+                        toast((resp && resp.message) || '任务不存在', 'error');
                     }
                     renderBody();
                 })
@@ -46,329 +50,495 @@
         root.appendChild(titleRow);
         root.appendChild(metaRow);
 
-        const TABS = [['data', '数据与确认'], ['run', '执行建模'], ['result', '建模结果']];
+        // 页签(说明书5.2四页流程 / 6.2四页)
+        const TABS = isSteady
+            ? [['data', '架次数据与工况覆盖'], ['update', '稳态参数更新'], ['uq', '不确定性评估'], ['result', '飞行模型结果']]
+            : [['data', '架次与模型'], ['event', '飞行事件与准备'], ['run', '瞬态参数辨识'], ['result', '飞行模型结果']];
         const tabBar = WB().h('div', { class: 'wb-tabs' });
         root.appendChild(tabBar);
         const body = WB().h('div', null);
         root.appendChild(body);
 
-        function toast(msg, kind) {
-            if (window.Workbench && window.Workbench.toast) window.Workbench.toast(msg, kind || 'info');
-        }
+        function toast(msg, kind) { if (WB() && WB().toast) WB().toast(msg, kind || 'info'); }
         function fileName(p) { return p ? String(p).split(/[\\/]/).pop() : ''; }
         function str(v) { return v == null ? '—' : String(v); }
+        const running = t => t && (t.status === 'RUNNING' || t.status === 'PREPARING' || t.status === 'STOP_REQUESTED');
 
         function paintMeta() {
             const t = state.task;
             metaRow.textContent = t
-                ? (ctx.project.name + ' / ' + (t.runId || 'F3_01') + ' / 父模型来源 ' + (t.parentSource || '2p4')
-                    + ' / 训练' + (t.identificationFile ? '已上传' : '待上传'))
-                : (ctx.project.name + ' / 尚未创建任务');
+                ? ((t.name || L.title) + ' / ' + (t.f3SortieId || '—') + ' / ' + statusText(t))
+                : (ctx.project.name + ' / 新建任务');
+        }
+        function statusText(t) {
+            return { READY: '待执行', PREPARING: '检查中', RUNNING: '正在执行', STOP_REQUESTED: '已请求停止',
+                COMPLETED: '已完成', FAILED: '失败' }[t.status] || t.status || '—';
         }
 
         function paintTabs() {
             const t = state.task;
-            const evo = L.evolution;
             const reach = {
-                data: !!t,
-                run: !!(t && t.status === 'READY' && (evo || t.confirmationFile)),
-                result: !!(t && (t.status === 'COMPLETED' || t.status === 'FAILED' || t.status === 'RUNNING'))
+                data: true,
+                update: !!(t && (t.confirmationFile || t.status === 'READY' || t.status === 'RUNNING' || t.status === 'COMPLETED')),
+                event: !!(t && (t.status === 'READY' || t.status === 'RUNNING' || t.status === 'COMPLETED')),
+                run: !!(t && (t.status === 'READY' || t.status === 'RUNNING' || t.status === 'COMPLETED')),
+                uq: !!(t && t.status === 'COMPLETED'),
+                result: !!(t && t.taskIdFlag !== true && (t.status === 'RUNNING' || t.status === 'COMPLETED' || t.status === 'FAILED'))
             };
             tabBar.innerHTML = '';
             TABS.forEach(([key, label]) => {
-                const enabled = reach[key];
-                const labelTxt = evo && key === 'data' ? '输入核验' : label;
+                const enabled = key === 'data' ? true : !!reach[key];
                 tabBar.appendChild(WB().h('div', {
                     class: 'wb-tab' + (state.tab === key ? ' active' : '') + (enabled ? '' : ' disabled'),
                     onclick: () => {
                         if (!enabled) {
-                            if (key === 'run') toast(evo ? '请先完成输入核验' : '请先完成数据意图确认', 'info');
-                            else if (key === 'result') toast('建模结果:执行完成后开放', 'info');
-                            else toast('请先创建任务并上传测量Excel', 'info');
+                            if (key === 'result') toast('飞行模型结果:执行完成后开放', 'info');
+                            else if (key === 'uq') toast('不确定性评估:先完成一次建模后开放', 'info');
+                            else toast('请先完成上一页签(数据检查与意图确认)', 'info');
                             return;
                         }
                         state.tab = key; renderBody();
                     }
-                }, labelTxt));
+                }, label));
             });
         }
 
         function renderBody() {
-            if (state.tab !== 'run') stopPolling();
+            if (state.tab !== 'run' && state.tab !== 'update' && state.tab !== 'event') stopPolling();
             body.innerHTML = '';
-            if (!state.task) { body.appendChild(createCard()); paintTabs(); paintMeta(); return; }
             if (state.tab === 'data') body.appendChild(dataTab());
+            else if (!state.task) { body.appendChild(emptyHint('请先在「' + TABS[0][1] + '」完成任务创建与数据检查。')); paintTabs(); paintMeta(); return; }
+            else if (state.tab === 'update') body.appendChild(updateTab());
+            else if (state.tab === 'event') body.appendChild(eventTab());
             else if (state.tab === 'run') body.appendChild(runTab());
+            else if (state.tab === 'uq') body.appendChild(uqTab());
             else body.appendChild(resultTab());
             paintTabs();
             paintMeta();
         }
 
-        /* ---------- 创建卡(F-04/F-05):任务名 + 父模型来源 + 架次 + 数据方法 ---------- */
-        function createCard() {
-            const nameInput = WB().h('input', {
-                value: (isSteady ? '稳态飞参建模-' : '过渡态飞参建模-') + new Date().toISOString().slice(5, 10)
-            });
-            const parentSourceSel = WB().h('select', null,
-                WB().h('option', { value: '2p4' }, '2.4 三部件模型'),
-                WB().h('option', { value: '2p7' }, '2.7 数据更新模型'),
-                WB().h('option', { value: 'flight' }, '既有飞参模型'),
-                WB().h('option', { value: 'combined' }, '组合模型'));
-            const modelSel = WB().h('select', null, WB().h('option', { value: '' }, '不指定(由程序按来源路线自动选择)'));
-            const sortieInput = WB().h('input', { value: 'SORTIE-01', placeholder: '架次编号' });
-            const engineInput = WB().h('input', { value: '', placeholder: '留空则取项目当前发动机' });
-            const dataMethodSel = WB().h('select', null,
-                WB().h('option', { value: 'steady_only' }, '仅稳态窗口(steady_only)'),
-                WB().h('option', { value: 'steady_plus_small_history' }, '稳态+小幅变化段(steady_plus_small_history)'));
-
-            window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id || '') + '/models')
-                .then(resp => {
-                    const models = resp && Array.isArray(resp.data) ? resp.data.filter(m => m.deliveryWorkbookFile) : [];
-                    if (models.length) {
-                        models.forEach(m => modelSel.appendChild(WB().h('option', { value: m.id },
-                            (m.name || m.id) + ' · ' + (m.stage || '') + ' · ' + (m.route || ''))));
-                    }
-                })
-                .catch(() => { /* 模型列表加载失败不阻断创建 */ });
-
-            const createBtn = WB().h('button', {
-                class: 'wb-btn wb-btn-primary',
-                onclick: async () => {
-                    createBtn.classList.add('disabled');
-                    try {
-                        const pid = encodeURIComponent(ctx.project.id || '');
-                        const resp = await window.AppConfig.enginePost('projects/' + pid + '/tasks', {
-                            kind: ctx.flightKind,
-                            name: nameInput.value.trim() || L.title + '任务',
-                            parentSource: parentSourceSel.value,
-                            parentModelId: modelSel.value || '',
-                            f3SortieId: sortieInput.value.trim() || 'SORTIE-01',
-                            f3EngineId: engineInput.value.trim() || '',
-                            dataMethod: dataMethodSel.value,
-                            runId: L.evolution ? 'EVO_01' : (isSteady ? 'F3_S01' : 'F3_T01')
-                        });
-                        if (resp && (resp.success || resp.code === 200) && resp.data) {
-                            state.task = resp.data;
-                            state.tab = 'data';
-                            renderBody();
-                        } else {
-                            toast((resp && resp.message) || '创建任务失败', 'error');
-                        }
-                    } catch (e) { toast('创建任务失败:' + e.message, 'error'); }
-                    createBtn.classList.remove('disabled');
-                }
-            }, '创建任务');
-
-            return WB().h('div', { class: 'wb-card', style: 'max-width:760px' },
-                WB().h('div', { class: 'wb-section-title', style: 'margin-bottom:6px' }, '新建' + L.title + '任务'),
-                WB().h('div', { class: 'wb-hint', style: 'margin:0 0 14px' }, L.sub + ';'
-                    + (L.evolution
-                        ? '流程:上传根架次测量Excel → 输入核验(check) → 整批执行(逐架次自动确认数据意图后按父链建模)。'
-                        : '两阶段流程:先上传飞参Excel做数据意图确认(A阶段),再以确认凭据执行建模(B阶段)。')),
-                WB().h('div', { class: 'wb-form-grid' },
-                    WB().h('div', { class: 'wb-field' }, WB().h('label', null, '任务名称'), nameInput),
-                    WB().h('div', { class: 'wb-field' }, WB().h('label', null, '父模型来源'), parentSourceSel),
-                    WB().h('div', { class: 'wb-field' }, WB().h('label', null, '指定父模型(可选)'), modelSel),
-                    WB().h('div', { class: 'wb-field' }, WB().h('label', null, L.evolution ? '根架次编号' : '架次编号'), sortieInput),
-                    WB().h('div', { class: 'wb-field' }, WB().h('label', null, '发动机编号'), engineInput),
-                    L.evolution ? null : WB().h('div', { class: 'wb-field' }, WB().h('label', null, '数据使用方式'), dataMethodSel)),
-                WB().h('div', { class: 'wb-actions-row', style: 'margin-top:12px' },
-                    createBtn,
-                    WB().h('span', { class: 'wb-hint', style: 'margin:0' },
-                        L.evolution
-                            ? '创建后进入「输入核验」上传根架次测量Excel并核验输入与父依赖。'
-                            : '创建后进入「数据与确认」上传飞参Excel(Data表)并执行数据意图确认。')));
+        function emptyHint(msg) {
+            return WB().h('div', { class: 'wb-placeholder' }, WB().h('p', null, msg));
         }
 
-        /* ---------- 页签一:数据与确认(A阶段)/输入核验(evolution) ---------- */
+        /* ================= 页签一: 架次数据与工况覆盖 (04-01/03/04) ================= */
         function dataTab() {
             const t = state.task;
-            const evo = L.evolution;
             const wrap = WB().h('div', null);
-            wrap.appendChild(WB().h('div', { style: 'margin-bottom:14px' },
-                WB().h('div', { class: 'wb-section-title', style: 'font-size:20px;margin-bottom:2px' },
-                    evo ? '输入核验' : '数据与意图确认'),
-                WB().h('div', { class: 'wb-hint', style: 'margin:0' },
-                    evo
-                        ? (t.name || L.title) + ' / 根架次测量Excel → check(输入与父依赖核验,不计算)'
-                        : (t.name || L.title) + ' / 飞参Excel(Data表) → confirmData 冻结窗口凭据')));
 
-            wrap.appendChild(WB().h('div', { class: 'wb-form-grid', style: 'grid-template-columns:1fr 1fr;max-width:1180px' },
-                WB().h('div', { class: 'wb-field' }, WB().h('label', null, '建模类型(本任务固定)'),
-                    WB().h('input', { readonly: '', value: L.title + ' / ' + (evo ? 'Stage4' : 'F3') })),
-                WB().h('div', { class: 'wb-field' }, WB().h('label', null, '父模型'),
-                    WB().h('input', { readonly: '', value: (t.parentSource || '2p4') + (t.parentWorkbook ? ' · ' + fileName(t.parentWorkbook) : ' · 程序按来源选择') })),
-                WB().h('div', { class: 'wb-field' }, WB().h('label', null, '架次 / 发动机'),
-                    WB().h('input', { readonly: '', value: (t.f3SortieId || 'SORTIE-01') + ' / ' + (t.f3EngineId || '—') })),
-                evo ? null : WB().h('div', { class: 'wb-field' }, WB().h('label', null, '数据使用方式'),
-                    WB().h('input', { readonly: '', value: t.dataMethod === 'steady_plus_small_history' ? '稳态+小幅变化段' : '仅稳态窗口' }))));
+            if (!t) {
+                /* ---- 草稿(04-01): 架次/名称 + 本架次飞参 + 父模型 ---- */
+                const sortieInput = WB().h('input', { value: state.draft.sortieId || 'F-012', placeholder: '架次编号(可中文)' });
+                const nameInput = WB().h('input', { value: state.draft.name || (L.title) });
+                const engineInput = WB().h('input', { readonly: '', value: ctx.project.engineId || '—' });
+                const parentSourceSel = WB().h('select', null,
+                    WB().h('option', { value: '2p4' }, '2.4 三部件模型'),
+                    WB().h('option', { value: '2p7' }, '2.7 数据更新模型'),
+                    WB().h('option', { value: 'flight' }, '既有飞参模型'),
+                    WB().h('option', { value: 'combined' }, 'TC27组合模型'));
+                const modelSel = WB().h('select', null, WB().h('option', { value: '' }, '由程序按来源路线解析(可不指定)'));
+                window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id || '') + '/models')
+                    .then(resp => {
+                        const models = resp && Array.isArray(resp.data) ? resp.data.filter(m => m.deliveryWorkbookFile) : [];
+                        models.forEach(m => modelSel.appendChild(WB().h('option', { value: m.id },
+                            (m.name || m.id) + ' · ' + (m.stage || '') + ' · ' + (m.route || ''))));
+                    }).catch(() => { });
+                const trainRow = uploadRow('训练飞参 Excel(Data表,必选)', 'identification', null);
+                const testRow = uploadRow('独立测试 Excel(可选)', 'validation', null);
 
-            wrap.appendChild(fileRow(evo ? '根架次测量 Excel(Data表,必选)' : '飞参训练 Excel(Data表,必选)', 'identification', t.identificationFile, t));
-            wrap.appendChild(fileRow('验证 Excel(可选)', 'validation', t.validationFile, t));
+                const createBtn = WB().h('button', {
+                    class: 'wb-btn wb-btn-outline',
+                    onclick: async () => {
+                        createBtn.classList.add('disabled');
+                        try {
+                            const resp = await window.AppConfig.enginePost('projects/' + encodeURIComponent(ctx.project.id || '') + '/tasks', {
+                                kind: ctx.flightKind,
+                                name: nameInput.value.trim() || L.title,
+                                parentSource: parentSourceSel.value,
+                                parentModelId: modelSel.value || '',
+                                f3SortieId: sortieInput.value.trim() || 'SORTIE-01',
+                                f3EngineId: ctx.project.engineId || '',
+                                dataMethod: 'steady_only',
+                                runId: isSteady ? 'F3_S01' : 'F3_T01'
+                            });
+                            if (resp && (resp.success || resp.code === 200) && resp.data) {
+                                state.task = resp.data;
+                                renderBody();
+                            } else toast((resp && resp.message) || '保存草稿失败', 'error');
+                        } catch (e) { toast('保存草稿失败:' + e.message, 'error'); }
+                        createBtn.classList.remove('disabled');
+                    }
+                }, '保存草稿');
 
-            const confirmed = evo ? !!(t.prepMessage && t.prepMessage.length)
-                : !!(t.confirmationFile && t.confirmationFile.length);
+                wrap.appendChild(WB().h('div', { class: 'wb-form-grid', style: 'grid-template-columns:1fr 1fr 1fr;max-width:1280px' },
+                    WB().h('div', { class: 'wb-field' }, WB().h('label', null, '所属发动机'), engineInput),
+                    WB().h('div', { class: 'wb-field' }, WB().h('label', null, '架次编号'), sortieInput),
+                    WB().h('div', { class: 'wb-field' }, WB().h('label', null, '任务名称'), nameInput)));
+
+                wrap.appendChild(WB().h('div', { class: 'wb-section-title', style: 'margin:18px 0 8px' }, '本架次飞参'));
+                wrap.appendChild(trainRow);
+                wrap.appendChild(testRow);
+
+                wrap.appendChild(WB().h('div', { class: 'wb-section-title', style: 'margin:18px 0 8px' }, '父模型'));
+                wrap.appendChild(WB().h('div', { class: 'wb-form-grid', style: 'grid-template-columns:1fr 1fr;max-width:980px' },
+                    WB().h('div', { class: 'wb-field' }, WB().h('label', null, '模型来源'), parentSourceSel),
+                    WB().h('div', { class: 'wb-field' }, WB().h('label', null, '指定项目模型(可选)'), modelSel)));
+                wrap.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin:6px 0 14px' },
+                    isSteady ? '瞬态参数:标称0;本次仅更新稳态参数与飞参燃油偏置。' : '固定:稳态曲线、飞参燃油偏置、装机参数;本次更新:瞬态修正参数(Visser16 13项)。'));
+
+                wrap.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'margin-top:10px' },
+                    createBtn,
+                    WB().h('div', { class: 'wb-spacer' }),
+                    WB().h('button', { class: 'wb-btn wb-btn-primary disabled', title: '先保存草稿' }, '检查数据与模型')));
+                return wrap;
+            }
+
+            /* ---- 已建任务(04-03): 任务/架次 + 检查与意图确认 ---- */
+            wrap.appendChild(WB().h('div', { class: 'wb-form-grid', style: 'grid-template-columns:1fr 1fr 1fr;max-width:1280px' },
+                WB().h('div', { class: 'wb-field' }, WB().h('label', null, '任务 / 架次'),
+                    WB().h('input', { readonly: '', value: (t.name || L.title) + ' / ' + (t.f3SortieId || '—') })),
+                WB().h('div', { class: 'wb-field' }, WB().h('label', null, '所选父模型'),
+                    WB().h('input', { readonly: '', value: (t.parentSource || '2p4') + (t.parentWorkbook ? ' · ' + fileName(t.parentWorkbook) : ' · 按来源解析') })),
+                WB().h('div', { class: 'wb-field' }, WB().h('label', null, '飞参数据 / 测试'),
+                    WB().h('input', { readonly: '', value: (t.identificationFile ? fileName(t.identificationFile) : '未提供') + ' / ' + (t.validationFile ? fileName(t.validationFile) : '未提供独立测试') }))));
+
+            const confirmed = !!(t.confirmationFile && t.confirmationFile.length);
             const prepRunning = state.prepWait || t.status === 'PREPARING';
-            wrap.appendChild(WB().h('div', { class: 'wb-section' },
+            if (confirmed) {
+                wrap.appendChild(WB().h('div', { class: 'wb-infobar', style: 'margin:10px 0' },
+                    '数据意图已确认(完整窗口冻结凭据已生成);父模型与原始数据保持不变。'));
+            } else if (t.prepMessage) {
+                const failed = String(t.prepMessage).indexOf('失败') >= 0;
+                wrap.appendChild(WB().h('div', { class: failed ? 'wb-tag wb-tag-red' : 'wb-infobar', style: failed ? 'display:inline-block;padding:4px 10px;border-radius:6px;margin:10px 0' : 'margin:10px 0' },
+                    String(t.prepMessage)));
+            }
+
+            wrap.appendChild(WB().h('div', { class: 'wb-section-title', style: 'margin:14px 0 8px' }, '本架次飞参'));
+            wrap.appendChild(uploadRow('训练飞参 Excel(Data表,必选)', 'identification', t));
+            wrap.appendChild(uploadRow('独立测试 Excel(可选)', 'validation', t));
+
+            wrap.appendChild(WB().h('div', { class: 'wb-section', style: 'margin-top:14px' },
                 WB().h('div', { class: 'wb-section-head' },
-                    WB().h('div', { class: 'wb-section-title' }, evo ? '输入核验结果(check)' : '数据意图确认(A阶段)'),
-                    prepRunning ? WB().h('span', { class: 'wb-tag wb-tag-amber' }, evo ? 'check运行中...' : 'confirmData运行中...')
-                        : confirmed ? WB().h('span', { class: 'wb-tag wb-tag-teal' }, evo ? '核验通过' : '确认完成')
-                        : WB().h('span', { class: 'wb-tag wb-tag-gray' }, evo ? '待核验' : '待确认')),
+                    WB().h('div', { class: 'wb-section-title' }, '数据检查与意图确认'),
+                    prepRunning ? WB().h('span', { class: 'wb-tag wb-tag-amber' }, '检查中...')
+                        : confirmed ? WB().h('span', { class: 'wb-tag wb-tag-teal' }, '已确认')
+                        : WB().h('span', { class: 'wb-tag wb-tag-gray' }, '待检查')),
                 WB().h('div', { style: 'padding:10px 0' },
                     prepRunning
                         ? WB().h('span', { class: 'wb-inline-loading' }, WB().h('span', { class: 'wb-inline-spinner' }),
-                            evo ? '正在核验测量Excel、父模型依赖与输出目录...' : '正在解析飞参数据并冻结数据意图窗口...')
-                        : WB().h('div', null, confirmed ? (t.message || (evo ? '输入核验完成' : '数据意图确认完成'))
-                            : evo ? '上传测量Excel后点击"输入核验",由程序核验全批输入与父链依赖。'
-                            : '上传训练Excel后点击"数据意图确认",生成确认凭据(禁父模型)。')),
+                            '正在检查列映射、时间轴与父模型兼容性,并冻结完整窗口...')
+                        : WB().h('div', null, confirmed
+                            ? '完整有效稳态窗口按程序选定整段使用,不再裁成固定5秒;测量误差与传感器先验在配置中给定。'
+                            : '上传后点击「检查数据与模型」:检查稀疏测量合同与父模型兼容性,生成数据意图凭据。')),
                 WB().h('div', { class: 'wb-hint', style: 'margin-top:6px' },
-                    evo ? '核验通过后整批执行;执行时适配器对每个架次自动完成preview+数据意图确认。'
-                        : '确认凭据随输出目录保存;B阶段执行建模复用该凭据并附加父模型。')));
+                    'Ps0、Tt1、Pt3_eq、环境量及轴速按本模块字典解释;不把台架Pt2/Tt3/Pt45测量布局直接搬入。')));
 
             wrap.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'margin-top:10px' },
                 WB().h('button', {
                     class: 'wb-btn wb-btn-outline' + (t.identificationFile && !prepRunning ? '' : ' disabled'),
-                    title: t.identificationFile ? '' : '需先上传测量Excel',
                     onclick: () => { if (t.identificationFile && !prepRunning) { window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000; runPrepare(); } }
-                }, prepRunning ? (evo ? '核验中...' : '确认中...') : (evo ? '输入核验' : '数据意图确认')),
+                }, prepRunning ? '检查中...' : '检查数据与模型'),
                 WB().h('div', { class: 'wb-spacer' }),
                 WB().h('button', {
-                    class: 'wb-btn wb-btn-primary' + (t.status === 'READY' ? '' : ' disabled'),
-                    title: t.status === 'READY' ? '' : (evo ? '请先完成输入核验' : '请先完成数据意图确认'),
-                    onclick: () => { if (t.status === 'READY') { state.tab = 'run'; renderBody(); } }
-                }, evo ? '执行整批建模' : '配置并执行建模')));
+                    class: 'wb-btn wb-btn-primary' + (confirmed ? '' : ' disabled'),
+                    onclick: () => { if (confirmed) { state.tab = isSteady ? 'update' : 'event'; renderBody(); } }
+                }, isSteady ? '进入稳态参数更新' : '确认事件与准备计划')));
             return wrap;
         }
 
-        /* ---------- 文件上传行(identification/validation) ---------- */
-        function fileRow(label, kind, filePath, t) {
-            const nameBox = WB().h('input', { readonly: '', value: filePath ? fileName(filePath) : '未提供', style: 'flex:1' });
-            const pickBtn = WB().h('button', { class: 'wb-btn wb-btn-outline', onclick: () => fileInput.click() }, '选择文件');
+        /* ---- 上传行(草稿/任务两用) ---- */
+        function uploadRow(label, kind, t) {
+            const current = t ? (kind === 'identification' ? t.identificationFile : t.validationFile) : state.draft[kind];
+            const nameBox = WB().h('input', { readonly: '', value: current ? fileName(current) : '未提供', style: 'flex:1' });
+            const pickBtn = WB().h('button', { class: 'wb-btn wb-btn-outline', onclick: () => fileInput.click() },
+                kind === 'identification' ? '选择训练文件' : '添加独立测试文件');
             const fileInput = WB().h('input', { type: 'file', accept: '.xlsx,.xls', style: 'display:none' });
             fileInput.addEventListener('change', async () => {
                 const f = fileInput.files && fileInput.files[0];
                 if (!f) return;
+                if (!state.task) { state.draft[kind] = f.name; nameBox.value = f.name; toast('已选择文件,保存草稿后上传', 'info'); return; }
                 const fd = new FormData();
                 fd.append('file', f);
                 nameBox.value = '上传中:' + f.name + '...';
                 try {
-                    const pid = encodeURIComponent(ctx.project.id || '');
-                    const tid = encodeURIComponent(t.id);
                     const resp = await window.AppConfig.engineUpload(
-                        'projects/' + pid + '/tasks/' + tid + '/files?kind=' + encodeURIComponent(kind), fd);
+                        'projects/' + encodeURIComponent(ctx.project.id || '') + '/tasks/'
+                        + encodeURIComponent(state.task.id) + '/files?kind=' + encodeURIComponent(kind), fd);
                     if (resp && (resp.success || resp.code === 200) && resp.data) {
                         state.task = resp.data;
-                        toast((kind === 'identification' ? '训练' : '验证') + 'Excel已上传', 'success');
-                    } else {
-                        toast((resp && resp.message) || '上传失败', 'error');
-                        nameBox.value = filePath ? fileName(filePath) : '未提供';
-                    }
-                } catch (e) { toast('上传失败:' + e.message, 'error'); nameBox.value = filePath ? fileName(filePath) : '未提供'; }
+                        toast('已上传:' + f.name, 'success');
+                    } else { toast((resp && resp.message) || '上传失败', 'error'); nameBox.value = current ? fileName(current) : '未提供'; }
+                } catch (e) { toast('上传失败:' + e.message, 'error'); nameBox.value = current ? fileName(current) : '未提供'; }
                 renderBody();
             });
-            const row = WB().h('div', { class: 'wb-field', style: 'max-width:980px;margin-bottom:14px' },
+            const row = WB().h('div', { class: 'wb-field', style: 'max-width:980px;margin-bottom:10px' },
                 WB().h('label', null, label),
                 WB().h('div', { style: 'display:flex;gap:10px' }, nameBox, pickBtn));
             row.appendChild(fileInput);
             return row;
         }
 
-        /* ---------- 页签二:执行建模(B阶段) ---------- */
-        function runTab() {
+        /* ================= 页签二(稳态): 稳态参数更新 (04-06/07/08) ================= */
+        function updateTab() {
             const t = state.task;
             const wrap = WB().h('div', null);
-            const running = t.status === 'RUNNING' || t.status === 'STOP_REQUESTED';
+            const isRunPhase = t.status === 'RUNNING' || t.status === 'STOP_REQUESTED';
+            const confirmed = !!(t.confirmationFile && t.confirmationFile.length);
 
-            wrap.appendChild(WB().h('div', { style: 'margin-bottom:14px' },
-                WB().h('div', { class: 'wb-section-title', style: 'font-size:20px;margin-bottom:2px' }, '执行建模'),
-                WB().h('div', { class: 'wb-hint', style: 'margin:0' },
-                    (t.name || L.title) + ' / run(confirmationFile + 父模型) → 交付Excel')));
+            if (confirmed) {
+                wrap.appendChild(WB().h('div', { class: 'wb-infobar', style: 'margin-bottom:12px' },
+                    '选段已确认:' + (t.f3SortieId || '') + ' 完整窗口均值;本次运行只生成新结果,不覆盖父模型。'));
+            }
 
-            wrap.appendChild(WB().h('div', { class: 'wb-form-grid', style: 'grid-template-columns:1fr 1fr;max-width:1180px;margin-bottom:14px' },
-                WB().h('div', { class: 'wb-field' }, WB().h('label', null, '确认凭据(A阶段)'),
-                    WB().h('input', { readonly: '', value: t.confirmationFile ? fileName(t.confirmationFile) : '—' })),
-                WB().h('div', { class: 'wb-field' }, WB().h('label', null, '任务状态'),
-                    WB().h('input', { readonly: '', value: str(t.message) }))));
+            if (isRunPhase || t.status === 'COMPLETED') {
+                wrap.appendChild(runProgressView(t));
+                return wrap;
+            }
 
-            // 日志区
-            const logBox = WB().h('pre', {
-                class: 'wb-log', style: 'max-height:320px;overflow:auto;background:#101418;color:#cde3d8;'
-                    + 'padding:12px;border-radius:8px;font-size:12px;line-height:1.5;white-space:pre-wrap'
-            }, (state.log && state.log.length ? state.log.join('\n') : '等待MATLAB输出...'));
-            wrap.appendChild(WB().h('div', { class: 'wb-section' },
-                WB().h('div', { class: 'wb-section-head' },
-                    WB().h('div', { class: 'wb-section-title' }, '运行日志'),
-                    running ? WB().h('span', { class: 'wb-tag wb-tag-amber' }, 'MATLAB运行中...')
-                        : t.status === 'COMPLETED' ? WB().h('span', { class: 'wb-tag wb-tag-teal' }, '已完成')
-                        : t.status === 'FAILED' ? WB().h('span', { class: 'wb-tag wb-tag-red' }, '失败')
-                        : WB().h('span', { class: 'wb-tag wb-tag-gray' }, '待执行')),
-                logBox));
+            /* ---- 参数配置(04-06) ---- */
+            const routeSel = WB().h('select', null,
+                WB().h('option', { value: 'steady' }, '稳态模型(默认 R1)'),
+                WB().h('option', { value: 'transient_instant' }, '瞬态时刻模型(默认 R2)'));
+            routeSel.value = t.parentRoute === 'transient_instant' ? 'transient_instant' : 'steady';
+            const useSel = WB().h('select', null,
+                WB().h('option', { value: 'steady_only', selected: t.dataMethod !== 'steady_plus_small_history' ? '' : null }, '稳态窗口均值'),
+                WB().h('option', { value: 'steady_plus_small_history', selected: t.dataMethod === 'steady_plus_small_history' ? '' : null }, '稳态均值 + 小幅变化辅助'));
+            const lambdaInput = WB().h('input', { value: t.regularizationStrength != null ? t.regularizationStrength : '0.05' });
 
-            wrap.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'margin-top:12px' },
-                WB().h('button', {
-                    class: 'wb-btn wb-btn-primary' + (t.status === 'READY' && !running ? '' : ' disabled'),
-                    title: t.status === 'READY' ? '' : '需A阶段确认完成(READY)',
-                    onclick: () => { if (t.status === 'READY' && !running) runModel(); }
-                }, running ? '建模执行中...' : '执行建模'),
+            wrap.appendChild(WB().h('div', { class: 'wb-form-grid', style: 'grid-template-columns:1fr 1fr;max-width:1180px' },
+                WB().h('div', { class: 'wb-field' }, WB().h('label', null, '求解路径'), routeSel),
+                WB().h('div', { class: 'wb-field' }, WB().h('label', null, '本次数据用途'), useSel),
+                WB().h('div', { class: 'wb-field' }, WB().h('label', null, '正则化强度 λ'), lambdaInput)));
+
+            wrap.appendChild(WB().h('div', { class: 'wb-section-title', style: 'margin:16px 0 8px' }, '本次更新范围'));
+            const scopeTbl = WB().h('table', { class: 'wb-table' },
+                WB().h('tr', null, ['对象', '初始值 / 正则化参考', '本次处理'].map(x => WB().h('th', null, x))),
+                WB().h('tr', null, WB().h('td', null, '稳态修正曲线'), WB().h('td', null, '父模型对应节点值'), WB().h('td', null, '有数据支撑的节点更新,其余沿用')),
+                WB().h('tr', null, WB().h('td', null, '装机等效参数 Kdist'), WB().h('td', null, '现行装机参数合同'), WB().h('td', null, '按当前模型合同更新')),
+                WB().h('tr', null, WB().h('td', null, '飞参燃油偏置 Wf_bias'), WB().h('td', null, '0 kg/s(本架次建模先验)'), WB().h('td', null, '独立估计;不复制台架测量偏置')),
+                WB().h('tr', null, WB().h('td', null, '瞬态修正系数'), WB().h('td', null, '父模型为标称0'), WB().h('td', null, '固定,不参与本次辨识')));
+            wrap.appendChild(scopeTbl);
+            wrap.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin:8px 0' },
+                '节点横坐标沿用父模型;台架或上架次燃油偏置不自动成为本架次已知偏置。'));
+
+            wrap.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'margin-top:10px' },
+                WB().h('button', { class: 'wb-btn wb-btn-outline', onclick: () => { state.tab = 'data'; renderBody(); } }, '← 返回覆盖'),
                 WB().h('div', { class: 'wb-spacer' }),
-                running ? WB().h('button', { class: 'wb-btn wb-btn-outline', onclick: stopModel }, '请求停止') : null));
+                WB().h('button', {
+                    class: 'wb-btn wb-btn-primary',
+                    onclick: () => applyConfigAndGo(routeSel.value, useSel.value, lambdaInput.value)
+                }, '检查配置并估时')));
             return wrap;
         }
 
-        /* ---------- 页签三:结果与登记 ---------- */
+        async function applyConfigAndGo(route, dataMethod, lambda) {
+            const t = state.task;
+            try {
+                const resp = await window.AppConfig.enginePost(
+                    'projects/' + encodeURIComponent(ctx.project.id || '') + '/tasks/'
+                    + encodeURIComponent(t.id) + '/config', {
+                    parentRoute: route, dataMethod: dataMethod,
+                    regularizationStrength: parseFloat(lambda) || 0.05
+                });
+                if (resp && (resp.success || resp.code === 200) && resp.data) state.task = resp.data;
+                else toast((resp && resp.message) || '配置保存失败', 'error');
+            } catch (e) { toast('配置保存失败:' + e.message, 'error'); }
+            state.showEstimate = true;
+            renderBody();
+        }
+
+        /* ---- 估时 + 运行前检查(04-07)与运行过程(04-08) ---- */
+        function runProgressView(t) {
+            const wrap = WB().h('div', null);
+            const isRun = t.status === 'RUNNING' || t.status === 'STOP_REQUESTED';
+
+            if (!isRun && state.showEstimate !== false && t.status === 'READY') {
+                wrap.appendChild(WB().h('div', { class: 'wb-infobar', style: 'margin-bottom:12px' },
+                    '输入、父模型、选段与运行包检查通过;本次运行只生成新结果,不覆盖父模型。'));
+                wrap.appendChild(WB().h('div', { class: 'wb-section-title', style: 'margin:6px 0 8px' }, '本次将执行'));
+                const kv = WB().h('div', { class: 'wb-kv', style: 'max-width:1180px' });
+                [
+                    ['数据', (t.identificationFile ? fileName(t.identificationFile) : '—') + ';完整窗口均值;独立测试' + (t.validationFile ? '已提供' : '无')],
+                    ['父模型', (t.parentSource || '2p4') + (t.parentWorkbook ? ' · ' + fileName(t.parentWorkbook) : '')],
+                    ['参数', (t.dataMethod === 'steady_plus_small_history' ? '稳态+小幅混合' : '稳态曲线 + Kdist + 燃油偏置')],
+                    ['算法', '瞬态时刻 / 独立节点 / Tikhonov λ=' + (t.regularizationStrength != null ? t.regularizationStrength : '0.05')],
+                    ['输出', '新运行;训练对照、全部参数、模型Excel与运行记录']
+                ].forEach(([k, v]) => { kv.appendChild(WB().h('div', { class: 'k' }, k)); kv.appendChild(WB().h('div', { class: 'v' }, v)); });
+                wrap.appendChild(kv);
+                wrap.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'margin-top:14px' },
+                    WB().h('button', { class: 'wb-btn wb-btn-outline', onclick: () => { state.showEstimate = false; state.tab = 'update'; renderBody(); } }, '← 返回配置'),
+                    WB().h('div', { class: 'wb-spacer' }),
+                    WB().h('button', { class: 'wb-btn wb-btn-primary', onclick: runModel }, '▶ 开始稳态参数更新')));
+                return wrap;
+            }
+
+            /* 运行过程(04-08): 阶段卡 + 用时 + 日志(不伪造总体完成百分比) */
+            const stages = [
+                ['输入检查', '已完成'], ['准备与覆盖', '已完成'],
+                ['参数更新', isRun ? '执行中' : t.status === 'COMPLETED' ? '已完成' : '—'],
+                ['最终核查', t.status === 'COMPLETED' ? '已完成' : '待执行'],
+                ['结果写出', t.status === 'COMPLETED' ? '已完成' : '待执行']
+            ];
+            const stageRow = WB().h('div', { style: 'display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:12px 0' });
+            stages.forEach(([name, st]) => {
+                const active = String(st).indexOf('执行中') >= 0;
+                stageRow.appendChild(WB().h('div', { class: 'wb-card', style: 'padding:12px 14px;' + (active ? 'border-color:#0f766e' : '') },
+                    WB().h('div', { style: 'font-weight:600;margin-bottom:4px' + (active ? ';color:#0f766e' : '') }, name),
+                    WB().h('div', { class: 'wb-hint', style: 'margin:0' }, st)));
+            });
+            wrap.appendChild(stageRow);
+
+            const durTxt = t.startedAt && t.finishedAt ? formatDur(t.finishedAt - t.startedAt)
+                : t.startedAt ? formatDur(Date.now() - t.startedAt) + '(累计)' : '—';
+            wrap.appendChild(WB().h('div', { class: 'wb-form-grid', style: 'grid-template-columns:1fr 1fr 1fr;max-width:1180px;margin-bottom:12px' },
+                WB().h('div', { class: 'wb-field' }, WB().h('label', null, '已用计算时间'), WB().h('input', { readonly: '', value: durTxt })),
+                WB().h('div', { class: 'wb-field' }, WB().h('label', null, '状态'), WB().h('input', { readonly: '', value: statusText(t) + (t.message ? ' · ' + t.message : '') })),
+                WB().h('div', { class: 'wb-field' }, WB().h('label', null, '完成判定'),
+                    WB().h('input', { readonly: '', value: '以程序实际阶段为准;不显示伪造总体百分比' }))));
+
+            wrap.appendChild(WB().h('div', { class: 'wb-section-title', style: 'margin:10px 0 8px' }, '运行日志'));
+            wrap.appendChild(WB().h('pre', {
+                class: 'wb-log', style: 'max-height:260px;overflow:auto;background:#101418;color:#cde3d8;padding:12px;border-radius:8px;font-size:12px;line-height:1.5;white-space:pre-wrap'
+            }, (state.log && state.log.length ? state.log.join('\n') : '等待MATLAB输出...')));
+
+            wrap.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'margin-top:12px' },
+                WB().h('button', {
+                    class: 'wb-btn wb-btn-outline' + (isRun ? '' : ' disabled'),
+                    onclick: () => { if (isRun) stopModel(); }
+                }, isRun ? '请求安全暂停' : '请求安全暂停(未在运行)'),
+                WB().h('div', { class: 'wb-spacer' }),
+                t.status === 'COMPLETED' ? WB().h('button', { class: 'wb-btn wb-btn-primary', onclick: () => { state.tab = 'result'; renderBody(); } }, '查看飞行模型结果') : null));
+            return wrap;
+        }
+
+        function formatDur(ms) {
+            const s = Math.max(0, Math.round(ms / 1000));
+            return s >= 60 ? (Math.floor(s / 60) + '分' + (s % 60) + '秒') : (s + '秒');
+        }
+
+        /* ================= 页签二(瞬态): 飞行事件与准备 (05-03/04) ================= */
+        function eventTab() {
+            const t = state.task;
+            const wrap = WB().h('div', null);
+            const confirmed = !!(t.confirmationFile && t.confirmationFile.length) || t.status === 'READY';
+            wrap.appendChild(WB().h('div', { class: 'wb-infobar', style: 'margin-bottom:12px' },
+                confirmed
+                    ? '大幅事件与准备前史已确认;多事件联合辨识同一组瞬态参数,未选择的记录仍保留。'
+                    : '本页在A阶段检查(架次与模型)完成后,由程序提取大幅事件与局部准备段;实际采用范围以求解器返回为准。'));
+            wrap.appendChild(WB().h('div', { class: 'wb-kv', style: 'max-width:1180px' }));
+            const kv = wrap.querySelector('.wb-kv');
+            [
+                ['事件来源', t.identificationFile ? fileName(t.identificationFile) : '—'],
+                ['稳态父模型(冻结)', t.parentWorkbook ? fileName(t.parentWorkbook) : (t.parentSource || '2p4')],
+                ['数据意图', t.confirmationFile ? '已确认(完整窗口冻结)' : '待确认'],
+                ['程序说明', t.prepMessage || '—']
+            ].forEach(([k, v]) => { kv.appendChild(WB().h('div', { class: 'k' }, k)); kv.appendChild(WB().h('div', { class: 'v' }, String(v))); });
+            wrap.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin:10px 0' },
+                '事件、拟合窗口与实际准备前史分列显示;没有有效事件时程序报告原因,不回退成整段强行辨识。'));
+            wrap.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'margin-top:10px' },
+                WB().h('div', { class: 'wb-spacer' }),
+                WB().h('button', {
+                    class: 'wb-btn wb-btn-primary' + (confirmed ? '' : ' disabled'),
+                    onclick: () => { if (confirmed) { state.tab = 'run'; renderBody(); } }
+                }, '进入瞬态参数辨识')));
+            return wrap;
+        }
+
+        /* ================= 页签三(瞬态): 瞬态参数辨识 (05-05~07) ================= */
+        function runTab() {
+            const t = state.task;
+            const wrap = WB().h('div', null);
+            const isRun = t.status === 'RUNNING' || t.status === 'STOP_REQUESTED';
+
+            if (!isRun && t.status === 'READY') {
+                wrap.appendChild(WB().h('div', { class: 'wb-infobar', style: 'margin-bottom:12px' },
+                    '运行前核对:13项瞬态参数待辨识;固定稳态/燃油/装机参数沿用父模型;默认 λ=0.05、最多6轮、0.1秒积分(可选0.025秒)。'));
+                wrap.appendChild(WB().h('div', { class: 'wb-kv', style: 'max-width:1180px' }));
+                const kv = wrap.querySelector('.wb-kv');
+                [
+                    ['辨识对象', '13项瞬态修正参数(Visser16固定参数集,不清零)'],
+                    ['事件', (t.prepMessage ? String(t.prepMessage) : '已确认事件与准备计划')],
+                    ['预计范围', '以程序估时为准;执行前显示,不虚报停续能力']
+                ].forEach(([k, v]) => { kv.appendChild(WB().h('div', { class: 'k' }, k)); kv.appendChild(WB().h('div', { class: 'v' }, v)); });
+                wrap.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'margin-top:14px' },
+                    WB().h('button', { class: 'wb-btn wb-btn-outline', onclick: () => { state.tab = 'event'; renderBody(); } }, '← 返回事件'),
+                    WB().h('div', { class: 'wb-spacer' }),
+                    WB().h('button', { class: 'wb-btn wb-btn-primary', onclick: runModel }, '▶ 开始瞬态参数辨识')));
+                return wrap;
+            }
+
+            wrap.appendChild(runProgressView(t));
+            return wrap;
+        }
+
+        /* ================= 不确定性评估 (04-13/08-系列) ================= */
+        function uqTab() {
+            const t = state.task;
+            const wrap = WB().h('div', null);
+            wrap.appendChild(WB().h('div', { class: 'wb-infobar', style: 'margin-bottom:12px' },
+                'UQ独立配置与保存:评估对象、观测、固定参数、概率来源和先验重设依据明确;当前新C/D评估限实际支持的纯稳态均值路线。'));
+            wrap.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin:8px 0' },
+                '保存模型后,在「模型成果」中选择本模型发起不确定性评估(与试车建模同一UQ入口);混合历程与非零瞬态联合UQ不由本页短合同外推。'));
+            wrap.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'margin-top:10px' },
+                t.status === 'COMPLETED' ? WB().h('button', {
+                    class: 'wb-btn wb-btn-primary',
+                    onclick: () => { saveModel(true); }
+                }, '保存模型并前往模型成果') : WB().h('span', { class: 'wb-hint' }, '完成一次建模后开放。')));
+            return wrap;
+        }
+
+        /* ================= 飞行模型结果 (04-09~12) ================= */
         function resultTab() {
             const t = state.task;
             const r = t.result || {};
             const wrap = WB().h('div', null);
-            wrap.appendChild(WB().h('div', { style: 'margin-bottom:14px' },
-                WB().h('div', { class: 'wb-section-title', style: 'font-size:20px;margin-bottom:2px' }, '建模结果'),
-                WB().h('div', { class: 'wb-hint', style: 'margin:0' },
-                    (t.name || L.title) + ' / 父模型来源 ' + (t.parentSource || '2p4') + ' / 架次 ' + (t.f3SortieId || '—'))));
+            wrap.appendChild(WB().h('div', { class: 'wb-infobar', style: 'margin-bottom:12px' },
+                t.status === 'COMPLETED'
+                    ? ((t.runId || 'RUN') + ' 已结束;训练必展,独立测试' + (t.validationFile ? '已提供' : '未提供') + ';UQ' + (t.uqDone ? '已执行' : '未执行') + '。')
+                    : t.status === 'FAILED' ? ('执行失败:' + (t.message || '详见运行日志')) : '执行中;完成后此处显示训练输出与全部参数。'));
             if (t.status !== 'COMPLETED') {
-                wrap.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin:10px 0' },
-                    t.status === 'FAILED' ? ('执行失败:' + (t.message || '详见运行日志'))
-                        : '执行尚未完成;完成后此处显示交付Excel与manifest。'));
                 if (t.status === 'RUNNING') startPolling();
                 return wrap;
             }
             const kv = WB().h('div', { class: 'wb-kv', style: 'max-width:1180px' });
             [
                 ['运行标识', r.runId || t.runId || '—'],
-                ['输出目录', r.outputRoot || '—'],
+                ['训练集', (t.identificationFile ? fileName(t.identificationFile) : '—') + ';完整窗口均值'],
+                ['独立测试', t.validationFile ? fileName(t.validationFile) : '未提供(不影响训练)'],
+                ['预计 / 实际', (t.startedAt && t.finishedAt) ? formatDur(t.finishedAt - t.startedAt) : '—'],
                 ['交付Excel', r.deliveryWorkbookFile ? fileName(r.deliveryWorkbookFile) : '未找到(检查f3输出)'],
-                ['manifest', r.manifestJson ? fileName(r.manifestJson) : '—'],
-                ['结果状态', '已交付(可登记到模型成果)']
-            ].forEach(([k, v]) => {
-                kv.appendChild(WB().h('div', { class: 'k' }, k));
-                kv.appendChild(WB().h('div', { class: 'v' }, String(v)));
-            });
+                ['输出目录', r.outputRoot || '—']
+            ].forEach(([k, v]) => { kv.appendChild(WB().h('div', { class: 'k' }, k)); kv.appendChild(WB().h('div', { class: 'v' }, String(v))); });
             wrap.appendChild(kv);
             wrap.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin:10px 0' },
-                '飞参建模交付Excel可登记到模型成果;登记时保留父模型来源与架次信息用于溯源。'));
+                '全部参数清单(含燃油偏置与物理横坐标)、逐工况值与平衡/求解诊断随交付Excel与运行记录提供;最小模型交付与完整结果浏览分开。'));
             wrap.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'margin-top:12px' },
-                WB().h('button', {
-                    class: 'wb-btn wb-btn-primary',
-                    onclick: async () => {
-                        try {
-                            const resp = await window.AppConfig.enginePost(
-                                'projects/' + encodeURIComponent(ctx.project.id || '') + '/tasks/'
-                                + encodeURIComponent(t.id) + '/save-model',
-                                { name: (t.name || L.title) + '-模型' });
-                            if (resp && (resp.success || resp.code === 200)) {
-                                toast(r.deliveryWorkbookFile ? '飞参模型已登记到模型成果' : '已登记,但未找到交付Excel', r.deliveryWorkbookFile ? 'success' : 'error');
-                                stopPolling();
-                                ctx.back(true);
-                            } else {
-                                toast((resp && resp.message) || '登记失败', 'error');
-                            }
-                        } catch (e) { toast('登记失败:' + e.message, 'error'); }
-                    }
-                }, '登记到模型成果')));
+                WB().h('button', { class: 'wb-btn wb-btn-primary', onclick: () => saveModel(false) }, '保存模型(登记到模型成果)'),
+                r.deliveryWorkbookFile ? WB().h('button', {
+                    class: 'wb-btn wb-btn-outline',
+                    onclick: () => window.open(window.AppConfig.api.baseURL + '/api/engine/projects/'
+                        + encodeURIComponent(ctx.project.id) + '/tasks/' + encodeURIComponent(t.id)
+                        + '/status', '_blank')
+                }, '查看运行记录') : null));
             return wrap;
         }
 
-        /* ---------- 动作:确认/执行/停止 ---------- */
+        async function saveModel(gotoModels) {
+            const t = state.task;
+            try {
+                const resp = await window.AppConfig.enginePost(
+                    'projects/' + encodeURIComponent(ctx.project.id || '') + '/tasks/'
+                    + encodeURIComponent(t.id) + '/save-model',
+                    { name: (t.name || L.title) + '-模型' });
+                if (resp && (resp.success || resp.code === 200)) {
+                    toast('已登记到模型成果', 'success');
+                    stopPolling();
+                    ctx.back(!!gotoModels);
+                } else toast((resp && resp.message) || '登记失败', 'error');
+            } catch (e) { toast('登记失败:' + e.message, 'error'); }
+        }
+
+        /* ================= 动作 ================= */
         async function runPrepare() {
             state.prepWait = true; renderBody();
             try {
@@ -376,8 +546,8 @@
                     'projects/' + encodeURIComponent(ctx.project.id || '') + '/tasks/'
                     + encodeURIComponent(state.task.id) + '/prepare', {});
                 if (resp && (resp.success || resp.code === 200) && resp.data) state.task = resp.data;
-                else toast((resp && resp.message) || '数据意图确认发起失败', 'error');
-            } catch (e) { toast('数据意图确认发起失败:' + e.message, 'error'); }
+                else toast((resp && resp.message) || '检查发起失败', 'error');
+            } catch (e) { toast('检查发起失败:' + e.message, 'error'); }
             state.prepWait = false;
             startPolling();
             renderBody();
@@ -400,17 +570,15 @@
                 await window.AppConfig.enginePost(
                     'projects/' + encodeURIComponent(ctx.project.id || '') + '/tasks/'
                     + encodeURIComponent(state.task.id) + '/stop', {});
-                toast('已请求停止', 'info');
+                toast('已请求安全暂停(到达安全点后保存,不强杀)', 'info');
             } catch (e) { toast('请求停止失败:' + e.message, 'error'); }
             startPolling();
         }
 
-        /* ---------- 轮询(心跳门控:仅任务活动期间请求) ---------- */
         function poll() {
             const t = state.task;
             if (!t || !ctx.project.id) return;
-            const active = t.status === 'RUNNING' || t.status === 'PREPARING' || t.status === 'STOP_REQUESTED';
-            if (!active && (window.__WB_ENGINE_POLL_UNTIL__ || 0) < Date.now()) return;
+            if (!running(t) && (window.__WB_ENGINE_POLL_UNTIL__ || 0) < Date.now()) return;
             window.AppConfig.engineGet(
                 'projects/' + encodeURIComponent(ctx.project.id) + '/tasks/'
                 + encodeURIComponent(t.id) + '/status')
@@ -419,11 +587,9 @@
                         state.task = resp.data.task;
                         if (Array.isArray(resp.data.logTail) && resp.data.logTail.length) state.log = resp.data.logTail;
                     }
-                    const cur = state.task;
-                    const stillActive = cur && (cur.status === 'RUNNING' || cur.status === 'PREPARING' || cur.status === 'STOP_REQUESTED');
-                    if (stillActive) window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;
+                    if (running(state.task)) window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;
                     else if ((window.__WB_ENGINE_POLL_UNTIL__ || 0) < Date.now()) stopPolling();
-                    if (state.tab === 'run' || state.tab === 'result' || state.tab === 'data') renderBody();
+                    renderBody();
                 })
                 .catch(() => { });
         }
@@ -441,5 +607,297 @@
         return root;
     }
 
-    window.Workbench.renderFlightTask = renderFlightTask;
+    /* ================= 自演化(G6): 五视图 ================= */
+    function renderEvolutionTask(ctx) {
+        const state = { task: null, timer: null, tab: 'overview', prepWait: false };
+        const root = WB().h('div', null);
+
+        const openTaskId = window.__WB_OPEN_TASK__;
+        delete window.__WB_OPEN_TASK__;
+        if (openTaskId && ctx.project && ctx.project.id) {
+            window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id) + '/tasks/'
+                + encodeURIComponent(openTaskId) + '/status')
+                .then(resp => {
+                    if (resp && (resp.success || resp.code === 200) && resp.data && resp.data.task) {
+                        state.task = resp.data.task;
+                        state.log = resp.data.logTail || [];
+                        if (state.task && state.task.status !== 'COMPLETED') state.tab = 'sorties';
+                    } else toast((resp && resp.message) || '任务不存在', 'error');
+                    renderBody();
+                }).catch(() => renderBody());
+        }
+
+        const titleRow = WB().h('div', { style: 'display:flex;align-items:center;gap:14px;margin-bottom:4px' },
+            WB().h('button', { class: 'wb-btn wb-btn-outline', onclick: () => { stopPolling(); ctx.back(); } }, '‹ 返回'),
+            WB().h('div', { class: 'wb-page-title', style: 'margin:0' }, '发动机个性化模型自演化'));
+        const metaRow = WB().h('div', { class: 'wb-page-sub' }, '同一台发动机 / 从试车模型开始,按实际架次逐步更新');
+        root.appendChild(titleRow);
+        root.appendChild(metaRow);
+
+        const TABS = [['overview', '演化总览'], ['sorties', '架次与执行'], ['result', '架次模型结果'], ['uq', '不确定性评估'], ['predict', '下一架次预测']];
+        const tabBar = WB().h('div', { class: 'wb-tabs' });
+        root.appendChild(tabBar);
+        const body = WB().h('div', null);
+        root.appendChild(body);
+
+        function toast(msg, kind) { if (WB() && WB().toast) WB().toast(msg, kind || 'info'); }
+        function fileName(p) { return p ? String(p).split(/[\\/]/).pop() : ''; }
+        const running = t => t && (t.status === 'RUNNING' || t.status === 'PREPARING');
+
+        function paintTabs() {
+            const t = state.task;
+            const reach = { overview: true, sorties: true, result: !!(t && (t.status === 'COMPLETED' || t.status === 'FAILED' || t.status === 'RUNNING')), uq: !!(t && t.status === 'COMPLETED'), predict: !!(t && t.status === 'COMPLETED') };
+            tabBar.innerHTML = '';
+            TABS.forEach(([key, label]) => {
+                const enabled = !!reach[key];
+                tabBar.appendChild(WB().h('div', {
+                    class: 'wb-tab' + (state.tab === key ? ' active' : '') + (enabled ? '' : ' disabled'),
+                    onclick: () => {
+                        if (!enabled) { toast('完成一次演化建模后开放', 'info'); return; }
+                        state.tab = key; renderBody();
+                    }
+                }, label));
+            });
+        }
+
+        function renderBody() {
+            if (state.tab !== 'sorties') stopPolling();
+            body.innerHTML = '';
+            if (state.tab === 'overview') body.appendChild(overviewTab());
+            else if (state.tab === 'sorties') body.appendChild(sortiesTab());
+            else if (!state.task) { body.appendChild(WB().h('div', { class: 'wb-placeholder' }, WB().h('p', null, '请先在「架次与执行」登记本批架次。'))); }
+            else if (state.tab === 'result') body.appendChild(resultTab());
+            else if (state.tab === 'uq') body.appendChild(entranceTab('不确定性评估', 'UQ调用F3原算法,不在第4阶段复制求解器;评估对象、观测、固定参数、概率来源和先验重设依据明确;没有实际UQ则区间状态保持未计算,确定性模型仍有效。'));
+            else body.appendChild(entranceTab('下一架次预测', '先冻结两份模型:「沿用当前正常模型」与「按正常历史趋势外推模型」;两份使用相同未来输入与物理初态计算输出,不自动选胜者,不替换当前模型;之后取得测量再建立独立评价记录。'));
+            paintTabs();
+        }
+
+        /* ---- 演化总览(06-01) ---- */
+        function overviewTab() {
+            const t = state.task;
+            const wrap = WB().h('div', null);
+            wrap.appendChild(WB().h('div', { class: 'wb-section-title', style: 'margin-bottom:8px' }, '当前模型链'));
+            const kv = WB().h('div', { class: 'wb-kv', style: 'max-width:1180px' });
+            [
+                ['试车起点', t ? ((t.parentSource || '2p4') + (t.parentWorkbook ? ' · ' + fileName(t.parentWorkbook) : ' · 按来源解析')) : '未选择(在架次与执行中登记)'],
+                ['本批登记', t ? (t.f3SortieId || '—') + ';编号和数量由实际任务确定' : '未登记'],
+                ['后续目标', '确认数据 → 顺序更新 → 查看趋势 → 预测下一架次'],
+                ['批身份', t ? (t.runId || '—') : '—']
+            ].forEach(([k, v]) => { kv.appendChild(WB().h('div', { class: 'k' }, k)); kv.appendChild(WB().h('div', { class: 'v' }, v)); });
+            wrap.appendChild(kv);
+            wrap.appendChild(WB().h('div', { class: 'wb-section-title', style: 'margin:16px 0 8px' }, '待处理任务'));
+            const work = WB().h('table', { class: 'wb-table' },
+                WB().h('tr', null, ['工作', '当前状态'].map(x => WB().h('th', null, x))),
+                WB().h('tr', null, WB().h('td', null, '试车起点'), WB().h('td', null, t ? '已登记;可核模型及来源' : '待登记')),
+                WB().h('tr', null, WB().h('td', null, '架次数据确认与执行'), WB().h('td', null, t ? ({ READY: '输入核验通过;可整批执行', PREPARING: '核验中', RUNNING: '执行中', COMPLETED: '已完成', FAILED: '失败' }[t.status] || t.status) : '待核验')),
+                WB().h('tr', null, WB().h('td', null, '下一架次预测'), WB().h('td', null, t && t.status === 'COMPLETED' ? '可冻结两种预测模型' : '尚未形成 / 不需未来输出')));
+            wrap.appendChild(work);
+            wrap.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin:10px 0' },
+                '已有模型不会按保存时间自动成为父模型;验证样例与真实业务分开,不内置固定故障场景。'));
+            wrap.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'margin-top:10px' },
+                WB().h('button', { class: 'wb-btn wb-btn-outline', onclick: () => ctx.back() }, '← 返回项目概况'),
+                WB().h('div', { class: 'wb-spacer' }),
+                WB().h('button', { class: 'wb-btn wb-btn-primary', onclick: () => { state.tab = 'sorties'; renderBody(); } }, '→ 核对试车起点与架次')));
+            return wrap;
+        }
+
+        /* ---- 架次与执行(06-03/04/06/07) ---- */
+        function sortiesTab() {
+            const t = state.task;
+            const wrap = WB().h('div', null);
+            if (!t) {
+                /* 登记本批(草稿) */
+                const nameInput = WB().h('input', { value: 'EV-' + new Date().toISOString().slice(2, 10).replace(/-/g, '') });
+                const sortieInput = WB().h('input', { value: 'F-014', placeholder: '架次编号(可中文)' });
+                const parentSourceSel = WB().h('select', null,
+                    WB().h('option', { value: '2p4' }, '2.4 试车模型'),
+                    WB().h('option', { value: '2p7' }, '2.7 数据更新模型'),
+                    WB().h('option', { value: 'flight' }, '既有飞参模型'),
+                    WB().h('option', { value: 'combined' }, 'TC27组合模型'));
+                const modelSel = WB().h('select', null, WB().h('option', { value: '' }, '由程序按来源路线解析(可不指定)'));
+                window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id || '') + '/models')
+                    .then(resp => {
+                        const models = resp && Array.isArray(resp.data) ? resp.data.filter(m => m.deliveryWorkbookFile) : [];
+                        models.forEach(m => modelSel.appendChild(WB().h('option', { value: m.id },
+                            (m.name || m.id) + ' · ' + (m.stage || '') + ' · ' + (m.route || ''))));
+                    }).catch(() => { });
+                const createBtn = WB().h('button', {
+                    class: 'wb-btn wb-btn-primary',
+                    onclick: async () => {
+                        createBtn.classList.add('disabled');
+                        try {
+                            const resp = await window.AppConfig.enginePost('projects/' + encodeURIComponent(ctx.project.id || '') + '/tasks', {
+                                kind: 'evolution', name: nameInput.value.trim() || '模型自演化任务',
+                                parentSource: parentSourceSel.value, parentModelId: modelSel.value || '',
+                                f3SortieId: sortieInput.value.trim() || 'SORTIE-01',
+                                f3EngineId: ctx.project.engineId || '', dataMethod: 'steady_only',
+                                runId: 'EV01'
+                            });
+                            if (resp && (resp.success || resp.code === 200) && resp.data) { state.task = resp.data; renderBody(); }
+                            else toast((resp && resp.message) || '登记失败', 'error');
+                        } catch (e) { toast('登记失败:' + e.message, 'error'); }
+                        createBtn.classList.remove('disabled');
+                    }
+                }, '登记本批任务');
+                wrap.appendChild(WB().h('div', { class: 'wb-card', style: 'max-width:760px' },
+                    WB().h('div', { class: 'wb-section-title', style: 'margin-bottom:6px' }, '登记本批架次'),
+                    WB().h('div', { class: 'wb-hint', style: 'margin:0 0 14px' }, '用户登记架次编号、顺序、测量Excel及输出位置;父模型从显式关系取得,不取最后保存的模型或最近修改文件。'),
+                    WB().h('div', { class: 'wb-form-grid' },
+                        WB().h('div', { class: 'wb-field' }, WB().h('label', null, '本批任务'), nameInput),
+                        WB().h('div', { class: 'wb-field' }, WB().h('label', null, '架次编号'), sortieInput),
+                        WB().h('div', { class: 'wb-field' }, WB().h('label', null, '初始父模型来源'), parentSourceSel),
+                        WB().h('div', { class: 'wb-field' }, WB().h('label', null, '指定父模型(可选)'), modelSel)),
+                    WB().h('div', { class: 'wb-actions-row', style: 'margin-top:12px' }, createBtn)));
+                return wrap;
+            }
+
+            wrap.appendChild(WB().h('div', { class: 'wb-form-grid', style: 'grid-template-columns:1fr 1fr;max-width:1180px;margin-bottom:12px' },
+                WB().h('div', { class: 'wb-field' }, WB().h('label', null, '本批任务'),
+                    WB().h('input', { readonly: '', value: t.name || t.runId || '—' })),
+                WB().h('div', { class: 'wb-field' }, WB().h('label', null, '初始父模型'),
+                    WB().h('input', { readonly: '', value: (t.parentSource || '2p4') + (t.parentWorkbook ? ' · ' + fileName(t.parentWorkbook) : '') }))));
+
+            wrap.appendChild(WB().h('div', { class: 'wb-section-title', style: 'margin-bottom:8px' }, '架次清单'));
+            const tbl = WB().h('table', { class: 'wb-table' },
+                WB().h('tr', null, ['架次 / 次序', '飞参Excel', '父模型', '独立测试', '业务角色'].map(x => WB().h('th', null, x))),
+                WB().h('tr', null,
+                    WB().h('td', null, (t.f3SortieId || '—') + ' / 1'),
+                    WB().h('td', null, t.identificationFile ? fileName(t.identificationFile) : '未上传'),
+                    WB().h('td', null, t.parentModelId ? String(t.parentModelId) : (t.parentSource || '2p4') + '(根)'),
+                    WB().h('td', null, t.validationFile ? fileName(t.validationFile) : '未提供'),
+                    WB().h('td', null, '正常')));
+            wrap.appendChild(tbl);
+            wrap.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin:6px 0 12px' },
+                '必要测量:时间、环境、燃油、PT负载、两轴转速及测量输出;父需为根或登记中更早架次;正常业务不得继承验证场景模型。'));
+
+            const prepRunning = state.prepWait || t.status === 'PREPARING';
+            const isRun = t.status === 'RUNNING';
+            wrap.appendChild(WB().h('div', { class: 'wb-section' },
+                WB().h('div', { class: 'wb-section-head' },
+                    WB().h('div', { class: 'wb-section-title' }, '执行状态'),
+                    prepRunning ? WB().h('span', { class: 'wb-tag wb-tag-amber' }, '输入核验中(check)...')
+                        : isRun ? WB().h('span', { class: 'wb-tag wb-tag-amber' }, '整批执行中(run)...')
+                        : t.status === 'READY' ? WB().h('span', { class: 'wb-tag wb-tag-teal' }, '核验通过;可整批执行')
+                        : t.status === 'COMPLETED' ? WB().h('span', { class: 'wb-tag wb-tag-teal' }, '已完成')
+                        : t.status === 'FAILED' ? WB().h('span', { class: 'wb-tag wb-tag-red' }, '失败')
+                        : WB().h('span', { class: 'wb-tag wb-tag-gray' }, '待核验')),
+                WB().h('div', { style: 'padding:10px 0' },
+                    (prepRunning || isRun)
+                        ? WB().h('span', { class: 'wb-inline-loading' }, WB().h('span', { class: 'wb-inline-spinner' }),
+                            prepRunning ? '正在检查测量Excel、父模型依赖与输出目录...' : '逐架次:预览→确认数据意图→绑定实际父→执行;身份变化只阻断相关续算...')
+                        : WB().h('div', null, t.message || '—')),
+                (t.status === 'RUNNING' || t.status === 'STOP_REQUESTED') ? WB().h('pre', {
+                    style: 'max-height:200px;overflow:auto;background:#101418;color:#cde3d8;padding:12px;border-radius:8px;font-size:12px;white-space:pre-wrap'
+                }, (state.log && state.log.length ? state.log.join('\n') : '等待MATLAB输出...')) : null));
+
+            wrap.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'margin-top:10px' },
+                WB().h('button', {
+                    class: 'wb-btn wb-btn-outline' + (t.identificationFile && !prepRunning && !isRun && !['COMPLETED'].includes(t.status) ? '' : ' disabled'),
+                    onclick: () => { if (t.identificationFile && !prepRunning && !isRun) { window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000; runPrepare(); } }
+                }, prepRunning ? '核验中...' : '预览所选架次数据(输入核验)'),
+                WB().h('div', { class: 'wb-spacer' }),
+                WB().h('button', {
+                    class: 'wb-btn wb-btn-primary' + (t.status === 'READY' && !isRun ? '' : ' disabled'),
+                    onclick: () => { if (t.status === 'READY' && !isRun) { window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000; runModel(); } }
+                }, isRun ? '执行中...' : '顺序更新(整批执行)')));
+            return wrap;
+        }
+
+        /* ---- 架次模型结果(06-09/10/13) ---- */
+        function resultTab() {
+            const t = state.task;
+            const r = t.result || {};
+            const wrap = WB().h('div', null);
+            wrap.appendChild(WB().h('div', { class: 'wb-infobar', style: 'margin-bottom:12px' },
+                t.status === 'COMPLETED' ? '本架次模型已交付;训练必展,测试可空;未收敛但合法的模型可继续使用,停止原因随模型传递。'
+                    : t.status === 'FAILED' ? ('执行失败:' + (t.message || '')) : '执行中...'));
+            if (t.status !== 'COMPLETED') { if (t.status === 'RUNNING') startPolling(); return wrap; }
+            const kv = WB().h('div', { class: 'wb-kv', style: 'max-width:1180px' });
+            [
+                ['运行标识', r.runId || t.runId || '—'],
+                ['实际父', (t.parentSource || '2p4') + (t.parentWorkbook ? ' · ' + fileName(t.parentWorkbook) : '')],
+                ['本架次模型', r.deliveryWorkbookFile ? fileName(r.deliveryWorkbookFile) : '—'],
+                ['输出目录', r.outputRoot || '—']
+            ].forEach(([k, v]) => { kv.appendChild(WB().h('div', { class: 'k' }, k)); kv.appendChild(WB().h('div', { class: 'v' }, String(v))); });
+            wrap.appendChild(kv);
+            wrap.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin:10px 0' },
+                '全量参数、实际父和本次先验分开;瞬态参数保持实际父值;完整节点和真实覆盖随交付Excel可追溯。'));
+            wrap.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'margin-top:12px' },
+                WB().h('button', {
+                    class: 'wb-btn wb-btn-primary',
+                    onclick: async () => {
+                        try {
+                            const resp = await window.AppConfig.enginePost(
+                                'projects/' + encodeURIComponent(ctx.project.id || '') + '/tasks/'
+                                + encodeURIComponent(t.id) + '/save-model', { name: (t.name || '自演化') + '-模型' });
+                            if (resp && (resp.success || resp.code === 200)) { toast('已登记到模型成果', 'success'); ctx.back(true); }
+                            else toast((resp && resp.message) || '登记失败', 'error');
+                        } catch (e) { toast('登记失败:' + e.message, 'error'); }
+                    }
+                }, '保存模型(登记到模型成果)')));
+            return wrap;
+        }
+
+        function entranceTab(title, desc) {
+            return WB().h('div', null,
+                WB().h('div', { class: 'wb-infobar', style: 'margin-bottom:12px' }, title + ' — 独立任务,不在本页自动执行'),
+                WB().h('div', { class: 'wb-hint', style: 'margin:8px 0;max-width:900px;line-height:1.8' }, desc),
+                WB().h('div', { class: 'wb-actions-row', style: 'margin-top:12px' },
+                    WB().h('button', { class: 'wb-btn wb-btn-primary', onclick: () => ctx.back(true) }, '前往模型成果')));
+        }
+
+        async function runPrepare() {
+            state.prepWait = true; renderBody();
+            try {
+                const resp = await window.AppConfig.enginePost(
+                    'projects/' + encodeURIComponent(ctx.project.id || '') + '/tasks/'
+                    + encodeURIComponent(state.task.id) + '/prepare', {});
+                if (resp && (resp.success || resp.code === 200) && resp.data) state.task = resp.data;
+                else toast((resp && resp.message) || '核验发起失败', 'error');
+            } catch (e) { toast('核验发起失败:' + e.message, 'error'); }
+            state.prepWait = false;
+            startPolling();
+            renderBody();
+        }
+        async function runModel() {
+            try {
+                const resp = await window.AppConfig.enginePost(
+                    'projects/' + encodeURIComponent(ctx.project.id || '') + '/tasks/'
+                    + encodeURIComponent(state.task.id) + '/run', {});
+                if (resp && (resp.success || resp.code === 200) && resp.data) state.task = resp.data;
+                else toast((resp && resp.message) || '执行发起失败', 'error');
+            } catch (e) { toast('执行发起失败:' + e.message, 'error'); }
+            startPolling();
+            renderBody();
+        }
+        function poll() {
+            const t = state.task;
+            if (!t) return;
+            if (!running(t) && (window.__WB_ENGINE_POLL_UNTIL__ || 0) < Date.now()) return;
+            window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id) + '/tasks/'
+                + encodeURIComponent(t.id) + '/status')
+                .then(resp => {
+                    if (resp && (resp.success || resp.code === 200) && resp.data && resp.data.task) {
+                        state.task = resp.data.task;
+                        if (Array.isArray(resp.data.logTail) && resp.data.logTail.length) state.log = resp.data.logTail;
+                    }
+                    if (running(state.task)) window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;
+                    else if ((window.__WB_ENGINE_POLL_UNTIL__ || 0) < Date.now()) stopPolling();
+                    renderBody();
+                }).catch(() => { });
+        }
+        function startPolling() {
+            window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;
+            if (state.timer) return;
+            poll();
+            state.timer = setInterval(poll, 4000);
+        }
+        function stopPolling() { if (state.timer) { clearInterval(state.timer); state.timer = null; } }
+
+        renderBody();
+        return root;
+    }
+
+    window.Workbench.renderFlightTask = taskPage;
+    window.Workbench.renderEvolutionTask = renderEvolutionTask;
 })();

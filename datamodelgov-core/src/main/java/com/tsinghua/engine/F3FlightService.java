@@ -321,6 +321,9 @@ public class F3FlightService {
                 configuration.put("modelId", task.getParentModelId() == null ? key : task.getParentModelId());
                 configuration.put("taskPurpose", "model_build");
                 configuration.put("dataMethod", task.getDataMethod() == null ? "steady_only" : task.getDataMethod());
+                if (task.getRegularizationStrength() != null) {
+                    configuration.put("regularizationStrength", task.getRegularizationStrength());
+                }
                 if ("run".equals(action)) {
                     configuration.put("parentSource", task.getParentSource() == null ? "2p4" : task.getParentSource());
                     configuration.put("parentRoute", task.getParentRoute() == null ? "steady" : task.getParentRoute());

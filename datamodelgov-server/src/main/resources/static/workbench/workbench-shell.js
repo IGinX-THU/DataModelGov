@@ -153,15 +153,20 @@
                     n.classList.toggle('active', n.dataset.nav === 'tasks'));
                 const main = this._app.querySelector('.wb-main');
                 main.innerHTML = '';
-                main.appendChild(window.Workbench.renderFlightTask({
-                    project: this._ctx.project,
-                    flightKind: business.id === 'flightSteady' ? 'flight_steady'
-                        : business.id === 'evolution' ? 'evolution' : 'flight_transient',
-                    back: (gotoModels) => {
-                        this._navigate(gotoModels ? 'models' : 'tasks');
-                    },
-                    navigate: (key) => this._navigate(key)
-                }));
+                const backFn = (gotoModels) => { this._navigate(gotoModels ? 'models' : 'tasks'); };
+                if (business.id === 'evolution') {
+                    main.appendChild(window.Workbench.renderEvolutionTask({
+                        project: this._ctx.project, back: backFn,
+                        navigate: (key) => this._navigate(key)
+                    }));
+                } else {
+                    main.appendChild(window.Workbench.renderFlightTask({
+                        project: this._ctx.project,
+                        flightKind: business.id === 'flightSteady' ? 'flight_steady' : 'flight_transient',
+                        back: backFn,
+                        navigate: (key) => this._navigate(key)
+                    }));
+                }
                 main.scrollTop = 0;
                 return;
             }

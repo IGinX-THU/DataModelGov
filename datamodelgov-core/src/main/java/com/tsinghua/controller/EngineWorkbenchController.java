@@ -235,6 +235,8 @@ public class EngineWorkbenchController {
                 t.setF3SortieId(sid == null || String.valueOf(sid).isEmpty() ? "SORTIE-01" : String.valueOf(sid));
                 Object dm = body.get("dataMethod");
                 t.setDataMethod(dm == null ? "steady_only" : String.valueOf(dm));
+                Object rs = body.get("regularizationStrength");
+                if (rs instanceof Number) t.setRegularizationStrength(((Number) rs).doubleValue());
                 t.setMessage("待上传飞参训练Excel(Data表)");
                 return Result.success(store.saveTask(t));
             }
@@ -493,6 +495,30 @@ public class EngineWorkbenchController {
             return Result.success(cfg);
         } catch (IOException e) {
             return Result.error("读取配置失败: " + e.getMessage());
+        }
+    }
+
+    @ApiOperation("更新任务配置(飞参建模:求解路径/数据用途/正则化强度)")
+    @PostMapping("/projects/{pid}/tasks/{tid}/config")
+    @RequirePermission(Permission.CREATE)
+    public Result<EngineModels.ModelingTask> updateTaskConfig(@PathVariable("pid") String pid,
+                                                             @PathVariable("tid") String tid,
+                                                             @RequestBody Map<String, Object> body) {
+        try {
+            EngineModels.ModelingTask t = store.getTask(pid, tid);
+            if (t == null) return Result.error("任务不存在");
+            String denied = accessDenied(store.getProject(pid));
+            if (denied != null) return Result.error(denied);
+            Object pr = body.get("parentRoute");
+            if (pr != null && !String.valueOf(pr).isEmpty()) t.setParentRoute(String.valueOf(pr));
+            Object dm = body.get("dataMethod");
+            if (dm != null && !String.valueOf(dm).isEmpty()) t.setDataMethod(String.valueOf(dm));
+            Object rs = body.get("regularizationStrength");
+            if (rs instanceof Number) t.setRegularizationStrength(((Number) rs).doubleValue());
+            t.setMessage("配置已更新:路径=" + t.getParentRoute() + " / 数据=" + t.getDataMethod());
+            return Result.success(store.saveTask(t));
+        } catch (IOException e) {
+            return Result.error("配置保存失败: " + e.getMessage());
         }
     }
 
