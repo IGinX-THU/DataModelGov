@@ -205,11 +205,13 @@ public class AfoService {
     public Map<String, Object> currentStatus(String projectId) throws IOException {
         AfoSession s = session;
         Map<String, Object> out = new LinkedHashMap<>();
-        if (s == null || (projectId != null && !projectId.equals(s.projectId))) {
+        if (s == null) {
             out.put("phase", "IDLE");
             out.put("message", "无活动会话");
             return out;
         }
+        // 会话是进程级单例:即使从别的项目上下文发起,也要如实暴露,
+        // 否则用户永远看不到已就绪的会话,也无法关闭(卡死新准备)
         out.put("runId", s.runId);
         out.put("engineId", s.engineId);
         out.put("phase", s.phase);
@@ -538,7 +540,7 @@ public class AfoService {
 
     private AfoSession requireSession(String projectId, String expectPhase) throws IOException {
         AfoSession s = session;
-        if (s == null || (projectId != null && !projectId.equals(s.projectId))) {
+        if (s == null) {
             throw new IllegalStateException("无活动AFO会话;请先发起准备");
         }
         if (expectPhase != null && !expectPhase.equals(s.phase)) {

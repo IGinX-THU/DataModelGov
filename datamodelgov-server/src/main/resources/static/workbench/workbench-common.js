@@ -2914,8 +2914,17 @@ window.Workbench = (() => {
                         if (!isFinite(cfgReq.duration) || cfgReq.duration <= 0) throw new Error('仿真时长须为正数');
                         if (!isFinite(cfgReq.recordStep) || cfgReq.recordStep <= 0) throw new Error('记录步长须为正数');
                         S.cfg = Object.assign({}, S.cfg, cfgReq);
-                        await apiPost('/prepare', cfgReq);
+                        const resp = await apiPost('/prepare', cfgReq);
+                        if (!(resp && (resp.success || resp.code === 200))) {
+                            toast((resp && resp.message) || '准备发起失败', 'error');
+                            btn.classList.remove('disabled');
+                            return;
+                        }
+                        // 立即进入准备中视图,不等轮询(否则点击后像没反应)
+                        if (resp.data && resp.data.phase) S.phase = resp.data.phase;
+                        S.message = '准备AFO程序工作副本';
                         toast('准备已发起;运行副本与模型初始化需要一些时间', 'info');
+                        renderAll();
                         startPoll();
                     } catch (e) { toast('准备失败:' + e.message, 'error'); }
                     btn.classList.remove('disabled');

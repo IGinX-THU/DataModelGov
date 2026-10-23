@@ -1489,6 +1489,10 @@
         /* ---------- 页签四:不确定性评估(01-08 配置 / 01-09 结果,可选) ---------- */
         function uqTab() {
             const t = state.task;
+            // 数值格式化助手必须在早退return之前声明(异步回调会用到,放后面会落入TDZ)
+            const UQ_NUM = v => (v == null || v === '' || !isFinite(parseFloat(v))) ? null : parseFloat(v);
+            const UQ_FMT = v => { const n = UQ_NUM(v); if (n == null) return '—';
+                const a = Math.abs(n); return a >= 1000 ? n.toFixed(1) : a >= 1 ? n.toFixed(4) : n.toPrecision(4); };
             const wrap = WB().h('div', null);
             const uqRunning = t.uqStatus === 'EXECUTING' || t.uqStatus === 'PREPARING';
 
@@ -1731,9 +1735,19 @@
                         holder.innerHTML = '';
                         const d = resp && (resp.success || resp.code === 200) ? resp.data : null;
                         if (!d) { holder.appendChild(uqSummaryKv(t)); return; }
-                        renderUqDetail(holder, d);
+                        try {
+                            renderUqDetail(holder, d);
+                        } catch (e) {
+                            window.__uqErr = (e && e.stack) || String(e);
+                            console.error('renderUqDetail异常', e);
+                            holder.appendChild(uqSummaryKv(t));
+                        }
                     })
-                    .catch(() => { holder.innerHTML = ''; holder.appendChild(uqSummaryKv(t)); });
+                    .catch(e => {
+                        window.__uqErr = (e && e.stack) || String(e);
+                        holder.innerHTML = '';
+                        holder.appendChild(uqSummaryKv(t));
+                    });
                 return box;
             }
 
@@ -1756,9 +1770,6 @@
                 walk(d, 0);
                 return hit;
             }
-            const UQ_NUM = v => (v == null || v === '' || !isFinite(parseFloat(v))) ? null : parseFloat(v);
-            const UQ_FMT = v => { const n = UQ_NUM(v); if (n == null) return '—';
-                const a = Math.abs(n); return a >= 1000 ? n.toFixed(1) : a >= 1 ? n.toFixed(4) : n.toPrecision(4); };
 
             /** UQ运行结果页(无独立效果图,按旧版steady-model-adapt设计):
              *  Card1 采样摘要指标 / Card2 参数95%置信区间图(ECharts区间条+后验中心+确定性标记)
