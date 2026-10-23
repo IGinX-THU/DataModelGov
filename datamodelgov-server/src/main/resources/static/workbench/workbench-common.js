@@ -2629,15 +2629,25 @@ window.Workbench = (() => {
             const t = S.live && typeof S.live.time === 'number' ? S.live.time : (S.result ? S.result.finalSimulationTime : 0);
             const phaseLabel = S.readonlyRunId ? ['历史记录 · 只读', 'gray']
                 : S.phase === 'RUNNING' ? ['正在运行', 'teal']
-                : S.phase === 'PAUSED' ? ['已暂停(保持状态)', 'amber']
-                : S.phase === 'PREPARING' ? ['准备中(运行副本/身份校验/模型初始化)', 'amber']
-                : S.phase === 'READY' ? ['已就绪 · 未运行', 'teal']
+                : S.phase === 'PAUSED' ? ['已暂停', 'teal']
+                : S.phase === 'PREPARING' ? ['准备中', 'amber']
+                : S.phase === 'READY' ? ['准备就绪', 'teal']
                 : S.phase === 'ENDED' ? ['已结束 · 记录已保存', 'gray']
                 : S.phase === 'FAILED' ? ['失败', 'red'] : ['空闲 · 新建运行', 'gray'];
+            // 09-13/09-14状态条: 左相位 | 中仿真时间(标签+大字+runId·模式) | 右两按钮
+            const modeText = S.readonlyRunId ? '历史只读'
+                : S.phase === 'PAUSED' ? '原实例状态保持'
+                : S.cfg.pace === 'fast' ? '尽快计算' : '实时计算';
             const bar = h('div', { class: 'wb-infobar', style: 'display:flex;align-items:center;gap:18px;padding:10px 16px' },
-                h('span', { class: 'wb-tag wb-tag-' + phaseLabel[1] }, phaseLabel[0]),
-                h('span', { style: 'font-weight:600' }, '仿真时间 ' + Number(t || 0).toFixed(3) + ' s'),
-                h('span', { class: 'wb-hint', style: 'margin:0' }, S.message || (S.readonlyRunId ? '完整记录已保存' : '内部引气 / 外部系统同步计算')),
+                h('div', null,
+                    h('span', { class: 'wb-tag wb-tag-' + phaseLabel[1] }, phaseLabel[0]),
+                    h('div', { class: 'wb-hint', style: 'margin:2px 0 0' },
+                        S.message || (S.readonlyRunId ? '完整记录已保存' : '内部引气 / 外部系统同步计算'))),
+                h('div', { style: 'min-width:180px' },
+                    h('div', { class: 'wb-hint', style: 'margin:0' }, '仿真时间'),
+                    h('div', { style: 'font-size:20px;font-weight:700;line-height:1.2' }, Number(t || 0).toFixed(3) + ' s'),
+                    h('div', { class: 'wb-hint', style: 'margin:0' },
+                        (S.live && S.live.runId) || (S.result && S.result.runId) || (S.readonlyRunId || '') + ' · ' + modeText)),
                 h('div', { class: 'wb-spacer' }));
             statusBar.appendChild(bar);
             const actions = h('div', { class: 'wb-actions-row', style: 'margin:8px 0 0' });
@@ -2647,19 +2657,30 @@ window.Workbench = (() => {
                 actions.appendChild(h('button', { class: 'wb-btn wb-btn-outline', onclick: () => window.open(excelUrl(S.readonlyRunId), '_blank') }, '导出Excel'));
                 actions.appendChild(h('button', { class: 'wb-btn wb-btn-primary', onclick: () => reuseConfig() }, '用此配置新建'));
             } else if (S.phase === 'RUNNING' || S.phase === 'PAUSED') {
-                actions.appendChild(h('button', {
-                    class: 'wb-btn wb-btn-primary',
-                    onclick: () => sendCmd(S.phase === 'RUNNING' ? 'pause' : 'resume', 0)
-                }, S.phase === 'RUNNING' ? '暂停' : '继续'));
+                // 09-13/09-14:状态条恒为两个按钮;点击乐观翻状态,回执由轮询确认
+                const isRun = S.phase === 'RUNNING';
                 actions.appendChild(h('button', {
                     class: 'wb-btn wb-btn-outline',
-                    onclick: () => { if (confirm('结束计算?当前有效记录将保存,暂停不卸载、不自动断油。')) sendCmd('stop', 0); }
-                }, '结束计算'));
+                    onclick: () => {
+                        if (S._busyAction) return;
+                        const going = isRun ? 'PAUSED' : 'RUNNING';
+                        S.phase = going;
+                        S.message = going === 'PAUSED' ? '已请求暂停;主步观测点生效' : '已请求继续';
+                        renderAll();
+                        S._busyAction = 'pause';
+                        sendCmd(going === 'PAUSED' ? 'pause' : 'resume', 0);
+                        setTimeout(() => { S._busyAction = null; }, 1200);
+                    }
+                }, isRun ? '⏸ 暂停' : '▶ 继续'));
+                actions.appendChild(h('button', {
+                    class: 'wb-btn wb-btn-outline',
+                    onclick: () => { if (!S._busyAction) { S.message = '已请求结束;等待主步生效'; renderAll(); sendCmd('stop', 0); } }
+                }, '□ 结束计算'));
             } else if (S.phase === 'READY') {
                 // 09-12:准备就绪后常驻"开始仿真";检查配置回到总控表单核对
                 actions.appendChild(h('button', { class: 'wb-btn wb-btn-outline', onclick: () => { S.tab = 'main'; renderAll(); } }, '检查配置'));
                 actions.appendChild(h('button', { class: 'wb-btn wb-btn-primary', onclick: () => startRun() }, '▶ 开始仿真'));
-                actions.appendChild(h('button', { class: 'wb-btn wb-btn-outline', onclick: () => closeSession() }, '放弃并关闭(改配置重新准备)'));
+                actions.appendChild(h('button', { class: 'wb-btn wb-btn-outline', onclick: () => closeSession() }, '放弃并关闭'));
             } else if (S.phase === 'ENDED' || S.phase === 'FAILED') {
                 actions.appendChild(h('button', { class: 'wb-btn wb-btn-outline', onclick: () => window.open(excelUrl(S.live && S.live.runId ? S.live.runId : ''), '_blank') }, '导出Excel'));
                 actions.appendChild(h('button', { class: 'wb-btn wb-btn-primary', onclick: () => closeSession() }, '新建运行(关闭本会话)'));
@@ -2740,6 +2761,33 @@ window.Workbench = (() => {
         function paintMain(src) {
             if (src === 'idle') { paintConfigForm(); return; }
             const live = S.live || {};
+            // 09-14:已暂停——暂停中的操作说明视图(不显示操纵台)
+            if (S.phase === 'PAUSED') {
+                body.appendChild(h('div', { class: 'wb-infobar' },
+                    '已到安全服务点，仿真时间保持' + Number(typeof S.live?.time === 'number' ? S.live.time : 0).toFixed(3)
+                    + ' s。发动机与各子系统仍保留暂停前状态。'));
+                body.appendChild(h('div', { class: 'wb-section-title', style: 'margin:14px 0 8px' }, '暂停中的操作'));
+                body.appendChild(h('table', { class: 'wb-table' },
+                    h('tr', null, ['操作', '允许行为', '下一次物理变化'].map(x => h('th', null, x))),
+                    h('tr', null, h('td', null, '查看各系统'), h('td', null, '曲线和读数保持;可切换页签'), h('td', null, '无,不触发新计算')),
+                    h('tr', null, h('td', null, '提交新的Np或负载'), h('td', null, '合法命令登记为已接收'), h('td', null, '继续后下一个离散步生效')),
+                    h('tr', null, h('td', null, '继续计算'), h('td', null, '原Simulink实例继续'), h('td', null, '不重新初始化,不清空热/控制状态')),
+                    h('tr', null, h('td', null, '结束计算'), h('td', null, '保存当前已有效历程'), h('td', null, '不是停车;本次不能跨进程恢复'))));
+                body.appendChild(h('div', { style: 'margin:14px 0 4px;font-weight:600' },
+                    '暂停不会让燃油归零，也不是发动机保持低速的物理模式。'));
+                body.appendChild(h('div', { class: 'wb-hint', style: 'margin:0 0 16px' },
+                    '人工等待时间单独记录，不计入有效计算耗时。'));
+                body.appendChild(h('div', { class: 'wb-actions-row' },
+                    h('button', {
+                        class: 'wb-btn wb-btn-primary', style: 'min-width:220px',
+                        onclick: () => sendCmd('resume', 0)
+                    }, '▶ 继续仿真'),
+                    h('button', {
+                        class: 'wb-btn wb-btn-outline', style: 'min-width:220px',
+                        onclick: () => sendCmd('stop', 0)
+                    }, '□ 结束并保存现有数据')));
+                return;
+            }
             // Np挡位(草稿+施加两步) + 负载施加(运行中;09-13)
             if (canCmd()) {
                 body.appendChild(h('div', { class: 'wb-infobar' },
@@ -3161,7 +3209,10 @@ window.Workbench = (() => {
             try {
                 await apiPost('/close', {});
                 toast('会话已关闭;可新建运行', 'success');
-                S.phase = 'IDLE'; S.live = null; S.samples = []; S.lastSampleT = -1; S.message = '';
+                // 清掉上一轮的结果/采样缓存,否则close后页面仍按"结果视图"渲染,没有任何操作按钮
+                S.phase = 'IDLE'; S.live = null; S.result = null;
+                S.samples = []; S.lastSampleT = -1; S.message = '';
+                S.npDraft = '1'; S.tab = 'main';
                 renderAll();
             } catch (e) { toast('关闭失败:' + e.message, 'error'); }
         }
@@ -3234,6 +3285,14 @@ window.Workbench = (() => {
                     S.phase = d.phase || 'IDLE';
                     S.message = d.message || '';
                     S.live = d.live || null;
+                    // MATLAB侧status.json的state是运行态真源(ready/running/paused/ended/failed):
+                    // 暂停由inbox命令在Simulink主步生效,Java侧phase不会变——以live.state为准,
+                    // 否则"暂停"按钮永远变不成"继续"
+                    if (S.live && S.live.state) {
+                        const st = String(S.live.state).toUpperCase();
+                        if (st === 'PAUSED' || st === 'ENDED' || st === 'FAILED') S.phase = st;
+                        else if (st === 'RUNNING' && S.phase === 'PAUSED') S.phase = 'RUNNING';
+                    }
                     if (S.live && typeof S.live.time === 'number') pushSample(S.live);
                 }
                 if (S.phase === 'ENDED' && !S.result) ensureSessionResult();
@@ -3249,13 +3308,13 @@ window.Workbench = (() => {
                     window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000; // 活动心跳
                     refresh();
                 }
-            }, 2000);
+            }, 1200); // 运行/暂停期间1.2s密集刷新,时间与按钮贴近实时(旧版为SSE推送,此处轮询等价)
         }
 
         if (window.__WB_AFO_TIMER__) clearInterval(window.__WB_AFO_TIMER__);
         window.__WB_AFO_TIMER__ = setInterval(() => {
             if (!S.readonlyRunId && ['PREPARING', 'READY', 'RUNNING', 'PAUSED', 'ENDED'].includes(S.phase)) refresh();
-        }, 2000);
+        }, 1200);
         renderAll();
         refresh();
         if (S.phase === 'ENDED') ensureSessionResult();
