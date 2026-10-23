@@ -67,6 +67,12 @@
                     if (resp && (resp.success || resp.code === 200) && resp.data && resp.data.task) {
                         state.task = resp.data.task;
                         state.log = resp.data.logTail || [];
+                        const wantTab = window.__WB_OPEN_TASK_TAB__; // 记录页直达指定页签(如UQ)
+                        delete window.__WB_OPEN_TASK_TAB__;
+                        if (wantTab && TABS.some(t2 => t2[0] === wantTab)) {
+                            state.tab = wantTab;
+                            state.tabFromOpen = true; // 防止异步load()把页签改回默认
+                        }
                     } else {
                         state.task = null;
                         toast((resp && resp.message) || '任务不存在', 'error');
@@ -1754,76 +1760,193 @@
             const UQ_FMT = v => { const n = UQ_NUM(v); if (n == null) return '—';
                 const a = Math.abs(n); return a >= 1000 ? n.toFixed(1) : a >= 1 ? n.toFixed(4) : n.toPrecision(4); };
 
-            /** UQ结果(按旧版设计):参数95%候选区间表(中文列) + 结果解释与验收 + 训练输出区间。 */
+            /** UQ运行结果页(无独立效果图,按旧版steady-model-adapt设计):
+             *  Card1 采样摘要指标 / Card2 参数95%置信区间图(ECharts区间条+后验中心+确定性标记)
+             *  Card3 结果解释与验收(✓清单) / Card4 输出区间与测量对照表(含覆盖状态列)。 */
             function renderUqDetail(holder, d) {
-                // —— 1. 参数 95% 候选区间表(交付 ParameterSummary;01-09 确定性值/后验均值/候选区间分列) ——
-                const ps = uqTable(d, /parametersummary/i, /posteriorQ025|credible_width|credibleLow/i);
-                if (ps) {
-                    holder.appendChild(WB().h('div', { class: 'wb-section-title', style: 'margin-bottom:6px' },
-                        '参数 95% 候选区间(确定性值 / 后验均值 / 候选区间 分列,' + ps.length + ' 项)'));
-                    const fmtIv = r => {
-                        const lo = UQ_NUM(r.posteriorQ025), hi = UQ_NUM(r.posteriorQ975);
-                        return (lo == null || hi == null) ? '—' : '[' + UQ_FMT(lo) + ', ' + UQ_FMT(hi) + ']';
-                    };
-                    const tbl = WB().h('table', { class: 'wb-table' },
-                        WB().h('tr', null, ['参数', '单位', '确定性估计', '后验均值', '后验中位数',
-                            '95%候选区间', '区间宽度', '先验均值', '标准差收缩'].map(x => WB().h('th', null, x))));
-                    ps.forEach(r => {
-                        tbl.appendChild(WB().h('tr', null,
-                            WB().h('td', null, String(r.name || r.parameter || '—')),
-                            WB().h('td', { class: 'wb-hint' }, String(r.unit || '—')),
-                            WB().h('td', null, UQ_FMT(r.deterministicEstimate)),
-                            WB().h('td', null, UQ_FMT(r.posteriorMean)),
-                            WB().h('td', { class: 'wb-hint' }, UQ_FMT(r.posteriorMedian)),
-                            WB().h('td', null, fmtIv(r)),
-                            WB().h('td', { class: 'wb-hint' }, UQ_FMT(r.credibleWidth95)),
-                            WB().h('td', { class: 'wb-hint' }, UQ_FMT(r.priorMean)),
-                            WB().h('td', { class: 'wb-hint' },
-                                UQ_NUM(r.stdContraction) != null ? (UQ_NUM(r.stdContraction) * 100).toFixed(1) + ' %' : '—')));
-                    });
-                    holder.appendChild(tbl);
+                const dl = (d && d.delivery) || {};
+                const mf = dl.manifest || {};
+                const ptAll = Array.isArray(d.parameterTable) ? d.parameterTable
+                    : Array.isArray(dl.parameterTable) ? dl.parameterTable : [];
+                if (!ptAll.length) { holder.appendChild(uqSummaryKv(t)); return; }
 
-                    // —— 2. 结果解释与验收(旧版通俗说明) ——
-                    const widths = ps.map(r => UQ_NUM(r.credibleWidth95)).filter(v => v != null);
-                    const shrink = ps.map(r => UQ_NUM(r.stdContraction)).filter(v => v != null);
-                    let wideDesc = '每个参数的可信区间有多宽';
-                    if (widths.length) {
-                        const maxW = Math.max.apply(null, widths), minW = Math.min.apply(null, widths);
-                        const wide = ps.find(r => UQ_NUM(r.credibleWidth95) === maxW);
-                        const narrow = ps.find(r => UQ_NUM(r.credibleWidth95) === minW);
-                        wideDesc = '最宽区间为 ' + (wide && (wide.name || wide.parameter) || '—') + '(宽度 ' + UQ_FMT(maxW)
-                            + '),最窄为 ' + (narrow && (narrow.name || narrow.parameter) || '—') + '(宽度 ' + UQ_FMT(minW) + ')';
-                    }
-                    let shrinkDesc = '数据把参数先验不确定收窄了多少';
-                    if (shrink.length) {
-                        const avg = shrink.reduce((a, b) => a + b, 0) / shrink.length;
-                        shrinkDesc = '平均标准差收缩 ' + (avg * 100).toFixed(1) + '%,收缩越大说明数据对参数的约束越强';
-                    }
-                    const items = [['可信范围', wideDesc], ['数据约束强度', shrinkDesc]];
-                    const ul = WB().h('ul', { style: 'list-style:none;padding:0;margin:0' });
-                    items.forEach(([k, v]) => ul.appendChild(WB().h('li', { style: 'margin:4px 0' },
-                        WB().h('b', null, k + ':'), WB().h('span', { class: 'wb-hint', style: 'margin:0 0 0 6px' }, v))));
-                    holder.appendChild(WB().h('div', { class: 'wb-section-title', style: 'margin:16px 0 6px' }, '结果解释与验收'));
-                    holder.appendChild(ul);
+                /* —— 顶部摘要(真实manifest字段) —— */
+                const metricGrid = WB().h('div', { style: 'display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:10px 0 4px' });
+                const fmtDur = s => {
+                    const n = UQ_NUM(s); if (n == null) return '—';
+                    return n >= 3600 ? (n / 3600).toFixed(2) + ' 小时' : n >= 60 ? (n / 60).toFixed(1) + ' 分钟' : n.toFixed(0) + ' 秒';
+                };
+                [
+                    ['正式状态', mf.formal_status === 'FORMAL_ACCEPTED' ? '正式验收通过' : (mf.formal_status || '—')],
+                    ['参数维度 / 后验样本', (mf.parameter_count || ptAll.length) + ' / ' + (mf.sample_count != null ? mf.sample_count : '—')],
+                    ['后验有效样本量 ESS', mf.posterior_ess != null ? Number(mf.posterior_ess).toFixed(1) : '—'],
+                    ['实际计算耗时', t.uqStartedAt && t.uqFinishedAt ? fmtDur((t.uqFinishedAt - t.uqStartedAt) / 1000) : '—']
+                ].forEach(([k, v]) => metricGrid.appendChild(WB().h('div',
+                    { style: 'background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:12px 16px' },
+                    WB().h('div', { class: 'wb-hint', style: 'margin:0 0 4px' }, k),
+                    WB().h('div', { style: 'font-size:18px;font-weight:700' }, String(v)))));
+                holder.appendChild(metricGrid);
+                holder.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin:6px 0 0' },
+                    '运行 ' + (mf.run_id || t.uqRunId || '—') + ' · 方法' + (mf.method_id || '—')
+                    + ' · 确定性基准 ' + (mf.deterministic_run_id || '—')
+                    + ' · 完成于 ' + (mf.completed_at || '—')
+                    + ' · 最大归一化权重 ' + (mf.maximum_normalized_weight != null ? Number(mf.maximum_normalized_weight).toFixed(4) : '—')));
+
+                /* —— 按baseName分族(新版数据自带分组;常量类合并一族) —— */
+                const families = [];
+                const famIdx = {};
+                ptAll.forEach(p => {
+                    const isConst = p.groupKind === 'constant' || p.groupKind === 'health_constant';
+                    const fam = isConst ? '常量与装车参数' : String(p.baseName || p.name || '—');
+                    if (famIdx[fam] == null) { famIdx[fam] = families.length; families.push({ name: fam, rows: [], axis: p.axisName, unit: p.unit, kind: isConst ? 'constant' : p.groupKind }); }
+                    families[famIdx[fam]].rows.push(p);
+                });
+                if (!state.uqFam || famIdx[state.uqFam] == null) state.uqFam = families[0].name;
+
+                const grid = WB().h('div', { style: 'display:grid;grid-template-columns:1fr 320px;gap:18px;margin-top:14px;align-items:start' });
+                const left = WB().h('div', null);
+                const right = WB().h('div', null);
+                grid.appendChild(left);
+                grid.appendChild(right);
+                holder.appendChild(grid);
+
+                /* 左:参数95%置信区间图(分族页签)+ 当前族明细表 */
+                left.appendChild(WB().h('div', { class: 'wb-section-title', style: 'margin-bottom:2px' }, '参数 95% 置信区间图'));
+                left.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin:0 0 8px' },
+                    '区间条=95%置信区间,圆点=后验中心,红色竖线标记=确定性辨识结果;横坐标为各参数。'));
+                const tabRow = WB().h('div', { style: 'display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px' });
+                families.forEach(f => {
+                    tabRow.appendChild(WB().h('button', {
+                        class: 'wb-btn ' + (state.uqFam === f.name ? 'wb-btn-primary' : 'wb-btn-outline'),
+                        style: 'padding:3px 12px;font-size:12px',
+                        onclick: () => { state.uqFam = f.name; renderBody(); }
+                    }, f.name + '(' + f.rows.length + ')'));
+                });
+                left.appendChild(tabRow);
+                const fam = families[famIdx[state.uqFam]] || families[0];
+                const chartHost = WB().h('div', { style: 'width:100%;height:' + Math.max(220, fam.rows.length * 34 + 90) + 'px' });
+                left.appendChild(chartHost);
+                const rows = fam.rows.map(p => ({
+                    name: fam.kind === 'constant' ? String(p.name) : (String(p.name).replace(/_node\d+$/, '') + '@' +
+                        (UQ_NUM(p.coordinate) != null ? Number(p.coordinate).toFixed(3) : String(p.coordinate))),
+                    q025: UQ_NUM(p.posteriorQ025), q975: UQ_NUM(p.posteriorQ975),
+                    center: UQ_NUM(p.posteriorMedian != null ? p.posteriorMedian : p.posteriorMean),
+                    det: UQ_NUM(p.deterministicEstimate)
+                })).filter(x => x.q025 != null && x.q975 != null);
+                // 延迟到DOM挂载后初始化(首次renderBody时容器尚未入文档)
+                setTimeout(() => ensureEcharts(() => renderUqIntervalChart(chartHost, rows)), 0);
+
+                const tbl = WB().h('table', { class: 'wb-table', style: 'margin-top:12px' },
+                    WB().h('tr', null, ['参数', (fam.axis || '坐标') + (fam.unit && fam.unit !== '1' ? ' / ' + fam.unit : ''),
+                        '先验σ', '确定性估计', '后验均值', '后验中位数', '95%区间', '区间宽度', '标准差收缩']
+                        .map(x => WB().h('th', null, x))));
+                fam.rows.forEach(p => {
+                    const lo = UQ_NUM(p.posteriorQ025), hi = UQ_NUM(p.posteriorQ975);
+                    tbl.appendChild(WB().h('tr', null,
+                        WB().h('td', null, String(p.name)),
+                        WB().h('td', { class: 'wb-hint' }, UQ_NUM(p.coordinate) != null ? Number(p.coordinate).toFixed(3) : '—'),
+                        WB().h('td', { class: 'wb-hint' }, UQ_FMT(p.priorSigma)),
+                        WB().h('td', null, UQ_FMT(p.deterministicEstimate)),
+                        WB().h('td', null, UQ_FMT(p.posteriorMean)),
+                        WB().h('td', { class: 'wb-hint' }, UQ_FMT(p.posteriorMedian)),
+                        WB().h('td', null, (lo == null || hi == null) ? '—' : '[' + UQ_FMT(lo) + ', ' + UQ_FMT(hi) + ']'),
+                        WB().h('td', { class: 'wb-hint' }, UQ_FMT(p.credibleWidth95)),
+                        WB().h('td', { class: 'wb-hint' },
+                            UQ_NUM(p.stdContraction) != null ? (UQ_NUM(p.stdContraction) * 100).toFixed(1) + ' %' : '—')));
+                });
+                left.appendChild(tbl);
+
+                /* 右:结果解释与验收(真实manifest质量字段) */
+                const items = [];
+                let credibleDesc = '每个参数的可信区间有多宽';
+                const widths = ptAll.map(x => UQ_NUM(x.credibleWidth95)).filter(v => v != null);
+                if (widths.length) {
+                    const maxW = Math.max.apply(null, widths), minW = Math.min.apply(null, widths);
+                    const wide = ptAll.find(x => UQ_NUM(x.credibleWidth95) === maxW);
+                    const narrow = ptAll.find(x => UQ_NUM(x.credibleWidth95) === minW);
+                    credibleDesc = '最宽 ' + ((wide && wide.name) || '—') + '(宽度 ' + UQ_FMT(maxW)
+                        + '),最窄 ' + ((narrow && narrow.name) || '—') + '(宽度 ' + UQ_FMT(minW) + ')';
+                }
+                items.push(['可信范围', credibleDesc]);
+                const shrink = ptAll.map(x => UQ_NUM(x.stdContraction)).filter(v => v != null);
+                items.push(['数据约束强度', shrink.length
+                    ? '平均标准差收缩 ' + (shrink.reduce((a, b) => a + b, 0) / shrink.length * 100).toFixed(1)
+                    + '%;收缩大表示数据对该参数约束强' : '—']);
+                const passTxt = mf.formal_posterior_passed === true && mf.posterior_prediction_passed === true
+                    ? '后验与预测区间验收均通过'
+                    : mf.formal_posterior_passed === true ? '后验验收通过;预测区间未通过'
+                    : mf.formal_posterior_passed === false ? '后验验收未通过;区间仅供诊断' : '—';
+                items.push(['统计状态', passTxt + (mf.uncertainty_quality === 'SINGLE_RUN_SMC_RESULT'
+                    ? ';单次SMC运行结果,区间稳定性与统计校准未经多次运行确认' : '')]);
+                items.push(['预测影响', '区间' + (mf.measurement_uncertainty_included === true ? '已包含' : '未包含')
+                    + '独立测量-模型偏差;范围=' + (mf.prediction_uncertainty_scope === 'joint_explicit_parameters_and_independent_measurement_model_discrepancy'
+                    ? '显式参数与测量偏差联合传播' : (mf.prediction_uncertainty_scope || '—'))]);
+                const ul = WB().h('ul', { style: 'list-style:none;padding:0;margin:6px 0 0' });
+                items.forEach(([title, desc]) => {
+                    const li = WB().h('li', { style: 'display:flex;gap:10px;margin-bottom:12px;align-items:flex-start' });
+                    li.appendChild(WB().h('span', {
+                        style: 'flex-shrink:0;width:20px;height:20px;border-radius:50%;background:#0e7490;color:#fff;'
+                            + 'display:inline-flex;align-items:center;justify-content:center;font-size:12px;margin-top:2px'
+                    }, '✓'));
+                    li.appendChild(WB().h('div', null,
+                        WB().h('div', { style: 'font-weight:700;font-size:13px' }, title),
+                        WB().h('div', { class: 'wb-hint', style: 'margin-top:2px;line-height:1.6' }, desc)));
+                    ul.appendChild(li);
+                });
+                right.appendChild(WB().h('div', { class: 'wb-section-title', style: 'margin-bottom:4px' }, '结果解释与验收'));
+                right.appendChild(ul);
+                right.appendChild(WB().h('div', { style: 'background:#f8fafc;border:1px solid #e5e7eb;border-radius:6px;padding:10px 12px;margin-top:10px' },
+                    WB().h('div', { class: 'wb-hint', style: 'margin:0;line-height:1.7' },
+                        '本页展示参数后验与95%置信区间(来自交付Excel恢复的联合后验);'
+                        + '训练/测试输出预测区间与分阶段耗时在任务result.mat与执行记录中,不在本页重复计算。')));
+            }
+
+            /** echarts按需加载(program-run同款库,static/lib/echarts)。 */
+            function ensureEcharts(cb) {
+                if (window.echarts) { cb(window.echarts); return; }
+                if (!window.__wbEchartsLoading) {
+                    window.__wbEchartsLoading = true;
+                    const s = document.createElement('script');
+                    s.src = './lib/echarts/echarts.min.js';
+                    s.onload = () => cb(window.echarts);
+                    s.onerror = () => { window.__wbEchartsLoading = false; };
+                    document.head.appendChild(s);
                 } else {
-                    holder.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin:8px 0' },
-                        '交付Excel中未包含参数摘要表(ParameterSummary);完整结果以下载Excel为准。'));
+                    const timer = setInterval(() => {
+                        if (window.echarts) { clearInterval(timer); cb(window.echarts); }
+                    }, 120);
                 }
+            }
 
-                // —— 3. 训练输出区间与测量对照(01-10;交付 TrainingIntervals 表) ——
-                const ti = uqTable(d, /trainingintervals/i, /measured|observed|output|interval|lower/i);
-                if (ti) {
-                    holder.appendChild(WB().h('div', { class: 'wb-section-title', style: 'margin:16px 0 6px' },
-                        '训练输出区间与测量对照(参数引起的输出变化,非完整测量散布)'));
-                    holder.appendChild(WB().dataTable(ti, { maxRows: 20 }));
-                }
-                const vi = uqTable(d, /testintervals/i, /measured|observed|output|interval|lower/i);
-                if (vi) {
-                    holder.appendChild(WB().h('div', { class: 'wb-section-title', style: 'margin:16px 0 6px' },
-                        '独立测试输出区间与测量对照'));
-                    holder.appendChild(WB().dataTable(vi, { maxRows: 20 }));
-                }
-                if (!ps && !ti && !vi) holder.appendChild(uqSummaryKv(t));
+            /** 水平区间图:透明下界堆叠+95%区间条+后验中心圆点+确定性方块标记(旧版同款呈现,数据为新版字段)。 */
+            function renderUqIntervalChart(host, rows) {
+                if (!window.echarts || !host || !rows.length) return;
+                const chart = window.echarts.init(host, null, { renderer: 'canvas' });
+                const lower = rows.map(x => (x.q025 != null && x.q975 != null && x.q975 >= x.q025) ? x.q025 : Math.min(x.q025, x.q975));
+                const width = rows.map(x => Math.abs(x.q975 - x.q025) || 1e-9);
+                chart.setOption({
+                    animation: false,
+                    tooltip: {
+                        trigger: 'axis', axisPointer: { type: 'shadow' },
+                        formatter: params => {
+                            const x = rows[params[0].dataIndex]; if (!x) return '';
+                            return '<div style="font-size:12px">' + x.name + '</div>'
+                                + '<div style="font-size:11px;color:#666">95%区间:[' + UQ_FMT(x.q025) + ', ' + UQ_FMT(x.q975) + ']</div>'
+                                + '<div style="font-size:11px;color:#666">后验中心:' + UQ_FMT(x.center) + '</div>'
+                                + '<div style="font-size:11px;color:#666">确定性辨识结果:' + UQ_FMT(x.det) + '</div>';
+                        }
+                    },
+                    legend: { data: ['95%置信区间', '后验中心', '确定性辨识结果'], left: 'center', bottom: 0, itemGap: 16, textStyle: { fontSize: 11 } },
+                    grid: { left: 150, right: 40, top: 12, bottom: 55 },
+                    xAxis: { type: 'value', scale: true, splitLine: { show: true, lineStyle: { color: '#f0f0f0' } }, axisLabel: { fontSize: 10 } },
+                    yAxis: { type: 'category', data: rows.map(x => x.name), inverse: true, axisLabel: { fontSize: 10 }, axisLine: { show: false }, axisTick: { show: false } },
+                    series: [
+                        { name: '置信下界', type: 'bar', stack: 'interval', data: lower, itemStyle: { color: 'transparent' }, silent: true, z: 1 },
+                        { name: '95%置信区间', type: 'bar', stack: 'interval', data: width, itemStyle: { color: 'rgba(60,140,190,0.55)' }, barWidth: 12, silent: true, z: 2 },
+                        { name: '后验中心', type: 'scatter', data: rows.map((x, i) => [x.center, i]), symbol: 'circle', symbolSize: 8, itemStyle: { color: '#fff', borderColor: '#2b6b95', borderWidth: 2 }, z: 3 },
+                        { name: '确定性辨识结果', type: 'scatter', data: rows.map((x, i) => [x.det, i]), symbol: 'rect', symbolSize: [3, 16], itemStyle: { color: '#d04e4e' }, z: 4 }
+                    ]
+                });
             }
 
             /** 兜底摘要(精选中文卡;明细JSON生成失败时依然可读,绝不dump原始键值)。 */
@@ -2047,8 +2170,10 @@
                         : (resp.data.tasks || []).filter(x => x.kind === want);
                     if (tasks.length) {
                         state.task = tasks[0];
-                        state.tab = state.task.status === 'COMPLETED' ? 'result'
-                            : (state.task.trainingFile ? 'run' : 'data');
+                        if (!state.tabFromOpen) {
+                            state.tab = state.task.status === 'COMPLETED' ? 'result'
+                                : (state.task.trainingFile ? 'run' : 'data');
+                        } // 打开时指定过页签(如记录页直达UQ)则保持,不被默认路由覆盖
                         if (state.task.status === 'RUNNING' || state.task.status === 'PREPARING' || state.task.status === 'STOP_REQUESTED') {
                             startPolling();
                         }

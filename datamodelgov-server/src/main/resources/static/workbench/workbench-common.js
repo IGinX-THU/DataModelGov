@@ -287,11 +287,13 @@ window.Workbench = (() => {
     function toNum(v) { const n = parseFloat(v); return isFinite(n) ? n : null; }
 
 
+    /* 项目概况(图01-02版式为基准;说明书2.1要求的"数据文件/待处理异常"作为增补区置于下方) */
     pages['modeling.overview'] = (ctx) => {
         const p = ctx.project;
-        const wrap = h('div', null, pageHeader('项目概况', p.name + ' / 个性化自适应建模'));
+        const wrap = h('div', null, pageHeader('项目概况',
+            (p.engineId || '—') + ' ' + p.name + ' / 个性化自适应建模'));
 
-        // 建模任务(真实任务列表,无演示数据)
+        // —— 建模任务(01-02:右上双按钮 + 五列表格 + 打开任务/导入模型) ——
         const tableHolder = h('div', null, h('div', { class: 'wb-empty' }, '正在加载任务...'));
         wrap.appendChild(h('div', { class: 'wb-section' },
             h('div', { class: 'wb-section-head' },
@@ -300,19 +302,22 @@ window.Workbench = (() => {
                     h('button', { class: 'wb-btn wb-btn-primary',
                         onclick: () => ctx.enterTask({ id: 'steady', name: '基础稳态点建模' }) }, '+ 基础稳态点建模'),
                     h('button', { class: 'wb-btn wb-btn-outline',
-                        onclick: () => ctx.enterTask({ id: 'steady_update', name: '新增试车稳态更新', forceCreate: true }) }, '新增试车更新'))),
+                        onclick: () => ctx.enterTask({ id: 'steady_update', name: '新增试车稳态更新' }) }, '新增试车更新'))),
             tableHolder,
             h('div', { class: 'wb-actions-row' },
                 h('button', { class: 'wb-btn wb-btn-outline', onclick: () => ctx.enterTask({ id: 'steady', name: '基础稳态点建模' }) }, '打开任务'),
                 h('button', { class: 'wb-btn wb-btn-outline', onclick: () => importModel(ctx) }, '导入模型'))));
 
-        // 计算基准
-        const rows = [
+        // —— 本任务的计算基准(01-02:两个只读字段 + 属性/内容表 + 选择预测模型/运行记录) ——
+        const baseRows = h('table', { class: 'wb-table', style: 'margin-top:14px' },
+            h('tr', null, h('th', { style: 'width:180px' }, '属性'), h('th', null, '内容')));
+        [
             ['来源', '当前选定运行包;初值由算法配置返回'],
             ['导入已有成果', '进入模型成果;不自动作为本任务初值'],
-            ['不确定性评估', '完成辨识并登记模型成果后开放'],
-            ['当前任务', '从上方任务表选择或新建']
-        ];
+            ['不确定性评估', '尚未生成个性化模型'],
+            ['当前任务', '—']
+        ].forEach(r => baseRows.appendChild(h('tr', null,
+            h('td', { style: 'color:#6b7280' }, r[0]), h('td', null, r[1]))));
         wrap.appendChild(h('div', { class: 'wb-section' },
             h('div', { class: 'wb-section-title', style: 'margin-bottom:12px' }, '本任务的计算基准'),
             h('div', { class: 'wb-card' },
@@ -321,81 +326,122 @@ window.Workbench = (() => {
                         h('input', { readonly: '', value: 'B00 · 当前配套三部件基准' })),
                     h('div', { class: 'wb-field' }, h('label', null, '发动机 / 模型模式'),
                         h('input', { readonly: '', value: (p.engineId || '—') + ' / 三部件' }))),
-                h('table', { class: 'wb-table', style: 'margin-top:14px' },
-                    rows.map(r => h('tr', null, h('td', { style: 'width:180px;color:#6b7280' }, r[0]), h('td', null, r[1]))))),
+                baseRows),
             h('div', { class: 'wb-actions-row' },
                 h('button', { class: 'wb-btn wb-btn-outline', onclick: () => ctx.navigate('predictions') }, '选择预测模型'),
                 h('button', { class: 'wb-btn wb-btn-outline', onclick: () => ctx.navigate('records') }, '运行记录'))));
 
-        loadOverviewTasks(ctx, tableHolder);
+        // —— 增补(说明书2.1):数据文件 / 待处理异常 ——
+        const filesHolder = h('div', null);
+        const issuesHolder = h('div', null);
+        wrap.appendChild(h('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:18px' },
+            h('div', { class: 'wb-section' },
+                h('div', { class: 'wb-section-head' }, h('div', { class: 'wb-section-title' }, '数据文件')),
+                filesHolder),
+            h('div', { class: 'wb-section' },
+                h('div', { class: 'wb-section-head' }, h('div', { class: 'wb-section-title' }, '待处理异常')),
+                issuesHolder)));
+
+        loadOverviewData(ctx, tableHolder, baseRows, filesHolder, issuesHolder);
         return wrap;
     };
 
-function loadOverviewTasks(ctx, holder) {
+    const OV_KIND = { steady: '稳态试车建模', steady_update: '稳态更新', transient_update: '过渡态试车建模',
+        flight_steady: '稳态飞参建模', flight_transient: '过渡态飞参建模', evolution: '模型自演化' };
+    const OV_BIZ = { steady: 'steady', steady_update: 'steady_update', transient_update: 'transient',
+        flight_steady: 'flightSteady', flight_transient: 'flightTransient', evolution: 'evolution' };
+
+    function loadOverviewData(ctx, tasksHolder, baseRows, filesHolder, issuesHolder) {
         if (!ctx.project || !ctx.project.id) {
-            console.warn('项目信息不完整:', ctx.project);
-            holder.innerHTML = '';
-            holder.appendChild(h('div', { class: 'wb-empty' }, '本地演示项目无任务;请从项目入口进入真实项目。'));
+            [tasksHolder, filesHolder, issuesHolder].forEach(hd => {
+                hd.innerHTML = '';
+                hd.appendChild(h('div', { class: 'wb-empty' }, '本地演示项目无数据;请从项目入口进入真实项目。'));
+            });
             return;
         }
-        
-        // 先检查基本API是否可用
-        window.AppConfig.engineGet('projects')
+        window.AppConfig.engineGet('projects/detail', { projectId: ctx.project.id })
             .then(resp => {
-                console.log('项目列表API响应:', resp);
-                
-                // 修复：只使用查询参数，不在路径中传参
-                const apiUrl = 'projects/detail';
-                console.log('请求项目详情API:', apiUrl, '参数:', { projectId: ctx.project.id });
-                
-                return window.AppConfig.engineGet(apiUrl, { projectId: ctx.project.id });
-            })
-            .then(resp => {
-                console.log('项目详情响应:', resp);
-                
-                const tasks = resp && resp.data && Array.isArray(resp.data.tasks)
-                    ? resp.data.tasks.filter(t => t.kind === 'steady') : [];
-                const models = resp && resp.data && Array.isArray(resp.data.models) ? resp.data.models : [];
-                
-                console.log('过滤后的任务:', tasks);
-                console.log('模型:', models);
-                
-                holder.innerHTML = '';
-                if (!tasks.length) {
-                    holder.appendChild(h('div', { class: 'wb-empty' },
+                const d = resp && (resp.success || resp.code === 200) && resp.data ? resp.data : {};
+                const tasks = Array.isArray(d.tasks) ? d.tasks : [];
+                const models = Array.isArray(d.models) ? d.models : [];
+                const sorted = tasks.slice().sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+                const openTask = tk => { window.__WB_OPEN_TASK__ = tk.id; ctx.enterTask({ id: OV_BIZ[tk.kind] || 'steady', name: tk.name }); };
+
+                /* 建模任务表(01-02五列:任务名称/任务类型/最近运行/状态/模型成果;全类型,最近在前) */
+                tasksHolder.innerHTML = '';
+                if (!sorted.length) {
+                    tasksHolder.appendChild(h('div', { class: 'wb-empty' },
                         '暂无建模任务;点击右上角"+ 基础稳态点建模"新建。'));
-                    return;
+                } else {
+                    tasksHolder.appendChild(h('table', { class: 'wb-table' },
+                        h('tr', null, ['任务名称', '任务类型', '最近运行', '状态', '模型成果'].map(t => h('th', null, t))),
+                        sorted.slice(0, 5).map(tk => {
+                            const model = models.find(mo => mo.taskId === tk.id);
+                            return h('tr', { class: 'clickable', onclick: () => openTask(tk) },
+                                h('td', { class: 'wb-link' }, tk.name || tk.id),
+                                h('td', { class: 'wb-hint' }, OV_KIND[tk.kind] || tk.kind),
+                                h('td', null, tk.runId || '—'),
+                                h('td', null, statusTag(tk.status, tk.status === 'COMPLETED' ? 'teal' : tk.status === 'FAILED' ? 'red' : 'amber')),
+                                h('td', { class: 'wb-hint' }, model ? model.name : '尚未生成'));
+                        })));
                 }
-                holder.appendChild(h('table', { class: 'wb-table' },
-                    h('tr', null, ['任务名称', '任务类型', '最近运行', '状态', '模型成果'].map(t => h('th', null, t))),
-                    tasks.map(t => {
-                        const model = models.find(mo => mo.taskId === t.id);
-                        return h('tr', {
-                            class: 'clickable',
-                            onclick: () => {
-                                // 01-23:打开既有任务,不是再建一个
-                                window.__WB_OPEN_TASK__ = t.id;
-                                ctx.enterTask({ id: 'steady', name: t.name || '稳态建模任务' });
-                            }
-                        },
-                            h('td', { class: 'wb-link' }, t.name || t.id),
-                            h('td', null, '稳态试车建模'),
-                            h('td', null, t.runId || '—'),
-                            h('td', null, statusTag(t.status, t.status === 'COMPLETED' ? 'teal' : (t.status === 'FAILED' ? 'red' : 'amber'))),
-                            h('td', null, model ? model.name : '尚未生成'));
-                    })));
+
+                /* 计算基准"当前任务"行(01-02):最近任务 / 2.4基础稳态点建模 */
+                const cur = sorted[0];
+                const curRow = baseRows.querySelectorAll('tr');
+                if (curRow[4]) {
+                    curRow[4].children[1].textContent = cur
+                        ? ((cur.name || cur.id) + ' / ' + (OV_KIND[cur.kind] || cur.kind))
+                        : '—';
+                }
+
+                /* 数据文件(说明书2.1/2.3:任务已上传输入文件去重,可反查来源任务) */
+                filesHolder.innerHTML = '';
+                const files = [];
+                tasks.forEach(tk => [
+                    [tk.trainingFile, '训练均值'], [tk.testFile, '独立测试'], [tk.historyFile, '试车历程'],
+                    [tk.historyTestFile, '测试历程'], [tk.identificationFile, '飞参训练'], [tk.validationFile, '飞参验证']
+                ].forEach(([fp, label]) => {
+                    if (!fp) return;
+                    const name = String(fp).split(/[\\/]/).pop();
+                    if (!files.some(f => f.name === name)) files.push({ name, label, taskId: tk.id, kind: tk.kind });
+                }));
+                if (!files.length) {
+                    filesHolder.appendChild(h('div', { class: 'wb-empty' }, '暂无数据文件;上传后在此按文件反查来源任务。'));
+                } else {
+                    filesHolder.appendChild(h('table', { class: 'wb-table' },
+                        h('tr', null, ['文件', '用途', '来源任务'].map(t => h('th', null, t))),
+                        files.slice(0, 6).map(f => h('tr', { class: 'clickable', onclick: () => {
+                            const tk = tasks.find(t2 => t2.id === f.taskId);
+                            if (tk) openTask(tk);
+                        } },
+                            h('td', { class: 'wb-link', style: 'max-width:220px;word-break:break-all' }, f.name),
+                            h('td', { class: 'wb-hint' }, f.label),
+                            h('td', { class: 'wb-hint' }, OV_KIND[f.kind] || '—')))));
+                    if (files.length > 6) filesHolder.appendChild(h('div', { class: 'wb-hint', style: 'margin-top:6px' },
+                        '共 ' + files.length + ' 个数据文件;文件反查模型见模型成果详情(02-04)。'));
+                }
+
+                /* 待处理异常(说明书2.1:需要处理的异常) */
+                issuesHolder.innerHTML = '';
+                const issues = tasks.filter(tk => tk.status === 'FAILED');
+                if (!issues.length) {
+                    issuesHolder.appendChild(h('div', { class: 'wb-empty' }, '无待处理异常。'));
+                } else {
+                    issuesHolder.appendChild(h('table', { class: 'wb-table' },
+                        h('tr', null, ['任务', '类型', '异常信息'].map(t => h('th', null, t))),
+                        issues.slice(0, 6).map(tk => h('tr', { class: 'clickable', onclick: () => openTask(tk) },
+                            h('td', { class: 'wb-link' }, tk.name || tk.id),
+                            h('td', { class: 'wb-hint' }, OV_KIND[tk.kind] || tk.kind),
+                            h('td', { class: 'wb-hint', style: 'word-break:break-all;max-width:300px' },
+                                String(tk.message || tk.prepMessage || '执行失败;详情见任务页日志'))))));
+                }
             })
             .catch(error => {
-                console.error('项目详情API调用失败:', error);
-                holder.innerHTML = '';
-                
-                // 显示更详细的错误信息
-                const errorMsg = error.message || '未知错误';
-                const errorDetail = h('div', { style: 'font-size:12px;color:#666;margin-top:8px' }, 
-                    '错误详情: ' + errorMsg + (error.stack ? '\n' + error.stack.substring(0, 200) + '...' : ''));
-                
-                holder.appendChild(h('div', { class: 'wb-empty' }, 
-                    '任务列表加载失败;请确认服务可用。', errorDetail));
+                [tasksHolder, filesHolder, issuesHolder].forEach(hd => {
+                    hd.innerHTML = '';
+                    hd.appendChild(h('div', { class: 'wb-empty' }, '加载失败:' + (error.message || error)));
+                });
             });
     }
 
@@ -1453,45 +1499,78 @@ function loadOverviewTasks(ctx, holder) {
         const selHolder = h('div', null);
         const cmpHolder = h('div', null);
         const checked = {};
+        const listFilter = { status: '', kw: '' };
+        const statusSel = h('select', { style: 'width:100%' },
+            h('option', { value: '' }, '全部'),
+            h('option', { value: 'running' }, '运行中'),
+            h('option', { value: 'ok' }, '完整'),
+            h('option', { value: 'failed' }, '失败'));
+        const kwInput = h('input', { placeholder: '搜索运行编号' });
+        statusSel.addEventListener('change', () => { listFilter.status = statusSel.value; if (window.__WB_SIM_ROWS__) renderList(window.__WB_SIM_ROWS__); });
+        kwInput.addEventListener('input', () => { listFilter.kw = kwInput.value.trim(); if (window.__WB_SIM_ROWS__) renderList(window.__WB_SIM_ROWS__); });
         wrap.appendChild(h('div', { class: 'wb-section' },
             h('div', { class: 'wb-section-head' },
                 h('div', { class: 'wb-section-title' }, (ctx.project.engineId || 'E') + ' 仿真记录'),
                 h('button', { class: 'wb-btn wb-btn-outline', onclick: () => ctx.navigate('records') }, '刷新')),
+            h('div', { class: 'wb-form-grid', style: 'grid-template-columns:180px 1fr;margin-bottom:12px;align-items:end' },
+                h('div', { class: 'wb-field' }, h('label', null, '状态筛选'), statusSel),
+                h('div', { class: 'wb-field' }, h('label', null, '名称搜索'), kwInput)),
             listHolder));
         wrap.appendChild(selHolder);
         wrap.appendChild(cmpHolder);
 
-        function renderList(rows) {
+        function renderList(all) {
             listHolder.innerHTML = '';
-            if (!rows.length) {
+            const kw = (listFilter.kw || '').toLowerCase();
+            const rows = all.filter(r => {
+                if (listFilter.status === 'ok' && r.phase !== 'ENDED') return false;
+                if (listFilter.status === 'failed' && r.phase !== 'FAILED') return false;
+                if (listFilter.status === 'running' && !['RUNNING', 'PAUSED', 'PREPARING', 'READY'].includes(r.phase)) return false;
+                if (kw && !String(r.runId || '') .toLowerCase().includes(kw)) return false;
+                return true;
+            });
+            if (!all.length) {
                 listHolder.appendChild(h('div', { class: 'wb-empty' },
-                    '暂无仿真记录——在"多系统联合仿真"发起准备并运行后,每次执行在此留档(以运行编号为身份)。'));
+                    '暂无仿真记录——在"多系统联合仿真"或"全模式仿真"发起准备并运行后,每次执行在此留档(以运行编号为身份)。'));
+                return;
+            }
+            if (!rows.length) {
+                listHolder.appendChild(h('div', { class: 'wb-empty' }, '当前筛选条件下无记录。'));
                 return;
             }
             const tbl = h('table', { class: 'wb-table' },
-                h('tr', null, ['', '运行', '输入与空气配置', '仿真时长', '记录状态', '操作'].map((x, i) =>
+                h('tr', null, ['', '运行', '类型', '输入与配置', '执行时间', '记录状态', '操作'].map((x, i) =>
                     h('th', i === 0 ? { style: 'width:34px' } : null, x))));
             rows.forEach(r => {
                 const cfg = r.config || {};
+                const isFm = r._kind === 'fm';
                 const cb = h('input', { type: 'checkbox' });
                 if (checked[r.runId]) cb.checked = true;
                 cb.addEventListener('change', () => {
                     if (cb.checked) checked[r.runId] = true; else delete checked[r.runId];
-                    renderActions(rows);
+                    renderActions(all);
                 });
-                const stateTxt = r.phase === 'ENDED' ? '完整' : r.phase === 'FAILED' ? '人工结束/失败' : r.phase;
+                const stateTxt = r.phase === 'ENDED' ? '完整' : r.phase === 'FAILED' ? '人工结束/失败'
+                    : r.phase === 'CLOSED' ? '已关闭' : r.phase;
+                const durTxt = isFm
+                    ? (cfg.duration != null && cfg.duration !== '' ? cfg.duration + ' s'
+                        : (r.createdAt && r.finishedAt ? fmtSpan(r.finishedAt - r.createdAt) : '—'))
+                    : (cfg.duration != null ? Number(cfg.duration).toFixed(3) + ' s' : '—');
                 tbl.appendChild(h('tr', null,
-                    h('td', { onclick: ev => ev.stopPropagation() }, cb),
+                    h('td', { onclick: ev => ev.stopPropagation() }, isFm ? h('span', { class: 'wb-hint' }, '—') : cb),
                     h('td', { style: 'font-weight:600' }, r.runId || '—'),
-                    h('td', { class: 'wb-hint' },
-                        (cfg.loadMode === 'external' ? '外部回灌' : (cfg.externalAir ? '外部回灌' : '人工指令 / 内部引气'))
-                        + ' · ' + (cfg.pace === 'fast' ? '尽快计算' : '实时节奏')),
-                    h('td', null, cfg.duration != null ? Number(cfg.duration).toFixed(3) + ' s' : '—'),
+                    h('td', null, isFm ? '全模式仿真' : '多系统联合仿真'),
+                    h('td', { class: 'wb-hint' }, isFm
+                        ? 'model' + (cfg.modelMode != null ? cfg.modelMode : '—') + ' · ' + ((cfg.fullmode || {}).initialKind || '—')
+                        : ((cfg.loadMode === 'external' ? '外部回灌' : (cfg.externalAir ? '外部回灌' : '人工指令 / 内部引气'))
+                            + ' · ' + (cfg.pace === 'fast' ? '尽快计算' : '实时节奏'))),
+                    h('td', null, durTxt),
                     h('td', null, stateTxt + (r.hasExcel ? ' · Excel可导出' : r.hasResult ? ' · 结果已保存' : '')),
                     h('td', null,
                         h('button', {
                             class: 'wb-btn wb-btn-outline',
                             onclick: () => {
+                                if (isFm) { ctx.navigate('fullmode'); return; }
                                 ctx.navigate('afo');
                                 setTimeout(() => { if (window.__WB_AFO_OPEN__) window.__WB_AFO_OPEN__(r.runId); }, 60);
                             }
@@ -1619,8 +1698,18 @@ function loadOverviewTasks(ctx, holder) {
 
         (async () => {
             try {
-                const resp = await api();
-                renderList(resp && (resp.success || resp.code === 200) && Array.isArray(resp.data) ? resp.data : []);
+                // 多系统联合仿真(AFO)与全模式仿真(FM)两类会话合并留档
+                const [afoResp, fmResp] = await Promise.all([
+                    api(),
+                    window.AppConfig.engineGet('projects/' + encodeURIComponent(pid) + '/testbench/fullmode/sessions').catch(() => null)
+                ]);
+                const afoRows = afoResp && (afoResp.success || afoResp.code === 200) && Array.isArray(afoResp.data)
+                    ? afoResp.data.map(r => Object.assign({ _kind: 'afo' }, r)) : [];
+                const fmRows = fmResp && (fmResp.success || fmResp.code === 200) && Array.isArray(fmResp.data)
+                    ? fmResp.data.map(r => Object.assign({ _kind: 'fm' }, r)) : [];
+                const all = afoRows.concat(fmRows).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+                window.__WB_SIM_ROWS__ = all;
+                renderList(all);
             } catch (e) {
                 listHolder.innerHTML = '';
                 listHolder.appendChild(h('div', { class: 'wb-empty' }, '仿真记录加载失败:' + e.message));
@@ -1629,6 +1718,8 @@ function loadOverviewTasks(ctx, holder) {
         return wrap;
     }
 
+    /** 运行记录(无专属效果图,按旧版simulation-record设计):
+     *  筛选栏(状态筛选/名称搜索/时间范围/搜索) + 记录表(名称/执行时间/起止/状态/错误信息/操作) + 分页。 */
     async function loadRunRecords(ctx, holder) {
         holder.innerHTML = '';
         try {
@@ -1642,53 +1733,101 @@ function loadOverviewTasks(ctx, holder) {
                 ? taskResp.data.tasks : null;
             if (!tasks) throw new Error((taskResp && taskResp.message) || '接口返回异常');
             const uqList = uqResp && uqResp.success && Array.isArray(uqResp.data) ? uqResp.data : [];
-            const predList = predResp && predResp.success && Array.isArray(predResp.data) ? predResp.data : [];
-            if (!tasks.length && !uqList.length && !predList.length) {
-                holder.appendChild(h('div', { class: 'wb-empty' }, '暂无运行记录——发起数据准备、辨识、评估或预测后在此查看。'));
-                return;
-            }
+            const predList = predList0(predResp);
+            function predList0(x) { return x && x.success && Array.isArray(x.data) ? x.data : []; }
+            const KIND_OF = { steady: '稳态辨识', steady_update: '稳态更新', transient_update: '瞬态更新',
+                flight_steady: '稳态飞参', flight_transient: '过渡态飞参', evolution: '自演化' };
+            const KIND_BIZ = { steady: 'steady', steady_update: 'steady_update', transient_update: 'transient',
+                flight_steady: 'flightSteady', flight_transient: 'flightTransient', evolution: 'evolution' };
             const rows = [];
-            tasks.forEach(t => rows.push({
-                kind: '稳态辨识', runId: t.runId || '—', ref: t.name || t.id,
-                status: t.status === 'FAILED' && t.errorKind === 'SAVE_FAILED' ? '保存失败'
-                    : t.status === 'FAILED' && t.errorKind === 'NUMERIC_FAILED' ? '数值失败' : t.status,
-                kindTag: t.status === 'FAILED' ? (t.errorKind === 'SAVE_FAILED' ? ['保存失败', 'amber'] : t.errorKind === 'NUMERIC_FAILED' ? ['数值失败', 'red'] : null) : null,
-                startedAt: t.startedAt, finishedAt: t.finishedAt,
-                note: (t.prepMessage ? '准备:' + t.prepMessage + (t.message ? '；' : '') : '') + (t.message || '—')
+            tasks.forEach(tk => rows.push({
+                kind: KIND_OF[tk.kind] || '稳态辨识', biz: KIND_BIZ[tk.kind] || 'steady',
+                taskId: tk.id,
+                name: (tk.runId || '—') + ' · ' + (tk.name || tk.id),
+                status: tk.status === 'FAILED' && tk.errorKind === 'SAVE_FAILED' ? '保存失败'
+                    : tk.status === 'FAILED' && tk.errorKind === 'NUMERIC_FAILED' ? '数值失败' : tk.status,
+                kindTag: tk.status === 'FAILED' ? (tk.errorKind === 'SAVE_FAILED' ? ['保存失败', 'amber'] : tk.errorKind === 'NUMERIC_FAILED' ? ['数值失败', 'red'] : null) : null,
+                startedAt: tk.startedAt, finishedAt: tk.finishedAt,
+                note: (tk.prepMessage ? '准备:' + String(tk.prepMessage).split('\n')[0] + (tk.message ? '；' : '') : '') + (tk.message || '—')
             }));
             uqList.forEach(r => rows.push({
-                kind: 'UQ评估', runId: r.runId || r.id, ref: '方法' + (r.method || '—') + (r.particleCount ? ' · ' + r.particleCount + '粒子' : ''),
+                kind: 'UQ评估', biz: 'steady', taskId: r.taskId,
+                name: (r.runId || r.id) + ' · 方法' + (r.method || '—') + (r.particleCount ? ' · ' + r.particleCount + '粒子' : ''),
                 status: r.status || '—', kindTag: null,
                 startedAt: r.startedAt, finishedAt: r.finishedAt,
                 note: r.message || '—'
             }));
             predList.forEach(r => rows.push({
-                kind: '输出预测', runId: r.runId || r.id, ref: r.modelName || '—',
+                kind: '输出预测', biz: null, taskId: null,
+                name: (r.runId || r.id) + ' · ' + (r.modelName || '—'),
                 status: r.status || '—', kindTag: null,
                 startedAt: r.createdAt, finishedAt: r.finishedAt,
                 note: (r.message || '—') + (Array.isArray(r.conditions)
                     ? ' · 工况 ' + r.conditions.map(c => c.id + (c.status === 'FAILED' ? '(失败)' : '')).join(' ') : '')
             }));
             rows.sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0));
-            holder.appendChild(h('div', { class: 'wb-hint', style: 'margin-bottom:8px' },
-                '以运行(runId)为维度:每次辨识、评估、预测执行各一条;同一任务多次重跑按运行标识区分,历史只读。'));
-            holder.appendChild(h('table', { class: 'wb-table' },
-                h('tr', null, ['类型', '运行标识', '关联对象', '状态', '开始时间', '结束时间', '耗时', '说明'].map(t => h('th', null, t))),
-                rows.map(rw => {
-                    const st = RUN_STATUS[rw.status] || [rw.status || '—', 'gray'];
-                    const dur = rw.startedAt && rw.finishedAt ? fmtSpan(rw.finishedAt - rw.startedAt) : '—';
-                    return h('tr', null,
-                        h('td', { style: 'font-weight:600;color:#111827' }, rw.kind),
-                        h('td', { class: 'wb-hint' }, rw.runId),
-                        h('td', null, rw.ref),
-                        h('td', null, rw.kindTag
-                            ? [h('span', { style: 'display:inline-flex;margin-right:6px' }, statusTag(rw.kindTag[0], rw.kindTag[1])), statusTag(st[0], st[1])]
-                            : statusTag(st[0], st[1])),
-                        h('td', { class: 'wb-hint' }, rw.startedAt ? new Date(rw.startedAt).toLocaleString() : '—'),
-                        h('td', { class: 'wb-hint' }, rw.finishedAt ? new Date(rw.finishedAt).toLocaleString() : '—'),
-                        h('td', { class: 'wb-hint' }, dur),
-                        h('td', { class: 'wb-hint', style: 'word-break:break-all;max-width:360px' }, rw.note));
-                })));
+
+            /* —— 旧版"结果中心"设计(结果中心/项目结果记录):
+               分类筛选段 + 表格(任务类型/方法或路径/状态/主要产物/操作[打开]) + 已记录注脚 —— */
+            rows.forEach(rw => {
+                rw.cat = rw.kind === 'UQ评估' ? 'uq' : rw.kind === '输出预测' ? 'prediction' : 'identify';
+                rw.artifact = rw.cat === 'uq' ? '后验、可信区间、预测'
+                    : rw.cat === 'prediction' ? '预测中心、可信区间' : '参数、调度曲线、误差';
+            });
+            const SEGMENTS = [['all', '全部'], ['identify', '参数辨识'], ['uq', '不确定性评估'], ['prediction', '工况预测']];
+            const segRow = h('div', { style: 'display:flex;gap:8px;margin-bottom:12px' });
+            const listHolder = h('div', null);
+            let seg = 'all';
+            const apply = () => {
+                const view = seg === 'all' ? rows : rows.filter(rw => rw.cat === seg);
+                listHolder.innerHTML = '';
+                if (!rows.length) {
+                    listHolder.appendChild(h('div', { class: 'wb-empty' }, '尚无运行记录;发起数据准备、辨识、评估或预测后在此留档。'));
+                    return;
+                }
+                if (!view.length) {
+                    listHolder.appendChild(h('div', { class: 'wb-empty' }, '当前分类下无记录。'));
+                    return;
+                }
+                listHolder.appendChild(h('table', { class: 'wb-table' },
+                    h('tr', null, ['任务类型', '方法或路径', '状态', '主要产物', '操作'].map(t => h('th', null, t))),
+                    view.map(rw => {
+                        const st = RUN_STATUS[rw.status] || [rw.status || '—', 'gray'];
+                        return h('tr', null,
+                            h('td', { style: 'font-weight:600' }, rw.kind),
+                            h('td', { class: 'wb-hint', style: 'max-width:340px;word-break:break-all' },
+                                rw.name + (rw.note ? ' · ' + String(rw.note).slice(0, 60) : '')),
+                            h('td', null, rw.kindTag
+                                ? [h('span', { style: 'display:inline-flex;margin-right:6px' }, statusTag(rw.kindTag[0], rw.kindTag[1])), statusTag(st[0], st[1])]
+                                : statusTag(st[0], st[1])),
+                            h('td', { class: 'wb-hint' }, rw.artifact),
+                            h('td', null, h('button', {
+                                class: 'wb-btn wb-btn-primary', style: 'padding:3px 12px;font-size:12px',
+                                onclick: () => {
+                                    if (rw.biz) {
+                                        window.__WB_OPEN_TASK__ = rw.taskId;
+                                        if (rw.cat === 'uq') window.__WB_OPEN_TASK_TAB__ = 'uq'; // UQ记录直达评估页签
+                                        ctx.enterTask({ id: rw.biz });
+                                    } else ctx.navigate('predictions');
+                                }
+                            }, '打开')));
+                    })));
+                listHolder.appendChild(h('div', { class: 'wb-hint', style: 'margin-top:8px' },
+                    '已记录 ' + view.length + ' 条任务执行记录;以运行(runId)为维度,同一任务多次重跑按运行标识区分,历史只读。'));
+            };
+            SEGMENTS.forEach(([key, label]) => {
+                const btn = h('button', { class: 'wb-btn ' + (seg === key ? 'wb-btn-primary' : 'wb-btn-outline') }, label);
+                btn.addEventListener('click', () => { seg = key; paintSegs(); apply(); });
+                btn.dataset.seg = key;
+                segRow.appendChild(btn);
+            });
+            const paintSegs = () => {
+                segRow.querySelectorAll('button').forEach(b =>
+                    b.className = 'wb-btn ' + (b.dataset.seg === seg ? 'wb-btn-primary' : 'wb-btn-outline'));
+            };
+            holder.appendChild(segRow);
+            holder.appendChild(listHolder);
+            apply();
         } catch (e) {
             holder.appendChild(h('div', { class: 'wb-empty' }, '运行记录加载失败:' + e.message));
         }
