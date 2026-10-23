@@ -402,7 +402,10 @@ public class EngineWorkbenchController {
             } else {
                 t.setTrainingFile(dest.getAbsolutePath());
             }
-            String kindTxt = "test".equals(kind) ? "原测试集" : "history".equals(kind) ? "新增训练历程"
+            String kindTxt = "test".equals(kind) ? "原测试集"
+                    : "identification".equals(kind) ? "飞参训练数据"
+                    : "validation".equals(kind) ? "独立测试数据"
+                    : "history".equals(kind) ? "新增训练历程"
                     : "historyTest".equals(kind) ? "新增测试历程" : "原训练均值";
             t.setMessage("已上传" + kindTxt + ": " + safe);
             return Result.success(store.saveTask(t));
@@ -481,7 +484,10 @@ public class EngineWorkbenchController {
             if (denied != null) return Result.error(denied);
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("task", t);
-            out.put("logTail", tc24Service.logTail(tid));
+            // F3/自演化任务的运行日志在 F3FlightService 缓冲中,稳态/TC27 在 Tc24Service;按非空取用
+            java.util.List<String> tail = tc24Service.logTail(tid);
+            if (tail == null || tail.isEmpty()) tail = f3FlightService.logTail(tid);
+            out.put("logTail", tail);
             return Result.success(out);
         } catch (IOException e) {
             return Result.error("读取任务失败: " + e.getMessage());

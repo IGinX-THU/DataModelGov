@@ -136,6 +136,7 @@
         }
 
         _navigate(key) {
+            this._stopActivePage();
             this._navKey = key;
             this._app.querySelectorAll('.wb-nav-item').forEach(n => {
                 n.classList.toggle('active', n.dataset.nav === key);
@@ -147,6 +148,7 @@
         }
 
         _enterTask(business) {
+            this._stopActivePage();
             if (business && (business.id === 'flightSteady' || business.id === 'flightTransient' || business.id === 'evolution')) {
                 this._navKey = 'tasks';
                 this._app.querySelectorAll('.wb-nav-item').forEach(n =>
@@ -188,6 +190,16 @@
                 }));
                 main.scrollTop = 0;
             }
+        }
+
+        /* 切页前停掉旧页面轮询:旧任务的轮询定时器和共享轮询窗口若残留,
+           会不断刷新全局 __WB_ENGINE_POLL_UNTIL__,让新页面被旧任务的状态"顶着"跑 */
+        _stopActivePage() {
+            if (typeof window.__WB_PAGE_STOP__ === 'function') {
+                try { window.__WB_PAGE_STOP__(); } catch (e) { /* 忽略 */ }
+            }
+            window.__WB_PAGE_STOP__ = null;
+            window.__WB_ENGINE_POLL_UNTIL__ = 0;
         }
 
         _switchProject() {

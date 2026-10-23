@@ -604,6 +604,9 @@
         function stopPolling() {
             if (state.timer) { clearInterval(state.timer); state.timer = null; }
         }
+        // 进入业务页固定显示新建视图;只有运行记录/项目概览指定 __WB_OPEN_TASK__ 时才打开既有任务
+        // 页面切换时由 shell 调用,避免旧页轮询残留(跨页串状态通道)
+        window.__WB_PAGE_STOP__ = stopPolling;
 
         renderBody();
         return root;
@@ -897,6 +900,9 @@
             state.timer = setInterval(poll, 4000);
         }
         function stopPolling() { if (state.timer) { clearInterval(state.timer); state.timer = null; } }
+        // 进入业务页固定显示新建视图;只有运行记录/项目概览指定 __WB_OPEN_TASK__ 时才打开既有任务
+        // 页面切换时由 shell 调用,避免旧页轮询残留(跨页串状态通道)
+        window.__WB_PAGE_STOP__ = stopPolling;
 
         renderBody();
         return root;

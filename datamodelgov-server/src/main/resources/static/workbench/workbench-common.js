@@ -300,12 +300,12 @@ window.Workbench = (() => {
                 h('div', { class: 'wb-section-title' }, '建模任务'),
                 h('div', { style: 'display:flex;gap:10px' },
                     h('button', { class: 'wb-btn wb-btn-primary',
-                        onclick: () => ctx.enterTask({ id: 'steady', name: '基础稳态点建模' }) }, '+ 基础稳态点建模'),
+                        onclick: () => ctx.enterTask({ id: 'steady', name: '基础稳态点建模', forceCreate: true }) }, '+ 基础稳态点建模'),
                     h('button', { class: 'wb-btn wb-btn-outline',
-                        onclick: () => ctx.enterTask({ id: 'steady_update', name: '新增试车稳态更新' }) }, '新增试车更新'))),
+                        onclick: () => ctx.enterTask({ id: 'steady_update', name: '新增试车稳态更新', forceCreate: true }) }, '新增试车更新'))),
             tableHolder,
             h('div', { class: 'wb-actions-row' },
-                h('button', { class: 'wb-btn wb-btn-outline', onclick: () => ctx.enterTask({ id: 'steady', name: '基础稳态点建模' }) }, '打开任务'),
+                h('button', { class: 'wb-btn wb-btn-outline', onclick: () => ctx.navigate('records') }, '打开任务'),
                 h('button', { class: 'wb-btn wb-btn-outline', onclick: () => importModel(ctx) }, '导入模型'))));
 
         // —— 本任务的计算基准(01-02:两个只读字段 + 属性/内容表 + 选择预测模型/运行记录) ——
@@ -329,7 +329,8 @@ window.Workbench = (() => {
                 baseRows),
             h('div', { class: 'wb-actions-row' },
                 h('button', { class: 'wb-btn wb-btn-outline', onclick: () => ctx.navigate('predictions') }, '选择预测模型'),
-                h('button', { class: 'wb-btn wb-btn-outline', onclick: () => ctx.navigate('records') }, '运行记录'))));
+                h('button', { class: 'wb-btn wb-btn-outline',
+                    onclick: () => { window.__WB_PREDICT_SCROLL_HISTORY__ = true; ctx.navigate('predictions'); } }, '运行记录'))));
 
         // —— 增补(说明书2.1):数据文件 / 待处理异常 ——
         const filesHolder = h('div', null);
@@ -1453,12 +1454,20 @@ window.Workbench = (() => {
         body.appendChild(h('div', { class: 'wb-section' },
             h('div', { class: 'wb-section-title', style: 'margin-bottom:12px' }, '预测结果'),
             resultHolder));
-        body.appendChild(h('div', { class: 'wb-section' },
+        const historySection = h('div', { class: 'wb-section' },
             h('div', { class: 'wb-section-title', style: 'margin-bottom:12px' }, '预测记录(点击行查看结果)'),
-            historyHolder));
+            historyHolder);
+        body.appendChild(historySection);
         addCondition();
         loadModels();
         loadHistory();
+        // 项目概况"运行记录"按钮跳入时,直接落到预测记录区
+        if (window.__WB_PREDICT_SCROLL_HISTORY__) {
+            delete window.__WB_PREDICT_SCROLL_HISTORY__;
+            setTimeout(() => {
+                try { historySection.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) { /* 忽略 */ }
+            }, 60);
+        }
         return wrap;
     };
 
@@ -1718,115 +1727,89 @@ window.Workbench = (() => {
         return wrap;
     }
 
-    /** 运行记录(无专属效果图,按旧版simulation-record设计):
-     *  筛选栏(状态筛选/名称搜索/时间范围/搜索) + 记录表(名称/执行时间/起止/状态/错误信息/操作) + 分页。 */
+    /** 运行记录:仅建模任务(稳态辨识/稳态更新/瞬态更新/飞参/自演化)的执行历史;
+     *  UQ评估与输出预测各有专属页面,不在此混列;分页与项目列表同款(上一页/页码/下一页/每页条数)。 */
     async function loadRunRecords(ctx, holder) {
         holder.innerHTML = '';
         try {
-            // 运行维度统计:每次执行(稳态辨识/数据准备/UQ评估/输出预测)各一条,以运行标识runId为身份
-            const [taskResp, uqResp, predResp] = await Promise.all([
-                window.AppConfig.engineGet('projects/detail', { projectId: ctx.project.id }),
-                window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id) + '/uq-records').catch(() => null),
-                window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id) + '/predictions').catch(() => null)
-            ]);
+            const taskResp = await window.AppConfig.engineGet('projects/detail', { projectId: ctx.project.id });
             const tasks = taskResp && (taskResp.success || taskResp.code === 200) && taskResp.data && Array.isArray(taskResp.data.tasks)
                 ? taskResp.data.tasks : null;
             if (!tasks) throw new Error((taskResp && taskResp.message) || '接口返回异常');
-            const uqList = uqResp && uqResp.success && Array.isArray(uqResp.data) ? uqResp.data : [];
-            const predList = predList0(predResp);
-            function predList0(x) { return x && x.success && Array.isArray(x.data) ? x.data : []; }
-            const KIND_OF = { steady: '稳态辨识', steady_update: '稳态更新', transient_update: '瞬态更新',
-                flight_steady: '稳态飞参', flight_transient: '过渡态飞参', evolution: '自演化' };
+            /* 任务类型文案与项目概况任务表(OV_KIND)保持一致 */
             const KIND_BIZ = { steady: 'steady', steady_update: 'steady_update', transient_update: 'transient',
                 flight_steady: 'flightSteady', flight_transient: 'flightTransient', evolution: 'evolution' };
-            const rows = [];
-            tasks.forEach(tk => rows.push({
-                kind: KIND_OF[tk.kind] || '稳态辨识', biz: KIND_BIZ[tk.kind] || 'steady',
+            const rows = tasks.map(tk => ({
+                kind: OV_KIND[tk.kind] || tk.kind || '稳态试车建模', biz: KIND_BIZ[tk.kind] || 'steady',
                 taskId: tk.id,
-                name: (tk.runId || '—') + ' · ' + (tk.name || tk.id),
+                name: tk.name || tk.id,
+                runId: tk.runId || '—',
                 status: tk.status === 'FAILED' && tk.errorKind === 'SAVE_FAILED' ? '保存失败'
                     : tk.status === 'FAILED' && tk.errorKind === 'NUMERIC_FAILED' ? '数值失败' : tk.status,
                 kindTag: tk.status === 'FAILED' ? (tk.errorKind === 'SAVE_FAILED' ? ['保存失败', 'amber'] : tk.errorKind === 'NUMERIC_FAILED' ? ['数值失败', 'red'] : null) : null,
                 startedAt: tk.startedAt, finishedAt: tk.finishedAt,
-                note: (tk.prepMessage ? '准备:' + String(tk.prepMessage).split('\n')[0] + (tk.message ? '；' : '') : '') + (tk.message || '—')
-            }));
-            uqList.forEach(r => rows.push({
-                kind: 'UQ评估', biz: 'steady', taskId: r.taskId,
-                name: (r.runId || r.id) + ' · 方法' + (r.method || '—') + (r.particleCount ? ' · ' + r.particleCount + '粒子' : ''),
-                status: r.status || '—', kindTag: null,
-                startedAt: r.startedAt, finishedAt: r.finishedAt,
-                note: r.message || '—'
-            }));
-            predList.forEach(r => rows.push({
-                kind: '输出预测', biz: null, taskId: null,
-                name: (r.runId || r.id) + ' · ' + (r.modelName || '—'),
-                status: r.status || '—', kindTag: null,
-                startedAt: r.createdAt, finishedAt: r.finishedAt,
-                note: (r.message || '—') + (Array.isArray(r.conditions)
-                    ? ' · 工况 ' + r.conditions.map(c => c.id + (c.status === 'FAILED' ? '(失败)' : '')).join(' ') : '')
+                note: (tk.prepMessage ? '准备:' + String(tk.prepMessage).split('\n')[0] + (tk.message ? '；' : '') : '') + (tk.message || '')
             }));
             rows.sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0));
 
-            /* —— 旧版"结果中心"设计(结果中心/项目结果记录):
-               分类筛选段 + 表格(任务类型/方法或路径/状态/主要产物/操作[打开]) + 已记录注脚 —— */
-            rows.forEach(rw => {
-                rw.cat = rw.kind === 'UQ评估' ? 'uq' : rw.kind === '输出预测' ? 'prediction' : 'identify';
-                rw.artifact = rw.cat === 'uq' ? '后验、可信区间、预测'
-                    : rw.cat === 'prediction' ? '预测中心、可信区间' : '参数、调度曲线、误差';
-            });
-            const SEGMENTS = [['all', '全部'], ['identify', '参数辨识'], ['uq', '不确定性评估'], ['prediction', '工况预测']];
-            const segRow = h('div', { style: 'display:flex;gap:8px;margin-bottom:12px' });
+            const state = { pageNum: 1, pageSize: 10 };
             const listHolder = h('div', null);
-            let seg = 'all';
+            const pagerHolder = h('div', { style: 'display:flex;align-items:center;gap:8px;margin-top:12px' });
             const apply = () => {
-                const view = seg === 'all' ? rows : rows.filter(rw => rw.cat === seg);
+                const total = rows.length;
+                const maxPage = Math.max(1, Math.ceil(total / state.pageSize));
+                if (state.pageNum > maxPage) state.pageNum = maxPage;
+                const view = rows.slice((state.pageNum - 1) * state.pageSize, state.pageNum * state.pageSize);
                 listHolder.innerHTML = '';
+                pagerHolder.innerHTML = '';
                 if (!rows.length) {
-                    listHolder.appendChild(h('div', { class: 'wb-empty' }, '尚无运行记录;发起数据准备、辨识、评估或预测后在此留档。'));
-                    return;
-                }
-                if (!view.length) {
-                    listHolder.appendChild(h('div', { class: 'wb-empty' }, '当前分类下无记录。'));
+                    listHolder.appendChild(h('div', { class: 'wb-empty' }, '尚无建模任务运行记录;在建模任务中发起执行后在此留档。'));
                     return;
                 }
                 listHolder.appendChild(h('table', { class: 'wb-table' },
-                    h('tr', null, ['任务类型', '方法或路径', '状态', '主要产物', '操作'].map(t => h('th', null, t))),
+                    h('tr', null, ['任务名称', '任务类型', '最近运行', '状态', '开始时间', '结束时间', '操作'].map(t => h('th', null, t))),
                     view.map(rw => {
                         const st = RUN_STATUS[rw.status] || [rw.status || '—', 'gray'];
                         return h('tr', null,
-                            h('td', { style: 'font-weight:600' }, rw.kind),
-                            h('td', { class: 'wb-hint', style: 'max-width:340px;word-break:break-all' },
-                                rw.name + (rw.note ? ' · ' + String(rw.note).slice(0, 60) : '')),
+                            h('td', { class: 'wb-link', title: rw.note || '', style: 'max-width:260px;word-break:break-all' }, rw.name),
+                            h('td', { class: 'wb-hint', style: 'font-weight:600' }, rw.kind),
+                            h('td', { class: 'wb-hint' }, rw.runId),
                             h('td', null, rw.kindTag
                                 ? [h('span', { style: 'display:inline-flex;margin-right:6px' }, statusTag(rw.kindTag[0], rw.kindTag[1])), statusTag(st[0], st[1])]
                                 : statusTag(st[0], st[1])),
-                            h('td', { class: 'wb-hint' }, rw.artifact),
+                            h('td', { class: 'wb-hint' }, rw.startedAt ? new Date(rw.startedAt).toLocaleString() : '—'),
+                            h('td', { class: 'wb-hint' }, rw.finishedAt ? new Date(rw.finishedAt).toLocaleString() : '—'),
                             h('td', null, h('button', {
                                 class: 'wb-btn wb-btn-primary', style: 'padding:3px 12px;font-size:12px',
                                 onclick: () => {
-                                    if (rw.biz) {
-                                        window.__WB_OPEN_TASK__ = rw.taskId;
-                                        if (rw.cat === 'uq') window.__WB_OPEN_TASK_TAB__ = 'uq'; // UQ记录直达评估页签
-                                        ctx.enterTask({ id: rw.biz });
-                                    } else ctx.navigate('predictions');
+                                    window.__WB_OPEN_TASK__ = rw.taskId;
+                                    ctx.enterTask({ id: rw.biz });
                                 }
                             }, '打开')));
                     })));
-                listHolder.appendChild(h('div', { class: 'wb-hint', style: 'margin-top:8px' },
-                    '已记录 ' + view.length + ' 条任务执行记录;以运行(runId)为维度,同一任务多次重跑按运行标识区分,历史只读。'));
+                /* 分页条:与项目列表同款(共N条第x/y页 + 上一页/页码(当前±2)/下一页 + 每页条数) */
+                pagerHolder.appendChild(h('span', { class: 'wb-hint' },
+                    '共 ' + total + ' 条,第 ' + state.pageNum + '/' + maxPage + ' 页'));
+                const prev = h('button', { class: 'wb-btn wb-btn-outline' + (state.pageNum <= 1 ? ' disabled' : '') }, '上一页');
+                prev.addEventListener('click', () => { if (state.pageNum > 1) { state.pageNum--; apply(); } });
+                pagerHolder.appendChild(prev);
+                const startP = Math.max(1, state.pageNum - 2), endP = Math.min(maxPage, state.pageNum + 2);
+                for (let i = startP; i <= endP; i++) {
+                    const b = h('button', { class: 'wb-btn ' + (i === state.pageNum ? 'wb-btn-primary' : 'wb-btn-outline') }, String(i));
+                    b.addEventListener('click', () => { if (i !== state.pageNum) { state.pageNum = i; apply(); } });
+                    pagerHolder.appendChild(b);
+                }
+                const next = h('button', { class: 'wb-btn wb-btn-outline' + (state.pageNum >= maxPage ? ' disabled' : '') }, '下一页');
+                next.addEventListener('click', () => { if (state.pageNum < maxPage) { state.pageNum++; apply(); } });
+                pagerHolder.appendChild(next);
+                pagerHolder.appendChild(h('span', { class: 'wb-hint', style: 'margin-left:8px' }, '每页'));
+                const sizeSel = h('select', { title: '每页条数' },
+                    [10, 20, 50].map(n => h('option', Object.assign({ value: n }, n === state.pageSize ? { selected: '' } : {}), String(n))));
+                sizeSel.addEventListener('change', () => { state.pageSize = parseInt(sizeSel.value, 10); state.pageNum = 1; apply(); });
+                pagerHolder.appendChild(sizeSel);
             };
-            SEGMENTS.forEach(([key, label]) => {
-                const btn = h('button', { class: 'wb-btn ' + (seg === key ? 'wb-btn-primary' : 'wb-btn-outline') }, label);
-                btn.addEventListener('click', () => { seg = key; paintSegs(); apply(); });
-                btn.dataset.seg = key;
-                segRow.appendChild(btn);
-            });
-            const paintSegs = () => {
-                segRow.querySelectorAll('button').forEach(b =>
-                    b.className = 'wb-btn ' + (b.dataset.seg === seg ? 'wb-btn-primary' : 'wb-btn-outline'));
-            };
-            holder.appendChild(segRow);
             holder.appendChild(listHolder);
+            holder.appendChild(pagerHolder);
             apply();
         } catch (e) {
             holder.appendChild(h('div', { class: 'wb-empty' }, '运行记录加载失败:' + e.message));

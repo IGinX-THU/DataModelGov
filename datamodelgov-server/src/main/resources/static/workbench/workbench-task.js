@@ -2169,32 +2169,11 @@
             toast('已导出分析结果 CSV', 'success');
         }
 
-        /* ---------- 加载既有任务 ---------- */
-        async function load() {
-            if (!ctx.project.id) { renderBody(); return; }
-            try {
-                const resp = await window.AppConfig.engineGet('projects/detail', { projectId: ctx.project.id });
-                if (resp && (resp.success || resp.code === 200) && resp.data) {
-                    const want = ctx.transientMode ? 'transient_update'
-                        : ctx.updateMode ? 'steady_update' : 'steady';
-                    const tasks = ctx.forceCreate ? []
-                        : (resp.data.tasks || []).filter(x => x.kind === want);
-                    if (tasks.length) {
-                        state.task = tasks[0];
-                        if (!state.tabFromOpen) {
-                            state.tab = state.task.status === 'COMPLETED' ? 'result'
-                                : (state.task.trainingFile ? 'run' : 'data');
-                        } // 打开时指定过页签(如记录页直达UQ)则保持,不被默认路由覆盖
-                        if (state.task.status === 'RUNNING' || state.task.status === 'PREPARING' || state.task.status === 'STOP_REQUESTED') {
-                            startPolling();
-                        }
-                    }
-                }
-            } catch (e) { console.warn('任务加载失败', e); }
-            renderBody();
-        }
+        // 进入业务页固定显示新建视图;只有运行记录/项目概览指定 __WB_OPEN_TASK__ 时才打开既有任务
+        // 页面切换时由 shell 调用,避免旧页轮询残留(跨页串状态通道)
+        window.__WB_PAGE_STOP__ = stopPolling;
 
-        load();
+        renderBody();
         return root;
     }
 
