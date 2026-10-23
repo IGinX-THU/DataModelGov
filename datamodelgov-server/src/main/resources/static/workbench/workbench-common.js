@@ -360,15 +360,16 @@ window.Workbench = (() => {
             });
             return;
         }
-        window.AppConfig.engineGet('projects/detail', { projectId: ctx.project.id })
+        window.AppConfig.engineGet('projects/detail', { projectId: ctx.project.id, latestPerKind: 'true' })
             .then(resp => {
                 const d = resp && (resp.success || resp.code === 200) && resp.data ? resp.data : {};
+                // 后端已按任务类型去重(每类最新一条,创建时间倒序)
                 const tasks = Array.isArray(d.tasks) ? d.tasks : [];
                 const models = Array.isArray(d.models) ? d.models : [];
-                const sorted = tasks.slice().sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+                const sorted = tasks;
                 const openTask = tk => { window.__WB_OPEN_TASK__ = tk.id; ctx.enterTask({ id: OV_BIZ[tk.kind] || 'steady', name: tk.name }); };
 
-                /* 建模任务表(01-02五列:任务名称/任务类型/最近运行/状态/模型成果;全类型,最近在前) */
+                /* 建模任务表(01-02五列:任务名称/任务类型/最近运行/状态/模型成果;每类型最新一条) */
                 tasksHolder.innerHTML = '';
                 if (!sorted.length) {
                     tasksHolder.appendChild(h('div', { class: 'wb-empty' },
@@ -376,7 +377,7 @@ window.Workbench = (() => {
                 } else {
                     tasksHolder.appendChild(h('table', { class: 'wb-table' },
                         h('tr', null, ['任务名称', '任务类型', '最近运行', '状态', '模型成果'].map(t => h('th', null, t))),
-                        sorted.slice(0, 5).map(tk => {
+                        sorted.map(tk => {
                             const model = models.find(mo => mo.taskId === tk.id);
                             return h('tr', { class: 'clickable', onclick: () => openTask(tk) },
                                 h('td', { class: 'wb-link' }, tk.name || tk.id),
@@ -1727,93 +1728,104 @@ window.Workbench = (() => {
         return wrap;
     }
 
-    /** 运行记录:仅建模任务(稳态辨识/稳态更新/瞬态更新/飞参/自演化)的执行历史;
-     *  UQ评估与输出预测各有专属页面,不在此混列;分页与项目列表同款(上一页/页码/下一页/每页条数)。 */
+    /** 运行记录:仅建模任务的执行历史,调独立分页接口 GET /projects/{pid}/records(服务端分页,
+     *  与项目列表同款分页条);UQ评估与输出预测各有专属页面,不在此混列。 */
     async function loadRunRecords(ctx, holder) {
         holder.innerHTML = '';
-        try {
-            const taskResp = await window.AppConfig.engineGet('projects/detail', { projectId: ctx.project.id });
-            const tasks = taskResp && (taskResp.success || taskResp.code === 200) && taskResp.data && Array.isArray(taskResp.data.tasks)
-                ? taskResp.data.tasks : null;
-            if (!tasks) throw new Error((taskResp && taskResp.message) || '接口返回异常');
-            /* 任务类型文案与项目概况任务表(OV_KIND)保持一致 */
-            const KIND_BIZ = { steady: 'steady', steady_update: 'steady_update', transient_update: 'transient',
-                flight_steady: 'flightSteady', flight_transient: 'flightTransient', evolution: 'evolution' };
-            const rows = tasks.map(tk => ({
-                kind: OV_KIND[tk.kind] || tk.kind || '稳态试车建模', biz: KIND_BIZ[tk.kind] || 'steady',
-                taskId: tk.id,
-                name: tk.name || tk.id,
-                runId: tk.runId || '—',
-                status: tk.status === 'FAILED' && tk.errorKind === 'SAVE_FAILED' ? '保存失败'
-                    : tk.status === 'FAILED' && tk.errorKind === 'NUMERIC_FAILED' ? '数值失败' : tk.status,
-                kindTag: tk.status === 'FAILED' ? (tk.errorKind === 'SAVE_FAILED' ? ['保存失败', 'amber'] : tk.errorKind === 'NUMERIC_FAILED' ? ['数值失败', 'red'] : null) : null,
-                startedAt: tk.startedAt, finishedAt: tk.finishedAt,
-                note: (tk.prepMessage ? '准备:' + String(tk.prepMessage).split('\n')[0] + (tk.message ? '；' : '') : '') + (tk.message || '')
-            }));
-            rows.sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0));
+        /* 任务类型文案与项目概况任务表(OV_KIND)保持一致 */
+        const KIND_BIZ = { steady: 'steady', steady_update: 'steady_update', transient_update: 'transient',
+            flight_steady: 'flightSteady', flight_transient: 'flightTransient', evolution: 'evolution' };
+        const state = { pageNum: 1, pageSize: 10, total: 0 };
+        const listHolder = h('div', null, h('div', { class: 'wb-empty' }, '正在加载记录...'));
+        const pagerHolder = h('div', { style: 'display:flex;align-items:center;gap:8px;margin-top:12px' });
+        holder.appendChild(listHolder);
+        holder.appendChild(pagerHolder);
 
-            const state = { pageNum: 1, pageSize: 10 };
-            const listHolder = h('div', null);
-            const pagerHolder = h('div', { style: 'display:flex;align-items:center;gap:8px;margin-top:12px' });
-            const apply = () => {
-                const total = rows.length;
-                const maxPage = Math.max(1, Math.ceil(total / state.pageSize));
-                if (state.pageNum > maxPage) state.pageNum = maxPage;
-                const view = rows.slice((state.pageNum - 1) * state.pageSize, state.pageNum * state.pageSize);
+        const renderRows = (rows) => {
+            listHolder.innerHTML = '';
+            if (!rows.length) {
+                listHolder.appendChild(h('div', { class: 'wb-empty' }, '尚无建模任务运行记录;在建模任务中发起执行后在此留档。'));
+                return;
+            }
+            listHolder.appendChild(h('table', { class: 'wb-table' },
+                h('tr', null, ['任务名称', '任务类型', '最近运行', '状态', '开始时间', '结束时间', '操作'].map(t => h('th', null, t))),
+                rows.map(tk => {
+                    const raw = tk.status === 'FAILED' && tk.errorKind === 'SAVE_FAILED' ? '保存失败'
+                        : tk.status === 'FAILED' && tk.errorKind === 'NUMERIC_FAILED' ? '数值失败' : tk.status;
+                    const kindTag = tk.status === 'FAILED' ? (tk.errorKind === 'SAVE_FAILED' ? ['保存失败', 'amber'] : tk.errorKind === 'NUMERIC_FAILED' ? ['数值失败', 'red'] : null) : null;
+                    const st = RUN_STATUS[raw] || [raw || '—', 'gray'];
+                    const note = tk.message || '';
+                    return h('tr', null,
+                        h('td', { class: 'wb-link', title: note, style: 'max-width:260px;word-break:break-all' }, tk.name || tk.taskId),
+                        h('td', { class: 'wb-hint', style: 'font-weight:600' }, OV_KIND[tk.kind] || tk.kind || '稳态试车建模'),
+                        h('td', { class: 'wb-hint' }, tk.runId || '—'),
+                        h('td', null, kindTag
+                            ? [h('span', { style: 'display:inline-flex;margin-right:6px' }, statusTag(kindTag[0], kindTag[1])), statusTag(st[0], st[1])]
+                            : statusTag(st[0], st[1])),
+                        h('td', { class: 'wb-hint' }, tk.startTime ? new Date(tk.startTime).toLocaleString() : '—'),
+                        h('td', { class: 'wb-hint' }, tk.endTime ? new Date(tk.endTime).toLocaleString() : '—'),
+                        h('td', null, h('button', {
+                            class: 'wb-btn wb-btn-primary', style: 'padding:3px 12px;font-size:12px',
+                            onclick: () => {
+                                window.__WB_OPEN_TASK__ = tk.taskId;
+                                ctx.enterTask({ id: KIND_BIZ[tk.kind] || 'steady' });
+                            }
+                        }, '打开')));
+                })));
+        };
+
+        const renderPager = () => {
+            pagerHolder.innerHTML = '';
+            const maxPage = Math.max(1, Math.ceil(state.total / state.pageSize));
+            pagerHolder.appendChild(h('span', { class: 'wb-hint' },
+                '共 ' + state.total + ' 条,第 ' + state.pageNum + '/' + maxPage + ' 页'));
+            const prev = h('button', { class: 'wb-btn wb-btn-outline' + (state.pageNum <= 1 ? ' disabled' : '') }, '上一页');
+            prev.addEventListener('click', () => { if (state.pageNum > 1) { state.pageNum--; fetchPage(); } });
+            pagerHolder.appendChild(prev);
+            const startP = Math.max(1, state.pageNum - 2), endP = Math.min(maxPage, state.pageNum + 2);
+            for (let i = startP; i <= endP; i++) {
+                const b = h('button', { class: 'wb-btn ' + (i === state.pageNum ? 'wb-btn-primary' : 'wb-btn-outline') }, String(i));
+                b.addEventListener('click', () => { if (i !== state.pageNum) { state.pageNum = i; fetchPage(); } });
+                pagerHolder.appendChild(b);
+            }
+            const next = h('button', { class: 'wb-btn wb-btn-outline' + (state.pageNum >= maxPage ? ' disabled' : '') }, '下一页');
+            next.addEventListener('click', () => { if (state.pageNum < maxPage) { state.pageNum++; fetchPage(); } });
+            pagerHolder.appendChild(next);
+            pagerHolder.appendChild(h('span', { class: 'wb-hint', style: 'margin-left:8px' }, '每页'));
+            const sizeSel = h('select', { title: '每页条数' },
+                [10, 20, 50].map(n => h('option', Object.assign({ value: n }, n === state.pageSize ? { selected: '' } : {}), String(n))));
+            sizeSel.addEventListener('change', () => { state.pageSize = parseInt(sizeSel.value, 10); state.pageNum = 1; fetchPage(); });
+            pagerHolder.appendChild(sizeSel);
+        };
+
+        async function fetchPage() {
+            listHolder.innerHTML = '';
+            pagerHolder.innerHTML = '';
+            listHolder.appendChild(h('div', { class: 'wb-empty' }, '正在加载记录...'));
+            try {
+                /* 与项目列表同口径:list返回当页数组,count返回总数 */
+                const base = 'projects/' + encodeURIComponent(ctx.project.id) + '/records/';
+                const [listResp, countResp] = await Promise.all([
+                    window.AppConfig.engineGet(base + 'list', { pageNum: state.pageNum, pageSize: state.pageSize }),
+                    window.AppConfig.engineGet(base + 'count', {})
+                ]);
+                const rows = listResp && (listResp.success || listResp.code === 200) && Array.isArray(listResp.data) ? listResp.data : null;
+                if (!rows) throw new Error((listResp && listResp.message) || '记录列表接口返回异常');
+                if (!(countResp && (countResp.success || countResp.code === 200))) {
+                    throw new Error((countResp && countResp.message) || '记录总数接口返回异常');
+                }
+                state.total = Number(countResp.data) || 0;
+                const maxPage = Math.max(1, Math.ceil(state.total / state.pageSize));
+                if (state.pageNum > maxPage) { state.pageNum = maxPage; return fetchPage(); }
+                renderRows(rows);
+                if (state.total) renderPager();
+            } catch (e) {
                 listHolder.innerHTML = '';
-                pagerHolder.innerHTML = '';
-                if (!rows.length) {
-                    listHolder.appendChild(h('div', { class: 'wb-empty' }, '尚无建模任务运行记录;在建模任务中发起执行后在此留档。'));
-                    return;
-                }
-                listHolder.appendChild(h('table', { class: 'wb-table' },
-                    h('tr', null, ['任务名称', '任务类型', '最近运行', '状态', '开始时间', '结束时间', '操作'].map(t => h('th', null, t))),
-                    view.map(rw => {
-                        const st = RUN_STATUS[rw.status] || [rw.status || '—', 'gray'];
-                        return h('tr', null,
-                            h('td', { class: 'wb-link', title: rw.note || '', style: 'max-width:260px;word-break:break-all' }, rw.name),
-                            h('td', { class: 'wb-hint', style: 'font-weight:600' }, rw.kind),
-                            h('td', { class: 'wb-hint' }, rw.runId),
-                            h('td', null, rw.kindTag
-                                ? [h('span', { style: 'display:inline-flex;margin-right:6px' }, statusTag(rw.kindTag[0], rw.kindTag[1])), statusTag(st[0], st[1])]
-                                : statusTag(st[0], st[1])),
-                            h('td', { class: 'wb-hint' }, rw.startedAt ? new Date(rw.startedAt).toLocaleString() : '—'),
-                            h('td', { class: 'wb-hint' }, rw.finishedAt ? new Date(rw.finishedAt).toLocaleString() : '—'),
-                            h('td', null, h('button', {
-                                class: 'wb-btn wb-btn-primary', style: 'padding:3px 12px;font-size:12px',
-                                onclick: () => {
-                                    window.__WB_OPEN_TASK__ = rw.taskId;
-                                    ctx.enterTask({ id: rw.biz });
-                                }
-                            }, '打开')));
-                    })));
-                /* 分页条:与项目列表同款(共N条第x/y页 + 上一页/页码(当前±2)/下一页 + 每页条数) */
-                pagerHolder.appendChild(h('span', { class: 'wb-hint' },
-                    '共 ' + total + ' 条,第 ' + state.pageNum + '/' + maxPage + ' 页'));
-                const prev = h('button', { class: 'wb-btn wb-btn-outline' + (state.pageNum <= 1 ? ' disabled' : '') }, '上一页');
-                prev.addEventListener('click', () => { if (state.pageNum > 1) { state.pageNum--; apply(); } });
-                pagerHolder.appendChild(prev);
-                const startP = Math.max(1, state.pageNum - 2), endP = Math.min(maxPage, state.pageNum + 2);
-                for (let i = startP; i <= endP; i++) {
-                    const b = h('button', { class: 'wb-btn ' + (i === state.pageNum ? 'wb-btn-primary' : 'wb-btn-outline') }, String(i));
-                    b.addEventListener('click', () => { if (i !== state.pageNum) { state.pageNum = i; apply(); } });
-                    pagerHolder.appendChild(b);
-                }
-                const next = h('button', { class: 'wb-btn wb-btn-outline' + (state.pageNum >= maxPage ? ' disabled' : '') }, '下一页');
-                next.addEventListener('click', () => { if (state.pageNum < maxPage) { state.pageNum++; apply(); } });
-                pagerHolder.appendChild(next);
-                pagerHolder.appendChild(h('span', { class: 'wb-hint', style: 'margin-left:8px' }, '每页'));
-                const sizeSel = h('select', { title: '每页条数' },
-                    [10, 20, 50].map(n => h('option', Object.assign({ value: n }, n === state.pageSize ? { selected: '' } : {}), String(n))));
-                sizeSel.addEventListener('change', () => { state.pageSize = parseInt(sizeSel.value, 10); state.pageNum = 1; apply(); });
-                pagerHolder.appendChild(sizeSel);
-            };
-            holder.appendChild(listHolder);
-            holder.appendChild(pagerHolder);
-            apply();
-        } catch (e) {
-            holder.appendChild(h('div', { class: 'wb-empty' }, '运行记录加载失败:' + e.message));
+                listHolder.appendChild(h('div', { class: 'wb-empty' }, '运行记录加载失败:' + e.message));
+            }
         }
+
+        fetchPage();
     }
 
     function fmtSpan(ms) {

@@ -1,5 +1,13 @@
 # DataModelGov 开发说明
 
+## 需求与设计依据
+
+功能、界面、交互、业务逻辑的设计**一律以交付文档为准**：
+`datamodelgov-server/src/main/resources/programs/Delivery_V1_20261019_R06/docs/`
+（完整界面设计说明书.docx、程序调用与独立使用手册.docx、界面页面与操作流程关联图.html、
+程序与界面功能关联图.html、modules/{TC24,TC27,StartStop,F3,Stage4,UI} 下各 CSV 字典）。
+本文件只涵盖构建与 MATLAB 集成，不是功能设计依据。
+
 ## 构建 / 运行
 
 ```powershell

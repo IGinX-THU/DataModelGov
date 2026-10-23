@@ -46,6 +46,9 @@ public class EngineWorkbenchController {
     private EngineProjectStore store;
 
     @Autowired
+    private com.tsinghua.engine.EngineTaskRecordService taskRecordService;
+
+    @Autowired
     private Tc24Service tc24Service;
 
     @Autowired
@@ -233,21 +236,84 @@ public class EngineWorkbenchController {
         return p;
     }
 
-    @ApiOperation("项目详情(含任务与模型)")
+    @ApiOperation("项目详情(含任务与模型;latestPerKind=true时任务表按类型去重只留最新一条,供项目概览)")
     @GetMapping("/projects/detail")
     @RequirePermission(Permission.READ)
-    public Result<Map<String, Object>> projectDetail(@RequestParam("projectId") String pid) {
+    public Result<Map<String, Object>> projectDetail(@RequestParam("projectId") String pid,
+            @RequestParam(value = "latestPerKind", required = false, defaultValue = "false") boolean latestPerKind) {
         try {
             EngineModels.EngineProject p = store.getProject(pid);
             String denied = accessDenied(p);
             if (denied != null) return Result.error(denied);
+            List<EngineModels.ModelingTask> tasks = store.listTasks(pid);
+            if (latestPerKind) {
+                // listTasks已按创建时间倒序,每个kind取首次出现的即最新一条(项目概览口径)
+                Map<String, EngineModels.ModelingTask> firstByKind = new LinkedHashMap<>();
+                for (EngineModels.ModelingTask t : tasks) firstByKind.putIfAbsent(t.getKind(), t);
+                tasks = new ArrayList<>(firstByKind.values());
+            }
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("project", p.toMap());
-            out.put("tasks", store.listTasks(pid));
+            out.put("tasks", tasks);
             out.put("models", store.listModels(pid));
             return Result.success(out);
         } catch (IOException e) {
             return Result.error("读取项目失败: " + e.getMessage());
+        }
+    }
+
+    @ApiOperation("建模任务运行记录分页列表(SQL分页,与/projects/list同模式;kind可选过滤,与/records/count同口径)")
+    @GetMapping("/projects/{pid}/records/list")
+    @RequirePermission(Permission.READ)
+    public Result<List<com.tsinghua.entity.EngineTaskRecordEntity>> pageRecords(
+            @PathVariable("pid") String pid,
+            @RequestParam(value = "kind", required = false) String kind,
+            @RequestParam(value = "pageNum", required = false, defaultValue = "1") Integer pageNum,
+            @RequestParam(value = "pageSize", required = false, defaultValue = "10") Integer pageSize) {
+        EngineModels.EngineProject p;
+        try {
+            p = store.getProject(pid);
+        } catch (IOException e) {
+            return Result.error("读取项目失败: " + e.getMessage());
+        }
+        String denied = accessDenied(p);
+        if (denied != null) return Result.error(denied);
+        backfillTaskRecords(pid);
+        return Result.success(taskRecordService.queryList(pid, kind, pageNum, pageSize));
+    }
+
+    @ApiOperation("建模任务运行记录总数(SQL,与列表同过滤口径)")
+    @GetMapping("/projects/{pid}/records/count")
+    @RequirePermission(Permission.READ)
+    public Result<Long> countRecords(@PathVariable("pid") String pid,
+            @RequestParam(value = "kind", required = false) String kind) {
+        EngineModels.EngineProject p;
+        try {
+            p = store.getProject(pid);
+        } catch (IOException e) {
+            return Result.error("读取项目失败: " + e.getMessage());
+        }
+        String denied = accessDenied(p);
+        if (denied != null) return Result.error(denied);
+        backfillTaskRecords(pid);
+        return Result.success(taskRecordService.countList(pid, kind));
+    }
+
+    /** 存量任务回填:记录表为空而文件任务存在时(如升级部署后首次访问),把文件任务档案同步进记录表;
+     *  之后由 EngineProjectStore.saveTask 挂钩保持增量同步。 */
+    private void backfillTaskRecords(String pid) {
+        try {
+            if (taskRecordService.countList(pid, null) > 0) return;
+            List<EngineModels.ModelingTask> tasks = store.listTasks(pid);
+            for (EngineModels.ModelingTask t : tasks) {
+                try {
+                    taskRecordService.upsertFromTask(t);
+                } catch (Exception e) {
+                    log.warn("运行记录回填失败: task={}", t.getId(), e);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("运行记录回填检查失败: projectId={}", pid, e);
         }
     }
 

@@ -38,6 +38,9 @@ public class EngineProjectStore {
     @org.springframework.beans.factory.annotation.Autowired
     private EngineProjectMetaService metaService;
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private EngineTaskRecordService taskRecordService;
+
     private final ObjectMapper mapper = new ObjectMapper()
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
@@ -283,7 +286,17 @@ public class EngineProjectStore {
         File dir = taskDir(t.getProjectId(), t.getId());
         if (!dir.exists() && !dir.mkdirs()) throw new IOException("无法创建任务目录: " + dir);
         mapper.writerWithDefaultPrettyPrinter().writeValue(new File(dir, "task.json"), t);
+        syncTaskRecord(t);
         return t;
+    }
+
+    /** 任务档案同步到运行记录表(engine_task_records,SQL分页查询源);失败仅告警,不影响任务保存。 */
+    private void syncTaskRecord(ModelingTask t) {
+        try {
+            taskRecordService.upsertFromTask(t);
+        } catch (Exception e) {
+            log.warn("运行记录同步失败: task={} status={}", t.getId(), t.getStatus(), e);
+        }
     }
 
     public ModelingTask getTask(String projectId, String taskId) throws IOException {
