@@ -41,6 +41,15 @@ public class EngineProjectStore {
     @org.springframework.beans.factory.annotation.Autowired
     private EngineTaskRecordService taskRecordService;
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private EngineModelRecordService modelRecordService;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private EngineUqRecordService uqRecordService;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private EnginePredictionRecordService predictionRecordService;
+
     private final ObjectMapper mapper = new ObjectMapper()
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
@@ -334,6 +343,11 @@ public class EngineProjectStore {
         File dir = new File(projectDir(m.getProjectId()), "models");
         if (!dir.exists() && !dir.mkdirs()) throw new IOException("无法创建模型目录: " + dir);
         mapper.writerWithDefaultPrettyPrinter().writeValue(modelFile(m.getProjectId(), m.getId()), m);
+        try {
+            modelRecordService.upsertFromModel(m); // 模型成果清单(IginX)同步,失败仅告警
+        } catch (Exception e) {
+            log.warn("模型成果清单同步失败: model={}", m.getId(), e);
+        }
         return m;
     }
 
@@ -363,6 +377,11 @@ public class EngineProjectStore {
         File dir = new File(projectDir(r.getProjectId()), "predictions");
         if (!dir.exists() && !dir.mkdirs()) throw new IOException("无法创建预测目录: " + dir);
         mapper.writerWithDefaultPrettyPrinter().writeValue(new File(dir, r.getId() + ".json"), r);
+        try {
+            predictionRecordService.upsertFromPrediction(r); // 预测记录清单(IginX)同步,失败仅告警
+        } catch (Exception e) {
+            log.warn("预测记录清单同步失败: rec={}", r.getId(), e);
+        }
         return r;
     }
 
@@ -392,6 +411,11 @@ public class EngineProjectStore {
         File dir = new File(projectDir(r.getProjectId()), "uq");
         if (!dir.exists() && !dir.mkdirs()) throw new IOException("无法创建UQ记录目录: " + dir);
         mapper.writerWithDefaultPrettyPrinter().writeValue(new File(dir, r.getId() + ".json"), r);
+        try {
+            uqRecordService.upsertFromUq(r); // UQ记录清单(IginX)同步,失败仅告警
+        } catch (Exception e) {
+            log.warn("UQ记录清单同步失败: uq={}", r.getId(), e);
+        }
         return r;
     }
 

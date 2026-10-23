@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.io.File;
@@ -39,6 +40,9 @@ public class TestbenchController {
 
     @Autowired
     private TestbenchService testbenchService;
+
+    @Autowired
+    private com.tsinghua.engine.EngineTestbenchRecordService testbenchRecordService;
 
     /* ---------- F-11 全模式会话 ---------- */
 
@@ -110,6 +114,46 @@ public class TestbenchController {
             return Result.success(testbenchService.fullmodeSessions(pid));
         } catch (Exception e) {
             return Result.error("读取全模式会话列表失败: " + e.getMessage());
+        }
+    }
+
+    @ApiOperation("试车台记录清单分页(SQL;kind=fullmode取全模式会话,其余取设计点/起停任务;原全量接口保留)")
+    @GetMapping("/records/list")
+    @RequirePermission(Permission.READ)
+    public Result<List<com.tsinghua.entity.EngineTestbenchEntity>> pageRecords(
+            @PathVariable("pid") String pid,
+            @RequestParam(value = "kind", required = false) String kind,
+            @RequestParam(value = "pageNum", required = false, defaultValue = "1") Integer pageNum,
+            @RequestParam(value = "pageSize", required = false, defaultValue = "10") Integer pageSize) {
+        backfillRecords(pid);
+        return Result.success(testbenchRecordService.queryList(pid, pageNum, pageSize)
+                .stream().filter(r -> kind == null || kind.isEmpty() || kind.equals(r.getKind()))
+                .collect(java.util.stream.Collectors.toList()));
+    }
+
+    @ApiOperation("试车台记录总数(SQL;kind过滤与列表一致)")
+    @GetMapping("/records/count")
+    @RequirePermission(Permission.READ)
+    public Result<Long> countRecords(@PathVariable("pid") String pid,
+                                     @RequestParam(value = "kind", required = false) String kind) {
+        backfillRecords(pid);
+        if (kind == null || kind.isEmpty()) return Result.success(testbenchRecordService.countList(pid));
+        return Result.success(testbenchRecordService.queryList(pid, null, null).stream()
+                .filter(r -> kind.equals(r.getKind())).count());
+    }
+
+    /** 存量记录回填:清单表为空而文件索引存在时,把全模式会话与试车台任务同步进清单表。 */
+    private void backfillRecords(String pid) {
+        try {
+            if (testbenchRecordService.countList(pid) > 0) return;
+            for (Map<String, Object> idx : testbenchService.fullmodeSessions(pid)) {
+                testbenchRecordService.upsertFromIndex(pid, idx);
+            }
+            for (Map<String, Object> idx : testbenchService.listTasks(pid)) {
+                testbenchRecordService.upsertFromIndex(pid, idx);
+            }
+        } catch (Exception e) {
+            log.warn("试车台记录清单回填失败: projectId={}", pid, e);
         }
     }
 

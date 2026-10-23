@@ -49,6 +49,21 @@ public class EngineWorkbenchController {
     private com.tsinghua.engine.EngineTaskRecordService taskRecordService;
 
     @Autowired
+    private com.tsinghua.engine.EngineModelRecordService modelRecordService;
+
+    @Autowired
+    private com.tsinghua.engine.EngineUqRecordService uqRecordService;
+
+    @Autowired
+    private com.tsinghua.engine.EnginePredictionRecordService predictionRecordService;
+
+    @Autowired
+    private com.tsinghua.engine.EngineAfoSessionService afoSessionService;
+
+    @Autowired
+    private com.tsinghua.engine.EngineTestbenchRecordService testbenchRecordService;
+
+    @Autowired
     private Tc24Service tc24Service;
 
     @Autowired
@@ -74,6 +89,15 @@ public class EngineWorkbenchController {
             return "无权访问该项目(历史项目仅管理员可见)";
         }
         return null;
+    }
+
+    /** 清单清理辅助:失败记录名称,不中断其余清单清理。 */
+    private void tryDel(List<String> fails, String label, java.util.concurrent.Callable<Integer> action) {
+        try {
+            action.call();
+        } catch (Exception e) {
+            fails.add(label + "(" + e.getMessage() + ")");
+        }
     }
 
     /**
@@ -182,6 +206,18 @@ public class EngineWorkbenchController {
             if (!metaDeleted) {
                 return Result.error("项目记录删除未生效(IginX),请稍后重试或联系管理员");
             }
+            // 清单类 IginX 记录一并清理(运行记录/模型成果/UQ/预测/AFO会话/试车台记录)
+            List<String> delFail = new ArrayList<>();
+            tryDel(delFail, "运行记录", () -> taskRecordService.deleteByProject(pid));
+            tryDel(delFail, "模型成果", () -> modelRecordService.deleteByProject(pid));
+            tryDel(delFail, "UQ记录", () -> uqRecordService.deleteByProject(pid));
+            tryDel(delFail, "预测记录", () -> predictionRecordService.deleteByProject(pid));
+            tryDel(delFail, "仿真记录", () -> afoSessionService.deleteByProject(pid));
+            tryDel(delFail, "试车台记录", () -> testbenchRecordService.deleteByProject(pid));
+            if (!delFail.isEmpty()) {
+                log.warn("项目清单记录清理失败: {} -> {}", pid, delFail);
+                return Result.error("项目已删除,但部分清单记录清理失败: " + String.join("、", delFail));
+            }
             log.info("项目已删除: {} ({})", p.getName(), pid);
             return Result.success(true);
         } catch (Exception e) {
@@ -262,48 +298,34 @@ public class EngineWorkbenchController {
         }
     }
 
-    @ApiOperation("建模任务运行记录分页列表(SQL分页,与/projects/list同模式;kind可选过滤,与/records/count同口径)")
+    @ApiOperation("建模任务运行记录分页列表(SQL分页,与/projects/list同模式)")
     @GetMapping("/projects/{pid}/records/list")
     @RequirePermission(Permission.READ)
     public Result<List<com.tsinghua.entity.EngineTaskRecordEntity>> pageRecords(
             @PathVariable("pid") String pid,
-            @RequestParam(value = "kind", required = false) String kind,
             @RequestParam(value = "pageNum", required = false, defaultValue = "1") Integer pageNum,
             @RequestParam(value = "pageSize", required = false, defaultValue = "10") Integer pageSize) {
-        EngineModels.EngineProject p;
-        try {
-            p = store.getProject(pid);
-        } catch (IOException e) {
-            return Result.error("读取项目失败: " + e.getMessage());
-        }
-        String denied = accessDenied(p);
+        String denied = projectReadDenied(pid);
         if (denied != null) return Result.error(denied);
         backfillTaskRecords(pid);
-        return Result.success(taskRecordService.queryList(pid, kind, pageNum, pageSize));
+        return Result.success(taskRecordService.queryList(pid, pageNum, pageSize));
     }
 
     @ApiOperation("建模任务运行记录总数(SQL,与列表同过滤口径)")
     @GetMapping("/projects/{pid}/records/count")
     @RequirePermission(Permission.READ)
-    public Result<Long> countRecords(@PathVariable("pid") String pid,
-            @RequestParam(value = "kind", required = false) String kind) {
-        EngineModels.EngineProject p;
-        try {
-            p = store.getProject(pid);
-        } catch (IOException e) {
-            return Result.error("读取项目失败: " + e.getMessage());
-        }
-        String denied = accessDenied(p);
+    public Result<Long> countRecords(@PathVariable("pid") String pid) {
+        String denied = projectReadDenied(pid);
         if (denied != null) return Result.error(denied);
         backfillTaskRecords(pid);
-        return Result.success(taskRecordService.countList(pid, kind));
+        return Result.success(taskRecordService.countList(pid));
     }
 
     /** 存量任务回填:记录表为空而文件任务存在时(如升级部署后首次访问),把文件任务档案同步进记录表;
      *  之后由 EngineProjectStore.saveTask 挂钩保持增量同步。 */
     private void backfillTaskRecords(String pid) {
         try {
-            if (taskRecordService.countList(pid, null) > 0) return;
+            if (taskRecordService.countList(pid) > 0) return;
             List<EngineModels.ModelingTask> tasks = store.listTasks(pid);
             for (EngineModels.ModelingTask t : tasks) {
                 try {
@@ -314,6 +336,115 @@ public class EngineWorkbenchController {
             }
         } catch (Exception e) {
             log.warn("运行记录回填检查失败: projectId={}", pid, e);
+        }
+    }
+
+    /** 项目读取校验(读取项目失败/无权访问返回错误文案,通过返回null)。 */
+    private String projectReadDenied(String pid) {
+        try {
+            return accessDenied(store.getProject(pid));
+        } catch (IOException e) {
+            return "读取项目失败: " + e.getMessage();
+        }
+    }
+
+    /* ---------- 清单分页(模型成果/UQ记录/预测记录;IginX SQL,文件为事实源) ---------- */
+
+    @ApiOperation("模型成果清单分页(SQL;原 /models 全量接口保留供选择器/详情使用)")
+    @GetMapping("/projects/{pid}/models/list")
+    @RequirePermission(Permission.READ)
+    public Result<List<com.tsinghua.entity.EngineModelAssetEntity>> pageModels(
+            @PathVariable("pid") String pid,
+            @RequestParam(value = "pageNum", required = false, defaultValue = "1") Integer pageNum,
+            @RequestParam(value = "pageSize", required = false, defaultValue = "10") Integer pageSize) {
+        String denied = projectReadDenied(pid);
+        if (denied != null) return Result.error(denied);
+        backfillModels(pid);
+        return Result.success(modelRecordService.queryList(pid, pageNum, pageSize));
+    }
+
+    @ApiOperation("模型成果总数(SQL)")
+    @GetMapping("/projects/{pid}/models/count")
+    @RequirePermission(Permission.READ)
+    public Result<Long> countModels(@PathVariable("pid") String pid) {
+        String denied = projectReadDenied(pid);
+        if (denied != null) return Result.error(denied);
+        backfillModels(pid);
+        return Result.success(modelRecordService.countList(pid));
+    }
+
+    private void backfillModels(String pid) {
+        try {
+            if (modelRecordService.countList(pid) > 0) return;
+            for (EngineModels.ModelAsset m : store.listModels(pid)) modelRecordService.upsertFromModel(m);
+        } catch (Exception e) {
+            log.warn("模型成果清单回填失败: projectId={}", pid, e);
+        }
+    }
+
+    @ApiOperation("UQ评估记录清单分页(SQL)")
+    @GetMapping("/projects/{pid}/uq-records/list")
+    @RequirePermission(Permission.READ)
+    public Result<List<com.tsinghua.entity.EngineUqRecordEntity>> pageUqRecords(
+            @PathVariable("pid") String pid,
+            @RequestParam(value = "pageNum", required = false, defaultValue = "1") Integer pageNum,
+            @RequestParam(value = "pageSize", required = false, defaultValue = "10") Integer pageSize) {
+        String denied = projectReadDenied(pid);
+        if (denied != null) return Result.error(denied);
+        backfillUqRecords(pid);
+        return Result.success(uqRecordService.queryList(pid, pageNum, pageSize));
+    }
+
+    @ApiOperation("UQ评估记录总数(SQL)")
+    @GetMapping("/projects/{pid}/uq-records/count")
+    @RequirePermission(Permission.READ)
+    public Result<Long> countUqRecords(@PathVariable("pid") String pid) {
+        String denied = projectReadDenied(pid);
+        if (denied != null) return Result.error(denied);
+        backfillUqRecords(pid);
+        return Result.success(uqRecordService.countList(pid));
+    }
+
+    private void backfillUqRecords(String pid) {
+        try {
+            if (uqRecordService.countList(pid) > 0) return;
+            for (EngineModels.UqRecord r : store.listUqRecords(pid)) uqRecordService.upsertFromUq(r);
+        } catch (Exception e) {
+            log.warn("UQ记录清单回填失败: projectId={}", pid, e);
+        }
+    }
+
+    @ApiOperation("输出预测记录清单分页(SQL)")
+    @GetMapping("/projects/{pid}/predictions/list")
+    @RequirePermission(Permission.READ)
+    public Result<List<com.tsinghua.entity.EnginePredictionEntity>> pagePredictions(
+            @PathVariable("pid") String pid,
+            @RequestParam(value = "pageNum", required = false, defaultValue = "1") Integer pageNum,
+            @RequestParam(value = "pageSize", required = false, defaultValue = "10") Integer pageSize) {
+        String denied = projectReadDenied(pid);
+        if (denied != null) return Result.error(denied);
+        backfillPredictions(pid);
+        return Result.success(predictionRecordService.queryList(pid, pageNum, pageSize));
+    }
+
+    @ApiOperation("输出预测记录总数(SQL)")
+    @GetMapping("/projects/{pid}/predictions/count")
+    @RequirePermission(Permission.READ)
+    public Result<Long> countPredictions(@PathVariable("pid") String pid) {
+        String denied = projectReadDenied(pid);
+        if (denied != null) return Result.error(denied);
+        backfillPredictions(pid);
+        return Result.success(predictionRecordService.countList(pid));
+    }
+
+    private void backfillPredictions(String pid) {
+        try {
+            if (predictionRecordService.countList(pid) > 0) return;
+            for (EngineModels.PredictionRecord r : store.listPredictions(pid)) {
+                predictionRecordService.upsertFromPrediction(r);
+            }
+        } catch (Exception e) {
+            log.warn("预测记录清单回填失败: projectId={}", pid, e);
         }
     }
 

@@ -44,6 +44,9 @@ public class AfoService {
 
     private final EngineProjectStore store;
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private EngineAfoSessionService afoSessionService;
+
     private final Object sessionLock = new Object();
     private volatile AfoSession session;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -561,6 +564,10 @@ public class AfoService {
         idx.put("finishedAt", s.finishedAt);
         idx.put("config", s.config);
         idx.put("outputDir", s.outputDir);
+        // 结果/交付文件存在性(清单行展示用;读取侧listSessions同口径)
+        File od = new File(s.outputDir == null ? "" : s.outputDir);
+        idx.put("hasResult", new File(od, "result.json").exists());
+        idx.put("hasExcel", findExcel(od) != null);
         // 元数据与predictions/uq同模式:projects/{pid}/afo/{runId}.json(列表/追溯入口)
         try {
             File metaDir = store.afoSessionDir(s.projectId);
@@ -571,7 +578,8 @@ public class AfoService {
         } catch (Exception e) {
             log.warn("AFO会话元数据写入失败", e);
         }
-
+        // 仿真记录清单(IginX)同步,失败仅告警
+        afoSessionService.upsertFromIndex(s.projectId, idx);
     }
 
     /* ---------- 工具 ---------- */

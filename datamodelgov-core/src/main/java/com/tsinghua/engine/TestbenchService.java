@@ -44,6 +44,9 @@ public class TestbenchService {
     @Autowired
     private EngineProjectStore store;
 
+    @Autowired
+    private EngineTestbenchRecordService testbenchRecordService;
+
     private static final String R06_IN_CLASSPATH = "programs/Delivery_V1_20261019_R06/programs";
     private static final String PROG_SUBDIR = "m_program_adaptive_tune";
 
@@ -431,6 +434,7 @@ public class TestbenchService {
         idx.put("config", s.config);
         idx.put("outputDir", s.outputDir);
         idx.put("kind", "fullmode");
+        idx.put("hasExcel", findExcelRecursive(new File(s.outputDir == null ? "" : s.outputDir)) != null);
         try {
             File metaDir = store.testbenchSessionDir(s.projectId);
             if (!metaDir.exists() && !metaDir.mkdirs()) throw new IOException("无法创建元数据目录: " + metaDir);
@@ -439,6 +443,8 @@ public class TestbenchService {
         } catch (Exception e) {
             log.warn("fullmode元数据写入失败", e);
         }
+        // 试车台记录清单(IginX)同步,失败仅告警
+        testbenchRecordService.upsertFromIndex(s.projectId, idx);
     }
 
     /* ================= 一次性任务(F-09设计点/F-10起动停车) ================= */
@@ -634,6 +640,7 @@ public class TestbenchService {
         idx.put("finishedAt", r.finishedAt);
         idx.put("config", r.config);
         idx.put("taskDirectory", r.taskDirectory);
+        idx.put("hasExcel", findExcelRecursive(new File(r.taskDirectory == null ? "" : r.taskDirectory)) != null);
         try {
             File metaDir = store.testbenchSessionDir(r.projectId);
             if (!metaDir.exists() && !metaDir.mkdirs()) throw new IOException("无法创建元数据目录");
@@ -642,6 +649,8 @@ public class TestbenchService {
         } catch (Exception e) {
             log.warn("试车台任务元数据写入失败", e);
         }
+        // 试车台记录清单(IginX)同步,失败仅告警
+        testbenchRecordService.upsertFromIndex(r.projectId, idx);
     }
 
     /* ================= 适配器 ================= */
