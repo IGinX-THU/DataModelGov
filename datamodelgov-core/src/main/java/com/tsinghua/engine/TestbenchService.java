@@ -697,7 +697,8 @@ public class TestbenchService {
         m.append("switch lower(c.action)\n");
         m.append("    case 'solve'\n");
         m.append("        u = c.cfg;\n");
-        m.append("        u.taskDirectory = c.taskDirectory;\n");
+        // local_prepare asserts the task directory does not exist; program creates it.
+        m.append("        u.taskDirectory = fullfile(c.taskDirectory, 'task');\n");
         m.append("        r = sht_design_point_task('solve', u);\n");
         m.append("    case 'commit'\n");
         m.append("        r = sht_design_point_task('commit', fullfile(c.taskDirectory, 'task'));\n");
