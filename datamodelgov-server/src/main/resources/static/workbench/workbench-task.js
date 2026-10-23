@@ -287,45 +287,79 @@
                 '当前使用已有稳态模型与新增试车记录;只更新稳态系数。'));
 
             const ROUTE_NAME27 = { steady: '稳态方程', transient_instant: '瞬态时刻方程' };
+            // 数据文件行(01-17:两列一行;文件名只读展示+选择文件替换)
+            const fileGrid = WB().h('div', { class: 'wb-form-grid', style: 'grid-template-columns:1fr 1fr;max-width:1180px;column-gap:24px' });
+            fileGrid.appendChild(fileRow('原训练点 Excel', 'training', t.trainingFile, false, t));
+            fileGrid.appendChild(fileRow('新增训练历程', 'history', t.historyFile, false, t));
+            fileGrid.appendChild(fileRow('原试车测试集(可选)', 'test', t.testFile, false, t));
+            fileGrid.appendChild(fileRow('新增测试历程(可选)', 'historyTest', t.historyTestFile, false, t));
+            fileGrid.querySelectorAll('.wb-field').forEach(el => { el.style.maxWidth = 'none'; el.style.marginBottom = '10px'; });
+
+            // 小幅变化段checkbox(01-17):可勾选,走配置接口;已准备后修改需重新准备
+            const smallChk = WB().h('input', { type: 'checkbox' });
+            if (t.includeSmallHistory !== false) smallChk.setAttribute('checked', '');
+            smallChk.addEventListener('change', async () => {
+                try {
+                    const resp = await window.AppConfig.enginePost(
+                        'projects/' + encodeURIComponent(ctx.project.id || '') + '/tasks/'
+                        + encodeURIComponent(t.id) + '/config', { includeSmallHistory: smallChk.checked });
+                    if (resp && (resp.success || resp.code === 200) && resp.data) {
+                        state.task = resp.data;
+                        toast('已' + (smallChk.checked ? '启用' : '停用') + '小幅变化段辅助辨识'
+                            + (t.prepMessage ? ';数据使用方式变化,请重新准备数据' : ''), 'info');
+                        renderBody();
+                    } else toast((resp && resp.message) || '配置保存失败', 'error');
+                } catch (e) { toast('配置保存失败:' + e.message, 'error'); }
+            });
+
             wrap.appendChild(WB().h('div', { class: 'wb-form-grid', style: 'grid-template-columns:1fr 1fr;max-width:1180px' },
                 WB().h('div', { class: 'wb-field' }, WB().h('label', null, '建模类型(本任务固定)'),
                     WB().h('input', { readonly: '', value: '新增试车稳态更新 / 2.7' })),
                 WB().h('div', { class: 'wb-field' }, WB().h('label', null, '上游模型(需路径一致)'),
                     WB().h('input', { readonly: '', value: fileName(t.upstreamModelFile) || '—' })),
-                WB().h('div', { class: 'wb-field' }, WB().h('label', null, '调度更新方法(创建时确定)'),
-                    WB().h('input', { readonly: '', value: (t.updateMethod || 'II') + ' · ' + (ROUTE_NAME27[t.route] || t.route) }),
-                    WB().h('div', { class: 'wb-hint', style: 'margin:4px 0 0' },
-                        '方法/路径变更即新任务;'),
-                    WB().h('button', {
-                        class: 'wb-btn wb-btn-outline', style: 'margin-top:6px;padding:4px 10px;font-size:12px',
-                        onclick: () => { window.__WB_TC27_PREFILL__ = { upstreamModelId: t.upstreamModelId, updateMethod: t.updateMethod, route: t.route }; state.task = null; renderBody(); }
-                    }, '换方法/路径 → 新建更新任务')),
-                WB().h('div', { class: 'wb-field' }, WB().h('label', null, '小幅变化段辅助辨识'),
-                    WB().h('input', { readonly: '', value: (t.includeSmallHistory === false ? '不使用' : '使用') }))));
-
-            wrap.appendChild(fileRow('原训练均值 Excel', 'training', t.trainingFile, true, t));
-            wrap.appendChild(fileRow('新增训练历程 Excel(完整试车记录)', 'history', t.historyFile, false, t));
-            wrap.appendChild(fileRow('原试车测试集 Excel(可选)', 'test', t.testFile, false, t));
-            wrap.appendChild(fileRow('新增测试历程 Excel(可选)', 'historyTest', t.historyTestFile, false, t));
+                fileGrid,
+                WB().h('div', { class: 'wb-field', style: 'grid-column:1/-1' }, WB().h('label', null, '调度更新方法(创建时确定)'),
+                    WB().h('div', { style: 'display:flex;align-items:center;gap:14px;flex-wrap:wrap' },
+                        WB().h('input', { readonly: '', value: '方法' + (t.updateMethod || 'II'), style: 'max-width:200px' }),
+                        WB().h('input', { readonly: '', value: ROUTE_NAME27[t.route] || (t.route || '—'), style: 'max-width:200px' }),
+                        WB().h('button', {
+                            class: 'wb-btn wb-btn-outline', style: 'padding:4px 10px;font-size:12px',
+                            onclick: () => { window.__WB_TC27_PREFILL__ = { upstreamModelId: t.upstreamModelId, updateMethod: t.updateMethod, route: t.route }; state.task = null; renderBody(); }
+                        }, '换方法/路径 → 新建更新任务'))),
+                WB().h('div', { style: 'display:flex;align-items:center;gap:8px;grid-column:1/-1;margin:4px 0 6px' },
+                    smallChk, WB().h('span', null, '使用识别出的小幅变化段辅助稳态辨识'),
+                    t.prepMessage ? WB().h('span', { class: 'wb-hint', style: 'margin:0' }, '(变更后需重新准备数据)') : null)));
 
             const prepDone = t.prepMessage && t.prepMessage.length;
             const prepRunning = state.prepWait || t.status === 'PREPARING';
+            const est = (t.result && t.result.prepEstimate) || null;
+            const resultBody = WB().h('div', { style: 'padding:10px 0' });
+            if (prepRunning) {
+                resultBody.appendChild(WB().h('span', { class: 'wb-inline-loading' }, WB().h('span', { class: 'wb-inline-spinner' }),
+                    '正在解析原工况均值与新窗口、识别小幅变化段...'));
+            } else if (prepDone) {
+                resultBody.appendChild(WB().h('div', { style: 'white-space:pre-line;line-height:1.9' }, String(t.prepMessage)));
+                if (est && est.center_s) {
+                    const fmtM = s => (s / 60) >= 10 ? Math.round(s / 60) + '分钟' : (s / 60).toFixed(1) + '分钟';
+                    const estRow = WB().h('div', { style: 'display:flex;align-items:baseline;gap:18px;margin-top:10px' },
+                        WB().h('span', { style: 'font-size:24px;font-weight:700;color:#0f766e' },
+                            '约 ' + fmtM(est.center_s)),
+                        WB().h('span', { class: 'wb-hint', style: 'margin:0' },
+                            '参考范围 ' + (est.lower_s ? fmtM(est.lower_s) : '—') + ' ~ ' + (est.upper_s ? fmtM(est.upper_s) : '—')
+                            + ' · 工程范围,非概率置信区间'));
+                    resultBody.appendChild(estRow);
+                    if (est.basis) resultBody.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin-top:4px' }, '依据: ' + est.basis));
+                }
+            } else {
+                resultBody.appendChild(WB().h('div', null, '上传完成后点击"重新准备数据",由程序完成05预览(原工况+新窗口均值、分组、小幅段)。'));
+            }
             wrap.appendChild(WB().h('div', { class: 'wb-section' },
                 WB().h('div', { class: 'wb-section-head' },
                     WB().h('div', { class: 'wb-section-title' }, '数据处理结果'),
                     prepRunning ? WB().h('span', { class: 'wb-tag wb-tag-amber' }, '05数据准备运行中...')
                         : prepDone ? WB().h('span', { class: 'wb-tag wb-tag-teal' }, '准备完成')
                         : WB().h('span', { class: 'wb-tag wb-tag-gray' }, '待准备')),
-                WB().h('div', { style: 'padding:10px 0' },
-                    prepRunning
-                        ? WB().h('span', { class: 'wb-inline-loading' }, WB().h('span', { class: 'wb-inline-spinner' }),
-                            '正在解析原工况均值与新窗口、识别小幅变化段...')
-                        : WB().h('div', null, prepDone ? String(t.prepMessage) : '上传完成后点击"重新准备数据",由程序完成05预览(原工况+新窗口均值、分组、小幅段)。')),
-                WB().h('div', { class: 'wb-hint', style: 'margin-top:6px' },
-                    '预览身份随输出目录保存;执行更新复用本次05结果,不重复准备。')));
-
-            wrap.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin:8px 0 12px' },
-                '两方法、两路径分别保存;公开合同与完整求解证据分开,不默认切换方法或路径。'));
+                resultBody));
 
             wrap.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'margin-top:10px' },
                 WB().h('button', {

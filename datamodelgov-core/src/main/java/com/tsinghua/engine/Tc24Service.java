@@ -903,6 +903,7 @@ public class Tc24Service {
                 t.setStatus(EngineModels.ModelingTask.ST_READY);
                 t.setPrepMessage(summarizeTc27Prepared(result));
                 t.setMessage("数据准备完成;可配置并执行更新");
+                stashPrepEstimate(t, result);
                 emitLog(key, "TC27数据准备完成");
             } else {
                 File delivery = findTc27Delivery(outDir);
@@ -946,16 +947,90 @@ public class Tc24Service {
     }
 
     /** 05准备摘要(展示"数据处理结果"行);程序result缺字段时回退通用描述。 */
+    /** 05准备摘要(图01-17): 准备完成：N个训练点，G组，S段小幅历程。+ 身份行 + 预计用时行。 */
     private String summarizeTc27Prepared(Map<String, Object> result) {
         if (result == null || result.isEmpty()) return "数据准备完成(摘要未返回,详见日志)";
-        StringBuilder sb = new StringBuilder();
-        Object st = result.get("status");
-        if (st != null) sb.append("状态 ").append(st).append("; ");
-        Object est = result.get("estimatedTime");
-        if (est != null) sb.append("粗估 ").append(est).append("; ");
+        Map<String, Object> est = asMap(result.get("estimatedTime"));
+        Map<String, Object> wl = est == null ? null : asMap(est.get("workload"));
+        StringBuilder sb = new StringBuilder("准备完成");
+        if (wl != null) {
+            sb.append("：").append(numStr(wl.get("trainingPoints"))).append("个训练点(原工况+新窗口均值)");
+            sb.append("，").append(numStr(wl.get("groupCount"))).append("组");
+            long small = numOrZero(wl.get("smallCount"));
+            if (small > 0) sb.append("，").append(small).append("段小幅历程");
+            long tp = numOrZero(wl.get("testPoints"));
+            if (tp > 0) sb.append("；独立测试").append(tp).append("点");
+            else sb.append("；两套测试均未提供");
+        }
+        sb.append("。");
         Object rid = result.get("runId");
-        if (rid != null) sb.append("runId ").append(rid);
-        return sb.length() == 0 ? "数据准备完成" : sb.toString();
+        if (rid != null) sb.append("\n").append(rid).append(" · 预览身份随输出目录保存;可复用本次05结果执行更新。");
+        if (est != null) {
+            Double c = asDouble(est.get("center_s") != null ? est.get("center_s") : est.get("seconds"));
+            Double lo = asDouble(est.get("lower_s") != null ? est.get("lower_s") : est.get("lowerSeconds"));
+            Double up = asDouble(est.get("upper_s") != null ? est.get("upper_s") : est.get("upperSeconds"));
+            if (c != null && c > 0) {
+                sb.append("\n预计用时约").append(fmtMinutes(c));
+                if (lo != null && up != null && lo > 0 && up > 0) {
+                    sb.append("(参考范围").append(fmtMinutes(lo)).append(" ~ ").append(fmtMinutes(up)).append(")");
+                }
+                sb.append(";工程范围、非概率置信区间;按当前工作量缩放,以实际求解为准。");
+            }
+        }
+        return sb.toString();
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> asMap(Object o) {
+        return o instanceof Map ? (Map<String, Object>) o : null;
+    }
+
+    /** 把估时/工作量摘要扁平化进任务result(前端预计用时卡片用)。 */
+    private void stashPrepEstimate(EngineModels.ModelingTask t, Map<String, Object> result) {
+        try {
+            Map<String, Object> est = asMap(result.get("estimatedTime"));
+            if (est == null) return;
+            Map<String, Object> wl = asMap(est.get("workload"));
+            Map<String, Object> prep = new LinkedHashMap<>();
+            prep.put("center_s", asDouble(est.get("center_s") != null ? est.get("center_s") : est.get("seconds")));
+            prep.put("lower_s", asDouble(est.get("lower_s") != null ? est.get("lower_s") : est.get("lowerSeconds")));
+            prep.put("upper_s", asDouble(est.get("upper_s") != null ? est.get("upper_s") : est.get("upperSeconds")));
+            if (wl != null) {
+                prep.put("trainingPoints", numOrZero(wl.get("trainingPoints")));
+                prep.put("groupCount", numOrZero(wl.get("groupCount")));
+                prep.put("smallCount", numOrZero(wl.get("smallCount")));
+                prep.put("testPoints", numOrZero(wl.get("testPoints")));
+                prep.put("parameterCount", numOrZero(wl.get("parameterCount")));
+            }
+            Object basis = est.get("basis");
+            if (basis != null) prep.put("basis", String.valueOf(basis));
+            t.getResult().put("prepEstimate", prep);
+        } catch (Exception e) {
+            log.debug("估时摘要提取失败", e);
+        }
+    }
+
+    private String numStr(Object o) {
+        Double d = asDouble(o);
+        return d == null ? "—" : (d == Math.floor(d) ? String.valueOf(d.longValue()) : String.valueOf(d));
+    }
+
+    private long numOrZero(Object o) {
+        Double d = asDouble(o);
+        return d == null ? 0 : Math.round(d);
+    }
+
+    private Double asDouble(Object o) {
+        if (o instanceof Number) return ((Number) o).doubleValue();
+        if (o != null) {
+            try { return Double.parseDouble(String.valueOf(o)); } catch (NumberFormatException ignore) { }
+        }
+        return null;
+    }
+
+    private String fmtMinutes(double seconds) {
+        double m = seconds / 60.0;
+        return m >= 10 ? String.valueOf(Math.round(m)) + "分钟" : String.format("%.1f分钟", m);
     }
 
     /** TC27交付Excel:更新模型工作簿,在tc27目录深度2内找最新.xlsx。 */

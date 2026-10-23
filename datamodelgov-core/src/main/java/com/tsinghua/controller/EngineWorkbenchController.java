@@ -571,7 +571,10 @@ public class EngineWorkbenchController {
             if (dm != null && !String.valueOf(dm).isEmpty()) t.setDataMethod(String.valueOf(dm));
             Object rs = body.get("regularizationStrength");
             if (rs instanceof Number) t.setRegularizationStrength(((Number) rs).doubleValue());
-            t.setMessage("配置已更新:路径=" + t.getParentRoute() + " / 数据=" + t.getDataMethod());
+            Object inc = body.get("includeSmallHistory");
+            if (inc != null) t.setIncludeSmallHistory(Boolean.parseBoolean(String.valueOf(inc)));
+            t.setMessage("配置已更新:路径=" + t.getParentRoute() + " / 数据=" + t.getDataMethod()
+                    + " / 小幅段=" + (t.getIncludeSmallHistory() == null || t.getIncludeSmallHistory() ? "使用" : "不使用"));
             return Result.success(store.saveTask(t));
         } catch (IOException e) {
             return Result.error("配置保存失败: " + e.getMessage());

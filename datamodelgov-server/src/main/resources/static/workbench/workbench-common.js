@@ -2517,7 +2517,9 @@ function loadOverviewTasks(ctx, holder) {
                     onclick: () => { if (confirm('结束计算?当前有效记录将保存,暂停不卸载、不自动断油。')) sendCmd('stop', 0); }
                 }, '结束计算'));
             } else if (S.phase === 'READY') {
-                actions.appendChild(h('button', { class: 'wb-btn wb-btn-primary', onclick: () => startRun() }, '开始运行'));
+                // 09-12:准备就绪后常驻"开始仿真";检查配置回到总控表单核对
+                actions.appendChild(h('button', { class: 'wb-btn wb-btn-outline', onclick: () => { S.tab = 'main'; renderAll(); } }, '检查配置'));
+                actions.appendChild(h('button', { class: 'wb-btn wb-btn-primary', onclick: () => startRun() }, '▶ 开始仿真'));
                 actions.appendChild(h('button', { class: 'wb-btn wb-btn-outline', onclick: () => closeSession() }, '放弃并关闭(改配置重新准备)'));
             } else if (S.phase === 'ENDED' || S.phase === 'FAILED') {
                 actions.appendChild(h('button', { class: 'wb-btn wb-btn-outline', onclick: () => window.open(excelUrl(S.live && S.live.runId ? S.live.runId : ''), '_blank') }, '导出Excel'));
@@ -2582,6 +2584,13 @@ function loadOverviewTasks(ctx, holder) {
                 body.appendChild(h('div', { class: 'wb-empty' }, '正在加载历史记录(result.json)...'));
                 return;
             }
+            // 准备中给可见反馈(否则点击"准备并校验"像没反应)
+            if (S.phase === 'PREPARING' && !S.readonlyRunId) {
+                body.appendChild(h('div', { class: 'wb-infobar', style: 'display:flex;align-items:center;gap:12px;padding:14px 16px' },
+                    h('span', { class: 'wb-inline-loading' }, h('span', { class: 'wb-inline-spinner' }),
+                        '正在创建运行副本并校验成套身份(原SLX/DLL不写入);模型初始化需要一些时间...')));
+                return;
+            }
             const src = S.readonlyRunId || S.result ? 'result'
                 : (running() || S.phase === 'ENDED' || S.phase === 'FAILED') ? 'live' : 'idle';
             if (S.tab === 'main') paintMain(src);
@@ -2592,22 +2601,29 @@ function loadOverviewTasks(ctx, holder) {
         function paintMain(src) {
             if (src === 'idle') { paintConfigForm(); return; }
             const live = S.live || {};
-            // Np挡位 + 负载施加(运行中;09-13)
+            // Np挡位(草稿+施加两步) + 负载施加(运行中;09-13)
             if (canCmd()) {
                 body.appendChild(h('div', { class: 'wb-infobar' },
                     '负载方式:' + (AFO_LOAD.find(l => l[0] === loadMode())[1] || '—') + '。空气耦合与负载类型已锁定;当前无待生效命令。'));
+                S.npDraft = S.npDraft || '1';
                 const npRow = h('div', { style: 'display:flex;gap:10px;align-items:center;margin:12px 0' });
-                const curRatio = live.applied && live.applied[0] != null ? live.applied[0] / designNp() : 1;
                 AFO_NP_STEPS.forEach(([val, label]) => {
                     npRow.appendChild(h('button', {
-                        class: 'wb-btn ' + (Math.abs(parseFloat(val) - curRatio) < 1e-9 ? 'wb-btn-primary' : 'wb-btn-outline'),
-                        onclick: () => sendCmd('np', parseFloat(val))
+                        class: 'wb-btn ' + (S.npDraft === val ? 'wb-btn-primary' : 'wb-btn-outline'),
+                        onclick: () => { S.npDraft = val; renderAll(); }
                     }, label));
                 });
+                npRow.appendChild(h('div', { class: 'wb-spacer' }));
+                npRow.appendChild(h('button', {
+                    class: 'wb-btn wb-btn-outline', style: 'min-width:120px',
+                    onclick: () => sendCmd('np', parseFloat(S.npDraft))
+                }, '✓ 施加Np'));
                 body.appendChild(h('div', { class: 'wb-section-title', style: 'margin-bottom:8px' }, 'Np运行挡位'));
                 body.appendChild(npRow);
                 body.appendChild(h('div', { class: 'wb-hint', style: 'margin-bottom:12px' },
-                    '当前生效目标: ' + npText() + ';状态: ' + (live.pending ? '有待生效命令(' + live.pending.kind + ')' : '无')));
+                    '预选 ' + Math.round(parseFloat(S.npDraft) * 100) + '%(待施加);当前生效目标: ' + npText()
+                    + ';状态: ' + (live.pending ? '有待生效命令(' + live.pending.kind + ')' : '无待生效命令')
+                    + '。挡位命令被接收不代表转速已达到并稳定。'));
                 // 负载草稿(09-13:按当前负载方式显示对应输入)
                 const lm = loadMode();
                 const unitTxt = lm === 'power' ? 'PT功率草稿 / kW' : lm === 'torque' ? '扭矩草稿 / N·m' : lm === 'pitch' ? '总距角草稿 / deg' : '主桨总距角草稿 / deg';
@@ -2771,6 +2787,23 @@ function loadOverviewTasks(ctx, holder) {
                 h('button', { class: 'wb-btn wb-btn-outline', onclick: () => { ctx.navigate('records'); } }, '查看历史仿真记录')));
             body.appendChild(h('div', { class: 'wb-hint', style: 'margin-top:10px' },
                 'Np初值挡位为100%(设计转速点);运行中可施加80/90/95/100/105%与负载在线指令。'));
+            // 09-12:已完成准备,实际状态(来自prepare后的status.json初态)
+            if (S.phase === 'READY') {
+                const live0 = S.live || {};
+                const v0 = live0.values || [];
+                const eng0 = v0[AFO_GROUP.engine] || [];
+                const wf0 = (v0[AFO_GROUP.fuel_engine] || [])[0];
+                body.appendChild(h('div', { class: 'wb-section-title', style: 'margin:18px 0 8px' }, '已完成准备,实际状态'));
+                body.appendChild(h('table', { class: 'wb-table' },
+                    h('tr', null, ['Np实际', 'Ng实际', '燃油初值', '边界与记录'].map(x => h('th', null, x))),
+                    h('tr', null,
+                        h('td', null, eng0[AFO_E.Np] != null ? (Math.round(eng0[AFO_E.Np] * designNp() / 100 * 10) / 10 + ' rpm') : '—'),
+                        h('td', null, eng0[AFO_E.Ng] != null ? (Math.round(eng0[AFO_E.Ng]) + ' rpm') : '—'),
+                        h('td', null, wf0 != null ? Number(wf0).toFixed(5) + ' kg/s' : '—'),
+                        h('td', { class: 'wb-hint' }, '积分0.025 s / 记录' + S.cfg.recordStep + ' s / ' + (S.cfg.externalAir ? '外部回灌' : '原测试脉冲关闭')))));
+                body.appendChild(h('div', { class: 'wb-hint', style: 'margin:10px 0' },
+                    '本模式没有起动机、油门或停车控制。若要从静止起动,请切换至全模式仿真。'));
+            }
         }
 
         /* —— 系统页签(09-01/02/05):曲线 + 通道核对 —— */
