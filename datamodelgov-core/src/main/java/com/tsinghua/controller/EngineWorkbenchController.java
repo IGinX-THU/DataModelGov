@@ -319,6 +319,7 @@ public class EngineWorkbenchController {
         String denied = projectReadDenied(pid);
         if (denied != null) return Result.error(denied);
         backfillTaskRecords(pid);
+        taskRecordService.dedupeByTask(pid); // 历史脏数据自愈:每任务只留最新一行
         return Result.success(taskRecordService.queryList(pid, pageNum, pageSize));
     }
 
@@ -329,6 +330,7 @@ public class EngineWorkbenchController {
         String denied = projectReadDenied(pid);
         if (denied != null) return Result.error(denied);
         backfillTaskRecords(pid);
+        taskRecordService.dedupeByTask(pid); // 与列表同口径去重后再计数
         return Result.success(taskRecordService.countList(pid));
     }
 
@@ -540,7 +542,7 @@ public class EngineWorkbenchController {
                 t.setName((String) body.getOrDefault("name", "新增试车稳态更新任务"));
                 t.setUpdateMethod((String) body.getOrDefault("updateMethod", "II"));
                 Object inc = body.get("includeSmallHistory");
-                t.setIncludeSmallHistory(inc == null || Boolean.parseBoolean(String.valueOf(inc)));
+                t.setIncludeSmallHistory(inc != null && Boolean.parseBoolean(String.valueOf(inc)));
                 String upstreamModelId = (String) body.get("upstreamModelId");
                 if (upstreamModelId == null || upstreamModelId.isEmpty()) {
                     return Result.error("请选择上游TC24父模型");
@@ -1042,12 +1044,39 @@ public class EngineWorkbenchController {
             Object rs = body.get("regularizationStrength");
             if (rs instanceof Number) t.setRegularizationStrength(((Number) rs).doubleValue());
             Object inc = body.get("includeSmallHistory");
-            if (inc != null) t.setIncludeSmallHistory(Boolean.parseBoolean(String.valueOf(inc)));
+            if (inc != null) {
+                boolean nv = Boolean.parseBoolean(String.valueOf(inc));
+                // TC27预处理设置变化:旧准备/运行输出归档,下次准备/辨识将全新执行
+                // (程序合同:preview要求输出目录不存在;旧prepared数据与新设置身份校验不符会拒绝执行)
+                if ("steady_update".equals(t.getKind()) && t.getIncludeSmallHistory() != null
+                        && t.getIncludeSmallHistory() != nv) {
+                    archiveStaleTc27Output(pid, tid);
+                }
+                t.setIncludeSmallHistory(nv);
+            }
             t.setMessage("配置已更新:路径=" + t.getParentRoute() + " / 数据=" + t.getDataMethod()
-                    + " / 小幅段=" + (t.getIncludeSmallHistory() == null || t.getIncludeSmallHistory() ? "使用" : "不使用"));
+                    + " / 小幅段=" + (Boolean.TRUE.equals(t.getIncludeSmallHistory()) ? "使用" : "不使用"));
             return Result.success(store.saveTask(t));
         } catch (IOException e) {
             return Result.error("配置保存失败: " + e.getMessage());
+        }
+    }
+
+    /** TC27预处理设置变化后归档旧输出目录(tc27 → tc27_stale_<ts>),保留审计,下次全新准备。 */
+    private void archiveStaleTc27Output(String pid, String tid) {
+        try {
+            File workDir = store.taskWorkDir(pid, tid);
+            File old = new File(workDir, "tc27");
+            if (old.exists()) {
+                File backup = new File(workDir, "tc27_stale_" + System.currentTimeMillis());
+                if (old.renameTo(backup)) {
+                    log.info("TC27输出目录已归档(预处理设置变化): {} -> {}", old.getName(), backup.getName());
+                } else {
+                    log.warn("TC27输出目录归档失败: {}", old.getAbsolutePath());
+                }
+            }
+        } catch (Exception e) {
+            log.warn("TC27输出目录归档异常: task={}", tid, e);
         }
     }
 

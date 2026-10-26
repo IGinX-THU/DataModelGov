@@ -357,7 +357,7 @@ window.Workbench = (() => {
             h('div', { class: 'wb-section-head' },
                 h('div', { class: 'wb-section-title' }, '项目文件库'),
                 h('span', { class: 'wb-hint', style: 'margin:0' },
-                    '上传一次入库,任务数据页可从库带入;行点击预览内容;云端备份,本地丢失自动恢复')),
+                    '任务数据页从库带入文件;行点击预览内容;云端备份,本地丢失自动恢复')),
             libHolder));
         loadFileLibrary(ctx, libHolder);
 
@@ -384,6 +384,7 @@ window.Workbench = (() => {
         const nameInput = h('input', { placeholder: '按文件名筛选' });
         const kindSel = h('select', null, MODEL_KINDS.map(k => h('option', { value: k }, k)));
         const listHolder = h('div', null, h('div', { class: 'wb-empty' }, '正在加载文件库...'));
+        const pager = h('div');
 
         function paintChrome() {
             tabs.innerHTML = '';
@@ -406,7 +407,7 @@ window.Workbench = (() => {
                 listHolder.innerHTML = '';
                 if (!rows.length) {
                     listHolder.appendChild(h('div', { class: 'wb-empty' },
-                        S.name ? '没有匹配的文件。' : '文件库为空——点击右上角"上传"把文件收入项目文件库。'));
+                        S.name ? '没有匹配的文件。' : '文件库为空。'));
                     pager.innerHTML = '';
                     return;
                 }
@@ -528,8 +529,9 @@ window.Workbench = (() => {
     }
 
 
-    const OV_KIND = { steady: '稳态试车建模', steady_update: '稳态更新', transient_update: '过渡态试车建模',
-        flight_steady: '稳态飞参建模', flight_transient: '过渡态飞参建模', evolution: '模型自演化' };
+    const OV_KIND = { steady: '稳态试车建模', steady_update: '新增试车稳态更新', transient_update: '过渡态试车建模',
+        flight_steady: '稳态飞参建模', flight_transient: '过渡态飞参建模', evolution: '模型自演化',
+        uq: '不确定性评估', prediction: '输出预测' };
     const OV_BIZ = { steady: 'steady', steady_update: 'steady_update', transient_update: 'transient',
         flight_steady: 'flightSteady', flight_transient: 'flightTransient', evolution: 'evolution' };
 
@@ -2000,6 +2002,12 @@ window.Workbench = (() => {
 
     /** 运行记录:仅建模任务的执行历史,调独立分页接口 GET /projects/{pid}/records(服务端分页,
      *  与项目列表同款分页条);UQ评估与输出预测各有专属页面,不在此混列。 */
+    /* 运行记录阶段标签(与效果图页签/业务命名一致) */
+    const RECORD_STAGE = { steady: '稳态系数辨识', steady_update: '新增试车稳态更新',
+        transient_update: '过渡态瞬态辨识', flight_steady: '稳态飞参建模', flight_transient: '过渡态飞参建模',
+        evolution: '模型自演化', uq: '不确定性评估', prediction: '输出预测' };
+    const KIND_BIZ = { steady: 'steady', steady_update: 'steady_update', transient_update: 'transient',
+        flight_steady: 'flightSteady', flight_transient: 'flightTransient', evolution: 'evolution', uq: 'steady' };
     async function loadRunRecords(ctx, holder) {
         holder.innerHTML = '';
         /* 任务类型文案与项目概况任务表(OV_KIND)保持一致 */
@@ -2019,7 +2027,7 @@ window.Workbench = (() => {
             }
             listHolder.appendChild(h('table', { class: 'wb-table' },
                 h('tr', null, ['任务名称', '任务类型', '最近运行', '状态', '开始时间', '结束时间', '操作'].map(t => h('th', null, t))),
-                rows.map(tk => {
+                rows.filter(tk => !(tk.status === 'READY' && !tk.startTime)).map(tk => {
                     const raw = tk.status === 'FAILED' && tk.errorKind === 'SAVE_FAILED' ? '保存失败'
                         : tk.status === 'FAILED' && tk.errorKind === 'NUMERIC_FAILED' ? '数值失败' : tk.status;
                     const kindTag = tk.status === 'FAILED' ? (tk.errorKind === 'SAVE_FAILED' ? ['保存失败', 'amber'] : tk.errorKind === 'NUMERIC_FAILED' ? ['数值失败', 'red'] : null) : null;
@@ -2027,7 +2035,7 @@ window.Workbench = (() => {
                     const note = tk.message || '';
                     return h('tr', null,
                         h('td', { class: 'wb-link', title: note, style: 'max-width:260px;word-break:break-all' }, tk.name || tk.taskId),
-                        h('td', { class: 'wb-hint', style: 'font-weight:600' }, OV_KIND[tk.kind] || tk.kind || '稳态试车建模'),
+                        h('td', { class: 'wb-hint', style: 'font-weight:600' }, RECORD_STAGE[tk.kind] || tk.kind || '稳态试车建模'),
                         h('td', { class: 'wb-hint' }, tk.runId || '—'),
                         h('td', null, kindTag
                             ? [h('span', { style: 'display:inline-flex;margin-right:6px' }, statusTag(kindTag[0], kindTag[1])), statusTag(st[0], st[1])]
@@ -2037,7 +2045,9 @@ window.Workbench = (() => {
                         h('td', null, h('button', {
                             class: 'wb-btn wb-btn-primary', style: 'padding:3px 12px;font-size:12px',
                             onclick: () => {
+                                if (tk.kind === 'prediction') { ctx.navigate('predictions'); return; }
                                 window.__WB_OPEN_TASK__ = tk.taskId;
+                                if (tk.kind === 'uq') window.__WB_OPEN_TASK_TAB__ = 'uq'; // 直达评估页签
                                 ctx.enterTask({ id: KIND_BIZ[tk.kind] || 'steady' });
                             }
                         }, '打开')));

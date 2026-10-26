@@ -88,8 +88,8 @@ public final class EngineModels {
         private String upstreamModelFile;
         /** 上游父模型成果id(溯源) */
         private String upstreamModelId;
-        /** 使用识别出的小幅变化段辅助稳态辨识(合同默认true) */
-        private Boolean includeSmallHistory = Boolean.TRUE;
+        /** 使用识别出的小幅变化段辅助稳态辨识(工作台默认false,显式勾选才启用) */
+        private Boolean includeSmallHistory = Boolean.FALSE;
 
         /* ---------- TC27瞬态更新(kind=transient_update,F-03) ---------- */
         /** 上游TC27组合稳态模型交付Excel(冻结稳态载体) */

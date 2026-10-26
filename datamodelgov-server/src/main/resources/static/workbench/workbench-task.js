@@ -205,7 +205,7 @@
             const routeSel = WB().h('select', null,
                 WB().h('option', { value: 'steady' }, '稳态方程'),
                 WB().h('option', { value: 'transient_instant', selected: '' }, '瞬态时刻方程'));
-            const smallChk = WB().h('input', { type: 'checkbox', checked: '' });
+            const smallChk = WB().h('input', { type: 'checkbox' });
             window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id || '') + '/models')
                 .then(resp => {
                     const models = resp && Array.isArray(resp.data)
@@ -303,7 +303,7 @@
 
             // 小幅变化段checkbox(01-17):可勾选,走配置接口;已准备后修改需重新准备
             const smallChk = WB().h('input', { type: 'checkbox' });
-            if (t.includeSmallHistory !== false) smallChk.setAttribute('checked', '');
+            if (t.includeSmallHistory === true) smallChk.setAttribute('checked', '');
             smallChk.addEventListener('change', async () => {
                 try {
                     const resp = await window.AppConfig.enginePost(

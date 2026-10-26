@@ -859,7 +859,7 @@ public class Tc24Service {
                             task.getHistoryTestFile().replace('\\', '/'))) : new ArrayList<>());
             request.put("route", task.getRoute() == null ? "steady" : task.getRoute());
             request.put("method", task.getUpdateMethod() == null ? "II" : task.getUpdateMethod());
-            request.put("includeSmallHistory", task.getIncludeSmallHistory() == null || task.getIncludeSmallHistory());
+            request.put("includeSmallHistory", Boolean.TRUE.equals(task.getIncludeSmallHistory()));
             request.put("plot", false);
             request.put("runTag", task.getRunId() == null ? "WB01" : task.getRunId());
             request.put("outputDirectory", outDir.getAbsolutePath().replace('\\', '/'));

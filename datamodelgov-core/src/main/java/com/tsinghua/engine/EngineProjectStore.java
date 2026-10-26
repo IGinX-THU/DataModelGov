@@ -382,6 +382,18 @@ public class EngineProjectStore {
         } catch (Exception e) {
             log.warn("预测记录清单同步失败: rec={}", r.getId(), e);
         }
+        // 运行记录阶段行(输出预测):与任务执行记录同表,kind=prediction
+        try {
+            com.tsinghua.entity.EngineTaskRecordEntity stage = new com.tsinghua.entity.EngineTaskRecordEntity();
+            stage.setProjectId(r.getProjectId()).setTaskId("pred-" + r.getId()).setKind("prediction")
+                 .setName("输出预测 · " + (r.getModelName() != null ? r.getModelName() : "模型"))
+                 .setRunId(r.getRunId()).setStatus(r.getStatus()).setMessage(r.getMessage())
+                 .setStartTime(r.getCreatedAt()).setEndTime(r.getFinishedAt())
+                 .setCreateTime(r.getCreatedAt() != null ? r.getCreatedAt() : System.currentTimeMillis());
+            taskRecordService.upsertRow(stage);
+        } catch (Exception e) {
+            log.warn("预测阶段运行记录同步失败: rec={}", r.getId(), e);
+        }
         return r;
     }
 
@@ -415,6 +427,19 @@ public class EngineProjectStore {
             uqRecordService.upsertFromUq(r); // UQ记录清单(IginX)同步,失败仅告警
         } catch (Exception e) {
             log.warn("UQ记录清单同步失败: uq={}", r.getId(), e);
+        }
+        // 运行记录阶段行(不确定性评估):与任务执行记录同表,kind=uq
+        try {
+            com.tsinghua.entity.EngineTaskRecordEntity stage = new com.tsinghua.entity.EngineTaskRecordEntity();
+            stage.setProjectId(r.getProjectId()).setTaskId("uq-" + r.getId()).setKind("uq")
+                 .setName("不确定性评估 · 方法" + r.getMethod()
+                     + (r.getParticleCount() != null ? " · " + r.getParticleCount() + "粒子" : ""))
+                 .setRunId(r.getRunId()).setStatus(r.getStatus()).setMessage(r.getMessage())
+                 .setStartTime(r.getStartedAt()).setEndTime(r.getFinishedAt())
+                 .setCreateTime(r.getStartedAt() != null ? r.getStartedAt() : System.currentTimeMillis());
+            taskRecordService.upsertRow(stage);
+        } catch (Exception e) {
+            log.warn("UQ阶段运行记录同步失败: uq={}", r.getId(), e);
         }
         return r;
     }

@@ -159,13 +159,13 @@ public abstract class IginxListService<T> {
         return out;
     }
 
-    /** 实体统一含 id/createTime(Long):id 缺失时以 createTime 兜底。 */
+    /** 实体统一含 id/createTime(Long):id 为行时间戳主键,SELECT 不返回,以 createTime 回填。 */
     private void backfillId(T e) {
         try {
-            java.lang.reflect.Method setCreateTime = type().getMethod("setCreateTime", Long.class);
-            Object ct = setCreateTime.invoke(e);
-            java.lang.reflect.Method setId = type().getMethod("setId", Long.class);
-            if (ct != null && setId.invoke(e) == null) setId.invoke(e, ct);
+            Object ct = type().getMethod("getCreateTime").invoke(e);
+            if (ct != null) {
+                type().getMethod("setId", Long.class).invoke(e, ct);
+            }
         } catch (Exception ignore) {
         }
     }

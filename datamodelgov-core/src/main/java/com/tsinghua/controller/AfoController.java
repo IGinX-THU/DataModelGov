@@ -156,7 +156,7 @@ public class AfoController {
             List<Map<String, Object>> merged = new java.util.ArrayList<>();
             for (com.tsinghua.entity.EngineAfoSessionEntity e : a) merged.add(toRow(e, "afo"));
             for (com.tsinghua.entity.EngineTestbenchEntity e : f) merged.add(toRow(e, "fm"));
-            merged.sort((x, y) -> Long.compare(numOf(y.get("createTime")), numOf(x.get("createTime"))));
+            merged.sort((x, y) -> Long.compare(numOf(y.get("createdAt")), numOf(x.get("createdAt"))));
             int from = Math.min(merged.size(), (pn - 1) * ps);
             int to = Math.min(merged.size(), from + ps);
             return Result.success(new java.util.ArrayList<>(merged.subList(from, to)));
