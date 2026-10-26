@@ -45,6 +45,9 @@ public class AfoController {
     @Autowired
     private com.tsinghua.engine.EngineTestbenchRecordService testbenchRecordService;
 
+    @Autowired
+    private com.tsinghua.engine.TestbenchService testbenchService;
+
     @ApiOperation("发起准备(异步;构造运行副本与模型初始化)")
     @PostMapping("/prepare")
     @RequirePermission(Permission.CREATE)
@@ -149,7 +152,7 @@ public class AfoController {
                     afoSessionService.queryFiltered(pid, 1, pn * ps, where);
             List<com.tsinghua.entity.EngineTestbenchEntity> f =
                     testbenchRecordService.queryFiltered(pid, 1, pn * ps,
-                            joinWhere("kind = 'fullmode'", where));
+                            joinWhere("kind IN ('fullmode','design_point','startstop')", where));
             List<Map<String, Object>> merged = new java.util.ArrayList<>();
             for (com.tsinghua.entity.EngineAfoSessionEntity e : a) merged.add(toRow(e, "afo"));
             for (com.tsinghua.entity.EngineTestbenchEntity e : f) merged.add(toRow(e, "fm"));
@@ -172,10 +175,32 @@ public class AfoController {
             backfillSessions(pid);
             String where = sessionsWhere(status, kw);
             long total = afoSessionService.countFiltered(pid, where)
-                    + testbenchRecordService.countFiltered(pid, joinWhere("kind = 'fullmode'", where));
+                    + testbenchRecordService.countFiltered(pid, joinWhere("kind IN ('fullmode','design_point','startstop')", where));
             return Result.success(total);
         } catch (Exception e) {
             return Result.error("统计仿真记录总数失败: " + e.getMessage());
+        }
+    }
+
+    @ApiOperation("仿真记录概览(每类型最新一条:多系统联合仿真/起动停车建模/全模式仿真,一条记录=该类型整个工作流)")
+    @GetMapping("/sessions/latest")
+    @RequirePermission(Permission.READ)
+    public Result<List<Map<String, Object>>> latestSessions(@PathVariable("pid") String pid) {
+        try {
+            backfillSessions(pid);
+            List<Map<String, Object>> out = new java.util.ArrayList<>();
+            List<com.tsinghua.entity.EngineAfoSessionEntity> a = afoSessionService.queryFiltered(pid, 1, 1, null);
+            if (!a.isEmpty()) out.add(toRow(a.get(0), "afo"));
+            List<com.tsinghua.entity.EngineTestbenchEntity> ss = testbenchRecordService.queryFiltered(
+                    pid, 1, 1, "kind IN ('design_point','startstop')");
+            if (!ss.isEmpty()) out.add(toRow(ss.get(0), "fm"));
+            List<com.tsinghua.entity.EngineTestbenchEntity> fm = testbenchRecordService.queryFiltered(
+                    pid, 1, 1, "kind = 'fullmode'");
+            if (!fm.isEmpty()) out.add(toRow(fm.get(0), "fm"));
+            out.sort((x, y) -> Long.compare(numOf(y.get("createdAt")), numOf(x.get("createdAt"))));
+            return Result.success(out);
+        } catch (Exception e) {
+            return Result.error("读取仿真记录概览失败: " + e.getMessage());
         }
     }
 
@@ -217,6 +242,7 @@ public class AfoController {
         } else {
             com.tsinghua.entity.EngineTestbenchEntity r = (com.tsinghua.entity.EngineTestbenchEntity) e;
             m.put("runId", r.getTaskKey());
+            m.put("kind", r.getKind());
             m.put("phase", r.getPhase());
             m.put("message", r.getMessage());
             m.put("createdAt", r.getCreateTime());
@@ -243,12 +269,23 @@ public class AfoController {
     /** 存量会话回填:清单表为空而文件索引存在时,把文件会话同步进清单表。 */
     private void backfillSessions(String pid) {
         try {
-            if (afoSessionService.countList(pid) > 0) return;
-            for (Map<String, Object> idx : afoService.listSessions(pid)) {
-                afoSessionService.upsertFromIndex(pid, idx);
+            if (afoSessionService.countList(pid) == 0) {
+                for (Map<String, Object> idx : afoService.listSessions(pid)) {
+                    afoSessionService.upsertFromIndex(pid, idx);
+                }
             }
         } catch (Exception e) {
             log.warn("AFO会话清单回填失败: projectId={}", pid, e);
+        }
+        // 试车台记录(全模式/设计点/起动停车)同样从文件元数据回填,表空时执行一次
+        try {
+            if (testbenchRecordService.countList(pid) == 0) {
+                for (Map<String, Object> idx : testbenchService.listTasks(pid)) {
+                    testbenchRecordService.upsertFromIndex(pid, idx);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("试车台记录清单回填失败: projectId={}", pid, e);
         }
     }
 

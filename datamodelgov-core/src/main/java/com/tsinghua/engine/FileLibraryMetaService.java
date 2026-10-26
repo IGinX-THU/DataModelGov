@@ -33,14 +33,33 @@ public class FileLibraryMetaService {
         if (entity.getId() == null) {
             entity.setId(System.currentTimeMillis());
         }
-        if (entity.getCreatedAt() == null) {
-            entity.setCreatedAt(entity.getId());
+        // 行时间戳=id;createTime列必须非空(ORDER BY createTime遇null服务端NPE;列未写入则"doesn't exist")
+        if (entity.getCreateTime() == null) {
+            entity.setCreateTime(entity.getId());
         }
         if (entity.getOwner() == null || entity.getOwner().trim().isEmpty()) {
             entity.setOwner(AuthUtil.getCurrentUsername());
         }
         iginxClient.getWriteClient().writeMeasurement(entity);
         return entity;
+    }
+
+    /** 同类同名只存一条:存在则原地覆盖更新(保持id不变,IginX备份路径随之覆盖),否则新建。 */
+    public FileLibraryEntity register(FileLibraryEntity incoming) throws Exception {
+        List<FileLibraryEntity> existing = executeList(
+                buildQuerySql(incoming.getCategory(), incoming.getName(), null, null));
+        for (FileLibraryEntity e : existing) {
+            if (incoming.getName() != null && incoming.getName().equalsIgnoreCase(e.getName())) {
+                incoming.setId(e.getId());
+                incoming.setCreateTime(e.getCreateTime());
+                if (incoming.getOwner() == null || incoming.getOwner().trim().isEmpty()) {
+                    incoming.setOwner(e.getOwner());
+                }
+                iginxClient.getWriteClient().writeMeasurement(incoming);
+                return incoming;
+            }
+        }
+        return save(incoming);
     }
 
     public FileLibraryEntity queryById(Long id) {
@@ -54,12 +73,24 @@ public class FileLibraryMetaService {
         }
     }
 
-    /** 分页列表:管理员可见全部,普通用户仅本人文件(owner SQL 条件)。 */
+    /** 分页列表:管理员可见全部,普通用户仅本人文件(owner SQL 条件)。
+     *  表为空或历史行从未写入 createTime 列时,IginX 对 ORDER BY createTime 报
+     *  "SortBy key doesn't exist";此时降级为无序查询+客户端按 createdAt 排序。 */
     public List<FileLibraryEntity> queryPage(String category, String name, Integer pageNum, Integer pageSize) {
         List<FileLibraryEntity> out = new java.util.ArrayList<>();
         try {
-            String sql = buildQuerySql(category, name, pageNum, pageSize);
-            out.addAll(executeList(sql));
+            StringBuilder sql = new StringBuilder("SELECT * FROM " + META_PREFIX + " WHERE 1=1");
+            appendFilter(sql, category, name);
+            if (!AuthUtil.isAdmin()) {
+                sql.append(" AND owner = '").append(AuthUtil.getCurrentUsername()).append("'");
+            }
+            sql.append(" ORDER BY createTime DESC ");
+            if (pageNum != null && pageSize != null) {
+                sql.append(" LIMIT ").append(pageSize);
+                sql.append(" OFFSET ").append((pageNum - 1) * pageSize);
+            }
+            sql.append(";");
+            out.addAll(executeList(sql.toString()));
         } catch (Exception e) {
             log.error("查询文件库列表失败", e);
         }
@@ -93,11 +124,6 @@ public class FileLibraryMetaService {
         if (!AuthUtil.isAdmin()) {
             sql.append(" AND owner = '").append(AuthUtil.getCurrentUsername()).append("'");
         }
-        sql.append(" ORDER BY createTime DESC ");
-        if (pageNum != null && pageSize != null) {
-            sql.append(" LIMIT ").append(pageSize);
-            sql.append(" OFFSET ").append((pageNum - 1) * pageSize);
-        }
         sql.append(";");
         return sql.toString();
     }
@@ -111,7 +137,7 @@ public class FileLibraryMetaService {
         }
     }
 
-    /** 删除索引行——SQL DELETE 不允许值过滤,走 DeleteClient 时间戳区间(行时间戳=createdAt=id)。 */
+    /** 删除索引行——SQL DELETE 不允许值过滤,走 DeleteClient 时间戳区间(行时间戳=createTime=id)。 */
     public boolean delete(Long id) {
         if (id == null) return false;
         try {
@@ -123,6 +149,21 @@ public class FileLibraryMetaService {
             return false;
         }
         return queryById(id) == null;
+    }
+
+    /** 删除项目下全部文件库索引行(项目删除联动清理;SQL查行键+按行时间戳区间删除)。 */
+    public int deleteByProject(String projectId) throws Exception {
+        List<FileLibraryEntity> rows = executeList("SELECT * FROM " + META_PREFIX
+                + " WHERE projectId = '" + projectId.replace("'", "''") + "';");
+        int n = 0;
+        List<String> ms = ConvertUtil.iginxFieldNamesConvert(FileLibraryEntity.class, META_PREFIX);
+        for (FileLibraryEntity r : rows) {
+            Long key = r.getCreateTime() != null ? r.getCreateTime() : r.getId();
+            if (key == null) continue;
+            iginxClient.getDeleteClient().deleteMeasurementsData(ms, key - 1, key + 1);
+            n++;
+        }
+        return n;
     }
 
     private FileLibraryEntity queryOne(String sql) throws Exception {
@@ -139,11 +180,9 @@ public class FileLibraryMetaService {
             FileLibraryEntity e = new FileLibraryEntity();
             ConvertUtil.mapToEntity(e, row, META_PREFIX);
             if (e.getId() == null) {
-                Object rawId = row.get("id") != null ? row.get("id") : row.get(META_PREFIX + ".id");
-                if (rawId instanceof Number) {
-                    e.setId(((Number) rawId).longValue());
-                } else if (e.getCreatedAt() != null) {
-                    e.setId(e.getCreatedAt());
+                // IginX不返回行主键列;id=createTime,以createTime列回填
+                if (e.getCreateTime() != null) {
+                    e.setId(e.getCreateTime());
                 }
             }
             out.add(e);

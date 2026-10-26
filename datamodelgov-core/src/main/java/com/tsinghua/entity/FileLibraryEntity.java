@@ -63,6 +63,7 @@ public class FileLibraryEntity {
     @Field(name = "owner")
     private String owner;
 
-    @Field(name = "createdAt")
-    private Long createdAt;
+    /** 创建时间(毫秒;行时间戳=id;与其他清单实体统一命名createTime)。 */
+    @Field(name = "createTime")
+    private Long createTime;
 }

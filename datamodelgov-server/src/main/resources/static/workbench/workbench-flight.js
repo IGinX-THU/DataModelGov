@@ -251,9 +251,9 @@
         /* ---- 上传行(草稿/任务两用) ---- */
         function uploadRow(label, kind, t) {
             const current = t ? (kind === 'identification' ? t.identificationFile : t.validationFile) : state.draft[kind];
-            const nameBox = WB().h('input', { readonly: '', value: current ? fileName(current) : '未提供', style: 'flex:1' });
+            const nameBox = WB().h('input', { readonly: '', value: current ? fileName(current) : '未提供', style: 'flex:1;min-width:300px' });
             const pickBtn = WB().h('button', { class: 'wb-btn wb-btn-outline', onclick: () => fileInput.click() },
-                kind === 'identification' ? '选择训练文件' : '添加独立测试文件');
+                kind === 'identification' ? '上传训练文件' : '上传独立测试文件');
             const fileInput = WB().h('input', { type: 'file', accept: '.xlsx,.xls', style: 'display:none' });
             fileInput.addEventListener('change', async () => {
                 const f = fileInput.files && fileInput.files[0];
@@ -284,7 +284,7 @@
                             + encodeURIComponent(ctx.project.id || '') + '/files/page',
                             { category: 'data', pageSize: 50 })
                             .then(resp => {
-                                const rows = resp && resp.data && Array.isArray(resp.data.rows) ? resp.data.rows : [];
+                                const rows = resp && resp.data && Array.isArray(resp.data.rows) ? resp.data.rows.filter(x => x && x.id != null) : [];
                                 rows.forEach(r0 => libSel.appendChild(WB().h('option', { value: r0.id },
                                     (r0.name || r0.id) + (r0.kind ? ' · ' + r0.kind : ''))));
                             })

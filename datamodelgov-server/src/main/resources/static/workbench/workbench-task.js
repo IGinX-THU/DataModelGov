@@ -639,11 +639,11 @@
 
         /* ---------- 文件上传行组件(共用于 dataTab 和 dataTabUpdate) ---------- */
         function fileRow(label, kind, filePath, withPreview, t) {
-            const nameBox = WB().h('input', { readonly: '', value: filePath ? fileName(filePath) : '未提供', style: 'flex:1' });
+            const nameBox = WB().h('input', { readonly: '', value: filePath ? fileName(filePath) : '未提供', style: 'flex:1;min-width:300px' });
             const pickBtn = WB().h('button', {
                 class: 'wb-btn wb-btn-outline',
                 onclick: () => fileInput.click()
-            }, '选择文件');
+            }, '上传文件');
             const fileInput = WB().h('input', { type: 'file', accept: '.xlsx,.xls', style: 'display:none' });
             fileInput.addEventListener('change', async () => {
                 const f = fileInput.files && fileInput.files[0];
@@ -693,7 +693,7 @@
                             + encodeURIComponent(ctx.project.id || '') + '/files/page',
                             { category: 'data', pageSize: 50 })
                             .then(resp => {
-                                const rows = resp && resp.data && Array.isArray(resp.data.rows) ? resp.data.rows : [];
+                                const rows = resp && resp.data && Array.isArray(resp.data.rows) ? resp.data.rows.filter(x => x && x.id != null) : [];
                                 rows.forEach(r0 => libSel.appendChild(WB().h('option', { value: r0.id },
                                     (r0.name || r0.id) + (r0.kind ? ' · ' + r0.kind : ''))));
                             })
@@ -743,9 +743,97 @@
             return row;
         }
 
+        /* ---------- 运行失败视图(01-15 错误定位与操作指引 / 01-16 保存失败与数值失败分开) ---------- */
+        function failedView(t) {
+            const kindMap = {
+                SAVE_FAILED: ['保存失败', 'wb-tag-amber',
+                    '辨识结果有效但写盘失败;检查磁盘空间与输出目录权限,排除后可重新发起(或仅重试保存)。'],
+                NUMERIC_FAILED: ['数值失败', 'wb-tag-red',
+                    '求解未收敛或数值发散;检查训练数据质量与工况覆盖,或调整正则化强度/迭代设置后重新发起。']
+            };
+            const km = kindMap[t.errorKind] || [null, 'wb-tag-red',
+                '执行过程出错;结合运行日志定位原因后重新发起。'];
+            const wrap = WB().h('div', null);
+            wrap.appendChild(WB().h('div', { style: 'margin-bottom:14px' },
+                WB().h('div', { class: 'wb-section-title', style: 'font-size:20px;margin-bottom:2px' }, '辨识运行失败'),
+                WB().h('div', { class: 'wb-hint', style: 'margin:0' },
+                    (t.name || '稳态建模') + ' / ' + (t.runId || '—') + ' / 未生成有效结果')));
+            wrap.appendChild(WB().h('div', {
+                class: 'wb-infobar', style: 'border-left:4px solid #b91c1c;background:#fef2f2;'
+                    + 'display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px;margin-bottom:12px'
+            },
+                WB().h('span', { class: 'wb-tag wb-tag-red' }, '运行失败'),
+                WB().h('span', { class: 'wb-tag ' + km[1] }, '失败类型: ' + km[0]),
+                WB().h('span', { style: 'color:#7f1d1d;word-break:break-all' }, String(t.message || '执行出错,详见运行日志'))));
+            const kv = WB().h('div', { class: 'wb-kv', style: 'max-width:1180px;margin-bottom:12px' });
+            [
+                ['运行标识', t.runId || '—'],
+                ['失败类型', km[0]],
+                ['开始时间', t.startedAt ? new Date(t.startedAt).toLocaleString() : '—'],
+                ['结束时间', t.finishedAt ? new Date(t.finishedAt).toLocaleString() : '—'],
+                ['数据文件', t.trainingFile ? fileName(t.trainingFile) : '未提供']
+            ].forEach(([k, v]) => {
+                kv.appendChild(WB().h('div', { class: 'k' }, k));
+                kv.appendChild(WB().h('div', { class: 'v' }, String(v)));
+            });
+            wrap.appendChild(kv);
+            wrap.appendChild(WB().h('div', { class: 'wb-section-title', style: 'margin:6px 0 8px' }, '运行日志(末尾)'));
+            wrap.appendChild(WB().h('pre', {
+                style: 'max-height:260px;overflow:auto;background:#101418;color:#cde3d8;padding:12px;'
+                    + 'border-radius:8px;font-size:12px;line-height:1.5;white-space:pre-wrap'
+            }, (state.log && state.log.length ? state.log.join('\n') : '暂无日志输出')));
+            wrap.appendChild(WB().h('div', { class: 'wb-section-title', style: 'margin:16px 0 8px' }, '操作指引'));
+            const ul = WB().h('ul', { style: 'list-style:none;padding:0;margin:0 0 14px' });
+            [
+                ['定位原因', km[2]],
+                ['数据检查', '回到「工况与分组」核对训练数据与独立测试(如已提供),必要时重新准备数据。'],
+                ['重新发起', '点击下方"重新开始辨识";同一任务可重复发起,历史运行按运行标识区分。']
+            ].forEach(([k, v]) => {
+                const li = WB().h('li', { style: 'display:flex;gap:10px;margin-bottom:10px;align-items:flex-start' });
+                li.appendChild(WB().h('span', {
+                    style: 'flex-shrink:0;width:20px;height:20px;border-radius:50%;background:#0e7490;color:#fff;'
+                        + 'display:inline-flex;align-items:center;justify-content:center;font-size:12px;margin-top:2px'
+                }, '✓'));
+                li.appendChild(WB().h('div', null,
+                    WB().h('div', { style: 'font-weight:700;font-size:13px' }, k),
+                    WB().h('div', { class: 'wb-hint', style: 'margin-top:2px;line-height:1.6' }, v)));
+                ul.appendChild(li);
+            });
+            wrap.appendChild(ul);
+            wrap.appendChild(WB().h('div', { class: 'wb-actions-row' },
+                WB().h('button', {
+                    class: 'wb-btn wb-btn-primary',
+                    onclick: async () => {
+                        try {
+                            const resp = await window.AppConfig.enginePost(
+                                'projects/' + encodeURIComponent(ctx.project.id || '') + '/tasks/'
+                                + encodeURIComponent(t.id) + '/run', {});
+                            if (resp && (resp.success || resp.code === 200)) {
+                                if (resp.data) state.task = resp.data;
+                                state.log = [];
+                                showRunLoading('辨识运行中');
+                                renderBody();
+                                startPolling();
+                            } else toast((resp && resp.message) || '发起辨识失败', 'error');
+                        } catch (e) { toast('发起辨识失败:' + e.message, 'error'); }
+                    }
+                }, '重新开始辨识'),
+                WB().h('button', {
+                    class: 'wb-btn wb-btn-outline',
+                    onclick: () => { state.tab = 'data'; renderBody(); }
+                }, '检查数据'),
+                WB().h('button', {
+                    class: 'wb-btn wb-btn-outline',
+                    onclick: () => { state.tab = 'result'; renderBody(); }
+                }, '查看建模结果')));
+            return wrap;
+        }
+
         /* ---------- 页签二:稳态系数辨识(01-04 配置 / 01-05 运行) ---------- */
         function runTab() {
             const t = state.task;
+            // 失败任务直达失败视图(01-15):错误定位与操作指引,不再展示重新辨识配置页
+            if (t.status === 'FAILED') return failedView(t);
             const wrap = WB().h('div', null);
             const running = t.status === 'RUNNING' || t.status === 'STOP_REQUESTED';
 

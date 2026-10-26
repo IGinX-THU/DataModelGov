@@ -224,6 +224,7 @@ public class EngineWorkbenchController {
             tryDel(delFail, "预测记录", () -> predictionRecordService.deleteByProject(pid));
             tryDel(delFail, "仿真记录", () -> afoSessionService.deleteByProject(pid));
             tryDel(delFail, "试车台记录", () -> testbenchRecordService.deleteByProject(pid));
+            tryDel(delFail, "文件库索引", () -> fileLibraryMetaService.deleteByProject(pid));
             if (!delFail.isEmpty()) {
                 log.warn("项目清单记录清理失败: {} -> {}", pid, delFail);
                 return Result.error("项目已删除,但部分清单记录清理失败: " + String.join("、", delFail));
@@ -595,6 +596,7 @@ public class EngineWorkbenchController {
             String safe = file.getOriginalFilename() == null ? "data.xlsx"
                     : new File(file.getOriginalFilename()).getName();
             File dest = new File(dir, safe);
+            if (dest.exists()) dest.delete(); // 重新上传=覆盖更新
             file.transferTo(dest);
             if ("test".equals(kind)) {
                 t.setTestFile(dest.getAbsolutePath());
@@ -614,6 +616,13 @@ public class EngineWorkbenchController {
                     : "validation".equals(kind) ? "独立测试数据"
                     : "history".equals(kind) ? "新增训练历程"
                     : "historyTest".equals(kind) ? "新增测试历程" : "原训练均值";
+            // 合同校验:原训练均值必须含 point_id 列(常见错误是把历程文件传到均值位置)
+            if ("training".equals(kind) && !excelHasColumn(dest, "point_id")) {
+                if (!dest.delete()) log.warn("校验失败清理文件失败: {}", dest);
+                return Result.error("上传的文件不是稳态均值Excel(缺少 point_id 列)。"
+                        + "原训练均值=每行一个工况;如果您上传的是试车历程(每行一个时刻),"
+                        + "请改放到「新增训练历程」位置。");
+            }
             t.setMessage("已上传" + kindTxt + ": " + safe);
             // 自动沉淀进项目数据文件库(说明书2.3: 数据是项目级资产)
             try {
@@ -675,7 +684,7 @@ public class EngineWorkbenchController {
         entry.setExt(fileExt(file.getName()));
         entry.setSha256(sha8Hex(bytes));
         entry.setKind(kindLabel == null ? entry.getKind() : kindLabel);
-        fileLibraryMetaService.save(entry);
+        fileLibraryMetaService.register(entry);
         if (fileBackupService != null) fileBackupService.backup(entry, file);
     }
 
@@ -714,6 +723,7 @@ public class EngineWorkbenchController {
             String safe = file.getOriginalFilename() == null
                     ? ("file." + ext) : new File(file.getOriginalFilename()).getName();
             File dest = new File(dir, safe);
+            if (dest.exists()) dest.delete(); // 同名覆盖更新
             file.transferTo(dest);
             FileLibraryEntity entry = new FileLibraryEntity();
             entry.setProjectId(pid);
@@ -849,6 +859,23 @@ public class EngineWorkbenchController {
         } catch (Exception e) {
             log.error("从文件库带入失败", e);
             return Result.error("带入失败: " + e.getMessage());
+        }
+    }
+
+    /** 校验xlsx第一个工作表表头是否包含指定列(DataFormatter转字符串,大小写不敏感)。 */
+    private boolean excelHasColumn(File xlsx, String columnName) {
+        try (InputStream in = Files.newInputStream(xlsx.toPath()); Workbook wb = WorkbookFactory.create(in)) {
+            Sheet sheet = wb.getSheetAt(0);
+            Row hr = sheet.getRow(0);
+            if (hr == null) return false;
+            DataFormatter fmt = new DataFormatter();
+            for (int c = 0; c < hr.getLastCellNum(); c++) {
+                if (columnName.equalsIgnoreCase(fmt.formatCellValue(hr.getCell(c)).trim())) return true;
+            }
+            return false;
+        } catch (Exception e) {
+            log.warn("表头校验读取失败: {}", xlsx, e);
+            return true; // 读取失败不阻断,交由算法侧报具体错误
         }
     }
 

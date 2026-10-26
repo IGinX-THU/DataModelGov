@@ -189,9 +189,13 @@ public class F3FlightService {
         m.append("if isa(v,'table')\n");
         m.append("    s = dmg_jsonable(table2struct(v));\n");
         m.append("elseif isstruct(v)\n");
-        m.append("    s = struct(); f = fieldnames(v);\n");
-        m.append("    for i = 1:numel(f)\n");
-        m.append("        s.(f{i}) = dmg_jsonable(v.(f{i}));\n");
+        // 原位遍历(与Tc24Service.matlabJsonableFn同模式):空结构体时numel(s)=0循环自然跳过,
+        // 避免取值重建模式下 v.(f{i}) 对空结构体数组展开为零元素逗号列表→零参递归调用报"输入参数的数目不足"
+        m.append("    s = v; f = fieldnames(s);\n");
+        m.append("    for i = 1:numel(s)\n");
+        m.append("        for j = 1:numel(f)\n");
+        m.append("            s(i).(f{j}) = dmg_jsonable(s(i).(f{j}));\n");
+        m.append("        end\n");
         m.append("    end\n");
         m.append("elseif iscell(v)\n");
         m.append("    for i = 1:numel(v), v{i} = dmg_jsonable(v{i}); end\n");

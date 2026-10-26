@@ -933,8 +933,11 @@ public class Tc24Service {
                         t.setFinishedAt(System.currentTimeMillis());
                         t.setErrorKind(EngineModels.ModelingTask.ERR_NUMERIC);
                     }
+                    String msgTail = matlabErrorTail(new File(store.taskWorkDir(task.getProjectId(), task.getId()),
+                            "tc27-" + action + ".log"));
                     t.setMessage((isPrepare ? "TC27数据准备失败: " : "TC27模型更新失败: ")
-                            + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
+                            + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage())
+                            + (msgTail.isEmpty() ? "" : "\nMATLAB错误定位:\n" + msgTail));
                     store.saveTask(t);
                 }
             } catch (IOException io) {
@@ -948,6 +951,29 @@ public class Tc24Service {
 
     /** 05准备摘要(展示"数据处理结果"行);程序result缺字段时回退通用描述。 */
     /** 05准备摘要(图01-17): 准备完成：N个训练点，G组，S段小幅历程。+ 身份行 + 预计用时行。 */
+    /** 从MATLAB运行日志中提取错误堆栈尾部(stderr段),供失败视图直接展示根因定位。 */
+    private String matlabErrorTail(File logFile) {
+        try {
+            if (!logFile.isFile()) return "";
+            List<String> lines = Files.readAllLines(logFile.toPath());
+            int start = 0;
+            for (int i = lines.size() - 1; i >= 0; i--) {
+                if (lines.get(i).contains("[stderr]")) { start = i; break; }
+            }
+            if (start == 0) return "";
+            StringBuilder sb = new StringBuilder();
+            int from = Math.max(start - 1, 0);
+            for (int i = from; i < lines.size() && i < from + 16; i++) {
+                String line = lines.get(i);
+                sb.append(line.replace("[stderr] ", "").replace("[stdout] ", "")).append('\n');
+            }
+            String out = sb.toString().trim();
+            return out.length() > 1500 ? out.substring(0, 1500) : out;
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
     private String summarizeTc27Prepared(Map<String, Object> result) {
         if (result == null || result.isEmpty()) return "数据准备完成(摘要未返回,详见日志)";
         Map<String, Object> est = asMap(result.get("estimatedTime"));

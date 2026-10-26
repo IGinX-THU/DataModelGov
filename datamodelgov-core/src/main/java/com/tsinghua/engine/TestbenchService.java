@@ -354,8 +354,9 @@ public class TestbenchService {
                 log.warn("fullmode引擎字符集设置失败(沿用默认)", ce);
             }
             logLine(s, "MATLAB引擎已启动;准备运行资产(校验身份/初始化模型)");
+            // 适配器prepare分支内部已连续执行 prepare+begin(会话lifecycle=running);
+            // 这里再单独发begin会走otherwise分支重复触发"只有prepared会话可以begin"断言
             fevalFullmode(s, "prepare", null);
-            fevalFullmode(s, "begin", null);
             logLine(s, "全模式会话已就绪(prepare+begin)");
             s.phase = "READY";
             s.message = "准备完成;可开始运行";
@@ -472,11 +473,65 @@ public class TestbenchService {
         cfg.putIfAbsent("taskId", taskId.replaceAll("[^A-Za-z0-9_-]", "_"));
         if ("startstop".equals(kind)) {
             Object stages = cfg.get("requestedStages");
+            List<String> chain;
             if (!(stages instanceof List) || ((List<?>) stages).isEmpty()) {
-                List<String> chain = new ArrayList<>();
+                chain = new ArrayList<>();
                 chain.add("maps"); chain.add("design"); chain.add("matrix");
                 chain.add("physics"); chain.add("continuous"); chain.add("thermal");
                 cfg.put("requestedStages", chain);
+            } else {
+                chain = new ArrayList<>();
+                for (Object o : (List<?>) stages) chain.add(String.valueOf(o));
+            }
+            // 六部件设计解(design)为合同级显式来源:必须选定已提交(commit)的设计点任务,
+            // 其 task/MiddleData/design_state.mat 才存在(sht_design_point_task commit 时写出);
+            // 模型/DLL目录同时指向该设计点的候选目录(与官方SimpleTest链一致)。
+            Object dpObj = cfg.remove("designTaskId");
+            if (chain.contains("design")) {
+                String dpId = dpObj == null ? "" : String.valueOf(dpObj).trim();
+                if (dpId.isEmpty()) {
+                    throw new IllegalArgumentException(
+                            "阶段链含design(设计解):必须先完成设计点求解并提交(commit),再选择该设计点任务作为来源;或去掉design阶段");
+                }
+                TaskRun dp = requireTask(projectId, dpId);
+                if (!"design_point".equals(dp.kind)) {
+                    throw new IllegalArgumentException("所选任务 " + dpId + " 不是设计点任务");
+                }
+                if ("RUNNING".equals(dp.phase) || "PREPARING".equals(dp.phase)) {
+                    throw new IllegalArgumentException("设计点任务 " + dpId + " 仍在执行中,请等待完成后重试");
+                }
+                File dpWork = store.testbenchWorkDir(projectId, dpId);
+                File stateFile = new File(dpWork, "task" + File.separator + "MiddleData" + File.separator + "design_state.mat");
+                if (!stateFile.isFile()) {
+                    throw new IllegalArgumentException("设计点任务 " + dpId
+                            + " 缺少 MiddleData/design_state.mat——请先在该设计点任务页完成\"提交设计(commit)\"(仅求解未提交不产出设计状态)");
+                }
+                // 候选目录:优先取设计点 result.json 里的 candidateDirectory
+                String candDir = null;
+                try {
+                    File rf = new File(dp.adapterDir == null ? new File(dpWork, "adapter") : new File(dp.adapterDir), "task-result.json");
+                    if (rf.isFile()) {
+                        Map<?, ?> res = new com.fasterxml.jackson.databind.ObjectMapper().readValue(rf, Map.class);
+                        Object cd = res == null ? null : res.get("candidateDirectory");
+                        if (cd != null && new File(String.valueOf(cd)).isDirectory()) candDir = String.valueOf(cd);
+                    }
+                } catch (Exception ignore) { }
+                if (candDir == null) {
+                    File guess = new File(dpWork, "task" + File.separator + "candidate");
+                    if (guess.isDirectory()) candDir = guess.getAbsolutePath();
+                }
+                if (candDir == null) {
+                    throw new IllegalArgumentException("无法定位设计点任务 " + dpId + " 的候选目录(candidate);请确认该任务已完成求解");
+                }
+                Map<String, Object> source = new LinkedHashMap<>();
+                source.put("modelDirectory", candDir.replace('\\', '/'));
+                source.put("dllDirectory", candDir.replace('\\', '/'));
+                Object mf = dp.config == null ? null : dp.config.get("modelFile");
+                if (mf != null && !String.valueOf(mf).isEmpty()) source.put("modelFile", String.valueOf(mf));
+                Object mm = dp.config == null ? null : dp.config.get("modelMode");
+                if (mm != null) cfg.put("modelMode", mm); // 与设计点保持一致(V1/V2 MDL)
+                source.put("designStateFile", stateFile.getAbsolutePath().replace('\\', '/'));
+                cfg.put("source", source);
             }
         }
         r.config = cfg;
@@ -768,9 +823,13 @@ public class TestbenchService {
         m.append("if isa(v,'table')\n");
         m.append("    s = dmg_jsonable(table2struct(v));\n");
         m.append("elseif isstruct(v)\n");
-        m.append("    s = struct(); f = fieldnames(v);\n");
-        m.append("    for i = 1:numel(f)\n");
-        m.append("        s.(f{i}) = dmg_jsonable(v.(f{i}));\n");
+        // 原位遍历(与Tc24Service.matlabJsonableFn同模式):空结构体时numel(s)=0循环自然跳过,
+        // 避免取值重建模式下 v.(f{i}) 对空结构体数组展开为零元素逗号列表→零参递归调用报"输入参数的数目不足"
+        m.append("    s = v; f = fieldnames(s);\n");
+        m.append("    for i = 1:numel(s)\n");
+        m.append("        for j = 1:numel(f)\n");
+        m.append("            s(i).(f{j}) = dmg_jsonable(s(i).(f{j}));\n");
+        m.append("        end\n");
         m.append("    end\n");
         m.append("elseif iscell(v)\n");
         m.append("    for i = 1:numel(v), v{i} = dmg_jsonable(v{i}); end\n");
