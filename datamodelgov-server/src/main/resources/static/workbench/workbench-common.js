@@ -332,29 +332,212 @@ window.Workbench = (() => {
                 h('button', { class: 'wb-btn wb-btn-outline',
                     onclick: () => { window.__WB_PREDICT_SCROLL_HISTORY__ = true; ctx.navigate('predictions'); } }, '运行记录'))));
 
-        // —— 增补(说明书2.1):数据文件 / 待处理异常 ——
-        const filesHolder = h('div', null);
-        const issuesHolder = h('div', null);
-        wrap.appendChild(h('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:18px' },
-            h('div', { class: 'wb-section' },
-                h('div', { class: 'wb-section-head' }, h('div', { class: 'wb-section-title' }, '数据文件')),
-                filesHolder),
-            h('div', { class: 'wb-section' },
-                h('div', { class: 'wb-section-head' }, h('div', { class: 'wb-section-title' }, '待处理异常')),
-                issuesHolder)));
+        // —— 增补(说明书2.1/2.3):项目文件库(数据/模型两类,SQL分页,行点击预览) ——
+        const libHolder = h('div', null);
+        wrap.appendChild(h('div', { class: 'wb-section', style: 'margin-top:18px' },
+            h('div', { class: 'wb-section-head' },
+                h('div', { class: 'wb-section-title' }, '项目文件库'),
+                h('span', { class: 'wb-hint', style: 'margin:0' },
+                    '上传一次入库,任务数据页可从库带入;行点击预览内容;云端备份,本地丢失自动恢复')),
+            libHolder));
+        loadFileLibrary(ctx, libHolder);
 
-        loadOverviewData(ctx, tableHolder, baseRows, filesHolder, issuesHolder);
+        // —— 待处理异常(说明书2.1) ——
+        const issuesHolder = h('div', null);
+        wrap.appendChild(h('div', { class: 'wb-section', style: 'margin-top:18px' },
+            h('div', { class: 'wb-section-head' }, h('div', { class: 'wb-section-title' }, '待处理异常')),
+            issuesHolder));
+
+        loadOverviewData(ctx, tableHolder, baseRows, issuesHolder);
         return wrap;
     };
+
+    /* 项目文件库视图(数据/模型两类;索引入IginX,SQL分页;行点击预览;上传/删除) */
+    function loadFileLibrary(ctx, holder) {
+        const pid = encodeURIComponent(ctx.project.id || '');
+        const S = { cat: 'data', name: '', page: 1, size: 10 };
+        const MODEL_KINDS = ['模型文件', 'Simulink模型', '特性图MAP', 'GTESS库', '热资产', '设计种子', '身份文件', '其它'];
+        const engineDelete = id => window.AppConfig.request(
+            window.AppConfig.api.baseURL + '/api/engine/projects/' + pid + '/files/' + id,
+            { method: 'DELETE' });
+
+        const tabs = h('div', { style: 'display:flex;gap:8px' });
+        const nameInput = h('input', { placeholder: '按文件名筛选' });
+        const kindSel = h('select', null, MODEL_KINDS.map(k => h('option', { value: k }, k)));
+        const fileInput = h('input', { type: 'file', style: 'display:none' });
+        const listHolder = h('div', null, h('div', { class: 'wb-empty' }, '正在加载文件库...'));
+        const pager = h('div', null);
+        const uploadBtn = h('button', { class: 'wb-btn wb-btn-primary', onclick: () => fileInput.click() },
+            '上传数据文件(.xlsx/.xls)');
+
+        function paintChrome() {
+            tabs.innerHTML = '';
+            [['data', '数据文件'], ['model', '模型文件']].forEach(([k, label]) =>
+                tabs.appendChild(h('button', {
+                    class: 'wb-btn ' + (S.cat === k ? 'wb-btn-primary' : 'wb-btn-outline'),
+                    onclick: () => { S.cat = k; S.page = 1; paintChrome(); load(); }
+                }, label)));
+            uploadBtn.textContent = S.cat === 'model' ? '上传模型文件(不限格式)' : '上传数据文件(.xlsx/.xls)';
+        }
+
+        async function load() {
+            listHolder.innerHTML = '';
+            listHolder.appendChild(h('div', { class: 'wb-empty' }, '正在加载...'));
+            try {
+                const resp = await window.AppConfig.engineGet(
+                    'projects/' + pid + '/files/page',
+                    { category: S.cat, name: S.name, pageNum: S.page, pageSize: S.size });
+                const rows = resp && resp.data && Array.isArray(resp.data.rows) ? resp.data.rows : [];
+                const total = resp && resp.data ? (resp.data.total || 0) : 0;
+                listHolder.innerHTML = '';
+                if (!rows.length) {
+                    listHolder.appendChild(h('div', { class: 'wb-empty' },
+                        S.name ? '没有匹配的文件。' : '文件库为空——点击右上角"上传"把文件收入项目文件库。'));
+                    pager.innerHTML = '';
+                    return;
+                }
+                const fmtSize = n => !isFinite(Number(n)) ? '—'
+                    : n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB'
+                    : n >= 1024 ? (n / 1024).toFixed(1) + ' KB' : n + ' B';
+                const tbl = h('table', { class: 'wb-table' },
+                    h('tr', null, ['文件名', '用途/类型', '大小', '备份', '时间', ''].map(x => h('th', null, x))));
+                rows.forEach(r0 => {
+                    const tr = h('tr', { class: 'clickable', title: '点击预览文件内容' },
+                        h('td', { class: 'wb-link' }, r0.name || '—'),
+                        h('td', { class: 'wb-hint' }, r0.kind || '—'),
+                        h('td', { class: 'wb-hint' }, fmtSize(r0.size)),
+                        h('td', null, r0.backupState === 'done' ? h('span', { class: 'wb-tag wb-tag-teal' }, '已备份')
+                            : r0.backupState === 'failed' ? h('span', { class: 'wb-tag wb-tag-red' }, '备份失败')
+                            : h('span', { class: 'wb-tag wb-tag-gray' }, '待备份')),
+                        h('td', { class: 'wb-hint' }, r0.createdAt ? new Date(r0.createdAt).toLocaleString() : '—'),
+                        h('td', null,
+                            r0.category === 'model' && r0.refId ? h('button', {
+                                class: 'wb-btn wb-btn-outline', style: 'padding:3px 10px;font-size:12px;margin-right:6px',
+                                onclick: ev => { ev.stopPropagation(); ctx.navigate('models'); }
+                            }, '前往模型成果') : null,
+                            h('button', {
+                                class: 'wb-btn wb-btn-outline', style: 'padding:3px 10px;font-size:12px',
+                                onclick: ev => {
+                                    ev.stopPropagation();
+                                    const doDelete = () => engineDelete(r0.id)
+                                        .then(() => load())
+                                        .catch(e => toast('删除失败:' + e.message, 'error'));
+                                    if (window.showConfirmDialog) {
+                                        window.showConfirmDialog('删除文件',
+                                            '删除库条目"' + (r0.name || '') + '"?已带入任务的副本不受影响。', doDelete);
+                                    } else doDelete();
+                                }
+                            }, '删除')));
+                    tr.addEventListener('click', () => preview(r0));
+                    tbl.appendChild(tr);
+                });
+                listHolder.appendChild(tbl);
+                const pages = Math.max(1, Math.ceil(total / S.size));
+                pager.innerHTML = '';
+                pager.appendChild(h('div', { style: 'display:flex;align-items:center;gap:12px;margin-top:10px' },
+                    h('span', { class: 'wb-hint', style: 'margin:0' }, '共 ' + total + ' 个文件'),
+                    h('button', { class: 'wb-btn wb-btn-outline' + (S.page > 1 ? '' : ' disabled'), onclick: () => { if (S.page > 1) { S.page--; load(); } } }, '‹ 上一页'),
+                    h('span', { class: 'wb-hint', style: 'margin:0' }, '第 ' + S.page + ' / ' + pages + ' 页'),
+                    h('button', { class: 'wb-btn wb-btn-outline' + (S.page < pages ? '' : ' disabled'), onclick: () => { if (S.page < pages) { S.page++; load(); } } }, '下一页 ›')));
+            } catch (e) {
+                listHolder.innerHTML = '';
+                listHolder.appendChild(h('div', { class: 'wb-empty' }, '文件库加载失败:' + e.message));
+            }
+        }
+
+        async function preview(r0) {
+            try {
+                const resp = await window.AppConfig.engineGet('projects/' + pid + '/files/' + r0.id + '/preview');
+                if (resp && resp.code === 200 && resp.data) {
+                    window.Workbench.showFilePreview(r0.name || '文件预览', resp.data);
+                } else toast((resp && resp.message) || '预览失败', 'error');
+            } catch (e) { toast('预览失败:' + e.message, 'error'); }
+        }
+
+        fileInput.addEventListener('change', () => {
+            const f = fileInput.files && fileInput.files[0];
+            if (!f) return;
+            const fd = new FormData();
+            fd.append('file', f);
+            window.AppConfig.engineUpload(
+                'projects/' + pid + '/files?category=' + S.cat + '&kind='
+                + encodeURIComponent(S.cat === 'model' ? kindSel.value : '数据文件'), fd)
+                .then(r => {
+                    if (r && r.code === 200) { toast('已入库:' + f.name, 'success'); load(); }
+                    else toast((r && r.message) || '入库失败', 'error');
+                })
+                .catch(e => toast('入库失败:' + e.message, 'error'));
+            fileInput.value = '';
+        });
+        nameInput.addEventListener('input', () => { S.name = nameInput.value.trim(); S.page = 1; load(); });
+
+        holder.appendChild(h('div', null,
+            h('div', { style: 'display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px' },
+                tabs,
+                h('div', { class: 'wb-spacer' }),
+                S.cat === 'model' ? kindSel : null,
+                nameInput,
+                uploadBtn),
+            listHolder,
+            pager));
+        paintChrome();
+        load();
+    }
+
+    /* 文件内容预览弹窗(公用遮罩+白框样式;xlsx表格/其它格式元信息) */
+    function showFilePreview(title, d) {
+        const mask = h('div', {
+            style: 'position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:20000;'
+                + 'display:flex;align-items:center;justify-content:center'
+        });
+        const close = () => mask.remove();
+        const box = h('div', {
+            style: 'background:#fff;border-radius:8px;width:min(1100px,92vw);max-height:86vh;'
+                + 'display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.25)'
+        });
+        box.appendChild(h('div', { style: 'display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid #e5e7eb' },
+            h('div', null,
+                h('div', { style: 'font-weight:700;font-size:15px' }, title),
+                h('div', { class: 'wb-hint', style: 'margin:2px 0 0' },
+                    String(d.ext || '').toUpperCase() + ' · ' + (d.size != null ? d.size : '—') + ' 字节 · SHA256前8位 ' + (d.sha256 || '—'))),
+            h('button', { class: 'wb-btn wb-btn-outline', onclick: close }, '× 关闭')));
+        const bodyEl = h('div', { style: 'padding:12px 18px;overflow:auto' });
+        box.appendChild(bodyEl);
+        if (d.binary) {
+            bodyEl.appendChild(h('div', { class: 'wb-hint', style: 'margin-bottom:8px' },
+                '二进制/非表格文件,不支持表格化预览。' + (d.jsonPreview ? 'JSON内容(前4KB):' : '')));
+            if (d.jsonPreview) {
+                bodyEl.appendChild(h('pre', {
+                    style: 'background:#101418;color:#cde3d8;padding:12px;border-radius:6px;'
+                        + 'font-size:12px;white-space:pre-wrap;max-height:55vh;overflow:auto'
+                }, d.jsonPreview));
+            }
+        } else {
+            bodyEl.appendChild(h('div', { class: 'wb-hint', style: 'margin-bottom:8px' },
+                '工作表: ' + (d.sheet || '—') + (d.sheetNames && d.sheetNames.length > 1
+                    ? '(共 ' + d.sheetNames.length + ' 个:' + d.sheetNames.join('、') + ';其余表请下载后查看)' : '')
+                + ' · 共 ' + d.totalRows + ' 行,仅预览前 ' + (d.rows ? d.rows.length : 0) + ' 行'));
+            const tbl = h('table', { class: 'wb-table', style: 'margin:0' });
+            tbl.appendChild(h('tr', null, (d.headers || []).map(x => h('th', null, x))));
+            (d.rows || []).forEach(r => tbl.appendChild(h('tr', null,
+                r.map(v => h('td', { style: 'white-space:nowrap;max-width:280px;overflow:hidden;text-overflow:ellipsis' },
+                    v == null ? '' : String(v))))));
+            bodyEl.appendChild(tbl);
+        }
+        mask.appendChild(box);
+        mask.addEventListener('click', e => { if (e.target === mask) close(); });
+        document.body.appendChild(mask);
+    }
+
 
     const OV_KIND = { steady: '稳态试车建模', steady_update: '稳态更新', transient_update: '过渡态试车建模',
         flight_steady: '稳态飞参建模', flight_transient: '过渡态飞参建模', evolution: '模型自演化' };
     const OV_BIZ = { steady: 'steady', steady_update: 'steady_update', transient_update: 'transient',
         flight_steady: 'flightSteady', flight_transient: 'flightTransient', evolution: 'evolution' };
 
-    function loadOverviewData(ctx, tasksHolder, baseRows, filesHolder, issuesHolder) {
+    function loadOverviewData(ctx, tasksHolder, baseRows, issuesHolder) {
         if (!ctx.project || !ctx.project.id) {
-            [tasksHolder, filesHolder, issuesHolder].forEach(hd => {
+            [tasksHolder, issuesHolder].forEach(hd => {
                 hd.innerHTML = '';
                 hd.appendChild(h('div', { class: 'wb-empty' }, '本地演示项目无数据;请从项目入口进入真实项目。'));
             });
@@ -397,33 +580,6 @@ window.Workbench = (() => {
                         : '—';
                 }
 
-                /* 数据文件(说明书2.1/2.3:任务已上传输入文件去重,可反查来源任务) */
-                filesHolder.innerHTML = '';
-                const files = [];
-                tasks.forEach(tk => [
-                    [tk.trainingFile, '训练均值'], [tk.testFile, '独立测试'], [tk.historyFile, '试车历程'],
-                    [tk.historyTestFile, '测试历程'], [tk.identificationFile, '飞参训练'], [tk.validationFile, '飞参验证']
-                ].forEach(([fp, label]) => {
-                    if (!fp) return;
-                    const name = String(fp).split(/[\\/]/).pop();
-                    if (!files.some(f => f.name === name)) files.push({ name, label, taskId: tk.id, kind: tk.kind });
-                }));
-                if (!files.length) {
-                    filesHolder.appendChild(h('div', { class: 'wb-empty' }, '暂无数据文件;上传后在此按文件反查来源任务。'));
-                } else {
-                    filesHolder.appendChild(h('table', { class: 'wb-table' },
-                        h('tr', null, ['文件', '用途', '来源任务'].map(t => h('th', null, t))),
-                        files.slice(0, 6).map(f => h('tr', { class: 'clickable', onclick: () => {
-                            const tk = tasks.find(t2 => t2.id === f.taskId);
-                            if (tk) openTask(tk);
-                        } },
-                            h('td', { class: 'wb-link', style: 'max-width:220px;word-break:break-all' }, f.name),
-                            h('td', { class: 'wb-hint' }, f.label),
-                            h('td', { class: 'wb-hint' }, OV_KIND[f.kind] || '—')))));
-                    if (files.length > 6) filesHolder.appendChild(h('div', { class: 'wb-hint', style: 'margin-top:6px' },
-                        '共 ' + files.length + ' 个数据文件;文件反查模型见模型成果详情(02-04)。'));
-                }
-
                 /* 待处理异常(说明书2.1):取最近运行记录(SQL分页接口)中的失败任务,最新10条 */
                 issuesHolder.innerHTML = '';
                 issuesHolder.appendChild(h('div', { class: 'wb-empty' }, '正在检查异常...'));
@@ -451,7 +607,7 @@ window.Workbench = (() => {
                     });
             })
             .catch(error => {
-                [tasksHolder, filesHolder, issuesHolder].forEach(hd => {
+                [tasksHolder, issuesHolder].forEach(hd => {
                     hd.innerHTML = '';
                     hd.appendChild(h('div', { class: 'wb-empty' }, '加载失败:' + (error.message || error)));
                 });
@@ -3437,7 +3593,7 @@ window.Workbench = (() => {
 
     /* ---------- API ---------- */
     return {
-        ICONS, DEMO, WORKBENCHES, pages, h, toast,
+        ICONS, DEMO, WORKBENCHES, pages, h, toast, showFilePreview,
         lineChart, chartLegend, dataTable, groupSeriesColumns, numericColumns, toNum,
         /** 渲染页面:workbenchKey + navKey → DOM */
         renderPage(workbenchKey, navKey, ctx) {

@@ -24,6 +24,16 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.security.MessageDigest;
+import java.util.ArrayList;
+import org.apache.poi.ss.usermodel.DataFormatter;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.ss.usermodel.WorkbookFactory;
+import com.tsinghua.entity.FileLibraryEntity;
 import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.ArrayList;
@@ -605,10 +615,240 @@ public class EngineWorkbenchController {
                     : "history".equals(kind) ? "新增训练历程"
                     : "historyTest".equals(kind) ? "新增测试历程" : "原训练均值";
             t.setMessage("已上传" + kindTxt + ": " + safe);
+            // 自动沉淀进项目数据文件库(说明书2.3: 数据是项目级资产)
+            try {
+                FileLibraryEntity entry = new FileLibraryEntity();
+                entry.setProjectId(pid);
+                entry.setCategory("data");
+                entry.setKind(kindTxt);
+                registerLibraryEntry(entry, dest, kindTxt);
+            } catch (Exception ex) {
+                log.warn("任务上传自动入库失败(不影响任务): {}", safe, ex);
+            }
             return Result.success(store.saveTask(t));
         } catch (Exception e) {
             log.error("上传任务数据失败", e);
             return Result.error("上传失败: " + e.getMessage());
+        }
+    }
+
+    /* ---------- 项目文件库(数据/模型两类;索引入IginX SQL分页,本体在<workdir>/files/,IginX分块备份) ---------- */
+
+    @Autowired
+    private com.tsinghua.engine.FileLibraryMetaService fileLibraryMetaService;
+
+    @Autowired
+    private com.tsinghua.engine.FileBackupService fileBackupService;
+
+    private File fileLibraryDir(String pid, String category) throws IOException {
+        EngineModels.EngineProject p = store.getProject(pid);
+        if (p == null || p.getWorkdir() == null || p.getWorkdir().isEmpty()) {
+            throw new IOException("项目不存在或工作目录未配置: " + pid);
+        }
+        File dir = new File(new File(p.getWorkdir()), "files/" + category);
+        if (!dir.exists() && !dir.mkdirs()) throw new IOException("无法创建文件库目录: " + dir);
+        return dir;
+    }
+
+    private static String fileExt(String name) {
+        int i = name == null ? -1 : name.lastIndexOf('.');
+        return i < 0 ? "" : name.substring(i + 1).toLowerCase();
+    }
+
+    private static String sha8Hex(byte[] bytes) {
+        try {
+            byte[] d = MessageDigest.getInstance("SHA-256").digest(bytes);
+            StringBuilder sb = new StringBuilder();
+            for (byte b : d) sb.append(String.format("%02x", b));
+            return sb.substring(0, 8);
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    /** 登记索引行(sha256前8位)+IginX分块备份;由各入库调用方复用。 */
+    private void registerLibraryEntry(FileLibraryEntity entry, File file, String kindLabel) throws Exception {
+        byte[] bytes = Files.readAllBytes(file.toPath());
+        entry.setName(file.getName());
+        entry.setPath(file.getAbsolutePath());
+        entry.setSize(file.length());
+        entry.setExt(fileExt(file.getName()));
+        entry.setSha256(sha8Hex(bytes));
+        entry.setKind(kindLabel == null ? entry.getKind() : kindLabel);
+        fileLibraryMetaService.save(entry);
+        if (fileBackupService != null) fileBackupService.backup(entry, file);
+    }
+
+    @ApiOperation("文件库分页列表(数据/模型;SQL分页,非admin仅本人)")
+    @GetMapping("/projects/{pid}/files/page")
+    @RequirePermission(Permission.READ)
+    public Result<Map<String, Object>> fileList(@PathVariable("pid") String pid,
+                                                @RequestParam(value = "category", required = false) String category,
+                                                @RequestParam(value = "name", required = false) String name,
+                                                @RequestParam(value = "pageNum", defaultValue = "1") Integer pageNum,
+                                                @RequestParam(value = "pageSize", defaultValue = "10") Integer pageSize) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("rows", fileLibraryMetaService.queryPage(category, name, pageNum, pageSize));
+        out.put("total", fileLibraryMetaService.countPage(category, name));
+        out.put("pageNum", pageNum);
+        out.put("pageSize", pageSize);
+        return Result.success(out);
+    }
+
+    @ApiOperation("上传文件入库(data类仅.xlsx/.xls;model类不限格式)")
+    @PostMapping("/projects/{pid}/files")
+    @RequirePermission(Permission.CREATE)
+    public Result<FileLibraryEntity> fileUpload(@PathVariable("pid") String pid,
+                                                @RequestParam("file") MultipartFile file,
+                                                @RequestParam(value = "category", defaultValue = "data") String category,
+                                                @RequestParam(value = "kind", required = false) String kind) {
+        try {
+            if (!"data".equals(category) && !"model".equals(category)) {
+                return Result.error("category须为data或model");
+            }
+            String ext = fileExt(file.getOriginalFilename());
+            if ("data".equals(category) && !"xlsx".equals(ext) && !"xls".equals(ext)) {
+                return Result.error("数据文件仅支持 .xlsx/.xls(建模合同输入)");
+            }
+            File dir = fileLibraryDir(pid, category);
+            String safe = file.getOriginalFilename() == null
+                    ? ("file." + ext) : new File(file.getOriginalFilename()).getName();
+            File dest = new File(dir, safe);
+            file.transferTo(dest);
+            FileLibraryEntity entry = new FileLibraryEntity();
+            entry.setProjectId(pid);
+            entry.setCategory(category);
+            entry.setKind(kind == null || kind.isEmpty()
+                    ? ("model".equals(category) ? "模型文件" : "数据文件") : kind);
+            registerLibraryEntry(entry, dest, entry.getKind());
+            return Result.success(entry);
+        } catch (Exception e) {
+            log.error("文件入库失败", e);
+            return Result.error("文件入库失败: " + e.getMessage());
+        }
+    }
+
+    @ApiOperation("删除文件库条目(含本地文件与IginX备份)")
+    @DeleteMapping("/projects/{pid}/files/{id}")
+    @RequirePermission(Permission.DELETE)
+    public Result<Boolean> fileDelete(@PathVariable("pid") String pid,
+                                      @PathVariable("id") Long id) {
+        try {
+            FileLibraryEntity e = fileLibraryMetaService.queryById(id);
+            if (e == null) return Result.error("文件库条目不存在");
+            if (fileBackupService != null) fileBackupService.deleteBackup(e);
+            File local = new File(e.getPath());
+            if (local.isFile() && !local.delete()) log.warn("本地文件删除失败: {}", e.getPath());
+            return Result.success(fileLibraryMetaService.delete(id));
+        } catch (Exception e) {
+            return Result.error("删除失败: " + e.getMessage());
+        }
+    }
+
+    @ApiOperation("文件内容预览(xlsx解析表头+前100行;其它格式返回元信息)")
+    @GetMapping("/projects/{pid}/files/{id}/preview")
+    @RequirePermission(Permission.READ)
+    public Result<Map<String, Object>> filePreview(@PathVariable("pid") String pid,
+                                                   @PathVariable("id") Long id) {
+        try {
+            FileLibraryEntity e = fileLibraryMetaService.queryById(id);
+            if (e == null) return Result.error("文件库条目不存在");
+            File f = fileBackupService.resolve(e);
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("fileName", e.getName());
+            out.put("ext", e.getExt());
+            out.put("size", e.getSize());
+            out.put("sha256", e.getSha256());
+            out.put("restored", !new File(e.getPath()).isFile() || true); // resolve后本地必然存在;标记保留
+            if ("xlsx".equals(e.getExt()) || "xls".equals(e.getExt())) {
+                DataFormatter fmt = new DataFormatter();
+                try (InputStream in = Files.newInputStream(f.toPath()); Workbook wb = WorkbookFactory.create(in)) {
+                    List<String> names = new ArrayList<>();
+                    for (int i = 0; i < wb.getNumberOfSheets(); i++) names.add(wb.getSheetName(i));
+                    Sheet sheet = null;
+                    for (int i = 0; i < wb.getNumberOfSheets(); i++) {
+                        String n = wb.getSheetName(i);
+                        if ("Data".equalsIgnoreCase(n) || "数据".equals(n)) { sheet = wb.getSheetAt(i); break; }
+                    }
+                    if (sheet == null) sheet = wb.getSheetAt(0);
+                    out.put("sheetNames", names);
+                    out.put("sheet", sheet.getSheetName());
+                    List<String> headers = new ArrayList<>();
+                    Row hr = sheet.getRow(0);
+                    if (hr != null) {
+                        for (int c = 0; c < Math.min(hr.getLastCellNum(), 40); c++) {
+                            headers.add(fmt.formatCellValue(hr.getCell(c)).trim());
+                        }
+                    }
+                    out.put("headers", headers);
+                    List<List<String>> rows = new ArrayList<>();
+                    int total = sheet.getLastRowNum();
+                    for (int r = 1; r <= Math.min(total, 100); r++) {
+                        Row row = sheet.getRow(r);
+                        List<String> vals = new ArrayList<>();
+                        for (int c = 0; c < headers.size(); c++) {
+                            vals.add(row == null ? "" : fmt.formatCellValue(row.getCell(c)).trim());
+                        }
+                        rows.add(vals);
+                    }
+                    out.put("rows", rows);
+                    out.put("totalRows", total);
+                }
+            } else {
+                out.put("binary", true);
+                if ("json".equals(e.getExt())) {
+                    String content = new String(Files.readAllBytes(f.toPath()), "UTF-8");
+                    out.put("jsonPreview", content.length() > 4096 ? content.substring(0, 4096) + "...(截断)" : content);
+                }
+            }
+            return Result.success(out);
+        } catch (Exception e) {
+            log.error("文件预览失败", e);
+            return Result.error("预览失败: " + e.getMessage());
+        }
+    }
+
+    @ApiOperation("从项目文件库带入任务数据(data类)")
+    @PostMapping("/projects/{pid}/tasks/{tid}/files/from-library")
+    @RequirePermission(Permission.CREATE)
+    public Result<EngineModels.ModelingTask> useLibraryFile(@PathVariable("pid") String pid,
+                                                            @PathVariable("tid") String tid,
+                                                            @RequestParam("kind") String kind,
+                                                            @RequestParam("fileId") Long fileId) {
+        try {
+            EngineModels.ModelingTask t = store.getTask(pid, tid);
+            if (t == null) return Result.error("任务不存在");
+            String denied = accessDenied(store.getProject(pid));
+            if (denied != null) return Result.error(denied);
+            FileLibraryEntity e = fileLibraryMetaService.queryById(fileId);
+            if (e == null || !"data".equals(e.getCategory())) {
+                return Result.error("文件库条目不存在或不是数据类文件");
+            }
+            File src = fileBackupService.resolve(e);
+            File dir = new File(store.taskWorkDir(pid, tid), "input");
+            if (!dir.exists() && !dir.mkdirs()) return Result.error("无法创建输入目录");
+            File destFile = new File(dir, e.getName());
+            Files.copy(src.toPath(), destFile.toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            String path = destFile.getAbsolutePath();
+            if ("test".equals(kind)) {
+                t.setTestFile(path);
+            } else if ("identification".equals(kind)) {
+                t.setIdentificationFile(path);
+            } else if ("validation".equals(kind)) {
+                t.setValidationFile(path);
+            } else if ("history".equals(kind)) {
+                t.setHistoryFile(path);
+            } else if ("historyTest".equals(kind)) {
+                t.setHistoryTestFile(path);
+            } else {
+                t.setTrainingFile(path);
+            }
+            t.setMessage("已从项目文件库带入: " + e.getName());
+            return Result.success(store.saveTask(t));
+        } catch (Exception e) {
+            log.error("从文件库带入失败", e);
+            return Result.error("带入失败: " + e.getMessage());
         }
     }
 
@@ -822,6 +1062,17 @@ public class EngineWorkbenchController {
                 File idest = new File(dir, iname);
                 identityFile.transferTo(idest);
                 m.setIdentityFile(idest.getAbsolutePath());
+            }
+            // 模型交付工作簿自动登记进项目文件库(model类)
+            try {
+                FileLibraryEntity entry = new FileLibraryEntity();
+                entry.setProjectId(pid);
+                entry.setCategory("model");
+                entry.setKind("交付工作簿");
+                entry.setRefId(m.getId());
+                registerLibraryEntry(entry, dest, "交付工作簿");
+            } catch (Exception ex) {
+                log.warn("导入模型自动入库失败(不影响导入): {}", safe, ex);
             }
             return Result.success(store.saveModel(m));
         } catch (Exception e) {

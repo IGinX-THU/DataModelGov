@@ -682,13 +682,63 @@
                 }
                 renderBody();
             });
-            const row = WB().h('div', { class: 'wb-field', style: 'max-width:980px;margin-bottom:14px' },
+            const row = WB().h('div', { class: 'wb-field', style: 'max-width:1180px;margin-bottom:14px' },
                 WB().h('label', null, label),
-                WB().h('div', { style: 'display:flex;gap:10px' }, nameBox, pickBtn,
-                    withPreview ? WB().h('button', {
-                        class: 'wb-btn wb-btn-outline' + (t.trainingFile ? '' : ' disabled'),
-                        onclick: () => { if (t.trainingFile) window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000; runPrepare(); }
-                    }, '预览数据') : null));
+                WB().h('div', { style: 'display:flex;gap:10px;flex-wrap:wrap;align-items:center' },
+                    nameBox,
+                    (function () {
+                        const libSel = WB().h('select', { style: 'max-width:230px' },
+                            WB().h('option', { value: '' }, '从文件库选择...'));
+                        window.AppConfig.engineGet('projects/'
+                            + encodeURIComponent(ctx.project.id || '') + '/files/page',
+                            { category: 'data', pageSize: 50 })
+                            .then(resp => {
+                                const rows = resp && resp.data && Array.isArray(resp.data.rows) ? resp.data.rows : [];
+                                rows.forEach(r0 => libSel.appendChild(WB().h('option', { value: r0.id },
+                                    (r0.name || r0.id) + (r0.kind ? ' · ' + r0.kind : ''))));
+                            })
+                            .catch(() => { });
+                        return libSel;
+                    })(),
+                    WB().h('button', {
+                        class: 'wb-btn wb-btn-outline',
+                        onclick: async () => {
+                            const sel = row.querySelector('select');
+                            if (!sel || !sel.value) { toast('请先在下拉中选择库内文件', 'error'); return; }
+                            try {
+                                const resp = await window.AppConfig.enginePost(
+                                    'projects/' + encodeURIComponent(ctx.project.id || '') + '/tasks/'
+                                    + encodeURIComponent(t.id) + '/files/from-library?kind='
+                                    + encodeURIComponent(kind) + '&fileId=' + encodeURIComponent(sel.value), {});
+                                if (resp && (resp.success || resp.code === 200) && resp.data) {
+                                    state.task = resp.data;
+                                    toast('已从文件库带入', 'success');
+                                    renderBody();
+                                } else toast((resp && resp.message) || '带入失败', 'error');
+                            } catch (e) { toast('带入失败:' + e.message, 'error'); }
+                        }
+                    }, '带入'),
+                    pickBtn,
+                    WB().h('button', {
+                        class: 'wb-btn wb-btn-outline' + (filePath ? '' : ' disabled'),
+                        onclick: async () => {
+                            if (!filePath) return;
+                            const name = fileName(filePath);
+                            try {
+                                const resp = await window.AppConfig.engineGet('projects/'
+                                    + encodeURIComponent(ctx.project.id || '') + '/files/page',
+                                    { category: 'data', name: name, pageSize: 10 });
+                                const hit = resp && resp.data && Array.isArray(resp.data.rows)
+                                    ? resp.data.rows.find(r0 => r0.name === name) : null;
+                                if (!hit) { toast('该文件未在项目文件库中(请重新上传或从库带入后再预览)', 'error'); return; }
+                                const pv = await window.AppConfig.engineGet('projects/'
+                                    + encodeURIComponent(ctx.project.id || '') + '/files/' + hit.id + '/preview');
+                                if (pv && pv.code === 200 && pv.data) {
+                                    window.Workbench.showFilePreview(name, pv.data);
+                                } else toast((pv && pv.message) || '预览失败', 'error');
+                            } catch (e) { toast('预览失败:' + e.message, 'error'); }
+                        }
+                    }, '预览')));
             row.appendChild(fileInput);
             return row;
         }
