@@ -165,6 +165,19 @@
                             });
                             if (resp && (resp.success || resp.code === 200) && resp.data) {
                                 state.task = resp.data;
+                                // 草稿期暂存的本地文件保存草稿后自动上传,避免视图切换后"已选文件"丢失
+                                const pend = state.draftFiles || {};
+                                const kinds = ['identification', 'validation'].filter(k => pend[k] instanceof File);
+                                try {
+                                    for (const k of kinds) {
+                                        const fd = new FormData(); fd.append('file', pend[k]);
+                                        const up = await window.AppConfig.engineUpload(
+                                            'projects/' + encodeURIComponent(ctx.project.id || '') + '/tasks/'
+                                            + encodeURIComponent(state.task.id) + '/files?kind=' + encodeURIComponent(k), fd);
+                                        if (up && (up.success || up.code === 200) && up.data) { state.task = up.data; toast('已上传:' + pend[k].name, 'success'); }
+                                        else toast((up && up.message) || ('上传' + pend[k].name + '失败,可在当前页重新上传'), 'error');
+                                    }
+                                } finally { delete state.draftFiles; state.draft = {}; }
                                 renderBody();
                             } else toast((resp && resp.message) || '保存草稿失败', 'error');
                         } catch (e) { toast('保存草稿失败:' + e.message, 'error'); }
@@ -196,11 +209,24 @@
             }
 
             /* ---- 已建任务(04-03): 任务/架次 + 检查与意图确认 ---- */
+            const SRC_CN = { '2p4': '2.4 三部件模型', '2p7': '2.7 数据更新模型', flight: '既有飞参模型', combined: 'TC27组合模型' };
+            const parentBox = WB().h('input', { readonly: '', value: (SRC_CN[t.parentSource] || t.parentSource || '2.4 三部件模型')
+                + (t.parentModelId ? ' · 指定模型加载中' : ' · 按来源解析') });
+            if (t.parentModelId) {
+                // 回显草稿期指定的项目模型名(轻量GET,失败保持占位)
+                window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id || '') + '/models')
+                    .then(resp => {
+                        const ms = resp && Array.isArray(resp.data) ? resp.data : [];
+                        const m = ms.find(x => x.id === t.parentModelId);
+                        if (m && document.body.contains(parentBox)) {
+                            parentBox.value = (SRC_CN[t.parentSource] || t.parentSource || '2.4 三部件模型') + ' · ' + (m.name || m.id);
+                        }
+                    }).catch(() => { });
+            }
             wrap.appendChild(WB().h('div', { class: 'wb-form-grid', style: 'grid-template-columns:1fr 1fr 1fr;max-width:1280px' },
                 WB().h('div', { class: 'wb-field' }, WB().h('label', null, '任务 / 架次'),
                     WB().h('input', { readonly: '', value: (t.name || L.title) + ' / ' + (t.f3SortieId || '—') })),
-                WB().h('div', { class: 'wb-field' }, WB().h('label', null, '所选父模型'),
-                    WB().h('input', { readonly: '', value: (t.parentSource || '2p4') + (t.parentWorkbook ? ' · ' + fileName(t.parentWorkbook) : ' · 按来源解析') })),
+                WB().h('div', { class: 'wb-field' }, WB().h('label', null, '所选父模型'), parentBox),
                 WB().h('div', { class: 'wb-field' }, WB().h('label', null, '飞参数据 / 测试'),
                     WB().h('input', { readonly: '', value: (t.identificationFile ? fileName(t.identificationFile) : '未提供') + ' / ' + (t.validationFile ? fileName(t.validationFile) : '未提供独立测试') }))));
 
@@ -258,7 +284,7 @@
             fileInput.addEventListener('change', async () => {
                 const f = fileInput.files && fileInput.files[0];
                 if (!f) return;
-                if (!state.task) { state.draft[kind] = f.name; nameBox.value = f.name; toast('已选择文件,保存草稿后上传', 'info'); return; }
+                if (!state.task) { state.draft[kind] = f.name; (state.draftFiles = state.draftFiles || {})[kind] = f; nameBox.value = f.name; toast('已选择文件,保存草稿后自动上传', 'info'); return; }
                 const fd = new FormData();
                 fd.append('file', f);
                 nameBox.value = '上传中:' + f.name + '...';

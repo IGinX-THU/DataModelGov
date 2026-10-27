@@ -1671,7 +1671,20 @@ public class Tc24Service {
                     @Override public void onProgress(String message) { emitLog(rec.getProjectId(), message); }
                     @Override public boolean isCancellationRequested() { return false; }
                 });
-        Object result = runner.run();
+        Object result;
+        try {
+            result = runner.run();
+        } catch (Exception ex) {
+            String raw = ex.getMessage() == null ? "" : ex.getMessage();
+            // MATLAB合同:UQ区间再传播的前提是确定性主解通过物理有效性检查(prediction.passed);
+            // 主解诊断态时区间传播被拒,原始报错对用户过于隐晦,翻译为可操作建议
+            if (raw.contains("posteriorOptions.workbookFile") || raw.contains("有效气路解")) {
+                throw new IllegalStateException("主预测未通过物理有效性检查,无法进行UQ区间传播"
+                        + "(区间再传播要求确定性解有效)。该工况可:1)不选UQ记录仅做确定性预测;"
+                        + "2)调整工况输入至模型有效域后重试。原始错误: " + raw);
+            }
+            throw ex;
+        }
 
         Object parsed = parseJsonFile(resultFile);
         String st = extractStatus(parsed instanceof Map ? parsed : result);

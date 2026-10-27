@@ -72,7 +72,18 @@ public class F3FlightService {
         m.append("addpath('").append(programCopy.getAbsolutePath().replace('\\', '/')).append("', '-begin');\n");
         m.append("rehash;\n");
         m.append("cfg = c.configuration;\n");
-        m.append("if ~isfield(cfg,'selection') || isempty(cfg.selection), cfg.selection = struct(); end\n");
+        if ("sht_f3_transient_task".equals(taskFn)) {
+            // transient 合同(F3:TF:Config 白名单:runId/modelId/trainingFile/testFile/parentWorkbook/sheets/roots/...)与 steady
+            // (taskId/identificationFile/engineId/sortieId/...)完全不同;按白名单重建 cfg,忽略 Java 业务字段
+            m.append("tf = struct('runId',char(string(cfg.runId)),'modelId',char(string(cfg.modelId)), ...\n");
+            m.append("    'trainingFile',char(string(cfg.identificationFile)),'testFile',char(string(cfg.validationFile)), ...\n");
+            m.append("    'trainingSheet','Data','testSheet','Data', ...\n");
+            m.append("    'outputRoot',cfg.outputRoot,'reportRoot',cfg.reportRoot);\n");
+            m.append("if isfield(cfg,'parentWorkbook'), tf.parentWorkbook = char(string(cfg.parentWorkbook)); end\n");
+            m.append("cfg = tf;\n");
+        }
+        // 注意:不得把 selection 塞进 cfg——sht_f3_*_task 的 local_config 白名单会拒"未知配置:selection";
+        // 窗口选择由 confirm 分支第三参数 sel 单独传递
         m.append("switch lower(c.action)\n");
         m.append("    case 'readresult'\n");
         m.append("        r = ").append(taskFn).append("('readResult', struct('resultDirectory', c.resultDirectory));\n");
@@ -303,7 +314,7 @@ public class F3FlightService {
                 Map<String, Object> root = new LinkedHashMap<>();
                 root.put("source", task.getParentSource() == null ? "2p4" : task.getParentSource());
                 root.put("route", task.getParentRoute() == null ? "steady" : task.getParentRoute());
-                root.put("workbook", task.getParentWorkbook() == null ? "" : task.getParentWorkbook().replace('\\', '/'));
+                root.put("workbook", resolveParentWorkbook(task));
                 root.put("modelId", task.getParentModelId() == null ? runId + "_ROOT" : task.getParentModelId());
                 root.put("identityBasis", "DataModelGov registered parent");
                 config.put("root", root);
@@ -325,6 +336,8 @@ public class F3FlightService {
             } else {
                 Map<String, Object> configuration = new LinkedHashMap<>();
                 configuration.put("taskId", key + "_" + action);
+                // runId 为 steady/transient 共同必填(F3:TF:Identity);preview/confirm 也需要,放公共段
+                configuration.put("runId", sanitizeEvolutionRunId(task.getRunId() == null ? key : task.getRunId()));
                 configuration.put("identificationFile", task.getIdentificationFile() == null ? "" : task.getIdentificationFile().replace('\\', '/'));
                 configuration.put("validationFile", task.getValidationFile() == null ? "" : task.getValidationFile().replace('\\', '/'));
                 configuration.put("outputRoot", outputRoot.getAbsolutePath().replace('\\', '/'));
@@ -340,7 +353,7 @@ public class F3FlightService {
                 if ("run".equals(action)) {
                     configuration.put("parentSource", task.getParentSource() == null ? "2p4" : task.getParentSource());
                     configuration.put("parentRoute", task.getParentRoute() == null ? "steady" : task.getParentRoute());
-                    configuration.put("parentWorkbook", task.getParentWorkbook() == null ? "" : task.getParentWorkbook().replace('\\', '/'));
+                    configuration.put("parentWorkbook", resolveParentWorkbook(task));
                     configuration.put("confirmationFile", task.getConfirmationFile().replace('\\', '/'));
                     configuration.put("runId", task.getRunId() == null ? key : task.getRunId());
                 }
@@ -423,6 +436,36 @@ public class F3FlightService {
         String s = raw == null ? "EVO01" : raw.replaceAll("[^A-Za-z0-9_-]", "");
         if (s.isEmpty() || !s.substring(0, 1).matches("[A-Za-z0-9]")) s = "E" + s;
         return s.length() > 32 ? s.substring(0, 32) : s;
+    }
+
+    /**
+     * 解析父工作簿:parentWorkbook未登记时从项目内已完成F3任务(steady/evolution)的
+     * 交付Excel解析(取最新)。MATLAB合同要求root.workbook必填单行文本,空串会被
+     * "root.workbook为空或含换行"拒绝;找不到交付物时明确报错引导用户先完成上游任务。
+     */
+    private String resolveParentWorkbook(EngineModels.ModelingTask task) throws IOException {
+        if (task.getParentWorkbook() != null && !task.getParentWorkbook().trim().isEmpty()) {
+            return task.getParentWorkbook().replace('\\', '/');
+        }
+        File fallback = null;
+        long newest = -1L;
+        for (EngineModels.ModelingTask t : store.listTasks(task.getProjectId())) {
+            if (t.getId() != null && t.getId().equals(task.getId())) continue;
+            if (t.getKind() == null || !(t.getKind().equals("evolution") || t.getKind().startsWith("flight_"))) continue;
+            if (!EngineModels.ModelingTask.ST_COMPLETED.equals(t.getStatus())) continue;
+            Map<String, Object> r = t.getResult();
+            if (r == null || !(r.get("deliveryWorkbookFile") instanceof String)) continue;
+            File f = new File((String) r.get("deliveryWorkbookFile"));
+            if (!f.isFile()) continue;
+            long stamp = t.getFinishedAt() == null ? 0L : t.getFinishedAt();
+            if (stamp > newest) { newest = stamp; fallback = f; }
+        }
+        if (fallback == null) {
+            throw new IllegalStateException("父工作簿未登记且项目内没有已完成的稳态辨识/自演化交付Excel;"
+                    + "请先完成上游F3任务(或在其模型成果登记后重试),再发起本任务。");
+        }
+        log.info("F3父工作簿自动解析: task={} -> {}", task.getId(), fallback.getAbsolutePath());
+        return fallback.getAbsolutePath().replace('\\', '/');
     }
 
     /** 只读结果清单(无DLL):manifest+delivery Excel路径,直接文件扫描。 */

@@ -1180,6 +1180,7 @@ m.append("    case 'savepackage'\n");
         File user = workProgramsDir(projectId);
         if (new File(user, "Start_FullModeSimulation_01.m").isFile()) {
             ensureCRuntime(user.getParentFile());
+            applyProgramPatches(user.getParentFile());
             return user;
         }
 
@@ -1192,10 +1193,12 @@ m.append("    case 'savepackage'\n");
             try {
                 copyTree(hit, user);
                 ensureCRuntime(user.getParentFile());
+                applyProgramPatches(user.getParentFile());
                 return user;
             } catch (IOException e) {
                 log.warn("试车台程序复制到项目目录失败,改用classes路径运行: {}", e.getMessage());
                 ensureCRuntime(hit.getParentFile());
+                applyProgramPatches(hit.getParentFile());
                 return hit;
             }
         }
@@ -1231,6 +1234,7 @@ m.append("    case 'savepackage'\n");
             throw new IOException("jar 内未找到试车台程序(解压 " + n + " 个文件)");
         }
         ensureCRuntime(user.getParentFile());
+        applyProgramPatches(user.getParentFile());
         return user;
     }
 
@@ -1292,6 +1296,63 @@ m.append("    case 'savepackage'\n");
         }
     }
 
+    /**
+     * 交付程序运行期补丁:交付树资源原样不动(约定:不在 src/resources/programs 内修改交付 MATLAB 程序),
+     * 已知损坏/兼容问题在项目工作副本(<workdir>/programs/)上由后端修复——MATLAB 执行的正是工作副本。
+     * key=programs/ 下相对路径,value=classpath 补丁资源(matlab-patches/)。目标字节与补丁一致则跳过,幂等。
+     */
+    private static final Map<String, String> PROGRAM_PATCHES = new java.util.LinkedHashMap<>();
+
+    static {
+        // 交付树 sht_fullmode_session.m 入库即存在GBK乱码损坏(解析报"字符向量未正常终止/非法使用保留关键字"),
+        // 修复版不进交付树,由后端在项目工作副本上覆盖
+        PROGRAM_PATCHES.put("m_program_adaptive_tune/sht_fullmode_session.m",
+                "matlab-patches/m_program_adaptive_tune/sht_fullmode_session.m");
+    }
+
+    private void applyProgramPatches(File programsRoot) {
+        if (programsRoot == null || !programsRoot.isDirectory()) return;
+        for (Map.Entry<String, String> e : PROGRAM_PATCHES.entrySet()) {
+            File target = new File(programsRoot, e.getKey());
+            byte[] patch = readClasspathResource(e.getValue());
+            if (patch == null) {
+                log.warn("交付程序补丁资源缺失: {}", e.getValue());
+                continue;
+            }
+            boolean same = false;
+            try {
+                if (target.isFile() && target.length() == patch.length) {
+                    same = java.util.Arrays.equals(patch, Files.readAllBytes(target.toPath()));
+                }
+            } catch (IOException ignore) {
+                // 读失败按不一致处理,走覆盖
+            }
+            if (same) continue;
+            try {
+                Files.createDirectories(target.getParentFile().toPath());
+                Files.write(target.toPath(), patch);
+                log.info("已应用交付程序补丁(交付树不动,后端修复工作副本): {} -> {}", e.getValue(), target);
+            } catch (IOException ex) {
+                log.warn("交付程序补丁写入失败({}): {}", target, ex.getMessage());
+            }
+        }
+    }
+
+    private byte[] readClasspathResource(String path) {
+        ClassLoader cl = Thread.currentThread().getContextClassLoader();
+        if (cl == null) cl = TestbenchService.class.getClassLoader();
+        try (java.io.InputStream in = cl.getResourceAsStream(path)) {
+            if (in == null) return null;
+            java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) > 0) bos.write(buf, 0, n);
+            return bos.toByteArray();
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
     private static void copyTree(File src, File dest) throws IOException {
         Files.createDirectories(dest.toPath());
         File[] children = src.listFiles();
@@ -1338,6 +1399,7 @@ m.append("    case 'savepackage'\n");
         boolean complete = new File(programRoot, "m_program_adaptive_tune/Start_FullModeSimulation_01.m").isFile();
         if (complete) {
             ensureCRuntime(programRoot); // 程序在但C工程可能缺(旧项目),补齐后即完整
+            applyProgramPatches(programRoot); // 已知交付程序损坏在副本上修复(交付树不动)
             return;
         }
         // 来源顺序:工作区resources整树 → target/classes整树 → jar前缀解压(均为R06 programs层)
@@ -1375,6 +1437,7 @@ m.append("    case 'savepackage'\n");
         }
         // 兜底校验:C_runtime 缺失(如旧版jar)时按三特征补齐
         ensureCRuntime(programRoot);
+        applyProgramPatches(programRoot);
     }
 
     private Path classpathProgramJar() {

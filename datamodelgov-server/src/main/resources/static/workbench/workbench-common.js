@@ -1747,10 +1747,12 @@ window.Workbench = (() => {
         return wrap;
     }
 
-    /** 多系统联合仿真记录页(09-07/09-08):列表 + 只读查看 + 配置比较与通道叠加。 */
+    /** 仿真记录页(09-07/09-08):单一列表,一行=一次工作流执行——起动停车建模(含设计点配置校核)/
+     * 全模式仿真/多系统联合仿真。与运行记录同构:IGinX SQL分页+状态/编号筛选;
+     * "查看(只读)"跳转对应功能页(起动停车建模/全模式仿真/多系统联合仿真)并定位该次任务的页签结果。 */
     function afoRecordsPage(ctx) {
         const pid = ctx.project.id || '';
-        /* 与运行记录同口径:一条记录=一次工作流执行(每个会话/任务一条,IginX SQL分页)。
+        /* 一条记录=一次工作流执行(每个会话/任务一条,IginX SQL分页)。
          * /afo/sessions/list + /count:多系统联合仿真(会话) + 起动停车建模(design_point/startstop) + 全模式仿真(fullmode)归并排序;
          * 状态/编号筛选为SQL条件,翻页/改条数重新请求。 */
         const state = { pageNum: 1, pageSize: 10, total: 0 };
@@ -1781,28 +1783,30 @@ window.Workbench = (() => {
         wrap.appendChild(selHolder);
         wrap.appendChild(cmpHolder);
 
-        function renderList(all) {
+        function renderList(all, allRows) {
             listHolder.innerHTML = '';
-            const rows = all; // 状态/编号筛选已由服务端SQL完成,前端不再过滤
+            const rows = all; // 状态/编号筛选已由服务端SQL完成,这里只渲染当前页
             if (!all.length) {
                 listHolder.appendChild(h('div', { class: 'wb-empty' },
-                    '暂无仿真记录——在"多系统联合仿真"或"全模式仿真"发起准备并运行后,每次执行在此留档(以运行编号为身份)。'));
+                    '暂无仿真记录——在"起动停车建模""全模式仿真""多系统联合仿真"发起执行后,每次执行在此留档(以运行编号为身份)。'));
                 return;
             }
             const tbl = h('table', { class: 'wb-table' },
                 h('tr', null, ['', '运行', '类型', '输入与配置', '执行时间', '记录状态', '操作'].map((x, i) =>
                     h('th', i === 0 ? { style: 'width:34px' } : null, x))));
-            rows.forEach(r => {
-                const cfg = r.config || {};
-                const isFm = r._kind === 'fm';
-                const cb = h('input', { type: 'checkbox' });
-                if (checked[r.runId]) cb.checked = true;
-                cb.addEventListener('change', () => {
-                    if (cb.checked) checked[r.runId] = true; else delete checked[r.runId];
-                    renderActions(all);
-                });
-                const stateTxt = r.phase === 'ENDED' ? '完整' : r.phase === 'FAILED' ? '人工结束/失败'
-                    : r.phase === 'CLOSED' ? '已关闭' : r.phase;
+            // 工作流维度:每行=一次工作流执行;类型列按工作流标注(设计点配置校核归入起动停车建模域)
+                const STATE_CN = { RUNNING: '仿真运行中', PREPARING: '准备中', READY: '待运行', PAUSED: '已暂停',
+                    COMMITTED: '已提交', ENDED: '完整', FAILED: '人工结束/失败', CLOSED: '已关闭' };
+                rows.forEach(r => {
+                    const cfg = r.config || {};
+                    const isFm = r._kind === 'fm';
+                    const cb = h('input', { type: 'checkbox' });
+                    if (checked[r.runId]) cb.checked = true;
+                    cb.addEventListener('change', () => {
+                        if (cb.checked) checked[r.runId] = true; else delete checked[r.runId];
+                        renderActions(allRows || all);
+                    });
+                    const stateTxt = STATE_CN[r.phase] || r.phase || '—';
                 const durTxt = isFm
                     ? (cfg.duration != null && cfg.duration !== '' ? cfg.duration + ' s'
                         : (r.createdAt && r.finishedAt ? fmtSpan(r.finishedAt - r.createdAt) : '—'))
@@ -1810,10 +1814,13 @@ window.Workbench = (() => {
                 tbl.appendChild(h('tr', null,
                     h('td', { onclick: ev => ev.stopPropagation() }, isFm ? h('span', { class: 'wb-hint' }, '—') : cb),
                     h('td', { style: 'font-weight:600' }, r.runId || '—'),
-                    h('td', null, !isFm ? '多系统联合仿真'
-                        : (r.kind === 'fullmode' ? '全模式仿真' : '起动停车建模')),
+                    h('td', null, !isFm ? '多系统联合仿真' : (r.kind === 'fullmode' ? '全模式仿真' : '起动停车建模')),
                     h('td', { class: 'wb-hint' }, isFm
-                        ? 'model' + (cfg.modelMode != null ? cfg.modelMode : '—') + ' · ' + ((cfg.fullmode || {}).initialKind || '—')
+                        ? (r.kind === 'design_point'
+                            ? ((cfg.modelMode != null ? 'model' + cfg.modelMode + ' · ' : '') + (cfg.route === 'transient' ? '瞬态' : '稳态'))
+                            : r.kind === 'startstop'
+                                ? '阶段链 maps→design→matrix→physics→continuous→thermal'
+                                : 'model' + (cfg.modelMode != null ? cfg.modelMode : '—') + ' · ' + ((cfg.fullmode || {}).initialKind || '—'))
                         : ((cfg.loadMode === 'external' ? '外部回灌' : (cfg.externalAir ? '外部回灌' : '人工指令 / 内部引气'))
                             + ' · ' + (cfg.pace === 'fast' ? '尽快计算' : '实时节奏'))),
                     h('td', null, durTxt),
@@ -1972,11 +1979,12 @@ window.Workbench = (() => {
                     window.AppConfig.engineGet(base + 'count', { status: params.status, kw: params.kw })
                 ]);
                 const rows = listResp && (listResp.success || listResp.code === 200) && Array.isArray(listResp.data) ? listResp.data : [];
+                const allRows = rows;
                 state.total = countResp && (countResp.success || countResp.code === 200) ? Number(countResp.data) || 0 : rows.length;
                 const maxPage = Math.max(1, Math.ceil(state.total / state.pageSize));
                 if (state.pageNum > maxPage) { state.pageNum = maxPage; return fetchPage(); }
-                renderList(rows);
-                renderActions(rows);
+                renderList(rows, allRows);
+                renderActions(allRows);
                 renderPager(maxPage);
             } catch (e) {
                 listHolder.innerHTML = '';
@@ -2015,7 +2023,7 @@ window.Workbench = (() => {
     /* 运行记录阶段标签(与效果图页签/业务命名一致) */
     const RECORD_STAGE = { steady: '稳态系数辨识', steady_update: '新增试车稳态更新',
         transient_update: '过渡态瞬态辨识', flight_steady: '稳态飞参建模', flight_transient: '过渡态飞参建模',
-        evolution: '模型自演化', uq: '不确定性评估', prediction: '输出预测' };
+        evolution: '模型自演化', uq: '不确定性评估', prediction: '输出预测', startstop: '起动停车建模' };
     const KIND_BIZ = { steady: 'steady', steady_update: 'steady_update', transient_update: 'transient',
         flight_steady: 'flightSteady', flight_transient: 'flightTransient', evolution: 'evolution', uq: 'steady' };
     async function loadRunRecords(ctx, holder) {
@@ -2043,10 +2051,13 @@ window.Workbench = (() => {
                     const kindTag = tk.status === 'FAILED' ? (tk.errorKind === 'SAVE_FAILED' ? ['保存失败', 'amber'] : tk.errorKind === 'NUMERIC_FAILED' ? ['数值失败', 'red'] : null) : null;
                     const st = RUN_STATUS[raw] || [raw || '—', 'gray'];
                     const note = tk.message || '';
+                    const isUqStage = (tk.taskId || '').indexOf('uq-') === 0; // UQ阶段行:类型列=父工作流,最近运行列标注
                     return h('tr', null,
                         h('td', { class: 'wb-link', title: note, style: 'max-width:260px;word-break:break-all' }, tk.name || tk.taskId),
                         h('td', { class: 'wb-hint', style: 'font-weight:600' }, RECORD_STAGE[tk.kind] || tk.kind || '稳态试车建模'),
-                        h('td', { class: 'wb-hint' }, tk.runId || '—'),
+                        h('td', { class: 'wb-hint' }, isUqStage
+                            ? [h('span', { style: 'display:inline-flex;margin-right:6px' }, statusTag('不确定性评估', 'violet')), (tk.runId || '—')]
+                            : (tk.runId || '—')),
                         h('td', null, kindTag
                             ? [h('span', { style: 'display:inline-flex;margin-right:6px' }, statusTag(kindTag[0], kindTag[1])), statusTag(st[0], st[1])]
                             : statusTag(st[0], st[1])),
@@ -2056,8 +2067,7 @@ window.Workbench = (() => {
                             class: 'wb-btn wb-btn-primary', style: 'padding:3px 12px;font-size:12px',
                             onclick: () => {
                                 if (tk.kind === 'prediction') { ctx.navigate('predictions'); return; }
-                                window.__WB_OPEN_TASK__ = tk.taskId;
-                                if (tk.kind === 'uq') window.__WB_OPEN_TASK_TAB__ = 'uq'; // 直达评估页签
+                                window.__WB_OPEN_TASK__ = (tk.taskId || '').indexOf('uq-') === 0 ? tk.taskId.slice(3) : tk.taskId;
                                 ctx.enterTask({ id: KIND_BIZ[tk.kind] || 'steady' });
                             }
                         }, '打开')));
@@ -2411,7 +2421,21 @@ window.Workbench = (() => {
         }
         function updateCharts() {
             const H = S.hist; if (!H || !H.t.length) return;
-            const set = (key, series) => { const c = S.charts[key]; if (c) c.setOption({ series }); };
+            const set = (key, series) => {
+                let c = S.charts[key];
+                // 实例自愈:dispose过或绑定的DOM已移出文档(renderBody与异步init回调竞态导致新旧实例脱钩)
+                if (c && typeof c.isDisposed === 'function' && c.isDisposed()) c = null;
+                if (c && typeof c.getDom === 'function' && !document.contains(c.getDom())) c = null;
+                if (!c) {
+                    const host = document.querySelector('[data-fm-chart="' + key + '"]');
+                    if (!host) return; // 当前页签无该图容器
+                    c = window.echarts.getInstanceByDom(host) || window.echarts.init(host);
+                    S.charts[key] = c;
+                }
+                // x轴动态范围:推进初期t很小时也有可见图框,曲线随时间向右生长
+                const tMax = Math.max(10, Math.ceil(H.t[H.t.length - 1] * 1.05));
+                try { c.setOption({ xAxis: { min: 0, max: tMax }, series }); } catch (e) { }
+            };
             set('rpm', [{ name: 'Np', data: seriesData(H.t, H.np) }, { name: 'Ng', data: seriesData(H.t, H.ng) }]);
             set('tt45', [{ name: 'Tt45', data: seriesData(H.t, H.tt45) }]);
             set('load', [{ name: 'Mkp kN·m', data: seriesData(H.t, H.mkp.map(v => v == null ? null : v / 1000)) },
@@ -2494,7 +2518,7 @@ window.Workbench = (() => {
             wrap.appendChild(refs.hintEl);
 
             /* 左操纵台 + 右实时曲线(image155~156) */
-            const grid = h('div', { style: 'display:grid;grid-template-columns:360px 1fr;gap:20px' });
+            const grid = h('div', { style: 'display:grid;grid-template-columns:360px minmax(320px,1fr);gap:20px' });
             refs.opsCard = h('div', { class: 'wb-card' });
             refs.opsCard.appendChild(h('div', { class: 'wb-section-title', style: 'margin-bottom:8px' }, '试车操纵'));
             refs.opsCard.appendChild(h('div', { class: 'wb-hint', style: 'margin-bottom:6px' }, '油门杆 (生效: ' + (live.throttle || '未施加') + ')'));
@@ -2558,7 +2582,11 @@ window.Workbench = (() => {
                         h('div', { style: 'font-size:12px;font-weight:600;color:#4a5a6a;margin-bottom:4px' }, title),
                         h('div', { style: 'height:180px' }));
                     chartHost.appendChild(box);
-                    S.charts[key] = window.echarts.init(box.lastChild);
+                    const holder = box.lastChild;
+                    holder.setAttribute('data-fm-chart', key);
+                    const old = S.charts[key];
+                    if (old && typeof old.dispose === 'function') { try { old.dispose(); } catch (e) { } }
+                    S.charts[key] = window.echarts.init(holder);
                 };
                 mk('rpm', '转子转速 Np / Ng (rpm)');
                 mk('tt45', 'Tt45 温度 (K)');
@@ -2970,6 +2998,11 @@ window.Workbench = (() => {
                 if (S.phase === 'FAILED') toast('仿真失败:' + (S.message || '详情见仿真记录与服务端日志'), 'error');
                 else if (S.phase === 'ENDED') toast('仿真已结束,可在「本次结果」查看与导出', 'success');
                 S.resultMsg = null; S.resultTriedFor = null; // 结束后允许结果重取一次
+                // 准备完成自动进入操纵与监视(交付流程:准备完成后核对初态→操纵);用户已切走则不打断
+                if (S.tab === 'prep' && ['READY', 'RUNNING', 'PAUSED'].includes(S.phase)) {
+                    S.tab = 'ops';
+                    toast('准备完成' + (S.runId ? '(' + S.runId + ')' : '') + ',已进入操纵与监视', 'success');
+                }
                 renderBody();
                 return;
             }
@@ -5078,7 +5111,9 @@ window.Workbench = (() => {
         if (S.phase === 'ENDED') ensureSessionResult();
         return wrap;
     };
-    pages['testbench.records'] = (ctx) => recordsPage(ctx, 'sim');
+    /* 仿真记录:单一菜单。列表按工作流维度组织,一行=一次工作流执行(起动停车建模含设计点配置校核/
+     * 全模式仿真/多系统联合仿真);"查看(只读)"跳转对应功能页并定位到该次任务的页签结果。 */
+    pages['testbench.records'] = (ctx) => afoRecordsPage(ctx);
 
     /* ---------- API ---------- */
     return {

@@ -434,12 +434,33 @@ public class EngineProjectStore {
         } catch (Exception e) {
             log.warn("UQ记录清单同步失败: uq={}", r.getId(), e);
         }
-        // 运行记录阶段行(不确定性评估):与任务执行记录同表,kind=uq
+        // 运行记录阶段行(不确定性评估):运行记录是工作流维度,类型列显示评估对象模型的
+        // 来源工作流(kind=父工作流),UQ由taskId的"uq-"前缀识别并在最近运行列标注
         try {
+            String parentKind = "steady";
+            String modelTag = "";
+            try {
+                for (ModelAsset m : listModels(r.getProjectId())) {
+                    if (m.getId() != null && m.getId().equals(r.getModelAssetId())) {
+                        String sb = m.getSourceBusiness() == null ? "" : m.getSourceBusiness();
+                        if (sb.contains("新试车数据更新")) parentKind = "steady_update";
+                        else if (sb.contains("瞬态试车建模")) parentKind = "transient_update";
+                        else if (sb.contains("过渡态飞参")) parentKind = "flight_transient";
+                        else if (sb.contains("飞参")) parentKind = "flight_steady";
+                        else if (sb.contains("自演化")) parentKind = "evolution";
+                        else if (sb.contains("起动停车")) parentKind = "startstop";
+                        else parentKind = "steady"; // 稳态试车建模/导入模型
+                        modelTag = m.getName() == null ? "" : " · " + m.getName();
+                        break;
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("UQ阶段行父工作流解析失败: uq={}", r.getId(), e);
+            }
             com.tsinghua.entity.EngineTaskRecordEntity stage = new com.tsinghua.entity.EngineTaskRecordEntity();
-            stage.setProjectId(r.getProjectId()).setTaskId("uq-" + r.getId()).setKind("uq")
+            stage.setProjectId(r.getProjectId()).setTaskId("uq-" + r.getId()).setKind(parentKind)
                  .setName("不确定性评估 · 方法" + r.getMethod()
-                     + (r.getParticleCount() != null ? " · " + r.getParticleCount() + "粒子" : ""))
+                     + (r.getParticleCount() != null ? " · " + r.getParticleCount() + "粒子" : "") + modelTag)
                  .setRunId(r.getRunId()).setStatus(r.getStatus()).setMessage(r.getMessage())
                  .setStartTime(r.getStartedAt()).setEndTime(r.getFinishedAt())
                  .setCreateTime(r.getStartedAt() != null ? r.getStartedAt() : System.currentTimeMillis());
