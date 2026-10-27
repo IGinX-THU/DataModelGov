@@ -2027,7 +2027,7 @@ window.Workbench = (() => {
             }
             listHolder.appendChild(h('table', { class: 'wb-table' },
                 h('tr', null, ['任务名称', '任务类型', '最近运行', '状态', '开始时间', '结束时间', '操作'].map(t => h('th', null, t))),
-                rows.filter(tk => !(tk.status === 'READY' && !tk.startTime)).map(tk => {
+                rows.map(tk => {
                     const raw = tk.status === 'FAILED' && tk.errorKind === 'SAVE_FAILED' ? '保存失败'
                         : tk.status === 'FAILED' && tk.errorKind === 'NUMERIC_FAILED' ? '数值失败' : tk.status;
                     const kindTag = tk.status === 'FAILED' ? (tk.errorKind === 'SAVE_FAILED' ? ['保存失败', 'amber'] : tk.errorKind === 'NUMERIC_FAILED' ? ['数值失败', 'red'] : null) : null;

@@ -228,6 +228,7 @@ public class F3FlightService {
         final String key = task.getId();
         boolean evo = "evolution".equals(task.getKind());
         task.setStatus(EngineModels.ModelingTask.ST_PREPARING);
+        task.setStartedAt(System.currentTimeMillis()); // check/confirm也调MATLAB:必须留执行痕迹,否则完成回READY后运行记录行被清理
         task.setMessage(evo ? "自演化批输入核验中(check)" : "F3数据意图确认中(confirmData)");
         store.saveTask(task);
         logBuffers.put(key, new ArrayList<>());

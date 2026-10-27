@@ -319,7 +319,6 @@ public class EngineWorkbenchController {
         String denied = projectReadDenied(pid);
         if (denied != null) return Result.error(denied);
         backfillTaskRecords(pid);
-        taskRecordService.dedupeByTask(pid); // 历史脏数据自愈:每任务只留最新一行
         return Result.success(taskRecordService.queryList(pid, pageNum, pageSize));
     }
 
@@ -330,7 +329,6 @@ public class EngineWorkbenchController {
         String denied = projectReadDenied(pid);
         if (denied != null) return Result.error(denied);
         backfillTaskRecords(pid);
-        taskRecordService.dedupeByTask(pid); // 与列表同口径去重后再计数
         return Result.success(taskRecordService.countList(pid));
     }
 

@@ -194,6 +194,7 @@ public class Tc24Service {
                 runGens.computeIfAbsent(key, k -> new java.util.concurrent.atomic.AtomicLong());
         final long gen = genRef.incrementAndGet();
         task.setStatus(ModelingTask.ST_PREPARING);
+        task.setStartedAt(System.currentTimeMillis()); // 辨识入口同样留执行痕迹(运行记录行在辨识完成后仍保留)
         task.setMessage("准备程序工作副本");
         task.setLogTail(new ArrayList<>());
         store.saveTask(task);
@@ -812,6 +813,7 @@ public class Tc24Service {
     public EngineModels.ModelingTask startTc27Prepare(EngineModels.ModelingTask task) throws IOException {
         final String key = task.getId();
         task.setStatus(EngineModels.ModelingTask.ST_PREPARING);
+        task.setStartedAt(System.currentTimeMillis()); // 准备也是一次执行动作:否则完成回READY后会被判为空闲草稿,运行记录行被清理
         task.setPrepMessage(null); // 清掉上一次结果,避免运行中被误判为已准备完成
         task.setMessage("TC27数据准备中(05:原工况均值+新窗口+小幅段)");
         store.saveTask(task);
@@ -875,6 +877,15 @@ public class Tc24Service {
             call.put("action", action);
             call.put("outputDir", outDir.getAbsolutePath().replace('\\', '/'));
             call.put("request", request);
+            // 重新执行:清掉上次失败/中断遗留的run_control状态(open会断言"运行已存在"),
+            // 05预览(MiddleData)保留可复用;本次执行以全新run身份开始
+            if (!isPrepare) {
+                File runControl = new File(outDir, "run_control");
+                if (runControl.exists()) {
+                    deleteRecursively(runControl);
+                    emitLog(key, "已清理上次运行残留的run_control;本次为全新执行");
+                }
+            }
             File resultFile = new File(adapterDir, "tc27-" + action + "-result.json");
             call.put("resultFile", resultFile.getAbsolutePath().replace('\\', '/'));
             File cf = new File(adapterDir, "tc27-" + action + "-config.json");
@@ -1104,6 +1115,7 @@ public class Tc24Service {
     public EngineModels.ModelingTask startTc27TransientPrepare(EngineModels.ModelingTask task) throws IOException {
         final String key = task.getId();
         task.setStatus(EngineModels.ModelingTask.ST_PREPARING);
+        task.setStartedAt(System.currentTimeMillis()); // 同稳态准备:避免完成回READY后运行记录行被清理
         task.setPrepMessage(null); // 清掉上一次结果,避免运行中被误判为已准备完成
         task.setMessage("TC27瞬态数据准备中(事件选段+05)");
         store.saveTask(task);
@@ -1299,6 +1311,11 @@ public class Tc24Service {
      */
     public ModelingTask runPrepare(ModelingTask task) throws IOException {
         final String key = task.getId();
+        // 准备也是一次MATLAB执行动作:立即落PREPARING+startedAt,运行记录行同步显示"准备中",完成后回"空闲"
+        task.setStatus(ModelingTask.ST_PREPARING);
+        task.setStartedAt(System.currentTimeMillis());
+        task.setMessage("数据准备中(task=preview:解析工况与分组)");
+        store.saveTask(task);
         emitLog(key, "发起数据准备(task=preview)");
         executor.submit(() -> {
             try {

@@ -55,7 +55,10 @@ public final class ConvertUtil {
     }
 
     public static Point createFieldPoint(String basePath, String fieldName, String value, long key) {
-        return Point.builder().measurement(measurement(basePath, fieldName)).key(key).value(value).build();
+        // IginX 无 STRING 类型:字符串统一按 BINARY 存储与读侧 byte[]→UTF-8 解码约定一致;
+        // session_v2 的 value(Object) 不设置 dataType,直接 build 会抛 dataType NPE
+        return Point.builder().measurement(measurement(basePath, fieldName)).key(key)
+                .binaryValue(value == null ? new byte[0] : value.getBytes(StandardCharsets.UTF_8)).build();
     }
 
     public static Point createFieldPoint(String basePath, String fieldName, Long value, long key) {
@@ -93,7 +96,9 @@ public final class ConvertUtil {
         } else if (value instanceof Double) {
             b.doubleValue((Double) value);
         } else {
-            b.value(value == null ? "" : String.valueOf(value));
+            // 默认转 BINARY 字节存储(IginX 无 STRING;value(Object) 不设置 dataType)
+            Object safe = value == null ? "" : value;
+            b.binaryValue(String.valueOf(safe).getBytes(StandardCharsets.UTF_8));
         }
         return b.build();
     }

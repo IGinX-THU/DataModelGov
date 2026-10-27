@@ -100,10 +100,17 @@
 
         function paintMeta() {
             const t = state.task;
-            metaRow.textContent = t
-                ? (ctx.project.name + ' / ' + (t.runId || 'BENCH_01') + ' / 训练' + (t.trainingFile ? '已上传' : '待上传')
-                    + (t.testFile ? ' · 已提供独立测试' : ' · 未提供独立测试'))
-                : (ctx.project.name + ' / 尚未创建任务');
+            if (!t) { metaRow.textContent = ctx.project.name + ' / 尚未创建任务'; return; }
+            // 任务身份标识:同名/runId相同的多次执行任务靠任务号+开始时间区分(运行记录逐行打开时可见)
+            const stText = { READY: '空闲', PREPARING: '准备中', RUNNING: '运行中', STOP_REQUESTED: '停止请求中',
+                STOPPED: '已停止', COMPLETED: '已完成', FAILED: '失败' }[t.status] || t.status || '—';
+            const startText = t.startedAt ? new Date(t.startedAt).toLocaleString() : null;
+            const kindText = t.kind === 'steady_update' ? '新增试车稳态更新' : (state.transientMode ? '过渡态瞬态辨识' : '稳态系数辨识');
+            metaRow.textContent = ctx.project.name + ' / ' + kindText + ' · ' + (t.name || '未命名任务')
+                + ' / 任务#' + String(t.id || '').slice(0, 8) + ' / ' + stText
+                + (startText ? ' / 开始于 ' + startText : '')
+                + ' / 训练' + (t.trainingFile ? '已上传' : '待上传')
+                + (t.testFile ? ' · 已提供独立测试' : ' · 未提供独立测试');
         }
 
         function paintTabs() {
@@ -1031,14 +1038,33 @@
                 });
                 view.appendChild(stepTable);
 
-                // 计时行
+                // 计时行:预计时间取程序自估(日志最新一条"预计X分钟,工程范围A~B分钟;before/after_selection")
                 const elapsed = t.startedAt ? formatDur(Date.now() - t.startedAt) : '—';
+                let estText = '暂无法可靠估计';
+                let estRemain = '暂无法可靠估计';
+                const logs = state.log || [];
+                for (let i = logs.length - 1; i >= 0; i--) {
+                    // 阶段标签通用匹配:before_selection/after_selection/06_after_preparation等
+                    const m = /预计([\d.]+)分钟，工程范围([\d.]+)~([\d.]+)分钟；([^。；]+)/.exec(logs[i]);
+                    if (m) {
+                        const c = parseFloat(m[1]), lo = parseFloat(m[2]), hi = parseFloat(m[3]);
+                        const phaseName = ({ before_selection: '选段前粗估', after_selection: '选段后精估',
+                            '06_after_preparation': '06准备完成精估' })[m[4]] || m[4];
+                        estText = '约' + c.toFixed(1) + '分钟(工程范围' + lo.toFixed(1) + '~' + hi.toFixed(1)
+                            + '分钟;' + phaseName + ')';
+                        if (t.startedAt) {
+                            const remainMin = Math.max(0, c - (Date.now() - t.startedAt) / 60000);
+                            estRemain = remainMin >= 1 ? '约' + Math.round(remainMin) + '分钟' : '即将完成';
+                        }
+                        break;
+                    }
+                }
                 view.appendChild(WB().h('table', { class: 'wb-table', style: 'margin-top:14px;max-width:1180px' },
-                    WB().h('tr', null, ['运行前预计(首次记录)', '累计有效计算', '剩余时间'].map(x => WB().h('th', null, x))),
+                    WB().h('tr', null, ['程序自估总耗时', '已用计算时间', '预计剩余'].map(x => WB().h('th', null, x))),
                     WB().h('tr', null,
-                        WB().h('td', null, '30至45分钟'),
+                        WB().h('td', null, estText),
                         WB().h('td', null, elapsed === '—' ? (t.elapsedText || '—') : elapsed + '(累计)'),
-                        WB().h('td', null, '暂无法可靠估计'))));
+                        WB().h('td', null, estRemain))));
 
                 // 当前迭代 + 最近反馈
                 const iter = parseIter();
