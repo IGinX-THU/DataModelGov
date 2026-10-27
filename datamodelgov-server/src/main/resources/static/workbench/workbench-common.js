@@ -1822,7 +1822,17 @@ window.Workbench = (() => {
                         h('button', {
                             class: 'wb-btn wb-btn-outline',
                             onclick: () => {
-                                if (isFm) { ctx.navigate(r.kind === 'design_point' || r.kind === 'startstop' ? 'startstop' : 'fullmode'); return; }
+                                if (isFm) {
+                                    // 按行打开指定任务(fm行runId即taskKey/taskId),避免业务页只显示最近活动任务
+                                    if (r.kind === 'design_point' || r.kind === 'startstop') {
+                                        window.__WB_SS_OPEN__ = { taskId: r.runId, kind: r.kind };
+                                        ctx.navigate('startstop');
+                                    } else {
+                                        window.__WB_FM_OPEN__ = r.runId;
+                                        ctx.navigate('fullmode');
+                                    }
+                                    return;
+                                }
                                 ctx.navigate('afo');
                                 setTimeout(() => { if (window.__WB_AFO_OPEN__) window.__WB_AFO_OPEN__(r.runId); }, 60);
                             }
@@ -2226,9 +2236,20 @@ window.Workbench = (() => {
         }
 
         function cmd(kind, value, note) {
-            apiPost('/command', { kind, value })
+            const send = () => apiPost('/command', { kind, value })
                 .then(r => { if (r && r.code === 200) toast(note || ('命令已下发:' + kind), 'success'); else toast((r && r.message) || '命令失败', 'error'); })
                 .catch(e => toast('命令失败:' + e.message, 'error'));
+            // READY状态下命令无人消费(推进循环未启动):自动先开始推进再下发命令
+            if (S.phase === 'READY') {
+                apiPost('/run', {})
+                    .then(r => {
+                        if (r && r.code === 200) { S.phase = 'RUNNING'; renderBody(); return send(); }
+                        toast((r && r.message) || '开始推进失败', 'error');
+                    })
+                    .catch(e => toast('开始推进失败:' + e.message, 'error'));
+                return;
+            }
+            send();
         }
 
         /* ---------- 页签一: 仿真准备(08-01/02/29) ---------- */
@@ -2315,7 +2336,7 @@ window.Workbench = (() => {
         /* ---------- 页签二: 操纵与监视(08-03~08-20) ---------- */
         function opsTab() {
             const live = S.live || {};
-            const t = typeof live.time === 'number' ? live.time : 0;
+            const t = typeof live.timeS === 'number' ? live.timeS : (typeof live.time === 'number' ? live.time : 0);
             const isRun = S.phase === 'RUNNING';
             const wrap = h('div', null);
 
@@ -2337,8 +2358,27 @@ window.Workbench = (() => {
                     onclick: () => confirmDialog('紧急断油(emergency_cutoff)?断油保持锁存,不能被一般操作覆盖。',
                         { title: '紧急断油', okText: '断油', danger: true })
                         .then(ok => { if (ok) cmd('emergency_cutoff'); }) }, '紧急断油'));
+            } else if (S.phase === 'READY') {
+                bar.appendChild(h('button', { class: 'wb-btn wb-btn-primary',
+                    onclick: () => apiPost('/run', {})
+                        .then(r => { if (r && r.code === 200) { S.phase = 'RUNNING'; toast('推进已启动;可下发操纵命令(块间生效)', 'success'); renderBody(); } else toast((r && r.message) || '开始推进失败', 'error'); })
+                        .catch(e => toast('开始推进失败:' + e.message, 'error')) }, '▶ 开始推进'));
             }
             wrap.appendChild(bar);
+
+            // 最近命令回执(会话逐条回报accepted/applied/rejected与原因;被拒原因在此直接可见)
+            const rcts = Array.isArray(live.commandReceipts) ? live.commandReceipts : [];
+            const last = rcts.length ? rcts[rcts.length - 1] : null;
+            if (last) {
+                const stTag = last.state === 'applied' ? ['已施加', 'teal'] : last.state === 'rejected' ? ['已拒绝', 'red']
+                    : last.state === 'accepted' ? ['已受理', 'amber'] : [last.state || '—', 'gray'];
+                wrap.appendChild(h('div', { class: 'wb-infobar', style: 'margin-bottom:10px;display:flex;align-items:center;gap:10px' },
+                    h('span', { class: 'wb-hint', style: 'margin:0' }, '最近命令回执:'),
+                    h('span', { style: 'font-weight:600' }, str(last.action)),
+                    h('span', { class: 'wb-tag wb-tag-' + stTag[1] }, stTag[0]),
+                    last.reason ? h('span', { class: 'wb-hint', style: 'margin:0' }, '原因: ' + last.reason) : null,
+                    last.appliedTimeS != null ? h('span', { class: 'wb-hint', style: 'margin:0' }, '生效于 ' + Number(last.appliedTimeS).toFixed(2) + ' s') : null));
+            }
 
             wrap.appendChild(bigGrid(live));
 
@@ -2401,7 +2441,7 @@ window.Workbench = (() => {
             monCol.appendChild(h('div', { class: 'wb-hint', style: 'margin-bottom:10px' },
                 '运行预选 ' + Math.round(parseFloat(S.cfg.npGear || '0.9') * 100) + '% · 主监视: Np、Ng、燃油、负载、实际输出功率与Tt45;气路有效标志与当前步是否真正计算温度分开展示。'));
             const kv = h('div', { class: 'wb-kv', style: 'max-width:1180px' });
-            const known = ['runId', 'mode', 'lifecycle', 'time', 'throttle', 'npGear', 'stopReason', 'wallSeconds'];
+            const known = ['runId', 'mode', 'lifecycle', 'time', 'timeS', 'throttle', 'npGear', 'stopReason', 'wallSeconds', 'acceptedSteps'];
             let shown = 0;
             Object.keys(live).forEach(k => {
                 if (known.includes(k)) return;
@@ -2440,12 +2480,15 @@ window.Workbench = (() => {
         function str(v) { return v == null ? '—' : String(v); }
 
         function bigGrid(live) {
-            const v = live.values || {};
-            const pick = k => (v[k] != null ? v[k] : '--');
+            // status.json 实际字段:speedRpm=[Np_rpm,Ng_rpm,...]、appliedLoad.mainTorqueNm/aeroPowerW;values/Tt45/Wf会话未上报,显示--
+            const sr = Array.isArray(live.speedRpm) ? live.speedRpm : [];
+            const al = live.appliedLoad || {};
+            const num = (x, d) => (x == null || isNaN(Number(x))) ? '--' : Number(x).toFixed(d == null ? 1 : d);
             const cells = [
-                ['Np', pick('Np'), '%设计点 · 模拟测量'], ['Ng', pick('Ng'), 'rpm · 模拟测量'],
-                ['Tt45', pick('Tt45'), 'K · 未求值时--'], ['Mkp', pick('Mkp'), 'N·m · 模拟测量'],
-                ['PT负载功率', pick('PTpower'), 'kW · 模型计算'], ['计量燃油', pick('Wf'), 'kg/s · 执行器输出']
+                ['Np', num(sr[0], 0), 'rpm · 模拟测量'], ['Ng', num(sr[1], 0), 'rpm · 模拟测量'],
+                ['Tt45', '--', 'K · 会话status未上报'], ['Mkp', num(al.mainTorqueNm), 'N·m · 模型输出'],
+                ['PT负载功率', al.aeroPowerW != null ? num(al.aeroPowerW / 1000) : '--', 'kW · 模型计算'],
+                ['计量燃油', '--', 'kg/s · 会话status未上报']
             ];
             const g = h('div', { style: 'display:grid;grid-template-columns:repeat(6,1fr);gap:14px;margin-bottom:6px' });
             cells.forEach(([k, val, unit]) => g.appendChild(h('div', null,
@@ -2529,11 +2572,20 @@ window.Workbench = (() => {
             }
         }, 2000);
         renderBody();
+        // 仿真记录"查看"打开指定全模式会话:后端为单活动会话模型,历史记录只读留档,页面显示最近会话状态
+        const fmOpen = window.__WB_FM_OPEN__;
+        if (fmOpen) { delete window.__WB_FM_OPEN__; }
         api('/status').then(r => {
             if (r && r.code === 200 && r.data && r.data.phase && r.data.phase !== 'IDLE') {
                 S.phase = r.data.phase; S.live = r.data.live; S.message = r.data.message;
                 if (canOps() || ['ENDED', 'FAILED'].includes(S.phase)) S.tab = 'ops';
                 renderBody();
+                const curRun = (r.data.live && r.data.live.runId) || r.data.runId;
+                if (fmOpen && curRun && curRun !== fmOpen) {
+                    toast('记录 ' + fmOpen + ' 的会话已结束;页面显示的是最近会话 ' + curRun + ' 的状态', 'info');
+                }
+            } else if (fmOpen) {
+                toast('记录 ' + fmOpen + ' 的会话不在运行中——全模式会话为内存态,后端重启后会话丢失,文件留档仅保留到最后推进时刻', 'error');
             }
         }).catch(() => { });
         return wrap;
@@ -2881,6 +2933,17 @@ window.Workbench = (() => {
                 const acts = h('div', { class: 'wb-actions-row', style: 'margin-top:12px' });
                 if (['ENDED', 'FAILED'].includes(d.phase)) {
                     acts.appendChild(h('button', { class: 'wb-btn wb-btn-primary', onclick: () => { S.tab = 'verif'; renderBody(); } }, '查看校核结果'));
+                    acts.appendChild(h('button', {
+                        class: 'wb-btn wb-btn-primary',
+                        onclick: () => {
+                            apiPost('/tasks/' + encodeURIComponent(S.ssTaskId) + '/save-package', { name: '起停模型包-' + S.ssTaskId })
+                                .then(r => {
+                                    if (r && r.code === 200) { toast('模型包已保存并登记到模型成果', 'success'); ctx.navigate('models'); }
+                                    else toast((r && r.message) || '保存模型包失败', 'error');
+                                })
+                                .catch(e => toast('保存失败:' + e.message, 'error'));
+                        }
+                    }, '保存模型及交付文件'));
                     acts.appendChild(h('button', { class: 'wb-btn wb-btn-outline', onclick: () => { S.ssTaskId = null; S.ssHolder = null; renderBody(); } }, '新建校核'));
                 }
                 holder.appendChild(acts);
@@ -2936,7 +2999,31 @@ window.Workbench = (() => {
             else if (S.tab === 'verif') body.appendChild(verifTab());
             else body.appendChild(assetsTab());
         }
+        // 仿真记录"查看"打开指定任务:把该任务设为当前查看对象并切到对应页签(设计点→设计,起动停车→校核执行)
+        const ssOpen = window.__WB_SS_OPEN__;
+        if (ssOpen && ssOpen.taskId) {
+            delete window.__WB_SS_OPEN__;
+            if (ssOpen.kind === 'design_point') { S.dpTaskId = ssOpen.taskId; S.tab = 'design'; }
+            else { S.ssTaskId = ssOpen.taskId; S.tab = 'exec'; }
+        }
         renderBody();
+        // 任务轮询:design_point和startstop任务非终态时每3s检测相位变化并重绘
+        // (修复:之前无轮询,求解/提交完成后页面状态不刷新一直显示运行中)
+        setInterval(() => {
+            if (document.hidden) return;
+            const tid = S.tab === 'design' ? S.dpTaskId : S.ssTaskId;
+            if (!tid) return;
+            api('/tasks/' + encodeURIComponent(tid) + '/status').then(r => {
+                const d = r && r.code === 200 ? r.data : null;
+                if (!d) return;
+                const terminal = ['ENDED', 'FAILED', 'COMMITTED'].includes(d.phase);
+                if (!terminal) window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;
+                if (d.phase !== S._lastPhase) {
+                    S._lastPhase = d.phase;
+                    if (S.tab === 'design' || S.tab === 'exec') renderBody();
+                }
+            }).catch(() => { });
+        }, 3000);
         return wrap;
     };
     /* 试车台模型成果(与建模工作台同一renderModelsBody) */

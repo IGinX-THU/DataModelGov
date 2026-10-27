@@ -177,11 +177,13 @@ public class TestbenchService {
             s.phase = "RUNNING";
             s.message = "仿真运行中";
             writeFullmodeIndex(s);
+            log.info("全模式推进恢复: runId={}", s.runId);
             fmExecutor.submit(() -> fullmodeResumeThenLoop(s));
         } else {
             s.phase = "RUNNING";
             s.message = "仿真运行中";
             writeFullmodeIndex(s);
+            log.info("全模式推进启动: runId={} engineId={}", s.runId, s.engineId);
             fmExecutor.submit(() -> fullmodeLoop(s));
         }
         Map<String, Object> out = new LinkedHashMap<>();
@@ -206,6 +208,7 @@ public class TestbenchService {
                 Map<String, Object> cmd;
                 while ((cmd = fmCommands.poll()) != null) {
                     String kind = String.valueOf(cmd.get("kind"));
+                    log.info("全模式命令消费(块间): runId={} kind={}", s.runId, kind);
                     if ("pause".equals(kind)) {
                         fevalFullmode(s, "pause", null);
                         s.phase = "PAUSED";
@@ -284,10 +287,8 @@ public class TestbenchService {
         Map<String, Object> cmd = new LinkedHashMap<>();
         cmd.put("kind", kind);
         if (value != null) cmd.put("value", value);
-        if ("pause".equals(kind) && "RUNNING".equals(s.phase)) {
-            // 块间由推进线程处理;此处直接入队即可
-        }
         fmCommands.add(cmd);
+        log.info("全模式命令入队: runId={} kind={} value={} 队列深度={}", s.runId, kind, value, fmCommands.size());
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("accepted", true);
         out.put("note", "命令已入队;推进块间生效");
@@ -543,6 +544,74 @@ public class TestbenchService {
         out.put("taskId", taskId);
         out.put("phase", r.phase);
         return out;
+    }
+
+    /** 起动停车模型包保存(F-10 savepackage): 导出完整包到<workdir>/files/model/,并登记模型成果。 */
+    public Map<String, Object> startstopSavePackage(String projectId, String taskId, String packageName) throws IOException {
+        TaskRun r = requireTask(projectId, taskId);
+        if (!"startstop".equals(r.kind)) throw new IllegalStateException("仅起动停车任务支持保存模型包");
+        if (!"ENDED".equals(r.phase)) throw new IllegalStateException("校核执行完成后才能保存模型包");
+        Map<String, Object> out = new LinkedHashMap<>();
+        MatlabEngine eng = null;
+        try {
+            File progCopy = ensureProgramSource(projectId);
+            eng = MatlabEngine.startMatlab();
+            try {
+                eng.feval(0, "eval", "feature('DefaultCharacterSet', 'GBK')");
+            } catch (Exception ignore) { }
+            writeStartStopAdapter(new File(r.adapterDir), progCopy);
+            // 保存目标:<workdir>/files/model/SSPackage-<taskId>-<ts>(合同要求目标不存在,不覆盖历史包)
+            File modelDir = fileLibraryModelDir(projectId);
+            String destName = "SSPackage-" + taskId + "-" + System.currentTimeMillis();
+            File dest = new File(modelDir, destName);
+            Map<String, Object> call = new LinkedHashMap<>();
+            call.put("action", "savepackage");
+            call.put("programDir", progCopy.getAbsolutePath().replace(File.separatorChar, '/'));
+            call.put("taskDirectory", r.taskDirectory.replace(File.separatorChar, '/'));
+            call.put("destination", dest.getAbsolutePath().replace(File.separatorChar, '/'));
+            File saveResult = new File(r.adapterDir, "savepackage-result.json");
+            call.put("resultFile", saveResult.getAbsolutePath().replace(File.separatorChar, '/'));
+            File cf = new File(r.adapterDir, "savepackage-config.json");
+            com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
+            om.configure(com.fasterxml.jackson.core.JsonGenerator.Feature.ESCAPE_NON_ASCII, true);
+            Files.write(cf.toPath(), om.writeValueAsBytes(call));
+            eng.feval(0, "cd", r.adapterDir);
+            eng.feval(0, "dmg_startstop_task", cf.getAbsolutePath());
+            if (saveResult.isFile()) {
+                Map<String, Object> saved = new com.fasterxml.jackson.databind.ObjectMapper().readValue(saveResult, Map.class);
+                out.put("saved", saved);
+            }
+            out.put("destination", dest.getAbsolutePath());
+            // 登记模型成果(公开起停模型包:实际地图、MDL、DLL/头文件、设计种子和热配置)
+            EngineModels.ModelAsset m = new EngineModels.ModelAsset();
+            m.setProjectId(projectId);
+            m.setTaskId(taskId);
+            m.setName(packageName != null && !packageName.isEmpty() ? packageName : "起停模型包-" + taskId);
+            m.setSourceBusiness("起动停车建模");
+            m.setStage("模型包");
+            m.setRoute("—");
+            try {
+                EngineModels.EngineProject p = store.getProject(projectId);
+                if (p != null) m.setEngineId(p.getEngineId());
+            } catch (Exception ignore) { }
+            store.saveModel(m);
+            out.put("modelAssetId", m.getId());
+            out.put("modelName", m.getName());
+            return out;
+        } catch (Exception e) {
+            throw new IOException("保存模型包失败: " + e.getMessage(), e);
+        } finally {
+            closeEngine(eng);
+        }
+    }
+
+    /** 文件库模型类目录(<workdir>/files/model)。 */
+    private File fileLibraryModelDir(String projectId) throws IOException {
+        EngineModels.EngineProject p = store.getProject(projectId);
+        if (p == null || p.getWorkdir() == null || p.getWorkdir().isEmpty()) {
+            throw new IOException("项目不存在或工作目录未配置: " + projectId);
+        }
+        return new File(new File(p.getWorkdir()), "files/model");
     }
 
     /** design_point提交(commit需solve候选验证通过)。 */
@@ -803,6 +872,8 @@ public class TestbenchService {
         m.append("            end\n");
         m.append("        end\n");
         m.append("        r = task;\n");
+m.append("    case 'savepackage'\n");
+        m.append("            r = sht_startstop_modeling_task('savepackage', fullfile(c.taskDirectory, 'task'), c.destination);\n");
         m.append("    otherwise\n");
         m.append("        r = sht_startstop_modeling_task(lower(c.action), fullfile(c.taskDirectory, 'task'));\n");
         m.append("end\n");

@@ -207,6 +207,21 @@ public class TestbenchController {
         }
     }
 
+    @ApiOperation("起动停车:保存模型及交付文件(savepackage导出包并登记模型成果)")
+    @PostMapping("/tasks/{taskId}/save-package")
+    @RequirePermission(Permission.CREATE)
+    public Result<Map<String, Object>> savePackage(@PathVariable("pid") String pid,
+                                                   @PathVariable("taskId") String taskId,
+                                                   @RequestBody(required = false) Map<String, Object> body) {
+        try {
+            String name = body != null && body.get("name") != null ? String.valueOf(body.get("name")) : null;
+            return Result.success(testbenchService.startstopSavePackage(pid, taskId, name));
+        } catch (Exception e) {
+            log.error("保存起停模型包失败", e);
+            return Result.error("保存模型包失败: " + e.getMessage());
+        }
+    }
+
     @ApiOperation("设计点commit(时间备份后写原选定MDL并复现)")
     @PostMapping("/tasks/{taskId}/commit")
     @RequirePermission(Permission.CREATE)
