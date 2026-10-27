@@ -80,6 +80,9 @@ public class EngineWorkbenchController {
     private com.tsinghua.engine.AfoService afoService;
 
     @Autowired
+    private com.tsinghua.engine.TestbenchService testbenchService;
+
+    @Autowired
     private com.tsinghua.engine.F3FlightService f3FlightService;
 
     @Autowired
@@ -183,14 +186,11 @@ public class EngineWorkbenchController {
                 }
             }
             p = store.saveProject(p);
-            // 创建即预置程序源到项目工作目录(<workdir>/programs/<程序>),完整项目隔离;
-            // 预置失败不阻塞创建(运行时ensureTc24Source/ensureAfoSource仍会兜底),仅记录
+            // 统一预置(整树镜像,所有项目目录结构一致):交付树 programs/ 全部内容
+            // (m_program_adaptive_tune + C_runtime + AFO_V_2)复制到 <workdir>/program/,
+            // TC24/AFO/试车台/设计点/起动停车入口齐全;失败仅告警由运行时ensure兜底
             try {
-                if ("系统联合仿真".equals(p.getType())) {
-                    afoService.provisionProgramForProject(p.getId());
-                } else {
-                    tc24Service.provisionProgramForProject(p.getId());
-                }
+                testbenchService.provisionProgramForProject(p.getId());
             } catch (Exception pe) {
                 log.warn("项目程序源预置失败(运行时将兜底): {} -> {}", p.getName(), pe.getMessage());
             }
@@ -211,6 +211,12 @@ public class EngineWorkbenchController {
             if (p == null) return Result.error("项目不存在");
             String denied = accessDenied(p);
             if (denied != null) return Result.error(denied);
+            // 先释放该项目占用的MATLAB引擎(引擎进程工作目录锁住项目目录会导致删除失败)
+            try {
+                testbenchService.releaseProjectEngines(pid);
+            } catch (Exception re) {
+                log.warn("释放项目MATLAB引擎失败(继续尝试删除): {}", pid, re);
+            }
             store.deleteProject(pid);
             boolean metaDeleted = metaService.delete(Long.parseLong(pid));
             if (!metaDeleted) {

@@ -117,6 +117,22 @@ public class TestbenchController {
         }
     }
 
+    @ApiOperation("全模式:从历史会话快照恢复(效果image166~169)")
+    @PostMapping("/fullmode/restore")
+    @RequirePermission(Permission.CREATE)
+    public Result<Map<String, Object>> fmRestore(@PathVariable("pid") String pid,
+                                                 @RequestBody Map<String, Object> body) {
+        try {
+            String runId = String.valueOf(body.get("runId"));
+            if (runId == null || runId.isEmpty() || "null".equals(runId)) {
+                return Result.error("缺少runId");
+            }
+            return Result.success(testbenchService.fullmodeRestore(pid, runId));
+        } catch (Exception e) {
+            return Result.error("快照恢复失败: " + e.getMessage());
+        }
+    }
+
     @ApiOperation("试车台记录清单分页(SQL;kind=fullmode取全模式会话,其余取设计点/起停任务;原全量接口保留)")
     @GetMapping("/records/list")
     @RequirePermission(Permission.READ)
@@ -207,7 +223,7 @@ public class TestbenchController {
         }
     }
 
-    @ApiOperation("起动停车:保存模型及交付文件(savepackage导出包并登记模型成果)")
+    @ApiOperation("起动停车:保存模型及交付文件(异步受理;MATLAB导出1-3分钟,经/tasks/{taskId}/status轮询进度)")
     @PostMapping("/tasks/{taskId}/save-package")
     @RequirePermission(Permission.CREATE)
     public Result<Map<String, Object>> savePackage(@PathVariable("pid") String pid,
@@ -243,6 +259,45 @@ public class TestbenchController {
             return Result.success(testbenchService.taskStatus(pid, taskId));
         } catch (Exception e) {
             return Result.error("读取任务状态失败: " + e.getMessage());
+        }
+    }
+
+    @ApiOperation("试车台任务安全停止请求(阶段完成后协同中断;cancel=true撤销)")
+    @PostMapping("/tasks/{taskId}/stop-request")
+    @RequirePermission(Permission.CREATE)
+    public Result<Map<String, Object>> stopRequest(@PathVariable("pid") String pid,
+                                                   @PathVariable("taskId") String taskId,
+                                                   @RequestBody(required = false) Map<String, Object> body) {
+        try {
+            boolean cancel = body != null && Boolean.parseBoolean(String.valueOf(body.get("cancel")));
+            return Result.success(testbenchService.requestTaskStop(pid, taskId, cancel));
+        } catch (Exception e) {
+            return Result.error("安全停止请求失败: " + e.getMessage());
+        }
+    }
+
+    @ApiOperation("试车台任务产物清单(report_outputs等,相对任务目录)")
+    @GetMapping("/tasks/{taskId}/artifacts")
+    @RequirePermission(Permission.READ)
+    public Result<List<Map<String, Object>>> taskArtifacts(@PathVariable("pid") String pid,
+                                                           @PathVariable("taskId") String taskId) {
+        try {
+            return Result.success(testbenchService.taskArtifacts(pid, taskId));
+        } catch (Exception e) {
+            return Result.error("读取任务产物清单失败: " + e.getMessage());
+        }
+    }
+
+    @ApiOperation("试车台任务产物内容(md/csv文本或png图片base64)")
+    @GetMapping("/tasks/{taskId}/artifact")
+    @RequirePermission(Permission.READ)
+    public Result<Map<String, Object>> taskArtifact(@PathVariable("pid") String pid,
+                                                    @PathVariable("taskId") String taskId,
+                                                    @RequestParam("path") String path) {
+        try {
+            return Result.success(testbenchService.taskArtifact(pid, taskId, path));
+        } catch (Exception e) {
+            return Result.error("读取任务产物失败: " + e.getMessage());
         }
     }
 

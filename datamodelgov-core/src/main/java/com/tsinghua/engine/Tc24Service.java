@@ -82,17 +82,17 @@ public class Tc24Service {
 
     private static final String PROG_NAME = "m_program_adaptive_tune";
 
-    /** 项目工作目录下的程序源位置:<workdir>/program;workdir缺失时回退元数据目录。 */
+    /** 项目工作目录下的程序源位置:<workdir>/programs;workdir缺失时回退元数据目录。 */
     private File workProgramsDir(String projectId) throws IOException {
         try {
             EngineModels.EngineProject proj = store.getProject(projectId);
             if (proj != null && proj.getWorkdir() != null && !proj.getWorkdir().isEmpty()) {
-                return new File(new File(proj.getWorkdir()), "program");
+                return new File(new File(proj.getWorkdir()), "programs");
             }
         } catch (IOException e) {
             log.warn("读取项目工作目录失败,程序源回退元数据目录: {}", projectId);
         }
-        return new File(store.projectDir(projectId), "program");
+        return new File(store.projectDir(projectId), "programs");
     }
 
     /**

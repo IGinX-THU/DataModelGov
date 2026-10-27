@@ -116,6 +116,8 @@ public class TestbenchService {
         Long finishedAt;
         Map<String, Object> config;
         MatlabEngine engine;
+        /** 安全停止请求(效果07-20):置位后MATLAB在当前阶段完成后协同退出;可撤销。 */
+        volatile boolean stopRequested;
         /** MATLAB stdout 环形缓冲(约200KB),状态接口取尾部给前端显示 */
         final StringBuilder logBuf = new StringBuilder();
 
@@ -303,7 +305,9 @@ public class TestbenchService {
         try {
             s.message = msg;
             logLine(s, "保存结果(Excel/快照/result)");
-            fevalFullmode(s, "save", null);
+            Map<String, Object> saveCmd = new LinkedHashMap<>();
+            saveCmd.put("folder", new File(s.outputDir, "save").getAbsolutePath().replace('\\', '/'));
+            fevalFullmode(s, "save", saveCmd);
             fevalFullmode(s, "result", null);
             fevalFullmode(s, "close", null);
             s.phase = "ENDED";
@@ -322,18 +326,37 @@ public class TestbenchService {
         }
     }
 
-    /** 命令:pause即时;stop/操纵类入块间队列。 */
+    /** 命令:pause即时;save在暂停时即时保存;stop/操纵类入块间队列(暂停时入会话待恢复后生效)。 */
     public Map<String, Object> fullmodeCommand(String projectId, String kind, Object value) throws IOException {
         FullmodeSession s = requireFullmode(projectId);
-        if (!"RUNNING".equals(s.phase) && !"READY".equals(s.phase)) {
+        if (!"RUNNING".equals(s.phase) && !"READY".equals(s.phase) && !"PAUSED".equals(s.phase)) {
             throw new IllegalStateException("当前状态" + s.phase + "不接受命令");
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        if ("save".equals(kind)) {
+            if (!"PAUSED".equals(s.phase)) {
+                throw new IllegalStateException("暂停后才能保存完整快照;运行中请先暂停");
+            }
+            try {
+                Map<String, Object> saveCmd = new LinkedHashMap<>();
+                saveCmd.put("folder", new File(s.outputDir, "save").getAbsolutePath().replace('\\', '/'));
+                fevalFullmode(s, "save", saveCmd);
+                refreshFullmodeStatusFile(s);
+                logLine(s, "暂停中保存完整快照与Excel");
+            } catch (IOException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new IllegalStateException("保存快照失败: " + e.getMessage(), e);
+            }
+            out.put("accepted", true);
+            out.put("note", "已保存完整快照与Excel(本次独立保存目录)");
+            return out;
         }
         Map<String, Object> cmd = new LinkedHashMap<>();
         cmd.put("kind", kind);
         if (value != null) cmd.put("value", value);
         fmCommands.add(cmd);
         log.info("全模式命令入队: runId={} kind={} value={} 队列深度={}", s.runId, kind, value, fmCommands.size());
-        Map<String, Object> out = new LinkedHashMap<>();
         out.put("accepted", true);
         out.put("note", "命令已入队;推进块间生效");
         return out;
@@ -366,15 +389,79 @@ public class TestbenchService {
         return listMeta(store.testbenchSessionDir(projectId), "fm-");
     }
 
-    /** 单条历史结果(result.json)。 */
+    /** 单条历史结果(适配器result动作产物adapter/fm-result-result.json;旧result.json兜底)。 */
     public Map<String, Object> fullmodeResult(String projectId, String runId) throws IOException {
-        File f = new File(store.testbenchWorkDir(projectId, runId), "result.json");
-        if (!f.exists()) return null;
+        File work = store.testbenchWorkDir(projectId, runId);
+        File f = new File(work, "adapter/fm-result-result.json");
+        if (!f.isFile()) f = new File(work, "result.json");
+        if (!f.isFile()) return null;
         return new com.fasterxml.jackson.databind.ObjectMapper().readValue(f, Map.class);
     }
 
     public File fullmodeExcel(String projectId, String runId) throws IOException {
         return findExcelRecursive(store.testbenchWorkDir(projectId, runId));
+    }
+
+    /** 从快照恢复会话(效果image166~169):snapshotFile为会话目录内绝对路径;无活动会话时新建后恢复。 */
+    public Map<String, Object> fullmodeRestore(String projectId, String runId) throws IOException {
+        synchronized (fmLock) {
+            FullmodeSession cur = fmSession;
+            if (cur != null && !isTerminal(cur.phase)) {
+                throw new IllegalStateException("已有全模式会话在" + cur.phase + "(runId=" + cur.runId + "),请先关闭");
+            }
+            File snap = findFileRecursive(store.testbenchWorkDir(projectId, runId), "snapshot.mat");
+            if (snap == null) throw new IOException("该记录未找到快照文件(snapshot.mat)");
+            Map<String, Object> cfg = listMeta(store.testbenchSessionDir(projectId), "fm-").stream()
+                    .filter(m -> runId.equals(String.valueOf(m.get("runId")))).findFirst()
+                    .map(m -> (Map<String, Object>) m.get("config")).orElse(new LinkedHashMap<>());
+            Map<String, Object> prep = fullmodePrepare(projectId, cfg);
+            FullmodeSession s = fmSession;
+            if (s == null) throw new IOException("恢复会话创建失败");
+            final File snapFile = snap;
+            s.phase = "PREPARING";
+            s.message = "恢复快照: " + snapFile.getName();
+            writeFullmodeIndex(s);
+            fmExecutor.submit(() -> {
+                try {
+                    Map<String, Object> restoreCmd = new LinkedHashMap<>();
+                    restoreCmd.put("snapshotFile", snapFile.getAbsolutePath().replace('\\', '/'));
+                    fevalFullmode(s, "restore", restoreCmd);
+                    s.phase = "PAUSED";
+                    s.message = "快照恢复完成;处于暂停态,可继续推进";
+                    writeFullmodeIndex(s);
+                    refreshFullmodeStatusFile(s);
+                    logLine(s, "快照恢复完成: " + snapFile.getAbsolutePath());
+                    writeFullmodeIndex(s);
+                } catch (Exception e) {
+                    log.error("fullmode恢复失败: {}", runId, e);
+                    s.phase = "FAILED";
+                    s.error = "快照恢复失败: " + e.getMessage();
+                    s.finishedAt = System.currentTimeMillis();
+                    writeFullmodeIndex(s);
+                }
+            });
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("runId", prep.get("runId"));
+            out.put("phase", s.phase);
+            return out;
+        }
+    }
+
+    /** 在目录树中递归查找指定文件名(取修改时间最新的一个);找不到返回null。 */
+    private File findFileRecursive(File dir, String name) {
+        if (dir == null || !dir.isDirectory()) return null;
+        File[] list = dir.listFiles();
+        if (list == null) return null;
+        File best = null;
+        for (File f : list) {
+            if (f.isDirectory()) {
+                File hit = findFileRecursive(f, name);
+                if (hit != null && (best == null || hit.lastModified() > best.lastModified())) best = hit;
+            } else if (name.equalsIgnoreCase(f.getName()) && (best == null || f.lastModified() > best.lastModified())) {
+                best = f;
+            }
+        }
+        return best;
     }
 
     private FullmodeSession requireFullmode(String projectId) throws IOException {
@@ -591,22 +678,54 @@ public class TestbenchService {
     }
 
     /** 起动停车模型包保存(F-10 savepackage): 导出完整包到<workdir>/files/model/,并登记模型成果。 */
+    /** 保存模型包(异步受理):MATLAB引擎启动+导出约1-3分钟,HTTP立即返回,前端经 /tasks/{id}/status 轮询进度。 */
     public Map<String, Object> startstopSavePackage(String projectId, String taskId, String packageName) throws IOException {
         TaskRun r = requireTask(projectId, taskId);
         if (!"startstop".equals(r.kind)) throw new IllegalStateException("仅起动停车任务支持保存模型包");
-        if (!"ENDED".equals(r.phase)) throw new IllegalStateException("校核执行完成后才能保存模型包");
+        synchronized (r) {
+            if (!"ENDED".equals(r.phase)) {
+                throw new IllegalStateException("校核执行完成后才能保存模型包(当前:" + r.phase + ")");
+            }
+            if ("RUNNING".equals(r.phase)) throw new IllegalStateException("保存正在进行中,请稍候");
+            r.phase = "RUNNING";
+            r.error = null;
+            r.message = "保存模型包: 正在启动MATLAB引擎...";
+            r.finishedAt = null;
+        }
+        final String pkgName = packageName;
+        taskExecutor.submit(() -> {
+            try {
+                doSavePackageWork(projectId, r, pkgName);
+            } catch (Exception e) {
+                log.error("保存起停模型包失败: {}", taskId, e);
+                r.phase = "FAILED";
+                r.error = "保存模型包失败: " + e.getMessage();
+                r.message = r.error;
+                r.finishedAt = System.currentTimeMillis();
+            }
+        });
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("taskId", taskId);
+        out.put("phase", "RUNNING");
+        out.put("note", "保存已受理;MATLAB引擎启动与导出约需1-3分钟,请轮询任务状态");
+        return out;
+    }
+
+    /** 保存包执行体(后台线程):引擎启动→写适配器→savepackage→登记模型成果。 */
+    private void doSavePackageWork(String projectId, TaskRun r, String packageName) throws IOException {
         Map<String, Object> out = new LinkedHashMap<>();
         MatlabEngine eng = null;
         try {
             File progCopy = ensureProgramSource(projectId);
             eng = MatlabEngine.startMatlab();
+            r.message = "保存模型包: 引擎已启动,写入适配器...";
             try {
                 eng.feval(0, "eval", "feature('DefaultCharacterSet', 'GBK')");
             } catch (Exception ignore) { }
             writeStartStopAdapter(new File(r.adapterDir), progCopy);
             // 保存目标:<workdir>/files/model/SSPackage-<taskId>-<ts>(合同要求目标不存在,不覆盖历史包)
             File modelDir = fileLibraryModelDir(projectId);
-            String destName = "SSPackage-" + taskId + "-" + System.currentTimeMillis();
+            String destName = "SSPackage-" + r.taskId + "-" + System.currentTimeMillis();
             File dest = new File(modelDir, destName);
             Map<String, Object> call = new LinkedHashMap<>();
             call.put("action", "savepackage");
@@ -620,6 +739,7 @@ public class TestbenchService {
             om.configure(com.fasterxml.jackson.core.JsonGenerator.Feature.ESCAPE_NON_ASCII, true);
             Files.write(cf.toPath(), om.writeValueAsBytes(call));
             eng.feval(0, "cd", r.adapterDir);
+            r.message = "保存模型包: 正在导出MDL/DLL/MAP与交付文件...";
             eng.feval(0, "dmg_startstop_task", cf.getAbsolutePath());
             if (saveResult.isFile()) {
                 Map<String, Object> saved = new com.fasterxml.jackson.databind.ObjectMapper().readValue(saveResult, Map.class);
@@ -629,8 +749,8 @@ public class TestbenchService {
             // 登记模型成果(公开起停模型包:实际地图、MDL、DLL/头文件、设计种子和热配置)
             EngineModels.ModelAsset m = new EngineModels.ModelAsset();
             m.setProjectId(projectId);
-            m.setTaskId(taskId);
-            m.setName(packageName != null && !packageName.isEmpty() ? packageName : "起停模型包-" + taskId);
+            m.setTaskId(r.taskId);
+            m.setName(packageName != null && !packageName.isEmpty() ? packageName : "起停模型包-" + r.taskId);
             m.setSourceBusiness("起动停车建模");
             m.setStage("模型包");
             m.setRoute("—");
@@ -638,10 +758,17 @@ public class TestbenchService {
                 EngineModels.EngineProject p = store.getProject(projectId);
                 if (p != null) m.setEngineId(p.getEngineId());
             } catch (Exception ignore) { }
+            r.message = "保存模型包: 登记模型成果...";
             store.saveModel(m);
             out.put("modelAssetId", m.getId());
             out.put("modelName", m.getName());
-            return out;
+            // 落盘到task-result.json:保存完成后 /tasks/{id}/status 的result字段可直接看到目标路径与成果ID
+            Files.write(new File(r.adapterDir, "task-result.json").toPath(),
+                    new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsBytes(out));
+            r.phase = "ENDED";
+            r.message = "模型包已保存: " + dest.getAbsolutePath();
+            r.finishedAt = System.currentTimeMillis();
+            log.info("起停模型包保存完成: task={} dest={}", r.taskId, dest.getAbsolutePath());
         } catch (Exception e) {
             throw new IOException("保存模型包失败: " + e.getMessage(), e);
         } finally {
@@ -694,6 +821,73 @@ public class TestbenchService {
             if (lf.isFile()) tail = tailFileLines(lf, 150);
         }
         out.put("logTail", tail == null ? "" : tail);
+        out.put("stopRequested", r.stopRequested);
+        return out;
+    }
+
+    /** 安全停止请求(效果07-20):阶段完成后协同中断;cancel=true撤销请求。 */
+    public Map<String, Object> requestTaskStop(String projectId, String taskId, boolean cancel) throws IOException {
+        TaskRun r = requireTask(projectId, taskId);
+        r.stopRequested = !cancel;
+        r.appendLog(cancel ? "[java] 已取消安全停止请求,任务将继续执行"
+                : "[java] 已请求安全停止:当前阶段完成后退出(不卸载DLL,不伪装成内部续跑)");
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("taskId", r.taskId);
+        out.put("stopRequested", r.stopRequested);
+        return out;
+    }
+
+    /** 任务产物清单:相对taskDirectory的文件树(排除二进制中间物),供校核结果页读取真实阶段输出。 */
+    public List<Map<String, Object>> taskArtifacts(String projectId, String taskId) throws IOException {
+        TaskRun r = requireTask(projectId, taskId);
+        List<Map<String, Object>> out = new ArrayList<>();
+        File root = new File(r.taskDirectory);
+        if (!root.isDirectory()) return out;
+        try (Stream<java.nio.file.Path> stream = Files.walk(root.toPath(), 6)) {
+            stream.limit(4000).forEach(p -> {
+                File f = p.toFile();
+                String rel = root.toPath().relativize(p).toString().replace('\\', '/');
+                if (rel.isEmpty()) return;
+                String name = f.getName();
+                String ext = name.contains(".") ? name.substring(name.lastIndexOf('.') + 1).toLowerCase() : "";
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("path", rel);
+                m.put("name", name);
+                m.put("dir", f.isDirectory());
+                m.put("size", f.isFile() ? f.length() : 0L);
+                m.put("ext", ext);
+                out.add(m);
+            });
+        } catch (Exception e) {
+            log.warn("任务产物清单读取失败: {}", taskId, e);
+        }
+        return out;
+    }
+
+    /** 读取单个任务产物:text类返回内容,image类返回base64(供前端data URL渲染,规避img跨认证)。 */
+    public Map<String, Object> taskArtifact(String projectId, String taskId, String rel) throws IOException {
+        TaskRun r = requireTask(projectId, taskId);
+        File root = new File(r.taskDirectory).getCanonicalFile();
+        File f = new File(root, rel).getCanonicalFile();
+        if (!f.getPath().startsWith(root.getPath())) throw new IllegalStateException("非法产物路径");
+        if (!f.isFile()) throw new IllegalStateException("产物不存在: " + rel);
+        String name = f.getName();
+        String ext = name.contains(".") ? name.substring(name.lastIndexOf('.') + 1).toLowerCase() : "";
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("path", rel.replace('\\', '/'));
+        out.put("name", name);
+        out.put("size", f.length());
+        if (ext.equals("png") || ext.equals("jpg") || ext.equals("jpeg")) {
+            out.put("kind", "image");
+            out.put("contentType", ext.equals("png") ? "image/png" : "image/jpeg");
+            out.put("base64", java.util.Base64.getEncoder().encodeToString(Files.readAllBytes(f.toPath())));
+        } else if (ext.equals("md") || ext.equals("csv") || ext.equals("txt") || ext.equals("log")
+                || ext.equals("json") || ext.equals("map") || ext.equals("m")) {
+            out.put("kind", "text");
+            out.put("content", new String(Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8));
+        } else {
+            out.put("kind", "binary");
+        }
         return out;
     }
 
@@ -729,6 +923,13 @@ public class TestbenchService {
             r.phase = "ENDED";
             r.message = dp ? "设计点求解完成;可查看结果或commit" : "起动停车任务完成";
             r.finishedAt = System.currentTimeMillis();
+        } catch (java.util.concurrent.CancellationException e) {
+            // 安全停止(效果07-20):阶段完成后协同中断;已保存产物保留,不伪装成内部续跑
+            r.phase = "STOPPED";
+            r.message = "已按请求在安全点停止;已完成阶段与产物保留";
+            r.error = null;
+            r.finishedAt = System.currentTimeMillis();
+            log.info("试车台任务已安全停止: {}", r.taskId);
         } catch (Exception e) {
             log.error("试车台任务失败: {}", r.taskId, e);
             r.phase = "FAILED";
@@ -778,7 +979,7 @@ public class TestbenchService {
                 new File(r.adapterDir, "task-run.log"), requirePool(),
                 new com.tsinghua.matlab.MatlabFunctionRunner.ProgressCancellationSink() {
                     @Override public void onProgress(String message) { r.appendLog(message); }
-                    @Override public boolean isCancellationRequested() { return false; }
+                    @Override public boolean isCancellationRequested() { return r.stopRequested; }
                 });
         runner.run();
         File rf = new File(resultFile);
@@ -857,6 +1058,10 @@ public class TestbenchService {
         m.append("        r = sht_fullmode_session('submit', c.cmd);\n");
         m.append("    case 'advance'\n");
         m.append("        r = sht_fullmode_session('advance', c.cmd.n);\n");
+        m.append("    case 'save'\n");
+        m.append("        r = sht_fullmode_session('save', c.cmd.folder);\n");
+        m.append("    case 'restore'\n");
+        m.append("        r = sht_fullmode_session('restore', c.cmd.snapshotFile);\n");
         m.append("    case 'close'\n");
         m.append("        sht_fullmode_session('close'); r = 'ok'; % close has no output\n");
         m.append("    otherwise\n");
@@ -973,12 +1178,27 @@ m.append("    case 'savepackage'\n");
     /** m_program_adaptive_tune程序源:项目工作目录优先→target/classes→jar解压兜底。 */
     private synchronized File ensureProgramSource(String projectId) throws IOException {
         File user = workProgramsDir(projectId);
-        if (new File(user, "Start_FullModeSimulation_01.m").isFile()) return user;
+        if (new File(user, "Start_FullModeSimulation_01.m").isFile()) {
+            ensureCRuntime(user.getParentFile());
+            return user;
+        }
 
         File c1 = new File("target/classes/" + R06_IN_CLASSPATH + "/" + PROG_SUBDIR);
         File c2 = new File("datamodelgov-server/target/classes/" + R06_IN_CLASSPATH + "/" + PROG_SUBDIR);
-        if (new File(c1, "Start_FullModeSimulation_01.m").isFile()) return c1;
-        if (new File(c2, "Start_FullModeSimulation_01.m").isFile()) return c2;
+        File hit = new File(c1, "Start_FullModeSimulation_01.m").isFile() ? c1
+                : (new File(c2, "Start_FullModeSimulation_01.m").isFile() ? c2 : null);
+        if (hit != null) {
+            // 优先复制到项目工作目录(项目自包含;存量项目首次任务即补齐program/目录),失败才回退classes路径
+            try {
+                copyTree(hit, user);
+                ensureCRuntime(user.getParentFile());
+                return user;
+            } catch (IOException e) {
+                log.warn("试车台程序复制到项目目录失败,改用classes路径运行: {}", e.getMessage());
+                ensureCRuntime(hit.getParentFile());
+                return hit;
+            }
+        }
 
         Path jar = classpathProgramJar();
         if (jar == null) {
@@ -1010,19 +1230,151 @@ m.append("    case 'savepackage'\n");
         if (!new File(user, "Start_FullModeSimulation_01.m").isFile()) {
             throw new IOException("jar 内未找到试车台程序(解压 " + n + " 个文件)");
         }
+        ensureCRuntime(user.getParentFile());
         return user;
+    }
+
+    /** C工程运行时三特征(起动停车/全模式 resolve_c_root 按文件特征唯一定位C工程)。 */
+    private static boolean hasCProjectFiles(File dir) {
+        return dir != null && dir.isDirectory()
+                && new File(dir, "Turboshaft-TS.mdl").isFile()
+                && new File(dir, "Turboshaft-TS-Split.mdl").isFile()
+                && new File(dir, "x64/Release/GTESS.dll").isFile();
+    }
+
+    /** 确保项目程序树(program/)含C工程(C_runtime):缺失时从交付树classes或jar补齐,否则resolve_c_root报candidate count=0。 */
+    private void ensureCRuntime(File programsRoot) throws IOException {
+        if (programsRoot == null || !programsRoot.isDirectory()) return;
+        File[] subs = programsRoot.listFiles(File::isDirectory);
+        if (subs != null) {
+            for (File d : subs) {
+                if (hasCProjectFiles(d)) return; // 项目程序树已有C工程
+            }
+        }
+        File dest = new File(programsRoot, "C_runtime");
+        File c1 = new File("target/classes/" + R06_IN_CLASSPATH + "/C_runtime");
+        File c2 = new File("datamodelgov-server/target/classes/" + R06_IN_CLASSPATH + "/C_runtime");
+        File src = hasCProjectFiles(c1) ? c1 : hasCProjectFiles(c2) ? c2 : null;
+        if (src != null) {
+            copyTree(src, dest);
+            log.info("项目程序树缺C工程,已从交付树补齐C_runtime: {} -> {}", src, dest);
+            return;
+        }
+        Path jar = classpathProgramJar();
+        if (jar == null) {
+            throw new IOException("项目程序树缺C工程(C_runtime)且未找到交付jar;请在项目program/下放置C_runtime目录(含Turboshaft-TS.mdl/Turboshaft-TS-Split.mdl/x64/Release/GTESS.dll)");
+        }
+        log.info("从jar解压 C_runtime 到项目程序树: {} -> {}", jar, dest);
+        Files.createDirectories(dest.toPath());
+        String[] prefixes = {
+                "BOOT-INF/classes/" + R06_IN_CLASSPATH + "/C_runtime/",
+                R06_IN_CLASSPATH + "/C_runtime/"
+        };
+        int n = 0;
+        try (java.util.zip.ZipFile zf = new java.util.zip.ZipFile(jar.toFile())) {
+            java.util.Enumeration<? extends java.util.zip.ZipEntry> en = zf.entries();
+            while (en.hasMoreElements()) {
+                java.util.zip.ZipEntry e = en.nextElement();
+                if (e.isDirectory()) continue;
+                String rel = null;
+                for (String prefix : prefixes) {
+                    if (e.getName().startsWith(prefix)) { rel = e.getName().substring(prefix.length()); break; }
+                }
+                if (rel == null || rel.isEmpty()) continue;
+                File out = new File(dest, rel);
+                Files.createDirectories(out.getParentFile().toPath());
+                Files.copy(zf.getInputStream(e), out.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                n++;
+            }
+        }
+        if (!hasCProjectFiles(dest)) {
+            throw new IOException("jar 内未找到完整C工程(C_runtime,解压 " + n + " 个文件)");
+        }
+    }
+
+    private static void copyTree(File src, File dest) throws IOException {
+        Files.createDirectories(dest.toPath());
+        File[] children = src.listFiles();
+        if (children == null) return;
+        for (File c : children) {
+            File t = new File(dest, c.getName());
+            if (c.isDirectory()) copyTree(c, t);
+            else Files.copy(c.toPath(), t.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        }
     }
 
     private File workProgramsDir(String projectId) throws IOException {
         try {
             EngineModels.EngineProject proj = store.getProject(projectId);
             if (proj != null && proj.getWorkdir() != null && !proj.getWorkdir().isEmpty()) {
-                return new File(new File(proj.getWorkdir()), "program/m_program_adaptive_tune");
+                return new File(new File(proj.getWorkdir()), "programs/m_program_adaptive_tune");
             }
         } catch (IOException e) {
             log.warn("读取项目工作目录失败: {}", projectId);
         }
-        return new File(store.projectDir(projectId), "program/m_program_adaptive_tune");
+        return new File(store.projectDir(projectId), "programs/m_program_adaptive_tune");
+    }
+
+    /**
+     * 创建项目时预置程序源(整树镜像):交付树 programs/ 全部内容复制到 <workdir>/programs/
+     * (m_program_adaptive_tune + C_runtime + AFO_V_2,共约34MB;所有项目布局一致,
+     * TC24/AFO/试车台/设计点/起动停车入口齐全)。已完整则跳过不覆盖;
+     * 旧布局 <workdir>/program 自动改名迁移;缺C_runtime等局部缺失由 ensureCRuntime 兜底;
+     * 预置失败由运行时 ensureProgramSource 兜底。
+     */
+    public void provisionProgramForProject(String projectId) throws IOException {
+        File programRoot = workProgramsDir(projectId).getParentFile(); // <workdir>/programs
+        // 旧布局迁移:存量项目 program/ → programs/(改名保留数据,同盘原子)
+        File workdir = programRoot.getParentFile();
+        File legacy = new File(workdir, "program");
+        if (legacy.isDirectory() && !programRoot.exists()) {
+            try {
+                Files.move(legacy.toPath(), programRoot.toPath());
+                log.info("项目程序目录已迁移为统一命名: {} -> {}", legacy, programRoot);
+            } catch (IOException e) {
+                log.warn("程序目录改名迁移失败(按新布局重新预置): {} -> {}: {}", legacy, programRoot, e.getMessage());
+            }
+        }
+        boolean complete = new File(programRoot, "m_program_adaptive_tune/Start_FullModeSimulation_01.m").isFile();
+        if (complete) {
+            ensureCRuntime(programRoot); // 程序在但C工程可能缺(旧项目),补齐后即完整
+            return;
+        }
+        // 来源顺序:工作区resources整树 → target/classes整树 → jar前缀解压(均为R06 programs层)
+        File src = new File("datamodelgov-server/src/main/resources/" + R06_IN_CLASSPATH);
+        if (!src.isDirectory()) src = new File("src/main/resources/" + R06_IN_CLASSPATH);
+        if (!src.isDirectory()) src = new File("target/classes/" + R06_IN_CLASSPATH);
+        if (!src.isDirectory()) src = new File("datamodelgov-server/target/classes/" + R06_IN_CLASSPATH);
+        if (src.isDirectory()) {
+            log.info("预置程序树(整树镜像)到项目工作目录: {} -> {}", src, programRoot);
+            copyTree(src, programRoot);
+        } else {
+            Path jar = classpathProgramJar();
+            if (jar == null) throw new IOException("未找到交付程序树(resources/classpath/jar均无)");
+            log.info("从jar解压预置程序树(整树): {} -> {}", jar, programRoot);
+            Files.createDirectories(programRoot.toPath());
+            String[] prefixes = {
+                    "BOOT-INF/classes/" + R06_IN_CLASSPATH + "/",
+                    R06_IN_CLASSPATH + "/"
+            };
+            try (java.util.zip.ZipFile zf = new java.util.zip.ZipFile(jar.toFile())) {
+                java.util.Enumeration<? extends java.util.zip.ZipEntry> en = zf.entries();
+                while (en.hasMoreElements()) {
+                    java.util.zip.ZipEntry e = en.nextElement();
+                    if (e.isDirectory()) continue;
+                    String rel = null;
+                    for (String prefix : prefixes) {
+                        if (e.getName().startsWith(prefix)) { rel = e.getName().substring(prefix.length()); break; }
+                    }
+                    if (rel == null || rel.isEmpty()) continue;
+                    File out = new File(programRoot, rel);
+                    Files.createDirectories(out.getParentFile().toPath());
+                    Files.copy(zf.getInputStream(e), out.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                }
+            }
+        }
+        // 兜底校验:C_runtime 缺失(如旧版jar)时按三特征补齐
+        ensureCRuntime(programRoot);
     }
 
     private Path classpathProgramJar() {
@@ -1050,6 +1402,11 @@ m.append("    case 'savepackage'\n");
                 if (!"fm-".equals(kindFilter) && "fullmode".equals(kind)) continue;
                 File od = new File(String.valueOf(m.getOrDefault("outputDir", m.getOrDefault("taskDirectory", ""))));
                 m.put("hasExcel", findExcelRecursive(od) != null);
+                if ("fullmode".equals(kind)) {
+                    m.put("hasSnapshot", findFileRecursive(od, "snapshot.mat") != null);
+                    m.put("hasResult", new File(od, "adapter/fm-result-result.json").isFile()
+                            || new File(od, "result.json").isFile());
+                }
                 list.add(m);
             } catch (Exception e) {
                 log.warn("试车台元数据读取失败: {}", f);
@@ -1089,5 +1446,31 @@ m.append("    case 'savepackage'\n");
 
     private boolean isTerminal(String phase) {
         return "ENDED".equals(phase) || "FAILED".equals(phase) || "CLOSED".equals(phase) || "COMMITTED".equals(phase);
+    }
+
+    /**
+     * 释放项目占用的MATLAB引擎(删除项目前调用):关闭该项目全模式会话引擎与一次性任务引擎,
+     * 避免引擎进程工作目录锁住项目目录导致删除失败(Windows下进程占用无法删目录)。
+     */
+    public void releaseProjectEngines(String projectId) {
+        FullmodeSession s = fmSession;
+        if (s != null && projectId != null && projectId.equals(s.projectId)) {
+            closeEngine(s.engine);
+            s.engine = null;
+            s.phase = "CLOSED";
+            s.message = "项目已删除,会话关闭";
+            log.info("删除项目前释放全模式会话引擎: runId={}", s.runId);
+        }
+        for (TaskRun r : taskRuns.values()) {
+            if (projectId != null && projectId.equals(r.projectId) && r.engine != null) {
+                closeEngine(r.engine);
+                r.engine = null;
+                if (!isTerminal(r.phase)) {
+                    r.phase = "FAILED";
+                    r.error = "项目已删除,任务终止";
+                }
+                log.info("删除项目前释放任务引擎: task={}", r.taskId);
+            }
+        }
     }
 }

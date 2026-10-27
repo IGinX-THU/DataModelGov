@@ -139,6 +139,14 @@ public class F3FlightService {
         m.append("ov = c.config;\n");
         m.append("f = fieldnames(ov);\n");
         m.append("for k = 1:numel(f), cfg.(f{k}) = ov.(f{k}); end\n");
+        // root补全模板字段(JSON只传业务字段;runtimeBinding/definition等模板字段保留,
+        // 否则configuration校验 root 字段数与模板不一致报"请明确选择完整的试车根配置")
+        m.append("if isfield(ov, 'root') && isstruct(ov.root)\n");
+        m.append("    rt = ev.root;\n");
+        m.append("    fn = fieldnames(ov.root);\n");
+        m.append("    for k = 1:numel(fn), rt.(fn{k}) = ov.root.(fn{k}); end\n");
+        m.append("    cfg.root = rt;\n");
+        m.append("end\n");
         // 架次列表补全模板字段(JSON 只传业务字段;selected/order 等由模板+序号补齐)
         m.append("sj = cfg.sorties;\n");
         m.append("n = numel(sj);\n");
@@ -471,11 +479,11 @@ public class F3FlightService {
         }
     }
 
-    /** F3程序源:项目工作目录 program/m_program_adaptive_tune 优先,target/classes 兜底。 */
+    /** F3程序源:项目工作目录 programs/m_program_adaptive_tune 优先,target/classes 兜底。 */
     private File ensureF3Source(String projectId) throws IOException {
         EngineModels.EngineProject p = store.getProject(projectId);
         File user = (p != null && p.getWorkdir() != null && !p.getWorkdir().isEmpty())
-                ? new File(new File(p.getWorkdir()), "program/m_program_adaptive_tune") : null;
+                ? new File(new File(p.getWorkdir()), "programs/m_program_adaptive_tune") : null;
         if (user != null && new File(user, "Start_FlightModelAdapt_14_SteadyTask.m").isFile()) return user;
         File c1 = new File("target/classes/" + R06_IN_CLASSPATH + "/m_program_adaptive_tune");
         File c2 = new File("datamodelgov-server/target/classes/" + R06_IN_CLASSPATH + "/m_program_adaptive_tune");

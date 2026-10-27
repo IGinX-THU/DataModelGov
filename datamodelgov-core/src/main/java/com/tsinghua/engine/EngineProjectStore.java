@@ -189,25 +189,31 @@ public class EngineProjectStore {
     }
 
     /**
-     * 删除项目:元数据目录(projects/{pid},含tasks/models/predictions/uq/afo)整体删除;
-     * 用户工作目录仅清除本系统写入的部分(workdir/afo、workdir/job、project.json标记),
-     * 目录空则一并移除——用户在保存位置放的其他文件不动。
+     * 删除项目:整个工作目录递归删除(项目目录专属);元数据/清单记录由 controller 清理。
+     * 目录未配置或文件被占用(如MATLAB引擎未释放)时抛异常,由前端提示,不留静默残留。
      */
     public void deleteProject(String projectId) throws IOException {
         EngineProject p = getProject(projectId);
-        // 工作目录即项目专属目录(系统为项目生成/用户指定):整个删除
-        if (p != null && p.getWorkdir() != null && !p.getWorkdir().isEmpty()) {
-            File wd = new File(p.getWorkdir());
-            if (wd.exists()) deleteRecursively(wd);
+        // 工作目录即项目专属目录(系统为项目生成/用户指定):整个删除。
+        // 静默跳过会导致"项目记录已删、目录残留",必须显式报错让前端提示用户
+        if (p == null || p.getWorkdir() == null || p.getWorkdir().isEmpty()) {
+            throw new IOException("项目工作目录未配置或元数据不可读,无法删除项目文件目录(可手动清理)");
         }
+        File wd = new File(p.getWorkdir());
+        if (wd.exists()) deleteRecursively(wd);
     }
 
+    /** 递归删除;任何文件删除失败(被占用/权限)即抛异常并给出残留路径,不留静默垃圾目录。 */
     private void deleteRecursively(File f) throws IOException {
         if (!f.exists()) return;
-        java.nio.file.Files.walk(f.toPath())
-                .sorted(java.util.Comparator.reverseOrder())
-                .map(Path::toFile)
-                .forEach(File::delete);
+        File[] children = f.listFiles();
+        if (children != null) {
+            for (File c : children) deleteRecursively(c);
+        }
+        if (!f.delete()) {
+            throw new IOException("文件或目录删除失败(可能被MATLAB引擎或其他进程占用): "
+                    + f.getAbsolutePath() + ";请停止相关任务后重试");
+        }
     }
 
     /** 项目列表:唯一来源为IginX主数据(与列表分页/owner隔离同口径)。 */
