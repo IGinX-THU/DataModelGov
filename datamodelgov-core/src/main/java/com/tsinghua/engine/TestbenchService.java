@@ -80,6 +80,28 @@ public class TestbenchService {
     private final Map<String, TaskRun> taskRuns = new ConcurrentHashMap<>();
     private final ExecutorService taskExecutor = Executors.newFixedThreadPool(2);
 
+    @org.springframework.beans.factory.annotation.Value("${matlab.engine.home:}")
+    private String matlabHome;
+
+    @org.springframework.beans.factory.annotation.Value("${matlab.engine.enabled:true}")
+    private boolean engineEnabled;
+
+    private volatile com.tsinghua.matlab.MatlabEnginePool enginePool;
+
+    /** 任务执行引擎池(懒加载,size=1;起动停车/设计点任务串行借用,stdout自动落盘+回调)。 */
+    private com.tsinghua.matlab.MatlabEnginePool requirePool() {
+        if (!engineEnabled) throw new IllegalStateException("MATLAB引擎被禁用(matlab.engine.enabled=false)");
+        if (enginePool == null) {
+            synchronized (this) {
+                if (enginePool == null) {
+                    enginePool = new com.tsinghua.matlab.MatlabEnginePool(1, matlabHome);
+                    log.info("试车台接入层 MATLAB 引擎池已创建(懒加载): poolSize=1");
+                }
+            }
+        }
+        return enginePool;
+    }
+
     static class TaskRun {
         String projectId;
         String taskId;
@@ -94,6 +116,28 @@ public class TestbenchService {
         Long finishedAt;
         Map<String, Object> config;
         MatlabEngine engine;
+        /** MATLAB stdout 环形缓冲(约200KB),状态接口取尾部给前端显示 */
+        final StringBuilder logBuf = new StringBuilder();
+
+        void appendLog(String line) {
+            if (line == null || line.isEmpty()) return;
+            synchronized (logBuf) {
+                logBuf.append(line).append('\n');
+                if (logBuf.length() > 200000) logBuf.delete(0, logBuf.length() - 100000);
+            }
+        }
+
+        String logTail(int n) {
+            synchronized (logBuf) {
+                String s = logBuf.toString();
+                if (s.isEmpty()) return "";
+                String[] lines = s.split("\n", -1);
+                int from = Math.max(0, lines.length - n);
+                StringBuilder b = new StringBuilder();
+                for (int i = from; i < lines.length; i++) { if (i > from) b.append('\n'); b.append(lines[i]); }
+                return b.toString();
+            }
+        }
     }
 
     @PostConstruct
@@ -643,7 +687,32 @@ public class TestbenchService {
                 out.put("result", new com.fasterxml.jackson.databind.ObjectMapper().readValue(rf, Object.class));
             } catch (Exception ignore) { }
         }
+        // MATLAB 运行日志尾部(前端校核执行页显示):内存环形缓冲优先,空则兜底读落盘日志
+        String tail = r.logTail(150);
+        if (tail == null || tail.isEmpty()) {
+            File lf = new File(r.adapterDir, "task-run.log");
+            if (lf.isFile()) tail = tailFileLines(lf, 150);
+        }
+        out.put("logTail", tail == null ? "" : tail);
         return out;
+    }
+
+    /** 读取日志文件最后 n 行(UTF-8;任务重启后内存缓冲为空时兜底)。 */
+    private String tailFileLines(File f, int n) {
+        try {
+            java.util.Deque<String> dq = new java.util.ArrayDeque<>(n);
+            try (java.io.BufferedReader br = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(new java.io.FileInputStream(f), java.nio.charset.StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = br.readLine()) != null) {
+                    if (dq.size() >= n) dq.pollFirst();
+                    dq.addLast(line);
+                }
+            }
+            return String.join("\n", dq);
+        } catch (Exception e) {
+            return "";
+        }
     }
 
     public List<Map<String, Object>> listTasks(String projectId) throws IOException {
@@ -653,22 +722,12 @@ public class TestbenchService {
     private void taskExec(TaskRun r) {
         try {
             File progCopy = ensureProgramSource(r.projectId);
-            MatlabEngine eng = MatlabEngine.startMatlab();
-            r.engine = eng;
-            try {
-                eng.feval(0, "eval", "feature('DefaultCharacterSet', 'GBK')");
-            } catch (Exception ce) {
-                log.warn("试车台任务引擎字符集设置失败", ce);
-            }
-            if ("design_point".equals(r.kind)) {
-                writeDesignPointAdapter(new File(r.adapterDir), progCopy);
-                fevalTask(r, "dmg_designpoint_task", "solve", null);
-            } else {
-                writeStartStopAdapter(new File(r.adapterDir), progCopy);
-                fevalTask(r, "dmg_startstop_task", "run", null);
-            }
+            boolean dp = "design_point".equals(r.kind);
+            if (dp) writeDesignPointAdapter(new File(r.adapterDir), progCopy);
+            else writeStartStopAdapter(new File(r.adapterDir), progCopy);
+            runTaskViaRunner(r, dp ? "dmg_designpoint_task" : "dmg_startstop_task", dp ? "solve" : "run", null);
             r.phase = "ENDED";
-            r.message = "design_point".equals(r.kind) ? "设计点求解完成;可查看结果或commit" : "起动停车任务完成";
+            r.message = dp ? "设计点求解完成;可查看结果或commit" : "起动停车任务完成";
             r.finishedAt = System.currentTimeMillis();
         } catch (Exception e) {
             log.error("试车台任务失败: {}", r.taskId, e);
@@ -677,22 +736,15 @@ public class TestbenchService {
             r.message = "任务失败";
             r.finishedAt = System.currentTimeMillis();
         } finally {
-            closeEngine(r.engine);
-            r.engine = null;
             writeTaskIndex(r);
         }
     }
 
     private void designPointCommit(TaskRun r) {
         try {
-            MatlabEngine eng = MatlabEngine.startMatlab();
-            r.engine = eng;
-            try {
-                eng.feval(0, "eval", "feature('DefaultCharacterSet', 'GBK')");
-            } catch (Exception ignore) { }
             File progCopy = ensureProgramSource(r.projectId);
             writeDesignPointAdapter(new File(r.adapterDir), progCopy);
-            fevalTask(r, "dmg_designpoint_task", "commit", null);
+            runTaskViaRunner(r, "dmg_designpoint_task", "commit", null);
             r.phase = "COMMITTED";
             r.message = "设计已提交(写入原选定MDL并复现)";
             r.finishedAt = System.currentTimeMillis();
@@ -702,14 +754,13 @@ public class TestbenchService {
             r.error = e.getMessage();
             r.message = "commit失败:" + e.getMessage();
         } finally {
-            closeEngine(r.engine);
-            r.engine = null;
             writeTaskIndex(r);
         }
     }
 
+    /** 经 MatlabFunctionRunner 执行任务:stdout 逐行落盘(adapterDir/task-run.log)+回调进内存环形缓冲。 */
     @SuppressWarnings("unchecked")
-    private Map<String, Object> fevalTask(TaskRun r, String fn, String action, Map<String, Object> extra) throws Exception {
+    private Map<String, Object> runTaskViaRunner(TaskRun r, String fn, String action, Map<String, Object> extra) throws Exception {
         Map<String, Object> call = new LinkedHashMap<>();
         call.put("action", action);
         call.put("programDir", ensureProgramSource(r.projectId).getAbsolutePath().replace('\\', '/'));
@@ -722,9 +773,14 @@ public class TestbenchService {
         com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
         om.configure(com.fasterxml.jackson.core.JsonGenerator.Feature.ESCAPE_NON_ASCII, true);
         Files.write(cf.toPath(), om.writeValueAsBytes(call));
-        MatlabEngine eng = r.engine;
-        eng.feval(0, "cd", r.adapterDir);
-        eng.feval(0, fn, cf.getAbsolutePath());
+        com.tsinghua.matlab.MatlabFunctionRunner runner = new com.tsinghua.matlab.MatlabFunctionRunner(
+                new File(r.adapterDir), fn, new Object[]{cf.getAbsolutePath()},
+                new File(r.adapterDir, "task-run.log"), requirePool(),
+                new com.tsinghua.matlab.MatlabFunctionRunner.ProgressCancellationSink() {
+                    @Override public void onProgress(String message) { r.appendLog(message); }
+                    @Override public boolean isCancellationRequested() { return false; }
+                });
+        runner.run();
         File rf = new File(resultFile);
         return rf.isFile() ? new com.fasterxml.jackson.databind.ObjectMapper().readValue(rf, Map.class) : new LinkedHashMap<>();
     }

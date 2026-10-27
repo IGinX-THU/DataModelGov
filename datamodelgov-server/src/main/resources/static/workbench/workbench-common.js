@@ -2947,6 +2947,16 @@ window.Workbench = (() => {
                     acts.appendChild(h('button', { class: 'wb-btn wb-btn-outline', onclick: () => { S.ssTaskId = null; S.ssHolder = null; renderBody(); } }, '新建校核'));
                 }
                 holder.appendChild(acts);
+                // MATLAB 运行日志(终端风格;随轮询刷新,默认贴底,用户上滚查看时不再自动拽回)
+                const tail = d.logTail || '';
+                const pre = h('pre', { style: 'max-height:280px;overflow:auto;background:#11161d;color:#cde3f7;padding:10px 12px;border-radius:8px;font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-all;margin:0' }, tail || '(暂无日志输出)');
+                pre.addEventListener('scroll', () => {
+                    S._ssLogStick = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 30;
+                });
+                holder.appendChild(h('div', { style: 'margin-top:12px' },
+                    h('div', { class: 'wb-hint', style: 'margin:0 0 4px' }, 'MATLAB 运行日志(最近150行,实时刷新)'),
+                    pre));
+                if (S._ssLogStick !== false) pre.scrollTop = pre.scrollHeight;
             }).catch(() => { if (holder.isConnected) { holder.innerHTML = ''; holder.appendChild(h('div', { class: 'wb-empty' }, '状态读取失败')); } });
         }
         /** 校核执行轮询:未终态每4s就地刷新一次状态容器;终态toast并停止。 */
