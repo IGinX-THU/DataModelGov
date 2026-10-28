@@ -1,15 +1,16 @@
 function out=sht_fullmode_session(action,varargin)
-%SHT_FULLMODE_SESSION 锟斤拷锟斤拷锟斤拷锟斤拷锟竭癸拷锟矫碉拷锟剿癸拷锟皆筹拷台锟结话锟斤拷锟侥★拷
-% 一锟斤拷锟斤拷一锟结话锟斤拷prepare锟斤拷准锟斤拷锟斤拷begin锟斤拷锟斤拷锟叫ｏ拷select_throttle(idle)锟斤拷锟斤拷锟金动★拷
-% submit锟斤拷锟斤拷锟斤拷requestId锟斤拷锟斤拷确锟斤拷锟筋，advance每锟斤拷只锟结交锟斤拷锟斤拷锟斤拷0.025锟斤拷锟斤拷植锟斤拷锟?% 锟斤拷锟斤拷拇锟斤拷锟街底刺拷锟紻LL/源/锟斤拷锟斤拷锟绞诧拷锟斤拷锟斤拷锟斤拷裕锟斤拷榭达拷锟绞凤拷锟斤拷锟斤拷锟紻LL锟斤拷
+%SHT_FULLMODE_SESSION 界面与离线共用的人工试车台会话核心。
+% 一进程一会话。prepare仅准备，begin才运行；select_throttle(idle)不是起动。
+% submit接受有requestId的明确命令，advance每次只提交完整的0.025秒积分步。
+% 保存的纯数值状态与DLL/源/物理资产身份配对；查看历史不加载DLL。
 persistent S C
 if nargin<1,action='status';end
 switch lower(action)
     case 'prepare'
-        assert(isempty(S),'存在未关闭的活动会话，请先close后再准备。');
+        assert(isempty(S),'已有会话，请先close，不允许静默重置。');
         user=struct();if ~isempty(varargin),user=varargin{1};end
         cfg=sht_fullmode_default_config(user);
-        % 同源锟斤拷锟斤拷锟斤拷只锟斤拷取锟斤拷前锟斤拷锟斤拷锟斤拷通MDL/DLL锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷式锟斤拷锟斤拷锟斤拷锟斤拷一锟斤拷支锟斤拷
+        % 同源控制器只读取当前包的普通MDL/DLL，不误用正式共享或另一分支。
         cfg.aboveIdleOverrides.engine.runtimeDirectory=cfg.paths.matlabRoot;
         cfg=sht_startstop_prepare_control(cfg);
         [cfg,asset,points,runtime,identity]=local_prepare_assets(cfg);
@@ -37,7 +38,7 @@ switch lower(action)
     case 'submit'
         local_require(S);[S,out]=local_submit(S,varargin{1});
     case 'advance'
-        local_require(S);assert(strcmp(S.lifecycle,'running'),'advance要求running会话(停止收尾期间不可用)。');
+        local_require(S);assert(strcmp(S.lifecycle,'running'),'advance需要running会话；暂停时不积分。');
         n=1;if ~isempty(varargin),n=varargin{1};end
         validateattributes(n,{'numeric'},{'scalar','integer','positive','finite'});
         timer=tic;
@@ -71,7 +72,7 @@ switch lower(action)
                 stride=round(S.cfg.fullmode.recordPeriodS/S.cfg.stage6.timeStepS);
                 if mod(r.acceptedSteps,stride)==0,S=local_record(S);end
             catch ex
-                % 锟节猴拷锟窖回癸拷C私锟斤拷状态锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟杰点，锟斤拷值锟斤拷止锟斤拷冒锟斤拷锟斤拷锟斤拷停锟斤拷锟斤拷
+                % 内核已回滚C私有状态，保留最后接受点，数值终止不冒充物理停车。
                 S.lifecycle='failed';S.stopReason=ex.identifier;
                 S.runtime.failureReason=ex.message;
                 S.events{end+1}=struct('timeS',S.runtime.timeS,'kind','numerical_failure', ...
@@ -80,19 +81,19 @@ switch lower(action)
         end
         S.wallSeconds=S.wallSeconds+toc(timer);out=local_status(S);
     case 'pause'
-        local_require(S);assert(strcmp(S.lifecycle,'running'),'未处于running，不能暂停。');
+        local_require(S);assert(strcmp(S.lifecycle,'running'),'仅running可以暂停。');
         S.lifecycle='paused';out=local_status(S);
     case 'resume'
-        local_require(S);assert(strcmp(S.lifecycle,'paused'),'未处于paused，不能恢复。');
+        local_require(S);assert(strcmp(S.lifecycle,'paused'),'仅paused可以恢复。');
         S.lifecycle='running';out=local_status(S);
     case 'terminate'
-        % 锟斤拷值锟斤拷止锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟筋、锟斤拷锟斤拷锟斤拷锟劫ｏ拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷艿锟斤拷钥杀锟斤拷锟介看锟斤拷
+        % 数值终止不发断油命令、不改轴速；最后完整接受点仍可保存查看。
         local_require(S);
         if ~any(strcmp(S.lifecycle,{'terminated','failed'}))
             for q=S.pending(:).',S.receipts(q).state='cancelled_by_termination';end
             S.pending=[];S.lifecycle='terminated';S.stopReason='operator_numerical_stop';
             S.events{end+1}=struct('timeS',S.runtime.timeS,'kind','numerical_termination', ...
-                'description','紧急断油确认指令，解除断油闭锁。');
+                'description','操作者结束数值推进；不等于物理停车');
         end
         out=local_status(S);
     case 'status'
@@ -107,14 +108,14 @@ switch lower(action)
         snapshot=S;snapshot.lifecycle='paused';
         file=fullfile(folder,'fullmode_snapshot.mat');
         assert(~isfile(file) && ~isfile(fullfile(folder,'fullmode_results.xlsx')), ...
-            '锟矫憋拷锟斤拷目录锟斤拷锟斤拷锟斤拷史锟斤拷锟斤拷锟斤拷锟绞癸拷锟斤拷碌锟侥柯硷拷锟?);
+            '该保存目录已有历史结果，请使用新的目录。');
         save(file,'snapshot','result','-v7.3');
         writetable(result.trace,fullfile(folder,'fullmode_results.xlsx'),'Sheet','Signals');
         if ~isempty(result.thermalTrace)
             writetable(result.thermalTrace,fullfile(folder,'fullmode_results.xlsx'),'Sheet','ThermalStates');
         end
         if ~isempty(S.receipts)
-            % R2019b锟斤拷锟斤拷锟结构默锟较帮拷锟街段筹拷锟斤拷展锟斤拷锟斤拷一锟斤拷锟斤拷锟斤拷也锟斤拷锟斤拷锟斤拷一锟叫★拷
+            % R2019b标量结构默认按字段长度展开；一条命令也必须是一行。
             writetable(struct2table(S.receipts,'AsArray',true),fullfile(folder,'fullmode_results.xlsx'),'Sheet','Commands');
         end
         meta=struct('schema',S.schema,'configuration',S.cfg,'identity',S.assets, ...
@@ -123,15 +124,15 @@ switch lower(action)
         local_write_utf8(fullfile(folder,'fullmode_manifest.json'),jsonencode(meta));
         out=struct('snapshot',file,'excel',fullfile(folder,'fullmode_results.xlsx'));
     case 'restore'
-        assert(isempty(S),'恢复前须close，禁止存在活动会话。');
+        assert(isempty(S),'恢复前先close，禁止覆盖活动会话。');
         d=load(varargin{1},'snapshot');T=d.snapshot;
         assert(T.schema==26100701,'快照版本不匹配。');
         root=fileparts(mfilename('fullpath'));
-        % 锟街革拷路锟斤拷锟缴帮拷迁锟斤拷源锟斤拷锟斤拷锟斤拷锟侥硷拷锟斤拷叶锟斤拷锟斤拷锟节碉拷前锟斤拷锟叫帮拷锟斤拷锟斤拷准锟斤拷锟斤拷锟劫猴拷SHA锟斤拷
+        % 恢复路径可搬迁：源和物理文件以叶名称在当前运行包重新准备，再核SHA。
         base=struct('modelMode',T.cfg.modelMode);
         if numel(varargin)>1
-            % 锟斤拷校锟斤拷锟斤拷确锟斤拷位锟矫革拷锟角ｏ拷锟斤拷锟斤拷默锟较癸拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟街拷锟侥匡拷锟斤拷C锟斤拷锟教★拷
-            % 锟斤拷锟斤拷默锟较癸拷锟届传锟捷憋拷锟斤拷锟斤拷式paths锟斤拷锟斤拷锟斤拷锟矫匡拷锟斤拷锟叫匡拷锟斤拷锟斤拷失效锟侥撅拷路锟斤拷锟斤拷
+            % 先校验明确的位置覆盖，避免默认构造先搜索部署包之外的开发C工程。
+            % 仅向默认构造传递本次显式paths，不沿用快照中可能已失效的旧路径。
             probe=T.cfg;probe.paths.matlabRoot=root;
             local_restore_locations(probe,varargin{2},root);
             if isfield(varargin{2},'paths'),base.paths=varargin{2}.paths;end
@@ -151,13 +152,14 @@ switch lower(action)
         cleanup=onCleanup(@()local_close_on_error(armed));
         T.cfg=cfg;T.assetConfig=asset;T.points=points;T.runtimeFiles=runtime;
         local_call(C,'DLL_SHT_FullModeImportState',26100701,64,libpointer('doublePtr',T.cState));
-        % 锟节碉拷前锟窖憋拷锟斤拷状态锟截癸拷锟斤拷锟斤拷锟斤拷路锟斤拷锟斤拷锟狡斤拷锟斤拷状态锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟?        if T.runtime.speed(2)>cfg.lowSpeedSolver.zeroHoldSpeedRpm
+        % 在当前已保存状态重构代数气路，不推进热状态、控制器和随机数。
+        if T.runtime.speed(2)>cfg.lowSpeedSolver.zeroHoldSpeedRpm
             a=local_kernel(C,cfg,points,runtime,struct('fullmodeAction','evaluate', ...
                 'runtime',T.runtime,'command',local_c_command(T.runtime.mode)));
-            assert(a.converged,'恢复时稳态未能收敛，请检查初态一致性。');
+            assert(a.converged,'恢复时当前气路不能复现，不能继续。');
             gasIndices=[1:3,15:17];
             delta=max(abs(a.output(gasIndices)-T.runtime.output(gasIndices)));
-            assert(delta<1e-7,'恢复后稳态保持量不一致(delta=%g)。',delta);
+            assert(delta<1e-7,'恢复代数气路与保存点不一致，最大差%g。',delta);
         end
         local_call(C,'DLL_SHT_FullModeImportState',26100701,64,libpointer('doublePtr',T.cState));
         T.lifecycle='paused';S=T;out=local_status(S);armed.set(false);clear cleanup;
@@ -165,18 +167,18 @@ switch lower(action)
         if ~isempty(C)
             alias=C.alias;
             if libisloaded(alias),calllib(alias,'DLL_SHT_Free');end
-            % 锟斤拷锟酵凤拷全锟斤拷MATLAB锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟叫讹拷兀锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷氐锟斤拷锟斤拷锟紺锟斤拷锟斤拷锟斤拷
+            % 先释放全部MATLAB库代理对象，再卸载；不能让清理回调捕获C副本。
             C=[];
             local_unload(alias);
         end
         S=[];C=[];out=struct('lifecycle','empty');
     otherwise
-        error('sht:fullmode:action','未知会话动作：%s。',action);
+        error('sht:fullmode:action','未知会话操作：%s。',action);
 end
 end
 
 function [cfg,asset,points,runtime,identity]=local_prepare_assets(cfg)
-assert(isfile(cfg.fullmode.seedPoolFile),'缺少确认配置的初值种子池文件：%s。',cfg.fullmode.seedPoolFile);
+assert(isfile(cfg.fullmode.seedPoolFile),'缺少明确配置的低速初值资料：%s。',cfg.fullmode.seedPoolFile);
 d=load(cfg.fullmode.seedPoolFile,'result');points=d.result.finalMatrix.points;
 asset=[];
 if cfg.fullmode.thermalEnabled
@@ -204,7 +206,7 @@ cfg.lowSpeedSolver.accuracyRequired=cfg.stage6.solverAccuracyRequired;
 names=cfg.topology.componentNames;items=repmat(struct('name','','outputPath',''),1,numel(names));
 for k=1:numel(names)
     items(k)=struct('name',names{k},'outputPath',fullfile(cfg.fullmode.assetDirectory,cfg.maps.(names{k}).outputName));
-    assert(isfile(items(k).outputPath),'缺少特性图输出文件：%s。',items(k).outputPath);
+    assert(isfile(items(k).outputPath),'缺少低速物理图：%s。',items(k).outputPath);
 end
 if isempty(cfg.fullmode.outputDirectory)
     cfg.fullmode.outputDirectory=fullfile(fileparts(cfg.paths.matlabRoot),'report_outputs', ...
@@ -226,7 +228,7 @@ end
 function C=local_open(cfg,asset,runtime)
 old=pwd;guard=onCleanup(@()cd(old));cd(runtime.controlDir);
 alias='SHT_FULLMODE_R011';
-assert(~libisloaded(alias),'DLL已经加载，可能被另一个会话占用，请先检查状态。');
+assert(~libisloaded(alias),'别名已经加载，拒绝共享另一会话的隐状态。');
 sht_load_engine_library(runtime.dllPath,runtime.headerPath,'alias',alias);
 C=struct('alias',alias,'engine',[],'statePointer',libpointer('doublePtr',zeros(64,1)));
 try
@@ -253,10 +255,11 @@ out=sht_startstop_run_continuous_mission(C.alias,C.engine,cfg,points,runtime.con
 end
 
 function S=local_nonzero_initial(S,C)
-% 准锟斤拷锟阶段匡拷锟斤拷锟斤拷平锟斤拷锟斤拷锟斤拷施锟斤拷锟斤拷指锟斤拷锟斤拷锟斤拷锟狡斤拷锟街伙拷锟絅g锟斤拷燃锟酵ｏ拷锟斤拷路锟斤拷同锟斤拷锟斤拷
-% 锟斤拷同一锟斤拷锟斤拷DLL锟节猴拷锟节诧拷锟斤拷狻ｏ拷锟斤拷锟斤拷锟絆ptimization Toolbox锟斤拷
+% 准备阶段可以配平；在线施加与恢复绝不配平。只求Ng和燃油，气路共同工作
+% 由同一低速DLL内核内部求解。不依赖Optimization Toolbox。
 cfg=S.cfg;r=S.runtime;
-% 锟斤拷锟斤拷锟较碉拷锟狡揭拷锟?.1 rpm/s锟斤拷锟节诧拷锟斤拷路锟叫诧拷锟斤拷锟斤拷愎恍★拷锟斤拷锟斤拷锟斤拷锟街碉拷锟斤拷锟?% 锟斤拷使Jacobian/锟铰斤拷锟叫撅拷失锟芥。锟斤拷准锟斤拷锟节硷拷锟秸斤拷锟斤拷锟斤拷锟斤拷时锟街革拷锟斤拷式锟斤拷锟斤拷锟斤拷锟矫★拷
+% 外层轴系配平要求0.1 rpm/s，内层气路残差必须足够小，否则数值噪声
+% 会使Jacobian/下降判据失真。仅准备期间收紧，结束时恢复正式积分配置。
 solverBefore=C.solverConfiguration;solverTight=solverBefore;
 solverTight(3)=min(solverBefore(3),1e-8);alias=C.alias;
 local_solver_configuration(alias,solverTight);
@@ -264,13 +267,13 @@ solverGuard=onCleanup(@()local_solver_configuration(alias,solverBefore));
 ratio=cfg.fullmode.initialNpRatio;
 if strcmp(cfg.fullmode.initialKind,'idle'),ratio=cfg.stage6.idleNpRatio;end
 if strcmp(cfg.fullmode.initialKind,'maximum'),ratio=1;end
-assert(ratio>0 && ratio<=1.05,'当前转速Np超出准备阶段允许范围。');
+assert(ratio>0 && ratio<=1.05,'非零初态Np比例超出允许准备范围。');
 r.speed=[ratio*cfg.startStop.designNpRpm;cfg.stage6.startupIdleNgRpm;ratio*cfg.startStop.designNpRpm];
-% 锟解功锟斤拷直锟斤拷锟斤拷锟斤拷锟斤拷PT锟结，锟斤拷锟斤拷锟接讹拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟杰革拷未锟斤拷锟斤拷锟斤拷锟斤拷锟介构锟斤拷始锟斤拷锟杰★拷
+% 测功器直接作用于PT轴，不连接独立旋翼；不能给未连接旋翼虚构初始动能。
 if ~strcmp(cfg.fullmode.loadMode,'dual_collective'),r.speed(3)=0;end
 r.mode='run';if strcmp(cfg.fullmode.initialKind,'idle'),r.mode='idle';end
 r.warmupComplete=true;r.physicalStop=false;
-% 锟斤拷锟斤拷扫锟斤拷锟絠dleFuel锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷燃锟酵★拷锟斤拷锟斤拷只选锟斤拷锟斤拷值锟斤拷锟铰ｏ拷锟斤拷锟侥匡拷锟狡诧拷锟斤拷锟斤拷
+% 矩阵扫描的idleFuel不是连续慢车燃油。这里只选择数值初猜，不改控制参数。
 r.fuel=cfg.stage6.idleFuelFeedforwardKgPerS;
 local_call(C,'DLL_SHT_FullModeExportState',26100701,64,C.statePointer);
 v=C.statePointer.Value;v(9)=7;v(16)=1;v(18:20)=r.speed([2,1,3]);
@@ -286,7 +289,7 @@ for it=1:40
         rr=r;if j==1,rr.speed(2)=x(1)+step(1);else,rr.fuel=x(2)+step(2);end
         [ee,~]=local_trim_eval(S,C,rr);J(:,j)=(ee-e)/step(j);
     end
-    assert(rcond(J)>1e-12,'锟斤拷态锟斤拷平Jacobian锟斤拷锟届，锟斤拷锟斤拷锟斤拷锟斤拷莞锟斤拷亍锟?);
+    assert(rcond(J)>1e-12,'初态配平Jacobian奇异，请更换相容负载。');
     change=-(J\e);accepted=false;
     for b=0:8
         next=x+2^-b*change;
@@ -299,7 +302,8 @@ for it=1:40
         end
     end
     if ~accepted
-        % 锟斤拷锟斤拷图锟斤拷值锟桔点附锟斤拷锟斤拷锟絅ewton锟斤拷锟斤拷锟斤拷懿锟斤拷锟斤拷陆锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟阶硷拷锟?        % 锟斤拷锟斤拷锟斤拷锟睫癸拷锟斤拷锟斤拷植锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟酵籇LL锟斤拷原锟斤拷锟斤拷俣锟斤拷锟斤拷锟斤拷锟秸★拷
+        % 特性图插值折点附近差分Newton方向可能不再下降。仅对两个准备
+        % 变量作无工具箱局部搜索，仍以同一DLL和原轴加速度误差验收。
         scale=[100;1e-3];options=optimset('Display','off','MaxIter',120, ...
             'MaxFunEvals',260,'TolX',1e-7,'TolFun',1e-8);
         z=fminsearch(@(z)local_trim_cost(S,C,r,x+scale.*(z(:)-1)),ones(2,1),options);
@@ -313,16 +317,16 @@ for it=1:40
         if ~isfolder(cfg.fullmode.outputDirectory),mkdir(cfg.fullmode.outputDirectory);end
         save(fullfile(cfg.fullmode.outputDirectory,'initial_trim_failure.mat'), ...
             'trimHistory','cfg','J','x','e','change');
-        error('sht:fullmode:initialTrim','初始微调后转速未收敛：dNp=%g，dNg=%g。',e(1),e(2));
+        error('sht:fullmode:initialTrim','给定负载和非零初态不能配平：dNp=%g，dNg=%g。',e(1),e(2));
     end
 end
-[e,a]=local_trim_eval(S,C,r);assert(max(abs(e))<0.1,'残差超过0.1，未达平衡：%s。',mat2str(e));
+[e,a]=local_trim_eval(S,C,r);assert(max(abs(e))<0.1,'非零初态40次内未配平：%s。',mat2str(e));
 r.output=a.output;r.snapshot=a.snapshot;r.gasTemperatureK=a.snapshot.tt45K;
 r.seed=a.diagnostics(17+(1:cfg.topology.gasCount));
 if r.thermal.enabled
-    % 锟斤拷要锟斤拷锟斤拷平锟斤拷锟教拷锟斤拷锟斤拷锟斤拷峁╋拷锟斤拷锟斤拷锟阶刺拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷没锟斤拷锟斤拷锟斤拷露炔锟斤拷锟饺凤拷锟角★拷
+    % 若要求热平衡初态，必须提供配套热状态；本例保留用户给定温度并明确标记。
     S.events{end+1}=struct('timeS',0,'kind','nonzero_cold_metal_initial', ...
-        'description','进气/通道平衡残差自动收敛为该设定值，用于跳过初始平衡。');
+        'description','轴系/气路配平，金属温度为配置给定值，并非热平衡');
 end
 r.controller=struct('fuel',r.fuel,'command',r.fuel,'normal',[],'count',0, ...
     'temperatureLimit',r.fuel,'diag',struct(),'lastSegment',-1);
@@ -339,7 +343,7 @@ end
 function local_solver_configuration(alias,values)
 status=calllib(alias,'DLL_SHT_LowSpeedSolverConfigure',26082503,numel(values), ...
     libpointer('doublePtr',values));
-assert(status==0,'准备阶段通道求解/恢复失败：%d。',status);
+assert(status==0,'准备阶段气路精度配置/恢复失败：%d。',status);
 end
 
 function cost=local_trim_cost(S,C,r,x)
@@ -356,9 +360,9 @@ local_call(C,'DLL_SHT_FullModeExportState',26100701,64,state);before=state.Value
 a=local_kernel(C,S.cfg,S.points,S.runtimeFiles, ...
     struct('fullmodeAction','evaluate','runtime',r,'command',4));
 local_call(C,'DLL_SHT_FullModeExportState',26100701,64,state);after=state.Value;
-% 前7锟筋负锟截憋拷锟芥当前锟斤拷询转锟劫革拷锟铰ｏ拷锟斤拷锟斤拷私锟斤拷状态锟斤拷锟斤拷锟斤拷锟筋保锟街★拷
+% 前7项负载表随当前查询转速更新，其余私有状态必须逐项保持。
 assert(isequaln(before(8:end),after(8:end)), ...
-    '暂停时保持平衡推进锁定并冻结状态，恢复后转为动态准备。');
+    '零时间配平评估推进了起停私有状态，不能作为初态准备。');
 if ~a.converged
     diagnostic=struct('modelMode',S.cfg.modelMode,'loadMode',S.cfg.fullmode.loadMode, ...
         'loadConfiguration',S.cfg.fullmode.load,'speedRpm',r.speed, ...
@@ -371,8 +375,8 @@ if ~a.converged
     if ~isfolder(folder),mkdir(folder);end
     file=[tempname(folder),'.mat'];save(file,'diagnostic','-v7.3');
     error('sht:fullmode:initialGasPath', ...
-        ['微调后状态汇总：Np=%g, Ng=%g rpm, Wf=%g kg/s, call=%g；' ...
-        'solver=%g, maxR=%g, 迭代=%d, valid=%g, 数值证据：%s%s'], ...
+        ['非零初态气路无解：Np=%g, Ng=%g rpm, Wf=%g kg/s，call=%g，' ...
+        'solver=%g，maxR=%g，尝试%d组根，valid=%g。数值证据：%s。%s'], ...
         r.speed(1),r.speed(2),r.fuel,a.callStatus,a.diagnostics(1), ...
         a.diagnostics(14),numel(a.attemptHistory),a.output(24),file,a.errorMessage);
 end
@@ -381,22 +385,22 @@ end
 
 function [S,receipt]=local_submit(S,q)
 assert(isstruct(q) && isscalar(q) && isfield(q,'requestId') && isfield(q,'action'), ...
-    '命令应为包含requestId与action的标量结构。');
+    '命令必须为包含requestId和action的标量结构。');
 assert(local_text_scalar(q.requestId) && local_text_scalar(q.action), ...
-    'requestId与action必须为非空文本标量。');
+    'requestId和action必须为非空单行文本。');
 q.requestId=char(q.requestId);q.action=char(q.action);
-id=char(q.requestId);assert(~isempty(id) && numel(id)<=128,'requestId为锟秸伙拷锟斤拷锟斤拷锟?);
+id=char(q.requestId);assert(~isempty(id) && numel(id)<=128,'requestId为空或过长。');
 existing=find(strcmp({S.receipts.requestId},id),1);
 if ~isempty(existing)
     assert(strcmp(S.receipts(existing).payload,jsonencode(orderfields(q))), ...
-        '同一requestId请求携带了不同载荷。');receipt=S.receipts(existing);return;
+        '同一requestId不能携带不同命令。');receipt=S.receipts(existing);return;
 end
 receipt=local_receipt();receipt.requestId=id;receipt.action=char(q.action);
 receipt.submittedAt=datestr(now,31);receipt.acceptedTimeS=S.runtime.timeS;
 receipt.state='accepted';
 try
     receipt.payload=jsonencode(orderfields(q));
-    assert(~any(strcmp(S.lifecycle,{'failed','terminated'})),'会话已终止，只能保存/查看/关闭。');
+    assert(~any(strcmp(S.lifecycle,{'failed','terminated'})),'数值会话已终止，只能保存/查看/关闭。');
     cut=strcmp(q.action,'emergency_cutoff') || ...
         (strcmp(q.action,'select_throttle') && isfield(q,'value') && ...
         local_text_scalar(q.value) && strcmp(q.value,'cut'));
@@ -405,50 +409,50 @@ try
         for k=S.pending(:).',S.receipts(k).state='superseded_by_cutoff';end
         S.pending=[];
     elseif S.cutLatched && ~strcmp(q.action,'acknowledge_cutoff')
-        error('sht:fullmode:cutoffLatched','已进入断油闭锁，必须先确认停转(acknowledge_cutoff)才能解除；RUN档不能越过断油。');
+        error('sht:fullmode:cutoffLatched','切断已锁存，必须物理停转后明确复位，旧RUN不能越过切断。');
     end
     switch q.action
         case 'select_throttle'
             assert(isfield(q,'value') && local_text_scalar(q.value) && ...
-                any(strcmp(q.value,{'cut','idle','run'})),'油门档位必须为cut/idle/run之一(文本值)。');
+                any(strcmp(q.value,{'cut','idle','run'})),'油门必须为cut/idle/run单个文本值。');
             if strcmp(q.value,'run'),assert(S.runtime.warmupComplete && ...
-                    any(strcmp(S.runtime.mode,{'idle','run'})),'暖锟斤拷未锟斤拷苫锟阶刺拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷小锟?);end
+                    any(strcmp(S.runtime.mode,{'idle','run'})),'暖机未完成或状态不允许进入运行。');end
         case {'start','cold_blow'}
-            assert(S.runtime.physicalStop,'起动/冷吹前必须确认物理停转，才能拼接新轨迹。');
+            assert(S.runtime.physicalStop,'起动和冷吹需确认物理停转，不拼接新轨迹。');
             if strcmp(q.action,'start')
-                assert(strcmp(S.throttle,'idle'),'必须先选择慢车档位才能起动。');
-                % 也锟斤拷锟斤拷锟斤拷锟斤拷锟教ｏ拷锟斤拷锟斤拷锟劫达拷锟金动ｏ拷锟斤拷锟杰斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟矫★拷
+                assert(strcmp(S.throttle,'idle'),'先选择慢车，再单独发起起动。');
+                % 也保护非零初态停车后的再次起动，不能仅检查最初配置。
                 local_check_cold_direct_load(S.cfg);
             end
         case 'exit_cold_blow'
-            assert(strcmp(S.runtime.mode,'coldblow'),'当前不是冷吹状态。');
+            assert(strcmp(S.runtime.mode,'coldblow'),'当前不是冷吹。');
         case 'abort_start'
-            assert(any(strcmp(S.runtime.mode,{'cranking','warmup'})),'当前不在起动/暖机阶段。');
+            assert(any(strcmp(S.runtime.mode,{'cranking','warmup'})),'当前不在起动/暖机。');
         case 'normal_stop'
-            assert(any(strcmp(S.runtime.mode,{'idle','run','idle_handover'})),'当前不在慢车或运行状态。');
+            assert(any(strcmp(S.runtime.mode,{'idle','run','idle_handover'})),'当前不允许计划停车。');
         case 'emergency_cutoff'
         case 'set_np_gear'
-            assert(isfield(q,'value'),'Np档位指令缺少value。');
+            assert(isfield(q,'value'),'Np挡位命令缺少value。');
             validateattributes(q.value,{'numeric'},{'scalar','real','finite'});
-            assert(any(q.value==[.8,.9,.95,1,1.05]),'Np档位必须为标准档80/90/95/100/105%。');
+            assert(any(q.value==[.8,.9,.95,1,1.05]),'Np挡位必须为设计转速80/90/95/100/105%。');
         case 'apply_load'
             assert(isfield(q,'value') && isstruct(q.value) && isscalar(q.value), ...
-                'apply_load需要负载配置结构。');
+                'apply_load需要标量负载结构。');
             if strcmp(S.cfg.fullmode.loadMode,'power'),allowed={'powerW'};
             elseif strcmp(S.cfg.fullmode.loadMode,'mkp'),allowed={'mkpNm'};
             else,allowed={'mainPitchDeg','tailPitchDeg'};end
             names=fieldnames(q.value);
             assert(~isempty(names) && all(ismember(names,allowed)), ...
-                '当前%s模式下只允许这些字段：%s。',S.cfg.fullmode.loadMode,strjoin(allowed,','));
+                '当前%s负载只接受字段：%s。',S.cfg.fullmode.loadMode,strjoin(allowed,','));
             assert(~any(strcmp(S.runtime.mode,{'cranking','warmup','idle_handover'})), ...
-                '起动/暖机阶段不能修改负载参数；负载应在慢车/运行时施加，以保持暖机窗口稳定。');
+                '起动和暖机采用连续接载参考，在线负载请在慢车/运行时施加；不能接受后又被暖机参考覆盖。');
             cfg=S.cfg;cfg.fullmode.load=sht_merge_config(cfg.fullmode.load,q.value);
             sht_fullmode_load_boundary(cfg,S.runtime.speed(1),S.runtime.speed(3));
             if S.runtime.physicalStop,local_check_cold_direct_load(cfg);end
         case 'acknowledge_cutoff'
-            assert(S.runtime.physicalStop,'锟叫断革拷位锟斤拷锟斤拷锟斤拷锟斤拷锟酵Ｗ拷锟?);
+            assert(S.runtime.physicalStop,'切断复位必须等物理停转。');
         otherwise
-            error('sht:fullmode:command','未知指令：%s。',q.action);
+            error('sht:fullmode:command','未知命令：%s。',q.action);
     end
 catch ex
     receipt.state='rejected';receipt.reason=ex.message;
@@ -458,11 +462,12 @@ if strcmp(receipt.state,'accepted'),S.pending(end+1)=numel(S.receipts);end
 end
 
 function local_check_cold_direct_load(cfg)
-% 直锟斤拷锟结负锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟皆匡拷施锟接ｏ拷只锟杰撅拷锟斤拷取锟斤拷锟斤拷锟斤拷锟斤拷锟截撅拷止锟斤拷稀锟?f=cfg.fullmode;
+% 直接轴负载在正常运行中仍可施加；只拒绝已取消的正负载静止组合。
+f=cfg.fullmode;
 if (strcmp(f.loadMode,'power') && f.load.powerW>0) || ...
         (strcmp(f.loadMode,'mkp') && f.load.mkpNm>0)
     error('sht:fullmode:unsupportedColdDirectLoad', ...
-        '锟斤拷支锟斤拷锟斤拷锟姐功锟斤拷/锟斤拷锟斤拷Mkp锟接撅拷止锟金动伙拷锟节撅拷止时施锟接★拷锟斤拷使锟斤拷锟斤拷锟捷的凤拷锟斤拷锟教拷锟斤拷锟绞癸拷锟剿拷芫锟斤拷鸲锟斤拷锟斤拷锟?);
+        '不支持正恒功率/正恒Mkp从静止起动或在静止时施加。请使用相容的非零初态，或使用双总距起动方案。');
 end
 end
 
@@ -504,7 +509,7 @@ row=[r.timeS;r.speed;p.Tt45;m.T45;p.Mkp;m.Mkp; ...
     r.output(12);r.output(11)*r.speed(1)*pi/30;S.cfg.fullmode.npRatio*S.cfg.startStop.designNpRpm; ...
     r.output(19);b.mainPitchDeg;b.tailPitchDeg;b.mainTorqueNm;b.tailTorqueNm; ...
     double(b.powerEngaged);r.output(24)].';
-% 锟斤拷24锟斤拷为C锟斤拷实锟斤拷锟斤拷路锟斤拷效锟斤拷恰锟斤拷锟叫э拷锟铰凤拷锟斤拷员锟斤拷锟斤拷目锟斤拷坪锟街得帮拷锟斤拷锟斤拷锟斤拷值锟斤拷
+% 第24槽为C侧实际气路有效标记。无效气路不以保留的控制后备值冒充测量真值。
 channels=local_extra_channels();
 extra=nan(1,2*numel(channels)+1);
 for k=1:numel(channels)
@@ -569,20 +574,17 @@ result.signalRoles.diagnostics={'gasPathValid','gasPathEvaluated','NpDotRpmPerS'
     'NgDotRpmPerS','hotStartFlag','hungStartFlag','flameoutFlag'};
 result.signalRoles.derived{end+1}='NpGovernorReferenceRpm';
 result.recordSchema=26100704;
-result.signalRoles.validity=['gasPathValid为DLL侧24通道有效标志(由气路系数决定)，' ...
-    'gasPathEvaluated表示实际进入气路解算。NaN表示该样本未参与解算。'];
+result.signalRoles.validity=['gasPathValid保留DLL第24项有效标志（含零速轴系后备）；' ...
+    'gasPathEvaluated表示已有实际气路解。NaN表示物理量不可用，不补零。'];
 end
 
 function out=local_status(S)
 r=S.runtime;
-p=r.plant;m=r.sample;
 out=struct('lifecycle',S.lifecycle,'mode',r.mode,'throttle',S.throttle,'timeS',r.timeS, ...
     'speedRpm',r.speed,'acceptedSteps',r.acceptedSteps,'physicalStop',r.physicalStop, ...
     'warmupComplete',r.warmupComplete,'cutLatched',S.cutLatched,'failureReason',r.failureReason, ...
     'stopReason',S.stopReason,'wallSeconds',S.wallSeconds,'commandReceipts',S.receipts, ...
     'appliedLoad',r.appliedLoad,'requestedLoad',S.cfg.fullmode.load, ...
-    'tt45K',p.Tt45,'tt45MeasuredK',m.T45,'fuelKgPerS',r.fuel, ...
-    'npDesignRpm',S.cfg.startStop.designNpRpm,'npRatioTarget',S.cfg.fullmode.npRatio, ...
     'alarms',struct('hotStart',logical(r.output(21)),'hungStart',logical(r.output(22)), ...
     'flameout',logical(r.output(23))));
 end
@@ -596,24 +598,25 @@ function local_require(S)
 assert(~isempty(S),'尚未prepare会话。');
 end
 function local_call(C,name,varargin)
-status=calllib(C.alias,name,varargin{:});assert(status==0,'DLL调用%s失败：%d。',name,status);
+status=calllib(C.alias,name,varargin{:});assert(status==0,'DLL函数%s失败：%d。',name,status);
 end
 function local_unload(alias)
 if libisloaded(alias),unloadlibrary(alias);end
 end
 function local_close_on_error(armed)
-% prepare/restore锟斤拷onCleanup锟斤拷锟斤拷锟届常时锟截闭ｏ拷锟缴癸拷锟斤拷锟缴碉拷锟矫凤拷锟斤拷式锟斤拷锟斤拷锟斤拷锟斤拷锟?if armed.get(),sht_fullmode_session('close');end
+% prepare/restore的onCleanup仅在异常时关闭，成功后由调用方显式清除保护。
+if armed.get(),sht_fullmode_session('close');end
 end
 function h=local_hash(file)
-fid=fopen(file,'rb');assert(fid>=0,'无法读取二进制文件：%s。',file);c=onCleanup(@()fclose(fid));
+fid=fopen(file,'rb');assert(fid>=0,'不能读取身份文件：%s。',file);c=onCleanup(@()fclose(fid));
 d=java.security.MessageDigest.getInstance('SHA-256');d.update(typecast(fread(fid,inf,'*uint8'),'int8'));
 h=upper(reshape(dec2hex(typecast(d.digest(),'uint8'),2).',1,[]));
 end
 function local_verify_identity(a,b)
-assert(numel(a)==numel(b),'恢复源与初态单位不一致，恢复可能失败，请检查标签。');
+assert(numel(a)==numel(b),'恢复源/资产清单数量变化，不能给旧快照重签名。');
 for i=1:numel(a)
     assert(strcmp(a(i).name,b(i).name) && strcmp(a(i).sha256,b(i).sha256), ...
-        '恢复数据不匹配：%s。',a(i).name);
+        '恢复身份不匹配：%s。',a(i).name);
 end
 end
 function n=local_c_command(mode)
@@ -623,22 +626,22 @@ elseif strcmp(mode,'stopped'),n=0;
 elseif strcmp(mode,'shutdown'),n=3;else,n=4;end
 end
 function cfg=local_restore_locations(cfg,override,root)
-% 锟街革拷只准锟斤拷迁锟斤拷写位锟矫ｏ拷锟斤拷锟斤拷/锟斤拷锟斤拷/锟斤拷锟斤拷锟睫革拷锟斤拷锟斤拷锟斤拷准锟斤拷锟斤拷锟斤拷式锟斤拷锟斤拷锟斤拷锟筋。
-assert(isstruct(override) && isscalar(override),'恢复位置覆盖应为标量结构。');
+% 恢复只准搬迁读写位置；参数/积分/控制修改须另起准备或显式运行命令。
+assert(isstruct(override) && isscalar(override),'恢复位置覆盖应为标量结构体。');
 groups=fieldnames(override);assert(all(ismember(groups,{'paths','fullmode','stage7'})), ...
-    '恢复不能修改推进状态相关设置。');
+    '恢复不能覆盖物理、控制或状态配置。');
 for i=1:numel(groups)
     group=groups{i};items=override.(group);assert(isstruct(items) && isscalar(items));
     if strcmp(group,'paths'),allowed=fieldnames(cfg.paths);
     elseif strcmp(group,'fullmode'),allowed={'outputDirectory','assetDirectory','seedPoolFile'};
     else,allowed={'assetFile'};end
-    fields=fieldnames(items);assert(all(ismember(fields,allowed)),'恢复载荷只允许通道字段。');
+    fields=fieldnames(items);assert(all(ismember(fields,allowed)),'恢复覆盖只允许路径字段。');
     for j=1:numel(fields)
         value=items.(fields{j});assert(ischar(value) || (isstring(value) && isscalar(value)));
         cfg.(group).(fields{j})=char(value);
     end
 end
-assert(strcmp(cfg.paths.matlabRoot,root),'源码目录与实际运行目录不一致，可能已改动。');
+assert(strcmp(cfg.paths.matlabRoot,root),'源码根目录由实际入口决定，不能覆盖。');
 end
 function local_write_utf8(file,text)
 fid=fopen(file,'w','n','UTF-8');assert(fid>=0);c=onCleanup(@()fclose(fid));fprintf(fid,'%s',text);
