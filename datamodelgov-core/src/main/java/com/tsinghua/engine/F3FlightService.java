@@ -145,12 +145,16 @@ public class F3FlightService {
         m.append("addpath('").append(programCopy.getAbsolutePath().replace('\\', '/')).append("', '-begin');\n");
         m.append("rehash;\n");
         m.append("cfg = c.configuration;\n");
+        boolean steadyTask = !"sht_f3_transient_task".equals(taskFn);
         // 运行包清单SHA必须由交付资产模块运行时实测(local_selection会按包身份切换目录与SHA,
         // Java侧硬编码常量会随交付包版本漂移——实测legacy=2977A31D...,DLL_MAIN=71EBF628...),
-        // workbookSha256是普通文件SHA由Java实测不变,这里仅覆盖runtimeManifestSha256
-        m.append("if isfield(cfg,'parentRuntimeBinding') && ~isempty(fieldnames(cfg.parentRuntimeBinding))\n");
-        m.append("    cfg.parentRuntimeBinding.runtimeManifestSha256 = sht_f3_three_component_assets('manifest').sha256;\n");
-        m.append("end\n");
+        // workbookSha256是普通文件SHA由Java实测不变,这里仅覆盖runtimeManifestSha256。
+        // 仅steady做enrichment:transient任务不消费该字段,且sht_f3_three_component_assets属三部件资产模块
+        if (steadyTask) {
+            m.append("if isfield(cfg,'parentRuntimeBinding') && ~isempty(fieldnames(cfg.parentRuntimeBinding))\n");
+            m.append("    cfg.parentRuntimeBinding.runtimeManifestSha256 = sht_f3_three_component_assets('manifest').sha256;\n");
+            m.append("end\n");
+        }
         if ("sht_f3_transient_task".equals(taskFn)) {
             // transient 合同(F3:TF:Config 白名单:runId/modelId/trainingFile/testFile/parentWorkbook/sheets/roots/...)与 steady
             // (taskId/identificationFile/engineId/sortieId/...)完全不同;按白名单重建 cfg,忽略 Java 业务字段
@@ -159,9 +163,21 @@ public class F3FlightService {
             m.append("    'trainingSheet','Data','testSheet','Data', ...\n");
             m.append("    'outputRoot',cfg.outputRoot,'reportRoot',cfg.reportRoot);\n");
             m.append("if isfield(cfg,'parentWorkbook'), tf.parentWorkbook = char(string(cfg.parentWorkbook)); end\n");
-            // 父模型运行时绑定(struct透传):sht_f3_transient_task L351-358 同样消费,丢弃会导致同样的SHA校验失败
-            m.append("if isfield(cfg,'parentRuntimeBinding'), tf.parentRuntimeBinding = cfg.parentRuntimeBinding; end\n");
+            // parentRuntimeBinding不透传:transient的local_config白名单不接受该字段
+            // (sht_f3_transient_task L351仅在"独立验证"action的入参上消费binding,不在任务cfg上),
+            // 透传会被"未知任务配置字段"拒绝;瞬态父模型链接只有parentWorkbook,绑定信息保留在configuration.json备查
             m.append("cfg = tf;\n");
+        } else {
+            // steady 合同(local_execution_config 白名单:confirmationFile/runId/outputRoot/reportRoot/maximumIterations/plotEnabled)
+            // Java业务字段(parentSource/parentRoute/parentWorkbook/parentRuntimeBinding/identificationFile/validationFile等)
+            // 在confirm阶段已经保存到receipt,run阶段只传执行时参数
+            m.append("if strcmp(lower(c.action),'run')\n");
+            m.append("    tf = struct('confirmationFile',char(string(cfg.confirmationFile)), ...\n");
+            m.append("        'runId',char(string(cfg.taskId)), ...\n");
+            m.append("        'outputRoot',cfg.outputRoot,'reportRoot',cfg.reportRoot, ...\n");
+            m.append("        'maximumIterations',10,'plotEnabled',false);\n");
+            m.append("    cfg = tf;\n");
+            m.append("end\n");
         }
         // 注意:不得把 selection 塞进 cfg——sht_f3_*_task 的 local_config 白名单会拒"未知配置:selection";
         // 窗口选择由 confirm 分支第三参数 sel 单独传递
@@ -375,10 +391,23 @@ public class F3FlightService {
             File programCopy = ensureF3Source(task.getProjectId());
             File workDir = store.taskWorkDir(task.getProjectId(), task.getId());
             File adapterDir = new File(workDir, subDir + "-work");
+            // 每次执行前删除旧的适配器目录，确保使用最新代码
+            if (adapterDir.exists()) {
+                deleteDirectory(adapterDir);
+            }
             if (!adapterDir.exists() && !adapterDir.mkdirs()) throw new IOException("无法创建F3适配器目录");
             File outputRoot = new File(workDir, subDir);
             File reportRoot = new File(workDir, subDir + "-report");
             if (!isConfirm && !isCheck) {
+                // B阶段(run)必须用独立的全新批次目录:A阶段确认回执的冻结输入(r.trainingWorkbook=
+                // identificationExcel等)存放在<f3-xx>确认目录内,复用同一目录会被local_safe_roots判
+                // "输出目录不得与输入/父模型目录重叠";且合同要求非resume辨识目录必须不存在
+                // (SHT:F3Task:ExistingRun)。run目录与A目录平级,时间戳区分批次。
+                if ("run".equals(action) && !evo) {
+                    String stamp = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss").format(new java.util.Date());
+                    outputRoot = new File(workDir, subDir + "-run-" + stamp);
+                    reportRoot = new File(workDir, subDir + "-report-run-" + stamp);
+                }
                 if (!outputRoot.exists() && !outputRoot.mkdirs()) throw new IOException("无法创建F3输出目录");
                 if (!reportRoot.exists() && !reportRoot.mkdirs()) throw new IOException("无法创建F3报告目录");
             }
@@ -449,8 +478,10 @@ public class F3FlightService {
                 // MAIN已核历史文件时,必须显式声明关联——workbookSha256=父Excel实测SHA;
                 // runtimeManifestSha256=交付源码固定常量(sht_f3_three_component_assets.m L32,F3_R036运行包);
                 // 换交付运行包版本时必须同步此常量,否则MATLAB在绑定校验处报SHA不符
+                log.info("F3任务{}开始计算父工作簿SHA256: {}", key, parentWorkbookPath);
                 Map<String, Object> binding = new LinkedHashMap<>();
                 binding.put("workbookSha256", sha256Hex(new File(parentWorkbookPath)));
+                log.info("F3任务{}父工作簿SHA256计算完成", key);
                 binding.put("runtimeManifestSha256", F3_RUNTIME_MANIFEST_SHA256);
                 binding.put("basis", "DataModelGov自动关联:父工作簿SHA与F3_R036运行包清单SHA已核验");
                 configuration.put("parentRuntimeBinding", binding);
@@ -694,4 +725,20 @@ public class F3FlightService {
     }
 
     private static final String R06_IN_CLASSPATH = "programs/Delivery_V1_20261019_R06/programs";
+
+    /** 递归删除目录 */
+    private static void deleteDirectory(File directory) {
+        if (directory == null || !directory.exists()) return;
+        File[] files = directory.listFiles();
+        if (files != null) {
+            for (File file : files) {
+                if (file.isDirectory()) {
+                    deleteDirectory(file);
+                } else {
+                    file.delete();
+                }
+            }
+        }
+        directory.delete();
+    }
 }

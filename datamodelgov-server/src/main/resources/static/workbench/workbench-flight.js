@@ -409,7 +409,7 @@
                     '选段已确认:' + (t.f3SortieId || '') + ' 完整窗口均值;本次运行只生成新结果,不覆盖父模型。'));
             }
 
-            if (isRunPhase || t.status === 'COMPLETED' || (t.status === 'READY' && state.showEstimate)) {
+            if (isRunPhase || t.status === 'COMPLETED' || state.showEstimate) {
                 // READY+showEstimate:「检查配置并估时」后进入估时/运行前检查视图(showEstimate只在此消费,
                 // 否则点按钮后页面停留在参数表单看似无反应);「返回配置」会置false回到表单
                 wrap.appendChild(runProgressView(t));
@@ -472,8 +472,18 @@
         function runProgressView(t) {
             const wrap = WB().h('div', null);
             const isRun = t.status === 'RUNNING' || t.status === 'STOP_REQUESTED';
+            // 估算/确认视图:READY/FAILED默认展示;STOPPED点"重新辨识"(showEstimate=true)后进入。
+            // STOP_REQUESTED(等待安全点)不进入——04-23:保存进度前不开放重跑
+            const showEstimateView = !isRun && (
+                (t.status === 'READY' && state.showEstimate !== false)
+                || (t.status === 'FAILED' && state.showEstimate !== false)
+                || (t.status === 'STOPPED' && state.showEstimate === true));
 
-            if (!isRun && state.showEstimate !== false && t.status === 'READY') {
+            if (!isRun && showEstimateView) {
+                if (t.status === 'STOPPED') {
+                    wrap.appendChild(WB().h('div', { class: 'wb-infobar', style: 'margin-bottom:12px' },
+                        '上一次运行已安全停止(进度与产物保留)。重新辨识将发起新一轮执行,按运行标识区分历史,不覆盖父模型。'));
+                }
                 wrap.appendChild(WB().h('div', { class: 'wb-infobar', style: 'margin-bottom:12px' },
                     '输入、父模型、选段与运行包检查通过;本次运行只生成新结果,不覆盖父模型。'));
                 wrap.appendChild(WB().h('div', { class: 'wb-section-title', style: 'margin:6px 0 8px' }, '本次将执行'));
@@ -534,7 +544,8 @@
                     onclick: () => { if (isRun && t.status !== 'STOP_REQUESTED') stopModel(); }
                 }, t.status === 'STOP_REQUESTED' ? '已请求安全暂停(等待安全点)' : isRun ? '请求安全暂停' : '请求安全暂停(未在运行)'),
                 WB().h('div', { class: 'wb-spacer' }),
-                t.status === 'COMPLETED' ? WB().h('button', { class: 'wb-btn wb-btn-primary', onclick: () => { state.tab = 'result'; renderBody(); } }, '查看飞行模型结果') : null));
+                t.status === 'COMPLETED' ? WB().h('button', { class: 'wb-btn wb-btn-primary', onclick: () => { state.tab = 'result'; renderBody(); } }, '查看飞行模型结果') :
+                (t.status === 'FAILED' || t.status === 'STOPPED') ? WB().h('button', { class: 'wb-btn wb-btn-primary', onclick: () => { state.showEstimate = true; renderBody(); } }, '重新辨识') : null));
             return wrap;
         }
 
