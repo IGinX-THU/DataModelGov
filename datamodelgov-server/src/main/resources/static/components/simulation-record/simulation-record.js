@@ -2450,11 +2450,11 @@ class SimulationRecord extends HTMLElement {
             endTimeTd.textContent = record.endTime ? new Date(record.endTime).toLocaleString() : '-';
             tr.appendChild(endTimeTd);
 
-            // 运行状态列
+            // 运行状态列（停止请求已记录、等待算法安全保存期间显示过渡态文案，图03-07/图05-07）
             const statusTd = document.createElement('td');
             const statusBadge = document.createElement('span');
             statusBadge.className = `status-badge ${record.status}`;
-            statusBadge.textContent = this.getStatusText(record.status);
+            statusBadge.textContent = record._stopRequested ? '等待安全保存' : this.getStatusText(record.status);
             statusTd.appendChild(statusBadge);
             tr.appendChild(statusTd);
 
@@ -2510,8 +2510,8 @@ class SimulationRecord extends HTMLElement {
             deleteBtn.onclick = () => this.handleDelete(record);
             actionButtons.appendChild(deleteBtn);
 
-            // 停止按钮（运行中状态显示）
-            if (record.status === 'running') {
+            // 停止按钮（运行中/已暂停状态显示；已请求停止、等待安全保存期间不重复显示）
+            if ((record.status === 'running' || record.status === 'paused') && !record._stopRequested) {
                 const stopBtn = document.createElement('button');
                 stopBtn.className = 'action-btn stop';
                 stopBtn.textContent = '停止';
@@ -2527,7 +2527,17 @@ class SimulationRecord extends HTMLElement {
     }
 
     getStatusText(status) {
-        const map = { running: '运行中', stopped: '已停止', completed: '成功', failed: '失败', pending: '等待中' };
+        // 状态文案对齐交付文档（UI-R071 图03-07/03-08、UI-R082 图05-07/05-16）：
+        // 停止=算法在安全点保存检查点后停止、结果保留；与"失败"明确区分，不统一显示失败
+        const map = {
+            running: '运行中',
+            queued: '排队中',
+            pending: '等待中',
+            paused: '已暂停',
+            stopped: '已安全停止',
+            completed: '成功',
+            failed: '失败'
+        };
         return map[status] || status;
     }
 
@@ -3798,16 +3808,19 @@ class SimulationRecord extends HTMLElement {
     // 处理停止操作
     async handleStop(record) {
         try {
-            this.showToast(`正在停止仿真: ${record.name}`, 'warning');
+            this.showToast(`停止请求已发送: ${record.name}`, 'warning');
 
             const baseUrl = window.AppConfig.getApiUrl('simulationArchives', 'stop');
             const url = baseUrl + '?createTime=' + record.createTime;
             const result = await window.AppConfig.request(url, { method: 'POST' });
 
             if (result.success) {
-                this.showToast(`仿真 ${record.name} 停止成功`, 'success');
-                record.status = 'stopped';
+                // 交付文档对齐（图03-07/图05-07）：停止请求只是"已记录"，
+                // 需等待算法在安全点保存检查点，后端确认后才置为"已安全停止"
+                record._stopRequested = true;
                 this.updateTable();
+                this.showToast(`停止请求已记录，等待算法安全保存: ${record.name}`, 'info');
+                this._pollStopConfirmation(record);
             } else {
                 this.showToast(result.message || '停止仿真失败', 'error');
             }
@@ -3815,6 +3828,46 @@ class SimulationRecord extends HTMLElement {
             console.error('停止仿真失败:', error);
             this.showToast('网络错误，停止仿真失败', 'error');
         }
+    }
+
+    // 轮询停止确认：算法在安全点保存检查点后，后端才会把状态从运行中切走（图03-08）
+    _pollStopConfirmation(record) {
+        if (this._stopPollTimer) {
+            clearInterval(this._stopPollTimer);
+            this._stopPollTimer = null;
+        }
+        let tries = 0;
+        this._stopPollTimer = setInterval(async () => {
+            tries++;
+            try {
+                const result = await window.AppConfig.get('simulationArchives', 'execution-status', {
+                    createTime: record.createTime
+                });
+                const status = result && result.success && result.data && result.data.result
+                    ? result.data.result.status : null;
+                if (status && status !== 'running') {
+                    clearInterval(this._stopPollTimer);
+                    this._stopPollTimer = null;
+                    record._stopRequested = false;
+                    record.status = status;
+                    this.updateTable();
+                    this.showToast(`仿真已安全停止，结果保留: ${record.name}`, 'success');
+                } else if (tries >= 20) {
+                    // 长时间未确认：解除过渡态标记，真实状态以列表刷新为准
+                    clearInterval(this._stopPollTimer);
+                    this._stopPollTimer = null;
+                    record._stopRequested = false;
+                    this.updateTable();
+                }
+            } catch (error) {
+                if (tries >= 20) {
+                    clearInterval(this._stopPollTimer);
+                    this._stopPollTimer = null;
+                    record._stopRequested = false;
+                    this.updateTable();
+                }
+            }
+        }, 3000);
     }
 
     // 处理删除操作

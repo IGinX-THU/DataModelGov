@@ -68,7 +68,7 @@
             const t = state.task;
             metaRow.textContent = t
                 ? ((t.name || L.title) + ' / ' + (t.f3SortieId || '—') + ' / ' + statusText(t))
-                : (ctx.project.name + ' / 新建任务');
+                : ((state.draft.name || L.title) + ' / ' + (state.draft.sortieId || '—') + ' / 草稿');
         }
         function statusText(t) {
             return { READY: '待执行', PREPARING: '检查中', RUNNING: '正在执行', STOP_REQUESTED: '已请求停止',
@@ -130,6 +130,44 @@
 
             if (!t) {
                 /* ---- 草稿(04-01): 架次/名称 + 本架次飞参 + 父模型 ---- */
+                /* 本架次飞参表(对齐效果图04-01:数据用途|文件|数据记录|状态) */
+                const draftFlightTable = () => {
+                    const inputs = {};
+                    const mkRow = (kind, usage, recordCn, stateCn) => {
+                        const f = state.draft[kind];
+                        const fileInput = WB().h('input', { type: 'file', accept: '.xlsx,.xls', style: 'display:none' });
+                        fileInput.addEventListener('change', () => {
+                            const file = fileInput.files && fileInput.files[0];
+                            if (!file) return;
+                            state.draft[kind] = file.name;
+                            (state.draftFiles = state.draftFiles || {})[kind] = file;
+                            toast('已选择文件,保存草稿后自动上传', 'info');
+                            renderBody();
+                        });
+                        inputs[kind] = fileInput;
+                        const ops = WB().h('div', { style: 'display:flex;gap:8px;flex-wrap:wrap;margin-top:6px' },
+                            WB().h('button', { class: 'wb-btn wb-btn-outline', style: 'padding:2px 10px;font-size:12px', onclick: () => fileInput.click() }, '选择文件'),
+                            WB().h('button', { class: 'wb-btn wb-btn-outline', style: 'padding:2px 10px;font-size:12px', title: '保存草稿(创建架次)后可从文件库带入', onclick: () => toast('先保存草稿(创建架次),再从文件库带入', 'info') }, '带入'),
+                            WB().h('button', { class: 'wb-btn wb-btn-outline', style: 'padding:2px 10px;font-size:12px', title: '保存草稿(创建架次)后可预览', onclick: () => toast(f ? '本地文件在保存草稿后自动上传,届时可预览' : '请先选择文件', 'info') }, '预览'));
+                        ops.appendChild(fileInput);
+                        return WB().h('tr', null,
+                            WB().h('td', null, usage),
+                            WB().h('td', null, WB().h('div', null, f ? f : '未提供'), ops),
+                            WB().h('td', null, recordCn),
+                            WB().h('td', null, stateCn));
+                    };
+                    return WB().h('div', { style: 'max-width:1180px;overflow-x:auto' },
+                        WB().h('table', { class: 'wb-table' },
+                            WB().h('thead', null, WB().h('tr', null,
+                                WB().h('th', null, '数据用途'), WB().h('th', null, '文件'),
+                                WB().h('th', null, '数据记录'), WB().h('th', null, '状态'))),
+                            WB().h('tbody', null,
+                                mkRow('identification', '本次训练', '暂无(文件上传后显示)', '待检查'),
+                                mkRow('validation', '独立测试(可选)', '不参与本次任务', '不影响训练'))),
+                        WB().h('div', { style: 'display:flex;gap:10px;margin-top:12px' },
+                            WB().h('button', { class: 'wb-btn wb-btn-outline', onclick: () => inputs.validation && inputs.validation.click() }, '+ 添加独立测试文件'),
+                            WB().h('button', { class: 'wb-btn wb-btn-outline', onclick: () => toast('保存草稿(创建架次)后可查看原始记录与预览', 'info') }, '查看原始记录')));
+                };
                 const sortieInput = WB().h('input', { value: state.draft.sortieId || 'F-012', placeholder: '架次编号(可中文)' });
                 const nameInput = WB().h('input', { value: state.draft.name || (L.title) });
                 const engineInput = WB().h('input', { readonly: '', value: ctx.project.engineId || '—' });
@@ -145,8 +183,6 @@
                         models.forEach(m => modelSel.appendChild(WB().h('option', { value: m.id },
                             (m.name || m.id) + ' · ' + (m.stage || '') + ' · ' + (m.route || ''))));
                     }).catch(() => { });
-                const trainRow = uploadRow('训练飞参 Excel(Data表,必选)', 'identification', null);
-                const testRow = uploadRow('独立测试 Excel(可选)', 'validation', null);
 
                 const createBtn = WB().h('button', {
                     class: 'wb-btn wb-btn-outline',
@@ -165,7 +201,7 @@
                             });
                             if (resp && (resp.success || resp.code === 200) && resp.data) {
                                 state.task = resp.data;
-                                // 草稿期暂存的本地文件保存任务后自动上传,避免视图切换后"已选文件"丢失
+                                // 草稿期暂存的本地文件保存草稿后自动上传,避免视图切换后"已选文件"丢失
                                 const pend = state.draftFiles || {};
                                 const kinds = ['identification', 'validation'].filter(k => pend[k] instanceof File);
                                 try {
@@ -179,11 +215,11 @@
                                     }
                                 } finally { delete state.draftFiles; state.draft = {}; }
                                 renderBody();
-                            } else toast((resp && resp.message) || '保存任务失败', 'error');
-                        } catch (e) { toast('保存任务失败:' + e.message, 'error'); }
+                            } else toast((resp && resp.message) || '保存草稿失败', 'error');
+                        } catch (e) { toast('保存草稿失败:' + e.message, 'error'); }
                         createBtn.classList.remove('disabled');
                     }
-                }, '保存任务');
+                }, '保存草稿');
 
                 wrap.appendChild(WB().h('div', { class: 'wb-form-grid', style: 'grid-template-columns:1fr 1fr 1fr;max-width:1280px' },
                     WB().h('div', { class: 'wb-field' }, WB().h('label', null, '所属发动机'), engineInput),
@@ -191,20 +227,20 @@
                     WB().h('div', { class: 'wb-field' }, WB().h('label', null, '任务名称'), nameInput)));
 
                 wrap.appendChild(WB().h('div', { class: 'wb-section-title', style: 'margin:18px 0 8px' }, '本架次飞参'));
-                wrap.appendChild(trainRow);
-                wrap.appendChild(testRow);
+                wrap.appendChild(draftFlightTable());
 
                 wrap.appendChild(WB().h('div', { class: 'wb-section-title', style: 'margin:18px 0 8px' }, '父模型'));
-                wrap.appendChild(WB().h('div', { class: 'wb-form-grid', style: 'grid-template-columns:1fr 1fr;max-width:980px' },
+                wrap.appendChild(WB().h('div', { class: 'wb-form-grid', style: 'grid-template-columns:1fr 1fr auto;max-width:1180px;align-items:end' },
                     WB().h('div', { class: 'wb-field' }, WB().h('label', null, '模型来源'), parentSourceSel),
-                    WB().h('div', { class: 'wb-field' }, WB().h('label', null, '指定项目模型(可选)'), modelSel)));
+                    WB().h('div', { class: 'wb-field' }, WB().h('label', null, '选择已有模型'), modelSel),
+                    WB().h('div', { class: 'wb-field' }, WB().h('button', { class: 'wb-btn wb-btn-outline', onclick: () => ctx.navigate('models') }, '查看模型与数据来源'))));
                 wrap.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin:6px 0 14px' },
                     isSteady ? '瞬态参数:标称0;本次仅更新稳态参数与飞参燃油偏置。' : '固定:稳态曲线、飞参燃油偏置、装机参数;本次更新:瞬态修正参数(Visser16 13项)。'));
 
                 wrap.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'margin-top:10px' },
                     createBtn,
                     WB().h('div', { class: 'wb-spacer' }),
-                    WB().h('button', { class: 'wb-btn wb-btn-primary', style: 'opacity:.5', onclick: () => toast('先保存任务(创建架次),任务建立后可检查数据与模型', 'info') }, '检查数据与模型')));
+                    WB().h('button', { class: 'wb-btn wb-btn-primary', style: 'opacity:.5', onclick: () => toast('先保存草稿(创建架次),任务建立后可检查数据与模型', 'info') }, '检查数据与模型')));
                 return wrap;
             }
 
@@ -269,7 +305,7 @@
                 WB().h('div', { class: 'wb-spacer' }),
                 WB().h('button', {
                     class: 'wb-btn wb-btn-primary' + (confirmed ? '' : ' disabled'),
-                    onclick: () => { if (confirmed) { state.tab = isSteady ? 'update' : 'event'; renderBody(); } }
+                    onclick: () => { if (confirmed) { state.showEstimate = false; state.tab = isSteady ? 'update' : 'event'; renderBody(); } }
                 }, isSteady ? '进入稳态参数更新' : '确认事件与准备计划')));
             return wrap;
         }
@@ -284,7 +320,7 @@
             fileInput.addEventListener('change', async () => {
                 const f = fileInput.files && fileInput.files[0];
                 if (!f) return;
-                if (!state.task) { state.draft[kind] = f.name; (state.draftFiles = state.draftFiles || {})[kind] = f; nameBox.value = f.name; toast('已选择文件,保存任务后自动上传', 'info'); return; }
+                if (!state.task) { state.draft[kind] = f.name; (state.draftFiles = state.draftFiles || {})[kind] = f; nameBox.value = f.name; toast('已选择文件,保存草稿后自动上传', 'info'); return; }
                 const fd = new FormData();
                 fd.append('file', f);
                 nameBox.value = '上传中:' + f.name + '...';
@@ -320,10 +356,10 @@
                     WB().h('button', {
                         class: 'wb-btn wb-btn-outline',
                         style: state.task ? '' : 'opacity:.5',
-                        title: state.task ? '' : '先保存任务(创建架次),再从文件库带入',
+                        title: state.task ? '' : '先保存草稿(创建架次),再从文件库带入',
                         onclick: async () => {
                             const sel = row.querySelector('select');
-                            if (!state.task) { toast('先保存任务(创建架次),再从文件库带入', 'error'); return; }
+                            if (!state.task) { toast('先保存草稿(创建架次),再从文件库带入', 'error'); return; }
                             if (!sel || !sel.value) { toast('请先在下拉中选择库内文件', 'error'); return; }
                             try {
                                 const resp = await window.AppConfig.enginePost(
@@ -344,7 +380,7 @@
                         style: current ? '' : 'opacity:.5',
                         onclick: async () => {
                             if (!current) { toast('请先上传或从文件库带入文件', 'error'); return; }
-                            if (!state.task) { toast('本地文件在保存任务后自动上传,届时可预览', 'info'); return; }
+                            if (!state.task) { toast('本地文件在保存草稿后自动上传,届时可预览', 'info'); return; }
                             const name = fileName(current);
                             try {
                                 // 任务直传/带入文件走任务文件预览接口(文件不必在文件库)
@@ -373,7 +409,9 @@
                     '选段已确认:' + (t.f3SortieId || '') + ' 完整窗口均值;本次运行只生成新结果,不覆盖父模型。'));
             }
 
-            if (isRunPhase || t.status === 'COMPLETED') {
+            if (isRunPhase || t.status === 'COMPLETED' || (t.status === 'READY' && state.showEstimate)) {
+                // READY+showEstimate:「检查配置并估时」后进入估时/运行前检查视图(showEstimate只在此消费,
+                // 否则点按钮后页面停留在参数表单看似无反应);「返回配置」会置false回到表单
                 wrap.appendChild(runProgressView(t));
                 return wrap;
             }
@@ -456,6 +494,11 @@
             }
 
             /* 运行过程(04-08): 阶段卡 + 用时 + 日志(不伪造总体完成百分比) */
+            // 04-23:已请求暂停≠已暂停——完成后端安全点并保存进度前,保持过渡提示且不重复受理
+            if (t.status === 'STOP_REQUESTED') {
+                wrap.appendChild(WB().h('div', { class: 'wb-infobar', style: 'border-left:4px solid #d97706;background:#fffbeb;color:#92400e' },
+                    '⚠ 已请求安全暂停。完成当前安全计算单元后保存进度;未保存前不显示"已暂停",发现身份变化只允许另建运行、不修改旧签名续跑。'));
+            }
             const stages = [
                 ['输入检查', '已完成'], ['准备与覆盖', '已完成'],
                 ['参数更新', isRun ? '执行中' : t.status === 'COMPLETED' ? '已完成' : '—'],
@@ -486,9 +529,10 @@
 
             wrap.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'margin-top:12px' },
                 WB().h('button', {
-                    class: 'wb-btn wb-btn-outline' + (isRun ? '' : ' disabled'),
-                    onclick: () => { if (isRun) stopModel(); }
-                }, isRun ? '请求安全暂停' : '请求安全暂停(未在运行)'),
+                    class: 'wb-btn wb-btn-outline' + (isRun && t.status !== 'STOP_REQUESTED' ? '' : ' disabled'),
+                    title: t.status === 'STOP_REQUESTED' ? '停止请求已受理;等待后端安全点保存进度' : '让本次算法在安全点结束并保存,不强杀',
+                    onclick: () => { if (isRun && t.status !== 'STOP_REQUESTED') stopModel(); }
+                }, t.status === 'STOP_REQUESTED' ? '已请求安全暂停(等待安全点)' : isRun ? '请求安全暂停' : '请求安全暂停(未在运行)'),
                 WB().h('div', { class: 'wb-spacer' }),
                 t.status === 'COMPLETED' ? WB().h('button', { class: 'wb-btn wb-btn-primary', onclick: () => { state.tab = 'result'; renderBody(); } }, '查看飞行模型结果') : null));
             return wrap;
@@ -554,14 +598,25 @@
             return wrap;
         }
 
-        /* ================= 不确定性评估 (04-13/08-系列) ================= */
+        /* ================= 不确定性评估 (04-13~04-16) ================= */
         function uqTab() {
             const t = state.task;
             const wrap = WB().h('div', null);
             wrap.appendChild(WB().h('div', { class: 'wb-infobar', style: 'margin-bottom:12px' },
                 'UQ独立配置与保存:评估对象、观测、固定参数、概率来源和先验重设依据明确;当前新C/D评估限实际支持的纯稳态均值路线。'));
+            // 04-13:保存模型后选择评估方法与明确先验——UQ从模型成果显式发起,本任务页不隐式执行
             wrap.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin:8px 0' },
                 '保存模型后,在「模型成果」中选择本模型发起不确定性评估(与试车建模同一UQ入口);混合历程与非零瞬态联合UQ不由本页短合同外推。'));
+            // 04-14:评估过程五阶段——发起后在UQ任务页按此顺序展示;独立复算与主样本分开
+            wrap.appendChild(WB().h('table', { class: 'wb-table', style: 'max-width:1180px' },
+                WB().h('tr', null, ['阶段', '语义'].map(x => WB().h('th', null, x))),
+                WB().h('tr', null, WB().h('td', null, '合同与先验'), WB().h('td', { class: 'wb-hint' }, '身份匹配;无独立测试时如实注明,不借训练先验充当独立证据')),
+                WB().h('tr', null, WB().h('td', null, '主样本计算'), WB().h('td', { class: 'wb-hint' }, '主计算结果单独保存')),
+                WB().h('tr', null, WB().h('td', null, '独立复算'), WB().h('td', { class: 'wb-hint' }, '与主样本分开,不拼成一批样本')),
+                WB().h('tr', null, WB().h('td', null, '参数汇总 / 结果写出'), WB().h('td', { class: 'wb-hint' }, '不提前标记统计通过;不用旧UQ文件替代当前结果'))));
+            // 04-15:区间来源可追溯;有限样本评估如实标注限制(效果图04-15)
+            wrap.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin:8px 0;max-width:1180px' },
+                '评估完成后:全部参数及燃油偏置的区间来源可追溯(条件分布传播/显式抽样逐节点标注);对照对象为确定性值+本次区间,无真值;有限样本条件评估的统计限制随结果保存,不标为全局完备后验。预计与实际耗时任同口径展示。'));
             wrap.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'margin-top:10px' },
                 t.status === 'COMPLETED' ? WB().h('button', {
                     class: 'wb-btn wb-btn-primary',
@@ -575,6 +630,12 @@
             const t = state.task;
             const r = t.result || {};
             const wrap = WB().h('div', null);
+            // 04-22:数值停止/物理可用/统计结论分开——未确认收敛时琥珀提示,保存语义如实说明
+            if (t.status === 'COMPLETED' && (r.stopReason || /迭代|iteration/i.test(String(t.message || '')))) {
+                wrap.appendChild(WB().h('div', { class: 'wb-infobar', style: 'border-left:4px solid #d97706;background:#fffbeb;color:#92400e' },
+                    '⚠ ' + (r.stopReason ? ('停止原因: ' + r.stopReason + '。') : '')
+                    + '本次结果尚未确认收敛;模型文件和有效结果可以保存及独立验证,不将本次结果标为统计校准。'));
+            }
             wrap.appendChild(WB().h('div', { class: 'wb-infobar', style: 'margin-bottom:12px' },
                 t.status === 'COMPLETED'
                     ? ((t.runId || 'RUN') + ' 已结束;训练必展,独立测试' + (t.validationFile ? '已提供' : '未提供') + ';UQ' + (t.uqDone ? '已执行' : '未执行') + '。')
@@ -846,6 +907,8 @@
                     WB().h('input', { readonly: '', value: (t.parentSource || '2p4') + (t.parentWorkbook ? ' · ' + fileName(t.parentWorkbook) : '') }))));
 
             wrap.appendChild(WB().h('div', { class: 'wb-section-title', style: 'margin-bottom:8px' }, '架次清单'));
+            // 测量Excel上传(合同必填:sorties.measurementFile;无上传入口任务会死锁在run阶段报空文件)
+            wrap.appendChild(uploadRow('架次试车测量Excel(Data表,必选)', 'identification', t));
             const tbl = WB().h('table', { class: 'wb-table' },
                 WB().h('tr', null, ['架次 / 次序', '飞参Excel', '父模型', '独立测试', '业务角色'].map(x => WB().h('th', null, x))),
                 WB().h('tr', null,

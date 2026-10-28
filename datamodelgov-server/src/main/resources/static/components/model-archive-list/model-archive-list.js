@@ -149,7 +149,17 @@ class ModelArchiveList extends HTMLElement {
                 <td>${item.timestamp ? new Date(item.timestamp).toLocaleString('zh-CN') : '-'}</td>
                 <td></td>
             `;
-            
+
+            // 数据身份提示(设计说明书2.2):悬停显示内容身份(Md5)/大小/存储位置;
+            // 仅展示档案接口真实返回的字段,引擎域字段(来源业务/父模型等)未登记时不虚构
+            row.title = [
+                '版本: ' + (item.version || '-'),
+                '文件: ' + (item.fileName || '-'),
+                item.fileMd5 ? '内容身份(Md5): ' + item.fileMd5 : null,
+                item.fileSize != null ? '大小: ' + item.fileSize + ' B' : null,
+                item.storagePath ? '存储位置: ' + item.storagePath : null
+            ].filter(Boolean).join('\n');
+
             // 整行点击事件：切换到右侧模型侧边栏并展开对应的树节点
             row.style.cursor = 'pointer';
             row.addEventListener('click', () => {

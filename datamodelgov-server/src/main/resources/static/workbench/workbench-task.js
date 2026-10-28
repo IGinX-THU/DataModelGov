@@ -46,6 +46,16 @@
 
     function str(v) { return v == null ? '—' : String(v); }
 
+    /** 从日志解析程序自估耗时(与运行监视页同口径);无依据时返回null,不编造估计。 */
+    function estimateFromLogs(logs) {
+        const arr = logs || [];
+        for (let i = arr.length - 1; i >= 0; i--) {
+            const m = /预计([\d.]+)分钟，工程范围([\d.]+)~([\d.]+)分钟；([^。；]+)/.exec(arr[i]);
+            if (m) return { center: parseFloat(m[1]), lo: parseFloat(m[2]), hi: parseFloat(m[3]), phase: m[4] };
+        }
+        return null;
+    }
+
     /**
      * 渲染稳态试车建模任务视图。
      * ctx: { project, back() }
@@ -841,6 +851,8 @@
             const t = state.task;
             // 失败任务直达失败视图(01-15):错误定位与操作指引,不再展示重新辨识配置页
             if (t.status === 'FAILED') return failedView(t);
+            // 已安全停止直达检查点视图(01-26);"编辑为新运行"后回到任务配置
+            if (t.status === 'STOPPED' && !state.editNewRun) return stoppedView(t);
             const wrap = WB().h('div', null);
             const running = t.status === 'RUNNING' || t.status === 'STOP_REQUESTED';
 
@@ -994,7 +1006,7 @@
             }
 
             function startBtn() {
-                const failed = t.status === 'FAILED';
+                const rerun = t.status === 'FAILED' || t.status === 'STOPPED';
                 return WB().h('button', {
                     class: 'wb-btn wb-btn-primary',
                     onclick: async () => {
@@ -1013,16 +1025,22 @@
                             }
                         } catch (e) { toast('发起辨识失败:' + e.message, 'error'); }
                     }
-                }, failed ? '重新开始辨识' : '开始辨识');
+                }, rerun ? '重新开始辨识' : '开始辨识');
             }
 
             /* 01-05:运行监视 */
             function progressView() {
                 const view = WB().h('div', null);
-                view.appendChild(WB().h('div', { class: 'wb-infobar' },
-                    t.status === 'STOP_REQUESTED'
-                        ? '已请求停止;等待程序到达安全点后结束本次辨识。'
-                        : '正在执行组内辨识。运行配置已固定。'));
+                // 01-13:停止请求受理≠已停止(说明书11.4)——琥珀过渡条,检查点保存成功后才能继续
+                if (t.status === 'STOP_REQUESTED') {
+                    // 直达本页时也保持轮询,等待后端把状态改为STOPPED
+                    if (!state.timer) startPolling();
+                    view.appendChild(WB().h('div', { class: 'wb-infobar', style: 'border-left:4px solid #d97706;background:#fffbeb;color:#92400e' },
+                        '⚠ 停止请求已受理,等待当前组完成并保存检查点。'));
+                } else {
+                    view.appendChild(WB().h('div', { class: 'wb-infobar' },
+                        '正在执行组内辨识。运行配置已固定。'));
+                }
 
                 // 工作步骤表
                 const stepStates = deriveWorkSteps();
@@ -1073,6 +1091,12 @@
                 const lastLog = state.log && state.log.length ? state.log[state.log.length - 1] : '正在计算模型输出';
                 view.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin-bottom:12px' }, '最近反馈:' + lastLog));
 
+                // 01-13:尚未停止提示——检查点保存成功前不允许继续本次计算
+                if (t.status === 'STOP_REQUESTED') {
+                    view.appendChild(WB().h('div', { class: 'wb-infobar', style: 'border-left:4px solid #d97706;background:#fffbeb;color:#92400e' },
+                        '⚠ 尚未停止;检查点保存成功后才能继续本次计算。'));
+                }
+
                 // 日志开关
                 const logBox = WB().h('div', { class: 'wb-logbox', style: state.logOpen ? '' : 'display:none' },
                     state.log && state.log.length ? state.log.join('\n') : '等待日志输出...');
@@ -1083,30 +1107,32 @@
                     }, state.logOpen ? '收起详细日志' : '展开详细日志')));
                 view.appendChild(logBox);
 
-                // 底部:请求停止 | 查看本次配置
+                // 底部:请求停止 | 查看本次配置(01-13:请求受理后按钮变"等待安全停止"禁用)
+                const stopRequested = t.status === 'STOP_REQUESTED';
                 const cfgDrawer = WB().h('div', null);
                 view.appendChild(cfgDrawer);
                 view.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'max-width:1180px;margin-top:14px' },
                     WB().h('button', {
-                        class: 'wb-btn wb-btn-outline',
+                        class: 'wb-btn wb-btn-outline' + (stopRequested ? ' disabled' : ''),
+                        title: stopRequested ? '停止请求已受理;等待程序在安全点结束并保存检查点' : '让本次算法返回的完整单元执行完后停止',
                         onclick: async () => {
+                            if (stopRequested) return;
                             try {
                                 const resp = await window.AppConfig.enginePost(
                                     'projects/' + encodeURIComponent(ctx.project.id || '') + '/tasks/'
                                     + encodeURIComponent(t.id) + '/stop', {});
                                 if (resp && (resp.success || resp.code === 200)) {
-                                    // 受理即落终态:停止轮询并立即回到重新辨识页(与取消UQ评估同逻辑)
-                                    t.status = 'STOPPED';
-                                    t.message = '已手动停止;可重新发起辨识';
-                                    stopPolling();
+                                    // 01-13:受理≠已停止——保持过渡态并继续轮询,由后端确认STOPPED后再显示"已安全停止"
+                                    if (resp.data && typeof resp.data === 'object' && resp.data.status) state.task = resp.data;
                                     renderBody();
-                                    toast('已请求停止;程序将在最近安全点结束,可重新发起辨识', 'success');
+                                    if (!state.timer) startPolling();
+                                    toast('停止请求已受理;等待当前组完成并保存检查点', 'info');
                                 } else {
                                     toast((resp && resp.message) || '停止请求失败', 'error');
                                 }
                             } catch (e) { toast('停止请求失败:' + e.message, 'error'); }
                         }
-                    }, '请求停止'),
+                    }, stopRequested ? '等待安全停止' : '请求停止'),
                     WB().h('div', { class: 'wb-spacer' }),
                     WB().h('button', {
                         class: 'wb-btn wb-btn-outline',
@@ -1141,6 +1167,81 @@
                     if (m) return '第' + (m[1] || m[2]) + '次';
                 }
                 return null;
+            }
+
+            /* ---------- 已安全停止视图(01-26):检查项核对 + 三个去向 ---------- */
+            function stoppedView(t) {
+                const wrap = WB().h('div', null);
+                wrap.appendChild(WB().h('div', { style: 'margin-bottom:14px' },
+                    WB().h('div', { class: 'wb-section-title', style: 'font-size:20px;margin-bottom:2px' }, '稳态系数辨识'),
+                    WB().h('div', { class: 'wb-hint', style: 'margin:0' },
+                        (t.name || '稳态建模') + ' / ' + (t.runId || '—') + ' / 已安全停止')));
+
+                // 确认条:后端确认停止后才到达本视图;完成组/检查点明细后端未提供接口,如实注明
+                wrap.appendChild(WB().h('div', { class: 'wb-infobar' },
+                    '已安全停止。'
+                    + (t.message ? '服务端记录:' + t.message + '。' : '')
+                    + '完成组与检查点明细以服务端记录为准。'));
+
+                // 检查项表(01-26):后端没有的项如实写"以服务端记录为准"/"--",不编造
+                const UNKNOWN = '以服务端记录为准';
+                wrap.appendChild(WB().h('table', { class: 'wb-table', style: 'max-width:1180px' },
+                    WB().h('tr', null, ['检查项', '状态'].map(x => WB().h('th', null, x))),
+                    [
+                        ['算法源码与求解设置', UNKNOWN],
+                        ['训练数据与准备记录', t.trainingFile ? '已登记 · ' + fileName(t.trainingFile) : '未提供训练数据'],
+                        ['模型运行包与热参数', UNKNOWN],
+                        ['可恢复位置', '--(当前服务版本未提供检查点明细)'],
+                        ['正式模型', '本次尚未完成;原模型不受影响']
+                    ].map(r => WB().h('tr', null,
+                        WB().h('td', null, r[0]),
+                        WB().h('td', { class: 'wb-hint' }, r[1])))));
+
+                // 计时表(01-26):首次预计取程序自估;累计取startedAt→finishedAt墙钟;暂停未单独记录
+                const est = estimateFromLogs(state.log);
+                wrap.appendChild(WB().h('table', { class: 'wb-table', style: 'margin-top:14px;max-width:1180px' },
+                    WB().h('tr', null, ['首次预计', '累计有效计算', '暂停等待'].map(x => WB().h('th', null, x))),
+                    WB().h('tr', null,
+                        WB().h('td', null, est ? '约' + est.center.toFixed(1) + '分钟(工程范围' + est.lo.toFixed(1) + '~' + est.hi.toFixed(1) + '分钟)' : '暂无法可靠估计'),
+                        WB().h('td', null, (t.startedAt && t.finishedAt) ? formatDur(t.finishedAt - t.startedAt) + '(墙钟)' : '—'),
+                        WB().h('td', { class: 'wb-hint' }, '—(未单独记录)'))));
+
+                wrap.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin:12px 0 4px' },
+                    '恢复后分别记录当次和累计用时;暂停等待不计入算法耗时。'));
+                wrap.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin:0 0 14px' },
+                    '若身份不一致:保留检查点,显示差异,另建新运行。'));
+
+                // 查看检查点抽屉:真实日志 + 如实说明(无检查点明细接口)
+                const ckptDrawer = WB().h('div', null);
+                wrap.appendChild(ckptDrawer);
+                wrap.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'max-width:1180px;margin-top:6px' },
+                    WB().h('button', {
+                        class: 'wb-btn wb-btn-primary',
+                        // 说明书11.4:后端无检查点恢复API,不得假装能恢复
+                        onclick: () => toast('当前服务版本未提供检查点恢复;请编辑为新运行', 'error')
+                    }, '继续本次计算'),
+                    WB().h('button', {
+                        class: 'wb-btn wb-btn-outline',
+                        onclick: () => {
+                            ckptDrawer.innerHTML = '';
+                            ckptDrawer.appendChild(WB().h('div', { class: 'wb-card', style: 'padding:14px;max-width:1180px;margin-bottom:10px' },
+                                WB().h('div', { class: 'wb-section-title', style: 'margin-bottom:8px' }, '检查点(服务端记录)'),
+                                WB().h('div', { class: 'wb-hint', style: 'margin-bottom:8px' },
+                                    '当前服务版本未提供检查点明细接口;以下为任务日志末尾,供核对停止位置。'),
+                                WB().h('pre', {
+                                    style: 'max-height:220px;overflow:auto;background:#101418;color:#cde3d8;padding:12px;'
+                                        + 'border-radius:8px;font-size:12px;line-height:1.5;white-space:pre-wrap'
+                                }, (state.log && state.log.length ? state.log.join('\n') : '暂无日志输出'))));
+                        }
+                    }, '查看检查点'),
+                    WB().h('div', { class: 'wb-spacer' }),
+                    WB().h('button', {
+                        class: 'wb-btn wb-btn-outline',
+                        onclick: () => { state.editNewRun = true; renderBody(); }
+                    }, '编辑为新运行')));
+                wrap.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin-top:10px' },
+                    '检查点恢复仅限已验证的相同身份和保存粒度;不承诺任意迁移或任意时刻恢复。'));
+                return wrap;
             }
         }
 
@@ -2241,16 +2342,24 @@
                     const t = state.task || {};
                     const changed = t.status !== prevStatus || t.uqStatus !== prevUq || t.prepMessage !== prevPrep;
                     // 运行中显示旧版同款 loading 遮罩,结束后自动隐藏
+                    // (01-13:STOP_REQUESTED为琥珀过渡态页,不再盖遮罩,保持停止进度可见)
                     const uqRunning = t.uqStatus === 'EXECUTING' || t.uqStatus === 'PREPARING';
                     const prepRunning = state.prepWait || t.status === 'PREPARING';
                     if (prepRunning) {
                         showRunLoading(state.loadingTitle || '数据准备中');
-                    } else if (t.status === 'RUNNING' || t.status === 'STOP_REQUESTED') {
+                    } else if (t.status === 'RUNNING') {
                         showRunLoading(state.loadingTitle || '辨识运行中');
                     } else if (uqRunning && state.tab === 'uq') {
                         showRunLoading(state.loadingTitle || 'UQ 评估运行中');
                     } else {
                         hideRunLoading();
+                    }
+                    // 后端确认停止(01-26):此时才进入"已安全停止"检查点视图,并停止轮询
+                    if (t.status === 'STOPPED' && prevStatus && prevStatus !== 'STOPPED') {
+                        stopPolling();
+                        renderBody();
+                        toast('已安全停止:' + (t.message || '运行已在安全点结束'), 'success');
+                        return;
                     }
                     if (t.status === 'COMPLETED' && state.tab !== 'uq' && prevStatus !== 'COMPLETED') {
                         stopPolling();

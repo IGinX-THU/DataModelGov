@@ -1356,11 +1356,11 @@ class VisualAnalysis extends HTMLElement {
                 // 显示单个任务分析
                 this.showSingleTaskAnalysis(record, queryData);
             } else {
-                this.showToast('数据查询失败，无法进行分析', 'error');
+                this.showToast('数据查询失败，无法进行分析；请稍后重试或更换任务', 'error');
             }
         } catch (error) {
             console.error('分析失败:', error);
-            this.showToast('分析出现错误，请重试', 'error');
+            this.showToast('分析出现错误：本次未生成分析结果；请重试', 'error');
         }
     }
 
@@ -1387,7 +1387,7 @@ class VisualAnalysis extends HTMLElement {
             const allPaths = [...inputPaths, ...outputPaths];
 
             if (allPaths.length === 0) {
-                this.showToast('没有可用的测点路径，无法查询数据', 'warning');
+                this.showToast('没有可用的测点路径，无法查询数据；请先为该任务配置输入/输出测点', 'warning');
                 return null;
             }
 
@@ -2077,7 +2077,7 @@ class VisualAnalysis extends HTMLElement {
 
         // 如果分析后仍然没有数据，显示错误
         if (!this.currentChartData) {
-            this.showToast('分析失败，无法生成报告', 'error');
+            this.showToast('分析失败，无法生成报告；请先确认所选任务已有可查询数据', 'error');
             return;
         }
 
@@ -3180,7 +3180,7 @@ class VisualAnalysis extends HTMLElement {
 
         } catch (error) {
             console.error('导出失败:', error);
-            this.showToast('导出失败，请重试', 'error');
+            this.showToast('导出失败：任务数据未导出；请稍后重试', 'error');
         }
     }
 
@@ -3608,7 +3608,7 @@ class VisualAnalysis extends HTMLElement {
             // 检查timestamp是否存在
             if (!record.timestamp) {
                 console.error('任务缺少timestamp字段:', record);
-                this.showToast('任务信息不完整，无法获取日志', 'error');
+                this.showToast('任务信息不完整，无法获取日志；请刷新任务列表后重试', 'error');
                 return;
             }
             

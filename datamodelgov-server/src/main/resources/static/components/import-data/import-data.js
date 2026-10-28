@@ -130,14 +130,14 @@ class ImportDataComponent extends HTMLElement {
         if (file) {
             // 验证文件类型
             if (!file.name.toLowerCase().endsWith('.csv')) {
-                csvFileError.textContent = '仅支持CSV格式文件';
+                csvFileError.textContent = '文件格式不符合要求：仅支持CSV格式文件；本次未导入，请更换为CSV文件后重试';
                 csvFileError.classList.add('show');
                 return;
             }
 
             // 验证文件大小（1GB）
             if (file.size > 1024 * 1024 * 1024) {
-                csvFileError.textContent = '文件大小不能超过1GB';
+                csvFileError.textContent = '文件大小超过1GB上限：无法导入该文件；请压缩或拆分文件后重试';
                 csvFileError.classList.add('show');
                 return;
             }
@@ -201,40 +201,41 @@ class ImportDataComponent extends HTMLElement {
 
         // 验证输入
         if (!targetPath) {
+            targetPathError.textContent = '请输入目标存储路径前缀：无法开始导入；请先填写存储路径前缀';
             targetPathError.classList.add('show');
             return;
         }
 
         // 目标存储路径前缀不能包含"_system"
         if (targetPath.includes('_system')) {
-            targetPathError.textContent = '目标存储路径前缀不能包含"_system"';
+            targetPathError.textContent = '目标存储路径前缀不能包含"_system"：该前缀为系统保留；请更换路径前缀后重试';
             targetPathError.classList.add('show');
             return;
         }
 
         // 不能纯数字
         if (/^\d+$/.test(targetPath)) {
-            targetPathError.textContent = '目标存储路径前缀不允许为纯数字';
+            targetPathError.textContent = '目标存储路径前缀不允许为纯数字：不符合命名规则；请改为字母开头并由字母、数字、下划线组成';
             targetPathError.classList.add('show');
             return;
         }
 
         // 不能纯下划线
         if (/^_+$/.test(targetPath)) {
-            targetPathError.textContent = '目标存储路径前缀不允许为纯下划线';
+            targetPathError.textContent = '目标存储路径前缀不允许为纯下划线：不符合命名规则；请改为字母开头并由字母、数字、下划线组成';
             targetPathError.classList.add('show');
             return;
         }
 
         // 目标存储路径前缀格式验证：以.分割，每个节点只能包含字母、数字、下划线，且不能以数字开头，每个节点不能是纯下划线
         if (!/^([a-zA-Z][a-zA-Z0-9_]*|_[a-zA-Z0-9][a-zA-Z0-9_]*)(\.([a-zA-Z][a-zA-Z0-9_]*|_[a-zA-Z0-9][a-zA-Z0-9_]*))*$/.test(targetPath)) {
-            targetPathError.textContent = '目标存储路径前缀格式不正确，支持字母、数字、下划线，不能纯数字，不能纯下划线，不能数字开头';
+            targetPathError.textContent = '目标存储路径前缀格式不正确：本次未开始导入；前缀仅支持字母、数字、下划线，不能纯数字、纯下划线或数字开头，请修改后重试';
             targetPathError.classList.add('show');
             return;
         }
 
         if (!file) {
-            csvFileError.textContent = '请选择CSV文件';
+            csvFileError.textContent = '尚未选择CSV文件：无法开始导入；请先选择要导入的CSV文件';
             csvFileError.classList.add('show');
             return;
         }
@@ -297,11 +298,11 @@ class ImportDataComponent extends HTMLElement {
                     dataViz.loadData();
                 }
             } else {
-                this.showToast(result.message || '数据导入失败', 'error');
+                this.showToast(result.message || '数据导入失败：数据未写入资源库；请检查文件内容与路径前缀后重试', 'error');
             }
         } catch (error) {
             console.error('导入数据失败:', error);
-            this.showToast('导入失败，请稍后重试', 'error');
+            this.showToast('导入失败：网络或服务异常，数据未导入；请稍后重试', 'error');
         } finally {
             // 恢复按钮状态
             importBtn.disabled = false;

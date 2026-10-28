@@ -238,6 +238,26 @@ class ModelDetail extends HTMLElement {
                 createTime.textContent = '-';
             }
         }
+
+        // 文件身份(设计说明书2.2:详情包含数据身份)——仅展示元数据接口真实返回的字段,
+        // 接口未携带时不显示该行,不编造;引擎域的训练测试结果/UQ与预测归工作台模型成果页
+        const basicList = this.shadowRoot.querySelector('.basic-info-list');
+        if (basicList) {
+            basicList.querySelectorAll('.info-item.extra-identity').forEach(el => el.remove());
+            const identityItems = [
+                ['文件Md5', modelInfo.fileMd5],
+                ['文件大小', modelInfo.fileSize != null ? modelInfo.fileSize + ' B' : null],
+                ['存储位置', modelInfo.storagePath]
+            ];
+            identityItems.forEach(([label, val]) => {
+                if (val == null || val === '') return;
+                const item = document.createElement('div');
+                item.className = 'info-item extra-identity';
+                item.innerHTML = '<div class="info-label">' + label + '</div>'
+                    + '<div class="info-value" style="word-break:break-all">' + val + '</div>';
+                basicList.appendChild(item);
+            });
+        }
         
         // 更新版本历史
         this.updateVersionHistory(modelInfo);

@@ -2,6 +2,7 @@ package com.tsinghua.engine;
 
 import com.tsinghua.matlab.MatlabFunctionRunner;
 import com.tsinghua.service.ProgramService;
+import com.tsinghua.entity.EngineModelAssetEntity;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -41,9 +42,81 @@ public class F3FlightService {
     @Autowired
     private EngineProjectStore store;
 
+    @Autowired
+    private com.tsinghua.engine.EngineModelRecordService modelRecordService;
+
     private final ExecutorService executor = Executors.newFixedThreadPool(2);
     private final Map<String, MatlabFunctionRunner> running = new ConcurrentHashMap<>();
     private final Map<String, List<String>> logBuffers = new ConcurrentHashMap<>();
+
+    /** F3 运行包清单SHA占位值(适配器会在MATLAB侧用 sht_f3_three_component_assets('manifest')
+     *  实测覆盖——local_selection 按包身份切换:legacy R036=2977A31D...CB3,DLL_MAIN_20261010=71EBF628...E13,
+     *  此值仅作兜底;不得再从交付源码猜常量)。 */
+    private static final String F3_RUNTIME_MANIFEST_SHA256 =
+            "71EBF628AD3F8B0EFDB98F736754766EB1F879BA3F7D32A5C10DCAC7F6452E13";
+
+    /** 文件 SHA-256(大写hex,与MATLAB local_hash 输出一致;strcmpi 不区分大小写)。 */
+    private static String sha256Hex(File f) throws IOException {
+        java.security.MessageDigest d;
+        try { d = java.security.MessageDigest.getInstance("SHA-256"); }
+        catch (java.security.NoSuchAlgorithmException e) { throw new IOException("SHA-256不可用", e); }
+        try (java.io.InputStream in = java.nio.file.Files.newInputStream(f.toPath())) {
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) > 0) d.update(buf, 0, n);
+        }
+        StringBuilder sb = new StringBuilder();
+        for (byte b : d.digest()) sb.append(String.format("%02X", b));
+        return sb.toString();
+    }
+
+    /** F3 飞参测量Excel合同列(sht_f3_steady_task L207 targets;readtable 要求 Sheet 名恰为 Data)。 */
+    private static final String[] F3_MEASUREMENT_COLUMNS = {
+            "sample_id", "time_s", "Ps0", "Tt1", "Pt3_eq", "Ng", "Np",
+            "Mkp", "Wf", "Tt45", "Altitude", "Mach", "Ts_amb"};
+
+    /**
+     * 前置校验飞参Excel:必须有名为 Data 的工作表,且表头含全部合同列。
+     * 不校验则MATLAB在 readtable 处报「工作表名称 'Data' 不存在」或映射断言,用户无从修复;
+     * 此处给可读错误并列出实际sheet名/缺失列,让用户能自查模板。
+     */
+    private static void validateMeasurementExcel(File f, String label) throws IOException {
+        if (f == null || !f.isFile()) return;
+        try (java.io.InputStream in = java.nio.file.Files.newInputStream(f.toPath());
+             org.apache.poi.ss.usermodel.Workbook wb = org.apache.poi.ss.usermodel.WorkbookFactory.create(in)) {
+            List<String> sheets = new ArrayList<>();
+            for (int i = 0; i < wb.getNumberOfSheets(); i++) sheets.add(wb.getSheetName(i));
+            int idx = sheets.indexOf("Data");
+            if (idx < 0) {
+                throw new IllegalStateException(label + "必须包含名为 Data 的工作表(当前工作表: "
+                        + String.join(", ", sheets) + ");请使用飞参模板格式(首行表头: "
+                        + String.join(", ", F3_MEASUREMENT_COLUMNS) + ")。");
+            }
+            org.apache.poi.ss.usermodel.Row head = wb.getSheetAt(idx).getRow(0);
+            List<String> header = new ArrayList<>();
+            if (head != null) {
+                for (int c = 0; c < head.getLastCellNum(); c++) {
+                    org.apache.poi.ss.usermodel.Cell cell = head.getCell(c);
+                    if (cell == null) continue;
+                    String v = cell.getCellType() == org.apache.poi.ss.usermodel.CellType.NUMERIC
+                            ? String.valueOf((long) cell.getNumericCellValue()) : cell.getStringCellValue().trim();
+                    if (!v.isEmpty()) header.add(v);
+                }
+            }
+            List<String> missing = new ArrayList<>();
+            for (String col : F3_MEASUREMENT_COLUMNS) {
+                if (!header.contains(col)) missing.add(col);
+            }
+            if (!missing.isEmpty()) {
+                throw new IllegalStateException(label + " 的 Data 工作表缺少必填列: "
+                        + String.join(", ", missing) + "(当前表头: " + String.join(", ", header) + ")。");
+            }
+        } catch (IllegalStateException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IOException(label + " 无法解析为 Excel(.xlsx): " + e.getMessage(), e);
+        }
+    }
 
     /** kind → {结果子目录, 任务函数, 适配器文件, 交付Excel名} */
     private static final Map<String, String[]> KIND_DIRS;
@@ -72,6 +145,12 @@ public class F3FlightService {
         m.append("addpath('").append(programCopy.getAbsolutePath().replace('\\', '/')).append("', '-begin');\n");
         m.append("rehash;\n");
         m.append("cfg = c.configuration;\n");
+        // 运行包清单SHA必须由交付资产模块运行时实测(local_selection会按包身份切换目录与SHA,
+        // Java侧硬编码常量会随交付包版本漂移——实测legacy=2977A31D...,DLL_MAIN=71EBF628...),
+        // workbookSha256是普通文件SHA由Java实测不变,这里仅覆盖runtimeManifestSha256
+        m.append("if isfield(cfg,'parentRuntimeBinding') && ~isempty(fieldnames(cfg.parentRuntimeBinding))\n");
+        m.append("    cfg.parentRuntimeBinding.runtimeManifestSha256 = sht_f3_three_component_assets('manifest').sha256;\n");
+        m.append("end\n");
         if ("sht_f3_transient_task".equals(taskFn)) {
             // transient 合同(F3:TF:Config 白名单:runId/modelId/trainingFile/testFile/parentWorkbook/sheets/roots/...)与 steady
             // (taskId/identificationFile/engineId/sortieId/...)完全不同;按白名单重建 cfg,忽略 Java 业务字段
@@ -80,6 +159,8 @@ public class F3FlightService {
             m.append("    'trainingSheet','Data','testSheet','Data', ...\n");
             m.append("    'outputRoot',cfg.outputRoot,'reportRoot',cfg.reportRoot);\n");
             m.append("if isfield(cfg,'parentWorkbook'), tf.parentWorkbook = char(string(cfg.parentWorkbook)); end\n");
+            // 父模型运行时绑定(struct透传):sht_f3_transient_task L351-358 同样消费,丢弃会导致同样的SHA校验失败
+            m.append("if isfield(cfg,'parentRuntimeBinding'), tf.parentRuntimeBinding = cfg.parentRuntimeBinding; end\n");
             m.append("cfg = tf;\n");
         }
         // 注意:不得把 selection 塞进 cfg——sht_f3_*_task 的 local_config 白名单会拒"未知配置:selection";
@@ -261,7 +342,16 @@ public class F3FlightService {
         final String key = task.getId();
         boolean evo = "evolution".equals(task.getKind());
         if (!evo && (task.getConfirmationFile() == null || task.getConfirmationFile().isEmpty())) {
-            throw new IOException("缺少A阶段确认凭据(confirmationFile),请先执行数据意图确认");
+            // 自愈兜底:凭据文件实际在盘但实体未记录(如旧版本confirm成功未落库凭据路径)时,
+            // 扫描输出目录补挂,避免用户重跑4分钟的检查流程;真没确认过才拒
+            File outRoot = new File(store.taskWorkDir(task.getProjectId(), task.getId()), kindDirs(task.getKind())[0]);
+            File conf = findConfirmationFile(outRoot);
+            if (conf == null) {
+                throw new IOException("缺少A阶段确认凭据(confirmationFile),请先执行数据意图确认(检查数据与模型)");
+            }
+            task.setConfirmationFile(conf.getAbsolutePath().replace('\\', '/'));
+            store.saveTask(task);
+            log.info("F3任务{}凭据实体缺失,已从输出目录自愈补挂: {}", key, conf.getName());
         }
         task.setStatus(EngineModels.ModelingTask.ST_RUNNING);
         task.setMessage("F3建模执行中(run)");
@@ -303,6 +393,10 @@ public class F3FlightService {
             call.put("resultDirectory", outputRoot.getAbsolutePath().replace('\\', '/'));
             if (evo) {
                 // T4_EVOLUTION_V2:只传业务字段,模板字段由适配器补全
+                // 测量文件(sorties.measurementFile)合同必填非空,空时前置给可读错误,不让MATLAB报合同错
+                if (task.getIdentificationFile() == null || task.getIdentificationFile().trim().isEmpty()) {
+                    throw new IllegalStateException("请先上传架次试车测量Excel(Data表),再执行核验/整批执行");
+                }
                 String runId = sanitizeEvolutionRunId(task.getRunId() == null ? key : task.getRunId());
                 Map<String, Object> config = new LinkedHashMap<>();
                 config.put("projectId", task.getProjectId());
@@ -337,13 +431,39 @@ public class F3FlightService {
                 Map<String, Object> configuration = new LinkedHashMap<>();
                 configuration.put("taskId", key + "_" + action);
                 boolean transientTask = "sht_f3_transient_task".equals(taskFn);
-                // runId 仅 transient 合同(F3:TF:Config 白名单含 runId,适配器 tf 从此取值);
-                // steady 的 local_config 白名单不含 runId,塞入即报"未知配置:runId"
+                // 训练文件两合同均必填(required清单),空时前置给可读错误,不让MATLAB报模糊路径错
+                if (task.getIdentificationFile() == null || task.getIdentificationFile().trim().isEmpty()) {
+                    throw new IllegalStateException("请先上传训练飞参文件(本架次训练 Excel),再进行检查/确认");
+                }
+                // runId 仅 transient 合同;parentSource/parentRoute/parentWorkbook 是 steady required 清单
+                // (preview/confirm 即校验,缺了报"必须显式提供%s")——parentWorkbook 两合同都必填,全程传;
+                // transient 适配器 tf 只取白名单字段,parentSource/parentRoute 多传会被丢弃不进白名单
                 if (transientTask) {
                     configuration.put("runId", sanitizeEvolutionRunId(task.getRunId() == null ? key : task.getRunId()));
                 }
+                configuration.put("parentSource", task.getParentSource() == null ? "2p4" : task.getParentSource());
+                configuration.put("parentRoute", task.getParentRoute() == null ? "steady" : task.getParentRoute());
+                String parentWorkbookPath = resolveParentWorkbook(task);
+                configuration.put("parentWorkbook", parentWorkbookPath);
+                // 父模型运行时绑定(sht_f3_current_contract L455-462):父Excel既非内嵌运行身份也非
+                // MAIN已核历史文件时,必须显式声明关联——workbookSha256=父Excel实测SHA;
+                // runtimeManifestSha256=交付源码固定常量(sht_f3_three_component_assets.m L32,F3_R036运行包);
+                // 换交付运行包版本时必须同步此常量,否则MATLAB在绑定校验处报SHA不符
+                Map<String, Object> binding = new LinkedHashMap<>();
+                binding.put("workbookSha256", sha256Hex(new File(parentWorkbookPath)));
+                binding.put("runtimeManifestSha256", F3_RUNTIME_MANIFEST_SHA256);
+                binding.put("basis", "DataModelGov自动关联:父工作簿SHA与F3_R036运行包清单SHA已核验");
+                configuration.put("parentRuntimeBinding", binding);
                 configuration.put("identificationFile", task.getIdentificationFile() == null ? "" : task.getIdentificationFile().replace('\\', '/'));
                 configuration.put("validationFile", task.getValidationFile() == null ? "" : task.getValidationFile().replace('\\', '/'));
+                // 飞参Excel合同前置校验(Data sheet+13必填列):让用户在发起前看到可读格式错误,
+                // 而不是MATLAB readtable 的「工作表名称 'Data' 不存在」
+                if (!evo) {
+                    validateMeasurementExcel(new File(configuration.get("identificationFile").toString()), "训练飞参文件");
+                    if (task.getValidationFile() != null && !task.getValidationFile().trim().isEmpty()) {
+                        validateMeasurementExcel(new File(task.getValidationFile().replace('\\', '/')), "独立测试文件");
+                    }
+                }
                 configuration.put("outputRoot", outputRoot.getAbsolutePath().replace('\\', '/'));
                 configuration.put("reportRoot", reportRoot.getAbsolutePath().replace('\\', '/'));
                 configuration.put("engineId", task.getF3EngineId() == null ? "E-001" : task.getF3EngineId());
@@ -355,9 +475,6 @@ public class F3FlightService {
                     configuration.put("regularizationStrength", task.getRegularizationStrength());
                 }
                 if ("run".equals(action)) {
-                    configuration.put("parentSource", task.getParentSource() == null ? "2p4" : task.getParentSource());
-                    configuration.put("parentRoute", task.getParentRoute() == null ? "steady" : task.getParentRoute());
-                    configuration.put("parentWorkbook", resolveParentWorkbook(task));
                     configuration.put("confirmationFile", task.getConfirmationFile().replace('\\', '/'));
                     if (transientTask) {
                         configuration.put("runId", task.getRunId() == null ? key : task.getRunId());
@@ -391,6 +508,9 @@ public class F3FlightService {
             if (isConfirm) {
                 File conf = findConfirmationFile(outputRoot);
                 tk.setStatus(EngineModels.ModelingTask.ST_READY);
+                // 凭据路径必须写回任务实体:前端「进入稳态参数更新」按钮以 t.confirmationFile 为解锁条件,
+                // 只算不set则后台确认完成后按钮永远置灰
+                tk.setConfirmationFile(conf != null ? conf.getAbsolutePath().replace('\\', '/') : null);
                 tk.setPrepMessage("数据意图已确认(窗口冻结凭据已生成)");
                 tk.setMessage("F3数据意图确认完成;可执行建模");
                 emitLog(key, "F3数据意图确认完成");
@@ -445,13 +565,43 @@ public class F3FlightService {
     }
 
     /**
-     * 解析父工作簿:parentWorkbook未登记时从项目内已完成F3任务(steady/evolution)的
-     * 交付Excel解析(取最新)。MATLAB合同要求root.workbook必填单行文本,空串会被
-     * "root.workbook为空或含换行"拒绝;找不到交付物时明确报错引导用户先完成上游任务。
+     * 解析父工作簿,优先级:①登记值 ②用户在发起时「选择已有模型」指定的模型成果交付Excel
+     * (parentModelId→模型清单deliveryFile,最直接的用户意图) ③项目内已完成F3任务的
+     * 交付Excel(取最新)。MATLAB合同要求root.workbook必填单行文本,空串会被
+     * "root.workbook为空或含换行"拒绝;找不到交付物时明确报错引导用户。
      */
     private String resolveParentWorkbook(EngineModels.ModelingTask task) throws IOException {
         if (task.getParentWorkbook() != null && !task.getParentWorkbook().trim().isEmpty()) {
             return task.getParentWorkbook().replace('\\', '/');
+        }
+        // ②发起任务时指定的项目模型:模型成果清单按 projectId+modelId 定位,取其交付Excel
+        if (task.getParentModelId() != null && !task.getParentModelId().trim().isEmpty()) {
+            try {
+                EngineModelAssetEntity m = modelRecordService.queryByKey(task.getProjectId(), task.getParentModelId());
+                if (m != null && m.getDeliveryFile() != null && !m.getDeliveryFile().trim().isEmpty()) {
+                    File f = new File(m.getDeliveryFile());
+                    if (f.isFile()) {
+                        log.info("F3父工作簿取自指定模型: task={} model={} -> {}", task.getId(), m.getModelId(), f.getAbsolutePath());
+                        return f.getAbsolutePath().replace('\\', '/');
+                    }
+                    log.warn("F3指定模型{}的交付文件不存在: {},回退自动解析", m.getModelId(), m.getDeliveryFile());
+                }
+            } catch (Exception e) {
+                log.warn("F3指定模型{}解析失败,回退自动解析: {}", task.getParentModelId(), e.getMessage());
+            }
+        }
+        // ③项目模型成果清单任意已交付模型(登记时间倒序;涵盖TC24稳态辨识/TC27更新/F3/自演化交付,
+        //   清单是所有建模工作流的统一成果入口——用户项目首次做飞参建模时父模型通常来自TC24辨识)
+        try {
+            for (EngineModelAssetEntity m : modelRecordService.queryList(task.getProjectId(), 1, 50)) {
+                if (m.getDeliveryFile() == null || m.getDeliveryFile().trim().isEmpty()) continue;
+                File f = new File(m.getDeliveryFile());
+                if (!f.isFile()) continue;
+                log.info("F3父工作簿取自项目模型清单: task={} model={} -> {}", task.getId(), m.getModelId(), f.getAbsolutePath());
+                return f.getAbsolutePath().replace('\\', '/');
+            }
+        } catch (Exception e) {
+            log.warn("F3父工作簿模型清单扫描失败,回退任务结果解析: {}", e.getMessage());
         }
         File fallback = null;
         long newest = -1L;
@@ -467,8 +617,9 @@ public class F3FlightService {
             if (stamp > newest) { newest = stamp; fallback = f; }
         }
         if (fallback == null) {
-            throw new IllegalStateException("父工作簿未登记且项目内没有已完成的稳态辨识/自演化交付Excel;"
-                    + "请先完成上游F3任务(或在其模型成果登记后重试),再发起本任务。");
+            throw new IllegalStateException("父工作簿不可用:未指定项目模型(可在发起任务的「选择已有模型」中指定),"
+                    + "也未登记工作簿路径,且项目内没有已交付的模型成果或已完成的稳态辨识/自演化任务;"
+                    + "请先完成上游建模任务(如稳态系数辨识)或指定模型后重试。");
         }
         log.info("F3父工作簿自动解析: task={} -> {}", task.getId(), fallback.getAbsolutePath());
         return fallback.getAbsolutePath().replace('\\', '/');

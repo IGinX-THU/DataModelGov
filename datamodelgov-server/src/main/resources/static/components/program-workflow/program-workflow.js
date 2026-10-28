@@ -172,7 +172,7 @@ class ProgramWorkflow extends HTMLElement {
       this.destroyExtension();
       this.setEnvStatus('error', '计算环境异常');
       this.setLog('工作流加载失败: ' + (error.message || error));
-      this.renderMessage('无法加载程序工作流：' + (error.message || error), true);
+      this.renderMessage('无法加载程序工作流：' + (error.message || error) + '；本次未进入工作流，请返回程序管理重新打开，或检查程序配置与插件后再试', true);
       return null;
     }
   }
@@ -313,7 +313,7 @@ class ProgramWorkflow extends HTMLElement {
       btn.addEventListener('click', () => {
         if (this.pluginInstance && typeof this.pluginInstance.onHeaderAction === 'function') {
           Promise.resolve(this.pluginInstance.onHeaderAction(a.label, section.id))
-            .catch(e => this.setLog('操作失败: ' + (e && e.message || e)));
+            .catch(e => this.setLog('操作失败：' + (e && e.message || e) + '；本次操作未完成，请根据提示处理后重试'));
         } else {
           this.setLog('操作：' + a.label);
         }
