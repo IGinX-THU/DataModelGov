@@ -165,7 +165,7 @@
                             });
                             if (resp && (resp.success || resp.code === 200) && resp.data) {
                                 state.task = resp.data;
-                                // 草稿期暂存的本地文件保存草稿后自动上传,避免视图切换后"已选文件"丢失
+                                // 草稿期暂存的本地文件保存任务后自动上传,避免视图切换后"已选文件"丢失
                                 const pend = state.draftFiles || {};
                                 const kinds = ['identification', 'validation'].filter(k => pend[k] instanceof File);
                                 try {
@@ -179,11 +179,11 @@
                                     }
                                 } finally { delete state.draftFiles; state.draft = {}; }
                                 renderBody();
-                            } else toast((resp && resp.message) || '保存草稿失败', 'error');
-                        } catch (e) { toast('保存草稿失败:' + e.message, 'error'); }
+                            } else toast((resp && resp.message) || '保存任务失败', 'error');
+                        } catch (e) { toast('保存任务失败:' + e.message, 'error'); }
                         createBtn.classList.remove('disabled');
                     }
-                }, '保存草稿');
+                }, '保存任务');
 
                 wrap.appendChild(WB().h('div', { class: 'wb-form-grid', style: 'grid-template-columns:1fr 1fr 1fr;max-width:1280px' },
                     WB().h('div', { class: 'wb-field' }, WB().h('label', null, '所属发动机'), engineInput),
@@ -204,7 +204,7 @@
                 wrap.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'margin-top:10px' },
                     createBtn,
                     WB().h('div', { class: 'wb-spacer' }),
-                    WB().h('button', { class: 'wb-btn wb-btn-primary disabled', title: '先保存草稿' }, '检查数据与模型')));
+                    WB().h('button', { class: 'wb-btn wb-btn-primary', style: 'opacity:.5', onclick: () => toast('先保存任务(创建架次),任务建立后可检查数据与模型', 'info') }, '检查数据与模型')));
                 return wrap;
             }
 
@@ -284,7 +284,7 @@
             fileInput.addEventListener('change', async () => {
                 const f = fileInput.files && fileInput.files[0];
                 if (!f) return;
-                if (!state.task) { state.draft[kind] = f.name; (state.draftFiles = state.draftFiles || {})[kind] = f; nameBox.value = f.name; toast('已选择文件,保存草稿后自动上传', 'info'); return; }
+                if (!state.task) { state.draft[kind] = f.name; (state.draftFiles = state.draftFiles || {})[kind] = f; nameBox.value = f.name; toast('已选择文件,保存任务后自动上传', 'info'); return; }
                 const fd = new FormData();
                 fd.append('file', f);
                 nameBox.value = '上传中:' + f.name + '...';
@@ -318,11 +318,12 @@
                         return libSel;
                     })(),
                     WB().h('button', {
-                        class: 'wb-btn wb-btn-outline' + (state.task ? '' : ' disabled'),
-                        title: state.task ? '' : '先保存草稿再从库带入',
+                        class: 'wb-btn wb-btn-outline',
+                        style: state.task ? '' : 'opacity:.5',
+                        title: state.task ? '' : '先保存任务(创建架次),再从文件库带入',
                         onclick: async () => {
                             const sel = row.querySelector('select');
-                            if (!state.task) { toast('先保存草稿', 'error'); return; }
+                            if (!state.task) { toast('先保存任务(创建架次),再从文件库带入', 'error'); return; }
                             if (!sel || !sel.value) { toast('请先在下拉中选择库内文件', 'error'); return; }
                             try {
                                 const resp = await window.AppConfig.enginePost(
@@ -339,21 +340,19 @@
                     }, '带入'),
                     pickBtn,
                     WB().h('button', {
-                        class: 'wb-btn wb-btn-outline' + (current ? '' : ' disabled'),
+                        class: 'wb-btn wb-btn-outline',
+                        style: current ? '' : 'opacity:.5',
                         onclick: async () => {
-                            if (!current) return;
+                            if (!current) { toast('请先上传或从文件库带入文件', 'error'); return; }
+                            if (!state.task) { toast('本地文件在保存任务后自动上传,届时可预览', 'info'); return; }
                             const name = fileName(current);
                             try {
-                                const resp = await window.AppConfig.engineGet('projects/'
-                                    + encodeURIComponent(ctx.project.id || '') + '/files/page',
-                                    { category: 'data', name: name, pageSize: 10 });
-                                const hit = resp && resp.data && Array.isArray(resp.data.rows)
-                                    ? resp.data.rows.find(r0 => r0.name === name) : null;
-                                if (!hit) { toast('该文件未在项目文件库中,无法预览', 'error'); return; }
+                                // 任务直传/带入文件走任务文件预览接口(文件不必在文件库)
                                 const pv = await window.AppConfig.engineGet('projects/'
-                                    + encodeURIComponent(ctx.project.id || '') + '/files/' + hit.id + '/preview');
-                                if (pv && pv.code === 200 && pv.data) {
-                                    window.Workbench.showFilePreview(name, pv.data);
+                                    + encodeURIComponent(ctx.project.id || '') + '/tasks/'
+                                    + encodeURIComponent(state.task.id) + '/file-preview?kind=' + encodeURIComponent(kind));
+                                if (pv && (pv.success || pv.code === 200) && pv.data) {
+                                    window.Workbench.showFilePreview(pv.data.fileName || name, pv.data);
                                 } else toast((pv && pv.message) || '预览失败', 'error');
                             } catch (e) { toast('预览失败:' + e.message, 'error'); }
                         }

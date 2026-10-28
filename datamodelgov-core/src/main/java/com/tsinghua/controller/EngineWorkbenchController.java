@@ -770,58 +770,87 @@ public class EngineWorkbenchController {
             FileLibraryEntity e = fileLibraryMetaService.queryById(id);
             if (e == null) return Result.error("文件库条目不存在");
             File f = fileBackupService.resolve(e);
-            Map<String, Object> out = new LinkedHashMap<>();
-            out.put("fileName", e.getName());
-            out.put("ext", e.getExt());
-            out.put("size", e.getSize());
-            out.put("sha256", e.getSha256());
-            out.put("restored", !new File(e.getPath()).isFile() || true); // resolve后本地必然存在;标记保留
-            if ("xlsx".equals(e.getExt()) || "xls".equals(e.getExt())) {
-                DataFormatter fmt = new DataFormatter();
-                try (InputStream in = Files.newInputStream(f.toPath()); Workbook wb = WorkbookFactory.create(in)) {
-                    List<String> names = new ArrayList<>();
-                    for (int i = 0; i < wb.getNumberOfSheets(); i++) names.add(wb.getSheetName(i));
-                    Sheet sheet = null;
-                    for (int i = 0; i < wb.getNumberOfSheets(); i++) {
-                        String n = wb.getSheetName(i);
-                        if ("Data".equalsIgnoreCase(n) || "数据".equals(n)) { sheet = wb.getSheetAt(i); break; }
-                    }
-                    if (sheet == null) sheet = wb.getSheetAt(0);
-                    out.put("sheetNames", names);
-                    out.put("sheet", sheet.getSheetName());
-                    List<String> headers = new ArrayList<>();
-                    Row hr = sheet.getRow(0);
-                    if (hr != null) {
-                        for (int c = 0; c < Math.min(hr.getLastCellNum(), 40); c++) {
-                            headers.add(fmt.formatCellValue(hr.getCell(c)).trim());
-                        }
-                    }
-                    out.put("headers", headers);
-                    List<List<String>> rows = new ArrayList<>();
-                    int total = sheet.getLastRowNum();
-                    for (int r = 1; r <= Math.min(total, 100); r++) {
-                        Row row = sheet.getRow(r);
-                        List<String> vals = new ArrayList<>();
-                        for (int c = 0; c < headers.size(); c++) {
-                            vals.add(row == null ? "" : fmt.formatCellValue(row.getCell(c)).trim());
-                        }
-                        rows.add(vals);
-                    }
-                    out.put("rows", rows);
-                    out.put("totalRows", total);
-                }
-            } else {
-                out.put("binary", true);
-                if ("json".equals(e.getExt())) {
-                    String content = new String(Files.readAllBytes(f.toPath()), "UTF-8");
-                    out.put("jsonPreview", content.length() > 4096 ? content.substring(0, 4096) + "...(截断)" : content);
-                }
-            }
-            return Result.success(out);
+            return Result.success(previewFileMap(f, e.getName(), e.getExt(), e.getSize(), e.getSha256()));
         } catch (Exception e) {
             log.error("文件预览失败", e);
             return Result.error("预览失败: " + e.getMessage());
         }
+    }
+
+    @ApiOperation("任务直传文件预览(kind=identification|validation|test;xlsx解析表头+前100行)")
+    @GetMapping("/projects/{pid}/tasks/{tid}/file-preview")
+    @RequirePermission(Permission.READ)
+    public Result<Map<String, Object>> taskFilePreview(@PathVariable("pid") String pid,
+                                                       @PathVariable("tid") String tid,
+                                                       @RequestParam("kind") String kind) {
+        try {
+            EngineModels.ModelingTask t = store.getTask(pid, tid);
+            if (t == null) return Result.error("任务不存在");
+            String path = "test".equals(kind) ? t.getTestFile()
+                    : "validation".equals(kind) ? t.getValidationFile() : t.getIdentificationFile();
+            if (path == null || path.trim().isEmpty()) return Result.error("该任务尚未提供此文件");
+            File f = new File(path);
+            if (!f.isFile()) return Result.error("文件不存在: " + f.getName());
+            String name = f.getName();
+            String ext = name.contains(".") ? name.substring(name.lastIndexOf('.') + 1).toLowerCase() : "";
+            Map<String, Object> out = previewFileMap(f, name, ext, f.length(), null);
+            out.put("source", "task");
+            return Result.success(out);
+        } catch (Exception e) {
+            log.error("任务文件预览失败", e);
+            return Result.error("预览失败: " + e.getMessage());
+        }
+    }
+
+    /** 文件内容预览公共实现:xlsx解析Data表(缺省首表)表头+前100行;其它格式返回元信息。 */
+    private Map<String, Object> previewFileMap(File f, String name, String ext, Long size, String sha256) throws IOException {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("fileName", name);
+        out.put("ext", ext);
+        out.put("size", size);
+        out.put("sha256", sha256);
+        if ("xlsx".equals(ext) || "xls".equals(ext)) {
+            DataFormatter fmt = new DataFormatter();
+            try (InputStream in = Files.newInputStream(f.toPath()); Workbook wb = WorkbookFactory.create(in)) {
+                List<String> names = new ArrayList<>();
+                for (int i = 0; i < wb.getNumberOfSheets(); i++) names.add(wb.getSheetName(i));
+                Sheet sheet = null;
+                for (int i = 0; i < wb.getNumberOfSheets(); i++) {
+                    String n = wb.getSheetName(i);
+                    if ("Data".equalsIgnoreCase(n) || "数据".equals(n)) { sheet = wb.getSheetAt(i); break; }
+                }
+                if (sheet == null) sheet = wb.getSheetAt(0);
+                out.put("sheetNames", names);
+                out.put("sheet", sheet.getSheetName());
+                List<String> headers = new ArrayList<>();
+                Row hr = sheet.getRow(0);
+                if (hr != null) {
+                    for (int c = 0; c < Math.min(hr.getLastCellNum(), 40); c++) {
+                        headers.add(fmt.formatCellValue(hr.getCell(c)).trim());
+                    }
+                }
+                out.put("headers", headers);
+                List<List<String>> rows = new ArrayList<>();
+                int total = sheet.getLastRowNum();
+                for (int r = 1; r <= Math.min(total, 100); r++) {
+                    Row row = sheet.getRow(r);
+                    List<String> vals = new ArrayList<>();
+                    for (int c = 0; c < headers.size(); c++) {
+                        vals.add(row == null ? "" : fmt.formatCellValue(row.getCell(c)).trim());
+                    }
+                    rows.add(vals);
+                }
+                out.put("rows", rows);
+                out.put("totalRows", total);
+            }
+        } else {
+            out.put("binary", true);
+            if ("json".equals(ext)) {
+                String content = new String(Files.readAllBytes(f.toPath()), "UTF-8");
+                out.put("jsonPreview", content.length() > 4096 ? content.substring(0, 4096) + "...(截断)" : content);
+            }
+        }
+        return out;
     }
 
     @ApiOperation("从项目文件库带入任务数据(data类)")

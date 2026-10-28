@@ -185,7 +185,21 @@ public class TestbenchService {
         synchronized (fmLock) {
             FullmodeSession cur = fmSession;
             if (cur != null && !isTerminal(cur.phase)) {
-                throw new IllegalStateException("已有全模式会话在" + cur.phase + "(runId=" + cur.runId + "),请先关闭");
+                // READY态允许"重新准备"(效果图08-02):尚未推进,自动关闭旧会话后重建;
+                // RUNNING/PAUSED仍要求先结束计算/关闭会话,不允许静默丢弃推进状态
+                if ("READY".equals(cur.phase)) {
+                    log.info("全模式重新准备: 自动关闭未推进的READY会话 runId={}", cur.runId);
+                    if (cur.engine != null) {
+                        try { fevalFullmode(cur, "close", null); } catch (Exception e) { log.warn("fullmode close失败(仍关闭引擎)", e); }
+                        closeEngine(cur.engine);
+                        cur.engine = null;
+                    }
+                    cur.phase = "CLOSED";
+                    cur.message = "被重新准备替换";
+                    writeFullmodeIndex(cur);
+                } else {
+                    throw new IllegalStateException("已有全模式会话在" + cur.phase + "(runId=" + cur.runId + "),请先关闭");
+                }
             }
             String runId = "FM-" + new java.text.SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
             File workDir = store.testbenchWorkDir(projectId, runId);
