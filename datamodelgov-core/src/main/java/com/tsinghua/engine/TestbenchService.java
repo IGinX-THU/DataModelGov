@@ -273,7 +273,11 @@ public class TestbenchService {
                         Object v = cmd.get("value");
                         if (v != null) sub.put("value", v);
                     }
-                    fevalFullmode(s, "submit", sub);
+                    Object receipt = fevalFullmode(s, "submit", sub);
+                    if (receipt instanceof Map && "rejected".equals(String.valueOf(((Map<?, ?>) receipt).get("state")))) {
+                        log.warn("全模式命令被会话拒绝: runId={} action={} reason={}",
+                                s.runId, sub.get("action"), ((Map<?, ?>) receipt).get("reason"));
+                    }
                 }
                 Map<String, Object> adv = new LinkedHashMap<>();
                 adv.put("n", chunkSteps);
@@ -282,7 +286,13 @@ public class TestbenchService {
                 writeStatusFile(s, st);
                 Object lc = st.get("lifecycle");
                 if (lc != null && !"running".equals(String.valueOf(lc))) {
-                    break; // 会话自身终止(normal_stop完成/terminate)
+                    break; // 会话自身终止(数值终止/数值失败/步数预算)
+                }
+                // 会话合同里物理停转不改变lifecycle;结束计算已受理时停转即收尾保存,
+                // 否则会空转推进已停车的发动机直到步数预算(约2000s仿真时间)才结束
+                if (s.stopRequested && Boolean.parseBoolean(String.valueOf(st.get("physicalStop")))) {
+                    log.info("全模式结束计算已物理停转,停止推进并保存: runId={} timeS={}", s.runId, st.get("timeS"));
+                    break;
                 }
             }
             // 收尾:save→result→close
@@ -326,7 +336,7 @@ public class TestbenchService {
         }
     }
 
-    /** 命令:pause即时;save在暂停时即时保存;stop/操纵类入块间队列(暂停时入会话待恢复后生效)。 */
+    /** 命令:pause即时;save在暂停时即时保存;stop/操纵类入块间队列;恢复推进必须走run(队列只在推进循环中被消费)。 */
     public Map<String, Object> fullmodeCommand(String projectId, String kind, Object value) throws IOException {
         FullmodeSession s = requireFullmode(projectId);
         if (!"RUNNING".equals(s.phase) && !"READY".equals(s.phase) && !"PAUSED".equals(s.phase)) {
@@ -352,13 +362,27 @@ public class TestbenchService {
             out.put("note", "已保存完整快照与Excel(本次独立保存目录)");
             return out;
         }
+        // 推进循环只在RUNNING时消费命令队列:READY/PAUSED下入队即死锁,须先恢复推进
+        if ("pause".equals(kind) && "PAUSED".equals(s.phase)) {
+            out.put("accepted", true);
+            out.put("note", "已处于暂停");
+            return out;
+        }
+        if ("resume".equals(kind)) {
+            return fullmodeRun(projectId);
+        }
+        if ("stop".equals(kind) && ("READY".equals(s.phase) || "PAUSED".equals(s.phase))) {
+            // 结束计算要求normal_stop块间生效,暂停中必须恢复推进才能走到停转;文档A8:物理停转后结束并保存
+            fullmodeRun(projectId);
+            log.info("全模式{}态收到结束计算,已自动恢复推进: runId={}", s.phase, s.runId);
+        }
         Map<String, Object> cmd = new LinkedHashMap<>();
         cmd.put("kind", kind);
         if (value != null) cmd.put("value", value);
         fmCommands.add(cmd);
         log.info("全模式命令入队: runId={} kind={} value={} 队列深度={}", s.runId, kind, value, fmCommands.size());
         out.put("accepted", true);
-        out.put("note", "命令已入队;推进块间生效");
+        out.put("note", "PAUSED".equals(s.phase) ? "命令已入队;恢复推进后块间生效" : "命令已入队;推进块间生效");
         return out;
     }
 

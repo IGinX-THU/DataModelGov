@@ -2264,6 +2264,15 @@ window.Workbench = (() => {
             }
             send();
         }
+        // 恢复推进只能走/run:命令队列只在推进循环中被消费,/command的resume会永久滞留
+        function doRun(note) {
+            apiPost('/run', {})
+                .then(r => {
+                    if (r && r.code === 200) { S.phase = 'RUNNING'; toast(note || '推进已启动;可下发操纵命令(块间生效)', 'success'); renderBody(); }
+                    else toast((r && r.message) || '开始推进失败', 'error');
+                })
+                .catch(e => toast('开始推进失败:' + e.message, 'error'));
+        }
 
         /* ---------- 页签一: 仿真准备(效果图image147~148) ---------- */
         function prepTab() {
@@ -2374,6 +2383,8 @@ window.Workbench = (() => {
             const t = typeof live.timeS === 'number' ? live.timeS : null;
             if (t == null) return;
             const H = S.hist;
+            // 同一仿真时刻不重复入列(暂停/未推进时轮询每2s拿到相同timeS,重复画点会堆在同一x处)
+            if (H.t.length && H.t[H.t.length - 1] === t) return;
             const al = live.appliedLoad || {};
             const push = (arr, v) => arr.push(v == null || (typeof v === 'number' && isNaN(v)) ? null : Number(v));
             H.t.push(t);
@@ -2413,14 +2424,26 @@ window.Workbench = (() => {
                     legend: { top: 0, textStyle: { fontSize: 10 } },
                     tooltip: { trigger: 'axis' },
                     grid: { left: 56, right: 14, top: 26, bottom: 24 },
-                    xAxis: { type: 'value', name: 't/s', nameTextStyle: { fontSize: 10 }, axisLabel: { fontSize: 10 }, splitLine: { lineStyle: { color: '#eef1f5' } } },
+                    xAxis: { type: 'value', min: 0, max: 10, name: 't/s', nameTextStyle: { fontSize: 10 }, axisLabel: { fontSize: 10 }, splitLine: { lineStyle: { color: '#eef1f5' } } },
                     yAxis: { type: 'value', scale: true, axisLabel: { fontSize: 10 }, splitLine: { lineStyle: { color: '#eef1f5' } } },
-                    series: []
+                    series: fmSeriesDefs(k)
                 });
             });
         }
+        // series必须带type:'line':ECharts对无type的series不渲染(无曲线无图例tooltip也无内容)。
+        // 基础配置就挂带名字的空series,无数据时也有彩色图例、坐标轴和可悬停的空图。
+        function fmSeriesDefs(key) {
+            const defs = {
+                rpm: ['Np', 'Ng'],
+                tt45: ['Tt45'],
+                load: ['Mkp kN·m', 'PT功率 kW'],
+                fuel: ['燃油 kg/s']
+            }[key] || [];
+            return defs.map(name => ({ name, type: 'line', showSymbol: false, connectNulls: true, data: [] }));
+        }
         function updateCharts() {
-            const H = S.hist; if (!H || !H.t.length) return;
+            const H = S.hist;
+            const rows = !!(H && H.t.length);
             const set = (key, series) => {
                 let c = S.charts[key];
                 // 实例自愈:dispose过或绑定的DOM已移出文档(renderBody与异步init回调竞态导致新旧实例脱钩)
@@ -2431,16 +2454,18 @@ window.Workbench = (() => {
                     if (!host) return; // 当前页签无该图容器
                     c = window.echarts.getInstanceByDom(host) || window.echarts.init(host);
                     S.charts[key] = c;
+                    setChartBase(); // 新init实例补基础配置(图例/坐标轴/带名字的空series)
                 }
                 // x轴动态范围:推进初期t很小时也有可见图框,曲线随时间向右生长
-                const tMax = Math.max(10, Math.ceil(H.t[H.t.length - 1] * 1.05));
+                const tMax = Math.max(10, Math.ceil((rows ? H.t[H.t.length - 1] : 0) * 1.05));
                 try { c.setOption({ xAxis: { min: 0, max: tMax }, series }); } catch (e) { }
             };
-            set('rpm', [{ name: 'Np', data: seriesData(H.t, H.np) }, { name: 'Ng', data: seriesData(H.t, H.ng) }]);
-            set('tt45', [{ name: 'Tt45', data: seriesData(H.t, H.tt45) }]);
-            set('load', [{ name: 'Mkp kN·m', data: seriesData(H.t, H.mkp.map(v => v == null ? null : v / 1000)) },
-                         { name: 'PT功率 kW', data: seriesData(H.t, H.kw) }]);
-            set('fuel', [{ name: '燃油 kg/s', data: seriesData(H.t, H.fuel) }]);
+            const ln = (name, data) => ({ name, type: 'line', showSymbol: false, connectNulls: true, data });
+            set('rpm', [ln('Np', rows ? seriesData(H.t, H.np) : []), ln('Ng', rows ? seriesData(H.t, H.ng) : [])]);
+            set('tt45', [ln('Tt45', rows ? seriesData(H.t, H.tt45) : [])]);
+            set('load', [ln('Mkp kN·m', rows ? seriesData(H.t, H.mkp.map(v => v == null ? null : v / 1000)) : []),
+                         ln('PT功率 kW', rows ? seriesData(H.t, H.kw) : [])]);
+            set('fuel', [ln('燃油 kg/s', rows ? seriesData(H.t, H.fuel) : [])]);
         }
         function loadText(live) {
             const al = live.appliedLoad || {};
@@ -2466,11 +2491,13 @@ window.Workbench = (() => {
             refs.loadEl = h('span', { class: 'wb-hint', style: 'margin:0' }, '');
             refs.btnRun = h('button', {
                 class: 'wb-btn wb-btn-primary', style: 'display:none',
-                onclick: () => apiPost('/run', {})
-                    .then(r => { if (r && r.code === 200) { S.phase = 'RUNNING'; toast('推进已启动;可下发操纵命令(块间生效)', 'success'); renderBody(); } else toast((r && r.message) || '开始推进失败', 'error'); })
-                    .catch(e => toast('开始推进失败:' + e.message, 'error'))
+                onclick: () => doRun()
             }, '▶ 开始推进');
-            refs.btnPause = h('button', { class: 'wb-btn wb-btn-outline', style: 'display:none', onclick: () => cmd(S.phase === 'RUNNING' ? 'pause' : 'resume') }, '暂停');
+            refs.btnPause = h('button', { class: 'wb-btn wb-btn-outline', style: 'display:none', onclick: () => {
+                // 暂停中恢复推进必须走/run:/command的resume无人消费,会永久滞留队列
+                if (S.phase === 'PAUSED') doRun('已恢复推进;暂停中锁存的命令将块间生效');
+                else cmd('pause');
+            } }, '暂停');
             refs.btnStop = h('button', {
                 class: 'wb-btn wb-btn-outline', style: 'display:none',
                 onclick: () => confirmDialog('结束本次计算?将执行normal_stop并保存结果。', { title: '结束计算', okText: '结束' })
@@ -2481,10 +2508,28 @@ window.Workbench = (() => {
                 onclick: () => confirmDialog('紧急断油(emergency_cutoff)?断油保持锁存,不能被一般操作覆盖。', { title: '紧急断油', okText: '断油', danger: true })
                     .then(ok => { if (ok) cmd('emergency_cutoff'); })
             }, '紧急断油');
+            refs.btnClose = h('button', {
+                class: 'wb-btn wb-btn-outline', style: 'display:none',
+                onclick: () => confirmDialog('关闭并释放当前会话?未保存的推进状态将丢弃(已保存的快照与Excel保留);关闭后可重新发起仿真准备。', { title: '关闭会话', okText: '关闭', danger: true })
+                    .then(ok => {
+                        if (!ok) return;
+                        apiPost('/close', {})
+                            .then(r => {
+                                if (r && r.code === 200) {
+                                    S.phase = 'IDLE'; S.live = null; S.runId = null; S.message = '';
+                                    S.hist = emptyHist(); S.result = null; S.resultMsg = null; S.resultTriedFor = null;
+                                    S.tab = 'prep'; S.lastReceiptId = null;
+                                    toast('会话已关闭;可重新发起仿真准备', 'success');
+                                    renderBody();
+                                } else toast((r && r.message) || '关闭失败', 'error');
+                            })
+                            .catch(e => toast('关闭失败:' + e.message, 'error'));
+                    })
+            }, '✕ 关闭会话');
             wrap.appendChild(h('div', { class: 'wb-infobar', style: 'display:flex;align-items:center;gap:14px;padding:10px 16px;margin-bottom:10px;flex-wrap:wrap' },
                 refs.tag, refs.timeEl, h('span', { class: 'wb-hint', style: 'margin:0' }, '仿真时间'),
                 refs.lcEl, refs.thrEl, refs.loadEl, h('div', { class: 'wb-spacer' }),
-                refs.btnRun, refs.btnPause, refs.btnStop, refs.btnCut));
+                refs.btnRun, refs.btnPause, refs.btnStop, refs.btnCut, refs.btnClose));
 
             /* 最近命令回执(image152) */
             refs.rbAct = h('span', { style: 'font-weight:600' }, '—');
@@ -2527,7 +2572,8 @@ window.Workbench = (() => {
                 throttleRow.appendChild(h('button', { class: 'wb-btn wb-btn-outline', onclick: () => cmd('select_throttle', v, '油门→' + label) }, label)));
             refs.opsCard.appendChild(throttleRow);
             const cmdGrid = h('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px' });
-            cmdGrid.appendChild(h('button', { class: 'wb-btn wb-btn-primary', onclick: () => cmd('start', null, '起动命令已提交') }, '▶ 起动'));
+            refs.btnStart = h('button', { class: 'wb-btn wb-btn-primary', onclick: () => cmd('start', null, '起动命令已提交') }, '▶ 起动');
+            cmdGrid.appendChild(refs.btnStart);
             cmdGrid.appendChild(h('button', { class: 'wb-btn wb-btn-outline', onclick: () => cmd('cold_blow') }, '冷吹'));
             cmdGrid.appendChild(h('button', { class: 'wb-btn wb-btn-outline', onclick: () => cmd('exit_cold_blow') }, '结束吹转'));
             cmdGrid.appendChild(h('button', { class: 'wb-btn wb-btn-outline', onclick: () => cmd('abort_start') }, '中止起动'));
@@ -2619,7 +2665,8 @@ window.Workbench = (() => {
             refs.tag.className = 'wb-tag wb-tag-' + phaseLabel[1];
             refs.tag.textContent = phaseLabel[0];
             refs.timeEl.textContent = Number(t).toFixed(3) + ' s';
-            refs.lcEl.textContent = '物理阶段: ' + (lifecycleCn(live.lifecycle) || '—');
+            refs.lcEl.textContent = '物理阶段: ' + (lifecycleCn(live.lifecycle) || '—')
+                + (live.physicalStop ? ' · 已物理停转' : '');
             refs.thrEl.textContent = '油门: ' + (live.throttle || '未施加');
             refs.loadEl.textContent = '负载: ' + loadText(live);
             refs.btnRun.style.display = S.phase === 'READY' ? '' : 'none';
@@ -2628,13 +2675,26 @@ window.Workbench = (() => {
             refs.btnPause.textContent = S.phase === 'RUNNING' ? '暂停' : '继续';
             refs.btnStop.style.display = active ? '' : 'none';
             refs.btnCut.style.display = active ? '' : 'none';
+            refs.btnClose.style.display = ['READY', 'PAUSED', 'ENDED', 'FAILED'].includes(S.phase) ? '' : 'none';
             refs.btnSave.style.display = S.phase === 'PAUSED' ? '' : 'none';
+            // 起动前置条件与会话合同一致:油门=慢车 且 物理停转;否则会话必然拒绝,按钮直接置灰并说明
+            const canStart = live.throttle === 'idle' && !!live.physicalStop;
+            refs.btnStart.disabled = !canStart;
+            refs.btnStart.style.opacity = canStart ? '1' : '0.5';
+            refs.btnStart.title = canStart ? '' : '油门须先置慢车,且发动机物理停转后才能起动';
             const opsOn = ['READY', 'RUNNING', 'PAUSED'].includes(S.phase);
             refs.opsCard.style.opacity = opsOn ? '1' : '0.55';
             refs.opsCard.style.pointerEvents = opsOn ? '' : 'none';
             // 最近命令回执
             const rcts = Array.isArray(live.commandReceipts) ? live.commandReceipts : [];
             const last = rcts.length ? rcts[rcts.length - 1] : null;
+            // 新回执到达即提示;拒绝原因不能只留在回执条里(起动被拒这类关键失败容易被忽略)
+            if (last && S.lastReceiptId !== last.requestId) {
+                S.lastReceiptId = last.requestId;
+                if (last.state === 'rejected' && ['READY', 'RUNNING', 'PAUSED'].includes(S.phase)) {
+                    toast((last.action || '命令') + '被拒绝:' + (last.reason || '未知原因'), 'error');
+                }
+            }
             refs.receiptBar.style.display = last ? 'flex' : 'none';
             if (last) {
                 const stTag = last.state === 'applied' ? ['已施加', 'teal'] : last.state === 'rejected' ? ['已拒绝', 'red']
@@ -2667,7 +2727,7 @@ window.Workbench = (() => {
             refs.alarmRow.replaceChildren.apply(refs.alarmRow, nodes);
             // 阶段提示
             refs.hintEl.textContent = S.phase === 'READY' ? '会话已就绪;油门位置与起动命令分开:置慢车不自动起动,置运行不绕过暖机;Ng稳定暖机60秒后转入Np控制。'
-                : S.phase === 'PAUSED' ? '暂停中:发动机处于运行快照;可保存完整快照,恢复推进后命令继续块间生效。'
+                : S.phase === 'PAUSED' ? '暂停中:发动机处于运行快照;可保存完整快照;结束计算会自动恢复推进并在物理停转后收尾保存;紧急断油仅锁存,恢复推进后才物理生效。'
                 : S.phase === 'ENDED' ? '已结束;前往「本次结果」查看输出、全通道、热状态、命令与配置五类内容。'
                 : S.phase === 'FAILED' ? '运行异常终止;' + (S.message || '') + ' 可在「本次结果」查看已保存内容。'
                 : '运行中:命令状态机为 编辑草稿→已提交→已接收→已施加/已拒绝;挡位命令被接收不代表转速已稳定。';
