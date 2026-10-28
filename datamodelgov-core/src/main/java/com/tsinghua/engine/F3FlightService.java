@@ -336,8 +336,12 @@ public class F3FlightService {
             } else {
                 Map<String, Object> configuration = new LinkedHashMap<>();
                 configuration.put("taskId", key + "_" + action);
-                // runId 为 steady/transient 共同必填(F3:TF:Identity);preview/confirm 也需要,放公共段
-                configuration.put("runId", sanitizeEvolutionRunId(task.getRunId() == null ? key : task.getRunId()));
+                boolean transientTask = "sht_f3_transient_task".equals(taskFn);
+                // runId 仅 transient 合同(F3:TF:Config 白名单含 runId,适配器 tf 从此取值);
+                // steady 的 local_config 白名单不含 runId,塞入即报"未知配置:runId"
+                if (transientTask) {
+                    configuration.put("runId", sanitizeEvolutionRunId(task.getRunId() == null ? key : task.getRunId()));
+                }
                 configuration.put("identificationFile", task.getIdentificationFile() == null ? "" : task.getIdentificationFile().replace('\\', '/'));
                 configuration.put("validationFile", task.getValidationFile() == null ? "" : task.getValidationFile().replace('\\', '/'));
                 configuration.put("outputRoot", outputRoot.getAbsolutePath().replace('\\', '/'));
@@ -355,7 +359,9 @@ public class F3FlightService {
                     configuration.put("parentRoute", task.getParentRoute() == null ? "steady" : task.getParentRoute());
                     configuration.put("parentWorkbook", resolveParentWorkbook(task));
                     configuration.put("confirmationFile", task.getConfirmationFile().replace('\\', '/'));
-                    configuration.put("runId", task.getRunId() == null ? key : task.getRunId());
+                    if (transientTask) {
+                        configuration.put("runId", task.getRunId() == null ? key : task.getRunId());
+                    }
                 }
                 call.put("configuration", configuration);
             }

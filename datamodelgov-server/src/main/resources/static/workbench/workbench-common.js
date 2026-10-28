@@ -2508,6 +2508,9 @@ window.Workbench = (() => {
         }
 
         function doPrepare() {
+            // 准备中重复点击直接忽略:后端会拒绝第二次prepare,且失败路径不能把本地相位误拉回IDLE
+            // (IDLE会停掉状态轮询,页面从此不刷新——准备实际仍在后端进行)
+            if (S.phase === 'PREPARING') return;
             const user = {
                 modelMode: S.cfg.modelMode,
                 fullmode: {
@@ -2522,9 +2525,14 @@ window.Workbench = (() => {
             };
             S.phase = 'PREPARING';
             renderBody();
+            // 发起失败时不再假设"无会话":以服务端真实相位为准恢复,保证轮询不中断
+            const recover = () => api('/status').then(r => {
+                if (r && r.code === 200 && r.data) applyStatus(r.data);
+                else { S.phase = 'IDLE'; S.live = null; renderBody(); }
+            }).catch(() => { S.phase = 'IDLE'; S.live = null; renderBody(); });
             apiPost('/prepare', user)
-                .then(r => { if (!(r && r.code === 200)) { toast((r && r.message) || '准备发起失败', 'error'); S.phase = 'IDLE'; renderBody(); } })
-                .catch(e => { toast('准备发起失败:' + e.message, 'error'); S.phase = 'IDLE'; renderBody(); });
+                .then(r => { if (!(r && r.code === 200)) { toast((r && r.message) || '准备发起失败', 'error'); recover(); } })
+                .catch(e => { toast('准备发起失败:' + e.message, 'error'); recover(); });
         }
 
         /* ---------- 页签二: 操纵与监视(效果图image149~157) ----------
@@ -2966,7 +2974,11 @@ window.Workbench = (() => {
             const canStart = live.throttle === 'idle' && !!live.physicalStop;
             refs.btnStart.disabled = !canStart;
             refs.btnStart.style.opacity = canStart ? '1' : '0.5';
-            refs.btnStart.title = canStart ? '' : '油门须先置慢车,且发动机物理停转后才能起动';
+            // 区分"慢车已提交但尚未生效"(等下一推进块)与"还没选慢车"
+            refs.btnStart.title = canStart ? ''
+                : (live.physicalStop && live.throttle !== 'idle' && S.draftThrottle === 'idle'
+                    ? '慢车命令已提交;块间生效(约一个推进块)后即可起动'
+                    : '油门须先置慢车(选位置后点"✓ 施加"),且发动机物理停转后才能起动');
             const opsOn = ['READY', 'RUNNING', 'PAUSED'].includes(S.phase);
             refs.opsCard.style.opacity = opsOn ? '1' : '0.55';
             refs.opsCard.style.pointerEvents = opsOn ? '' : 'none';
@@ -3608,7 +3620,9 @@ window.Workbench = (() => {
         function applyStatus(d) {
             const prevPhase = S.phase, prevRun = S.runId;
             S.phase = d.phase || S.phase;
-            S.live = d.live || S.live;
+            // 会话不在了(后端IDLE):清掉残留live与runId,避免旧数据继续显示
+            if (S.phase === 'IDLE') { S.live = null; S.runId = null; }
+            else S.live = d.live || S.live;
             S.message = d.message || '';
             S.runId = (d.live && d.live.runId) || d.runId || S.runId;
             if (S.runId !== prevRun) { S.hist = emptyHist(); S.result = null; S.resultMsg = null; S.resultTriedFor = null; }
@@ -3631,12 +3645,12 @@ window.Workbench = (() => {
         if (window.__WB_FM_TIMER__) clearInterval(window.__WB_FM_TIMER__);
         window.__WB_FM_TIMER__ = setInterval(() => {
             if (document.hidden) return;
-            if (['PREPARING', 'READY', 'RUNNING', 'PAUSED'].includes(S.phase)) {
-                window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;
-                api('/status').then(r => {
-                    if (r && r.code === 200 && r.data) applyStatus(r.data);
-                }).catch(() => { });
-            }
+            // 始终轮询(IDLE时status是轻量文件读):本地相位与后端脱锁(如准备失败误判)也能自动恢复,
+            // 否则IDLE停轮询后页面永久冻结——准备/推进实际仍在后端进行
+            window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;
+            api('/status').then(r => {
+                if (r && r.code === 200 && r.data) applyStatus(r.data);
+            }).catch(() => { });
         }, 2000);
         if (!window.__WB_FM_RESIZE__) {
             window.__WB_FM_RESIZE__ = () => Object.keys(S.charts).forEach(k => { try { S.charts[k].resize(); } catch (e) { } });
@@ -3673,7 +3687,7 @@ window.Workbench = (() => {
         const api = p => window.AppConfig.engineGet('projects/' + pid + '/testbench' + p);
         const apiPost = (p, body) => window.AppConfig.enginePost('projects/' + pid + '/testbench' + p, body || {});
         const S = window.__WB_SS__ = window.__WB_SS__ || {
-            tab: 'prepare', dpTaskId: null, ssTaskId: null, modelMode: 0,
+            tab: 'prepare', dpTaskId: null, ssTaskId: null, modelMode: 0, prepareStep: 'entry', ssTaskName: '',
             design: { NpRpm: '20900', NgRpm: '38000', loadKw: '2176.600', targetTt4K: '1620', nozzleAreaM2: '0.10573', targetPt25Pa: '478500', targetTt25K: '478.95' },
             dpView: 'result', dpShowLog: false, ssShowLog: false,
             planPreset: 'demo',
@@ -3764,52 +3778,101 @@ window.Workbench = (() => {
         }
 
         /* ---- 模型准备(07-01): 从明确的源模型开始 + 本次目的 + 来源检查 ---- */
+        /* ---- 模型准备(07-12任务入口 / 07-13源模型与依赖) ---- */
         function prepareTab() {
-            const mmSel = h('select', null,
-                h('option', { value: '0', selected: S.modelMode === 0 ? '' : null }, 'B-001 / 三部件'),
-                h('option', { value: '1', selected: S.modelMode === 1 ? '' : null }, 'B-001 / 六部件'));
-            const purpose = [
-                ['只做设计点配置', '求解、备份写入、模式2简单测试', '保存设计点成果'],
-                ['设计点配置与起停建模', '先完成设计点,再扩图与起停校核', '保存起停模型包'],
-                ['已有设计点配置,继续起停建模', '读取匹配设计记录并进行复现检查', '不无依据重复求解']
-            ];
+            return S.prepareStep === 'form' ? prepareFormTab() : prepareEntryTab();
+        }
+        function prepareEntryTab() {
+            const biz = [
+                ['起动停车建模', '现有发动机配置、特性图及工程参数', '低速模型包、校核记录',
+                    () => { S.prepareStep = 'form'; renderBody(); }, '新建任务'],
+                ['全模式仿真', '选定模型、初始状态及操纵指令', '起动、运行、停车的输出历程',
+                    () => ctx.navigate('fullmode'), '准备试车'],
+                ['多系统联合仿真', 'AFO成套模型及外部子系统配置', '发动机与燃油/滑油/空气输出',
+                    () => ctx.navigate('afo'), '准备联仿']];
+            const tbl = h('table', { class: 'wb-table' },
+                h('tr', null, ['工作', '输入', '得到的结果', '操作'].map(x => h('th', null, x))));
+            biz.forEach((r0, i) => tbl.appendChild(h('tr', i === 0 ? { style: 'background:#eef7f5' } : null,
+                h('td', null, r0[0]), h('td', { class: 'wb-hint' }, r0[1]), h('td', null, r0[2]),
+                h('td', null, h('button', { class: 'wb-btn wb-btn-outline', style: 'padding:3px 12px', onclick: r0[3] }, r0[4])))));
+            const listHost = h('div', null, h('div', { class: 'wb-hint' }, '已有起动停车模型加载中...'));
+            api('/tasks').then(r => {
+                listHost.innerHTML = '';
+                const list = (r && r.code === 200 && Array.isArray(r.data)) ? r.data.filter(t => t.kind === 'startstop') : [];
+                if (!list.length) { listHost.appendChild(h('div', { class: 'wb-hint' }, '尚无起动停车建模任务;点击"新建起动停车建模任务"开始。')); return; }
+                const t2 = h('table', { class: 'wb-table' },
+                    h('tr', null, ['版本', '来源与拓扑', '校核范围', '状态', '使用'].map(x => h('th', null, x))));
+                list.slice(0, 12).forEach(m => {
+                    const stages = m.config && Array.isArray(m.config.requestedStages) ? m.config.requestedStages.join('→') : '原有配套范围';
+                    const ops = h('td', null);
+                    ops.appendChild(h('button', { class: 'wb-btn wb-btn-outline', style: 'padding:2px 10px;margin-right:6px',
+                        onclick: () => { S.ssTaskId = m.taskId; S.tab = 'verif'; renderBody(); } }, '查看'));
+                    ops.appendChild(h('button', { class: 'wb-btn wb-btn-outline', style: 'padding:2px 10px;margin-right:6px',
+                        onclick: () => ctx.navigate('fullmode') }, '用于仿真'));
+                    ops.appendChild(h('button', { class: 'wb-btn', style: 'padding:2px 10px',
+                        onclick: () => { S.prepareStep = 'form'; S.modelMode = m.config && m.config.modelMode === 1 ? 1 : 0; renderBody(); } }, '继续建模'));
+                    t2.appendChild(h('tr', null,
+                        h('td', null, str(m.taskId)),
+                        h('td', { class: 'wb-hint' }, (ctx.project.engineId || 'E-001') + ' / ' + (m.config && m.config.modelMode === 1 ? '六部件' : '三部件')),
+                        h('td', { class: 'wb-hint' }, stages),
+                        h('td', null, str(m.phase)),
+                        ops));
+                });
+                listHost.appendChild(t2);
+            }).catch(() => { listHost.innerHTML = ''; listHost.appendChild(h('div', { class: 'wb-hint' }, '历史任务读取失败')); });
             return h('div', null,
-                h('div', { class: 'wb-section-title', style: 'margin:4px 0 8px' }, '从明确的源模型开始'),
-                h('div', { class: 'wb-form-grid', style: 'grid-template-columns:1fr 1fr;max-width:1180px;margin-bottom:14px' },
-                    h('div', { class: 'wb-field' }, h('label', null, '建模任务'),
-                        h('input', { readonly: '', value: (ctx.project.engineId || 'E-001') + ' / 设计点与低速模型完善' })),
-                    h('div', { class: 'wb-field' }, h('label', null, '源模型'), mmSel)),
+                h('div', { class: 'wb-section-title', style: 'margin:4px 0 8px' }, '本次需要完成哪一项工作'),
+                tbl,
+                h('div', { class: 'wb-section-title', style: 'margin:16px 0 8px' }, '已有起动停车模型'),
+                listHost,
+                h('div', { class: 'wb-actions-row', style: 'margin-top:16px' },
+                    h('button', { class: 'wb-btn wb-btn-primary', onclick: () => { S.prepareStep = 'form'; renderBody(); } }, '+ 新建起动停车建模任务'),
+                    h('button', { class: 'wb-btn wb-btn-outline', onclick: () => { S.tab = 'assets'; S.assetsView = 'save'; renderBody(); } }, '📂 导入已保存模型包')),
+                h('div', { class: 'wb-hint', style: 'margin-top:10px' },
+                    '模型构建与校核,不是实测数据自动辨识。全模式仿真使用明确选定的模型;源资产与旧结果不覆盖。'));
+        }
+        function prepareFormTab() {
+            const mmSel = h('select', null,
+                h('option', { value: '0', selected: S.modelMode === 0 ? '' : null }, 'B-001 / 当前已选版本(三部件)'),
+                h('option', { value: '1', selected: S.modelMode === 1 ? '' : null }, 'B-001 / 当前已选版本(六部件)'));
+            mmSel.addEventListener('change', () => { S.modelMode = parseInt(mmSel.value, 10); });
+            const nameInp = h('input', { value: S.ssTaskName || ((ctx.project.engineId || 'E-001') + ' 低速特性完善') });
+            nameInp.addEventListener('change', () => { S.ssTaskName = nameInp.value; });
+            const deps = [
+                ['发动机MDL', '按所选版本读取(Turboshaft-TS*.mdl),不按最新文件查找', '已读取', '源文件只读', null],
+                ['部件MAP', 'HPC02 / HPT02 / LPT02;数量及引用一致', S.modelMode === 1 ? '含低速扩展候选' : '已读取', '查看各图范围',
+                    () => { S.tab = 'maps'; S.maps.view = 'figures'; renderBody(); }],
+                ['DLL与头文件', 'GTESS.dll/头文件随程序目录;配套运行身份', '待检查加载环境', '检查详情',
+                    () => toast('GTESS.dll与头文件随程序目录提供;加载环境在校核执行首阶段实际验证', 'info')],
+                ['Visser16及初值资产', '配套热配置与设计种子(可选,显式提供)', '待相容性核查', '不自动补默认', null]];
+            return h('div', null,
+                h('div', { class: 'wb-section-title', style: 'margin:4px 0 8px' }, '选择本次源模型'),
+                h('div', { class: 'wb-form-grid', style: 'grid-template-columns:1fr 1fr;max-width:1180px;margin-bottom:12px' },
+                    h('div', { class: 'wb-field' }, h('label', null, '任务名称'), nameInp),
+                    h('div', { class: 'wb-field' }, h('label', null, '源模型版本'), mmSel),
+                    h('div', { class: 'wb-field' }, h('label', null, '模型拓扑'),
+                        h('input', { readonly: '', value: (S.modelMode === 1 ? '六部件' : '三部件') + ' / 从源MDL识别' })),
+                    h('div', { class: 'wb-field' }, h('label', null, '输出位置'),
+                        h('input', { readonly: '', value: '项目 / 模型 / ' + (S.ssTaskName || '起动停车任务') }))),
                 h('table', { class: 'wb-table' },
-                    h('tr', null, ['本次目的', '包含的工作', '完成后'].map(x => h('th', null, x))),
-                    purpose.map((r0, i) => h('tr', i === 1 ? { style: 'background:#eef7f5' } : null,
-                        h('td', null, r0[0]), h('td', { class: 'wb-hint' }, r0[1]), h('td', null, r0[2])))),
-                h('div', { class: 'wb-section-title', style: 'margin:16px 0 8px' }, '来源检查'),
-                h('table', { class: 'wb-table' },
-                    h('tr', null, ['来源检查', '实际文件', '状态'].map(x => h('th', null, x))),
-                    h('tr', null,
-                        h('td', null, 'MDL与MAP'),
-                        h('td', { class: 'wb-hint' }, '按所选版本读取,不按最新文件查找(Turboshaft-TS*.mdl + HPC02/HPT02/LPT02.MAP)'),
-                        h('td', null, '待检查')),
-                    h('tr', null,
-                        h('td', null, 'DLL与加载助手'),
-                        h('td', { class: 'wb-hint' }, 'GTESS.dll/头文件随程序目录;同一版本原算法'),
-                        h('td', null, '待检查')),
-                    h('tr', null,
-                        h('td', null, '设计状态 / 热资产(可选)'),
-                        h('td', { class: 'wb-hint' }, 'V1/V2各自设计解与三类热MAT;不提供时保持原默认'),
-                        h('td', null, '待检查'))),
+                    h('tr', null, ['依赖', '明确来源', '检查', '处理'].map(x => h('th', null, x))),
+                    deps.map(d0 => h('tr', null, h('td', null, d0[0]), h('td', { class: 'wb-hint' }, d0[1]),
+                        h('td', null, d0[2]),
+                        h('td', null, d0[4]
+                            ? h('button', { class: 'wb-btn wb-btn-outline', style: 'padding:2px 10px', onclick: d0[4] }, d0[3])
+                            : h('span', { class: 'wb-hint' }, d0[3]))))),
                 h('div', { class: 'wb-hint', style: 'margin:10px 0 0' },
                     '设计点复现、低速矩阵、连续起停分别记录;原V1/V2入口保留;新入口写MDL前必须备份;两个独立模型工程不互为运行前置。'),
                 h('div', { class: 'wb-actions-row', style: 'margin-top:12px' },
                     h('button', { class: 'wb-btn wb-btn-outline', onclick: () => ctx.navigate('overview') }, '← 返回项目'),
+                    h('button', { class: 'wb-btn wb-btn-outline', onclick: () => toast('配置草稿已保留在本页;发起校核时随配置冻结', 'info') }, '💾 保存配置草稿'),
                     h('div', { class: 'wb-spacer' }),
-                    h('button', {
-                        class: 'wb-btn wb-btn-primary',
-                        onclick: () => { S.modelMode = parseInt(mmSel.value, 10); S.tab = 'design'; renderBody(); }
-                    }, '→ 检查源模型并继续')));
+                    h('button', { class: 'wb-btn wb-btn-outline', onclick: () => { S.prepareStep = 'entry'; renderBody(); } }, '← 任务入口'),
+                    h('button', { class: 'wb-btn wb-btn-primary', onclick: () => { S.tab = 'maps'; renderBody(); } }, '→ 特性图配置')));
         }
 
         /* ---- 设计点配置(07-02~08): 已知目标 + 求解 + 比较 + commit ---- */
+
         function designTab() {
             const isV2 = S.modelMode === 1;
             const fields = [
@@ -5115,7 +5178,8 @@ window.Workbench = (() => {
             S.samples.push({
                 t: t, Np: eng[AFO_E.Np], Ng: eng[AFO_E.Ng], Tt3: eng[AFO_E.Tt3], Tt45: eng[AFO_E.Tt45],
                 W2: eng[AFO_E.W2], Mkp: load[0], Pload: load[4],
-                Wf_cmd: (v[AFO_GROUP.fuel_command] || [])[0], Wf: (v[AFO_GROUP.fuel_engine] || [])[0]
+                Wf_cmd: (v[AFO_GROUP.fuel_command] || [])[0], Wf: (v[AFO_GROUP.fuel_engine] || [])[0],
+                Wfd: (v[AFO_GROUP.fuel_detailed] || [])[0]
             });
             if (S.samples.length > 4000) S.samples.splice(0, S.samples.length - 4000);
         }
@@ -5229,8 +5293,25 @@ window.Workbench = (() => {
                     h('div', { class: 'wb-field' }, h('label', null, unitTxt), draft),
                     h('div', null, h('button', { class: 'wb-btn wb-btn-outline', style: 'width:100%', onclick: () => applyLoadDraft() }, '✓ 施加负载'))));
             } else if (S.phase === 'ENDED' || S.phase === 'FAILED') {
-                body.appendChild(h('div', { class: 'wb-infobar' },
-                    S.phase === 'FAILED' ? ('运行失败:' + (S.message || '') + ';有效部分不丢弃,历史与Excel仍可读。') : '运行结束;全通道Excel与result已保存,可进入各系统页签查看曲线。'));
+                // 09-06:结束保存面板——记录内容/保存状态/用途 + 正式结果文件 + 用途提示
+                if (S.phase === 'ENDED') {
+                    body.appendChild(h('div', { class: 'wb-section-title', style: 'margin:4px 0 8px' }, '结束本次仿真并保存'));
+                    body.appendChild(h('table', { class: 'wb-table' },
+                        h('tr', null, ['记录内容', '保存状态', '用途'].map(x => h('th', null, x))),
+                        h('tr', null, h('td', null, '运行配置与模型身份'), h('td', null, '已保存'), h('td', { class: 'wb-hint' }, '知道本次使用哪个成套包')),
+                        h('tr', null, h('td', null, '全部时序输出与通道字典'), h('td', null, '已保存'), h('td', { class: 'wb-hint' }, '重新打开无需DLL或原MAT工作区')),
+                        h('tr', null, h('td', null, '命令接收、生效与拒绝记录'), h('td', null, '已保存'), h('td', { class: 'wb-hint' }, '把输入动作与响应对应起来')),
+                        h('tr', null, h('td', null, '停止原因、实际耗时与暂停'), h('td', null, '已保存'), h('td', { class: 'wb-hint' }, '区分达到时限、人工结束和计算失败'))));
+                    const rid0 = (S.live && S.live.runId) || (S.result && S.result.runId) || '';
+                    body.appendChild(h('div', { class: 'wb-form-grid', style: 'grid-template-columns:1fr 260px;max-width:900px;margin-top:12px;align-items:end' },
+                        h('div', { class: 'wb-field' }, h('label', null, '正式结果文件'), h('input', { readonly: '', value: (rid0 || '—') + ' / AFO_results.xlsx' })),
+                        h('button', { class: 'wb-btn wb-btn-outline', style: 'height:38px', onclick: () => window.open(excelUrl(rid0), '_blank') }, '📂 打开结果文件(导出Excel)')));
+                    body.appendChild(h('div', { style: 'margin:10px 0 4px;color:#8a6d00;font-size:13px' },
+                        'Excel是结果记录,不是完整仿真状态快照。不能直接据此从终点继续积分;相同初值与配置的新运行明确另建记录。'));
+                } else {
+                    body.appendChild(h('div', { class: 'wb-infobar' },
+                        '运行失败:' + (S.message || '') + ';有效部分不丢弃,历史与Excel仍可读。'));
+                }
             }
             // 关键输出大数字(09-13/09-01)
             body.appendChild(kvBig(src === 'result' ? bigFromResult() : bigFromLive()));
@@ -5435,9 +5516,28 @@ window.Workbench = (() => {
                 body.appendChild(h('div', { class: 'wb-section-title', style: 'margin:16px 0 8px' }, '本次操纵记录'));
                 body.appendChild(eventsTable(src));
             } else if (tab === 'fuel') {
-                body.appendChild(h('div', { class: 'wb-infobar' },
-                    '燃油三路分开:控制器指令 / 发动机实际采用 / 通往滑油散热器的详细流量;不把详细流量冒充主供油。'));
-                body.appendChild(chartCard('燃油流量 / kg/s', chartFor(['Wf_cmd', 'Wf'], src), true));
+                // 09-03:燃油三路分开+三类燃油量对照;详细燃油只供既有滑油边界
+                body.appendChild(h('div', { style: 'margin-bottom:10px;padding:10px 14px;background:#fdf6e3;border:1px solid #f1c40f;border-radius:6px;color:#7d6608' },
+                    '⚠ 当前发动机采用简化执行机构输出;详细燃油输出只供既有滑油边界,不能据此评价发动机实际供油。'));
+                const lastFuel = g => {
+                    if (src === 'result') {
+                        const n = (S.result.time || []).length;
+                        for (let i = n - 1; i >= 0; i--) {
+                            const v = resultCell(g, i, 0);
+                            if (v != null) return v;
+                        }
+                        return null;
+                    }
+                    const arr = ((S.live.values || [])[g]) || [];
+                    return arr[0] != null ? arr[0] : null;
+                };
+                body.appendChild(kvBig([
+                    ['控制器燃油指令', lastFuel(AFO_GROUP.fuel_command), 'kg/s'],
+                    ['发动机实际采用燃油', lastFuel(AFO_GROUP.fuel_engine), 'kg/s'],
+                    ['详细燃油系统输出', lastFuel(AFO_GROUP.fuel_detailed), 'kg/s']]));
+                body.appendChild(chartCard('三类燃油量对照 / kg/s', chartFor(['Wf_cmd', 'Wf', 'Wfd'], src), true));
+                body.appendChild(h('div', { class: 'wb-hint', style: 'margin-top:10px' },
+                    '详细燃油与主供油链未闭环连接,结果保存仍分别保留,不用同名Wf覆盖。'));
             } else if (tab === 'oil') {
                 body.appendChild(h('div', { class: 'wb-infobar' },
                     '滑油系统按轴承腔/散热器/通风分组展示;原始轴承出口温度保持K,仅混温支路换算摄氏度。'));
@@ -5486,7 +5586,8 @@ window.Workbench = (() => {
                     Tt3: [AFO_GROUP.engine, AFO_E.Tt3, 'Tt3'], Tt45: [AFO_GROUP.engine, AFO_E.Tt45, 'Tt45'],
                     W2: [AFO_GROUP.engine, AFO_E.W2, 'W2'],
                     Pload: [AFO_GROUP.load, 4, 'Pload'], Mkp: [AFO_GROUP.load, 0, 'Mkp'],
-                    Wf_cmd: [AFO_GROUP.fuel_command, 0, 'Wf_command'], Wf: [AFO_GROUP.fuel_engine, 0, 'Wf_engine']
+                    Wf_cmd: [AFO_GROUP.fuel_command, 0, 'Wf_command'], Wf: [AFO_GROUP.fuel_engine, 0, 'Wf_engine'],
+                    Wfd: [AFO_GROUP.fuel_detailed, 0, 'Wf_detailed']
                 };
                 const series = keys.map(k => {
                     const m = KEYMAP[k];
