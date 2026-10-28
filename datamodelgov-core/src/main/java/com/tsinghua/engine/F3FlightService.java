@@ -401,15 +401,17 @@ public class F3FlightService {
             if (!isConfirm && !isCheck) {
                 // B阶段(run)必须用独立的全新批次目录:A阶段确认回执的冻结输入(r.trainingWorkbook=
                 // identificationExcel等)存放在<f3-xx>确认目录内,复用同一目录会被local_safe_roots判
-                // "输出目录不得与输入/父模型目录重叠";且合同要求非resume辨识目录必须不存在
-                // (SHT:F3Task:ExistingRun)。run目录与A目录平级,时间戳区分批次。
+                // "输出目录不得与输入/父模型目录重叠"。
+                // 且run输出目录由MATLAB程序自建并要求创建前不存在(local_new_root+ExistingRun断言),
+                // Java预创建会直接触发"辨识目录已存在"——这里只计算路径,不建目录。
                 if ("run".equals(action) && !evo) {
                     String stamp = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss").format(new java.util.Date());
                     outputRoot = new File(workDir, subDir + "-run-" + stamp);
                     reportRoot = new File(workDir, subDir + "-report-run-" + stamp);
+                } else {
+                    if (!outputRoot.exists() && !outputRoot.mkdirs()) throw new IOException("无法创建F3输出目录");
+                    if (!reportRoot.exists() && !reportRoot.mkdirs()) throw new IOException("无法创建F3报告目录");
                 }
-                if (!outputRoot.exists() && !outputRoot.mkdirs()) throw new IOException("无法创建F3输出目录");
-                if (!reportRoot.exists() && !reportRoot.mkdirs()) throw new IOException("无法创建F3报告目录");
             }
             if (evo) {
                 writeEvolutionAdapter(adapterDir, programCopy);
