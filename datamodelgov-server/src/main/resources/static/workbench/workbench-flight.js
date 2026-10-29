@@ -34,6 +34,13 @@
                     if (resp && (resp.success || resp.code === 200) && resp.data && resp.data.task) {
                         state.task = resp.data.task;
                         state.log = resp.data.logTail || [];
+                        // 从运行记录打开:按状态直达对应视图,失败/停止直达运行日志界面(01-15同款)
+                        const st = state.task.status;
+                        if (['RUNNING', 'PREPARING', 'STOP_REQUESTED', 'FAILED', 'STOPPED'].includes(st)) {
+                            state.tab = isSteady ? 'update' : 'run';
+                        } else if (st === 'COMPLETED') {
+                            state.tab = 'result';
+                        }
                     } else {
                         state.task = null;
                         toast((resp && resp.message) || '任务不存在', 'error');
@@ -145,9 +152,53 @@
                             renderBody();
                         });
                         inputs[kind] = fileInput;
+                        // 草稿期即可从文件库选择:按本任务/槽位类型自动筛选(训练→飞参训练数据,测试→飞参独立测试),
+                        // 无需手动选类型;记录fileId,保存草稿(创建架次)后自动带入
+                        const libPicked = state.draftLibrary && state.draftLibrary[kind];
+                        const slotKw = kind === 'validation' ? ['飞参独立测试', '飞参测试'] : ['飞参训练'];
+                        const matchSlot = k => slotKw.some(w => String(k || '').indexOf(w) >= 0);
+                        const libSel = WB().h('select', { style: 'max-width:260px;padding:2px 6px;font-size:12px' });
+                        let rows0 = [];
+                        const refillLib = () => {
+                            const keep = libPicked || libSel.value;
+                            libSel.innerHTML = '';
+                            libSel.appendChild(WB().h('option', { value: '' }, '从文件库选择(本槽位类型)...'));
+                            // 已选项保留在列表中并回显文件名(不显示内部ID);被删文件用ID占位不丢选择
+                            const hit = rows0.filter(r0 => matchSlot(r0.kind) || String(r0.id) === String(keep));
+                            hit.forEach(r0 => libSel.appendChild(WB().h('option', { value: r0.id, selected: String(r0.id) === String(keep) ? '' : null },
+                                (r0.name || r0.id) + (r0.kind ? ' · ' + r0.kind : ''))));
+                            if (keep && !hit.some(r0 => String(r0.id) === String(keep))) {
+                                libSel.appendChild(WB().h('option', { value: keep, selected: '' }, '库文件#' + keep));
+                            }
+                        };
+                        libSel.addEventListener('change', () => {
+                            if (!libSel.value) return;
+                            (state.draftLibrary = state.draftLibrary || {})[kind] = libSel.value;
+                            if (state.draftFiles) delete state.draftFiles[kind];
+                            const opt = libSel.options[libSel.selectedIndex];
+                            state.draft[kind] = '【库】' + (opt ? opt.textContent : libSel.value);
+                            toast('已选择库内文件,保存草稿(创建架次)后自动带入', 'info');
+                            renderBody();
+                        });
+                        window.AppConfig.engineGet('projects/'
+                            + encodeURIComponent(ctx.project.id || '') + '/files/page',
+                            { category: 'data', pageSize: 200 })
+                            .then(resp => {
+                                rows0 = resp && resp.data && Array.isArray(resp.data.rows) ? resp.data.rows.filter(x => x && x.id != null) : [];
+                                refillLib();
+                            }).catch(() => { });
                         const ops = WB().h('div', { style: 'display:flex;gap:8px;flex-wrap:wrap;margin-top:6px' },
-                            WB().h('button', { class: 'wb-btn wb-btn-outline', style: 'padding:2px 10px;font-size:12px', onclick: () => fileInput.click() }, '选择文件'),
-                            WB().h('button', { class: 'wb-btn wb-btn-outline', style: 'padding:2px 10px;font-size:12px', title: '保存草稿(创建架次)后可从文件库带入', onclick: () => toast('先保存草稿(创建架次),再从文件库带入', 'info') }, '带入'),
+                            WB().h('button', { class: 'wb-btn wb-btn-outline', style: 'padding:2px 10px;font-size:12px', onclick: () => {
+                                if (libPicked) { toast('该用途已选择库内文件;改用本地上传请先重新创建草稿或在下拉中清除', 'info'); return; }
+                                fileInput.click();
+                            } }, '选择文件'),
+                            libSel,
+                            WB().h('button', { class: 'wb-btn wb-btn-primary', style: 'padding:2px 10px;font-size:12px',
+                                title: '将下拉选中的库内文件带入本用途;保存草稿(创建架次)后自动完成',
+                                onclick: () => {
+                                    if (libPicked) toast('已选择库内文件;保存草稿(创建架次)后自动带入', 'info');
+                                    else toast('请先在下拉中选择文件库文件,保存草稿后自动带入', 'info');
+                                } }, '带入'),
                             WB().h('button', { class: 'wb-btn wb-btn-outline', style: 'padding:2px 10px;font-size:12px', title: '保存草稿(创建架次)后可预览', onclick: () => toast(f ? '本地文件在保存草稿后自动上传,届时可预览' : '请先选择文件', 'info') }, '预览'));
                         ops.appendChild(fileInput);
                         return WB().h('tr', null,
@@ -213,7 +264,21 @@
                                         if (up && (up.success || up.code === 200) && up.data) { state.task = up.data; toast('已上传:' + pend[k].name, 'success'); }
                                         else toast((up && up.message) || ('上传' + pend[k].name + '失败,可在当前页重新上传'), 'error');
                                     }
-                                } finally { delete state.draftFiles; state.draft = {}; }
+                                    // 草稿期选择的库内文件:任务创建后自动从文件库带入
+                                    const pendLib = state.draftLibrary || {};
+                                    for (const k of ['identification', 'validation'].filter(k => pendLib[k])) {
+                                        try {
+                                            const lb = await window.AppConfig.enginePost(
+                                                'projects/' + encodeURIComponent(ctx.project.id || '') + '/tasks/'
+                                                + encodeURIComponent(state.task.id) + '/files/from-library?kind='
+                                                + encodeURIComponent(k) + '&fileId=' + encodeURIComponent(pendLib[k]), {});
+                                            if (lb && (lb.success || lb.code === 200) && lb.data) {
+                                                state.task = lb.data;
+                                                toast('已从文件库带入', 'success');
+                                            } else toast((lb && lb.message) || ('库文件带入失败(' + k + '),可在当前页用带入按钮重试'), 'error');
+                                        } catch (e) { toast('库文件带入失败(' + k + '):' + e.message, 'error'); }
+                                    }
+                                } finally { delete state.draftFiles; delete state.draftLibrary; state.draft = {}; }
                                 renderBody();
                             } else toast((resp && resp.message) || '保存草稿失败', 'error');
                         } catch (e) { toast('保存草稿失败:' + e.message, 'error'); }
@@ -339,15 +404,20 @@
                 WB().h('label', null, label),
                 WB().h('div', { style: 'display:flex;gap:10px;flex-wrap:wrap;align-items:center' },
                     nameBox,
+                    pickBtn,
                     (function () {
-                        const libSel = WB().h('select', { style: 'max-width:230px' },
-                            WB().h('option', { value: '' }, '从文件库选择...'));
+                        // 按槽位类型自动筛选:训练→飞参训练数据,测试→飞参独立测试(无匹配则显示全部)
+                        const slotKw = kind === 'validation' ? ['飞参独立测试', '飞参测试'] : ['飞参训练'];
+                        const matchSlot = k => slotKw.some(w => String(k || '').indexOf(w) >= 0);
+                        const libSel = WB().h('select', { style: 'max-width:260px' },
+                            WB().h('option', { value: '' }, '从文件库选择(本槽位类型)...'));
                         window.AppConfig.engineGet('projects/'
                             + encodeURIComponent(ctx.project.id || '') + '/files/page',
-                            { category: 'data', pageSize: 50 })
+                            { category: 'data', pageSize: 200 })
                             .then(resp => {
                                 const rows = resp && resp.data && Array.isArray(resp.data.rows) ? resp.data.rows.filter(x => x && x.id != null) : [];
-                                rows.forEach(r0 => libSel.appendChild(WB().h('option', { value: r0.id },
+                                const hit = rows.filter(r0 => matchSlot(r0.kind));
+                                (hit.length ? hit : rows).forEach(r0 => libSel.appendChild(WB().h('option', { value: r0.id },
                                     (r0.name || r0.id) + (r0.kind ? ' · ' + r0.kind : ''))));
                             })
                             .catch(() => { });
@@ -374,7 +444,6 @@
                             } catch (e) { toast('带入失败:' + e.message, 'error'); }
                         }
                     }, '带入'),
-                    pickBtn,
                     WB().h('button', {
                         class: 'wb-btn wb-btn-outline',
                         style: current ? '' : 'opacity:.5',
@@ -409,7 +478,9 @@
                     '选段已确认:' + (t.f3SortieId || '') + ' 完整窗口均值;本次运行只生成新结果,不覆盖父模型。'));
             }
 
-            if (isRunPhase || t.status === 'COMPLETED' || state.showEstimate) {
+            if (isRunPhase || t.status === 'COMPLETED' || t.status === 'FAILED' || t.status === 'STOPPED' || state.showEstimate) {
+                // FAILED/STOPPED也直达运行日志视图(阶段卡+状态+日志+重新辨识);
+                // 「重新辨识→返回配置」会置showEstimate=false回到参数表单
                 // READY+showEstimate:「检查配置并估时」后进入估时/运行前检查视图(showEstimate只在此消费,
                 // 否则点按钮后页面停留在参数表单看似无反应);「返回配置」会置false回到表单
                 wrap.appendChild(runProgressView(t));
@@ -472,12 +543,12 @@
         function runProgressView(t) {
             const wrap = WB().h('div', null);
             const isRun = t.status === 'RUNNING' || t.status === 'STOP_REQUESTED';
-            // 估算/确认视图:READY/FAILED默认展示;STOPPED点"重新辨识"(showEstimate=true)后进入。
+            // 估算/确认视图仅在明确请求时进入:READY默认展示;FAILED/STOPPED默认直达日志视图(01-15:
+            // 失败任务直达错误定位与日志,不先展示重新辨识配置页),点"重新辨识"(showEstimate=true)后进入。
             // STOP_REQUESTED(等待安全点)不进入——04-23:保存进度前不开放重跑
             const showEstimateView = !isRun && (
                 (t.status === 'READY' && state.showEstimate !== false)
-                || (t.status === 'FAILED' && state.showEstimate !== false)
-                || (t.status === 'STOPPED' && state.showEstimate === true));
+                || ((t.status === 'FAILED' || t.status === 'STOPPED') && state.showEstimate === true));
 
             if (!isRun && showEstimateView) {
                 if (t.status === 'STOPPED') {
@@ -613,26 +684,121 @@
         function uqTab() {
             const t = state.task;
             const wrap = WB().h('div', null);
+            if (t.status !== 'COMPLETED') {
+                wrap.appendChild(WB().h('div', { class: 'wb-infobar', style: 'margin-bottom:12px' },
+                    'UQ独立配置与保存:评估对象、观测、固定参数、概率来源和先验重设依据明确;当前新C/D评估限实际支持的纯稳态均值路线。'));
+                wrap.appendChild(WB().h('span', { class: 'wb-hint' }, '完成一次建模并保存模型后开放评估入口。'));
+                return wrap;
+            }
+            // 04-13:确定性模型已保存——本页提供真实评估入口(评估对象/方法/计算设置/先验说明)
             wrap.appendChild(WB().h('div', { class: 'wb-infobar', style: 'margin-bottom:12px' },
-                'UQ独立配置与保存:评估对象、观测、固定参数、概率来源和先验重设依据明确;当前新C/D评估限实际支持的纯稳态均值路线。'));
-            // 04-13:保存模型后选择评估方法与明确先验——UQ从模型成果显式发起,本任务页不隐式执行
-            wrap.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin:8px 0' },
-                '保存模型后,在「模型成果」中选择本模型发起不确定性评估(与试车建模同一UQ入口);混合历程与非零瞬态联合UQ不由本页短合同外推。'));
-            // 04-14:评估过程五阶段——发起后在UQ任务页按此顺序展示;独立复算与主样本分开
+                '确定性模型已保存。可以新建评估,也可以跳过评估直接进行新工况预测。'));
+
+            /* 执行中:进度入口(状态由任务轮询刷新;独立复算与主样本分开,不提前标记统计通过) */
+            if (t.uqStatus === 'EXECUTING' || t.uqStatus === 'PREPARING') {
+                wrap.appendChild(WB().h('div', { class: 'wb-infobar', style: 'margin-bottom:12px' },
+                    'UQ评估' + (t.uqStatus === 'PREPARING' ? '准备中' : '执行中')
+                    + ';按 合同与先验 → 主样本计算 → 独立复算 → 参数汇总 → 结果写出 顺序执行(04-14)。'));
+                wrap.appendChild(WB().h('div', { class: 'wb-actions-row' },
+                    WB().h('button', { class: 'wb-btn wb-btn-outline', onclick: () => {
+                        const base = window.AppConfig.api.baseURL;
+                        window.open(base + '/api/engine/projects/' + encodeURIComponent(ctx.project.id)
+                            + '/tasks/' + encodeURIComponent(t.id) + '/uq-log-stream?token='
+                            + encodeURIComponent(window.AppConfig.getToken() || ''), '_blank');
+                    } }, '📄 打开评估日志'),
+                    WB().h('button', { class: 'wb-btn wb-btn-outline', onclick: async () => {
+                        try {
+                            await window.AppConfig.enginePost('projects/' + encodeURIComponent(ctx.project.id)
+                                + '/tasks/' + encodeURIComponent(t.id) + '/uq/stop', {});
+                            toast('已请求取消UQ评估(协作取消,结果作废)', 'info');
+                        } catch (e) { toast('取消失败:' + e.message, 'error'); }
+                        startPolling();
+                    } }, '请求协作取消'),
+                    WB().h('div', { class: 'wb-spacer' }),
+                    WB().h('button', { class: 'wb-btn wb-btn-primary', onclick: () => { state.tab = 'result'; renderBody(); } }, '返回飞行模型结果')));
+                startPolling();
+                return wrap;
+            }
+
+            state.uqMethod = state.uqMethod || 'C';
+            state.uqParticle = state.uqParticle || '512';
+            const objInp = WB().h('input', { readonly: '', value: (t.name || t.runId || '本架次模型')
+                + ' / ' + (t.identificationFile ? fileName(t.identificationFile) : '训练窗口') });
+            const idInp = WB().h('input', { readonly: '', value: 'UQ-' + (t.runId || t.id) + '(记录标识由服务端生成)' });
+            const methodSel = WB().h('select', { style: 'width:100%' },
+                WB().h('option', { value: 'C', selected: state.uqMethod === 'C' ? '' : null }, 'C:非线性粒子评估'),
+                WB().h('option', { value: 'D', selected: state.uqMethod === 'D' ? '' : null }, 'D:快速局部初评'));
+            methodSel.addEventListener('change', () => { state.uqMethod = methodSel.value; });
+            const particleSel = WB().h('select', { style: 'width:100%' },
+                WB().h('option', { value: '512', selected: state.uqParticle === '512' ? '' : null }, '主样本512 · 独立复算512'),
+                WB().h('option', { value: '1024', selected: state.uqParticle === '1024' ? '' : null }, '主样本1024 · 独立复算1024'));
+            particleSel.addEventListener('change', () => { state.uqParticle = particleSel.value; });
+            wrap.appendChild(WB().h('div', { class: 'wb-form-grid', style: 'grid-template-columns:1fr 1fr;max-width:1180px;margin-bottom:6px' },
+                WB().h('div', { class: 'wb-field' }, WB().h('label', null, '评估对象(本任务已保存模型)'), objInp),
+                WB().h('div', { class: 'wb-field' }, WB().h('label', null, '本次评估编号'), idInp),
+                WB().h('div', { class: 'wb-field' }, WB().h('label', null, '方法'), methodSel),
+                WB().h('div', { class: 'wb-field' }, WB().h('label', null, '计算设置(粒子合同)'), particleSel)));
+            wrap.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin:0 0 10px' },
+                '当前仅支持R2稳态均值UQ;D快速局部初评可另选,两种结果分别保存、不互相覆盖。'));
+
+            /* 配置内容表(04-13):由本任务数据如实汇总 */
             wrap.appendChild(WB().h('table', { class: 'wb-table', style: 'max-width:1180px' },
-                WB().h('tr', null, ['阶段', '语义'].map(x => WB().h('th', null, x))),
-                WB().h('tr', null, WB().h('td', null, '合同与先验'), WB().h('td', { class: 'wb-hint' }, '身份匹配;无独立测试时如实注明,不借训练先验充当独立证据')),
-                WB().h('tr', null, WB().h('td', null, '主样本计算'), WB().h('td', { class: 'wb-hint' }, '主计算结果单独保存')),
-                WB().h('tr', null, WB().h('td', null, '独立复算'), WB().h('td', { class: 'wb-hint' }, '与主样本分开,不拼成一批样本')),
-                WB().h('tr', null, WB().h('td', null, '参数汇总 / 结果写出'), WB().h('td', { class: 'wb-hint' }, '不提前标记统计通过;不用旧UQ文件替代当前结果'))));
-            // 04-15:区间来源可追溯;有限样本评估如实标注限制(效果图04-15)
-            wrap.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin:8px 0;max-width:1180px' },
-                '评估完成后:全部参数及燃油偏置的区间来源可追溯(条件分布传播/显式抽样逐节点标注);对照对象为确定性值+本次区间,无真值;有限样本条件评估的统计限制随结果保存,不标为全局完备后验。预计与实际耗时任同口径展示。'));
-            wrap.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'margin-top:10px' },
-                t.status === 'COMPLETED' ? WB().h('button', {
-                    class: 'wb-btn wb-btn-primary',
-                    onclick: () => { saveModel(true); }
-                }, '保存模型并前往模型成果') : WB().h('span', { class: 'wb-hint' }, '完成一次建模后开放。')));
+                WB().h('tr', null, ['配置内容', '当前选择'].map(x => WB().h('th', null, x))),
+                WB().h('tr', null, WB().h('td', null, '建模证据'),
+                    WB().h('td', { class: 'wb-hint' }, (t.identificationFile ? fileName(t.identificationFile) : '—')
+                        + ' 完整窗口均值;独立测试' + (t.validationFile ? '已提供(' + fileName(t.validationFile) + ')' : '未提供;不显示测试通过率'))),
+                WB().h('tr', null, WB().h('td', null, '先验设置'),
+                    WB().h('td', { class: 'wb-hint' }, '确定性结果作为数值起点;不将本次结果或其他模型后验自动作为概率先验')),
+                WB().h('tr', null, WB().h('td', null, '参数与条件项'),
+                    WB().h('td', { class: 'wb-hint' }, '全部参数与燃油偏置节点(以交付Excel参数表为准);固定继承项不参与抽样')),
+                WB().h('tr', null, WB().h('td', null, '数值起点'),
+                    WB().h('td', { class: 'wb-hint' }, '使用本次确定性结果')),
+                WB().h('tr', null, WB().h('td', null, '输出范围'),
+                    WB().h('td', { class: 'wb-hint' }, '全部参数与燃油节点区间、条件处理说明、诊断及独立评估文件(04-15:区间来源逐节点可追溯)')),
+                WB().h('tr', null, WB().h('td', null, '预计耗时'),
+                    WB().h('td', { class: 'wb-hint' }, '首次粗估约30分钟(参考20~50分钟);含准备、主计算、复算和写出,不含新工况预测;实际以评估记录为准'))));
+
+            /* 发起:确保已登记模型成果(UQ按已登记成果的交付Excel评估),再走与试车建模同一UQ接口 */
+            const launch = async () => {
+                try {
+                    let assetId = null;
+                    const fetchModels = () => window.AppConfig.engineGet(
+                        'projects/' + encodeURIComponent(ctx.project.id) + '/models');
+                    let respM = await fetchModels();
+                    let models = respM && (respM.success || respM.code === 200) && Array.isArray(respM.data) ? respM.data : [];
+                    let mine = models.filter(m => m.taskId === t.id);
+                    if (!mine.length) {
+                        const reg = await window.AppConfig.enginePost(
+                            'projects/' + encodeURIComponent(ctx.project.id) + '/tasks/'
+                            + encodeURIComponent(t.id) + '/save-model', { name: (t.name || '稳态飞参') + '-模型' });
+                        if (!(reg && (reg.success || reg.code === 200))) {
+                            toast((reg && reg.message) || '登记模型成果失败,无法发起评估', 'error'); return;
+                        }
+                        respM = await fetchModels();
+                        models = respM && (respM.success || respM.code === 200) && Array.isArray(respM.data) ? respM.data : [];
+                        mine = models.filter(m => m.taskId === t.id);
+                    }
+                    if (!mine.length || !mine[mine.length - 1].deliveryWorkbookFile) {
+                        toast('模型成果缺少交付Excel,无法评估;请检查辨识输出后重新登记', 'error'); return;
+                    }
+                    assetId = mine[mine.length - 1].id;
+                    const resp = await window.AppConfig.enginePost(
+                        'projects/' + encodeURIComponent(ctx.project.id) + '/tasks/'
+                        + encodeURIComponent(t.id) + '/uq?method=' + encodeURIComponent(state.uqMethod),
+                        { modelAssetId: assetId, particleCount: parseInt(state.uqParticle, 10) });
+                    if (resp && (resp.success || resp.code === 200)) {
+                        toast('UQ评估已发起;进度见本页与评估记录', 'success');
+                        startPolling(); renderBody();
+                    } else toast((resp && resp.message) || '发起UQ失败', 'error');
+                } catch (e) { toast('发起UQ失败:' + e.message, 'error'); }
+            };
+            wrap.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'margin-top:14px' },
+                WB().h('button', { class: 'wb-btn wb-btn-outline', onclick: () => ctx.navigate('predictions') }, '→ 跳过并进入输出预测'),
+                WB().h('div', { class: 'wb-spacer' }),
+                WB().h('button', { class: 'wb-btn wb-btn-primary', onclick: launch }, '▶ 检查配置并开始评估')));
+            wrap.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin-top:10px;max-width:1180px' },
+                '评估按 合同与先验 → 主样本计算 → 独立复算 → 参数汇总 → 结果写出 执行(04-14);'
+                + '完成后全部参数及燃油偏置的区间来源逐节点可追溯,有限样本评估的统计限制随结果保存,不标为全局完备后验(04-15)。'));
             return wrap;
         }
 

@@ -77,10 +77,15 @@ public class FileLibraryMetaService {
      *  表为空或历史行从未写入 createTime 列时,IginX 对 ORDER BY createTime 报
      *  "SortBy key doesn't exist";此时降级为无序查询+客户端按 createdAt 排序。 */
     public List<FileLibraryEntity> queryPage(String category, String name, Integer pageNum, Integer pageSize) {
+        return queryPage(category, name, null, pageNum, pageSize);
+    }
+
+    /** kind为类型筛选(如"示例·飞参训练数据(F3)"),模糊匹配kind标签。 */
+    public List<FileLibraryEntity> queryPage(String category, String name, String kind, Integer pageNum, Integer pageSize) {
         List<FileLibraryEntity> out = new java.util.ArrayList<>();
         try {
             StringBuilder sql = new StringBuilder("SELECT * FROM " + META_PREFIX + " WHERE 1=1");
-            appendFilter(sql, category, name);
+            appendFilter(sql, category, name, kind);
             if (!AuthUtil.isAdmin()) {
                 sql.append(" AND owner = '").append(AuthUtil.getCurrentUsername()).append("'");
             }
@@ -98,9 +103,13 @@ public class FileLibraryMetaService {
     }
 
     public long countPage(String category, String name) {
+        return countPage(category, name, null);
+    }
+
+    public long countPage(String category, String name, String kind) {
         try {
             StringBuilder sql = new StringBuilder("SELECT COUNT(1) FROM " + META_PREFIX + " WHERE 1=1");
-            appendFilter(sql, category, name);
+            appendFilter(sql, category, name, kind);
             if (!AuthUtil.isAdmin()) {
                 sql.append(" AND owner = '").append(AuthUtil.getCurrentUsername()).append("'");
             }
@@ -129,11 +138,18 @@ public class FileLibraryMetaService {
     }
 
     private void appendFilter(StringBuilder sql, String category, String name) {
+        appendFilter(sql, category, name, null);
+    }
+
+    private void appendFilter(StringBuilder sql, String category, String name, String kind) {
         if (category != null && !category.trim().isEmpty()) {
             sql.append(" AND category = '").append(category.trim()).append("'");
         }
         if (name != null && !name.trim().isEmpty()) {
             sql.append(" AND name LIKE '^.*").append(name.trim()).append(".*'");
+        }
+        if (kind != null && !kind.trim().isEmpty()) {
+            sql.append(" AND kind LIKE '^.*").append(kind.trim()).append(".*'");
         }
     }
 

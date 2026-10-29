@@ -166,6 +166,17 @@ public class F3FlightService {
             // parentRuntimeBinding不透传:transient的local_config白名单不接受该字段
             // (sht_f3_transient_task L351仅在"独立验证"action的入参上消费binding,不在任务cfg上),
             // 透传会被"未知任务配置字段"拒绝;瞬态父模型链接只有parentWorkbook,绑定信息保留在configuration.json备查
+            // businessIdentity:local_business必查(编号/用途/逐字段basis);交付与训练文件通常不携带业务编号,
+            // 值取发起配置,basis如实记录来源(纯ASCII,适配器文件引擎字符集GBK)
+            m.append("if ~isfield(cfg,'engineId'), cfg.engineId = 'E-001'; end\n");
+            m.append("if ~isfield(cfg,'sortieId'), cfg.sortieId = 'SORTIE-01'; end\n");
+            m.append("tf.businessIdentity = struct('engineId',char(string(cfg.engineId)), ...\n");
+            m.append("    'sortieId',char(string(cfg.sortieId)), ...\n");
+            m.append("    'parentModelId',char(string(cfg.modelId)), ...\n");
+            m.append("    'purpose','production', ...\n");
+            m.append("    'basis',struct('engineId','engineId from task launch configuration; delivery/training files carry no business id fields', ...\n");
+            m.append("        'sortieId','sortie id registered at task creation; training data has no sortie_id column', ...\n");
+            m.append("        'parentModelId','parent model asset id; delivery workbook carries no model_id'));\n");
             m.append("cfg = tf;\n");
         } else {
             // steady 合同(local_execution_config 白名单:confirmationFile/runId/outputRoot/reportRoot/maximumIterations/plotEnabled)
@@ -187,11 +198,21 @@ public class F3FlightService {
         m.append("    case 'config'\n");
         m.append("        r = ").append(taskFn).append("('config');\n");
         m.append("    case 'confirm'\n");
-        // confirmData 需要 segment_id 列表;适配器先 preview 再自动选取
-        // 全部可选窗口(steady_window + small_change, usable_fraction==1)
-        m.append("        pv = ").append(taskFn).append("('preview', cfg);\n");
-        m.append("        sel = dmg_auto_windows(pv);\n");
-        m.append("        r = ").append(taskFn).append("('confirm', cfg, sel);\n");
+        if ("sht_f3_transient_task".equals(taskFn)) {
+            // transient 的 selection 合同恰一个字段 sourceSegmentIds(sht_f3_transient_task L216,
+            // fieldnames 必须恰好 {'sourceSegmentIds'},值=候选事件中被选中的 source_segment_id,事件级非数据段);
+            // 不能用 dmg_auto_windows(稳态合同 {identification,independent_validation})。
+            // 先无 selection preview 拿程序默认选中的事件集,再按合同包装回传
+            m.append("        pv0 = ").append(taskFn).append("('preview', cfg);\n");
+            m.append("        ev = pv0.events; ids = ev.source_segment_id(ev.selected);\n");
+            m.append("        r = ").append(taskFn).append("('confirm', cfg, struct('sourceSegmentIds', ids));\n");
+        } else {
+            // steady 的 selection 合同:segment_id 列表(identification/independent_validation),
+            // 全部可选窗口(steady_window + small_change, usable_fraction==1)
+            m.append("        pv = ").append(taskFn).append("('preview', cfg);\n");
+            m.append("        sel = dmg_auto_windows(pv);\n");
+            m.append("        r = ").append(taskFn).append("('confirm', cfg, sel);\n");
+        }
         m.append("    otherwise, r = ").append(taskFn).append("(lower(c.action), cfg, struct());\n");
         m.append("end\n");
         m.append("r = dmg_jsonable(r);\n");
@@ -590,6 +611,24 @@ public class F3FlightService {
         }
     }
 
+    /** 瞬态父模型合同检查:交付Excel须含Model工作表(sht_f33_excel_delivery 'inspect'的要求)。
+     *  直接读xlsx(zip)的workbook.xml表名,不依赖Excel COM,开销毫秒级。 */
+    private boolean isModelDeliveryWorkbook(File xlsx) {
+        try (java.util.zip.ZipFile z = new java.util.zip.ZipFile(xlsx)) {
+            java.util.zip.ZipEntry e = z.getEntry("xl/workbook.xml");
+            if (e == null) return false;
+            java.io.InputStream in = z.getInputStream(e);
+            byte[] buf = new byte[8192];
+            StringBuilder sb = new StringBuilder();
+            int n;
+            while ((n = in.read(buf)) > 0) sb.append(new String(buf, 0, n, StandardCharsets.UTF_8));
+            in.close();
+            return sb.toString().contains("name=\"Model\"");
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     /** evolution runId 合同:^[[A-Za-z0-9][A-Za-z0-9_-]{0,31}$;非法字符剔除并截断。 */
     private String sanitizeEvolutionRunId(String raw) {
         String s = raw == null ? "EVO01" : raw.replaceAll("[^A-Za-z0-9_-]", "");
@@ -604,7 +643,16 @@ public class F3FlightService {
      * "root.workbook为空或含换行"拒绝;找不到交付物时明确报错引导用户。
      */
     private String resolveParentWorkbook(EngineModels.ModelingTask task) throws IOException {
+        boolean transientTask = "flight_transient".equals(task.getKind());
         if (task.getParentWorkbook() != null && !task.getParentWorkbook().trim().isEmpty()) {
+            File explicit = new File(task.getParentWorkbook().replace('\\', '/'));
+            // 瞬态父模型合同=sht_f33_excel_delivery('inspect')要求Model工作表;2p4参数化交付
+            // (Manifest/CorrectionSchedule/NpBranchModel)没有Model表,不能作瞬态父模型
+            if (transientTask && !isModelDeliveryWorkbook(explicit)) {
+                throw new IllegalStateException("父工作簿缺少Model工作表,不是可执行的模型交付Excel"
+                        + "(2p4参数化交付如2p4_deterministic_steady.xlsx只能作稳态F3的父模型);"
+                        + "请选择含Model工作表的模型交付文件(如examples/F3/TF_R002_continuous/steady_model.xlsx)");
+            }
             return task.getParentWorkbook().replace('\\', '/');
         }
         // ②发起任务时指定的项目模型:模型成果清单按 projectId+modelId 定位,取其交付Excel
@@ -614,6 +662,10 @@ public class F3FlightService {
                 if (m != null && m.getDeliveryFile() != null && !m.getDeliveryFile().trim().isEmpty()) {
                     File f = new File(m.getDeliveryFile());
                     if (f.isFile()) {
+                        if (transientTask && !isModelDeliveryWorkbook(f)) {
+                            throw new IllegalStateException("指定模型" + m.getModelId()
+                                    + "的交付Excel缺少Model工作表(2p4参数化交付等不能作瞬态父模型);请改选含Model工作表的模型交付");
+                        }
                         log.info("F3父工作簿取自指定模型: task={} model={} -> {}", task.getId(), m.getModelId(), f.getAbsolutePath());
                         return f.getAbsolutePath().replace('\\', '/');
                     }
@@ -630,6 +682,11 @@ public class F3FlightService {
                 if (m.getDeliveryFile() == null || m.getDeliveryFile().trim().isEmpty()) continue;
                 File f = new File(m.getDeliveryFile());
                 if (!f.isFile()) continue;
+                // 瞬态任务自动解析时跳过无Model表的交付(如2p4参数化交付),避免把不兼容父模型送进MATLAB
+                if (transientTask && !isModelDeliveryWorkbook(f)) {
+                    log.info("F3父工作簿自动解析跳过无Model表的交付: task={} model={}", task.getId(), m.getModelId());
+                    continue;
+                }
                 log.info("F3父工作簿取自项目模型清单: task={} model={} -> {}", task.getId(), m.getModelId(), f.getAbsolutePath());
                 return f.getAbsolutePath().replace('\\', '/');
             }
@@ -646,8 +703,39 @@ public class F3FlightService {
             if (r == null || !(r.get("deliveryWorkbookFile") instanceof String)) continue;
             File f = new File((String) r.get("deliveryWorkbookFile"));
             if (!f.isFile()) continue;
+            // 瞬态任务:兜底只接受含Model表的模型交付。老交付记录指向results.xlsx时自愈:
+            // 同delivery目录的model.xlsx才是模型交付(含Model表),results只是结果Excel
+            if (transientTask) {
+                File pf = f;
+                if (pf.getName().equalsIgnoreCase("results.xlsx")) {
+                    File mx = new File(pf.getParentFile(), "model.xlsx");
+                    pf = (mx.isFile() && isModelDeliveryWorkbook(mx)) ? mx : null;
+                } else if (!isModelDeliveryWorkbook(pf)) {
+                    pf = null;
+                }
+                if (pf == null) {
+                    log.info("F3父工作簿兜底解析跳过无Model表的交付: task={} file={}", task.getId(), f.getName());
+                    continue;
+                }
+                f = pf;
+            }
             long stamp = t.getFinishedAt() == null ? 0L : t.getFinishedAt();
             if (stamp > newest) { newest = stamp; fallback = f; }
+        }
+        // ⑤ 项目文件库(model类)兜底:新建项目尚无模型成果时,建项初始化的示例模型交付
+        //    (示例-瞬态稳态载体模型.xlsx等,含Model工作表)可直接作瞬态父模型;优先"载体/稳态"类
+        if (fallback == null && transientTask && fileLibraryMetaService != null) {
+            File libDefault = null;
+            for (com.tsinghua.entity.FileLibraryEntity e : fileLibraryMetaService.queryPage("model", null, null, 1, 50)) {
+                File f = new File(e.getPath());
+                if (!f.isFile() || !isModelDeliveryWorkbook(f)) continue;
+                if (libDefault == null) libDefault = f;
+                if (e.getKind() != null && e.getKind().contains("载体")) { libDefault = f; break; }
+            }
+            if (libDefault != null) {
+                log.info("F3父工作簿取自项目文件库: task={} -> {}", task.getId(), libDefault.getAbsolutePath());
+                return libDefault.getAbsolutePath().replace('\\', '/');
+            }
         }
         if (fallback == null) {
             throw new IllegalStateException("父工作簿不可用:未指定项目模型(可在发起任务的「选择已有模型」中指定),"
@@ -698,6 +786,8 @@ public class F3FlightService {
         File delivery = new File(outputRoot, "delivery");
         File[] xs = delivery.listFiles((d, n) -> n.toLowerCase().endsWith(".xlsx"));
         if (xs != null && xs.length > 0) {
+            // 模型交付优先:results.xlsx是结果Excel,不能作下游任务的父模型(transient父模型合同要求Model表)
+            for (File x : xs) if (x.getName().equalsIgnoreCase("model.xlsx")) return x;
             File best = null;
             for (File x : xs) if (best == null || x.lastModified() > best.lastModified()) best = x;
             return best;
@@ -713,11 +803,17 @@ public class F3FlightService {
     }
 
     /** F3程序源:项目工作目录 programs/m_program_adaptive_tune 优先,target/classes 兜底。 */
+    @Autowired(required = false)
+    private FileLibraryMetaService fileLibraryMetaService;
+
     private File ensureF3Source(String projectId) throws IOException {
         EngineModels.EngineProject p = store.getProject(projectId);
         File user = (p != null && p.getWorkdir() != null && !p.getWorkdir().isEmpty())
                 ? new File(new File(p.getWorkdir()), "programs/m_program_adaptive_tune") : null;
-        if (user != null && new File(user, "Start_FlightModelAdapt_14_SteadyTask.m").isFile()) return user;
+        if (user != null && new File(user, "Start_FlightModelAdapt_14_SteadyTask.m").isFile()) {
+            applyF3ProgramPatches(user);
+            return user;
+        }
         File c1 = new File("target/classes/" + R06_IN_CLASSPATH + "/m_program_adaptive_tune");
         File c2 = new File("datamodelgov-server/target/classes/" + R06_IN_CLASSPATH + "/m_program_adaptive_tune");
         if (new File(c1, "Start_FlightModelAdapt_14_SteadyTask.m").isFile()) return c1;
@@ -727,6 +823,39 @@ public class F3FlightService {
     }
 
     private static final String R06_IN_CLASSPATH = "programs/Delivery_V1_20261019_R06/programs";
+
+    /**
+     * 交付程序运行期补丁(F3):项目工作副本字节级ASCII替换,交付树不动,幂等。
+     * 背景:部署机无Excel COM时xlsfinfo对xlsx可能返回空char形式的sheets,
+     * ismember(字符串,空char)按逐字符比较返回非标量逻辑数组,&& / if 直接报
+     * "操作数必须能够转换为逻辑标量值"(辨识完成后结果回读即失败)。改用
+     * any(strcmp(cellstr(sheets),...)),任何sheets形态都得到标量逻辑;空sheets时
+     * 如实跳过验证sheet读取(validationMetrics保持空表,不伪装成已读取)。
+     */
+    private void applyF3ProgramPatches(File programCopy) {
+        File f = new File(programCopy, "sht_f3_steady_task.m");
+        if (!f.isFile()) return;
+        try {
+            // ISO-8859-1往返保持GBK字节不变;补丁目标串均为纯ASCII,不会切进多字节序列
+            String content = new String(Files.readAllBytes(f.toPath()), StandardCharsets.ISO_8859_1);
+            if (content.contains("any(strcmp(cellstr(sheets)")) return; // 已打补丁,幂等跳过
+            String patched = content
+                    .replace("readValidation&&ismember('validation_metrics',sheets)",
+                            "readValidation&&any(strcmp(cellstr(sheets),'validation_metrics'))")
+                    .replace("readValidation&&ismember('validation_predictions',sheets)",
+                            "readValidation&&any(strcmp(cellstr(sheets),'validation_predictions'))")
+                    .replace("readValidation&&ismember('validation_small_history',sheets)",
+                            "readValidation&&any(strcmp(cellstr(sheets),'validation_small_history'))")
+                    .replace("if ismember('EvidenceLineage',sheets)",
+                            "if any(strcmp(cellstr(sheets),'EvidenceLineage'))");
+            if (!patched.equals(content)) {
+                Files.write(f.toPath(), patched.getBytes(StandardCharsets.ISO_8859_1));
+                log.info("已应用F3程序补丁(xlsfinfo空sheets标量化比较): {}", f);
+            }
+        } catch (Exception e) {
+            log.warn("F3程序补丁应用失败({}): {}", f, e.getMessage());
+        }
+    }
 
     /** 递归删除目录 */
     private static void deleteDirectory(File directory) {

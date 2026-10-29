@@ -194,6 +194,12 @@ public class EngineWorkbenchController {
             } catch (Exception pe) {
                 log.warn("项目程序源预置失败(运行时将兜底): {} -> {}", p.getName(), pe.getMessage());
             }
+            // 交付examples示例文件按建模任务类型初始化到项目文件库(带"示例·"kind标签,前端可按类型筛选带入)
+            try {
+                provisionExampleLibrary(p.getId());
+            } catch (Exception pe) {
+                log.warn("示例文件库初始化失败(不影响建项): {} -> {}", p.getName(), pe.getMessage());
+            }
             return Result.success(p);
         } catch (Exception e) {
             log.error("创建项目失败", e);
@@ -700,11 +706,12 @@ public class EngineWorkbenchController {
     public Result<Map<String, Object>> fileList(@PathVariable("pid") String pid,
                                                 @RequestParam(value = "category", required = false) String category,
                                                 @RequestParam(value = "name", required = false) String name,
+                                                @RequestParam(value = "kind", required = false) String kind,
                                                 @RequestParam(value = "pageNum", defaultValue = "1") Integer pageNum,
                                                 @RequestParam(value = "pageSize", defaultValue = "10") Integer pageSize) {
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("rows", fileLibraryMetaService.queryPage(category, name, pageNum, pageSize));
-        out.put("total", fileLibraryMetaService.countPage(category, name));
+        out.put("rows", fileLibraryMetaService.queryPage(category, name, kind, pageNum, pageSize));
+        out.put("total", fileLibraryMetaService.countPage(category, name, kind));
         out.put("pageNum", pageNum);
         out.put("pageSize", pageSize);
         return Result.success(out);
@@ -742,6 +749,98 @@ public class EngineWorkbenchController {
             log.error("文件入库失败", e);
             return Result.error("文件入库失败: " + e.getMessage());
         }
+    }
+
+    /** 交付examples示例文件 → 项目文件库 初始化映射:{examples相对路径, category, kind类型标签, 入库名}。
+     *  只挑各建模任务用作输入/父模型的小体积交付与数据文件;kind以"示例·"开头,前端下拉按类型筛选。 */
+    private static final String[][] EXAMPLE_LIBRARY_FILES = {
+        {"F3/raw_training/flight_data_3p1_identification_history.xlsx", "data", "示例·飞参训练数据(F3)", "示例-飞参训练数据.xlsx"},
+        {"F3/raw_test/flight_data_3p1_independent_validation_history.xlsx", "data", "示例·飞参独立测试(F3)", "示例-飞参独立测试.xlsx"},
+        {"TC24/TestData/three_component/tc24_training_means.xlsx", "data", "示例·稳态试车训练均值(TC24)", "示例-稳态试车训练均值.xlsx"},
+        {"TC24/TestData/three_component/tc24_test_means.xlsx", "data", "示例·稳态试车检验均值(TC24)", "示例-稳态试车检验均值.xlsx"},
+        {"TC27/TestData/three_component/tc27_training_history.xlsx", "data", "示例·试车训练历程(TC27)", "示例-试车训练历程.xlsx"},
+        {"TC27/TestData/three_component/tc27_test_history.xlsx", "data", "示例·试车检验历程(TC27)", "示例-试车检验历程.xlsx"},
+        {"Stage4/prediction_input.xlsx", "data", "示例·自演化输入(Stage4)", "示例-自演化预测输入.xlsx"},
+        {"F3/TF_R002_continuous/steady_model.xlsx", "model", "示例·瞬态稳态载体模型(F3瞬态父模型)", "示例-瞬态稳态载体模型.xlsx"},
+        {"F3/TF_R002_continuous/flight_transient_model.xlsx", "model", "示例·瞬态组合模型交付(F3)", "示例-瞬态组合模型.xlsx"},
+        {"F3/R042_B1/delivery/model.xlsx", "model", "示例·稳态飞参模型交付(F3)", "示例-稳态飞参模型.xlsx"},
+        {"TC24/MiddleData/three_component/steady_model_2p4_delivery/2p4_deterministic_steady.xlsx", "model", "示例·2p4稳态参数化交付(TC24稳态父模型)", "示例-2p4确定性稳态交付.xlsx"},
+        {"TC24/MiddleData/three_component/steady_model_2p4_delivery/2p4_deterministic_transient_instant.xlsx", "model", "示例·2p4瞬态参数化交付(TC24)", "示例-2p4确定性瞬态交付.xlsx"},
+        {"TC24/posterior_B/posterior_b.xlsx", "model", "示例·UQ后验交付B(TC24)", "示例-UQ后验B.xlsx"},
+        {"TC24/posterior_C/posterior_c.xlsx", "model", "示例·UQ后验交付C(TC24)", "示例-UQ后验C.xlsx"},
+        {"TC27/TC27_UI_R065_20260928/full_ti_ii_01/MiddleData/tc27_deterministic_transient_instant_II.xlsx", "model", "示例·瞬态时刻模型交付(TC27)", "示例-瞬态时刻模型交付.xlsx"},
+        {"Stage4/evolution02/s001/model/delivery/model.xlsx", "model", "示例·架次模型交付(自演化)", "示例-架次模型交付.xlsx"},
+        {"Stage4/prediction_models/hold/steady_model.xlsx", "model", "示例·预测载体模型-沿用(自演化)", "示例-预测载体模型-沿用.xlsx"},
+        {"Stage4/prediction_models/trend/steady_model.xlsx", "model", "示例·预测载体模型-趋势(自演化)", "示例-预测载体模型-趋势.xlsx"}
+    };
+    private static final String EXAMPLE_CLASSPATH = "programs/Delivery_V1_20261019_R06/examples/";
+
+    /** 创建项目时把examples示例文件按类型复制入项目文件库(kind带"示例·"前缀;幂等:同名跳过)。 */
+    private void provisionExampleLibrary(String pid) throws java.io.IOException {
+        int n = 0;
+        for (String[] m : EXAMPLE_LIBRARY_FILES) {
+            String destName = m[3];
+            File dest = new File(fileLibraryDir(pid, m[1]), destName);
+            if (dest.isFile()) { n++; continue; }
+            byte[] data = readExampleResource(EXAMPLE_CLASSPATH + m[0]);
+            if (data == null) { log.warn("示例文件缺失,跳过: {}", m[0]); continue; }
+            try {
+                if (!dest.getParentFile().exists() && !dest.getParentFile().mkdirs()) {
+                    throw new java.io.IOException("无法创建文件库目录");
+                }
+                java.nio.file.Files.write(dest.toPath(), data);
+                FileLibraryEntity entry = new FileLibraryEntity();
+                entry.setProjectId(pid);
+                entry.setCategory(m[1]);
+                entry.setKind(m[2]);
+                registerLibraryEntry(entry, dest, m[2]);
+                n++;
+            } catch (Exception e) {
+                log.warn("示例文件入库失败: {} -> {}", m[0], e.getMessage());
+            }
+        }
+        log.info("项目文件库示例初始化完成: project={} 条目={}/{}", pid, n, EXAMPLE_LIBRARY_FILES.length);
+    }
+
+    /** 读取classpath交付examples文件:优先文件系统目录(IDE/解包运行),兜底jar内条目(部署运行)。 */
+    private byte[] readExampleResource(String rel) {
+        String[] roots = {
+                "datamodelgov-server/src/main/resources/",
+                "src/main/resources/",
+                "target/classes/",
+                "datamodelgov-server/target/classes/"
+        };
+        for (String r : roots) {
+            File f = new File(r + rel);
+            if (f.isFile()) {
+                try { return java.nio.file.Files.readAllBytes(f.toPath()); } catch (Exception ignore) { }
+            }
+        }
+        // jar运行:从datamodelgov-server*.jar中按条目名读取
+        try (java.util.stream.Stream<java.nio.file.Path> roots2 = java.nio.file.Files.walk(
+                java.nio.file.Paths.get("").toAbsolutePath(), 3)) {
+            java.nio.file.Path jar = roots2.filter(pp -> pp.getFileName() != null
+                            && pp.getFileName().toString().startsWith("datamodelgov-server")
+                            && pp.getFileName().toString().endsWith(".jar"))
+                    .findFirst().orElse(null);
+            if (jar != null) {
+                try (java.util.jar.JarFile jf = new java.util.jar.JarFile(jar.toFile())) {
+                    for (String prefix : new String[]{"BOOT-INF/classes/", ""}) {
+                        java.util.jar.JarEntry en = jf.getJarEntry(prefix + rel);
+                        if (en != null) {
+                            try (java.io.InputStream in = jf.getInputStream(en)) {
+                                java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+                                byte[] buf = new byte[8192];
+                                int n;
+                                while ((n = in.read(buf)) > 0) bos.write(buf, 0, n);
+                                return bos.toByteArray();
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignore) { }
+        return null;
     }
 
     @ApiOperation("删除文件库条目(含本地文件与IginX备份)")

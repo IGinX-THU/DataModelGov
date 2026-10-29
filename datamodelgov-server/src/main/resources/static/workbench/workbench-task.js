@@ -703,15 +703,20 @@
                 WB().h('label', null, label),
                 WB().h('div', { style: 'display:flex;gap:10px;flex-wrap:wrap;align-items:center' },
                     nameBox,
+                    pickBtn,
                     (function () {
-                        const libSel = WB().h('select', { style: 'max-width:230px' },
-                            WB().h('option', { value: '' }, '从文件库选择...'));
+                        // 按槽位类型自动筛选:训练槽只显示训练数据类,检验槽只显示测试/检验数据类(无匹配则显示全部)
+                        const slotKw = kind === 'validation' ? ['测试', '检验'] : ['训练'];
+                        const matchSlot = k => slotKw.some(w => String(k || '').indexOf(w) >= 0);
+                        const libSel = WB().h('select', { class: 'lib-file', style: 'max-width:260px' },
+                            WB().h('option', { value: '' }, '从文件库选择(本槽位类型)...'));
                         window.AppConfig.engineGet('projects/'
                             + encodeURIComponent(ctx.project.id || '') + '/files/page',
-                            { category: 'data', pageSize: 50 })
+                            { category: 'data', pageSize: 200 })
                             .then(resp => {
                                 const rows = resp && resp.data && Array.isArray(resp.data.rows) ? resp.data.rows.filter(x => x && x.id != null) : [];
-                                rows.forEach(r0 => libSel.appendChild(WB().h('option', { value: r0.id },
+                                const hit = rows.filter(r0 => matchSlot(r0.kind));
+                                (hit.length ? hit : rows).forEach(r0 => libSel.appendChild(WB().h('option', { value: r0.id },
                                     (r0.name || r0.id) + (r0.kind ? ' · ' + r0.kind : ''))));
                             })
                             .catch(() => { });
@@ -720,7 +725,7 @@
                     WB().h('button', {
                         class: 'wb-btn wb-btn-outline',
                         onclick: async () => {
-                            const sel = row.querySelector('select');
+                            const sel = row.querySelector('select.lib-file');
                             if (!sel || !sel.value) { toast('请先在下拉中选择库内文件', 'error'); return; }
                             try {
                                 const resp = await window.AppConfig.enginePost(
@@ -735,7 +740,6 @@
                             } catch (e) { toast('带入失败:' + e.message, 'error'); }
                         }
                     }, '带入'),
-                    pickBtn,
                     WB().h('button', {
                         class: 'wb-btn wb-btn-outline' + (filePath ? '' : ' disabled'),
                         onclick: async () => {
