@@ -294,10 +294,19 @@ public class F3FlightService {
         m.append("    case 'exportindex'\n");
         m.append("        r = Start_Stage4_02_EvolutionTask('exportIndex', struct('resultDirectory', c.resultDirectory));\n");
         m.append("    case 'run'\n");
-        // own_plan合同:run启动时outputRoot/reportRoot必须不存在,计划由run内own_plan创建。
-        // 不能预confirm:confirm会向outputRoot写binding凭据、提前创建目录,触发
-        // 「新计划目录必须不存在;已有无主目录保留诊断,不覆盖」。绑定由run按已登记父链
-        // 顺序内部生成(Start_Stage4_02_EvolutionTask头注:run生成真实绑定)。
+        // run前每个选中架次必须已确认数据意图(execute断言SHT:T4:Confirmation):
+        // preview→自动窗口→confirm,再整批run(程序自身按父链顺序bind_parent生成绑定)。
+        // 三者共用同一cfg.outputRoot:own_plan对已有同身份计划幂等(sht_stage4_evolution_task
+        // own_plan L335-340),preview首次创建计划目录,confirm/run复用;「新计划目录必须
+        // 不存在」只拦无主目录,不拦同身份续用——不能省略preview/confirm,否则intentFile
+        // 为空,run直接报「F-xxx缺少完整数据段的合法确认」。
+        m.append("        for i = 1:n\n");
+        m.append("            if ~cfg.sorties(i).selected, continue; end\n");
+        m.append("            sid = cfg.sorties(i).sortieId;\n");
+        m.append("            pv = Start_Stage4_02_EvolutionTask('preview', cfg, struct('sortieId', sid));\n");
+        m.append("            sel = dmg_auto_windows(pv);\n");
+        m.append("            Start_Stage4_02_EvolutionTask('confirm', cfg, struct('sortieId', sid, 'windows', sel));\n");
+        m.append("        end\n");
         m.append("        r = Start_Stage4_02_EvolutionTask('run', cfg);\n");
         m.append("    otherwise\n");
         m.append("        r = Start_Stage4_02_EvolutionTask(lower(c.action), cfg);\n");
