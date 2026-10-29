@@ -674,6 +674,33 @@ public class F3FlightService {
         }
     }
 
+    /** 2p4参数化交付须与请求路线一致(sht_load_2p4_deterministic_delivery校验Manifest路线,
+     *  不一致报「Excel路线…与请求路线不一致」);按交付命名约定轻量判断,无路线提示时放行给MATLAB兜底。 */
+    private boolean is2p4DeliveryForRoute(File xlsx, String route) {
+        if (!is2p4ParametricDelivery(xlsx)) return false;
+        String n = xlsx.getName().toLowerCase();
+        if ("transient_instant".equals(route)) return n.contains("transient");
+        return !n.contains("transient");
+    }
+
+    /** F3交付内嵌Manifest表时,xlsfinfo能枚举到但无Excel服务器的readtable按名读取会失败
+     *  (「工作表名称'Manifest'不存在或不受支持」),Model身份表则正常。轻量探测workbook.xml。 */
+    private boolean hasEmbeddedManifestSheet(File xlsx) {
+        try (java.util.zip.ZipFile z = new java.util.zip.ZipFile(xlsx)) {
+            java.util.zip.ZipEntry e = z.getEntry("xl/workbook.xml");
+            if (e == null) return false;
+            java.io.InputStream in = z.getInputStream(e);
+            byte[] buf = new byte[8192];
+            StringBuilder sb = new StringBuilder();
+            int n;
+            while ((n = in.read(buf)) > 0) sb.append(new String(buf, 0, n, StandardCharsets.UTF_8));
+            in.close();
+            return sb.toString().contains("name=\"Manifest\"");
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     /** evolution runId 合同:^[[A-Za-z0-9][A-Za-z0-9_-]{0,31}$;非法字符剔除并截断。 */
     private String sanitizeEvolutionRunId(String raw) {
         String s = raw == null ? "EVO01" : raw.replaceAll("[^A-Za-z0-9_-]", "");
@@ -692,6 +719,7 @@ public class F3FlightService {
         // 自演化根来源=2p4试车模型时,sht_f3_current_contract('parent')按2p4参数化交付合同读取
         // (CorrectionSchedule/MeasurementBias表),F3/TC27模型交付会被readtable报"工作表不存在"
         boolean evo2p4 = "evolution".equals(task.getKind()) && "2p4".equals(task.getParentSource());
+        String evoRoute = task.getParentRoute() == null ? "steady" : task.getParentRoute();
         if (task.getParentWorkbook() != null && !task.getParentWorkbook().trim().isEmpty()) {
             File explicit = new File(task.getParentWorkbook().replace('\\', '/'));
             // 瞬态父模型合同=sht_f33_excel_delivery('inspect')要求Model工作表;2p4参数化交付
@@ -701,10 +729,16 @@ public class F3FlightService {
                         + "(2p4参数化交付如2p4_deterministic_steady.xlsx只能作稳态F3的父模型);"
                         + "请选择含Model工作表的模型交付文件(如examples/F3/TF_R002_continuous/steady_model.xlsx)");
             }
-            if (evo2p4 && !is2p4ParametricDelivery(explicit)) {
-                throw new IllegalStateException("自演化根来源为2.4试车模型时,父工作簿必须是2p4参数化交付"
-                        + "(含CorrectionSchedule表,如2p4_deterministic_steady.xlsx);"
-                        + "F3/TC27模型交付不能作2p4试车起点,请改选或改根来源");
+            // 内嵌Manifest的模型交付在无Excel服务器上业务身份读取必失败(见hasEmbeddedManifestSheet)
+            if (transientTask && hasEmbeddedManifestSheet(explicit)) {
+                throw new IllegalStateException("父工作簿内嵌Manifest表,本机MATLAB无Excel服务时按名读取会失败;"
+                        + "请改选不含Manifest的模型交付(如同任务delivery/model.xlsx)或改用2p4参数化交付作根");
+            }
+            if (evo2p4 && !is2p4DeliveryForRoute(explicit, evoRoute)) {
+                throw new IllegalStateException("自演化2p4试车起点须为" + evoRoute + "路线的参数化交付"
+                        + "(含CorrectionSchedule表" + ("transient_instant".equals(evoRoute)
+                        ? ",如2p4_deterministic_transient_instant.xlsx" : ",如2p4_deterministic_steady.xlsx")
+                        + ");当前文件路线不符或缺表,请改选或改根路线");
             }
             return task.getParentWorkbook().replace('\\', '/');
         }
@@ -719,10 +753,14 @@ public class F3FlightService {
                             throw new IllegalStateException("指定模型" + m.getModelId()
                                     + "的交付Excel缺少Model工作表(2p4参数化交付等不能作瞬态父模型);请改选含Model工作表的模型交付");
                         }
-                        if (evo2p4 && !is2p4ParametricDelivery(f)) {
+                        if (transientTask && hasEmbeddedManifestSheet(f)) {
                             throw new IllegalStateException("指定模型" + m.getModelId()
-                                    + "的交付Excel不是2p4参数化交付(缺CorrectionSchedule表);"
-                                    + "根来源为2.4试车模型时请改选TC24参数化交付,或把根来源改为对应模型路线");
+                                    + "的交付Excel内嵌Manifest表,本机MATLAB无Excel服务时读取会失败;请改选其它模型交付");
+                        }
+                        if (evo2p4 && !is2p4DeliveryForRoute(f, evoRoute)) {
+                            throw new IllegalStateException("指定模型" + m.getModelId()
+                                    + "的交付Excel不是" + evoRoute + "路线的2p4参数化交付;"
+                                    + "根来源为2.4试车模型时请改选对应路线的TC24参数化交付,或改根来源/根路线");
                         }
                         log.info("F3父工作簿取自指定模型: task={} model={} -> {}", task.getId(), m.getModelId(), f.getAbsolutePath());
                         return f.getAbsolutePath().replace('\\', '/');
@@ -741,13 +779,13 @@ public class F3FlightService {
                 File f = new File(m.getDeliveryFile());
                 if (!f.isFile()) continue;
                 // 瞬态任务自动解析时跳过无Model表的交付(如2p4参数化交付),避免把不兼容父模型送进MATLAB
-                if (transientTask && !isModelDeliveryWorkbook(f)) {
-                    log.info("F3父工作簿自动解析跳过无Model表的交付: task={} model={}", task.getId(), m.getModelId());
+                if (transientTask && (!isModelDeliveryWorkbook(f) || hasEmbeddedManifestSheet(f))) {
+                    log.info("F3父工作簿自动解析跳过不兼容交付(无Model表或内嵌Manifest): task={} model={}", task.getId(), m.getModelId());
                     continue;
                 }
-                // 自演化2p4根只接受参数化交付;F3/TC27交付作2p4试车起点会被MATLAB合同拒绝
-                if (evo2p4 && !is2p4ParametricDelivery(f)) {
-                    log.info("F3父工作簿自动解析跳过非2p4参数化交付: task={} model={}", task.getId(), m.getModelId());
+                // 自演化2p4根只接受对应路线的参数化交付;F3/TC27交付作2p4试车起点会被MATLAB合同拒绝
+                if (evo2p4 && !is2p4DeliveryForRoute(f, evoRoute)) {
+                    log.info("F3父工作簿自动解析跳过非{}路线2p4参数化交付: task={} model={}", evoRoute, task.getId(), m.getModelId());
                     continue;
                 }
                 log.info("F3父工作簿取自项目模型清单: task={} model={} -> {}", task.getId(), m.getModelId(), f.getAbsolutePath());
@@ -766,7 +804,7 @@ public class F3FlightService {
             if (r == null || !(r.get("deliveryWorkbookFile") instanceof String)) continue;
             File f = new File((String) r.get("deliveryWorkbookFile"));
             if (!f.isFile()) continue;
-            // 瞬态任务:兜底只接受含Model表的模型交付。老交付记录指向results.xlsx时自愈:
+            // 瞬态任务:兜底只接受含Model表且不内嵌Manifest的模型交付。老交付记录指向results.xlsx时自愈:
             // 同delivery目录的model.xlsx才是模型交付(含Model表),results只是结果Excel
             if (transientTask) {
                 File pf = f;
@@ -776,14 +814,15 @@ public class F3FlightService {
                 } else if (!isModelDeliveryWorkbook(pf)) {
                     pf = null;
                 }
+                if (pf != null && hasEmbeddedManifestSheet(pf)) pf = null;
                 if (pf == null) {
-                    log.info("F3父工作簿兜底解析跳过无Model表的交付: task={} file={}", task.getId(), f.getName());
+                    log.info("F3父工作簿兜底解析跳过不兼容交付(无Model表或内嵌Manifest): task={} file={}", task.getId(), f.getName());
                     continue;
                 }
                 f = pf;
             }
-            if (evo2p4 && !is2p4ParametricDelivery(f)) {
-                log.info("F3父工作簿兜底解析跳过非2p4参数化交付: task={} file={}", task.getId(), f.getName());
+            if (evo2p4 && !is2p4DeliveryForRoute(f, evoRoute)) {
+                log.info("F3父工作簿兜底解析跳过非{}路线2p4参数化交付: task={} file={}", evoRoute, task.getId(), f.getName());
                 continue;
             }
             long stamp = t.getFinishedAt() == null ? 0L : t.getFinishedAt();
@@ -795,7 +834,7 @@ public class F3FlightService {
             File libDefault = null;
             for (com.tsinghua.entity.FileLibraryEntity e : fileLibraryMetaService.queryPage("model", null, null, 1, 50)) {
                 File f = new File(e.getPath());
-                if (!f.isFile() || !isModelDeliveryWorkbook(f)) continue;
+                if (!f.isFile() || !isModelDeliveryWorkbook(f) || hasEmbeddedManifestSheet(f)) continue;
                 if (libDefault == null) libDefault = f;
                 if (e.getKind() != null && e.getKind().contains("载体")) { libDefault = f; break; }
             }
