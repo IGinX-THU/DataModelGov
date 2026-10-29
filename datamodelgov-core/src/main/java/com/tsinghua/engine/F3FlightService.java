@@ -294,15 +294,10 @@ public class F3FlightService {
         m.append("    case 'exportindex'\n");
         m.append("        r = Start_Stage4_02_EvolutionTask('exportIndex', struct('resultDirectory', c.resultDirectory));\n");
         m.append("    case 'run'\n");
-        // run 前每个选中架次必须已确认数据意图:preview→自动窗口→confirm,
-        // 再整批 run(程序自身按父链顺序生成绑定与模型)
-        m.append("        for i = 1:n\n");
-        m.append("            if ~cfg.sorties(i).selected, continue; end\n");
-        m.append("            sid = cfg.sorties(i).sortieId;\n");
-        m.append("            pv = Start_Stage4_02_EvolutionTask('preview', cfg, struct('sortieId', sid));\n");
-        m.append("            sel = dmg_auto_windows(pv);\n");
-        m.append("            Start_Stage4_02_EvolutionTask('confirm', cfg, struct('sortieId', sid, 'windows', sel));\n");
-        m.append("        end\n");
+        // own_plan合同:run启动时outputRoot/reportRoot必须不存在,计划由run内own_plan创建。
+        // 不能预confirm:confirm会向outputRoot写binding凭据、提前创建目录,触发
+        // 「新计划目录必须不存在;已有无主目录保留诊断,不覆盖」。绑定由run按已登记父链
+        // 顺序内部生成(Start_Stage4_02_EvolutionTask头注:run生成真实绑定)。
         m.append("        r = Start_Stage4_02_EvolutionTask('run', cfg);\n");
         m.append("    otherwise\n");
         m.append("        r = Start_Stage4_02_EvolutionTask(lower(c.action), cfg);\n");
@@ -433,11 +428,11 @@ public class F3FlightService {
                     if (!confFile.isFile()) throw new IOException("确认凭据不存在: " + confFile);
                     outputRoot = confFile.getParentFile();
                     reportRoot = new File(workDir, subDir + "-report");
-                } else if ("run".equals(action) && !evo) {
-                    // steady:run 必须用独立的全新批次目录——A阶段确认回执的冻结输入存放在<f3-xx>
-                    // 确认目录内,复用同一目录会被local_safe_roots判"输出目录不得与输入/父模型目录重叠";
-                    // 且run输出目录由MATLAB程序自建并要求创建前不存在(local_new_root+ExistingRun断言),
-                    // Java预创建会直接触发"辨识目录已存在"——这里只计算路径,不建目录。
+                } else if ("run".equals(action)) {
+                    // steady/evolution:run必须用独立的全新批次目录——MATLAB合同(local_new_root/own_plan)
+                    // 要求run启动时输出目录不存在,由程序自建;Java预创建或复用旧目录(内含上次失败残留)
+                    // 会直接报「辨识目录已存在/新计划目录必须不存在」——这里只计算路径,不建目录。
+                    // transient不在此列:confirmation.mat必须与交付同根,复用confirm输出根(见上)。
                     String stamp = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss").format(new java.util.Date());
                     outputRoot = new File(workDir, subDir + "-run-" + stamp);
                     reportRoot = new File(workDir, subDir + "-report-run-" + stamp);

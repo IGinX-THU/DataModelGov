@@ -2653,10 +2653,14 @@ window.Workbench = (() => {
 
     /** 运行记录:仅建模任务的执行历史,调独立分页接口 GET /projects/{pid}/records(服务端分页,
      *  与项目列表同款分页条);UQ评估与输出预测各有专属页面,不在此混列。 */
-    /* 运行记录阶段标签(与效果图页签/业务命名一致) */
-    const RECORD_STAGE = { steady: '稳态系数辨识', steady_update: '新增试车稳态更新',
-        transient_update: '过渡态瞬态辨识', flight_steady: '稳态飞参建模', flight_transient: '过渡态飞参建模',
-        evolution: '模型自演化', uq: '不确定性评估', prediction: '输出预测', startstop: '起动停车建模' };
+    /* 运行记录任务类型=建模任务页面名称(与打开跳转落到的业务页标题一致) */
+    const RECORD_STAGE = { steady: '稳态系数辨识', steady_update: '新试车数据更新',
+        transient_update: '瞬态试车建模', flight_steady: '稳态飞参建模', flight_transient: '过渡态飞参建模',
+        evolution: '发动机个性化模型自演化', uq: '不确定性评估', prediction: '输出预测', startstop: '起动停车建模' };
+    /* 工作流阶段名称(与模型成果登记的stage同口径),显示在「最近运行」列 */
+    const KIND_WORKFLOW_STAGE = { steady: '2.4 基础建模', steady_update: '2.7 数据更新',
+        transient_update: '2.7 瞬态更新', flight_steady: 'F3 稳态', flight_transient: 'F3 瞬态',
+        evolution: '自演化', uq: 'UQ评估', prediction: '输出预测', startstop: '起动停车' };
     const KIND_BIZ = { steady: 'steady', steady_update: 'steady_update', transient_update: 'transient',
         flight_steady: 'flightSteady', flight_transient: 'flightTransient', evolution: 'evolution', uq: 'steady' };
     /** 运行记录/项目概览"打开"统一入口。行数据:tk.taskId||tk.id, tk.kind。
@@ -2721,7 +2725,7 @@ window.Workbench = (() => {
                         h('td', { class: 'wb-hint', style: 'font-weight:600' }, RECORD_STAGE[tk.kind] || tk.kind || '稳态试车建模'),
                         h('td', { class: 'wb-hint' }, isUqStage
                             ? [h('span', { style: 'display:inline-flex;margin-right:6px' }, statusTag('不确定性评估', 'violet')), (tk.runId || '—')]
-                            : (tk.runId || '—')),
+                            : [(KIND_WORKFLOW_STAGE[tk.kind] || '—'), tk.runId ? ' · ' + tk.runId : '']),
                         h('td', null, kindTag
                             ? [h('span', { style: 'display:inline-flex;margin-right:6px' }, statusTag(kindTag[0], kindTag[1])), statusTag(st[0], st[1])]
                             : statusTag(st[0], st[1])),
