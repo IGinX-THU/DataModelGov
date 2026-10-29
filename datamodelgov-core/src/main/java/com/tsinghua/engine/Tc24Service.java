@@ -1840,7 +1840,9 @@ public class Tc24Service {
         cfg.put("method", method);
         cfg.put("route", task.getRoute() == null ? "steady" : task.getRoute());
         if (particleCount != null) cfg.put("particleCount", particleCount);
-        cfg.put("trainingFile", abs(task.getTrainingFile()));
+        // 自演化任务没有trainingFile,观测数据在identificationFile(架次测量Excel)
+        cfg.put("trainingFile", abs("evolution".equals(task.getKind())
+                ? task.getIdentificationFile() : task.getTrainingFile()));
         cfg.put("testFile", task.getTestFile() == null || task.getTestFile().isEmpty()
                 ? "" : abs(task.getTestFile()));
         cfg.put("deterministicWorkbookFile", abs(deterministicWorkbook));

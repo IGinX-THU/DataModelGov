@@ -2654,8 +2654,8 @@ window.Workbench = (() => {
     /** 运行记录:仅建模任务的执行历史,调独立分页接口 GET /projects/{pid}/records(服务端分页,
      *  与项目列表同款分页条);UQ评估与输出预测各有专属页面,不在此混列。 */
     /* 运行记录任务类型=建模任务页面名称(与打开跳转落到的业务页标题一致) */
-    const RECORD_STAGE = { steady: '稳态系数辨识', steady_update: '新试车数据更新',
-        transient_update: '瞬态试车建模', flight_steady: '稳态飞参建模', flight_transient: '过渡态飞参建模',
+    const RECORD_STAGE = { steady: '基础稳态点建模', steady_update: '试车稳态更新',
+        transient_update: '过渡态试车建模', flight_steady: '稳态飞参建模', flight_transient: '过渡态飞参建模',
         evolution: '发动机个性化模型自演化', uq: '不确定性评估', prediction: '输出预测', startstop: '起动停车建模' };
     /* 工作流阶段名称(与模型成果登记的stage同口径),显示在「最近运行」列 */
     const KIND_WORKFLOW_STAGE = { steady: '2.4 基础建模', steady_update: '2.7 数据更新',
@@ -2722,7 +2722,7 @@ window.Workbench = (() => {
                     const isUqStage = (tk.taskId || '').indexOf('uq-') === 0; // UQ阶段行:类型列=父工作流,最近运行列标注
                     return h('tr', null,
                         h('td', { class: 'wb-link', title: note, style: 'max-width:260px;word-break:break-all' }, tk.name || tk.taskId),
-                        h('td', { class: 'wb-hint', style: 'font-weight:600' }, RECORD_STAGE[tk.kind] || tk.kind || '稳态试车建模'),
+                        h('td', { class: 'wb-hint', style: 'font-weight:600' }, RECORD_STAGE[tk.kind] || tk.kind || '基础稳态点建模'),
                         h('td', { class: 'wb-hint' }, isUqStage
                             ? [h('span', { style: 'display:inline-flex;margin-right:6px' }, statusTag('不确定性评估', 'violet')), (tk.runId || '—')]
                             : [(KIND_WORKFLOW_STAGE[tk.kind] || '—'), tk.runId ? ' · ' + tk.runId : '']),

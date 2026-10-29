@@ -1310,8 +1310,10 @@ public class EngineWorkbenchController {
             if (!EngineModels.ModelingTask.ST_COMPLETED.equals(t.getStatus())) {
                 return Result.error("请先完成确定性辨识,再发起不确定性评估");
             }
-            if (t.getTrainingFile() == null || t.getTrainingFile().isEmpty()) {
-                return Result.error("缺少训练数据");
+            boolean evoTask = "evolution".equals(t.getKind());
+            String trainFile = evoTask ? t.getIdentificationFile() : t.getTrainingFile();
+            if (trainFile == null || trainFile.isEmpty()) {
+                return Result.error(evoTask ? "缺少架次测量数据(identificationFile)" : "缺少训练数据");
             }
             if (t.getUqStatus() != null && ("EXECUTING".equals(t.getUqStatus()) || "PREPARING".equals(t.getUqStatus()))) {
                 return Result.error("UQ评估正在执行中,不能重复发起");

@@ -1094,7 +1094,7 @@
             else if (state.tab === 'sorties') body.appendChild(sortiesTab());
             else if (!state.task) { body.appendChild(WB().h('div', { class: 'wb-placeholder' }, WB().h('p', null, '请先在「架次与执行」登记本批架次。'))); }
             else if (state.tab === 'result') body.appendChild(resultTab());
-            else if (state.tab === 'uq') body.appendChild(entranceTab('不确定性评估', 'UQ调用F3原算法,不在第4阶段复制求解器;评估对象、观测、固定参数、概率来源和先验重设依据明确;没有实际UQ则区间状态保持未计算,确定性模型仍有效。'));
+            else if (state.tab === 'uq') body.appendChild(uqTab());
             else body.appendChild(entranceTab('下一架次预测', '先冻结两份模型:「沿用当前正常模型」与「按正常历史趋势外推模型」;两份使用相同未来输入与物理初态计算输出,不自动选胜者,不替换当前模型;之后取得测量再建立独立评价记录。'));
             paintTabs();
         }
@@ -1278,6 +1278,72 @@
                 WB().h('div', { class: 'wb-hint', style: 'margin:8px 0;max-width:900px;line-height:1.8' }, desc),
                 WB().h('div', { class: 'wb-actions-row', style: 'margin-top:12px' },
                     WB().h('button', { class: 'wb-btn wb-btn-primary', onclick: () => ctx.back(true) }, '前往模型成果')));
+        }
+
+        /* ---- 不确定性评估:与本任务已登记模型成果发起,与稳态飞参建模同一UQ接口 ---- */
+        function uqTab() {
+            const t = state.task;
+            const wrap = WB().h('div', null);
+            if (t.status !== 'COMPLETED') {
+                wrap.appendChild(WB().h('div', { class: 'wb-infobar', style: 'margin-bottom:12px' },
+                    '完成一次演化建模并登记模型成果后开放评估。'));
+                return wrap;
+            }
+            const uqRunning = t.uqStatus === 'EXECUTING' || t.uqStatus === 'PREPARING';
+            wrap.appendChild(WB().h('div', { class: 'wb-infobar', style: 'margin-bottom:12px' },
+                'UQ调用F3原算法:评估对象为本批交付模型,观测/固定参数/概率来源和先验重设依据明确;'
+                + '评估结果另存,不覆盖确定性估计值。'));
+            if (t.uqStatus) {
+                wrap.appendChild(WB().h('div', { class: uqRunning ? 'wb-infobar' : 'wb-hint', style: 'margin-bottom:12px' },
+                    '评估状态: ' + ({ EXECUTING: '执行中', PREPARING: '准备中', COMPLETED: '已完成(结果见运行记录/评估记录)',
+                        FAILED: '失败(详见日志)' }[t.uqStatus] || t.uqStatus)
+                    + (t.uqMessage ? ' · ' + t.uqMessage : '')));
+            }
+            const methodSel = WB().h('select', null,
+                WB().h('option', { value: 'B' }, '方法B(默认)'),
+                WB().h('option', { value: 'C' }, '方法C'),
+                WB().h('option', { value: 'D' }, '方法D'));
+            const particleSel = WB().h('select', null,
+                WB().h('option', { value: '512' }, '512粒子'),
+                WB().h('option', { value: '1024' }, '1024粒子'));
+            wrap.appendChild(WB().h('div', { class: 'wb-form-grid', style: 'grid-template-columns:1fr 1fr;max-width:760px' },
+                WB().h('div', { class: 'wb-field' }, WB().h('label', null, '评估方法'), methodSel),
+                WB().h('div', { class: 'wb-field' }, WB().h('label', null, '粒子数'), particleSel)));
+            const launchBtn = WB().h('button', {
+                class: 'wb-btn wb-btn-primary' + (uqRunning ? ' disabled' : ''),
+                onclick: async () => {
+                    if (uqRunning) return;
+                    launchBtn.classList.add('disabled');
+                    try {
+                        let mine = [];
+                        const respM = await window.AppConfig.engineGet(
+                            'projects/' + encodeURIComponent(ctx.project.id || '') + '/models');
+                        const models = respM && (respM.success || respM.code === 200) && Array.isArray(respM.data) ? respM.data : [];
+                        mine = models.filter(m => m.taskId === t.id);
+                        if (!mine.length || !mine[mine.length - 1].deliveryWorkbookFile) {
+                            const reg = await window.AppConfig.enginePost(
+                                'projects/' + encodeURIComponent(ctx.project.id || '') + '/tasks/'
+                                + encodeURIComponent(t.id) + '/save-model', { name: (t.name || '自演化') + '-模型' });
+                            if (!(reg && (reg.success || reg.code === 200))) {
+                                toast((reg && reg.message) || '登记模型成果失败,无法发起评估', 'error'); return;
+                            }
+                        }
+                        const resp = await window.AppConfig.enginePost(
+                            'projects/' + encodeURIComponent(ctx.project.id || '') + '/tasks/'
+                            + encodeURIComponent(t.id) + '/uq?method=' + encodeURIComponent(methodSel.value),
+                            { particleCount: parseInt(particleSel.value, 10) });
+                        if (resp && (resp.success || resp.code === 200)) {
+                            toast('UQ评估已发起;进度见本页与评估记录', 'success');
+                            window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;
+                            startPolling(); renderBody();
+                        } else toast((resp && resp.message) || '发起UQ失败', 'error');
+                    } catch (e) { toast('发起UQ失败:' + e.message, 'error'); }
+                }
+            }, uqRunning ? '评估执行中...' : '▶ 检查配置并开始评估');
+            wrap.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'margin-top:12px' }, launchBtn));
+            wrap.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin-top:8px;max-width:900px' },
+                '首次评估约30分钟(参考20~50分钟);完成后区间来源逐节点可追溯,有限样本评估的统计限制随结果保存,不标为全局完备后验。'));
+            return wrap;
         }
 
         async function runPrepare() {
