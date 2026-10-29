@@ -41,6 +41,9 @@
                         } else if (st === 'COMPLETED') {
                             state.tab = 'result';
                         }
+                        // 从运行记录打开仍在跑的任务时,runProgressView自身不启动轮询,需在此补启,
+                        // 否则页面停在首帧状态,只能手动刷新
+                        if (['RUNNING', 'PREPARING', 'STOP_REQUESTED'].includes(st)) startPolling();
                     } else {
                         state.task = null;
                         toast((resp && resp.message) || '任务不存在', 'error');
@@ -163,12 +166,20 @@
                             const keep = libPicked || libSel.value;
                             libSel.innerHTML = '';
                             libSel.appendChild(WB().h('option', { value: '' }, '从文件库选择(本槽位类型)...'));
-                            // 已选项保留在列表中并回显文件名(不显示内部ID);被删文件用ID占位不丢选择
+                            // 已选项保留在列表中并回显文件名(不显示内部ID);被删文件用ID占位不丢选择。
+                            // 用DOM属性.selected而非HTML属性——h()对null会setAttribute('selected','null'),
+                            // 属性存在即生效,导致所有选项带selected、下拉永远钉在最后一个选项上
                             const hit = rows0.filter(r0 => matchSlot(r0.kind) || String(r0.id) === String(keep));
-                            hit.forEach(r0 => libSel.appendChild(WB().h('option', { value: r0.id, selected: String(r0.id) === String(keep) ? '' : null },
-                                (r0.name || r0.id) + (r0.kind ? ' · ' + r0.kind : ''))));
-                            if (keep && !hit.some(r0 => String(r0.id) === String(keep))) {
-                                libSel.appendChild(WB().h('option', { value: keep, selected: '' }, '库文件#' + keep));
+                            hit.forEach(r0 => {
+                                const opt = WB().h('option', { value: r0.id },
+                                    (r0.name || r0.id) + (r0.kind ? ' · ' + r0.kind : ''));
+                                opt.selected = String(r0.id) === keep;
+                                libSel.appendChild(opt);
+                            });
+                            if (keep && !hit.some(r0 => String(r0.id) === keep)) {
+                                const opt = WB().h('option', { value: keep }, '库文件#' + keep);
+                                opt.selected = true;
+                                libSel.appendChild(opt);
                             }
                         };
                         libSel.addEventListener('change', () => {
@@ -725,13 +736,17 @@
             const objInp = WB().h('input', { readonly: '', value: (t.name || t.runId || '本架次模型')
                 + ' / ' + (t.identificationFile ? fileName(t.identificationFile) : '训练窗口') });
             const idInp = WB().h('input', { readonly: '', value: 'UQ-' + (t.runId || t.id) + '(记录标识由服务端生成)' });
-            const methodSel = WB().h('select', { style: 'width:100%' },
-                WB().h('option', { value: 'C', selected: state.uqMethod === 'C' ? '' : null }, 'C:非线性粒子评估'),
-                WB().h('option', { value: 'D', selected: state.uqMethod === 'D' ? '' : null }, 'D:快速局部初评'));
+            const methodSel = WB().h('select', { style: 'width:100%' });
+            const optC = WB().h('option', { value: 'C' }, 'C:非线性粒子评估');
+            const optD = WB().h('option', { value: 'D' }, 'D:快速局部初评');
+            optC.selected = state.uqMethod !== 'D'; optD.selected = state.uqMethod === 'D';
+            methodSel.appendChild(optC); methodSel.appendChild(optD);
             methodSel.addEventListener('change', () => { state.uqMethod = methodSel.value; });
-            const particleSel = WB().h('select', { style: 'width:100%' },
-                WB().h('option', { value: '512', selected: state.uqParticle === '512' ? '' : null }, '主样本512 · 独立复算512'),
-                WB().h('option', { value: '1024', selected: state.uqParticle === '1024' ? '' : null }, '主样本1024 · 独立复算1024'));
+            const particleSel = WB().h('select', { style: 'width:100%' });
+            const opt5 = WB().h('option', { value: '512' }, '主样本512 · 独立复算512');
+            const opt10 = WB().h('option', { value: '1024' }, '主样本1024 · 独立复算1024');
+            opt5.selected = state.uqParticle !== '1024'; opt10.selected = state.uqParticle === '1024';
+            particleSel.appendChild(opt5); particleSel.appendChild(opt10);
             particleSel.addEventListener('change', () => { state.uqParticle = particleSel.value; });
             wrap.appendChild(WB().h('div', { class: 'wb-form-grid', style: 'grid-template-columns:1fr 1fr;max-width:1180px;margin-bottom:6px' },
                 WB().h('div', { class: 'wb-field' }, WB().h('label', null, '评估对象(本任务已保存模型)'), objInp),
@@ -946,6 +961,8 @@
                         state.task = resp.data.task;
                         state.log = resp.data.logTail || [];
                         if (state.task && state.task.status !== 'COMPLETED') state.tab = 'sorties';
+                        // 从运行记录打开仍在跑的任务时补启轮询(sortiesTab不自行启动)
+                        if (state.task && ['RUNNING', 'PREPARING', 'STOP_REQUESTED'].includes(state.task.status)) startPolling();
                     } else toast((resp && resp.message) || '任务不存在', 'error');
                     renderBody();
                 }).catch(() => renderBody());
@@ -967,6 +984,90 @@
         function toast(msg, kind) { if (WB() && WB().toast) WB().toast(msg, kind || 'info'); }
         function fileName(p) { return p ? String(p).split(/[\\/]/).pop() : ''; }
         const running = t => t && (t.status === 'RUNNING' || t.status === 'PREPARING');
+
+        /* ---- 上传行(自演化架次测量Excel;taskPage里的同名函数作用域不同,不能直接引用) ---- */
+        function uploadRow(label, kind, t) {
+            const current = t ? (kind === 'identification' ? t.identificationFile : t.validationFile) : null;
+            const nameBox = WB().h('input', { readonly: '', value: current ? fileName(current) : '未提供', style: 'flex:1;min-width:300px' });
+            const pickBtn = WB().h('button', { class: 'wb-btn wb-btn-outline', onclick: () => fileInput.click() },
+                kind === 'identification' ? '上传架次测量文件' : '上传独立测试文件');
+            const fileInput = WB().h('input', { type: 'file', accept: '.xlsx,.xls', style: 'display:none' });
+            fileInput.addEventListener('change', async () => {
+                const f = fileInput.files && fileInput.files[0];
+                if (!f) return;
+                if (!state.task) { toast('请先登记本批任务,再上传文件', 'error'); return; }
+                const fd = new FormData();
+                fd.append('file', f);
+                nameBox.value = '上传中:' + f.name + '...';
+                try {
+                    const resp = await window.AppConfig.engineUpload(
+                        'projects/' + encodeURIComponent(ctx.project.id || '') + '/tasks/'
+                        + encodeURIComponent(state.task.id) + '/files?kind=' + encodeURIComponent(kind), fd);
+                    if (resp && (resp.success || resp.code === 200) && resp.data) {
+                        state.task = resp.data;
+                        toast('已上传:' + f.name, 'success');
+                    } else { toast((resp && resp.message) || '上传失败', 'error'); nameBox.value = current ? fileName(current) : '未提供'; }
+                } catch (e) { toast('上传失败:' + e.message, 'error'); nameBox.value = current ? fileName(current) : '未提供'; }
+                renderBody();
+            });
+            const row = WB().h('div', { class: 'wb-field', style: 'max-width:1180px;margin-bottom:10px' },
+                WB().h('label', null, label),
+                WB().h('div', { style: 'display:flex;gap:10px;flex-wrap:wrap;align-items:center' },
+                    nameBox,
+                    pickBtn,
+                    (function () {
+                        const libSel = WB().h('select', { style: 'max-width:260px' },
+                            WB().h('option', { value: '' }, '从文件库选择(架次测量数据)...'));
+                        window.AppConfig.engineGet('projects/'
+                            + encodeURIComponent(ctx.project.id || '') + '/files/page',
+                            { category: 'data', pageSize: 200 })
+                            .then(resp => {
+                                const rows = resp && resp.data && Array.isArray(resp.data.rows) ? resp.data.rows.filter(x => x && x.id != null) : [];
+                                const hit = rows.filter(r0 => String(r0.kind || '').indexOf('飞参训练') >= 0);
+                                (hit.length ? hit : rows).forEach(r0 => libSel.appendChild(WB().h('option', { value: r0.id },
+                                    (r0.name || r0.id) + (r0.kind ? ' · ' + r0.kind : ''))));
+                            })
+                            .catch(() => { });
+                        return libSel;
+                    })(),
+                    WB().h('button', {
+                        class: 'wb-btn wb-btn-outline',
+                        onclick: async () => {
+                            const sel = row.querySelector('select');
+                            if (!state.task) { toast('先登记本批任务(创建架次),再从文件库带入', 'error'); return; }
+                            if (!sel || !sel.value) { toast('请先在下拉中选择库内文件', 'error'); return; }
+                            try {
+                                const resp = await window.AppConfig.enginePost(
+                                    'projects/' + encodeURIComponent(ctx.project.id || '') + '/tasks/'
+                                    + encodeURIComponent(state.task.id) + '/files/from-library?kind='
+                                    + encodeURIComponent(kind) + '&fileId=' + encodeURIComponent(sel.value), {});
+                                if (resp && (resp.success || resp.code === 200) && resp.data) {
+                                    state.task = resp.data;
+                                    toast('已从文件库带入', 'success');
+                                    renderBody();
+                                } else toast((resp && resp.message) || '带入失败', 'error');
+                            } catch (e) { toast('带入失败:' + e.message, 'error'); }
+                        }
+                    }, '带入'),
+                    WB().h('button', {
+                        class: 'wb-btn wb-btn-outline',
+                        style: current ? '' : 'opacity:.5',
+                        onclick: async () => {
+                            if (!current) { toast('请先上传或从文件库带入文件', 'error'); return; }
+                            const name = fileName(current);
+                            try {
+                                const pv = await window.AppConfig.engineGet('projects/'
+                                    + encodeURIComponent(ctx.project.id || '') + '/tasks/'
+                                    + encodeURIComponent(state.task.id) + '/file-preview?kind=' + encodeURIComponent(kind));
+                                if (pv && (pv.success || pv.code === 200) && pv.data) {
+                                    window.Workbench.showFilePreview(pv.data.fileName || name, pv.data);
+                                } else toast((pv && pv.message) || '预览失败', 'error');
+                            } catch (e) { toast('预览失败:' + e.message, 'error'); }
+                        }
+                    }, '预览')));
+            row.appendChild(fileInput);
+            return row;
+        }
 
         function paintTabs() {
             const t = state.task;
@@ -1125,8 +1226,13 @@
                 }, prepRunning ? '核验中...' : '预览所选架次数据(输入核验)'),
                 WB().h('div', { class: 'wb-spacer' }),
                 WB().h('button', {
-                    class: 'wb-btn wb-btn-primary' + (t.status === 'READY' && !isRun ? '' : ' disabled'),
-                    onclick: () => { if (t.status === 'READY' && !isRun) { window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000; runModel(); } }
+                    // 登记后即为READY,执行前必须已有架次测量Excel,否则后端会拒绝
+                    class: 'wb-btn wb-btn-primary' + (t.status === 'READY' && t.identificationFile && !isRun ? '' : ' disabled'),
+                    onclick: () => {
+                        if (t.status !== 'READY' || isRun) return;
+                        if (!t.identificationFile) { toast('请先上传/带入架次试车测量Excel(Data表)', 'error'); return; }
+                        window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000; runModel();
+                    }
                 }, isRun ? '执行中...' : '顺序更新(整批执行)')));
             return wrap;
         }

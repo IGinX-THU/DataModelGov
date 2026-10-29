@@ -1036,7 +1036,11 @@ public class EngineWorkbenchController {
                 return Result.success(f3FlightService.run(t));
             }
             if ("evolution".equals(t.getKind())) {
-                // F-06 自演化整批执行(适配器内逐架次自动确认,无需A阶段凭据)
+                // F-06 自演化整批执行(适配器内逐架次自动确认,无需A阶段凭据);
+                // 测量Excel是合同必填,登记后即READY,这里前置拦截避免无文件任务进入RUNNING后才失败
+                if (t.getIdentificationFile() == null || t.getIdentificationFile().trim().isEmpty()) {
+                    return Result.error("请先上传/带入架次试车测量Excel(Data表),再整批执行");
+                }
                 return Result.success(f3FlightService.run(t));
             }
             if ("transient_update".equals(t.getKind())) {
@@ -1442,11 +1446,23 @@ public class EngineWorkbenchController {
             String parentModelId = null;
             if ("flight_steady".equals(t.getKind()) || "flight_transient".equals(t.getKind())
                     || "evolution".equals(t.getKind())) {
-                // F3飞参/自演化模型:delivery/model.xlsx;阶段按kind
-                File f3Out = new File(store.taskWorkDir(pid, tid),
-                        "flight_steady".equals(t.getKind()) ? "f3-steady"
-                                : "flight_transient".equals(t.getKind()) ? "f3-transient" : "evolution");
-                excel = findF3DeliveryWorkbook(f3Out);
+                // F3飞参/自演化模型:delivery/model.xlsx;阶段按kind。
+                // run阶段输出目录是<f3-xx>-run-<时间戳>(f3Exec:run必须用全新批次目录),
+                // 交付Excel在兄弟目录里,登记时需一并扫描取最新
+                String sub = "flight_steady".equals(t.getKind()) ? "f3-steady"
+                        : "flight_transient".equals(t.getKind()) ? "f3-transient" : "evolution";
+                File workDir = store.taskWorkDir(pid, tid);
+                excel = findF3DeliveryWorkbook(new File(workDir, sub));
+                File[] runDirs = workDir.listFiles((d, n) -> n.startsWith(sub + "-run-") && new File(d, n).isDirectory());
+                if (runDirs != null) {
+                    for (File rd : runDirs) {
+                        String cand = findF3DeliveryWorkbook(rd);
+                        if (cand != null) {
+                            File cf = new File(cand);
+                            if (excel == null || cf.lastModified() > new File(excel).lastModified()) excel = cand;
+                        }
+                    }
+                }
                 sourceBusiness = "evolution".equals(t.getKind()) ? "模型自演化"
                         : "flight_transient".equals(t.getKind()) ? "过渡态飞参建模" : "稳态飞参建模";
                 stage = "evolution".equals(t.getKind()) ? "自演化"

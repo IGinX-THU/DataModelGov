@@ -378,6 +378,10 @@ public class F3FlightService {
     public EngineModels.ModelingTask run(EngineModels.ModelingTask task) throws IOException {
         final String key = task.getId();
         boolean evo = "evolution".equals(task.getKind());
+        if (evo && (task.getIdentificationFile() == null || task.getIdentificationFile().trim().isEmpty())) {
+            // 同步拦截:避免先把任务置RUNNING再由异步线程标FAILED
+            throw new IOException("请先上传架次试车测量Excel(Data表),再执行整批执行");
+        }
         if (!evo && (task.getConfirmationFile() == null || task.getConfirmationFile().isEmpty())) {
             // 自愈兜底:凭据文件实际在盘但实体未记录(如旧版本confirm成功未落库凭据路径)时,
             // 扫描输出目录补挂,避免用户重跑4分钟的检查流程;真没确认过才拒
@@ -420,12 +424,20 @@ public class F3FlightService {
             File outputRoot = new File(workDir, subDir);
             File reportRoot = new File(workDir, subDir + "-report");
             if (!isConfirm && !isCheck) {
-                // B阶段(run)必须用独立的全新批次目录:A阶段确认回执的冻结输入(r.trainingWorkbook=
-                // identificationExcel等)存放在<f3-xx>确认目录内,复用同一目录会被local_safe_roots判
-                // "输出目录不得与输入/父模型目录重叠"。
-                // 且run输出目录由MATLAB程序自建并要求创建前不存在(local_new_root+ExistingRun断言),
-                // Java预创建会直接触发"辨识目录已存在"——这里只计算路径,不建目录。
-                if ("run".equals(action) && !evo) {
+                if ("run".equals(action) && !evo && "sht_f3_transient_task".equals(taskFn)) {
+                    // transient 合同(sht_f3_transient_task L36/L58):confirmation.mat 必须位于
+                    // cfg.outputRoot 下,run/estimate 从 outputRoot/confirmation.mat 恢复任务状态,
+                    // 交付也写进该根——必须复用 confirm 的输出根;像 steady 那样换新时间戳目录
+                    // 会报「请先preview并confirm本任务事件」
+                    File confFile = new File(task.getConfirmationFile().replace('\\', '/'));
+                    if (!confFile.isFile()) throw new IOException("确认凭据不存在: " + confFile);
+                    outputRoot = confFile.getParentFile();
+                    reportRoot = new File(workDir, subDir + "-report");
+                } else if ("run".equals(action) && !evo) {
+                    // steady:run 必须用独立的全新批次目录——A阶段确认回执的冻结输入存放在<f3-xx>
+                    // 确认目录内,复用同一目录会被local_safe_roots判"输出目录不得与输入/父模型目录重叠";
+                    // 且run输出目录由MATLAB程序自建并要求创建前不存在(local_new_root+ExistingRun断言),
+                    // Java预创建会直接触发"辨识目录已存在"——这里只计算路径,不建目录。
                     String stamp = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss").format(new java.util.Date());
                     outputRoot = new File(workDir, subDir + "-run-" + stamp);
                     reportRoot = new File(workDir, subDir + "-report-run-" + stamp);
@@ -457,18 +469,30 @@ public class F3FlightService {
                 config.put("purpose", "production");
                 config.put("outputRoot", outputRoot.getAbsolutePath().replace('\\', '/'));
                 config.put("reportRoot", reportRoot.getAbsolutePath().replace('\\', '/'));
+                String parentWorkbookPath = resolveParentWorkbook(task);
                 Map<String, Object> root = new LinkedHashMap<>();
                 root.put("source", task.getParentSource() == null ? "2p4" : task.getParentSource());
                 root.put("route", task.getParentRoute() == null ? "steady" : task.getParentRoute());
-                root.put("workbook", resolveParentWorkbook(task));
+                root.put("workbook", parentWorkbookPath);
                 root.put("modelId", task.getParentModelId() == null ? runId + "_ROOT" : task.getParentModelId());
                 root.put("identityBasis", "DataModelGov registered parent");
+                // 运行时绑定(sht_f3_current_contract L436-455):父Excel非内嵌运行身份且非MAIN已核
+                // 历史文件时,check_inputs要求显式声明关联,缺了报"新父模型缺少已核物理关联";
+                // runtimeManifestSha256=F3_RUNTIME_MANIFEST_SHA256与飞参路径同一常量
+                Map<String, Object> binding = new LinkedHashMap<>();
+                binding.put("workbookSha256", sha256Hex(new File(parentWorkbookPath)));
+                binding.put("runtimeManifestSha256", F3_RUNTIME_MANIFEST_SHA256);
+                binding.put("basis", "DataModelGov自动关联:父工作簿SHA与F3_R036运行包清单SHA已核验");
+                root.put("runtimeBinding", binding);
                 config.put("root", root);
                 Map<String, Object> sortie = new LinkedHashMap<>();
                 sortie.put("sortieId", task.getF3SortieId() == null ? "SORTIE-01" : task.getF3SortieId());
                 sortie.put("measurementFile", task.getIdentificationFile() == null ? "" : task.getIdentificationFile().replace('\\', '/'));
                 sortie.put("validationFile", task.getValidationFile() == null || task.getValidationFile().isEmpty()
                         ? "" : task.getValidationFile().replace('\\', '/'));
+                // 配置字典(Stage4/配置字典.csv):measurementSystemId=测量系统身份,合同必填非空;
+                // 随交付Excel的measurement_system_id列留档,标识架次测量数据来自本平台登记上传
+                sortie.put("measurementSystemId", "DMG_FLIGHT_SORTIE_DATA");
                 sortie.put("parentRef", "root");
                 sortie.put("role", "normal");
                 sortie.put("identityBasis", "DataModelGov upload");
@@ -629,6 +653,23 @@ public class F3FlightService {
         }
     }
 
+    /** 自演化2p4试车起点合同=sht_f3_current_contract要求CorrectionSchedule表;按workbook.xml轻量探测。 */
+    private boolean is2p4ParametricDelivery(File xlsx) {
+        try (java.util.zip.ZipFile z = new java.util.zip.ZipFile(xlsx)) {
+            java.util.zip.ZipEntry e = z.getEntry("xl/workbook.xml");
+            if (e == null) return false;
+            java.io.InputStream in = z.getInputStream(e);
+            byte[] buf = new byte[8192];
+            StringBuilder sb = new StringBuilder();
+            int n;
+            while ((n = in.read(buf)) > 0) sb.append(new String(buf, 0, n, StandardCharsets.UTF_8));
+            in.close();
+            return sb.toString().contains("name=\"CorrectionSchedule\"");
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     /** evolution runId 合同:^[[A-Za-z0-9][A-Za-z0-9_-]{0,31}$;非法字符剔除并截断。 */
     private String sanitizeEvolutionRunId(String raw) {
         String s = raw == null ? "EVO01" : raw.replaceAll("[^A-Za-z0-9_-]", "");
@@ -644,6 +685,9 @@ public class F3FlightService {
      */
     private String resolveParentWorkbook(EngineModels.ModelingTask task) throws IOException {
         boolean transientTask = "flight_transient".equals(task.getKind());
+        // 自演化根来源=2p4试车模型时,sht_f3_current_contract('parent')按2p4参数化交付合同读取
+        // (CorrectionSchedule/MeasurementBias表),F3/TC27模型交付会被readtable报"工作表不存在"
+        boolean evo2p4 = "evolution".equals(task.getKind()) && "2p4".equals(task.getParentSource());
         if (task.getParentWorkbook() != null && !task.getParentWorkbook().trim().isEmpty()) {
             File explicit = new File(task.getParentWorkbook().replace('\\', '/'));
             // 瞬态父模型合同=sht_f33_excel_delivery('inspect')要求Model工作表;2p4参数化交付
@@ -652,6 +696,11 @@ public class F3FlightService {
                 throw new IllegalStateException("父工作簿缺少Model工作表,不是可执行的模型交付Excel"
                         + "(2p4参数化交付如2p4_deterministic_steady.xlsx只能作稳态F3的父模型);"
                         + "请选择含Model工作表的模型交付文件(如examples/F3/TF_R002_continuous/steady_model.xlsx)");
+            }
+            if (evo2p4 && !is2p4ParametricDelivery(explicit)) {
+                throw new IllegalStateException("自演化根来源为2.4试车模型时,父工作簿必须是2p4参数化交付"
+                        + "(含CorrectionSchedule表,如2p4_deterministic_steady.xlsx);"
+                        + "F3/TC27模型交付不能作2p4试车起点,请改选或改根来源");
             }
             return task.getParentWorkbook().replace('\\', '/');
         }
@@ -665,6 +714,11 @@ public class F3FlightService {
                         if (transientTask && !isModelDeliveryWorkbook(f)) {
                             throw new IllegalStateException("指定模型" + m.getModelId()
                                     + "的交付Excel缺少Model工作表(2p4参数化交付等不能作瞬态父模型);请改选含Model工作表的模型交付");
+                        }
+                        if (evo2p4 && !is2p4ParametricDelivery(f)) {
+                            throw new IllegalStateException("指定模型" + m.getModelId()
+                                    + "的交付Excel不是2p4参数化交付(缺CorrectionSchedule表);"
+                                    + "根来源为2.4试车模型时请改选TC24参数化交付,或把根来源改为对应模型路线");
                         }
                         log.info("F3父工作簿取自指定模型: task={} model={} -> {}", task.getId(), m.getModelId(), f.getAbsolutePath());
                         return f.getAbsolutePath().replace('\\', '/');
@@ -685,6 +739,11 @@ public class F3FlightService {
                 // 瞬态任务自动解析时跳过无Model表的交付(如2p4参数化交付),避免把不兼容父模型送进MATLAB
                 if (transientTask && !isModelDeliveryWorkbook(f)) {
                     log.info("F3父工作簿自动解析跳过无Model表的交付: task={} model={}", task.getId(), m.getModelId());
+                    continue;
+                }
+                // 自演化2p4根只接受参数化交付;F3/TC27交付作2p4试车起点会被MATLAB合同拒绝
+                if (evo2p4 && !is2p4ParametricDelivery(f)) {
+                    log.info("F3父工作簿自动解析跳过非2p4参数化交付: task={} model={}", task.getId(), m.getModelId());
                     continue;
                 }
                 log.info("F3父工作簿取自项目模型清单: task={} model={} -> {}", task.getId(), m.getModelId(), f.getAbsolutePath());
@@ -719,6 +778,10 @@ public class F3FlightService {
                 }
                 f = pf;
             }
+            if (evo2p4 && !is2p4ParametricDelivery(f)) {
+                log.info("F3父工作簿兜底解析跳过非2p4参数化交付: task={} file={}", task.getId(), f.getName());
+                continue;
+            }
             long stamp = t.getFinishedAt() == null ? 0L : t.getFinishedAt();
             if (stamp > newest) { newest = stamp; fallback = f; }
         }
@@ -738,6 +801,11 @@ public class F3FlightService {
             }
         }
         if (fallback == null) {
+            if (evo2p4) {
+                throw new IllegalStateException("2p4试车起点不可用:项目内没有2p4参数化交付(含CorrectionSchedule表,"
+                        + "如TC24稳态辨识输出的2p4_deterministic_steady.xlsx);"
+                        + "请先完成TC24稳态系数辨识,或在登记时指定参数化交付文件/改选其它根来源");
+            }
             throw new IllegalStateException("父工作簿不可用:未指定项目模型(可在发起任务的「选择已有模型」中指定),"
                     + "也未登记工作簿路径,且项目内没有已交付的模型成果或已完成的稳态辨识/自演化任务;"
                     + "请先完成上游建模任务(如稳态系数辨识)或指定模型后重试。");

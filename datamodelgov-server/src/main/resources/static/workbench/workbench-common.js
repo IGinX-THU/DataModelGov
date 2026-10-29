@@ -10,6 +10,7 @@ window.Workbench = (() => {
         const node = document.createElement(tag);
         if (attrs) {
             Object.entries(attrs).forEach(([k, v]) => {
+                if (v == null) return; // null/undefined跳过:setAttribute(x,'null')会让selected/disabled等布尔属性意外生效
                 if (k === 'class') node.className = v;
                 else if (k === 'html') node.innerHTML = v;
                 else if (k.startsWith('on')) node.addEventListener(k.slice(2), v);
@@ -100,6 +101,8 @@ window.Workbench = (() => {
     /** 自包含toast:workbench.html不加载common-utils.js,提示条就地注入body,不依赖外部组件。 */
     let toastHost = null;
     function toast(msg, kind) {
+        // 每条toast同步打印到控制台,便于排查线上问题(error级别走console.error保留堆栈上下文)
+        (kind === 'error' ? console.error : console.log).call(console, '[toast:' + (kind || 'info') + ']', msg);
         if (window.CommonUtils && window.CommonUtils.showToast) { window.CommonUtils.showToast(msg, kind || 'info'); return; }
         if (!toastHost || !toastHost.isConnected) {
             toastHost = h('div', { style: 'position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:99999;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none' });

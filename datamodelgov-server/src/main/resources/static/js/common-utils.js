@@ -10,6 +10,8 @@
  * @param {number} duration - 显示时长（毫秒），默认3000
  */
 function showToast(message, type = 'success', duration = 3000) {
+    // toast同步打印到控制台,便于排查线上问题(error级别走console.error)
+    (type === 'error' ? console.error : console.log).call(console, '[toast:' + type + ']', message);
     // Create toast container if it doesn't exist
     let toastContainer = document.querySelector('.global-toast-container');
     if (!toastContainer) {

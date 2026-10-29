@@ -1374,6 +1374,26 @@ m.append("    case 'savepackage'\n");
                 log.warn("交付程序补丁写入失败({}): {}", target, ex.getMessage());
             }
         }
+        touchProgramScripts(programsRoot);
+    }
+
+    /**
+     * 刷新程序树全部 .m 的修改时间。MATLAB 引擎按文件 mtime 判断是否重读函数:
+     * provision 复制保留旧 mtime 时,长命引擎池进程会一直使用启动时解析的旧版函数
+     * (实测:磁盘已是新版、新进程调用正常,引擎池却报旧版才有的错误)。touch 后强制重读。
+     */
+    private void touchProgramScripts(File programsRoot) {
+        try (Stream<Path> walk = Files.walk(programsRoot.toPath())) {
+            long now = System.currentTimeMillis();
+            int[] n = {0};
+            walk.filter(p -> p.toString().endsWith(".m")).forEach(p -> {
+                // File.setLastModified 返回 boolean 不抛受检异常;失败(占用/只读)静默跳过,引擎按旧缓存继续
+                if (p.toFile().setLastModified(now)) n[0]++;
+            });
+            if (n[0] > 0) log.info("已刷新{}个MATLAB脚本mtime(强制引擎重读缓存函数): {}", n[0], programsRoot);
+        } catch (IOException ex) {
+            log.warn("刷新MATLAB脚本mtime失败({}): {}", programsRoot, ex.getMessage());
+        }
     }
 
     private byte[] readClasspathResource(String path) {

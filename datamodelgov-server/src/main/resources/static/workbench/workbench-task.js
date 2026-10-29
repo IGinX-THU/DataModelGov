@@ -83,6 +83,8 @@
                             state.tab = wantTab;
                             state.tabFromOpen = true; // 防止异步load()把页签改回默认
                         }
+                        // 从运行记录打开仍在跑的任务时补启轮询(progressView只在用户动作时启动)
+                        if (['RUNNING', 'PREPARING', 'STOP_REQUESTED'].includes(state.task.status)) startPolling();
                     } else {
                         state.task = null;
                         toast((resp && resp.message) || '任务不存在', 'error');
