@@ -1126,6 +1126,12 @@ public class F3FlightService {
                     log.info("F3父工作簿自动解析跳过不兼容交付(无Model表或内嵌Manifest): task={} model={}", task.getId(), m.getModelId());
                     continue;
                 }
+                // 非瞬态任务:2p4参数化交付路线须与请求父路线一致(parentRoute),否则MATLAB按
+                // manifest校验报「Excel路线transient_instant与请求路线steady不一致」;跳过继续找匹配交付
+                if (!transientTask && is2p4ParametricDelivery(f) && !is2p4DeliveryForRoute(f, evoRoute)) {
+                    log.info("F3父工作簿自动解析跳过非{}路线2p4参数化交付: task={} model={}", evoRoute, task.getId(), m.getModelId());
+                    continue;
+                }
                 // 自演化2p4根只接受对应路线的参数化交付;F3/TC27交付作2p4试车起点会被MATLAB合同拒绝
                 if (evo2p4 && !is2p4DeliveryForRoute(f, evoRoute)) {
                     log.info("F3父工作簿自动解析跳过非{}路线2p4参数化交付: task={} model={}", evoRoute, task.getId(), m.getModelId());
@@ -1165,6 +1171,11 @@ public class F3FlightService {
                 f = pf;
             }
             if (evo2p4 && !is2p4DeliveryForRoute(f, evoRoute)) {
+                log.info("F3父工作簿兜底解析跳过非{}路线2p4参数化交付: task={} file={}", evoRoute, task.getId(), f.getName());
+                continue;
+            }
+            // 非瞬态任务:2p4参数化交付路线须与请求父路线一致,理由同上(自动解析过滤)
+            if (!transientTask && is2p4ParametricDelivery(f) && !is2p4DeliveryForRoute(f, evoRoute)) {
                 log.info("F3父工作簿兜底解析跳过非{}路线2p4参数化交付: task={} file={}", evoRoute, task.getId(), f.getName());
                 continue;
             }
