@@ -1337,6 +1337,12 @@ public class EngineWorkbenchController {
             if (asset == null || asset.getDeliveryWorkbookFile() == null) {
                 return Result.error("未找到已登记的模型成果;请先在建模结果页登记到模型成果");
             }
+            // 资产必须属于本任务:曾出现把自演化模型资产选给TC24任务评估(交付为evolution_index表,
+            // 无Manifest),B提案的D快评在sht_load_2p4_deterministic_delivery读Manifest即失败
+            if (!tid.equals(asset.getTaskId())) {
+                return Result.error("所选模型成果属于其他任务(" + asset.getName() + ");"
+                        + "请选择本任务(" + t.getName() + ")登记的模型成果再发起评估");
+            }
             String m = method == null ? "B" : method.trim().toUpperCase();
             if (!m.matches("[BCD]")) return Result.error("评估方法仅支持 B/C/D");
             Integer particleCount = null;

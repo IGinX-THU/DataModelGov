@@ -1920,15 +1920,17 @@
             function loadModelsInto(sel) {
                 window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id) + '/models')
                     .then(resp => {
-                        const models = resp && Array.isArray(resp.data) ? resp.data : [];
+                        const all = resp && Array.isArray(resp.data) ? resp.data : [];
+                        // 待评估模型限本任务已登记且有交付Excel的成果(01-08:评估对象=本任务模型)
+                        const models = all.filter(mo => mo.taskId === t.id && mo.deliveryWorkbookFile);
                         sel.innerHTML = '';
                         if (!models.length) {
-                            sel.appendChild(WB().h('option', { value: '' }, '尚未登记模型成果'));
+                            sel.appendChild(WB().h('option', { value: '' }, '本任务尚未登记可评估的模型成果(先在建模结果页保存模型)'));
                             return;
                         }
                         models.forEach(mo => {
                             const option = WB().h('option', { value: mo.id },
-                                (mo.name || mo.id) + (mo.deliveryWorkbookFile ? ' · ' + fileName(mo.deliveryWorkbookFile) : ''));
+                                (mo.name || mo.id) + ' · ' + fileName(mo.deliveryWorkbookFile));
                             sel.appendChild(option);
                         });
                     })
