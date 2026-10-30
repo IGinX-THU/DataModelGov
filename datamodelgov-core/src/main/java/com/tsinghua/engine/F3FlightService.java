@@ -1017,6 +1017,114 @@ public class F3FlightService {
         }
     }
 
+    /** 2p4参数化交付Manifest必需列(=sht_load_2p4_deterministic_delivery local_validate_manifest
+     *  的required清单,26字段;交付程序合同变更时必须同步此清单)。 */
+    private static final String[] P2P4_MANIFEST_REQUIRED = {
+            "schema_version", "stage_id", "method_id", "run_id", "route",
+            "delivery_status", "result_quality_status", "solver_converged",
+            "convergence_is_delivery_gate", "stop_reason", "configured_lambda",
+            "model_mode", "inlet_boundary_mode", "parameter_dictionary_id",
+            "schedule_schema_version", "interpolation", "endpoint_policy",
+            "correction_schedule_row_count", "measurement_bias_row_count",
+            "semantic_payload_sha256", "deterministic_contract_sha256",
+            "node_contract_sha256", "training_data_sha256",
+            "test_data_used_for_inference", "hidden_truth_used_for_inference",
+            "internal_mat_relative_path"};
+
+    /** Manifest表缺失的必需列(逗号串);表缺失/解析失败返回null(不按此口径拦截)。
+     *  用于自动解析时跳过Manifest残缺的2p4交付(旧版TC24产出/手工构造),避免送进MATLAB
+     *  才报「Manifest缺少字段:…」;显式指定的父模型不拦,由MATLAB给出精确清单。 */
+    private String manifestMissingColumns(File xlsx) {
+        try {
+            java.util.Set<String> cols = sheetHeaderColumns(xlsx, "Manifest");
+            if (cols == null) return null;
+            java.util.List<String> miss = new ArrayList<>();
+            for (String k : P2P4_MANIFEST_REQUIRED) {
+                if (!cols.contains(k)) miss.add(k);
+            }
+            return miss.isEmpty() ? null : String.join(", ", miss);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** 读xlsx指定工作表第一行表头(共享字符串),返回小写列名集合;读不到返回null。 */
+    private java.util.Set<String> sheetHeaderColumns(File xlsx, String sheetName) throws IOException {
+        try (java.util.zip.ZipFile z = new java.util.zip.ZipFile(xlsx)) {
+            String wb = new String(zipEntryBytes(z, "xl/workbook.xml"), StandardCharsets.UTF_8);
+            java.util.regex.Matcher ms = java.util.regex.Pattern
+                    .compile("<sheet\\b[^>]*name=\"" + sheetName + "\"[^>]*>").matcher(wb);
+            if (!ms.find()) return null;
+            java.util.regex.Matcher mr = java.util.regex.Pattern.compile("r:id=\"(rId\\d+)\"")
+                    .matcher(ms.group());
+            if (!mr.find()) return null;
+            String rels = new String(zipEntryBytes(z, "xl/_rels/workbook.xml.rels"), StandardCharsets.UTF_8);
+            java.util.regex.Matcher mt = java.util.regex.Pattern
+                    .compile("<Relationship\\b[^>]*Id=\"" + mr.group(1) + "\"[^>]*>").matcher(rels);
+            if (!mt.find()) return null;
+            java.util.regex.Matcher mtg = java.util.regex.Pattern.compile("Target=\"([^\"]+)\"")
+                    .matcher(mt.group());
+            if (!mtg.find()) return null;
+            String target = mtg.group(1).replaceFirst("^/", "");
+            if (!target.startsWith("xl/")) target = "xl/" + target;
+            String sheet = new String(zipEntryBytes(z, target), StandardCharsets.UTF_8);
+            java.util.regex.Matcher row = java.util.regex.Pattern.compile("<row\\b[^>]*>(.*?)</row>",
+                    java.util.regex.Pattern.DOTALL).matcher(sheet);
+            if (!row.find()) return null;
+            // 共享字符串池(si内可能多<t>富文本片段,全部拼接)
+            java.util.List<String> sst = new ArrayList<>();
+            java.util.zip.ZipEntry ssEntry = z.getEntry("xl/sharedStrings.xml");
+            if (ssEntry != null) {
+                String ss = new String(zipEntryBytes(z, "xl/sharedStrings.xml"), StandardCharsets.UTF_8);
+                java.util.regex.Matcher si = java.util.regex.Pattern.compile("<si>(.*?)</si>",
+                        java.util.regex.Pattern.DOTALL).matcher(ss);
+                while (si.find()) {
+                    StringBuilder sb2 = new StringBuilder();
+                    java.util.regex.Matcher tv = java.util.regex.Pattern.compile("<t[^>]*>(.*?)</t>",
+                            java.util.regex.Pattern.DOTALL).matcher(si.group(1));
+                    while (tv.find()) sb2.append(tv.group(1));
+                    sst.add(sb2.toString());
+                }
+            }
+            java.util.Set<String> cols = new java.util.HashSet<>();
+            java.util.regex.Matcher cm = java.util.regex.Pattern.compile("<c\\b[^>]*>(.*?)</c>",
+                    java.util.regex.Pattern.DOTALL).matcher(row.group(1));
+            while (cm.find()) {
+                String cell = cm.group();
+                String val = "";
+                if (cell.contains("t=\"s\"")) {
+                    java.util.regex.Matcher vm = java.util.regex.Pattern.compile("<v>(\\d+)</v>").matcher(cell);
+                    if (vm.find()) {
+                        int idx = Integer.parseInt(vm.group(1));
+                        val = idx >= 0 && idx < sst.size() ? sst.get(idx) : "";
+                    }
+                } else {
+                    java.util.regex.Matcher tm = java.util.regex.Pattern.compile("<t[^>]*>(.*?)</t>",
+                            java.util.regex.Pattern.DOTALL).matcher(cell);
+                    if (tm.find()) val = tm.group(1);
+                    else {
+                        java.util.regex.Matcher vm = java.util.regex.Pattern.compile("<v>([^<]*)</v>").matcher(cell);
+                        if (vm.find()) val = vm.group(1);
+                    }
+                }
+                if (val != null && !val.trim().isEmpty()) cols.add(val.trim().toLowerCase());
+            }
+            return cols;
+        }
+    }
+
+    private byte[] zipEntryBytes(java.util.zip.ZipFile z, String entry) throws IOException {
+        java.util.zip.ZipEntry e = z.getEntry(entry);
+        if (e == null) throw new IOException("zip entry missing: " + entry);
+        java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+        try (java.io.InputStream in = z.getInputStream(e)) {
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) > 0) bo.write(buf, 0, n);
+        }
+        return bo.toByteArray();
+    }
+
     /** 2p4参数化交付须与请求路线一致(sht_load_2p4_deterministic_delivery校验Manifest路线,
      *  不一致报「Excel路线…与请求路线不一致」);按交付命名约定轻量判断,无路线提示时放行给MATLAB兜底。 */
     private boolean is2p4DeliveryForRoute(File xlsx, String route) {
@@ -1132,6 +1240,16 @@ public class F3FlightService {
                     log.info("F3父工作簿自动解析跳过非{}路线2p4参数化交付: task={} model={}", evoRoute, task.getId(), m.getModelId());
                     continue;
                 }
+                // 非瞬态任务:2p4参数化交付Manifest须完整(26必需字段);残缺交付(旧版TC24产出/
+                // 手工构造)送进MATLAB才报「Manifest缺少字段:…」,自动解析时前置跳过
+                if (!transientTask && is2p4ParametricDelivery(f)) {
+                    String miss = manifestMissingColumns(f);
+                    if (miss != null) {
+                        log.info("F3父工作簿自动解析跳过Manifest残缺的2p4参数化交付: task={} model={} 缺失[{}]",
+                                task.getId(), m.getModelId(), miss);
+                        continue;
+                    }
+                }
                 // 自演化2p4根只接受对应路线的参数化交付;F3/TC27交付作2p4试车起点会被MATLAB合同拒绝
                 if (evo2p4 && !is2p4DeliveryForRoute(f, evoRoute)) {
                     log.info("F3父工作簿自动解析跳过非{}路线2p4参数化交付: task={} model={}", evoRoute, task.getId(), m.getModelId());
@@ -1178,6 +1296,15 @@ public class F3FlightService {
             if (!transientTask && is2p4ParametricDelivery(f) && !is2p4DeliveryForRoute(f, evoRoute)) {
                 log.info("F3父工作簿兜底解析跳过非{}路线2p4参数化交付: task={} file={}", evoRoute, task.getId(), f.getName());
                 continue;
+            }
+            // 非瞬态任务:2p4参数化交付Manifest须完整,理由同上(自动解析过滤)
+            if (!transientTask && is2p4ParametricDelivery(f)) {
+                String miss = manifestMissingColumns(f);
+                if (miss != null) {
+                    log.info("F3父工作簿兜底解析跳过Manifest残缺的2p4参数化交付: task={} file={} 缺失[{}]",
+                            task.getId(), f.getName(), miss);
+                    continue;
+                }
             }
             long stamp = t.getFinishedAt() == null ? 0L : t.getFinishedAt();
             if (stamp > newest) { newest = stamp; fallback = f; }

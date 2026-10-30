@@ -133,7 +133,7 @@ public class AfoController {
         }
     }
 
-    @ApiOperation("仿真记录清单分页(SQL;多系统联合仿真表+全模式会话表按时间归并,status/kw为SQL过滤)")
+    @ApiOperation("仿真记录清单分页(SQL;多系统联合仿真表+全模式会话表按时间归并,起动停工作流一行=设计点校核+建模,status/kw为SQL过滤)")
     @GetMapping("/sessions/list")
     @RequirePermission(Permission.READ)
     public Result<List<Map<String, Object>>> pageSessions(
@@ -150,12 +150,19 @@ public class AfoController {
             // 两个来源各取前 pn*ps 条(均按 createTime DESC),归并后切片,保证全局排序正确
             List<com.tsinghua.entity.EngineAfoSessionEntity> a =
                     afoSessionService.queryFiltered(pid, 1, pn * ps, where);
-            List<com.tsinghua.entity.EngineTestbenchEntity> f =
+            List<com.tsinghua.entity.EngineTestbenchEntity> fFull =
                     testbenchRecordService.queryFiltered(pid, 1, pn * ps,
-                            joinWhere("kind IN ('fullmode','design_point','startstop')", where));
+                            joinWhere("kind = 'fullmode'", where));
+            List<com.tsinghua.entity.EngineTestbenchEntity> fDpSs =
+                    testbenchRecordService.queryFiltered(pid, 1, pn * ps,
+                            joinWhere("kind IN ('design_point','startstop')", where));
             List<Map<String, Object>> merged = new java.util.ArrayList<>();
             for (com.tsinghua.entity.EngineAfoSessionEntity e : a) merged.add(toRow(e, "afo"));
-            for (com.tsinghua.entity.EngineTestbenchEntity e : f) merged.add(toRow(e, "fm"));
+            for (com.tsinghua.entity.EngineTestbenchEntity e : fFull) merged.add(toRow(e, "fm"));
+            // 起动停工作流归并:设计点校核并入起动停工作流行,一行=一次工作流执行
+            for (com.tsinghua.entity.EngineTestbenchEntity e : mergeTestbenchWorkflow(pid, fDpSs)) {
+                merged.add(toRow(e, "fm"));
+            }
             merged.sort((x, y) -> Long.compare(numOf(y.get("createdAt")), numOf(x.get("createdAt"))));
             int from = Math.min(merged.size(), (pn - 1) * ps);
             int to = Math.min(merged.size(), from + ps);
@@ -175,14 +182,17 @@ public class AfoController {
             backfillSessions(pid);
             String where = sessionsWhere(status, kw);
             long total = afoSessionService.countFiltered(pid, where)
-                    + testbenchRecordService.countFiltered(pid, joinWhere("kind IN ('fullmode','design_point','startstop')", where));
+                    + testbenchRecordService.countFiltered(pid, joinWhere("kind = 'fullmode'", where))
+                    // 设计点校核并入起动停工作流行后再计数,与列表口径一致
+                    + mergeTestbenchWorkflow(pid, testbenchRecordService.queryFiltered(pid, 1, 1000,
+                            joinWhere("kind IN ('design_point','startstop')", where))).size();
             return Result.success(total);
         } catch (Exception e) {
             return Result.error("统计仿真记录总数失败: " + e.getMessage());
         }
     }
 
-    @ApiOperation("仿真记录概览(每类型最新一条:多系统联合仿真/起动停车建模/全模式仿真,一条记录=该类型整个工作流)")
+    @ApiOperation("仿真记录概览(每类型最新一条:多系统联合仿真/起动停车建模/全模式仿真,一条记录=该类型整个工作流;设计点校核并入起动停工作流)")
     @GetMapping("/sessions/latest")
     @RequirePermission(Permission.READ)
     public Result<List<Map<String, Object>>> latestSessions(@PathVariable("pid") String pid) {
@@ -191,8 +201,9 @@ public class AfoController {
             List<Map<String, Object>> out = new java.util.ArrayList<>();
             List<com.tsinghua.entity.EngineAfoSessionEntity> a = afoSessionService.queryFiltered(pid, 1, 1, null);
             if (!a.isEmpty()) out.add(toRow(a.get(0), "afo"));
-            List<com.tsinghua.entity.EngineTestbenchEntity> ss = testbenchRecordService.queryFiltered(
-                    pid, 1, 1, "kind IN ('design_point','startstop')");
+            // 起动停工作流归并后取最新一条(设计点校核不单列,概览口径=工作流)
+            List<com.tsinghua.entity.EngineTestbenchEntity> ss = mergeTestbenchWorkflow(pid,
+                    testbenchRecordService.queryFiltered(pid, 1, 1000, "kind IN ('design_point','startstop')"));
             if (!ss.isEmpty()) out.add(toRow(ss.get(0), "fm"));
             List<com.tsinghua.entity.EngineTestbenchEntity> fm = testbenchRecordService.queryFiltered(
                     pid, 1, 1, "kind = 'fullmode'");
@@ -225,6 +236,60 @@ public class AfoController {
     }
 
     private long numOf(Object o) { return o instanceof Number ? ((Number) o).longValue() : 0; }
+
+    /** 起动停工作流归并:设计点校核(design_point)被起动停车建模(startstop)引用时并入工作流行,
+     *  一行=一次工作流执行(与运行记录同口径),不再单列设计点记录;未被引用的设计点(仅校核未建模)保留。
+     *  血缘来源:任务元数据config.designTaskId(新任务显式记录),回退解析config.source.designStateFile
+     *  路径(…/testbench/<dpId>/task/MiddleData/design_state.mat,存量任务)。 */
+    private List<com.tsinghua.entity.EngineTestbenchEntity> mergeTestbenchWorkflow(
+            String pid, List<com.tsinghua.entity.EngineTestbenchEntity> rows) {
+        Map<String, Map<String, Object>> metaById = new java.util.HashMap<>();
+        try {
+            for (Map<String, Object> t : testbenchService.listTasks(pid)) {
+                Object id = t.get("taskId");
+                if (id != null) metaById.put(String.valueOf(id), t);
+            }
+        } catch (Exception e) {
+            log.warn("仿真记录工作流归并读取任务元数据失败: projectId={}", pid, e);
+        }
+        java.util.Set<String> referenced = new java.util.HashSet<>();
+        for (com.tsinghua.entity.EngineTestbenchEntity r : rows) {
+            if (!"startstop".equals(r.getKind())) continue;
+            String dpKey = designPointKeyOf(r, metaById);
+            if (dpKey != null) referenced.add(dpKey);
+        }
+        List<com.tsinghua.entity.EngineTestbenchEntity> out = new java.util.ArrayList<>();
+        for (com.tsinghua.entity.EngineTestbenchEntity r : rows) {
+            if ("design_point".equals(r.getKind()) && referenced.contains(r.getTaskKey())) continue;
+            out.add(r);
+        }
+        return out;
+    }
+
+    /** 解析起动停车任务引用的设计点任务键;无设计阶段或元数据缺失时返回null。 */
+    @SuppressWarnings("unchecked")
+    private String designPointKeyOf(com.tsinghua.entity.EngineTestbenchEntity ss,
+                                    Map<String, Map<String, Object>> metaById) {
+        try {
+            Map<String, Object> meta = metaById.get(ss.getTaskKey());
+            if (meta == null) return null;
+            Map<String, Object> cfg = (Map<String, Object>) meta.get("config");
+            if (cfg == null) return null;
+            Object dti = cfg.get("designTaskId");
+            if (dti != null && !String.valueOf(dti).trim().isEmpty()) return String.valueOf(dti).trim();
+            Map<String, Object> src = (Map<String, Object>) cfg.get("source");
+            Object dsf = src == null ? null : src.get("designStateFile");
+            if (dsf == null) return null;
+            String p = String.valueOf(dsf).replace('\\', '/');
+            int t = p.indexOf("/testbench/");
+            if (t < 0) return null;
+            int s = t + "/testbench/".length();
+            int e2 = p.indexOf('/', s);
+            return e2 > s ? p.substring(s, e2) : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
 
     /** 两类来源行统一为前端渲染结构(runId/phase/createdAt/finishedAt/hasResult/hasExcel/config摘要)。 */
     private Map<String, Object> toRow(Object e, String kind) {

@@ -702,6 +702,8 @@ public class TestbenchService {
                 if (mm != null) cfg.put("modelMode", mm); // 与设计点保持一致(V1/V2 MDL)
                 source.put("designStateFile", stateFile.getAbsolutePath().replace('\\', '/'));
                 cfg.put("source", source);
+                // 保留工作流血缘:仿真记录按工作流归并(设计点校核并入起动停工作流行,不单列)
+                cfg.put("designTaskId", dpId);
             }
         }
         r.config = cfg;
