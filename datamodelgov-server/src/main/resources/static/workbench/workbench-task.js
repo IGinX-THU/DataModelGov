@@ -177,10 +177,11 @@
         /* ---------- 首个任务创建卡(进入任务页但尚无任务时显示) ---------- */
         function createCard() {
             if (ctx.updateMode) return createCardUpdate();
-            const nameInput = WB().h('input', { value: '稳态建模-' + new Date().toISOString().slice(5, 10) });
+            const isTr = state.transientMode;
+            const nameInput = WB().h('input', { value: (isTr ? '过渡态建模-' : '稳态建模-') + new Date().toISOString().slice(5, 10) });
             const routeSel = WB().h('select', null,
-                WB().h('option', { value: 'steady' }, '稳态方程(由稳态均值数据新建)'),
-                WB().h('option', { value: 'transient_instant' }, '瞬态时刻方程(两条独立辨识路径之一)'));
+                WB().h('option', { value: 'steady', selected: isTr ? undefined : '' }, '稳态方程(由稳态均值数据新建)'),
+                WB().h('option', { value: 'transient_instant', selected: isTr ? '' : undefined }, '瞬态时刻方程(两条独立辨识路径之一)'));
             const createBtn = WB().h('button', {
                 class: 'wb-btn wb-btn-primary',
                 onclick: async () => {
@@ -188,7 +189,7 @@
                     try {
                         const pid = encodeURIComponent(ctx.project.id || '');
                         const resp = await window.AppConfig.enginePost('projects/' + pid + '/tasks', {
-                            kind: 'steady', name: nameInput.value.trim() || '稳态建模任务',
+                            kind: 'steady', name: nameInput.value.trim() || (isTr ? '过渡态建模任务' : '稳态建模任务'),
                             route: routeSel.value, runId: 'WB_01',
                             // 过渡态入口标记:运行记录类型与打开跳转据此分流
                             transientMode: ctx.transientMode === true ? true : undefined
@@ -577,16 +578,17 @@
             const t = state.task;
             const wrap = WB().h('div', null);
 
-            // 页面标题区(01-03):任务名 / 建模类型 / 起点模型
+            // 页面标题区(01-03):任务名 / 建模类型 / 起点模型;稳态与过渡态共用本视图,类型按入口标记分流
+            const stageText = state.transientMode ? '过渡态试车建模' : '基础稳态点建模';
             wrap.appendChild(WB().h('div', { style: 'margin-bottom:14px' },
                 WB().h('div', { class: 'wb-section-title', style: 'font-size:20px;margin-bottom:2px' }, '工况与分组'),
                 WB().h('div', { class: 'wb-hint', style: 'margin:0' },
-                    (t.name || '稳态建模') + ' / 基础稳态点建模 / 起点模型 B00')));
+                    (t.name || '稳态建模') + ' / ' + stageText + ' / 起点模型 B00')));
 
-            // 建模类型 / 计算基准
+            // 建模类型 / 计算基准(执行合同一致,同属2.4;过渡态仅入口呈现不同)
             wrap.appendChild(WB().h('div', { class: 'wb-form-grid', style: 'max-width:980px;margin-bottom:16px' },
                 WB().h('div', { class: 'wb-field' }, WB().h('label', null, '建模类型(本任务固定)'),
-                    WB().h('input', { readonly: '', value: '基础稳态点建模 / 2.4' })),
+                    WB().h('input', { readonly: '', value: stageText + ' / 2.4' })),
                 WB().h('div', { class: 'wb-field' }, WB().h('label', null, '计算基准'),
                     WB().h('input', { readonly: '', value: 'B00 · 当前配套运行包' }))));
 
@@ -709,20 +711,17 @@
                     nameBox,
                     pickBtn,
                     (function () {
-                        // 按槽位类型自动筛选:训练槽只显示训练数据类,检验槽只显示测试/检验数据类;
-                        // kind标签或文件名任一命中即可;无匹配显示空提示,不回退显示全部(避免训练/测试混选)
-                        const slotKw = kind === 'validation' ? ['测试', '检验', 'validation', 'test'] : ['训练', 'train'];
-                        const matchSlot = k => slotKw.some(w => String(k || '').indexOf(w) >= 0);
+                        // 显示库内全部数据文件(不再按槽位类型筛选,2026-10-30);无数据显示空提示
                         const libSel = WB().h('select', { class: 'lib-file', style: 'max-width:260px' },
-                            WB().h('option', { value: '' }, '从文件库选择(本槽位类型)...'));
+                            WB().h('option', { value: '' }, '从文件库选择...'));
                         window.AppConfig.engineGet('projects/'
                             + encodeURIComponent(ctx.project.id || '') + '/files/page',
                             { pageSize: 200 })
                             .then(resp => {
                                 const rows = resp && resp.data && Array.isArray(resp.data.rows) ? resp.data.rows.filter(x => x && x.id != null) : [];
-                                const hit = rows.filter(r0 => /\.(xlsx|xls)$/i.test(String(r0.name || '')) && (matchSlot(r0.kind) || matchSlot(r0.name)));
+                                const hit = rows.filter(r0 => /\.(xlsx|xls)$/i.test(String(r0.name || '')));
                                 if (!hit.length) {
-                                    libSel.appendChild(WB().h('option', { value: '' }, '本槽位类型暂无库内文件(可直接上传)'));
+                                    libSel.appendChild(WB().h('option', { value: '' }, '库内暂无数据文件(可直接上传)'));
                                     return;
                                 }
                                 hit.forEach(r0 => libSel.appendChild(WB().h('option', { value: r0.id },

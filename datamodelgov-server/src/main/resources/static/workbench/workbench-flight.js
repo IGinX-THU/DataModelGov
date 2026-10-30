@@ -159,21 +159,19 @@
                             renderBody();
                         });
                         inputs[kind] = fileInput;
-                        // 草稿期即可从文件库选择:按本任务/槽位类型自动筛选(训练→飞参训练数据,测试→飞参独立测试),
-                        // 无需手动选类型;记录fileId,保存草稿(创建架次)后自动带入
+                        // 草稿期即可从文件库选择:显示库内全部数据文件(不再按槽位类型筛选,2026-10-30),
+                        // 记录fileId,保存草稿(创建架次)后自动带入
                         const libPicked = state.draftLibrary && state.draftLibrary[kind];
-                        const slotKw = kind === 'validation' ? ['飞参独立测试', '飞参测试'] : ['飞参训练'];
-                        const matchSlot = k => slotKw.some(w => String(k || '').indexOf(w) >= 0);
                         const libSel = WB().h('select', { style: 'max-width:260px;padding:2px 6px;font-size:12px' });
                         let rows0 = [];
                         const refillLib = () => {
                             const keep = libPicked || libSel.value;
                             libSel.innerHTML = '';
-                            libSel.appendChild(WB().h('option', { value: '' }, '从文件库选择(本槽位类型)...'));
+                            libSel.appendChild(WB().h('option', { value: '' }, '从文件库选择...'));
                             // 已选项保留在列表中并回显文件名(不显示内部ID);被删文件用ID占位不丢选择。
                             // 用DOM属性.selected而非HTML属性——h()对null会setAttribute('selected','null'),
                             // 属性存在即生效,导致所有选项带selected、下拉永远钉在最后一个选项上
-                            const hit = rows0.filter(r0 => matchSlot(r0.kind) || String(r0.id) === String(keep));
+                            const hit = rows0.filter(r0 => /\.(xlsx|xls)$/i.test(String(r0.name || '')) || String(r0.id) === String(keep));
                             hit.forEach(r0 => {
                                 const opt = WB().h('option', { value: r0.id },
                                     (r0.name || r0.id) + (r0.kind ? ' · ' + r0.kind : ''));
@@ -421,20 +419,17 @@
                     nameBox,
                     pickBtn,
                     (function () {
-                        // 按槽位类型自动筛选:训练→飞参训练数据,测试→飞参独立测试(kind标签或文件名任一命中);
-                        // 无匹配显示空提示,不回退显示全部(避免训练/测试混选)
-                        const slotKw = kind === 'validation' ? ['飞参独立测试', '飞参测试', '独立测试', '测试', '检验', 'validation', 'test'] : ['飞参训练', '训练', 'train'];
-                        const matchSlot = k => slotKw.some(w => String(k || '').indexOf(w) >= 0);
+                        // 显示库内全部数据文件(不再按槽位类型筛选,2026-10-30);无数据显示空提示
                         const libSel = WB().h('select', { style: 'max-width:260px' },
-                            WB().h('option', { value: '' }, '从文件库选择(本槽位类型)...'));
+                            WB().h('option', { value: '' }, '从文件库选择...'));
                         window.AppConfig.engineGet('projects/'
                             + encodeURIComponent(ctx.project.id || '') + '/files/page',
                             { pageSize: 200 })
                             .then(resp => {
                                 const rows = resp && resp.data && Array.isArray(resp.data.rows) ? resp.data.rows.filter(x => x && x.id != null) : [];
-                                const hit = rows.filter(r0 => /\.(xlsx|xls)$/i.test(String(r0.name || '')) && (matchSlot(r0.kind) || matchSlot(r0.name)));
+                                const hit = rows.filter(r0 => /\.(xlsx|xls)$/i.test(String(r0.name || '')));
                                 if (!hit.length) {
-                                    libSel.appendChild(WB().h('option', { value: '' }, '本槽位类型暂无库内文件(可直接上传)'));
+                                    libSel.appendChild(WB().h('option', { value: '' }, '库内暂无数据文件(可直接上传)'));
                                     return;
                                 }
                                 hit.forEach(r0 => libSel.appendChild(WB().h('option', { value: r0.id },
@@ -972,9 +967,21 @@
                 'projects/' + encodeURIComponent(ctx.project.id) + '/tasks/'
                 + encodeURIComponent(t.id) + '/status')
                 .then(resp => {
+                    const prev = state.task ? state.task.status : null;
                     if (resp && (resp.success || resp.code === 200) && resp.data && resp.data.task) {
                         state.task = resp.data.task;
                         if (Array.isArray(resp.data.logTail) && resp.data.logTail.length) state.log = resp.data.logTail;
+                    }
+                    // 准备/执行结束一次性提示:运行态→终态跃迁时弹窗,覆盖确认失败(READY+message)
+                    // 与建模失败(RUNNING→FAILED)两类静默场景;终态后轮询自停,不会重复弹
+                    const RUN_ST = ['PREPARING', 'RUNNING', 'STOP_REQUESTED'];
+                    if (prev && RUN_ST.includes(prev) && state.task && !RUN_ST.includes(state.task.status)) {
+                        const st2 = state.task.status, msg = state.task.message || '';
+                        if (st2 === 'FAILED') toast('建模执行失败: ' + msg, 'error');
+                        else if (st2 === 'READY' && msg.indexOf('失败') >= 0) toast(msg, 'error');
+                        else if (st2 === 'READY' && state.task.prepMessage) toast(state.task.prepMessage, 'success');
+                        else if (st2 === 'COMPLETED') toast('任务已完成', 'success');
+                        else if (st2 === 'STOPPED') toast('已安全停止', 'info');
                     }
                     if (running(state.task)) window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;
                     else if ((window.__WB_ENGINE_POLL_UNTIL__ || 0) < Date.now()) stopPolling();
@@ -1074,15 +1081,15 @@
                     pickBtn,
                     (function () {
                         const libSel = WB().h('select', { style: 'max-width:260px' },
-                            WB().h('option', { value: '' }, '从文件库选择(架次测量数据)...'));
+                            WB().h('option', { value: '' }, '从文件库选择...'));
                         window.AppConfig.engineGet('projects/'
                             + encodeURIComponent(ctx.project.id || '') + '/files/page',
                             { pageSize: 200 })
                             .then(resp => {
                                 const rows = resp && resp.data && Array.isArray(resp.data.rows) ? resp.data.rows.filter(x => x && x.id != null) : [];
-                                const hit = rows.filter(r0 => /\.(xlsx|xls)$/i.test(String(r0.name || '')) && ['飞参训练', '测量', 'train'].some(w => String(r0.kind || '').indexOf(w) >= 0 || String(r0.name || '').indexOf(w) >= 0));
+                                const hit = rows.filter(r0 => /\.(xlsx|xls)$/i.test(String(r0.name || '')));
                                 if (!hit.length) {
-                                    libSel.appendChild(WB().h('option', { value: '' }, '暂无架次测量类库内文件(可直接上传)'));
+                                    libSel.appendChild(WB().h('option', { value: '' }, '库内暂无数据文件(可直接上传)'));
                                     return;
                                 }
                                 hit.forEach(r0 => libSel.appendChild(WB().h('option', { value: r0.id },
@@ -1501,9 +1508,21 @@
             window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id) + '/tasks/'
                 + encodeURIComponent(t.id) + '/status')
                 .then(resp => {
+                    const prev = state.task ? state.task.status : null;
                     if (resp && (resp.success || resp.code === 200) && resp.data && resp.data.task) {
                         state.task = resp.data.task;
                         if (Array.isArray(resp.data.logTail) && resp.data.logTail.length) state.log = resp.data.logTail;
+                    }
+                    // 准备/执行结束一次性提示:运行态→终态跃迁时弹窗,覆盖确认失败(READY+message)
+                    // 与建模失败(RUNNING→FAILED)两类静默场景;终态后轮询自停,不会重复弹
+                    const RUN_ST = ['PREPARING', 'RUNNING', 'STOP_REQUESTED'];
+                    if (prev && RUN_ST.includes(prev) && state.task && !RUN_ST.includes(state.task.status)) {
+                        const st2 = state.task.status, msg = state.task.message || '';
+                        if (st2 === 'FAILED') toast('建模执行失败: ' + msg, 'error');
+                        else if (st2 === 'READY' && msg.indexOf('失败') >= 0) toast(msg, 'error');
+                        else if (st2 === 'READY' && state.task.prepMessage) toast(state.task.prepMessage, 'success');
+                        else if (st2 === 'COMPLETED') toast('任务已完成', 'success');
+                        else if (st2 === 'STOPPED') toast('已安全停止', 'info');
                     }
                     if (running(state.task)) window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;
                     else if ((window.__WB_ENGINE_POLL_UNTIL__ || 0) < Date.now()) stopPolling();

@@ -559,8 +559,11 @@ window.Workbench = (() => {
                         const seen = {};
                         const sorted = [];
                         recs.forEach(r => {
-                            if (!r.kind || (r.taskId || '').indexOf('uq-') === 0 || seen[r.kind]) return;
-                            seen[r.kind] = 1;
+                            // 合并键含过渡态标记:稳态系数辨识与过渡态试车建模共用kind='steady',
+                            // 按kind去重会互相顶掉,过渡态任务须独立成行
+                            const gk = r.kind + (r.transientMode === '1' ? ':transient' : '');
+                            if (!r.kind || (r.taskId || '').indexOf('uq-') === 0 || seen[gk]) return;
+                            seen[gk] = 1;
                             sorted.push(r);
                         });
 
