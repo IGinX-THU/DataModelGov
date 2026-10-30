@@ -36,7 +36,11 @@
                         state.log = resp.data.logTail || [];
                         // 从运行记录打开:按状态直达对应视图,失败/停止直达运行日志界面(01-15同款)
                         const st = state.task.status;
-                        if (['RUNNING', 'PREPARING', 'STOP_REQUESTED', 'FAILED', 'STOPPED'].includes(st)) {
+                        const wantTab = window.__WB_OPEN_TASK_TAB__;
+                        delete window.__WB_OPEN_TASK_TAB__;
+                        if (wantTab === 'uq') {
+                            state.tab = 'uq'; // 模型成果评估记录跳转(04-16):直达UQ页签
+                        } else if (['RUNNING', 'PREPARING', 'STOP_REQUESTED', 'FAILED', 'STOPPED'].includes(st)) {
                             state.tab = isSteady ? 'update' : 'run';
                         } else if (st === 'COMPLETED') {
                             state.tab = 'result';
@@ -193,7 +197,7 @@
                         });
                         window.AppConfig.engineGet('projects/'
                             + encodeURIComponent(ctx.project.id || '') + '/files/page',
-                            { category: 'data', pageSize: 200 })
+                            { pageSize: 200 })
                             .then(resp => {
                                 rows0 = resp && resp.data && Array.isArray(resp.data.rows) ? resp.data.rows.filter(x => x && x.id != null) : [];
                                 refillLib();
@@ -417,18 +421,23 @@
                     nameBox,
                     pickBtn,
                     (function () {
-                        // 按槽位类型自动筛选:训练→飞参训练数据,测试→飞参独立测试(无匹配则显示全部)
-                        const slotKw = kind === 'validation' ? ['飞参独立测试', '飞参测试'] : ['飞参训练'];
+                        // 按槽位类型自动筛选:训练→飞参训练数据,测试→飞参独立测试(kind标签或文件名任一命中);
+                        // 无匹配显示空提示,不回退显示全部(避免训练/测试混选)
+                        const slotKw = kind === 'validation' ? ['飞参独立测试', '飞参测试', '独立测试', '测试', '检验', 'validation', 'test'] : ['飞参训练', '训练', 'train'];
                         const matchSlot = k => slotKw.some(w => String(k || '').indexOf(w) >= 0);
                         const libSel = WB().h('select', { style: 'max-width:260px' },
                             WB().h('option', { value: '' }, '从文件库选择(本槽位类型)...'));
                         window.AppConfig.engineGet('projects/'
                             + encodeURIComponent(ctx.project.id || '') + '/files/page',
-                            { category: 'data', pageSize: 200 })
+                            { pageSize: 200 })
                             .then(resp => {
                                 const rows = resp && resp.data && Array.isArray(resp.data.rows) ? resp.data.rows.filter(x => x && x.id != null) : [];
-                                const hit = rows.filter(r0 => matchSlot(r0.kind));
-                                (hit.length ? hit : rows).forEach(r0 => libSel.appendChild(WB().h('option', { value: r0.id },
+                                const hit = rows.filter(r0 => /\.(xlsx|xls)$/i.test(String(r0.name || '')) && (matchSlot(r0.kind) || matchSlot(r0.name)));
+                                if (!hit.length) {
+                                    libSel.appendChild(WB().h('option', { value: '' }, '本槽位类型暂无库内文件(可直接上传)'));
+                                    return;
+                                }
+                                hit.forEach(r0 => libSel.appendChild(WB().h('option', { value: r0.id },
                                     (r0.name || r0.id) + (r0.kind ? ' · ' + r0.kind : ''))));
                             })
                             .catch(() => { });
@@ -695,6 +704,40 @@
         function uqTab() {
             const t = state.task;
             const wrap = WB().h('div', null);
+
+            // 04-16连接(双向):任何状态都可查看此任务的已有评估记录
+            const uqPrevBox = WB().h('div', null);
+            wrap.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'margin-bottom:10px' },
+                WB().h('button', {
+                    class: 'wb-btn wb-btn-outline',
+                    onclick: () => { uqPrevBox.innerHTML = ''; uqPrevBox.appendChild(uqRecordDrawer()); }
+                }, '查看此模型的已有评估')));
+            wrap.appendChild(uqPrevBox);
+
+            function uqRecordDrawer() {
+                const box = WB().h('div', { class: 'wb-card', style: 'padding:14px;max-width:1180px;margin-bottom:12px' },
+                    WB().h('div', { class: 'wb-section-title', style: 'margin-bottom:8px' }, '此任务的评估记录'));
+                const holder = WB().h('div', null, WB().h('div', { class: 'wb-hint' }, '正在加载...'));
+                box.appendChild(holder);
+                window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id || '') + '/uq-records')
+                    .then(resp => {
+                        const list = resp && (resp.success || resp.code === 200) && Array.isArray(resp.data) ? resp.data : [];
+                        const mine = list.filter(r => r.taskId === t.id);
+                        holder.innerHTML = '';
+                        if (!mine.length) { holder.appendChild(WB().h('div', { class: 'wb-hint' }, '暂无评估记录。')); return; }
+                        holder.appendChild(WB().h('table', { class: 'wb-table' },
+                            WB().h('tr', null, ['运行标识', '方法', '状态', '开始时间', '说明'].map(x => WB().h('th', null, x))),
+                            mine.map(r => WB().h('tr', null,
+                                WB().h('td', null, r.runId || r.id),
+                                WB().h('td', null, r.method || '—'),
+                                WB().h('td', null, r.status === 'COMPLETED' ? '已完成' : r.status === 'FAILED' ? '失败' : (r.status || '—')),
+                                WB().h('td', { class: 'wb-hint' }, r.startedAt ? new Date(r.startedAt).toLocaleString() : '—'),
+                                WB().h('td', { class: 'wb-hint' }, r.message || '—')))));
+                    })
+                    .catch(e => { holder.innerHTML = ''; holder.appendChild(WB().h('div', { class: 'wb-hint' }, '加载失败:' + e.message)); });
+                return box;
+            }
+
             if (t.status !== 'COMPLETED') {
                 wrap.appendChild(WB().h('div', { class: 'wb-infobar', style: 'margin-bottom:12px' },
                     'UQ独立配置与保存:评估对象、观测、固定参数、概率来源和先验重设依据明确;当前新C/D评估限实际支持的纯稳态均值路线。'));
@@ -729,6 +772,16 @@
                     WB().h('button', { class: 'wb-btn wb-btn-primary', onclick: () => { state.tab = 'result'; renderBody(); } }, '返回飞行模型结果')));
                 startPolling();
                 return wrap;
+            }
+
+            // 失败留痕视图(与自演化页同款):错误定位+日志,配置保留在下方便于重发
+            if (t.uqStatus === 'FAILED') {
+                wrap.appendChild(WB().h('div', { class: 'wb-tag wb-tag-red', style: 'display:inline-block;padding:6px 12px;margin-bottom:10px' },
+                    'UQ评估失败:' + (t.uqMessage || '详见日志')));
+                wrap.appendChild(WB().h('div', { class: 'wb-section-title', style: 'margin:6px 0 8px' }, '评估日志'));
+                wrap.appendChild(WB().h('pre', {
+                    style: 'max-height:260px;overflow:auto;background:#101418;color:#cde3d8;padding:12px;border-radius:8px;font-size:12px;line-height:1.5;white-space:pre-wrap'
+                }, (state.log && state.log.length ? state.log.join('\n') : '(无日志)')));
             }
 
             state.uqMethod = state.uqMethod || 'C';
@@ -961,6 +1014,10 @@
                         state.task = resp.data.task;
                         state.log = resp.data.logTail || [];
                         if (state.task && state.task.status !== 'COMPLETED') state.tab = 'sorties';
+                        // 模型成果评估记录跳转(04-16):直达UQ页签
+                        const wantTab2 = window.__WB_OPEN_TASK_TAB__;
+                        delete window.__WB_OPEN_TASK_TAB__;
+                        if (wantTab2 === 'uq') state.tab = 'uq';
                         // 从运行记录打开仍在跑的任务时补启轮询(sortiesTab不自行启动)
                         if (state.task && ['RUNNING', 'PREPARING', 'STOP_REQUESTED'].includes(state.task.status)) startPolling();
                     } else toast((resp && resp.message) || '任务不存在', 'error');
@@ -1020,11 +1077,15 @@
                             WB().h('option', { value: '' }, '从文件库选择(架次测量数据)...'));
                         window.AppConfig.engineGet('projects/'
                             + encodeURIComponent(ctx.project.id || '') + '/files/page',
-                            { category: 'data', pageSize: 200 })
+                            { pageSize: 200 })
                             .then(resp => {
                                 const rows = resp && resp.data && Array.isArray(resp.data.rows) ? resp.data.rows.filter(x => x && x.id != null) : [];
-                                const hit = rows.filter(r0 => String(r0.kind || '').indexOf('飞参训练') >= 0);
-                                (hit.length ? hit : rows).forEach(r0 => libSel.appendChild(WB().h('option', { value: r0.id },
+                                const hit = rows.filter(r0 => /\.(xlsx|xls)$/i.test(String(r0.name || '')) && ['飞参训练', '测量', 'train'].some(w => String(r0.kind || '').indexOf(w) >= 0 || String(r0.name || '').indexOf(w) >= 0));
+                                if (!hit.length) {
+                                    libSel.appendChild(WB().h('option', { value: '' }, '暂无架次测量类库内文件(可直接上传)'));
+                                    return;
+                                }
+                                hit.forEach(r0 => libSel.appendChild(WB().h('option', { value: r0.id },
                                     (r0.name || r0.id) + (r0.kind ? ' · ' + r0.kind : ''))));
                             })
                             .catch(() => { });
@@ -1285,6 +1346,40 @@
         function uqTab() {
             const t = state.task;
             const wrap = WB().h('div', null);
+
+            // 04-16连接(双向):任何状态都可查看此任务的已有评估记录
+            const uqPrevBox = WB().h('div', null);
+            wrap.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'margin-bottom:10px' },
+                WB().h('button', {
+                    class: 'wb-btn wb-btn-outline',
+                    onclick: () => { uqPrevBox.innerHTML = ''; uqPrevBox.appendChild(uqRecordDrawer()); }
+                }, '查看此模型的已有评估')));
+            wrap.appendChild(uqPrevBox);
+
+            function uqRecordDrawer() {
+                const box = WB().h('div', { class: 'wb-card', style: 'padding:14px;max-width:1180px;margin-bottom:12px' },
+                    WB().h('div', { class: 'wb-section-title', style: 'margin-bottom:8px' }, '此任务的评估记录'));
+                const holder = WB().h('div', null, WB().h('div', { class: 'wb-hint' }, '正在加载...'));
+                box.appendChild(holder);
+                window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id || '') + '/uq-records')
+                    .then(resp => {
+                        const list = resp && (resp.success || resp.code === 200) && Array.isArray(resp.data) ? resp.data : [];
+                        const mine = list.filter(r => r.taskId === t.id);
+                        holder.innerHTML = '';
+                        if (!mine.length) { holder.appendChild(WB().h('div', { class: 'wb-hint' }, '暂无评估记录。')); return; }
+                        holder.appendChild(WB().h('table', { class: 'wb-table' },
+                            WB().h('tr', null, ['运行标识', '方法', '状态', '开始时间', '说明'].map(x => WB().h('th', null, x))),
+                            mine.map(r => WB().h('tr', null,
+                                WB().h('td', null, r.runId || r.id),
+                                WB().h('td', null, r.method || '—'),
+                                WB().h('td', null, r.status === 'COMPLETED' ? '已完成' : r.status === 'FAILED' ? '失败' : (r.status || '—')),
+                                WB().h('td', { class: 'wb-hint' }, r.startedAt ? new Date(r.startedAt).toLocaleString() : '—'),
+                                WB().h('td', { class: 'wb-hint' }, r.message || '—')))));
+                    })
+                    .catch(e => { holder.innerHTML = ''; holder.appendChild(WB().h('div', { class: 'wb-hint' }, '加载失败:' + e.message)); });
+                return box;
+            }
+
             if (t.status !== 'COMPLETED') {
                 wrap.appendChild(WB().h('div', { class: 'wb-infobar', style: 'margin-bottom:12px' },
                     '完成一次演化建模并登记模型成果后开放评估。'));
@@ -1331,7 +1426,8 @@
             } else {
                 wrap.appendChild(WB().h('div', { class: 'wb-infobar', style: 'margin-bottom:12px' },
                     'UQ调用F3原算法(uqpreview→确认观测→绑定目标模型→uqrun):评估对象为本架次已交付模型,'
-                    + '概率先验为与演化起点节点一致的后验交付;方法限C/D;评估结果另存,不覆盖确定性估计值。'));
+                    + '概率先验须为对演化起点2p4模型执行「方法C」评估产出的后验交付(同节点网格且含条件物理参数表);'
+                    + '方法限C/D;评估结果另存,不覆盖确定性估计值。'));
             }
             const methodSel = WB().h('select', null,
                 WB().h('option', { value: 'D' }, '方法D(默认,快速局部初评)'),

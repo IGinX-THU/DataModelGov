@@ -189,7 +189,9 @@
                         const pid = encodeURIComponent(ctx.project.id || '');
                         const resp = await window.AppConfig.enginePost('projects/' + pid + '/tasks', {
                             kind: 'steady', name: nameInput.value.trim() || '稳态建模任务',
-                            route: routeSel.value, runId: 'WB_01'
+                            route: routeSel.value, runId: 'WB_01',
+                            // 过渡态入口标记:运行记录类型与打开跳转据此分流
+                            transientMode: ctx.transientMode === true ? true : undefined
                         });
                         if (resp && (resp.success || resp.code === 200) && resp.data) {
                             state.task = resp.data;
@@ -707,18 +709,23 @@
                     nameBox,
                     pickBtn,
                     (function () {
-                        // 按槽位类型自动筛选:训练槽只显示训练数据类,检验槽只显示测试/检验数据类(无匹配则显示全部)
-                        const slotKw = kind === 'validation' ? ['测试', '检验'] : ['训练'];
+                        // 按槽位类型自动筛选:训练槽只显示训练数据类,检验槽只显示测试/检验数据类;
+                        // kind标签或文件名任一命中即可;无匹配显示空提示,不回退显示全部(避免训练/测试混选)
+                        const slotKw = kind === 'validation' ? ['测试', '检验', 'validation', 'test'] : ['训练', 'train'];
                         const matchSlot = k => slotKw.some(w => String(k || '').indexOf(w) >= 0);
                         const libSel = WB().h('select', { class: 'lib-file', style: 'max-width:260px' },
                             WB().h('option', { value: '' }, '从文件库选择(本槽位类型)...'));
                         window.AppConfig.engineGet('projects/'
                             + encodeURIComponent(ctx.project.id || '') + '/files/page',
-                            { category: 'data', pageSize: 200 })
+                            { pageSize: 200 })
                             .then(resp => {
                                 const rows = resp && resp.data && Array.isArray(resp.data.rows) ? resp.data.rows.filter(x => x && x.id != null) : [];
-                                const hit = rows.filter(r0 => matchSlot(r0.kind));
-                                (hit.length ? hit : rows).forEach(r0 => libSel.appendChild(WB().h('option', { value: r0.id },
+                                const hit = rows.filter(r0 => /\.(xlsx|xls)$/i.test(String(r0.name || '')) && (matchSlot(r0.kind) || matchSlot(r0.name)));
+                                if (!hit.length) {
+                                    libSel.appendChild(WB().h('option', { value: '' }, '本槽位类型暂无库内文件(可直接上传)'));
+                                    return;
+                                }
+                                hit.forEach(r0 => libSel.appendChild(WB().h('option', { value: r0.id },
                                     (r0.name || r0.id) + (r0.kind ? ' · ' + r0.kind : ''))));
                             })
                             .catch(() => { });
@@ -1766,6 +1773,15 @@
                 const a = Math.abs(n); return a >= 1000 ? n.toFixed(1) : a >= 1 ? n.toFixed(4) : n.toPrecision(4); };
             const wrap = WB().h('div', null);
             const uqRunning = t.uqStatus === 'EXECUTING' || t.uqStatus === 'PREPARING';
+
+            // 04-16连接(双向):任何状态都可查看此任务的已有评估记录
+            const uqPrevBox = WB().h('div', null);
+            wrap.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'margin-bottom:10px' },
+                WB().h('button', {
+                    class: 'wb-btn wb-btn-outline',
+                    onclick: () => { uqPrevBox.innerHTML = ''; uqPrevBox.appendChild(uqRecordList()); }
+                }, '查看此模型的已有评估')));
+            wrap.appendChild(uqPrevBox);
 
             // 关闭之前的SSE连接
             if (state.uqLogEventSource) {

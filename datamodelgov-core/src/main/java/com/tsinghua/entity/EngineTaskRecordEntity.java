@@ -38,6 +38,9 @@ public class EngineTaskRecordEntity {
     @Field(name = "kind")
     private String kind;
 
+    /** 过渡态试车建模标记("1"=过渡态入口创建;历史行缺省为null按steady呈现) */
+    private String transientMode;
+
     @ApiModelProperty(value = "任务名称")
     @Field(name = "name")
     private String name;

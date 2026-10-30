@@ -715,10 +715,11 @@ public class F3FlightService {
             if (priorMethod != null && priorMethod.equalsIgnoreCase(m)) break;
         }
         if (priorFile == null) {
-            throw new IOException("未找到与本次演化起点模型节点一致的概率先验(后验交付的deterministic_workbook_sha256"
-                    + "须等于演化起点工作簿SHA" + (rootShaF != null ? ":" + rootShaF : "(起点解析失败)") + ");"
-                    + "请先对作为演化起点的2p4模型执行「基础稳态点建模」的不确定性评估(方法C),"
-                    + "生成同节点后验交付后再发起自演化UQ;随程序包的示例后验对应示例模型节点,不适用本项目模型");
+            throw new IOException("未找到可作概率先验的后验交付:须同时满足①formal_status为ACCEPTED;"
+                    + "②deterministic_workbook_sha256与演化起点工作簿一致(同节点网格);"
+                    + "③含ConditionalNuisance条件物理参数表——该表仅TC24「方法C」评估导出"
+                    + "(B方法为边际化处理没有条件样本,D为局部近似);"
+                    + "请对作为演化起点的2p4模型执行方法C的不确定性评估后重试");
         }
         final String sourceWorkbook = priorFile.getAbsolutePath().replace('\\', '/');
         final String sourceMethod = priorMethod == null ? m : priorMethod;
@@ -728,6 +729,21 @@ public class F3FlightService {
         task.setUqRunId(uqId);
         task.setUqStartedAt(System.currentTimeMillis());
         store.saveTask(task);
+        // 评估记录留档:与TC24路径同口径(saveUqRecord会同步运行记录uq-阶段行),
+        // 否则自演化UQ在运行记录/评估记录里无痕
+        EngineModels.UqRecord uqRec = new EngineModels.UqRecord();
+        uqRec.setProjectId(task.getProjectId());
+        uqRec.setTaskId(key);
+        for (EngineModels.ModelAsset ma : store.listModels(task.getProjectId())) {
+            if (key.equals(ma.getTaskId())) { uqRec.setModelAssetId(ma.getId()); break; }
+        }
+        uqRec.setMethod(m);
+        uqRec.setRunId(uqId);
+        uqRec.setStatus(EngineModels.UqRecord.ST_EXECUTING);
+        uqRec.setMessage("自演化UQ评估准备中(方法 " + m + ")");
+        uqRec.setStartedAt(System.currentTimeMillis());
+        store.saveUqRecord(uqRec);
+        final String uqRecId = uqRec.getId();
         logBuffers.putIfAbsent(key, new ArrayList<>());
         emitLog(key, "发起自演化UQ评估: method=" + m + ", uqId=" + uqId);
         executor.submit(() -> {
@@ -816,6 +832,15 @@ public class F3FlightService {
                 tk.setUqMessage("UQ评估完成;结果另存,不覆盖确定性估计值");
                 tk.setUqResult(uqRes);
                 store.saveTask(tk);
+                EngineModels.UqRecord fr = store.getUqRecord(task.getProjectId(), uqRecId);
+                if (fr != null) {
+                    fr.setStatus(EngineModels.UqRecord.ST_COMPLETED);
+                    fr.setFinishedAt(System.currentTimeMillis());
+                    fr.setMessage("自演化UQ评估完成;结果另存,不覆盖确定性估计值");
+                    Object wb = uqRes.get("workbook");
+                    if (wb != null) fr.setDeliveryFile(wb.toString());
+                    store.saveUqRecord(fr);
+                }
                 emitLog(key, "自演化UQ评估完成");
             } catch (Exception e) {
                 log.error("自演化UQ评估失败: {}", key, e);
@@ -825,6 +850,13 @@ public class F3FlightService {
                     tk.setUqFinishedAt(System.currentTimeMillis());
                     tk.setUqMessage("UQ评估失败: " + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
                     store.saveTask(tk);
+                    EngineModels.UqRecord fr = store.getUqRecord(task.getProjectId(), uqRecId);
+                    if (fr != null) {
+                        fr.setStatus(EngineModels.UqRecord.ST_FAILED);
+                        fr.setFinishedAt(System.currentTimeMillis());
+                        fr.setMessage(tk.getUqMessage());
+                        store.saveUqRecord(fr);
+                    }
                 } catch (IOException io) {
                     log.error("UQ状态写回失败", io);
                 }
@@ -860,7 +892,9 @@ public class F3FlightService {
         return null;
     }
 
-    /** UQ后验交付探测:含ParameterSummary+PosteriorSamples表(f34先验合同),按workbook.xml轻量判断。 */
+    /** UQ后验交付探测:含ParameterSummary+PosteriorSamples+ConditionalNuisance表。
+     *  ConditionalNuisance仅方法C导出(sht_export_2p4_uq_delivery按runResult.conditionalNuisance
+     *  条件写入),B方法后验(边际化处理)没有条件物理参数表,f34先验构建必失败,须在此拦下。 */
     private boolean isUqPosteriorWorkbook(File xlsx) {
         try (java.util.zip.ZipFile z = new java.util.zip.ZipFile(xlsx)) {
             java.util.zip.ZipEntry e = z.getEntry("xl/workbook.xml");
@@ -872,7 +906,8 @@ public class F3FlightService {
             while ((n = in.read(buf)) > 0) sb.append(new String(buf, 0, n, StandardCharsets.UTF_8));
             in.close();
             return sb.toString().contains("name=\"ParameterSummary\"")
-                    && sb.toString().contains("name=\"PosteriorSamples\"");
+                    && sb.toString().contains("name=\"PosteriorSamples\"")
+                    && sb.toString().contains("name=\"ConditionalNuisance\"");
         } catch (Exception e) {
             return false;
         }

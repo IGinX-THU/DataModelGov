@@ -488,6 +488,9 @@ public class EngineWorkbenchController {
             t.setName((String) body.getOrDefault("name", "稳态建模任务"));
             t.setRoute((String) body.getOrDefault("route", "steady"));
             t.setRunId((String) body.getOrDefault("runId", "WB_01"));
+            // 过渡态试车建模入口标记(仅影响业务页呈现与运行记录类型;执行合同与稳态一致)
+            Object tmFlag = body.get("transientMode");
+            t.setTransientMode(Boolean.TRUE.equals(tmFlag) || "true".equalsIgnoreCase(String.valueOf(tmFlag)));
             t.setStatus(EngineModels.ModelingTask.ST_READY);
             if ("flight_steady".equals(t.getKind()) || "flight_transient".equals(t.getKind())
                     || "evolution".equals(t.getKind())) {
@@ -751,35 +754,37 @@ public class EngineWorkbenchController {
         }
     }
 
-    /** 交付examples示例文件 → 项目文件库 初始化映射:{examples相对路径, category, kind类型标签, 入库名}。
-     *  只挑各建模任务用作输入/父模型的小体积交付与数据文件;kind以"示例·"开头,前端下拉按类型筛选。 */
+    /** 交付examples示例文件 → 项目文件库 初始化映射:{examples相对路径, category, kind类型标签}。
+     *  只挑各建模任务用作输入/父模型的小体积交付与数据文件;kind以"示例·"开头,前端下拉按类型筛选;
+     *  入库文件保留原始名称,不做中文重命名(文件身份与程序侧引用保持一致)。 */
     private static final String[][] EXAMPLE_LIBRARY_FILES = {
-        {"F3/raw_training/flight_data_3p1_identification_history.xlsx", "data", "示例·飞参训练数据(F3)", "示例-飞参训练数据.xlsx"},
-        {"F3/raw_test/flight_data_3p1_independent_validation_history.xlsx", "data", "示例·飞参独立测试(F3)", "示例-飞参独立测试.xlsx"},
-        {"TC24/TestData/three_component/tc24_training_means.xlsx", "data", "示例·稳态试车训练均值(TC24)", "示例-稳态试车训练均值.xlsx"},
-        {"TC24/TestData/three_component/tc24_test_means.xlsx", "data", "示例·稳态试车检验均值(TC24)", "示例-稳态试车检验均值.xlsx"},
-        {"TC27/TestData/three_component/tc27_training_history.xlsx", "data", "示例·试车训练历程(TC27)", "示例-试车训练历程.xlsx"},
-        {"TC27/TestData/three_component/tc27_test_history.xlsx", "data", "示例·试车检验历程(TC27)", "示例-试车检验历程.xlsx"},
-        {"Stage4/prediction_input.xlsx", "data", "示例·自演化输入(Stage4)", "示例-自演化预测输入.xlsx"},
-        {"F3/TF_R002_continuous/steady_model.xlsx", "model", "示例·瞬态稳态载体模型(F3瞬态父模型)", "示例-瞬态稳态载体模型.xlsx"},
-        {"F3/TF_R002_continuous/flight_transient_model.xlsx", "model", "示例·瞬态组合模型交付(F3)", "示例-瞬态组合模型.xlsx"},
-        {"F3/R042_B1/delivery/model.xlsx", "model", "示例·稳态飞参模型交付(F3)", "示例-稳态飞参模型.xlsx"},
-        {"TC24/MiddleData/three_component/steady_model_2p4_delivery/2p4_deterministic_steady.xlsx", "model", "示例·2p4稳态参数化交付(TC24稳态父模型)", "示例-2p4确定性稳态交付.xlsx"},
-        {"TC24/MiddleData/three_component/steady_model_2p4_delivery/2p4_deterministic_transient_instant.xlsx", "model", "示例·2p4瞬态参数化交付(TC24)", "示例-2p4确定性瞬态交付.xlsx"},
-        {"TC24/posterior_B/posterior_b.xlsx", "model", "示例·UQ后验交付B(TC24)", "示例-UQ后验B.xlsx"},
-        {"TC24/posterior_C/posterior_c.xlsx", "model", "示例·UQ后验交付C(TC24)", "示例-UQ后验C.xlsx"},
-        {"TC27/TC27_UI_R065_20260928/full_ti_ii_01/MiddleData/tc27_deterministic_transient_instant_II.xlsx", "model", "示例·瞬态时刻模型交付(TC27)", "示例-瞬态时刻模型交付.xlsx"},
-        {"Stage4/evolution02/s001/model/delivery/model.xlsx", "model", "示例·架次模型交付(自演化)", "示例-架次模型交付.xlsx"},
-        {"Stage4/prediction_models/hold/steady_model.xlsx", "model", "示例·预测载体模型-沿用(自演化)", "示例-预测载体模型-沿用.xlsx"},
-        {"Stage4/prediction_models/trend/steady_model.xlsx", "model", "示例·预测载体模型-趋势(自演化)", "示例-预测载体模型-趋势.xlsx"}
+        {"F3/raw_training/flight_data_3p1_identification_history.xlsx", "data", "示例·飞参训练数据(F3)"},
+        {"F3/raw_test/flight_data_3p1_independent_validation_history.xlsx", "data", "示例·飞参独立测试(F3)"},
+        {"TC24/TestData/three_component/tc24_training_means.xlsx", "data", "示例·稳态试车训练均值(TC24)"},
+        {"TC24/TestData/three_component/tc24_test_means.xlsx", "data", "示例·稳态试车检验均值(TC24)"},
+        {"TC27/TestData/three_component/tc27_training_history.xlsx", "data", "示例·试车训练历程(TC27)"},
+        {"TC27/TestData/three_component/tc27_test_history.xlsx", "data", "示例·试车检验历程(TC27)"},
+        {"Stage4/prediction_input.xlsx", "data", "示例·自演化输入(Stage4)"},
+        {"F3/TF_R002_continuous/steady_model.xlsx", "model", "示例·瞬态稳态载体模型(F3瞬态父模型)"},
+        {"F3/TF_R002_continuous/flight_transient_model.xlsx", "model", "示例·瞬态组合模型交付(F3)"},
+        {"F3/R042_B1/delivery/model.xlsx", "model", "示例·稳态飞参模型交付(F3)"},
+        {"TC24/MiddleData/three_component/steady_model_2p4_delivery/2p4_deterministic_steady.xlsx", "model", "示例·2p4稳态参数化交付(TC24稳态父模型)"},
+        {"TC24/MiddleData/three_component/steady_model_2p4_delivery/2p4_deterministic_transient_instant.xlsx", "model", "示例·2p4瞬态参数化交付(TC24)"},
+        {"TC24/posterior_B/posterior_b.xlsx", "model", "示例·UQ后验交付B(TC24)"},
+        {"TC24/posterior_C/posterior_c.xlsx", "model", "示例·UQ后验交付C(TC24)"},
+        {"TC27/TC27_UI_R065_20260928/full_ti_ii_01/MiddleData/tc27_deterministic_transient_instant_II.xlsx", "model", "示例·瞬态时刻模型交付(TC27)"},
+        {"Stage4/evolution02/s001/model/delivery/model.xlsx", "model", "示例·架次模型交付(自演化)"},
+        {"Stage4/prediction_models/hold/steady_model.xlsx", "model", "示例·预测载体模型-沿用(自演化)"},
+        {"Stage4/prediction_models/trend/steady_model.xlsx", "model", "示例·预测载体模型-趋势(自演化)"}
     };
     private static final String EXAMPLE_CLASSPATH = "programs/Delivery_V1_20261019_R06/examples/";
 
-    /** 创建项目时把examples示例文件按类型复制入项目文件库(kind带"示例·"前缀;幂等:同名跳过)。 */
+    /** 创建项目时把examples示例文件按类型复制入项目文件库(kind带"示例·"前缀;幂等:同名跳过;
+     *  文件名保留examples原始名称,不重命名)。 */
     private void provisionExampleLibrary(String pid) throws java.io.IOException {
         int n = 0;
         for (String[] m : EXAMPLE_LIBRARY_FILES) {
-            String destName = m[3];
+            String destName = new File(m[0]).getName();
             File dest = new File(fileLibraryDir(pid, m[1]), destName);
             if (dest.isFile()) { n++; continue; }
             byte[] data = readExampleResource(EXAMPLE_CLASSPATH + m[0]);

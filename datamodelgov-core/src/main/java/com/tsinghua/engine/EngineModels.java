@@ -122,6 +122,8 @@ public final class EngineModels {
         private String f3SortieId;
         /** 数据方法: steady_only | steady_plus_small_history */
         private String dataMethod = "steady_only";
+        /** 过渡态试车建模入口标记(仅区分业务页呈现与运行记录类型;执行合同与稳态一致) */
+        private Boolean transientMode;
         /** 正则化强度λ(F3合同默认0.05) */
         private Double regularizationStrength;
         /** A阶段确认凭据(B阶段必需) */

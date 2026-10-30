@@ -56,6 +56,7 @@ public class EngineTaskRecordService extends IginxListService<EngineTaskRecordEn
         }
         row.setId(ts).setCreateTime(ts) // ORDER BY createTime遇null值IginX服务端会NPE,必须非空
                 .setProjectId(t.getProjectId()).setTaskId(t.getId()).setKind(t.getKind())
+                .setTransientMode(Boolean.TRUE.equals(t.getTransientMode()) ? "1" : null)
                 .setName(t.getName()).setRunId(t.getRunId()).setStatus(t.getStatus())
                 .setErrorKind(t.getErrorKind()).setMessage(t.getMessage())
                 .setStartTime(t.getStartedAt()).setEndTime(t.getFinishedAt());
