@@ -2444,9 +2444,13 @@ window.Workbench = (() => {
                     ? (cfg.duration != null && cfg.duration !== '' ? cfg.duration + ' s'
                         : (r.createdAt && r.finishedAt ? fmtSpan(r.finishedAt - r.createdAt) : '—'))
                     : (cfg.duration != null ? Number(cfg.duration).toFixed(3) + ' s' : '—');
+                // 运行列加工作流阶段标识(与运行记录「最近运行」列同口径:阶段 · runId)
+                const stageTag = !isFm ? '联合仿真'
+                    : r.kind === 'design_point' ? '设计点校核'
+                    : r.kind === 'startstop' ? '起动停车' : '全模式';
                 tbl.appendChild(h('tr', null,
                     h('td', { onclick: ev => ev.stopPropagation() }, isFm ? h('span', { class: 'wb-hint' }, '—') : cb),
-                    h('td', { style: 'font-weight:600' }, r.runId || '—'),
+                    h('td', { style: 'font-weight:600' }, (stageTag ? stageTag + ' · ' : '') + (r.runId || '—')),
                     h('td', null, !isFm ? '多系统联合仿真' : (r.kind === 'fullmode' ? '全模式仿真' : '起动停车建模')),
                     h('td', { class: 'wb-hint' }, isFm
                         ? (r.kind === 'design_point'

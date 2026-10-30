@@ -1307,6 +1307,14 @@ public class EngineWorkbenchController {
             if (t == null) return Result.error("任务不存在");
             String denied = accessDenied(store.getProject(pid));
             if (denied != null) return Result.error(denied);
+            // 自演化UQ走F3合同(uqpreview→uqconfirm→uqrun),方法限C/D;
+            // TC24 UQ(要求point_id稳态均值观测表)不适用于自演化
+            if ("evolution".equals(t.getKind())) {
+                String em = method == null ? "D" : method.trim().toUpperCase();
+                if (!em.matches("[CD]")) return Result.error("自演化UQ方法仅支持C/D");
+                f3FlightService.runEvolutionUq(t, em); // 异步执行;状态经task.uqStatus轮询,响应无UqRecord载荷
+                return Result.success((EngineModels.UqRecord) null);
+            }
             if (!EngineModels.ModelingTask.ST_COMPLETED.equals(t.getStatus())) {
                 return Result.error("请先完成确定性辨识,再发起不确定性评估");
             }
@@ -1356,6 +1364,11 @@ public class EngineWorkbenchController {
             if (t == null) return Result.error("任务不存在");
             String denied = accessDenied(store.getProject(pid));
             if (denied != null) return Result.error(denied);
+            // 自演化UQ日志与取消走F3执行通道,与TC24互不相干
+            if ("evolution".equals(t.getKind())) {
+                boolean ok = f3FlightService.stopEvolutionUq(t);
+                return ok ? Result.success(true) : Result.error("当前没有可取消的评估");
+            }
             boolean ok = tc24Service.requestUqCancel(pid, tid);
             return ok ? Result.success(true) : Result.error("当前没有可取消的评估");
         } catch (IOException e) {

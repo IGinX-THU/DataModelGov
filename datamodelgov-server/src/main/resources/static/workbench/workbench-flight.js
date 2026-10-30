@@ -1086,8 +1086,9 @@
         }
 
         function renderBody() {
-            // 核验/执行进行中不允许renderBody杀掉轮询
-            const busy = state.prepWait || (state.task && ['PREPARING', 'RUNNING', 'STOP_REQUESTED'].includes(state.task.status));
+            // 核验/执行/UQ评估进行中不允许renderBody杀掉轮询
+            const busy = state.prepWait || (state.task && ['PREPARING', 'RUNNING', 'STOP_REQUESTED'].includes(state.task.status))
+                || (state.task && (state.task.uqStatus === 'EXECUTING' || state.task.uqStatus === 'PREPARING'));
             if (!busy) stopPolling();
             body.innerHTML = '';
             if (state.tab === 'overview') body.appendChild(overviewTab());
@@ -1290,25 +1291,53 @@
                 return wrap;
             }
             const uqRunning = t.uqStatus === 'EXECUTING' || t.uqStatus === 'PREPARING';
-            wrap.appendChild(WB().h('div', { class: 'wb-infobar', style: 'margin-bottom:12px' },
-                'UQ调用F3原算法:评估对象为本批交付模型,观测/固定参数/概率来源和先验重设依据明确;'
-                + '评估结果另存,不覆盖确定性估计值。'));
-            if (t.uqStatus) {
-                wrap.appendChild(WB().h('div', { class: uqRunning ? 'wb-infobar' : 'wb-hint', style: 'margin-bottom:12px' },
-                    '评估状态: ' + ({ EXECUTING: '执行中', PREPARING: '准备中', COMPLETED: '已完成(结果见运行记录/评估记录)',
-                        FAILED: '失败(详见日志)' }[t.uqStatus] || t.uqStatus)
-                    + (t.uqMessage ? ' · ' + t.uqMessage : '')));
+
+            /* 执行中:阶段说明 + 就地日志 + 协作取消(与稳态飞参建模同款) */
+            if (uqRunning) {
+                wrap.appendChild(WB().h('div', { class: 'wb-infobar', style: 'margin-bottom:12px' },
+                    'UQ评估' + (t.uqStatus === 'PREPARING' ? '准备中(确认观测并绑定目标模型)' : '执行中')
+                    + ';按 评估准备 → 主样本计算 → 独立复算 → 参数汇总 → 结果写出 顺序执行。'));
+                wrap.appendChild(WB().h('div', { class: 'wb-section-title', style: 'margin:10px 0 8px' }, '评估日志'));
+                wrap.appendChild(WB().h('pre', {
+                    style: 'max-height:260px;overflow:auto;background:#101418;color:#cde3d8;padding:12px;border-radius:8px;font-size:12px;line-height:1.5;white-space:pre-wrap'
+                }, (state.log && state.log.length ? state.log.join('\n') : '等待MATLAB输出...')));
+                wrap.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'margin-top:12px' },
+                    WB().h('button', { class: 'wb-btn wb-btn-outline', onclick: async () => {
+                        try {
+                            await window.AppConfig.enginePost('projects/' + encodeURIComponent(ctx.project.id || '')
+                                + '/tasks/' + encodeURIComponent(t.id) + '/uq/stop', {});
+                            toast('已请求取消UQ评估(协作取消,结果作废)', 'info');
+                        } catch (e) { toast('取消失败:' + e.message, 'error'); }
+                        startPolling();
+                    } }, '请求协作取消'),
+                    WB().h('div', { class: 'wb-spacer' }),
+                    WB().h('button', { class: 'wb-btn wb-btn-primary', onclick: () => { state.tab = 'result'; renderBody(); } }, '返回模型结果')));
+                startPolling();
+                return wrap;
+            }
+
+            /* 失败:错误定位 + 日志(与飞行建模运行失败视图同款),配置表随下方保留便于直接重发 */
+            if (t.uqStatus === 'FAILED') {
+                wrap.appendChild(WB().h('div', { class: 'wb-tag wb-tag-red', style: 'display:inline-block;padding:6px 12px;margin-bottom:10px' },
+                    'UQ评估失败:' + (t.uqMessage || '详见日志')));
+                wrap.appendChild(WB().h('div', { class: 'wb-section-title', style: 'margin:6px 0 8px' }, '评估日志'));
+                wrap.appendChild(WB().h('pre', {
+                    style: 'max-height:260px;overflow:auto;background:#101418;color:#cde3d8;padding:12px;border-radius:8px;font-size:12px;line-height:1.5;white-space:pre-wrap'
+                }, (state.log && state.log.length ? state.log.join('\n') : '(无日志)')));
+            } else if (t.uqStatus === 'COMPLETED') {
+                wrap.appendChild(WB().h('div', { class: 'wb-infobar', style: 'margin-bottom:12px' },
+                    '上次评估已完成' + (t.uqResult && t.uqResult.workbook ? ';区间Excel: ' + fileName(String(t.uqResult.workbook)) : '')
+                    + ';结果另存,不覆盖确定性估计值。可发起新评估(生成新评估批次)。'));
+            } else {
+                wrap.appendChild(WB().h('div', { class: 'wb-infobar', style: 'margin-bottom:12px' },
+                    'UQ调用F3原算法(uqpreview→确认观测→绑定目标模型→uqrun):评估对象为本架次已交付模型,'
+                    + '概率先验为与演化起点节点一致的后验交付;方法限C/D;评估结果另存,不覆盖确定性估计值。'));
             }
             const methodSel = WB().h('select', null,
-                WB().h('option', { value: 'B' }, '方法B(默认)'),
-                WB().h('option', { value: 'C' }, '方法C'),
-                WB().h('option', { value: 'D' }, '方法D'));
-            const particleSel = WB().h('select', null,
-                WB().h('option', { value: '512' }, '512粒子'),
-                WB().h('option', { value: '1024' }, '1024粒子'));
-            wrap.appendChild(WB().h('div', { class: 'wb-form-grid', style: 'grid-template-columns:1fr 1fr;max-width:760px' },
-                WB().h('div', { class: 'wb-field' }, WB().h('label', null, '评估方法'), methodSel),
-                WB().h('div', { class: 'wb-field' }, WB().h('label', null, '粒子数'), particleSel)));
+                WB().h('option', { value: 'D' }, '方法D(默认,快速局部初评)'),
+                WB().h('option', { value: 'C' }, '方法C(非线性粒子评估)'));
+            wrap.appendChild(WB().h('div', { class: 'wb-form-grid', style: 'grid-template-columns:1fr;max-width:480px' },
+                WB().h('div', { class: 'wb-field' }, WB().h('label', null, '评估方法'), methodSel)));
             const launchBtn = WB().h('button', {
                 class: 'wb-btn wb-btn-primary' + (uqRunning ? ' disabled' : ''),
                 onclick: async () => {
@@ -1330,8 +1359,7 @@
                         }
                         const resp = await window.AppConfig.enginePost(
                             'projects/' + encodeURIComponent(ctx.project.id || '') + '/tasks/'
-                            + encodeURIComponent(t.id) + '/uq?method=' + encodeURIComponent(methodSel.value),
-                            { particleCount: parseInt(particleSel.value, 10) });
+                            + encodeURIComponent(t.id) + '/uq?method=' + encodeURIComponent(methodSel.value), {});
                         if (resp && (resp.success || resp.code === 200)) {
                             toast('UQ评估已发起;进度见本页与评估记录', 'success');
                             window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;

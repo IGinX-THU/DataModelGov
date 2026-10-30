@@ -263,6 +263,8 @@ public class F3FlightService {
         m.append("c = jsondecode(fileread(configFile));\n");
         m.append("addpath('").append(programCopy.getAbsolutePath().replace('\\', '/')).append("', '-begin');\n");
         m.append("rehash;\n");
+        // UQ等独立动作不携带config(建模配置模板),合并块按需执行
+        m.append("if isfield(c, 'config')\n");
         m.append("ev = Start_Stage4_02_EvolutionTask();\n"); // 完整 T4_EVOLUTION_V2 模板
         m.append("cfg = ev;\n");
         m.append("ov = c.config;\n");
@@ -286,11 +288,26 @@ public class F3FlightService {
         m.append("    for k = 1:numel(fn), s.(fn{k}) = sj(i).(fn{k}); end\n");
         m.append("    if i == 1, cfg.sorties = s; else, cfg.sorties(i) = s; end\n");
         m.append("end\n");
+        m.append("end\n");
         m.append("switch lower(c.action)\n");
+        m.append("    case 'uqassessment'\n");
+        // 自演化UQ(独立任务):uqpreview→自动完整窗口→uqconfirm→uqrun。
+        // 配置合同见uq_action:method限C/D;sourceStage=2p4时sourceWorkbook为概率先验
+        // (2p4参数化交付);businessIdentity须与已交付模型一致(engineId/sortieId/parentModelId)
+        m.append("        uq = c.uqConfig;\n");
+        m.append("        pv = Start_Stage4_02_EvolutionTask('uqpreview', uq);\n");
+        m.append("        sel = dmg_auto_windows(pv);\n");
+        m.append("        Start_Stage4_02_EvolutionTask('uqconfirm', uq, struct('windows', sel, 'sortieId', uq.sortieId));\n");
+        m.append("        r = Start_Stage4_02_EvolutionTask('uqrun', uq);\n");
+        m.append("    case 'uqstatus'\n");
+        m.append("        r = Start_Stage4_02_EvolutionTask('uqstatus', struct('uqDirectory', c.uqDirectory));\n");
         m.append("    case 'status'\n");
         m.append("        r = Start_Stage4_02_EvolutionTask('status', struct('resultDirectory', c.resultDirectory));\n");
         m.append("    case 'readresult'\n");
-        m.append("        r = Start_Stage4_02_EvolutionTask('readResult', struct('resultDirectory', c.resultDirectory));\n");
+        // read_action合同:readResult必须指定架次
+        m.append("        rd = struct('resultDirectory', c.resultDirectory);\n");
+        m.append("        if isfield(c, 'sortieId'), rd.sortieId = c.sortieId; end\n");
+        m.append("        r = Start_Stage4_02_EvolutionTask('readResult', rd);\n");
         m.append("    case 'exportindex'\n");
         m.append("        r = Start_Stage4_02_EvolutionTask('exportIndex', struct('resultDirectory', c.resultDirectory));\n");
         m.append("    case 'run'\n");
@@ -637,6 +654,297 @@ public class F3FlightService {
         } finally {
             running.remove(key + ":f3");
         }
+    }
+
+    /** F-06自演化不确定性评估:走Start_Stage4_02_EvolutionTask的uq动作链
+     *  (uqpreview→自动完整窗口→uqconfirm→uqrun)。合同(uq_action):方法限C/D;
+     *  sourceStage=2p4时sourceWorkbook为概率先验=对应路线的2p4参数化交付;
+     *  TC24 UQ路径(要求point_id稳态均值表)不适用于自演化,勿混用。 */
+    public EngineModels.ModelingTask runEvolutionUq(EngineModels.ModelingTask task, String method) throws IOException {
+        final String key = task.getId();
+        if (!EngineModels.ModelingTask.ST_COMPLETED.equals(task.getStatus())) {
+            throw new IOException("请先完成自演化建模并交付模型,再发起不确定性评估");
+        }
+        Map<String, Object> res = task.getResult();
+        if (res == null || !(res.get("outputRoot") instanceof String)) {
+            throw new IOException("缺少已交付的演化结果目录(outputRoot);请重新执行建模");
+        }
+        if (task.getIdentificationFile() == null || task.getIdentificationFile().trim().isEmpty()) {
+            throw new IOException("缺少架次测量数据(identificationFile)");
+        }
+        final String m = method == null ? "D" : method.trim().toUpperCase();
+        if (!m.matches("[CD]")) {
+            throw new IOException("自演化UQ方法仅支持C/D(F3合同只接通台架到飞行目标的C/D)");
+        }
+        if (task.getUqStatus() != null && ("EXECUTING".equals(task.getUqStatus()) || "PREPARING".equals(task.getUqStatus()))) {
+            throw new IOException("UQ评估正在执行中,不能重复发起");
+        }
+        final String runDir = ((String) res.get("outputRoot")).replace('\\', '/');
+        // 概率先验=带后验样本的2p4/2p7参数化交付(f34先验合同),不是确定性交付;
+        // sourceMethod须与先验Manifest的method_id一致(sht_f34_prior local_validate_upstream)
+        File programDirProbe = ensureF3Source(task.getProjectId());
+        EngineModels.EngineProject pj = store.getProject(task.getProjectId());
+        File jobDir = (pj != null && pj.getWorkdir() != null && !pj.getWorkdir().isEmpty())
+                ? new File(pj.getWorkdir(), "job") : null;
+        File[] priorCandidates = resolveUqPriorCandidates(programDirProbe, jobDir);
+        // 节点一致性合同(sht_f34_prior local_match_entry_nodes):先验健康曲线坐标须与当前模型
+        // 完全一致(1e-9),否则物理上不可用。后验Manifest的deterministic_workbook_sha256=
+        // 其对应确定性工作簿指纹,与演化起点2p4根模型SHA相等才保证同节点网格
+        String rootSha = null;
+        String rootWbPath = null;
+        try {
+            rootWbPath = resolveParentWorkbook(task);
+            rootSha = sha256Hex(new File(rootWbPath));
+        } catch (Exception ignore) { }
+        final String rootShaF = rootSha;
+        File priorFile = null;
+        String priorMethod = null;
+        for (File cand : priorCandidates) {
+            String mid = readSheetSingleValue(cand, "Manifest", "method_id");
+            String status = readSheetSingleValue(cand, "Manifest", "formal_status");
+            if (mid == null || status == null || !status.toUpperCase().contains("ACCEPTED")) continue;
+            if (rootShaF != null) {
+                String dsha = readSheetSingleValue(cand, "Manifest", "deterministic_workbook_sha256");
+                if (dsha == null || !dsha.equalsIgnoreCase(rootShaF)) continue; // 节点网格不一致,选了也必败
+            }
+            if (priorFile == null || (mid.equalsIgnoreCase(m) && !priorMethod.equalsIgnoreCase(m))) {
+                // 首个合法候选;若后来出现与本次评估方法同名的先验则优先
+                priorFile = cand;
+                priorMethod = mid.toUpperCase();
+            }
+            if (priorMethod != null && priorMethod.equalsIgnoreCase(m)) break;
+        }
+        if (priorFile == null) {
+            throw new IOException("未找到与本次演化起点模型节点一致的概率先验(后验交付的deterministic_workbook_sha256"
+                    + "须等于演化起点工作簿SHA" + (rootShaF != null ? ":" + rootShaF : "(起点解析失败)") + ");"
+                    + "请先对作为演化起点的2p4模型执行「基础稳态点建模」的不确定性评估(方法C),"
+                    + "生成同节点后验交付后再发起自演化UQ;随程序包的示例后验对应示例模型节点,不适用本项目模型");
+        }
+        final String sourceWorkbook = priorFile.getAbsolutePath().replace('\\', '/');
+        final String sourceMethod = priorMethod == null ? m : priorMethod;
+        String uqId = "UQ_" + new java.text.SimpleDateFormat("yyyyMMdd_HHmmss").format(new java.util.Date());
+        task.setUqStatus("PREPARING");
+        task.setUqMessage("准备UQ评估(确认观测并绑定目标模型)");
+        task.setUqRunId(uqId);
+        task.setUqStartedAt(System.currentTimeMillis());
+        store.saveTask(task);
+        logBuffers.putIfAbsent(key, new ArrayList<>());
+        emitLog(key, "发起自演化UQ评估: method=" + m + ", uqId=" + uqId);
+        executor.submit(() -> {
+            File adapterDir = null;
+            try {
+                File programCopy = ensureF3Source(task.getProjectId());
+                File workDir = store.taskWorkDir(task.getProjectId(), task.getId());
+                adapterDir = new File(workDir, "evolution-uq-work");
+                if (adapterDir.exists()) deleteDirectory(adapterDir);
+                if (!adapterDir.mkdirs()) throw new IOException("无法创建适配器目录");
+                writeEvolutionAdapter(adapterDir, programCopy);
+                // ① readresult取已交付模型身份;businessIdentity须与模型严格一致(uq_action断言)
+                Map<String, Object> readCall = new LinkedHashMap<>();
+                readCall.put("action", "readresult");
+                readCall.put("resultDirectory", runDir);
+                // read_action合同:readResult必须指定架次
+                readCall.put("sortieId", task.getF3SortieId() == null ? "SORTIE-01" : task.getF3SortieId());
+                readCall.put("resultFile", new File(adapterDir, "uq-read-result.json").getAbsolutePath().replace('\\', '/'));
+                Map<String, Object> read = runEvolutionAdapter(adapterDir, task, key, readCall, "uq-read");
+                Map<String, Object> evo = read.get("evolution") instanceof Map
+                        ? (Map<String, Object>) read.get("evolution") : null;
+                String modelId = evo != null && evo.get("modelId") != null ? evo.get("modelId").toString() : null;
+                String engineId = evo != null && evo.get("engineId") != null ? evo.get("engineId").toString()
+                        : (task.getF3EngineId() == null ? "E-001" : task.getF3EngineId());
+                if (modelId == null) throw new IOException("无法读取已交付模型身份(readresult无modelId)");
+                // ② 组UQ配置并执行 preview→自动窗口→confirm→run
+                Map<String, Object> uq = new LinkedHashMap<>();
+                uq.put("resultDirectory", runDir);
+                uq.put("sortieId", task.getF3SortieId() == null ? "SORTIE-01" : task.getF3SortieId());
+                uq.put("uqId", task.getUqRunId());
+                uq.put("method", m);
+                uq.put("sourceStage", task.getParentSource() == null ? "2p4" : task.getParentSource());
+                uq.put("sourceWorkbook", sourceWorkbook.replace('\\', '/'));
+                File uqDir = new File(workDir, "evolution-uq-" + task.getUqRunId());
+                File uqReport = new File(workDir, "evolution-uq-report-" + task.getUqRunId());
+                uq.put("outputRoot", uqDir.getAbsolutePath().replace('\\', '/'));
+                uq.put("reportRoot", uqReport.getAbsolutePath().replace('\\', '/'));
+                uq.put("confirmationFile", "");
+                // sht_f3_steady_task local_independent_uq:独立模型评估必须显式声明允许参考重定基
+                // (概率中心来自所选先验,同节点平移保留原物理先验);
+                // sourceMethod须与先验Manifest的method_id一致,其余统计选项走F3默认
+                Map<String, Object> opts = new LinkedHashMap<>();
+                opts.put("allowReferenceRebase", true);
+                opts.put("sourceMethod", sourceMethod);
+                uq.put("options", opts);
+                Map<String, Object> bi = new LinkedHashMap<>();
+                bi.put("engineId", engineId);
+                bi.put("sortieId", uq.get("sortieId"));
+                bi.put("parentModelId", modelId);
+                // parentPosteriorId=概率先验(2p4交付)Manifest表的posterior_id,sht_f3_steady_task
+                // local_model_uq_identity会用先验文件实测值核对声明(缺列回退run_id)
+                String prior = readSheetSingleValue(new File(sourceWorkbook), "Manifest", "posterior_id");
+                if (prior == null || prior.isEmpty()) prior = readSheetSingleValue(new File(sourceWorkbook), "Manifest", "run_id");
+                bi.put("parentPosteriorId", prior == null ? modelId : prior);
+                // resolve合同(uqpreview观测身份用空证据集):无文件证据的显式声明必须逐字段给出依据
+                Map<String, Object> basis = new LinkedHashMap<>();
+                basis.put("engineId", "任务登记的发动机编号");
+                basis.put("sortieId", "任务登记的架次编号");
+                basis.put("parentModelId", "本次自演化已交付模型编号(readresult实测)");
+                basis.put("parentPosteriorId", "概率先验UQ后验交付Manifest实测编号(缺posterior_id列时回退run_id)");
+                bi.put("basis", basis);
+                uq.put("businessIdentity", bi);
+                Map<String, Object> call = new LinkedHashMap<>();
+                call.put("action", "uqassessment");
+                call.put("uqConfig", uq);
+                call.put("resultFile", new File(adapterDir, "uq-run-result.json").getAbsolutePath().replace('\\', '/'));
+                setUqMessage(task.getProjectId(), key, "UQ评估执行中(方法 " + m + ")");
+                runEvolutionAdapter(adapterDir, task, key, call, "uq-run");
+                // ③ uqstatus读取区间状态与交付Excel路径,不覆盖确定性估计值
+                Map<String, Object> uqRes = new LinkedHashMap<>();
+                try {
+                    Map<String, Object> stCall = new LinkedHashMap<>();
+                    stCall.put("action", "uqstatus");
+                    stCall.put("uqDirectory", uqDir.getAbsolutePath().replace('\\', '/'));
+                    stCall.put("resultFile", new File(adapterDir, "uq-status-result.json").getAbsolutePath().replace('\\', '/'));
+                    Map<String, Object> st = runEvolutionAdapter(adapterDir, task, key, stCall, "uq-status");
+                    uqRes.put("intervalStatus", st.get("intervalStatus"));
+                    uqRes.put("workbook", st.get("workbook"));
+                    if (st.get("state") instanceof Map) {
+                        uqRes.put("stateStatus", ((Map<?, ?>) st.get("state")).get("status"));
+                    }
+                } catch (Exception ignore) { }
+                EngineModels.ModelingTask tk = store.getTask(task.getProjectId(), key);
+                tk.setUqStatus("COMPLETED");
+                tk.setUqFinishedAt(System.currentTimeMillis());
+                tk.setUqMessage("UQ评估完成;结果另存,不覆盖确定性估计值");
+                tk.setUqResult(uqRes);
+                store.saveTask(tk);
+                emitLog(key, "自演化UQ评估完成");
+            } catch (Exception e) {
+                log.error("自演化UQ评估失败: {}", key, e);
+                try {
+                    EngineModels.ModelingTask tk = store.getTask(task.getProjectId(), key);
+                    tk.setUqStatus("FAILED");
+                    tk.setUqFinishedAt(System.currentTimeMillis());
+                    tk.setUqMessage("UQ评估失败: " + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
+                    store.saveTask(tk);
+                } catch (IOException io) {
+                    log.error("UQ状态写回失败", io);
+                }
+                emitLog(key, "自演化UQ评估失败: " + e.getMessage());
+            } finally {
+                running.remove(key + ":uq");
+            }
+        });
+        return task;
+    }
+
+    /** 读工作簿指定表的某列第一个非空值(单行身份表);POI读取,失败返回null。 */
+    private String readSheetSingleValue(File xlsx, String sheetName, String column) {
+        try (java.io.InputStream in = java.nio.file.Files.newInputStream(xlsx.toPath());
+             org.apache.poi.ss.usermodel.Workbook wb = org.apache.poi.ss.usermodel.WorkbookFactory.create(in)) {
+            org.apache.poi.ss.usermodel.Sheet sheet = wb.getSheet(sheetName);
+            if (sheet == null) return null;
+            org.apache.poi.ss.usermodel.Row hr = sheet.getRow(0);
+            if (hr == null) return null;
+            org.apache.poi.ss.usermodel.DataFormatter fmt = new org.apache.poi.ss.usermodel.DataFormatter();
+            int col = -1;
+            for (int c = 0; c < hr.getLastCellNum(); c++) {
+                if (column.equalsIgnoreCase(fmt.formatCellValue(hr.getCell(c)).trim())) { col = c; break; }
+            }
+            if (col < 0) return null;
+            for (int r = 1; r <= sheet.getLastRowNum(); r++) {
+                org.apache.poi.ss.usermodel.Row row = sheet.getRow(r);
+                if (row == null) continue;
+                String v = fmt.formatCellValue(row.getCell(col)).trim();
+                if (!v.isEmpty()) return v;
+            }
+        } catch (Exception ignore) { }
+        return null;
+    }
+
+    /** UQ后验交付探测:含ParameterSummary+PosteriorSamples表(f34先验合同),按workbook.xml轻量判断。 */
+    private boolean isUqPosteriorWorkbook(File xlsx) {
+        try (java.util.zip.ZipFile z = new java.util.zip.ZipFile(xlsx)) {
+            java.util.zip.ZipEntry e = z.getEntry("xl/workbook.xml");
+            if (e == null) return false;
+            java.io.InputStream in = z.getInputStream(e);
+            byte[] buf = new byte[8192];
+            StringBuilder sb = new StringBuilder();
+            int n;
+            while ((n = in.read(buf)) > 0) sb.append(new String(buf, 0, n, StandardCharsets.UTF_8));
+            in.close();
+            return sb.toString().contains("name=\"ParameterSummary\"")
+                    && sb.toString().contains("name=\"PosteriorSamples\"");
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** 解析自演化UQ的概率先验:必须是带后验样本的2p4/2p7参数化交付
+     *  (Manifest+ParameterSummary+PosteriorSamples;sht_f34_prior local_build合同),
+     *  确定性交付(2p4_deterministic_*.xlsx)没有样本表,不能作先验。
+     *  优先级:①用户工作目录程序包MiddleData自带后验(随交付分发,工程验证用)
+     *  ②项目任务uq-output产物。候选须formal_status含ACCEPTED;sourceMethod取先验实测method_id。 */
+    private File[] resolveUqPriorCandidates(File programCopy, File projectJobDir) {
+        java.util.List<File> out = new ArrayList<>();
+        // programCopy即程序目录(m_program_adaptive_tune),MiddleData在其内;项目job目录含各任务uq-output产物
+        File[] roots = {new File(programCopy, "MiddleData"), projectJobDir};
+        for (File root : roots) {
+            if (!root.isDirectory()) continue;
+            try (java.util.stream.Stream<java.nio.file.Path> walk = java.nio.file.Files.walk(root.toPath(), 7)) {
+                walk.map(java.nio.file.Path::toFile)
+                        .filter(f -> f.isFile() && f.getName().toLowerCase().endsWith(".xlsx"))
+                        .filter(this::isUqPosteriorWorkbook)
+                        .forEach(out::add);
+            } catch (IOException e) {
+                log.warn("扫描UQ后验候选失败: {}", root, e);
+            }
+        }
+        out.sort((a, b) -> Long.compare(b.lastModified(), a.lastModified()));
+        log.info("UQ概率先验候选扫描: roots={} 命中={}", roots, out.size());
+        return out.toArray(new File[0]);
+    }
+
+    /** 同步执行一次dmg_evolution_task动作并回读结果JSON(调用方负责线程池提交)。 */
+    private Map<String, Object> runEvolutionAdapter(File adapterDir, EngineModels.ModelingTask task,
+                                                    String key, Map<String, Object> call, String tag) throws Exception {
+        File cf = new File(adapterDir, tag + "-config.json");
+        com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
+        om.configure(com.fasterxml.jackson.core.JsonGenerator.Feature.ESCAPE_NON_ASCII, true);
+        Files.write(cf.toPath(), om.writeValueAsBytes(call));
+        MatlabFunctionRunner runner = new MatlabFunctionRunner(adapterDir, "dmg_evolution_task",
+                new Object[]{cf.getAbsolutePath()},
+                new File(adapterDir, tag + ".log"), programService.enginePool(),
+                new MatlabFunctionRunner.ProgressCancellationSink() {
+                    @Override public void onProgress(String message) { emitLog(key, message); }
+                    @Override public boolean isCancellationRequested() { return false; }
+                });
+        running.put(key + ":uq", runner);
+        try {
+            runner.run();
+        } finally {
+            running.remove(key + ":uq");
+        }
+        File rf = new File((String) call.get("resultFile"));
+        return rf.exists() ? new com.fasterxml.jackson.databind.ObjectMapper().readValue(rf, Map.class)
+                : new LinkedHashMap<>();
+    }
+
+    /** 自演化UQ协作取消:请求MATLAB侧安全取消,结果作废不落盘。 */
+    public boolean stopEvolutionUq(EngineModels.ModelingTask task) {
+        final String key = task.getId();
+        MatlabFunctionRunner runner = running.get(key + ":uq");
+        if (runner == null) return false;
+        runner.requestCancel();
+        setUqMessage(task.getProjectId(), key, "已请求取消(协作取消,结果作废)");
+        emitLog(key, "已请求取消自演化UQ评估");
+        return true;
+    }
+
+    private void setUqMessage(String pid, String key, String msg) {
+        try {
+            EngineModels.ModelingTask tk = store.getTask(pid, key);
+            tk.setUqMessage(msg);
+            store.saveTask(tk);
+        } catch (IOException ignore) { }
     }
 
     /** 瞬态父模型合同检查:交付Excel须含Model工作表(sht_f33_excel_delivery 'inspect'的要求)。
