@@ -2682,7 +2682,7 @@ window.Workbench = (() => {
     /** 运行记录:仅建模任务的执行历史,调独立分页接口 GET /projects/{pid}/records(服务端分页,
      *  与项目列表同款分页条);UQ评估与输出预测各有专属页面,不在此混列。 */
     /* 运行记录任务类型=建模任务页面名称(与打开跳转落到的业务页标题一致) */
-    const RECORD_STAGE = { steady: '基础稳态点建模', steady_update: '试车稳态更新',
+    const RECORD_STAGE = { steady: '稳态试车建模', steady_update: '试车稳态更新',
         transient_update: '过渡态试车建模', flight_steady: '稳态飞参建模', flight_transient: '过渡态飞参建模',
         evolution: '发动机个性化模型自演化', uq: '不确定性评估', prediction: '输出预测', startstop: '起动停车建模' };
     /* 工作流阶段名称(与模型成果登记的stage同口径),显示在「最近运行」列 */
@@ -2694,7 +2694,7 @@ window.Workbench = (() => {
     /** 记录行类型文案与跳转业务页:steady且有过渡态标记的按过渡态试车建模分流(过渡态任务kind仍为steady,执行合同一致)。 */
     function recordKindText(tk) {
         if ((tk.kind || '') === 'steady' && (tk.transientMode === '1' || tk.transientMode === true)) return '过渡态试车建模';
-        return RECORD_STAGE[tk.kind] || tk.kind || '基础稳态点建模';
+        return RECORD_STAGE[tk.kind] || tk.kind || '稳态试车建模';
     }
     function recordBizId(tk) {
         if ((tk.kind || '') === 'steady' && (tk.transientMode === '1' || tk.transientMode === true)) return 'transient';

@@ -360,6 +360,36 @@ public class EngineWorkbenchController {
         } catch (Exception e) {
             log.warn("运行记录回填检查失败: projectId={}", pid, e);
         }
+        reconcileTransientMode(pid);
+    }
+
+    /** 过渡态标记对齐:旧版前端建档的过渡态任务档案无transientMode标记,运行记录类型
+     *  误显示为「基础稳态点建模」。以任务档案为准重写steady行;档案缺标记但计算路径为
+     *  transient_instant(过渡态入口创建时必选)的,补写档案标记并落盘(saveTask挂钩同步记录行)。 */
+    private void reconcileTransientMode(String pid) {
+        try {
+            List<com.tsinghua.entity.EngineTaskRecordEntity> rows = taskRecordService.queryList(pid, 1, 500);
+            boolean need = rows.stream().anyMatch(r -> "steady".equals(r.getKind())
+                    && (r.getTransientMode() == null || r.getTransientMode().trim().isEmpty()));
+            if (!need) return;
+            for (EngineModels.ModelingTask t : store.listTasks(pid)) {
+                boolean tr = Boolean.TRUE.equals(t.getTransientMode())
+                        || "transient_instant".equalsIgnoreCase(t.getRoute());
+                if (!tr) continue;
+                try {
+                    if (!Boolean.TRUE.equals(t.getTransientMode())) {
+                        t.setTransientMode(true);
+                        store.saveTask(t); // 档案补标记,挂钩同步记录行
+                    } else {
+                        taskRecordService.upsertFromTask(t);
+                    }
+                } catch (Exception e) {
+                    log.warn("过渡态标记对齐失败: task={}", t.getId(), e);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("过渡态标记对齐检查失败: projectId={}", pid, e);
+        }
     }
 
     /** 项目读取校验(读取项目失败/无权访问返回错误文案,通过返回null)。 */
@@ -1356,6 +1386,17 @@ public class EngineWorkbenchController {
                 if (particleCount != 512 && particleCount != 1024) {
                     return Result.error("粒子数仅支持 512 或 1024(程序合同 sht_tc24_b_config)");
                 }
+            }
+            // F-07-TC27: 更新后试车模型(试车稳态更新/过渡态试车建模)的不确定性评估走TC27专用合同;
+            // TC24路径(F-07-TC24)要求2p4参数化交付,TC27交付(如tc27_deterministic_*)会被Manifest列校验拒绝
+            if ("steady_update".equals(t.getKind()) || "transient_update".equals(t.getKind())) {
+                String em = method == null ? "D" : method.trim().toUpperCase();
+                if (!em.matches("[CD]")) return Result.error("更新后试车模型UQ方法仅支持C/D(F-07-TC27合同)");
+                return Result.success(tc24Service.runTc27Uq(t, em, asset.getDeliveryWorkbookFile()));
+            }
+            String dwName = new File(asset.getDeliveryWorkbookFile()).getName().toLowerCase();
+            if (dwName.startsWith("tc27_deterministic_")) {
+                return Result.error("所选模型成果是TC27更新交付;其不确定性评估请在本任务(试车稳态更新/过渡态试车建模)的评估页发起");
             }
             return Result.success(tc24Service.runUq(t, m, asset.getDeliveryWorkbookFile(),
                     particleCount, asset.getId()));

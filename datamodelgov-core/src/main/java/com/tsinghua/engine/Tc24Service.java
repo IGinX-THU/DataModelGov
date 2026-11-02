@@ -752,6 +752,229 @@ public class Tc24Service {
      * UQ 交付 Excel:交付合同为 posterior_<method>.xlsx(Excel/子目录)及旧式 2p4_uq_method_*.xlsx,
      * 位置跨 {uq-output}/{runId}/Excel/ 等多层,故递归深度3按扩展名找最新。
      */
+    /** F-07-TC27 更新后试车模型不确定性评估(Start_TC27_UQ_ModelAssessment_01;关联图F-07-TC27)。
+     *  输入合同(sht_tc27_uq_input_contract):modelFile=本任务TC27交付(旁侧须有同名身份JSON)、
+     *  upstreamModelFile=上游2p4参数化交付、steadyTrainingFile=稳态均值、trainingHistoryFile=试车历程;
+     *  测试可选(testPointFiles/testHistoryFiles);方法限C/D。与TC24路径(F-07-TC24)互不相干。 */
+    public EngineModels.UqRecord runTc27Uq(EngineModels.ModelingTask task, String method, String modelWorkbook) throws IOException {
+        final String key = task.getId();
+        if (!EngineModels.ModelingTask.ST_COMPLETED.equals(task.getStatus())) {
+            throw new IOException("请先完成更新建模,再发起不确定性评估");
+        }
+        final String m = method == null ? "D" : method.trim().toUpperCase();
+        if (!m.matches("[CD]")) {
+            throw new IOException("更新后试车模型UQ方法仅支持C/D(TC27:UQ:Method)");
+        }
+        if (task.getUqStatus() != null && ("EXECUTING".equals(task.getUqStatus()) || "PREPARING".equals(task.getUqStatus()))) {
+            throw new IOException("UQ评估正在执行中,不能重复发起");
+        }
+        if (modelWorkbook == null || modelWorkbook.trim().isEmpty()) {
+            throw new IOException("未找到已登记的模型成果;请先在建模结果页登记到模型成果");
+        }
+        File modelFile = new File(modelWorkbook);
+        if (!modelFile.isFile()) throw new IOException("模型交付Excel不存在: " + modelWorkbook);
+        File sidecar = new File(modelFile.getParentFile(),
+                modelFile.getName().replaceAll("\\.xlsx$", "_identity.json"));
+        if (!sidecar.isFile()) {
+            throw new IOException("模型交付缺少身份JSON(" + sidecar.getName() + ");"
+                    + "旧版程序产物不含身份文件,请重新执行一次更新建模后再发起评估");
+        }
+        if (task.getUpstreamModelFile() == null || task.getUpstreamModelFile().trim().isEmpty()) {
+            throw new IOException("缺少上游2p4参数化交付(upstreamModelFile)");
+        }
+        if (task.getTrainingFile() == null || task.getTrainingFile().trim().isEmpty()) {
+            throw new IOException("缺少稳态训练均值Excel");
+        }
+        if (task.getHistoryFile() == null || task.getHistoryFile().trim().isEmpty()) {
+            throw new IOException("缺少试车训练历程Excel");
+        }
+        final UqRecord record = new UqRecord();
+        record.setProjectId(task.getProjectId());
+        record.setTaskId(key);
+        record.setMethod(m);
+        record.setStatus(UqRecord.ST_EXECUTING);
+        record.setMessage("准备TC27 UQ程序工作副本");
+        String ts = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss").format(new java.util.Date());
+        record.setRunId("tc27_" + m.toLowerCase() + "_" + ts);
+        record.setStartedAt(System.currentTimeMillis());
+        store.saveUqRecord(record);
+
+        task.setUqStatus("PREPARING");
+        task.setUqMessage("准备TC27 UQ评估(合同与输入核对)");
+        task.setUqRunId(record.getRunId());
+        store.saveTask(task);
+        logBuffers.put(key, new ArrayList<>());
+        uqCancelPending.remove(key + ":uq");
+        emitLog(key, "发起TC27 UQ评估: method=" + m + ", runId=" + record.getRunId());
+
+        final String modelFileF = modelFile.getAbsolutePath();
+        final String upstream = task.getUpstreamModelFile();
+        final String steadyTraining = task.getTrainingFile();
+        final String historyTraining = task.getHistoryFile();
+        final String testPoint = task.getTestFile();
+        final String testHistory = task.getHistoryTestFile();
+        executor.submit(() -> {
+            MatlabFunctionRunner runner = null;
+            try {
+                File programCopy = ensureTc24Source(task.getProjectId());
+                File workDir = store.taskWorkDir(task.getProjectId(), key);
+                File adapterDir = new File(workDir, "tc27-uq-work");
+                if (!adapterDir.exists() && !adapterDir.mkdirs()) throw new IOException("无法创建适配器目录");
+                File uqOutputDir = new File(workDir, "tc27-uq-output");
+                if (!uqOutputDir.exists() && !uqOutputDir.mkdirs()) throw new IOException("无法创建UQ输出目录");
+                writeTc27UqAdapter(adapterDir, programCopy);
+
+                Map<String, Object> options = new LinkedHashMap<>();
+                options.put("modelFile", abs(modelFileF));
+                options.put("upstreamModelFile", abs(upstream));
+                options.put("steadyTrainingFile", abs(steadyTraining));
+                options.put("trainingHistoryFile", abs(historyTraining));
+                options.put("outputDirectory", uqOutputDir.getAbsolutePath().replace('\\', '/'));
+                if (testPoint != null && !testPoint.trim().isEmpty()) {
+                    java.util.List<String> tp = new ArrayList<>();
+                    tp.add(abs(testPoint));
+                    options.put("testPointFiles", tp);
+                }
+                if (testHistory != null && !testHistory.trim().isEmpty()) {
+                    java.util.List<String> th = new ArrayList<>();
+                    th.add(abs(testHistory));
+                    options.put("testHistoryFiles", th);
+                }
+                Map<String, Object> request = new LinkedHashMap<>();
+                request.put("method", m);
+                request.put("execute", true);
+                request.put("options", options);
+                Map<String, Object> call = new LinkedHashMap<>();
+                call.put("request", request);
+                File resultFile = new File(adapterDir, "tc27-uq-result.json");
+                call.put("resultFile", resultFile.getAbsolutePath().replace('\\', '/'));
+                File configFile = new File(adapterDir, "tc27-uq-config.json");
+                com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
+                om.configure(com.fasterxml.jackson.core.JsonGenerator.Feature.ESCAPE_NON_ASCII, true);
+                Files.write(configFile.toPath(), om.writeValueAsBytes(call));
+
+                UqRecord fresh = store.getUqRecord(record.getProjectId(), record.getId());
+                fresh.setStatus(UqRecord.ST_EXECUTING);
+                fresh.setMessage("TC27 UQ评估执行中(方法 " + m + ")");
+                store.saveUqRecord(fresh);
+                EngineModels.ModelingTask t = store.getTask(task.getProjectId(), key);
+                t.setUqStatus("EXECUTING");
+                t.setUqMessage("TC27 UQ评估执行中(方法 " + m + ")");
+                t.setUqStartedAt(System.currentTimeMillis());
+                store.saveTask(t);
+                emitLog(key, "调用 Start_TC27_UQ_ModelAssessment_01, method=" + m);
+                if (uqCancelPending.remove(key + ":uq") != null) {
+                    throw new java.util.concurrent.CancellationException("已在准备阶段取消");
+                }
+                runner = new MatlabFunctionRunner(adapterDir, "dmg_tc27_uq_task",
+                        new Object[]{configFile.getAbsolutePath()},
+                        new File(workDir, "tc27-uq-run.log"), enginePool,
+                        new MatlabFunctionRunner.ProgressCancellationSink() {
+                            @Override public void onProgress(String message) { emitLog(key, message); }
+                            @Override public boolean isCancellationRequested() { return false; }
+                        });
+                running.put(key + ":uq", runner);
+                if (uqCancelPending.remove(key + ":uq") != null) {
+                    runner.requestCancel();
+                    throw new java.util.concurrent.CancellationException("已在启动阶段取消");
+                }
+                Object result = prepPayload(runner.run(), resultFile);
+
+                t = store.getTask(task.getProjectId(), key);
+                t.setUqFinishedAt(System.currentTimeMillis());
+                String status = result instanceof Map && ((Map<?, ?>) result).get("status") != null
+                        ? ((Map<?, ?>) result).get("status").toString() : "failed";
+                fresh = store.getUqRecord(record.getProjectId(), record.getId());
+                fresh.setFinishedAt(System.currentTimeMillis());
+                File delivery = findUqDeliveryExcel(uqOutputDir, fresh.getRunId());
+                if ("failed".equals(status)) {
+                    t.setUqStatus("FAILED");
+                    t.setUqMessage("UQ程序返回失败,详见日志");
+                    fresh.setStatus(UqRecord.ST_FAILED);
+                    fresh.setMessage("UQ程序返回失败,详见日志");
+                } else {
+                    t.setUqStatus("COMPLETED");
+                    t.setUqMessage("UQ评估完成;结果另存,不覆盖确定性估计值");
+                    fresh.setStatus(UqRecord.ST_COMPLETED);
+                    fresh.setMessage("UQ评估完成;结果另存,不覆盖确定性估计值");
+                    fresh.setDeliveryFile(delivery != null ? delivery.getAbsolutePath() : null);
+                }
+                store.saveTask(t);
+                store.saveUqRecord(fresh);
+                if (fresh.getDeliveryFile() != null) {
+                    try {
+                        File detail2 = readExcelDetail(task.getProjectId(), new File(fresh.getDeliveryFile()),
+                                new File(uqOutputDir, fresh.getRunId() + "_dmg_uq_detail.json"));
+                        if (detail2 != null && detail2.exists()) {
+                            fresh = store.getUqRecord(record.getProjectId(), record.getId());
+                            fresh.setDetailFile(detail2.getAbsolutePath());
+                            store.saveUqRecord(fresh);
+                        }
+                    } catch (Exception re) {
+                        emitLog(key, "UQ结果明细生成失败(不影响评估结果): " + re.getMessage());
+                    }
+                }
+                emitLog(key, "TC27 UQ评估结束: " + fresh.getStatus());
+            } catch (java.util.concurrent.CancellationException ce) {
+                log.info("TC27 UQ被用户取消: {}", key);
+                try {
+                    EngineModels.ModelingTask t = store.getTask(task.getProjectId(), key);
+                    t.setUqStatus("FAILED");
+                    t.setUqFinishedAt(System.currentTimeMillis());
+                    t.setUqMessage("已手动取消评估;结果不保存,可重新发起");
+                    store.saveTask(t);
+                    UqRecord fresh = store.getUqRecord(record.getProjectId(), record.getId());
+                    fresh.setStatus(UqRecord.ST_FAILED);
+                    fresh.setFinishedAt(System.currentTimeMillis());
+                    fresh.setMessage("已手动取消评估");
+                    store.saveUqRecord(fresh);
+                } catch (IOException io) {
+                    log.error("UQ取消状态写回失败", io);
+                }
+            } catch (Exception e) {
+                log.error("TC27 UQ执行失败: {}", key, e);
+                try {
+                    EngineModels.ModelingTask t = store.getTask(task.getProjectId(), key);
+                    t.setUqStatus("FAILED");
+                    t.setUqFinishedAt(System.currentTimeMillis());
+                    t.setUqMessage("UQ评估失败: " + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
+                    store.saveTask(t);
+                    UqRecord fresh = store.getUqRecord(record.getProjectId(), record.getId());
+                    fresh.setStatus(UqRecord.ST_FAILED);
+                    fresh.setFinishedAt(System.currentTimeMillis());
+                    fresh.setMessage(t.getUqMessage());
+                    store.saveUqRecord(fresh);
+                } catch (IOException io) {
+                    log.error("UQ失败状态写回失败", io);
+                }
+                emitLog(key, "UQ评估失败: " + e.getMessage());
+            } finally {
+                running.remove(key + ":uq");
+            }
+        });
+        return record;
+    }
+
+    /** dmg_tc27_uq_task.m(ASCII-only):透传Start_TC27_UQ_ModelAssessment_01并回写JSON结果。 */
+    private synchronized void writeTc27UqAdapter(File adapterDir, File programCopy) throws IOException {
+        StringBuilder m = new StringBuilder();
+        m.append("function r = dmg_tc27_uq_task(configFile)\n");
+        m.append("% F-07-TC27 UQ adapter (generated by DataModelGov)\n");
+        m.append("% ASCII-only: engine charset is GBK; keep this file free of non-ASCII text.\n");
+        m.append("c = jsondecode(fileread(configFile));\n");
+        m.append("addpath('").append(programCopy.getAbsolutePath().replace('\\', '/')).append("', '-begin');\n");
+        m.append("rehash;\n");
+        m.append("r = Start_TC27_UQ_ModelAssessment_01(c.request);\n");
+        m.append("payload = jsonencode(dmg_jsonable_tc27(r));\n");
+        m.append("fid = fopen(c.resultFile, 'w', 'n', 'UTF-8');\n");
+        m.append("fwrite(fid, payload, 'char');\n");
+        m.append("fclose(fid);\n");
+        m.append("r = 'ok';\n");
+        m.append("end\n");
+        m.append(matlabJsonableFn());
+        Files.write(new File(adapterDir, "dmg_tc27_uq_task.m").toPath(), m.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
     private File findUqDeliveryExcel(File uqOutputDir, String runId) {
         try (Stream<Path> walk = Files.walk(uqOutputDir.toPath(), 3)) {
             return walk.map(Path::toFile)

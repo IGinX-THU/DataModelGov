@@ -76,6 +76,8 @@
                 .then(resp => {
                     if (resp && (resp.success || resp.code === 200) && resp.data && resp.data.task) {
                         state.task = resp.data.task;
+                        // 过渡态标记以任务档案为准恢复(从运行记录/概况点开时入口不传标记,2026-11-02)
+                        if (state.task.transientMode === true) state.transientMode = true;
                         state.log = resp.data.logTail || [];
                         const wantTab = window.__WB_OPEN_TASK_TAB__; // 记录页直达指定页签(如UQ)
                         delete window.__WB_OPEN_TASK_TAB__;
@@ -129,6 +131,8 @@
             const reach = { data: true, run: !!(state.task && state.task.trainingFile), result: !!(state.task && state.task.status === 'COMPLETED'), uq: !!(state.task && state.task.status === 'COMPLETED') };
             tabBar.innerHTML = '';
             TABS.forEach(([key, label]) => {
+                // 过渡态任务的执行页签显示「瞬态系数辨识」(与页头/元信息行一致)
+                if (key === 'run' && state.transientMode) label = '瞬态系数辨识';
                 const enabled = reach[key];
                 tabBar.appendChild(WB().h('div', {
                     class: 'wb-tab' + (state.tab === key ? ' active' : '') + (enabled ? '' : ' disabled'),
@@ -1837,10 +1841,12 @@
                 WB().h('div', { class: 'wb-hint', style: 'margin:0' },
                     (t.name || '稳态建模') + ' / 对应模型待选 / 不覆盖确定性估计值 / ' + (ROUTE_NAME_UQ[t.route] || t.route || '稳态方程'))));
             const modelSel = WB().h('select', null, WB().h('option', null, '正在加载模型成果...'));
+            // 方法按工作流分流:F-07-TC24(基础稳态)限B/C/D;F-07-TC27(试车稳态更新/过渡态试车建模)限C/D
+            const isUpdateUq = t.kind === 'steady_update' || t.kind === 'transient_update';
             const methodSel = WB().h('select', null,
-                WB().h('option', { value: 'B' }, 'B · 后验采样(正式V2配置)'),
-                WB().h('option', { value: 'C' }, 'C · 主参数采样及附加参数近似处理'),
-                WB().h('option', { value: 'D' }, 'D · 局部近似评估'));
+                (isUpdateUq ? [] : [WB().h('option', { value: 'B' }, 'B · 后验采样(正式V2配置)')]).concat([
+                    WB().h('option', { value: 'C' }, 'C · 主参数采样及附加参数近似处理'),
+                    WB().h('option', { value: 'D', selected: isUpdateUq ? '' : null }, 'D · 局部近似评估')]));
             loadModelsInto(modelSel);
 
             wrap.appendChild(WB().h('div', { class: 'wb-form-grid', style: 'grid-template-columns:1fr 1fr;max-width:1180px' },
