@@ -488,6 +488,11 @@ public class Tc24Service {
 
     /** 回读交付 Excel(UQ parameterTable 视图)生成明细 JSON。 */
     public File readExcelDetail(String projectId, File excel, File out) throws IOException {
+        // TC27 UQ交付(tc27_uq_*/tc27_deterministic_*):Manifest结构与TC24不同,须用TC27专用读取器
+        String name = excel.getName().toLowerCase();
+        if (name.startsWith("tc27_uq_") || name.startsWith("tc27_deterministic_")) {
+            return runTc27ReadAdapter(excel.getAbsolutePath(), out, projectId) ? out : null;
+        }
         return runReadAdapter(excel.getAbsolutePath(), out, null, projectId) ? out : null;
     }
 
@@ -985,6 +990,59 @@ public class Tc24Service {
     }
 
     /** TC27 UQ交付扫描:交付Excel可能落在report_outputs等较深目录,走6层取最新。 */
+    /** dmg_tc27_read.m:TC27 UQ交付的参数区间表(ParameterDictionary逐参数 + PosteriorSamples加权分位数)。 */
+    private boolean runTc27ReadAdapter(String resultFile, File detailOut, String projectId) throws IOException {
+        if (detailOut.exists()) return true;
+        try {
+            File programCopy = ensureTc24Source(projectId);
+            File adapterDir = new File(System.getProperty("java.io.tmpdir"), "datamodelgov-read-adapter");
+            if (!adapterDir.exists() && !adapterDir.mkdirs()) throw new IOException("无法创建回读适配器目录");
+            StringBuilder m = new StringBuilder();
+            m.append("function r = dmg_tc27_read(configFile)\n");
+            m.append("c = jsondecode(fileread(configFile));\n");
+            m.append("addpath('" + programCopy.getAbsolutePath().replace(File.separatorChar, '/') + "', '-begin');\n");
+            m.append("rehash;\n");
+            m.append("file = c.resultFile;\n");
+            m.append("t=readtable(file,'Sheet','ParameterDictionary','PreserveVariableNames',true);\n");
+            m.append("s=readtable(file,'Sheet','PosteriorSamples','PreserveVariableNames',true);\n");
+            m.append("w=s.weight(:); w=w/max(sum(w));\n");
+            m.append("names=cellstr(string(t.node_id)); n=height(t);\n");
+            m.append("q05=zeros(n,1);q50=zeros(n,1);q95=zeros(n,1);mn=zeros(n,1);mx=zeros(n,1);\n");
+            m.append("for j=1:n\n");
+            m.append("    th=s.(names{j}); [th,ord]=sort(th); ww=w(ord); cs=cumsum(ww); cs=cs/max(cs);\n");
+            m.append("    q05(j)=th(find(cs>=0.05,1)); q50(j)=th(find(cs>=0.50,1)); q95(j)=th(find(cs>=0.95,1));\n");
+            m.append("    mn(j)=min(th); mx(j)=max(th);\n");
+            m.append("end\n");
+            m.append("T=table(t.node_id,double(t.c_index),double(t.coordinate),double(t.point_estimate),double(t.lower_bound),double(t.upper_bound),mn,q05,q50,q95,mx, ...\n");
+            m.append("    'VariableNames',{'parameter','c_index','coordinate','point_estimate','lower_bound','upper_bound','sample_min','q05','median','q95','sample_max'});\n");
+            m.append("view=struct('parameterTable',table2struct(T));\n");
+            m.append("payload=jsonencode(view);\n");
+            m.append("fid=fopen(c.detailFile,'w','n','UTF-8'); fwrite(fid,payload,'char'); fclose(fid);\n");
+            m.append("r='ok';\n");
+            m.append("end\n");
+            Files.write(new File(adapterDir, "dmg_tc27_read.m").toPath(), m.toString().getBytes(StandardCharsets.UTF_8));
+            Map<String, Object> cfg = new LinkedHashMap<>();
+            cfg.put("resultFile", resultFile.replace(File.separatorChar, '/'));
+            cfg.put("detailFile", detailOut.getAbsolutePath().replace(File.separatorChar, '/'));
+            File configFile = new File(adapterDir, "tc27-read-config.json");
+            com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
+            om.configure(com.fasterxml.jackson.core.JsonGenerator.Feature.ESCAPE_NON_ASCII, true);
+            Files.write(configFile.toPath(), om.writeValueAsBytes(cfg));
+            MatlabFunctionRunner runner = new MatlabFunctionRunner(adapterDir, "dmg_tc27_read",
+                    new Object[]{configFile.getAbsolutePath()},
+                    new File(adapterDir, "tc27-read.log"), enginePool,
+                    new MatlabFunctionRunner.ProgressCancellationSink() {
+                        @Override public void onProgress(String message) { }
+                        @Override public boolean isCancellationRequested() { return false; }
+                    });
+            runner.run();
+            return detailOut.exists();
+        } catch (Exception e) {
+            log.warn("TC27结果明细回读失败: {}", e.getMessage());
+            return false;
+        }
+    }
+
     private File findUqDeliveryExcelDeep(File uqOutputDir) {
         try (Stream<Path> walk = Files.walk(uqOutputDir.toPath(), 6)) {
             return walk.map(Path::toFile)
