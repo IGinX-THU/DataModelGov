@@ -848,7 +848,7 @@ public class F3FlightService {
                     EngineModels.ModelingTask tk = store.getTask(task.getProjectId(), key);
                     tk.setUqStatus("FAILED");
                     tk.setUqFinishedAt(System.currentTimeMillis());
-                    tk.setUqMessage("UQ评估失败: " + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
+                    tk.setUqMessage("UQ评估失败: " + com.tsinghua.util.MojibakeUtil.repair(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
                     store.saveTask(tk);
                     EngineModels.UqRecord fr = store.getUqRecord(task.getProjectId(), uqRecId);
                     if (fr != null) {

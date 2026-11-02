@@ -1392,7 +1392,7 @@ public class EngineWorkbenchController {
             if ("steady_update".equals(t.getKind()) || "transient_update".equals(t.getKind())) {
                 String em = method == null ? "D" : method.trim().toUpperCase();
                 if (!em.matches("[CD]")) return Result.error("更新后试车模型UQ方法仅支持C/D(F-07-TC27合同)");
-                return Result.success(tc24Service.runTc27Uq(t, em, asset.getDeliveryWorkbookFile()));
+                return Result.success(tc24Service.runTc27Uq(t, em, asset.getDeliveryWorkbookFile(), asset.getId()));
             }
             String dwName = new File(asset.getDeliveryWorkbookFile()).getName().toLowerCase();
             if (dwName.startsWith("tc27_deterministic_")) {

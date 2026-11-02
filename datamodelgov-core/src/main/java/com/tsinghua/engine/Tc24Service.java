@@ -1,6 +1,7 @@
 package com.tsinghua.engine;
 
 import com.tsinghua.matlab.MatlabEnginePool;
+import com.tsinghua.util.MojibakeUtil;
 import com.tsinghua.matlab.MatlabFunctionRunner;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -731,7 +732,7 @@ public class Tc24Service {
                     UqRecord fresh = store.getUqRecord(record.getProjectId(), record.getId());
                     fresh.setStatus(UqRecord.ST_FAILED);
                     fresh.setFinishedAt(System.currentTimeMillis());
-                    fresh.setMessage("UQ评估失败: " + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
+                    fresh.setMessage("UQ评估失败: " + MojibakeUtil.repair(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
                     store.saveUqRecord(fresh);
                 } catch (IOException io) {
                     log.error("UQ状态写回失败", io);
@@ -756,7 +757,7 @@ public class Tc24Service {
      *  输入合同(sht_tc27_uq_input_contract):modelFile=本任务TC27交付(旁侧须有同名身份JSON)、
      *  upstreamModelFile=上游2p4参数化交付、steadyTrainingFile=稳态均值、trainingHistoryFile=试车历程;
      *  测试可选(testPointFiles/testHistoryFiles);方法限C/D。与TC24路径(F-07-TC24)互不相干。 */
-    public EngineModels.UqRecord runTc27Uq(EngineModels.ModelingTask task, String method, String modelWorkbook) throws IOException {
+    public EngineModels.UqRecord runTc27Uq(EngineModels.ModelingTask task, String method, String modelWorkbook, String modelAssetId) throws IOException {
         final String key = task.getId();
         if (!EngineModels.ModelingTask.ST_COMPLETED.equals(task.getStatus())) {
             throw new IOException("请先完成更新建模,再发起不确定性评估");
@@ -880,15 +881,18 @@ public class Tc24Service {
                     runner.requestCancel();
                     throw new java.util.concurrent.CancellationException("已在启动阶段取消");
                 }
-                Object result = prepPayload(runner.run(), resultFile);
-
+                runner.run();
+                // 适配器返回'ok',结果在resultFile里(F3同款收尾;prepPayload会把'ok'误当JSON解析)
+                Map<String, Object> result = resultFile.exists()
+                        ? new com.fasterxml.jackson.databind.ObjectMapper().readValue(resultFile, Map.class)
+                        : new LinkedHashMap<>();
                 t = store.getTask(task.getProjectId(), key);
                 t.setUqFinishedAt(System.currentTimeMillis());
-                String status = result instanceof Map && ((Map<?, ?>) result).get("status") != null
-                        ? ((Map<?, ?>) result).get("status").toString() : "failed";
+                String status = result.get("status") != null
+                        ? result.get("status").toString() : "failed";
                 fresh = store.getUqRecord(record.getProjectId(), record.getId());
                 fresh.setFinishedAt(System.currentTimeMillis());
-                File delivery = findUqDeliveryExcel(uqOutputDir, fresh.getRunId());
+                File delivery = findUqDeliveryExcelDeep(uqOutputDir);
                 if ("failed".equals(status)) {
                     t.setUqStatus("FAILED");
                     t.setUqMessage("UQ程序返回失败,详见日志");
@@ -903,6 +907,9 @@ public class Tc24Service {
                 }
                 store.saveTask(t);
                 store.saveUqRecord(fresh);
+                if (modelAssetId != null && !modelAssetId.isEmpty() && delivery != null) {
+                    linkUqToModel(task.getProjectId(), modelAssetId, fresh.getId());
+                }
                 if (fresh.getDeliveryFile() != null) {
                     try {
                         File detail2 = readExcelDetail(task.getProjectId(), new File(fresh.getDeliveryFile()),
@@ -939,7 +946,7 @@ public class Tc24Service {
                     EngineModels.ModelingTask t = store.getTask(task.getProjectId(), key);
                     t.setUqStatus("FAILED");
                     t.setUqFinishedAt(System.currentTimeMillis());
-                    t.setUqMessage("UQ评估失败: " + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
+                    t.setUqMessage("UQ评估失败: " + MojibakeUtil.repair(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
                     store.saveTask(t);
                     UqRecord fresh = store.getUqRecord(record.getProjectId(), record.getId());
                     fresh.setStatus(UqRecord.ST_FAILED);
@@ -975,6 +982,19 @@ public class Tc24Service {
         m.append("end\n");
         m.append(matlabJsonableFn());
         Files.write(new File(adapterDir, "dmg_tc27_uq_task.m").toPath(), m.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** TC27 UQ交付扫描:交付Excel可能落在report_outputs等较深目录,走6层取最新。 */
+    private File findUqDeliveryExcelDeep(File uqOutputDir) {
+        try (Stream<Path> walk = Files.walk(uqOutputDir.toPath(), 6)) {
+            return walk.map(Path::toFile)
+                    .filter(f -> f.isFile() && f.getName().toLowerCase().endsWith(".xlsx"))
+                    .max(Comparator.comparingLong(File::lastModified))
+                    .orElse(null);
+        } catch (IOException e) {
+            log.warn("扫描TC27 UQ交付目录失败: {}", uqOutputDir, e);
+            return null;
+        }
     }
 
     private File findUqDeliveryExcel(File uqOutputDir, String runId) {
