@@ -965,7 +965,7 @@ public class Tc24Service {
         m.append("addpath('").append(programCopy.getAbsolutePath().replace('\\', '/')).append("', '-begin');\n");
         m.append("rehash;\n");
         m.append("r = Start_TC27_UQ_ModelAssessment_01(c.request);\n");
-        m.append("payload = jsonencode(dmg_jsonable_tc27(r));\n");
+        m.append("payload = jsonencode(dmg_jsonable(r));\n");
         m.append("fid = fopen(c.resultFile, 'w', 'n', 'UTF-8');\n");
         m.append("fwrite(fid, payload, 'char');\n");
         m.append("fclose(fid);\n");
