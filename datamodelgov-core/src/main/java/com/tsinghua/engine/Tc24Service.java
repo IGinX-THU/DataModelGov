@@ -820,7 +820,9 @@ public class Tc24Service {
                 File workDir = store.taskWorkDir(task.getProjectId(), key);
                 File adapterDir = new File(workDir, "tc27-uq-work");
                 if (!adapterDir.exists() && !adapterDir.mkdirs()) throw new IOException("无法创建适配器目录");
-                File uqOutputDir = new File(workDir, "tc27-uq-output");
+                // TC27合同:非resume不允许复用已有运行的输出目录(local_preflight报"输出目录已有运行"),
+                // 每次发起用带runId的全新批次目录
+                File uqOutputDir = new File(workDir, "tc27-uq-output-" + record.getRunId());
                 if (!uqOutputDir.exists() && !uqOutputDir.mkdirs()) throw new IOException("无法创建UQ输出目录");
                 writeTc27UqAdapter(adapterDir, programCopy);
 
