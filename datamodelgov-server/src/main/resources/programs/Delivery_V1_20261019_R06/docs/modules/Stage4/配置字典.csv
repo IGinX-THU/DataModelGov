@@ -1,0 +1,151 @@
+section,field,type,unit,default_source,allowed_or_required,meaning,change_effect,owner_source
+c,c.schemaVersion,char,1,T4_EVOLUTION_V2,必须相同,任务配置合同版本,不能用于旧结果重签,Stage4 template/configuration
+c,c.projectId,char或string,1,空,必填,项目业务编号,身份变化需新批次,Stage4 configuration
+c,c.engineId,char或string,1,空,必填且与数据/根一致,单台发动机编号,不得跨发动机承接,Stage4 check_business
+c,c.runId,char或string,1,空,1到32位ASCII字母数字横线下划线且首位字母数字,本次唯一运行编号,新计算用新目录,Stage4 configuration
+c,c.purpose,char,1,production,production或test_fixture,业务或明确试验夹具用途,不得将夹具称真实飞行,Stage4 configuration
+c,c.outputRoot,绝对路径,1,空,必填且新计划目录不存在,内部结果/计划/模型Excel根,不得与输入/报告重叠,Stage4 own_plan
+c,c.reportRoot,绝对路径,1,空,必填且与outputRoot不重叠,报告与可选图根,必须新目录,Stage4 configuration
+c,c.modelRoute,char,1,transient_instant,steady或transient_instant,稳态或瞬态时刻求值路径,变更须新批次;路径证据分别判断,Stage4 configuration
+c,c.dataMethod,char,1,steady_only,仅steady_only,当前只用确认稳态窗口辨识,不把显示小幅段当已用于拟合,Stage4 configuration
+c,c.parameterSetId,char,1,set1,仅set1,本次参数族,实际活动节点由覆盖确定,Stage4 configuration
+c,c.scheduleParameterization,char,1,independent_nodes,仅independent_nodes,逐节点参数化,不能固定为6或7个节点,Stage4 configuration
+c,c.regularizationStrength,非负有限实数,1,0.05,非负标量,辨识正则化总体强度,需新批次而非同批试换,Stage4 configuration
+c,c.maximumIterations,整数,轮,10,1到10,每架次辨识迭代上限,达到上限允许保存合法未收敛模型,Stage4 configuration
+c,c.integrationStep_s,实数,s,0.1,0.1或0.025,共享模型求值积分配置,0.025在本批Stage4短预测未新测,Stage4 configuration
+c,c.plotEnabled,logical,1,false,true或false,共享辨识可选绘图,调试及无图离线首轮false,Stage4 configuration
+c,c.uqMethod,char,1,none,只能none,逐架次不自动执行UQ,独立uq操作另配,Stage4 configuration
+c,c.maximumSortiesPerSession,非负整数,架次,0,0不限或正整数,每会话完成多少新架次后安全停止,原配置resume;不是算法迭代上限,Stage4 execute
+c,c.sorties,结构体数组,1,一个空模板,非空且字段严格同模板,架次登记与真实父链,按order排序;选中依赖需可用,Stage4 configuration
+c,c.segmentation,标量struct,1,空由F3补默认,仅F3已支持字段,工况识别门限,改变后新确认/批次,Stage4 child_config及F3
+root,c.root.source,char,1,空,2p4或2p7或flight或combined,所选根来源,TC27完整组合当前G01不可直接combined,Stage4/F3 parent
+root,c.root.route,char,1,transient_instant,steady或transient_instant且与根一致,根模型的辨识路线,不是自动选择最近结果,Stage4/F3 parent
+root,c.root.workbook,绝对Excel路径,1,空,存在且兼容正式合同,明确个性化试车或已有飞行根,完整参数/运行身份不得从隐藏MAT补,Stage4/F3 parent
+root,c.root.modelId,char或string,1,空,必填并与元数据不矛盾,根业务模型编号,父链审计依据,Stage4 check_business
+root,c.root.identityBasis,char或string,1,空,必填非空说明,缺业务元数据时的显式关联依据,声明不是独立物理兼容证据,Stage4/F3 business_identity
+root,c.root.runtimeBinding,标量struct,1,空,仅F3允许显式关联字段,所选Excel与当前包的关联,不是DLL切换器;不得重签旧后验,Stage4/F3 parent
+root,c.root.definition,标量struct,1,空,旧flight缺CurveDefinitions才需提供,显式曲线设计坐标来源,不能猜末端节点为设计坐标,Stage4/F3 local_flight_parent
+root,c.root.definition.source,char,1,无,2p4或2p7,定义来源阶段,仅旧flight显式恢复, F3 current_contract
+root,c.root.definition.route,char,1,无,steady或transient_instant且一致,定义来源路线,保持原物理坐标, F3 current_contract
+root,c.root.definition.workbook,Excel路径,1,无,存在含design_coordinate,定义来源Excel,不可隐读默认TC24, F3 current_contract
+root,c.root.definition.sha256,char,1,无,等于来源与旧flight内reference_sha256,定义来源内容身份,改变则拒绝, F3 current_contract
+root,c.root.definition.basis,char,1,无,非空,定义关联依据,不等于可重签声明, F3 current_contract
+sortie,c.sorties(i).sortieId,char或string,1,空,必填且唯一且不为root,任意架次编号允许中文,不依赖F01到F06,Stage4 configuration
+sortie,c.sorties(i).order,正整数,架次序号,1,唯一且父先于子,执行顺序与趋势自变量,不按文件日期排序,Stage4 configuration
+sortie,c.sorties(i).observationTime,char或string,时间文本,空,可空,辅助观测时间,当前不是趋势拟合时间坐标,Stage4 configuration
+sortie,c.sorties(i).measurementFile,绝对Excel路径,1,空,必填合法Data,该架次完整飞参,内容变化需新任务,Stage4/F3 checkData
+sortie,c.sorties(i).validationFile,Excel路径,1,空,可空;非空须内容不同训练,独立测试数据,缺测试不填通过,Stage4 check_inputs
+sortie,c.sorties(i).parentRef,char或string,1,root,root或已有登记更早架次,明确父关系,normal不能承接validation,Stage4 configuration
+sortie,c.sorties(i).role,char,1,normal,normal或validation,正常业务或隔离验证,验证分支不能混正常预测历史,Stage4 configuration
+sortie,c.sorties(i).selected,logical,1,true,true或false,本会话是否执行该架次,不擅自补算未选父,Stage4 execute
+sortie,c.sorties(i).identityBasis,char或string,1,空,必填,数据与发动机/架次关联依据,不能盖过矛盾元数据,Stage4 check_business
+sortie,c.sorties(i).measurementSystemId,char或string,1,空,必填,测量系统身份,燃油偏置非发动机退化,Stage4 configuration/trend
+sortie,c.sorties(i).channelMap,标量struct,1,空使用规范列名,字段必须来自13规范通道且源列唯一,规范列到用户源列映射,未知列不补默认, F3 steady_task local_measurement
+sortie,c.sorties(i).sourceUnits,标量struct,通道单位,空使用规范单位,仅明确支持转换,用户数据源单位,无自动猜测, F3 steady_task local_unit
+selection,selection.sortieId,char或string,1,无,选择已登记架次,preview/confirm/bindParent定位,结果读取sortieId在ref而非第三参数,Stage4 dispatcher
+selection,selection.windows.identification,string向量或Owner认可列表,1,无,来自实际预览完整segment_id,用户确认的完整训练片段,不得缩为末5秒;不是虚构ID, F3 confirmData
+selection,selection.windows.validation,同类片段列表,1,无,只有独立验证存在才给,明确测试选段,具体允许字段由F3校验, F3 confirmData
+query,q.historyIds,字符元胞或string序列,1,无,有序唯一正常同父链历史,趋势/预测明确历史,不得含预测目标或平行故障链,Stage4 result_action
+query,q.queries,结构体数组,1,默认末模型真实节点及全部常值/燃油/装机,每项cIndex和coordinate,同物理坐标查询集合,查询全部不代表都可外推,Stage4 query_parameter
+query,q.queries(k).cIndex,整数,物理C编号,无,-2到158,-1燃油偏置;-2装机量;其余物理字典,不能当MATLAB位置;h位置加1,Stage4 query_parameter
+query,q.queries(k).coordinate,实数,轴单位,无,调度有限;常值NaN,实际物理查询坐标,端点截断仍要显示不覆盖,Stage4 query_parameter
+query,q.reportRoot,绝对路径,1,无,可选新目录且不重叠模型根,趋势报告写入目录,只读模型查询也可能写图/Excel,Stage4 result_action
+query,q.plotEnabled,logical,1,未提供则不画,可选true/false,趋势绘图,基础MATLAB图形依赖,Stage4 plot_trends
+freeze,q.predictionId,char或string,1,无,必填,独立预测模型业务编号,不用保存时间选父,Stage4 freeze_prediction
+freeze,q.targetSortieId,char或string,1,无,不在历史列表中,明确下一架次目标,未来数据不能参与建模,Stage4 freeze_prediction
+freeze,q.targetOrder,整数,架次序号,无,大于历史末序号,趋势外推目标位置,不是飞行秒数,Stage4 freeze_prediction
+freeze,q.parentSortieId,char或string,1,无,等于historyIds末架次,明确预测父,模型不会自动替换业务父,Stage4 freeze_prediction
+freeze,q.outputRoot,绝对路径,1,无,独立新目录,两法模型及forecast_definition Excel,只形成模型不算输出,Stage4 freeze_prediction
+freeze,q.minimumSupportedSorties,整数,架次,3,至少3,同物理坐标最少有覆盖历史数,不足回退保持;不伪造支持,Stage4 freeze_prediction
+freeze,q.maximumAbsCorrection,正有限实数,1,0.08,还受节点本身lower/upper约束,外推工程绝对界限,超界回退保持,Stage4 freeze_prediction
+prediction,v.predictionDirectory,绝对路径,1,空,已有合法prediction_manifest,明确已形成两法模型,不按最近目录选择,Stage4 prediction_action
+prediction,v.inputFile,绝对Excel路径,1,空,合法八输入Data,下一架次已知环境/燃油/负载历程,不能伪造未来Np/Ng,Stage4/F3 Start13
+prediction,v.sheet,char,1,Data,实际工作表,输入所在页,记录网格须合法,Stage4/F3 Start13
+prediction,v.outputRoot,绝对路径,1,空,独立新目录或原身份恢复,两法输出/缓存/计划,不包含模型或输入,Stage4 prediction_action
+prediction,v.reportRoot,绝对路径,1,空,独立新目录且不重叠结果,预测报告/图,恢复须原配置,Stage4 prediction_action
+prediction,v.integrationStep_s,实数,s,0.1,0.1或0.025且整除记录周期,动力学推进步长,0.1短测有证据;不混10Hz与积分, F3 Start13
+prediction,v.fuelDefinition,char,1,measured,measured或physical,Wf是测量量或已无偏物理量,measured仅扣一次;physical不扣, F3 replay_history
+prediction,v.initialState,标量struct,1,空,双法必须相同完整explicit状态,起始物理状态,标称温度不是个体已配平,Stage4 prediction_action
+prediction,v.plotEnabled,logical,1,false,true或false,预测可选图,只有输出computed后画,Stage4 prediction_action
+initial,v.initialState.Np0,正有限实数,rpm,无,必填,PT轴物理初转速,不是共同工作初猜, F3 Start13
+initial,v.initialState.Ng0,正有限实数,rpm,无,必填,GT轴物理初转速,不是未来测量, F3 Start13
+initial,v.initialState.thermalStrategy,char,1,无,Stage4双法只支持explicit,明确14热态,一般F3单模型equilibrium不等于Stage4统一准备接口,Stage4 prediction_action
+initial,v.initialState.temperature_K,14元正有限向量,K,无,必填且顺序按手册,实际金属热状态,须有模型/时间/来源,Stage4/F3 Start13
+initial,v.initialState.sensorState,4元有限向量,rpm/rpm/Pa/K,无,必填Np/Ng/Pt3_eq/Tt45顺序,传感器内部初态,不能默认噪声真值,Stage4/F3 Start13
+initial,v.initialState.commonWorkingSeed,6元有限向量,共同工作变量单位,省略保留同MDL默认,可选;不补零或空向量,数值方程初猜,与物理初態分开,Stage4/F3 Start13
+evaluation,e.predictionOutputDirectory,绝对路径,1,无,两法实际已算完,评价对象明确冻结输出,不重算模型,Stage4 prediction_evaluate
+evaluation,e.observationFile,Excel路径,1,无,Data含time/Np/Ng/Pt3_eq/Tt45且同网格,后补测量,不能反向调参/自动选胜者,Stage4/F3 compare
+evaluation,e.outputRoot,绝对路径,1,无,独立新目录,独立评价manifest/Excel,不回写原输出evaluationStatus,Stage4 prediction_evaluate
+uq,u.resultDirectory,绝对路径,1,空,有合法架次成果,评估所在演化任务,不改根/父链,Stage4 uq_action
+uq,u.sortieId,char或string,1,空,已完成目标架次,明确评估对象,未计算不能虚构区间,Stage4 uq_action
+uq,u.uqId,char,1,空,1到64位ASCII字母数字横线下划线,独立评估编号,同模型多份UQ各自登记,Stage4 uq_action
+uq,u.method,char,1,D,C或D;证据分别判定,共享UQ方法,完整C未本批验证;不自动长算,Stage4/F3 uq_action
+uq,u.sourceStage,char,1,2p4,2p4或2p7,显式试车概率先验来源阶段,不是确定性父或上一架次自动递推,Stage4 uq_action
+uq,u.sourceWorkbook,Excel路径,1,空,明确完整概率交付且目标兼容,概率先验Excel,证据重复要拒绝/警告;不补隐藏MAT,Stage4/F3 uqcheck
+uq,u.outputRoot,绝对路径,1,空,独立新评估目录或原身份恢复,内部UQ准备/计划/Owner结果,与确定性模型/先验不重叠,Stage4 uq_action
+uq,u.reportRoot,绝对路径,1,空,独立报告目录,独立UQ图/说明,不覆盖模型报告,Stage4 uq_action
+uq,u.confirmationFile,文件路径,1,空,优先uqConfirm新生成或已绑定当前目标的确认,新评估观测确认,不能复用辨识针对上一父的旧确认,Stage4 uq_action
+uq,u.options,标量struct,1,空由F3补配置,允许F3数值选项但受控字段锁定,方法数值/误差假设配置,所有改变须新评估身份, F3 steady_task local_model_uq
+uq,u.options.allowReferenceRebase,logical,1,底层false;Stage4须显式true,用户明确授权true,同节点参考重锚到所选模型,不重签旧结果/改概率中心为拟合值, F3 steady_task
+uq,u.businessIdentity,标量struct,1,空,必须engineId/sortieId/parentModelId/parentPosteriorId及basis,目标和概率源的业务身份,元数据矛盾不能被声明覆盖,Stage4/F3 business_identity
+uq,u.options.methodDMaximumIterations,正整数,轮,10,F3默认/验证规则,局部D最大迭代,完整核对Owner约束与预算,sht_f34_contract
+uq,u.options.methodDGradientTolerance,正实数,标准化梯度,0.002,F3验证规则,D驻点梯度门限,不能放宽后伪称校准,sht_f34_contract
+uq,u.options.methodDStepTolerance,正实数,标准化步长,0.002,F3验证规则,D停止步长门限,状态与结果可用分别报告,sht_f34_contract
+uq,u.options.methodDTrustRadiusInitial,正实数,标准化尺度,1.5,F3验证规则,D初始信赖域,数值配置进入检查点身份,sht_f34_contract
+uq,u.options.methodDTrustRadiusMaximum,正实数,标准化尺度,4.0,F3验证规则,D信赖域上界,需要明确预算,sht_f34_contract
+uq,u.options.methodCParticleCount,整数,粒子,Stage4经F3默认512,F3默认/验证规则,完整C粒子数,不能从D短测推定C质量,sht_f3_steady_task/sht_f34_contract
+uq,u.options.methodCRepeatParticleCount,整数,粒子,Stage4经F3默认512,F3默认/验证规则,C独立重复粒子数,长算预算另核,sht_f3_steady_task
+uq,u.options.methodCMoveSweeps,整数,扫掠,Stage4经F3默认2,F3默认/验证规则,C各层移动轮次,增加计算成本,sht_f3_steady_task
+uq,u.options.methodCFinalMoveSweeps,整数,扫掠,Stage4经F3默认4,F3默认/验证规则,C末层移动轮次,不能静态宣称已经收敛,sht_f3_steady_task
+uq,u.options.methodCIndependentMoveFraction,实数,比例,Stage4经F3默认0.2,F3验证规则,C独立提议比例,概率目标不变但检查点身份改变,sht_f3_steady_task
+uq,u.options.methodCIndependentSeed,整数,1,340071,F3验证规则,C首重复随机种子,不把不同种子结果混合同批,sht_f34_contract
+uq,u.options.methodCSecondSeed,整数,1,340072,F3验证规则,C第二独立种子,重复核验独立记录,sht_f34_contract
+uq,u.options.methodCConditionalEssFraction,实数,比例,0.80,F3验证规则,C加温有效样本目标,属于数值配置而非真实概率区间,sht_f34_contract
+uq,u.options.methodCResampleFraction,实数,比例,0.50,F3验证规则,C重采样比例,本批未执行完整C,sht_f34_contract
+uq,u.options.methodCMaximumStages,整数,层,40,F3验证规则,C层数上限,达到上限要保留真实原因,sht_f34_contract
+uq,u.options.methodCDefensivePriorFraction,实数,比例,0.20,F3验证规则,C防御性先验提议比例,不恢复历史Stage4 A/B算法,sht_f34_contract
+uq,u.options.methodCProposalScale,正实数,1,1.0,F3验证规则,C提议总体尺度,共享Owner维护,sht_f34_contract
+uq,u.options.benchToFlightHealthSigma,7元向量,无量纲系数标准差,0.0030/0.0030/0.0035/0.0035/0.0025/0.0030/0.0030,F3验证规则,独立试车到飞行先验工程扩散,不是逐架次自动概率传播,sht_f34_contract
+uq,u.options.benchToFlightShapeSigma,正实数,1,0.0015,F3验证规则,曲线形状方向工程先验尺度,非由隐藏真值反算,sht_f34_contract
+uq,u.options.firstFlightKdistSigma,正实数,1,0.0050,F3验证规则,装机量先验尺度,不是继承试车装机值,sht_f34_contract
+uq,u.options.firstFlightFuelSigma_kgps,正实数,kg/s,0.00075,F3验证规则,燃油偏置幅值先验尺度,与健康RMSE分开,sht_f34_contract
+uq,u.options.firstFlightFuelShapeSigma_kgps,正实数,kg/s,0.00025,F3验证规则,燃油偏置形状方向尺度,不从噪声真值读取,sht_f34_contract
+uq,u.options.modelDiscrepancyFraction,4元向量,设计尺度比例,0.0010/0.0010/0.0030/0.0015,F3通道顺序以Owner合同为准,模型差异标准差假设,更改统计目标要新评估,sht_f34_contract
+uq,u.options.modelDiscrepancyCorrelation,实数,1,0.15,F3验证规则,模型差异相关假设,不是按原残差动态调权,sht_f34_contract
+uq,u.options.inputCrossCovarianceAssumedZero,logical,1,true,F3验证规则,输入交叉协方差假设,不宣称完备所有实际误差,sht_f34_contract
+uq,u.options.shapeDifferenceScale,正实数,1,0.35,F3验证规则,形状数值差分尺度,共享方法Owner维护,sht_f34_contract
+uq,u.options.inputDifferenceScale,正实数,1,0.20,F3验证规则,输入数值差分尺度,影响成本与导数质量,sht_f34_contract
+uq,u.options.stationarityStd_rpmps,2元正向量,rpm/s,5/15,F3默认,T时刻零导数观测标准差,不是独立转速预测误差,sht_f34_contract
+uq,u.options.nuisanceRetainedVariance,实数,比例,0.995,F3验证规则,条件方向保留方差份额,不冒充全维后验均已采样,sht_f34_contract
+uq,u.options.nuisanceMaximumRank,整数,秩,10,F3验证规则,条件方向秩上限,节点合同还保留未覆盖方向,sht_f34_contract
+uq,u.options.nuisanceFuelMaximumRank,整数,秩,2,F3验证规则,燃油条件方向秩上限,与正式节点维数不同,sht_f34_contract
+uq,u.options.processCovarianceSensitivityMultiplier,向量,1,0.5/1.0/2.0,F3验证规则,先验过程假设敏感性配置,独立UQ方法内部;非旧Stage4传播方案,sht_f34_contract
+uq,u.options.plotVisible,char,1,off,off或Owner允许值,UQ图形可见性,无专用GUI依赖,sht_f34_contract
+uq,u.options.<locked>,不允许覆盖,1,F3赋值,referenceKind/referenceResultFile/modelObservationOptions/modelMode/dataMethod/sourceStage/sourceWorkbook/transitionMode/runTag/outputRoot/reportRoot/taskSourceIdentity/runPrediction/runIndependentPrediction/runExport/runIndependentRepeat/businessIdentity/engineId/sortieId/parentModelId/parentPosteriorId,受控目标和身份字段,LockedOption拒绝;不得绕过Stage4顶层,sht_f3_steady_task
+segmentation,c.segmentation.smoothingDuration_s,正实数,s,2.0,有限正数,只供识别的平滑副本时间,不覆盖原测量,sht_f32_segment_history
+segmentation,c.segmentation.rateSpan_s,正实数,s,2.0,有限正数,变化率计算跨度,门限受噪声下限影响,sht_f32_segment_history
+segmentation,c.segmentation.initializationExclusion_s,非负实数,s,20.0,有限非负数,初始化排除时长,确认后改需新身份,sht_f32_segment_history
+segmentation,c.segmentation.steadyMinimumDuration_s,正实数,s,10.0,有限正数,最终完整稳态片段最短时长,不是末5秒裁剪,sht_f32_segment_history
+segmentation,c.segmentation.steadyGuard_s,非负实数,s,1.0,有限非负数,两端保护区,之后仍需满足最短持续时间,sht_f32_segment_history
+segmentation,c.segmentation.steadyNormalizedRateLimit_per_s,正实数,1/s,0.0025,有限正数,转速燃油负载标准化活动上限,还受噪声下限保护,sht_f32_segment_history
+segmentation,c.segmentation.steadyPt3EqRateLimit_Paps,正实数,Pa/s,500.0,有限正数,出口压力变化率门限,不当入口输入,sht_f32_segment_history
+segmentation,c.segmentation.steadyTt45RateLimit_Kps,正实数,K/s,0.25,有限正数,温度变化率门限,当前只稳态窗口用于辨识,sht_f32_segment_history
+segmentation,c.segmentation.steadyAltitudeRateLimit_mps,正实数,m/s,2.0,有限正数,环境高度变化率门限,Owner具体识别含噪声下限,sht_f32_segment_history
+segmentation,c.segmentation.steadyMachRateLimit_per_s,正实数,1/s,0.0004,有限正数,马赫数变化率门限,工程配置非通用保证,sht_f32_segment_history
+segmentation,c.segmentation.steadyBridgeGap_s,非负实数,s,0.50,有限非负数,识别短间隙桥接,完整段据实际预览确认,sht_f32_segment_history
+segmentation,c.segmentation.rateNoiseFloorMultiplier,正实数,1,3.0,有限正数,变化率噪声下限倍数,不会改原观测,sht_f32_segment_history
+segmentation,c.segmentation.smallChangeMinimumDuration_s,正实数,s,20.0,有限正数,小幅段最短持续时间,本阶段显示但不用于steady_only拟合,sht_f32_segment_history
+segmentation,c.segmentation.smallChangeMaximumDuration_s,实数,s,Inf,不小于最短时长且非NaN,小幅段最大时长,Inf不限,sht_f32_segment_history
+segmentation,c.segmentation.smallChangeMaximumAmplitude,正实数,归一化幅度,0.20,有限正数,小幅局部变化上限,不是逐段硬切成小幅,sht_f32_segment_history
+segmentation,c.segmentation.secondaryBoundaryRate_per_s,正实数,1/s,0.002,有限正数,第二层局部过程分界,不是最低激励资格门,sht_f32_segment_history
+segmentation,c.segmentation.secondaryBoundaryBridge_s,非负实数,s,0.5,有限非负数,第二层边界桥接,只作用识别,sht_f32_segment_history
+segmentation,c.segmentation.secondaryBoundaryExpansion_s,非负实数,s,1.0,有限非负数,边界扩展,不能反推训练输出,sht_f32_segment_history
+segmentation,c.segmentation.amplitudeNoiseFloorMultiplier,正实数,1,6,有限正数,幅度噪声下限倍数,Owner工程默认,sht_f32_segment_history
+segmentation,c.segmentation.thermalMinimumDuration_s,数值,s,2.0,Owner默认具体约束需共享短测,热恢复标记最短时长,不代表已识别真实金属热状态,sht_f32_segment_history
+segmentation,c.segmentation.sampleTimeTolerance,数值,相对采样误差,0.000001,Owner当前比较使用,等间隔判别容差,未据静态断言扩大可接受数据,sht_f32_segment_history
+read,ref.resultDirectory,绝对路径,1,无,已保存任务目录,status/readResult/parameters/trend读取根,结果读取不暗启动计算,Stage4 read_action
+read,ref.sortieId,char或string,1,无,readResult/parameters必须,具体结果架次,不要放第三参数,Stage4 read_action
+read,ref.predictionDirectory,绝对路径,1,无,仅此字段,已形成两法模型只读,校验manifest及文件SHA,Stage4 read_prediction
+read,ref.predictionOutputDirectory,绝对路径,1,无,仅此字段,双法输出/状态/暂停对象,不要求原输入在线但恢复另核,Stage4 prediction_output
+read,ref.evaluationDirectory,绝对路径,1,无,仅此字段,独立评价只读,原输出状态不回写,Stage4 prediction_action
+read,ref.uqDirectory,绝对路径,1,无,仅此字段,独立UQ只读/请求暂停,目标/方法/文件身份必须真实,Stage4 uq_action

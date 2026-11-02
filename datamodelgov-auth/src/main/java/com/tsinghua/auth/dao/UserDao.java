@@ -43,7 +43,7 @@ public class UserDao {
             // 构建查询SQL - 完全参考AssociationRulesService
             String querySql = "SELECT * FROM " + USERS_TABLE + " WHERE username = '" + username + "';";
             
-            log.info("执行用户查询SQL: {}", querySql);
+//            log.info("执行用户查询SQL: {}", querySql);
             
             // 使用Session.executeSql - 参考AssociationRulesService
             SessionExecuteSqlResult result = iginxSession.executeSql(querySql);

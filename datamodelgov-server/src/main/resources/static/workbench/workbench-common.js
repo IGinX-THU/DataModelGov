@@ -1,0 +1,6592 @@
+/**
+ * 工作台公共定义:导航配置、页面注册、示例数据。
+ * 界面结构依据《完整界面设计说明书》UI-R131(9 图组 / 190 效果图);
+ * 图中数值为展示样例,程序绑定以 R06 交付包 F-xx 合同为准。
+ */
+window.Workbench = (() => {
+
+    /* ---------- 小工具 ---------- */
+    function h(tag, attrs, ...children) {
+        const node = document.createElement(tag);
+        if (attrs) {
+            Object.entries(attrs).forEach(([k, v]) => {
+                if (v == null) return; // null/undefined跳过:setAttribute(x,'null')会让selected/disabled等布尔属性意外生效
+                if (k === 'class') node.className = v;
+                else if (k === 'html') node.innerHTML = v;
+                else if (k.startsWith('on')) node.addEventListener(k.slice(2), v);
+                else node.setAttribute(k, v);
+            });
+        }
+        children.flat().forEach(c => {
+            if (c == null) return;
+            if (typeof c === 'string' || typeof c === 'number' || typeof c === 'boolean') {
+                node.appendChild(document.createTextNode(String(c)));
+            } else {
+                node.appendChild(c);
+            }
+        });
+        return node;
+    }
+
+    const ICONS = {
+        logo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 13h4l3-8 4 16 3-8h6"/></svg>',
+        gauge: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M17.5 14v7M14 17.5h7"/></svg>',
+        tasks: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6h12M9 12h12M9 18h12"/><path d="M3 6l1.5 1.5L7 5M3 12l1.5 1.5L7 11M3 18l1.5 1.5L7 17"/></svg>',
+        layers: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 2l10 5-10 5L2 7l10-5z"/><path d="M2 12l10 5 10-5M2 17l10 5 10-5"/></svg>',
+        chart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 3v18h18"/><path d="M7 14l4-6 3 4 5-8"/></svg>',
+        clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>',
+        engine: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>',
+        tools: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M14.7 6.3a4.5 4.5 0 0 0-6 6L3 18l3 3 5.7-5.7a4.5 4.5 0 0 0 6-6L14 13l-3-3 3.7-3.7z"/></svg>',
+        joint: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="5" cy="6" r="2.5"/><circle cx="19" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M7 7.5l3.5 8M17 7.5l-3.5 8M7.5 6h9"/></svg>',
+        ph: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 21h8M12 18v3"/></svg>'
+    };
+
+    /* ---------- 业务目录(建模任务页的静态菜单;数据一律来自真实接口) ---------- */
+    const DEMO = {
+        businesses: [
+            { id: 'steady', name: '稳态试车建模', desc: '由稳态均值数据新建模型(TC24),或用新试车记录更新稳态系数(TC27)', enabled: true },
+            { id: 'transient', name: '过渡态试车建模', desc: '固定稳态父模型,选定大幅变化事件辨识13项瞬态系数(TC27 瞬态)', enabled: true },
+            { id: 'flightSteady', name: '稳态飞参建模', desc: '从实际飞参提取有效稳态窗口,更新稳态及相关参数(F3 Start14)', enabled: true },
+            { id: 'flightTransient', name: '过渡态飞参建模', desc: '选取飞行大幅事件,更新瞬态参数(F3 Start11/12/13)', enabled: true },
+            { id: 'evolution', name: '发动机个性化模型自演化', desc: '从试车模型起步,逐架次更新并比较趋势与预测(F-06 Stage4)', enabled: true }
+        ]
+    };
+
+    /* ---------- 导航配置 ---------- */
+    const WORKBENCHES = {
+        modeling: {
+            key: 'modeling',
+            appName: '发动机个性化建模',
+            groupLabel: '个性化自适应建模',
+            icon: 'logo',
+            desc: '发动机个性化自适应建模项目:稳态 / 过渡态试车建模、飞参建模、模型自演化',
+            nav: [
+                { key: 'overview', label: '项目概况', icon: 'gauge' },
+                { key: 'tasks', label: '建模任务', icon: 'tasks' },
+                { key: 'models', label: '模型成果', icon: 'layers' },
+                { key: 'predictions', label: '输出预测', icon: 'chart' },
+                { key: 'records', label: '运行记录', icon: 'clock' }
+            ]
+        },
+        testbench: {
+            key: 'testbench',
+            appName: '发动机数字试车台',
+            groupLabel: '系统联合仿真',
+            icon: 'logo',
+            desc: '发动机系统联合仿真项目:设计点配置、起动停车建模、全模式仿真、多系统联合仿真',
+            nav: [
+                { key: 'overview', label: '项目概况', icon: 'gauge' },
+                { key: 'startstop', label: '起动停车建模', icon: 'tasks' },
+                { key: 'models', label: '模型成果', icon: 'layers' },
+                { key: 'fullmode', label: '全模式仿真', icon: 'engine' },
+                { key: 'afo', label: '多系统联合仿真', icon: 'joint' },
+                { key: 'records', label: '仿真记录', icon: 'clock' }
+            ]
+        }
+    };
+
+    /* ---------- 页面注册 ---------- */
+    const pages = {};
+
+    function pageHeader(title, sub) {
+        return h('div', null,
+            h('div', { class: 'wb-page-title' }, title),
+            h('div', { class: 'wb-page-sub' }, sub));
+    }
+
+    function statusTag(text, kind) {
+        return h('span', { class: 'wb-tag wb-tag-' + (kind || 'gray') }, text);
+    }
+
+    /** 自包含toast:workbench.html不加载common-utils.js,提示条就地注入body,不依赖外部组件。 */
+    let toastHost = null;
+    function toast(msg, kind) {
+        // 每条toast同步打印到控制台,便于排查线上问题(error级别走console.error保留堆栈上下文)
+        (kind === 'error' ? console.error : console.log).call(console, '[toast:' + (kind || 'info') + ']', msg);
+        if (window.CommonUtils && window.CommonUtils.showToast) { window.CommonUtils.showToast(msg, kind || 'info'); return; }
+        if (!toastHost || !toastHost.isConnected) {
+            toastHost = h('div', { style: 'position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:99999;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none' });
+            document.body.appendChild(toastHost);
+        }
+        const bg = kind === 'error' ? '#b91c1c' : kind === 'success' ? '#0f766e' : '#334155';
+        const item = h('div', {
+            style: 'background:' + bg + ';color:#fff;padding:9px 18px;border-radius:6px;font-size:13px;max-width:70vw;'
+                + 'box-shadow:0 4px 14px rgba(0,0,0,.18);opacity:0;transition:opacity .2s',
+            title: msg
+        }, String(msg));
+        toastHost.appendChild(item);
+        requestAnimationFrame(() => { item.style.opacity = '1'; });
+        setTimeout(() => {
+            item.style.opacity = '0';
+            setTimeout(() => { if (item.parentNode) item.parentNode.removeChild(item); }, 250);
+        }, kind === 'error' ? 5200 : 3200);
+    }
+
+    /** 工作台公共确认弹窗(wb卡片风格;替代原生confirm)。返回Promise<boolean>。 */
+    function confirmDialog(message, opts) {
+        opts = opts || {};
+        return new Promise(resolve => {
+            const done = v => { if (mask.parentNode) document.body.removeChild(mask); resolve(v); };
+            const okBtn = h('button', { class: 'wb-btn wb-btn-primary' + (opts.danger ? '' : ''),
+                style: opts.danger ? 'background:#c0392b;color:#fff;border-color:#c0392b' : '',
+                onclick: () => done(true) }, opts.okText || '确认');
+            const mask = h('div', { style: 'position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:99998;display:flex;align-items:center;justify-content:center' },
+                h('div', { class: 'wb-card', style: 'max-width:460px;width:calc(100% - 48px);box-shadow:0 12px 40px rgba(0,0,0,.28)' },
+                    h('div', { class: 'wb-section-title', style: 'margin-bottom:6px' }, opts.title || '请确认'),
+                    h('div', { style: 'word-break:break-all;line-height:1.7;white-space:pre-wrap' }, String(message)),
+                    h('div', { class: 'wb-actions-row', style: 'margin-top:16px;justify-content:flex-end' },
+                        h('button', { class: 'wb-btn wb-btn-outline', onclick: () => done(false) }, opts.cancelText || '取消'),
+                        okBtn)));
+            document.body.appendChild(mask);
+        });
+    }
+
+    /** 模型交付文件下载地址(带 token;import() 场景同插件认证约定)。 */
+    function modelDownloadUrl(pid, mid) {
+        const cfg = window.AppConfig;
+        return cfg.api.baseURL + '/api/engine/projects/' + encodeURIComponent(pid)
+            + '/models/' + encodeURIComponent(mid) + '/file?token=' + encodeURIComponent(cfg.getToken() || '');
+    }
+
+    /* ===== 共享渲染工具:SVG折线图 / 通用数据表 / 列分组 ===== */
+
+    /** SVG折线图:series=[{name, values:[num], dash?}], xLabels=[str];空值断开。 */
+    function lineChart(opt) {
+        const W = opt.width || 960, H = opt.height || 300;
+        const padL = 58, padR = 16, padT = 14, padB = 34;
+        const colors = ['#0e7490', '#94a3b8', '#b91c1c', '#65a30d', '#7c3aed'];
+        const all = [];
+        (opt.series || []).forEach(s => (s.values || []).forEach(v => { if (v != null && isFinite(v)) all.push(v); }));
+        const svgNS = 'http://www.w3.org/2000/svg';
+        const svg = document.createElementNS(svgNS, 'svg');
+        svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+        svg.setAttribute('style', 'width:100%;max-width:' + W + 'px;background:#fff;border:1px solid #e5e7eb;border-radius:6px');
+        if (!all.length) {
+            const t = document.createElementNS(svgNS, 'text');
+            t.setAttribute('x', W / 2); t.setAttribute('y', H / 2); t.setAttribute('text-anchor', 'middle');
+            t.setAttribute('fill', '#9ca3af'); t.textContent = '暂无可用数值';
+            svg.appendChild(t);
+            return svg;
+        }
+        let min = Math.min.apply(null, all), max = Math.max.apply(null, all);
+        if (min === max) { min -= 1; max += 1; }
+        const pad = (max - min) * 0.08; min -= pad; max += pad;
+        const n = Math.max.apply(null, (opt.series || []).map(s => (s.values || []).length).concat([1]));
+        const X = i => padL + (n <= 1 ? 0 : (W - padL - padR) * i / (n - 1));
+        const Y = v => padT + (H - padT - padB) * (1 - (v - min) / (max - min));
+        // 网格与Y刻度
+        for (let g = 0; g <= 4; g++) {
+            const gv = min + (max - min) * g / 4, gy = Y(gv);
+            const line = document.createElementNS(svgNS, 'line');
+            line.setAttribute('x1', padL); line.setAttribute('x2', W - padR);
+            line.setAttribute('y1', gy); line.setAttribute('y2', gy);
+            line.setAttribute('stroke', '#f1f5f9');
+            svg.appendChild(line);
+            const lab = document.createElementNS(svgNS, 'text');
+            lab.setAttribute('x', padL - 6); lab.setAttribute('y', gy + 4);
+            lab.setAttribute('text-anchor', 'end'); lab.setAttribute('font-size', '10'); lab.setAttribute('fill', '#64748b');
+            lab.textContent = formatTick(gv);
+            svg.appendChild(lab);
+        }
+        (opt.series || []).forEach((s, si) => {
+            const pts = [];
+            (s.values || []).forEach((v, i) => { if (v != null && isFinite(v)) pts.push([X(i), Y(v)]); });
+            if (!pts.length) return;
+            const pl = document.createElementNS(svgNS, 'polyline');
+            pl.setAttribute('points', pts.map(p => p.join(',')).join(' '));
+            pl.setAttribute('fill', 'none');
+            pl.setAttribute('stroke', s.color || colors[si % colors.length]);
+            pl.setAttribute('stroke-width', s.bold ? '2' : '1.4');
+            if (s.dash) pl.setAttribute('stroke-dasharray', '5 4');
+            svg.appendChild(pl);
+            if (s.dots) {
+                pts.forEach(p => {
+                    const c = document.createElementNS(svgNS, 'circle');
+                    c.setAttribute('cx', p[0]); c.setAttribute('cy', p[1]);
+                    c.setAttribute('r', s.bold ? '3.2' : '2.6');
+                    c.setAttribute('fill', s.color || colors[si % colors.length]);
+                    svg.appendChild(c);
+                });
+            }
+        });
+        // X标签(最多8个)
+        const xl = opt.xLabels || [];
+        const step = Math.max(1, Math.ceil(xl.length / 8));
+        xl.forEach((lab, i) => {
+            if (i % step) return;
+            const t = document.createElementNS(svgNS, 'text');
+            t.setAttribute('x', X(i)); t.setAttribute('y', H - padB + 16);
+            t.setAttribute('text-anchor', 'middle'); t.setAttribute('font-size', '10'); t.setAttribute('fill', '#64748b');
+            t.textContent = lab;
+            svg.appendChild(t);
+        });
+        if (opt.xTitle) {
+            const t = document.createElementNS(svgNS, 'text');
+            t.setAttribute('x', (padL + W - padR) / 2); t.setAttribute('y', H - 4);
+            t.setAttribute('text-anchor', 'middle'); t.setAttribute('font-size', '11'); t.setAttribute('fill', '#475569');
+            t.textContent = opt.xTitle;
+            svg.appendChild(t);
+        }
+        return svg;
+    }
+
+    function formatTick(v) {
+        const a = Math.abs(v);
+        if (a >= 100000) return (v / 1000).toFixed(0) + 'k';
+        if (a >= 1000) return v.toFixed(0);
+        if (a >= 10) return v.toFixed(1);
+        return v.toFixed(3);
+    }
+
+    /** 图例(与lineChart配色一致)。 */
+    function chartLegend(series) {
+        const colors = ['#0e7490', '#94a3b8', '#b91c1c', '#65a30d', '#7c3aed'];
+        const spans = (series || []).map((s, i) => {
+            const el = h('span', { style: s.dash ? '' : 'font-weight:600' }, (s.dash ? '– ' : '— ') + s.name);
+            el.style.color = colors[i % colors.length];
+            return el;
+        });
+        return h('div', { class: 'wb-legend', style: 'margin-bottom:8px' }, spans);
+    }
+
+    /** 通用数据表:rows=[{...}] 任意列;maxRows 截断并提示。 */
+    function dataTable(rows, opt) {
+        opt = opt || {};
+        const box = h('div', null);
+        if (!Array.isArray(rows) || !rows.length) {
+            box.appendChild(h('div', { class: 'wb-hint' }, opt.emptyText || '暂无数据'));
+            return box;
+        }
+        const keys = [];
+        rows.slice(0, 5).forEach(r => Object.keys(r || {}).forEach(k => { if (keys.indexOf(k) < 0) keys.push(k); }));
+        const tbl = h('table', { class: 'wb-table' },
+            h('tr', null, keys.map(k => h('th', null, k))));
+        rows.slice(0, opt.maxRows || 20).forEach(r => tbl.appendChild(h('tr', null,
+            keys.map(k => {
+                const v = r ? r[k] : null;
+                return h('td', { class: 'wb-hint' }, v == null ? '—' : (typeof v === 'object' ? JSON.stringify(v) : String(v)));
+            }))));
+        box.appendChild(tbl);
+        if (rows.length > (opt.maxRows || 20)) {
+            box.appendChild(h('div', { class: 'wb-hint', style: 'margin-top:4px' },
+                '显示前 ' + (opt.maxRows || 20) + ' / ' + rows.length + ' 行;完整数据随交付Excel提供。'));
+        }
+        return box;
+    }
+
+    /** 列名族分组:识别 测量/起点/辨识 三件套(_meas/_base/_final 等后缀);返回 [{name, cols:{meas,base,final}}]。 */
+    function groupSeriesColumns(keys) {
+        const SUF = [
+            [/(^|[_\- ])(meas|measured|measure|测量)($|[_\- ])/i, 'meas'],
+            [/(^|[_\- ])(base|baseline|start|起点|参考)($|[_\- ])/i, 'base'],
+            [/(^|[_\- ])(final|model|est|estimate|identified|辨识|估计|模型)($|[_\- ])/i, 'final']
+        ];
+        const fam = {};
+        (keys || []).forEach(k => {
+            let kind = null, base = k;
+            for (const [re, tag] of SUF) {
+                if (re.test(k)) { kind = tag; base = k.replace(re, ' '); break; }
+            }
+            if (!kind) return;
+            base = base.trim().toLowerCase();
+            if (!fam[base]) fam[base] = { name: base, cols: {} };
+            fam[base].cols[kind] = fam[base].cols[kind] || k;
+        });
+        return Object.keys(fam).filter(b => Object.keys(fam[b].cols).length >= 2).map(b => fam[b]);
+    }
+
+    /** 从行对象中提取数值列(跳过明显的元数据列)。 */
+    function numericColumns(rows) {
+        const keys = [];
+        (rows || []).slice(0, 3).forEach(r => Object.keys(r || {}).forEach(k => { if (keys.indexOf(k) < 0) keys.push(k); }));
+        const META = /id|group|分组|编号|样本|sample|count|point|工况|note|name|unit|remark|status/i;
+        return keys.filter(k => {
+            if (META.test(k)) return false;
+            return rows.some(r => r && r[k] != null && (typeof r[k] === 'number' || (String(r[k]).trim() !== '' && isFinite(parseFloat(r[k])))));
+        });
+    }
+
+    function toNum(v) { const n = parseFloat(v); return isFinite(n) ? n : null; }
+
+
+    /* 项目概况(图01-02版式为基准;说明书2.1要求的"数据文件/待处理异常"作为增补区置于下方) */
+    pages['modeling.overview'] = (ctx) => {
+        const p = ctx.project;
+        const wrap = h('div', null, pageHeader('项目概况',
+            (p.engineId || '—') + ' ' + p.name + ' / 个性化自适应建模'));
+
+        // —— 建模任务(01-02:右上双按钮 + 五列表格 + 打开任务/导入模型) ——
+        const tableHolder = h('div', null, h('div', { class: 'wb-empty' }, '正在加载任务...'));
+        wrap.appendChild(h('div', { class: 'wb-section' },
+            h('div', { class: 'wb-section-head' },
+                h('div', { class: 'wb-section-title' }, '建模任务'),
+                h('div', { style: 'display:flex;gap:10px' },
+                    h('button', { class: 'wb-btn wb-btn-primary',
+                        onclick: () => ctx.enterTask({ id: 'steady', name: '基础稳态点建模', forceCreate: true }) }, '+ 基础稳态点建模'),
+                    h('button', { class: 'wb-btn wb-btn-outline',
+                        onclick: () => ctx.enterTask({ id: 'steady_update', name: '新增试车稳态更新', forceCreate: true }) }, '新增试车更新'))),
+            tableHolder,
+            h('div', { class: 'wb-actions-row' },
+                h('button', { class: 'wb-btn wb-btn-outline', onclick: () => ctx.navigate('records') }, '打开任务'),
+                h('button', { class: 'wb-btn wb-btn-outline', onclick: () => ctx.navigate('models') }, '导入模型'))));
+
+        // —— 本任务的计算基准(01-02:两个只读字段 + 属性/内容表 + 选择预测模型/运行记录) ——
+        const baseRows = h('table', { class: 'wb-table', style: 'margin-top:14px' },
+            h('tr', null, h('th', { style: 'width:180px' }, '属性'), h('th', null, '内容')));
+        [
+            ['来源', '当前选定运行包;初值由算法配置返回'],
+            ['导入已有成果', '进入模型成果;不自动作为本任务初值'],
+            ['不确定性评估', '尚未生成个性化模型'],
+            ['当前任务', '—']
+        ].forEach(r => baseRows.appendChild(h('tr', null,
+            h('td', { style: 'color:#6b7280' }, r[0]), h('td', null, r[1]))));
+        wrap.appendChild(h('div', { class: 'wb-section' },
+            h('div', { class: 'wb-section-title', style: 'margin-bottom:12px' }, '本任务的计算基准'),
+            h('div', { class: 'wb-card' },
+                h('div', { class: 'wb-form-grid' },
+                    h('div', { class: 'wb-field' }, h('label', null, '运行包 / 初始参数配置'),
+                        h('input', { readonly: '', value: 'B00 · 当前配套三部件基准' })),
+                    h('div', { class: 'wb-field' }, h('label', null, '发动机 / 模型模式'),
+                        h('input', { readonly: '', value: (p.engineId || '—') + ' / 三部件' }))),
+                baseRows),
+            h('div', { class: 'wb-actions-row' },
+                h('button', { class: 'wb-btn wb-btn-outline', onclick: () => ctx.navigate('predictions') }, '选择预测模型'),
+                h('button', { class: 'wb-btn wb-btn-outline',
+                    onclick: () => { window.__WB_PREDICT_SCROLL_HISTORY__ = true; ctx.navigate('predictions'); } }, '运行记录'))));
+
+        // —— 增补(说明书2.1/2.3):项目文件库(数据/模型两类,SQL分页,行点击预览) ——
+        const libHolder = h('div', null);
+        wrap.appendChild(h('div', { class: 'wb-section', style: 'margin-top:18px' },
+            h('div', { class: 'wb-section-head' },
+                h('div', { class: 'wb-section-title' }, '项目文件库'),
+                h('span', { class: 'wb-hint', style: 'margin:0' },
+                    '任务数据页从库带入文件;行点击预览内容;云端备份,本地丢失自动恢复')),
+            libHolder));
+        loadFileLibrary(ctx, libHolder);
+
+        // —— 待处理异常(说明书2.1) ——
+        const issuesHolder = h('div', null);
+        wrap.appendChild(h('div', { class: 'wb-section', style: 'margin-top:18px' },
+            h('div', { class: 'wb-section-head' }, h('div', { class: 'wb-section-title' }, '待处理异常')),
+            issuesHolder));
+
+        loadOverviewData(ctx, tableHolder, baseRows, issuesHolder);
+        return wrap;
+    };
+
+    /* 项目文件库视图(数据/模型两类;索引入IginX,SQL分页;行点击预览;上传/删除) */
+    function loadFileLibrary(ctx, holder) {
+        const pid = encodeURIComponent(ctx.project.id || '');
+        const S = { cat: 'data', name: '', page: 1, size: 10 };
+        const MODEL_KINDS = ['模型文件', 'Simulink模型', '特性图MAP', 'GTESS库', '热资产', '设计种子', '身份文件', '其它'];
+        const engineDelete = id => window.AppConfig.request(
+            window.AppConfig.api.baseURL + '/api/engine/projects/' + pid + '/files/' + id,
+            { method: 'DELETE' });
+
+        const tabs = h('div', { style: 'display:flex;gap:8px' });
+        const nameInput = h('input', { placeholder: '按文件名筛选' });
+        const kindSel = h('select', null, MODEL_KINDS.map(k => h('option', { value: k }, k)));
+        const listHolder = h('div', null, h('div', { class: 'wb-empty' }, '正在加载文件库...'));
+        const pager = h('div');
+
+        function paintChrome() {
+            tabs.innerHTML = '';
+            [['data', '数据文件'], ['model', '模型文件']].forEach(([k, label]) =>
+                tabs.appendChild(h('button', {
+                    class: 'wb-btn ' + (S.cat === k ? 'wb-btn-primary' : 'wb-btn-outline'),
+                    onclick: () => { S.cat = k; S.page = 1; paintChrome(); load(); }
+                }, label)));
+        }
+
+        async function load() {
+            listHolder.innerHTML = '';
+            listHolder.appendChild(h('div', { class: 'wb-empty' }, '正在加载...'));
+            try {
+                const resp = await window.AppConfig.engineGet(
+                    'projects/' + pid + '/files/page',
+                    { category: S.cat, name: S.name, pageNum: S.page, pageSize: S.size });
+                const rows = resp && resp.data && Array.isArray(resp.data.rows) ? resp.data.rows.filter(x => x && x.id != null) : [];
+                const total = resp && resp.data ? (resp.data.total || 0) : 0;
+                listHolder.innerHTML = '';
+                if (!rows.length) {
+                    listHolder.appendChild(h('div', { class: 'wb-empty' },
+                        S.name ? '没有匹配的文件。' : '文件库为空。'));
+                    pager.innerHTML = '';
+                    return;
+                }
+                const fmtSize = n => !isFinite(Number(n)) ? '—'
+                    : n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB'
+                    : n >= 1024 ? (n / 1024).toFixed(1) + ' KB' : n + ' B';
+                const tbl = h('table', { class: 'wb-table' },
+                    h('tr', null, ['文件名', '用途/类型', '大小', '备份', '时间', ''].map(x => h('th', null, x))));
+                rows.forEach(r0 => {
+                    const tr = h('tr', { class: 'clickable', title: '点击预览文件内容' },
+                        h('td', { class: 'wb-link' }, r0.name || '—'),
+                        h('td', { class: 'wb-hint' }, r0.kind || '—'),
+                        h('td', { class: 'wb-hint' }, fmtSize(r0.size)),
+                        h('td', null, r0.backupState === 'done' ? h('span', { class: 'wb-tag wb-tag-teal' }, '已备份')
+                            : r0.backupState === 'failed' ? h('span', { class: 'wb-tag wb-tag-red' }, '备份失败')
+                            : h('span', { class: 'wb-tag wb-tag-gray' }, '待备份')),
+                        h('td', { class: 'wb-hint' }, r0.createdAt ? new Date(r0.createdAt).toLocaleString() : '—'),
+                        h('td', null,
+                            r0.category === 'model' && r0.refId ? h('button', {
+                                class: 'wb-btn wb-btn-outline', style: 'padding:3px 10px;font-size:12px;margin-right:6px',
+                                onclick: ev => { ev.stopPropagation(); ctx.navigate('models'); }
+                            }, '前往模型成果') : null,
+                            h('button', {
+                                class: 'wb-btn wb-btn-outline', style: 'padding:3px 10px;font-size:12px',
+                                onclick: ev => {
+                                    ev.stopPropagation();
+                                    const doDelete = () => engineDelete(r0.id)
+                                        .then(() => load())
+                                        .catch(e => toast('删除失败:' + e.message, 'error'));
+                                    if (window.showConfirmDialog) {
+                                        window.showConfirmDialog('删除文件',
+                                            '删除库条目"' + (r0.name || '') + '"?已带入任务的副本不受影响。', doDelete);
+                                    } else doDelete();
+                                }
+                            }, '删除')));
+                    tr.addEventListener('click', () => preview(r0));
+                    tbl.appendChild(tr);
+                });
+                listHolder.appendChild(tbl);
+                const pages = Math.max(1, Math.ceil(total / S.size));
+                pager.innerHTML = '';
+                pager.appendChild(h('div', { style: 'display:flex;align-items:center;gap:12px;margin-top:10px' },
+                    h('span', { class: 'wb-hint', style: 'margin:0' }, '共 ' + total + ' 个文件'),
+                    h('button', { class: 'wb-btn wb-btn-outline' + (S.page > 1 ? '' : ' disabled'), onclick: () => { if (S.page > 1) { S.page--; load(); } } }, '‹ 上一页'),
+                    h('span', { class: 'wb-hint', style: 'margin:0' }, '第 ' + S.page + ' / ' + pages + ' 页'),
+                    h('button', { class: 'wb-btn wb-btn-outline' + (S.page < pages ? '' : ' disabled'), onclick: () => { if (S.page < pages) { S.page++; load(); } } }, '下一页 ›')));
+            } catch (e) {
+                listHolder.innerHTML = '';
+                listHolder.appendChild(h('div', { class: 'wb-empty' }, '文件库加载失败:' + e.message));
+            }
+        }
+
+        async function preview(r0) {
+            try {
+                const resp = await window.AppConfig.engineGet('projects/' + pid + '/files/' + r0.id + '/preview');
+                if (resp && resp.code === 200 && resp.data) {
+                    window.Workbench.showFilePreview(r0.name || '文件预览', resp.data);
+                } else toast((resp && resp.message) || '预览失败', 'error');
+            } catch (e) { toast('预览失败:' + e.message, 'error'); }
+        }
+
+        nameInput.addEventListener('input', () => { S.name = nameInput.value.trim(); S.page = 1; load(); });
+
+        holder.appendChild(h('div', null,
+            h('div', { style: 'display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px' },
+                tabs,
+                h('div', { class: 'wb-spacer' }),
+                S.cat === 'model' ? kindSel : null,
+                nameInput),
+            listHolder,
+            pager));
+        paintChrome();
+        load();
+    }
+
+    /* 文件内容预览弹窗(公用遮罩+白框样式;xlsx表格/其它格式元信息) */
+    function showFilePreview(title, d) {
+        const mask = h('div', {
+            style: 'position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:20000;'
+                + 'display:flex;align-items:center;justify-content:center'
+        });
+        const close = () => mask.remove();
+        const box = h('div', {
+            style: 'background:#fff;border-radius:8px;width:min(1100px,92vw);max-height:86vh;'
+                + 'display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.25)'
+        });
+        box.appendChild(h('div', { style: 'display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid #e5e7eb' },
+            h('div', null,
+                h('div', { style: 'font-weight:700;font-size:15px' }, title),
+                h('div', { class: 'wb-hint', style: 'margin:2px 0 0' },
+                    String(d.ext || '').toUpperCase() + ' · ' + (d.size != null ? d.size : '—') + ' 字节 · SHA256前8位 ' + (d.sha256 || '—'))),
+            h('button', { class: 'wb-btn wb-btn-outline', onclick: close }, '× 关闭')));
+        const bodyEl = h('div', { style: 'padding:12px 18px;overflow:auto' });
+        box.appendChild(bodyEl);
+        if (d.binary) {
+            bodyEl.appendChild(h('div', { class: 'wb-hint', style: 'margin-bottom:8px' },
+                '二进制/非表格文件,不支持表格化预览。' + (d.jsonPreview ? 'JSON内容(前4KB):' : '')));
+            if (d.jsonPreview) {
+                bodyEl.appendChild(h('pre', {
+                    style: 'background:#101418;color:#cde3d8;padding:12px;border-radius:6px;'
+                        + 'font-size:12px;white-space:pre-wrap;max-height:55vh;overflow:auto'
+                }, d.jsonPreview));
+            }
+        } else {
+            bodyEl.appendChild(h('div', { class: 'wb-hint', style: 'margin-bottom:8px' },
+                '工作表: ' + (d.sheet || '—') + (d.sheetNames && d.sheetNames.length > 1
+                    ? '(共 ' + d.sheetNames.length + ' 个:' + d.sheetNames.join('、') + ';其余表请下载后查看)' : '')
+                + ' · 共 ' + d.totalRows + ' 行,仅预览前 ' + (d.rows ? d.rows.length : 0) + ' 行'));
+            const tbl = h('table', { class: 'wb-table', style: 'margin:0' });
+            tbl.appendChild(h('tr', null, (d.headers || []).map(x => h('th', null, x))));
+            (d.rows || []).forEach(r => tbl.appendChild(h('tr', null,
+                r.map(v => h('td', { style: 'white-space:nowrap;max-width:280px;overflow:hidden;text-overflow:ellipsis' },
+                    v == null ? '' : String(v))))));
+            bodyEl.appendChild(tbl);
+        }
+        mask.appendChild(box);
+        mask.addEventListener('click', e => { if (e.target === mask) close(); });
+        document.body.appendChild(mask);
+    }
+
+
+    const OV_KIND = { steady: '稳态试车建模', steady_update: '新增试车稳态更新', transient_update: '过渡态试车建模',
+        flight_steady: '稳态飞参建模', flight_transient: '过渡态飞参建模', evolution: '模型自演化',
+        uq: '不确定性评估', prediction: '输出预测' };
+    const OV_BIZ = { steady: 'steady', steady_update: 'steady_update', transient_update: 'transient',
+        flight_steady: 'flightSteady', flight_transient: 'flightTransient', evolution: 'evolution' };
+
+    function loadOverviewData(ctx, tasksHolder, baseRows, issuesHolder) {
+        if (!ctx.project || !ctx.project.id) {
+            [tasksHolder, issuesHolder].forEach(hd => {
+                hd.innerHTML = '';
+                hd.appendChild(h('div', { class: 'wb-empty' }, '本地演示项目无数据;请从项目入口进入真实项目。'));
+            });
+            return;
+        }
+        window.AppConfig.engineGet('projects/detail', { projectId: ctx.project.id, latestPerKind: 'true' })
+            .then(resp => {
+                const d = resp && (resp.success || resp.code === 200) && resp.data ? resp.data : {};
+                const models = Array.isArray(d.models) ? d.models : [];
+                const openTask = tk => openRecordTask(ctx, tk);
+                // 建模任务行以运行记录为准:每类型取最新一条执行记录(运行记录已按时间倒序;
+                // 过滤uq-阶段行与草稿——草稿本就不入运行记录)
+                return window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id) + '/records/list', { pageNum: 1, pageSize: 200 })
+                    .then(rresp => {
+                        const recs = rresp && (rresp.success || rresp.code === 200) && Array.isArray(rresp.data) ? rresp.data : [];
+                        const seen = {};
+                        const sorted = [];
+                        recs.forEach(r => {
+                            // 合并键含过渡态标记:稳态系数辨识与过渡态试车建模共用kind='steady',
+                            // 按kind去重会互相顶掉,过渡态任务须独立成行
+                            const gk = r.kind + (r.transientMode === '1' ? ':transient' : '');
+                            if (!r.kind || (r.taskId || '').indexOf('uq-') === 0 || seen[gk]) return;
+                            seen[gk] = 1;
+                            sorted.push(r);
+                        });
+
+                /* 建模任务表(01-02五列:任务名称/任务类型/最近运行/状态/模型成果;运行记录每类型最新一条) */
+                tasksHolder.innerHTML = '';
+                if (!sorted.length) {
+                    tasksHolder.appendChild(h('div', { class: 'wb-empty' },
+                        '暂无建模任务;点击右上角"+ 基础稳态点建模"新建。'));
+                } else {
+                    tasksHolder.appendChild(h('table', { class: 'wb-table' },
+                        h('tr', null, ['任务名称', '任务类型', '最近运行', '状态', '模型成果'].map(t => h('th', null, t))),
+                        sorted.map(tk => {
+                            const model = models.find(mo => mo.taskId === tk.taskId);
+                            return h('tr', { class: 'clickable', onclick: () => openTask(tk) },
+                                h('td', { class: 'wb-link' }, tk.name || tk.taskId),
+                                h('td', { class: 'wb-hint' }, recordKindText(tk)),
+                                h('td', null, tk.runId || '—'),
+                                h('td', null, statusTag(tk.status, tk.status === 'COMPLETED' ? 'teal' : tk.status === 'FAILED' ? 'red' : 'amber')),
+                                h('td', { class: 'wb-hint' }, model ? model.name : '尚未生成'));
+                        })));
+                }
+
+                /* 计算基准"当前任务"行(01-02):运行记录最新一条 */
+                const cur = sorted[0];
+                const curRow = baseRows.querySelectorAll('tr');
+                if (curRow[4]) {
+                    curRow[4].children[1].textContent = cur
+                        ? ((cur.name || cur.taskId) + ' / ' + recordKindText(cur))
+                        : '—';
+                }
+
+                /* 待处理异常(说明书2.1):取最近运行记录中的失败任务,最新10条(复用本次已取记录) */
+                issuesHolder.innerHTML = '';
+                const issues = recs.filter(r => r.status === 'FAILED').slice(0, 10);
+                if (!issues.length) {
+                    issuesHolder.appendChild(h('div', { class: 'wb-empty' }, '无待处理异常。'));
+                } else {
+                    issuesHolder.appendChild(h('table', { class: 'wb-table' },
+                        h('tr', null, ['任务', '类型', '异常信息'].map(t => h('th', null, t))),
+                        issues.map(r => h('tr', { class: 'clickable', onclick: () => openTask({ id: r.taskId, kind: r.kind, name: r.name }) },
+                            h('td', { class: 'wb-link' }, r.name || r.taskId),
+                            h('td', { class: 'wb-hint' }, recordKindText(r)),
+                            h('td', { class: 'wb-hint', style: 'word-break:break-all;max-width:300px' },
+                                String(r.errorKind === 'SAVE_FAILED' ? '[保存失败] ' : r.errorKind === 'NUMERIC_FAILED' ? '[数值失败] ' : '')
+                                    + (r.message || '执行失败;详情见任务页日志'))))));
+                }
+                    });
+                })
+            .catch(error => {
+                [tasksHolder, issuesHolder].forEach(hd => {
+                    hd.innerHTML = '';
+                    hd.appendChild(h('div', { class: 'wb-empty' }, '加载失败:' + (error.message || error)));
+                });
+            });
+    }
+
+    /** 导入离线模型成果:Excel交付工作簿 + 可选identity.json(与导入数据同机制);完成后回调刷新。 */
+    function importModel(ctx, done) {
+        if (!ctx.project || !ctx.project.id) {
+            window.CommonUtils && window.CommonUtils.showToast &&
+                window.CommonUtils.showToast('本地演示项目不支持导入;请进入真实项目', 'error');
+            return;
+        }
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.multiple = true;
+        input.accept = '.xlsx,.xls,.json';
+        input.addEventListener('change', async () => {
+            const files = Array.from(input.files || []);
+            const excel = files.find(f => /\.(xlsx|xls)$/i.test(f.name));
+            if (!excel) {
+                window.CommonUtils && window.CommonUtils.showToast && window.CommonUtils.showToast('请选择交付Excel(.xlsx/.xls),可同时选入identity.json', 'error');
+                return;
+            }
+            const identity = files.find(f => /\.json$/i.test(f.name));
+            const fd = new FormData();
+            fd.append('file', excel);
+            if (identity) fd.append('identityFile', identity);
+            window.CommonUtils && window.CommonUtils.showToast &&
+                window.CommonUtils.showToast('正在导入:' + excel.name + (identity ? ' + ' + identity.name : ''), 'info');
+            try {
+                const resp = await window.AppConfig.engineUpload(
+                    'projects/' + encodeURIComponent(ctx.project.id) + '/models/import', fd);
+                if (resp && (resp.success || resp.code === 200) && resp.data) {
+                    window.CommonUtils && window.CommonUtils.showToast &&
+                        window.CommonUtils.showToast('模型已导入并登记:' + resp.data.name, 'success');
+                    if (done) done(resp.data);
+                } else {
+                    window.CommonUtils && window.CommonUtils.showToast &&
+                        window.CommonUtils.showToast((resp && resp.message) || '导入失败', 'error');
+                }
+            } catch (e) {
+                window.CommonUtils && window.CommonUtils.showToast &&
+                    window.CommonUtils.showToast('导入失败:' + e.message, 'error');
+            }
+        });
+        input.click();
+    }
+
+    /* ===== 个性化建模 · 建模任务 ===== */
+    pages['modeling.tasks'] = (ctx) => {
+        const wrap = h('div', null, pageHeader('建模任务', '按业务目的组织;阶段编号保留在详情中'));
+        const cards = DEMO.businesses.map(b => h('div', { class: 'wb-card', style: 'display:flex;align-items:center;gap:18px;margin-bottom:12px;' + (b.enabled ? '' : 'opacity:.62') },
+            h('div', { style: 'flex:1' },
+                h('div', { style: 'font-weight:700;color:#111827;margin-bottom:5px' }, b.name),
+                h('div', { style: 'font-size:12px;color:#6b7280;line-height:1.6' }, b.desc)),
+            h('div', null,
+                b.enabled
+                    ? h('button', { class: 'wb-btn wb-btn-primary', onclick: () => ctx.enterTask(b) }, '进入')
+                    : h('span', { class: 'wb-tag wb-tag-gray' }, '页面建设中'))));
+        wrap.appendChild(h('div', { class: 'wb-section' }, cards));
+        return wrap;
+    };
+
+    /* ===== 个性化建模 · 模型成果(02-01~02-09:清单/筛选/来源关系/详情/数据关联/UQ多记录/比较)===== */
+    /* tab: list清单 | relation来源关系 | data数据关联 | detail模型详情;checkedUq:UQ对比勾选;uqFocus:已选UQ */
+    const MODEL_VIEW = { tab: 'list', detailId: null, checked: {}, checkedUq: {}, uqFocus: null };
+
+    pages['modeling.models'] = (ctx) => {
+        const wrap = h('div', null, pageHeader('模型成果',
+            (ctx.project.engineId || '—') + ' / 稳态试车建模 / 模型版本与数据、评估关联'));
+        const body = h('div', null);
+        wrap.appendChild(body);
+        renderModelsBody(ctx, body);
+        return wrap;
+    };
+
+    function renderModelsBody(ctx, body) {
+        body.innerHTML = '';
+        /* UQ勾选只跟随当前详情模型;换模型/回清单时清空,比较往返时保留 */
+        if (MODEL_VIEW.uqFor !== MODEL_VIEW.detailId) {
+            MODEL_VIEW.checkedUq = {};
+            MODEL_VIEW.uqFocus = null;
+            MODEL_VIEW.uqFor = MODEL_VIEW.detailId;
+        }
+        if (MODEL_VIEW.tab === 'detail' && MODEL_VIEW.detailId) {
+            renderModelDetail(ctx, body, MODEL_VIEW.detailId);
+            return;
+        }
+        if (MODEL_VIEW.tab === 'data' && MODEL_VIEW.detailId) {
+            renderDataAssociation(ctx, body, MODEL_VIEW.detailId);
+            return;
+        }
+        // 导入与恢复已有成果(01-20):子视图,登记后回到清单
+        if (MODEL_VIEW.tab === 'import') {
+            renderImportRecover(ctx, body);
+            return;
+        }
+        // 筛选行(02-01)
+        const fBusiness = h('select', { style: 'width:100%' }, h('option', { value: '' }, '全部业务'),
+            h('option', null, '稳态试车建模'), h('option', null, '导入模型'));
+        const fStage = h('select', { style: 'width:100%' }, h('option', { value: '' }, '全部阶段'),
+            h('option', null, '2.4 基础建模'), h('option', null, '2.7 数据更新'), h('option', null, '导入'));
+        const fRoute = h('select', { style: 'width:100%' }, h('option', { value: '' }, '全部路径'),
+            h('option', null, '稳态方程'), h('option', null, '瞬态时刻方程'));
+        const fName = h('input', { placeholder: '模型名称/编号' });
+        const filterBar = h('div', { class: 'wb-form-grid', style: 'grid-template-columns:repeat(4,1fr) 200px 190px 190px;align-items:end;margin-bottom:14px' },
+            h('div', { class: 'wb-field' }, h('label', null, '业务类别'), fBusiness),
+            h('div', { class: 'wb-field' }, h('label', null, '来源阶段'), fStage),
+            h('div', { class: 'wb-field' }, h('label', null, '计算路径'), fRoute),
+            h('div', { class: 'wb-field' }, h('label', null, '模型名称 / 编号'), fName),
+            h('div', null, h('button', {
+                class: 'wb-btn wb-btn-outline', style: 'width:100%',
+                onclick: () => loadModels(ctx)
+            }, '刷新')),
+            h('div', null, h('button', { class: 'wb-btn wb-btn-primary', style: 'width:100%', onclick: () => importModel(ctx, () => renderModelsBody(ctx, body)) }, '导入离线模型成果')),
+            h('div', null, h('button', {
+                class: 'wb-btn wb-btn-outline', style: 'width:100%',
+                onclick: () => { MODEL_VIEW.tab = 'import'; renderModelsBody(ctx, body); }
+            }, '导入与恢复已有成果')));
+
+        // 子页签:模型清单 | 来源关系(02-01/02-03)
+        const tabBar = h('div', { class: 'wb-tabs', style: 'margin-bottom:12px' });
+        const listHolder = h('div', null, h('div', { class: 'wb-empty' }, '正在加载模型成果...'));
+        const summaryHolder = h('div', null);
+        const actionsBar = h('div', { class: 'wb-actions-row', style: 'margin-top:14px' });
+        [['list', '模型清单'], ['relation', '来源关系']].forEach(([key, label]) => {
+            tabBar.appendChild(h('div', {
+                class: 'wb-tab' + (MODEL_VIEW.tab === key ? ' active' : ''),
+                onclick: () => { MODEL_VIEW.tab = key; renderModelsBody(ctx, body); }
+            }, label));
+        });
+        body.appendChild(filterBar);
+        body.appendChild(tabBar);
+        body.appendChild(listHolder);
+        body.appendChild(summaryHolder);
+        body.appendChild(actionsBar);
+
+        [fBusiness, fStage, fRoute, fName].forEach(el => el.addEventListener('change', () => loadModels(ctx)));
+        fName.addEventListener('keydown', e => { if (e.key === 'Enter') loadModels(ctx); });
+
+        let models = [];
+        let uqRecords = [];
+
+        function match(m) {
+            if (fBusiness.value && (m.sourceBusiness || '') !== fBusiness.value) return false;
+            if (fStage.value && (m.stage || '') !== fStage.value) return false;
+            if (fRoute.value && (m.route || '') !== fRoute.value) return false;
+            const kw = fName.value.trim().toLowerCase();
+            if (kw && !((m.name || '') + ' ' + (m.id || '')).toLowerCase().includes(kw)) return false;
+            return true;
+        }
+
+        function uqCount(mid) {
+            return uqRecords.filter(r => r.modelAssetId === mid && r.status === 'COMPLETED').length;
+        }
+
+        /** UQ列副行(02-01):按方法汇总"2采样 / 1局部近似"。 */
+        function uqSubLine(mid) {
+            const mine = uqRecords.filter(r => r.modelAssetId === mid && r.status === 'COMPLETED');
+            if (!mine.length) return '可新建匹配评估';
+            const sampling = mine.filter(r => r.method === 'B' || r.method === 'C').length;
+            const local = mine.filter(r => r.method === 'D').length;
+            const parts = [];
+            if (sampling) parts.push(sampling + '采样');
+            if (local) parts.push(local + '局部近似');
+            return parts.join(' / ');
+        }
+
+        function renderList() {
+            listHolder.innerHTML = '';
+            summaryHolder.innerHTML = '';
+            const shown = models.filter(match);
+            if (MODEL_VIEW.tab === 'relation') {
+                renderRelation(shown);
+                actionsBar.innerHTML = '';
+                return;
+            }
+            if (!shown.length) {
+                listHolder.appendChild(h('div', { class: 'wb-empty' },
+                    models.length ? '没有符合筛选条件的模型。' :
+                        '暂无模型成果——完成一次稳态辨识并"登记到模型成果"后在此查看;也可直接"导入离线模型成果"。'));
+                actionsBar.innerHTML = '';
+                return;
+            }
+            const total = h('span', { class: 'wb-hint', style: 'margin:0' },
+                shown.length + '份模型 · ' + new Set(models.map(m => m.parentModelId || 'root')).size + '条来源路径');
+            listHolder.appendChild(h('div', { style: 'display:flex;justify-content:flex-end;margin-bottom:6px' }, total));
+            const tbl = h('table', { class: 'wb-table' },
+                h('tr', null, ['', '模型名称 / 版本', '来源阶段', '计算路径', '训练数据', '父模型', '结果状态', '不确定性评估', '生成时间'].map((x, i) =>
+                    h('th', i === 0 ? { style: 'width:34px' } : null, x))));
+            shown.forEach(m => {
+                const parent = models.find(p => p.id === m.parentModelId);
+                const cb = h('input', { type: 'checkbox' });
+                if (MODEL_VIEW.checked[m.id]) cb.checked = true;
+                cb.addEventListener('change', () => {
+                    if (cb.checked) MODEL_VIEW.checked[m.id] = true; else delete MODEL_VIEW.checked[m.id];
+                    renderActions();
+                });
+                const diag = m.resultStatus === '诊断(未收敛但有效)';
+                const uqN = uqCount(m.id);
+                tbl.appendChild(h('tr', { class: 'clickable', onclick: () => { MODEL_VIEW.tab = 'detail'; MODEL_VIEW.detailId = m.id; renderModelsBody(ctx, body); } },
+                    h('td', { onclick: ev => ev.stopPropagation() }, cb),
+                    h('td', null,
+                        h('div', { style: 'font-weight:600;color:#111827' }, m.name || m.id),
+                        h('div', { class: 'wb-hint', style: 'margin:0' },
+                            (m.sourceBusiness || '—') + ' · ' + (m.route || '—')),
+                        h('div', { class: 'wb-hint', style: 'margin:0' }, m.engineId || '')),
+                    h('td', null, m.stage || '—'),
+                    h('td', null, m.route || '—'),
+                    h('td', { class: 'wb-hint' }, m.trainingFile ? String(m.trainingFile).split(/[\\/]/).pop() : '—'),
+                    h('td', { class: 'wb-hint' }, parent ? parent.name : (m.parentModelId ? m.parentModelId : '基准配置')),
+                    h('td', null,
+                        h('div', { style: diag ? 'color:#b45309;font-weight:600' : 'color:#0f766e;font-weight:600' },
+                            diag ? '已交付' : (m.resultStatus || '已保存')),
+                        diag ? h('div', { class: 'wb-hint', style: 'margin:0' }, '未收敛但有效,可进下游') : null),
+                    h('td', null,
+                        h('div', { style: 'font-weight:' + (uqN ? '600' : '400') + ';color:' + (uqN ? '#0f766e' : '#6b7280') },
+                            uqN ? uqN + '份记录' : '未评估'),
+                        h('div', { class: 'wb-hint', style: 'margin:0' }, uqSubLine(m.id))),
+                    h('td', { class: 'wb-hint' }, m.createdAt ? new Date(m.createdAt).toLocaleString('zh-CN') : '—')));
+            });
+            listHolder.appendChild(tbl);
+            renderActions();
+        }
+
+        /** 来源关系(02-02):按父模型分组的树形视图——左父模型卡,右同父子方案卡,右缘关联评估;不继承旧模型UQ。 */
+        function renderRelation(shown) {
+            if (!shown.length) {
+                listHolder.appendChild(h('div', { class: 'wb-empty' }, '暂无模型;来源关系随模型登记生成。'));
+                return;
+            }
+            // 02-02:区块列头(基础建模 → 更新方案 → 关联评估)+ 当前勾选提示
+            const checkedNow = Object.keys(MODEL_VIEW.checked).map(id => models.find(m2 => m2.id === id)).filter(Boolean);
+            listHolder.appendChild(h('div', { class: 'wb-hint', style: 'margin-bottom:10px' },
+                '按父模型链回溯;同父并列方案各自独立,不继承父模型的UQ区间。'
+                + (checkedNow.length ? '当前选择:' + checkedNow.map(x => x.name || x.id).join('、') + '。' : '')));
+
+            // 分组:根模型(无父模型)与其子模型同块
+            const byParent = {};
+            shown.forEach(m => {
+                const key = m.parentModelId || '';
+                (byParent[key] = byParent[key] || { roots: [], children: [] });
+                if (m.parentModelId) byParent[key].children.push(m);
+                else byParent[key].roots.push(m);
+            });
+            const painted = new Set();
+            const modelCard = (m, selected) => h('div', {
+                style: 'border:1px solid ' + (selected ? '#0f766e' : '#e5e7eb') + ';background:' + (selected ? '#e5f1f2' : '#fff')
+                    + ';border-radius:6px;padding:10px 14px;cursor:pointer;min-width:230px',
+                onclick: () => {
+                    MODEL_VIEW.checked = {};
+                    MODEL_VIEW.checked[m.id] = true;
+                    renderList();
+                }
+            },
+                h('div', { style: 'font-weight:600;color:#111827' }, m.name || m.id),
+                h('div', { class: 'wb-hint', style: 'margin:0' }, m.route || '—'),
+                h('div', { class: 'wb-hint', style: 'margin:0' },
+                    '训练: ' + (m.trainingFile ? String(m.trainingFile).split(/[\\/]/).pop() : '—')));
+
+            const drawBlock = (rootArr, children) => {
+                const root = rootArr[0];
+                rootArr.forEach(r => painted.add(r.id));
+                children.forEach(c => painted.add(c.id));
+                const uqOnRoot = uqCount(root.id);
+                // 02-02:区块列头(基础建模 → 更新方案 → 关联评估)
+                const head = h('div', { style: 'display:grid;grid-template-columns:minmax(200px,280px) 24px minmax(240px,1fr) 150px;gap:0 8px;font-size:12px;color:#6b7280;padding:10px 0 0' },
+                    h('div', null, root.stage || '基础建模'),
+                    h('div', null),
+                    h('div', null, children.length ? (children[0].stage || '更新方案') : '更新方案'),
+                    h('div', null, '关联评估'));
+                const grid = h('div', { style: 'display:grid;grid-template-columns:minmax(200px,280px) 24px minmax(240px,1fr) 150px;gap:0 8px;align-items:center;padding:18px 0' },
+                    // 左:父模型卡 + 其UQ记录提示
+                    h('div', null,
+                        modelCard(root, !!MODEL_VIEW.checked[root.id]),
+                        uqOnRoot ? h('div', { style: 'margin-top:8px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;padding:7px 12px;font-size:12px;color:#0369a1' },
+                            '⇊ ' + root.name + ': ' + uqOnRoot + '份UQ记录') : null),
+                    // 中:连线
+                    children.length ? h('div', { style: 'height:100%;display:flex;align-items:center;justify-content:center;color:#94a3b8' }, '—') : h('div', null),
+                    // 右:子方案卡列表
+                    children.length
+                        ? h('div', { style: 'display:flex;flex-direction:column;gap:10px' },
+                            children.map(c => modelCard(c, !!MODEL_VIEW.checked[c.id])))
+                        : h('div', { class: 'wb-hint' }, '无更新派生模型'),
+                    // 右缘:关联评估
+                    h('div', { style: 'display:flex;flex-direction:column;gap:10px' },
+                        (children.length ? children : [root]).map(t => {
+                            const n = uqCount(t.id);
+                            return h('div', { style: 'font-size:12px;' + (n ? 'color:#0f766e;font-weight:600' : 'color:#6b7280') },
+                                n ? (uqRecords.filter(r => r.modelAssetId === t.id && r.status === 'COMPLETED')[0] || {}).runId || n + '份记录' : '未评估');
+                        })));
+                listHolder.appendChild(h('div', { style: 'border-bottom:1px solid #f1f5f9' }, head, grid));
+                // 数据批次(02-02):本块父/子模型用到的训练数据文件
+                const batches = [];
+                [root].concat(children).forEach(x => {
+                    const f = x && x.trainingFile ? String(x.trainingFile).split(/[\\/]/).pop() : null;
+                    if (f && batches.indexOf(f) < 0) batches.push(f);
+                });
+                if (batches.length) {
+                    listHolder.appendChild(h('div', { class: 'wb-hint', style: 'margin:-8px 0 6px;padding:0 4px' },
+                        '数据批次: ' + batches.join('; ')));
+                }
+            };
+
+            // 有子模型的根优先成块;剩余独立模型单独成块
+            Object.keys(byParent).forEach(pid => {
+                const grp = byParent[pid];
+                if (!pid && grp.roots.length) {
+                    grp.roots.forEach(root => {
+                        const kids = shown.filter(m => m.parentModelId === root.id);
+                        drawBlock([root], kids);
+                    });
+                }
+            });
+            shown.filter(m => !painted.has(m.id)).forEach(m => drawBlock([m], []));
+
+            // 底部说明 + 动作(02-02)
+            actionsBar.innerHTML = '';
+            const checkedIds = Object.keys(MODEL_VIEW.checked).filter(id => models.some(m => m.id === id));
+            actionsBar.appendChild(h('button', {
+                class: 'wb-btn wb-btn-primary' + (checkedIds.length === 1 ? '' : ' disabled'),
+                onclick: () => {
+                    if (checkedIds.length !== 1) return;
+                    MODEL_VIEW.tab = 'detail'; MODEL_VIEW.detailId = checkedIds[0]; renderModelsBody(ctx, body);
+                }
+            }, '打开已选模型详情'));
+            const firstChecked = checkedIds.length ? models.find(m => m.id === checkedIds[0]) : null;
+            actionsBar.appendChild(h('button', {
+                class: 'wb-btn wb-btn-outline' + (firstChecked && uqCount(firstChecked.id) ? '' : ' disabled'),
+                onclick: () => {
+                    if (!firstChecked) return;
+                    window.__WB_OPEN_MODEL_UQ__ = firstChecked.id;
+                    MODEL_VIEW.tab = 'detail'; MODEL_VIEW.detailId = firstChecked.id; renderModelsBody(ctx, body);
+                }
+            }, firstChecked ? ('查看 ' + (firstChecked.name || '') + ' 的评估记录') : '查看评估记录'));
+        }
+
+        /** 底部动作(02-01):已选摘要 + 查看详情/来源关系/比较已选/新工况预测。 */
+        function renderActions() {
+            actionsBar.innerHTML = '';
+            summaryHolder.innerHTML = '';
+            if (MODEL_VIEW.tab === 'relation') return;
+            const checkedIds = Object.keys(MODEL_VIEW.checked).filter(id => models.some(m => m.id === id));
+            const checkedRows = checkedIds.map(id => models.find(m => m.id === id));
+            // 已选摘要区(02-01):勾选后显示所选模型的方法/数据/父模型/UQ概览
+            if (checkedRows.length === 1) {
+                const m = checkedRows[0];
+                const parent = models.find(p => p.id === m.parentModelId);
+                const uqRec = uqRecords.find(r => r.modelAssetId === m.id && r.status === 'COMPLETED');
+                summaryHolder.appendChild(h('div', { style: 'border-top:1px solid #f1f5f9;margin-top:14px;padding-top:12px' },
+                    h('div', { style: 'display:flex;gap:18px;align-items:baseline;flex-wrap:wrap' },
+                        h('span', { style: 'font-weight:600;font-size:15px' }, '已选 ' + (m.name || m.id)),
+                        h('span', { class: 'wb-hint', style: 'margin:0' },
+                            (m.stage || '—') + ' · ' + (m.route || '—'))),
+                    h('div', { class: 'wb-hint', style: 'margin:6px 0 0;display:flex;gap:26px;flex-wrap:wrap' },
+                        h('span', null, '训练数据 ' + (m.trainingFile ? String(m.trainingFile).split(/[\\/]/).pop() : '—')),
+                        h('span', null, '父模型 ' + (parent ? parent.name : '基准配置')),
+                        h('span', null, uqRec ? ((uqRec.runId || 'UQ') + ' · 方法' + (uqRec.method || '—')) : '未评估'))));
+            }
+            actionsBar.appendChild(h('button', {
+                class: 'wb-btn wb-btn-primary' + (checkedRows.length ? '' : ' disabled'),
+                onclick: () => {
+                    if (!checkedRows.length) return;
+                    const m = checkedRows[checkedRows.length - 1];
+                    MODEL_VIEW.tab = 'detail'; MODEL_VIEW.detailId = m.id; renderModelsBody(ctx, body);
+                }
+            }, '查看模型详情'));
+            actionsBar.appendChild(h('button', {
+                class: 'wb-btn wb-btn-outline',
+                onclick: () => { MODEL_VIEW.tab = 'relation'; renderModelsBody(ctx, body); }
+            }, '查看来源关系'));
+            actionsBar.appendChild(h('button', {
+                class: 'wb-btn wb-btn-outline' + (checkedIds.length >= 2 ? '' : ' disabled'),
+                title: checkedIds.length >= 2 ? '' : '勾选两份及以上模型后可比较',
+                onclick: () => { if (checkedIds.length >= 2) compareModels(ctx, body, checkedIds); }
+            }, '比较已选模型(' + checkedIds.length + ')'));
+            actionsBar.appendChild(h('div', { class: 'wb-spacer' }));
+            actionsBar.appendChild(h('button', {
+                class: 'wb-btn wb-btn-primary' + (checkedIds.length === 1 ? '' : ' disabled'),
+                title: checkedIds.length === 1 ? '' : '勾选一份模型用于新工况预测',
+                onclick: async () => {
+                    if (checkedIds.length !== 1) return;
+                    /* 清单行是分页投影,预测表单需要完整模型档案:从全量接口取 */
+                    try {
+                        const resp = await window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id) + '/models');
+                        const all = resp && (resp.success || resp.code === 200) && Array.isArray(resp.data) ? resp.data : [];
+                        window.__WB_PREDICT_MODEL__ = all.find(x => x.id === checkedIds[0])
+                            || models.find(x => x.id === checkedIds[0]);
+                        ctx.navigate('predictions');
+                    } catch (e) {
+                        window.__WB_PREDICT_MODEL__ = models.find(x => x.id === checkedIds[0]);
+                        ctx.navigate('predictions');
+                    }
+                }
+            }, '新工况预测'));
+        }
+
+        /** 导入与恢复已有成果(01-20):模型Excel路径 + 选择正式成果 + 可读取范围六行表;
+         *  仅登记可读取成果走真实导入接口,定位/重算类能力后端未提供,点击如实说明。 */
+        function renderImportRecover(ctx, body) {
+            body.innerHTML = '';
+            let picked = null, pickedIdentity = null;
+            const back = () => { MODEL_VIEW.tab = 'list'; renderModelsBody(ctx, body); };
+            const pathBox = h('input', { readonly: '', value: '未选择文件', style: 'flex:1;min-width:300px' });
+            const regBtn = h('button', { class: 'wb-btn wb-btn-primary disabled', title: '请先选择交付Excel' }, '登记可读取成果');
+            const statusBar = h('div', { class: 'wb-infobar', style: 'border-left:4px solid #d97706;background:#fffbeb;color:#92400e' },
+                '尚未选择交付Excel;选择后此处给出可读取范围。');
+            const missDrawer = h('div', null);
+            const fileInput = h('input', { type: 'file', accept: '.xlsx,.xls,.json', style: 'display:none' });
+            fileInput.addEventListener('change', () => {
+                const files = Array.from(fileInput.files || []);
+                picked = files.find(f => /\.(xlsx|xls)$/i.test(f.name)) || null;
+                pickedIdentity = files.find(f => /\.json$/i.test(f.name)) || null;
+                if (!picked) {
+                    toast('请选择交付Excel(.xlsx/.xls);identity.json可选', 'error');
+                    return;
+                }
+                pathBox.value = picked.name + (pickedIdentity ? ' + ' + pickedIdentity.name : '');
+                statusBar.textContent = '模型可读取;仅有模型Excel,尚未定位原运行明细和训练文件。';
+                regBtn.classList.remove('disabled');
+                regBtn.setAttribute('title', '');
+                missDrawer.innerHTML = '';
+            });
+            regBtn.addEventListener('click', async () => {
+                if (!picked) { toast('请先选择交付Excel(.xlsx/.xls)', 'error'); return; }
+                regBtn.classList.add('disabled');
+                try {
+                    const fd = new FormData();
+                    fd.append('file', picked);
+                    if (pickedIdentity) fd.append('identityFile', pickedIdentity);
+                    const resp = await window.AppConfig.engineUpload(
+                        'projects/' + encodeURIComponent(ctx.project.id) + '/models/import', fd);
+                    if (resp && (resp.success || resp.code === 200) && resp.data) {
+                        toast('已登记可读取成果:' + (resp.data.name || picked.name)
+                            + ';原运行明细与训练文件可稍后定位补充', 'success');
+                        back();
+                    } else {
+                        toast((resp && resp.message) || '登记失败', 'error');
+                    }
+                } catch (e) {
+                    toast('登记失败:' + e.message, 'error');
+                }
+                regBtn.classList.remove('disabled');
+            });
+            const notAvail = what => () => toast('当前服务版本未提供该导入能力(' + what + ');请将相应文件与交付Excel一并登记', 'info');
+            // 六行表(01-20):当前导入能力下的如实状态,不因选择文件而变(定位类能力未提供)
+            const ROWS = [
+                ['查看参数与调度曲线', '可用', 'teal', '从正式模型Excel恢复'],
+                ['确定性新工况预测', '需核对执行包', 'amber', '配套DLL/MDL等完整后可计算'],
+                ['查看原训练输出与误差', '缺少明细', 'red', '定位result_view.mat或原结果目录'],
+                ['重新开展UQ', '缺少实际推断数据', 'red', '定位原训练文件与独立误差配置'],
+                ['引用原有UQ预测', '尚未导入匹配记录', 'red', '核对模型与后验运行身份'],
+                ['同名文件重新定位', '需核对内容身份', 'amber', '内容不同则登记新版本,不覆盖旧关系']
+            ];
+            body.appendChild(h('div', { style: 'display:flex;align-items:center;gap:14px;margin-bottom:4px' },
+                h('button', { class: 'wb-btn wb-btn-outline', onclick: back }, '‹ 返回模型成果'),
+                h('div', { class: 'wb-page-title', style: 'margin:0' }, '模型成果 / 导入与恢复已有成果')));
+            body.appendChild(h('div', { class: 'wb-page-sub' },
+                (ctx.project.engineId || '—') + ' / 离线算法成果 / 不重新运行计算'));
+            body.appendChild(h('div', { class: 'wb-field', style: 'max-width:1180px;margin:14px 0' },
+                h('label', null, '模型Excel'),
+                h('div', { style: 'display:flex;gap:10px;flex-wrap:wrap;align-items:center' },
+                    pathBox,
+                    h('button', { class: 'wb-btn wb-btn-outline', onclick: () => fileInput.click() }, '选择正式成果'),
+                    fileInput)));
+            body.appendChild(statusBar);
+            body.appendChild(h('table', { class: 'wb-table', style: 'max-width:1180px' },
+                h('tr', null, ['操作', '当前状态', '处理'].map(x => h('th', null, x))),
+                ROWS.map(r => h('tr', null,
+                    h('td', null, r[0]),
+                    h('td', null, h('span', { class: 'wb-tag wb-tag-' + r[2] }, r[1])),
+                    h('td', { class: 'wb-hint' }, r[3])))));
+            body.appendChild(missDrawer);
+            body.appendChild(h('div', { class: 'wb-actions-row', style: 'max-width:1180px;margin-top:14px' },
+                h('button', { class: 'wb-btn wb-btn-outline', onclick: notAvail('定位配套结果目录') }, '定位配套结果目录'),
+                h('button', { class: 'wb-btn wb-btn-outline', onclick: notAvail('定位原训练文件') }, '定位原训练文件'),
+                h('button', {
+                    class: 'wb-btn wb-btn-outline',
+                    onclick: () => {
+                        missDrawer.innerHTML = '';
+                        missDrawer.appendChild(h('div', { class: 'wb-card', style: 'padding:14px;max-width:1180px;margin-top:10px' },
+                            h('div', { class: 'wb-section-title', style: 'margin-bottom:8px' }, '缺失清单(按当前已选文件如实给出)'),
+                            h('ul', { style: 'list-style:none;padding:0;margin:0' }, [
+                                '原运行明细(result_view.mat或原结果目录)——未定位',
+                                '原训练文件与独立误差配置——未定位',
+                                '可引用的UQ后验运行记录——尚未导入匹配记录',
+                                '配套执行包(DLL/MDL等)——需核对后确定性预测才可计算'
+                            ].map(x => h('li', { class: 'wb-hint', style: 'margin:4px 0' }, '· ' + x))),
+                            h('div', { class: 'wb-hint', style: 'margin-top:6px' },
+                                '以上为当前导入范围内的缺失项;定位相应文件后重新登记即可补充,不调用DLL重算。')));
+                    }
+                }, '查看缺失清单')));
+            body.appendChild(h('div', { class: 'wb-hint', style: 'margin:10px 0' },
+                '文件位置改变不等于内容改变;完整结果可只读恢复,不调用DLL重算。'));
+            body.appendChild(h('div', { class: 'wb-actions-row', style: 'max-width:1180px' },
+                regBtn,
+                h('div', { class: 'wb-spacer' }),
+                h('button', { class: 'wb-btn wb-btn-outline', onclick: back }, '返回模型成果')));
+        }
+
+        function loadModels() {
+            listHolder.innerHTML = '';
+            listHolder.appendChild(h('div', { class: 'wb-empty' }, '正在加载模型成果...'));
+            /* IginX SQL分页(/models/list + /models/count,与项目列表同款);uq-records全量仍用于UQ徽标 */
+            const base = 'projects/' + encodeURIComponent(ctx.project.id) + '/models/';
+            const st = MODEL_VIEW;
+            Promise.all([
+                window.AppConfig.engineGet(base + 'list', { pageNum: st.pageNum || 1, pageSize: st.pageSize || 10 }),
+                window.AppConfig.engineGet(base + 'count', {}),
+                window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id) + '/uq-records').catch(() => null)
+            ]).then(([resp, cnt, uqResp]) => {
+                const rows = resp && (resp.success || resp.code === 200) && Array.isArray(resp.data) ? resp.data : [];
+                st.total = cnt && (cnt.success || cnt.code === 200) ? Number(cnt.data) || 0 : rows.length;
+                /* 清单行(实体字段)映射回页面渲染形状;详情/比较仍走全量接口 */
+                models = rows.map(r => ({
+                    id: r.modelId, taskId: r.taskId, name: r.name, sourceBusiness: r.sourceBusiness,
+                    stage: r.stage, route: r.route, resultStatus: r.resultStatus, engineId: r.engineId,
+                    parentModelId: r.parentModelId, createdAt: r.createTime, deliveryWorkbookFile: r.deliveryFile,
+                    _pageRow: true
+                }));
+                uqRecords = uqResp && uqResp.success && Array.isArray(uqResp.data) ? uqResp.data : [];
+                Object.keys(MODEL_VIEW.checked).forEach(id => {
+                    if (!models.some(m => m.id === id)) delete MODEL_VIEW.checked[id];
+                });
+                const maxPage = Math.max(1, Math.ceil((st.total || 0) / (st.pageSize || 10)));
+                if ((st.pageNum || 1) > maxPage) { st.pageNum = maxPage; return loadModels(); }
+                renderList();
+                renderModelsPager(listHolder);
+            }).catch(e => {
+                listHolder.innerHTML = '';
+                listHolder.appendChild(h('div', { class: 'wb-empty' }, '模型成果加载失败:' + e.message));
+            });
+        }
+
+        /** 模型清单分页条(上一页/页码±2/下一页/每页条数,与项目列表同款)。 */
+        function renderModelsPager(container) {
+            const st = MODEL_VIEW;
+            const total = st.total || 0, pn = st.pageNum || 1, ps = st.pageSize || 10;
+            const maxPage = Math.max(1, Math.ceil(total / ps));
+            const pager = h('div', { style: 'display:flex;align-items:center;gap:8px;margin-top:12px' },
+                h('span', { class: 'wb-hint' }, '共 ' + total + ' 条,第 ' + pn + '/' + maxPage + ' 页'));
+            const prev = h('button', { class: 'wb-btn wb-btn-outline' + (pn <= 1 ? ' disabled' : '') }, '上一页');
+            prev.addEventListener('click', () => { if (pn > 1) { st.pageNum = pn - 1; loadModels(); } });
+            pager.appendChild(prev);
+            const startP = Math.max(1, pn - 2), endP = Math.min(maxPage, pn + 2);
+            for (let i = startP; i <= endP; i++) {
+                const b = h('button', { class: 'wb-btn ' + (i === pn ? 'wb-btn-primary' : 'wb-btn-outline') }, String(i));
+                b.addEventListener('click', () => { if (i !== pn) { st.pageNum = i; loadModels(); } });
+                pager.appendChild(b);
+            }
+            const next = h('button', { class: 'wb-btn wb-btn-outline' + (pn >= maxPage ? ' disabled' : '') }, '下一页');
+            next.addEventListener('click', () => { if (pn < maxPage) { st.pageNum = pn + 1; loadModels(); } });
+            pager.appendChild(next);
+            pager.appendChild(h('span', { class: 'wb-hint', style: 'margin-left:8px' }, '每页'));
+            const sizeSel = h('select', { title: '每页条数' },
+                [10, 20, 50].map(n => h('option', Object.assign({ value: n }, n === ps ? { selected: '' } : {}), String(n))));
+            sizeSel.addEventListener('change', () => { st.pageSize = parseInt(sizeSel.value, 10); st.pageNum = 1; loadModels(); });
+            pager.appendChild(sizeSel);
+            container.appendChild(pager);
+        }
+        loadModels();
+    }
+
+    /** 比较已选模型(02-06 前置):关键字段并排对照。 */
+    function compareModels(ctx, body, ids) {
+        window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id) + '/models')
+            .then(resp => {
+                const models = resp && Array.isArray(resp.data) ? resp.data : [];
+                const picked = ids.map(id => models.find(m => m.id === id)).filter(Boolean);
+                const fields = [['模型', m => m.name || m.id], ['来源阶段', m => m.stage || '—'],
+                    ['计算路径', m => m.route || '—'], ['训练数据', m => m.trainingFile ? String(m.trainingFile).split(/[\\/]/).pop() : '—'],
+                    ['独立测试', m => m.testFile ? String(m.testFile).split(/[\\/]/).pop() : '未提供'],
+                    ['父模型', m => { const p = models.find(x => x.id === m.parentModelId); return p ? p.name : '基准配置'; }],
+                    ['结果状态', m => m.resultStatus || '—'], ['交付文件', m => m.deliveryWorkbookFile ? String(m.deliveryWorkbookFile).split(/[\\/]/).pop() : '—']];
+                const tbl = h('table', { class: 'wb-table' },
+                    h('tr', null, ['属性'].concat(picked.map(p => h('th', null, p.name || p.id)))));
+                fields.forEach(([label, get]) => tbl.appendChild(h('tr', null,
+                    h('td', { style: 'color:#6b7280' }, label),
+                    picked.map(p => h('td', null, String(get(p)))))));
+                const box = h('div', { class: 'wb-card', style: 'padding:14px;margin-top:14px' },
+                    h('div', { class: 'wb-section-title', style: 'margin-bottom:8px' }, '比较已选模型'),
+                    tbl,
+                    h('div', { class: 'wb-actions-row', style: 'margin-top:10px' },
+                        h('button', { class: 'wb-btn wb-btn-outline', onclick: () => renderModelsBody(ctx, body) }, '‹ 返回清单')));
+                body.innerHTML = '';
+                body.appendChild(box);
+            });
+    }
+
+    /** UQ评估条件对比(02-06):同模型两份及以上评估并排;方法/配置差异显式提示;
+     *  两份记录保持独立,后续预测须显式选择其中一份,不自动合并或挑选胜者。 */
+    function compareUq(ctx, body, model, uqIds) {
+        Promise.all([
+            window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id) + '/uq-records'),
+            window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id) + '/predictions').catch(() => null)
+        ]).then(([resp, pResp]) => {
+            const all = resp && (resp.success || resp.code === 200) && Array.isArray(resp.data) ? resp.data : [];
+            const picked = uqIds.map(id => all.find(r => r.id === id)).filter(Boolean);
+            const preds = pResp && (pResp.success || pResp.code === 200) && Array.isArray(pResp.data) ? pResp.data : [];
+            body.innerHTML = '';
+            if (!picked.length) {
+                body.appendChild(h('div', { class: 'wb-empty' }, '评估记录不存在或已被删除。'));
+                return;
+            }
+            const dur = r => r.startedAt && r.finishedAt ? fmtSpan(r.finishedAt - r.startedAt) : '—';
+            const uqUsed = uid => preds.filter(p => p.uqRecordId === uid).length;
+            const methodsDiffer = picked.some(r => r.method !== picked[0].method);
+            const setupsDiffer = picked.some(r => (r.particleCount || 0) !== (picked[0].particleCount || 0));
+            const backBtn = h('button', { class: 'wb-btn wb-btn-outline' }, '‹ 返回评估记录');
+            backBtn.addEventListener('click', () => { renderModelsBody(ctx, body); });
+            body.appendChild(h('div', { style: 'display:flex;align-items:center;gap:14px;margin-bottom:4px' },
+                backBtn,
+                h('div', { class: 'wb-page-title', style: 'margin:0' }, '模型成果 / 不确定性评估对比'),
+                h('div', { class: 'wb-spacer' })));
+            body.appendChild(h('div', { class: 'wb-page-sub' },
+                (model.name || model.id) + ' / ' + picked.map(r => r.runId || r.id).join(' 与 ')
+                + ' / ' + picked.length + '份记录保持独立'));
+            if (methodsDiffer || setupsDiffer) {
+                body.appendChild(h('div', { class: 'wb-infobar', style: 'border-left:4px solid #d97706;background:#fffbeb;margin-top:10px' },
+                    '⚠ 两份评估的' + (methodsDiffer ? '方法不同' : '采样配置不同')
+                    + ',不能将区间差异只归因于数值算法;请结合各自统计提示解读。'));
+            }
+            const fields = [
+                ['确定性模型', () => model.name || model.id],
+                ['评估方法', r => '方法' + (r.method || '—') + ({ B: ' 联合参数采样', C: ' 主参数采样', D: ' 局部近似' }[r.method] || '')],
+                ['采样设置', r => r.particleCount ? r.particleCount + '粒子' : '—'],
+                ['计算状态', r => r.status === 'COMPLETED' ? '计算已结束' : r.status === 'FAILED' ? '计算失败' : '计算中'],
+                ['实际耗时', r => dur(r)],
+                ['统计提示', r => r.message || '—'],
+                ['输出传播', r => { const n = uqUsed(r.id); return n ? '已用于预测×' + n : '未传播'; }],
+                ['交付文件', r => r.deliveryFile ? String(r.deliveryFile).split(/[\\/]/).pop() : '—'],
+                ['记录身份', r => r.runId || r.id]
+            ];
+            const tbl = h('table', { class: 'wb-table' },
+                h('tr', null, ['比较项'].concat(picked.map(p => h('th', null, p.runId || p.id)))));
+            fields.forEach(([label, get]) => tbl.appendChild(h('tr', null,
+                h('td', { style: 'color:#6b7280' }, label),
+                picked.map(p => h('td', null, String(get(p)))))));
+            const focusUq = picked[0];
+            body.appendChild(h('div', { class: 'wb-card', style: 'padding:14px;margin-top:14px' },
+                tbl,
+                h('div', { class: 'wb-section-title', style: 'margin:16px 0 6px' }, '后续预测选择'),
+                h('div', { class: 'wb-hint', style: 'margin-bottom:10px' },
+                    '模型 ' + (model.name || model.id) + ' / 评估 ' + (focusUq.runId || focusUq.id)
+                    + ' / 参数引起的输出区间在新输入下重新传播;预测前请在预测页显式选择该记录。'),
+                h('div', { class: 'wb-actions-row' },
+                    h('button', {
+                        class: 'wb-btn wb-btn-primary',
+                        onclick: () => {
+                            window.__WB_PREDICT_MODEL__ = model;
+                            ctx.navigate('predictions');
+                            toast('请在"不确定性评估"下拉显式选择 ' + (focusUq.runId || focusUq.id), 'info');
+                        }
+                    }, '进入新工况预测配置'))));
+        }).catch(e => {
+            body.innerHTML = '';
+            body.appendChild(h('div', { class: 'wb-empty' }, '评估对比加载失败:' + e.message));
+        });
+    }
+
+    /** 模型详情(02-03):来源与数据 / 参数与输出 / 不确定性评估。 */
+    function renderModelDetail(ctx, body, modelId) {
+        body.innerHTML = '';
+        body.appendChild(h('div', { class: 'wb-empty' }, '正在加载模型详情...'));
+        Promise.all([
+            window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id) + '/models'),
+            window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id) + '/uq-records').catch(() => null),
+            window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id) + '/predictions').catch(() => null)
+        ]).then(([resp, uqResp, predResp]) => {
+            const models = resp && Array.isArray(resp.data) ? resp.data : [];
+            const m = models.find(x => x.id === modelId);
+            const uqRecords = uqResp && uqResp.success && Array.isArray(uqResp.data) ? uqResp.data : [];
+            const predictions = predResp && (predResp.success || predResp.code === 200) && Array.isArray(predResp.data) ? predResp.data : [];
+            body.innerHTML = '';
+            if (!m) {
+                body.appendChild(h('div', { class: 'wb-empty' }, '模型不存在或已被删除。'));
+                return;
+            }
+            const parent = models.find(p => p.id === m.parentModelId);
+            // 顶部按钮行(02-03):返回模型清单 | 打开建模任务 | 新工况预测
+            body.appendChild(h('div', { style: 'display:flex;align-items:center;gap:14px;margin-bottom:4px' },
+                h('button', { class: 'wb-btn wb-btn-outline', onclick: () => { MODEL_VIEW.tab = 'list'; MODEL_VIEW.detailId = null; renderModelsBody(ctx, body); } }, '‹ 返回模型清单'),
+                h('div', { class: 'wb-page-title', style: 'margin:0' }, '模型成果 / ' + (m.name || m.id)),
+                h('div', { class: 'wb-spacer' }),
+                m.taskId ? h('button', {
+                    class: 'wb-btn wb-btn-outline',
+                    onclick: () => {
+                        /* 沿父子/任务关系回溯(说明书2.3):按来源阶段选业务流,直达来源任务 */
+                        openRecordTask(ctx, { id: m.taskId, kind: (m.stage || '').indexOf('2.7') === 0 ? 'steady_update' : 'steady' });
+                    }
+                }, '打开建模任务') : null,
+                h('button', {
+                    class: 'wb-btn wb-btn-primary',
+                    onclick: () => { window.__WB_PREDICT_MODEL__ = m; ctx.navigate('predictions'); }
+                }, '新工况预测')));
+            body.appendChild(h('div', { class: 'wb-page-sub' },
+                (m.sourceBusiness || '—') + ' · ' + (m.stage || '—') + ' / ' + (m.route || '—') + ' / ' + (m.engineId || '—') + ' · 三部件'));
+
+            const tabBar = h('div', { class: 'wb-tabs', style: 'margin-bottom:12px' });
+            const holder = h('div', null);
+            const SUBS = [['src', '来源与数据'], ['param', '参数与输出'], ['uq', '不确定性评估']];
+            let sub = 'src';
+            SUBS.forEach(([key, label]) => tabBar.appendChild(h('div', {
+                class: 'wb-tab', 'data-sub': key,
+                onclick: () => { sub = key; paintTabs(); paint(); }
+            }, label)));
+            body.appendChild(tabBar);
+            body.appendChild(holder);
+
+            function paintTabs() {
+                tabBar.querySelectorAll('.wb-tab').forEach(el =>
+                    el.classList.toggle('active', el.getAttribute('data-sub') === sub));
+            }
+            function paint() {
+                holder.innerHTML = '';
+                if (sub === 'src') {
+                    const myUq = uqRecords.filter(r => r.modelAssetId === m.id && r.status === 'COMPLETED');
+                    if (m.resultStatus === '诊断(未收敛但有效)') {
+                        holder.appendChild(h('div', { class: 'wb-infobar', style: 'border-left:4px solid #d97706;background:#fffbeb' },
+                            '⚠ 模型已交付;小目标改进停止,一阶段驻点检查未通过;可进入支持的下游。'));
+                    }
+                    // 溯源行(02-03):父模型 | 当前建模方式 | 本次参数范围 | 关联UQ
+                    holder.appendChild(h('table', { class: 'wb-table', style: 'max-width:1180px' },
+                        h('tr', null, ['父模型', '当前建模方式', '本次参数范围', '关联UQ'].map(x => h('th', null, x))),
+                        h('tr', null,
+                            h('td', null, parent ? parent.name : '基准配置'),
+                            h('td', null, (m.stage || '—') + ' / ' + (m.route || '—')),
+                            h('td', null, '稳态系数、燃油偏置'),
+                            h('td', null, myUq.length
+                                ? myUq.map(r => r.runId || r.id).join('、')
+                                : h('span', { class: 'wb-hint' }, '未评估')))));
+                    // 输入数据与实际用途(02-03):真实训练/测试文件及其角色;“查看全部文件身份”展开登记路径
+                    const fileIdDrawer = h('div', null);
+                    holder.appendChild(h('div', { style: 'display:flex;justify-content:space-between;align-items:baseline;margin:16px 0 8px' },
+                        h('div', { class: 'wb-section-title', style: 'margin:0' }, '输入数据与实际用途'),
+                        h('button', {
+                            class: 'wb-btn wb-btn-outline',
+                            onclick: () => {
+                                fileIdDrawer.innerHTML = '';
+                                fileIdDrawer.appendChild(h('table', { class: 'wb-table', style: 'max-width:1180px;margin-bottom:8px' },
+                                    h('tr', null, ['文件身份', '路径/状态'].map(x => h('th', null, x))),
+                                    [
+                                        ['训练数据', m.trainingFile || '未提供'],
+                                        ['独立测试', m.testFile || '未提供(不影响训练和模型保存)'],
+                                        ['正式交付工作簿', m.deliveryWorkbookFile || '未登记'],
+                                        ['模型身份文件', m.identityFile || '未携带(非导入或旧版登记)'],
+                                        ['输出位置', m.deliveryWorkbookFile ? String(m.deliveryWorkbookFile).replace(/[\\/][^\\/]+$/, '') : '—']
+                                    ].map(r => h('tr', null,
+                                        h('td', null, r[0]),
+                                        h('td', { class: 'wb-hint', style: 'word-break:break-all' }, r[1])))));
+                                fileIdDrawer.appendChild(h('div', { class: 'wb-hint' },
+                                    '以上为登记时保存的路径与文件;内容身份(identity.json)随导入/交付保存,不按同名文件猜测。'));
+                            }
+                        }, '查看全部文件身份')));
+                    holder.appendChild(fileIdDrawer);
+                    const usageRows = [];
+                    if (m.trainingFile) usageRows.push(['训练数据', String(m.trainingFile).split(/[\\/]/).pop(), '稳态训练点', '参与辨识与训练误差']);
+                    if (m.testFile) usageRows.push(['独立测试', String(m.testFile).split(/[\\/]/).pop(), '独立测试', '测试误差单独报告,不并入训练']);
+                    else usageRows.push(['独立测试(本次未提供)', '—', '独立测试', '不影响训练和模型保存']);
+                    holder.appendChild(usageRows.length
+                        ? h('table', { class: 'wb-table', style: 'max-width:1180px' },
+                            h('tr', null, ['数据批次', '原始文件', '本次角色', '实际使用范围'].map(x => h('th', null, x))),
+                            usageRows.map(r => h('tr', null, r.map((c, i) => h('td', i > 0 ? { class: 'wb-hint' } : null, c)))))
+                        : h('div', { class: 'wb-hint' }, '导入模型未携带数据批次信息;数据血缘见交付 identity.json。'));
+                    // 本次模型交付(02-03):工作簿 + 身份文件 + 输出位置
+                    holder.appendChild(h('div', { class: 'wb-section-title', style: 'margin:16px 0 8px' }, '本次模型交付'));
+                    holder.appendChild(h('table', { class: 'wb-table', style: 'max-width:1180px' },
+                        h('tr', null, ['文件', '说明', ''].map(x => h('th', null, x))),
+                        h('tr', null,
+                            h('td', null, m.deliveryWorkbookFile ? String(m.deliveryWorkbookFile).split(/[\\/]/).pop() : '—'),
+                            h('td', { class: 'wb-hint' }, '正式交付工作簿(恢复下游模型;不含训练明细)'),
+                            h('td', null, m.deliveryWorkbookFile
+                                ? h('a', { class: 'wb-btn wb-btn-outline', href: modelDownloadUrl(ctx.project.id, m.id) }, '下载')
+                                : h('span', { class: 'wb-hint' }, '无'))),
+                        m.identityFile ? h('tr', null,
+                            h('td', null, String(m.identityFile).split(/[\\/]/).pop()),
+                            h('td', { class: 'wb-hint' }, '模型身份文件(导入携带)'),
+                            h('td', null, '')) : null));
+                    if (m.deliveryWorkbookFile) {
+                        holder.appendChild(h('div', { class: 'wb-hint', style: 'margin-top:4px' },
+                            '输出位置: ' + String(m.deliveryWorkbookFile).replace(/[\\/][^\\/]+$/, '')));
+                    }
+                    holder.appendChild(h('div', { class: 'wb-actions-row', style: 'margin-top:10px' },
+                        h('button', { class: 'wb-btn wb-btn-outline', onclick: () => { MODEL_VIEW.tab = 'data'; renderModelsBody(ctx, body); } }, '查看数据关联模型'),
+                        h('button', { class: 'wb-btn wb-btn-primary', onclick: () => { window.__WB_PREDICT_MODEL__ = m; ctx.navigate('predictions'); } }, '新工况预测')));
+                } else if (sub === 'param') {
+                    const ph = h('div', null, h('div', { class: 'wb-hint' }, '正在加载参数与节点表...'));
+                    holder.appendChild(ph);
+                    if (!m.taskId) {
+                        ph.innerHTML = '';
+                        ph.appendChild(h('div', { class: 'wb-hint' }, '导入模型未携带任务结果;完整参数与节点见交付工作簿。'));
+                        return;
+                    }
+                    window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id)
+                            + '/tasks/' + encodeURIComponent(m.taskId) + '/result-detail')
+                        .then(resp => {
+                            ph.innerHTML = '';
+                            const d = resp && (resp.success || resp.code === 200) ? resp.data : null;
+                            if (!d) { ph.appendChild(h('div', { class: 'wb-hint' }, (resp && resp.message) || '结果明细未生成。')); return; }
+                            const classRows = d.parameterClassTable;
+                            if (Array.isArray(classRows) && classRows.length) {
+                                ph.appendChild(h('div', { class: 'wb-section-title', style: 'margin-bottom:8px' }, '全部参数'));
+                                ph.appendChild(dataTable(classRows, { maxRows: 14 }));
+                            }
+                            const nodes = Array.isArray(d.scheduleNodeTable) ? d.scheduleNodeTable
+                                : Array.isArray(d.finalSchedule) ? d.finalSchedule : null;
+                            if (Array.isArray(nodes) && nodes.length) {
+                                ph.appendChild(h('div', { class: 'wb-section-title', style: 'margin:14px 0 8px' }, '调度节点'));
+                                ph.appendChild(dataTable(nodes, { maxRows: 20 }));
+                            }
+                            if (!classRows && !nodes) ph.appendChild(h('div', { class: 'wb-hint' }, '明细中未包含参数/节点表;以交付Excel为准。'));
+                        })
+                        .catch(e => { ph.innerHTML = ''; ph.appendChild(h('div', { class: 'wb-hint' }, '加载失败:' + e.message)); });
+                } else {
+                    /* 不确定性评估(02-05/02-06/02-07):同模型多份评估并列,勾选对比,显式选择;
+                       无评估时确定性预测仍可用,父模型历史评估仅可见,不移植区间(说明书2.3)。 */
+                    const METHOD_LABEL = { B: '联合参数采样', C: '主参数采样', D: '局部近似' };
+                    const mine = uqRecords.filter(r => r.modelAssetId === m.id)
+                        .slice().sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0));
+                    const preds = predictions.filter(p => p.modelAssetId === m.id);
+                    const uqPredUse = uid => preds.filter(p => p.uqRecordId === uid).length;
+                    const newUqBtn = primary => h('button', {
+                        class: 'wb-btn ' + (primary ? 'wb-btn-primary' : 'wb-btn-outline') + (m.taskId ? '' : ' disabled'),
+                        title: m.taskId ? '' : '导入模型无来源任务;评估须从建模任务的UQ页签发起',
+                        onclick: () => {
+                            if (!m.taskId) { toast('导入模型无来源任务;评估须从建模任务的UQ页签发起', 'info'); return; }
+                            window.__WB_OPEN_TASK__ = m.taskId;
+                            window.__WB_OPEN_TASK_TAB__ = 'uq';
+                            ctx.enterTask({ id: (m.stage || '').indexOf('2.7') === 0 ? 'steady_update' : 'steady' });
+                        }
+                    }, '新建不确定性评估');
+
+                    if (!mine.length) {
+                        /* 02-07 无匹配评估:不移植父模型区间,保留确定性预测 */
+                        holder.appendChild(h('div', { class: 'wb-infobar', style: 'border-left:4px solid #d97706;background:#fffbeb' },
+                            '⚠ 本模型尚未评估,可新建匹配评估;确定性新工况预测仍然可用。'));
+                        holder.appendChild(h('div', { class: 'wb-section-title', style: 'margin:14px 0 6px' }, '当前模型'));
+                        holder.appendChild(h('table', { class: 'wb-table', style: 'max-width:1180px' },
+                            h('tr', null, ['模型版本', '来源', '训练数据', '评估状态'].map(x => h('th', null, x))),
+                            h('tr', null,
+                                h('td', null, m.name || m.id),
+                                h('td', { class: 'wb-hint' }, (m.stage || '—') + ' / ' + (m.route || '—')),
+                                h('td', { class: 'wb-hint' }, m.trainingFile ? String(m.trainingFile).split(/[\\/]/).pop() : '—'),
+                                h('td', null, '未运行'))));
+                        const parentUq = parent ? uqRecords.filter(r => r.modelAssetId === parent.id) : [];
+                        holder.appendChild(h('div', { class: 'wb-section-title', style: 'margin:16px 0 6px' }, '父模型的历史评估'));
+                        holder.appendChild(parentUq.length
+                            ? h('table', { class: 'wb-table', style: 'max-width:1180px' },
+                                h('tr', null, ['记录', '所属模型', '可用于当前模型区间', '当前操作'].map(x => h('th', null, x))),
+                                parentUq.map(r => h('tr', null,
+                                    h('td', null, (r.runId || r.id) + ' / 方法' + (r.method || '—')),
+                                    h('td', { class: 'wb-hint' }, r.modelName || (parent && parent.name) || '—'),
+                                    h('td', { style: 'color:#b45309' }, '不兼容:模型及数据已更新'),
+                                    h('td', null, '仅查看历史'))))
+                            : h('div', { class: 'wb-hint' },
+                                parent ? '父模型暂无评估记录。' : '该模型无父模型(基准配置),不存在可查看的历史评估。'));
+                        holder.appendChild(h('div', { style: 'display:flex;gap:40px;margin:14px 0 4px;color:#b45309;font-weight:600' },
+                            h('span', null, '参数区间: 未计算'), h('span', null, '输出区间: 未计算')));
+                        holder.appendChild(h('div', { class: 'wb-hint' },
+                            '同父并列方案不继承父模型区间;需要区间时以当前模型和数据新建匹配评估,此前预测保留确定性输出。'));
+                        holder.appendChild(h('div', { class: 'wb-actions-row', style: 'margin-top:12px' },
+                            h('button', {
+                                class: 'wb-btn wb-btn-outline',
+                                onclick: () => { window.__WB_PREDICT_MODEL__ = m; ctx.navigate('predictions'); }
+                            }, '确定性新工况预测'),
+                            parent && parentUq.length ? h('button', {
+                                class: 'wb-btn wb-btn-outline',
+                                onclick: () => { MODEL_VIEW.detailId = parent.id; renderModelsBody(ctx, body); }
+                            }, '查看父模型的评估') : null,
+                            h('div', { class: 'wb-spacer' }),
+                            newUqBtn(true)));
+                        return;
+                    }
+
+                    /* 02-05 多份评估记录并列 + 勾选作条件对比 */
+                    holder.appendChild(h('div', { style: 'display:flex;align-items:baseline;gap:16px;margin-bottom:8px' },
+                        h('div', { class: 'wb-section-title', style: 'margin:0' }, mine.length + '份评估记录'),
+                        h('span', { class: 'wb-hint', style: 'margin:0' },
+                            '已勾选' + Object.keys(MODEL_VIEW.checkedUq).length + '份作条件对比'),
+                        h('div', { class: 'wb-spacer' }),
+                        newUqBtn(false)));
+
+                    const uqDetailHolder = h('div', { style: 'margin-top:10px' });
+                    const showUqDetail = (r, into) => {
+                        const target = into || uqDetailHolder;
+                        target.innerHTML = '';
+                        target.appendChild(h('div', { class: 'wb-hint' }, '正在加载 ' + (r.runId || r.id) + ' 明细...'));
+                        window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id)
+                                + '/uq-records/' + encodeURIComponent(r.id) + '/detail')
+                            .then(resp => {
+                                const d = resp && (resp.success || resp.code === 200) ? resp.data : null;
+                                const tbl = d && (d.parameterTable || (d.delivery && d.delivery.parameterTable));
+                                target.innerHTML = '';
+                                if (!Array.isArray(tbl) || !tbl.length) {
+                                    target.appendChild(h('div', { class: 'wb-hint' }, '明细中未包含参数区间表。'));
+                                    return;
+                                }
+                                target.appendChild(h('div', { class: 'wb-hint', style: 'margin:2px 0 6px' },
+                                    '共 ' + tbl.length + ' 个参数;q05–q95为后验样本90%区间;黑色点=确定性点估计,橙色方块=UQ中位数;区间越窄=该参数辨识越充分。'));
+                                const chartHost = h('div', { style: 'width:100%;height:' + Math.max(360, tbl.length * 16 + 150) + 'px;border:1px solid #e5e7eb;border-radius:6px' });
+                                target.appendChild(chartHost);
+                                target.appendChild(h('div', { class: 'wb-section-title', style: 'margin:14px 0 6px' }, '参数明细(全量)'));
+                                target.appendChild(dataTable(tbl, { maxRows: tbl.length + 1 }));
+                                const loadChart = () => {
+                                    if (!window.echarts) { setTimeout(loadChart, 200); return; }
+                                    const chart = window.echarts.init(chartHost);
+                                    const renderItem = (params, api) => {
+                                        const idx = api.value(0);
+                                        const lo = api.coord([api.value(1), idx]);
+                                        const hi = api.coord([api.value(2), idx]);
+                                        const barH = api.size([0, 1])[1] * 0.45;
+                                        return { type: 'rect', shape: { x: Math.min(lo[0], hi[0]), y: lo[1] - barH / 2, width: Math.max(2, Math.abs(hi[0] - lo[0])), height: barH }, style: api.style() };
+                                    };
+                                    chart.setOption({
+                                        title: { text: '参数95%置信区间(后验样本分位数)', left: 10, top: 4, textStyle: { fontSize: 13 } },
+                                        tooltip: {
+                                            trigger: 'item',
+                                            formatter: p => {
+                                                const row = tbl[p.dataIndex] || {};
+                                                return (row.parameter || '') + '<br/>点估计: ' + (+row.point_estimate).toPrecision(4)
+                                                    + '<br/>中位数: ' + (+row.median).toPrecision(4)
+                                                    + '<br/>q05–q95: ' + (+row.q05).toPrecision(4) + ' ~ ' + (+row.q95).toPrecision(4)
+                                                    + '<br/>边界: [' + row.lower_bound + ', ' + row.upper_bound + ']';
+                                            }
+                                        },
+                                        grid: { left: 130, right: 70, top: 36, bottom: 24 },
+                                        xAxis: { type: 'value', scale: true, name: '修正量', nameLocation: 'middle' },
+                                        yAxis: { type: 'category', data: tbl.map(r => r.parameter), inverse: true, axisLabel: { fontSize: 10 } },
+                                        dataZoom: [{ type: 'inside' }, { type: 'slider', right: 12, top: 36, bottom: 20, width: 16 }],
+                                        series: [
+                                            { name: 'q05–q95', type: 'custom', renderItem: renderItem,
+                                              data: tbl.map((r, i) => [i, r.q05, r.q95]),
+                                              encode: { x: [1, 2], y: 0 }, itemStyle: { color: '#5b8ff9', opacity: 0.5 }, z: 1 },
+                                            { name: '确定性点估计', type: 'scatter',
+                                              data: tbl.map((r, i) => [i, r.point_estimate]),
+                                              symbolSize: 5, itemStyle: { color: '#111827' }, z: 2 },
+                                            { name: 'UQ中位数', type: 'scatter',
+                                              data: tbl.map((r, i) => [i, r.median]),
+                                              symbol: 'rect', symbolSize: 5, itemStyle: { color: '#d97706' }, z: 2 }
+                                        ]
+                                    });
+                                };
+                                if (window.echarts) loadChart();
+                                else {
+                                    let ld = document.getElementById('fm-echarts-loader');
+                                    if (!ld) {
+                                        ld = document.createElement('script');
+                                        ld.id = 'fm-echarts-loader';
+                                        ld.src = './lib/echarts/echarts.min.js';
+                                        document.head.appendChild(ld);
+                                    }
+                                    const wait = () => { if (window.echarts) loadChart(); else setTimeout(wait, 200); };
+                                    wait();
+                                }
+                            })
+                            .catch(e => {
+                                target.innerHTML = '';
+                                target.appendChild(h('div', { class: 'wb-hint' }, '加载UQ明细失败:' + e.message));
+                            });
+                    };
+
+                    const uqTbl = h('table', { class: 'wb-table', style: 'max-width:1180px' },
+                        h('tr', null, ['', '评估记录 / 方法', '采样设置', '计算/统计状态', '实际耗时', '输出传播', ''].map((x, i) =>
+                            h('th', i === 0 ? { style: 'width:34px' } : null, x))));
+                    mine.forEach(r => {
+                        const dur = r.startedAt && r.finishedAt ? fmtSpan(r.finishedAt - r.startedAt) : null;
+                        const used = uqPredUse(r.id);
+                        const cb = h('input', { type: 'checkbox' });
+                        if (MODEL_VIEW.checkedUq[r.id]) cb.checked = true;
+                        cb.addEventListener('change', () => {
+                            if (cb.checked) MODEL_VIEW.checkedUq[r.id] = true; else delete MODEL_VIEW.checkedUq[r.id];
+                            MODEL_VIEW.uqFocus = r.id;
+                            paint();
+                        });
+                        uqTbl.appendChild(h('tr', { class: 'clickable', onclick: () => { MODEL_VIEW.uqFocus = r.id; paint(); } },
+                            h('td', { onclick: ev => ev.stopPropagation() }, cb),
+                            h('td', null,
+                                h('div', { style: 'font-weight:600;color:#111827' },
+                                    (r.runId || r.id) + ' · 方法' + (r.method || '—') + (METHOD_LABEL[r.method] ? ' ' + METHOD_LABEL[r.method] : '')),
+                                h('div', { class: 'wb-hint', style: 'margin:0' }, r.id)),
+                            h('td', { class: 'wb-hint' }, r.particleCount ? r.particleCount + '粒子' : '—'),
+                            h('td', null,
+                                h('div', { style: 'font-weight:600;color:' + (r.status === 'COMPLETED' ? '#0f766e' : r.status === 'FAILED' ? '#b91c1c' : '#b45309') },
+                                    r.status === 'COMPLETED' ? '计算已结束' : r.status === 'FAILED' ? '计算失败' : '计算中'),
+                                r.message ? h('div', { class: 'wb-hint', style: 'margin:0' }, r.message) : null),
+                            h('td', { class: 'wb-hint' }, dur || '—'),
+                            h('td', null, used
+                                ? h('span', { style: 'color:#0f766e;font-weight:600' }, '已用于预测×' + used)
+                                : h('span', { class: 'wb-hint' }, '未传播')),
+                            h('td', null, r.status === 'COMPLETED' ? h('button', {
+                                class: 'wb-btn wb-btn-outline', style: 'padding:3px 10px;font-size:12px',
+                                onclick: ev => { ev.stopPropagation(); showUqDetail(r, uqDetailHolder); }
+                            }, '查看区间表') : h('button', {
+                                class: 'wb-btn wb-btn-outline', style: 'padding:3px 10px;font-size:12px',
+                                title: '查看该次评估的运行过程/失败原因(建模任务UQ页)',
+                                onclick: ev => {
+                                    ev.stopPropagation();
+                                    const tid = r.taskId || m.taskId;
+                                    if (!tid) { toast('该评估记录缺少任务归属,无法跳转', 'error'); return; }
+                                    window.__WB_OPEN_TASK__ = tid;
+                                    window.__WB_OPEN_TASK_TAB__ = 'uq';
+                                    ctx.enterTask({ id: assetEnterTaskId(m) });
+                                }
+                            }, '查看运行'))));
+                    });
+                    holder.appendChild(uqTbl);
+
+                    /* 已选摘要(02-05)+ 条件对比/运行记录/预测入口(02-06) */
+                    const selIds = Object.keys(MODEL_VIEW.checkedUq).filter(id => mine.some(r => r.id === id));
+                    const focus = mine.find(r => r.id === MODEL_VIEW.uqFocus) || mine.find(r => r.id === selIds[0]) || mine[0];
+                    if (focus) {
+                        const dur2 = focus.startedAt && focus.finishedAt ? fmtSpan(focus.finishedAt - focus.startedAt) : '—';
+                        holder.appendChild(h('div', { style: 'border-top:1px solid #f1f5f9;margin-top:14px;padding-top:12px' },
+                            h('div', { style: 'display:flex;gap:18px;align-items:baseline;flex-wrap:wrap' },
+                                h('span', { style: 'font-weight:600;font-size:15px' },
+                                    '已选 ' + (focus.runId || focus.id) + ' / 方法' + (focus.method || '—'))),
+                            h('div', { class: 'wb-hint', style: 'margin:6px 0 0;display:flex;gap:26px;flex-wrap:wrap' },
+                                h('span', null, '对应模型: ' + (focus.modelName || m.name || m.id)),
+                                h('span', null, '采样: ' + (focus.particleCount ? focus.particleCount + '粒子' : '默认')),
+                                h('span', null, '耗时: ' + dur2),
+                                h('span', null, focus.deliveryFile
+                                    ? '交付: ' + String(focus.deliveryFile).split(/[\\/]/).pop()
+                                    : '交付: —')),
+                            focus.message ? h('div', { class: 'wb-hint', style: 'margin:4px 0 0' }, '统计提示: ' + focus.message) : null));
+                    }
+                    holder.appendChild(uqDetailHolder);
+                    holder.appendChild(h('div', { class: 'wb-actions-row', style: 'margin-top:12px' },
+                        h('button', {
+                            class: 'wb-btn wb-btn-primary' + (focus ? '' : ' disabled'),
+                            title: '成功就地查看区间表(04-15);失败/执行中跳转对应建模任务的评估过程页(04-14)',
+                            onclick: () => {
+                                if (!focus) return;
+                                if (focus.status === 'COMPLETED') { showUqDetail(focus, uqDetailHolder); return; }
+                                // 失败/执行中:过程与日志在建模任务UQ页(04-14),跳转查看
+                                const tid = focus.taskId || m.taskId;
+                                if (!tid) { toast('该评估记录缺少任务归属,无法跳转', 'error'); return; }
+                                window.__WB_OPEN_TASK__ = tid;
+                                window.__WB_OPEN_TASK_TAB__ = 'uq';
+                                ctx.enterTask({ id: assetEnterTaskId(m) });
+                            }
+                        }, '查看评估结果'),
+                        h('button', {
+                            class: 'wb-btn wb-btn-outline' + (selIds.length >= 2 ? '' : ' disabled'),
+                            title: selIds.length >= 2 ? '' : '勾选两份及以上评估后可比较条件',
+                            onclick: () => { if (selIds.length >= 2) compareUq(ctx, body, m, selIds.slice()); }
+                        }, '比较评估条件(' + selIds.length + ')'),
+                        focus && focus.taskId ? h('button', {
+                            class: 'wb-btn wb-btn-outline',
+                            onclick: () => openRecordTask(ctx, { id: 'uq-' + focus.id, kind: 'steady' })
+                        }, '查看运行记录') : null,
+                        h('div', { class: 'wb-spacer' }),
+                        h('button', {
+                            class: 'wb-btn wb-btn-primary',
+                            onclick: () => {
+                                window.__WB_PREDICT_MODEL__ = m;
+                                ctx.navigate('predictions');
+                                if (focus && focus.status === 'COMPLETED') {
+                                    toast('已带上模型 ' + (m.name || m.id)
+                                        + ';请在"不确定性评估"下拉显式选择 ' + (focus.runId || focus.id), 'info');
+                                }
+                            }
+                        }, '使用本模型与所选评估预测')));
+
+                    /* 已关联预测记录(说明书2.2:详情包含已关联UQ和预测记录) */
+                    holder.appendChild(h('div', { class: 'wb-section-title', style: 'margin:18px 0 6px' }, '已关联预测记录'));
+                    holder.appendChild(preds.length
+                        ? h('table', { class: 'wb-table', style: 'max-width:1180px' },
+                            h('tr', null, ['运行标识', '使用评估', '工况数', '状态', '时间'].map(x => h('th', null, x))),
+                            preds.map(p => h('tr', null,
+                                h('td', null, p.runId || p.id),
+                                h('td', { class: 'wb-hint' }, p.uqRecordId
+                                    ? ((mine.find(r => r.id === p.uqRecordId) || {}).runId || p.uqRecordId)
+                                    : '确定性(不用区间)'),
+                                h('td', { class: 'wb-hint' }, (p.conditions || []).length || 1),
+                                h('td', null, p.status === 'COMPLETED' ? '已完成' : p.status === 'FAILED' ? '失败' : '执行中'),
+                                h('td', { class: 'wb-hint' }, p.createdAt ? new Date(p.createdAt).toLocaleString('zh-CN') : '—'))))
+                        : h('div', { class: 'wb-hint' }, '尚无引用本模型的预测记录;在"输出预测"发起后在此关联查看。'));
+                }
+            }
+            paintTabs();
+            paint();
+        }).catch(e => {
+            body.innerHTML = '';
+            body.appendChild(h('div', { class: 'wb-empty' }, '模型详情加载失败:' + e.message));
+        });
+    }
+
+    /** 数据关联(02-04):从同一数据文件反查各阶段模型及其UQ(说明书2.3 数据文件页支持反查)。 */
+    function renderDataAssociation(ctx, body, modelId) {
+        body.innerHTML = '';
+        body.appendChild(h('div', { class: 'wb-empty' }, '正在加载数据关联...'));
+        Promise.all([
+            window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id) + '/models'),
+            window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id) + '/uq-records').catch(() => null)
+        ]).then(([resp, uqResp]) => {
+            const models = resp && Array.isArray(resp.data) ? resp.data : [];
+            const m = models.find(x => x.id === modelId);
+            const uqRecords = uqResp && uqResp.success && Array.isArray(uqResp.data) ? uqResp.data : [];
+            body.innerHTML = '';
+            if (!m) {
+                body.appendChild(h('div', { class: 'wb-empty' }, '模型不存在或已被删除。'));
+                return;
+            }
+            const file = m.trainingFile ? String(m.trainingFile).split(/[\\/]/).pop() : null;
+            const backBtn = h('button', { class: 'wb-btn wb-btn-outline' }, '‹ 返回模型来源与数据');
+            backBtn.addEventListener('click', () => { MODEL_VIEW.tab = 'detail'; MODEL_VIEW.detailId = m.id; renderModelsBody(ctx, body); });
+            body.appendChild(h('div', { style: 'display:flex;align-items:center;gap:14px;margin-bottom:4px' },
+                backBtn,
+                h('div', { class: 'wb-page-title', style: 'margin:0' }, '模型成果 / 数据关联'),
+                h('div', { class: 'wb-spacer' }),
+                h('button', {
+                    class: 'wb-btn wb-btn-outline',
+                    onclick: async () => {
+                        // 02-04:预览原始数据——走项目文件库真实预览;仅登记路径未入库时如实说明
+                        try {
+                            const resp = await window.AppConfig.engineGet('projects/'
+                                + encodeURIComponent(ctx.project.id || '') + '/files/page',
+                                { category: 'data', name: file, pageSize: 10 });
+                            const hit = resp && resp.data && Array.isArray(resp.data.rows)
+                                ? resp.data.rows.find(r0 => r0.name === file) : null;
+                            if (!hit) { toast('该数据文件未在项目文件库中(模型仅登记了路径);无法在线预览', 'error'); return; }
+                            const pv = await window.AppConfig.engineGet('projects/'
+                                + encodeURIComponent(ctx.project.id || '') + '/files/' + hit.id + '/preview');
+                            if (pv && pv.code === 200 && pv.data && window.Workbench && window.Workbench.showFilePreview) {
+                                window.Workbench.showFilePreview(file, pv.data);
+                            } else {
+                                toast((pv && pv.message) || '预览失败', 'error');
+                            }
+                        } catch (e) { toast('预览失败:' + e.message, 'error'); }
+                    }
+                }, '预览原始数据')));
+            body.appendChild(h('div', { class: 'wb-page-sub' },
+                (m.engineId || '—') + ' / ' + (file || '未登记训练数据') + ' / 由 ' + (m.name || m.id) + ' 的来源详情进入'));
+            if (!file) {
+                body.appendChild(h('div', { class: 'wb-hint', style: 'margin-top:12px' },
+                    '该模型未登记训练数据文件(可能为导入模型);数据血缘见交付 identity.json。'));
+                return;
+            }
+            /* 文件身份(02-04):文件与版本/数据类型/可用状态;内容身份按保存路径核对,不按同名猜测 */
+            body.appendChild(h('table', { class: 'wb-table', style: 'max-width:1180px;margin-top:8px' },
+                h('tr', null, ['文件与版本', '数据类型', '文件可用状态', '内容核对'].map(x => h('th', null, x))),
+                h('tr', null,
+                    h('td', null, file),
+                    h('td', { class: 'wb-hint' }, '训练数据(稳态)'),
+                    h('td', null, '已登记(路径随模型保存)'),
+                    h('td', { class: 'wb-hint' }, '按保存的明确关系核对;不按同名文件或目录顺序猜测'))));
+            /* 使用该数据的模型 */
+            const usedBy = models.filter(x => x.trainingFile
+                && String(x.trainingFile).split(/[\\/]/).pop() === file);
+            body.appendChild(h('div', { style: 'display:flex;justify-content:space-between;align-items:baseline;margin:16px 0 6px' },
+                h('div', { class: 'wb-section-title', style: 'margin:0' }, '使用该数据的模型'),
+                h('span', { class: 'wb-hint', style: 'margin:0' },
+                    usedBy.length + '份模型 / ' + new Set(usedBy.map(x => x.stage || '—')).size + '个阶段')));
+            const tbl = h('table', { class: 'wb-table' },
+                h('tr', null, ['模型', '建模来源 / 路径', '数据在其中的作用', ''].map(x => h('th', null, x))));
+            usedBy.forEach(x => {
+                tbl.appendChild(h('tr', { class: 'clickable', onclick: () => { MODEL_VIEW.tab = 'detail'; MODEL_VIEW.detailId = x.id; renderModelsBody(ctx, body); } },
+                    h('td', { class: 'wb-link' }, x.name || x.id),
+                    h('td', { class: 'wb-hint' }, (x.stage || '—') + ' / ' + (x.route || '—')),
+                    h('td', null, x.id === m.id ? '本次模型训练数据'
+                        : (x.parentModelId ? '联合训练的既有数据' : '基础训练数据')),
+                    h('td', null, x.deliveryWorkbookFile
+                        ? h('span', { class: 'wb-hint' }, '已交付')
+                        : h('span', { class: 'wb-hint' }, '—'))));
+            });
+            body.appendChild(tbl);
+            /* 使用该数据的UQ */
+            const uqOnFile = uqRecords.filter(r => usedBy.some(x => x.id === r.modelAssetId));
+            body.appendChild(h('div', { class: 'wb-section-title', style: 'margin:16px 0 6px' }, '使用该数据的UQ'));
+            body.appendChild(uqOnFile.length
+                ? h('table', { class: 'wb-table', style: 'max-width:1180px' },
+                    h('tr', null, ['评估记录', '对应模型', '状态'].map(x => h('th', null, x))),
+                    uqOnFile.map(r => h('tr', { class: 'clickable', onclick: () => { MODEL_VIEW.tab = 'detail'; MODEL_VIEW.detailId = r.modelAssetId; renderModelsBody(ctx, body); } },
+                        h('td', { class: 'wb-link' }, (r.runId || r.id) + ' · 方法' + (r.method || '—')),
+                        h('td', { class: 'wb-hint' }, r.modelName || '—'),
+                        h('td', null, r.status === 'COMPLETED' ? '计算已结束'
+                            : r.status === 'FAILED' ? '计算失败' : '计算中'))))
+                : h('div', { class: 'wb-hint' }, '使用该数据的模型尚无评估记录。'));
+            body.appendChild(h('div', { class: 'wb-hint', style: 'margin-top:8px' },
+                '导入版本与原始文件、处理记录和运行配置分别保留;文件移动后按保存的关系与内容身份核对。'));
+        }).catch(e => {
+            body.innerHTML = '';
+            body.appendChild(h('div', { class: 'wb-empty' }, '数据关联加载失败:' + e.message));
+        });
+    }
+
+    /* ===== 个性化建模 · 输出预测(F-08 独立稳态预测,单工况确定性)===== */
+    const PREDICT_FIELDS = {
+        1: { label: '模式1 · 可测边界(Pt1/Tt1/Pamb)', fields: ['Pt1', 'Tt1', 'Pamb', 'Tamb', 'Mach', 'Wf_model', 'Mkp', 'Mkg'] },
+        2: { label: '模式2 · 环境边界(Pamb/Tamb/Mach)', fields: ['Pamb', 'Tamb', 'Mach', 'Wf_model', 'Mkp', 'Mkg'] },
+        3: { label: '模式3 · 高度边界(Altitude/Tamb/Mach)', fields: ['Altitude', 'Tamb', 'Mach', 'Wf_model', 'Mkp', 'Mkg'] }
+    };
+    const PREDICT_DEFAULTS = {
+        Pt1: '101325', Tt1: '288.15', Pamb: '101325', Tamb: '288.15', Mach: '0',
+        Wf_model: '1.20', Mkp: '320.0', Mkg: '0.0', Altitude: '0'
+    };
+    const PREDICT_UNITS = {
+        Pt1: 'Pa', Tt1: 'K', Pamb: 'Pa', Tamb: 'K', Mach: '—',
+        Wf_model: 'kg/s', Mkp: 'N·m', Mkg: 'N·m', Altitude: 'm'
+    };
+
+    pages['modeling.predictions'] = (ctx) => {
+        const pre0 = window.__WB_PREDICT_MODEL__;
+        const wrap = h('div', null,
+            h('div', { style: 'margin-bottom:14px' },
+                h('div', { class: 'wb-page-title', style: 'font-size:20px;margin-bottom:2px' }, '独立稳态输出预测'),
+                h('div', { class: 'wb-page-sub' },
+                    (ctx.project.engineId || '—') + ' / ' + (pre0 ? (pre0.name || pre0.id) : '模型待选')
+                    + ' / 新工况输入，不需要目标测量输出')));
+        const body = h('div', null);
+        wrap.appendChild(body);
+
+        const modelSel = h('select', { style: 'width:100%' });
+        const uqSel = h('select', { style: 'width:100%' }, h('option', { value: '' }, '不使用(确定性预测)'));
+        const modeSel = h('select', { style: 'width:100%' }, Object.keys(PREDICT_FIELDS).map(k =>
+            h('option', { value: k }, PREDICT_FIELDS[k].label)));
+        const condsHolder = h('div', null);
+        const runBtn = h('button', { class: 'wb-btn wb-btn-primary disabled' }, '计算预测');
+        const saveBtn = h('button', { class: 'wb-btn wb-btn-outline disabled' }, '保存预测记录');
+        const resultHolder = h('div', null, h('div', { class: 'wb-empty' }, '尚未计算——配置输入后开始预测。空白不代表零误差。'));
+        const historyHolder = h('div', null);
+        const gapHolder = h('div', null); // 01-21:展示保存记录而当前输入未计算时的分离对照区
+        const pre = window.__WB_PREDICT_MODEL__;
+        delete window.__WB_PREDICT_MODEL__;
+        const conds = []; // [{id, grid}]
+        let models = [];
+        let uqRecords = [];
+        let shownRec = null; // "预测结果"区当前展示的保存记录(null=未展示/执行中)
+
+        function buildCondInputs(mode) {
+            const grid = h('div', { class: 'wb-form-grid', style: 'margin-top:8px;grid-template-columns:repeat(4,1fr)' });
+            PREDICT_FIELDS[mode].fields.forEach(name => {
+                const unit = PREDICT_UNITS[name] && PREDICT_UNITS[name] !== '—' ? ' / ' + PREDICT_UNITS[name] : '';
+                grid.appendChild(h('div', { class: 'wb-field' },
+                    h('label', null, name + unit),
+                    h('input', { 'data-pred': name, value: PREDICT_DEFAULTS[name] || '' })));
+            });
+            return grid;
+        }
+
+        function addCondition(id, preset) {
+            const cid = id || 'P' + String(conds.length + 1).padStart(2, '0');
+            const grid = buildCondInputs(modeSel.value);
+            if (preset) {
+                Object.keys(preset).forEach(k => {
+                    const inp = grid.querySelector('input[data-pred="' + k + '"]');
+                    if (inp && preset[k] != null) inp.value = String(preset[k]);
+                });
+            }
+            const delBtn = h('button', { class: 'wb-btn wb-btn-outline', title: '删除该工况' }, '删除');
+            const card = h('div', { class: 'wb-card', style: 'padding:12px;margin-bottom:10px' },
+                h('div', { style: 'display:flex;align-items:center;gap:10px;margin-bottom:4px' },
+                    h('div', { style: 'font-weight:700;color:#111827' }, cid), h('div', { class: 'wb-spacer' }), delBtn),
+                grid);
+            delBtn.addEventListener('click', () => {
+                const idx = conds.findIndex(c => c.id === cid);
+                if (idx >= 0 && conds.length > 1) { conds.splice(idx, 1); card.remove(); renumber(); }
+                else toast('至少保留一个工况', 'info');
+            });
+            conds.push({ id: cid, grid });
+            condsHolder.appendChild(card);
+        }
+
+        function renumber() {
+            // 删除后重排编号(保持顺序)
+            conds.forEach((c, i) => {
+                const nid = 'P' + String(i + 1).padStart(2, '0');
+                const title = c.grid.parentNode && c.grid.parentNode.querySelector('div div');
+                if (title && title.textContent.indexOf('P') === 0) title.textContent = nid;
+                c.id = nid;
+            });
+            syncDraftGap();
+        }
+
+        modeSel.addEventListener('change', () => {
+            conds.forEach(c => {
+                const fresh = buildCondInputs(modeSel.value);
+                c.grid.replaceWith(fresh);
+                c.grid = fresh;
+            });
+            syncDraftGap();
+        });
+        // 01-21:草稿输入一旦编辑,立即重算"草稿 vs 展示记录"分离状态
+        condsHolder.addEventListener('input', () => syncDraftGap());
+
+        function condInputs(c) {
+            const inputs = {};
+            let bad = null;
+            c.grid.querySelectorAll('input[data-pred]').forEach(inp => {
+                const v = parseFloat(inp.value);
+                if (isNaN(v)) bad = inp.getAttribute('data-pred');
+                inputs[inp.getAttribute('data-pred')] = v;
+            });
+            return { inputs, bad };
+        }
+
+        async function loadModels() {
+            modelSel.innerHTML = '';
+            try {
+                const resp = await window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id) + '/models');
+                models = resp && (resp.success || resp.code === 200) && Array.isArray(resp.data) ? resp.data : [];
+                const usable = models.filter(m => m.deliveryWorkbookFile);
+                if (!usable.length) {
+                    modelSel.appendChild(h('option', { value: '' }, '尚无可用模型——请先在建模结果页登记或导入模型'));
+                    runBtn.classList.add('disabled');
+                    return;
+                }
+                usable.forEach(m => modelSel.appendChild(h('option', { value: m.id },
+                    (m.name || m.id) + (m.stage ? ' · ' + m.stage : ''))));
+                if (pre && usable.some(m => m.id === pre.id)) modelSel.value = pre.id;
+                runBtn.classList.remove('disabled');
+                loadUqOptions();
+            } catch (e) {
+                modelSel.appendChild(h('option', { value: '' }, '模型列表加载失败'));
+                runBtn.classList.add('disabled');
+            }
+        }
+
+        /** UQ下拉(图01-11/01-24):显式选择某份已完成评估,区间在新输入下重新传播;不移植父模型区间。 */
+        function loadUqOptions() {
+            uqSel.innerHTML = '';
+            uqSel.appendChild(h('option', { value: '' }, '不使用(确定性预测)'));
+            window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id) + '/uq-records')
+                .then(resp => {
+                    uqRecords = resp && (resp.success || resp.code === 200) && Array.isArray(resp.data) ? resp.data : [];
+                    const mid = modelSel.value;
+                    uqRecords.filter(r => r.status === 'COMPLETED' && (!mid || r.modelAssetId === mid))
+                        .forEach(r => uqSel.appendChild(h('option', { value: r.id },
+                            (r.runId || r.id) + ' · 方法' + (r.method || '—'))));
+                })
+                .catch(() => { });
+        }
+        modelSel.addEventListener('change', loadUqOptions);
+
+        runBtn.addEventListener('click', async () => {
+            const modelId = modelSel.value;
+            if (!modelId) { toast('请先选择模型', 'error'); return; }
+            const payload = [];
+            for (const c of conds) {
+                const { inputs, bad } = condInputs(c);
+                if (bad) { toast('工况 ' + c.id + ' 输入项 ' + bad + ' 必须为数值', 'error'); return; }
+                inputs.inletBoundaryMode = parseInt(modeSel.value, 10);
+                payload.push({ id: c.id, inputs });
+            }
+            runBtn.classList.add('disabled');
+            runBtn.textContent = '预测执行中...';
+            try {
+                const resp = await window.AppConfig.enginePost(
+                    'projects/' + encodeURIComponent(ctx.project.id) + '/predict?modelAssetId=' + encodeURIComponent(modelId),
+                    { conditions: payload, uqRecordId: uqSel.value || null });
+                if (resp && (resp.success || resp.code === 200) && resp.data) {
+                    toast('预测已发起,程序计算中...', 'info');
+                    pollPrediction(resp.data.id, () => {
+                        runBtn.classList.remove('disabled');
+                        runBtn.textContent = '计算预测';
+                    });
+                } else {
+                    throw new Error((resp && resp.message) || '发起失败');
+                }
+            } catch (e) {
+                toast('发起输出预测失败:' + e.message, 'error');
+                runBtn.classList.remove('disabled');
+                runBtn.textContent = '计算预测';
+            }
+        });
+
+        saveBtn.addEventListener('click', () => {
+            // 01-21:当前输入未计算时不得把旧输出标为本次结果
+            if (!draftMatchesShown()) {
+                toast('当前输入尚未计算;请先计算当前输入,不得把旧输出标为本次结果', 'error');
+                return;
+            }
+            toast('预测记录在完成时已自动保存;可在下方"预测记录"中查看', 'info');
+        });
+
+        function predExportUrl(recId, condId) {
+            const cfg = window.AppConfig;
+            const qs = (condId ? 'cond=' + encodeURIComponent(condId) + '&' : '')
+                + 'token=' + encodeURIComponent(cfg.getToken() || '');
+            return cfg.api.baseURL + '/api/engine/projects/' + encodeURIComponent(ctx.project.id)
+                + '/predictions/' + encodeURIComponent(recId) + '/export?' + qs;
+        }
+
+        function pollPrediction(recId, done) {
+            const started = Date.now();
+            const timer = setInterval(async () => {
+                window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000; // 活动心跳
+                try {
+                    const resp = await window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id) + '/predictions');
+                    const list = resp && (resp.success || resp.code === 200) && Array.isArray(resp.data) ? resp.data : [];
+                    const rec = list.find(r => r.id === recId);
+                    if (rec && rec.status !== 'EXECUTING') {
+                        clearInterval(timer);
+                        renderLatest(rec);
+                        loadHistory();
+                        toast(rec.status === 'COMPLETED' ? '预测完成' : '预测失败:' + (rec.message || ''),
+                            rec.status === 'COMPLETED' ? 'success' : 'error');
+                        if (done) done();
+                    } else if (Date.now() - started > 10 * 60 * 1000) {
+                        clearInterval(timer);
+                        toast('预测超时未返回', 'error');
+                        if (done) done();
+                    } else {
+                        renderLatest(rec || { status: 'EXECUTING', message: '程序计算中...' });
+                    }
+                } catch (e) { /* 轮询容错 */ }
+            }, 5000);
+        }
+
+        function renderValue(v, indent) {
+            const box = h('div', indent ? { style: 'padding-left:18px' } : null);
+            if (v && typeof v === 'object' && !Array.isArray(v)) {
+                Object.keys(v).forEach(k => {
+                    const val = v[k];
+                    if (val && typeof val === 'object') {
+                        box.appendChild(h('div', { style: 'margin:4px 0;font-weight:600;color:#374151' }, k));
+                        box.appendChild(renderValue(val, true));
+                    } else {
+                        box.appendChild(h('div', { class: 'wb-kv', style: 'grid-template-columns:260px 1fr' },
+                            h('div', { class: 'k' }, k),
+                            h('div', { class: 'v' }, val == null ? '—' : String(val))));
+                    }
+                });
+            }
+            return box;
+        }
+
+        /* ---------- 01-21:输入草稿(当前工况)与已保存预测记录分离展示 ---------- */
+        /** 递归提取输出通道数值(与renderLatest.pickOut同口径,此处供对照区独立使用)。 */
+        function pickOutDeep(obj, name) {
+            let found = null;
+            const walk = (o, depth) => {
+                if (found != null || o == null || typeof o !== 'object' || depth > 3) return;
+                if (Array.isArray(o)) { o.forEach(x => walk(x, depth + 1)); return; }
+                Object.keys(o).forEach(k => {
+                    if (found != null) return;
+                    const v = o[k];
+                    if (typeof v !== 'object' && k.toLowerCase() === name.toLowerCase()
+                        && v != null && isFinite(parseFloat(v))) { found = parseFloat(v); return; }
+                    if (v && typeof v === 'object') walk(v, depth + 1);
+                });
+            };
+            walk(obj, 0);
+            return found;
+        }
+
+        /** 展示记录的首工况输入(单工况兼容顶层inputs);无输入时返回null(无法证明一致)。 */
+        function recInputsOf(rec) {
+            if (!rec) return null;
+            const c0 = Array.isArray(rec.conditions) && rec.conditions.length ? rec.conditions[0] : null;
+            const inp = (c0 && c0.inputs && Object.keys(c0.inputs).length) ? c0.inputs : rec.inputs;
+            return (inp && Object.keys(inp).length) ? inp : null;
+        }
+
+        /** 当前草稿(首工况输入+边界方式)与展示记录是否一致且记录已完成;
+         *  记录未携带输入、草稿有未填项或数值不一致,都按"未计算"处理,不把旧输出当作本次结果。 */
+        function draftMatchesShown() {
+            if (!shownRec || shownRec.status !== 'COMPLETED') return false;
+            const ri = recInputsOf(shownRec);
+            if (!ri) return false;
+            const first = conds[0] ? condInputs(conds[0]) : null;
+            if (!first || first.bad) return false;
+            if (ri.inletBoundaryMode != null
+                && parseInt(ri.inletBoundaryMode, 10) !== parseInt(modeSel.value, 10)) return false;
+            const seen = {};
+            const keys = Object.keys(ri).filter(k => k !== 'inletBoundaryMode').concat(Object.keys(first.inputs));
+            for (const k of keys) {
+                if (seen[k]) continue;
+                seen[k] = true;
+                const a = parseFloat(ri[k]), b = first.inputs[k];
+                if (!isFinite(a) || !isFinite(b) || a !== b) return false;
+            }
+            return true;
+        }
+
+        /** 按当前"展示记录 vs 草稿"状态刷新分离对照区与保存按钮;一致时清空对照区。 */
+        function syncDraftGap() {
+            gapHolder.innerHTML = '';
+            const matches = draftMatchesShown();
+            saveBtn.classList.toggle('disabled', !matches);
+            saveBtn.textContent = matches ? '保存当前预测' : '保存当前预测(未计算)';
+            if (!shownRec || matches) return;
+            const ri = recInputsOf(shownRec) || {};
+            const mode = parseInt(modeSel.value, 10);
+            const fields = (PREDICT_FIELDS[mode] || { fields: [] }).fields;
+            const keys = Object.keys(ri).filter(k => k !== 'inletBoundaryMode');
+            fields.forEach(k => { if (keys.indexOf(k) < 0) keys.push(k); });
+            const unitOf = k => (PREDICT_UNITS[k] && PREDICT_UNITS[k] !== '—') ? ' / ' + PREDICT_UNITS[k] : '';
+            const first = conds[0] ? condInputs(conds[0]).inputs : {};
+            const recLabel = shownRec.runId || shownRec.id || '原记录';
+            const c0 = Array.isArray(shownRec.conditions) && shownRec.conditions.length ? shownRec.conditions[0] : null;
+            const recResult = (c0 && c0.result && Object.keys(c0.result).length) ? c0.result : shownRec.result;
+            const rows = keys.map(k => [k + unitOf(k),
+                ri[k] != null ? String(ri[k]) : '—',
+                (first[k] != null && isFinite(first[k])) ? String(first[k]) : '未计算']);
+            [['Np', 'rpm'], ['Ng', 'rpm'], ['Tt45', 'K']].forEach(([ch, u]) => {
+                const v = pickOutDeep(recResult, ch);
+                rows.push([ch + ' / ' + u, v != null ? String(v) : '未计算', '未计算']);
+            });
+            rows.push(['区间', shownRec.uqRecordId ? '已保存(UQ传播)' : '未计算', '未计算']);
+            const hasExport = Array.isArray(shownRec.conditions)
+                ? shownRec.conditions.some(c => c.excelFile) : !!shownRec.excelFile;
+            gapHolder.appendChild(h('div', { class: 'wb-infobar', style: 'border-left:4px solid #d97706;background:#fffbeb;color:#92400e' },
+                '⚠ 当前输入尚未计算。下方是 ' + recLabel + ' 的保存结果。'));
+            gapHolder.appendChild(h('table', { class: 'wb-table' },
+                h('tr', null, ['输入或结果', '保存记录 ' + recLabel, '当前草稿 / ' + (conds[0] ? conds[0].id : '—')]
+                    .map((x, i) => h('th', i === 0 ? null : null, x))),
+                rows.map(r => h('tr', null,
+                    h('td', null, r[0]),
+                    h('td', null, r[1]),
+                    h('td', { class: 'wb-hint' }, r[2])))));
+            gapHolder.appendChild(h('div', { class: 'wb-hint', style: 'margin:8px 0' },
+                '修改模型、UQ或边界方式时同样重新核对;不得把旧输出标为本次结果。'));
+            const gapActions = h('div', { class: 'wb-actions-row', style: 'margin-bottom:12px' },
+                h('button', { class: 'wb-btn wb-btn-outline', onclick: restoreSavedInputs }, '恢复已保存输入'),
+                hasExport ? h('a', { class: 'wb-btn wb-btn-outline', href: predExportUrl(shownRec.id) }, '导出原记录 ' + recLabel) : null,
+                h('div', { class: 'wb-spacer' }));
+            gapHolder.appendChild(gapActions);
+        }
+
+        /** 恢复已保存输入:把展示记录的输入(含边界方式)写回当前草稿,恢复后仍需显式计算。 */
+        function restoreSavedInputs() {
+            if (!shownRec) return;
+            const ri = recInputsOf(shownRec);
+            if (!ri) { toast('该记录未携带输入明细,无法恢复;请手动填写', 'error'); return; }
+            if (ri.inletBoundaryMode != null && PREDICT_FIELDS[parseInt(ri.inletBoundaryMode, 10)]) {
+                modeSel.value = String(parseInt(ri.inletBoundaryMode, 10));
+                conds.forEach(c => {
+                    const fresh = buildCondInputs(modeSel.value);
+                    c.grid.replaceWith(fresh);
+                    c.grid = fresh;
+                });
+            }
+            const rc = Array.isArray(shownRec.conditions) && shownRec.conditions.length ? shownRec.conditions : [];
+            conds.forEach((c, i) => {
+                const src = rc.find(x => x.id === c.id) || rc[i];
+                const inp = (src && src.inputs && Object.keys(src.inputs).length) ? src.inputs : ri;
+                Object.keys(inp).forEach(k => {
+                    if (k === 'inletBoundaryMode') return;
+                    const el = c.grid.querySelector('input[data-pred="' + k + '"]');
+                    if (el && inp[k] != null) el.value = String(inp[k]);
+                });
+            });
+            syncDraftGap();
+            toast('已恢复已保存输入;计算前请核对各输入项', 'success');
+        }
+
+        /** 结果区(01-11/01-12):多工况逐条状态 + 关键输出列 + 单工况查看 + 失败诊断展开 + 导出Excel。 */
+        function renderLatest(rec) {
+            resultHolder.innerHTML = '';
+            shownRec = (rec && rec.status !== 'EXECUTING') ? rec : null;
+            syncDraftGap();
+            if (!rec) {
+                resultHolder.appendChild(h('div', { class: 'wb-empty' }, '尚未计算——配置输入后开始预测。'));
+                return;
+            }
+            const running = rec.status === 'EXECUTING';
+            resultHolder.appendChild(h('div', { class: 'wb-infobar' },
+                running ? (rec.message || '程序计算中...') : rec.message || rec.status));
+            if (running) {
+                resultHolder.appendChild(h('div', { style: 'text-align:center;padding:14px 0' },
+                    h('span', { class: 'wb-inline-loading' }, h('span', { class: 'wb-inline-spinner' }), '预测算法运行中...')));
+                return;
+            }
+            if (rec.runId) {
+                resultHolder.appendChild(h('div', { class: 'wb-hint', style: 'margin-bottom:8px' },
+                    '运行标识 ' + rec.runId + (rec.uqRecordId ? ' · 区间来源:所选UQ记录' : ' · 确定性计算(区间状态:未计算)')));
+            }
+            const condList = Array.isArray(rec.conditions) && rec.conditions.length ? rec.conditions
+                : [{ id: 'P01', status: rec.status, message: rec.message, result: rec.result }];
+            // 已有输出的工况才渲染行;全部无输出时给出明确空态而不是空表
+            const withResult = condList.filter(c => c.result && Object.keys(c.result).length);
+            if (!withResult.length && !condList.some(c => c.status === 'FAILED')) {
+                resultHolder.appendChild(h('div', { class: 'wb-hint', style: 'margin:8px 0' },
+                    '本次运行未产生可展示的单工况输出对象;输出Excel与完整结果以导出文件为准。'));
+                return;
+            }
+            // 关键输出提取(01-12汇总表):递归任意嵌套(≤3层)按通道名取值,兼容顶层/outputs/output等结构
+            const pickOut = (c, name) => {
+                let found = null;
+                const walk = (obj, depth) => {
+                    if (found != null || obj == null || typeof obj !== 'object' || depth > 3) return;
+                    if (Array.isArray(obj)) { obj.forEach(o => walk(o, depth + 1)); return; }
+                    Object.keys(obj).forEach(k => {
+                        if (found != null) return;
+                        const v = obj[k];
+                        if (typeof v !== 'object' && k.toLowerCase() === name.toLowerCase()
+                            && v != null && isFinite(parseFloat(v))) { found = parseFloat(v); return; }
+                        if (v && typeof v === 'object') walk(v, depth + 1);
+                    });
+                };
+                walk(c.result || {}, 0);
+                return found;
+            };
+            // 诊断展开过滤输入回显等元数据,只留输出与执行信息(不再整包dump)
+            const META_KEY = /^(input|modelInput|inputContract|schemaVersion|createdAt|inputSummary)$/i;
+            const stripMeta = v => {
+                if (v && typeof v === 'object' && !Array.isArray(v)) {
+                    const out = {};
+                    Object.keys(v).forEach(k => { if (!META_KEY.test(k)) out[k] = stripMeta(v[k]); });
+                    return Object.keys(out).length ? out : undefined;
+                }
+                return v;
+            };
+            const fmtOut = v => v == null ? '—' : (Math.abs(v) >= 1000 ? v.toFixed(0) : Math.abs(v) >= 1 ? v.toFixed(3) : v.toFixed(4));
+            // 01-11/01-24 单工况通道表:输出|单位|确定性计算值|95%候选参数输出区间(区间来自程序intervalTable)
+            const OUTPUT_UNITS = { Np: 'rpm', Ng: 'rpm', Ptb3: 'Pa', Ttb3: 'K', Pt45: 'Pa', Tt45: 'K', Pt6: 'Pa', Tt6: 'K', Wa2: 'kg/s' };
+            const findIntervalTable = c => {
+                let hit = null;
+                const walk = (obj, depth) => {
+                    if (hit || obj == null || typeof obj !== 'object' || depth > 3) return;
+                    if (Array.isArray(obj)) { obj.forEach(o => walk(o, depth + 1)); return; }
+                    Object.keys(obj).forEach(k => {
+                        if (hit) return;
+                        const v = obj[k];
+                        if (/interval/i.test(k) && Array.isArray(v) && v.length
+                            && v.some(e => e && e.model_lower != null)) hit = v;
+                        else if (v && typeof v === 'object') walk(v, depth + 1);
+                    });
+                };
+                walk(c.result || {}, 0);
+                return hit;
+            };
+            const condChannelTable = c => {
+                const it = findIntervalTable(c);
+                const rows = ['Np', 'Ng', 'Ptb3', 'Ttb3', 'Pt45', 'Tt45', 'Pt6', 'Tt6', 'Wa2'];
+                const rowOf = n => it ? it.find(e => e && String(e.output_name || '').trim() === n) : null;
+                const vals = rows.map(n => {
+                    const r0 = rowOf(n);
+                    return (r0 && r0.deterministic_frozen_model != null && isFinite(r0.deterministic_frozen_model))
+                        ? parseFloat(r0.deterministic_frozen_model) : pickOut(c, n);
+                });
+                if (vals.every(v => v == null)) return null;
+                const hasIv = !!it;
+                const fmtIv = e => (e && e.model_lower != null && isFinite(e.model_lower) && isFinite(e.model_upper))
+                    ? '[' + Number(e.model_lower).toFixed(1) + ', ' + Number(e.model_upper).toFixed(1) + ']'
+                    : '未计算';
+                return h('table', { class: 'wb-table', style: 'margin-top:8px' },
+                    h('tr', null, ['输出', '单位', '确定性计算值', hasIv ? '95%候选参数输出区间' : '区间状态'].map(x => h('th', null, x))),
+                    rows.map((n, i) => h('tr', null,
+                        h('td', null, n),
+                        h('td', { class: 'wb-hint' }, (rowOf(n) && rowOf(n).unit) || OUTPUT_UNITS[n]),
+                        h('td', null, fmtOut(vals[i])),
+                        h('td', { class: 'wb-hint' }, hasIv ? fmtIv(rowOf(n)) : '未计算'))));
+            };
+            const actionsRow = () => h('div', { class: 'wb-actions-row', style: 'margin-top:12px' },
+                saveBtn,
+                h('a', { class: 'wb-btn wb-btn-outline' + (condList.some(c => c.excelFile) ? '' : ' disabled'),
+                    href: condList.some(c => c.excelFile) ? predExportUrl(rec.id) : '#' }, '导出预测Excel'),
+                h('div', { class: 'wb-spacer' }),
+                h('button', { class: 'wb-btn wb-btn-outline', onclick: () => ctx.navigate('models') }, '返回模型成果'),
+                h('button', { class: 'wb-btn wb-btn-outline', onclick: () => addCondition() }, '添加工况'));
+
+            // 单工况完成(01-11):直接平铺"P01 预测结果"+通道表,不套工况汇总表
+            if (condList.length === 1 && condList[0].status === 'COMPLETED') {
+                const c = condList[0];
+                const doneText = rec.uqRecordId ? '确定性及候选区间已计算' : '确定性计算已完成';
+                resultHolder.appendChild(h('div', { style: 'display:flex;justify-content:space-between;align-items:baseline;margin:4px 0 8px' },
+                    h('div', { class: 'wb-section-title', style: 'margin:0' }, c.id + ' 预测结果'),
+                    h('span', { style: 'color:#0f766e;font-weight:600;font-size:13px' }, doneText)));
+                const ct = condChannelTable(c);
+                if (ct) resultHolder.appendChild(ct);
+                else {
+                    resultHolder.appendChild(h('div', { class: 'wb-hint', style: 'margin:6px 0' },
+                        '程序返回中未包含可展示的输出通道数值;完整输出以导出Excel为准。'));
+                    resultHolder.appendChild(renderValue(stripMeta(c.result) || {}, false));
+                }
+                resultHolder.appendChild(h('div', { class: 'wb-hint', style: 'margin-top:6px' },
+                    (rec.runId || '') + ' · ' + (rec.uqRecordId
+                        ? '条件参数输出区间,不含新测量误差' : '确定性计算 · 全部输出可展开') + ';无测量值,不计算误差。'));
+                if (c.message && c.message.indexOf('诊断') >= 0) {
+                    resultHolder.appendChild(h('div', { class: 'wb-infobar', style: 'border-left:4px solid #d97706;background:#fffbeb;margin-top:8px' },
+                        '⚠ ' + c.message));
+                }
+                resultHolder.appendChild(actionsRow());
+                return;
+            }
+
+            // 多工况/失败(01-12):汇总表 + 单工况查看展开
+            const tbl = h('table', { class: 'wb-table' },
+                h('tr', null, ['工况', '状态', 'Np / rpm', 'Ng / rpm', 'Tt45 / K', '说明', ''].map(t => h('th', null, t))));
+            condList.forEach(c => {
+                const channelTbl = condChannelTable(c);
+                const diag = h('div', { style: 'display:none;margin-top:6px;padding:8px;background:#f8fafc;border-radius:6px' },
+                    h('div', { class: 'wb-hint', style: 'margin:0 0 4px' }, '单工况输出(全部输出可展开;无测量值,不计算误差):'),
+                    channelTbl ? channelTbl : renderValue(stripMeta(c.result) || {}, false));
+                const viewBtn = h('button', { class: 'wb-btn wb-btn-outline' }, '查看');
+                viewBtn.addEventListener('click', () => {
+                    diag.style.display = diag.style.display === 'none' ? '' : 'none';
+                });
+                const diagBtn = c.status === 'FAILED'
+                    ? h('button', { class: 'wb-btn wb-btn-outline' }, '查看失败详情')
+                    : (c.excelFile ? h('a', {
+                        class: 'wb-btn wb-btn-outline', href: predExportUrl(rec.id, c.id)
+                    }, '导出Excel') : h('span', null, ''));
+                if (c.status === 'FAILED') {
+                    diagBtn.addEventListener('click', () => {
+                        diag.style.display = diag.style.display === 'none' ? '' : 'none';
+                    });
+                }
+                tbl.appendChild(h('tr', null,
+                    h('td', { style: 'font-weight:600' }, c.id || '—'),
+                    h('td', null, statusTag(c.status === 'COMPLETED' ? '已完成' : c.status === 'FAILED' ? '失败' : '执行中',
+                        c.status === 'COMPLETED' ? 'teal' : c.status === 'FAILED' ? 'red' : 'amber')),
+                    h('td', null, fmtOut(pickOut(c, 'Np'))),
+                    h('td', null, fmtOut(pickOut(c, 'Ng'))),
+                    h('td', null, fmtOut(pickOut(c, 'Tt45'))),
+                    h('td', { class: 'wb-hint', style: 'word-break:break-all' },
+                        (c.message || '—') + (c.status === 'FAILED' ? ' · 未形成有效结果,不并入成功子集' : '')),
+                    h('td', null, viewBtn, diagBtn, diag)));
+            });
+            resultHolder.appendChild(tbl);
+            resultHolder.appendChild(actionsRow());
+        }
+
+        async function loadHistory() {
+            /* IginX SQL分页(/predictions/list + /predictions/count);页状态跨刷新保留 */
+            const st = loadHistory._st || (loadHistory._st = { pageNum: 1, pageSize: 10, total: 0 });
+            historyHolder.innerHTML = '';
+            try {
+                const base = 'projects/' + encodeURIComponent(ctx.project.id) + '/predictions/';
+                const [resp, cnt] = await Promise.all([
+                    window.AppConfig.engineGet(base + 'list', { pageNum: st.pageNum, pageSize: st.pageSize }),
+                    window.AppConfig.engineGet(base + 'count', {})
+                ]);
+                const list = resp && (resp.success || resp.code === 200) && Array.isArray(resp.data) ? resp.data : [];
+                st.total = cnt && (cnt.success || cnt.code === 200) ? Number(cnt.data) || 0 : list.length;
+                // 01-21:进入页面尚无展示结果时,先展示最新一条已完成保存记录(草稿未计算则触发分离对照)
+                if (!shownRec && !loadHistory._restored) {
+                    const latestDone = list.find(r => r.status === 'COMPLETED' && (r.recId || r.id));
+                    if (latestDone) {
+                        loadHistory._restored = true;
+                        openRecord(latestDone.recId || latestDone.id);
+                    }
+                }
+                if (!list.length) {
+                    historyHolder.appendChild(h('div', { class: 'wb-empty' }, '暂无预测记录'));
+                    return;
+                }
+                const maxPage = Math.max(1, Math.ceil(st.total / st.pageSize));
+                if (st.pageNum > maxPage) { st.pageNum = maxPage; return loadHistory(); }
+                historyHolder.appendChild(h('table', { class: 'wb-table' },
+                    h('tr', null, ['时间', '模型', '工况', '运行标识', '状态'].map(t => h('th', null, t))),
+                    list.map(r => h('tr', { class: 'clickable', onclick: () => openRecord(r.recId) },
+                        h('td', { class: 'wb-hint' }, r.createTime ? new Date(r.createTime).toLocaleString() : '—'),
+                        h('td', null, r.modelName || '—'),
+                        h('td', { class: 'wb-hint' }, r.conditionCount != null ? r.conditionCount + ' 个工况' : '—'),
+                        h('td', { class: 'wb-hint' }, r.runId || '—'),
+                        h('td', null, statusTag(
+                            r.status === 'COMPLETED' ? '已完成' : r.status === 'FAILED' ? '失败' : '执行中',
+                            r.status === 'COMPLETED' ? 'teal' : r.status === 'FAILED' ? 'red' : 'amber'))))));
+                const pager = h('div', { style: 'display:flex;align-items:center;gap:8px;margin-top:10px' },
+                    h('span', { class: 'wb-hint' }, '共 ' + st.total + ' 条,第 ' + st.pageNum + '/' + maxPage + ' 页'));
+                const prev = h('button', { class: 'wb-btn wb-btn-outline' + (st.pageNum <= 1 ? ' disabled' : '') }, '上一页');
+                prev.addEventListener('click', () => { if (st.pageNum > 1) { st.pageNum--; loadHistory(); } });
+                const next = h('button', { class: 'wb-btn wb-btn-outline' + (st.pageNum >= maxPage ? ' disabled' : '') }, '下一页');
+                next.addEventListener('click', () => { if (st.pageNum < maxPage) { st.pageNum++; loadHistory(); } });
+                pager.appendChild(prev);
+                pager.appendChild(next);
+                pager.appendChild(h('span', { class: 'wb-hint', style: 'margin-left:8px' }, '每页'));
+                const sizeSel = h('select', { title: '每页条数' },
+                    [10, 20, 50].map(n => h('option', Object.assign({ value: n }, n === st.pageSize ? { selected: '' } : {}), String(n))));
+                sizeSel.addEventListener('change', () => { st.pageSize = parseInt(sizeSel.value, 10); st.pageNum = 1; loadHistory(); });
+                pager.appendChild(sizeSel);
+                historyHolder.appendChild(pager);
+            } catch (e) {
+                historyHolder.appendChild(h('div', { class: 'wb-empty' }, '预测记录加载失败:' + e.message));
+            }
+        }
+
+        /** 行点击查看结果:清单行是分页投影,从全量接口取完整记录(含conditions/inputs/结果)。 */
+        async function openRecord(recId) {
+            if (!recId) return;
+            try {
+                const resp = await window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id) + '/predictions');
+                const all = resp && (resp.success || resp.code === 200) && Array.isArray(resp.data) ? resp.data : [];
+                const full = all.find(x => (x.recId || x.id) === recId);
+                if (full) renderLatest(full);
+            } catch (e) { /* 忽略 */ }
+        }
+
+        function inputSummary(inputs) {
+            if (!inputs) return '—';
+            return Object.keys(inputs).filter(k => k !== 'inletBoundaryMode')
+                .map(k => k + '=' + inputs[k]).join(' ');
+        }
+
+        // 01-11 布局:顶部三下拉一行三列 → 工况输入(4列网格) → 计算按钮 → 结果 → 记录
+        body.appendChild(h('div', { class: 'wb-form-grid', style: 'grid-template-columns:1fr 1fr 1fr;margin-bottom:6px' },
+            h('div', { class: 'wb-field' }, h('label', null, '模型'), modelSel),
+            h('div', { class: 'wb-field' }, h('label', null, '不确定性评估'), uqSel),
+            h('div', { class: 'wb-field' }, h('label', null, '边界输入方式'), modeSel)));
+        body.appendChild(h('div', { style: 'display:flex;justify-content:space-between;align-items:center;margin:2px 0 8px' },
+            h('div', { class: 'wb-hint', style: 'margin:0;font-weight:600' }, '预测工况'),
+            h('button', { class: 'wb-btn wb-btn-outline' , onclick: () => addCondition() }, '＋ 添加工况')));
+        body.appendChild(condsHolder);
+        body.appendChild(h('div', { style: 'display:flex;justify-content:space-between;align-items:center;margin:6px 0 14px' },
+            h('div', { class: 'wb-hint', style: 'margin:0' }, '物理燃油输入；不重复扣除燃油测量偏置。'),
+            runBtn));
+        body.appendChild(gapHolder); // 01-21:草稿未计算而展示保存记录时的分离对照区
+        body.appendChild(h('div', { class: 'wb-section' },
+            h('div', { class: 'wb-section-title', style: 'margin-bottom:12px' }, '预测结果'),
+            resultHolder));
+        const historySection = h('div', { class: 'wb-section' },
+            h('div', { class: 'wb-section-title', style: 'margin-bottom:12px' }, '预测记录(点击行查看结果)'),
+            historyHolder);
+        body.appendChild(historySection);
+        addCondition();
+        loadModels();
+        loadHistory();
+        // 项目概况"运行记录"按钮跳入时,直接落到预测记录区
+        if (window.__WB_PREDICT_SCROLL_HISTORY__) {
+            delete window.__WB_PREDICT_SCROLL_HISTORY__;
+            setTimeout(() => {
+                try { historySection.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) { /* 忽略 */ }
+            }, 60);
+        }
+        return wrap;
+    };
+
+    /* ===== 运行记录 / 仿真记录 ===== */
+    const RUN_STATUS = {
+        READY: ['空闲', 'gray'], PREPARING: ['准备中', 'amber'], RUNNING: ['运行中', 'teal'],
+        COMPLETED: ['已完成', 'teal'], FAILED: ['失败', 'red'],
+        STOP_REQUESTED: ['停止中', 'amber'], STOPPED: ['已停止', 'gray']
+    };
+
+    function recordsPage(ctx, scope) {
+        const isSim = scope === 'sim';
+        if (isSim) return afoRecordsPage(ctx);
+        const wrap = h('div', null, pageHeader(isSim ? '仿真记录' : '运行记录',
+            isSim ? '全模式仿真与多系统联合仿真的执行记录;历史只读'
+                : '建模任务执行历史(含数据准备/辨识);只读'));
+        const holder = h('div', null, h('div', { class: 'wb-empty' }, '正在加载记录...'));
+        wrap.appendChild(h('div', { class: 'wb-section' },
+            h('div', { class: 'wb-section-head' },
+                h('div', { class: 'wb-section-title' }, isSim ? '仿真执行历史' : '任务执行历史'),
+                h('button', { class: 'wb-btn wb-btn-outline', onclick: () => ctx.navigate('records') }, '刷新')),
+            holder));
+        if (!isSim && ctx.project && ctx.project.id) loadRunRecords(ctx, holder);
+        else holder.innerHTML = '';
+        if (isSim || !ctx.project || !ctx.project.id) {
+            holder.appendChild(h('div', { class: 'wb-empty' }, isSim ? '暂无仿真记录' : '本地演示项目无记录'));
+        }
+        return wrap;
+    }
+
+    /** 仿真记录页(09-07/09-08):单一列表,一行=一次工作流执行——起动停车建模(含设计点配置校核)/
+     * 全模式仿真/多系统联合仿真。与运行记录同构:IGinX SQL分页+状态/编号筛选;
+     * "查看(只读)"跳转对应功能页(起动停车建模/全模式仿真/多系统联合仿真)并定位该次任务的页签结果。 */
+    function afoRecordsPage(ctx) {
+        const pid = ctx.project.id || '';
+        /* 一条记录=一次工作流执行(每个会话/任务一条,IginX SQL分页)。
+         * /afo/sessions/list + /count:多系统联合仿真(会话) + 起动停车建模(design_point/startstop) + 全模式仿真(fullmode)归并排序;
+         * 状态/编号筛选为SQL条件,翻页/改条数重新请求。 */
+        const state = { pageNum: 1, pageSize: 10, total: 0 };
+        const pagerHolder = h('div', { style: 'display:flex;align-items:center;gap:8px;margin-top:12px' });
+        const wrap = h('div', null, pageHeader('仿真记录',
+            (ctx.project.engineId || '—') + ' 仿真执行历史;历史只读,原运行包与配置保持不变,不自动采用当前最新DLL重新解释历史结果'));
+        const listHolder = h('div', null, h('div', { class: 'wb-empty' }, '正在加载仿真记录...'));
+        const selHolder = h('div', null);
+        const cmpHolder = h('div', null);
+        const checked = {};
+        const listFilter = { status: '', kw: '' };
+        const statusSel = h('select', { style: 'width:100%' },
+            h('option', { value: '' }, '全部'),
+            h('option', { value: 'running' }, '运行中'),
+            h('option', { value: 'ok' }, '完整'),
+            h('option', { value: 'failed' }, '失败'));
+        const kwInput = h('input', { placeholder: '搜索运行编号' });
+        statusSel.addEventListener('change', () => { listFilter.status = statusSel.value; state.pageNum = 1; fetchPage(); });
+        kwInput.addEventListener('input', () => { listFilter.kw = kwInput.value.trim(); state.pageNum = 1; fetchPage(); });
+        wrap.appendChild(h('div', { class: 'wb-section' },
+            h('div', { class: 'wb-section-head' },
+                h('div', { class: 'wb-section-title' }, (ctx.project.engineId || 'E') + ' 仿真记录'),
+                h('button', { class: 'wb-btn wb-btn-outline', onclick: () => fetchPage() }, '刷新')),
+            h('div', { class: 'wb-form-grid', style: 'grid-template-columns:180px 1fr;margin-bottom:12px;align-items:end' },
+                h('div', { class: 'wb-field' }, h('label', null, '状态筛选'), statusSel),
+                h('div', { class: 'wb-field' }, h('label', null, '名称搜索'), kwInput)),
+            listHolder, pagerHolder));
+        wrap.appendChild(selHolder);
+        wrap.appendChild(cmpHolder);
+
+        function renderList(all, allRows) {
+            listHolder.innerHTML = '';
+            const rows = all; // 状态/编号筛选已由服务端SQL完成,这里只渲染当前页
+            if (!all.length) {
+                listHolder.appendChild(h('div', { class: 'wb-empty' },
+                    '暂无仿真记录——在"起动停车建模""全模式仿真""多系统联合仿真"发起执行后,每次执行在此留档(以运行编号为身份)。'));
+                return;
+            }
+            const tbl = h('table', { class: 'wb-table' },
+                h('tr', null, ['', '运行', '类型', '输入与配置', '执行时间', '记录状态', '操作'].map((x, i) =>
+                    h('th', i === 0 ? { style: 'width:34px' } : null, x))));
+            // 工作流维度:每行=一次工作流执行;类型列按工作流标注(设计点配置校核归入起动停车建模域)
+                const STATE_CN = { RUNNING: '仿真运行中', PREPARING: '准备中', READY: '待运行', PAUSED: '已暂停',
+                    COMMITTED: '已提交', ENDED: '完整', FAILED: '人工结束/失败', CLOSED: '已关闭' };
+                rows.forEach(r => {
+                    const cfg = r.config || {};
+                    const isFm = r._kind === 'fm';
+                    const cb = h('input', { type: 'checkbox' });
+                    if (checked[r.runId]) cb.checked = true;
+                    cb.addEventListener('change', () => {
+                        if (cb.checked) checked[r.runId] = true; else delete checked[r.runId];
+                        renderActions(allRows || all);
+                    });
+                    const stateTxt = STATE_CN[r.phase] || r.phase || '—';
+                const durTxt = isFm
+                    ? (cfg.duration != null && cfg.duration !== '' ? cfg.duration + ' s'
+                        : (r.createdAt && r.finishedAt ? fmtSpan(r.finishedAt - r.createdAt) : '—'))
+                    : (cfg.duration != null ? Number(cfg.duration).toFixed(3) + ' s' : '—');
+                // 运行列加工作流阶段标识(与运行记录「最近运行」列同口径:阶段 · runId)
+                const stageTag = !isFm ? '联合仿真'
+                    : r.kind === 'design_point' ? '设计点校核'
+                    : r.kind === 'startstop' ? '起动停车' : '全模式';
+                tbl.appendChild(h('tr', null,
+                    h('td', { onclick: ev => ev.stopPropagation() }, isFm ? h('span', { class: 'wb-hint' }, '—') : cb),
+                    h('td', { style: 'font-weight:600' }, (stageTag ? stageTag + ' · ' : '') + (r.runId || '—')),
+                    h('td', null, !isFm ? '多系统联合仿真' : (r.kind === 'fullmode' ? '全模式仿真' : '起动停车建模')),
+                    h('td', { class: 'wb-hint' }, isFm
+                        ? (r.kind === 'design_point'
+                            ? ((cfg.modelMode != null ? 'model' + cfg.modelMode + ' · ' : '') + (cfg.route === 'transient' ? '瞬态' : '稳态'))
+                            : r.kind === 'startstop'
+                                ? '阶段链 maps→design→matrix→physics→continuous→thermal'
+                                : 'model' + (cfg.modelMode != null ? cfg.modelMode : '—') + ' · ' + ((cfg.fullmode || {}).initialKind || '—'))
+                        : ((cfg.loadMode === 'external' ? '外部回灌' : (cfg.externalAir ? '外部回灌' : '人工指令 / 内部引气'))
+                            + ' · ' + (cfg.pace === 'fast' ? '尽快计算' : '实时节奏'))),
+                    h('td', null, durTxt),
+                    h('td', null, stateTxt + (r.hasExcel ? ' · Excel可导出' : r.hasResult ? ' · 结果已保存' : '')),
+                    h('td', null,
+                        h('button', {
+                            class: 'wb-btn wb-btn-outline',
+                            onclick: () => {
+                                if (isFm) {
+                                    // 按行打开指定任务(fm行runId即taskKey/taskId),避免业务页只显示最近活动任务
+                                    if (r.kind === 'design_point' || r.kind === 'startstop') {
+                                        window.__WB_SS_OPEN__ = { taskId: r.runId, kind: r.kind };
+                                        ctx.navigate('startstop');
+                                    } else {
+                                        window.__WB_FM_OPEN__ = r.runId;
+                                        ctx.navigate('fullmode');
+                                    }
+                                    return;
+                                }
+                                ctx.navigate('afo');
+                                setTimeout(() => { if (window.__WB_AFO_OPEN__) window.__WB_AFO_OPEN__(r.runId); }, 60);
+                            }
+                        }, '查看(只读)'))));
+            });
+            listHolder.appendChild(tbl);
+        }
+
+        function renderActions(rows) {
+            selHolder.innerHTML = '';
+            const ids = Object.keys(checked).filter(id => rows.some(r => r.runId === id));
+            if (!ids.length) { cmpHolder.innerHTML = ''; return; }
+            const first = rows.find(r => r.runId === ids[0]);
+            selHolder.appendChild(h('div', { class: 'wb-actions-row', style: 'margin-top:14px' },
+                h('button', {
+                    class: 'wb-btn wb-btn-primary',
+                    onclick: () => {
+                        ctx.navigate('afo');
+                        setTimeout(() => { if (window.__WB_AFO_OPEN__) window.__WB_AFO_OPEN__(ids[0]); }, 60);
+                    }
+                }, '打开只读记录 ' + ids[0]),
+                h('button', {
+                    class: 'wb-btn wb-btn-outline' + (ids.length === 2 ? '' : ' disabled'),
+                    title: ids.length === 2 ? '' : '勾选两份记录进行比较',
+                    onclick: () => { if (ids.length === 2) compareSessions(ids[0], ids[1]); }
+                }, '比较所选记录'),
+                h('button', {
+                    class: 'wb-btn wb-btn-outline',
+                    onclick: () => {
+                        ctx.navigate('afo');
+                        setTimeout(() => { if (window.__WB_AFO_REUSE__) window.__WB_AFO_REUSE__(first); }, 60);
+                    }
+                }, '用该配置新建')));
+        }
+
+        /** 配置比较(09-08):配置项并排 + 可比性提示 + 同轴通道叠加(按实际仿真时间对齐,缺失留空不补零)。 */
+        async function compareSessions(idA, idB) {
+            cmpHolder.innerHTML = '';
+            cmpHolder.appendChild(h('div', { class: 'wb-empty' }, '正在加载两份记录(result.json)...'));
+            const load = async id => {
+                const resp = await window.AppConfig.engineGet('projects/' + encodeURIComponent(pid)
+                    + '/afo/sessions/' + encodeURIComponent(id) + '/result');
+                return resp && (resp.success || resp.code === 200) ? resp.data : null;
+            };
+            try {
+                const [ra, rb] = await Promise.all([load(idA), load(idB)]);
+                cmpHolder.innerHTML = '';
+                if (!ra || !rb) {
+                    cmpHolder.appendChild(h('div', { class: 'wb-hint' }, '比较需要两份已保存的完整结果(result.json);未保存的运行先在原会话结束保存。'));
+                    return;
+                }
+                const ca = ra.config || {}, cb2 = rb.config || {};
+                const cmpRows = [
+                    ['发动机编号', ca.engineId, cb2.engineId],
+                    ['空气回灌', ca.externalAir ? '外部8路回灌' : '内部引气', cb2.externalAir ? '外部8路回灌' : '内部引气'],
+                    ['负载方式', (AFO_LOAD.find(l => l[0] === ca.loadMode) || [])[1] || ca.loadMode, (AFO_LOAD.find(l => l[0] === cb2.loadMode) || [])[1] || cb2.loadMode],
+                    ['Np挡位', ca.npRatio, cb2.npRatio],
+                    ['时长 / 记录步长', ca.duration + ' s / ' + ca.recordStep + ' s', cb2.duration + ' s / ' + cb2.recordStep + ' s'],
+                    ['运行节奏', ca.pace, cb2.pace]
+                ];
+                const tbl = h('table', { class: 'wb-table' },
+                    h('tr', null, ['配置项', '记录A · ' + idA, '记录B · ' + idB].map(x => h('th', null, x))),
+                    cmpRows.map(r => h('tr', null,
+                        h('td', { style: 'color:#6b7280' }, r[0]),
+                        h('td', null, String(r[1])),
+                        h('td', null, String(r[2])))));
+                cmpHolder.appendChild(h('div', { class: 'wb-section-title', style: 'margin:16px 0 8px' }, '比较两次仿真'));
+                cmpHolder.appendChild(tbl);
+                const sameInputs = String(ca.externalAir) === String(cb2.externalAir)
+                    && String(ca.npRatio) === String(cb2.npRatio) && String(ca.loadMode) === String(cb2.loadMode);
+                cmpHolder.appendChild(h('div', { class: 'wb-infobar', style: 'border-left:4px solid ' + (sameInputs ? '#b88c23' : '#b91c1c') + ';background:#fff9e9;margin-top:10px' },
+                    sameInputs
+                        ? '⚠ 可比较相同输入下的配置影响。没有实测数据,不能仅凭两次仿真判定哪个模型更准确。'
+                        : '⚠ 两次运行的输入或空气配置不同——先核对配置差异再下结论;不能把不同输入的输出差当成模型差异。'));
+
+                // 通道叠加:共同通道按时间对齐;不同单位不共用纵轴(每组一张图)
+                cmpHolder.appendChild(h('div', { class: 'wb-section-title', style: 'margin:16px 0 8px' }, '选择同量纲通道对比'));
+                cmpHolder.appendChild(h('div', { class: 'wb-hint', style: 'margin-bottom:8px' },
+                    'Np / Ng / 温度 / 流量 / 负载可分别叠加;不同单位不共用纵轴。按实际仿真时间对齐,不压缩成相同长度;缺失时间段留空,不补零。'));
+                const CH = [
+                    ['Np / rpm', AFO_GROUP.engine, AFO_E.Np], ['Ng / rpm', AFO_GROUP.engine, AFO_E.Ng],
+                    ['Tt45 / K', AFO_GROUP.engine, AFO_E.Tt45], ['入口流量W2 / kg/s', AFO_GROUP.engine, AFO_E.W2],
+                    ['PT负载功率 / kW', AFO_GROUP.load, 4], ['发动机燃油 / kg/s', AFO_GROUP.fuel_engine, 0]
+                ];
+                const sel = h('select', null, CH.map((c, i) => h('option', { value: String(i) }, c[0])));
+                const chartBox = h('div', { style: 'margin-top:8px' });
+                const draw = () => {
+                    const [label, g, j] = CH[parseInt(sel.value, 10) || 0];
+                    const mk = (r, name) => ({
+                        name: name,
+                        values: (r.values || []).map(row => { const cell = row && row[g]; return cell ? (cell[j] != null ? cell[j] : null) : null; })
+                    });
+                    const sa = mk(ra, idA), sb = mk(rb, idB);
+                    const n = Math.max(sa.values.length, sb.values.length);
+                    const labels = [];
+                    const step = Math.max(1, Math.ceil(n / 8));
+                    const tRef = (ra.time && rb.time && ra.time.length >= rb.time.length) ? ra.time : (rb.time || []);
+                    for (let i = 0; i < n; i++) if (i % step === 0) labels.push(tRef && tRef[i] != null ? Number(tRef[i]).toFixed(1) : String(i));
+                    chartBox.innerHTML = '';
+                    chartBox.appendChild(chartLegend([{ ...sa, color: '#0e7490' }, { ...sb, color: '#b91c1c' }]));
+                    chartBox.appendChild(lineChart({ series: [sa, sb], xLabels: labels, xTitle: '时间 / s' }));
+                };
+                sel.addEventListener('change', draw);
+                cmpHolder.appendChild(h('div', { class: 'wb-field', style: 'max-width:360px' }, h('label', null, '对比通道'), sel));
+                cmpHolder.appendChild(chartBox);
+                draw();
+                cmpHolder.appendChild(h('div', { class: 'wb-actions-row', style: 'margin-top:10px' },
+                    h('button', {
+                        class: 'wb-btn wb-btn-outline',
+                        onclick: () => {
+                            const blob = new Blob(['\ufeff' + JSON.stringify({ recordA: idA, configA: ca, recordB: idB, configB: cb2 }, null, 1)],
+                                { type: 'application/json' });
+                            const a = document.createElement('a');
+                            a.href = URL.createObjectURL(blob);
+                            a.download = 'afo_compare_' + idA + '_' + idB + '.json';
+                            a.click();
+                            URL.revokeObjectURL(a.href);
+                        }
+                    }, '导出对比配置')));
+            } catch (e) {
+                cmpHolder.innerHTML = '';
+                cmpHolder.appendChild(h('div', { class: 'wb-hint' }, '比较失败:' + e.message));
+            }
+        }
+
+        async function fetchPage() {
+            listHolder.innerHTML = '';
+            pagerHolder.innerHTML = '';
+            listHolder.appendChild(h('div', { class: 'wb-empty' }, '正在加载仿真记录...'));
+            try {
+                const base = 'projects/' + encodeURIComponent(pid) + '/afo/sessions/';
+                const params = { pageNum: state.pageNum, pageSize: state.pageSize };
+                if (listFilter.status) params.status = listFilter.status;
+                if (listFilter.kw) params.kw = listFilter.kw;
+                const [listResp, countResp] = await Promise.all([
+                    window.AppConfig.engineGet(base + 'list', params),
+                    window.AppConfig.engineGet(base + 'count', { status: params.status, kw: params.kw })
+                ]);
+                const rows = listResp && (listResp.success || listResp.code === 200) && Array.isArray(listResp.data) ? listResp.data : [];
+                const allRows = rows;
+                state.total = countResp && (countResp.success || countResp.code === 200) ? Number(countResp.data) || 0 : rows.length;
+                const maxPage = Math.max(1, Math.ceil(state.total / state.pageSize));
+                if (state.pageNum > maxPage) { state.pageNum = maxPage; return fetchPage(); }
+                renderList(rows, allRows);
+                renderActions(allRows);
+                renderPager(maxPage);
+            } catch (e) {
+                listHolder.innerHTML = '';
+                listHolder.appendChild(h('div', { class: 'wb-empty' }, '仿真记录加载失败:' + e.message));
+            }
+        }
+
+        function renderPager(maxPage) {
+            pagerHolder.appendChild(h('span', { class: 'wb-hint' },
+                '共 ' + state.total + ' 条,第 ' + state.pageNum + '/' + maxPage + ' 页'));
+            const prev = h('button', { class: 'wb-btn wb-btn-outline' + (state.pageNum <= 1 ? ' disabled' : '') }, '上一页');
+            prev.addEventListener('click', () => { if (state.pageNum > 1) { state.pageNum--; fetchPage(); } });
+            pagerHolder.appendChild(prev);
+            const startP = Math.max(1, state.pageNum - 2), endP = Math.min(maxPage, state.pageNum + 2);
+            for (let i = startP; i <= endP; i++) {
+                const b = h('button', { class: 'wb-btn ' + (i === state.pageNum ? 'wb-btn-primary' : 'wb-btn-outline') }, String(i));
+                b.addEventListener('click', () => { if (i !== state.pageNum) { state.pageNum = i; fetchPage(); } });
+                pagerHolder.appendChild(b);
+            }
+            const next = h('button', { class: 'wb-btn wb-btn-outline' + (state.pageNum >= maxPage ? ' disabled' : '') }, '下一页');
+            next.addEventListener('click', () => { if (state.pageNum < maxPage) { state.pageNum++; fetchPage(); } });
+            pagerHolder.appendChild(next);
+            pagerHolder.appendChild(h('span', { class: 'wb-hint', style: 'margin-left:8px' }, '每页'));
+            const sizeSel = h('select', { title: '每页条数' },
+                [10, 20, 50].map(n => h('option', Object.assign({ value: n }, n === state.pageSize ? { selected: '' } : {}), String(n))));
+            sizeSel.addEventListener('change', () => { state.pageSize = parseInt(sizeSel.value, 10); state.pageNum = 1; fetchPage(); });
+            pagerHolder.appendChild(sizeSel);
+        }
+
+        fetchPage();
+        return wrap;
+    }
+
+    /** 运行记录:仅建模任务的执行历史,调独立分页接口 GET /projects/{pid}/records(服务端分页,
+     *  与项目列表同款分页条);UQ评估与输出预测各有专属页面,不在此混列。 */
+    /* 运行记录任务类型=建模任务页面名称(与打开跳转落到的业务页标题一致) */
+    const RECORD_STAGE = { steady: '稳态试车建模', steady_update: '试车稳态更新',
+        transient_update: '过渡态试车建模', flight_steady: '稳态飞参建模', flight_transient: '过渡态飞参建模',
+        evolution: '发动机个性化模型自演化', uq: '不确定性评估', prediction: '输出预测', startstop: '起动停车建模' };
+    /* 工作流阶段名称(与模型成果登记的stage同口径),显示在「最近运行」列 */
+    const KIND_WORKFLOW_STAGE = { steady: '2.4 基础建模', steady_update: '2.7 数据更新',
+        transient_update: '2.7 瞬态更新', flight_steady: 'F3 稳态', flight_transient: 'F3 瞬态',
+        evolution: '自演化', uq: 'UQ评估', prediction: '输出预测', startstop: '起动停车' };
+    const KIND_BIZ = { steady: 'steady', steady_update: 'steady_update', transient_update: 'transient',
+        flight_steady: 'flightSteady', flight_transient: 'flightTransient', evolution: 'evolution', uq: 'steady' };
+    /** 记录行类型文案与跳转业务页:steady且有过渡态标记的按过渡态试车建模分流(过渡态任务kind仍为steady,执行合同一致)。 */
+    function recordKindText(tk) {
+        if ((tk.kind || '') === 'steady' && (tk.transientMode === '1' || tk.transientMode === true)) return '过渡态试车建模';
+        return RECORD_STAGE[tk.kind] || tk.kind || '稳态试车建模';
+    }
+    function recordBizId(tk) {
+        if ((tk.kind || '') === 'steady' && (tk.transientMode === '1' || tk.transientMode === true)) return 'transient';
+        return KIND_BIZ[tk.kind] || 'steady';
+    }
+    /** 模型成果sourceBusiness→建模业务页enterTask id(评估结果跳转用)。 */
+    function assetEnterTaskId(m) {
+        const sb = (m && m.sourceBusiness) || '';
+        if (sb.indexOf('新试车数据更新') >= 0) return 'steady_update';
+        if (sb.indexOf('瞬态试车') >= 0) return 'transient';
+        if (sb.indexOf('过渡态飞参') >= 0) return 'flightTransient';
+        if (sb.indexOf('飞参') >= 0) return 'flightSteady';
+        if (sb.indexOf('自演化') >= 0) return 'evolution';
+        return 'steady';
+    }
+    /** 运行记录/项目概览"打开"统一入口。行数据:tk.taskId||tk.id, tk.kind。
+     * UQ阶段行(taskId=uq-<uqId>):按uqId从UQ记录清单解析父任务id,进父工作流页直达UQ页签
+     * (此前剥前缀拿UQ记录id查任务接口,必报"任务不存在");起动停车/设计点行跳起动停车建模页并定位任务。 */
+    function openRecordTask(ctx, tk) {
+        const tid = tk.taskId || tk.id || '';
+        const kind = tk.kind || '';
+        if (kind === 'prediction' && tid.indexOf('uq-') !== 0) { ctx.navigate('predictions'); return; }
+        if (tid.indexOf('uq-') === 0) {
+            window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id || '') + '/uq-records')
+                .then(resp => {
+                    const list = resp && (resp.success || resp.code === 200) && Array.isArray(resp.data) ? resp.data : [];
+                    const uq = list.find(r => r && r.id === tid.slice(3));
+                    if (!uq || !uq.taskId) { toast('该评估记录的父任务不可定位(可能已删除)', 'error'); return; }
+                    if (kind === 'startstop' || kind === 'design_point') {
+                        window.__WB_SS_OPEN__ = { taskId: uq.taskId, kind };
+                        ctx.navigate('startstop');
+                        return;
+                    }
+                    window.__WB_OPEN_TASK__ = uq.taskId;
+                    window.__WB_OPEN_TASK_TAB__ = 'uq';
+                    ctx.enterTask({ id: KIND_BIZ[kind] || 'steady' });
+                })
+                .catch(() => toast('解析评估记录失败', 'error'));
+            return;
+        }
+        if (kind === 'startstop' || kind === 'design_point') {
+            window.__WB_SS_OPEN__ = { taskId: tid, kind };
+            ctx.navigate('startstop');
+            return;
+        }
+        window.__WB_OPEN_TASK__ = tid;
+        ctx.enterTask({ id: recordBizId(tk) });
+    }
+    async function loadRunRecords(ctx, holder) {
+        holder.innerHTML = '';
+        /* 任务类型文案与项目概况任务表(OV_KIND)保持一致 */
+        const state = { pageNum: 1, pageSize: 10, total: 0 };
+        const listHolder = h('div', null, h('div', { class: 'wb-empty' }, '正在加载记录...'));
+        const pagerHolder = h('div', { style: 'display:flex;align-items:center;gap:8px;margin-top:12px' });
+        holder.appendChild(listHolder);
+        holder.appendChild(pagerHolder);
+
+        const renderRows = (rows) => {
+            listHolder.innerHTML = '';
+            if (!rows.length) {
+                listHolder.appendChild(h('div', { class: 'wb-empty' }, '尚无建模任务运行记录;在建模任务中发起执行后在此留档。'));
+                return;
+            }
+            listHolder.appendChild(h('table', { class: 'wb-table' },
+                h('tr', null, ['任务名称', '任务类型', '最近运行', '状态', '开始时间', '结束时间', '操作'].map(t => h('th', null, t))),
+                rows.map(tk => {
+                    const raw = tk.status === 'FAILED' && tk.errorKind === 'SAVE_FAILED' ? '保存失败'
+                        : tk.status === 'FAILED' && tk.errorKind === 'NUMERIC_FAILED' ? '数值失败' : tk.status;
+                    const kindTag = tk.status === 'FAILED' ? (tk.errorKind === 'SAVE_FAILED' ? ['保存失败', 'amber'] : tk.errorKind === 'NUMERIC_FAILED' ? ['数值失败', 'red'] : null) : null;
+                    const st = RUN_STATUS[raw] || [raw || '—', 'gray'];
+                    const note = tk.message || '';
+                    const isUqStage = (tk.taskId || '').indexOf('uq-') === 0; // UQ阶段行:类型列=父工作流,最近运行列标注
+                    return h('tr', null,
+                        h('td', { class: 'wb-link', title: note, style: 'max-width:260px;word-break:break-all' }, tk.name || tk.taskId),
+                        h('td', { class: 'wb-hint', style: 'font-weight:600' }, recordKindText(tk)),
+                        h('td', { class: 'wb-hint' }, isUqStage
+                            ? [h('span', { style: 'display:inline-flex;margin-right:6px' }, statusTag('不确定性评估', 'violet')), (tk.runId || '—')]
+                            : [(KIND_WORKFLOW_STAGE[tk.kind] || '—'), tk.runId ? ' · ' + tk.runId : '']),
+                        h('td', null, kindTag
+                            ? [h('span', { style: 'display:inline-flex;margin-right:6px' }, statusTag(kindTag[0], kindTag[1])), statusTag(st[0], st[1])]
+                            : statusTag(st[0], st[1])),
+                        h('td', { class: 'wb-hint' }, tk.startTime ? new Date(tk.startTime).toLocaleString() : '—'),
+                        h('td', { class: 'wb-hint' }, tk.endTime ? new Date(tk.endTime).toLocaleString() : '—'),
+                        h('td', null, h('button', {
+                            class: 'wb-btn wb-btn-primary', style: 'padding:3px 12px;font-size:12px',
+                            onclick: () => openRecordTask(ctx, tk)
+                        }, '打开')));
+                })));
+        };
+
+        const renderPager = () => {
+            pagerHolder.innerHTML = '';
+            const maxPage = Math.max(1, Math.ceil(state.total / state.pageSize));
+            pagerHolder.appendChild(h('span', { class: 'wb-hint' },
+                '共 ' + state.total + ' 条,第 ' + state.pageNum + '/' + maxPage + ' 页'));
+            const prev = h('button', { class: 'wb-btn wb-btn-outline' + (state.pageNum <= 1 ? ' disabled' : '') }, '上一页');
+            prev.addEventListener('click', () => { if (state.pageNum > 1) { state.pageNum--; fetchPage(); } });
+            pagerHolder.appendChild(prev);
+            const startP = Math.max(1, state.pageNum - 2), endP = Math.min(maxPage, state.pageNum + 2);
+            for (let i = startP; i <= endP; i++) {
+                const b = h('button', { class: 'wb-btn ' + (i === state.pageNum ? 'wb-btn-primary' : 'wb-btn-outline') }, String(i));
+                b.addEventListener('click', () => { if (i !== state.pageNum) { state.pageNum = i; fetchPage(); } });
+                pagerHolder.appendChild(b);
+            }
+            const next = h('button', { class: 'wb-btn wb-btn-outline' + (state.pageNum >= maxPage ? ' disabled' : '') }, '下一页');
+            next.addEventListener('click', () => { if (state.pageNum < maxPage) { state.pageNum++; fetchPage(); } });
+            pagerHolder.appendChild(next);
+            pagerHolder.appendChild(h('span', { class: 'wb-hint', style: 'margin-left:8px' }, '每页'));
+            const sizeSel = h('select', { title: '每页条数' },
+                [10, 20, 50].map(n => h('option', Object.assign({ value: n }, n === state.pageSize ? { selected: '' } : {}), String(n))));
+            sizeSel.addEventListener('change', () => { state.pageSize = parseInt(sizeSel.value, 10); state.pageNum = 1; fetchPage(); });
+            pagerHolder.appendChild(sizeSel);
+        };
+
+        async function fetchPage() {
+            listHolder.innerHTML = '';
+            pagerHolder.innerHTML = '';
+            listHolder.appendChild(h('div', { class: 'wb-empty' }, '正在加载记录...'));
+            try {
+                /* 与项目列表同口径:list返回当页数组,count返回总数 */
+                const base = 'projects/' + encodeURIComponent(ctx.project.id) + '/records/';
+                const [listResp, countResp] = await Promise.all([
+                    window.AppConfig.engineGet(base + 'list', { pageNum: state.pageNum, pageSize: state.pageSize }),
+                    window.AppConfig.engineGet(base + 'count', {})
+                ]);
+                const rows = listResp && (listResp.success || listResp.code === 200) && Array.isArray(listResp.data) ? listResp.data : null;
+                if (!rows) throw new Error((listResp && listResp.message) || '记录列表接口返回异常');
+                if (!(countResp && (countResp.success || countResp.code === 200))) {
+                    throw new Error((countResp && countResp.message) || '记录总数接口返回异常');
+                }
+                state.total = Number(countResp.data) || 0;
+                const maxPage = Math.max(1, Math.ceil(state.total / state.pageSize));
+                if (state.pageNum > maxPage) { state.pageNum = maxPage; return fetchPage(); }
+                renderRows(rows);
+                if (state.total) renderPager();
+            } catch (e) {
+                listHolder.innerHTML = '';
+                listHolder.appendChild(h('div', { class: 'wb-empty' }, '运行记录加载失败:' + e.message));
+            }
+        }
+
+        fetchPage();
+    }
+
+    function fmtSpan(ms) {
+        const s = Math.max(0, Math.round(ms / 1000));
+        const m = Math.floor(s / 60);
+        return (m ? m + '分' : '') + (s % 60) + '秒';
+    }
+    pages['modeling.records'] = (ctx) => recordsPage(ctx, 'run');
+
+    /* ===== 数字试车台 ===== */
+    pages['testbench.overview'] = (ctx) => {
+        const pid = encodeURIComponent(ctx.project.id || '');
+        const sessionsHolder = h('div', null, h('div', { class: 'wb-empty' }, '正在加载仿真记录...'));
+        const wrap = h('div', null, pageHeader('项目概况', ctx.project.name + ' / 系统联合仿真'));
+        wrap.appendChild(h('div', { class: 'wb-section', style: 'display:grid;grid-template-columns:1fr 1fr;gap:20px' },
+            h('div', { class: 'wb-card' },
+                h('div', { class: 'wb-section-title' }, '全模式人工操纵仿真'),
+                h('div', { class: 'wb-hint', style: 'margin:8px 0 14px' }, '三位置油门 · 五挡Np · 负载互斥 · 命令状态机 · 快照恢复(F-11)'),
+                h('span', { class: 'wb-tag wb-tag-teal' }, '已接入(sht_fullmode_session会话合同)'),
+                h('div', { style: 'margin-top:14px' }, h('button', {
+                    class: 'wb-btn wb-btn-primary',
+                    onclick: () => ctx.navigate('fullmode')
+                }, '进入'))),
+            h('div', { class: 'wb-card' },
+                h('div', { class: 'wb-section-title' }, '起动停车建模(含设计点配置)'),
+                h('div', { class: 'wb-hint', style: 'margin:8px 0 14px' }, '模型准备→设计点(F-09 solve/commit)→特性图→物理热参数→校核链→模型成果(F-10 七页签)'),
+                h('span', { class: 'wb-tag wb-tag-teal' }, '已接入(design_point + startstop 任务合同)'),
+                h('div', { style: 'margin-top:14px' }, h('button', {
+                    class: 'wb-btn wb-btn-primary',
+                    onclick: () => ctx.navigate('startstop')
+                }, '进入'))),
+            h('div', { class: 'wb-card' },
+                h('div', { class: 'wb-section-title' }, '多系统联合仿真'),
+                h('div', { class: 'wb-hint', style: 'margin:8px 0 14px' }, 'AFO_V_2 · Dll_Control_AFO_V8_5_R2019b · 39 组 247 通道 + 4 回退标志(F-12)'),
+                h('span', { class: 'wb-tag wb-tag-teal' }, '已接入(sht_afo_session会话合同)'),
+                h('div', { style: 'margin-top:14px' }, h('button', {
+                    class: 'wb-btn wb-btn-primary',
+                    onclick: () => ctx.navigate('afo')
+                }, '进入')))));
+        wrap.appendChild(h('div', { class: 'wb-section' },
+            h('div', { class: 'wb-section-head' },
+                h('div', { class: 'wb-section-title' }, '最近仿真记录'),
+                h('button', { class: 'wb-btn wb-btn-outline', onclick: () => ctx.navigate('records') }, '全部记录')),
+            sessionsHolder));
+        window.AppConfig.engineGet('projects/' + pid + '/afo/sessions')
+            .then(resp => {
+                const rows = resp && (resp.success || resp.code === 200) && Array.isArray(resp.data) ? resp.data : [];
+                sessionsHolder.innerHTML = '';
+                if (!rows.length) {
+                    sessionsHolder.appendChild(h('div', { class: 'wb-empty' },
+                        '暂无仿真记录——进入"多系统联合仿真"发起准备并运行后在此留档。'));
+                    return;
+                }
+                sessionsHolder.appendChild(h('table', { class: 'wb-table' },
+                    h('tr', null, ['运行', '配置', '状态', '创建时间'].map(x => h('th', null, x))),
+                    rows.slice(0, 5).map(r => {
+                        const c = r.config || {};
+                        return h('tr', { class: 'clickable', onclick: () => ctx.navigate('afo') },
+                            h('td', { style: 'font-weight:600' }, r.runId || '—'),
+                            h('td', { class: 'wb-hint' },
+                                (c.externalAir ? '外部回灌' : '内部引气') + ' · ' + (c.loadMode || '—')
+                                + ' · ' + (c.duration != null ? c.duration + ' s' : '—')),
+                            h('td', null, r.phase === 'ENDED' ? '完整' : r.phase === 'FAILED' ? '失败' : (r.phase || '—')),
+                            h('td', { class: 'wb-hint' }, r.createdAt ? new Date(r.createdAt).toLocaleString() : '—'));
+                    })));
+            })
+            .catch(() => {
+                sessionsHolder.innerHTML = '';
+                sessionsHolder.appendChild(h('div', { class: 'wb-empty' }, '仿真记录加载失败'));
+            });
+        return wrap;
+    };
+
+    function placeholderPage(title, subtitle, heading, lines) {
+        const wrap = h('div', null, pageHeader(title, subtitle));
+        wrap.appendChild(h('div', { class: 'wb-placeholder' },
+            h('div', { class: 'wb-ph-icon', html: ICONS.ph }),
+            h('h3', null, heading),
+            h('p', null, lines)));
+        return wrap;
+    }
+    /* ===== 全模式仿真(G8,UI-R101): 三页签 仿真准备/操纵与监视/本次结果 ===== */
+    pages['testbench.fullmode'] = (ctx) => {
+        const pid = encodeURIComponent(ctx.project.id || '');
+        const api = p => window.AppConfig.engineGet('projects/' + pid + '/testbench/fullmode' + p);
+        const apiPost = (p, body) => window.AppConfig.enginePost('projects/' + pid + '/testbench/fullmode' + p, body || {});
+        const S = window.__WB_FM__ = window.__WB_FM__ || {
+            phase: 'IDLE', live: null, message: '', tab: 'prep', runId: null,
+            cfg: { modelMode: 0, initialKind: 'stopped', loadMode: 'dual_collective',
+                thermalEnabled: true, density: '1.225', powerW: '0', mkpNm: '0',
+                mainPitchDeg: '6', tailPitchDeg: '5', npGear: '0.9', throttle: 'idle',
+                loadDraft: '0' },
+            hist: null, charts: {}, opsRefs: null,
+            result: null, resultRunId: null, resultSub: 'history',
+            draftThrottle: null, histSource: 'measured', histFrom: '', histTo: '', thermalSel: null
+        };
+        if (!S.hist) S.hist = emptyHist();
+        const wrap = h('div', null,
+            h('div', { style: 'margin-bottom:4px;display:flex;justify-content:space-between;align-items:baseline' },
+                h('div', null,
+                    h('div', { class: 'wb-page-title', style: 'font-size:20px;margin-bottom:2px' }, '全模式仿真'),
+                    h('div', { class: 'wb-page-sub' }, '人工操纵与连续观测 · 0.025s二阶欧拉完整步 · 记录10Hz')),
+                h('div', { class: 'wb-hint', style: 'margin:0' }, 'F-11 · sht_fullmode_session · 界面非硬实时试验控制系统')));
+        const tabBar = h('div', { class: 'wb-tabs', style: 'margin-bottom:12px' });
+        const body = h('div', null);
+        wrap.appendChild(tabBar);
+        wrap.appendChild(body);
+        const TABS = [['prep', '仿真准备'], ['ops', '操纵与监视'], ['result', '本次结果']];
+
+        function toast(msg, kind) { if (window.Workbench && window.Workbench.toast) window.Workbench.toast(msg, kind || 'info'); }
+        const canOps = () => ['READY', 'RUNNING', 'PAUSED'].includes(S.phase);
+
+        function paintTabs() {
+            tabBar.innerHTML = '';
+            TABS.forEach(([k, label]) => tabBar.appendChild(h('div', {
+                class: 'wb-tab' + (S.tab === k ? ' active' : '') + (k !== 'prep' && !canOps() && S.phase !== 'ENDED' && S.phase !== 'FAILED' ? ' disabled' : ''),
+                onclick: () => {
+                    if (k !== 'prep' && !canOps() && S.phase !== 'ENDED' && S.phase !== 'FAILED') { toast('请先完成仿真准备', 'info'); return; }
+                    S.tab = k; renderBody();
+                }
+            }, label)));
+        }
+
+        function cmd(kind, value, note) {
+            const send = () => apiPost('/command', { kind, value })
+                .then(r => { if (r && r.code === 200) toast(note || ('命令已下发:' + kind), 'success'); else toast((r && r.message) || '命令失败', 'error'); })
+                .catch(e => toast('命令失败:' + e.message, 'error'));
+            // READY状态下命令无人消费(推进循环未启动):自动先开始推进再下发命令
+            if (S.phase === 'READY') {
+                apiPost('/run', {})
+                    .then(r => {
+                        if (r && r.code === 200) { S.phase = 'RUNNING'; renderBody(); return send(); }
+                        toast((r && r.message) || '开始推进失败', 'error');
+                    })
+                    .catch(e => toast('开始推进失败:' + e.message, 'error'));
+                return;
+            }
+            send();
+        }
+        // 恢复推进只能走/run:命令队列只在推进循环中被消费,/command的resume会永久滞留
+        function doRun(note) {
+            apiPost('/run', {})
+                .then(r => {
+                    if (r && r.code === 200) { S.phase = 'RUNNING'; toast(note || '推进已启动;可下发操纵命令(块间生效)', 'success'); renderBody(); }
+                    else toast((r && r.message) || '开始推进失败', 'error');
+                })
+                .catch(e => toast('开始推进失败:' + e.message, 'error'));
+        }
+
+        /* ---------- 页签一: 仿真准备(效果图08-01/02/17/29) ----------
+         * 两栏: 发动机与初始状态 + 转速与负载 | 环境、热状态与记录(准备后切换为已准备初态)。
+         * 底部状态栏: 状态文字 + 准备初态/重新准备 + 开始仿真;C1不相容组合在发起前解释原因。 */
+        function fmRadioGroup(options, current, onpick) {
+            const wrap = h('div', { style: 'display:grid;gap:8px' });
+            wrap.style.gridTemplateColumns = 'repeat(' + Math.min(options.length, 4) + ',1fr)';
+            const btns = [];
+            const paint = () => btns.forEach(([b, v]) => {
+                b.className = 'wb-btn ' + (v === S.cfg[current] ? 'wb-btn-primary' : 'wb-btn-outline');
+            });
+            options.forEach(([v, label]) => {
+                const b = h('button', { class: 'wb-btn wb-btn-outline', style: 'padding:8px 6px', onclick: () => { S.cfg[current] = v; paint(); if (onpick) onpick(); } }, label);
+                btns.push([b, v]); wrap.appendChild(b);
+            });
+            paint();
+            return wrap;
+        }
+        function coldDirectLoadConflict() {
+            // 效果图08-17/C1: 正恒功率或正恒Mkp不支持从静止起动;运行前解释,不等DLL失败
+            if (S.cfg.initialKind !== 'stopped') return '';
+            if (S.cfg.loadMode === 'power' && (Number(S.cfg.powerW) || 0) > 0) return '正恒功率不支持从静止起动';
+            if (S.cfg.loadMode === 'mkp' && (Number(S.cfg.mkpNm) || 0) > 0) return '正恒Mkp不支持从静止起动';
+            return '';
+        }
+        function fmShowDialog(title, buildBody) {
+            const ov = h('div', { style: 'position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:9999;display:flex;align-items:center;justify-content:center' });
+            const card = h('div', { style: 'background:#fff;border-radius:10px;max-width:860px;width:92%;max-height:84vh;overflow:auto;padding:18px 22px;box-shadow:0 18px 50px rgba(0,0,0,.25)' },
+                h('div', { style: 'display:flex;justify-content:space-between;align-items:center;margin-bottom:10px' },
+                    h('div', { class: 'wb-section-title', style: 'margin:0' }, title),
+                    h('button', { class: 'wb-btn wb-btn-outline', onclick: () => document.body.removeChild(ov) }, '关闭')));
+            card.appendChild(buildBody());
+            ov.appendChild(card);
+            ov.addEventListener('click', e => { if (e.target === ov) document.body.removeChild(ov); });
+            document.body.appendChild(ov);
+        }
+        function prepConfigDetailTable() {
+            // 效果图08-29: 配置分组 | 当前值/来源 | 可编辑性
+            const f = ['静止', '慢车', '巡航', '设计转速'][['stopped', 'idle', 'cruise', 'maximum'].indexOf(S.cfg.initialKind)] || S.cfg.initialKind;
+            const lm = { power: '直接PT轴功率', mkp: '直接Mkp扭矩', dual_collective: '主桨/尾桨总距' }[S.cfg.loadMode] || S.cfg.loadMode;
+            const lv = S.cfg.loadMode === 'power' ? (S.cfg.powerW + ' W') : S.cfg.loadMode === 'mkp' ? (S.cfg.mkpNm + ' N·m')
+                : ('主桨 ' + S.cfg.mainPitchDeg + '° / 尾桨 ' + S.cfg.tailPitchDeg + '°');
+            const rows = [
+                ['构型 / 物理资产', (S.cfg.modelMode === 1 ? '六部件' : '三部件') + ' / 当前已部署全模式包', '准备前选择'],
+                ['初始状态', f + ';准备后核对实际初态', '准备前配置'],
+                ['运行预选挡', Math.round(parseFloat(S.cfg.npGear || '0.9') * 100) + '%(尚未施加)', '前端草稿,开始后明确施加'],
+                ['负载', lm + ' ' + lv, '准备前选择方式,运行中只改常值'],
+                ['热状态', S.cfg.thermalEnabled ? '开启;初温按配套stateNames配置' : '关闭;热关闭与未计算分开展示', '不称充分热平衡'],
+                ['传感器', '按实际通道设置偏置、噪声与动态(模型配套)', '准备前配置'],
+                ['积分 / 记录', '0.025 s Heun(二阶欧拉) / 0.1 s 记录', '当前正式合同只读'],
+                ['暖机 / 保护', '读取本构型配套参数(Ng稳定暖机;1400K温限)', '只读查看来源,不临时放宽'],
+                ['环境 / Mkg', '环境密度 ' + S.cfg.density + ' kg·m⁻³;GT附件负载按模型', '没有消费接口的字段不开放'],
+                ['运行时长 / 输出位置', '按最大接受步数预算 / 会话独立保存目录', '准备前配置']
+            ];
+            return h('table', { class: 'wb-table' },
+                h('tr', null, ['配置分组', '当前值 / 来源', '可编辑性'].map(x => h('th', null, x))),
+                rows.map(r => h('tr', null, h('td', null, r[0]), h('td', null, r[1]), h('td', { class: 'wb-hint' }, r[2]))));
+        }
+        function prepTab() {
+            const live = S.live || {};
+            const preparing = S.phase === 'PREPARING';
+            const preparedLike = ['READY', 'RUNNING', 'PAUSED'].includes(S.phase);
+            const conflict = coldDirectLoadConflict();
+            const ikSel = fmRadioGroup([['stopped', '静止'], ['idle', '慢车'], ['cruise', '巡航'], ['maximum', '设计转速']],
+                'initialKind');
+            const lmSel = fmRadioGroup([['power', '轴功率'], ['mkp', 'Mkp扭矩'], ['dual_collective', '主桨 / 尾桨总距']],
+                'loadMode', () => renderBody());
+            const mmSel = h('select', null,
+                h('option', { value: '0', selected: S.cfg.modelMode === 0 ? '' : null }, 'E-001 / 三部件标称模型'),
+                h('option', { value: '1', selected: S.cfg.modelMode === 1 ? '' : null }, 'E-001 / 六部件模型'));
+            mmSel.addEventListener('change', () => { S.cfg.modelMode = parseInt(mmSel.value, 10); });
+            const mkNum = (key, label, unit) => {
+                const inp = h('input', { value: String(S.cfg[key]) });
+                inp.addEventListener('change', () => { S.cfg[key] = inp.value; });
+                return h('div', { class: 'wb-field' }, h('label', null, label + (unit ? ' / ' + unit : '')), inp);
+            };
+            const loadInputs = h('div', { class: 'wb-form-grid', style: 'grid-template-columns:1fr 1fr' });
+            if (S.cfg.loadMode === 'power') {
+                loadInputs.appendChild(mkNum('powerW', 'PT轴负载功率', 'W'));
+                loadInputs.appendChild(h('div', { class: 'wb-hint', style: 'align-self:end;padding-bottom:8px' }, '负载方式在本次运行中保持不变'));
+            } else if (S.cfg.loadMode === 'mkp') {
+                loadInputs.appendChild(mkNum('mkpNm', 'Mkp扭矩', 'N·m'));
+                loadInputs.appendChild(h('div', { class: 'wb-hint', style: 'align-self:end;padding-bottom:8px' }, '负载方式在本次运行中保持不变'));
+            } else {
+                loadInputs.appendChild(mkNum('mainPitchDeg', '主桨总距', 'deg'));
+                loadInputs.appendChild(mkNum('tailPitchDeg', '尾桨总距', 'deg'));
+            }
+            const npGearSel = h('select', null, ['0.8', '0.9', '0.95', '1', '1.05'].map(v =>
+                h('option', { value: v, selected: String(S.cfg.npGear) === v ? '' : null },
+                    Math.round(parseFloat(v) * 100) + '% / ' + Math.round(parseFloat(v) * 20900) + ' rpm')));
+            npGearSel.addEventListener('change', () => { S.cfg.npGear = npGearSel.value; });
+            const designNp = live.npDesignRpm != null ? String(Math.round(Number(live.npDesignRpm))) : '20900(模型给定)';
+
+            const infoMsg = preparing ? '正在准备初态(校验身份/初始化模型);准备完成前不推进仿真。'
+                : conflict ? ('不能准备: ' + conflict + '。请调整初态或主动改选负载方式。')
+                : preparedLike ? '初态准备完成。请核对实际初态,再开始仿真。'
+                : S.phase === 'FAILED' ? ('准备失败: ' + (S.message || '执行异常;详情见服务端日志。'))
+                : '填写试车条件后准备初态,准备完成前不推进仿真。';
+            const infoStyle = conflict || S.phase === 'FAILED'
+                ? 'margin-bottom:12px;padding:10px 14px;background:#fdf6e3;border:1px solid #f1c40f;border-radius:6px;color:#7d6608'
+                : 'margin-bottom:12px';
+            const card = h('div', null, h('div', { class: 'wb-infobar', style: infoStyle }, infoMsg));
+
+            const grid2 = h('div', { style: 'display:grid;grid-template-columns:minmax(520px,1.4fr) minmax(340px,1fr);gap:20px' });
+            /* 左栏 */
+            const left = h('div', null,
+                h('div', { class: 'wb-card', style: 'padding:14px 16px' },
+                    h('div', { class: 'wb-section-title', style: 'margin-bottom:8px' }, '发动机与初始状态'),
+                    h('div', { class: 'wb-form-grid', style: 'grid-template-columns:1fr 1fr' },
+                        h('div', { class: 'wb-field' }, h('label', null, '模型'), mmSel),
+                        h('div', { class: 'wb-field' }, h('label', null, '运行包'), h('input', { value: '全模式仿真 / 当前选定包', disabled: '' }))),
+                    h('div', { class: 'wb-field' }, h('label', null, '初始状态'), ikSel),
+                    h('div', { class: 'wb-hint', style: 'margin:6px 0 0' }, '起动后先完成Ng稳定暖机,再交接至慢车;"设计转速"预置不等同于已验证的最大功率。')),
+                h('div', { class: 'wb-card', style: 'padding:14px 16px;margin-top:14px' },
+                    h('div', { class: 'wb-section-title', style: 'margin-bottom:8px' }, '转速与负载'),
+                    h('div', { class: 'wb-form-grid', style: 'grid-template-columns:1fr 1fr' },
+                        h('div', { class: 'wb-field' }, h('label', null, '运行Np预选挡位'), npGearSel),
+                        h('div', { class: 'wb-field' }, h('label', null, '设计点Np / rpm'), h('input', { value: designNp, disabled: '' }))),
+                    h('div', { class: 'wb-field' }, h('label', null, '负载输入方式(三类互斥,运行中不切换)'), lmSel),
+                    h('div', { class: 'wb-form-grid', style: 'grid-template-columns:1fr 1fr;margin-top:4px' }, loadInputs),
+                    h('div', { class: 'wb-hint', style: 'margin:8px 0 0' }, 'GT附件负载 Mkg: 0.0 N·m(模型通道,不能用尾桨扭矩代替)')));
+            /* 右栏: 准备前=环境热状态与记录;准备后=已准备初态 */
+            const right = h('div', { class: 'wb-card', style: 'padding:14px 16px' });
+            if (!preparedLike) {
+                right.appendChild(h('div', { class: 'wb-section-title', style: 'margin-bottom:8px' }, '环境、热状态与记录'));
+                const kv = h('div', { class: 'wb-kv' });
+                [['测量模型', '本次传感器配置'], ['仿真步长', '0.025 s(Heun二阶欧拉)'],
+                 ['记录频率', '10 Hz'], ['最长仿真时间', '按最大接受步数预算'],
+                 ['运行预选挡位', Math.round(parseFloat(S.cfg.npGear || '0.9') * 100) + '%']]
+                    .forEach(([k, v]) => { kv.appendChild(h('div', { class: 'k' }, k)); kv.appendChild(h('div', { class: 'v' }, v)); });
+                right.appendChild(kv);
+                /* 热模式与环境可配置(说明书9.1: 准备页选择源模型、热模式、环境、负载模式和初始状态) */
+                const densInp = h('input', { value: String(S.cfg.density) });
+                densInp.addEventListener('change', () => { S.cfg.density = densInp.value; });
+                const thBtns = {};
+                const thRow = h('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:8px' });
+                [['on', '开启'], ['off', '关闭']].forEach(([v, label]) => {
+                    const b = h('button', { class: 'wb-btn wb-btn-outline', onclick: () => { S.cfg.thermalEnabled = v === 'on'; paintTh(); } }, label);
+                    thBtns[v] = b; thRow.appendChild(b);
+                });
+                function paintTh() {
+                    thBtns.on.className = 'wb-btn ' + (S.cfg.thermalEnabled ? 'wb-btn-primary' : 'wb-btn-outline');
+                    thBtns.off.className = 'wb-btn ' + (!S.cfg.thermalEnabled ? 'wb-btn-primary' : 'wb-btn-outline');
+                }
+                paintTh();
+                right.appendChild(h('div', { class: 'wb-form-grid', style: 'grid-template-columns:1fr 1fr;margin-top:10px' },
+                    h('div', { class: 'wb-field' }, h('label', null, '环境密度 / kg·m⁻³'), densInp),
+                    h('div', { class: 'wb-field' }, h('label', null, '热效应(Visser16热链)'), thRow)));
+            } else {
+                right.appendChild(h('div', { class: 'wb-section-title', style: 'margin-bottom:8px' }, '已准备初态'));
+                const sr = Array.isArray(live.speedRpm) ? live.speedRpm : [];
+                const kv = h('div', { class: 'wb-kv' });
+                [['初始Np', sr[0] != null ? Number(sr[0]).toFixed(0) + ' rpm' : '—'],
+                 ['初始Ng', sr[1] != null ? Number(sr[1]).toFixed(0) + ' rpm' : '—'],
+                 ['初始燃油', live.fuelKgPerS != null ? Number(live.fuelKgPerS).toFixed(3) + ' kg/s' : '—'],
+                 ['气路', live.tt45K != null ? '已进入完整气路计算' : '未进入完整气路计算'],
+                 ['热状态', S.cfg.thermalEnabled ? '按配置初温初始化' : '关闭'],
+                 ['传感器', '按本次配置初始化'],
+                 ['物理阶段', modeCn(live.mode) || '—'],
+                 ['仿真时间', live.timeS != null ? Number(live.timeS).toFixed(3) + ' s' : '0.000 s']]
+                    .forEach(([k, v]) => { kv.appendChild(h('div', { class: 'k' }, k)); kv.appendChild(h('div', { class: 'v' }, String(v))); });
+                right.appendChild(kv);
+            }
+            const rbtns = h('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px' },
+                h('button', { class: 'wb-btn wb-btn-outline', onclick: () => fmShowDialog('配置与热状态(准备细节)', prepConfigDetailTable) }, '配置与热状态'),
+                h('button', { class: 'wb-btn wb-btn-outline', onclick: () => fmShowDialog('测量与记录', () => h('div', null,
+                    h('div', { class: 'wb-hint', style: 'margin-bottom:8px' }, '传感器与记录按正式合同配置;当前界面不做临时放宽。'),
+                    prepConfigDetailTable())) }, '测量与记录'));
+            right.appendChild(rbtns);
+            right.appendChild(h('div', { class: 'wb-hint', style: 'margin:12px 0 4px;font-weight:600' }, '准备结果与本次配置绑定'));
+            right.appendChild(h('div', { class: 'wb-hint', style: 'margin:0' }, '更改物理配置后需要重新准备。恢复已有试验请使用完整状态快照。'));
+            right.appendChild(h('button', { class: 'wb-btn wb-btn-outline', style: 'width:100%;margin-top:10px',
+                onclick: () => { S.tab = 'result'; S.resultSub = 'config'; renderBody(); } }, '选择恢复快照'));
+            grid2.appendChild(left); grid2.appendChild(right);
+            card.appendChild(grid2);
+
+            /* 底部状态栏(08-01/02) */
+            const statusText = preparing ? '正在准备初态...'
+                : preparedLike ? '初态已准备,数值计算' + (S.phase === 'READY' ? '尚未开始' : '进行中/暂停(见操纵与监视)')
+                : S.phase === 'FAILED' ? '准备失败;可修正后重新准备' : '等待准备';
+            const bar = h('div', { style: 'display:flex;align-items:center;gap:10px;margin-top:16px;padding-top:12px;border-top:1px solid #e5e7eb' },
+                h('span', { class: 'wb-hint', style: 'margin:0' }, '状态: ' + statusText),
+                h('div', { class: 'wb-spacer' }));
+            if (S.phase === 'FAILED') bar.appendChild(h('span', { style: 'color:#922b21;font-size:12px' }, S.message || ''));
+            if (conflict) bar.appendChild(h('span', { style: 'color:#7d6608;font-size:12px' }, '原配置已保留,尚未加载发动机。'));
+            if (preparedLike) {
+                bar.appendChild(h('button', { class: 'wb-btn wb-btn-outline', onclick: () => doPrepare() }, '重新准备'));
+                bar.appendChild(h('button', { class: 'wb-btn wb-btn-primary', onclick: () => { S.tab = 'ops'; renderBody(); doRun('推进已启动;请先置慢车,再单独起动'); } }, '▶ 开始仿真'));
+            } else {
+                bar.appendChild(h('button', {
+                    class: 'wb-btn wb-btn-outline' + (preparing || conflict ? ' disabled' : ''),
+                    style: conflict ? 'opacity:.5' : '',
+                    onclick: () => { if (!preparing && !conflict) doPrepare(); }
+                }, preparing ? '准备中...' : '准备初态'));
+                bar.appendChild(h('button', { class: 'wb-btn wb-btn-primary', style: 'opacity:.5', disabled: '' }, '▶ 开始仿真'));
+            }
+            card.appendChild(bar);
+            if (S.phase === 'FAILED') {
+                card.appendChild(h('div', { style: 'margin-top:14px;padding:10px 14px;background:#fdecea;border:1px solid #f5b7b1;border-radius:6px;color:#922b21' },
+                    h('div', { style: 'font-weight:700;margin-bottom:2px' }, '仿真准备失败'),
+                    h('div', { class: 'wb-hint', style: 'word-break:break-all' },
+                        S.message || '执行异常;详情见仿真记录与服务端日志。修正后可直接重新发起准备。')));
+            }
+            return card;
+        }
+
+        function doPrepare() {
+            // 准备中重复点击直接忽略:后端会拒绝第二次prepare,且失败路径不能把本地相位误拉回IDLE
+            // (IDLE会停掉状态轮询,页面从此不刷新——准备实际仍在后端进行)
+            if (S.phase === 'PREPARING') return;
+            const user = {
+                modelMode: S.cfg.modelMode,
+                fullmode: {
+                    loadMode: S.cfg.loadMode,
+                    initialKind: S.cfg.initialKind,
+                    thermalEnabled: !!S.cfg.thermalEnabled,
+                    densityKgPerM3: parseFloat(S.cfg.density) || 1.225,
+                    load: { powerW: Number(S.cfg.powerW) || 0, mkpNm: Number(S.cfg.mkpNm) || 0,
+                        mainPitchDeg: Number(S.cfg.mainPitchDeg) || 6, tailPitchDeg: Number(S.cfg.tailPitchDeg) || 5 },
+                    outputDirectory: ''
+                }
+            };
+            S.phase = 'PREPARING';
+            renderBody();
+            // 发起失败时不再假设"无会话":以服务端真实相位为准恢复,保证轮询不中断
+            const recover = () => api('/status').then(r => {
+                if (r && r.code === 200 && r.data) applyStatus(r.data);
+                else { S.phase = 'IDLE'; S.live = null; renderBody(); }
+            }).catch(() => { S.phase = 'IDLE'; S.live = null; renderBody(); });
+            apiPost('/prepare', user)
+                .then(r => { if (!(r && r.code === 200)) { toast((r && r.message) || '准备发起失败', 'error'); recover(); } })
+                .catch(e => { toast('准备发起失败:' + e.message, 'error'); recover(); });
+        }
+
+        /* ---------- 页签二: 操纵与监视(效果图image149~157) ----------
+         * 结构: 状态条(相位/时间/物理阶段/油门/负载+暂停/继续/结束/断油) → 最近命令回执条 → 监视六宫格
+         *       → 告警行 → 阶段提示 → 左操纵台(油门杆/命令/Np挡位/负载草稿/暂停保存快照) + 右四实时曲线 → 操纵记录表。
+         * 轮询就地补丁(patchOps)不重建DOM,曲线用ECharts增量推数据。 */
+        function emptyHist() { return { t: [], npp: [], tt45: [], kw: [], fuel: [] }; }
+        function pushHist(live) {
+            if (!live) return;
+            const t = typeof live.timeS === 'number' ? live.timeS : null;
+            if (t == null) return;
+            const H = S.hist;
+            // 同一仿真时刻不重复入列(暂停/未推进时轮询每2s拿到相同timeS,重复画点会堆在同一x处)
+            if (H.t.length && H.t[H.t.length - 1] === t) return;
+            const al = live.appliedLoad || {};
+            const design = Number(live.npDesignRpm) || 0;
+            const np = Array.isArray(live.speedRpm) ? live.speedRpm[0] : null;
+            const push = (arr, v) => arr.push(v == null || (typeof v === 'number' && isNaN(v)) ? null : Number(v));
+            H.t.push(t);
+            // 效果图08-03: 主监视Np以%设计点显示
+            push(H.npp, np != null && design > 0 ? np / design * 100 : null);
+            push(H.tt45, typeof live.tt45K === 'number' ? live.tt45K : null);
+            push(H.kw, al.aeroPowerW != null ? Number(al.aeroPowerW) / 1000 : null);
+            push(H.fuel, typeof live.fuelKgPerS === 'number' ? live.fuelKgPerS : null);
+            if (H.t.length > 1200) ['t', 'npp', 'tt45', 'kw', 'fuel'].forEach(k => H[k].splice(0, H[k].length - 1200));
+        }
+        function seriesData(tArr, vArr) {
+            const out = [];
+            for (let i = 0; i < tArr.length; i++) if (vArr[i] != null) out.push([tArr[i], Math.round(vArr[i] * 1000) / 1000]);
+            return out;
+        }
+        function ensureEcharts(cb) {
+            if (window.echarts) return cb();
+            let ld = document.getElementById('fm-echarts-loader');
+            if (!ld) {
+                ld = document.createElement('script');
+                ld.id = 'fm-echarts-loader';
+                ld.src = './lib/echarts/echarts.min.js';
+                document.head.appendChild(ld);
+            }
+            const wait = () => { if (window.echarts) cb(); else setTimeout(wait, 200); };
+            wait();
+        }
+        function disposeCharts() {
+            Object.keys(S.charts).forEach(k => { try { S.charts[k].dispose(); } catch (e) { } delete S.charts[k]; });
+        }
+        function setChartBase() {
+            const colors = { np: ['#0f766e'], tt45: ['#e67e22'], kw: ['#2e86de'], fuel: ['#c0392b'] };
+            Object.keys(S.charts).forEach(k => {
+                S.charts[k].setOption({
+                    animation: false, color: colors[k] || ['#2e86de'],
+                    legend: { top: 0, textStyle: { fontSize: 10 } },
+                    tooltip: { trigger: 'axis' },
+                    grid: { left: 56, right: 14, top: 26, bottom: 24 },
+                    xAxis: { type: 'value', min: 0, max: 10, name: '时间/s', nameTextStyle: { fontSize: 10 }, axisLabel: { fontSize: 10 }, splitLine: { lineStyle: { color: '#eef1f5' } } },
+                    yAxis: { type: 'value', scale: true, axisLabel: { fontSize: 10 }, splitLine: { lineStyle: { color: '#eef1f5' } } },
+                    series: fmSeriesDefs(k)
+                });
+            });
+        }
+        // series必须带type:'line':ECharts对无type的series不渲染(无曲线无图例tooltip也无内容)。
+        // 基础配置就挂带名字的空series,无数据时也有彩色图例、坐标轴和可悬停的空图。
+        // 四图与效果图08-03一致: Np/%设计点 | Tt45/K | PT负载功率/kW | 计量燃油/kg/s
+        function fmSeriesDefs(key) {
+            const defs = {
+                np: ['Np %设计点'], tt45: ['Tt45'], kw: ['PT负载功率'], fuel: ['计量燃油']
+            }[key] || [];
+            return defs.map(name => ({ name, type: 'line', showSymbol: false, connectNulls: true, data: [] }));
+        }
+        function updateCharts() {
+            const H = S.hist;
+            const rows = !!(H && H.t.length);
+            const set = (key, series) => {
+                let c = S.charts[key];
+                // 实例自愈:dispose过或绑定的DOM已移出文档(renderBody与异步init回调竞态导致新旧实例脱钩)
+                if (c && typeof c.isDisposed === 'function' && c.isDisposed()) c = null;
+                if (c && typeof c.getDom === 'function' && !document.contains(c.getDom())) c = null;
+                if (!c) {
+                    const host = document.querySelector('[data-fm-chart="' + key + '"]');
+                    if (!host) return; // 当前页签无该图容器
+                    c = window.echarts.getInstanceByDom(host) || window.echarts.init(host);
+                    S.charts[key] = c;
+                    setChartBase(); // 新init实例补基础配置(图例/坐标轴/带名字的空series)
+                }
+                // x轴动态范围:推进初期t很小时也有可见图框,曲线随时间向右生长
+                const tMax = Math.max(10, Math.ceil((rows ? H.t[H.t.length - 1] : 0) * 1.05));
+                try { c.setOption({ xAxis: { min: 0, max: tMax }, series }); } catch (e) { }
+            };
+            const ln = (name, data) => ({ name, type: 'line', showSymbol: false, connectNulls: true, data });
+            set('np', [ln('Np %设计点', rows ? seriesData(H.t, H.npp) : [])]);
+            set('tt45', [ln('Tt45', rows ? seriesData(H.t, H.tt45) : [])]);
+            set('kw', [ln('PT负载功率', rows ? seriesData(H.t, H.kw) : [])]);
+            set('fuel', [ln('计量燃油', rows ? seriesData(H.t, H.fuel) : [])]);
+        }
+        function loadText(live) {
+            const al = live.appliedLoad || {};
+            if (S.cfg.loadMode === 'power') return al.aeroPowerW != null ? (Number(al.aeroPowerW) / 1000).toFixed(1) + ' kW' : '—';
+            if (S.cfg.loadMode === 'mkp') return al.mainTorqueNm != null ? Number(al.mainTorqueNm).toFixed(1) + ' N·m' : '—';
+            const eff = [];
+            if (al.mainPitchDeg != null) eff.push('主桨 ' + Number(al.mainPitchDeg).toFixed(1) + '°');
+            if (al.tailPitchDeg != null) eff.push('尾桨 ' + Number(al.tailPitchDeg).toFixed(1) + '°');
+            return eff.length ? eff.join(' / ') : '主桨 ' + S.cfg.mainPitchDeg + '° / 尾桨 ' + S.cfg.tailPitchDeg + '° (预选)';
+        }
+        function lifecycleCn(lc) {
+            return { prepared: '已准备(停转)', running: '运行', paused: '暂停', terminated: '已终止', failed: '失败' }[lc] || lc || '';
+        }
+        // 物理阶段中文(效果图08-03~08: 停转/Ng稳定暖机/慢车/正常运行/回慢车冷却)
+        function modeCn(m) {
+            return { stopped: '停转', cranking: '起动中', warmup: 'Ng稳定暖机', idle_handover: '慢车交接',
+                idle: '慢车', run: '正常运行', coldblow: '冷吹转', cooldown: '回慢车冷却', shutdown: '断油惰转' }[m] || m || '';
+        }
+        // 当前调速(效果图08-03: 阶段控制/Ng暖机/Np调速)
+        function governorCn(live) {
+            const m = live ? live.mode : '';
+            if (m === 'run') return 'Np调速';
+            if (m === 'warmup' || m === 'cranking') return 'Ng暖机';
+            return '阶段控制';
+        }
+        function throttleCn(v) { return { cut: '切断', idle: '慢车', run: '运行' }[v] || v || ''; }
+        // 命令操作中文名(效果图08-24: 油门:慢车/发动机起动/Np目标95%/正常停车...)
+        function actionCn(rc) {
+            if (!rc) return '—';
+            const a = String(rc.action || '');
+            if (a === 'select_throttle') return '油门: ' + throttleCn(rc.value);
+            if (a === 'start') return '发动机起动';
+            if (a === 'cold_blow') return '冷吹';
+            if (a === 'exit_cold_blow') return '结束吹转';
+            if (a === 'abort_start') return '中止起动';
+            if (a === 'normal_stop') return '正常停车';
+            if (a === 'emergency_cutoff') return '紧急断油';
+            if (a === 'acknowledge_cutoff') return '确认断油锁存';
+            if (a === 'set_np_gear') return 'Np目标' + Math.round(Number(rc.value) * 100) + '%';
+            if (a === 'apply_load') return '施加负载';
+            if (a === 'pause') return '暂停计算';
+            if (a === 'resume') return '继续计算';
+            if (a === 'save') return '保存当前结果';
+            return a;
+        }
+        function stateCn(rc) {
+            const s = rc ? String(rc.state || '') : '';
+            return { accepted: '已接受', applied: '已生效', rejected: '已拒绝',
+                superseded_by_cutoff: '已作废(断油覆盖)', cancelled_by_termination: '已作废(终止)' }[s] || s || '—';
+        }
+        function str(v) { return v == null ? '—' : String(v); }
+
+        // 暂停中保存完整快照(状态条💾与操纵台按钮共用)
+        function saveSnapshot() {
+            if (S.phase !== 'PAUSED') { toast('暂停后才能保存完整快照;运行中请先暂停', 'info'); return; }
+            confirmDialog('暂停中保存完整快照与Excel?将写入本次独立保存目录(save/)。', { title: '保存完整快照', okText: '保存' })
+                .then(ok => { if (!ok) return; apiPost('/command', { kind: 'save', value: null })
+                    .then(r => { if (r && r.code === 200) toast('已保存完整快照与Excel(本次独立保存目录)', 'success'); else toast((r && r.message) || '保存失败', 'error'); })
+                    .catch(e => toast('保存失败:' + e.message, 'error')); });
+        }
+
+        function opsTab() {
+            const refs = {}; S.opsRefs = refs;
+            const live = S.live || {};
+            if (S.draftThrottle == null) S.draftThrottle = live.throttle || '';
+            const wrap = h('div', null);
+
+            /* 状态条(效果图08-03: 相位+物理阶段 | 仿真时间 | 当前调速 | 暂停/结束/保存/紧急断油) */
+            refs.tag = h('span', { class: 'wb-tag wb-tag-gray' }, '—');
+            refs.lcEl = h('span', { class: 'wb-hint', style: 'margin:0' }, '物理阶段: —');
+            refs.timeEl = h('span', { style: 'font-weight:700;font-size:18px;min-width:100px;display:inline-block;text-align:right' }, '0.000 s');
+            refs.govEl = h('span', { class: 'wb-hint', style: 'margin:0' }, '当前调速: —');
+            refs.btnRun = h('button', {
+                class: 'wb-btn wb-btn-primary', style: 'display:none',
+                onclick: () => doRun()
+            }, '▶ 开始推进');
+            refs.btnPause = h('button', { class: 'wb-btn wb-btn-outline', style: 'display:none', onclick: () => {
+                // 暂停中恢复推进必须走/run:/command的resume无人消费,会永久滞留队列
+                if (S.phase === 'PAUSED') doRun('已恢复推进;暂停中锁存的命令将块间生效');
+                else cmd('pause');
+            } }, '暂停');
+            refs.btnStop = h('button', {
+                class: 'wb-btn wb-btn-outline', style: 'display:none',
+                onclick: () => confirmDialog('结束本次计算?将执行normal_stop并保存结果。', { title: '结束计算', okText: '结束' })
+                    .then(ok => { if (ok) cmd('stop'); })
+            }, '结束计算');
+            refs.btnSaveTop = h('button', {
+                class: 'wb-btn wb-btn-outline', style: 'display:none',
+                onclick: () => saveSnapshot()
+            }, '💾 保存');
+            refs.btnCut = h('button', {
+                class: 'wb-btn', style: 'display:none;background:#c0392b;color:#fff;border-color:#c0392b',
+                onclick: () => confirmDialog('紧急断油(emergency_cutoff)?断油保持锁存,不能被一般操作覆盖。', { title: '紧急断油', okText: '断油', danger: true })
+                    .then(ok => { if (ok) cmd('emergency_cutoff'); })
+            }, '紧急断油');
+            refs.btnClose = h('button', {
+                class: 'wb-btn wb-btn-outline', style: 'display:none',
+                onclick: () => confirmDialog('关闭并释放当前会话?未保存的推进状态将丢弃(已保存的快照与Excel保留);关闭后可重新发起仿真准备。', { title: '关闭会话', okText: '关闭', danger: true })
+                    .then(ok => {
+                        if (!ok) return;
+                        apiPost('/close', {})
+                            .then(r => {
+                                if (r && r.code === 200) {
+                                    S.phase = 'IDLE'; S.live = null; S.runId = null; S.message = '';
+                                    S.hist = emptyHist(); S.result = null; S.resultMsg = null; S.resultTriedFor = null;
+                                    S.tab = 'prep'; S.lastReceiptId = null;
+                                    toast('会话已关闭;可重新发起仿真准备', 'success');
+                                    renderBody();
+                                } else toast((r && r.message) || '关闭失败', 'error');
+                            })
+                            .catch(e => toast('关闭失败:' + e.message, 'error'));
+                    })
+            }, '✕ 关闭会话');
+            wrap.appendChild(h('div', { class: 'wb-infobar', style: 'display:flex;align-items:center;gap:16px;padding:10px 16px;margin-bottom:10px;flex-wrap:wrap' },
+                h('div', { style: 'display:flex;flex-direction:column;gap:2px;min-width:150px' }, refs.tag, refs.lcEl),
+                h('div', { style: 'display:flex;flex-direction:column;align-items:center' },
+                    refs.timeEl, h('span', { class: 'wb-hint', style: 'margin:0' }, '仿真时间')),
+                h('div', { style: 'display:flex;flex-direction:column;gap:2px' }, refs.govEl),
+                h('div', { class: 'wb-spacer' }),
+                refs.btnRun, refs.btnPause, refs.btnStop, refs.btnSaveTop, refs.btnCut, refs.btnClose));
+
+            /* 最近命令回执(效果图08-12) */
+            refs.rbAct = h('span', { style: 'font-weight:600' }, '—');
+            refs.rbState = h('span', { class: 'wb-tag wb-tag-gray' }, '—');
+            refs.rbReason = h('span', { class: 'wb-hint', style: 'margin:0' }, '');
+            refs.rbTime = h('span', { class: 'wb-hint', style: 'margin:0' }, '');
+            refs.receiptBar = h('div', { class: 'wb-infobar', style: 'margin-bottom:10px;display:none;align-items:center;gap:10px' },
+                h('span', { class: 'wb-hint', style: 'margin:0' }, '最近命令回执:'), refs.rbAct, refs.rbState, refs.rbReason, refs.rbTime);
+            wrap.appendChild(refs.receiptBar);
+
+            /* 监视六宫格(效果图08-03: Np为%设计点;各通道单位与来源逐项标注) */
+            const gridVals = [];
+            const statGrid = h('div', { style: 'display:grid;grid-template-columns:repeat(6,1fr);gap:14px;margin-bottom:10px' });
+            [['Np', '%设计点 · 模拟测量'], ['Ng', 'rpm · 模拟测量'], ['Tt45', 'K · 模拟测量'],
+             ['Mkp', 'N·m · 模拟测量'], ['PT负载功率', 'kW · 模型计算'], ['计量燃油', 'kg/s · 执行器输出']].forEach(([k, unit]) => {
+                const val = h('div', { style: 'font-size:22px;font-weight:700' }, '--');
+                gridVals.push(val);
+                statGrid.appendChild(h('div', null,
+                    h('div', { class: 'wb-hint', style: 'margin:0 0 2px' }, k), val,
+                    h('div', { class: 'wb-hint', style: 'margin:0;font-size:11px' }, unit)));
+            });
+            refs.gridVals = gridVals;
+            wrap.appendChild(statGrid);
+
+            /* 告警行 */
+            refs.alarmRow = h('div', { style: 'display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap' });
+            wrap.appendChild(refs.alarmRow);
+
+            /* 阶段提示 */
+            refs.hintEl = h('div', { class: 'wb-infobar', style: 'margin:0 0 12px' }, '');
+            wrap.appendChild(refs.hintEl);
+
+            /* 左操纵台 + 右实时曲线(效果图08-03~08) */
+            const grid = h('div', { style: 'display:grid;grid-template-columns:360px minmax(320px,1fr);gap:20px' });
+            refs.opsCard = h('div', { class: 'wb-card', style: 'padding:12px 14px' });
+            refs.opsCard.appendChild(h('div', { class: 'wb-section-title', style: 'margin-bottom:8px' }, '试车操纵'));
+            /* 两步油门(效果图08-05): 先选位置(草稿高亮),再点施加;生效位置单列显示 */
+            refs.thrLabel = h('span', null, '生效: ' + (live.throttle ? throttleCn(live.throttle) : '未施加'));
+            refs.opsCard.appendChild(h('div', { style: 'display:flex;justify-content:space-between;margin-bottom:6px' },
+                h('span', { class: 'wb-hint', style: 'margin:0' }, '油门杆'), refs.thrLabel));
+            refs.thrBtns = {};
+            const throttleRow = h('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px' });
+            function paintThrottle() {
+                Object.keys(refs.thrBtns).forEach(v => {
+                    refs.thrBtns[v].className = 'wb-btn ' + (S.draftThrottle === v ? 'wb-btn-primary' : 'wb-btn-outline');
+                });
+            }
+            [['cut', '切断'], ['idle', '慢车'], ['run', '运行']].forEach(([v, label]) => {
+                const b = h('button', { class: 'wb-btn wb-btn-outline', onclick: () => { S.draftThrottle = v; paintThrottle(); } }, label);
+                refs.thrBtns[v] = b; throttleRow.appendChild(b);
+            });
+            paintThrottle();
+            refs.opsCard.appendChild(throttleRow);
+            refs.btnApplyThr = h('button', { class: 'wb-btn wb-btn-outline', style: 'width:100%;margin-bottom:12px',
+                onclick: () => {
+                    if (!S.draftThrottle) { toast('请先选择油门位置', 'info'); return; }
+                    cmd('select_throttle', S.draftThrottle, '油门→' + throttleCn(S.draftThrottle));
+                } }, '✓ 施加油门位置');
+            refs.opsCard.appendChild(refs.btnApplyThr);
+            const cmdGrid = h('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px' });
+            refs.btnStart = h('button', { class: 'wb-btn wb-btn-primary', onclick: () => cmd('start', null, '起动命令已提交') }, '▶ 起动');
+            cmdGrid.appendChild(refs.btnStart);
+            cmdGrid.appendChild(h('button', { class: 'wb-btn wb-btn-outline', onclick: () => cmd('cold_blow') }, '冷吹'));
+            cmdGrid.appendChild(h('button', { class: 'wb-btn wb-btn-outline', onclick: () => cmd('abort_start') }, '中止起动'));
+            cmdGrid.appendChild(h('button', { class: 'wb-btn wb-btn-outline',
+                onclick: () => confirmDialog('正常停车:先执行规定冷却阶段及Np条件,再断油。继续?', { title: '正常停车', okText: '停车' })
+                    .then(ok => { if (ok) cmd('normal_stop'); }) }, '正常停车'));
+            refs.opsCard.appendChild(cmdGrid);
+            const cmdGrid2 = h('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px' });
+            cmdGrid2.appendChild(h('button', { class: 'wb-btn wb-btn-outline', onclick: () => cmd('exit_cold_blow') }, '结束吹转'));
+            cmdGrid2.appendChild(h('button', { class: 'wb-btn wb-btn-outline', onclick: () => cmd('acknowledge_cutoff') }, '确认断油锁存'));
+            refs.opsCard.appendChild(cmdGrid2);
+            /* Np挡位: 草稿高亮;预选/生效区分(效果图08-06/08-14) */
+            refs.npHint = h('div', { style: 'display:flex;justify-content:space-between;margin-bottom:6px' },
+                h('span', { class: 'wb-hint', style: 'margin:0' }, 'Np运行挡位'),
+                h('span', { class: 'wb-hint', style: 'margin:0' }, ''));
+            refs.opsCard.appendChild(refs.npHint);
+            refs.npBtns = {};
+            function paintNp() {
+                Object.keys(refs.npBtns).forEach(v => {
+                    refs.npBtns[v].className = 'wb-btn ' + (String(S.cfg.npGear) === v ? 'wb-btn-primary' : 'wb-btn-outline');
+                });
+            }
+            const npRow = h('div', { style: 'display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:6px' });
+            ['0.8', '0.9', '0.95', '1', '1.05'].forEach(v => {
+                const b = h('button', { class: 'wb-btn wb-btn-outline', onclick: () => { S.cfg.npGear = v; paintNp(); } },
+                    Math.round(parseFloat(v) * 100) + '%');
+                refs.npBtns[v] = b; npRow.appendChild(b);
+            });
+            paintNp();
+            refs.opsCard.appendChild(npRow);
+            refs.btnApplyNp = h('button', { class: 'wb-btn wb-btn-outline', style: 'width:100%;margin-bottom:14px',
+                onclick: () => cmd('set_np_gear', parseFloat(S.cfg.npGear || '0.9'), '已施加Np挡位') }, '✓ 施加转速挡位');
+            refs.opsCard.appendChild(refs.btnApplyNp);
+            /* 负载草稿: 按负载模式显示对应输入(效果图08-11功率/08-06双总距) */
+            refs.loadLabel = h('div', { class: 'wb-hint', style: 'margin-bottom:6px' }, '');
+            refs.opsCard.appendChild(refs.loadLabel);
+            const loadRow = h('div', { class: 'wb-form-grid', style: 'grid-template-columns:1fr 1fr' });
+            const mkDraft = (key, label) => {
+                const inp = h('input', { value: String(S.cfg[key]) });
+                inp.addEventListener('change', () => { S.cfg[key] = inp.value; });
+                return h('div', { class: 'wb-field' }, h('label', null, label), inp);
+            };
+            if (S.cfg.loadMode === 'power') {
+                loadRow.appendChild(mkDraft('loadDraft', '功率 / W'));
+                loadRow.appendChild(h('div', { class: 'wb-hint', style: 'align-self:end;padding-bottom:8px' }, '实际轴功率'));
+            } else if (S.cfg.loadMode === 'mkp') {
+                loadRow.appendChild(mkDraft('loadDraft', 'Mkp扭矩 / N·m'));
+            } else {
+                loadRow.appendChild(mkDraft('mainPitchDeg', '主桨 / deg'));
+                loadRow.appendChild(mkDraft('tailPitchDeg', '尾桨 / deg'));
+            }
+            refs.opsCard.appendChild(loadRow);
+            refs.opsCard.appendChild(h('button', { class: 'wb-btn wb-btn-outline', style: 'width:100%;margin-top:8px',
+                onclick: () => {
+                    // 会话合同: apply_load的value必须是标量结构体(字段随负载模式)
+                    let value;
+                    if (S.cfg.loadMode === 'power') {
+                        const v = parseFloat(S.cfg.loadDraft);
+                        if (isNaN(v)) { toast('负载草稿须为数值', 'error'); return; }
+                        value = { powerW: v };
+                    } else if (S.cfg.loadMode === 'mkp') {
+                        const v = parseFloat(S.cfg.loadDraft);
+                        if (isNaN(v)) { toast('负载草稿须为数值', 'error'); return; }
+                        value = { mkpNm: v };
+                    } else {
+                        const m = parseFloat(S.cfg.mainPitchDeg), tl = parseFloat(S.cfg.tailPitchDeg);
+                        if (isNaN(m) || isNaN(tl)) { toast('总距草稿须为数值', 'error'); return; }
+                        value = { mainPitchDeg: m, tailPitchDeg: tl };
+                    }
+                    cmd('apply_load', value, '负载命令已提交');
+                } }, '✓ 施加负载'));
+            refs.btnSave = h('button', {
+                class: 'wb-btn wb-btn-outline', style: 'width:100%;margin-top:12px;display:none',
+                onclick: () => saveSnapshot()
+            }, '保存完整快照(PAUSED)');
+            refs.opsCard.appendChild(refs.btnSave);
+            grid.appendChild(refs.opsCard);
+
+            const monCol = h('div', null);
+            /* 运行中: 四实时曲线+信息行(效果图08-03);结束后: 本次结果已保存(效果图08-08) */
+            refs.monCharts = h('div', null);
+            const chartHost = h('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:14px' });
+            refs.monCharts.appendChild(chartHost);
+            // 延迟到DOM挂载后初始化:echarts脚本已缓存时ensureEcharts同步回调,
+            // 此时页面还在构建中(body不含chartHost),直接init会0x0空白或被contains拦截
+            setTimeout(() => ensureEcharts(() => {
+                if (!document.body.contains(chartHost)) return; // 页签已切换
+                const mk = (key, title) => {
+                    const box = h('div', { class: 'wb-card', style: 'padding:10px 12px' },
+                        h('div', { style: 'display:flex;justify-content:space-between;font-size:12px;font-weight:600;color:#4a5a6a;margin-bottom:4px' },
+                            title, h('span', { class: 'wb-hint', style: 'margin:0' }, '时间/s')),
+                        h('div', { style: 'height:180px' }));
+                    chartHost.appendChild(box);
+                    const holder = box.lastChild;
+                    holder.setAttribute('data-fm-chart', key);
+                    const old = S.charts[key];
+                    if (old && typeof old.dispose === 'function') { try { old.dispose(); } catch (e) { } }
+                    S.charts[key] = window.echarts.init(holder);
+                };
+                mk('np', 'Np / 设计点 %');
+                mk('tt45', 'Tt45 / K');
+                mk('kw', 'PT负载功率 / kW');
+                mk('fuel', '计量燃油 / kg/s');
+                setChartBase();
+                updateCharts();
+            }), 0);
+            refs.chartInfo = h('div', { style: 'display:flex;gap:24px;margin:8px 2px 0;flex-wrap:wrap' },
+                h('span', { class: 'wb-hint', style: 'margin:0' }, ''),
+                h('span', { class: 'wb-hint', style: 'margin:0' }, ''),
+                h('span', { class: 'wb-hint', style: 'margin:0' }, '本次Tt45温限 1400 K'));
+            refs.monCharts.appendChild(refs.chartInfo);
+            monCol.appendChild(refs.monCharts);
+            refs.savedPanel = h('div', { style: 'display:none' });
+            monCol.appendChild(refs.savedPanel);
+            grid.appendChild(monCol);
+            wrap.appendChild(grid);
+
+            /* 操纵记录(效果图08-03/24: 时刻/操作/回执/当前结果,时间以仿真时刻为准) */
+            wrap.appendChild(h('div', { class: 'wb-section-title', style: 'margin:16px 0 8px;display:flex;justify-content:space-between' },
+                '操纵记录', h('span', { class: 'wb-hint', style: 'margin:0' }, '时间以仿真时刻为准')));
+            refs.recWrap = h('div', null, h('div', { class: 'wb-hint' }, '尚无操纵记录;每次命令保存编号、值、单位、提交与生效时刻及拒绝原因。'));
+            wrap.appendChild(refs.recWrap);
+
+            patchOps();
+            return wrap;
+        }
+
+        /** 轮询就地补丁:只更新文本/表格/曲线,不重建DOM。 */
+        function patchOps() {
+            const refs = S.opsRefs; if (!refs) return;
+            const live = S.live || {};
+            const t = typeof live.timeS === 'number' ? live.timeS : 0;
+            pushHist(live);
+            // 数值相位与物理阶段分开显示(效果图08-03: 计算运行中 | 物理阶段: 停转/Ng稳定暖机)
+            const phaseLabel = S.phase === 'RUNNING' ? ['▶ 计算运行中', 'teal'] : S.phase === 'PAUSED' ? ['⏸ 计算已暂停', 'amber']
+                : S.phase === 'READY' ? ['已就绪 · 未推进', 'teal'] : S.phase === 'ENDED' ? ['■ 计算结束', 'gray']
+                : S.phase === 'FAILED' ? ['失败', 'red'] : ['—', 'gray'];
+            refs.tag.className = 'wb-tag wb-tag-' + phaseLabel[1];
+            refs.tag.textContent = phaseLabel[0];
+            refs.timeEl.textContent = Number(t).toFixed(3) + ' s';
+            refs.lcEl.textContent = '物理阶段: ' + (modeCn(live.mode) || '—')
+                + (S.phase === 'PAUSED' ? '(暂停)' : '')
+                + (live.physicalStop ? ' · 已物理停转' : '');
+            refs.govEl.textContent = '当前调速: ' + governorCn(live);
+            const active = S.phase === 'RUNNING' || S.phase === 'PAUSED';
+            const cutLatched = !!live.cutLatched;
+            refs.btnRun.style.display = S.phase === 'READY' ? '' : 'none';
+            refs.btnPause.style.display = active ? '' : 'none';
+            refs.btnPause.textContent = S.phase === 'RUNNING' ? '⏸ 暂停' : '▶ 继续';
+            refs.btnStop.style.display = active ? '' : 'none';
+            refs.btnSaveTop.style.display = active ? '' : 'none';
+            refs.btnSaveTop.style.opacity = S.phase === 'PAUSED' ? '1' : '0.5';
+            refs.btnCut.style.display = active ? '' : 'none';
+            // 断油锁存后按钮切换为不可再触发的"切断已锁存"(效果图08-20)
+            refs.btnCut.textContent = cutLatched ? '切断已锁存' : '紧急断油';
+            refs.btnCut.disabled = cutLatched;
+            refs.btnCut.style.opacity = cutLatched ? '0.75' : '1';
+            refs.btnClose.style.display = ['READY', 'PAUSED', 'ENDED', 'FAILED'].includes(S.phase) ? '' : 'none';
+            refs.btnSave.style.display = S.phase === 'PAUSED' ? '' : 'none';
+            // 油门两步操纵: 草稿高亮由按钮自身paint;这里同步生效标签与施加按钮文案
+            if (refs.thrLabel) refs.thrLabel.textContent = '生效: ' + (live.throttle ? throttleCn(live.throttle) : '未施加');
+            if (refs.btnApplyThr) refs.btnApplyThr.textContent = S.draftThrottle
+                ? '✓ 施加: ' + throttleCn(S.draftThrottle) : '✓ 施加油门位置';
+            // 起动前置条件与会话合同一致:油门=慢车 且 物理停转
+            const canStart = live.throttle === 'idle' && !!live.physicalStop;
+            refs.btnStart.disabled = !canStart;
+            refs.btnStart.style.opacity = canStart ? '1' : '0.5';
+            // 区分"慢车已提交但尚未生效"(等下一推进块)与"还没选慢车"
+            refs.btnStart.title = canStart ? ''
+                : (live.physicalStop && live.throttle !== 'idle' && S.draftThrottle === 'idle'
+                    ? '慢车命令已提交;块间生效(约一个推进块)后即可起动'
+                    : '油门须先置慢车(选位置后点"✓ 施加"),且发动机物理停转后才能起动');
+            const opsOn = ['READY', 'RUNNING', 'PAUSED'].includes(S.phase);
+            refs.opsCard.style.opacity = opsOn ? '1' : '0.55';
+            refs.opsCard.style.pointerEvents = opsOn ? '' : 'none';
+            // Np挡位: 草稿与已生效区分(效果图08-06 "90% 生效"/08-05 "90% 预选")
+            if (refs.npHint) {
+                const draftPct = Math.round(parseFloat(S.cfg.npGear || '0.9') * 100);
+                const appliedPct = live.npRatioTarget != null ? Math.round(Number(live.npRatioTarget) * 100) : null;
+                refs.npHint.lastChild.textContent = appliedPct != null
+                    ? (draftPct === appliedPct ? draftPct + '% 生效' : '已生效 ' + appliedPct + '% · 草稿 ' + draftPct + '%')
+                    : draftPct + '% 预选';
+                refs.btnApplyNp.textContent = '✓ 施加: ' + draftPct + '%';
+            }
+            if (refs.loadLabel) refs.loadLabel.textContent = '负载 (' + ({ power: '直接PT轴功率', mkp: '直接Mkp扭矩', dual_collective: '主桨/尾桨总距' }[S.cfg.loadMode] || '—') + ') · 生效: ' + loadText(live);
+            // 最近命令回执
+            const rcts = Array.isArray(live.commandReceipts) ? live.commandReceipts : [];
+            const last = rcts.length ? rcts[rcts.length - 1] : null;
+            // 新回执到达即提示;拒绝原因不能只留在回执条里(起动被拒这类关键失败容易被忽略)
+            if (last && S.lastReceiptId !== last.requestId) {
+                S.lastReceiptId = last.requestId;
+                if (last.state === 'rejected' && ['READY', 'RUNNING', 'PAUSED'].includes(S.phase)) {
+                    toast(actionCn(last) + '被拒绝:' + (last.reason || '未知原因'), 'error');
+                }
+            }
+            refs.receiptBar.style.display = last ? 'flex' : 'none';
+            if (last) {
+                const stTag = last.state === 'applied' ? ['已生效', 'teal'] : last.state === 'rejected' ? ['已拒绝', 'red']
+                    : last.state === 'accepted' ? ['已接受/锁存', 'amber'] : [stateCn(last), 'gray'];
+                refs.rbAct.textContent = actionCn(last);
+                refs.rbState.className = 'wb-tag wb-tag-' + stTag[1];
+                refs.rbState.textContent = stTag[0];
+                refs.rbReason.textContent = last.reason ? '原因: ' + last.reason : '';
+                refs.rbTime.textContent = last.appliedTimeS != null ? '生效于 ' + Number(last.appliedTimeS).toFixed(2) + ' s' : '';
+            }
+            // 六宫格(Np以%设计点显示;Tt45未求值时如实显示--)
+            const sr = Array.isArray(live.speedRpm) ? live.speedRpm : [];
+            const al = live.appliedLoad || {};
+            const design = Number(live.npDesignRpm) || 0;
+            const num = (x, d) => (x == null || isNaN(Number(x))) ? '--' : Number(x).toFixed(d == null ? 1 : d);
+            refs.gridVals[0].textContent = sr[0] != null && design > 0 ? (Number(sr[0]) / design * 100).toFixed(2) : '--';
+            refs.gridVals[1].textContent = num(sr[1], 0);
+            refs.gridVals[2].textContent = num(live.tt45K);
+            refs.gridVals[3].textContent = num(al.mainTorqueNm);
+            refs.gridVals[4].textContent = al.aeroPowerW != null ? num(Number(al.aeroPowerW) / 1000) : '--';
+            refs.gridVals[5].textContent = num(live.fuelKgPerS, 4);
+            // 告警与停止原因
+            const alrms = live.alarms || {};
+            const nodes = [];
+            if (alrms.hotStart) nodes.push(h('span', { class: 'wb-tag wb-tag-red' }, '热起动告警'));
+            if (alrms.hungStart) nodes.push(h('span', { class: 'wb-tag wb-tag-amber' }, '悬挂起动'));
+            if (alrms.flameout) nodes.push(h('span', { class: 'wb-tag wb-tag-red' }, '熄火'));
+            if (live.failureReason) nodes.push(h('span', { style: 'color:#922b21;font-size:12px' }, str(live.failureReason)));
+            if (live.stopReason) nodes.push(h('span', { class: 'wb-hint', style: 'margin:0' }, '停止原因: ' + str(live.stopReason)));
+            if (!nodes.length) nodes.push(h('span', { class: 'wb-hint', style: 'margin:0' }, '无告警'));
+            refs.alarmRow.replaceChildren.apply(refs.alarmRow, nodes);
+            // 阶段提示(文案对齐效果图08-03~08/08-20)
+            let hint;
+            if (cutLatched && S.phase === 'PAUSED') hint = '⚠ 断油请求已锁存,计算仍暂停。继续时先执行切断,当前仪表不提前归零。';
+            else if (cutLatched) hint = '⚠ 断油已锁存:切断已生效,一般操作不能覆盖;物理停转后可确认复位。';
+            else if (S.phase === 'READY') hint = '会话已就绪;油门位置与起动命令分开:置慢车不自动起动,置运行不绕过暖机;Ng稳定暖机60秒后转入Np控制。';
+            else if (S.phase === 'PAUSED') hint = '计算暂停在 ' + Number(t).toFixed(3) + ' s。转速、燃油和热状态保持此刻值,可保存完整快照;结束计算会自动恢复推进并在停转后收尾保存。';
+            else if (S.phase === 'ENDED') hint = '物理停转和数值结束均已确认。本次输出、指令和完整状态已保存;可前往「本次结果」查看五类内容。';
+            else if (S.phase === 'FAILED') hint = '运行异常终止;' + (S.message || '') + ' 可在「本次结果」查看已保存内容。';
+            else if (live.mode === 'warmup') hint = '稳定暖机中,完成后进入慢车交接。当前不允许施加新负载。';
+            else if (live.mode === 'cranking') hint = '起动顺序执行中;暖机完成前不转入Np控制。';
+            else if (live.mode === 'idle' && live.warmupComplete) hint = '暖机和交接已完成。油门仍在慢车;选中运行后点击施加。';
+            else if (live.mode === 'cooldown') hint = '正常停车顺序执行中。继续计算至断油、惰转和停转;紧急断油仍可用。';
+            else if (live.throttle === 'idle' && live.physicalStop) hint = '慢车位置已生效。发动机仍停转,请单独点击"起动"。';
+            else hint = '运行中:命令状态机为 编辑草稿→已提交→已接受→已生效/已拒绝;挡位命令被接受不代表转速已稳定。';
+            refs.hintEl.textContent = hint;
+            // 曲线信息行(效果图08-05: 运行预选 90% / 18810 rpm | 当前参考 | Tt45温限)
+            if (refs.chartInfo) {
+                const design2 = Number(live.npDesignRpm) || 0;
+                const appliedPct = live.npRatioTarget != null ? Number(live.npRatioTarget) : parseFloat(S.cfg.npGear || '0.9');
+                refs.chartInfo.children[0].textContent = '运行预选 ' + Math.round(appliedPct * 100) + '%'
+                    + (design2 > 0 ? ' / ' + Math.round(appliedPct * design2) + ' rpm' : '');
+                refs.chartInfo.children[1].textContent = live.mode === 'run' && design2 > 0
+                    ? '当前参考 ' + Math.round(Number(live.npRatioTarget || 0) * design2) + ' rpm'
+                    : '当前: ' + (modeCn(live.mode) || '—');
+            }
+            // 结束后右侧切换为「本次结果已保存」(效果图08-08)
+            if (S.phase === 'ENDED') {
+                if (refs.monCharts.style.display !== 'none') {
+                    refs.monCharts.style.display = 'none';
+                    refs.savedPanel.innerHTML = '';
+                    refs.savedPanel.style.display = '';
+                    const rid = S.runId || '—';
+                    const c0 = window.AppConfig;
+                    const tbl = h('div', { class: 'wb-kv', style: 'max-width:900px' });
+                    [['运行', rid + ' / 本次独立保存目录'],
+                     ['发动机阶段', live.physicalStop ? '已物理停转' : (modeCn(live.mode) || '—')],
+                     ['数值计算', '已结束' + (live.stopReason ? '(' + live.stopReason + ')' : '')],
+                     ['输出与操纵记录', 'fullmode_results.xlsx'],
+                     ['完整状态', 'fullmode_snapshot.mat'],
+                     ['配置与资产身份', 'fullmode_manifest.json']]
+                        .forEach(([k, v]) => { tbl.appendChild(h('div', { class: 'k' }, k)); tbl.appendChild(h('div', { class: 'v' }, String(v))); });
+                    refs.savedPanel.appendChild(h('div', { class: 'wb-card', style: 'padding:14px 16px' },
+                        h('div', { class: 'wb-section-title', style: 'margin-bottom:8px' }, '本次结果已保存'),
+                        tbl,
+                        h('div', { class: 'wb-hint', style: 'margin:10px 0' }, 'Excel用于结果查看;完整快照用于恢复。'),
+                        h('div', { style: 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px' },
+                            h('button', { class: 'wb-btn wb-btn-outline', onclick: () => { S.tab = 'result'; renderBody(); } }, '📈 打开结果'),
+                            h('button', { class: 'wb-btn wb-btn-outline', onclick: () => window.open(c0.api.baseURL + '/api/engine/projects/' + pid
+                                + '/testbench/fullmode/sessions/' + encodeURIComponent(rid) + '/excel?token=' + encodeURIComponent(c0.getToken() || ''), '_blank') }, '⬇ 导出Excel'),
+                            h('button', { class: 'wb-btn wb-btn-outline', onclick: () => {
+                                apiPost('/close', {}).then(r => {
+                                    if (r && r.code === 200) {
+                                        S.phase = 'IDLE'; S.live = null; S.runId = null; S.message = '';
+                                        S.hist = emptyHist(); S.result = null; S.resultMsg = null; S.resultTriedFor = null;
+                                        S.tab = 'prep'; S.lastReceiptId = null;
+                                        toast('会话已关闭;配置已保留,可重新准备', 'success');
+                                        renderBody();
+                                    } else toast((r && r.message) || '关闭失败', 'error');
+                                }).catch(e => toast('关闭失败:' + e.message, 'error'));
+                            } }, '⧉ 用此配置新建试验'))));
+                }
+            } else if (refs.savedPanel.style.display !== 'none') {
+                refs.savedPanel.style.display = 'none';
+                refs.savedPanel.innerHTML = '';
+                refs.monCharts.style.display = '';
+            }
+            // 操纵记录表(中文操作/回执;整表重建到容器,避免整页重绘)
+            refs.recWrap.innerHTML = '';
+            if (rcts.length) {
+                const tbl = h('table', { class: 'wb-table' },
+                    h('tr', null, ['时刻/s', '操作', '回执', '当前结果'].map(x => h('th', null, x))));
+                rcts.slice(-12).forEach(rc => tbl.appendChild(h('tr', null,
+                    h('td', null, (rc.appliedTimeS != null ? rc.appliedTimeS : rc.acceptedTimeS) != null
+                        ? Number(rc.appliedTimeS != null ? rc.appliedTimeS : rc.acceptedTimeS).toFixed(3) : '—'),
+                    h('td', null, actionCn(rc)),
+                    h('td', null, stateCn(rc)),
+                    h('td', { class: 'wb-hint' }, rc.state === 'rejected' ? str(rc.reason || '') : ''))));
+                refs.recWrap.appendChild(tbl);
+            } else {
+                refs.recWrap.appendChild(h('div', { class: 'wb-hint' }, '尚无操纵记录;每次命令保存编号、值、单位、提交与生效时刻及拒绝原因。'));
+            }
+            updateCharts();
+        }
+
+        /* ---------- 页签三: 本次结果(效果图image158~165) ----------
+         * 五类内容子页签: 输出历程与有效范围 / 所有记录通道及未提供量 / 热状态 / 操纵与告警 / 配置与文件
+         * 数据源: GET /fullmode/sessions/{runId}/result(适配器result动作产物);底部会话表支持快照恢复。 */
+        function resultTab() {
+            const wrap = h('div', null);
+            wrap.appendChild(h('div', { class: 'wb-infobar', style: 'margin-bottom:12px' },
+                '计算结束并保存后开放五类内容:结果Excel用于数据查看,快照MAT与匹配身份用于恢复,manifest记录清单;Excel单文件不能恢复会话。'));
+            const pills = h('div', { style: 'display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px' });
+            [['history', '输出历程与有效范围'], ['channels', '所有记录通道及未提供量'], ['thermal', '热状态'],
+             ['events', '操纵与告警'], ['config', '配置与文件']].forEach(([k, label]) => {
+                const on = S.resultSub === k;
+                pills.appendChild(h('div', {
+                    style: 'padding:5px 14px;border:1px solid ' + (on ? '#2e86de' : '#d5dbe3') + ';border-radius:16px;cursor:pointer;font-size:12px;background:' + (on ? '#eaf3fd' : '#fff') + ';color:' + (on ? '#2e86de' : '#4a5a6a'),
+                    onclick: () => { S.resultSub = k; renderBody(); }
+                }, label));
+            });
+            wrap.appendChild(pills);
+            const runId = S.resultRunId || S.runId;
+            const host = h('div', null);
+            wrap.appendChild(host);
+            if (!runId) {
+                host.appendChild(h('div', { class: 'wb-empty' }, '暂无全模式会话;请先在「仿真准备」发起一次运行。'));
+            } else if (S.result && S.resultRunId === runId) {
+                host.appendChild(resultBody(S.result));
+            } else if (S.resultMsg && S.resultTriedFor === runId) {
+                // 未生成/读取失败是常态态(运行中或未保存):内联提示,不弹toast,不自动重取(避免循环)
+                const em = h('div', { class: 'wb-empty' }, '结果尚未生成: ' + S.resultMsg + '。运行结束并保存后开放;期间可正常使用其他页签。');
+                em.appendChild(h('div', { style: 'margin-top:8px' },
+                    h('button', { class: 'wb-btn', onclick: () => { S.resultMsg = null; S.resultTriedFor = null; renderBody(); } }, '重新读取')));
+                host.appendChild(em);
+            } else {
+                S.resultRunId = runId;
+                S.resultTriedFor = runId;
+                S.result = null;
+                host.appendChild(h('div', { class: 'wb-hint' }, '结果加载中...'));
+                api('/sessions/' + encodeURIComponent(runId) + '/result').then(r => {
+                    if (r && r.code === 200) { S.result = r.data || null; S.resultMsg = null; }
+                    else { S.result = null; S.resultMsg = (r && r.message) || '读取失败'; }
+                    renderBody();
+                }).catch(e => { S.result = null; S.resultMsg = e.message || '请求失败'; renderBody(); });
+            }
+            wrap.appendChild(sessionsSection());
+            return wrap;
+        }
+
+        function resultBody(res) {
+            const box = h('div', null);
+            if (!res || !res.trace) {
+                box.appendChild(h('div', { class: 'wb-hint', style: 'margin-bottom:10px' },
+                    '该会话尚未保存结果(result);结束并保存后开放五类内容。'));
+                const kv = h('div', { class: 'wb-kv', style: 'max-width:1180px' });
+                const live = S.live || {};
+                [['会话', S.resultRunId || S.runId || '—'], ['相位', S.phase], ['结束说明', S.message || '—'],
+                 ['实际时间', live.timeS != null ? Number(live.timeS).toFixed(3) + ' s' : '—'],
+                 ['停止原因', live.stopReason || '—']]
+                    .forEach(([k, v]) => { kv.appendChild(h('div', { class: 'k' }, k)); kv.appendChild(h('div', { class: 'v' }, String(v))); });
+                box.appendChild(kv);
+                return box;
+            }
+            const trace = Array.isArray(res.trace) ? res.trace : [];
+            if (S.resultSub === 'history') box.appendChild(resHistory(res));
+            else if (S.resultSub === 'channels') box.appendChild(resChannels(res));
+            else if (S.resultSub === 'thermal') box.appendChild(resThermal(res));
+            else if (S.resultSub === 'events') box.appendChild(resEvents(res));
+            else box.appendChild(resConfig(res));
+            return box;
+        }
+
+        /** 输出历程(效果图08-21): 记录信息栏+来源/区间选择+四组曲线(Np%、Tt45、PT功率、计量燃油)+导出。 */
+        function resHistory(res) {
+            const box = h('div', null);
+            const trace = Array.isArray(res.trace) ? res.trace : [];
+            if (!trace.length) { box.appendChild(h('div', { class: 'wb-hint' }, '无记录样本。')); return box; }
+            const col = name => trace.map(r => {
+                const v = r[name];
+                return v == null || (typeof v === 'number' && isNaN(v)) ? null : Number(v);
+            });
+            const tArr = col('timeS');
+            const ts = res.terminalStatus || {};
+            const cfgC = res.configuration || {};
+            const design = Number(ts.npDesignRpm) || (cfgC.startStop && Number(cfgC.startStop.designNpRpm)) || 0;
+            const lastT = tArr.length ? tArr[tArr.length - 1] : 0;
+            const physCn = ts.physicalStop ? '已物理停转' : (modeCn(ts.mode) || '—');
+            box.appendChild(h('div', { class: 'wb-infobar', style: 'margin-bottom:10px' },
+                '记录末时刻 ' + Number(lastT).toFixed(3) + ' s · 数值终态 ' + Number(ts.acceptedSteps != null ? ts.timeS != null ? ts.timeS : lastT : lastT).toFixed(3)
+                + ' s · ' + physCn + ' · 当前查看' + (S.histFrom || S.histTo ? '所选区间' : '全部记录')));
+            /* 控制行: 显示来源/区间/更新显示/导出/未计算UQ区间(08-21) */
+            const srcSel = h('select', null,
+                h('option', { value: 'measured', selected: S.histSource === 'measured' ? '' : null }, '模拟测量 / 模型真值'),
+                h('option', { value: 'true', selected: S.histSource === 'true' ? '' : null }, '仅模型真值'));
+            srcSel.addEventListener('change', () => { S.histSource = srcSel.value; });
+            const fromInp = h('input', { value: S.histFrom, placeholder: '0.0' });
+            fromInp.addEventListener('change', () => { S.histFrom = fromInp.value.trim(); });
+            const toInp = h('input', { value: S.histTo, placeholder: Number(lastT).toFixed(1) });
+            toInp.addEventListener('change', () => { S.histTo = toInp.value.trim(); });
+            const csvBtn = h('button', { class: 'wb-btn wb-btn-outline', onclick: () => exportTraceCsv(res) }, '⬇ 导出CSV');
+            box.appendChild(h('div', { style: 'display:flex;gap:10px;align-items:end;margin-bottom:10px;flex-wrap:wrap' },
+                h('div', { class: 'wb-field', style: 'margin:0' }, h('label', null, '显示来源'), srcSel),
+                h('div', { class: 'wb-field', style: 'margin:0' }, h('label', null, '区间开始 / s'), fromInp),
+                h('div', { class: 'wb-field', style: 'margin:0' }, h('label', null, '区间结束 / s'), toInp),
+                h('button', { class: 'wb-btn wb-btn-primary', onclick: () => renderBody() }, '更新显示'),
+                csvBtn,
+                h('span', { class: 'wb-hint', style: 'margin:0 0 8px' }, '未计算UQ区间')));
+            /* 四图(Np%/Tt45/PT功率/计量燃油),来源切换Measured/True;区间过滤 */
+            const from = parseFloat(S.histFrom), to = parseFloat(S.histTo);
+            const pick = arr => {
+                const out = [];
+                for (let i = 0; i < tArr.length; i++) {
+                    if (!isNaN(from) && tArr[i] < from) continue;
+                    if (!isNaN(to) && tArr[i] > to) continue;
+                    if (arr[i] != null) out.push([tArr[i], Math.round(arr[i] * 1000) / 1000]);
+                }
+                return out;
+            };
+            const truth = S.histSource === 'true';
+            const npCol = pick(col(truth ? 'NpTrueRpm' : 'NpMeasuredRpm'))
+                .map(p => design > 0 ? [p[0], Math.round(p[1] / design * 100 * 1000) / 1000] : p);
+            const ttCol = pick(col(truth ? 'Tt45TrueK' : 'Tt45MeasuredK'));
+            const kwCol = pick(col('actualPTLoadPowerW')).map(p => [p[0], Math.round(p[1] / 10) / 100]);
+            const fuelCol = pick(col(truth ? 'effectiveFuelKgPerS' : 'actuatorFuelKgPerS'));
+            const host = h('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:14px' });
+            box.appendChild(host);
+            setTimeout(() => ensureEcharts(() => {
+                if (!document.body.contains(host)) return;
+                const mk = (title, colors, series) => {
+                    const boxc = h('div', { class: 'wb-card', style: 'padding:10px 12px' },
+                        h('div', { style: 'display:flex;justify-content:space-between;font-size:12px;font-weight:600;color:#4a5a6a;margin-bottom:4px' },
+                            title, h('span', { class: 'wb-hint', style: 'margin:0' }, '时间/s')),
+                        h('div', { style: 'height:210px' }));
+                    host.appendChild(boxc);
+                    const inst = window.echarts.init(boxc.lastChild);
+                    inst.setOption({
+                        animation: false, color: colors,
+                        legend: { top: 0, textStyle: { fontSize: 10 } },
+                        tooltip: { trigger: 'axis' },
+                        grid: { left: 60, right: 14, top: 26, bottom: 24 },
+                        xAxis: { type: 'value', name: '时间/s', nameTextStyle: { fontSize: 10 }, axisLabel: { fontSize: 10 }, splitLine: { lineStyle: { color: '#eef1f5' } } },
+                        yAxis: { type: 'value', scale: true, axisLabel: { fontSize: 10 }, splitLine: { lineStyle: { color: '#eef1f5' } } },
+                        series
+                    });
+                    S.charts['res' + host.children.length] = inst;
+                };
+                const ln = (name, data) => ({ name, type: 'line', showSymbol: false, connectNulls: true, data });
+                mk('Np / 设计点 %', ['#0f766e'], [ln('Np %设计点', npCol)]);
+                mk('Tt45 / K', ['#e67e22'], [ln(truth ? 'Tt45真值' : 'Tt45测量', ttCol)]);
+                mk('PT负载功率 / kW', ['#2e86de'], [ln('PT负载功率', kwCol)]);
+                mk('计量燃油 / kg/s', ['#c0392b'], [ln(truth ? '有效燃油' : '计量燃油', fuelCol)]);
+            }), 0);
+            box.appendChild(h('div', { class: 'wb-hint', style: 'margin-top:8px' },
+                'Tt45未求值区间不连线;轴速与热状态按各自有效性保留,不把保持值当新样本。'));
+            return box;
+        }
+        function exportTraceCsv(res) {
+            const trace = Array.isArray(res.trace) ? res.trace : [];
+            if (!trace.length) { toast('无记录可导出', 'info'); return; }
+            const cols = Object.keys(trace[0]);
+            const from = parseFloat(S.histFrom), to = parseFloat(S.histTo);
+            const lines = [cols.join(',')];
+            trace.forEach(r => {
+                const t = Number(r.timeS);
+                if (!isNaN(from) && t < from) return;
+                if (!isNaN(to) && t > to) return;
+                lines.push(cols.map(c => {
+                    const v = r[c];
+                    return v == null || (typeof v === 'number' && isNaN(v)) ? '' : String(v);
+                }).join(','));
+            });
+            const blob = new Blob(['\ufeff' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = (S.resultRunId || S.runId || 'fullmode') + '_trace.csv';
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+        }
+        /** 全部通道目录(效果图08-22): 通道/单位|原始字段|角色|有效范围|状态+统计;查找与角色过滤。 */
+        function fmChannelMeta(name) {
+            const M = {
+                timeS: ['时间', 's', '时间基准', '全记录'],
+                NpRpm: ['Np', 'rpm', '模型真值', '全记录'], NgRpm: ['Ng', 'rpm', '模型真值', '全记录'],
+                NpTrueRpm: ['Np', 'rpm', '模型真值', '全记录'], NpMeasuredRpm: ['Np', 'rpm', '模拟测量', '全记录'],
+                NgTrueRpm: ['Ng', 'rpm', '模型真值', '全记录'], NgMeasuredRpm: ['Ng', 'rpm', '模拟测量', '全记录'],
+                NrotorPTEquivalentRpm: ['折算旋翼', 'rpm', 'PT侧折算状态', '双总距模式'],
+                Tt45TrueK: ['Tt45', 'K', '模型真值', '有效气路范围'], Tt45MeasuredK: ['Tt45', 'K', '模拟测量', '有效气路范围'],
+                MkpTrueNm: ['PT负载', 'N·m', '模型真值', '按实际有效值'], MkpMeasuredNm: ['PT负载', 'N·m', '模拟测量', '按实际有效值'],
+                actuatorFuelKgPerS: ['计量燃油', 'kg/s', '执行器输出', '全记录'],
+                effectiveFuelKgPerS: ['有效燃油', 'kg/s', '模型计算', '按实际有效值'],
+                phase: ['物理阶段', '—', '内部状态', '全记录'],
+                flameFraction: ['燃烧份额', '—', '内部诊断', '按实际有效值'],
+                freewheelEngaged: ['自由轮接合', '—', '内部诊断', '全记录'],
+                actualPTLoadPowerW: ['PT功率', 'W', '模型派生', '按实际有效值'],
+                NpTargetRpm: ['Np目标', 'rpm', '控制参考', '全记录'],
+                NpGovernorReferenceRpm: ['Np调速器参考', 'rpm', '控制参考', '按实际有效值'],
+                CClockS: ['控制时钟', 's', '内部诊断', '全记录'],
+                mainPitchDeg: ['主桨总距', 'deg', '负载边界', '全记录'], tailPitchDeg: ['尾桨总距', 'deg', '负载边界', '全记录'],
+                mainAeroTorqueNm: ['主桨气动扭矩', 'N·m', '模型派生', '按实际有效值'],
+                tailAeroTorqueNm: ['尾桨气动扭矩', 'N·m', '模型派生', '按实际有效值'],
+                powerLoadEngaged: ['功率接入', '—', '负载状态', '全记录'],
+                gasPathValid: ['气路有效(DLL标志)', '—', '有效性标志', '全记录'],
+                gasPathEvaluated: ['完整气路求值', '—', '有效性标志', '全记录'],
+                inletMassFlowKgPerS: ['进口流量', 'kg/s', '模型派生', '按实际有效值'],
+                NpDotRpmPerS: ['Np导数', 'rpm/s', '模型派生', '按实际有效值'],
+                NgDotRpmPerS: ['Ng导数', 'rpm/s', '模型派生', '按实际有效值'],
+                hotStartFlag: ['热起动标志', '—', '保护标志(10Hz采样)', '全记录'],
+                hungStartFlag: ['悬挂起动标志', '—', '保护标志(10Hz采样)', '全记录'],
+                flameoutFlag: ['熄火标志', '—', '保护标志(10Hz采样)', '全记录']
+            };
+            const extra = { Pt2: 'Pa', Tt1: 'K', Pt3: 'Pa', Tt3: 'K', Pt45: 'Pa', Pt5: 'Pa', Tt5: 'K', T4: 'K', Mkg: 'N·m', Pamb: 'Pa', Tamb: 'K', Altitude: 'm', Mach: '—' };
+            const mTrue = /^(.+?)True(K|Pa|Nm|rpm|)$/.exec(name);
+            if (!M[name]) {
+                for (const base of Object.keys(extra)) {
+                    if (name === base + 'True') return [base, extra[base], '模型真值', '按实际有效值'];
+                    if (name === base + 'Measured') return [base, extra[base], '模拟测量', '按实际有效值'];
+                }
+                if (mTrue) return [mTrue[1], mTrue[2] || '—', '模型真值', '按实际有效值'];
+                const mMeas = /^(.+?)Measured(K|Pa|Nm|rpm|)$/.exec(name);
+                if (mMeas) return [mMeas[1], mMeas[2] || '—', '模拟测量', '按实际有效值'];
+                return [name, '—', '其他记录', '全记录'];
+            }
+            return M[name];
+        }
+        function resChannels(res) {
+            const box = h('div', null);
+            const trace = Array.isArray(res.trace) ? res.trace : [];
+            if (!trace.length) { box.appendChild(h('div', { class: 'wb-hint' }, '无记录样本。')); return box; }
+            const cols = Object.keys(trace[0]).filter(c => c !== 'timeS');
+            const filterInp = h('input', { value: S.chanFilter || '', placeholder: '温度、转速或字段名' });
+            filterInp.addEventListener('change', () => { S.chanFilter = filterInp.value.trim().toLowerCase(); renderBody(); });
+            const roleSel = h('select', null, ['全部实际记录', '模拟测量', '模型真值', '模型派生', '内部诊断', '有效性标志'].map(r =>
+                h('option', { value: r, selected: (S.chanRole || '全部实际记录') === r ? '' : null }, r)));
+            roleSel.addEventListener('change', () => { S.chanRole = roleSel.value; renderBody(); });
+            box.appendChild(h('div', { style: 'display:flex;gap:10px;align-items:end;margin-bottom:10px;flex-wrap:wrap' },
+                h('div', { class: 'wb-field', style: 'margin:0;min-width:260px' }, h('label', null, '查找通道'), filterInp),
+                h('div', { class: 'wb-field', style: 'margin:0' }, h('label', null, '角色'), roleSel)));
+            const f = (S.chanFilter || '').toLowerCase();
+            const role = S.chanRole || '全部实际记录';
+            const tbl = h('table', { class: 'wb-table' },
+                h('tr', null, ['通道 / 单位', '原始字段', '角色', '有效范围', '统计(样本/均值/最小/最大)', '状态'].map(x => h('th', null, x))));
+            let shown = 0;
+            cols.forEach(c => {
+                const [label, unit, chRole, range] = fmChannelMeta(c);
+                if (f && (label + ' ' + c).toLowerCase().indexOf(f) < 0) return;
+                if (role !== '全部实际记录' && chRole !== role) return;
+                const vals = trace.map(r => r[c]).filter(v => v != null && typeof v === 'number' && !isNaN(v));
+                let stat = '--';
+                if (vals.length) {
+                    const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+                    stat = vals.length + ' / ' + mean.toFixed(2) + ' / ' + Math.min.apply(null, vals).toFixed(2) + ' / ' + Math.max.apply(null, vals).toFixed(2);
+                }
+                const gap = chRole === '模拟测量' && (c.indexOf('Tt') === 0 || c.indexOf('Pt') === 0) && vals.length < trace.length;
+                tbl.appendChild(h('tr', null,
+                    h('td', null, label + ' / ' + unit), h('td', { class: 'wb-hint' }, c), h('td', null, chRole),
+                    h('td', { class: 'wb-hint' }, range), h('td', { class: 'wb-hint' }, stat),
+                    h('td', null, vals.length ? (gap ? '存在缺口' : '可查看') : '无曲线')));
+                shown++;
+            });
+            // 未采集量如实列出(效果图08-22)
+            [['起动扭矩', 'N·m'], ['实际间隙', 'mm']].forEach(([label, unit]) => {
+                if (f && (label).toLowerCase().indexOf(f) < 0) return;
+                if (role !== '全部实际记录' && role !== '未采集') return;
+                tbl.appendChild(h('tr', null, h('td', null, label + ' / ' + unit), h('td', { class: 'wb-hint' }, '当前公共记录未提供'),
+                    h('td', null, '未采集'), h('td', { class: 'wb-hint' }, '--'), h('td', { class: 'wb-hint' }, '--'), h('td', null, '无曲线')));
+            });
+            if (!shown) box.appendChild(h('div', { class: 'wb-hint', style: 'margin-bottom:6px' }, '无匹配通道。'));
+            box.appendChild(tbl);
+            box.appendChild(h('div', { class: 'wb-hint', style: 'margin-top:8px' },
+                '统计: 有效样本数、均值、最小值、最大值;不裁剪原记录。NaN表示物理量不可用,不补零。'));
+            return box;
+        }
+        /** 热状态(效果图08-23): 按通道勾选+温度曲线;未启用/未计算如实提示。 */
+        function resThermal(res) {
+            const box = h('div', null);
+            const tt = Array.isArray(res.thermalTrace) ? res.thermalTrace : [];
+            if (!tt.length) {
+                box.appendChild(h('div', { class: 'wb-infobar' }, '热模型未启用或未计算;热关闭与未计算分开如实展示。'));
+                return box;
+            }
+            box.appendChild(h('div', { class: 'wb-infobar', style: 'margin-bottom:10px' },
+                '热模型已启用 · 温度为模型状态,不是实测金属温度 · 共 ' + tt.length + ' 个采样(10Hz)'));
+            const keys = Object.keys(tt[0]).filter(k => k !== 'timeS');
+            if (!S.thermalSel) S.thermalSel = keys.slice(0, 4);
+            const grid = h('div', { style: 'display:grid;grid-template-columns:260px 1fr;gap:20px' });
+            const listCard = h('div', { class: 'wb-card', style: 'padding:12px 14px' },
+                h('div', { class: 'wb-section-title', style: 'margin-bottom:8px' }, '按通道选择状态'));
+            keys.forEach(k => {
+                const id = 'fm-th-' + k;
+                const cb = h('input', { type: 'checkbox', checked: S.thermalSel.includes(k) ? '' : null });
+                cb.addEventListener('change', () => {
+                    if (cb.checked) { if (!S.thermalSel.includes(k)) S.thermalSel.push(k); }
+                    else S.thermalSel = S.thermalSel.filter(x => x !== k);
+                    renderBody();
+                });
+                listCard.appendChild(h('div', { style: 'display:flex;align-items:center;gap:8px;margin-bottom:6px' },
+                    cb, h('label', { for: id, style: 'font-size:12px;cursor:pointer' }, k)));
+            });
+            listCard.appendChild(h('div', { class: 'wb-hint', style: 'margin-top:8px' }, '状态清单来自实际热模型;六部件按自己的拓扑显示。'));
+            const chartCard = h('div', { class: 'wb-card', style: 'padding:10px 12px' },
+                h('div', { style: 'font-size:12px;font-weight:600;color:#4a5a6a;margin-bottom:4px' }, '选定温度状态 / K'),
+                h('div', { style: 'height:420px' }));
+            grid.appendChild(listCard); grid.appendChild(chartCard);
+            box.appendChild(grid);
+            setTimeout(() => ensureEcharts(() => {
+                if (!document.body.contains(chartCard)) return;
+                const inst = window.echarts.init(chartCard.lastChild);
+                const tCol = tt.map(r => Number(r.timeS));
+                const series = keys.filter(k => S.thermalSel.includes(k)).map(k => ({
+                    name: k, type: 'line', showSymbol: false, connectNulls: true,
+                    data: tt.map((r, i) => (r[k] == null || isNaN(Number(r[k]))) ? [tCol[i], null] : [tCol[i], Math.round(Number(r[k]) * 100) / 100])
+                }));
+                inst.setOption({
+                    animation: false, tooltip: { trigger: 'axis' },
+                    legend: { top: 0, textStyle: { fontSize: 10 } },
+                    grid: { left: 60, right: 14, top: 30, bottom: 24 },
+                    xAxis: { type: 'value', name: '时间/s', axisLabel: { fontSize: 10 }, splitLine: { lineStyle: { color: '#eef1f5' } } },
+                    yAxis: { type: 'value', scale: true, axisLabel: { fontSize: 10 }, splitLine: { lineStyle: { color: '#eef1f5' } } },
+                    series
+                });
+                S.charts['therm'] = inst;
+            }), 0);
+            return box;
+        }
+        /** 操纵与告警(效果图08-24): 命令回执表 + 阶段与保护记录表。 */
+        function resEvents(res) {
+            const box = h('div', null);
+            const cmds = Array.isArray(res.commands) ? res.commands : [];
+            box.appendChild(h('div', { class: 'wb-section-title', style: 'margin-bottom:8px' }, '命令回执'));
+            if (cmds.length) {
+                const tbl = h('table', { class: 'wb-table' },
+                    h('tr', null, ['请求', '操作', '接受/s', '生效/s', '状态/原因'].map(x => h('th', null, x))));
+                cmds.forEach(rc => tbl.appendChild(h('tr', null,
+                    h('td', { class: 'wb-hint' }, str(rc.requestId)),
+                    h('td', null, actionCn(rc)),
+                    h('td', null, rc.acceptedTimeS != null ? Number(rc.acceptedTimeS).toFixed(3) : '—'),
+                    h('td', null, rc.appliedTimeS != null ? Number(rc.appliedTimeS).toFixed(3) : '—'),
+                    h('td', null, stateCn(rc) + (rc.reason ? ':' + rc.reason : '')))));
+                box.appendChild(tbl);
+            } else box.appendChild(h('div', { class: 'wb-hint' }, '无命令记录。'));
+            const evs = Array.isArray(res.events) ? res.events : [];
+            box.appendChild(h('div', { class: 'wb-section-title', style: 'margin:14px 0 8px' }, '阶段与保护记录'));
+            if (evs.length) {
+                const tbl = h('table', { class: 'wb-table' },
+                    h('tr', null, ['仿真时刻/s', '来源', '事件', '说明'].map(x => h('th', null, x))));
+                evs.forEach(ev => {
+                    const kind = String(ev.kind || '');
+                    const src = kind === 'mode_change' || kind === 'numerical_termination' ? '阶段事件'
+                        : kind === 'numerical_failure' ? '数值事件' : kind.indexOf('initial') === 0 ? '准备事件' : '阶段状态';
+                    let name = kind;
+                    let desc = ev.description || '';
+                    if (kind === 'mode_change') { name = '进入' + (modeCn(ev.to) || ev.to); desc = desc || ('自 ' + (modeCn(ev.from) || ev.from)); }
+                    if (kind === 'numerical_failure') name = '数值失败(' + (ev.identifier || '') + ')';
+                    if (kind === 'numerical_termination') name = '数值终止(操作者结束推进)';
+                    if (kind === 'initial_trim') name = '非零初态配平';
+                    if (kind === 'nonzero_cold_metal_initial') name = '冷金属初态';
+                    if (kind === 'freewheel_change') name = '自由轮' + (ev.engaged ? '接合' : '脱开');
+                    tbl.appendChild(h('tr', null,
+                        h('td', null, ev.timeS != null ? Number(ev.timeS).toFixed(3) : '—'),
+                        h('td', null, src), h('td', null, name),
+                        h('td', { class: 'wb-hint' }, desc || str(ev.message || ''))));
+                });
+                box.appendChild(tbl);
+            } else box.appendChild(h('div', { class: 'wb-hint' }, '无阶段/保护事件记录。'));
+            box.appendChild(h('div', { class: 'wb-hint', style: 'margin-top:8px' },
+                '10Hz保护标志只能给记录采样时刻;确认已阅读不复位后端保护。与数值终止分别记录。'));
+            return box;
+        }
+        /** 配置与文件(效果图08-25): 本次运行记录值 + 三种保存物与操作。 */
+        function resConfig(res) {
+            const box = h('div', null);
+            const cfg = res.configuration || {};
+            const fm = cfg.fullmode || {};
+            const ld = fm.load || {};
+            const ts = res.terminalStatus || {};
+            const trace = Array.isArray(res.trace) ? res.trace : [];
+            const lastT = trace.length ? Number(trace[trace.length - 1].timeS) : (ts.timeS != null ? Number(ts.timeS) : null);
+            const ikCn = { stopped: '静止', idle: '慢车', cruise: '巡航', maximum: '设计转速' }[fm.initialKind] || fm.initialKind || '—';
+            const lmCn = { power: '直接PT轴功率', mkp: '直接Mkp扭矩', dual_collective: '主桨/尾桨总距' }[fm.loadMode] || fm.loadMode || '—';
+            const grid = h('div', { style: 'display:grid;grid-template-columns:minmax(420px,1.3fr) minmax(300px,1fr);gap:20px' });
+            const kv = h('div', { class: 'wb-kv' });
+            [['发动机 / 运行', str(cfg.engineId) + ' / ' + str(S.resultRunId || S.runId)],
+             ['初始条件', ikCn + ' / ' + lmCn],
+             ['构型与热状态', (cfg.modelMode === 1 ? '六部件' : '三部件') + ' / ' + (fm.thermalEnabled ? '配套热模型' : '热关闭')],
+             ['记录范围', (trace.length ? '0.000 至 ' + lastT.toFixed(3) + ' s' : '—') + ' / 10 Hz'],
+             ['内部终态', lastT != null ? lastT.toFixed(3) + ' s / 0.025 s Heun(二阶欧拉)' : '—'],
+             ['物理结束状态', ts.physicalStop ? '已停转' : (modeCn(ts.mode) || '—')],
+             ['推进计算耗时', ts.wallSeconds != null ? Number(ts.wallSeconds).toFixed(1) + ' s(按wallSeconds读取)' : '本记录未保存则不反推'],
+             ['接受步数', ts.acceptedSteps != null ? String(ts.acceptedSteps) : '—'],
+             ['停止 / 失败原因', str(ts.stopReason) + (ts.failureReason ? ' / ' + ts.failureReason : '')],
+             ['MATLAB版本', str(res.matlabVersion)],
+             ['记录模式', res.recordSchema != null ? String(res.recordSchema) : '—'],
+             ['负载参数', JSON.stringify(ld)]]
+                .forEach(([k, v]) => { kv.appendChild(h('div', { class: 'k' }, k)); kv.appendChild(h('div', { class: 'v' }, String(v))); });
+            const left = h('div', { class: 'wb-card', style: 'padding:14px 16px' },
+                h('div', { class: 'wb-section-title', style: 'margin-bottom:8px' }, '本次运行'),
+                kv,
+                h('div', { class: 'wb-hint', style: 'margin-top:10px' },
+                    '历史结果可独立查看,不加载DLL。新建运行重新准备;恢复延续保存状态。'));
+            const c0 = window.AppConfig;
+            const rid = S.resultRunId || S.runId;
+            const right = h('div', { class: 'wb-card', style: 'padding:14px 16px' });
+            right.appendChild(h('div', { class: 'wb-section-title', style: 'margin-bottom:8px' }, '保存文件'));
+            [['fullmode_results.xlsx', '输出、热状态和命令'],
+             ['fullmode_snapshot.mat', '完整状态与独立只读result'],
+             ['fullmode_manifest.json', '配置、事件和生成身份']].forEach(([f, d]) => {
+                right.appendChild(h('div', { style: 'margin-bottom:10px' },
+                    h('div', { style: 'font-weight:600;font-size:13px' }, '📄 ' + f),
+                    h('div', { class: 'wb-hint', style: 'margin:0' }, d)));
+            });
+            const acts = h('div', { style: 'display:grid;gap:8px;margin-top:10px' });
+            acts.appendChild(h('button', { class: 'wb-btn wb-btn-outline', onclick: () => { S.resultSub = 'history'; renderBody(); } }, '打开结果'));
+            acts.appendChild(h('button', {
+                class: 'wb-btn wb-btn-primary',
+                onclick: () => window.open(c0.api.baseURL + '/api/engine/projects/' + pid
+                    + '/testbench/fullmode/sessions/' + encodeURIComponent(rid)
+                    + '/excel?token=' + encodeURIComponent(c0.getToken() || ''), '_blank')
+            }, '⬇ 导出Excel'));
+            acts.appendChild(h('button', {
+                class: 'wb-btn wb-btn-outline',
+                onclick: () => confirmDialog('用本次配置新建试验?将关闭当前会话并回到准备页(配置保留)。', { title: '用此配置新建试验', okText: '新建' })
+                    .then(ok => {
+                        if (!ok) return;
+                        apiPost('/close', {}).then(r => {
+                            if (r && r.code === 200) {
+                                S.phase = 'IDLE'; S.live = null; S.runId = null; S.message = '';
+                                S.hist = emptyHist(); S.result = null; S.resultMsg = null; S.resultTriedFor = null;
+                                S.tab = 'prep'; S.lastReceiptId = null;
+                                toast('会话已关闭;配置已保留', 'success');
+                                renderBody();
+                            } else toast((r && r.message) || '关闭失败', 'error');
+                        }).catch(e => toast('关闭失败:' + e.message, 'error'));
+                    })
+            }, '⧉ 用此配置新建试验'));
+            acts.appendChild(h('button', {
+                class: 'wb-btn wb-btn-outline',
+                onclick: () => confirmDialog('从会话 ' + rid + ' 的快照恢复到新会话?恢复后会话处于暂停态,可继续推进。',
+                    { title: '快照恢复', okText: '恢复' })
+                    .then(ok => { if (!ok) return; apiPost('/restore', { runId: rid })
+                        .then(rr => { if (rr && rr.code === 200) { toast('快照恢复已发起;新会话 ' + rr.data.runId, 'success'); S.result = null; S.resultRunId = null; } else toast((rr && rr.message) || '恢复失败', 'error'); })
+                        .catch(e => toast('恢复失败:' + e.message, 'error')); })
+            }, '⟲ 选择完整快照恢复'));
+            right.appendChild(acts);
+            grid.appendChild(left); grid.appendChild(right);
+            box.appendChild(grid);
+            return box;
+        }
+
+        /** 会话与恢复(image158底部/image166~169):历史会话表,查看结果/恢复快照/导出Excel。 */
+        function sessionsSection() {
+            const box = h('div', { style: 'margin-top:20px' });
+            box.appendChild(h('div', { class: 'wb-section-title', style: 'margin-bottom:8px' }, '会话与恢复'));
+            const tblHost = h('div', null, h('div', { class: 'wb-hint' }, '历史会话加载中...'));
+            box.appendChild(tblHost);
+            api('/sessions').then(r => {
+                tblHost.innerHTML = '';
+                const list = (r && r.code === 200 && Array.isArray(r.data)) ? r.data : [];
+                if (!list.length) { tblHost.appendChild(h('div', { class: 'wb-empty' }, '暂无历史全模式会话')); return; }
+                const fmtT = ts => { try { return ts ? new Date(ts).toLocaleString('zh-CN', { hour12: false }) : '—'; } catch (e) { return '—'; } };
+                const tbl = h('table', { class: 'wb-table' },
+                    h('tr', null, ['会话', '发起时间', '相位', '结果', 'Excel', '快照', '操作'].map(x => h('th', null, x))));
+                list.slice(0, 20).forEach(m => {
+                    const rid = str(m.runId);
+                    const ops = h('td', null);
+                    ops.appendChild(h('button', {
+                        class: 'wb-btn', style: 'padding:2px 8px;margin-right:6px',
+                        onclick: () => { S.resultRunId = rid; S.result = null; S.tab = 'result'; renderBody(); }
+                    }, '查看结果'));
+                    if (m.hasSnapshot) ops.appendChild(h('button', {
+                        class: 'wb-btn wb-btn-outline', style: 'padding:2px 8px;margin-right:6px',
+                        onclick: () => confirmDialog('从会话 ' + rid + ' 的快照恢复到新会话?恢复后会话处于暂停态。',
+                            { title: '快照恢复', okText: '恢复' })
+                            .then(ok => { if (!ok) return; apiPost('/restore', { runId: rid })
+                                .then(rr => { if (rr && rr.code === 200) { toast('快照恢复已发起;新会话 ' + rr.data.runId + ' 恢复中', 'success'); S.result = null; S.resultRunId = null; } else toast((rr && rr.message) || '恢复失败', 'error'); })
+                                .catch(e => toast('恢复失败:' + e.message, 'error')); })
+                    }, '恢复快照'));
+                    if (m.hasExcel) ops.appendChild(h('button', {
+                        class: 'wb-btn wb-btn-outline', style: 'padding:2px 8px',
+                        onclick: () => { const c = window.AppConfig; window.open(c.api.baseURL + '/api/engine/projects/' + pid
+                            + '/testbench/fullmode/sessions/' + encodeURIComponent(rid)
+                            + '/excel?token=' + encodeURIComponent(c.getToken() || ''), '_blank'); }
+                    }, '导出Excel'));
+                    tbl.appendChild(h('tr', null,
+                        h('td', null, rid), h('td', null, fmtT(m.createdAt)), h('td', null, str(m.phase)),
+                        h('td', null, m.hasResult ? '已保存' : '—'),
+                        h('td', null, m.hasExcel ? '有' : '—'),
+                        h('td', null, m.hasSnapshot ? '有' : '—'),
+                        ops));
+                });
+                tblHost.appendChild(tbl);
+            }).catch(() => { tblHost.innerHTML = ''; tblHost.appendChild(h('div', { class: 'wb-hint' }, '历史会话读取失败')); });
+            return box;
+        }
+
+        function renderBody() {
+            paintTabs();
+            disposeCharts();
+            body.innerHTML = '';
+            if (S.tab === 'prep') body.appendChild(prepTab());
+            else if (S.tab === 'ops') body.appendChild(opsTab());
+            else body.appendChild(resultTab());
+        }
+
+        /** 状态应用:相位/会话变化重建,其余就地在patchOps更新(不重建DOM)。 */
+        function applyStatus(d) {
+            const prevPhase = S.phase, prevRun = S.runId;
+            S.phase = d.phase || S.phase;
+            // 会话不在了(后端IDLE):清掉残留live与runId,避免旧数据继续显示
+            if (S.phase === 'IDLE') { S.live = null; S.runId = null; }
+            else S.live = d.live || S.live;
+            S.message = d.message || '';
+            S.runId = (d.live && d.live.runId) || d.runId || S.runId;
+            if (S.runId !== prevRun) { S.hist = emptyHist(); S.result = null; S.resultMsg = null; S.resultTriedFor = null; }
+            if (S.phase !== prevPhase) {
+                // 相位跃迁即时提醒:准备失败/运行失败/正常结束
+                if (S.phase === 'FAILED') toast('仿真失败:' + (S.message || '详情见仿真记录与服务端日志'), 'error');
+                else if (S.phase === 'ENDED') toast('仿真已结束,可在「本次结果」查看与导出', 'success');
+                S.resultMsg = null; S.resultTriedFor = null; // 结束后允许结果重取一次
+                // 准备完成自动进入操纵与监视(交付流程:准备完成后核对初态→操纵);用户已切走则不打断
+                if (S.tab === 'prep' && ['READY', 'RUNNING', 'PAUSED'].includes(S.phase)) {
+                    S.tab = 'ops';
+                    toast('准备完成' + (S.runId ? '(' + S.runId + ')' : '') + ',已进入操纵与监视', 'success');
+                }
+                renderBody();
+                return;
+            }
+            if (S.tab === 'ops') patchOps();
+        }
+
+        if (window.__WB_FM_TIMER__) clearInterval(window.__WB_FM_TIMER__);
+        window.__WB_FM_TIMER__ = setInterval(() => {
+            if (document.hidden) return;
+            // 始终轮询(IDLE时status是轻量文件读):本地相位与后端脱锁(如准备失败误判)也能自动恢复,
+            // 否则IDLE停轮询后页面永久冻结——准备/推进实际仍在后端进行
+            window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;
+            api('/status').then(r => {
+                if (r && r.code === 200 && r.data) applyStatus(r.data);
+            }).catch(() => { });
+        }, 2000);
+        if (!window.__WB_FM_RESIZE__) {
+            window.__WB_FM_RESIZE__ = () => Object.keys(S.charts).forEach(k => { try { S.charts[k].resize(); } catch (e) { } });
+            window.addEventListener('resize', window.__WB_FM_RESIZE__);
+        }
+        renderBody();
+        // 仿真记录"查看"打开指定全模式会话:后端为单活动会话模型,历史记录只读留档,页面显示最近会话状态
+        const fmOpen = window.__WB_FM_OPEN__;
+        if (fmOpen) { delete window.__WB_FM_OPEN__; }
+        api('/status').then(r => {
+            if (r && r.code === 200 && r.data && r.data.phase && r.data.phase !== 'IDLE') {
+                applyStatus(r.data);
+                if (fmOpen) {
+                    S.tab = ['READY', 'RUNNING', 'PAUSED'].includes(S.phase) ? 'ops'
+                        : (['ENDED', 'FAILED'].includes(S.phase) ? 'result' : 'prep');
+                    renderBody();
+                }
+                const curRun = (r.data.live && r.data.live.runId) || r.data.runId;
+                if (fmOpen && curRun && curRun !== fmOpen) {
+                    toast('记录 ' + fmOpen + ' 的会话已结束;页面显示的是最近会话 ' + curRun + ' 的状态', 'info');
+                }
+            } else if (fmOpen) {
+                toast('记录 ' + fmOpen + ' 的会话不在运行中——全模式会话为内存态,后端重启后会话丢失,文件留档仅保留到最后推进时刻', 'error');
+            }
+        }).catch(() => { });
+        return wrap;
+    };
+
+    /* ===== 起动停车建模(G7,UI-R111): 七页签 =====
+     * 模型准备 / 设计点配置 / 特性图 / 物理与热参数 / 校核执行 / 校核结果 / 模型成果
+     * 后端: design_point(sht_design_point_task solve/commit) + startstop(sht_startstop_modeling_task 阶段链) */
+    pages['testbench.startstop'] = (ctx) => {
+        const pid = encodeURIComponent(ctx.project.id || '');
+        const api = p => window.AppConfig.engineGet('projects/' + pid + '/testbench' + p);
+        const apiPost = (p, body) => window.AppConfig.enginePost('projects/' + pid + '/testbench' + p, body || {});
+        const S = window.__WB_SS__ = window.__WB_SS__ || {
+            tab: 'prepare', dpTaskId: null, ssTaskId: null, modelMode: 0, prepareStep: 'entry', ssTaskName: '',
+            design: { NpRpm: '20900', NgRpm: '38000', loadKw: '2176.600', targetTt4K: '1620', nozzleAreaM2: '0.10573', targetPt25Pa: '478500', targetTt25K: '478.95' },
+            dpView: 'result', dpShowLog: false, ssShowLog: false,
+            planPreset: 'demo',
+            maps: { view: 'config', cfgSub: 0, component: '', cmpVer: 'all', npLine: 'same', charts: [] },
+            physSub: 0,
+            verif: { sub: 'matrix', scope: 'final', statusFilter: 'all', caseIdx: 0, detail: null },
+            assetsView: 'save'
+        };
+        /* ===== 公共辅助(效果07组对齐) ===== */
+        /** 解析markdown表格文本(任务summary.md)→[{headers,rows}];兼容|---|分隔行与全角空白。 */
+        function mdTables(md) {
+            const out = []; const lines = String(md || '').split(/\r?\n/);
+            let cur = null;
+            const cells = l => { const t = l.replace(/^\s*\|/, '').replace(/\|\s*$/, '').split('|').map(x => x.trim()); return t; };
+            for (const line of lines) {
+                const t = line.trim();
+                if (/^\|.*\|/.test(t)) {
+                    const c = cells(t);
+                    if (c.every(x => /^:?-{2,}:?$/.test(x) || x === '')) { if (cur && !cur.headers.length && cur.rows.length) { cur.headers = cur.rows.shift(); } continue; }
+                    if (!cur) { cur = { headers: [], rows: [] }; out.push(cur); }
+                    if (!cur.headers.length) cur.headers = c; else cur.rows.push(c);
+                } else if (cur) { cur = null; }
+            }
+            return out;
+        }
+        /** 解析summary.md的"- 键：值"要点行→[[k,v]]。 */
+        function mdBullets(md) {
+            const out = [];
+            String(md || '').split(/\r?\n/).forEach(l => {
+                const m = l.match(/^\s*[-*]\s*(.+?)[:：]\s*(.+)$/);
+                if (m) out.push([m[1].replace(/\*\*/g, '').trim(), m[2].replace(/\*\*/g, '').trim()]);
+            });
+            return out;
+        }
+        function fmtSec(s) { const n = Number(s); if (isNaN(n)) return '—'; const m = Math.floor(n / 60); const r = Math.round(n % 60); return (m > 0 ? m + ' min ' : '') + (r < 10 && m > 0 ? '0' : '') + r + ' s'; }
+        function ensureEcharts(cb) {
+            if (window.echarts) { cb(window.echarts); return; }
+            if (!window.__wbEchartsLoading) {
+                window.__wbEchartsLoading = true;
+                const s = document.createElement('script');
+                s.src = './lib/echarts/echarts.min.js';
+                s.onload = () => cb(window.echarts);
+                s.onerror = () => { window.__wbEchartsLoading = false; };
+                document.head.appendChild(s);
+            } else {
+                const timer = setInterval(() => { if (window.echarts) { clearInterval(timer); cb(window.echarts); } }, 120);
+            }
+        }
+        function fetchArtifacts(taskId) {
+            return api('/tasks/' + encodeURIComponent(taskId) + '/artifacts').then(r => (r && r.code === 200 && Array.isArray(r.data)) ? r.data : []);
+        }
+        function artifactData(taskId, path) {
+            return api('/tasks/' + encodeURIComponent(taskId) + '/artifact?path=' + encodeURIComponent(path))
+                .then(r => (r && r.code === 200) ? r.data : null);
+        }
+        function downloadCsv(name, headers, rows) {
+            const q = v => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+            const csv = '\ufeff' + [headers.map(q).join(','), ...rows.map(r => r.map(q).join(','))].join('\r\n');
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+            a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+        }
+        /** 从产物清单定位某阶段前缀的最新目录前缀(如 report_outputs/matrix_xxx)。 */
+        function stageDirOf(arts, prefix) {
+            const dirs = arts.filter(a => a.dir && a.path.indexOf('report_outputs/' + prefix + '_') === 0)
+                .map(a => a.path).sort();
+            return dirs.length ? dirs[dirs.length - 1] : null;
+        }
+        const STAGE_DESC = { maps: '全部图生成与局域核对', design: '设计解与设计状态文件', matrix: '逐点矩阵与受约束调图', physics: '物理校核与扰动检查', continuous: '连续起停算例', thermal: '热效应与热浸校核' };
+        const STAGE_LABEL = { maps: '特性图与原工作域', design: '设计解', matrix: '低速共同工作矩阵', physics: '物理校核', continuous: '连续起动与停车', thermal: 'Vissel热耦合对照' };
+        const wrap = h('div', null,
+            h('div', { style: 'margin-bottom:4px' },
+                h('div', { class: 'wb-page-title', style: 'font-size:20px;margin-bottom:2px' }, '起动停车建模'),
+                h('div', { class: 'wb-page-sub' }, (ctx.project.engineId || '—') + ' / 设计点配置后可单独完成;源模型拓扑/地图/MDL/DLL/设计点与热资产身份来自所选模型')),
+            h('div', { class: 'wb-tabs', style: 'margin-bottom:12px' }));
+
+        const TABS = [['prepare', '模型准备'], ['design', '设计点配置'], ['maps', '特性图'], ['physics', '物理与热参数'], ['exec', '校核执行'], ['verif', '校核结果'], ['assets', '模型成果']];
+        const tabBar = wrap.querySelector('.wb-tabs');
+        const body = h('div', null);
+        wrap.appendChild(body);
+
+        function paintTabs() {
+            tabBar.innerHTML = '';
+            TABS.forEach(([k, label]) => tabBar.appendChild(h('div', {
+                class: 'wb-tab' + (S.tab === k ? ' active' : ''),
+                onclick: () => { S.tab = k; renderBody(); }
+            }, label)));
+        }
+
+        /* ---- 模型准备(07-01): 从明确的源模型开始 + 本次目的 + 来源检查 ---- */
+        /* ---- 模型准备(07-12任务入口 / 07-13源模型与依赖) ---- */
+        function prepareTab() {
+            return S.prepareStep === 'form' ? prepareFormTab() : prepareEntryTab();
+        }
+        function prepareEntryTab() {
+            const biz = [
+                ['起动停车建模', '现有发动机配置、特性图及工程参数', '低速模型包、校核记录',
+                    () => { S.prepareStep = 'form'; renderBody(); }, '新建任务'],
+                ['全模式仿真', '选定模型、初始状态及操纵指令', '起动、运行、停车的输出历程',
+                    () => ctx.navigate('fullmode'), '准备试车'],
+                ['多系统联合仿真', 'AFO成套模型及外部子系统配置', '发动机与燃油/滑油/空气输出',
+                    () => ctx.navigate('afo'), '准备联仿']];
+            const tbl = h('table', { class: 'wb-table' },
+                h('tr', null, ['工作', '输入', '得到的结果', '操作'].map(x => h('th', null, x))));
+            biz.forEach((r0, i) => tbl.appendChild(h('tr', i === 0 ? { style: 'background:#eef7f5' } : null,
+                h('td', null, r0[0]), h('td', { class: 'wb-hint' }, r0[1]), h('td', null, r0[2]),
+                h('td', null, h('button', { class: 'wb-btn wb-btn-outline', style: 'padding:3px 12px', onclick: r0[3] }, r0[4])))));
+            const listHost = h('div', null, h('div', { class: 'wb-hint' }, '已有起动停车模型加载中...'));
+            api('/tasks').then(r => {
+                listHost.innerHTML = '';
+                const list = (r && r.code === 200 && Array.isArray(r.data)) ? r.data.filter(t => t.kind === 'startstop') : [];
+                if (!list.length) { listHost.appendChild(h('div', { class: 'wb-hint' }, '尚无起动停车建模任务;点击"新建起动停车建模任务"开始。')); return; }
+                const t2 = h('table', { class: 'wb-table' },
+                    h('tr', null, ['版本', '来源与拓扑', '校核范围', '状态', '使用'].map(x => h('th', null, x))));
+                list.slice(0, 12).forEach(m => {
+                    const stages = m.config && Array.isArray(m.config.requestedStages) ? m.config.requestedStages.join('→') : '原有配套范围';
+                    const ops = h('td', null);
+                    ops.appendChild(h('button', { class: 'wb-btn wb-btn-outline', style: 'padding:2px 10px;margin-right:6px',
+                        onclick: () => { S.ssTaskId = m.taskId; S.tab = 'verif'; renderBody(); } }, '查看'));
+                    ops.appendChild(h('button', { class: 'wb-btn wb-btn-outline', style: 'padding:2px 10px;margin-right:6px',
+                        onclick: () => ctx.navigate('fullmode') }, '用于仿真'));
+                    ops.appendChild(h('button', { class: 'wb-btn', style: 'padding:2px 10px',
+                        onclick: () => { S.prepareStep = 'form'; S.modelMode = m.config && m.config.modelMode === 1 ? 1 : 0; renderBody(); } }, '继续建模'));
+                    t2.appendChild(h('tr', null,
+                        h('td', null, str(m.taskId)),
+                        h('td', { class: 'wb-hint' }, (ctx.project.engineId || 'E-001') + ' / ' + (m.config && m.config.modelMode === 1 ? '六部件' : '三部件')),
+                        h('td', { class: 'wb-hint' }, stages),
+                        h('td', null, str(m.phase)),
+                        ops));
+                });
+                listHost.appendChild(t2);
+            }).catch(() => { listHost.innerHTML = ''; listHost.appendChild(h('div', { class: 'wb-hint' }, '历史任务读取失败')); });
+            return h('div', null,
+                h('div', { class: 'wb-section-title', style: 'margin:4px 0 8px' }, '本次需要完成哪一项工作'),
+                tbl,
+                h('div', { class: 'wb-section-title', style: 'margin:16px 0 8px' }, '已有起动停车模型'),
+                listHost,
+                h('div', { class: 'wb-actions-row', style: 'margin-top:16px' },
+                    h('button', { class: 'wb-btn wb-btn-primary', onclick: () => { S.prepareStep = 'form'; renderBody(); } }, '+ 新建起动停车建模任务'),
+                    h('button', { class: 'wb-btn wb-btn-outline', onclick: () => { S.tab = 'assets'; S.assetsView = 'save'; renderBody(); } }, '📂 导入已保存模型包')),
+                h('div', { class: 'wb-hint', style: 'margin-top:10px' },
+                    '模型构建与校核,不是实测数据自动辨识。全模式仿真使用明确选定的模型;源资产与旧结果不覆盖。'));
+        }
+        function prepareFormTab() {
+            const mmSel = h('select', null,
+                h('option', { value: '0', selected: S.modelMode === 0 ? '' : null }, 'B-001 / 当前已选版本(三部件)'),
+                h('option', { value: '1', selected: S.modelMode === 1 ? '' : null }, 'B-001 / 当前已选版本(六部件)'));
+            mmSel.addEventListener('change', () => { S.modelMode = parseInt(mmSel.value, 10); });
+            const nameInp = h('input', { value: S.ssTaskName || ((ctx.project.engineId || 'E-001') + ' 低速特性完善') });
+            nameInp.addEventListener('change', () => { S.ssTaskName = nameInp.value; });
+            const deps = [
+                ['发动机MDL', '按所选版本读取(Turboshaft-TS*.mdl),不按最新文件查找', '已读取', '源文件只读', null],
+                ['部件MAP', 'HPC02 / HPT02 / LPT02;数量及引用一致', S.modelMode === 1 ? '含低速扩展候选' : '已读取', '查看各图范围',
+                    () => { S.tab = 'maps'; S.maps.view = 'figures'; renderBody(); }],
+                ['DLL与头文件', 'GTESS.dll/头文件随程序目录;配套运行身份', '待检查加载环境', '检查详情',
+                    () => toast('GTESS.dll与头文件随程序目录提供;加载环境在校核执行首阶段实际验证', 'info')],
+                ['Visser16及初值资产', '配套热配置与设计种子(可选,显式提供)', '待相容性核查', '不自动补默认', null]];
+            return h('div', null,
+                h('div', { class: 'wb-section-title', style: 'margin:4px 0 8px' }, '选择本次源模型'),
+                h('div', { class: 'wb-form-grid', style: 'grid-template-columns:1fr 1fr;max-width:1180px;margin-bottom:12px' },
+                    h('div', { class: 'wb-field' }, h('label', null, '任务名称'), nameInp),
+                    h('div', { class: 'wb-field' }, h('label', null, '源模型版本'), mmSel),
+                    h('div', { class: 'wb-field' }, h('label', null, '模型拓扑'),
+                        h('input', { readonly: '', value: (S.modelMode === 1 ? '六部件' : '三部件') + ' / 从源MDL识别' })),
+                    h('div', { class: 'wb-field' }, h('label', null, '输出位置'),
+                        h('input', { readonly: '', value: '项目 / 模型 / ' + (S.ssTaskName || '起动停车任务') }))),
+                h('table', { class: 'wb-table' },
+                    h('tr', null, ['依赖', '明确来源', '检查', '处理'].map(x => h('th', null, x))),
+                    deps.map(d0 => h('tr', null, h('td', null, d0[0]), h('td', { class: 'wb-hint' }, d0[1]),
+                        h('td', null, d0[2]),
+                        h('td', null, d0[4]
+                            ? h('button', { class: 'wb-btn wb-btn-outline', style: 'padding:2px 10px', onclick: d0[4] }, d0[3])
+                            : h('span', { class: 'wb-hint' }, d0[3]))))),
+                h('div', { class: 'wb-hint', style: 'margin:10px 0 0' },
+                    '设计点复现、低速矩阵、连续起停分别记录;原V1/V2入口保留;新入口写MDL前必须备份;两个独立模型工程不互为运行前置。'),
+                h('div', { class: 'wb-actions-row', style: 'margin-top:12px' },
+                    h('button', { class: 'wb-btn wb-btn-outline', onclick: () => ctx.navigate('overview') }, '← 返回项目'),
+                    h('button', { class: 'wb-btn wb-btn-outline', onclick: () => toast('配置草稿已保留在本页;发起校核时随配置冻结', 'info') }, '💾 保存配置草稿'),
+                    h('div', { class: 'wb-spacer' }),
+                    h('button', { class: 'wb-btn wb-btn-outline', onclick: () => { S.prepareStep = 'entry'; renderBody(); } }, '← 任务入口'),
+                    h('button', { class: 'wb-btn wb-btn-primary', onclick: () => { S.tab = 'maps'; renderBody(); } }, '→ 特性图配置')));
+        }
+
+        /* ---- 设计点配置(07-02~08): 已知目标 + 求解 + 比较 + commit ---- */
+
+        function designTab() {
+            const isV2 = S.modelMode === 1;
+            const fields = [
+                ['NpRpm', 'Np设计转速', 'rpm'], ['NgRpm', 'Ng设计转速', 'rpm'],
+                ['loadKw', 'PT负载功率', 'kW'], ['targetTt4K', '燃烧室出口总温Tt4', 'K'],
+                ['nozzleAreaM2', '喷口面积', 'm²']
+            ];
+            if (isV2) fields.push(['targetPt25Pa', '25截面目标压力', 'Pa'], ['targetTt25K', '25截面目标温度', 'K']);
+            const inputs = fields.map(([k, label, unit]) => {
+                const inp = h('input', { value: S.design[k] != null ? S.design[k] : '' });
+                inp.dataset.k = k;
+                return { k, label, unit, inp };
+            });
+            const runBtn = h('button', {
+                class: 'wb-btn wb-btn-primary',
+                onclick: () => {
+                    inputs.forEach(({ k, inp }) => { const v = parseFloat(inp.value); if (!isNaN(v)) S.design[k] = v; });
+                    const design = {};
+                    Object.keys(S.design).forEach(k => {
+                        if (k === 'loadKw') return; // kW→W 单独换算
+                        // 25截面目标仅六部件(modelMode=1)模板支持;三部件默认值里的Pt25字段不下发
+                        if (!isV2 && (k === 'targetPt25Pa' || k === 'targetTt25K')) return;
+                        const v = parseFloat(S.design[k]); if (!isNaN(v)) design[k] = v;
+                    });
+                    const kw = parseFloat(S.design.loadKw);
+                    if (!isNaN(kw)) design.loadPowerW = kw * 1000;
+                    runBtn.classList.add('disabled');
+                    apiPost('/tasks/design_point/run', { modelMode: S.modelMode, design })
+                        .then(r => {
+                            if (r && r.code === 200 && r.data) { S.dpTaskId = r.data.taskId; S.dpView = 'result'; S.dpShowLog = false; pollDp(); }
+                            else toast((r && r.message) || '求解发起失败', 'error');
+                            runBtn.classList.remove('disabled');
+                            renderBody();
+                        })
+                        .catch(e => { toast('求解发起失败:' + e.message, 'error'); runBtn.classList.remove('disabled'); });
+                }
+            }, '▶ 求解设计点');
+            const exportBtn = h('button', { class: 'wb-btn wb-btn-outline', onclick: exportDpParams }, '导出参数表(Excel/CSV)');
+
+            const box = h('div', null);
+            box.appendChild(h('div', { class: 'wb-section-title', style: 'margin-bottom:8px' },
+                isV2 ? '六部件:已知设计目标(设计量与求解量分列)' : '三部件:已知设计目标'));
+            const tbl = h('table', { class: 'wb-table' },
+                h('tr', null, ['输入', '数值', '单位', '来源'].map(x => h('th', null, x))));
+            inputs.forEach(({ k, label, unit, inp }) => {
+                tbl.appendChild(h('tr', null,
+                    h('td', null, label),
+                    h('td', null, inp),
+                    h('td', null, unit),
+                    h('td', { class: 'wb-hint' }, '本次设计目标')));
+            });
+            const kwv = parseFloat(S.design.loadKw);
+            tbl.appendChild(h('tr', null,
+                h('td', null, 'GT附件功率'),
+                h('td', { class: 'wb-hint' }, '0.000'),
+                h('td', null, 'kW'),
+                h('td', { class: 'wb-hint' }, '源模型(配置给定)')));
+            tbl.appendChild(h('tr', null,
+                h('td', null, 'PT负载功率与GT附件功率'),
+                h('td', { class: 'wb-hint' }, (isNaN(kwv) ? 0 : kwv).toFixed(3) + ' / 0'),
+                h('td', null, 'kW'),
+                h('td', { class: 'wb-hint' }, '源模型')));
+            if (isV2) {
+                tbl.appendChild(h('tr', null,
+                    h('td', null, 'GT1/GT2级做功分配'),
+                    h('td', { class: 'wb-hint' }, '按求解结果展示'),
+                    h('td', null, '—'),
+                    h('td', { class: 'wb-hint' }, '本次求解量(初值给定)')));
+            }
+            tbl.appendChild(h('tr', null,
+                h('td', null, 'HPC / GT / PT原始特性图'),
+                h('td', { class: 'wb-hint' }, 'HPC02 / HPT02 / LPT02'),
+                h('td', null, 'MAP'),
+                h('td', { class: 'wb-hint' }, '所选MDL,只读名称')));
+            box.appendChild(tbl);
+            box.appendChild(h('div', { class: 'wb-hint', style: 'margin:8px 0' },
+                '求解量与初值:' + (isV2 ? '进口流量、HPC Rline、GT1/GT2压比与级做功分配、PT压比、Np、Ng、燃油流量' : '进口流量、HPC Rline、GT/PT压比、Np、Ng、燃油流量') + ';已知边界、目标量、求解初值与待求配置参数分开。'));
+            box.appendChild(h('div', { class: 'wb-actions-row', style: 'margin-top:8px' }, runBtn, exportBtn));
+
+            // 任务状态与比较(07-04/05/07):渲染收敛到 renderDpStatus,轮询只就地更新此容器
+            if (S.dpTaskId) {
+                const holder = h('div', { style: 'margin-top:16px' }, h('div', { class: 'wb-empty' }, '正在加载求解状态...'));
+                box.appendChild(holder);
+                S.dpHolder = holder;
+                renderDpStatus(holder);
+            }
+            return box;
+        }
+        /** 导出候选设计值与MDL当前值比较表(设计点参数表)。 */
+        function exportDpParams() {
+            if (!S.dpTaskId) { toast('请先发起求解', 'error'); return; }
+            api('/tasks/' + encodeURIComponent(S.dpTaskId) + '/status').then(r => {
+                const res = r && r.code === 200 ? (r.data && r.data.result) || {} : {};
+                const cmp = res.parameterComparison || res.parameterStates || [];
+                if (!cmp.length) { toast('暂无可导出的参数表(需先完成求解)', 'error'); return; }
+                const g = (p, ks) => { for (const k of ks) { if (p[k] != null) return p[k]; } return ''; };
+                downloadCsv('设计点参数表_' + S.dpTaskId + '.csv',
+                    ['部件', '参数', 'MDL当前值', '候选设计值'],
+                    cmp.map(p => [g(p, ['Component', 'component']), g(p, ['Parameter', 'parameter', 'name']),
+                        g(p, ['SourceValue', 'sourceValue', 'current', 'mdlValue']),
+                        g(p, ['CalculatedValue', 'calculatedValue', 'candidate', 'designValue'])]));
+            });
+        }
+        function str(v) { return v == null ? '—' : String(v); }
+        function toast(msg, kind) { if (window.Workbench && window.Workbench.toast) window.Workbench.toast(msg, kind || 'info'); }
+        /** 拉取一次求解状态并就地重绘状态容器(状态条/求解结果/commit核对视图);不重建页面其他部分。 */
+        function renderDpStatus(holder) {
+            return api('/tasks/' + encodeURIComponent(S.dpTaskId) + '/status').then(r => {
+                if (!holder.isConnected) return; // 页面已切走/重建,丢弃本次渲染
+                holder.innerHTML = '';
+                const d = r && r.code === 200 ? r.data : null;
+                if (!d) { holder.appendChild(h('div', { class: 'wb-empty' }, '状态读取失败')); return; }
+                const res = d.result || {};
+                const cmp = res.parameterComparison || res.parameterStates;
+                const cmpRows = Array.isArray(cmp) ? cmp : [];
+                // 顶部状态条(07-04求解完成 / 07-05已提交 / 07-07失败)
+                if (d.phase === 'FAILED') {
+                    holder.appendChild(h('div', { class: 'wb-infobar', style: 'margin-bottom:10px;background:#fdf0ef;border-color:#f5b7b1;color:#943126' },
+                        '写入或复现失败:' + (d.error || d.message || '见下方差异与下一步')));
+                } else if (d.phase === 'COMMITTED') {
+                    holder.appendChild(h('div', { class: 'wb-infobar', style: 'margin-bottom:10px;background:#eef7f0;border-color:#b7dfc0;color:#1e7b34' },
+                        '已提交:备份后写入MDL并完成复现检查;原始文件与备份均在磁盘上。'));
+                } else if (d.phase === 'ENDED' || d.phase === 'STOPPED') {
+                    holder.appendChild(h('div', { class: 'wb-infobar', style: 'margin-bottom:10px' },
+                        '本次求解结束,尚未写入所选正式MDL;求解完成不等于正式模型已改变。'));
+                } else {
+                    holder.appendChild(h('div', { class: 'wb-infobar', style: 'margin-bottom:10px' },
+                        '设计点求解运行中;已知边界、目标量与求解初值已写入,完成后展示候选值比较。'));
+                }
+                // 基本信息(07-04)
+                const kv = h('div', { class: 'wb-kv', style: 'max-width:1180px' });
+                [['任务', d.taskId], ['程序状态', res.status || d.message || '—'],
+                 ['是否通过复现', res.accepted === true ? '通过' : res.accepted === false ? '有发现(不掩盖)' : '—'],
+                 ['耗时', res.elapsedSeconds != null ? fmtSec(res.elapsedSeconds) : '—'],
+                 ['预计耗时', '1 ~ 3 min'],
+                 ['候选目录', res.candidateDirectory || '—'],
+                 ['已提交MDL', res.commit && res.commit.written ? '已写入(时间备份)' : '未写入']]
+                    .forEach(([k, v]) => { kv.appendChild(h('div', { class: 'k' }, k)); kv.appendChild(h('div', { class: 'v' }, String(v == null ? '—' : v))); });
+                holder.appendChild(kv);
+
+                const cmpTable = () => {
+                    if (!cmpRows.length) return null;
+                    const pName = p => p.Parameter || p.parameter || p.name || '—';
+                    const pSrc = p => p.SourceValue != null ? p.SourceValue : (p.sourceValue != null ? p.sourceValue : (p.current != null ? p.current : p.mdlValue));
+                    const pCal = p => p.CalculatedValue != null ? p.CalculatedValue : (p.calculatedValue != null ? p.calculatedValue : (p.candidate != null ? p.candidate : p.designValue));
+                    const t = h('table', { class: 'wb-table' });
+                    let lastComp = null;
+                    if (S.dpView === 'commit') {
+                        // 07-05 核对变更:部件|参数|原MDL值|本次设计量|写入范围
+                        t.appendChild(h('tr', null, ['部件', '参数', '原MDL值', '本次设计量', '写入范围'].map(x => h('th', null, x))));
+                        const scope = p => {
+                            const n = String(pName(p));
+                            if (/offDesignMode/i.test(n)) return '运行模式(不是只写部分项)';
+                            if (/varStartVec|StartVec/i.test(n)) return '共同工作初值(不是只写部分项)';
+                            if (/Scale|scale/i.test(n)) return '部件内精确定位';
+                            if (/MAP|EffDes/i.test(n)) return '不覆盖';
+                            return '部件内精确定位';
+                        };
+                        cmpRows.slice(0, 80).forEach(p => {
+                            const comp = p.Component || p.component || '';
+                            t.appendChild(h('tr', null,
+                                h('td', { class: 'wb-hint' }, comp === lastComp ? '' : (comp || '—')),
+                                h('td', null, pName(p)),
+                                h('td', null, str(pSrc(p))),
+                                h('td', null, str(pCal(p))),
+                                h('td', { class: 'wb-hint' }, scope(p))));
+                            lastComp = comp;
+                        });
+                    } else {
+                        t.appendChild(h('tr', null, ['部件', '参数', 'MDL当前值', '候选设计值'].map(x => h('th', null, x))));
+                        cmpRows.slice(0, 60).forEach(p => {
+                            const comp = p.Component || p.component || '';
+                            t.appendChild(h('tr', null,
+                                h('td', { class: 'wb-hint' }, comp === lastComp ? '' : (comp || '—')),
+                                h('td', null, pName(p)),
+                                h('td', null, str(pSrc(p))),
+                                h('td', null, str(pCal(p)))));
+                            lastComp = comp;
+                        });
+                    }
+                    return t;
+                };
+
+                if (S.dpView === 'commit') {
+                    // ---- 07-05 核对变更,备份后写入 ----
+                    holder.appendChild(h('div', { class: 'wb-section-title', style: 'margin:14px 0 8px' }, '核对变更,备份后写入'));
+                    const it = h('table', { class: 'wb-table', style: 'max-width:1180px' },
+                        h('tr', null, ['目标', '文件'].map(x => h('th', null, x))),
+                        h('tr', null, h('td', null, '目标MDL'),
+                            h('td', { class: 'wb-hint' }, str((res.commit && res.commit.targetFile) || res.targetMdl || '用户所选正式MDL(以commit实际写入为准)'))),
+                        h('tr', null, h('td', null, '自动备份位置'),
+                            h('td', { class: 'wb-hint' }, '<源MDL>.backup_<yyyyMMdd_HHmmss>_<序号>;每次commit唯一编号,不覆盖,可随时恢复')),
+                        h('tr', null, h('td', null, '写入后检查'),
+                            h('td', { class: 'wb-hint' }, 'offDesignMode=2复现检查;失败则提示,原始文件与备份均在磁盘上')));
+                    holder.appendChild(it);
+                    holder.appendChild(h('div', { class: 'wb-section-title', style: 'margin:12px 0 8px' }, '写入差异清单'));
+                    const ct = cmpTable();
+                    if (ct) { holder.appendChild(ct); }
+                    else holder.appendChild(h('div', { class: 'wb-empty' }, '无参数差异清单(需先完成求解)'));
+                    const acts = h('div', { class: 'wb-actions-row', style: 'margin-top:12px' });
+                    acts.appendChild(h('button', { class: 'wb-btn wb-btn-outline', onclick: () => { S.dpView = 'result'; renderDpStatus(holder); } }, '← 返回参数结果'));
+                    if (d.phase === 'ENDED' && res.accepted === true && !(res.commit && res.commit.written)) {
+                        acts.appendChild(h('button', {
+                            class: 'wb-btn wb-btn-primary',
+                            onclick: () => {
+                                confirmDialog('commit将产生带时间戳且不覆盖的备份后写入所选MDL,并运行offDesignMode=2复现检查,继续?',
+                                    { title: '提交设计', okText: '备份、写入并测试' }).then(ok => {
+                                    if (ok) apiPost('/tasks/' + encodeURIComponent(S.dpTaskId) + '/commit')
+                                        .then(() => { S.dpView = 'result'; pollDp(); renderDpStatus(holder); });
+                                });
+                            }
+                        }, '备份、写入并测试'));
+                    }
+                    acts.appendChild(logToggleBtn());
+                    holder.appendChild(acts);
+                } else {
+                    // ---- 07-04 求解结果视图 ----
+                    holder.appendChild(h('div', { class: 'wb-section-title', style: 'margin:14px 0 8px' }, '求解结果'));
+                    const rt = h('table', { class: 'wb-table', style: 'max-width:1180px' },
+                        h('tr', null, ['项目', '结果', '比较基准'].map(x => h('th', null, x))));
+                    const effs = res.efficiencies && typeof res.efficiencies === 'object'
+                        ? Object.keys(res.efficiencies).map(k => k + '=' + res.efficiencies[k]).join('; ') : '';
+                    [['最终共同工作残差', str(res.finalResidual), '按当前求解精度检查'],
+                     ['燃油流量', str(res.fuelFlowKgS || res.fuelFlow), '独立输出,不作为健康修正'],
+                     ['AC/CC实际效率', str(res.acEff || res.ccEff || (res.accepted === true ? '从本次DLL结果读取' : '')), '同时刻设计目标与MDL旧值'],
+                     ['GT/GT2/PT1/PT2效率', effs || (res.accepted === true ? '四值全部显示' : '—'), '不是沿用输入EffDes'],
+                     ['共同工作初值与缩放系数', cmpRows.length ? '参数表共 ' + cmpRows.length + ' 项,可导出' : '—', '与待写字段一一对应']]
+                        .forEach(r0 => rt.appendChild(h('tr', null, h('td', null, r0[0]), h('td', null, r0[1]), h('td', { class: 'wb-hint' }, r0[2]))));
+                    holder.appendChild(rt);
+                    if (cmpRows.length) {
+                        holder.appendChild(h('div', { class: 'wb-section-title', style: 'margin:12px 0 8px' },
+                            '候选设计值与MDL当前值比较' + (cmpRows.length > 60 ? '(共 ' + cmpRows.length + ' 项,展示前60)' : '')));
+                        const ct = cmpTable();
+                        if (ct) holder.appendChild(ct);
+                    }
+                    const acts = h('div', { class: 'wb-actions-row', style: 'margin-top:12px' });
+                    if (cmpRows.length) acts.appendChild(h('button', { class: 'wb-btn wb-btn-outline', onclick: exportDpParams }, '导出参数表(Excel/CSV)'));
+                    if (d.phase === 'ENDED' && res.accepted === true && !(res.commit && res.commit.written)) {
+                        acts.appendChild(h('button', { class: 'wb-btn wb-btn-primary', onclick: () => { S.dpView = 'commit'; renderDpStatus(holder); } }, '查看写入差异 →'));
+                    }
+                    if (['ENDED', 'FAILED', 'COMMITTED'].includes(d.phase)) {
+                        acts.appendChild(h('button', { class: 'wb-btn wb-btn-outline', onclick: () => { S.dpTaskId = null; S.dpHolder = null; renderBody(); } }, '新建求解'));
+                    }
+                    acts.appendChild(logToggleBtn());
+                    holder.appendChild(acts);
+                    if (d.phase === 'FAILED') {
+                        // 07-07 失败差异与下一步
+                        holder.appendChild(h('div', { class: 'wb-section-title', style: 'margin:14px 0 8px' }, '写入或复现失败:对象/变化/下一步'));
+                        const ft = h('table', { class: 'wb-table', style: 'max-width:1180px' },
+                            h('tr', null, ['对象', '变化', '下一步'].map(x => h('th', null, x))),
+                            h('tr', null, h('td', null, '所选MDL'), h('td', { class: 'wb-hint' }, str(d.error)),
+                                h('td', { class: 'wb-hint' }, '查看具体差异与失败原因;不掩盖问题')),
+                            h('tr', null, h('td', null, '候选值'), h('td', { class: 'wb-hint' }, '未写入正式MDL'), h('td', { class: 'wb-hint' }, '调整目标或初值后重新求解')),
+                            h('tr', null, h('td', null, '正式模型'), h('td', { class: 'wb-hint' }, '保持原状态'), h('td', { class: 'wb-hint' }, '返回模型准备确认来源')),
+                            h('tr', null, h('td', null, '复现检查'), h('td', { class: 'wb-hint' }, str(res.accepted === false ? '有发现' : '未执行')), h('td', { class: 'wb-hint' }, '查看迭代与残差日志')));
+                        holder.appendChild(ft);
+                    }
+                }
+                // 日志块(查看迭代与残差)
+                if (S.dpShowLog) {
+                    const pre = h('pre', { style: 'max-height:260px;overflow:auto;background:#11161d;color:#cde3f7;padding:10px 12px;border-radius:8px;font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-all;margin:8px 0 0' },
+                        d.logTail || '(暂无日志输出)');
+                    holder.appendChild(h('div', { style: 'margin-top:10px' },
+                        h('div', { class: 'wb-hint', style: 'margin:0 0 4px' }, '求解与残差日志(最近150行)'), pre));
+                    pre.scrollTop = pre.scrollHeight;
+                }
+            }).catch(() => { if (holder.isConnected) { holder.innerHTML = ''; holder.appendChild(h('div', { class: 'wb-empty' }, '状态读取失败')); } });
+        }
+        function logToggleBtn() {
+            return h('button', { class: 'wb-btn wb-btn-outline', onclick: () => { S.dpShowLog = !S.dpShowLog; if (S.dpHolder && S.dpHolder.isConnected) renderDpStatus(S.dpHolder); } },
+                S.dpShowLog ? '收起迭代与残差' : '查看迭代与残差');
+        }
+        function pollDp() {
+            if (!S.dpTaskId) return;
+            api('/tasks/' + encodeURIComponent(S.dpTaskId) + '/status').then(r => {
+                const d = r && r.code === 200 ? r.data : null;
+                if (!d) { setTimeout(pollDp, 4000); return; }
+                const terminal = ['ENDED', 'FAILED', 'COMMITTED', 'STOPPED'].includes(d.phase);
+                if (!terminal) window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;
+                // 终态提醒:失败必须提示(无论当前页签);完成提示仅在用户停留design页签时给出
+                if (terminal && d.phase === 'FAILED') toast('设计点求解失败:' + (d.error || d.message || '详情见任务日志'), 'error');
+                else if (terminal && d.phase === 'STOPPED') toast('设计点求解已按请求在安全点停止', 'info');
+                else if (terminal && d.phase !== 'FAILED' && S.tab === 'design') toast('设计点求解完成(' + d.phase + ');写入MDL需显式commit', 'success');
+                // 就地更新状态区;只有页面仍在design页签时才刷新DOM,输入框/配置表不动
+                if (S.tab === 'design' && S.dpHolder && S.dpHolder.isConnected) renderDpStatus(S.dpHolder);
+                if (!terminal) setTimeout(pollDp, 4000);
+            }).catch(() => { setTimeout(pollDp, 4000); });
+        }
+
+        /* ---- 特性图(07-15/16): 默认=特性图预览(示例双图+核对表) / 图配置 / 原图与候选图(maps阶段真实产物) ---- */
+        function mapsTab() {
+            const box = h('div', null);
+            box.appendChild(h('div', { class: 'wb-section-title', style: 'margin-bottom:4px' }, '特性图'));
+            box.appendChild(h('div', { class: 'wb-hint', style: 'margin:0 0 10px' },
+                '静态设计目标·图中配置、曲线、结论和耗时均为示例·后由配置菜单验收;构造低速模型不是获得真实低速试验标定,建模假设与实测证据分列。'));
+            const subs = [['config', '图配置'], ['preview', '特性图预览'], ['figures', '原图与候选图(产物)']];
+            const bar = h('div', { style: 'display:flex;gap:6px;margin-bottom:12px' });
+            subs.forEach(([k, label]) => bar.appendChild(h('div', {
+                style: 'padding:5px 14px;border-radius:14px;cursor:pointer;border:1px solid ' + (S.maps.view === k ? '#2e86de' : '#d7dde5') + ';background:' + (S.maps.view === k ? '#eaf3fd' : '#fff') + ';color:' + (S.maps.view === k ? '#1d5fa8' : '#445'),
+                onclick: () => { S.maps.view = k; renderBody(); }
+            }, label)));
+            box.appendChild(bar);
+            if (S.maps.view === 'preview') box.appendChild(mapsPreview());
+            else if (S.maps.view === 'config') box.appendChild(mapsConfig());
+            else box.appendChild(mapsFigures());
+            return box;
+        }
+
+        /** 特性图预览(07-16): 部件/比较版本/显示转速线三筛选 + 流量与压比、效率特性双示例图 + 核对表。 */
+        function mapsPreview() {
+            const comps = S.modelMode === 1
+                ? ['AC(压气机)', 'CC(燃烧室)', 'GT1', 'GT2', 'PT1', 'PT2']
+                : ['AC(压气机)', 'GT', 'PT'];
+            if (!S.maps.component || !comps.includes(S.maps.component)) S.maps.component = comps[0];
+            const box = h('div', null);
+            (S.maps.charts || []).forEach(c => { try { c.dispose(); } catch (e) { } });
+            S.maps.charts = [];
+            const mkSel = (val, opts, apply) => {
+                const sel = h('select', null, opts.map(o =>
+                    h('option', { value: o.v, selected: String(val) === String(o.v) ? '' : null }, o.t)));
+                sel.addEventListener('change', () => { apply(sel.value); renderBody(); });
+                return h('div', { class: 'wb-field', style: 'min-width:230px' },
+                    h('label', null, opts.label || ''), sel);
+            };
+            const filters = h('div', { style: 'display:flex;gap:18px;flex-wrap:wrap;margin-bottom:14px' },
+                mkSel(S.maps.component, comps.map(c => ({ v: c, t: c })), v => { S.maps.component = v; }),
+                mkSel(S.maps.cmpVer, [
+                    { v: 'all', t: '源图 / 扩展切剪 / 调图后' }, { v: 'src', t: '仅源图' },
+                    { v: 'ext', t: '仅扩展切剪' }, { v: 'adj', t: '仅调图后' }],
+                    v => { S.maps.cmpVer = v; }),
+                mkSel(S.maps.npLine, [{ v: 'same', t: '选定相同转速线' }, { v: 'none', t: '不显示' }],
+                    v => { S.maps.npLine = v; }));
+            box.appendChild(filters);
+            const grid = h('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px' });
+            const mkCard = title => h('div', { class: 'wb-card', style: 'padding:12px 14px' },
+                h('div', { style: 'font-weight:600;margin-bottom:6px' }, title),
+                h('div', { style: 'height:250px' }));
+            const prCard = mkCard('流量与压比');
+            const effCard = mkCard('效率特性');
+            grid.appendChild(prCard); grid.appendChild(effCard);
+            box.appendChild(grid);
+            // 延迟到DOM挂载后初始化(否则echarts.init在detached元素上得到0x0空白图)
+            setTimeout(() => ensureEcharts(() => {
+                if (!document.body.contains(prCard)) return;
+                // 示例静态曲线(按部件给基准);低速区0~1.8 kg/s为扩展工作区(蓝色阴影)
+                const B = { 'AC(压气机)': [3.0, 0.93], 'CC(燃烧室)': [1.2, 0.98], 'GT': [2.6, 0.90], 'GT1': [2.6, 0.90], 'GT2': [2.4, 0.89], 'PT': [1.9, 0.91], 'PT1': [1.9, 0.91], 'PT2': [1.8, 0.90] }[S.maps.component] || [3.0, 0.93];
+                const prMax = B[0], effMax = B[1];
+                const xs = []; for (let x = 0; x <= 5.001; x += 0.1) xs.push(Math.round(x * 100) / 100);
+                const pr0 = prMax - (prMax - 1.05) * Math.exp(-0 / 1.7);
+                const prAt = x => prMax - (prMax - 1.05) * Math.exp(-x / 1.7);
+                const effAt = x => effMax - (1 - effMax + 0.38) * Math.exp(-x / 2.3);
+                const seg = (from, to, f) => { const a = []; for (let x = from; x <= to + 1e-9; x += 0.1) a.push([Math.round(x * 100) / 100, Math.round(f(x) * 1000) / 1000]); return a; };
+                const srcPr = seg(0.6, 5, prAt);
+                const extPr = seg(0, 5, x => prAt(x) - (x < 1.8 ? 0.05 : 0.015));
+                const adjPr = seg(0, 5, x => x < 1.8 ? prAt(x) + 0.03 : prAt(x));
+                const srcEff = seg(0.6, 5, effAt);
+                const candEff = seg(0, 1.9, x => effAt(x) - 0.06);
+                const areaStyle = { color: 'rgba(46,134,222,0.10)' };
+                const markLines = S.maps.npLine === 'same' ? {
+                    silent: true, symbol: 'none',
+                    data: [1.2, 2.5, 3.8].map(x => ({ xAxis: x, lineStyle: { color: '#b9c6d4', type: 'dashed' }, label: { formatter: 'Nc', fontSize: 9 } }))
+                } : undefined;
+                const show = k => S.maps.cmpVer === 'all' || S.maps.cmpVer === k;
+                const base = {
+                    animation: false, tooltip: { trigger: 'axis' },
+                    legend: { bottom: 0, textStyle: { fontSize: 11 } },
+                    grid: { left: 52, right: 16, top: 18, bottom: 42 },
+                    xAxis: { type: 'value', name: '换算流量 / kg·s⁻¹', nameLocation: 'middle', nameGap: 26, min: 0, max: 5, axisLabel: { fontSize: 10 }, splitLine: { lineStyle: { color: '#eef1f5' } } },
+                    yAxis: { type: 'value', scale: true, axisLabel: { fontSize: 10 }, splitLine: { lineStyle: { color: '#eef1f5' } } }
+                };
+                const c1 = window.echarts.init(prCard.lastChild);
+                c1.setOption(Object.assign({}, base, {
+                    yAxis: Object.assign({}, base.yAxis, { name: '压比', nameLocation: 'middle', nameGap: 34, min: 0, max: Math.ceil(prMax + 1) }),
+                    series: [
+                        { name: '源图', type: 'line', data: srcPr, showSymbol: false, lineStyle: { width: 2 }, itemStyle: { color: '#2e86de' }, markArea: { silent: true, itemStyle: areaStyle, data: [[{ xAxis: 0 }, { xAxis: 1.8 }]] }, markLine: markLines },
+                        { name: '扩展切剪', type: 'line', data: show('ext') ? extPr : [], showSymbol: false, lineStyle: { width: 2, type: 'dashed' }, itemStyle: { color: '#e67e22' } },
+                        { name: '调图后', type: 'line', data: show('adj') ? adjPr : [], showSymbol: false, lineStyle: { width: 2, type: 'dotted' }, itemStyle: { color: '#8e44ad' } }
+                    ]
+                }));
+                const c2 = window.echarts.init(effCard.lastChild);
+                c2.setOption(Object.assign({}, base, {
+                    yAxis: Object.assign({}, base.yAxis, { name: '效率', nameLocation: 'middle', nameGap: 34, min: 0, max: 1 }),
+                    series: [
+                        { name: '源图', type: 'line', data: srcEff, showSymbol: false, lineStyle: { width: 2 }, itemStyle: { color: '#2e86de' }, markArea: { silent: true, itemStyle: areaStyle, data: [[{ xAxis: 0 }, { xAxis: 1.8 }]] } },
+                        { name: '候选低速线', type: 'line', data: candEff, showSymbol: false, lineStyle: { width: 2, type: 'dashed' }, itemStyle: { color: '#e67e22' } }
+                    ]
+                }));
+                S.maps.charts.push(c1, c2);
+            }), 0);
+            // 核对表(示例结论;真实核对见「原图与候选图(产物)」与校核结果页签)
+            const tbl = h('table', { class: 'wb-table', style: 'margin-top:14px' },
+                h('tr', null, ['核对项', '结果(示例)', '证据口径'].map(x => h('th', null, x))),
+                h('tr', null, h('td', null, '原工作域最大差'), h('td', null, '0 / 通过'),
+                    h('td', { class: 'wb-hint' }, '仅对选所检查的源图网格')),
+                h('tr', null, h('td', null, '输出文件'), h('td', null, S.maps.component.replace(/\(.*\)/, '') + '_StartStop_LowSpeed.MAP'),
+                    h('td', { class: 'wb-hint' }, '另存候选,不覆盖源图MAP')));
+            box.appendChild(tbl);
+            box.appendChild(h('div', { class: 'wb-actions-row', style: 'margin-top:14px;justify-content:space-between' },
+                h('button', { class: 'wb-btn wb-btn-outline', onclick: () => { S.maps.view = 'config'; renderBody(); } }, '← 扩展配置'),
+                h('button', { class: 'wb-btn wb-btn-primary', onclick: () => { S.tab = 'physics'; renderBody(); } }, '→ 物理与热参数')));
+            return box;
+        }
+
+        /** 图配置(07-15): 各部件扩展方式与约束。 */
+        function mapsConfig() {
+            const box = h('div', null);
+            const comps = S.modelMode === 1
+                ? ['AC(压气机)', 'CC(燃烧室)', 'GT1', 'GT2', 'PT1', 'PT2']
+                : ['AC(压气机)', 'GT', 'PT'];
+            const ct = h('table', { class: 'wb-table' },
+                h('tr', null, ['部件', '扩展方式', '约束'].map(x => h('th', null, x))));
+            comps.forEach(c => ct.appendChild(h('tr', null,
+                h('td', null, c),
+                h('td', { class: 'wb-hint' }, 'mapIO/extension:低速段外推+工作域衔接'),
+                h('td', { class: 'wb-hint' }, '边界约束显式给出,不隐去'))));
+            box.appendChild(ct);
+            box.appendChild(h('div', { class: 'wb-hint', style: 'margin:8px 0' },
+                '原V1/V2入口保留原用途;Auto入口写正式MDL前必须备份。配置随校核执行(maps阶段)一并生效。'));
+            box.appendChild(h('div', { class: 'wb-actions-row' },
+                h('button', { class: 'wb-btn wb-btn-primary', onclick: () => { S.maps.view = 'preview'; renderBody(); } }, '← 返回特性图预览')));
+            return box;
+        }
+
+        /** 原图与候选图: 定位最近起动停车任务的maps阶段真实产物并渲染。 */
+        function mapsFigures() {
+            const box = h('div', null);
+            const holder = h('div', null, h('div', { class: 'wb-empty' }, '正在定位maps阶段产物...'));
+            box.appendChild(holder);
+            loadMapsFigures(holder);
+            box.appendChild(h('div', { class: 'wb-actions-row', style: 'margin-top:12px' },
+                h('button', { class: 'wb-btn wb-btn-outline', onclick: () => { S.maps.view = 'preview'; renderBody(); } }, '← 返回特性图预览'),
+                h('button', { class: 'wb-btn wb-btn-primary', onclick: () => { S.tab = 'exec'; renderBody(); } }, '→ 校核执行(含maps阶段)')));
+            return box;
+        }
+        /** 定位起动停车任务的maps阶段候选图并渲染(原图/候选图,含效率)。
+         *  按发起时间倒序遍历最近的startstop任务,取第一个含maps阶段png产物的任务;避免最新任务失败/无产物时误报空态。 */
+        function loadMapsFigures(holder) {
+            window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id) + '/testbench/records/list',
+                { pageNum: 1, pageSize: 20 }).then(r => {
+                const rows = (r && (r.success || r.code === 200) && Array.isArray(r.data) ? r.data : []).filter(x => x.kind === 'startstop');
+                holder.innerHTML = '';
+                if (!rows.length) { holder.appendChild(h('div', { class: 'wb-empty' }, '尚无校核任务;先执行含maps阶段的校核')); return; }
+                rows.sort((a, b) => Number(b.startedAt || b.createTime || 0) - Number(a.startedAt || a.createTime || 0));
+                const tryNext = i => {
+                    if (i >= rows.length) {
+                        holder.appendChild(h('div', { class: 'wb-empty' }, '最近 ' + rows.length + ' 条起动停车任务均无maps候选图产物;请重新执行含maps阶段的校核'));
+                        return;
+                    }
+                    const tid = rows[i].taskKey || rows[i].taskId;
+                    fetchArtifacts(tid).then(arts => {
+                        const dir = stageDirOf(arts, 'maps');
+                        const figs = dir ? arts.filter(a => !a.dir && a.path.indexOf(dir + '/') === 0 && /\.png$/i.test(a.path)) : [];
+                        if (!figs.length) { tryNext(i + 1); return; }
+                        holder.innerHTML = '';
+                        holder.appendChild(h('div', { class: 'wb-hint', style: 'margin:0 0 6px' },
+                            '任务 ' + tid + ' · ' + dir + ' (共 ' + figs.length + ' 张候选图)'));
+                        const t = h('table', { class: 'wb-table' },
+                            h('tr', null, ['部件图', '预览'].map(x => h('th', null, x))));
+                        figs.slice(0, 12).forEach(f => {
+                            const img = h('img', { style: 'max-width:520px;max-height:220px;display:block;border:1px solid #dde3ea;border-radius:6px;background:#fff' });
+                            artifactData(tid, f.path).then(d => { if (d && d.base64 && img.isConnected) img.src = 'data:' + d.contentType + ';base64,' + d.base64; });
+                            t.appendChild(h('tr', null, h('td', null, f.name.replace(/\.png$/i, '')), h('td', null, img)));
+                        });
+                        holder.appendChild(t);
+                        if (figs.length > 12) holder.appendChild(h('div', { class: 'wb-hint', style: 'margin:6px 0' },
+                            '共 ' + figs.length + ' 张,仅展示前12张;全部图片见校核结果页签。'));
+                    }).catch(() => tryNext(i + 1));
+                };
+                tryNext(0);
+            }).catch(() => { holder.innerHTML = ''; holder.appendChild(h('div', { class: 'wb-empty' }, '产物读取失败')); });
+        }
+
+        /* ---- 物理与热参数(07-17/18): 参数来源表 ---- */
+        function physicsTab() {
+            const subs = [['comb', '起动与燃烧'], ['mech', '机械损失与负载'], ['ctrl', '控制与初值'], ['thermal', '热模型与初始状态']];
+            const bar = h('div', { style: 'display:flex;gap:6px;margin-bottom:10px' });
+            subs.forEach(([label], i) => bar.appendChild(h('div', {
+                style: 'padding:5px 14px;border-radius:14px;cursor:pointer;border:1px solid ' + (S.physSub === i ? '#2e86de' : '#d7dde5') + ';background:' + (S.physSub === i ? '#eaf3fd' : '#fff') + ';color:' + (S.physSub === i ? '#1d5fa8' : '#445'),
+                onclick: () => { S.physSub = i; renderBody(); }
+            }, label)));
+            const box = h('div', null,
+                h('div', { class: 'wb-section-title', style: 'margin-bottom:8px' }, '物理与热参数(来源在配置中显式给定)'),
+                bar);
+            const tbl = h('table', { class: 'wb-table' }, h('tr', null, ['参数', '数值', '来源'].map(x => h('th', null, x))));
+            const add = rows => rows.forEach(r0 => tbl.appendChild(h('tr', null,
+                h('td', null, r0[0]), h('td', null, r0[1]), h('td', { class: 'wb-hint' }, r0[2]))));
+            if (S.physSub === 0) {
+                add([
+                    ['点火油量/点火油针位置', '示例:按源模型', '源模型;本页不改几何'],
+                    ['E.U.富油熄灭边界', '示例:0.45', '源模型'],
+                    ['贫油熄灭边界', '示例:0.09', '源模型'],
+                    ['点火/供油条件', 'Ns点火+Plenum压力(热启动)', '合同:点火逻辑显式给出'],
+                    ['断油条件', '按阶段配置', '起动停车配置'],
+                    ['燃烧效率', 'η=1-Δ3·(1-B)/√(P3·T3)', '源模型'],
+                    ['最高允许Tt4', '示例:1620 K', '设计目标/保护'],
+                    ['熄火互锁', '火焰检测按合同', '源模型']
+                ]);
+            } else if (S.physSub === 1) {
+                add([
+                    ['摩擦转矩', '按Ng多项式', '源模型'],
+                    ['风阻/泵气损失', '按Np、Ng', '源模型'],
+                    ['旋翼负载', 'Mkp反馈+前馈', '负载配置'],
+                    ['附件功率', 'GT附件功率', '源模型'],
+                    ['自由离合器', '单向离合,接合阈值', '源模型']
+                ]);
+            } else if (S.physSub === 2) {
+                add([
+                    ['控制周期Tctrl', '0.025 s', '统一控制(合同)'],
+                    ['积分步长dt', '0.025 s;euler2,每控制拍1步', '合同(stage6)'],
+                    ['Tt45上限', '1400 K', '保护'],
+                    ['Ng上限', '39900 rpm', '保护'],
+                    ['Mkp上限', '1200 Nm', '保护'],
+                    ['起动暖机目标Ng', '示例:28643.9 rpm,连续稳定60 s', '起动停车配置'],
+                    ['慢车Np交接目标', '示例:14000 rpm', '起动停车配置']
+                ]);
+            } else {
+                add([
+                    ['热模型文件', 'source.thermalFile显式提供', '热资产(可选)'],
+                    ['热初始状态', '三类热MAT:冷/暖/热浸', '热资产(可选)'],
+                    ['环境温度扰动', '按算例(-40~+50℃)', '校核算例'],
+                    ['热对照点', '五参考点对照', '热阶段合同'],
+                    ['轴系配平', '不等于全部金属节点热平衡', '热阶段合同']
+                ]);
+                box.appendChild(h('div', { class: 'wb-hint', style: 'margin:0 0 8px' },
+                    'engineOverrides只覆盖现有起停配置的物理/数值参数,不能覆盖隔离路径;stage6正式合同0.025秒二阶欧拉,不允许通过覆盖配置绕开。'));
+            }
+            box.appendChild(tbl);
+            box.appendChild(h('div', { class: 'wb-actions-row', style: 'margin-top:12px' },
+                h('button', { class: 'wb-btn wb-btn-primary', onclick: () => { S.tab = 'exec'; renderBody(); } }, '→ 校核执行')));
+            return box;
+        }
+
+        /* ---- 校核执行(07-19/20/28): 范围+估时 → 运行状态与安全停止 ---- */
+        const SS_STAGES = [['maps', '特性图扩展', '约1 min'], ['design', '设计解', '约1 min'], ['matrix', '逐点矩阵', '约2 min'], ['physics', '物理校核', '约2 min'], ['continuous', '连续起停', '约5~15 min'], ['thermal', '热效应与热浸', '约3 min']];
+        function execTab() {
+            if (S.ssTaskId) {
+                const holder = h('div', null, h('div', { class: 'wb-empty' }, '正在加载校核状态...'));
+                S.ssHolder = holder;
+                renderSsStatus(holder);
+                return holder;
+            }
+            // 范围选择(07-19)+估时
+            const presets = [['demo', '演示算例(默认全阶段)'], ['maps_matrix', '仅特性图与矩阵(maps→matrix)'], ['physics', '仅物理校核(physics)'], ['thermal', '仅热效应与热浸(thermal)']];
+            const checks = SS_STAGES.map(([s]) => {
+                const c = h('input', { type: 'checkbox', checked: s !== 'thermal' ? '' : null });
+                c.dataset.stage = s;
+                return c;
+            });
+            const stageRow = h('table', { class: 'wb-table' },
+                h('tr', null, ['选择', '阶段', '内容', '估时'].map(x => h('th', null, x))));
+            SS_STAGES.forEach(([s, label, est], i) => {
+                stageRow.appendChild(h('tr', null,
+                    h('td', null, checks[i]),
+                    h('td', null, label + ' (' + s + ')'),
+                    h('td', { class: 'wb-hint' }, STAGE_DESC[s] || ''),
+                    h('td', null, est)));
+            });
+            const applyPreset = () => {
+                const p = S.planPreset;
+                checks.forEach(c => {
+                    const s = c.dataset.stage;
+                    c.checked = p === 'demo' ? s !== 'thermal'
+                        : p === 'maps_matrix' ? (s === 'maps' || s === 'matrix')
+                        : p === 'physics' ? s === 'physics'
+                        : s === 'thermal';
+                });
+            };
+            const presetSel = h('select', null, presets.map(([v, label]) => h('option', { value: v, selected: S.planPreset === v ? '' : null }, label)));
+            presetSel.addEventListener('change', () => { S.planPreset = presetSel.value; applyPreset(); });
+            // design阶段合同要求显式设计状态来源:选定已提交(commit)的设计点任务
+            const dpSel = h('select', { style: 'width:100%' }, h('option', { value: '' }, '加载设计点任务列表...'));
+            const dpField = h('div', { class: 'wb-field', style: 'display:none' }, h('label', null, '设计点来源(必须已提交commit)'), dpSel,
+                h('div', { class: 'wb-hint' }, '六部件设计解不自动生成或修改MDL——来自所选设计点任务提交后的设计状态与候选模型。'));
+            window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id) + '/testbench/records/list',
+                { pageNum: 1, pageSize: 50 }).then(r => {
+                const rows = (r && (r.success || r.code === 200) && Array.isArray(r.data) ? r.data : [])
+                    .filter(x => x.kind === 'design_point');
+                dpSel.innerHTML = '';
+                dpSel.appendChild(h('option', { value: '' }, rows.length ? '请选择设计点任务...' : '暂无设计点任务——请先完成设计点求解并commit'));
+                rows.forEach(x => {
+                    // 试车台记录行字段为taskKey(实体列名),非taskId;phase在commit执行中为RUNNING
+                    const tag = x.phase === 'COMMITTED' ? '已提交✓' : x.phase === 'RUNNING' ? '提交中…'
+                        : x.phase === 'FAILED' ? '提交失败' : x.phase === 'ENDED' ? '已求解未提交' : x.phase || '';
+                    dpSel.appendChild(h('option', { value: x.taskKey }, x.taskKey + '(' + tag + ')'));
+                });
+            }).catch(() => { });
+            const syncDpField = () => { dpField.style.display = checks[1].checked ? '' : 'none'; };
+            checks[1].addEventListener('change', syncDpField);
+            const runBtn = h('button', {
+                class: 'wb-btn wb-btn-primary',
+                onclick: () => {
+                    const stages = checks.filter(c => c.checked).map(c => c.dataset.stage);
+                    if (!stages.length) { toast('请至少选择一个校核阶段', 'error'); return; }
+                    const body = { modelMode: S.modelMode, requestedStages: stages };
+                    if (stages.includes('design')) {
+                        if (!dpSel.value) {
+                            toast('design(设计解)需要先完成设计点求解并提交(commit),再选择该设计点任务作为来源;或去掉design阶段', 'error');
+                            return;
+                        }
+                        body.designTaskId = dpSel.value;
+                    }
+                    runBtn.classList.add('disabled');
+                    apiPost('/tasks/startstop/run', body)
+                        .then(r => {
+                            if (r && r.code === 200 && r.data) {
+                                S.ssTaskId = r.data.taskId; S._ssPollId = r.data.taskId; S.ssShowLog = true;
+                                renderBody(); pollSs();
+                            }
+                            else toast((r && r.message) || '发起失败', 'error');
+                            runBtn.classList.remove('disabled');
+                        })
+                        .catch(e => { toast('发起失败:' + e.message, 'error'); runBtn.classList.remove('disabled'); });
+                }
+            }, '▶ 执行校核(按选择阶段链)');
+
+            const box = h('div', null);
+            box.appendChild(h('div', { class: 'wb-section-title', style: 'margin-bottom:8px' }, '选择校核范围与估时'));
+            box.appendChild(h('div', { class: 'wb-field', style: 'max-width:420px' }, h('label', null, '算例预设'), presetSel));
+            box.appendChild(stageRow);
+            box.appendChild(dpField);
+            syncDpField();
+            box.appendChild(h('div', { class: 'wb-hint', style: 'margin:6px 0 12px' },
+                '估时依据当前合同(R009/R011本地R2019b有限任务,非精确预测);paused/failed/blocked即停;进度与安全停止以程序实际阶段为准。校核环境、负载与初始状态来自所选模型与热资产(冷/暖/热浸)。'));
+            box.appendChild(h('div', { class: 'wb-actions-row' }, runBtn));
+            return box;
+        }
+        /** 拉取一次校核状态并就地重绘状态容器(07-20:运行状态进度+阶段表+安全停止+日志);不重建页面其他部分。 */
+        function renderSsStatus(holder) {
+            return api('/tasks/' + encodeURIComponent(S.ssTaskId) + '/status').then(r => {
+                if (!holder.isConnected) return; // 页面已切走/重建,丢弃本次渲染
+                holder.innerHTML = '';
+                const d = r && r.code === 200 ? r.data : null;
+                if (!d) { holder.appendChild(h('div', { class: 'wb-empty' }, '状态读取失败')); return; }
+                const res = d.result || {};
+                const stages = ((d.config || {}).requestedStages || SS_STAGES.map(x => x[0]));
+                const tail = d.logTail || '';
+                // 阶段进度:从日志解析"执行<stage>"出现次序(与程序实际阶段一致)
+                const order = ['maps', 'design', 'matrix', 'physics', 'continuous', 'thermal'];
+                let curIdx = -1;
+                order.forEach((s, i) => { if (new RegExp('执行' + s).test(tail)) curIdx = Math.max(curIdx, i); });
+                const posOf = s => order.indexOf(s);
+                const terminal = ['ENDED', 'FAILED', 'STOPPED', 'COMMITTED'].includes(d.phase);
+                const running = !terminal;
+                // 顶部信息条(07-20)
+                const bar = h('div', { class: 'wb-infobar', style: 'margin-bottom:10px' });
+                if (d.phase === 'FAILED') {
+                    bar.style.background = '#fdf0ef'; bar.style.borderColor = '#f5b7b1'; bar.style.color = '#943126';
+                    bar.textContent = '校核失败:' + (d.error || d.message || '见运行日志');
+                } else if (d.phase === 'ENDED') bar.textContent = '校核完成;程序状态=' + (res.status || '—') + '。顶层完成不代表每项物理检查均通过。';
+                else if (d.phase === 'STOPPED') bar.textContent = '已在安全点停止;已完成阶段与产物保留,可到"校核结果"查看。';
+                else bar.textContent = '正在执行' + (curIdx >= 0 ? order[curIdx] : stages[0]) + ';阶段完成后可安全停止' + (d.stopRequested ? ';已请求阶段完成后停止,当前尚未暂停。' : '。');
+                holder.appendChild(bar);
+                holder.appendChild(h('div', { class: 'wb-section-title', style: 'margin:2px 0 8px' }, '运行状态 · ' + d.taskId));
+                // 进度条(按阶段次序近似)
+                const frac = d.phase === 'ENDED' ? 1 : curIdx >= 0 ? (curIdx + 0.5) / order.length : 0.04;
+                holder.appendChild(h('div', { style: 'height:10px;background:#e8edf3;border-radius:6px;overflow:hidden;max-width:1180px;margin-bottom:12px' },
+                    h('div', { style: 'height:100%;width:' + Math.round(frac * 100) + '%;background:' + (d.phase === 'FAILED' ? '#e74c3c' : d.phase === 'STOPPED' ? '#95a5a6' : '#2e86de') + ';transition:width .6s' })));
+                // 阶段表
+                const st = h('table', { class: 'wb-table' },
+                    h('tr', null, ['阶段', '内容', '状态', '实际耗时'].map(x => h('th', null, x))));
+                stages.forEach(s => {
+                    const p = posOf(s);
+                    let state = '待执行';
+                    if (d.phase === 'ENDED') state = '已完成';
+                    else if (d.phase === 'FAILED') state = p === curIdx ? '失败' : (p >= 0 && p < curIdx ? '已完成' : '待执行');
+                    else if (p >= 0 && p < curIdx) state = '已完成';
+                    else if (p === curIdx) state = '当前计算中';
+                    st.appendChild(h('tr', null,
+                        h('td', null, (STAGE_LABEL[s] || s) + ' (' + s + ')'),
+                        h('td', { class: 'wb-hint' }, STAGE_DESC[s] || ''),
+                        h('td', null, state),
+                        h('td', { class: 'wb-hint' }, '—')));
+                });
+                holder.appendChild(st);
+                // 安全停止区(07-20:仅运行中)
+                if (running) {
+                    holder.appendChild(h('div', { class: 'wb-section-title', style: 'margin:14px 0 6px' }, '安全停止'));
+                    holder.appendChild(h('div', { class: 'wb-hint', style: 'margin:0 0 8px' },
+                        '下一安全点:' + (curIdx >= 0 ? order[curIdx] : stages[0]) + ' 阶段完成后。完成前保持运行状态,不卸载DLL、不伪装成内部续跑;停止请求可以撤销。'));
+                    const acts0 = h('div', { class: 'wb-actions-row' });
+                    if (d.stopRequested) {
+                        acts0.appendChild(h('button', {
+                            class: 'wb-btn wb-btn-outline',
+                            onclick: () => apiPost('/tasks/' + encodeURIComponent(S.ssTaskId) + '/stop-request', { cancel: true })
+                                .then(() => renderSsStatus(holder)).catch(e => toast('撤销失败:' + e.message, 'error'))
+                        }, '撤销停止请求'));
+                        acts0.appendChild(h('span', { style: 'align-self:center;padding:5px 12px;border-radius:14px;border:1px solid #e0a800;background:#fff8e1;color:#8a6d00' }, '已请求:阶段完成后停止'));
+                    } else {
+                        acts0.appendChild(h('button', {
+                            class: 'wb-btn',
+                            style: 'background:#fff5f5;border:1px solid #f1b0b0;color:#c0392b',
+                            onclick: () => confirmDialog('将在当前阶段完成后安全停止(不卸载DLL);已完成阶段与产物保留。继续?',
+                                { title: '请求安全停止', okText: '请求停止' }).then(ok => {
+                                if (ok) apiPost('/tasks/' + encodeURIComponent(S.ssTaskId) + '/stop-request', {})
+                                    .then(() => renderSsStatus(holder)).catch(e => toast('请求失败:' + e.message, 'error'));
+                            })
+                        }, '请求安全停止(阶段完成后)'));
+                    }
+                    holder.appendChild(acts0);
+                }
+                // 终态操作
+                const acts = h('div', { class: 'wb-actions-row', style: 'margin-top:12px' });
+                if (['ENDED', 'STOPPED', 'FAILED'].includes(d.phase)) {
+                    acts.appendChild(h('button', { class: 'wb-btn wb-btn-primary', onclick: () => { S.tab = 'verif'; renderBody(); } }, '查看校核结果'));
+                    if (d.phase !== 'FAILED') acts.appendChild(h('button', { class: 'wb-btn wb-btn-primary', onclick: savePackageFlow }, '保存模型及交付文件'));
+                    acts.appendChild(h('button', { class: 'wb-btn wb-btn-outline', onclick: () => { S.ssTaskId = null; S.ssHolder = null; S.ssShowLog = false; renderBody(); } }, '新建校核'));
+                }
+                holder.appendChild(acts);
+                // MATLAB 运行日志(终端风格;随轮询刷新,默认贴底,用户上滚查看时不再自动拽回)
+                const pre = h('pre', { style: 'max-height:280px;overflow:auto;background:#11161d;color:#cde3f7;padding:10px 12px;border-radius:8px;font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-all;margin:0;display:' + (S.ssShowLog ? 'block' : 'none') }, tail || '(暂无日志输出)');
+                pre.addEventListener('scroll', () => {
+                    S._ssLogStick = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 30;
+                });
+                holder.appendChild(h('div', { style: 'margin-top:12px' },
+                    h('div', { class: 'wb-hint', style: 'margin:0 0 4px;display:flex;align-items:center;gap:10px' },
+                        h('span', null, 'MATLAB 运行日志(最近150行,实时刷新)'),
+                        h('a', { href: 'javascript:void 0', style: 'color:#2e86de;cursor:pointer', onclick: () => { S.ssShowLog = !S.ssShowLog; renderSsStatus(holder); } }, S.ssShowLog ? '收起' : '展开')),
+                    pre));
+                if (S._ssLogStick !== false) pre.scrollTop = pre.scrollHeight;
+            }).catch(() => { if (holder.isConnected) { holder.innerHTML = ''; holder.appendChild(h('div', { class: 'wb-empty' }, '状态读取失败')); } });
+        }
+        /** 汇总当前校核任务产物为起停模型包并登记到模型成果(异步受理+轮询;MATLAB导出约1-3分钟)。 */
+        function savePackageFlow() {
+            if (S._ssSaving) { toast('模型包保存正在进行中,请留意状态提示', 'info'); return; }
+            S._ssSaving = true;
+            apiPost('/tasks/' + encodeURIComponent(S.ssTaskId) + '/save-package', { name: '起停模型包-' + S.ssTaskId })
+                .then(r => {
+                    if (r && r.code === 200) {
+                        toast('模型包保存已受理;MATLAB引擎启动与导出约需1-3分钟,请留意下方状态', 'info');
+                        renderSsStatus(S.ssHolder);
+                        savePkgPoll();
+                    } else { S._ssSaving = false; toast((r && r.message) || '保存模型包失败', 'error'); }
+                })
+                .catch(e => { S._ssSaving = false; toast('保存失败:' + e.message, 'error'); });
+        }
+        /** 保存包轮询:RUNNING每4s就地刷新;ENDED跳模型成果,FAILED提示原因。 */
+        function savePkgPoll() {
+            if (!S._ssSaving || !S.ssTaskId) return;
+            api('/tasks/' + encodeURIComponent(S.ssTaskId) + '/status').then(r => {
+                if (!S._ssSaving) return;
+                const d = r && r.code === 200 ? r.data : null;
+                if (!d) { setTimeout(savePkgPoll, 4000); return; }
+                if (d.phase === 'RUNNING' || d.phase === 'PREPARING') {
+                    window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;
+                    if (S.tab === 'exec' && S.ssHolder && S.ssHolder.isConnected) renderSsStatus(S.ssHolder);
+                    setTimeout(savePkgPoll, 4000);
+                } else if (d.phase === 'FAILED') {
+                    S._ssSaving = false;
+                    toast('保存模型包失败:' + (d.error || d.message || '详情见任务日志'), 'error');
+                    if (S.ssHolder && S.ssHolder.isConnected) renderSsStatus(S.ssHolder);
+                } else {
+                    S._ssSaving = false;
+                    toast('模型包已保存并登记到模型成果', 'success');
+                    S.assetsView = 'save'; S.tab = 'assets'; renderBody();
+                }
+            }).catch(() => setTimeout(savePkgPoll, 4000));
+        }
+        /** 校核执行轮询:未终态每4s就地刷新一次状态容器;终态toast并停止。 */
+        function pollSs() {
+            if (!S.ssTaskId || S.ssTaskId !== S._ssPollId) return; // 新任务发起/已清除,旧链终止
+            api('/tasks/' + encodeURIComponent(S.ssTaskId) + '/status').then(r => {
+                const d = r && r.code === 200 ? r.data : null;
+                if (!d) { setTimeout(pollSs, 4000); return; }
+                const terminal = ['ENDED', 'FAILED', 'STOPPED'].includes(d.phase);
+                if (!terminal) window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;
+                else if (d.phase === 'FAILED') toast('校核执行失败:' + (d.error || d.message || '详情见任务日志'), 'error');
+                else if (d.phase === 'STOPPED') toast('校核已按请求在安全点停止;已完成阶段产物保留', 'info');
+                else if (S.tab === 'exec') toast('校核执行完成;可切到"校核结果"页签查看', 'success');
+                if (S.tab === 'exec' && S.ssHolder && S.ssHolder.isConnected) renderSsStatus(S.ssHolder);
+                if (!terminal) setTimeout(pollSs, 4000);
+            }).catch(() => { setTimeout(pollSs, 4000); });
+        }
+
+        /* ---- 校核结果(07-21/22/23/24/10): 真实阶段产物展示(保留失败点与限制) ---- */
+        function verifTab() {
+            const box = h('div', null);
+            box.appendChild(h('div', { class: 'wb-section-title', style: 'margin-bottom:8px' }, '校核结果(保留失败点、限制与日志,不为全绿删除难点)'));
+            const subs = [['matrix', '逐点矩阵'], ['calib', '调图参数与证据'], ['continuous', '连续起停'], ['thermal', '热效应与热浸'], ['limits', '限制与日志']];
+            const bar = h('div', { style: 'display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap' });
+            subs.forEach(([k, label]) => bar.appendChild(h('div', {
+                style: 'padding:5px 14px;border-radius:14px;cursor:pointer;border:1px solid ' + (S.verif.sub === k ? '#2e86de' : '#d7dde5') + ';background:' + (S.verif.sub === k ? '#eaf3fd' : '#fff') + ';color:' + (S.verif.sub === k ? '#1d5fa8' : '#445'),
+                onclick: () => { S.verif.sub = k; S.verif.detail = null; renderBody(); }
+            }, label)));
+            box.appendChild(bar);
+            const bodyBox = h('div', null, h('div', { class: 'wb-empty' }, '正在加载校核任务与产物...'));
+            box.appendChild(bodyBox);
+            loadVerif(bodyBox);
+            box.appendChild(h('div', { class: 'wb-actions-row', style: 'margin-top:12px' },
+                h('button', { class: 'wb-btn wb-btn-primary', onclick: () => { S.tab = 'assets'; renderBody(); } }, '→ 模型成果与保存')));
+            return box;
+        }
+        function loadVerif(el) {
+            window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id) + '/testbench/records/list',
+                { pageNum: 1, pageSize: 20 }).then(r => {
+                const rows = (r && (r.success || r.code === 200) && Array.isArray(r.data) ? r.data : []).filter(x => x.kind === 'startstop');
+                if (!rows.length) { el.innerHTML = ''; el.appendChild(h('div', { class: 'wb-empty' }, '尚无校核任务;先执行校核')); return; }
+                const tid = (S.ssTaskId && rows.some(x => (x.taskKey || x.taskId) === S.ssTaskId)) ? S.ssTaskId : (rows[0].taskKey || rows[0].taskId);
+                return fetchArtifacts(tid).then(arts => { el.innerHTML = ''; renderVerifSub(el, tid, arts); });
+            }).catch(() => { el.innerHTML = ''; el.appendChild(h('div', { class: 'wb-empty' }, '校核任务读取失败')); });
+        }
+        function renderVerifSub(el, tid, arts) {
+            el.appendChild(h('div', { class: 'wb-hint', style: 'margin:0 0 10px' }, '任务 ' + tid));
+            const sub = S.verif.sub;
+            if (sub === 'matrix') renderMatrixView(el, tid, arts);
+            else if (sub === 'calib') renderCalibView(el, tid, arts);
+            else if (sub === 'continuous') renderContinuousView(el, tid, arts);
+            else if (sub === 'thermal') renderThermalView(el, tid, arts);
+            else renderLimitsView(el, tid, arts);
+        }
+        /** 07-21 逐点矩阵与失败诊断(真实matching_matrix.csv+summary.md)。 */
+        function renderMatrixView(el, tid, arts) {
+            const pstage = stageDirOf(arts, 'matrix');
+            if (!pstage) { el.appendChild(h('div', { class: 'wb-empty' }, '无matrix阶段产物;先执行逐点矩阵阶段')); return; }
+            const stageName = pstage.split('/').pop();
+            const scopeDirs = arts.filter(a => a.dir && a.path.indexOf(pstage + '/') === 0 && a.path.indexOf('/', pstage.length + 1) < 0).map(a => ({ path: a.path, name: a.name }));
+            const finalDir = (scopeDirs.find(d => /final/i.test(d.name)) || scopeDirs[0] || {}).path || pstage;
+            const sumF = arts.find(a => !a.dir && a.path.indexOf(pstage) === 0 && /matching_matrix_summary\.md$/i.test(a.path));
+            const headWrap = h('div', null);
+            const bar = h('div', { style: 'display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px' });
+            const tableWrap = h('div', null);
+            const detailWrap = h('div', null);
+            el.appendChild(headWrap);
+            if (scopeDirs.length) {
+                bar.appendChild(h('span', { class: 'wb-hint' }, '检查范围'));
+                const stageSel = h('select', null, scopeDirs.map(d => h('option', { value: d.path, selected: d.path === finalDir ? '' : null }, d.name)));
+                bar.appendChild(stageSel);
+                var stageSelRef = stageSel;
+            }
+            const statusSel = h('select', null,
+                h('option', { value: 'all' }, '全部点'),
+                h('option', { value: 'fail' }, '仅未通过'));
+            bar.appendChild(statusSel);
+            bar.appendChild(h('button', { class: 'wb-btn wb-btn-outline', style: 'margin-left:auto', onclick: () => downloadCsv('matching_matrix_' + stageName + '.csv', window.__mmHeaders || [], window.__mmRows || []) }, '导出CSV'));
+            el.appendChild(bar);
+            el.appendChild(tableWrap);
+            el.appendChild(h('div', { class: 'wb-section-title', style: 'margin:12px 0 6px' }, '失败点诊断(保留求解输出;未收敛点不从统计中删除)'));
+            el.appendChild(detailWrap);
+            let headers = null, rows = [];
+            const paintDetail = (r0, ri) => {
+                detailWrap.innerHTML = '';
+                if (S.verif.detail !== ri || !r0) return;
+                const t = h('table', { class: 'wb-table' }, h('tr', null, ['字段', '值'].map(x => h('th', null, x))));
+                (headers || []).forEach((hd, i) => t.appendChild(h('tr', null, h('td', null, hd), h('td', { class: 'wb-hint' }, r0[i] || ''))));
+                detailWrap.appendChild(h('div', { class: 'wb-card', style: 'max-width:980px;padding:10px' },
+                    h('div', { class: 'wb-section-title', style: 'margin:0 0 6px;font-size:14px' }, '点 ' + (r0[0] || ri) + ' 诊断'),
+                    t,
+                    h('div', { class: 'wb-hint', style: 'margin-top:6px' }, '保留求解输出:残差分量、共同工作变量、迭代数与边界触发情况;供排查约束与图线限制。')));
+            };
+            const paint = () => {
+                tableWrap.innerHTML = '';
+                const flt = statusSel.value;
+                if (!headers) { tableWrap.appendChild(h('div', { class: 'wb-empty' }, '未找到匹配矩阵CSV(final_matrix/matching_matrix.csv)')); return; }
+                const t = h('table', { class: 'wb-table' });
+                t.appendChild(h('tr', null, headers.map(x => h('th', null, x))));
+                let shown = 0;
+                rows.forEach((r0, ri) => {
+                    const fail = r0.some(c => /fail|false|未通过/i.test(c));
+                    if (flt === 'fail' && !fail) return;
+                    if (shown >= 400) return;
+                    shown++;
+                    t.appendChild(h('tr', { style: (S.verif.detail === ri ? 'background:#eef5fd;' : '') + 'cursor:pointer', onclick: () => { S.verif.detail = S.verif.detail === ri ? null : ri; paint(); paintDetail(r0, ri); } },
+                        r0.map(c => h('td', null, c))));
+                });
+                tableWrap.appendChild(t);
+                if (flt === 'fail' && shown === 0) tableWrap.appendChild(h('div', { class: 'wb-hint', style: 'margin:4px 0' }, '当前范围内无未通过点'));
+                if (rows.length > 400) tableWrap.appendChild(h('div', { class: 'wb-hint', style: 'margin:4px 0' }, '共 ' + rows.length + ' 点,仅展示前400;完整清单可导出CSV。'));
+            };
+            const loadCsv = (scope) => {
+                const f2 = arts.find(a => !a.dir && a.path.indexOf(scope) === 0 && /matching_matrix\.csv$/i.test(a.path));
+                if (!f2) { headers = null; rows = []; window.__mmHeaders = []; window.__mmRows = []; paint(); return; }
+                artifactData(tid, f2.path).then(d2 => {
+                    const lines = d2 && d2.content ? d2.content.split(/\r?\n/).filter(x => x.trim()) : [];
+                    headers = lines.length ? lines[0].split(',') : null;
+                    rows = lines.slice(1).map(l => l.split(','));
+                    window.__mmHeaders = headers || []; window.__mmRows = rows;
+                    if (S.verif.detail != null && S.verif.detail >= rows.length) S.verif.detail = null;
+                    paint();
+                    paintDetail(S.verif.detail != null ? rows[S.verif.detail] : null, S.verif.detail);
+                });
+            };
+            Promise.all([sumF ? artifactData(tid, sumF.path) : Promise.resolve(null)]).then(([sum]) => {
+                if (sum && sum.content) {
+                    const bl = mdBullets(sum.content);
+                    if (bl.length) {
+                        const strip = h('div', { style: 'display:flex;gap:18px;flex-wrap:wrap;background:#f7fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;margin-bottom:10px' });
+                        bl.slice(0, 8).forEach(([k, v]) => strip.appendChild(h('div', null,
+                            h('div', { class: 'wb-hint', style: 'font-size:11px' }, k),
+                            h('div', { style: 'font-weight:600' }, v))));
+                        headWrap.appendChild(strip);
+                    }
+                }
+                loadCsv(stageSelRef ? stageSelRef.value : finalDir);
+                if (stageSelRef) stageSelRef.addEventListener('change', () => { S.verif.detail = null; detailWrap.innerHTML = ''; loadCsv(stageSelRef.value); });
+                statusSel.addEventListener('change', paint);
+            });
+        }
+        /** 07-22 全部调图参数与证据(calibration_history/sensitivity_scan)。 */
+        function renderCalibView(el, tid, arts) {
+            const pstage = stageDirOf(arts, 'matrix');
+            if (!pstage) { el.appendChild(h('div', { class: 'wb-empty' }, '无matrix阶段产物')); return; }
+            const cF = arts.find(a => !a.dir && a.path.indexOf(pstage) === 0 && /calibration_history\.csv$/i.test(a.path));
+            const sF = arts.find(a => !a.dir && a.path.indexOf(pstage) === 0 && /sensitivity_scan\.csv$/i.test(a.path));
+            const sumF = arts.find(a => !a.dir && a.path.indexOf(pstage) === 0 && /calibration_summary\.md$/i.test(a.path));
+            Promise.all([
+                cF ? artifactData(tid, cF.path) : Promise.resolve(null),
+                sF ? artifactData(tid, sF.path) : Promise.resolve(null),
+                sumF ? artifactData(tid, sumF.path) : Promise.resolve(null)
+            ]).then(([c, s, sum]) => {
+                if (sum && sum.content) mdBullets(sum.content).forEach(([k, v]) =>
+                    el.appendChild(h('div', { class: 'wb-hint', style: 'margin:2px 0' }, k + ':' + v)));
+                const mkTable = (title, data) => {
+                    el.appendChild(h('div', { class: 'wb-section-title', style: 'margin:12px 0 6px' }, title));
+                    const lines = data && data.content ? data.content.split(/\r?\n/).filter(x => x.trim()) : [];
+                    if (lines.length < 2) { el.appendChild(h('div', { class: 'wb-empty' }, '无数据')); return; }
+                    const headers = lines[0].split(',');
+                    const t = h('table', { class: 'wb-table' }, h('tr', null, headers.map(x => h('th', null, x))));
+                    lines.slice(1).slice(0, 200).forEach(l => t.appendChild(h('tr', null, l.split(',').map(x => h('td', null, x)))));
+                    el.appendChild(t);
+                    el.appendChild(h('div', { class: 'wb-actions-row', style: 'margin:6px 0' },
+                        h('button', { class: 'wb-btn wb-btn-outline', onclick: () => downloadCsv(title + '.csv', headers, lines.slice(1).map(l => l.split(','))) }, '导出CSV')));
+                };
+                mkTable('调图历史(候选值/边界/角色)', c);
+                mkTable('敏感性扫描', s);
+                el.appendChild(h('div', { class: 'wb-hint', style: 'margin:8px 0' },
+                    '调图证据 = 候选值 + 可行方向 + 数据信息;是否释放与数据相容性一致,不默认释放所有参数。'));
+            });
+        }
+        /** 07-23 连续起停结果与阶段事件(真实trace.csv+summary.md,ECharts曲线)。 */
+        function renderContinuousView(el, tid, arts) {
+            const dir = stageDirOf(arts, 'continuous');
+            if (!dir) { el.appendChild(h('div', { class: 'wb-empty' }, '无continuous阶段产物;先执行连续起停阶段')); return; }
+            const caseDirs = arts.filter(a => a.dir && a.path.indexOf(dir + '/') === 0 && a.path.indexOf('/', dir.length + 1) < 0).map(a => a.path);
+            if (!caseDirs.length) { el.appendChild(h('div', { class: 'wb-empty' }, '该阶段尚无算例产物(可能未全部跑完)')); return; }
+            const caseNames = caseDirs.map(p => p.split('/').pop());
+            const CN = { nominal: '标称', hot_ambient: '高温环境', cold_ambient: '低温环境', weak_starter: '弱起动机', slow_ignition: '慢点火', high_friction: '高摩擦', tailwind: '顺风', hot_soak: '热浸后重启', degraded: '性能退化' };
+            if (S.verif.caseIdx >= caseDirs.length) S.verif.caseIdx = 0;
+            const sel = h('select', null, caseDirs.map((p, i) =>
+                h('option', { value: i, selected: i === S.verif.caseIdx ? '' : null },
+                    '[' + (i + 1) + '/' + caseDirs.length + '] ' + (CN[caseNames[i]] || caseNames[i]))));
+            const info = h('div', null);
+            const chart1 = h('div', { style: 'height:280px;margin:8px 0' });
+            const chart2 = h('div', { style: 'height:280px;margin:8px 0' });
+            el.appendChild(h('div', { style: 'display:flex;gap:10px;align-items:center;margin-bottom:8px' },
+                h('span', { class: 'wb-hint' }, '算例'), sel,
+                h('button', { class: 'wb-btn wb-btn-outline', onclick: () => { sel.value = (Number(sel.value) + 1) % caseDirs.length; sel.dispatchEvent(new Event('change')); } }, '下一个算例')));
+            el.appendChild(info);
+            el.appendChild(chart1);
+            el.appendChild(chart2);
+            const col = (headers, names) => {
+                for (const n of names) { const i = headers.findIndex(x => x.trim().toLowerCase() === n.toLowerCase()); if (i >= 0) return i; }
+                return -1;
+            };
+            const loadCase = () => {
+                const cd = caseDirs[Number(sel.value)];
+                S.verif.caseIdx = Number(sel.value);
+                info.innerHTML = ''; chart1.innerHTML = ''; chart2.innerHTML = '';
+                const sumF = arts.find(a => !a.dir && a.path.indexOf(cd) === 0 && /summary\.md$/i.test(a.path));
+                const trF = arts.find(a => !a.dir && a.path.indexOf(cd) === 0 && /trace\.csv$/i.test(a.path));
+                Promise.all([sumF ? artifactData(tid, sumF.path) : Promise.resolve(null),
+                             trF ? artifactData(tid, trF.path) : Promise.resolve(null)])
+                    .then(([sum, tr]) => {
+                        if (sum && sum.content) {
+                            const bl = mdBullets(sum.content);
+                            if (bl.length) {
+                                const strip = h('div', { style: 'display:flex;gap:18px;flex-wrap:wrap;background:#f7fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;margin-bottom:6px' });
+                                bl.slice(0, 8).forEach(([k, v]) => strip.appendChild(h('div', null,
+                                    h('div', { class: 'wb-hint', style: 'font-size:11px' }, k),
+                                    h('div', { style: 'font-weight:600' }, v))));
+                                info.appendChild(strip);
+                            }
+                            const tbs = mdTables(sum.content);
+                            if (tbs.length) {
+                                info.appendChild(h('div', { class: 'wb-hint', style: 'margin:4px 0' }, '阶段事件'));
+                                const t = h('table', { class: 'wb-table' }, h('tr', null, tbs[0].headers.map(x => h('th', null, x))));
+                                tbs[0].rows.slice(0, 30).forEach(r0 => t.appendChild(h('tr', null, r0.map(x => h('td', null, x)))));
+                                info.appendChild(t);
+                            }
+                        } else info.appendChild(h('div', { class: 'wb-hint' }, '产物目录:' + cd));
+                        if (tr && tr.content) drawTraces(tr.content);
+                        else chart1.appendChild(h('div', { class: 'wb-empty' }, '无轨迹CSV(轨迹数据随任务保留)'));
+                    });
+            };
+            const drawTraces = (csvText) => {
+                const lines = csvText.split(/\r?\n/).filter(x => x.trim());
+                if (lines.length < 2) return;
+                const headers = lines[0].split(',');
+                const tI = Math.max(0, col(headers, ['timeS', 'time', 't']));
+                const ngI = col(headers, ['NgRpm', 'Ng']);
+                const npI = col(headers, ['NpRpm', 'Np']);
+                const ttI = col(headers, ['Tt45K', 'Tt45']);
+                const mkI = col(headers, ['MkpNm', 'Mkp']);
+                const step = Math.max(1, Math.floor((lines.length - 1) / 4000));
+                const t = [], ng = [], np = [], tt = [], mk = [];
+                for (let i = 1; i < lines.length; i += step) {
+                    const c = lines[i].split(',');
+                    t.push(Number(c[tI]) || 0);
+                    ng.push(ngI >= 0 && c[ngI] !== '' && !isNaN(Number(c[ngI])) ? Math.round(Number(c[ngI])) : null);
+                    np.push(npI >= 0 && c[npI] !== '' && !isNaN(Number(c[npI])) ? Math.round(Number(c[npI])) : null);
+                    tt.push(ttI >= 0 && c[ttI] !== '' && !isNaN(Number(c[ttI])) ? Number(Number(c[ttI]).toFixed(1)) : null);
+                    mk.push(mkI >= 0 && c[mkI] !== '' && !isNaN(Number(c[mkI])) ? Number(Number(c[mkI]).toFixed(1)) : null);
+                }
+                ensureEcharts(ech => {
+                    if (!chart1.isConnected) return;
+                    const mk = (elm, series, yname) => {
+                        elm.innerHTML = '';
+                        ech.init(elm).setOption({
+                            grid: { left: 70, right: 30, top: 34, bottom: 40 },
+                            tooltip: { trigger: 'axis' },
+                            legend: { top: 4 },
+                            xAxis: { type: 'category', data: t.map(x => x.toFixed(1)), name: 't(s)' },
+                            yAxis: { type: 'value', name: yname, scale: true },
+                            series
+                        });
+                    };
+                    mk(chart1, [
+                        { name: 'Ng(rpm)', type: 'line', showSymbol: false, data: ng },
+                        { name: 'Np(rpm)', type: 'line', showSymbol: false, data: np }
+                    ], 'rpm');
+                    mk(chart2, [
+                        { name: 'Tt45(K)', type: 'line', showSymbol: false, data: tt },
+                        { name: 'Mkp(Nm)', type: 'line', showSymbol: false, data: mk }
+                    ], 'K');
+                });
+            };
+            sel.addEventListener('change', loadCase);
+            loadCase();
+        }
+        /** 07-24 热效应与热浸校核(真实thermal阶段summary+图)。 */
+        function renderThermalView(el, tid, arts) {
+            const dir = stageDirOf(arts, 'thermal');
+            if (!dir) { el.appendChild(h('div', { class: 'wb-empty' }, '无thermal阶段产物;先执行热效应与热浸阶段(需提供热资产)')); return; }
+            const sumF = arts.find(a => !a.dir && a.path.indexOf(dir) === 0 && /\.md$/i.test(a.path));
+            const pngF = arts.filter(a => !a.dir && a.path.indexOf(dir) === 0 && /\.png$/i.test(a.path)).slice(0, 4);
+            if (sumF) artifactData(tid, sumF.path).then(d => {
+                if (d && d.content && el.isConnected) {
+                    mdBullets(d.content).forEach(([k, v]) =>
+                        el.appendChild(h('div', { class: 'wb-hint', style: 'margin:2px 0' }, k + ':' + v)));
+                    mdTables(d.content).slice(0, 2).forEach(tb => {
+                        const t = h('table', { class: 'wb-table' }, h('tr', null, tb.headers.map(x => h('th', null, x))));
+                        tb.rows.slice(0, 20).forEach(r0 => t.appendChild(h('tr', null, r0.map(x => h('td', null, x)))));
+                        el.appendChild(t);
+                    });
+                }
+            });
+            if (pngF.length) {
+                const row = h('div', { style: 'display:flex;gap:12px;flex-wrap:wrap;margin-top:10px' });
+                pngF.forEach(f => {
+                    const img = h('img', { style: 'max-width:460px;max-height:260px;border:1px solid #dde3ea;border-radius:6px;background:#fff' });
+                    artifactData(tid, f.path).then(d => { if (d && d.base64 && img.isConnected) img.src = 'data:' + d.contentType + ';base64,' + d.base64; });
+                    row.appendChild(h('div', null, img, h('div', { class: 'wb-hint', style: 'text-align:center' }, f.name)));
+                });
+                el.appendChild(row);
+            }
+            el.appendChild(h('div', { class: 'wb-hint', style: 'margin-top:8px' },
+                '热效应与热浸校核:Vissel热耦合对照;五参考点对照不称为十二点完整统计热包。'));
+        }
+        /** 07-10 限制与日志:各阶段结果目录+运行日志;部分通过不隐去问题。 */
+        function renderLimitsView(el, tid, arts) {
+            const t = h('table', { class: 'wb-table' }, h('tr', null, ['阶段', '结果', '证据目录'].map(x => h('th', null, x))));
+            ['maps', 'design', 'matrix', 'physics', 'continuous', 'thermal'].forEach(s => {
+                const dir = stageDirOf(arts, s);
+                t.appendChild(h('tr', null,
+                    h('td', null, (STAGE_LABEL[s] || s) + ' (' + s + ')'),
+                    h('td', null, dir ? '已执行(结果以summary为准)' : '未执行'),
+                    h('td', { class: 'wb-hint' }, dir || '—')));
+            });
+            el.appendChild(t);
+            el.appendChild(h('div', { class: 'wb-section-title', style: 'margin:14px 0 6px' }, '运行日志'));
+            const pre = h('pre', { style: 'max-height:320px;overflow:auto;background:#11161d;color:#cde3f7;padding:10px 12px;border-radius:8px;font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-all;margin:0' }, '(加载中...)');
+            el.appendChild(pre);
+            api('/tasks/' + encodeURIComponent(tid) + '/status').then(r => {
+                const d = r && r.code === 200 ? r.data : null;
+                if (pre.isConnected) pre.textContent = (d && d.logTail) || '(无日志)';
+            }).catch(() => { if (pre.isConnected) pre.textContent = '(无日志)'; });
+            el.appendChild(h('div', { class: 'wb-hint', style: 'margin:8px 0' },
+                '部分通过时不隐去问题:失败点、限制、冲突与依赖约束原文保留;被阻塞项在解除阻塞前保持当前状态。'));
+        }
+
+        /* ---- 模型成果与保存(07-25/26/11) ---- */
+        function assetsTab() {
+            const box = h('div', null);
+            const view = S.assetsView;
+            const bar = h('div', { style: 'display:flex;gap:6px;margin-bottom:10px' });
+            [['save', '保存模型及交付文件'], ['handover', '显式交给全模式仿真'], ['assets', '两类成果管理']].forEach(([k, label]) =>
+                bar.appendChild(h('div', {
+                    style: 'padding:5px 14px;border-radius:14px;cursor:pointer;border:1px solid ' + (view === k ? '#2e86de' : '#d7dde5') + ';background:' + (view === k ? '#eaf3fd' : '#fff') + ';color:' + (view === k ? '#1d5fa8' : '#445'),
+                    onclick: () => { S.assetsView = k; renderBody(); }
+                }, label)));
+            box.appendChild(bar);
+            if (view === 'save') {
+                box.appendChild(h('div', { class: 'wb-infobar', style: 'margin-bottom:10px' },
+                    '公开起停模型包包括实际地图、MDL、DLL/头文件、设计种子和热配置,不以一个Excel替代;保存前展示文件清单与来源,保存后提供只读查看与「用于全模式仿真」入口。'));
+                const listT = h('table', { class: 'wb-table' }, h('tr', null, ['内容', '来源'].map(x => h('th', null, x))));
+                [['实际地图(扩展前后)', '校核任务maps阶段产物'],
+                 ['正式MDL(备份+写入后)', '所选模型MDL,commit/保存时写入'],
+                 ['DLL/头文件', '程序目录(同版本原算法)'],
+                 ['设计种子', '设计点任务commit产物'],
+                 ['热配置', '热资产(可选,显式提供)']].forEach(r0 =>
+                    listT.appendChild(h('tr', null, h('td', null, r0[0]), h('td', { class: 'wb-hint' }, r0[1]))));
+                box.appendChild(listT);
+                box.appendChild(h('div', { class: 'wb-actions-row', style: 'margin-top:12px' },
+                    h('button', {
+                        class: 'wb-btn wb-btn-primary',
+                        onclick: () => {
+                            if (!S.ssTaskId) { toast('请先完成校核执行', 'error'); S.tab = 'exec'; renderBody(); return; }
+                            confirmDialog('将汇总当前校核任务产物为起停模型包并登记到模型成果,继续?',
+                                { title: '保存模型包', okText: '保存' }).then(ok => { if (ok) savePackageFlow(); });
+                        }
+                    }, '保存模型及交付文件'),
+                    h('button', { class: 'wb-btn wb-btn-outline', onclick: () => ctx.navigate('models') }, '前往模型成果')));
+            } else if (view === 'handover') {
+                box.appendChild(h('div', { class: 'wb-infobar', style: 'margin-bottom:10px' },
+                    '起动停车成果按合同显式交给全模式仿真:身份、地图、DLL与热资产在合同中登记;全模式不隐式采用尚未登记的模型。'));
+                box.appendChild(h('table', { class: 'wb-table' },
+                    h('tr', null, ['交付项', '要求'].map(x => h('th', null, x))),
+                    h('tr', null, h('td', null, '模型身份'), h('td', { class: 'wb-hint' }, '与校核任务一致(源模型/地图/DLL版本)')),
+                    h('tr', null, h('td', null, '起停配置'), h('td', { class: 'wb-hint' }, '随模型包交付,不被全模式改写')),
+                    h('tr', null, h('td', null, '热资产'), h('td', { class: 'wb-hint' }, '可选;未提供时保持原默认'))));
+                box.appendChild(h('div', { class: 'wb-actions-row', style: 'margin-top:12px' },
+                    h('button', { class: 'wb-btn wb-btn-primary', onclick: () => ctx.navigate('fullmode') }, '前往全模式仿真')));
+            } else {
+                box.appendChild(h('div', { class: 'wb-section-title', style: 'margin-bottom:6px' }, '两类成果管理'));
+                box.appendChild(h('table', { class: 'wb-table' },
+                    h('tr', null, ['成果', '内容', '入口'].map(x => h('th', null, x))),
+                    h('tr', null, h('td', null, '只读模型(已发布)'), h('td', { class: 'wb-hint' }, '保存后的起停模型包;只读查看与复用'), h('td', null, '模型成果')),
+                    h('tr', null, h('td', null, '测试与中间产物'), h('td', { class: 'wb-hint' }, '校核任务目录report_outputs/MiddleData;随任务保留'), h('td', null, '校核结果'))));
+                box.appendChild(h('div', { class: 'wb-actions-row', style: 'margin-top:12px' },
+                    h('button', { class: 'wb-btn wb-btn-outline', onclick: () => ctx.navigate('models') }, '前往模型成果')));
+            }
+            return box;
+        }
+
+        function renderBody() { paintTabs(); body.innerHTML = ''; 
+            if (S.tab === 'prepare') body.appendChild(prepareTab());
+            else if (S.tab === 'design') body.appendChild(designTab());
+            else if (S.tab === 'maps') body.appendChild(mapsTab());
+            else if (S.tab === 'physics') body.appendChild(physicsTab());
+            else if (S.tab === 'exec') body.appendChild(execTab());
+            else if (S.tab === 'verif') body.appendChild(verifTab());
+            else body.appendChild(assetsTab());
+        }
+        // 仿真记录"查看"打开指定任务:把该任务设为当前查看对象并切到对应页签(设计点→设计,起动停车→校核执行)
+        const ssOpen = window.__WB_SS_OPEN__;
+        if (ssOpen && ssOpen.taskId) {
+            delete window.__WB_SS_OPEN__;
+            if (ssOpen.kind === 'design_point') { S.dpTaskId = ssOpen.taskId; S.tab = 'design'; }
+            else { S.ssTaskId = ssOpen.taskId; S.tab = 'exec'; }
+        }
+        renderBody();
+        // 任务轮询:design_point和startstop任务非终态时每3s检测相位变化并重绘
+        // (修复:之前无轮询,求解/提交完成后页面状态不刷新一直显示运行中)
+        setInterval(() => {
+            if (document.hidden) return;
+            const tid = S.tab === 'design' ? S.dpTaskId : S.ssTaskId;
+            if (!tid) return;
+            api('/tasks/' + encodeURIComponent(tid) + '/status').then(r => {
+                const d = r && r.code === 200 ? r.data : null;
+                if (!d) return;
+                const terminal = ['ENDED', 'FAILED', 'COMMITTED', 'STOPPED'].includes(d.phase);
+                if (!terminal) window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;
+                if (d.phase !== S._lastPhase) {
+                    S._lastPhase = d.phase;
+                    if (S.tab === 'design' || S.tab === 'exec') renderBody();
+                }
+            }).catch(() => { });
+        }, 3000);
+        return wrap;
+    };
+    /* 试车台模型成果(与建模工作台同一renderModelsBody) */
+    pages['testbench.models'] = (ctx) => {
+        const wrap2 = h('div', null, pageHeader('模型成果',
+            (ctx.project.engineId || '—') + ' / 系统联合仿真 / 模型版本与数据、评估关联'));
+        const body2 = h('div', null);
+        wrap2.appendChild(body2);
+        renderModelsBody(ctx, body2);
+        return wrap2;
+    };
+
+    /* ===== 多系统联合仿真(F-12,AFO_V_2;sht_afo_session合同)===== */
+    // 通道组索引按 sht_afo_channels 顺序固定(status.values/result.values 的组下标)
+    const AFO_GROUP = { engine: 0, load: 1, fuel_command: 2, fuel_engine: 3, fuel_detailed: 4, air01: 5, air02: 6, air03: 7, air04: 8, air05: 9, air06: 10, air07: 11, air08: 12 };
+    const AFO_E = { Pt1: 0, Tt1: 1, Pt3: 2, Tt3: 3, Pt45: 4, Tt45: 5, Pt5: 6, Tt5: 7, Np: 8, Ng: 9, W2: 10, PT_drive_torque: 11, HPC_corrected: 12, GT_pr: 13, PT_pr: 14 };
+    const AFO_NP_STEPS = [['0.8', '80%'], ['0.9', '90%'], ['0.95', '95%'], ['1', '100%'], ['1.05', '105%']];
+    const AFO_PACE = [['realtime', '实时节奏(物理时间同步)'], ['fast', '尽快计算(不与墙钟同步)']];
+    const AFO_LOAD = [['power', '恒实际PT功率 / kW'], ['torque', '恒扭矩 / N·m'], ['pitch', '恒总距角 / deg'], ['dual_pitch', '主/尾桨双总距角 / deg']];
+
+    pages['testbench.afo'] = (ctx) => {
+        const pid = ctx.project.id || '';
+        const api = p => window.AppConfig.engineGet('projects/' + encodeURIComponent(pid) + '/afo' + p);
+        const apiPost = (p, body) => window.AppConfig.enginePost('projects/' + encodeURIComponent(pid) + '/afo' + p, body || {});
+        const S = window.__WB_AFO__ = window.__WB_AFO__ || {
+            phase: 'IDLE', message: '', live: null, samples: [], lastSampleT: -1,
+            result: null, readonlyRunId: null, readonlyLoading: false, tab: 'main',
+            cfg: { engineId: ctx.project.engineId || 'ENGINE-001', duration: '30', recordStep: '0.1', pace: 'realtime', loadMode: 'power', powerW: '2176600', mkpNm: '1000', pitchDeg: '12', mainPitchDeg: '12', tailPitchDeg: '10', externalAir: false, npRatio: '1' }
+        };
+        S.tab = S.tab || 'main';
+        const running = () => S.phase === 'RUNNING' || S.phase === 'PAUSED';
+        const canCmd = () => running();
+
+        const wrap = h('div', null,
+            h('div', { style: 'margin-bottom:12px;display:flex;justify-content:space-between;align-items:baseline' },
+                h('div', null,
+                    h('div', { class: 'wb-page-title', style: 'font-size:20px;margin-bottom:2px' }, '多系统联合仿真'),
+                    h('div', { class: 'wb-page-sub' },
+                        (ctx.project.engineId || '—') + ' / ' + (S.readonlyRunId ? ('记录只读 ' + S.readonlyRunId)
+                            : (S.live && S.live.runId ? S.live.runId : '燃油 · 滑油 · 空气'))),
+                h('div', { class: 'wb-hint', style: 'margin:0' }, '基准 Dll_Control_AFO_V8_5_R2019b · 同实例暂停 · 燃油/滑油/空气耦合'))));
+        const statusBar = h('div', { style: 'margin-bottom:12px' });
+        const tabBar = h('div', { class: 'wb-tabs', style: 'margin-bottom:12px' });
+        const body = h('div', null, h('div', { class: 'wb-empty' }, '正在加载会话状态...'));
+        const foot = h('div', null);
+        wrap.appendChild(statusBar);
+        wrap.appendChild(tabBar);
+        wrap.appendChild(body);
+        wrap.appendChild(foot);
+
+        const TABS = [['main', '总控'], ['engine', '发动机'], ['control', '控制'], ['fuel', '燃油'], ['oil', '滑油'], ['air', '空气']];
+        function paintTabs() {
+            tabBar.innerHTML = '';
+            TABS.forEach(([k, label]) => tabBar.appendChild(h('div', {
+                class: 'wb-tab' + (S.tab === k ? ' active' : ''),
+                onclick: () => { S.tab = k; renderAll(); }
+            }, label)));
+        }
+
+        /* —— 状态条(09-13):相位 | 仿真时间 | 主控按钮 —— */
+        function paintStatus() {
+            statusBar.innerHTML = '';
+            const t = S.live && typeof S.live.time === 'number' ? S.live.time : (S.result ? S.result.finalSimulationTime : 0);
+            const phaseLabel = S.readonlyRunId ? ['历史记录 · 只读', 'gray']
+                : S.phase === 'RUNNING' ? ['正在运行', 'teal']
+                : S.phase === 'PAUSED' ? ['已暂停', 'teal']
+                : S.phase === 'PREPARING' ? ['准备中', 'amber']
+                : S.phase === 'READY' ? ['准备就绪', 'teal']
+                : S.phase === 'ENDED' ? ['已结束 · 记录已保存', 'gray']
+                : S.phase === 'FAILED' ? ['失败', 'red'] : ['空闲 · 新建运行', 'gray'];
+            // 09-13/09-14状态条: 左相位 | 中仿真时间(标签+大字+runId·模式) | 右两按钮
+            const modeText = S.readonlyRunId ? '历史只读'
+                : S.phase === 'PAUSED' ? '原实例状态保持'
+                : S.cfg.pace === 'fast' ? '尽快计算' : '实时计算';
+            const bar = h('div', { class: 'wb-infobar', style: 'display:flex;align-items:center;gap:18px;padding:10px 16px' },
+                h('div', null,
+                    h('span', { class: 'wb-tag wb-tag-' + phaseLabel[1] }, phaseLabel[0]),
+                    h('div', { class: 'wb-hint', style: 'margin:2px 0 0' },
+                        S.message || (S.readonlyRunId ? '完整记录已保存' : '内部引气 / 外部系统同步计算'))),
+                h('div', { style: 'min-width:180px' },
+                    h('div', { class: 'wb-hint', style: 'margin:0' }, '仿真时间'),
+                    h('div', { style: 'font-size:20px;font-weight:700;line-height:1.2' }, Number(t || 0).toFixed(3) + ' s'),
+                    h('div', { class: 'wb-hint', style: 'margin:0' },
+                        (S.live && S.live.runId) || (S.result && S.result.runId) || (S.readonlyRunId || '') + ' · ' + modeText)),
+                h('div', { class: 'wb-spacer' }));
+            statusBar.appendChild(bar);
+            const actions = h('div', { class: 'wb-actions-row', style: 'margin:8px 0 0' });
+            if (S.readonlyRunId) {
+                actions.appendChild(h('button', { class: 'wb-btn wb-btn-outline', onclick: () => exitReadonly() }, '‹ 返回仿真准备'));
+                actions.appendChild(h('div', { class: 'wb-spacer' }));
+                actions.appendChild(h('button', { class: 'wb-btn wb-btn-outline', onclick: () => window.open(excelUrl(S.readonlyRunId), '_blank') }, '导出Excel'));
+                actions.appendChild(h('button', { class: 'wb-btn wb-btn-primary', onclick: () => reuseConfig() }, '用此配置新建'));
+            } else if (S.phase === 'RUNNING' || S.phase === 'PAUSED') {
+                // 09-13/09-14:状态条恒为两个按钮;点击乐观翻状态,回执由轮询确认
+                const isRun = S.phase === 'RUNNING';
+                actions.appendChild(h('button', {
+                    class: 'wb-btn wb-btn-outline',
+                    onclick: () => {
+                        if (S._busyAction) return;
+                        const going = isRun ? 'PAUSED' : 'RUNNING';
+                        S.phase = going;
+                        S.message = going === 'PAUSED' ? '已请求暂停;主步观测点生效' : '已请求继续';
+                        renderAll();
+                        S._busyAction = 'pause';
+                        sendCmd(going === 'PAUSED' ? 'pause' : 'resume', 0);
+                        setTimeout(() => { S._busyAction = null; }, 1200);
+                    }
+                }, isRun ? '⏸ 暂停' : '▶ 继续'));
+                actions.appendChild(h('button', {
+                    class: 'wb-btn wb-btn-outline',
+                    onclick: () => { if (!S._busyAction) { S.message = '已请求结束;等待主步生效'; renderAll(); sendCmd('stop', 0); } }
+                }, '□ 结束计算'));
+            } else if (S.phase === 'READY') {
+                // 09-12:准备就绪后常驻"开始仿真";检查配置回到总控表单核对
+                actions.appendChild(h('button', { class: 'wb-btn wb-btn-outline', onclick: () => { S.tab = 'main'; renderAll(); } }, '检查配置'));
+                actions.appendChild(h('button', { class: 'wb-btn wb-btn-primary', onclick: () => startRun() }, '▶ 开始仿真'));
+                actions.appendChild(h('button', { class: 'wb-btn wb-btn-outline', onclick: () => closeSession() }, '放弃并关闭'));
+            } else if (S.phase === 'ENDED' || S.phase === 'FAILED') {
+                actions.appendChild(h('button', { class: 'wb-btn wb-btn-outline', onclick: () => window.open(excelUrl(S.live && S.live.runId ? S.live.runId : ''), '_blank') }, '导出Excel'));
+                actions.appendChild(h('button', { class: 'wb-btn wb-btn-primary', onclick: () => closeSession() }, '新建运行(关闭本会话)'));
+            }
+            bar.appendChild(actions);
+        }
+
+        const excelUrl = runId => {
+            const cfg0 = window.AppConfig;
+            return cfg0.api.baseURL + '/api/engine/projects/' + encodeURIComponent(pid)
+                + '/afo/sessions/' + encodeURIComponent(runId) + '/excel?token=' + encodeURIComponent(cfg0.getToken() || '');
+        };
+
+        /* —— 数据抽取:运行中 samples(实时) / 历史 result —— */
+        function pushSample(live) {
+            const t = live.time;
+            if (typeof t !== 'number' || t <= S.lastSampleT) return;
+            S.lastSampleT = t;
+            const v = live.values || [];
+            const eng = v[AFO_GROUP.engine] || [];
+            const load = v[AFO_GROUP.load] || [];
+            S.samples.push({
+                t: t, Np: eng[AFO_E.Np], Ng: eng[AFO_E.Ng], Tt3: eng[AFO_E.Tt3], Tt45: eng[AFO_E.Tt45],
+                W2: eng[AFO_E.W2], Mkp: load[0], Pload: load[4],
+                Wf_cmd: (v[AFO_GROUP.fuel_command] || [])[0], Wf: (v[AFO_GROUP.fuel_engine] || [])[0],
+                Wfd: (v[AFO_GROUP.fuel_detailed] || [])[0]
+            });
+            if (S.samples.length > 4000) S.samples.splice(0, S.samples.length - 4000);
+        }
+
+        function seriesFromSamples(keys) {
+            return keys.map(k => ({ name: k, values: S.samples.map(s => s[k]) }));
+        }
+        function resultCell(g, i, j) {
+            const vals = S.result.values || [];
+            const n = (S.result.time || []).length;
+            if (!vals.length || !n) return null;
+            const w0 = Array.isArray(vals[0]) ? vals[0].length : -1;
+            const colMajor = vals.length > n && Array.isArray(vals[1]) && vals[1].length === w0;
+            const cell = colMajor ? vals[i + g * n] : (vals[i] ? vals[i][g] : null);
+            return (cell && cell[j] != null) ? cell[j] : null;
+        }
+        function seriesFromResult(g, js) {
+            const n = (S.result.time || []).length;
+            return js.map(j => ({
+                name: '通道' + (j + 1),
+                values: Array.from({ length: n }, (_, i) => resultCell(g, i, j))
+            }));
+        }
+        function lineByTime(values, labels0) {
+            const xLabels = [];
+            const n = values.length;
+            const step = Math.max(1, Math.ceil(n / 8));
+            for (let i = 0; i < n; i++) if (i % step === 0) xLabels.push(labels0 && labels0.length ? Number(labels0[i]).toFixed(1) : String(i));
+            return xLabels;
+        }
+
+        /* —— 页签渲染 —— */
+        function paintBody() {
+            body.innerHTML = '';
+            if (S.readonlyLoading) {
+                body.appendChild(h('div', { class: 'wb-empty' }, '正在加载历史记录(result.json)...'));
+                return;
+            }
+            // 准备中给可见反馈(否则点击"准备并校验"像没反应)
+            if (S.phase === 'PREPARING' && !S.readonlyRunId) {
+                body.appendChild(h('div', { class: 'wb-infobar', style: 'display:flex;align-items:center;gap:12px;padding:14px 16px' },
+                    h('span', { class: 'wb-inline-loading' }, h('span', { class: 'wb-inline-spinner' }),
+                        '正在创建运行副本并校验成套身份(原SLX/DLL不写入);模型初始化需要一些时间...')));
+                return;
+            }
+            const src = S.readonlyRunId || S.result ? 'result'
+                : (running() || S.phase === 'ENDED' || S.phase === 'FAILED') ? 'live' : 'idle';
+            if (S.tab === 'main') paintMain(src);
+            else paintSystemTab(src);
+        }
+
+        /* —— 总控(09-13) —— */
+        function paintMain(src) {
+            if (src === 'idle') { paintConfigForm(); return; }
+            const live = S.live || {};
+            // 09-14:已暂停——暂停中的操作说明视图(不显示操纵台)
+            if (S.phase === 'PAUSED') {
+                body.appendChild(h('div', { class: 'wb-infobar' },
+                    '已到安全服务点，仿真时间保持' + Number(typeof S.live?.time === 'number' ? S.live.time : 0).toFixed(3)
+                    + ' s。发动机与各子系统仍保留暂停前状态。'));
+                body.appendChild(h('div', { class: 'wb-section-title', style: 'margin:14px 0 8px' }, '暂停中的操作'));
+                body.appendChild(h('table', { class: 'wb-table' },
+                    h('tr', null, ['操作', '允许行为', '下一次物理变化'].map(x => h('th', null, x))),
+                    h('tr', null, h('td', null, '查看各系统'), h('td', null, '曲线和读数保持;可切换页签'), h('td', null, '无,不触发新计算')),
+                    h('tr', null, h('td', null, '提交新的Np或负载'), h('td', null, '合法命令登记为已接收'), h('td', null, '继续后下一个离散步生效')),
+                    h('tr', null, h('td', null, '继续计算'), h('td', null, '原Simulink实例继续'), h('td', null, '不重新初始化,不清空热/控制状态')),
+                    h('tr', null, h('td', null, '结束计算'), h('td', null, '保存当前已有效历程'), h('td', null, '不是停车;本次不能跨进程恢复'))));
+                body.appendChild(h('div', { style: 'margin:14px 0 4px;font-weight:600' },
+                    '暂停不会让燃油归零，也不是发动机保持低速的物理模式。'));
+                body.appendChild(h('div', { class: 'wb-hint', style: 'margin:0 0 16px' },
+                    '人工等待时间单独记录，不计入有效计算耗时。'));
+                body.appendChild(h('div', { class: 'wb-actions-row' },
+                    h('button', {
+                        class: 'wb-btn wb-btn-primary', style: 'min-width:220px',
+                        onclick: () => sendCmd('resume', 0)
+                    }, '▶ 继续仿真'),
+                    h('button', {
+                        class: 'wb-btn wb-btn-outline', style: 'min-width:220px',
+                        onclick: () => sendCmd('stop', 0)
+                    }, '□ 结束并保存现有数据')));
+                return;
+            }
+            // Np挡位(草稿+施加两步) + 负载施加(运行中;09-13)
+            if (canCmd()) {
+                body.appendChild(h('div', { class: 'wb-infobar' },
+                    '负载方式:' + (AFO_LOAD.find(l => l[0] === loadMode())[1] || '—') + '。空气耦合与负载类型已锁定;当前无待生效命令。'));
+                S.npDraft = S.npDraft || '1';
+                const npRow = h('div', { style: 'display:flex;gap:10px;align-items:center;margin:12px 0' });
+                AFO_NP_STEPS.forEach(([val, label]) => {
+                    npRow.appendChild(h('button', {
+                        class: 'wb-btn ' + (S.npDraft === val ? 'wb-btn-primary' : 'wb-btn-outline'),
+                        onclick: () => { S.npDraft = val; renderAll(); }
+                    }, label));
+                });
+                npRow.appendChild(h('div', { class: 'wb-spacer' }));
+                npRow.appendChild(h('button', {
+                    class: 'wb-btn wb-btn-outline', style: 'min-width:120px',
+                    onclick: () => sendCmd('np', parseFloat(S.npDraft))
+                }, '✓ 施加Np'));
+                body.appendChild(h('div', { class: 'wb-section-title', style: 'margin-bottom:8px' }, 'Np运行挡位'));
+                body.appendChild(npRow);
+                body.appendChild(h('div', { class: 'wb-hint', style: 'margin-bottom:12px' },
+                    '预选 ' + Math.round(parseFloat(S.npDraft) * 100) + '%(待施加);当前生效目标: ' + npText()
+                    + ';状态: ' + (live.pending ? '有待生效命令(' + live.pending.kind + ')' : '无待生效命令')
+                    + '。挡位命令被接收不代表转速已达到并稳定。'));
+                // 负载草稿(09-13:按当前负载方式显示对应输入)
+                const lm = loadMode();
+                const unitTxt = lm === 'power' ? 'PT功率草稿 / kW' : lm === 'torque' ? '扭矩草稿 / N·m' : lm === 'pitch' ? '总距角草稿 / deg' : '主桨总距角草稿 / deg';
+                const draft = h('input', { value: loadDraftDefault(lm), id: 'afo-load-draft' });
+                body.appendChild(h('div', { class: 'wb-form-grid', style: 'grid-template-columns:320px 200px;max-width:620px;align-items:end' },
+                    h('div', { class: 'wb-field' }, h('label', null, unitTxt), draft),
+                    h('div', null, h('button', { class: 'wb-btn wb-btn-outline', style: 'width:100%', onclick: () => applyLoadDraft() }, '✓ 施加负载'))));
+            } else if (S.phase === 'ENDED' || S.phase === 'FAILED') {
+                // 09-06:结束保存面板——记录内容/保存状态/用途 + 正式结果文件 + 用途提示
+                if (S.phase === 'ENDED') {
+                    body.appendChild(h('div', { class: 'wb-section-title', style: 'margin:4px 0 8px' }, '结束本次仿真并保存'));
+                    body.appendChild(h('table', { class: 'wb-table' },
+                        h('tr', null, ['记录内容', '保存状态', '用途'].map(x => h('th', null, x))),
+                        h('tr', null, h('td', null, '运行配置与模型身份'), h('td', null, '已保存'), h('td', { class: 'wb-hint' }, '知道本次使用哪个成套包')),
+                        h('tr', null, h('td', null, '全部时序输出与通道字典'), h('td', null, '已保存'), h('td', { class: 'wb-hint' }, '重新打开无需DLL或原MAT工作区')),
+                        h('tr', null, h('td', null, '命令接收、生效与拒绝记录'), h('td', null, '已保存'), h('td', { class: 'wb-hint' }, '把输入动作与响应对应起来')),
+                        h('tr', null, h('td', null, '停止原因、实际耗时与暂停'), h('td', null, '已保存'), h('td', { class: 'wb-hint' }, '区分达到时限、人工结束和计算失败'))));
+                    const rid0 = (S.live && S.live.runId) || (S.result && S.result.runId) || '';
+                    body.appendChild(h('div', { class: 'wb-form-grid', style: 'grid-template-columns:1fr 260px;max-width:900px;margin-top:12px;align-items:end' },
+                        h('div', { class: 'wb-field' }, h('label', null, '正式结果文件'), h('input', { readonly: '', value: (rid0 || '—') + ' / AFO_results.xlsx' })),
+                        h('button', { class: 'wb-btn wb-btn-outline', style: 'height:38px', onclick: () => window.open(excelUrl(rid0), '_blank') }, '📂 打开结果文件(导出Excel)')));
+                    body.appendChild(h('div', { style: 'margin:10px 0 4px;color:#8a6d00;font-size:13px' },
+                        'Excel是结果记录,不是完整仿真状态快照。不能直接据此从终点继续积分;相同初值与配置的新运行明确另建记录。'));
+                } else {
+                    body.appendChild(h('div', { class: 'wb-infobar' },
+                        '运行失败:' + (S.message || '') + ';有效部分不丢弃,历史与Excel仍可读。'));
+                }
+            }
+            // 关键输出大数字(09-13/09-01)
+            body.appendChild(kvBig(src === 'result' ? bigFromResult() : bigFromLive()));
+            // 命令回执表(events)
+            const events = (src === 'result' ? (S.result.events || []) : (live.events || []));
+            body.appendChild(h('div', { class: 'wb-section-title', style: 'margin:16px 0 8px' }, '本次操纵记录'));
+            if (events.length) {
+                const tbl = h('table', { class: 'wb-table' },
+                    h('tr', null, ['命令', '接收', '生效', '当前状态'].map(x => h('th', null, x))));
+                events.slice(-12).forEach(ev => {
+                    tbl.appendChild(h('tr', null,
+                        h('td', null, cmdText(ev)),
+                        h('td', { class: 'wb-hint' }, fmtT(ev.acceptedTime)),
+                        h('td', { class: 'wb-hint' }, fmtT(ev.appliedTime)),
+                        h('td', null, ev.status === 'applied' ? '已生效,按实际轴速观察响应'
+                            : ev.status === 'accepted' ? '已接收,等待主步生效'
+                            : ev.status === 'rejected' ? ('已回退:' + (ev.reason || '')) : (ev.status || '—'))));
+                });
+                body.appendChild(tbl);
+            } else {
+                body.appendChild(h('div', { class: 'wb-hint' }, '本次运行无在线操纵(初始配置见准备记录)。'));
+            }
+            body.appendChild(h('div', { class: 'wb-hint', style: 'margin-top:12px' },
+                '修改模型、空气配置或负载类型需新建运行;暂停不卸载,不自动断油。'));
+        }
+
+        const loadMode = () => (S.result && S.result.config) ? S.result.config.loadMode : S.cfg.loadMode;
+        const designNp = () => (S.result && S.result.config && S.result.config.designNpRpm) || 20800;
+        const npText = () => {
+            const live = S.live || {};
+            const a = live.applied || [];
+            return a[0] != null ? ('' + Math.round(a[0]) + ' rpm / 负载 ' + (a[1] != null ? Number(a[1]).toFixed(1) : '—')) : '—';
+        };
+        const loadDraftDefault = lm => lm === 'torque' ? String(S.cfg.mkpNm) : lm === 'pitch' ? String(S.cfg.pitchDeg) : lm === 'dual_pitch' ? String(S.cfg.mainPitchDeg) : String(S.cfg.powerW);
+        const fmtT = t => (t == null || isNaN(t)) ? '—' : Number(t).toFixed(3) + ' s';
+        const cmdText = ev => {
+            const v = ev.value;
+            switch (ev.kind) {
+                case 'np': return 'Np → ' + Math.round(parseFloat(v) * 100) + '%';
+                case 'load':
+                    const lm = loadMode();
+                    return lm === 'power' ? 'PT功率 → ' + Number(v).toFixed(2) + ' kW'
+                        : lm === 'torque' ? '扭矩 → ' + Number(v).toFixed(1) + ' N·m'
+                        : lm === 'pitch' ? '总距角 → ' + Number(v).toFixed(2) + '°'
+                        : '主/尾桨 → ' + (Array.isArray(v) ? v.map(x => Number(x).toFixed(1) + '°').join(' / ') : v);
+                case 'pause': return '暂停';
+                case 'resume': return '继续';
+                case 'stop': return '结束计算';
+                default: return ev.kind + ' ' + JSON.stringify(v);
+            }
+        };
+
+        function bigFromLive() {
+            const live = S.live || {};
+            const v = live.values || [];
+            const eng = v[AFO_GROUP.engine] || [];
+            return [
+                ['Np实际', eng[AFO_E.Np], 'rpm'], ['Ng实际', eng[AFO_E.Ng], 'rpm'],
+                ['发动机燃油', (v[AFO_GROUP.fuel_engine] || [])[0], 'kg/s'],
+                ['Tt45', eng[AFO_E.Tt45], 'K']
+            ];
+        }
+        function bigFromResult() {
+            const g = AFO_GROUP.engine;
+            const last = (j) => {
+                const n = (S.result.time || []).length;
+                const vals = S.result.values || [];
+                for (let i = n - 1; i >= 0; i--) {
+                    const v = resultCell(g, i, j);
+                    if (v != null) return v;
+                }
+                return null;
+            };
+            return [
+                ['Np实际轴速', last(AFO_E.Np), 'rpm'], ['Ng实际轴速', last(AFO_E.Ng), 'rpm'],
+                ['Tt45', last(AFO_E.Tt45), 'K'], ['入口流量W2', last(AFO_E.W2), 'kg/s']
+            ];
+        }
+        function kvBig(items) {
+            const grid = h('div', { style: 'display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin:14px 0' });
+            items.forEach(([label, v, unit]) => grid.appendChild(h('div', { style: 'background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:12px 16px' },
+                h('div', { class: 'wb-hint', style: 'margin:0 0 4px' }, label),
+                h('div', { style: 'font-size:24px;font-weight:700;color:#111827' }, v == null || !isFinite(Number(v)) ? '—' : Number(v).toFixed(3)),
+                h('div', { class: 'wb-hint', style: 'margin:0' }, unit || ''))));
+            return grid;
+        }
+
+        /* —— 准备配置表单(09-11准备:检查成套包并展示真实初态) —— */
+        function paintConfigForm() {
+            body.appendChild(h('div', { class: 'wb-infobar' },
+                '准备会创建独立运行副本(原SLX/DLL/MDL不写入),校验成套身份后初始化模型;准备完成才能开始运行。'));
+            const c = S.cfg;
+            const f = {};
+            const mk = (label, key, unit) => {
+                f[key] = h('input', { value: c[key] });
+                return h('div', { class: 'wb-field' }, h('label', null, label + (unit ? ' / ' + unit : '')), f[key]);
+            };
+            const paceSel = h('select', null, AFO_PACE.map(([v, l]) => h('option', { value: v, selected: c.pace === v ? '' : null }, l)));
+            const loadSel = h('select', null, AFO_LOAD.map(([v, l]) => h('option', { value: v, selected: c.loadMode === v ? '' : null }, l)));
+            const airSel = h('select', null, h('option', { value: 'internal', selected: !c.externalAir ? '' : null }, '内部引气(外部空气系统仍计算,8路不回灌)'),
+                h('option', { value: 'external', selected: c.externalAir ? '' : null }, '外部8路回灌(经一步延迟生效)'));
+            const loadBox = h('div', { class: 'wb-form-grid', style: 'grid-template-columns:1fr 1fr' });
+            const paintLoadFields = () => {
+                const lm = loadSel.value;
+                loadBox.innerHTML = '';
+                if (lm === 'power') loadBox.appendChild(mk('PT功率', 'powerW', 'kW'));
+                else if (lm === 'torque') loadBox.appendChild(mk('扭矩', 'mkpNm', 'N·m'));
+                else if (lm === 'pitch') loadBox.appendChild(mk('总距角', 'pitchDeg', 'deg'));
+                else { loadBox.appendChild(mk('主桨总距角', 'mainPitchDeg', 'deg')); loadBox.appendChild(mk('尾桨总距角', 'tailPitchDeg', 'deg')); }
+            };
+            loadSel.addEventListener('change', paintLoadFields);
+            body.appendChild(h('div', { class: 'wb-form-grid', style: 'grid-template-columns:repeat(3,1fr);max-width:1080px' },
+                mk('发动机编号', 'engineId'),
+                mk('仿真时长', 'duration', 's'),
+                mk('记录步长', 'recordStep', 's(积分步0.025整数倍)'),
+                h('div', { class: 'wb-field' }, h('label', null, '运行节奏'), paceSel),
+                h('div', { class: 'wb-field' }, h('label', null, '负载方式(运行中锁定)'), loadSel),
+                h('div', { class: 'wb-field' }, h('label', null, '空气回灌'), airSel)));
+            body.appendChild(loadBox);
+            const btn = h('button', {
+                class: 'wb-btn wb-btn-primary',
+                onclick: async () => {
+                    btn.classList.add('disabled');
+                    try {
+                        const cfgReq = {
+                            engineId: f.engineId.value.trim() || 'ENGINE-001',
+                            duration: parseFloat(f.duration.value),
+                            recordStep: parseFloat(f.recordStep.value),
+                            pace: paceSel.value,
+                            loadMode: loadSel.value,
+                            powerW: parseFloat(f.powerW ? f.powerW.value : c.powerW),
+                            mkpNm: parseFloat(f.mkpNm ? f.mkpNm.value : c.mkpNm),
+                            pitchDeg: parseFloat(f.pitchDeg ? f.pitchDeg.value : c.pitchDeg),
+                            mainPitchDeg: parseFloat(f.mainPitchDeg ? f.mainPitchDeg.value : c.mainPitchDeg),
+                            tailPitchDeg: parseFloat(f.tailPitchDeg ? f.tailPitchDeg.value : c.tailPitchDeg),
+                            externalAir: airSel.value === 'external',
+                            npRatio: parseFloat(c.npRatio)
+                        };
+                        if (!isFinite(cfgReq.duration) || cfgReq.duration <= 0) throw new Error('仿真时长须为正数');
+                        if (!isFinite(cfgReq.recordStep) || cfgReq.recordStep <= 0) throw new Error('记录步长须为正数');
+                        S.cfg = Object.assign({}, S.cfg, cfgReq);
+                        const resp = await apiPost('/prepare', cfgReq);
+                        if (!(resp && (resp.success || resp.code === 200))) {
+                            toast((resp && resp.message) || '准备发起失败', 'error');
+                            btn.classList.remove('disabled');
+                            return;
+                        }
+                        // 立即进入准备中视图,不等轮询(否则点击后像没反应)
+                        if (resp.data && resp.data.phase) S.phase = resp.data.phase;
+                        S.message = '准备AFO程序工作副本';
+                        toast('准备已发起;运行副本与模型初始化需要一些时间', 'info');
+                        renderAll();
+                        startPoll();
+                    } catch (e) { toast('准备失败:' + e.message, 'error'); }
+                    btn.classList.remove('disabled');
+                }
+            }, '准备并校验(创建运行副本)');
+            body.appendChild(h('div', { class: 'wb-actions-row', style: 'margin-top:14px' },
+                btn,
+                h('button', { class: 'wb-btn wb-btn-outline', onclick: () => { ctx.navigate('records'); } }, '查看历史仿真记录')));
+            body.appendChild(h('div', { class: 'wb-hint', style: 'margin-top:10px' },
+                'Np初值挡位为100%(设计转速点);运行中可施加80/90/95/100/105%与负载在线指令。'));
+            // 09-12:已完成准备,实际状态(来自prepare后的status.json初态)
+            if (S.phase === 'READY') {
+                const live0 = S.live || {};
+                const v0 = live0.values || [];
+                const eng0 = v0[AFO_GROUP.engine] || [];
+                const wf0 = (v0[AFO_GROUP.fuel_engine] || [])[0];
+                body.appendChild(h('div', { class: 'wb-section-title', style: 'margin:18px 0 8px' }, '已完成准备,实际状态'));
+                body.appendChild(h('table', { class: 'wb-table' },
+                    h('tr', null, ['Np实际', 'Ng实际', '燃油初值', '边界与记录'].map(x => h('th', null, x))),
+                    h('tr', null,
+                        h('td', null, eng0[AFO_E.Np] != null ? (Math.round(eng0[AFO_E.Np] * designNp() / 100 * 10) / 10 + ' rpm') : '—'),
+                        h('td', null, eng0[AFO_E.Ng] != null ? (Math.round(eng0[AFO_E.Ng]) + ' rpm') : '—'),
+                        h('td', null, wf0 != null ? Number(wf0).toFixed(5) + ' kg/s' : '—'),
+                        h('td', { class: 'wb-hint' }, '积分0.025 s / 记录' + S.cfg.recordStep + ' s / ' + (S.cfg.externalAir ? '外部回灌' : '原测试脉冲关闭')))));
+                body.appendChild(h('div', { class: 'wb-hint', style: 'margin:10px 0' },
+                    '本模式没有起动机、油门或停车控制。若要从静止起动,请切换至全模式仿真。'));
+            }
+        }
+
+        /* —— 系统页签(09-01/02/05):曲线 + 通道核对 —— */
+        function paintSystemTab(src) {
+            const tab = S.tab;
+            if (tab === 'engine') {
+                body.appendChild(h('div', { class: 'wb-infobar' },
+                    '发动机内部轴扭矩与外部PT负载扭矩分开展示;不将计算量冒充传感器测量。'));
+                body.appendChild(kvBig(src === 'result' ? bigFromResult() : bigFromLive()));
+                const grids = h('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:18px' });
+                grids.appendChild(chartCard('两轴转速 / rpm', chartFor(['Np', 'Ng'], src)));
+                grids.appendChild(chartCard('燃气温度 / K', chartFor(['Tt3', 'Tt45'], src)));
+                body.appendChild(grids);
+                body.appendChild(h('div', { class: 'wb-hint', style: 'margin-top:10px' },
+                    '其他通道:各截面温压、流量、实际压比、换算转速、共同工作残差——全通道见交付Excel(通道筛选在底部)。'));
+            } else if (tab === 'control') {
+                body.appendChild(h('div', { class: 'wb-infobar' },
+                    '修改指令请返回总控。这里查看控制响应、实际负载和操纵记录,不设置第二套指令。'));
+                const grids = h('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:18px' });
+                grids.appendChild(chartCard('Np响应 / rpm', chartFor(['Np'], src)));
+                grids.appendChild(chartCard('PT实际负载 / kW', chartFor(['Pload'], src)));
+                body.appendChild(grids);
+                body.appendChild(h('div', { class: 'wb-section-title', style: 'margin:16px 0 8px' }, '本次操纵记录'));
+                body.appendChild(eventsTable(src));
+            } else if (tab === 'fuel') {
+                // 09-03:燃油三路分开+三类燃油量对照;详细燃油只供既有滑油边界
+                body.appendChild(h('div', { style: 'margin-bottom:10px;padding:10px 14px;background:#fdf6e3;border:1px solid #f1c40f;border-radius:6px;color:#7d6608' },
+                    '⚠ 当前发动机采用简化执行机构输出;详细燃油输出只供既有滑油边界,不能据此评价发动机实际供油。'));
+                const lastFuel = g => {
+                    if (src === 'result') {
+                        const n = (S.result.time || []).length;
+                        for (let i = n - 1; i >= 0; i--) {
+                            const v = resultCell(g, i, 0);
+                            if (v != null) return v;
+                        }
+                        return null;
+                    }
+                    const arr = ((S.live.values || [])[g]) || [];
+                    return arr[0] != null ? arr[0] : null;
+                };
+                body.appendChild(kvBig([
+                    ['控制器燃油指令', lastFuel(AFO_GROUP.fuel_command), 'kg/s'],
+                    ['发动机实际采用燃油', lastFuel(AFO_GROUP.fuel_engine), 'kg/s'],
+                    ['详细燃油系统输出', lastFuel(AFO_GROUP.fuel_detailed), 'kg/s']]));
+                body.appendChild(chartCard('三类燃油量对照 / kg/s', chartFor(['Wf_cmd', 'Wf', 'Wfd'], src), true));
+                body.appendChild(h('div', { class: 'wb-hint', style: 'margin-top:10px' },
+                    '详细燃油与主供油链未闭环连接,结果保存仍分别保留,不用同名Wf覆盖。'));
+            } else if (tab === 'oil') {
+                body.appendChild(h('div', { class: 'wb-infobar' },
+                    '滑油系统按轴承腔/散热器/通风分组展示;原始轴承出口温度保持K,仅混温支路换算摄氏度。'));
+                if (src === 'result') {
+                    body.appendChild(chartCard('滑油关键通道(通道筛选可选)', oilChart(), true));
+                } else {
+                    body.appendChild(h('div', { class: 'wb-hint', style: 'margin:8px 0' },
+                        '运行中滑油全量通道以交付Excel为准;结束保存后本页提供曲线浏览。'));
+                }
+            } else if (tab === 'air') {
+                body.appendChild(h('div', { class: 'wb-infobar' },
+                    (S.result && S.result.config && S.result.config.externalAir) || (S.cfg && S.cfg.externalAir)
+                        ? '外部回灌模式:8路流量经一步延迟回灌发动机;G04仍提供滑油边界。'
+                        : '内部引气模式:外部空气系统仍计算,但8路流量不回灌发动机;G04仍提供滑油边界。'));
+                if (src === 'result') {
+                    const grids = h('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:18px' });
+                    grids.appendChild(chartCard('外部空气1~4路 / kg/s', airChart(0, 4), true));
+                    grids.appendChild(chartCard('外部空气5~8路 / kg/s', airChart(4, 8), true));
+                    body.appendChild(grids);
+                } else {
+                    body.appendChild(h('div', { class: 'wb-hint', style: 'margin:8px 0' },
+                        '运行中空气8路流量在总控实时值可见;结束保存后本页提供分路曲线。'));
+                }
+                body.appendChild(h('div', { class: 'wb-section-title', style: 'margin:16px 0 8px' }, '发动机边界核对'));
+                body.appendChild(h('table', { class: 'wb-table' },
+                    h('tr', null, ['位置', '流量来源', '温度 / 压力 / 焓 / 油气比'].map(x => h('th', null, x))),
+                    h('tr', null, h('td', null, '第1~8组'), h('td', null, '外部回灌启用时由8路结果替换'), h('td', null, '保留发动机模板')),
+                    h('tr', null, h('td', null, '第9~10组'), h('td', null, '始终保留发动机模板'), h('td', null, '保留发动机模板')),
+                    h('tr', null, h('td', null, '采用边界'), h('td', null, '回灌经原有一步延迟生效'), h('td', null, '同时保存模板、合并值、延迟值'))));
+            }
+        }
+
+        function chartCard(title, chart, wide) {
+            return h('div', { style: 'background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:12px;' + (wide ? '' : '') },
+                h('div', { style: 'font-weight:600;margin-bottom:6px' }, title),
+                chart || h('div', { class: 'wb-hint' }, '暂无曲线数据'));
+        }
+
+        /** 曲线:运行中→samples;历史→result.values。keys含'Pload/Wf_cmd'等映射到组索引。 */
+        function chartFor(keys, src) {
+            if (src === 'result') {
+                if (!S.result || !S.result.values || !S.result.values.length) return null;
+                const time = S.result.time || [];
+                const KEYMAP = {
+                    Np: [AFO_GROUP.engine, AFO_E.Np, 'Np'], Ng: [AFO_GROUP.engine, AFO_E.Ng, 'Ng'],
+                    Tt3: [AFO_GROUP.engine, AFO_E.Tt3, 'Tt3'], Tt45: [AFO_GROUP.engine, AFO_E.Tt45, 'Tt45'],
+                    W2: [AFO_GROUP.engine, AFO_E.W2, 'W2'],
+                    Pload: [AFO_GROUP.load, 4, 'Pload'], Mkp: [AFO_GROUP.load, 0, 'Mkp'],
+                    Wf_cmd: [AFO_GROUP.fuel_command, 0, 'Wf_command'], Wf: [AFO_GROUP.fuel_engine, 0, 'Wf_engine'],
+                    Wfd: [AFO_GROUP.fuel_detailed, 0, 'Wf_detailed']
+                };
+                const series = keys.map(k => {
+                    const m = KEYMAP[k];
+                    if (!m) return null;
+                    return { name: m[2], values: seriesFromResult(m[0], [m[1]])[0].values };
+                }).filter(Boolean);
+                if (!series.length) return null;
+                const box = h('div', null);
+                box.appendChild(chartLegend(series));
+                box.appendChild(lineChart({ series, xLabels: lineByTime(series[0].values, time), xTitle: '时间 / s' }));
+                return box;
+            }
+            // 实时/运行结束未保存:samples
+            if (S.samples.length < 2) return h('div', { class: 'wb-hint' }, '采样积累中(记录步长见配置)...');
+            const series = keys.map(k => ({ name: k, values: S.samples.map(s => s[k]) }));
+            const box = h('div', null);
+            box.appendChild(chartLegend(series));
+            box.appendChild(lineChart({
+                series, xLabels: lineByTime(S.samples.map(s => s.t)), xTitle: '时间 / s'
+            }));
+            return box;
+        }
+
+        function oilChart() {
+            const chs = (S.result.channels || []);
+            const g = chs.findIndex(c => c.id === 'oil_air_temperature');
+            if (g < 0) return null;
+            const series = seriesFromResult(g, [0]);
+            series[0].name = '滑油-空气温度';
+            const box = h('div', null);
+            box.appendChild(chartLegend(series));
+            box.appendChild(lineChart({ series, xLabels: lineByTime(series[0].values, S.result.time), xTitle: '时间 / s' }));
+            return box;
+        }
+        function airChart(from, to) {
+            const series = [];
+            for (let k = from; k < to; k++) {
+                const g = AFO_GROUP['air0' + (k + 1)];
+                if (g == null) continue;
+                const s = seriesFromResult(g, [0])[0];
+                s.name = '第' + (k + 1) + '路';
+                series.push(s);
+            }
+            if (!series.length) return null;
+            const box = h('div', null);
+            box.appendChild(chartLegend(series));
+            box.appendChild(lineChart({ series, xLabels: lineByTime(series[0].values, S.result.time), xTitle: '时间 / s' }));
+            return box;
+        }
+        function eventsTable(src) {
+            const events = src === 'result' ? (S.result.events || []) : ((S.live || {}).events || []);
+            if (!events.length) return h('div', { class: 'wb-hint' }, '无操纵记录。');
+            const tbl = h('table', { class: 'wb-table' },
+                h('tr', null, ['接收时刻', '操纵内容', '生效时刻', '状态'].map(x => h('th', null, x))));
+            events.forEach(ev => tbl.appendChild(h('tr', null,
+                h('td', { class: 'wb-hint' }, fmtT(ev.acceptedTime)),
+                h('td', null, cmdText(ev)),
+                h('td', { class: 'wb-hint' }, fmtT(ev.appliedTime)),
+                h('td', null, ev.status === 'applied' ? '已生效' : ev.status === 'accepted' ? '已接收' : (ev.reason ? '已回退:' + ev.reason : ev.status)))));
+            return tbl;
+        }
+
+        /* —— 底部共同游标(09-01) —— */
+        function paintFoot() {
+            foot.innerHTML = '';
+            const span = S.result && S.result.time ? S.result.time : S.samples.map(s => s.t);
+            const last = span.length ? span[span.length - 1] : 0;
+            foot.appendChild(h('div', { class: 'wb-infobar', style: 'display:flex;gap:26px' },
+                h('span', null, '⏱ 共同游标 ' + Number(last).toFixed(3) + ' s'),
+                h('span', { class: 'wb-hint', style: 'margin:0' }, '范围 0.000 ~ ' + Number(last).toFixed(3) + ' s'),
+                h('div', { class: 'wb-spacer' }),
+                S.live && S.live.runId || S.readonlyRunId
+                    ? h('a', { style: 'color:#096b77;text-decoration:underline;font-size:13px', href: excelUrl(S.readonlyRunId || S.live.runId), target: '_blank' }, '导出可见数据(全通道Excel)')
+                    : h('span', { class: 'wb-hint', style: 'margin:0' }, '导出可见数据(运行保存后可用)')));
+        }
+
+        /** 运行结束(未在历史只读模式)时自动拉取本会话result.json,供各系统页渲染全量曲线。 */
+        function ensureSessionResult() {
+            if (S.result || S.resultLoading || S.readonlyRunId) return;
+            const runId = S.live && S.live.runId;
+            if (!runId || S.phase !== 'ENDED') return;
+            S.resultLoading = true;
+            window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id)
+                    + '/afo/sessions/' + encodeURIComponent(runId) + '/result')
+                .then(resp => {
+                    if (resp && (resp.success || resp.code === 200) && resp.data) {
+                        S.result = resp.data;
+                        renderAll();
+                    }
+                })
+                .catch(() => { });
+        }
+
+        function renderAll() {
+            paintStatus();
+            paintTabs();
+            paintBody();
+            paintFoot();
+        }
+        /** 轮询轻更新:phase不变时只刷新状态条数字与总控,不重建输入框。 */
+        function lightUpdate() {
+            paintStatus();
+            if (S.tab === 'main' && canCmd()) { paintBody(); }
+            paintFoot();
+        }
+
+        /* —— 动作 —— */
+        async function sendCmd(kind, value) {
+            try {
+                await apiPost('/command', { kind: kind, value: value });
+                toast(kind === 'pause' ? '已请求暂停' : kind === 'resume' ? '已请求继续' : kind === 'stop' ? '已请求结束计算' : '命令已提交,等待主步生效', 'info');
+                refresh();
+            } catch (e) { toast('命令失败:' + e.message, 'error'); }
+        }
+        async function applyLoadDraft() {
+            const inp = document.getElementById('afo-load-draft');
+            const v = inp ? parseFloat(inp.value) : NaN;
+            if (!isFinite(v)) { toast('请输入负载数值', 'error'); return; }
+            const lm = S.cfg.loadMode;
+            sendCmd('load', lm === 'dual_pitch' ? [v, parseFloat(S.cfg.tailPitchDeg)] : v);
+        }
+        async function startRun() {
+            try {
+                await apiPost('/run', {});
+                toast('仿真已启动', 'success');
+                startPoll();
+            } catch (e) { toast('启动失败:' + e.message, 'error'); }
+        }
+        async function closeSession() {
+            try {
+                await apiPost('/close', {});
+                toast('会话已关闭;可新建运行', 'success');
+                // 清掉上一轮的结果/采样缓存,否则close后页面仍按"结果视图"渲染,没有任何操作按钮
+                S.phase = 'IDLE'; S.live = null; S.result = null;
+                S.samples = []; S.lastSampleT = -1; S.message = '';
+                S.npDraft = '1'; S.tab = 'main';
+                renderAll();
+            } catch (e) { toast('关闭失败:' + e.message, 'error'); }
+        }
+        function reuseConfig() {
+            const r = S.result;
+            if (r && r.config) {
+                S.cfg = Object.assign({}, S.cfg, {
+                    engineId: r.config.engineId, duration: r.config.duration, recordStep: r.config.recordStep,
+                    pace: r.config.pace, loadMode: r.config.loadMode, powerW: r.config.powerW, mkpNm: r.config.mkpNm,
+                    pitchDeg: r.config.pitchDeg, mainPitchDeg: r.config.mainPitchDeg, tailPitchDeg: r.config.tailPitchDeg,
+                    externalAir: !!r.config.externalAir
+                });
+            }
+            exitReadonly();
+        }
+        function exitReadonly() {
+            S.readonlyRunId = null; S.result = null; S.tab = 'main'; S.phase = 'IDLE';
+            S.live = null; S.samples = []; S.lastSampleT = -1; S.message = '';
+            renderAll(); refresh();
+        }
+
+        /* —— 历史(记录只读):拉result.json —— */
+        async function loadReadonly(runId) {
+            S.readonlyRunId = runId;
+            S.readonlyLoading = true;
+            S.result = null;
+            S.tab = 'main';
+            renderAll();
+            try {
+                const resp = await api('/sessions/' + encodeURIComponent(runId) + '/result');
+                if (resp && (resp.success || resp.code === 200) && resp.data) {
+                    S.result = resp.data;
+                } else {
+                    toast((resp && resp.message) || '结果尚未生成', 'error');
+                    S.readonlyRunId = null;
+                }
+            } catch (e) {
+                toast('历史结果加载失败:' + e.message, 'error');
+                S.readonlyRunId = null;
+            }
+            S.readonlyLoading = false;
+            renderAll();
+        }
+        window.__WB_AFO_OPEN__ = runId => { S.tab = 'main'; loadReadonly(runId); };
+        window.__WB_AFO_REUSE__ = rec => {
+            const r = rec && rec.config ? rec : (S.result || {});
+            const c = r.config || {};
+            S.cfg = Object.assign({}, S.cfg, {
+                engineId: c.engineId || S.cfg.engineId, duration: c.duration != null ? c.duration : S.cfg.duration,
+                recordStep: c.recordStep != null ? c.recordStep : S.cfg.recordStep, pace: c.pace || S.cfg.pace,
+                loadMode: c.loadMode || S.cfg.loadMode, powerW: c.powerW != null ? c.powerW : S.cfg.powerW,
+                mkpNm: c.mkpNm != null ? c.mkpNm : S.cfg.mkpNm, pitchDeg: c.pitchDeg != null ? c.pitchDeg : S.cfg.pitchDeg,
+                mainPitchDeg: c.mainPitchDeg != null ? c.mainPitchDeg : S.cfg.mainPitchDeg,
+                tailPitchDeg: c.tailPitchDeg != null ? c.tailPitchDeg : S.cfg.tailPitchDeg,
+                externalAir: !!c.externalAir
+            });
+            exitReadonly();
+        };
+
+        /* —— 轮询 —— */
+        let polling = false;
+        async function refresh() {
+            if (polling) return;
+            polling = true;
+            try {
+                const resp = await api('/status');
+                const d = resp && (resp.success || resp.code === 200) && resp.data ? resp.data : {};
+                const prev = S.phase;
+                if (!S.readonlyRunId) {
+                    S.phase = d.phase || 'IDLE';
+                    S.message = d.message || '';
+                    S.live = d.live || null;
+                    // MATLAB侧status.json的state是运行态真源(ready/running/paused/ended/failed):
+                    // 暂停由inbox命令在Simulink主步生效,Java侧phase不会变——以live.state为准,
+                    // 否则"暂停"按钮永远变不成"继续"
+                    if (S.live && S.live.state) {
+                        const st = String(S.live.state).toUpperCase();
+                        if (st === 'PAUSED' || st === 'ENDED' || st === 'FAILED') S.phase = st;
+                        else if (st === 'RUNNING' && S.phase === 'PAUSED') S.phase = 'RUNNING';
+                    }
+                    if (S.live && typeof S.live.time === 'number') pushSample(S.live);
+                }
+                if (S.phase === 'ENDED' && !S.result) ensureSessionResult();
+                if (S.phase !== prev) renderAll();
+                else lightUpdate();
+            } catch (e) { /* 轮询容错 */ }
+            polling = false;
+        }
+        function startPoll() {
+            if (window.__WB_AFO_TIMER__) clearInterval(window.__WB_AFO_TIMER__);
+            window.__WB_AFO_TIMER__ = setInterval(() => {
+                if (!S.readonlyRunId && ['PREPARING', 'READY', 'RUNNING', 'PAUSED', 'ENDED'].includes(S.phase)) {
+                    window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000; // 活动心跳
+                    refresh();
+                }
+            }, 1200); // 运行/暂停期间1.2s密集刷新,时间与按钮贴近实时(旧版为SSE推送,此处轮询等价)
+        }
+
+        if (window.__WB_AFO_TIMER__) clearInterval(window.__WB_AFO_TIMER__);
+        window.__WB_AFO_TIMER__ = setInterval(() => {
+            if (!S.readonlyRunId && ['PREPARING', 'READY', 'RUNNING', 'PAUSED', 'ENDED'].includes(S.phase)) refresh();
+        }, 1200);
+        renderAll();
+        refresh();
+        if (S.phase === 'ENDED') ensureSessionResult();
+        return wrap;
+    };
+    /* 仿真记录:单一菜单。列表按工作流维度组织,一行=一次工作流执行(起动停车建模含设计点配置校核/
+     * 全模式仿真/多系统联合仿真);"查看(只读)"跳转对应功能页并定位到该次任务的页签结果。 */
+    pages['testbench.records'] = (ctx) => afoRecordsPage(ctx);
+
+    /* ---------- API ---------- */
+    return {
+        ICONS, DEMO, WORKBENCHES, pages, h, toast, confirmDialog, showFilePreview,
+        lineChart, chartLegend, dataTable, groupSeriesColumns, numericColumns, toNum,
+        /** 渲染页面:workbenchKey + navKey → DOM */
+        renderPage(workbenchKey, navKey, ctx) {
+            const fn = pages[workbenchKey + '.' + navKey];
+            return fn ? fn(ctx) : h('div', { class: 'wb-empty' }, '页面未注册');
+        }
+    };
+})();

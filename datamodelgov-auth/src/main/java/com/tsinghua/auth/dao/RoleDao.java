@@ -41,7 +41,7 @@ public class RoleDao {
             String sql = "SELECT * FROM %s WHERE role = '%s';";
             String querySql = String.format(sql, ROLES_TABLE, role);
             
-            log.info("执行角色查询SQL: {}", querySql);
+//            log.info("执行角色查询SQL: {}", querySql);
             
             // 使用Session.executeSql - 参考ModelFileService和AssociationRulesService
             SessionExecuteSqlResult result = iginxSession.executeSql(querySql);

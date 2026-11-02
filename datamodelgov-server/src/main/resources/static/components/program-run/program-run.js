@@ -30,6 +30,11 @@ class ProgramRun extends HTMLElement {
 
     this._runStartTime = null;
 
+    // 停止请求已记录、等待算法安全保存的过渡态（图03-07/图05-07）
+    this._stopRequested = false;
+
+    this._stopConfirmTimer = null;
+
     this.customVarMode = false;
 
     this.selectedVars = new Set();
@@ -167,12 +172,12 @@ class ProgramRun extends HTMLElement {
       if (result && result.code === 200 && result.data) {
         const msg = result.data.message || '';
         // 仿真未运行时才更新（避免覆盖仿真日志）
-        if (this.runStatus !== 'RUNNING' && this.runStatus !== 'STARTING' && this.runStatus !== 'PAUSED' && this.runStatus !== 'QUEUED') {
+        if (this.runStatus !== 'RUNNING' && this.runStatus !== 'STARTING' && this.runStatus !== 'PAUSED' && this.runStatus !== 'QUEUED' && this.runStatus !== 'STOP_REQUESTED') {
           this.footerLog.textContent = msg;
         }
       }
     } catch (e) {
-      if (this.runStatus !== 'RUNNING' && this.runStatus !== 'STARTING' && this.runStatus !== 'PAUSED' && this.runStatus !== 'QUEUED') {
+      if (this.runStatus !== 'RUNNING' && this.runStatus !== 'STARTING' && this.runStatus !== 'PAUSED' && this.runStatus !== 'QUEUED' && this.runStatus !== 'STOP_REQUESTED') {
         this.footerLog.textContent = 'MATLAB 引擎状态未知';
       }
     }
@@ -1261,11 +1266,15 @@ class ProgramRun extends HTMLElement {
 
     const queued = state === 'QUEUED';
 
-    if (this.runBtn) this.runBtn.disabled = running || paused || starting || queued || state === 'UNKNOWN' || this._busyAction === 'run';
+    // 停止请求已记录、等待算法安全保存阶段（图03-07/图05-07）：
+    // 运行/暂停/停止全部锁定，停止按钮显示"等待安全保存"
+    const stopWaiting = state === 'STOP_REQUESTED' || this._stopRequested === true;
+
+    if (this.runBtn) this.runBtn.disabled = running || paused || starting || queued || stopWaiting || state === 'UNKNOWN' || this._busyAction === 'run';
 
     if (this.pauseBtn) {
 
-      this.pauseBtn.disabled = (!running && !paused) || this._busyAction === 'pause';
+      this.pauseBtn.disabled = (!running && !paused) || stopWaiting || this._busyAction === 'pause';
 
       this.pauseBtn.innerHTML = paused
 
@@ -1275,7 +1284,17 @@ class ProgramRun extends HTMLElement {
 
     }
 
-    if (this.stopBtn) this.stopBtn.disabled = (!running && !paused && !starting && !queued) || this._busyAction === 'stop';
+    if (this.stopBtn) {
+
+      this.stopBtn.disabled = stopWaiting || (!running && !paused && !starting && !queued) || this._busyAction === 'stop';
+
+      this.stopBtn.innerHTML = stopWaiting
+
+          ? '<span class="ico">⏳</span>等待安全保存'
+
+          : '<span class="ico">⏹</span>停止';
+
+    }
 
   }
 
@@ -1291,6 +1310,9 @@ class ProgramRun extends HTMLElement {
     if (this._busyAction) return;
     this._busyAction = 'run';
     this._cancelRun = false;
+    // 新一轮运行：解除上一次停止请求的等待态
+    this._stopRequested = false;
+    this._clearStopConfirmFallback();
     this.updateRunButtons(this.runStatus || 'STARTING');
 
     try {
@@ -1490,16 +1512,23 @@ class ProgramRun extends HTMLElement {
 
       if (result && result.code === 200) {
 
+        // 交付文档对齐（图03-07、图05-07）：停止请求只是"已记录"，
+        // 需等待算法在安全点保存检查点，后端确认 stopped 后才显示"已安全停止"
+        this._stopRequested = true;
+
         this._userInitiated = true;
-        this.updateStatusUI('STOPPED');
 
-        // 停止后：暂停/恢复均禁用
-        this.updateRunButtons('STOPPED');
+        this.updateStatusUI('STOP_REQUESTED');
 
-        // 不在此处 stopStream：让 SSE 继续接收"已执行停止命令"、"仿真结束"等日志，
-        // 等 handleLiveData 收到 finished=true 后自然关闭
+        // 等待安全保存期间：暂停/恢复/再次停止均不可用
+        this.updateRunButtons('STOP_REQUESTED');
+
+        this._armStopConfirmFallback(name, version);
 
       }
+
+      // 不在此处 stopStream：让 SSE 继续接收"已执行停止命令"、"仿真结束"等日志，
+      // 等 handleLiveData 收到 finished=true 后自然关闭
 
     } catch (e) {
 
@@ -1511,6 +1540,48 @@ class ProgramRun extends HTMLElement {
 
       this._busyAction = null;
       this.updateRunButtons(this.runStatus);
+
+    }
+
+  }
+
+
+
+  /**
+   * 停止确认兜底：SSE 长时间未返回 stopped 时，超时后按已停止处理，
+   * 避免界面卡在"等待安全保存"过渡态（图03-07/图05-07）
+   */
+  _armStopConfirmFallback(name, version) {
+
+    this._clearStopConfirmFallback();
+
+    this._stopConfirmTimer = setTimeout(() => {
+
+      this._stopConfirmTimer = null;
+
+      if (this._stopRequested) {
+
+        this._stopRequested = false;
+
+        this.updateStatusUI('STOPPED');
+
+        this.updateRunButtons('STOPPED');
+
+      }
+
+    }, 30000);
+
+  }
+
+
+
+  _clearStopConfirmFallback() {
+
+    if (this._stopConfirmTimer) {
+
+      clearTimeout(this._stopConfirmTimer);
+
+      this._stopConfirmTimer = null;
 
     }
 
@@ -1822,12 +1893,15 @@ class ProgramRun extends HTMLElement {
     }
 
     // 更新状态 UI
-    if (status === 'RUNNING' && !this._paused) {
+    if (status === 'RUNNING' && !this._paused && !this._stopRequested) {
       this.runStatus = 'RUNNING';
     }
 
     // 仿真结束
     if (data.finished || status === 'SUCCESS' || status === 'ERROR' || status === 'STOPPED') {
+      // 后端确认结束（含 stopped）：解除"等待安全保存"过渡态，此时才显示"已安全停止"
+      this._stopRequested = false;
+      this._clearStopConfirmFallback();
       this._streamDone = true;
       this.stopStream();
       this.stopRunTimer();
@@ -2351,11 +2425,15 @@ class ProgramRun extends HTMLElement {
 
       'PAUSED': '已暂停',
 
+      // 图03-07：停止请求只是"已记录"，尚未停止
+      'STOP_REQUESTED': '停止请求已记录，等待安全保存',
+
+      // 图03-08/图05-07：后端确认 stopped 后才显示已安全停止
+      'STOPPED': '已安全停止',
+
       'SUCCESS': '运行完成',
 
       'ERROR': '运行错误',
-
-      'STOPPED': '已停止',
 
       'UNKNOWN': '未知状态'
 
@@ -2374,6 +2452,8 @@ class ProgramRun extends HTMLElement {
       'RUNNING': '#45D483',
 
       'PAUSED': '#f59e0b',
+
+      'STOP_REQUESTED': '#f59e0b',
 
       'SUCCESS': '#35C9FF',
 
@@ -2406,11 +2486,11 @@ class ProgramRun extends HTMLElement {
 
     if (this.runBtn && this.stopBtn) {
 
-      const running = status === 'RUNNING' || status === 'STARTING' || status === 'QUEUED';
+      const running = status === 'RUNNING' || status === 'STARTING' || status === 'QUEUED' || status === 'STOP_REQUESTED';
 
       this.runBtn.disabled = running || status === 'UNKNOWN';
 
-      // 排队中不允许停止（还没真正开始）
+      // 排队中不允许停止（还没真正开始）；等待安全保存期间停止按钮同样锁定
       this.stopBtn.disabled = !(status === 'RUNNING' || status === 'STARTING');
 
     }
@@ -2423,7 +2503,8 @@ class ProgramRun extends HTMLElement {
 
         'SUCCESS': { msg: '运行完成', type: 'success' },
 
-        'STOPPED': { msg: '运行已停止', type: 'info' },
+        // 图03-09/图05-16：停止=算法安全点保存、结果保留，不作为失败
+        'STOPPED': { msg: '已安全停止，结果保留', type: 'info' },
 
         'ERROR': { msg: errorMsg ? '运行失败: ' + errorMsg : '运行失败', type: 'error' }
 
@@ -4016,7 +4097,9 @@ function buildEChartsOptions(data, time, status, duration) {
       'RUNNING': '仿真运行中，暂无数据',
       'IDLE': '点击运行按钮开始仿真',
       'ERROR': '运行失败，请重试',
-      'STOPPED': '运行已停止，请重新运行',
+      'STOP_REQUESTED': '停止请求已记录，等待算法安全保存...',
+      // 图03-08/图05-16：已安全停止=检查点已保存、已采集数据保留
+      'STOPPED': '已安全停止，已采集数据保留，可重新运行',
       'LOADING': '加载中...',
       'UNKNOWN': '暂无数据'
     };

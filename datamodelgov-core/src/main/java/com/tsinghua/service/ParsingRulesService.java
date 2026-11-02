@@ -28,7 +28,7 @@ public class ParsingRulesService {
     @Autowired
     private IginXClient iginxClient;
 
-    @PostConstruct
+//    @PostConstruct
     private void init() {
         try {
             // 1. Python标准规则（# @Input/@Output注释）

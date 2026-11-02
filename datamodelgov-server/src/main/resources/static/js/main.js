@@ -116,6 +116,8 @@ document.addEventListener('DOMContentLoaded', function() {
             'programUpload',
             'programRun',
             'programWorkflow',
+            'workbenchRoot',
+            'workbenchShell',
             'userManual'
         ];
         
@@ -203,12 +205,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
     };
-    
-    // 0. 动态加载数据源树和项目树
-    // 显示全局loading
-    window.showGlobalLoading('正在加载数据资源...');
-    loadDataSourceTree();
-    loadProjectTree();
 
     // 移除页面初始化Loading遮罩层
     const pageLoadingOverlay = document.getElementById('pageLoadingOverlay');
@@ -1743,119 +1739,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // 显示确认对话框
-    window.showConfirmDialog = function(title, message, onConfirm) {
-        // 移除已存在的对话框
-        const existingDialog = document.querySelector('.confirm-dialog-overlay');
-        if (existingDialog) {
-            existingDialog.remove();
-        }
-
-        const overlay = document.createElement('div');
-        overlay.className = 'confirm-dialog-overlay';
-        overlay.style.cssText = `
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.5);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 1000;
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        `;
-
-        const dialog = document.createElement('div');
-        dialog.className = 'confirm-dialog';
-        dialog.style.cssText = `
-            background: white;
-            border-radius: 8px;
-            padding: 24px;
-            max-width: 400px;
-            width: 90%;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-            transform: scale(0.9);
-            transition: transform 0.3s ease;
-        `;
-
-        dialog.innerHTML = `
-            <h3 style="margin: 0 0 12px 0; font-size: 18px; font-weight: 600; color: #1f2329;">${title}</h3>
-            <p style="margin: 0 0 24px 0; color: #646a73; line-height: 1.5;">${message}</p>
-            <div style="display: flex; justify-content: flex-end; gap: 12px;">
-                <button class="confirm-btn cancel" style="
-                    padding: 8px 16px;
-                    border: 1px solid #c9cdd4;
-                    border-radius: 4px;
-                    background: white;
-                    color: #1f2329;
-                    cursor: pointer;
-                    font-size: 14px;
-                    transition: all 0.2s;
-                ">取消</button>
-                <button class="confirm-btn confirm" style="
-                    padding: 8px 16px;
-                    border: 1px solid #f53f3f;
-                    border-radius: 4px;
-                    background: #f53f3f;
-                    color: white;
-                    cursor: pointer;
-                    font-size: 14px;
-                    transition: all 0.2s;
-                ">确定</button>
-            </div>
-        `;
-
-        overlay.appendChild(dialog);
-        document.body.appendChild(overlay);
-
-        // 动画显示
-        setTimeout(() => {
-            overlay.style.opacity = '1';
-            dialog.style.transform = 'scale(1)';
-        }, 10);
-
-        // 绑定事件
-        const cancelBtn = dialog.querySelector('.cancel');
-        const confirmBtn = dialog.querySelector('.confirm');
-
-        cancelBtn.addEventListener('click', () => {
-            closeDialog();
-        });
-
-        confirmBtn.addEventListener('click', () => {
-            closeDialog();
-            onConfirm();
-        });
-
-        // 点击遮罩关闭
-        overlay.addEventListener('click', (e) => {
-            if (e.target === overlay) {
-                closeDialog();
-            }
-        });
-
-        // ESC键关闭
-        const escHandler = (e) => {
-            if (e.key === 'Escape') {
-                closeDialog();
-                document.removeEventListener('keydown', escHandler);
-            }
-        };
-        document.addEventListener('keydown', escHandler);
-
-        function closeDialog() {
-            overlay.style.opacity = '0';
-            dialog.style.transform = 'scale(0.9)';
-            setTimeout(() => {
-                if (overlay.parentNode) {
-                    overlay.remove();
-                }
-            }, 300);
-        }
-    }
-
     // 删除数据源的API调用
     async function removeDataSource(alias) {
         try {
@@ -4084,3 +3967,34 @@ function renderProjectTree(treeData) {
 
     return html;
 }
+
+// ===== 新主界面(UI-R131 工作台):登录后默认进入工作台入口 =====
+(function () {
+    function enterWorkbench() {
+        try {
+            if (window.AppConfig && typeof window.AppConfig.isLoggedIn === 'function' && window.AppConfig.isLoggedIn()) {
+                if (typeof window.showComponent === 'function') {
+                    console.log('🚀 进入新版工作台界面');
+                    window.showComponent('workbenchRoot');
+                }
+            }
+        } catch (e) {
+            console.warn('工作台入口加载失败', e);
+        }
+    }
+    
+    // 页面加载完成后立即进入工作台，不加载旧组件
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+        setTimeout(() => {
+            console.log('🏁 页面加载完成，直接进入工作台');
+            enterWorkbench();
+        }, 100);
+    } else {
+        window.addEventListener('DOMContentLoaded', () => {
+            setTimeout(() => {
+                console.log('🏁 DOM加载完成，直接进入工作台');
+                enterWorkbench();
+            }, 100);
+        });
+    }
+})();

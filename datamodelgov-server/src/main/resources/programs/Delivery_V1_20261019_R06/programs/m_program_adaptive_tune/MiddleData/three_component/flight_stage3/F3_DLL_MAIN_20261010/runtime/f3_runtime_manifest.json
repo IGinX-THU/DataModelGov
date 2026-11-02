@@ -1,0 +1,129 @@
+{
+    "schemaVersion":  "F3_RUNTIME_RELEASE_MANIFEST_V1",
+    "release":  "F3_DLL_MAIN_20261010",
+    "modelMode":  0,
+    "provenance":  "Original F3 physical parameters and twelve reference conditions; new DLL and paired header; 36 genuine reference solves. Prior posterior and checkpoints are not re-signed.",
+    "files":  [
+                  {
+                      "file":  "GTESS.dll",
+                      "sha256":  "86B6856A47A1AB81B9D8A87F8D8989F7AF4FA17B560A0C1C66B3D558CB4B46C2"
+                  },
+                  {
+                      "file":  "GTESS.h",
+                      "sha256":  "B69DE8E7789008124642DB58B792685378E563A6832ED43B49A73CD197970847"
+                  },
+                  {
+                      "file":  "blockAndFunctions.h",
+                      "sha256":  "EE77B01D2703EF1E15F907D6B82D78D6AAA2EDEA48BADA3C8249B12E91823253"
+                  },
+                  {
+                      "file":  "types_TMATS.H",
+                      "sha256":  "3C129B490B877A02EF21F7D1923CB55D76A9BD6F083C317D029EF2C643F853F2"
+                  },
+                  {
+                      "file":  "Turboshaft-TS.mdl",
+                      "sha256":  "3FF921CA6451559DA0F0277DDCBA3282789FA6C8D96028C2A060C369A18CE356"
+                  },
+                  {
+                      "file":  "HPC02.MAP",
+                      "sha256":  "6CD1C4EDDB39543520C1A81775F6FBB77BDE8E6B6B8C6EC0FC6CA7A52FC62FE3"
+                  },
+                  {
+                      "file":  "HPT02.MAP",
+                      "sha256":  "626E97F64257E11932E9ECA720FCACDD8D1E7DE2B1F8580D1C81F6D51941CDDC"
+                  },
+                  {
+                      "file":  "LPT02.MAP",
+                      "sha256":  "24C9C5CD0931308F5F72B465E07014D0E47FFF805AB346C5392CF752DF1CD67A"
+                  },
+                  {
+                      "file":  "f3_visser16_parameters.mat",
+                      "sha256":  "CD9F87158529F45A7791A6EE7BF3A31E5956DBE882141B1AA45E589FEF934990"
+                  },
+                  {
+                      "file":  "f3_kurzke15_parameters.mat",
+                      "sha256":  "A4098860B4FFB5955FDA9217EA983469207F576CFA868CC6C6B55F6B59E61ABD"
+                  }
+              ],
+    "compatibility":  {
+                          "sourceManifestSHA256":  "2977A31DDCB0E16B4F2AEE9DC2CD44D7BA46F7944F20995C0764E97697710CB3",
+                          "sourceFiles":  [
+                                              {
+                                                  "file":  "GTESS.dll",
+                                                  "sha256":  "51580CB9B1FED35C51F385F88974756E9FCF0A822977CA6A0ABDB8489AF98086"
+                                              },
+                                              {
+                                                  "file":  "GTESS.h",
+                                                  "sha256":  "16B68A65CFA203FDC2E01562AA831A311EA50D93F1E67D4D9F3373313AF93B54"
+                                              },
+                                              {
+                                                  "file":  "blockAndFunctions.h",
+                                                  "sha256":  "EE77B01D2703EF1E15F907D6B82D78D6AAA2EDEA48BADA3C8249B12E91823253"
+                                              },
+                                              {
+                                                  "file":  "types_TMATS.H",
+                                                  "sha256":  "3C129B490B877A02EF21F7D1923CB55D76A9BD6F083C317D029EF2C643F853F2"
+                                              },
+                                              {
+                                                  "file":  "Turboshaft-TS.mdl",
+                                                  "sha256":  "3FF921CA6451559DA0F0277DDCBA3282789FA6C8D96028C2A060C369A18CE356"
+                                              },
+                                              {
+                                                  "file":  "HPC02.MAP",
+                                                  "sha256":  "6CD1C4EDDB39543520C1A81775F6FBB77BDE8E6B6B8C6EC0FC6CA7A52FC62FE3"
+                                              },
+                                              {
+                                                  "file":  "HPT02.MAP",
+                                                  "sha256":  "626E97F64257E11932E9ECA720FCACDD8D1E7DE2B1F8580D1C81F6D51941CDDC"
+                                              },
+                                              {
+                                                  "file":  "LPT02.MAP",
+                                                  "sha256":  "24C9C5CD0931308F5F72B465E07014D0E47FFF805AB346C5392CF752DF1CD67A"
+                                              },
+                                              {
+                                                  "file":  "f3_visser16_parameters.mat",
+                                                  "sha256":  "BD825A850E0B680CA22DC0678C624C6E45CB10546558B76F253C04AEB8D227CA"
+                                              },
+                                              {
+                                                  "file":  "f3_kurzke15_parameters.mat",
+                                                  "sha256":  "E3ADDBB1E53602A4B004B4BB0499F34A10F19C99D42C663DE4BCE77BE6737480"
+                                              }
+                                          ],
+                          "purpose":  "explicit parameter execution, never checkpoint migration or posterior recalibration"
+                      },
+    "sourceCode":  [
+                       {
+                           "Name":  "sht_f3_three_component_assets.m",
+                           "AfterSHA256":  "B4E2332A0C6EBC4B69578E70A30E131F7227D0E914A2ED7DFAE353CBD600E2BC"
+                       },
+                       {
+                           "Name":  "sht_f3_thermal_asset.m",
+                           "AfterSHA256":  "687C8C8F535E22C950B1788A6248F76B472CBD40EB249BC862F77A3CCCF87944"
+                       },
+                       {
+                           "Name":  "sht_f3_current_contract.m",
+                           "AfterSHA256":  "368197C2A488B5C683EFA5B15F41A40F77675F7895E39A3788DA3A7E1CE94F8A"
+                       },
+                       {
+                           "Name":  "sht_f3_steady_task.m",
+                           "AfterSHA256":  "495890AFACD8B3249FD818A837A39F14E55474B44851DF2EB318BA698C5CA4E5"
+                       },
+                       {
+                           "Name":  "sht_f34_deployment.m",
+                           "AfterSHA256":  "FEF7B88F2EC73DAE7D13EE74A7A4E9617B0479E542B6B5B82D444B84D9AB155B"
+                       },
+                       {
+                           "Name":  "sht_f3_transient_task.m",
+                           "AfterSHA256":  "E841C31BAF92F271BA4F12D105C87D6DDA81CC288A2332DA9552C1E796183F87"
+                       },
+                       {
+                           "Name":  "sht_f33_transient_delivery.m",
+                           "AfterSHA256":  "D8F9E0D8BD3899660F2F9C06E89CE9E4DDAABCE0B1D8CB866A787BC4DF327C04"
+                       },
+                       {
+                           "Name":  "sht_f33_excel_delivery.m",
+                           "AfterSHA256":  "3812E7ECAED721D72863AD481A96B25FA4BB5715961E94E33A573855FCA50895"
+                       }
+                   ],
+    "thermalBuildEvidence":  "thermal_build/evidence.mat"
+}

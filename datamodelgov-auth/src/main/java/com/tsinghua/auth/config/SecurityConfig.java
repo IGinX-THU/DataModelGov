@@ -109,11 +109,11 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
             
             // 配置授权规则 - 只做基础认证控制，所有权限由拦截器处理
             .authorizeRequests()
-                // 放行server模块的静态资源
-                .antMatchers("/", "/index.html").permitAll()
+                // 放行所有前端页面和静态资源（由前端JS根据token自行决定跳转）
+                .antMatchers("/", "/index.html", "/login.html", "/login", "/error", "/favicon.ico").permitAll()
                 .antMatchers("/static/**", "/css/**", "/js/**", "/images/**", "/lib/**", "/components/**", "/config/**").permitAll()
-                // 放行登录页面和错误页面
-                .antMatchers("/login.html", "/login", "/error", "/favicon.ico").permitAll()
+                // 放行Service Worker
+                .antMatchers("/sw.js").permitAll()
                 // 放行认证相关API
                 .antMatchers("/api/auth/**").permitAll()
                 // 放行插件静态资源（JS/CSS，供前端动态 import，不含敏感数据）
@@ -128,8 +128,8 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
                 .antMatchers("/actuator/health", "/actuator/info").permitAll()
                 // 所有业务API都需要认证（具体权限由拦截器控制）
                 .antMatchers("/api/**").authenticated()
-                // 其他所有请求都需要认证
-                .anyRequest().authenticated()
+                // 其他非API请求放行（前端路由由JS控制）
+                .anyRequest().permitAll()
                 .and()
             
             // 配置异常处理

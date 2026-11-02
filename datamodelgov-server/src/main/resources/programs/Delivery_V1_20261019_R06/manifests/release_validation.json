@@ -1,0 +1,68 @@
+{
+  "schema": "DELIVERY_R06_VALIDATION_V1",
+  "version": "R06",
+  "date": "2026-10-19",
+  "programBaseline": "R05/R04 accepted bytes; no engine algorithm changes",
+  "content": {
+    "rootDeliverables": 5,
+    "figureCount": 190,
+    "publicEntries": 20,
+    "runtimeSourcesAndExamplesUnchanged": 863,
+    "R05OriginalFilesUnchanged": 3329,
+    "interfaceWordPages": 215,
+    "manualWordPages": 67,
+    "WordExternalRelationships": 0,
+    "allFigureNumbersAndPNGBytesMatched": true
+  },
+  "offlineHTML": {
+    "status": "PASS",
+    "fileProtocol": true,
+    "externalNetworkRequests": 0,
+    "javascriptErrors": 0,
+    "businessGroupChecks": 18,
+    "PNGDecodeChecks": 380,
+    "searchAndPreview": true,
+    "desktop1440x1050AndMobile390x844": true
+  },
+  "relocatedShortTest": {
+    "status": "PASS_RELOCATED_CONTRACTS_ASSETS_AND_DLL_INITIALIZATION",
+    "MATLAB": "2019b",
+    "processSeconds": 51.5180177,
+    "driverSeconds": 20.6144677,
+    "priority": "BelowNormal",
+    "publicEntriesLocatedAndParsed": 20,
+    "TC24RouteConfigs": 2,
+    "TC27RouteMethodConfigs": 4,
+    "fullmodeTopologyConfigs": 2,
+    "representativeExcelHeaderReads": 4,
+    "availableExcelFiles": 57,
+    "MATVariableDirectoryReads": 19,
+    "AFOConfigurationValidated": true,
+    "newVC2010BridgeCompiledAndLoaded": true,
+    "threeSixComponentDLLInitialization": [
+      0,
+      0
+    ],
+    "driverSHA256": "A6818BA7EC581B3F4260E5C8FC43A87941C9B29CB4B067501FFDE1436B516502",
+    "noForcedTermination": true
+  },
+  "inheritedEvidence": {
+    "source": "R05 acceptance and R04/R03 corrections; full raw records remain in supplier archive",
+    "all20FunctionsFiniteShortTests": true,
+    "UI_R125Segments": 70,
+    "I01EmptyTestSourceFixed": true,
+    "I06LocalSamplesGuardFixed": true,
+    "I05ControlFixPreserved": true,
+    "completeNewIdentificationOrPosteriorRerun": false
+  },
+  "limits": [
+    "不是可运行GUI；公开核心可供界面调用，真实GUI接入仍由开发团队实现和验证。",
+    "R06新增测试没有积分完整仿真历程，没有重新执行完整辨识、UQ、C编译或完整统计校准。",
+    "目标隔离机及其许可、DLL运行库、桥接、权限和Excel后端仍须现场验证。",
+    "六部件两个低速点残差、既存低负载残差、恒Mkp波动和热参考域限制保留。",
+    "AFO连接警告、低温表域和部分单位未确认；前8路外部回灌不等同主模型10路接口。",
+    "自演化长历程和长期趋势、全包线、含噪闭环及非零瞬态联合UQ范围未由本次短测扩大。",
+    "R2019b桥接保留Perl旧解析器非致命弃用提示；DLL及两种MDL初始化实测成功。",
+    "PowerShell实际执行版本与5.1解析检查分开，不更改系统执行策略。"
+  ]
+}

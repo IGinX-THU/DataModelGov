@@ -10,6 +10,8 @@
  * @param {number} duration - 显示时长（毫秒），默认3000
  */
 function showToast(message, type = 'success', duration = 3000) {
+    // toast同步打印到控制台,便于排查线上问题(error级别走console.error)
+    (type === 'error' ? console.error : console.log).call(console, '[toast:' + type + ']', message);
     // Create toast container if it doesn't exist
     let toastContainer = document.querySelector('.global-toast-container');
     if (!toastContainer) {
@@ -199,7 +201,7 @@ function confirmDialog(message, title = '确认操作') {
             display: flex;
             align-items: center;
             justify-content: center;
-            z-index: 1000;
+            z-index: 20000;
         `;
 
         const modal = document.createElement('div');
@@ -820,3 +822,150 @@ window.CommonUtils = {
     generateId,
     LocalPDFGenerator
 };
+
+/* 确认弹窗(自 main.js 提取的公共工具;旧版/新版工作台页面共用) */
+window.showConfirmDialog = function(title, message, onConfirm) {
+        // 移除已存在的对话框
+        const existingDialog = document.querySelector('.confirm-dialog-overlay');
+        if (existingDialog) {
+            existingDialog.remove();
+        }
+
+        const overlay = document.createElement('div');
+        overlay.className = 'confirm-dialog-overlay';
+        overlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 20000;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        `;
+
+        const dialog = document.createElement('div');
+        dialog.className = 'confirm-dialog';
+        dialog.style.cssText = `
+            background: white;
+            border-radius: 8px;
+            padding: 24px;
+            max-width: 400px;
+            width: 90%;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            transform: scale(0.9);
+            transition: transform 0.3s ease;
+        `;
+
+        dialog.innerHTML = `
+            <h3 style="margin: 0 0 12px 0; font-size: 18px; font-weight: 600; color: #1f2329;">${title}</h3>
+            <p style="margin: 0 0 24px 0; color: #646a73; line-height: 1.5;">${message}</p>
+            <div style="display: flex; justify-content: flex-end; gap: 12px;">
+                <button class="confirm-btn cancel" style="
+                    padding: 8px 16px;
+                    border: 1px solid #c9cdd4;
+                    border-radius: 4px;
+                    background: white;
+                    color: #1f2329;
+                    cursor: pointer;
+                    font-size: 14px;
+                    transition: all 0.2s;
+                ">取消</button>
+                <button class="confirm-btn confirm" style="
+                    padding: 8px 16px;
+                    border: 1px solid #f53f3f;
+                    border-radius: 4px;
+                    background: #f53f3f;
+                    color: white;
+                    cursor: pointer;
+                    font-size: 14px;
+                    transition: all 0.2s;
+                ">确定</button>
+            </div>
+        `;
+
+        overlay.appendChild(dialog);
+        document.body.appendChild(overlay);
+
+        // 动画显示
+        setTimeout(() => {
+            overlay.style.opacity = '1';
+            dialog.style.transform = 'scale(1)';
+        }, 10);
+
+        // 绑定事件
+        const cancelBtn = dialog.querySelector('.cancel');
+        const confirmBtn = dialog.querySelector('.confirm');
+
+        cancelBtn.addEventListener('click', () => {
+            closeDialog();
+        });
+
+        confirmBtn.addEventListener('click', () => {
+            closeDialog();
+            onConfirm();
+        });
+
+        // 点击遮罩关闭
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) {
+                closeDialog();
+            }
+        });
+
+        // ESC键关闭
+        const escHandler = (e) => {
+            if (e.key === 'Escape') {
+                closeDialog();
+                document.removeEventListener('keydown', escHandler);
+            }
+        };
+        document.addEventListener('keydown', escHandler);
+
+        function closeDialog() {
+            overlay.style.opacity = '0';
+            dialog.style.transform = 'scale(0.9)';
+            setTimeout(() => {
+                if (overlay.parentNode) {
+                    overlay.remove();
+                }
+            }, 300);
+        }
+    }
+
+/* 全局Loading遮罩(自 DatasetMan 移植的模式:请求层统一loading + 并发计数)。
+ * 仅当页面未提供实现时注册(index.html 的 main.js 版本挂在 workspace-content 下,
+ * 新版工作台页面无该容器,此版本挂 body 且层级盖过工作台11000)。 */
+if (typeof window.showGlobalLoading !== 'function') {
+    let globalLoadingCount = 0;
+    window.showGlobalLoading = function (message = '正在加载...', updateText = true) {
+        globalLoadingCount++;
+        let overlay = document.getElementById('globalLoadingOverlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'globalLoadingOverlay';
+            overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;'
+                + 'background:rgba(255,255,255,0.72);display:flex;flex-direction:column;'
+                + 'align-items:center;justify-content:center;z-index:21000;gap:14px';
+            overlay.innerHTML = '<div style="width:38px;height:38px;border:3px solid #d8e3e8;'
+                + 'border-top-color:#0f766e;border-radius:50%;animation:gcu-spin .8s linear infinite"></div>'
+                + '<div class="gcu-text" style="color:#334155;font-size:13px">正在加载...</div>'
+                + '<style>@keyframes gcu-spin{to{transform:rotate(360deg)}}</style>';
+            document.body.appendChild(overlay);
+        }
+        if (updateText) {
+            const textEl = overlay.querySelector('.gcu-text');
+            if (textEl) textEl.textContent = message;
+        }
+    };
+    window.hideGlobalLoading = function () {
+        globalLoadingCount = Math.max(0, globalLoadingCount - 1);
+        if (globalLoadingCount > 0) return; // 并发请求未全部结束,遮罩保持
+        const overlay = document.getElementById('globalLoadingOverlay');
+        if (overlay) overlay.remove();
+    };
+}

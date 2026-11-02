@@ -437,7 +437,7 @@ class DataVisualization extends HTMLElement {
 
         if (!tableData || !tableData.header || !tableData.records) {
             console.error('无效的表格数据格式');
-            this.showEmptyState();
+            this.showEmptyState('返回数据无效：本次未显示数据；请调整查询条件后重试');
             return;
         }
 
@@ -1306,16 +1306,16 @@ class DataVisualization extends HTMLElement {
             } else if (result.success && (!result.data || !result.data.records || result.data.records.length === 0)) {
                 // 接口成功但没有数据
                 console.log('查询成功但没有数据');
-                this.showEmptyState();
+                this.showEmptyState('查询成功但没有数据：请调整时间范围、聚合函数或降采样间隔后重试');
             } else {
                 // 接口返回错误
                 console.error('数据查询失败:', result.message);
-                this.showError('数据查询失败: ' + (result.message || '未知错误'));
+                this.showError('数据查询失败：' + (result.message || '未知错误') + '；本次未返回数据，请调整查询条件后重试');
             }
 
         } catch (error) {
             console.error('加载数据失败:', error);
-            this.showError('网络错误，无法查询数据');
+            this.showError('网络错误：数据查询未完成；请检查网络连接后重新查询');
         } finally {
             // 无论成功还是失败，都隐藏全局loading
             if (window.hideGlobalLoading) {
@@ -1420,12 +1420,12 @@ class DataVisualization extends HTMLElement {
             if (result.success) {
                 this.showMessage('数据导出成功', 'success');
             } else {
-                this.showMessage('数据导出失败: ' + (result.message || '未知错误'), 'error');
+                this.showMessage('数据导出失败：' + (result.message || '未知错误') + '；文件未导出，请重试', 'error');
             }
 
         } catch (error) {
             console.error('导出数据失败:', error);
-            this.showMessage('网络错误，无法导出数据', 'error');
+            this.showMessage('网络错误：数据导出未完成；请检查网络连接后重试', 'error');
         } finally {
             // 无论成功还是失败，都隐藏全局loading
             if (window.hideGlobalLoading) {
@@ -1485,13 +1485,14 @@ class DataVisualization extends HTMLElement {
         if (resetBtn) resetBtn.disabled = false;
     }
 
-    showEmptyState() {
+    showEmptyState(reasonText) {
         // 不销毁ECharts实例，只显示覆盖层
+        // 空图不代表零值：未查询、查询无结果与数据无效按不同状态提示
         const emptyContent = `
             <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #999;">
                 <div style="font-size: 48px; margin-bottom: 16px;">📊</div>
                 <div style="font-size: 14px; margin-bottom: 8px;">暂无数据</div>
-                <div style="font-size: 12px;">请在左侧选择测点后点击查询</div>
+                <div style="font-size: 12px;">${reasonText || '尚未查询数据：请在左侧选择测点后点击查询'}</div>
             </div>
         `;
         this.showChartOverlay(emptyContent);
@@ -2467,7 +2468,7 @@ class DataVisualization extends HTMLElement {
             td.style.color = '#999';
             td.style.padding = '60px 20px';
             td.style.fontSize = '14px';
-            td.textContent = this.selectedPoints.size === 0 ? '请选择测点' : '暂无数据';
+            td.textContent = this.selectedPoints.size === 0 ? '尚未选择测点：请在左侧选择测点后查询' : '暂无数据：当前查询条件下无记录';
             tr.appendChild(td);
             tbody.appendChild(tr);
 
@@ -2773,7 +2774,7 @@ class DataVisualization extends HTMLElement {
                         } else {
                             // 400参数错误或500系统错误
                             console.error('数据删除失败:', result.message);
-                            this.showMessage('数据删除失败: ' + (result.message || '未知错误'), 'error');
+                            this.showMessage('数据删除失败：' + (result.message || '未知错误') + '；数据未删除，请稍后重试', 'error');
                         }
 
                         console.log('准备关闭弹窗');
@@ -2784,7 +2785,7 @@ class DataVisualization extends HTMLElement {
 
         } catch (error) {
             console.error('删除数据失败:', error);
-            this.showMessage('网络错误，无法删除数据', 'error');
+            this.showMessage('网络错误：删除未执行；请检查网络连接后重试', 'error');
             shouldCloseModal = true; // 网络异常是API调用结果，关闭弹窗
         }
 
@@ -2867,11 +2868,11 @@ class DataVisualization extends HTMLElement {
                 // 导入成功后刷新数据
                 this.loadData();
             } else {
-                this.showMessage(result.message || '数据导入失败', 'error');
+                this.showMessage(result.message || '数据导入失败：数据未写入资源库；请检查文件内容与路径前缀后重试', 'error');
             }
         } catch (error) {
             console.error('导入数据失败:', error);
-            this.showMessage('导入失败，请稍后重试', 'error');
+            this.showMessage('导入失败：网络或服务异常，数据未导入；请稍后重试', 'error');
         } finally {
             // 隐藏loading
             if (window.hideGlobalLoading) {

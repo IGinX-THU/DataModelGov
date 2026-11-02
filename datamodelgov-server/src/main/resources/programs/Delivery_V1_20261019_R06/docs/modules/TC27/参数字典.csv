@@ -1,0 +1,26 @@
+Kind,CIndex,MatlabHealthIndex,StepInIndex,Name,ChineseMeaning,Unit,ScheduleAxis,DefaultEstimationPolicy,Source
+稳态,0,1,41,Inlet_K_dP,进气道总压损失加性修正,无量纲,inlet_corrected_mass_flow,调度；压损原点固定为0,TC24参数定义和TC27父模型实际字典
+稳态,1,2,42,HPC_K_W,HPC整体流量修正,无量纲,ac_corrected_speed,调度；当前三部件HPC字段沿历史axis名,TC24参数定义和TC27父模型实际字典
+稳态,2,3,43,HPC_K_eta,HPC整体效率修正,无量纲,ac_corrected_speed,调度；不是HPC压比修正,TC24参数定义和TC27父模型实际字典
+稳态,6,7,47,Burner_K_dP,燃烧室总压损失修正,无量纲,burner_inlet_corrected_mass_flow,调度；固定零原点,TC24参数定义和TC27父模型实际字典
+稳态,7,8,48,GT_K_W,燃气涡轮流量修正,无量纲,gt_total_pressure_ratio,调度；按未施加该修正前物理坐标,TC24参数定义和TC27父模型实际字典
+稳态,8,9,49,GT_K_eta,燃气涡轮效率修正,无量纲,gt_total_pressure_ratio,调度,TC24参数定义和TC27父模型实际字典
+稳态,10,11,51,GT_PT_Duct_K_dP,GT与PT之间涵道总压损失修正,无量纲,gt_pt_duct_corrected_mass_flow,调度；固定零原点,TC24参数定义和TC27父模型实际字典
+稳态,11,12,52,PT_K_W,动力涡轮流量修正,无量纲,pt_total_pressure_ratio,调度,TC24参数定义和TC27父模型实际字典
+稳态,12,13,53,PT_K_eta,动力涡轮效率修正,无量纲,pt_total_pressure_ratio,调度,TC24参数定义和TC27父模型实际字典
+稳态,14,15,55,PT_Nozzle_Duct_K_dP,PT与喷管间涵道总压损失修正,无量纲,pt_nozzle_duct_corrected_mass_flow,调度；固定零原点,TC24参数定义和TC27父模型实际字典
+稳态,15,16,56,Nozzle_K_A8,喷管面积修正,无量纲,constant,组间均值后D中一个常值参数,TC24参数定义和TC27父模型实际字典
+测量偏置,-1,不属于发动机health,不直接占stepIn,Wf_bias,燃油流量测量偏置,kg/s,测量Wf除参考Wf,与发动机参数一起估计；实际燃油=测量燃油减偏置,sht_tc27_schedule和delivery
+瞬态,58,59,99,K_Jg,GT轴有效惯量修正,无量纲,constant,零初值零先验中心；界限[-0.5 1],07及组合reader
+瞬态,59,60,100,K_Jp,PT轴有效惯量修正,无量纲,constant,稳态调度和测量偏置固定后辨识,07及组合reader
+瞬态,60,61,101,K_tau_HPC,HPC金属热响应时间尺度修正,无量纲,constant,当前C合同1+K不是对数坐标,07及共享C热模型
+瞬态,61,62,102,K_tau_Burner,燃烧室金属热响应时间尺度修正,无量纲,constant,当前C合同1+K,07及共享C热模型
+瞬态,62,63,103,K_tau_GT,GT金属热响应时间尺度修正,无量纲,constant,当前C合同1+K,07及共享C热模型
+瞬态,63,64,104,K_tau_PT,PT金属热响应时间尺度修正,无量纲,constant,当前C合同1+K,07及共享C热模型
+瞬态,64,65,105,K_gapW_HPC,HPC间隙对流量的性能交换率修正,无量纲,constant,不是直接测量间隙值,07及共享C热模型
+瞬态,65,66,106,K_gapEta_HPC,HPC间隙对效率的性能交换率修正,无量纲,constant,不是直接测量间隙值,07及共享C热模型
+瞬态,66,67,107,K_gapEta_GT,GT间隙对效率的性能交换率修正,无量纲,constant,完整传参；工程解释依局部补偿证据,07及共享C热模型
+瞬态,67,68,108,K_gapEta_PT,PT间隙对效率的性能交换率修正,无量纲,constant,完整传参,07及共享C热模型
+瞬态,68,69,109,K_diskTau_HPC,HPC盘热响应时间尺度修正,无量纲,constant,当前C合同1+K,07及共享C热模型
+瞬态,69,70,110,K_diskTau_GT,GT盘热响应时间尺度修正,无量纲,constant,当前C合同1+K,07及共享C热模型
+瞬态,70,71,111,K_diskTau_PT,PT盘热响应时间尺度修正,无量纲,constant,当前C合同1+K,07及共享C热模型

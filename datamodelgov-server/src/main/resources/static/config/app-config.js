@@ -275,15 +275,34 @@ window.AppConfig = {
     
     // 统一API调用方法
     async request(url, options = {}) {
+        // 请求层统一loading(与DatasetMan同模式):options.loading 显式true/false优先;
+        // 默认仅写操作(POST/PUT/DELETE)出遮罩,GET(列表/轮询)不出,认证类请求不出
+        const { loading, ...fetchOptions } = options;
+        const isAuthUrl = url.includes('/api/auth/login') || url.includes('/api/auth/refresh');
+        const method = (fetchOptions.method || 'GET').toUpperCase();
+        const showLoading = !isAuthUrl && loading !== undefined
+            ? !!loading
+            : (!isAuthUrl && method !== 'GET');
+
         const config = {
-            method: 'GET',
-            ...options,
-            headers: { ...this.getAuthHeaders(), ...(options.headers || {}) }
+            method,
+            ...fetchOptions,
+            headers: { ...this.getAuthHeaders(), ...((fetchOptions || {}).headers || {}) }
         };
 
+        // FormData 上传由浏览器自动设置 multipart boundary，不能带 application/json
+        // 但必须保留 Authorization 认证头
+        if (config.body instanceof FormData) {
+            delete config.headers['Content-Type'];
+        }
+
         // 如果是登录或刷新接口，不需要token
-        if (url.includes('/api/auth/login') || url.includes('/api/auth/refresh')) {
+        if (isAuthUrl) {
             delete config.headers[this.auth.tokenHeader];
+        }
+
+        if (showLoading && typeof window.showGlobalLoading === 'function') {
+            window.showGlobalLoading('正在处理请求...', false);
         }
 
         // 创建AbortController用于超时控制
@@ -381,6 +400,10 @@ window.AppConfig = {
         } finally {
             // 确保清除timeout
             clearTimeout(timeoutId);
+            // 请求层统一loading：无论成功失败都隐藏(并发计数归零才隐藏)
+            if (showLoading && typeof window.hideGlobalLoading === 'function') {
+                window.hideGlobalLoading();
+            }
         }
     },
 
@@ -424,8 +447,30 @@ window.AppConfig = {
             const queryString = new URLSearchParams(params).toString();
             url += (url.includes('?') ? '&' : '?') + queryString;
         }
-        
+
         return this.request(url, { method: 'DELETE' });
+    },
+
+    // ===== 工作台域 API:按相对路径调用 /api/engine/** =====
+    async engineGet(path, params) {
+        let url = this.api.baseURL + '/api/engine/' + path;
+        if (params) url += '?' + new URLSearchParams(params).toString();
+        return this.request(url, { method: 'GET' });
+    },
+
+    async enginePost(path, data) {
+        return this.request(this.api.baseURL + '/api/engine/' + path, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data || {})
+        });
+    },
+
+    async engineUpload(path, formData) {
+        const url = this.api.baseURL + '/api/engine/' + path;
+        console.log('上传URL:', url);
+        // request() 会自动附加 Authorization;FormData 时自动去掉 Content-Type 让浏览器设 boundary
+        return this.request(url, { method: 'POST', body: formData });
     },
 
     // 处理认证失败

@@ -190,7 +190,7 @@
                 
                 if (result.success) {
                     // 登录成功，跳转到首页
-                    window.location.href = '/';
+                    window.location.href = '/workbench.html';
                 } else {
                     showError(result.message || '登录失败，请检查用户名和密码');
                 }
@@ -209,7 +209,7 @@
                 
                 if (isValid) {
                     // token有效，跳转到首页
-                    window.location.href = '/';
+                    window.location.href = '/workbench.html';
                 } else {
                     // token无效，清除并继续显示登录页
                     window.AppConfig.clearToken();

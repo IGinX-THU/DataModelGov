@@ -347,8 +347,9 @@ public class SimulationExecutionService {
      * 定时任务：检查并执行定时仿真
      * 每分钟检查一次，根据cron表达式判断是否需要执行
      * 只查询 status=true 的档案进行调度
+     * 【已停用】定时仿真调度随旧版链路下线；方法保留供手动调用与恢复参考。
      */
-    @Scheduled(cron = "0 * * * * ?")
+    // @Scheduled(cron = "0 * * * * ?")
     public void checkScheduledSimulations() {
         try {
             // 查询所有启用状态（status=true）的仿真档案
