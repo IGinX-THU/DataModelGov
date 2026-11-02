@@ -3,6 +3,7 @@ package com.tsinghua.engine;
 import com.mathworks.engine.MatlabEngine;
 import com.tsinghua.matlab.MatlabNativeLibrary;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -58,6 +59,20 @@ public class AfoService {
     private static final String R06_IN_CLASSPATH = "programs/Delivery_V1_20261019_R06/programs";
     private static final String AFO_SUBDIR = "programs/AFO_V_2";
 
+    /** 交付树根可配置解析(engine.r06.root):磁盘路径优先,classpath/内置资源/jar 兜底。 */
+    @Autowired(required = false)
+    private DeliveryTreeLocator deliveryTree;
+
+    /** 交付树 programs 层 classpath 基准(配置 classpath 模式时跟随配置)。 */
+    private String r06ProgramsBase() {
+        return deliveryTree != null ? deliveryTree.classpathProgramsBase() : R06_IN_CLASSPATH;
+    }
+
+    /** 配置的磁盘交付树 programs 层;未配置或无效返回 null。 */
+    private File deliveryProgramsDir() {
+        return deliveryTree != null ? deliveryTree.programsDir() : null;
+    }
+
     static class AfoSession {
         String projectId;
         String runId;
@@ -93,8 +108,15 @@ public class AfoService {
         File user = new File(workProgramsDir(projectId), "AFO_V_2");
         if (new File(user, "sht_afo_config.m").isFile()) return user;
 
-        File classes = new File("target/classes/" + R06_IN_CLASSPATH + "/AFO_V_2");
-        File classes2 = new File("datamodelgov-server/target/classes/" + R06_IN_CLASSPATH + "/AFO_V_2");
+        // 配置的磁盘交付树(engine.r06.root)优先于内置资源
+        File ext = deliveryProgramsDir();
+        if (ext != null) {
+            File extAfo = new File(ext, "AFO_V_2");
+            if (new File(extAfo, "sht_afo_config.m").isFile()) return extAfo;
+        }
+
+        File classes = new File("target/classes/" + r06ProgramsBase() + "/AFO_V_2");
+        File classes2 = new File("datamodelgov-server/target/classes/" + r06ProgramsBase() + "/AFO_V_2");
         if (new File(classes, "sht_afo_config.m").isFile()) return classes;
         if (new File(classes2, "sht_afo_config.m").isFile()) return classes2;
 
@@ -110,8 +132,8 @@ public class AfoService {
         Files.createDirectories(extracted.toPath());
         // fat jar 里资源在 BOOT-INF/classes/ 前缀下,两种前缀都试
         String[] prefixes = {
-                "BOOT-INF/classes/" + R06_IN_CLASSPATH + "/AFO_V_2/",
-                R06_IN_CLASSPATH + "/AFO_V_2/"
+                "BOOT-INF/classes/" + r06ProgramsBase() + "/AFO_V_2/",
+                r06ProgramsBase() + "/AFO_V_2/"
         };
         int extractedCount = 0;
         try (java.util.zip.ZipFile zf = new java.util.zip.ZipFile(jar.toFile())) {
@@ -177,10 +199,14 @@ public class AfoService {
     public void provisionProgramForProject(String projectId) throws IOException {
         File target = new File(workProgramsDir(projectId), "AFO_V_2");
         if (new File(target, "sht_afo_config.m").isFile()) return; // 已有(用户自备或已拷),不覆盖
-        File src = new File("datamodelgov-server/src/main/resources/" + R06_IN_CLASSPATH + "/AFO_V_2");
-        if (!src.isDirectory()) src = new File("src/main/resources/" + R06_IN_CLASSPATH + "/AFO_V_2");
-        if (!src.isDirectory()) src = new File("target/classes/" + R06_IN_CLASSPATH + "/AFO_V_2");
-        if (!src.isDirectory()) src = new File("datamodelgov-server/target/classes/" + R06_IN_CLASSPATH + "/AFO_V_2");
+        String base = r06ProgramsBase();
+        File src = null;
+        File ext = deliveryProgramsDir();
+        if (ext != null && new File(ext, "AFO_V_2").isDirectory()) src = new File(ext, "AFO_V_2");
+        if (src == null || !src.isDirectory()) src = new File("datamodelgov-server/src/main/resources/" + base + "/AFO_V_2");
+        if (!src.isDirectory()) src = new File("src/main/resources/" + base + "/AFO_V_2");
+        if (!src.isDirectory()) src = new File("target/classes/" + base + "/AFO_V_2");
+        if (!src.isDirectory()) src = new File("datamodelgov-server/target/classes/" + base + "/AFO_V_2");
         if (src.isDirectory()) {
             log.info("预置AFO_V_2程序到项目工作目录: {} -> {}", src, target);
             copyRecursively(src.toPath(), target.toPath());
@@ -191,7 +217,7 @@ public class AfoService {
         log.info("从jar解压预置AFO_V_2程序: {} -> {}", jar, target);
         Files.createDirectories(target.toPath());
         try (java.util.zip.ZipFile zf = new java.util.zip.ZipFile(jar.toFile())) {
-            String prefix = R06_IN_CLASSPATH + "/AFO_V_2/";
+            String prefix = r06ProgramsBase() + "/AFO_V_2/";
             java.util.Enumeration<? extends java.util.zip.ZipEntry> en = zf.entries();
             while (en.hasMoreElements()) {
                 java.util.zip.ZipEntry e = en.nextElement();

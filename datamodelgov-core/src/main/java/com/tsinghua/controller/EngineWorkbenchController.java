@@ -809,6 +809,10 @@ public class EngineWorkbenchController {
     };
     private static final String EXAMPLE_CLASSPATH = "programs/Delivery_V1_20261019_R06/examples/";
 
+    /** 交付树根可配置解析(engine.r06.root):配置磁盘路径时 examples 优先从该目录读取。 */
+    @Autowired(required = false)
+    private com.tsinghua.engine.DeliveryTreeLocator deliveryTree;
+
     /** 创建项目时把examples示例文件按类型复制入项目文件库(kind带"示例·"前缀;幂等:同名跳过;
      *  文件名保留examples原始名称,不重命名)。 */
     private void provisionExampleLibrary(String pid) throws java.io.IOException {
@@ -839,6 +843,16 @@ public class EngineWorkbenchController {
 
     /** 读取classpath交付examples文件:优先文件系统目录(IDE/解包运行),兜底jar内条目(部署运行)。 */
     private byte[] readExampleResource(String rel) {
+        // 配置的磁盘交付树(engine.r06.root)优先于内置资源
+        if (deliveryTree != null && rel.startsWith(EXAMPLE_CLASSPATH)) {
+            File extExamples = deliveryTree.examplesDir();
+            if (extExamples != null) {
+                File f = new File(extExamples, rel.substring(EXAMPLE_CLASSPATH.length()));
+                if (f.isFile()) {
+                    try { return java.nio.file.Files.readAllBytes(f.toPath()); } catch (Exception ignore) { }
+                }
+            }
+        }
         String[] roots = {
                 "datamodelgov-server/src/main/resources/",
                 "src/main/resources/",

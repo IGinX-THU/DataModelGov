@@ -1406,8 +1406,14 @@ public class F3FlightService {
             applyF3ProgramPatches(user);
             return user;
         }
-        File c1 = new File("target/classes/" + R06_IN_CLASSPATH + "/m_program_adaptive_tune");
-        File c2 = new File("datamodelgov-server/target/classes/" + R06_IN_CLASSPATH + "/m_program_adaptive_tune");
+        // 配置的磁盘交付树(engine.r06.root)优先于内置资源
+        File ext = deliveryTree != null ? deliveryTree.programsDir() : null;
+        if (ext != null) {
+            File extProg = new File(ext, "m_program_adaptive_tune");
+            if (new File(extProg, "Start_FlightModelAdapt_14_SteadyTask.m").isFile()) return extProg;
+        }
+        File c1 = new File("target/classes/" + r06ProgramsBase() + "/m_program_adaptive_tune");
+        File c2 = new File("datamodelgov-server/target/classes/" + r06ProgramsBase() + "/m_program_adaptive_tune");
         if (new File(c1, "Start_FlightModelAdapt_14_SteadyTask.m").isFile()) return c1;
         if (new File(c2, "Start_FlightModelAdapt_14_SteadyTask.m").isFile()) return c2;
         throw new IOException("未找到F3飞参程序(项目工作目录与classpath均无);"
@@ -1415,6 +1421,15 @@ public class F3FlightService {
     }
 
     private static final String R06_IN_CLASSPATH = "programs/Delivery_V1_20261019_R06/programs";
+
+    /** 交付树根可配置解析(engine.r06.root):磁盘路径优先,classpath/内置资源/jar 兜底。 */
+    @Autowired(required = false)
+    private DeliveryTreeLocator deliveryTree;
+
+    /** 交付树 programs 层 classpath 基准(配置 classpath 模式时跟随配置)。 */
+    private String r06ProgramsBase() {
+        return deliveryTree != null ? deliveryTree.classpathProgramsBase() : R06_IN_CLASSPATH;
+    }
 
     /**
      * 交付程序运行期补丁(F3):项目工作副本字节级ASCII替换,交付树不动,幂等。
