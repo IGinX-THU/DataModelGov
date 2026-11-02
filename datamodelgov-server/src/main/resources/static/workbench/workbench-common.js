@@ -1508,9 +1508,67 @@ window.Workbench = (() => {
                                 const d = resp && (resp.success || resp.code === 200) ? resp.data : null;
                                 const tbl = d && (d.parameterTable || (d.delivery && d.delivery.parameterTable));
                                 target.innerHTML = '';
-                                target.appendChild(Array.isArray(tbl) && tbl.length
-                                    ? dataTable(tbl, { maxRows: 20 })
-                                    : h('div', { class: 'wb-hint' }, '明细中未包含参数区间表。'));
+                                if (!Array.isArray(tbl) || !tbl.length) {
+                                    target.appendChild(h('div', { class: 'wb-hint' }, '明细中未包含参数区间表。'));
+                                    return;
+                                }
+                                target.appendChild(h('div', { class: 'wb-hint', style: 'margin:2px 0 6px' },
+                                    '共 ' + tbl.length + ' 个参数;q05–q95为后验样本90%区间;黑色点=确定性点估计,橙色方块=UQ中位数;区间越窄=该参数辨识越充分。'));
+                                const chartHost = h('div', { style: 'width:100%;height:' + Math.max(360, tbl.length * 16 + 150) + 'px;border:1px solid #e5e7eb;border-radius:6px' });
+                                target.appendChild(chartHost);
+                                target.appendChild(h('div', { class: 'wb-section-title', style: 'margin:14px 0 6px' }, '参数明细(全量)'));
+                                target.appendChild(dataTable(tbl, { maxRows: tbl.length + 1 }));
+                                const loadChart = () => {
+                                    if (!window.echarts) { setTimeout(loadChart, 200); return; }
+                                    const chart = window.echarts.init(chartHost);
+                                    const renderItem = (params, api) => {
+                                        const idx = api.value(0);
+                                        const lo = api.coord([api.value(1), idx]);
+                                        const hi = api.coord([api.value(2), idx]);
+                                        const barH = api.size([0, 1])[1] * 0.45;
+                                        return { type: 'rect', shape: { x: Math.min(lo[0], hi[0]), y: lo[1] - barH / 2, width: Math.max(2, Math.abs(hi[0] - lo[0])), height: barH }, style: api.style() };
+                                    };
+                                    chart.setOption({
+                                        title: { text: '参数95%置信区间(后验样本分位数)', left: 10, top: 4, textStyle: { fontSize: 13 } },
+                                        tooltip: {
+                                            trigger: 'item',
+                                            formatter: p => {
+                                                const row = tbl[p.dataIndex] || {};
+                                                return (row.parameter || '') + '<br/>点估计: ' + (+row.point_estimate).toPrecision(4)
+                                                    + '<br/>中位数: ' + (+row.median).toPrecision(4)
+                                                    + '<br/>q05–q95: ' + (+row.q05).toPrecision(4) + ' ~ ' + (+row.q95).toPrecision(4)
+                                                    + '<br/>边界: [' + row.lower_bound + ', ' + row.upper_bound + ']';
+                                            }
+                                        },
+                                        grid: { left: 130, right: 70, top: 36, bottom: 24 },
+                                        xAxis: { type: 'value', scale: true, name: '修正量', nameLocation: 'middle' },
+                                        yAxis: { type: 'category', data: tbl.map(r => r.parameter), inverse: true, axisLabel: { fontSize: 10 } },
+                                        dataZoom: [{ type: 'inside' }, { type: 'slider', right: 12, top: 36, bottom: 20, width: 16 }],
+                                        series: [
+                                            { name: 'q05–q95', type: 'custom', renderItem: renderItem,
+                                              data: tbl.map((r, i) => [i, r.q05, r.q95]),
+                                              encode: { x: [1, 2], y: 0 }, itemStyle: { color: '#5b8ff9', opacity: 0.5 }, z: 1 },
+                                            { name: '确定性点估计', type: 'scatter',
+                                              data: tbl.map((r, i) => [i, r.point_estimate]),
+                                              symbolSize: 5, itemStyle: { color: '#111827' }, z: 2 },
+                                            { name: 'UQ中位数', type: 'scatter',
+                                              data: tbl.map((r, i) => [i, r.median]),
+                                              symbol: 'rect', symbolSize: 5, itemStyle: { color: '#d97706' }, z: 2 }
+                                        ]
+                                    });
+                                };
+                                if (window.echarts) loadChart();
+                                else {
+                                    let ld = document.getElementById('fm-echarts-loader');
+                                    if (!ld) {
+                                        ld = document.createElement('script');
+                                        ld.id = 'fm-echarts-loader';
+                                        ld.src = './lib/echarts/echarts.min.js';
+                                        document.head.appendChild(ld);
+                                    }
+                                    const wait = () => { if (window.echarts) loadChart(); else setTimeout(wait, 200); };
+                                    wait();
+                                }
                             })
                             .catch(e => {
                                 target.innerHTML = '';

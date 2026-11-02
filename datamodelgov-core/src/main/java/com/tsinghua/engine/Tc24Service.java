@@ -992,7 +992,13 @@ public class Tc24Service {
     /** TC27 UQ交付扫描:交付Excel可能落在report_outputs等较深目录,走6层取最新。 */
     /** dmg_tc27_read.m:TC27 UQ交付的参数区间表(ParameterDictionary逐参数 + PosteriorSamples加权分位数)。 */
     private boolean runTc27ReadAdapter(String resultFile, File detailOut, String projectId) throws IOException {
-        if (detailOut.exists()) return true;
+        // schema自检:旧版明细(无posteriorQ025字段)视为无效,按新schema重新生成
+        if (detailOut.exists()) {
+            try {
+                String prev = new String(Files.readAllBytes(detailOut.toPath()), StandardCharsets.UTF_8);
+                if (prev.contains("posteriorQ025")) return true;
+            } catch (Exception ignore) { }
+        }
         try {
             File programCopy = ensureTc24Source(projectId);
             File adapterDir = new File(System.getProperty("java.io.tmpdir"), "datamodelgov-read-adapter");
@@ -1005,22 +1011,36 @@ public class Tc24Service {
             m.append("file = c.resultFile;\n");
             m.append("t=readtable(file,'Sheet','ParameterDictionary','PreserveVariableNames',true);\n");
             m.append("s=readtable(file,'Sheet','PosteriorSamples','PreserveVariableNames',true);\n");
+            m.append("man=readtable(file,'Sheet','Manifest','PreserveVariableNames',true);\n");
             m.append("w=s.weight(:); w=w/max(sum(w));\n");
-            m.append("names=cellstr(string(t.node_id)); n=height(t);\n");
-            m.append("q05=zeros(n,1);q50=zeros(n,1);q95=zeros(n,1);mn=zeros(n,1);mx=zeros(n,1);\n");
+            m.append("n=height(t); names=cellstr(string(t.node_id)); gk=cellstr(string(t.group_kind));\n");
+            m.append("pm=zeros(n,1);pmed=zeros(n,1);q025=zeros(n,1);q975=zeros(n,1);cw=zeros(n,1);\n");
             m.append("for j=1:n\n");
             m.append("    th=s.(names{j}); [th,ord]=sort(th); ww=w(ord); cs=cumsum(ww); cs=cs/max(cs);\n");
-            m.append("    q05(j)=th(find(cs>=0.05,1)); q50(j)=th(find(cs>=0.50,1)); q95(j)=th(find(cs>=0.95,1));\n");
-            m.append("    mn(j)=min(th); mx(j)=max(th);\n");
+            m.append("    pm(j)=sum(th.*w);\n");
+            m.append("    pmed(j)=th(find(cs>=0.50,1));\n");
+            m.append("    lo=th(find(cs>=0.025,1)); hi=th(find(cs>=0.975,1)); q025(j)=lo; q975(j)=hi; cw(j)=hi-lo;\n");
             m.append("end\n");
-            m.append("T=table(t.node_id,double(t.c_index),double(t.coordinate),double(t.point_estimate),double(t.lower_bound),double(t.upper_bound),mn,q05,q50,q95,mx, ...\n");
-            m.append("    'VariableNames',{'parameter','c_index','coordinate','point_estimate','lower_bound','upper_bound','sample_min','q05','median','q95','sample_max'});\n");
-            m.append("view=struct('parameterTable',table2struct(T));\n");
+            m.append("base=cell(n,1);\n");
+            m.append("for j=1:n\n");
+            m.append("    parts=strsplit(names{j},'_');\n");
+            m.append("    if numel(parts)>1, base{j}=strjoin(parts(1:end-1),'_'); else, base{j}=names{j}; end\n");
+            m.append("end\n");
+            m.append("T=table(names,base,gk,double(t.c_index),double(t.coordinate),double(t.point_estimate),double(t.lower_bound),double(t.upper_bound),pm,pmed,q025,q975,cw, ...\n");
+            m.append("    'VariableNames',{'name','baseName','groupKind','c_index','coordinate','deterministicEstimate','lower_bound','upper_bound','posteriorMean','posteriorMedian','posteriorQ025','posteriorQ975','credibleWidth95'});\n");
+            m.append("mf=struct();\n");
+            m.append("fns=man.Properties.VariableNames;\n");
+            m.append("for k=1:numel(fns)\n");
+            m.append("    col=man.(fns{k});\n");
+            m.append("    if numel(col)>=1 && iscell(col), mf.(fns{k})=char(string(col{1,1})); elseif numel(col)>=1, mf.(fns{k})=char(string(col(1,1))); end\n");
+            m.append("end\n");
+            m.append("view=struct('parameterTable',table2struct(T),'delivery',struct('manifest',mf));\n");
             m.append("payload=jsonencode(view);\n");
             m.append("fid=fopen(c.detailFile,'w','n','UTF-8'); fwrite(fid,payload,'char'); fclose(fid);\n");
             m.append("r='ok';\n");
             m.append("end\n");
             Files.write(new File(adapterDir, "dmg_tc27_read.m").toPath(), m.toString().getBytes(StandardCharsets.UTF_8));
+
             Map<String, Object> cfg = new LinkedHashMap<>();
             cfg.put("resultFile", resultFile.replace(File.separatorChar, '/'));
             cfg.put("detailFile", detailOut.getAbsolutePath().replace(File.separatorChar, '/'));
