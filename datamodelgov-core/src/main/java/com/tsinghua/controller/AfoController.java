@@ -388,6 +388,39 @@ public class AfoController {
         }
     }
 
+    @ApiOperation("增量数据SSE流(program-run live-stream同构;token走query;end事件=终态/会话结束)")
+    @GetMapping(value = "/live-stream", produces = org.springframework.http.MediaType.TEXT_EVENT_STREAM_VALUE)
+    @RequirePermission(Permission.READ)
+    public org.springframework.web.servlet.mvc.method.annotation.SseEmitter liveStream(
+            @PathVariable("pid") String pid,
+            @org.springframework.web.bind.annotation.RequestParam(value = "afterSeq", required = false, defaultValue = "0") Long afterSeq,
+            @org.springframework.web.bind.annotation.RequestParam(value = "sessionId", required = false) String sessionId,
+            @org.springframework.web.bind.annotation.RequestParam(value = "columns", required = false) String columns) {
+        org.springframework.web.servlet.mvc.method.annotation.SseEmitter em =
+                new org.springframework.web.servlet.mvc.method.annotation.SseEmitter(0L);
+        try {
+            int[] cols = null;
+            if (columns != null && !columns.trim().isEmpty()) {
+                String[] parts = columns.trim().split(",");
+                cols = new int[parts.length];
+                for (int i = 0; i < parts.length; i++) {
+                    cols[i] = Integer.parseInt(parts[i].trim());
+                }
+            }
+            return afoService.openLiveStream(pid, afterSeq == null ? 0L : afterSeq, sessionId, cols);
+        } catch (Exception e) {
+            // SSE 错误以事件形式返回,前端降级为轮询
+            try {
+                em.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event()
+                        .name("err").data(e.getMessage() == null ? "live-stream unavailable" : e.getMessage()));
+                em.complete();
+            } catch (Exception ignore) {
+                // 客户端已断开
+            }
+            return em;
+        }
+    }
+
     @ApiOperation("历史会话结果(result.json:config/channels/time/values/events/timing)")
     @GetMapping("/sessions/{runId}/result")
     @RequirePermission(Permission.READ)

@@ -52,6 +52,36 @@ public class AfoService {
     private volatile AfoSession session;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
 
+    /** AFO 专属引擎预热(program-run 引擎池同思路;会话独占引擎,常备 1 台)。 */
+    @org.springframework.beans.factory.annotation.Value("${engine.afo.warm-engine:true}")
+    private boolean warmEngineEnabled;
+    private volatile MatlabEngine warmEngine;
+    private final ExecutorService warmExecutor = Executors.newSingleThreadExecutor(
+            r -> { Thread t = new Thread(r, "afo-warm-engine"); t.setDaemon(true); return t; });
+
+    /** 增量数据 SSE 泵:200ms 扫描 stream 块,向订阅者推送增量(program-run SSE 同构)。 */
+    private final List<LiveSub> liveSubs = new java.util.concurrent.CopyOnWriteArrayList<>();
+    private final java.util.concurrent.ScheduledExecutorService livePump =
+            java.util.concurrent.Executors.newSingleThreadScheduledExecutor(
+                    r -> { Thread t = new Thread(r, "afo-live-pump"); t.setDaemon(true); return t; });
+
+    /** 一个 SSE 订阅者:独立游标与列裁剪;busy 防重入,done 后移除。 */
+    private static class LiveSub {
+        final org.springframework.web.servlet.mvc.method.annotation.SseEmitter em;
+        final String expectSessionId;
+        final int[] columns;
+        long cursor;
+        volatile boolean busy;
+        volatile boolean done;
+        LiveSub(org.springframework.web.servlet.mvc.method.annotation.SseEmitter em,
+                String expectSessionId, int[] columns, long afterSeq) {
+            this.em = em;
+            this.expectSessionId = expectSessionId;
+            this.columns = columns;
+            this.cursor = afterSeq;
+        }
+    }
+
     public AfoService(EngineProjectStore store) {
         this.store = store;
     }
@@ -94,6 +124,40 @@ public class AfoService {
     @PostConstruct
     void init() {
         log.info("AFO_V_2 多系统联合仿真接入层就绪");
+        // 引擎预热(program-run 引擎池同款思路):AFO 会话独占引擎,启动期预启 1 台专属引擎,
+        // prepare 直接取用(省 ~100s 冷启动);会话关闭后自动回填
+        if (warmEngineEnabled) {
+            warmExecutor.submit(this::startWarmEngine);
+        }
+        // 增量数据 SSE 泵(有订阅者才扫文件)
+        livePump.scheduleWithFixedDelay(this::pumpLiveSafely, 200, 200, java.util.concurrent.TimeUnit.MILLISECONDS);
+    }
+
+    private void startWarmEngine() {
+        try {
+            // 原生库路径注入可能晚于本 Bean 初始化(TC24 池/试车台各自注入);此处幂等补齐
+            com.tsinghua.matlab.MatlabNativeLibrary.prepare(null);
+            long t0 = System.currentTimeMillis();
+            MatlabEngine e = MatlabEngine.startMatlab();
+            warmEngine = e;
+            log.info("AFO专属MATLAB引擎预热完成(耗时 {} ms),prepare 将直接取用", System.currentTimeMillis() - t0);
+        } catch (Throwable e) {
+            warmEngine = null;
+            log.warn("AFO专属MATLAB引擎预热失败(prepare 时将同步重试): {}", e.getMessage());
+        }
+    }
+
+    /** 取预热引擎;未就绪时同步冷启兜底(prepare 不因此失败两次)。 */
+    private synchronized MatlabEngine takeWarmEngine() throws Exception {
+        MatlabEngine e = warmEngine;
+        warmEngine = null;
+        if (e != null) {
+            log.info("AFO prepare 取用预热引擎");
+            return e;
+        }
+        log.warn("AFO 预热引擎不可用,同步冷启动MATLAB(较慢)");
+        com.tsinghua.matlab.MatlabNativeLibrary.prepare(null);
+        return MatlabEngine.startMatlab();
     }
 
     /* ---------- 程序源解析 ---------- */
@@ -271,6 +335,80 @@ public class AfoService {
         if (s == null || s.outputDir == null) {
             throw new IOException("无活动AFO会话;动态历史在准备完成后可读");
         }
+        return readLiveFrom(s, afterSeq, expectSessionId, maxRows, columns);
+    }
+
+    /** 打开增量数据 SSE 流(program-run live-stream 同构):订阅即从 afterSeq 补读全量,此后 200ms 泵推增量。 */
+    public org.springframework.web.servlet.mvc.method.annotation.SseEmitter openLiveStream(
+            String projectId, long afterSeq, String expectSessionId, int[] columns) throws IOException {
+        AfoSession s = session;
+        if (s == null || s.outputDir == null) {
+            throw new IOException("无活动AFO会话;动态历史在准备完成后可读");
+        }
+        org.springframework.web.servlet.mvc.method.annotation.SseEmitter em =
+                new org.springframework.web.servlet.mvc.method.annotation.SseEmitter(0L); // 不超时,由 end/complete 关闭
+        LiveSub sub = new LiveSub(em, expectSessionId, columns, afterSeq);
+        liveSubs.add(sub);
+        em.onCompletion(() -> liveSubs.remove(sub));
+        em.onTimeout(() -> liveSubs.remove(sub));
+        em.onError(t -> liveSubs.remove(sub));
+        return em;
+    }
+
+    /** SSE 泵:逐订阅者按游标读增量并推送;isFinal/会话结束发 end 事件。 */
+    private void pumpLiveSafely() {
+        if (liveSubs.isEmpty()) {
+            return;
+        }
+        AfoSession s = session;
+        com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
+        for (LiveSub sub : liveSubs) {
+            if (sub.done || sub.busy) {
+                continue;
+            }
+            sub.busy = true;
+            try {
+                if (s == null || s.outputDir == null) {
+                    finishSub(sub, "session_closed", om);
+                    continue;
+                }
+                Map<String, Object> batch = readLiveFrom(s, sub.cursor, sub.expectSessionId, 1024, sub.columns);
+                sub.em.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event()
+                        .name("live").data(om.writeValueAsString(batch)));
+                sub.cursor = asLong(batch.get("nextSeq"));
+                if (Boolean.TRUE.equals(batch.get("isFinal"))) {
+                    finishSub(sub, "isFinal", om);
+                }
+            } catch (java.io.IOException io) {
+                // 客户端断开(SSE 发送失败)或读取失败:结束该订阅
+                finishSub(sub, "io", om);
+            } catch (Exception e) {
+                log.debug("AFO SSE 泵推送异常(下个周期重试): {}", e.getMessage());
+            } finally {
+                sub.busy = false;
+            }
+        }
+    }
+
+    private void finishSub(LiveSub sub, String reason, com.fasterxml.jackson.databind.ObjectMapper om) {
+        try {
+            sub.em.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event()
+                    .name("end").data(om.writeValueAsString(java.util.Collections.singletonMap("reason", reason))));
+        } catch (Exception ignore) {
+            // 客户端已断开
+        }
+        sub.done = true;
+        try {
+            sub.em.complete();
+        } catch (Exception ignore) {
+            // 已完成
+        }
+        liveSubs.remove(sub);
+    }
+
+    /** 供 SSE 泵复用的核心读取(会话对象直传)。 */
+    private Map<String, Object> readLiveFrom(AfoSession s, long afterSeq, String expectSessionId,
+                                             Integer maxRows, int[] columns) throws IOException {
         File dir = new File(s.outputDir, "stream");
         int limit = maxRows == null ? 2048 : Math.max(1, Math.min(maxRows, 8192));
         com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
@@ -550,7 +688,7 @@ public class AfoService {
         try {
             File progCopy = ensureAfoSource(s.projectId);
             writeAdapter(s, progCopy);
-            MatlabEngine eng = MatlabEngine.startMatlab();
+            MatlabEngine eng = takeWarmEngine();
             s.engine = eng;
             s.engineOwned = true;
             try {
@@ -820,6 +958,10 @@ public class AfoService {
             } catch (Exception e) {
                 log.warn("AFO引擎关闭失败", e);
             }
+        }
+        // 预热回填:会话结束后自动补 1 台专属引擎,下次 prepare 免冷启动
+        if (warmEngineEnabled && warmEngine == null) {
+            warmExecutor.submit(this::startWarmEngine);
         }
     }
 
