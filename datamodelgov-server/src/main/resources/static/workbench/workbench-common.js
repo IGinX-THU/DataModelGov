@@ -4384,16 +4384,31 @@ window.Workbench = (() => {
             if (S.tab === 'ops') patchOps();
         }
 
+        // 状态获取:SSE 通知流为主(fullmode/stream 指纹变化才推chg→本页拉一次status),失败回退2s轮询
+        const fmApply = r => { if (r && r.code === 200 && r.data) applyStatus(r.data); };
+        const fmPoll = () => { window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000; api('/status').then(fmApply).catch(() => { }); };
         if (window.__WB_FM_TIMER__) clearInterval(window.__WB_FM_TIMER__);
-        window.__WB_FM_TIMER__ = setInterval(() => {
-            if (document.hidden) return;
-            // 始终轮询(IDLE时status是轻量文件读):本地相位与后端脱锁(如准备失败误判)也能自动恢复,
-            // 否则IDLE停轮询后页面永久冻结——准备/推进实际仍在后端进行
-            window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;
-            api('/status').then(r => {
-                if (r && r.code === 200 && r.data) applyStatus(r.data);
-            }).catch(() => { });
-        }, 2000);
+        if (window.__WB_FM_ES__) { try { window.__WB_FM_ES__.close(); } catch (e) { } window.__WB_FM_ES__ = null; }
+        try {
+            const cfg0 = window.AppConfig;
+            const url = cfg0.api.baseURL + '/api/engine/projects/' + encodeURIComponent(pid) + '/testbench/fullmode/stream?token=' + encodeURIComponent(cfg0.getToken() || '');
+            const es = new EventSource(url);
+            window.__WB_FM_ES__ = es;
+            es.addEventListener('chg', () => { window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000; fmPoll(); });
+            es.onerror = () => {
+                try { es.close(); } catch (e) { }
+                window.__WB_FM_ES__ = null;
+                // 始终轮询兜底(IDLE时status是轻量文件读):本地相位与后端脱锁也能自动恢复
+                if (!window.__WB_FM_TIMER__) window.__WB_FM_TIMER__ = setInterval(() => {
+                    if (document.hidden) return;
+                    window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;
+                    fmPoll();
+                }, 2000);
+            };
+            fmPoll();
+        } catch (e) {
+            window.__WB_FM_TIMER__ = setInterval(() => { if (document.hidden) return; fmPoll(); }, 2000);
+        }
         if (!window.__WB_FM_RESIZE__) {
             window.__WB_FM_RESIZE__ = () => Object.keys(S.charts).forEach(k => { try { S.charts[k].resize(); } catch (e) { } });
             window.addEventListener('resize', window.__WB_FM_RESIZE__);
@@ -5764,23 +5779,42 @@ window.Workbench = (() => {
             else { S.ssTaskId = ssOpen.taskId; S.tab = 'exec'; }
         }
         renderBody();
-        // 任务轮询:design_point和startstop任务非终态时每3s检测相位变化并重绘
-        // (修复:之前无轮询,求解/提交完成后页面状态不刷新一直显示运行中)
-        setInterval(() => {
-            if (document.hidden) return;
+        // 任务状态:design_point和startstop任务——SSE 通知流为主(testbench tasks/stream 指纹变化才推chg),
+        // 失败回退3s轮询(修复:之前无轮询,求解/提交完成后页面状态不刷新一直显示运行中)
+        const ssApply = d => {
+            if (!d) return;
+            const terminal = ['ENDED', 'FAILED', 'COMMITTED', 'STOPPED'].includes(d.phase);
+            if (!terminal) window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;
+            if (d.phase !== S._lastPhase) {
+                S._lastPhase = d.phase;
+                if (S.tab === 'design' || S.tab === 'exec') renderBody();
+            }
+        };
+        const ssPoll = () => {
             const tid = S.tab === 'design' ? S.dpTaskId : S.ssTaskId;
             if (!tid) return;
             api('/tasks/' + encodeURIComponent(tid) + '/status').then(r => {
-                const d = r && r.code === 200 ? r.data : null;
-                if (!d) return;
-                const terminal = ['ENDED', 'FAILED', 'COMMITTED', 'STOPPED'].includes(d.phase);
-                if (!terminal) window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;
-                if (d.phase !== S._lastPhase) {
-                    S._lastPhase = d.phase;
-                    if (S.tab === 'design' || S.tab === 'exec') renderBody();
-                }
+                ssApply(r && r.code === 200 ? r.data : null);
             }).catch(() => { });
-        }, 3000);
+        };
+        if (window.__WB_SS_TIMER__) clearInterval(window.__WB_SS_TIMER__);
+        if (window.__WB_SS_ES__) { try { window.__WB_SS_ES__.close(); } catch (e) { } window.__WB_SS_ES__ = null; }
+        try {
+            const cfg0 = window.AppConfig;
+            const url = cfg0.api.baseURL + '/api/engine/projects/' + encodeURIComponent(pid) + '/testbench/tasks/'
+                + encodeURIComponent(S.tab === 'design' ? S.dpTaskId : S.ssTaskId) + '/stream?token=' + encodeURIComponent(cfg0.getToken() || '');
+            const es = new EventSource(url);
+            window.__WB_SS_ES__ = es;
+            es.addEventListener('chg', () => { window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000; ssPoll(); });
+            es.addEventListener('end', () => { try { es.close(); } catch (e) { } window.__WB_SS_ES__ = null; });
+            es.onerror = () => {
+                try { es.close(); } catch (e) { }
+                window.__WB_SS_ES__ = null;
+                if (!window.__WB_SS_TIMER__) window.__WB_SS_TIMER__ = setInterval(() => { if (document.hidden) return; ssPoll(); }, 3000);
+            };
+        } catch (e) {
+            window.__WB_SS_TIMER__ = setInterval(() => { if (document.hidden) return; ssPoll(); }, 3000);
+        }
         return wrap;
     };
     /* 试车台模型成果(与建模工作台同一renderModelsBody) */

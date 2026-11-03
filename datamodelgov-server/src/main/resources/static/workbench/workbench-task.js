@@ -2409,7 +2409,27 @@
         }
         function startPolling() {
             stopPolling();
-            window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000; // 活动心跳:让底部状态栏轮询保持
+            window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;
+            // SSE 通知流为主:服务端指纹变化才推chg→本页poll();EventSource失败回退5s定时轮询
+            try {
+                const cfg0 = window.AppConfig;
+                const url = cfg0.api.baseURL + '/api/engine/projects/' + encodeURIComponent(ctx.project.id || '')
+                    + '/tasks/' + encodeURIComponent(state.task.id) + '/stream?token=' + encodeURIComponent(cfg0.getToken() || '');
+                const es = new EventSource(url);
+                state.es = es;
+                es.addEventListener('chg', () => { window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000; poll(); });
+                es.addEventListener('end', () => { try { es.close(); } catch (e) { } state.es = null; });
+                es.onerror = () => {
+                    try { es.close(); } catch (e) { }
+                    if (state.es === es) state.es = null;
+                    if (!state.timer) state.timer = setInterval(() => {
+                        window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000; poll();
+                    }, 5000);
+                };
+                state.keepalive = setInterval(() => { window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000; }, 30000);
+                poll();
+                return;
+            } catch (e) { /* 降级 */ }
             state.timer = setInterval(() => {
                 window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;
                 poll();
@@ -2417,10 +2437,9 @@
             poll();
         }
         function stopPolling() {
-            if (state.timer) {
-                clearInterval(state.timer);
-                state.timer = null;
-            }
+            if (state.timer) { clearInterval(state.timer); state.timer = null; }
+            if (state.keepalive) { clearInterval(state.keepalive); state.keepalive = null; }
+            if (state.es) { try { state.es.close(); } catch (e) { } state.es = null; }
             // 关闭SSE连接
             if (state.uqLogEventSource) {
                 state.uqLogEventSource.close();

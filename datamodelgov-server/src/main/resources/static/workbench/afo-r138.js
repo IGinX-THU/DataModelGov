@@ -1408,7 +1408,7 @@
                 if (kind === 'pause') S.localResume = false;
                 toast(kind === 'pause' ? '暂停请求已提交,等待安全响应点' : kind === 'resume' ? '继续请求已提交' :
                     kind === 'stop' ? '结束请求已提交;不强杀进程' : '命令已提交;实际生效以回执为准', 'info');
-                refresh(); quickPoll();
+                refresh(); if (S.streamMode !== 'sse') quickPoll();
             } catch (e) { toast('命令失败:' + e.message, 'error'); }
         }
         async function startRun() {
@@ -1416,7 +1416,7 @@
                 await apiPost('/run', {});
                 toast('仿真已启动', 'success');
                 startLoops();
-                refresh(); quickPoll();
+                refresh(); if (S.streamMode !== 'sse') quickPoll();
             } catch (e) { toast('启动失败:' + e.message, 'error'); }
         }
         async function closeSession() {
@@ -1480,10 +1480,7 @@
         let pollTimer = null, pullTimer = null, pulling = false, statusBusy = false;
         function startLoops() {
             stopLoops();
-            pollTimer = setInterval(() => {
-                if (!S.readonlyRunId && ['PREPARING', 'READY', 'RUNNING', 'PAUSED', 'ENDED', 'FAILED'].includes(S.phase)) refresh();
-            }, 5000); // 状态节拍 5s(命令提交后另有快速跟踪)
-            startLiveChannel();
+            startLiveChannel(); // SSE 主通道;失败自动降级 fallbackPull(状态5s+增量200ms)
         }
         function stopLoops() {
             if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
@@ -1506,7 +1503,14 @@
                     + '&columns=' + S.liveCols.join(',');
                 const es = new EventSource(url);
                 S.es = es; S.streamMode = 'sse';
-                es.addEventListener('live', ev => { try { ingestLive(JSON.parse(ev.data)); } catch (e) { /* 坏帧忽略 */ } });
+                es.addEventListener('live', ev => {
+                    try {
+                        ingestLive(JSON.parse(ev.data));
+                        // 通道可用:停兜底轮询(状态5s+增量200ms),轮询仅作为断链后的恢复路径
+                        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+                        if (S.pullTimer) { clearInterval(S.pullTimer); S.pullTimer = null; }
+                    } catch (e) { /* 坏帧忽略 */ }
+                });
                 es.addEventListener('end', () => { if (S.liveBuf) S.liveBuf.isFinal = true; stopLiveChannel(); });
                 es.addEventListener('err', () => { stopLiveChannel(); fallbackPull(); });
                 es.onerror = () => { stopLiveChannel(); fallbackPull(); };
@@ -1515,6 +1519,9 @@
         function fallbackPull() {
             S.streamMode = 'pull';
             if (!S.pullTimer) S.pullTimer = setInterval(pullLive, 200);
+            if (!pollTimer) pollTimer = setInterval(() => {
+                if (!S.readonlyRunId && ['PREPARING', 'READY', 'RUNNING', 'PAUSED', 'ENDED', 'FAILED'].includes(S.phase)) refresh();
+            }, 5000);
         }
         function stopLiveChannel() {
             if (S.es) { try { S.es.close(); } catch (e) { /* 已关 */ } S.es = null; }
@@ -1554,25 +1561,45 @@
             } catch (e) { /* 轮询容错 */ }
             statusBusy = false;
         }
-        /** 增量数据统一入口(SSE 消息与 REST 兜底同构)。 */
+        /** 增量数据统一入口(SSE 消息与 REST 兜底同构):样本+状态+事件+阶段一次到位。 */
         function ingestLive(d) {
             if (!S.liveBuf) return;
             const added = S.liveBuf.append(d, S.liveCols);
-            // 状态摘要随增量同步(5s status 轮询之外的快路径),运行栏字段保持新鲜
-            if (S.live) {
-                ['state', 'currentSimulationTime', 'sampleTime', 'sampleSeq', 'publishedSeq',
-                 'lastHeartbeat', 'saveState', 'saveError', 'publishError'].forEach(k => {
-                    if (d[k] !== undefined) S.live[k] = d[k];
-                });
+            let eventsChanged = false;
+            // 阶段迁移(Java 生命周期真源):变更即整页重绘
+            let phaseChanged = false;
+            if (d.phase && d.phase !== S.phase) {
+                const prev = uiState();
+                S.phase = d.phase;
+                S.message = d.message || S.message;
+                phaseChanged = prev !== uiState();
+            } else if (d.message && !S.message) {
+                S.message = d.message;
             }
+            // 状态摘要/命令回执/操纵占位随通道同步(轮询降为兜底后这里是主路径)
+            S.live = S.live || {};
+            ['state', 'currentSimulationTime', 'sampleTime', 'sampleSeq', 'publishedSeq',
+             'lastHeartbeat', 'saveState', 'saveError', 'publishError', 'applied', 'pending'].forEach(k => {
+                if (d[k] !== undefined) S.live[k] = d[k];
+            });
+            if (d.events && d.eventsLen !== undefined) {
+                const prevLen = (S.live.events || []).length;
+                if (d.eventsLen !== prevLen || (S.live.events || []).length !== d.eventsLen) {
+                    S.live.events = d.events;
+                    eventsChanged = true;
+                }
+            }
+            if ((S.phase === 'ENDED' || S.phase === 'FAILED') && !S.result) ensureSessionResult();
             if (S.liveBuf.gap && S.gapRetries >= 5) {
                 S.gapNotice = '样本序号缺口 ' + S.liveBuf.gap.from + '~' + S.liveBuf.gap.to
                     + ':多次补读未获，图中保留缺口不线性连接。后续数据继续追加。';
                 S.liveBuf.nextSeq = Math.max(S.liveBuf.nextSeq, S.liveBuf.gap.to + 1);
                 S.liveBuf.gap = null; S.gapRetries = 0;
             } else if (!S.liveBuf.gap) { S.gapNotice = ''; S.gapRetries = 0; }
-            if (added > 0 || d.hasMore) refreshRuntimeCharts();
-            if (d.isFinal) { S.liveBuf.isFinal = true; stopLiveChannel(); }
+            if (added > 0 || d.hasMore || eventsChanged) refreshRuntimeCharts();
+            if (d.isFinal) S.liveBuf.isFinal = true; // 通道保持开启:保存状态仍会变化
+            if (phaseChanged) renderAll();
+            else if ((S.tab === 'main' || sysOfTab[S.tab]) && uiState() === 'ENDED') lightUpdate();
         }
         async function pullLive() {
             if (pulling || !S.catalog || S.readonlyRunId || !S.liveBuf || S.liveBuf.isFinal) return;

@@ -991,7 +991,24 @@
         }
         function startPolling() {
             window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;
-            if (state.timer) return;
+            if (state.es) return;
+            // SSE 通知流为主:chg→poll();失败回退4s定时轮询
+            try {
+                const cfg0 = window.AppConfig;
+                const url = cfg0.api.baseURL + '/api/engine/projects/' + encodeURIComponent(ctx.project.id || '')
+                    + '/tasks/' + encodeURIComponent(state.task.id) + '/stream?token=' + encodeURIComponent(cfg0.getToken() || '');
+                const es = new EventSource(url);
+                state.es = es;
+                es.addEventListener('chg', () => { window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000; poll(); });
+                es.addEventListener('end', () => { try { es.close(); } catch (e) { } state.es = null; });
+                es.onerror = () => {
+                    try { es.close(); } catch (e) { }
+                    if (state.es === es) state.es = null;
+                    if (!state.timer) state.timer = setInterval(poll, 4000);
+                };
+                poll();
+                return;
+            } catch (e) { /* 降级 */ }
             poll();
             state.timer = setInterval(poll, 4000);
         }
@@ -1531,11 +1548,31 @@
         }
         function startPolling() {
             window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;
-            if (state.timer) return;
+            if (state.es) return;
+            // SSE 通知流为主:chg→poll();失败回退4s定时轮询
+            try {
+                const cfg0 = window.AppConfig;
+                const url = cfg0.api.baseURL + '/api/engine/projects/' + encodeURIComponent(ctx.project.id || '')
+                    + '/tasks/' + encodeURIComponent(state.task.id) + '/stream?token=' + encodeURIComponent(cfg0.getToken() || '');
+                const es = new EventSource(url);
+                state.es = es;
+                es.addEventListener('chg', () => { window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000; poll(); });
+                es.addEventListener('end', () => { try { es.close(); } catch (e) { } state.es = null; });
+                es.onerror = () => {
+                    try { es.close(); } catch (e) { }
+                    if (state.es === es) state.es = null;
+                    if (!state.timer) state.timer = setInterval(poll, 4000);
+                };
+                poll();
+                return;
+            } catch (e) { /* 降级 */ }
             poll();
             state.timer = setInterval(poll, 4000);
         }
-        function stopPolling() { if (state.timer) { clearInterval(state.timer); state.timer = null; } }
+        function stopPolling() {
+            if (state.timer) { clearInterval(state.timer); state.timer = null; }
+            if (state.es) { try { state.es.close(); } catch (e) { } state.es = null; }
+        }
         // 进入业务页固定显示新建视图;只有运行记录/项目概览指定 __WB_OPEN_TASK__ 时才打开既有任务
         // 页面切换时由 shell 调用,避免旧页轮询残留(跨页串状态通道)
         window.__WB_PAGE_STOP__ = stopPolling;

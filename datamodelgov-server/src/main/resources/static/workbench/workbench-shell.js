@@ -127,12 +127,34 @@
                 }
             };
             refresh();
-            if (window.__WB_ENGINE_TIMER__) clearInterval(window.__WB_ENGINE_TIMER__);
-            window.__WB_ENGINE_TIMER__ = setInterval(() => {
-                // 页面隐藏/切后台时不发请求;回到前台下一轮自动恢复
-                if (document.hidden) return;
-                refresh();
-            }, 15000);
+            // 引擎状态/日志:SSE 通知流为主(全局一条,服务端指纹变化才推chg),失败回退15s门控轮询
+            const applyEng = d => {
+                if (!d) return;
+                const logs = document.querySelectorAll('.wb-engine-log');
+                const sts = document.querySelectorAll('.wb-engine-status');
+                if (logs.length && Array.isArray(d.logTail) && d.logTail.length) {
+                    const last = d.logTail[d.logTail.length - 1];
+                    logs.forEach(el => { el.textContent = last; el.title = d.logTail.join('\n'); });
+                }
+                if (sts.length && d.status) sts.forEach(el => { el.textContent = d.status; });
+            };
+            const startEngFallback = () => {
+                if (window.__WB_ENGINE_TIMER__) return;
+                window.__WB_ENGINE_TIMER__ = setInterval(() => {
+                    // 页面隐藏/切后台时不发请求;回到前台下一轮自动恢复
+                    if (document.hidden) return;
+                    refresh();
+                }, 15000);
+            };
+            try {
+                if (typeof EventSource === 'undefined') { startEngFallback(); return; }
+                const cfg0 = window.AppConfig;
+                const es = new EventSource(cfg0.api.baseURL + '/api/program/engine-status-stream?token='
+                    + encodeURIComponent(cfg0.getToken() || ''));
+                window.__WB_ENGINE_ES__ = es;
+                es.addEventListener('chg', ev => { try { applyEng(JSON.parse(ev.data)); } catch (e) { /* 坏帧忽略 */ } });
+                es.onerror = () => { try { es.close(); } catch (e) { } window.__WB_ENGINE_ES__ = null; startEngFallback(); };
+            } catch (e) { startEngFallback(); }
         }
 
         _navigate(key) {

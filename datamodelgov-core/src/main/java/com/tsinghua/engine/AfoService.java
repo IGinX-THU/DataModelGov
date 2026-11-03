@@ -513,6 +513,15 @@ public class AfoService {
         out.put("isFinal", readFinal);
         out.put("nextSeq", nextSeq);
         out.put("hasMore", hasMore);
+        // 会话级状态/事件随同一通道推送(R138 7.5:状态与保存分开展示;命令回执可追溯):
+        // phase/message 为 Java 生命周期真源;applied/pending/events 来自 status.json
+        out.put("phase", s.phase);
+        out.put("message", s.message);
+        out.put("applied", st.get("applied"));
+        out.put("pending", st.get("pending"));
+        Object evList = st.get("events");
+        out.put("eventsLen", evList instanceof List ? ((List<?>) evList).size() : 0);
+        out.put("events", evList); // 命令回执全量(小数组;前端按 eventsLen 变化刷新表)
         if (stoppedOnGap) {
             Map<String, Object> gap = new LinkedHashMap<>();
             gap.put("from", gapFrom);

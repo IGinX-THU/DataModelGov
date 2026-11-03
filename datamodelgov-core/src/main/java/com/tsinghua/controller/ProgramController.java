@@ -32,6 +32,8 @@ import java.util.Map;
 @RequestMapping("/api/program")
 public class ProgramController {
 
+    private static final com.fasterxml.jackson.databind.ObjectMapper OM_ENG = new com.fasterxml.jackson.databind.ObjectMapper();
+
     @Autowired
     private ProgramService programService;
 
@@ -528,6 +530,62 @@ public class ProgramController {
             log.error("导出信号数据失败", e);
             return ResponseEntity.internalServerError().body(null);
         }
+    }
+
+    /* ---------- 引擎状态/日志 SSE 通知流(全局;指纹变化才推chg,前端状态栏轮询降为兜底) ---------- */
+
+    private static final java.util.concurrent.CopyOnWriteArrayList<Object[]> engSubs = new java.util.concurrent.CopyOnWriteArrayList<>();
+    private final java.util.concurrent.ScheduledExecutorService engPump =
+            java.util.concurrent.Executors.newSingleThreadScheduledExecutor(
+                    r -> { Thread t = new Thread(r, "eng-status-pump"); t.setDaemon(true); return t; });
+    private volatile boolean engPumpStarted = false;
+
+    private synchronized void ensureEngPump() {
+        if (!engPumpStarted) {
+            engPumpStarted = true;
+            engPump.scheduleWithFixedDelay(this::pumpEngChanges, 3000, 3000, java.util.concurrent.TimeUnit.MILLISECONDS);
+        }
+    }
+
+    private void pumpEngChanges() {
+        for (Object[] sub : engSubs) {
+            org.springframework.web.servlet.mvc.method.annotation.SseEmitter em =
+                    (org.springframework.web.servlet.mvc.method.annotation.SseEmitter) sub[0];
+            try {
+                Map<String, Object> status = programService.getEngineStatus().getData();
+                java.util.List<String> tail =
+                        com.tsinghua.engine.MatlabLogRing.tail(20);
+                String fp = String.valueOf((status == null ? "" : String.valueOf(status.get("message")).trim()).hashCode())
+                        + ':' + (tail.isEmpty() ? "" : tail.get(tail.size() - 1)).hashCode() + ':' + tail.size();
+                if (!fp.equals((String) sub[3])) {
+                    sub[3] = fp;
+                    Map<String, Object> payload = new java.util.LinkedHashMap<>();
+                    payload.put("status", status == null ? null : status.get("message"));
+                    payload.put("logTail", tail);
+                    em.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event()
+                            .name("chg").data(OM_ENG.writeValueAsString(payload)));
+                }
+            } catch (java.io.IOException io) {
+                engSubs.remove(sub);
+                try { em.complete(); } catch (Exception ignore) { }
+            } catch (Exception e) {
+                log.debug("引擎状态SSE泵异常(下周期重试): {}", e.getMessage());
+            }
+        }
+    }
+
+    @ApiOperation("MATLAB引擎状态与日志SSE通知流(全局;指纹变化才推chg,前端状态栏轮询降为兜底)")
+    @GetMapping(value = "/engine-status-stream", produces = org.springframework.http.MediaType.TEXT_EVENT_STREAM_VALUE)
+    @RequirePermission(Permission.READ)
+    public org.springframework.web.servlet.mvc.method.annotation.SseEmitter engineStatusStream() {
+        org.springframework.web.servlet.mvc.method.annotation.SseEmitter em =
+                new org.springframework.web.servlet.mvc.method.annotation.SseEmitter(0L);
+        Object[] sub = new Object[]{ em, null, null, null, "" };
+        engSubs.add(sub);
+        em.onCompletion(() -> engSubs.remove(sub));
+        em.onTimeout(() -> { engSubs.remove(sub); try { em.complete(); } catch (Exception ignore) { } });
+        ensureEngPump();
+        return em;
     }
 
     @ApiOperation("MATLAB 引擎状态")

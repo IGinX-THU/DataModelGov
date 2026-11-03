@@ -1855,4 +1855,121 @@ public class EngineWorkbenchController {
         }
         return routeMatch != null ? routeMatch : fallback;
     }
+
+    /* ---------- 任务/会话状态 SSE 通知流(轮询的推送化):服务端1s指纹比对,变化才发chg,前端收到后自行拉取一次 ---------- */
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper OM_TASK = new com.fasterxml.jackson.databind.ObjectMapper();
+    private final java.util.concurrent.CopyOnWriteArrayList<Object[]> taskSubs = new java.util.concurrent.CopyOnWriteArrayList<>();
+    private final java.util.concurrent.ScheduledExecutorService taskPump =
+            java.util.concurrent.Executors.newSingleThreadScheduledExecutor(
+                    r -> { Thread t = new Thread(r, "wb-task-pump"); t.setDaemon(true); return t; });
+    private volatile boolean taskPumpStarted = false;
+
+    private synchronized void ensureTaskPump() {
+        if (!taskPumpStarted) {
+            taskPumpStarted = true;
+            taskPump.scheduleWithFixedDelay(this::pumpTaskChanges, 1000, 1000, java.util.concurrent.TimeUnit.MILLISECONDS);
+        }
+    }
+
+    private void pumpTaskChanges() {
+        for (Object[] sub : taskSubs) {
+            org.springframework.web.servlet.mvc.method.annotation.SseEmitter em =
+                    (org.springframework.web.servlet.mvc.method.annotation.SseEmitter) sub[0];
+            String pid = (String) sub[1], tid = (String) sub[2], kind = (String) sub[3];
+            try {
+                String json;
+                if ("testbench".equals(kind)) {
+                    json = OM_TASK.writeValueAsString(testbenchService.taskStatus(pid, tid));
+                } else {
+                    EngineModels.ModelingTask t = store.getTask(pid, tid);
+                    if (t == null) {
+                        finishTaskSub(sub);
+                        continue;
+                    }
+                    Map<String, Object> payload = new LinkedHashMap<>();
+                    payload.put("task", t);
+                    java.util.List<String> tail = tc24Service.logTail(tid);
+                    if (tail == null || tail.isEmpty()) tail = f3FlightService.logTail(tid);
+                    payload.put("logTail", tail);
+                    json = OM_TASK.writeValueAsString(payload);
+                }
+                String fp = Integer.toString(json.hashCode()) + ':' + json.length();
+                if (!fp.equals((String) sub[4])) {
+                    sub[4] = fp;
+                    em.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event()
+                            .name("chg").data(json));
+                }
+            } catch (java.io.IOException io) {
+                taskSubs.remove(sub);
+                try { em.complete(); } catch (Exception ignore) { }
+            } catch (Exception e) {
+                log.debug("任务状态SSE泵异常(下周期重试): {}", e.getMessage());
+            }
+        }
+    }
+
+    private void finishTaskSub(Object[] sub) {
+        org.springframework.web.servlet.mvc.method.annotation.SseEmitter em =
+                (org.springframework.web.servlet.mvc.method.annotation.SseEmitter) sub[0];
+        try {
+            em.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event()
+                    .name("end").data("task_removed"));
+        } catch (Exception ignore) { }
+        taskSubs.remove(sub);
+        try { em.complete(); } catch (Exception ignore) { }
+    }
+
+    private org.springframework.web.servlet.mvc.method.annotation.SseEmitter openTaskSub(
+            String pid, String tid, String kind) {
+        org.springframework.web.servlet.mvc.method.annotation.SseEmitter em =
+                new org.springframework.web.servlet.mvc.method.annotation.SseEmitter(0L);
+        Object[] sub = new Object[]{ em, pid, tid, kind, "" };
+        taskSubs.add(sub);
+        em.onCompletion(() -> taskSubs.remove(sub));
+        em.onTimeout(() -> { taskSubs.remove(sub); try { em.complete(); } catch (Exception ignore) { } });
+        ensureTaskPump();
+        return em;
+    }
+
+    @ApiOperation("建模任务状态SSE通知流(指纹变化才推chg;EventSource失败前端回退轮询)")
+    @GetMapping(value = "/projects/{pid}/tasks/{tid}/stream", produces = org.springframework.http.MediaType.TEXT_EVENT_STREAM_VALUE)
+    @RequirePermission(Permission.READ)
+    public org.springframework.web.servlet.mvc.method.annotation.SseEmitter taskStream(
+            @PathVariable("pid") String pid, @PathVariable("tid") String tid) {
+        org.springframework.web.servlet.mvc.method.annotation.SseEmitter em =
+                new org.springframework.web.servlet.mvc.method.annotation.SseEmitter(0L);
+        try {
+            EngineModels.ModelingTask t = store.getTask(pid, tid);
+            if (t == null) throw new IllegalStateException("任务不存在");
+            return openTaskSub(pid, tid, "task");
+        } catch (Exception e) {
+            try {
+                em.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event()
+                        .name("err").data(e.getMessage() == null ? "stream unavailable" : e.getMessage()));
+                em.complete();
+            } catch (Exception ignore) { }
+            return em;
+        }
+    }
+
+    @ApiOperation("试车台任务(全模式/起动停/设计点)状态SSE通知流")
+    @GetMapping(value = "/projects/{pid}/testbench/{taskId}/stream", produces = org.springframework.http.MediaType.TEXT_EVENT_STREAM_VALUE)
+    @RequirePermission(Permission.READ)
+    public org.springframework.web.servlet.mvc.method.annotation.SseEmitter testbenchTaskStream(
+            @PathVariable("pid") String pid, @PathVariable("taskId") String taskId) {
+        org.springframework.web.servlet.mvc.method.annotation.SseEmitter em =
+                new org.springframework.web.servlet.mvc.method.annotation.SseEmitter(0L);
+        try {
+            testbenchService.taskStatus(pid, taskId); // 探活:任务缺失直接走err
+            return openTaskSub(pid, taskId, "testbench");
+        } catch (Exception e) {
+            try {
+                em.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event()
+                        .name("err").data(e.getMessage() == null ? "stream unavailable" : e.getMessage()));
+                em.complete();
+            } catch (Exception ignore) { }
+            return em;
+        }
+    }
 }
