@@ -1,0 +1,11 @@
+{
+  "Mode": "all",
+  "PID": 33484,
+  "ExitCode": 1,
+  "Seconds": 10254.0136396,
+  "ActualPriority": "BelowNormal",
+  "BudgetExceeded": true,
+  "CumulativeSeconds": 10404.297400000001,
+  "StoppedByTool": false,
+  "Finished": "2026-11-02T22:28:18.0760459+08:00"
+}

@@ -1,0 +1,1 @@
+{"mode":"stream","seconds":171.4743901,"checks":[{"name":"qa_cache_restore","pass":true,"detail":"TEMP与默认CacheFolder同级；缓存、代码目录和搜索路径实际恢复"},{"name":"hour_history_no_loss","pass":true,"detail":"36001行按777行补读，无DLL，不等于GUI图元测试"},{"name":"read_identity_reject","pass":true,"detail":"历史会话校验"}]}

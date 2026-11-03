@@ -1,0 +1,13 @@
+{
+  "Mode": "stream",
+  "PID": 37628,
+  "ExitCode": 0,
+  "Seconds": 183.8688236,
+  "ActualPriority": "BelowNormal",
+  "BudgetExceeded": false,
+  "Window": "R065_JSON_FIX",
+  "CumulativeSeconds": 317.3621815,
+  "AllHistoricalGrossSeconds": 10721.660316899999,
+  "StoppedByTool": false,
+  "Finished": "2026-11-02T22:46:04.7040373+08:00"
+}

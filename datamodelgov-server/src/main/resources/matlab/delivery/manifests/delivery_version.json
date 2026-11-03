@@ -1,0 +1,19 @@
+{
+  "version": "R065",
+  "revision": "UI-R141",
+  "source": "Delivery_V1_20261019_R06",
+  "sealed": false,
+  "status": "independent_working_copy_limited_adapter_tests_passed",
+  "sourceManifestSHA256": "5CEDDEEE1DE2FBEABBE3B8264FAD4F1E769B79CA0ACD9A3FB77A713AFAC51E29",
+  "programBaseline": "R06; only AFO_V_2 MATLAB adapter updated for UI-R138; no R07 TC27 increment",
+  "format": "R06 retained documents plus R065 adapter instructions and evidence",
+  "engineAlgorithmChanged": false,
+  "runtimeRootRelative": "程序",
+  "rootItems": [
+    "程序",
+    "完整界面设计说明书.docx",
+    "程序与界面功能关联图.html",
+    "界面页面与操作流程关联图.html",
+    "程序调用与独立使用手册.docx"
+  ]
+}

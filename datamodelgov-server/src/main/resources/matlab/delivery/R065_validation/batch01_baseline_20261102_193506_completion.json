@@ -1,0 +1,11 @@
+{
+  "Mode": "baseline",
+  "PID": 31416,
+  "ExitCode": 0,
+  "Seconds": 120.080458,
+  "ActualPriority": "BelowNormal",
+  "BudgetExceeded": false,
+  "CumulativeSeconds": 150.2837254,
+  "StoppedByTool": false,
+  "Finished": "2026-11-02T19:37:06.6841552+08:00"
+}
