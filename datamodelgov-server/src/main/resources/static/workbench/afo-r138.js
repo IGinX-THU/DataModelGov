@@ -936,16 +936,20 @@
         /* ---------- 总控页(MS-02) ---------- */
         function paintMain() {
             const ui = uiState();
-            const idle = ui === 'IDLE' || ui === 'VALIDATE_FAILED' || ui === 'PREPARING';
-            body.appendChild(pageHead(idle ? '多系统联合仿真·仿真准备' : '多系统联合仿真·总控与监视'));
-            if (idle) { paintPrepare(); return; }
-            if (ui === 'READY') { paintPrepare(); return; }
+            // 过渡态优先:准备中只显示阶段横幅,表单不可见不可操作(R138 6.1"准备中:查看阶段与日志")
             if (ui === 'PREPARING') {
+                body.appendChild(pageHead('多系统联合仿真·仿真准备'));
                 body.appendChild(h('div', { style: 'padding:8px 18px' }, h('div', { class: 'wb-infobar', style: 'display:flex;gap:12px;align-items:center' },
                     h('span', { class: 'wb-inline-loading' }, h('span', { class: 'wb-inline-spinner' })),
                     S.message || '正在准备…(无可靠工作总量,不伪造百分比)')));
+                body.appendChild(h('div', { style: 'font-size:12px;color:#94a3b8;padding:4px 18px' },
+                    '准备期间不可修改配置;完成后本页显示初态核对与开始入口。'));
                 return;
             }
+            const idle = ui === 'IDLE' || ui === 'VALIDATE_FAILED';
+            body.appendChild(pageHead(idle ? '多系统联合仿真·仿真准备' : '多系统联合仿真·总控与监视'));
+            if (idle) { paintPrepare(); return; }
+            if (ui === 'READY') { paintPrepare(); return; }
             const host = h('div', { style: 'padding:0 18px 16px' });
             body.appendChild(host);
             // 操纵区(浅色横条两行)
@@ -1066,8 +1070,15 @@
             return row;
         }
         function paintPrepare() {
+            // READY=配置已随准备冻结(R138 3.2:分母来自通过校验后冻结的配置;Java会话配置同为prepare值)
+            // → 就绪态表单只读,防止"界面改了、实际没生效";修改须放弃并关闭后重新准备
+            const ro = uiState() === 'READY';
             const host = h('div', { style: 'padding:0 24px 20px;max-width:1080px' });
             body.appendChild(host);
+            if (ro) {
+                host.appendChild(h('div', { class: 'wb-infobar', style: 'border-left:4px solid #0f766e;margin-bottom:6px' },
+                    '已就绪：以下配置已随准备校验冻结（进度分母与会话配置同源）。如需修改，请“放弃并关闭”后重新准备。'));
+            }
             host.appendChild(sectionHead('1', '选择配套模型'));
             host.appendChild(h('div', { style: 'font-size:16px;font-weight:600' }, 'AFO_V_2　Dll_Control_AFO_V8_5_R2019b.slx'));
             host.appendChild(h('div', { style: 'font-size:13px;color:#0f766e;margin-top:4px' },
@@ -1076,12 +1087,17 @@
             const c = S.cfg;
             const f = {};
             const inp = (key) => {
-                f[key] = h('input', { value: c[key], style: 'width:100%;box-sizing:border-box;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:7px 10px' });
+                f[key] = h('input', {
+                    value: c[key], readOnly: ro ? '' : null,
+                    style: 'width:100%;box-sizing:border-box;background:' + (ro ? '#eef2f7' : '#f8fafc')
+                        + ';border:1px solid #e2e8f0;border-radius:4px;padding:7px 10px'
+                });
                 f[key].addEventListener('input', e => { c[key] = e.target.value; }); // 回写状态:整页重绘(Np切换)不丢输入
                 return f[key];
             };
             const sel = (options, value, onch) => {
-                const s = h('select', { style: 'width:100%;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:7px 10px' },
+                const s = h('select', { style: 'width:100%;background:' + (ro ? '#eef2f7' : '#f8fafc')
+                    + ';border:1px solid #e2e8f0;border-radius:4px;padding:7px 10px', disabled: ro ? '' : null },
                     options.map(([v, l]) => h('option', { value: v, selected: value === v ? '' : null }, l)));
                 if (onch) s.addEventListener('change', e => onch(e.target.value));
                 return s;
@@ -1094,7 +1110,8 @@
                 [['0.8', '80%'], ['0.9', '90%'], ['0.95', '95%'], ['1', '100%'], ['1.05', '105%']].forEach(([v, l]) => {
                     g.appendChild(h('button', {
                         class: 'wb-btn ' + (c.npRatio === v ? 'wb-btn-primary' : 'wb-btn-outline'), style: 'padding:5px 16px',
-                        onclick: () => { c.npRatio = v; renderAll(); }
+                        disabled: ro ? '' : null,
+                        onclick: () => { if (ro) return; c.npRatio = v; renderAll(); }
                     }, l));
                 });
                 return g;
@@ -1105,7 +1122,8 @@
             const paintLoad = () => {
                 loadBox.innerHTML = '';
                 const mk = (label, key, hint) => {
-                    f[key] = h('input', { value: c[key], style: 'width:180px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:6px 10px' });
+                    f[key] = h('input', { value: c[key], readOnly: ro ? '' : null, style: 'width:180px;background:'
+                        + (ro ? '#eef2f7' : '#f8fafc') + ';border:1px solid #e2e8f0;border-radius:4px;padding:6px 10px' });
                     f[key].addEventListener('input', e => { c[key] = e.target.value; });
                     loadBox.appendChild(h('span', { style: 'display:inline-flex;align-items:center;gap:6px' },
                         h('span', { style: 'font-size:13px;color:#475569' }, label), f[key],
@@ -1153,15 +1171,19 @@
                             : '开始计算后首个记录点出现（约0.1 s）')))));
             }
             const transRow = h('div', { style: 'display:flex;align-items:center;gap:8px;margin-top:12px' },
-                h('input', { type: 'checkbox', id: 'afo-trans', checked: c.initialTransitionConfirmed ? '' : null }),
+                h('input', { type: 'checkbox', id: 'afo-trans', disabled: ro ? '' : null, checked: c.initialTransitionConfirmed ? '' : null }),
                 h('span', { style: 'font-size:13px' }, '我已知晓：目标不同于初态将出现过渡过程；允许过渡 ≠ 已求得目标状态配平值'));
             host.appendChild(transRow);
             const btnRow = h('div', { style: 'display:flex;justify-content:flex-end;gap:10px;margin-top:16px' },
-                h('button', { class: 'wb-btn wb-btn-outline', onclick: () => { S.tab = '__result'; renderAll(); } }, '查看历史仿真记录'),
-                h('button', {
+                h('button', { class: 'wb-btn wb-btn-outline', onclick: () => { S.tab = '__result'; renderAll(); } }, '查看历史仿真记录'));
+            if (!ro) {
+                // 提交流程:先同步校验(失败留在表单),随后立即进入"准备中"过渡态锁界面,失败再回退
+                btnRow.appendChild(h('button', {
                     class: 'wb-btn wb-btn-primary', style: 'min-width:200px;height:42px;font-size:16px',
                     onclick: async (ev) => {
                         const btn = ev.currentTarget;
+                        if (S._prepBusy || uiState() === 'PREPARING') return; // 防重入
+                        S._prepBusy = true;
                         btn.classList.add('disabled');
                         try {
                             const np0 = c.npRatio;
@@ -1209,19 +1231,28 @@
                                 externalAir: req.externalAir, npRatio: np0, runId: rid,
                                 publishLive: req.publishLive, initialTransitionConfirmed: trans
                             });
+                            // 乐观过渡态:点击即锁界面,失败回退(R138 6.1"准备中"不可操作)
+                            S.phase = 'PREPARING';
+                            S.message = '准备运行副本(校验配套身份与初态)';
+                            S.liveBuf = null; S.sessionId = null; S.catalog = null; S.byId = null;
+                            S.dispIds = null; S.dispPos = null; S.liveCols = null; S.gapNotice = ''; S.liveErr = '';
+                            renderAll();
                             const resp = await apiPost('/prepare', req);
                             if (!(resp && (resp.success || resp.code === 200))) throw new Error((resp && resp.message) || '准备发起失败');
                             if (resp.data && resp.data.phase) S.phase = resp.data.phase;
                             S.message = '准备运行副本(校验配套身份与初态)';
-                            S.liveBuf = null; S.sessionId = null; S.catalog = null; S.byId = null;
-                            S.dispIds = null; S.dispPos = null; S.liveCols = null; S.gapNotice = ''; S.liveErr = '';
                             toast('准备已发起;运行副本与模型初始化需要一些时间', 'info');
-                            renderAll();
-                            startLoops();
-                        } catch (e) { toast('准备失败:' + e.message, 'error'); }
+                        } catch (e) {
+                            S.phase = 'IDLE'; S.message = ''; // 失败回退,表单恢复可编辑
+                            toast('准备失败:' + e.message, 'error');
+                        }
+                        S._prepBusy = false;
                         btn.classList.remove('disabled');
+                        renderAll();
+                        startLoops();
                     }
                 }, '检查并准备运行'));
+            }
             host.appendChild(btnRow);
         }
 
