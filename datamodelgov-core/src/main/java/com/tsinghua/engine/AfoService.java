@@ -229,6 +229,244 @@ public class AfoService {
         }
     }
 
+    /* ---------- R065 动态数据接入(UI-R138 第7章合同) ---------- */
+
+    /**
+     * 通道字典:R065 的 prepare 自产 channels.json(SHT_AFO_CATALOG_V2),含 272 项原始通道与
+     * display/displayGroup/panel 等显示绑定。活动会话优先,无会话时回退最近一次含字典的历史会话。
+     */
+    public Map<String, Object> channelCatalog(String projectId) throws IOException {
+        List<File> candidates = new ArrayList<>();
+        AfoSession s = session;
+        if (s != null && s.outputDir != null) {
+            candidates.add(new File(s.outputDir, "channels.json"));
+        }
+        try {
+            for (Map<String, Object> m : listSessions(projectId)) {
+                Object od = m.get("outputDir");
+                if (od != null) {
+                    candidates.add(new File(String.valueOf(od), "channels.json"));
+                }
+            }
+        } catch (Exception ignore) {
+            // 历史列表失败不影响活动会话字典读取
+        }
+        for (File f : candidates) {
+            if (f.isFile()) {
+                return new com.fasterxml.jackson.databind.ObjectMapper().readValue(f, Map.class);
+            }
+        }
+        throw new IOException("通道字典尚未生成(会话准备完成后可用;历史运行从结果Channels读取)");
+    }
+
+    /**
+     * 增量样本读取(游标式,纯文件,不占用MATLAB引擎 —— UI-R138 7.3):扫描 outputDir/stream/*.json
+     * (SHT_AFO_SAMPLES_V2 不可变样本块,文件名前12位数字定序),校验会话身份与序号连续,返回
+     * sampleSeq &gt; afterSeq 的至多 maxRows 行;columns(目录0基下标)可裁剪列以减小传输。
+     * 缺口不跨越:返回连续区段并附 gap{from,to},由前端保留缺口并提示原因(UI-R138 5.3)。
+     */
+    public Map<String, Object> readLive(String projectId, long afterSeq, String expectSessionId,
+                                        Integer maxRows, int[] columns) throws IOException {
+        AfoSession s = session;
+        if (s == null || s.outputDir == null) {
+            throw new IOException("无活动AFO会话;动态历史在准备完成后可读");
+        }
+        File dir = new File(s.outputDir, "stream");
+        int limit = maxRows == null ? 2048 : Math.max(1, Math.min(maxRows, 8192));
+        com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
+
+        // 状态摘要(status.json 原子写,读失败按尚未就绪处理,不报告成中断)
+        Map<String, Object> st = new LinkedHashMap<>();
+        File sf = new File(s.outputDir, "status.json");
+        if (sf.isFile()) {
+            try {
+                st = om.readValue(sf, Map.class);
+            } catch (Exception e) {
+                log.debug("status.json 读取中(可能正在原子替换)", e);
+            }
+        }
+
+        String hash = st.get("channelCatalogHash") != null ? String.valueOf(st.get("channelCatalogHash")) : null;
+        String sid = st.get("sessionId") != null ? String.valueOf(st.get("sessionId")) : null;
+        if (expectSessionId != null && !expectSessionId.isEmpty() && sid != null && !expectSessionId.equals(sid)) {
+            throw new IOException("会话身份不匹配(期望 " + expectSessionId + ",当前 " + sid + ");不跨会话拼接数据");
+        }
+
+        List<Long> seqList = new ArrayList<>();
+        List<Object> timeList = new ArrayList<>();
+        List<double[]> valueRows = new ArrayList<>();
+        List<long[]> qualityRows = new ArrayList<>();
+        long expected = afterSeq + 1;
+        long gapFrom = -1, gapTo = -1;
+        boolean stoppedOnGap = false;
+        File[] files = dir.isDirectory() ? dir.listFiles((d, n) -> n.matches("\\d{12}\\.json")) : null;
+        if (files != null) {
+            java.util.Arrays.sort(files, Comparator.comparingLong(f -> Long.parseLong(f.getName().substring(0, 12))));
+            for (File f : files) {
+                Map<String, Object> blk;
+                try {
+                    blk = om.readValue(f, Map.class);
+                } catch (Exception e) {
+                    log.warn("AFO样本块解析失败(跳过,等待下次发布重试): {}", f.getName());
+                    continue;
+                }
+                if (!"SHT_AFO_SAMPLES_V2".equals(String.valueOf(blk.get("schema")))) {
+                    continue;
+                }
+                if (sid != null && blk.get("sessionId") != null && !sid.equals(String.valueOf(blk.get("sessionId")))) {
+                    continue; // 旧会话遗留块,不属于当前连接
+                }
+                long first = asLong(blk.get("firstSeq"));
+                long last = asLong(blk.get("lastSeq"));
+                if (last <= afterSeq) {
+                    continue; // 整块早于游标
+                }
+                if (first > expected) {
+                    gapFrom = expected;
+                    gapTo = first - 1;
+                    stoppedOnGap = true;
+                    break; // 缺口之后暂不拼接,等待缺失区间(可能尚未发布)重试
+                }
+                // jsonencode 会压扁尺寸为1的维度:单行块 values 为扁平272数组、sampleSeq/sampleTime 为标量
+                List<?> seq = asListOrSingleton(blk.get("sampleSeq"));
+                List<?> tArr = asListOrSingleton(blk.get("sampleTime"));
+                List<?> vals = asRowList(blk.get("values"));
+                List<?> qual = asRowListOrNull(blk.get("quality"));
+                if (seq == null || tArr == null || vals == null) {
+                    continue;
+                }
+                for (int r = 0; r < seq.size() && seqList.size() < limit; r++) {
+                    long sq = asLong(seq.get(r));
+                    if (sq <= afterSeq) {
+                        continue; // 块内部分早于游标
+                    }
+                    seqList.add(sq);
+                    timeList.add(tArr.get(r));
+                    valueRows.add(toDoubleRow(asList(vals.get(r)), columns));
+                    qualityRows.add(qual == null ? null : toLongRow(asList(qual.get(r)), columns));
+                }
+                expected = last + 1;
+                if (seqList.size() >= limit) {
+                    break;
+                }
+            }
+        }
+        boolean hasMore = !stoppedOnGap && expected <= asLong(st.get("publishedSeq"));
+        boolean readFinal = Boolean.TRUE.equals(st.get("isFinal"))
+                && expected > asLong(st.get("publishedSeq"))
+                && !stoppedOnGap;
+        long nextSeq = seqList.isEmpty() ? afterSeq : seqList.get(seqList.size() - 1);
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("runId", s.runId);
+        out.put("sessionId", sid);
+        out.put("channelCatalogHash", hash);
+        out.put("state", st.get("state"));
+        out.put("currentSimulationTime", st.getOrDefault("currentSimulationTime", st.get("time")));
+        out.put("sampleTime", st.get("sampleTime"));
+        out.put("sampleSeq", st.get("sampleSeq"));
+        out.put("publishedSeq", st.get("publishedSeq"));
+        out.put("lastHeartbeat", st.get("lastHeartbeat"));
+        out.put("publishLive", st.getOrDefault("publishLive", true));
+        out.put("publishError", st.get("publishError"));
+        out.put("observerError", st.get("observerError"));
+        out.put("saveState", st.getOrDefault("saveState", "not_started"));
+        out.put("saveError", st.get("saveError"));
+        out.put("isFinal", readFinal);
+        out.put("nextSeq", nextSeq);
+        out.put("hasMore", hasMore);
+        if (stoppedOnGap) {
+            Map<String, Object> gap = new LinkedHashMap<>();
+            gap.put("from", gapFrom);
+            gap.put("to", gapTo);
+            out.put("gap", gap);
+        }
+        out.put("sampleSeqList", seqList);
+        out.put("sampleTimeList", timeList);
+        out.put("values", valueRows);
+        out.put("quality", qualityRows);
+        out.put("width", columns == null ? -1 : columns.length);
+        return out;
+    }
+
+    private static List<?> asList(Object o) {
+        return o instanceof List ? (List<?>) o : java.util.Collections.emptyList();
+    }
+
+    /** JSON字段兼容标量与数组(单行样本块被jsonencode压扁)。 */
+    private static List<?> asListOrSingleton(Object o) {
+        if (o instanceof List) {
+            return (List<?>) o;
+        }
+        return o == null ? null : java.util.Collections.singletonList(o);
+    }
+
+    /** 行集合:元素为数组则原样;元素为标量(单行压扁)则包成单行。 */
+    private static List<?> asRowList(Object o) {
+        if (!(o instanceof List)) {
+            return null;
+        }
+        List<?> l = (List<?>) o;
+        if (l.isEmpty() || l.get(0) instanceof List) {
+            return l;
+        }
+        return java.util.Collections.singletonList(l);
+    }
+
+    private static List<?> asRowListOrNull(Object o) {
+        return o == null ? null : asRowList(o);
+    }
+
+    private static long asLong(Object o) {
+        if (o instanceof Number) {
+            return ((Number) o).longValue();
+        }
+        if (o == null) {
+            return 0L;
+        }
+        try {
+            return Long.parseLong(String.valueOf(o));
+        } catch (NumberFormatException e) {
+            return 0L;
+        }
+    }
+
+    private static double[] toDoubleRow(List<?> row, int[] columns) {
+        if (columns == null) {
+            double[] r = new double[row.size()];
+            for (int i = 0; i < row.size(); i++) {
+                Object v = row.get(i);
+                r[i] = v instanceof Number ? ((Number) v).doubleValue() : Double.NaN;
+            }
+            return r;
+        }
+        double[] r = new double[columns.length];
+        for (int i = 0; i < columns.length; i++) {
+            int idx = columns[i];
+            Object v = idx >= 0 && idx < row.size() ? row.get(idx) : null;
+            r[i] = v instanceof Number ? ((Number) v).doubleValue() : Double.NaN;
+        }
+        return r;
+    }
+
+    private static long[] toLongRow(List<?> row, int[] columns) {
+        if (columns == null) {
+            long[] r = new long[row.size()];
+            for (int i = 0; i < row.size(); i++) {
+                Object v = row.get(i);
+                r[i] = v instanceof Number ? ((Number) v).longValue() : 0L;
+            }
+            return r;
+        }
+        long[] r = new long[columns.length];
+        for (int i = 0; i < columns.length; i++) {
+            int idx = columns[i];
+            Object v = idx >= 0 && idx < row.size() ? row.get(idx) : null;
+            r[i] = v instanceof Number ? ((Number) v).longValue() : 0L;
+        }
+        return r;
+    }
+
     /* ---------- 会话管理 ---------- */
 
     public Map<String, Object> currentStatus(String projectId) throws IOException {
@@ -373,14 +611,32 @@ public class AfoService {
         }
     }
 
-    /** 命令走inbox文件通道(pause/resume/stop/np/load),不占用引擎。 */
+    /** 命令走inbox文件通道(pause/resume/stop/np/load;记录服务点消费),不占用引擎。
+     *  R065合同:命令携带sessionId/runId由会话校验身份,防串任务施加。 */
     public Map<String, Object> command(String projectId, String kind, Object value) throws IOException {
         AfoSession s = requireSession(projectId, null);
-        String id = "cmd_" + UUID.randomUUID().toString().substring(0, 8);
+        if (!java.util.Arrays.asList("np", "load", "pause", "resume", "stop").contains(kind)) {
+            throw new IllegalArgumentException("不支持的命令类型: " + kind + "(管理命令save/release/discard走专用端点)");
+        }
+        String id = "cmd_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
         Map<String, Object> cmd = new LinkedHashMap<>();
         cmd.put("id", id);
         cmd.put("kind", kind);
         cmd.put("value", value);
+        // 身份字段从程序原子写的 status.json 读取,与会话校验一致
+        File sf = new File(s.outputDir, "status.json");
+        if (sf.isFile()) {
+            try {
+                Map<?, ?> st = new com.fasterxml.jackson.databind.ObjectMapper().readValue(sf, Map.class);
+                Object sid = st.get("sessionId");
+                if (sid != null) {
+                    cmd.put("sessionId", String.valueOf(sid));
+                }
+            } catch (Exception ignore) {
+                // 读失败则不带身份字段(会话端仅在携带时校验)
+            }
+        }
+        cmd.put("runId", s.runId);
         File inbox = new File(s.outputDir, "inbox");
         if (!inbox.exists() && !inbox.mkdirs()) throw new IOException("无法创建inbox目录");
         File target = new File(inbox, id + ".json");

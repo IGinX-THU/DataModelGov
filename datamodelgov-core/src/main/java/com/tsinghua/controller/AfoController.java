@@ -354,6 +354,40 @@ public class AfoController {
         }
     }
 
+    @ApiOperation("通道字典(R065 prepare自产channels.json:SHT_AFO_CATALOG_V2,含display/displayGroup/panel)")
+    @GetMapping("/channels")
+    @RequirePermission(Permission.READ)
+    public Result<Map<String, Object>> channels(@PathVariable("pid") String pid) {
+        try {
+            return Result.success(afoService.channelCatalog(pid));
+        } catch (Exception e) {
+            return Result.error("读取AFO通道字典失败: " + e.getMessage());
+        }
+    }
+
+    @ApiOperation("动态历史增量读取(游标式;stream样本块纯文件读取,不占用引擎)")
+    @GetMapping("/live")
+    @RequirePermission(Permission.READ)
+    public Result<Map<String, Object>> live(@PathVariable("pid") String pid,
+            @org.springframework.web.bind.annotation.RequestParam(value = "afterSeq", required = false, defaultValue = "0") Long afterSeq,
+            @org.springframework.web.bind.annotation.RequestParam(value = "sessionId", required = false) String sessionId,
+            @org.springframework.web.bind.annotation.RequestParam(value = "maxRows", required = false, defaultValue = "2048") Integer maxRows,
+            @org.springframework.web.bind.annotation.RequestParam(value = "columns", required = false) String columns) {
+        try {
+            int[] cols = null;
+            if (columns != null && !columns.trim().isEmpty()) {
+                String[] parts = columns.trim().split(",");
+                cols = new int[parts.length];
+                for (int i = 0; i < parts.length; i++) {
+                    cols[i] = Integer.parseInt(parts[i].trim());
+                }
+            }
+            return Result.success(afoService.readLive(pid, afterSeq == null ? 0L : afterSeq, sessionId, maxRows, cols));
+        } catch (Exception e) {
+            return Result.error("读取AFO动态历史失败: " + e.getMessage());
+        }
+    }
+
     @ApiOperation("历史会话结果(result.json:config/channels/time/values/events/timing)")
     @GetMapping("/sessions/{runId}/result")
     @RequirePermission(Permission.READ)
