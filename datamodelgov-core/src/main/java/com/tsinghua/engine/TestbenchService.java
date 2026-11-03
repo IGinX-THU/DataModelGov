@@ -47,7 +47,7 @@ public class TestbenchService {
     @Autowired
     private EngineTestbenchRecordService testbenchRecordService;
 
-    private static final String R06_IN_CLASSPATH = "programs/Delivery_V1_20261019_R06/programs";
+    private static final String R06_IN_CLASSPATH = "matlab/delivery/programs";
     private static final String PROG_SUBDIR = "m_program_adaptive_tune";
 
     /** 交付树根可配置解析(engine.r06.root):磁盘路径优先,classpath/内置资源/jar 兜底。 */

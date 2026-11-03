@@ -1420,7 +1420,7 @@ public class F3FlightService {
                 + "请在项目工作目录 program/m_program_adaptive_tune 下放置程序");
     }
 
-    private static final String R06_IN_CLASSPATH = "programs/Delivery_V1_20261019_R06/programs";
+    private static final String R06_IN_CLASSPATH = "matlab/delivery/programs";
 
     /** 交付树根可配置解析(engine.r06.root):磁盘路径优先,classpath/内置资源/jar 兜底。 */
     @Autowired(required = false)

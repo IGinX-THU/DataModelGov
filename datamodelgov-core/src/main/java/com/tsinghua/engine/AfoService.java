@@ -56,7 +56,7 @@ public class AfoService {
         this.store = store;
     }
 
-    private static final String R06_IN_CLASSPATH = "programs/Delivery_V1_20261019_R06/programs";
+    private static final String R06_IN_CLASSPATH = "matlab/delivery/programs";
     private static final String AFO_SUBDIR = "programs/AFO_V_2";
 
     /** 交付树根可配置解析(engine.r06.root):磁盘路径优先,classpath/内置资源/jar 兜底。 */
@@ -156,7 +156,7 @@ public class AfoService {
         if (!new File(extracted, "sht_afo_config.m").isFile()) {
             deleteRecursively(extracted);
             throw new IOException("jar 内未找到 AFO_V_2 程序资源(解压 " + extractedCount
-                    + " 个文件);请确认部署包含 programs/Delivery_V1_20261019_R06 交付树");
+                    + " 个文件);请确认部署包含 matlab/delivery 交付树");
         }
         log.info("AFO_V_2 解压完成: {} 个文件", extractedCount);
         return extracted;

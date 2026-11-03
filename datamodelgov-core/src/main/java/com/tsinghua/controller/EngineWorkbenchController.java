@@ -807,7 +807,7 @@ public class EngineWorkbenchController {
         {"Stage4/prediction_models/hold/steady_model.xlsx", "model", "示例·预测载体模型-沿用(自演化)"},
         {"Stage4/prediction_models/trend/steady_model.xlsx", "model", "示例·预测载体模型-趋势(自演化)"}
     };
-    private static final String EXAMPLE_CLASSPATH = "programs/Delivery_V1_20261019_R06/examples/";
+    private static final String EXAMPLE_CLASSPATH = "matlab/delivery/examples/";
 
     /** 交付树根可配置解析(engine.r06.root):配置磁盘路径时 examples 优先从该目录读取。 */
     @Autowired(required = false)

@@ -85,12 +85,12 @@ offline:
 # 工作台引擎接入配置
 engine:
   # R06 交付树根。三种取值:
-  # 1) 留空(默认):使用内置交付树 classpath:programs/Delivery_V1_20261019_R06,
-  #    按 工作区 src/main/resources/programs/Delivery_V1_20261019_R06 → target/classes → jar 解压 顺序探测;
-  # 2) classpath:programs/Delivery_V1_20261019_R06 :显式指向 classpath(resources/programs/)中的内置交付树;
-  # 3) 磁盘路径(相对/绝对):指向交付树根或其任意上层目录。如配置到Delivery_V1_20261019_R06/程序，
-  #    若不是交付树根本身,自动向下扫描(最多2层)定位含 programs/examples/advanced_C 布局的子目录,
-  #    因此配置到 program/Delivery_V1_20261019_R06 层也能自动找到 程序/ 下的交付树。
+  # 1) 留空(默认):使用内置交付树 classpath:matlab/delivery,
+  #    按 工作区 src/main/resources/matlab/delivery → target/classes → jar 解压 顺序探测;
+  # 2) classpath:matlab/delivery :显式指向 classpath(resources/matlab/)中的内置交付树;
+  # 3) 磁盘路径(相对/绝对):指向交付树根或其任意上层目录。若不是交付树根本身,
+  #    自动向下扫描(最多2层)定位含 programs/examples/advanced_C 布局的子目录,
+  #    因此配置到 program/Delivery_V1_20261102_R065 层也能自动找到 程序/ 下的交付树。
   #    磁盘路径仅作为最高优先级来源,工作目录/内置资源/jar 兜底链保持不变。
   r06:
     root:

@@ -10,16 +10,18 @@ import java.util.Deque;
 
 /**
  * R06 交付树根统一解析(可配置 + 自动扫描)。
+ * 内置资源使用固定目录名 resources/matlab/delivery(版本无关,升级时整树覆盖内容即可,不改代码);
+ * 外部交付树保留原始版本化目录名(Delivery_V1_...)由自动扫描定位。
  * application.yml: engine.r06.root 支持三种取值:
  * <pre>
- * 1) 留空(默认):使用内置交付树 classpath:programs/Delivery_V1_20261019_R06
+ * 1) 留空(默认):使用内置交付树 classpath:matlab/delivery
  *    (工作区 resources → target/classes → jar 解压 逐级探测,行为与历史版本一致);
- * 2) classpath:programs/Delivery_V1_20261019_R06 :显式指向 classpath 中的交付树根
- *    (即 resources/programs/ 下的当前位置;jar 内条目前缀同步生效);
+ * 2) classpath:matlab/delivery :显式指向 classpath 中的内置交付树
+ *    (即 resources/matlab/delivery;jar 内条目前缀同步生效);
  * 3) 磁盘路径(相对或绝对):指向交付树根或其任意上层目录。
  *    若配置的不是交付树根本身,会自动向下扫描(最多2层)定位含
  *    programs / examples / advanced_C 布局特征的子目录——因此配置到
- *    program/Delivery_V1_20261019_R06(程序 文件夹的父层)也能自动找到 程序/ 下的交付树。
+ *    program/Delivery_V1_20261102_R065(程序 文件夹的父层)也能自动找到 程序/ 下的交付树。
  *    磁盘路径优先级最高,各服务的"工作目录/内置资源/jar"兜底链保持不变。
  * </pre>
  * 容错:配置直接指向 programs 层(其下就是 m_program_adaptive_tune/AFO_V_2)时自动按该层解析;
@@ -29,8 +31,8 @@ import java.util.Deque;
 @Component
 public class DeliveryTreeLocator {
 
-    /** 内置(classpath 默认)交付树根。 */
-    public static final String DEFAULT_CLASSPATH_ROOT = "programs/Delivery_V1_20261019_R06";
+    /** 内置(classpath 默认)交付树根 —— 固定目录名 resources/matlab/delivery,版本无关。 */
+    public static final String DEFAULT_CLASSPATH_ROOT = "matlab/delivery";
 
     /** 交付树布局特征目录(识别用,缺 programs 一定不算)。 */
     private static final String[] LAYOUT_MARKERS = {
