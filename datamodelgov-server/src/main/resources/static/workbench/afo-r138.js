@@ -1152,7 +1152,7 @@
             if (isCompiling()) host.appendChild(h('div', { class: 'wb-infobar', style: 'border-left:4px solid #b45309;margin-bottom:10px' },
                 '模型编译初始化中：仿真内核正在编译模型与加载求解器（通常1~2分钟），此阶段尚无数据流，属正常等待，无需重复操作。此时提交的暂停/结束将在编译完成后的首个安全点生效。'));
             if (ui === 'FAILED') {
-                const errText = (live.error || S.error || S.message || '未知原因（详见任务日志）');
+                const errText = (live.error || S.error || '原因未记录，请查看服务端日志');
                 const eb = h('div', { class: 'wb-infobar', style: 'border-left:4px solid #b91c1c;margin-bottom:10px' });
                 eb.appendChild(h('div', { style: 'font-weight:600;margin-bottom:4px' }, '计算失败，原因如下：'));
                 eb.appendChild(h('pre', { style: 'white-space:pre-wrap;word-break:break-all;margin:0;font-size:12px;line-height:1.5;max-height:220px;overflow:auto' }, String(errText)));
@@ -1941,11 +1941,14 @@
                 if (resp && (resp.success || resp.code === 200) && resp.data) {
                     S.result = resp.data;
                     if (resp.data.readonlyFailed || resp.data.phase === 'FAILED') {
-                        // 失败会话只读:进入失败页面展示原因(横幅读取 live.error)
+                        // 失败会话只读:进入失败页面展示原因(横幅读取 live.error);曲线用stream部分采样
                         S.readonlyFailed = true;
                         S.live = Object.assign({}, S.live || {}, { error: resp.data.error || '原因未记录' });
+                        await loadCatalog();
+                        refreshAcc();
                     } else {
                         await loadCatalog();
+                        refreshAcc(); // 主区图表经resultAcc取数,结果赋值后立即重建访问器
                         // 冻结配置:历史结果回看时取结果的最终配置(含回灌与双总距映射参数)
                         S.cfgFrozen = {
                             duration: parseFloat((S.result.config && S.result.config.duration) || 0),

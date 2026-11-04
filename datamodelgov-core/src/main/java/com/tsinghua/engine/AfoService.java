@@ -839,13 +839,14 @@ public class AfoService {
             s.finishedAt = System.currentTimeMillis();
         } catch (Exception e) {
             log.error("AFO运行失败: {}", s.runId, e);
-            s.phase = "FAILED";
+            // 先填error/message再改phase:SSE按秒推送,若先置FAILED,前端可能在error赋值前收到失败态
             // 优先取MATLAB侧落盘的完整错误报告(含真实原因与调用栈),e.getMessage()通常只是顶层"dmg_afo_task"
             String rep = readMatlabErrorReport(s);
             if (rep != null) log.error("AFO错误报告 {}:\n{}", s.runId, rep);
             s.error = rep != null ? rep
                     : (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
             s.message = "运行失败";
+            s.phase = "FAILED";
             s.finishedAt = System.currentTimeMillis();
         } finally {
             closeEngine(s);
@@ -1024,13 +1025,61 @@ public class AfoService {
                         : String.valueOf(e0);
             }
             r.put("error", err);
-            // 通道目录:让曲线区能显示部分采样的通道结构(数据本身为空则图上无线)
+            // 部分采样数据:从stream块组装time/values/channels,让只读失败页也能画出失败前的部分曲线
+            // (结构与MATLAB侧result.json一致:values[i][gi][j],i=时刻,gi=spec组,j=组内序号)
             File cf = new File(dir, "channels.json");
             if (cf.exists()) {
                 try {
-                    Map<?, ?> c = new com.fasterxml.jackson.databind.ObjectMapper().readValue(cf, Map.class);
-                    r.put("catalog", c.get("channels"));
+                    com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
+                    Map<?, ?> c = om.readValue(cf, Map.class);
+                    List<?> specs = (List<?>) c.get("channels");
+                    r.put("channels", specs);
+                    r.put("catalog", specs);
                     r.put("channelCatalogHash", c.get("hash"));
+                    File sd = new File(dir, "stream");
+                    File[] blocks = sd.listFiles((d, n) -> n.toLowerCase().endsWith(".json"));
+                    if (blocks != null && blocks.length > 0) {
+                        java.util.Arrays.sort(blocks);
+                        // 展开平铺通道id顺序(与前端specToCatalog一致):fuel_proxy_/air_g_为平铺spec
+                        java.util.List<String> flatIds = new java.util.ArrayList<>();
+                        for (Object so : specs) {
+                            Map<?, ?> spec = (Map<?, ?>) so;
+                            String sid = String.valueOf(spec.get("id"));
+                            List<?> names = (List<?>) spec.get("names");
+                            int nn = names == null ? 1 : names.size();
+                            boolean flat = sid.startsWith("fuel_proxy_") || sid.startsWith("air_g_");
+                            for (int j = 0; j < nn; j++) flatIds.add(flat ? sid : sid + "_" + String.format("%02d", j + 1));
+                        }
+                        java.util.List<Object> time = new java.util.ArrayList<>();
+                        java.util.List<Object> vals = new java.util.ArrayList<>();
+                        for (File b : blocks) {
+                            try {
+                                Map<?, ?> blk = om.readValue(b, Map.class);
+                                Object bt = blk.get("sampleTime");
+                                List<?> v = (List<?>) blk.get("values");
+                                if (bt == null || v == null) continue;
+                                time.add(bt);
+                                java.util.List<Object> row = new java.util.ArrayList<>(specs.size());
+                                int p = 0;
+                                for (Object so : specs) {
+                                    Map<?, ?> spec = (Map<?, ?>) so;
+                                    List<?> names = (List<?>) spec.get("names");
+                                    int nn = names == null ? 1 : names.size();
+                                    boolean flat = String.valueOf(spec.get("id")).startsWith("fuel_proxy_")
+                                            || String.valueOf(spec.get("id")).startsWith("air_g_");
+                                    java.util.List<Object> grp = new java.util.ArrayList<>(nn);
+                                    for (int j = 0; j < nn; j++) {
+                                        int idx = flat ? p : p + j;
+                                        grp.add(v.size() > idx ? v.get(idx) : null);
+                                    }
+                                    p += nn;
+                                    row.add(grp);
+                                }
+                                vals.add(row);
+                            } catch (Exception ignore) { /* 坏块跳过 */ }
+                        }
+                        if (!time.isEmpty()) { r.put("time", time); r.put("values", vals); }
+                    }
                 } catch (Exception ignore) { /* 目录缺失不影响失败查看 */ }
             }
             File[] xs = dir.listFiles((d, n) -> n.toLowerCase().endsWith(".xlsx"));
