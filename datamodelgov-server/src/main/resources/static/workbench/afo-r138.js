@@ -1148,6 +1148,13 @@
                 + '（心跳 ' + (live.lastHeartbeat || '—') + '）。'));
             if (isCompiling()) host.appendChild(h('div', { class: 'wb-infobar', style: 'border-left:4px solid #b45309;margin-bottom:10px' },
                 '模型编译初始化中：仿真内核正在编译模型与加载求解器（通常1~2分钟），此阶段尚无数据流，属正常等待，无需重复操作。此时提交的暂停/结束将在编译完成后的首个安全点生效。'));
+            if (ui === 'FAILED') {
+                const errText = (live.error || S.error || S.message || '未知原因（详见任务日志）');
+                const eb = h('div', { class: 'wb-infobar', style: 'border-left:4px solid #b91c1c;margin-bottom:10px' });
+                eb.appendChild(h('div', { style: 'font-weight:600;margin-bottom:4px' }, '计算失败，原因如下：'));
+                eb.appendChild(h('pre', { style: 'white-space:pre-wrap;word-break:break-all;margin:0;font-size:12px;line-height:1.5;max-height:220px;overflow:auto' }, String(errText)));
+                host.appendChild(eb);
+            }
             if (S.connLost) host.appendChild(h('div', { class: 'wb-infobar', style: 'border-left:4px solid #b91c1c;margin-bottom:10px' },
                 '连接待核查：最后心跳 ' + ((S.live || {}).lastHeartbeat || '—') + '。曲线已冻结，不宣称后台已停止；恢复后自动补读。'));
             if (S.gapNotice) host.appendChild(h('div', { class: 'wb-infobar', style: 'border-left:4px solid #b45309;margin-bottom:10px' }, S.gapNotice));

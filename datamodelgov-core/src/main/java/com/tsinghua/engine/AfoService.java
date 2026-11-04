@@ -601,6 +601,7 @@ public class AfoService {
         // phase/message 为 Java 生命周期真源;applied/pending/events 来自 status.json
         out.put("phase", s.phase);
         out.put("message", s.message);
+        out.put("error", s.error); // 计算失败原因随SSE推送,前端FAILED横幅展示
         // MATLAB jsonencode 对单元素struct数组输出JSON对象而非数组;统一规范成数组(前端 filter/forEach 依赖)
         out.put("applied", asJsonArray(st.get("applied")));
         out.put("pending", asJsonArray(st.get("pending")));
@@ -839,7 +840,11 @@ public class AfoService {
         } catch (Exception e) {
             log.error("AFO运行失败: {}", s.runId, e);
             s.phase = "FAILED";
-            s.error = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            // 优先取MATLAB侧落盘的完整错误报告(含真实原因与调用栈),e.getMessage()通常只是顶层"dmg_afo_task"
+            String rep = readMatlabErrorReport(s);
+            if (rep != null) log.error("AFO错误报告 {}:\n{}", s.runId, rep);
+            s.error = rep != null ? rep
+                    : (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
             s.message = "运行失败";
             s.finishedAt = System.currentTimeMillis();
         } finally {
@@ -1048,11 +1053,18 @@ public class AfoService {
         m.append("cfg = sht_afo_config(c.outputDir);\n");
         m.append("f = fieldnames(c.cfg);\n");
         m.append("for k = 1:numel(f), cfg.(f{k}) = c.cfg.(f{k}); end\n");
+        m.append("try\n");
         m.append("switch lower(c.action)\n");
         m.append("    case 'prepare', r = sht_afo_session('prepare', cfg);\n");
         m.append("    case 'close'\n");
         m.append("        sht_afo_session('close'); r = 'ok'; % close has no output\n");
         m.append("    otherwise, r = sht_afo_session(lower(c.action));\n");
+        m.append("end\n");
+        m.append("catch ME\n");
+        m.append("    % Write full error report (real reason + MATLAB call stack) for the Java side.\n");
+        m.append("    fid = fopen(fullfile(fileparts(configFile), 'error-report.txt'), 'w', 'n', 'UTF-8');\n");
+        m.append("    if fid > 0, fwrite(fid, getReport(ME, 'extended', 'hyperlinks', 'off'), 'char'); fclose(fid); end\n");
+        m.append("    rethrow(ME);\n");
         m.append("end\n");
         m.append("payload = jsonencode(r);\n");
         m.append("fid = fopen(c.resultFile, 'w', 'n', 'UTF-8');\n");
@@ -1061,6 +1073,28 @@ public class AfoService {
         m.append("r = 'ok';\n");
         m.append("end\n");
         Files.write(new File(ad, "dmg_afo_task.m").toPath(), m.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** 读取MATLAB侧错误报告(dmg_afo_task catch ME时写adapterDir/error-report.txt)。
+     *  滤掉Goto/From匹配、端口未连接等编译警告行,只留真实错误与调用栈,超长截断。 */
+    private String readMatlabErrorReport(AfoSession s) {
+        try {
+            File f = new File(s.adapterDir, "error-report.txt");
+            if (!f.isFile()) return null;
+            String txt = new String(Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8);
+            StringBuilder sb = new StringBuilder();
+            for (String line : txt.replace("\r", "").split("\n")) {
+                String t = line.trim();
+                if (t.startsWith("警告:") || t.startsWith("> In ")) continue;
+                if (t.isEmpty() && sb.length() == 0) continue;
+                if (sb.length() + line.length() > 1600) { sb.append("\n...(报告过长已截断,全文见error-report.txt)"); break; }
+                sb.append(line).append('\n');
+            }
+            String out = sb.toString().trim();
+            return out.isEmpty() ? null : out;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /** feval一个session动作:写action配置→feval→读取JSON结果落 outputDir/afo-result.json。 */
