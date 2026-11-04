@@ -373,8 +373,10 @@ window.AfoKernel = (() => {
             for (let i = 0; i < (r.time || []).length; i++) {
                 const v = r.values[i];
                 const t = r.time[i];
-                if (cur && v !== cur.v) { segs.push({ a: cur.t, b: t, v: cur.v }); cur = null; }
-                if (!cur) cur = { t, v };
+                // S1:null=非有限样本,结束当前连续段且不开新段(不画成0,不跨段连线);
+                // 下个非null样本另起新段
+                if (cur && (v == null || v !== cur.v)) { segs.push({ a: cur.t, b: t, v: cur.v }); cur = null; }
+                if (!cur && v != null) cur = { t, v };
             }
             if (cur) segs.push({ a: cur.t, b: t1, v: cur.v });
             segs.forEach(s => {

@@ -33,13 +33,14 @@
             title: '发动机·全部登记输出',
             charts: [
                 { t: '轴速', u: 'rpm', s: [S_('engine_09', { name: 'Np' }), S_('engine_10', { name: 'Ng' })] },
-                { t: '截面总压', u: 'kPa', s: [S_('engine_01', { name: 'Pt1' }), S_('engine_03', { name: 'Pt3' }), S_('engine_05', { name: 'Pt45' })] },
-                { t: '截面总温', u: 'K', s: [S_('engine_02', { name: 'Tt1' }), S_('engine_04', { name: 'Tt3' }), S_('engine_06', { name: 'Tt45' })] },
+                // 总压/总温按1、3、4、45、5截面气路顺序(M7,规格4.2)
+                { t: '截面总压', u: 'kPa', s: [S_('engine_01', { name: 'Pt1' }), S_('engine_03', { name: 'Pt3' }), S_('engine_17', { name: 'Pt4' }), S_('engine_05', { name: 'Pt45' }), S_('engine_07', { name: 'Pt5' })] },
+                { t: '截面总温', u: 'K', s: [S_('engine_02', { name: 'Tt1' }), S_('engine_04', { name: 'Tt3' }), S_('engine_18', { name: 'Tt4' }), S_('engine_06', { name: 'Tt45' }), S_('engine_08', { name: 'Tt5' })] },
                 { t: '主流量', u: 'kg/s', s: [S_('engine_11', { name: 'W2' })] },
                 { t: '轴系力矩', u: 'N·m', s: [S_('engine_12', { name: 'PT驱动' }), S_('engine_19', { name: 'GT/HPC净' })] },
-                { t: '工作点与诊断', u: '1', s: [S_('engine_14', { name: 'GT压比' }), S_('engine_15', { name: 'PT压比' })] }
+                { t: '工作点与诊断', u: '1', s: [S_('engine_13', { name: 'HPC换算转速' }), S_('engine_14', { name: 'GT压比' }), S_('engine_15', { name: 'PT压比' })] }
             ],
-            footnote: '20项均可绘制 · Pt4/Pt5及其温度、工作点明细和诊断在“全部分组”展开'
+            footnote: '20项均可绘制 · 求解诊断(残差/收敛标志)在“全部分组”展开'
         },
         control: {
             title: '控制与负载·指令和响应',
@@ -92,8 +93,8 @@
     const GROUPS_ALL = {
         engine: [
             { t: '轴速', charts: [[{ id: 'engine_09' }, { id: 'engine_10' }]], note: 'Np与Ng同轴rpm' },
-            { t: '总压(全截面)', charts: [[{ id: 'engine_01' }, { id: 'engine_03' }, { id: 'engine_05' }], [{ id: 'engine_17' }, { id: 'engine_07' }]], note: '按1/3/4/45/5截面气路顺序;Pa可显示kPa' },
-            { t: '总温(全截面)', charts: [[{ id: 'engine_02' }, { id: 'engine_04' }, { id: 'engine_06' }], [{ id: 'engine_18' }, { id: 'engine_08' }]], note: '默认K' },
+            { t: '总压(全截面)', charts: [[{ id: 'engine_01' }, { id: 'engine_03' }, { id: 'engine_17' }, { id: 'engine_05' }, { id: 'engine_07' }]], note: '按1/3/4/45/5截面气路顺序;Pa可显示kPa' },
+            { t: '总温(全截面)', charts: [[{ id: 'engine_02' }, { id: 'engine_04' }, { id: 'engine_18' }, { id: 'engine_06' }, { id: 'engine_08' }]], note: '按1/3/4/45/5截面气路顺序;默认K' },
             { t: '主流量', charts: [[{ id: 'engine_11' }]], note: 'W2,kg/s' },
             { t: '轴系力矩(含负载引用)', charts: [[{ id: 'engine_12' }, { id: 'engine_19' }, { id: 'load_01', dash: true }]], note: 'PT驱动力矩≠负载Mkp;load_01为跨页引用' },
             { t: '工作点', charts: [[{ id: 'engine_13' }], [{ id: 'engine_14' }, { id: 'engine_15' }]], note: 'HPC相对换算转速与GT/PT压比分别标明' },
@@ -124,7 +125,7 @@
             { t: '供回油流量', charts: [[{ id: 'oil05_01' }, { id: 'oil06_01' }, { id: 'oil11_01' }, { id: 'oil12_01' }]], note: 'm³/s可转换L/min,不当kg/s' },
             { t: '腔与换热器压力', charts: [[{ id: 'oil07_01' }, { id: 'oil08_01' }], [{ id: 'oil17_01' }, { id: 'oil18_01' }, { id: 'oil19_01' }, { id: 'oil20_01' }]], note: 'Pa/kPa' },
             { t: '生热换热', charts: [[{ id: 'oil01_01' }, { id: 'oil02_01' }, { id: 'oil03_01' }, { id: 'oil04_01' }], [{ id: 'oil13_01' }, { id: 'oil14_01' }, { id: 'oil15_01' }], [{ id: 'oil27_02' }, { id: 'oil28_02' }]], note: 'W与kW统一后同图;相近名称不合并' },
-            { t: '封严通风', charts: [[{ id: 'oil21_01' }, { id: 'oil21_03' }, { id: 'oil21_05' }, { id: 'oil21_07' }], [{ id: 'oil21_02' }, { id: 'oil21_04' }, { id: 'oil21_06' }, { id: 'oil21_08' }], [{ id: 'oil22_01' }, { id: 'oil22_02' }, { id: 'oil22_03' }, { id: 'oil22_04' }], [{ id: 'oil23_01' }, { id: 'oil23_02' }, { id: 'oil23_03' }], [{ id: 'oil24_01' }, { id: 'oil24_02' }, { id: 'oil24_03' }, { id: 'oil24_04' }, { id: 'oil25_01' }, { id: 'oil25_02' }]], note: '压力/温度/封严流量/排气/压差分图' },
+            { t: '封严通风', charts: [[{ id: 'oil21_01' }, { id: 'oil21_03' }, { id: 'oil21_05' }, { id: 'oil21_07' }], [{ id: 'oil21_02' }, { id: 'oil21_04' }, { id: 'oil21_06' }, { id: 'oil21_08' }], [{ id: 'oil22_01' }, { id: 'oil22_02' }, { id: 'oil22_03' }, { id: 'oil22_04' }], [{ id: 'oil23_01' }, { id: 'oil23_02' }, { id: 'oil23_03' }], [{ id: 'oil24_01' }, { id: 'oil24_02' }, { id: 'oil24_03' }, { id: 'oil24_04' }], [{ id: 'oil25_01' }, { id: 'oil25_02' }]], note: '压力/温度/封严流量/排气/封严压差/排气压差分图(M4)' },
             { t: '守恒诊断', charts: [[{ id: 'oil26_01' }, { id: 'oil26_02' }]], note: '质量残差保留正负' }
         ]
     };
@@ -152,6 +153,7 @@
                 duration: '30', recordStep: '0.1', pace: 'realtime',
                 loadMode: 'power', powerKw: '2176.6', mkpNm: '1000', pitchDeg: '12',
                 mainPitchDeg: '12', tailPitchDeg: '10', externalAir: false, npRatio: '1',
+                tailToMainPowerRatio: '0.10', tailDesignPitchDeg: '10', // 双总距固定映射参数(规格3.1)
                 publishLive: true, initialTransitionConfirmed: false
             },
             cfgFrozen: null,
@@ -159,10 +161,10 @@
             byId: null, dispIds: null, dispPos: null,
             liveBuf: null, liveCols: null, liveErr: '', gapNotice: '', gapRetries: 0,
             tab: 'main', viewMode: 'common', custom: [], customSel: [],
-            airHide: {}, airBranch: 0,
-            follow: true, windowPreset: '30s', conv: true,
+            airHide: {}, airBranch: -1, treeCollapsed: false, // airBranch>=0为单支路三图查看(M5);树折叠态(L6)
+            follow: true, followDirty: false, windowPreset: '30s', conv: true, // followDirty:关跟随后有新样本(L2)
             compare: null, compareOverlay: false,
-            localResume: false, connLost: false,
+            localResume: false, connLost: false, pauseReqAt: null, // 暂停请求提交时刻(30s延迟提示,L3)
             es: null, streamMode: '', pullTimer: null,
         };
         S.tab = S.tab || 'main';
@@ -176,7 +178,7 @@
                 try {
                     localStorage.setItem(dispKey(), JSON.stringify({
                         viewMode: S.viewMode, custom: S.custom, windowPreset: S.windowPreset,
-                        follow: S.follow, conv: S.conv, airHide: S.airHide
+                        follow: S.follow, conv: S.conv, airHide: S.airHide, treeCollapsed: S.treeCollapsed
                     }));
                 } catch (e) { /* 忽略 */ }
             }, 400);
@@ -191,6 +193,7 @@
                     S.follow = d.follow !== false;
                     S.conv = d.conv !== false;
                     S.airHide = d.airHide || {};
+                    S.treeCollapsed = !!d.treeCollapsed;
                 }
             } catch (e) { /* 忽略 */ }
         }
@@ -312,26 +315,17 @@
             const i = lo - 1;
             return i < 0 ? null : v[i];
         }
-        function latestOf(id) {
-            const lt = valueAt(id, S.liveBuf && S.liveBuf.count() ? S.liveBuf.time[S.liveBuf.count() - 1]
-                : (resultAcc && resultAcc.time.length ? resultAcc.time[resultAcc.time.length - 1] : NaN));
-            return lt === undefined ? null : lt;
-        }
-
-        /* ---------- 质量状态 ---------- */
-        const Q_CN = { 0: ['有效采样', 'teal'], 1: ['非有限值', 'red'], 2: ['不适用', 'gray'], 3: ['单位未确认', 'amber'] };
-        function qualityOf(id) {
+        /* ---------- 质量状态(L7,规格5.4) ----------
+         * quality码:0有效 1非有限(缓冲区为null,经断线/null断带自然可见) 2不适用(liveSeries置null断线)
+         * 3单位未确认(图例/纵轴标签追加"(单位未确认)")。单位未确认按通道availability标记判定。 */
+        const qualName = id => {
             const c = chById(id);
-            if (!c) return ['未记录', 'gray'];
-            if (c.availability === 'unit_unconfirmed') return ['单位未确认', 'amber'];
-            if (S.liveBuf && S.liveBuf.count()) {
-                const col = S.liveBuf.series(c._pos);
-                return Q_CN[col.q[col.q.length - 1]] || Q_CN[0];
+            if (c && (c.availability === 'unit_unconfirmed' || Number(c.quality) === 3
+                || (c.unit && /unconfirmed|未确认/.test(String(c.unit))))) {
+                return (c.name || id) + '(单位未确认)';
             }
-            const v = latestOf(id);
-            if (v == null) return [S.result ? '本结果未记录' : '暂无数据', 'gray'];
-            return Q_CN[0];
-        }
+            return (c && c.name) || id;
+        };
 
         /* ---------- 状态与命令 ---------- */
         function uiState() {
@@ -376,7 +370,11 @@
         }
         function evState(ev) {
             if (ev.status === 'applied') return ['已生效 ' + fmtT(ev.appliedTime), 'teal'];
-            if (ev.status === 'accepted') return ['已接受,待生效', 'amber'];
+            if (ev.status === 'accepted') {
+                // L4(规格3.3):暂停期间提交的物理输入,发动机未推进,继续后才施加,不显示"待生效"
+                if ((ev.kind === 'np' || ev.kind === 'load') && uiState() === 'PAUSED') return ['已接受，继续后施加', 'amber'];
+                return ['已接受,待生效', 'amber'];
+            }
             if (ev.status === 'not_applied') return ['未施加,运行已结束', 'gray'];
             if (ev.status === 'failed') return ['失败:' + (ev.reason || ''), 'red'];
             if (ev.status === 'rejected') return ['已回退:' + (ev.reason || ''), 'red'];
@@ -466,8 +464,10 @@
             if (typeof live.publishedSeq === 'number' && typeof live.sampleSeq === 'number' && live.publishedSeq < live.sampleSeq) bits.push('发布积压 ' + (live.sampleSeq - live.publishedSeq) + ' 行');
             if (live.publishError) bits.push('发布错误: ' + String(live.publishError).slice(0, 40));
             if (live.observerError) bits.push('观察回调错误(数值继续)');
-            if (save === 'writing') bits.push('正在保存…');
+            // 保存状态(规格3.2):计算结束未存完显示"正在保存";仅结果文件保存成功才显示"结果已保存"
             if (save === 'failed') bits.push('保存失败: ' + (live.saveError || ''));
+            else if (save === 'saved') bits.push('结果已保存');
+            else if (save === 'writing' || (ui === 'ENDED' && (!save || save === 'not_started'))) bits.push('计算结束，正在保存…');
             bar.appendChild(h('div', { style: 'font-size:12px;color:#64748b;margin-top:5px;display:flex;gap:16px;flex-wrap:wrap' },
                 bits.map(t => h('span', null, t))));
             return bar;
@@ -491,7 +491,7 @@
                 bar.appendChild(h('div', {
                     style: 'padding:10px 2px;font-size:15px;cursor:pointer;color:' + (active ? '#0f766e' : '#334155')
                         + ';font-weight:' + (active ? '700' : '400') + ';border-bottom:3px solid ' + (active ? '#0f766e' : 'transparent'),
-                    onclick: () => { S.tab = k; renderAll(); }
+                    onclick: () => { S.tab = k; if (k !== 'air') S.airBranch = -1; renderAll(); } // 离开空气页复位单支路视图(M5)
                 }, label));
             });
             tabHost.appendChild(bar);
@@ -511,7 +511,11 @@
             const span = { '10s': 10, '30s': 30, '60s': 60 }[S.windowPreset] || 30;
             return [Math.max(0, tEnd - span), Math.max(tEnd, span)];
         };
-        function defsSeries(defs, acc, targetU) {
+        // 单位策略(R138 4.2/5.2):常用图按图组目标单位转换(def.u,如发动机温度默认K、
+        // 滑油/总控油温℃);开关切"原单位"时一律原值;全部分组(无targetU)显示原单位。
+        // L5:useConv 为每图有效换算开关(缺省跟随全局 S.conv),支持单图覆盖
+        function defsSeries(defs, acc, targetU, useConv) {
+            const convOn = useConv === undefined ? S.conv : !!useConv;
             const out = [];
             if (!S._cmpSkipped) S._cmpSkipped = new Set();
             const accB = compareAcc();
@@ -540,14 +544,14 @@
                 // 单位策略(R138 4.2/5.2):常用图按图组目标单位转换(def.u,如发动机温度默认K、
                 // 滑油/总控油温℃);开关切"原单位"时一律原值;全部分组(无targetU)显示原单位
                 let conv = values, u = c.unit;
-                if (S.conv && targetU) {
+                if (convOn && targetU) {
                     const r2 = K.convertTo(values, c.unit, targetU);
                     conv = r2.values; u = r2.unit;
                 } else if (K.isUnconfirmedUnit(c.unit)) {
                     u = '原值(单位未确认)';
                 }
                 out.push(Object.assign({
-                    name: d.name || c.name, values: conv, unit: u, time
+                    name: d.name || qualName(id), values: conv, unit: u, time
                 }, { dash: d.dash, step: d.step, color: d.color }));
                 // 比较叠加(R138 第8章):先核对同物理量单位一致,不一致不叠加并记录
                 if (accB && S.compareOverlay) {
@@ -597,7 +601,9 @@
         }
         function npDemandPair(acc) {
             const cfg0 = (S.result && S.result.initialConfig) || S.cfgFrozen || S.cfg;
-            const designNp = 20800;
+            // 设计参考转速来自程序发布的 initialConfig.designNpRpm(sht_afo_prepare 写入);
+            // 20800 仅为旧结果缺字段时的兜底,不得反向写回配置
+            const designNp = (cfg0 && parseFloat(cfg0.designNpRpm)) || 20800;
             const steps = eventsList().filter(e => e.kind === 'np' && e.status === 'applied' && e.appliedTime != null)
                 .sort((a, b) => a.appliedTime - b.appliedTime)
                 .map(e => ({ t: e.appliedTime, v: parseFloat(e.value) * designNp }));
@@ -613,21 +619,40 @@
             return { ts, vs };
         }
 
-        /** 图卡(效果图:标题左上/单位右上/图区/图例在图内底部;标题行含导出当前视图)。 */
+        /** 图卡(效果图:标题左上/单位右上/图区/图例在图内底部;标题行含单位切换与导出当前视图)。 */
         function chartCard(host, def, resultMode) {
-            // 单位:常用图按图组目标单位(def.u,如发动机温度K、滑油/总控油温℃);"原单位"开关切回
-            let unit = def.u || '';
+            // 单位:常用图按图组目标单位(def.u,如发动机温度K、滑油/总控油温℃);"原单位"开关切回。
+            // L5:每图可切单位——仅当图声明目标单位且基准单位有明确换算路径(Pa→kPa/K→℃/W→kW等)
+            // 时显示按钮;覆盖状态按图保存于 S.__unitOv(默认跟随全局"单位"开关),切换只重绘本图
             const firstId = (def.s || []).map(d => d.id).find(id => id !== NP_DEM && id !== CMD_STEP && chById(id));
-            if (firstId) {
+            const rawBase = firstId ? String(chById(firstId).unit || '') : String(def.u || '');
+            const ovKey = (def.t || '') + '::' + (def.s || []).map(d => d.id).join(',');
+            const canConv = !!firstId && !!def.u && !!K.convertedUnit(rawBase); // 单位元数据:图目标单位+通道基准单位
+            const effConv = () => { const ov = (S.__unitOv || {})[ovKey]; return ov ? ov === 'conv' : S.conv; };
+            const unitLabelOf = convOn => {
+                if (!firstId) return def.u || '';
                 const raw = chById(firstId).unit;
-                unit = S.conv ? (K.convertTo([], raw, def.u).unit || raw) : (K.isUnconfirmedUnit(raw) ? '原值(单位未确认)' : String(raw || ''));
-            } else if (def.u) unit = def.u;
-            const ctlRef = { ctl: null };
+                return convOn ? (K.convertTo([], raw, def.u).unit || raw)
+                    : (K.isUnconfirmedUnit(raw) ? '原值(单位未确认)' : String(raw || ''));
+            };
+            const ctlRef = { ctl: null, redraw: null, refresh: null };
+            const unitEl = h('span', { style: 'font-size:12px;color:#64748b' }, unitLabelOf(effConv()));
             const card = h('div', { style: 'background:#fff;border-radius:4px;padding:8px 6px 2px' },
                 h('div', { style: 'display:flex;align-items:baseline;padding:0 4px' },
                     h('span', { style: 'font-weight:700;font-size:14px;color:#0f172a' }, def.t),
                     h('span', { style: 'flex:1' }),
-                    h('span', { style: 'font-size:12px;color:#64748b' }, unit),
+                    unitEl,
+                    canConv ? h('span', {
+                        style: 'font-size:11px;color:#0f766e;cursor:pointer;margin-left:10px',
+                        title: '本图单位切换（明确换算 ' + rawBase + '→' + K.convertedUnit(rawBase) + '；切换后本图不再跟随全局单位开关）',
+                        onclick: () => {
+                            S.__unitOv = S.__unitOv || {};
+                            S.__unitOv[ovKey] = effConv() ? 'raw' : 'conv'; // 每图覆盖状态
+                            unitEl.textContent = unitLabelOf(effConv());
+                            if (ctlRef.redraw) ctlRef.redraw();
+                            else if (ctlRef.refresh) ctlRef.refresh(); // 只重绘本图
+                        }
+                    }, '单位') : null,
                     h('span', {
                         style: 'font-size:11px;color:#0f766e;cursor:pointer;margin-left:10px',
                         title: '导出当前视图(窗口内样本)',
@@ -657,23 +682,30 @@
             if (resultMode) {
                 const acc = resultAcc;
                 if (!acc) { dom.appendChild(K.emptyState('结果尚未加载')); return; }
-                const series = defsSeries(def.s, acc, def.u);
-                if (!series.length) { dom.appendChild(K.emptyState('暂无数据')); return; }
-                K.mount(dom, { time: acc.time, series, window: windowRange(acc.time), marks: appliedMarks() }, zoomHooks)
-                    .then(c => { ctlRef.ctl = c; staticCharts.push(c); })
-                    .catch(e => { dom.innerHTML = ''; dom.appendChild(K.emptyState('图表库加载失败', e.message)); });
+                // 结果模式:单图重绘入口(L5 单位覆盖切换时只重挂本图,不整页重建)
+                ctlRef.redraw = () => {
+                    if (ctlRef.ctl) { try { ctlRef.ctl.dispose(); } catch (e) { /* 已释放 */ } ctlRef.ctl = null; }
+                    dom.innerHTML = '';
+                    const series = defsSeries(def.s, acc, def.u, effConv());
+                    if (!series.length) { dom.appendChild(K.emptyState('暂无数据')); return; }
+                    K.mount(dom, { time: acc.time, series, window: windowRange(acc.time), marks: appliedMarks() }, zoomHooks)
+                        .then(c => { ctlRef.ctl = c; staticCharts.push(c); })
+                        .catch(e => { dom.innerHTML = ''; dom.appendChild(K.emptyState('图表库加载失败', e.message)); });
+                };
+                ctlRef.redraw();
                 return;
             }
             const meta = {
                 ctl: null, dom, def,
                 makeCfg() {
-                    const series = defsSeries(def.s, null, def.u);
+                    const series = defsSeries(def.s, null, def.u, effConv());
                     const t = S.liveBuf ? S.liveBuf.time : [];
                     return { time: t, series, window: windowRange(t), marks: appliedMarks() };
                 },
                 refresh() { if (this.ctl && !this.ctl.disposed) this.ctl.setCfg(this.makeCfg()); }
             };
             charts.push(meta);
+            ctlRef.refresh = () => meta.refresh();
             K.mount(dom, meta.makeCfg(), zoomHooks).then(c => { meta.ctl = c; ctlRef.ctl = c; }).catch(e => {
                 dom.innerHTML = ''; dom.appendChild(K.emptyState('图表库加载失败', e.message));
             });
@@ -697,7 +729,8 @@
                     let time, values;
                     if (isResultMode() && resultAcc && resultAcc.has(r.id)) { time = resultAcc.time; values = resultAcc.series(r.id); }
                     else { const s = liveSeries(r.id); time = s.time; values = s.v; }
-                    rows.push({ label: r.label, time, values: values.map(v => (v == null ? 0 : v)), color: r.color });
+                    // S1:保留 null(非有限样本),由 stateBar 断带处理,不得画成0或跨段连线
+                    rows.push({ label: r.label, time, values, color: r.color });
                 });
                 K.stateBar(dom, rows);
             };
@@ -720,9 +753,10 @@
             }, label);
             const followEl = h('span', {
                 style: 'font-size:13px;color:' + (S.follow ? '#334155' : '#b45309') + ';cursor:pointer;margin-left:14px',
-                onclick: () => { S.follow = !S.follow; saveDisp(); renderAll(); },
+                onclick: () => { S.follow = !S.follow; if (S.follow) S.followDirty = false; saveDisp(); renderAll(); },
                 title: '关闭跟随仅停止视图滚动,仿真继续'
-            }, '跟随最新：' + (S.follow ? '开' : '关'));
+                // L2:关跟随后有新样本到达时,给出可见提示;点跟随恢复后清除
+            }, '跟随最新：' + (S.follow ? '开' : ('关' + (S.followDirty ? '（新数据已到达）' : ''))));
             S._followEl = followEl; // 缩放回调更新文本(R138 5.2)
             const bar = h('div', { style: 'background:#f1f5f9;border-radius:4px;padding:8px 14px;margin-bottom:12px;display:flex;align-items:center' },
                 seg('common', '常用'), seg('groups', '全部分组'), seg('custom', '自选'),
@@ -747,19 +781,38 @@
 
         /* ---------- 系统页 ---------- */
         const sysOfTab = { engine: 'engine', control: 'control', fuel: 'fuel', oil: 'oil', air: 'air' };
+        /** 空气页顶部状态(M6,规格4.6):显示本次运行实际回灌状态,取冻结配置→live/结果initialConfig→准备表单。 */
+        function airStatusText() {
+            const srcs = [S.cfgFrozen, (S.live || {}).initialConfig, (S.result || {}).initialConfig, S.cfg];
+            let on = null;
+            for (const x of srcs) { if (x && x.externalAir != null) { on = !!x.externalAir; break; } }
+            return '外部回灌：' + (on ? '开启' : '关闭') + '（关闭不停止空气系统计算）';
+        }
         function paintSystemTab(sys) {
             const resultMode = isResultMode();
             const L = COMMON_LAYOUT[sys];
             body.appendChild(pageHead(L.title));
-            if (L.notice) body.appendChild(h('div', { style: 'padding:2px 18px 8px;background:#fff;font-size:13px;color:#0f766e' }, L.notice));
+            if (L.notice) body.appendChild(h('div', { style: 'padding:2px 18px 8px;background:#fff;font-size:13px;color:#0f766e' },
+                sys === 'air' ? airStatusText() : L.notice)); // M6:空气页顶部显示本次运行实际回灌状态
             if (!S.catalog) {
                 body.appendChild(h('div', { class: 'wb-empty' }, '通道字典未加载(会话准备完成后从 channels.json 读取;历史运行取自结果 catalog/channels)。'));
                 return;
             }
-            if (S.viewMode !== 'custom') body.appendChild(viewBar());
-            if (S.viewMode === 'custom') { paintCustomWorkspace(sys, resultMode); return; }
-            const host = h('div', { style: 'padding:0 18px 16px' });
-            body.appendChild(host);
+            // 视图切换条在自选视图同样显示,否则进入自选后无法切回常用/全部分组
+            body.appendChild(viewBar());
+            // L6(规格4.5):图区与常驻通道树横向排列;"全部分组"共用右侧可折叠通道树;
+            // "自选"按UI-R138效果图通道树固定在左侧(先树后图)
+            const rowc = h('div', { style: 'display:flex;align-items:flex-start' });
+            body.appendChild(rowc);
+            const host = h('div', { style: 'padding:0 18px 16px;flex:1;min-width:0' });
+            if (S.viewMode === 'custom') { rowc.appendChild(channelTreePanel()); rowc.appendChild(host); paintCustomWorkspace(host, resultMode); return; }
+            rowc.appendChild(host);
+            // M5(规格4.6):空气页单支路三图查看(流量/温度/压力纵排,不新增物理量)
+            if (sys === 'air' && S.airBranch >= 0) {
+                paintAirSingle(host, resultMode);
+                if (S.viewMode === 'groups') rowc.appendChild(channelTreePanel());
+                return;
+            }
             if (S.viewMode === 'common') {
                 const gr = h('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:10px 22px' });
                 host.appendChild(gr);
@@ -781,6 +834,7 @@
                 });
                 if (sys === 'air') { const gr2 = h('div'); host.appendChild(gr2); paintAirGrid(gr2, resultMode); }
             }
+            if (sys === 'air' && S.viewMode === 'groups') rowc.appendChild(channelTreePanel());
             if (L.footnote) host.appendChild(h('div', { style: 'font-size:13px;color:#334155;padding:10px 4px 0' }, L.footnote));
             if (!resultMode) host.appendChild(h('div', { style: 'font-size:12px;color:#94a3b8;padding:4px 4px 0' },
                 '运行中曲线读取 stream 增量样本块(R065);关闭“跟随最新”仅冻结视图,仿真继续。'));
@@ -842,13 +896,86 @@
                     style: 'font-size:12px;padding:2px 12px',
                     onclick: () => { S.airHide[g] = !S.airHide[g]; saveDisp(); renderAll(); }
                 }, g));
+                // M5(规格4.6):单支路查看入口——进入该支路流量/温度/压力三图单独视图
+                chips.appendChild(h('button', {
+                    class: 'wb-btn wb-btn-outline',
+                    style: 'font-size:12px;padding:2px 8px',
+                    title: g + ' 单支路三图查看(质量流量/供气温度/供气压力)',
+                    onclick: () => { S.airBranch = i; saveDisp(); renderAll(); }
+                }, '查看'));
             });
             host.appendChild(chips);
         }
+        /** 空气单支路视图(M5,规格4.6):该支路的流量/温度/压力三图纵排,带"返回八路总览";不新增物理量。 */
+        function paintAirSingle(host, resultMode) {
+            const bi = S.airBranch;
+            const g = AIR_BRANCH[bi] || AIR_BRANCH[0];
+            host.appendChild(h('div', { style: 'display:flex;align-items:center;gap:14px;padding:4px 4px 10px' },
+                h('button', {
+                    class: 'wb-btn wb-btn-outline', style: 'font-size:13px;padding:4px 14px',
+                    onclick: () => { S.airBranch = -1; saveDisp(); renderAll(); }
+                }, '‹ 返回八路总览'),
+                h('span', { style: 'font-weight:700;font-size:15px;color:#0f172a' },
+                    g + ' 单支路三图（质量流量 / 供气温度 / 供气压力）')));
+            const rows = [AIR_ROWS[0], AIR_ROWS[1], AIR_ROWS[2]];
+            const gr = h('div', { style: 'display:grid;grid-template-columns:1fr;gap:10px' });
+            host.appendChild(gr);
+            rows.forEach(row => {
+                const id = row.ids[bi];
+                const head = h('div', { style: 'display:flex;align-items:baseline;padding:6px 4px 0' },
+                    h('span', { style: 'font-weight:700;font-size:14px;color:#0f172a' }, row.title + ' ' + g),
+                    h('span', { style: 'flex:1' }),
+                    h('span', { style: 'font-size:12px;color:#64748b' }, S.conv && row.title === '供气压力' ? 'kPa' : row.unit));
+                const dom = h('div', { style: 'height:220px' });
+                gr.appendChild(h('div', null, head, dom));
+                if (!chById(id)) { dom.appendChild(K.emptyState('本结果未记录', id)); return; }
+                if (isResultMode() && resultAcc) {
+                    if (!resultAcc.has(id)) { dom.appendChild(K.emptyState('本结果未记录')); return; }
+                    const c = chById(id);
+                    const conv = S.conv && row.title === '供气压力' ? K.convertSeries(resultAcc.series(id), 'Pa').values : resultAcc.series(id);
+                    K.mount(dom, {
+                        time: resultAcc.time,
+                        series: [{ name: g, values: conv, unit: S.conv && row.title === '供气压力' ? 'kPa' : (c.unit || row.unit), time: resultAcc.time, color: AIR_BRANCH_COLOR[bi] }],
+                        window: windowRange(resultAcc.time), marks: appliedMarks()
+                    }).then(ctl => staticCharts.push(ctl)).catch(() => { });
+                } else {
+                    const meta = {
+                        ctl: null,
+                        makeCfg() {
+                            const s = liveSeries(id);
+                            const conv = S.conv && row.title === '供气压力' ? K.convertSeries(s.v, 'Pa').values : s.v;
+                            const c = chById(id);
+                            return {
+                                time: s.time,
+                                series: [{ name: g, values: conv, unit: S.conv && row.title === '供气压力' ? 'kPa' : (c.unit || row.unit), time: s.time, color: AIR_BRANCH_COLOR[bi] }],
+                                window: windowRange(s.time), marks: appliedMarks()
+                            };
+                        },
+                        refresh() { if (this.ctl && !this.ctl.disposed) this.ctl.setCfg(this.makeCfg()); }
+                    };
+                    charts.push(meta);
+                    K.mount(dom, meta.makeCfg()).then(ctl => { meta.ctl = ctl; }).catch(() => { });
+                }
+            });
+        }
 
-        /* ---------- 通道树(左面板)与样本值表 ---------- */
-        function treePanelLeft() {
-            const panel = h('div', { style: 'width:300px;flex:none;background:#f8fafc;border-radius:6px;padding:12px 14px;max-height:640px;overflow:auto' });
+        /* ---------- 通道树(常驻右侧面板,L6)与样本值表 ---------- */
+        /** 常驻通道树(L6,规格4.5):"全部分组"与"自选"共用;点击节点添加/移除自选曲线
+         *  (同一曲线不会重复添加);可折叠,折叠态记忆在显示配置。 */
+        function channelTreePanel() {
+            const open = !S.treeCollapsed;
+            const panel = h('div', {
+                style: 'width:' + (open ? '280px' : '34px') + ';flex:none;background:#f8fafc;border-left:1px solid #e5e7eb;'
+                    + 'padding:' + (open ? '12px 14px' : '12px 6px') + ';max-height:760px;overflow:auto;box-sizing:border-box'
+            });
+            panel.appendChild(h('div', {
+                style: 'display:flex;align-items:center;cursor:pointer;white-space:nowrap;margin-bottom:8px',
+                title: open ? '收起通道树' : '展开通道树',
+                onclick: () => { S.treeCollapsed = !S.treeCollapsed; saveDisp(); renderAll(); }
+            },
+                h('span', { style: 'font-size:13px;font-weight:700;color:#0f766e' }, open ? '收起 ›' : '‹'),
+                open ? h('span', { style: 'font-size:12px;color:#64748b;margin-left:6px' }, '通道树（点击添加/移除自选）') : null));
+            if (!open) return panel;
             const search = h('input', { placeholder: '搜索 名称 / ID（如 油温 / oil09）', style: 'width:100%;margin-bottom:10px' });
             panel.appendChild(search);
             const listBox = h('div');
@@ -904,17 +1031,12 @@
             box.appendChild(h('div', { style: 'font-size:12px;color:#94a3b8;padding-top:6px' }, '样本值由后台读取；图例不刊出项目物理数值。'));
             return box;
         }
-        /** 自选工作区(MS-09):左树+右图+样本值表。 */
-        function paintCustomWorkspace(sys, resultMode) {
+        /** 自选工作区(MS-09):右侧图+样本值表;通道树由 paintSystemTab 统一提供(L6 常驻右侧)。 */
+        function paintCustomWorkspace(host, resultMode) {
             refreshAcc();
-            const wrapc = h('div', { style: 'display:flex;gap:16px;padding:0 18px 16px' });
-            body.appendChild(wrapc);
-            wrapc.appendChild(treePanelLeft());
-            const main = h('div', { style: 'flex:1;min-width:0' });
-            wrapc.appendChild(main);
             const ids = S.custom.slice();
             if (!ids.length) {
-                main.appendChild(h('div', { class: 'wb-empty' }, '在左侧通道树点击通道加入自选（同一曲线不会重复添加）；样本值表跟随共同游标显示实际样本。'));
+                host.appendChild(h('div', { class: 'wb-empty' }, '在左侧通道树点击通道加入自选（同一曲线不会重复添加）；样本值表跟随共同游标显示实际样本。'));
                 return;
             }
             const buckets = [];
@@ -927,22 +1049,22 @@
                 b.items.push(id);
             });
             const gr = h('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:10px 22px' });
-            main.appendChild(gr);
+            host.appendChild(gr);
             buckets.forEach(bk => {
                 const defs = bk.items.map(id => {
                     const c = chById(id);
                     const converted = S.conv && !K.isUnconfirmedUnit(c.unit) && K.convertedUnit(c.unit);
-                    return S_(id, { name: c.name, unit: converted || c.unit, rawUnit: converted ? c.unit : undefined });
+                    return S_(id, { name: qualName(id), unit: converted || c.unit, rawUnit: converted ? c.unit : undefined });
                 });
                 chartCard(gr, { t: bk.key === '__unc__' ? '未确认单位（原值）' : bk.key, u: bk.key === '__unc__' ? '' : bk.key, s: defs }, resultMode);
             });
-            main.appendChild(sampleTable(ids.slice()));
+            host.appendChild(sampleTable(ids.slice()));
             const rm = h('div', { style: 'margin-top:10px;display:flex;gap:6px;flex-wrap:wrap' });
             ids.forEach(id => rm.appendChild(h('button', {
                 class: 'wb-btn wb-btn-outline', style: 'font-size:12px;padding:2px 10px',
                 onclick: () => { S.custom = S.custom.filter(x => x !== id); saveDisp(); renderAll(); }
             }, '− ' + ((chById(id) || {}).name || id))));
-            main.appendChild(rm);
+            host.appendChild(rm);
         }
 
         /* ---------- 总控页(MS-02) ---------- */
@@ -978,8 +1100,9 @@
                 [['0.8', '80%'], ['0.9', '90%'], ['0.95', '95%'], ['1', '100%'], ['1.05', '105%']].forEach(([val, label]) => {
                     row1.appendChild(h('button', {
                         class: 'wb-btn ' + (S.npDraft === val ? 'wb-btn-primary' : 'wb-btn-outline'),
-                        disabled: locked ? '' : null, style: 'min-width:0;padding:4px 14px',
-                        onclick: () => { if (!locked) { S.npDraft = val; renderAll(); } }
+                        // M3(规格3.3):有待生效命令时仍可编辑下一组数值,仅禁用"施加"提交
+                        style: 'min-width:0;padding:4px 14px',
+                        onclick: () => { S.npDraft = val; renderAll(); }
                     }, label));
                 });
                 row1.appendChild(h('span', { style: 'flex:1' }));
@@ -988,7 +1111,8 @@
                 const row2 = h('div', { style: 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px' },
                     h('span', { style: 'font-size:13px' }, '负载：按选定模式填常值 → 施加 → 等待实际生效'));
                 const addLoad = (label, mkId, hint) => {
-                    const inp = h('input', { value: loadDefault(lm, mkId), id: mkId, style: 'width:150px', disabled: locked ? '' : null });
+                    // M3:输入框在有待生效命令时保持可编辑(下一组数值),提交由"施加"按钮统一限制
+                    const inp = h('input', { value: loadDefault(lm, mkId), id: mkId, style: 'width:150px' });
                     row2.appendChild(h('span', { style: 'display:inline-flex;align-items:center;gap:4px' },
                         h('span', { style: 'font-size:12px;color:#475569' }, label), inp,
                         hint ? h('span', { style: 'font-size:11px;color:#94a3b8' }, hint) : null));
@@ -1008,7 +1132,20 @@
             }
             if (ui === 'PAUSED') host.appendChild(h('div', { class: 'wb-infobar', style: 'border-left:4px solid #0f766e;margin-bottom:10px' },
                 '已暂停：原实例保留，可检查历史，仿真时间不再推进。任一运行阶段都可请求结束计算；这不是发动机物理停车。'));
-            if (ui === 'STOP_REQ') host.appendChild(h('div', { class: 'wb-infobar', style: 'margin-bottom:10px' }, '已请求结束计算；服务点确认前仿真仍可能推进（不强杀进程）。'));
+            // L3(规格6.2):暂停请求横幅持久显示,含最后活动信息;等待超30s追加延迟提示
+            if (ui === 'PAUSE_REQ') {
+                const waitS = S.pauseReqAt ? Math.round((Date.now() - S.pauseReqAt) / 1000) : 0;
+                host.appendChild(h('div', { class: 'wb-infobar', style: 'border-left:4px solid #b45309;margin-bottom:10px' },
+                    '暂停请求已提交，等待安全响应点；最后活动：样本 '
+                    + (live.sampleTime != null ? 't=' + Number(live.sampleTime).toFixed(3) + ' s' : '—')
+                    + '（心跳 ' + (live.lastHeartbeat || '—') + '）'
+                    + (waitS > 30 ? '。响应延迟较长，请耐心等待或查看日志' : '')));
+            }
+            // L3:结束请求横幅同样补最后活动信息
+            if (ui === 'STOP_REQ') host.appendChild(h('div', { class: 'wb-infobar', style: 'margin-bottom:10px' },
+                '已请求结束计算；服务点确认前仿真仍可能推进（不强杀进程）。最后活动：样本 '
+                + (live.sampleTime != null ? 't=' + Number(live.sampleTime).toFixed(3) + ' s' : '—')
+                + '（心跳 ' + (live.lastHeartbeat || '—') + '）。'));
             if (isCompiling()) host.appendChild(h('div', { class: 'wb-infobar', style: 'border-left:4px solid #b45309;margin-bottom:10px' },
                 '模型编译初始化中：仿真内核正在编译模型与加载求解器（通常1~2分钟），此阶段尚无数据流，属正常等待，无需重复操作。此时提交的暂停/结束将在编译完成后的首个安全点生效。'));
             if (S.connLost) host.appendChild(h('div', { class: 'wb-infobar', style: 'border-left:4px solid #b91c1c;margin-bottom:10px' },
@@ -1052,6 +1189,25 @@
             if (a[1] != null) load = lm === 'power' ? Number(a[1] / 1000).toFixed(2) + ' kW' : lm === 'torque' ? Number(a[1]).toFixed(1) + ' N·m' : Number(a[1]).toFixed(2) + '°';
             return Math.round(a[0]) + ' rpm / ' + load;
         }
+        /** 双总距固定映射参数(规格3.1:准备期配置并保存,运行中不热修改):
+         *  取冻结配置→live/结果initialConfig→准备表单,缺省兜底与准备页默认一致。 */
+        function dualMapping() {
+            const srcs = [S.cfgFrozen, (S.live || {}).initialConfig, (S.result || {}).initialConfig, S.cfg];
+            let ratio = null, design = null;
+            srcs.forEach(x => {
+                if (!x) return;
+                if (ratio == null && x.tailToMainPowerRatio != null) ratio = parseFloat(x.tailToMainPowerRatio);
+                if (design == null && x.tailDesignPitchDeg != null) design = parseFloat(x.tailDesignPitchDeg);
+            });
+            return { ratio: isFinite(ratio) && ratio >= 0 ? ratio : 0.10, design: isFinite(design) && design > 0 ? design : 10 };
+        }
+        /** 主尾桨合成等效桨距(与后端 sht_afo_session.m local_equivalent_pitch 公式一致,规格3.1)。 */
+        function equivalentPitch(main, tail, ratio, design) {
+            const f = 1 / (1 + ratio);
+            const gm = 0.15 + 0.85 * Math.pow(main / 12, 1.5);
+            const gt = 0.15 + 0.85 * Math.pow(Math.abs(tail / design), 1.5);
+            return 12 * Math.pow((f * gm + (1 - f) * gt - 0.15) / 0.85, 2 / 3);
+        }
         async function applyLoad(lm) {
             const e0 = document.getElementById('afo-load-0');
             if (!e0) return;
@@ -1067,6 +1223,10 @@
                 const v1 = e1 ? parseFloat(e1.value) : NaN;
                 if (!(v0 >= 6 && v0 <= 14)) { toast('主桨总距角须在6~14 deg', 'error'); return; }
                 if (!(v1 >= -8 && v1 <= 18)) { toast('尾桨总距角须在−8~18 deg', 'error'); return; }
+                // M2:运行中用冻结配置的映射参数做等效桨距校验(运行中不热修改映射参数),不通过拒绝提交
+                const mp = dualMapping();
+                const th = equivalentPitch(v0, v1, mp.ratio, mp.design);
+                if (!(th >= 6 && th <= 14)) { toast('主尾桨合成等效角' + th.toFixed(2) + '超出现有负载模型6至14度范围', 'error'); return; }
                 value = [v0, v1]; // 双桨一次成对提交
             }
             sendCmd('load', value);
@@ -1147,7 +1307,15 @@
                 if (lm === 'power') mk('PT功率', 'powerKw', 'kW,发送前转W');
                 else if (lm === 'torque') mk('扭矩', 'mkpNm', 'N·m');
                 else if (lm === 'pitch') mk('总距角', 'pitchDeg', 'deg');
-                else { mk('主桨总距角', 'mainPitchDeg', '6~14 deg'); mk('尾桨总距角', 'tailPitchDeg', '−8~18 deg,成对提交'); }
+                else {
+                    mk('主桨总距角', 'mainPitchDeg', '6~14 deg');
+                    mk('尾桨总距角', 'tailPitchDeg', '−8~18 deg,成对提交');
+                    // M2(规格3.1):双总距固定映射参数,准备期配置保存,运行中不热修改
+                    mk('尾/主桨功率比', 'tailToMainPowerRatio', '默认0.10');
+                    mk('尾桨设计总距', 'tailDesignPitchDeg', 'deg,默认10');
+                    loadBox.appendChild(h('div', { style: 'flexBasis:100%;font-size:12px;color:#94a3b8;margin-top:2px' },
+                        '主尾桨按工程映射合成等效负载：主桨6~14 deg、尾桨−8~18 deg，合成等效桨距须在6~14 deg内；映射参数准备后固定，运行中不可修改。'));
+                }
             };
             paintLoad();
             loadSel.addEventListener('change', paintLoad);
@@ -1206,6 +1374,8 @@
                             const rid = (f.runId.value || '').trim();
                             const trans = document.getElementById('afo-trans').checked;
                             if (!isFinite(dur) || dur <= 0) throw new Error('终止时间须为正数');
+                            // M1:终止时间对齐固定步长网格,与服务端 SimTimeUtil.alignToStep 约定一致
+                            if (Math.abs(dur / 0.025 - Math.round(dur / 0.025)) >= 1e-9) throw new Error('终止时间需为0.025 s计算网格的整数倍');
                             if (!isFinite(step) || step <= 0) throw new Error('记录周期须为正数');
                             if (Math.abs(step / 0.025 - Math.round(step / 0.025)) > 1e-6) throw new Error('记录周期须为0.025 s整数倍(当前 ' + step + ')');
                             if (rid && !/^[A-Za-z0-9_\-]{1,80}$/.test(rid)) throw new Error('任务编号仅限字母/数字/短横线/下划线,≤80字符');
@@ -1233,6 +1403,14 @@
                                 const m = parseFloat(f.mainPitchDeg.value), t2 = parseFloat(f.tailPitchDeg.value);
                                 if (!(m >= 6 && m <= 14)) throw new Error('主桨总距角须在6~14 deg');
                                 if (!(t2 >= -8 && t2 <= 18)) throw new Error('尾桨总距角须在−8~18 deg');
+                                // M2(规格3.1):双总距固定映射参数随准备提交;合成等效桨距校验与后端一致
+                                const tr = parseFloat(f.tailToMainPowerRatio ? f.tailToMainPowerRatio.value : c.tailToMainPowerRatio);
+                                const td = parseFloat(f.tailDesignPitchDeg ? f.tailDesignPitchDeg.value : c.tailDesignPitchDeg);
+                                if (!isFinite(tr) || tr < 0) throw new Error('尾/主桨功率比须为非负数');
+                                if (!isFinite(td) || td <= 0) throw new Error('尾桨设计总距须为正数(deg)');
+                                const th = equivalentPitch(m, t2, tr, td);
+                                if (!(th >= 6 && th <= 14)) throw new Error('主尾桨合成等效角' + th.toFixed(2) + '超出现有负载模型6至14度范围');
+                                req.tailToMainPowerRatio = tr; req.tailDesignPitchDeg = td;
                                 req.mainPitchDeg = m; req.tailPitchDeg = t2;
                             }
                             if (rid) req.runId = rid;
@@ -1242,6 +1420,8 @@
                                 engineId: req.engineId, duration: dur, recordStep: step, pace: req.pace,
                                 loadMode: lm, powerKw: fv('powerKw'), mkpNm: fv('mkpNm'), pitchDeg: fv('pitchDeg'),
                                 mainPitchDeg: fv('mainPitchDeg'), tailPitchDeg: fv('tailPitchDeg'),
+                                // M2:双总距固定映射参数写入本地配置(随 prepare 请求原样透传给程序)
+                                tailToMainPowerRatio: fv('tailToMainPowerRatio'), tailDesignPitchDeg: fv('tailDesignPitchDeg'),
                                 externalAir: req.externalAir, npRatio: np0, runId: rid,
                                 publishLive: req.publishLive, initialTransitionConfirmed: trans
                             });
@@ -1419,9 +1599,14 @@
         /* ---------- 动作 ---------- */
         async function sendCmd(kind, value) {
             try {
+                // R138 6.2禁重复提交:暂停/继续请求已在途时忽略同Kind命令(防连点造成多重请求)
+                if (kind === 'pause' && uiState() === 'PAUSE_REQ') { toast('暂停请求已在处理中,请等待安全响应点', 'info'); return; }
+                if (kind === 'resume' && uiState() === 'RESUME_REQ') { toast('继续请求已在处理中', 'info'); return; }
+                if (kind === 'stop' && uiState() === 'STOP_REQ') { toast('结束请求已在处理中', 'info'); return; }
                 await apiPost('/command', { kind, value });
-                if (kind === 'resume') S.localResume = true;
-                if (kind === 'pause') S.localResume = false;
+                if (kind === 'resume') { S.localResume = true; S.pauseReqAt = null; }
+                if (kind === 'pause') { S.localResume = false; S.pauseReqAt = Date.now(); } // L3:30s延迟提示计时起点
+                if (kind === 'stop') S.pauseReqAt = null;
                 toast(kind === 'pause' ? '暂停请求已提交,等待安全响应点' : kind === 'resume' ? '继续请求已提交' :
                     kind === 'stop' ? '结束请求已提交;不强杀进程' : '命令已提交;实际生效以回执为准', 'info');
                 refresh(); if (S.streamMode !== 'sse') quickPoll();
@@ -1449,7 +1634,7 @@
                 S.compare = null; S.compareOverlay = false;
                 S.liveBuf = null; S.sessionId = null; S.catalog = null; S.byId = null;
                 S.dispIds = null; S.dispPos = null; S.liveCols = null;
-                S.gapNotice = ''; S.liveErr = ''; S.connLost = false;
+                S.gapNotice = ''; S.liveErr = ''; S.connLost = false; S.pauseReqAt = null;
                 stopLoops();
                 toast('会话已关闭;可新建运行', 'success');
                 renderAll();
@@ -1487,6 +1672,9 @@
                 pitchDeg: c.pitchDeg != null ? c.pitchDeg : S.cfg.pitchDeg,
                 mainPitchDeg: c.mainPitchDeg != null ? c.mainPitchDeg : S.cfg.mainPitchDeg,
                 tailPitchDeg: c.tailPitchDeg != null ? c.tailPitchDeg : S.cfg.tailPitchDeg,
+                // M2:双总距固定映射参数随复用配置带入
+                tailToMainPowerRatio: c.tailToMainPowerRatio != null ? c.tailToMainPowerRatio : S.cfg.tailToMainPowerRatio,
+                tailDesignPitchDeg: c.tailDesignPitchDeg != null ? c.tailDesignPitchDeg : S.cfg.tailDesignPitchDeg,
                 externalAir: !!c.externalAir, npRatio: String(c.npRatio || '1'), runId: ''
             });
             exitReadonly();
@@ -1500,12 +1688,35 @@
         let lastBarPaint = 0; // 运行栏轻量刷新节流(避免高频重建DOM影响按钮点击)
         function startLoops() {
             stopLoops();
-            startBootstrapPoll(); // 引导:探测阶段→加载目录→启动 SSE
+            startStatusStream(); // 状态通知SSE:页面打开即订阅(含准备期),chg→refresh一次;连接期间停5s状态轮询
             startLiveChannel();
         }
         function stopLoops() {
             if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
             stopLiveChannel();
+            if (S.sseRetry) { clearInterval(S.sseRetry); S.sseRetry = null; }
+            if (S.stsEs) { try { S.stsEs.close(); } catch (e) { /* 已关 */ } S.stsEs = null; }
+        }
+        /** 状态通知通道(全生命周期):准备期阶段迁移(IDLE/PREPARING/READY)由此推送,5s轮询降为断链兜底。 */
+        function startStatusStream() {
+            if (S.stsEs || S.readonlyRunId || typeof EventSource === 'undefined') return;
+            try {
+                const cfg0 = window.AppConfig;
+                const url = cfg0.api.baseURL + '/api/engine/projects/' + encodeURIComponent(pid) + '/afo/stream?token='
+                    + encodeURIComponent(cfg0.getToken() || '');
+                const es = new EventSource(url);
+                S.stsEs = es;
+                es.addEventListener('chg', () => {
+                    refresh();
+                    // 状态通道已覆盖阶段迁移:停5s引导轮询(数据通道就绪后由live帧接管S.live明细)
+                    stopBootstrapPoll();
+                });
+                es.onerror = () => {
+                    try { es.close(); } catch (e) { /* 已关 */ }
+                    if (S.stsEs === es) S.stsEs = null;
+                    startBootstrapPoll(); // 断链兜底
+                };
+            } catch (e) { /* 保持轮询兜底 */ }
         }
         function startBootstrapPoll() {
             if (pollTimer) return;
@@ -1541,7 +1752,14 @@
                         if (S.pullTimer) { clearInterval(S.pullTimer); S.pullTimer = null; }
                     } catch (e) { /* 坏帧忽略 */ }
                 });
-                es.addEventListener('end', () => { if (S.liveBuf) S.liveBuf.isFinal = true; stopLiveChannel(); });
+                es.addEventListener('end', () => {
+                    if (S.liveBuf) S.liveBuf.isFinal = true;
+                    stopLiveChannel();
+                    // 数据通道在isFinal即关闭,但Java phase=ENDED要等save/result/close完成后才设置——
+                    // 必须恢复状态监视(状态流+兜底轮询),否则保存完成后的ENDED迁移无人送达,界面卡在"计算中"
+                    startStatusStream();
+                    startBootstrapPoll();
+                });
                 es.addEventListener('err', () => { stopLiveChannel(); fallbackPull(); });
                 es.onerror = () => { stopLiveChannel(); startBootstrapPoll(); fallbackPull(); };
             } catch (e) { fallbackPull(); }
@@ -1550,6 +1768,19 @@
             S.streamMode = 'pull';
             if (!S.pullTimer) S.pullTimer = setInterval(pullLive, 200);
             startBootstrapPoll();
+            startSseRetry();
+        }
+        /** 兜底拉取期间的SSE重试(10s一次):恢复推送后自动退掉轮询,避免永久停留在200ms拉取。 */
+        function startSseRetry() {
+            if (S.sseRetry) return;
+            S.sseRetry = setInterval(() => {
+                if (S.streamMode !== 'pull' || !S.catalog || !S.liveBuf || S.liveBuf.isFinal || S.readonlyRunId) {
+                    clearInterval(S.sseRetry); S.sseRetry = null; return;
+                }
+                stopLiveChannel();
+                S.streamMode = '';
+                startLiveChannel(); // 失败会再次 onerror→fallbackPull(计时器仍在,不叠加)
+            }, 10000);
         }
         function stopLiveChannel() {
             if (S.es) { try { S.es.close(); } catch (e) { /* 已关 */ } S.es = null; }
@@ -1574,7 +1805,11 @@
                 S.phase = d.phase || 'IDLE';
                 S.message = d.message || '';
                 S.live = d.live || null;
-                if (!S.cfgFrozen && S.phase === 'READY' && S.cfg) S.cfgFrozen = { duration: parseFloat(S.cfg.duration) };
+                // 冻结配置(规格3.1/4.6):准备完成后固定,运行中显示与校验均以此为准
+                if (!S.cfgFrozen && S.phase === 'READY' && S.cfg) S.cfgFrozen = {
+                    duration: parseFloat(S.cfg.duration), externalAir: !!S.cfg.externalAir,
+                    tailToMainPowerRatio: S.cfg.tailToMainPowerRatio, tailDesignPitchDeg: S.cfg.tailDesignPitchDeg
+                };
                 if (S.live && S.live.state === 'running') S.localResume = false;
                 if (S.live && S.live.lastHeartbeat) {
                     const hb = new Date(String(S.live.lastHeartbeat).replace(' ', 'T')).getTime();
@@ -1609,7 +1844,8 @@
             // 状态摘要/命令回执/操纵占位随通道同步(轮询降为兜底后这里是主路径)
             S.live = S.live || {};
             ['state', 'currentSimulationTime', 'sampleTime', 'sampleSeq', 'publishedSeq',
-             'lastHeartbeat', 'saveState', 'saveError', 'publishError', 'applied', 'pending'].forEach(k => {
+             'lastHeartbeat', 'saveState', 'saveError', 'publishError', 'applied', 'pending',
+             'pauseRequested', 'stopRequested'].forEach(k => {
                 if (d[k] !== undefined) S.live[k] = d[k];
             });
             if (d.events && d.eventsLen !== undefined) {
@@ -1627,6 +1863,11 @@
                 S.liveBuf.nextSeq = Math.max(S.liveBuf.nextSeq, S.liveBuf.gap.to + 1);
                 S.liveBuf.gap = null; S.gapRetries = 0;
             } else if (!S.liveBuf.gap) { S.gapNotice = ''; S.gapRetries = 0; }
+            // L2:关跟随后新样本到达→图表工具条给出可见提示(点击"跟随最新"恢复后清除)
+            if (added > 0 && !S.follow) {
+                S.followDirty = true;
+                if (S._followEl) { S._followEl.textContent = '跟随最新：关（新数据已到达）'; S._followEl.style.color = '#b45309'; }
+            }
             if (added > 0 || d.hasMore || eventsChanged) refreshRuntimeCharts();
             if (d.isFinal) S.liveBuf.isFinal = true; // 通道保持开启:保存状态仍会变化
             if (phaseChanged || (wasCompiling && added > 0 && !isCompiling()) || uiState() !== prevUi) renderAll(); // 按钮态迁移(暂停/继续/结束)或编译期结束即整页重绘
@@ -1682,7 +1923,13 @@
                 if (resp && (resp.success || resp.code === 200) && resp.data) {
                     S.result = resp.data;
                     await loadCatalog();
-                    S.cfgFrozen = { duration: parseFloat((S.result.config && S.result.config.duration) || 0) };
+                    // 冻结配置:历史结果回看时取结果的最终配置(含回灌与双总距映射参数)
+                    S.cfgFrozen = {
+                        duration: parseFloat((S.result.config && S.result.config.duration) || 0),
+                        externalAir: !!(S.result.config && S.result.config.externalAir),
+                        tailToMainPowerRatio: S.result.config && S.result.config.tailToMainPowerRatio,
+                        tailDesignPitchDeg: S.result.config && S.result.config.tailDesignPitchDeg
+                    };
                 } else {
                     toast((resp && resp.message) || '结果尚未生成', 'error');
                     S.readonlyRunId = null;
@@ -1707,6 +1954,9 @@
                 pitchDeg: c.pitchDeg != null ? c.pitchDeg : S.cfg.pitchDeg,
                 mainPitchDeg: c.mainPitchDeg != null ? c.mainPitchDeg : S.cfg.mainPitchDeg,
                 tailPitchDeg: c.tailPitchDeg != null ? c.tailPitchDeg : S.cfg.tailPitchDeg,
+                // M2:双总距固定映射参数随复用配置带入
+                tailToMainPowerRatio: c.tailToMainPowerRatio != null ? c.tailToMainPowerRatio : S.cfg.tailToMainPowerRatio,
+                tailDesignPitchDeg: c.tailDesignPitchDeg != null ? c.tailDesignPitchDeg : S.cfg.tailDesignPitchDeg,
                 externalAir: !!c.externalAir, npRatio: String(c.npRatio || '1'), runId: ''
             });
             exitReadonly();

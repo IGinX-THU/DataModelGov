@@ -87,6 +87,13 @@ public class AfoController {
         }
     }
 
+    @ApiOperation("会话状态SSE通知流(全生命周期1s指纹比对,变化才推chg;前端收到后拉一次status)")
+    @GetMapping(value = "/stream", produces = org.springframework.http.MediaType.TEXT_EVENT_STREAM_VALUE)
+    @RequirePermission(Permission.READ)
+    public org.springframework.web.servlet.mvc.method.annotation.SseEmitter statusStream() {
+        return afoService.openStatusStream();
+    }
+
     @ApiOperation("在线命令(pause/resume/stop/np/load;写inbox文件通道)")
     @PostMapping("/command")
     @RequirePermission(Permission.CREATE)

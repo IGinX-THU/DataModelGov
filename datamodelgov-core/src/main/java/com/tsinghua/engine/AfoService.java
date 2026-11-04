@@ -65,6 +65,11 @@ public class AfoService {
             java.util.concurrent.Executors.newSingleThreadScheduledExecutor(
                     r -> { Thread t = new Thread(r, "afo-live-pump"); t.setDaemon(true); return t; });
 
+    /** 状态通知 SSE 订阅者:{em, fp};覆盖会话全生命周期(含IDLE/PREPARING),变化才推chg。 */
+    private final List<Object[]> statusSubs = new java.util.concurrent.CopyOnWriteArrayList<>();
+    private static final com.fasterxml.jackson.databind.ObjectMapper OM_STATUS =
+            new com.fasterxml.jackson.databind.ObjectMapper();
+
     /** 一个 SSE 订阅者:独立游标与列裁剪;busy 防重入,done 后移除。 */
     private static class LiveSub {
         final org.springframework.web.servlet.mvc.method.annotation.SseEmitter em;
@@ -131,6 +136,8 @@ public class AfoService {
         }
         // 增量数据 SSE 泵(有订阅者才扫文件)
         livePump.scheduleWithFixedDelay(this::pumpLiveSafely, 200, 200, java.util.concurrent.TimeUnit.MILLISECONDS);
+        // 状态通知 SSE 泵(1s指纹比对;准备期阶段迁移由此推送,前端不再依赖5s状态轮询)
+        livePump.scheduleWithFixedDelay(this::pumpStatusSafely, 1000, 1000, java.util.concurrent.TimeUnit.MILLISECONDS);
     }
 
     private void startWarmEngine() {
@@ -413,6 +420,72 @@ public class AfoService {
         liveSubs.remove(sub);
     }
 
+    /** 状态通知 SSE:会话全生命周期(IDLE/PREPARING/READY/RUNNING/ENDED)通用,
+     *  1s指纹比对稳定状态字段,变化才推chg(前端收到后自行拉取一次/status)。
+     *  指纹与负载只含稳定字段——排除time/sampleSeq/lastHeartbeat等高频项,运行中不会逐秒触发。 */
+    public org.springframework.web.servlet.mvc.method.annotation.SseEmitter openStatusStream() {
+        org.springframework.web.servlet.mvc.method.annotation.SseEmitter em =
+                new org.springframework.web.servlet.mvc.method.annotation.SseEmitter(0L);
+        Object[] sub = new Object[]{ em, "" };
+        statusSubs.add(sub);
+        em.onCompletion(() -> statusSubs.remove(sub));
+        em.onTimeout(() -> { statusSubs.remove(sub); try { em.complete(); } catch (Exception ignore) { } });
+        em.onError(t -> statusSubs.remove(sub));
+        return em;
+    }
+
+    /** 状态通知泵:逐订阅者指纹比对(statusSubs元素{em,fp})。 */
+    private void pumpStatusSafely() {
+        if (statusSubs.isEmpty()) return;
+        for (Object[] sub : statusSubs) {
+            org.springframework.web.servlet.mvc.method.annotation.SseEmitter em =
+                    (org.springframework.web.servlet.mvc.method.annotation.SseEmitter) sub[0];
+            try {
+                String json = OM_STATUS.writeValueAsString(statusNotifySnapshot());
+                String fp = Integer.toString(json.hashCode()) + ':' + json.length();
+                if (!fp.equals((String) sub[1])) {
+                    sub[1] = fp;
+                    em.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event()
+                            .name("chg").data(json));
+                }
+            } catch (java.io.IOException io) {
+                statusSubs.remove(sub);
+                try { em.complete(); } catch (Exception ignore) { }
+            } catch (Exception e) {
+                log.debug("AFO状态SSE泵异常(下周期重试): {}", e.getMessage());
+            }
+        }
+    }
+
+    /** 稳定状态快照(指纹源+chg负载):Java生命周期真源 + status.json低频字段。 */
+    private Map<String, Object> statusNotifySnapshot() {
+        AfoSession s = session;
+        Map<String, Object> out = new LinkedHashMap<>();
+        if (s == null) {
+            out.put("phase", "IDLE");
+            return out;
+        }
+        out.put("phase", s.phase);
+        out.put("message", s.message);
+        out.put("error", s.error);
+        out.put("runId", s.runId);
+        File sf = new File(s.outputDir, "status.json");
+        if (sf.isFile()) {
+            try {
+                Map<String, Object> live = OM_STATUS.readValue(sf, Map.class);
+                for (String k : new String[]{"state", "saveState", "saveError", "publishError",
+                        "observerError", "pauseRequested", "stopRequested", "publishLive"}) {
+                    out.put(k, live.get(k));
+                }
+                Object ev = live.get("events");
+                out.put("eventsLen", ev instanceof List ? ((List<?>) ev).size() : 0);
+            } catch (Exception e) {
+                log.debug("status.json 读取中(可能正在原子替换)", e);
+            }
+        }
+        return out;
+    }
+
     /** 供 SSE 泵复用的核心读取(会话对象直传)。 */
     private Map<String, Object> readLiveFrom(AfoSession s, long afterSeq, String expectSessionId,
                                              Integer maxRows, int[] columns) throws IOException {
@@ -517,6 +590,10 @@ public class AfoService {
         out.put("observerError", st.get("observerError"));
         out.put("saveState", st.getOrDefault("saveState", "not_started"));
         out.put("saveError", st.get("saveError"));
+        // 暂停/结束请求标志随同一通道推送:前端11态状态机(暂停请求中/结束请求中)依赖其清除时机,
+        // 缺失会导致SSE活跃期间标志无法从true刷新回false,界面卡在过渡态
+        out.put("pauseRequested", st.get("pauseRequested"));
+        out.put("stopRequested", st.get("stopRequested"));
         out.put("isFinal", readFinal);
         out.put("nextSeq", nextSeq);
         out.put("hasMore", hasMore);

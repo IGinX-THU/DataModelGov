@@ -3246,6 +3246,15 @@ window.Workbench = (() => {
                     h('div', { class: 'wb-hint', style: 'word-break:break-all' },
                         S.message || '执行异常;详情见仿真记录与服务端日志。修正后可直接重新发起准备。')));
             }
+            // 过渡态锁定(与AFO页PREPARING一致):准备期间禁用全部输入/按钮,只读横幅提示,完成后由SSE/轮询解锁
+            if (preparing) {
+                card.querySelectorAll('input,select,button').forEach(el => { el.disabled = true; el.style.pointerEvents = 'none'; });
+                card.appendChild(h('div', { style: 'margin-top:14px;padding:10px 14px;background:#f0fdf9;border:1px solid #99e0d5;border-radius:6px;display:flex;gap:12px;align-items:center' },
+                    h('span', { class: 'wb-inline-loading' }, h('span', { class: 'wb-inline-spinner' })),
+                    h('div', null,
+                        h('div', { style: 'font-weight:700;color:#0f766e' }, '正在准备初态,界面已锁定'),
+                        h('div', { class: 'wb-hint', style: 'margin:0' }, '校验身份/初始化模型需要一些时间(引擎预热约1-2分钟);准备完成前不可修改配置,完成后自动解锁。'))));
+            }
             return card;
         }
 
